@@ -1,0 +1,276 @@
+\documentclass{article}
+
+\usepackage{../macros}
+
+\title{A Geolog Prospectus}
+\author{Owen Lynch}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\subsection{Problem statement}
+The architecture for the Safeguarded AI project requires a system that
+
+\begin{itemize}
+  \item records
+        \begin{itemize}
+          \item observations from ``the world'',
+          \item proof certificates for the consequences of those observations according to world-models,
+        \end{itemize}
+  \item via
+        \begin{itemize}
+          \item an immutable log of observations and consequences,
+        \end{itemize}
+  \item and supports
+        \begin{itemize}
+          \item querying (and incremental querying),
+          \item updating with more observations, possibly concurrently,
+          \item updating with more consequences, also concurrently,
+          \item handling of conflicting observations,
+          \item migration of existing facts to new ontologies.
+        \end{itemize}
+\end{itemize}
+
+These requirements are neither satisfied by existing proof assistants (which do not manage the evolution of knowledge over time) or existing databases (whose relational foundations do not support the essentially \emph{inductive} nature of proof certificates). Thus, a new system is needed, which will blend aspects of
+
+\begin{itemize}
+\item proof assistants
+\item databases
+\item version control systems
+\end{itemize}
+We refer to such a system as a ``logical database.''
+
+\begin{problem}
+  Build a logical database.
+\end{problem}
+
+\subsection{Idea}
+We propose that \emph{geometric theories} provide an appropriate \emph{semantic foundation} for a logical database which satisfies the requirements of the above problem statement.
+
+\begin{definition}[\cite{johnstone-2002-sketches}, B4.2]
+  Let $\ms{CAT}$ be the 2-category of large categories, and for a fixed topos $\mc{S}$ let $\ms{BTop}/\mc{S}$ be the 2-category of bounded topoi over $\mc{S}$.
+  A \defcase{geometric theory} is a 2-functor $T \colon (\ms{BTop}/\mc{S})\op \to \ms{CAT}$ that may be built up by a sequence of product-inserter-equifier limits, starting from a functor $T_0 \colon (\ms{BTop}/\mc{S})\op \to \ms{CAT}$ given by $T_0(\mc{E}) = \mc{E}^n$ for some finite $n$.
+\end{definition}
+
+Intuitively, a geometric theory is something that assigns to each topos a category of ``models'' of that geometric theory, where a model is some collection of objects, morphisms, and equalities between morphisms that can be expressed using the properties of a topos that are stable under geometric morphism (finite limits and arbitrary colimits).
+
+There are various ways of syntactically expressing geometric theories. The classical way is via first-order logic with an infinitary disjunction; this infinitary disjunction is obviously unsuitable for computer implementation. An alternative approach would be to use a type theory which supports quotient inductive-inductive types; these quotient inductive-inductive types would express most colimits that one cares about in practice.
+
+Geometric theories seem like a good foundation for a couple reasons.
+\begin{itemize}
+  \item Intuitively, geometric theories capture the largest collection of types which are ``internally serializable.'' That is, while one can ``serialize'' a closure via storing its source code and environment, this is dependent on the implementation details of the language and not just its abstract semantics. Of course, serializing an element of a quotient type is similarly suspect, but \emph{equality proofs} for a quotient inductive-inductive type are also inductive, so it is not as much of a problem.
+  \item There are a lot more geometric morphisms than there are logical morphisms; this means that there is significantly more freedom to update the database schema while preserving existing facts and derivations.
+  \item The fact that proofs of geometric propositions are stable under geometric morphisms means that there are a lot of opportunities for \emph{incrementalization}.
+\end{itemize}
+
+It will no doubt be necessary to ``pare back'' geometric theories in order to make concessions to implementation, but we believe that geometric theories give us a sufficiently general starting point that we will not need to rethink semantic foundations.
+
+\subsection{Architecture}
+The architecture for the software implementation of geolog can roughly be split into three parts:
+
+\begin{enumerate}
+\item An \textbf{elaborator} for a type theory; this type theory serves as the user interface for
+\begin{itemize}
+\item Schemas
+\item Queries
+\item Updates
+\item Migrations
+\end{itemize}
+\item An \textbf{operation log} which stores a (not-necessarily linear) history of all operations performed on a database instance.
+\item A \textbf{query engine} which
+\begin{itemize}
+\item Accepts some low-level language produced by the elaborator, an operation log, and a specific point of time
+\item Executes that low-level language in order to
+\begin{itemize}
+\item Answer queries, possibly in an \emph{incremental} fashion as new operations are streamed in
+\item Create new operations in the log
+\end{itemize}
+\end{itemize}
+\end{enumerate}
+
+Such a software would perform \textbf{semi-automated} reasoning. That is, some questions about a database would be answerable via polynomial-time ``querying'', while other questions would only be answerable via proof search, which would be performed by a collaboration of
+
+\begin{itemize}
+\item humans
+\item classical ``solvers''
+\item large language models
+\end{itemize}
+\subsection{Related work}
+Geolog is a quite ambitious project. However, we believe that it is feasible to do \emph{without developing a large amount of new mathematics or computer science}. That is, we believe that geolog is mainly an \emph{engineering} challenge, and very few substially new
+\begin{itemize}
+\item theorems
+\item algorithms
+\item data structures
+\end{itemize}
+will be required in the path towards a functional prototype. Rather, we believe that a careful reading of the literature will provide us with most if not all of the tools we need to put together a full system.
+
+In terms of semantics, the two main subjects that are of relevance are
+\begin{enumerate}
+  \item geometric theories,
+  \item finite model theory, including finite model theory for least fixed point logics.
+\end{enumerate}
+Each of these subjects has been well-studied for decades, relevant works include \cite{johnstone-2002-sketches} for geometric theories and \cite{libkin-2004-elements} for finite model theory. One complication is how semantically to model sparsity of, for instance, a function $\ms{Nat} \to \ms{Prop}$, which in a finite model should be a finite set of natural numbers; we will have to find relevant literature for this.
+
+The type theory is slightly more experimental, however it draws on a variety of pre-existing work such as
+\begin{enumerate}
+  \item Logical frameworks (\cite{pfenning-1999-system}).
+  \item Quotient inductive-inductive types (\cite{kovacs-2022-typetheoretic})
+  \item Modulog (\cite{atkey-2018-modulog})
+\end{enumerate}
+Moreover, as far as we can see, the type theory will be completely structural and non-modal, and hence expressible as a SOGAT (\cite{kaposi-2024-secondorder}); this will simplify the mathematical treatment. As far as the implementation goes, a standard bidirection elaboration with normalization-by-evaluation will suffice. Equality, as always, will present a complication. One approach would be the standard intensional equality type. However, there are some significant advantages to working in the restricted setting of geometric theories comparted to full MLTT which may make an observational approach to equality feasible (\cite{altenkirch-2006-observational}), with attendant ergonomic benefits.
+
+The query engine is a part that the author of this present document has less familiarity with, beyond a ``computer science'' understanding of algorithmic complexity. Nevertheless, the main jobs of the query engine are
+
+\begin{enumerate}
+  \item Instantiation of the operations in the operation log into sparse tensor data structures
+  \item Incremental evaluation of conjunctive queries
+  \item Datalog-style least fixed point problems
+  \item Egglog-style mixtures of equality saturation and least fixed point reasoning (\cite{zhang-2023-better})
+\end{enumerate}
+I believe that the first three items are fairly well-studied; the last one less so. But the ``automated reasoning'' capabilities of geolog are less important than its role as a ``system of record,'' as we expect more specialized systems to be performing reasoning in any serious domain; for instance reachability in a Petri net would be performed by an external tool which would then export its chain of reasoning into geolog.
+
+Finally, the ``operation log'' part of geolog is intended to be very similar to current data structures inside automerge (\cite{automergecontributors-2025-automerge}), and we expect that (from an operation log point of view) the kind of syncing/collaboration in geolog is not terribly different from the way automerge deals with operation logs for json documents. The main difference will be in the ``instantiator'' which is the job of the query engine.
+
+\section{Geolog by example}
+
+In this section, we give some ``dream code'' for what the geolog type theory might look like in practice. The intention here is for the reader to get a ``vibe'' for what geolog might eventually look like, not to fully understand at the current moment what geolog is.
+
+\subsection{Combinatorial data structures}
+\begin{example}[Graphs] \,
+
+\begin{verbatim}
+theory SimpleDirectedGraph
+  V : Type
+  E : V -> V -> Prop
+end
+
+instance TwoPathGraph (G : SimpleDirectedGraph) : SimpleDirectedGraph
+  V = G.V
+  E x z = exists (y : V) (G.E x y && G.E y z)
+end
+\end{verbatim}
+\texttt{TwoPathGraph} would be treated as a \emph{migration}; from an instance of \texttt{SimpleDirectedGraph} it would produce another instance in which there is an edge from \texttt{x} to \texttt{z} if and only if there exists a length-2 path from \texttt{x} to \texttt{z} in the original graph.
+\end{example}
+
+\begin{example}[Petri nets] \,
+
+\begin{verbatim}
+theory PetriNet
+  Place : Type
+  Transition : Bag Place -> Bag Place -> Type
+end
+
+local theory Reachability (P : PetriNet)
+  open P
+
+  Reachable : Bag Place -> Bag Place -> Prop
+  refl : (B : Bag Place) -> Reachable B B
+  applyTransition : (X Y Z1 Z2 : Bag Place) -> Reachable X (Y + Z1) ->
+    Transition Z1 Z2 -> Reachable X (Y + Z2)
+end
+\end{verbatim}
+A local theory is a theory which is syntactically restricted so that it has an initial instance; for instance there is an initial model of \texttt{Reachability P} for every petri net \texttt{P}. This initial model is clearly not finite, but the database can nonetheless store ``partial knowledge'' about the relation \texttt{Reachable} in this initial model; e.g. proofs of reachability for certain pairs of token assignments.
+\end{example}
+
+\begin{example}[Simplicial sets] \,
+
+\begin{verbatim}
+theory SemiSimplicialSet
+  Simplex : Nat -> Type
+  -- we use ?n for implicit parameters
+  d : (?n : Nat) -> Fin (S ?n) -> Simplex (S ?n) -> Simplex ?n
+  dd : (n : Nat) -> (s : Simplex (S (S n))) ->
+    (i : Fin (S n)) -> (j : Fin (S n)) -> d i (d (j + 1) s) = d j (d i s)
+end
+\end{verbatim}
+This is only well-typed if we have an implicit coercion from \texttt{Fin n} to \texttt{Fin (S n)}, which we likely do not want, but it makes it easier to read in the example.
+\end{example}
+\subsection{Relational databases}
+
+\begin{example}[Parts and projects] \,
+
+\begin{verbatim}
+type Metadata = [name : String, description : String]
+
+theory PartsAndProjects
+  Part : Type
+
+  properties Part
+    meta : Metadata
+    quantity-on-hand : Nat
+    quantity-on-order : Nat
+  end
+  -- syntactic sugar for:
+  -- Part/meta : Part -> Metadata
+  -- Part/quantity-on-hand : Part -> Nat
+  -- Part/quantity-on-order : Part -> Nat
+
+  Project : Type
+
+  properties Project
+    meta : Metadata
+  end
+
+  Commit : Type
+
+  properties Commit
+    part : Part
+    project : Project
+    quantity : Nat
+  end
+end
+\end{verbatim}
+This is the classic example from the paper that started it all \cite{codd-1970-relational}.
+\end{example}
+
+\subsection{Program analysis}
+Many program analysis tasks are expressible in datalog. Bob Atkey's modulog \cite{atkey-2018-modulog} contains a bunch of good examples.
+
+\begin{example}[Interprocedural Finite Distributive Subset] This is a translation of a modulog program which is aimed at analyzing control flow across procedures.
+\begin{verbatim}
+theory IFDS_Program
+  Procedure : Type
+  Point : Type
+  EntryFact : Type
+  Fact : Type
+
+  EntryState : Type = [Procedure, EntryFact]
+  State : Type = [Point, Fact]
+
+  Edge : State -> State -> Prop
+  StartEdge : EntryState -> State -> Prop
+  Call : State -> EntryState -> Prop
+  Return : State -> State -> State -> Prop
+  Initial : EntryState -> Prop
+end
+
+local theory IDFS (P : IDFS_Program)
+  open P
+
+  Intra : EntryState -> State -> Prop
+  CallSite : State -> EntryState -> Prop
+  Invoked : EntryState -> Prop
+  CallReturn : State -> State -> Prop
+
+  _ : Invoked ?es -> StartEdge ?es ?s -> Intra ?es ?s
+  _ : Intra ?es ?s' -> Edge ?s' ?s -> Intra ?es ?s
+  _ : Intra ?es ?s' -> CallReturn ?s' ?s -> Intra ?es ?s
+
+  _ : Initial ?es -> Invoked ?es
+  _ : CallSite ?s ?es -> Invoked ?es
+
+  _ : Intra ?es ?s -> Call ?s ?es' -> CallSite ?s ?es'
+
+  _ : CallSite ?s ?es -> Intra ?es ?s' -> Return ?s ?es ?s' -> CallReturn ?s ?s'
+end
+\end{verbatim}
+The input to this would be an instance \texttt{P : IFDS\_Program}, and then automated reasoning would answer questions about the ``initial instance'' of \texttt{IDFS P}.
+\end{example}
+
+\bibliographystyle{plainnat}
+\bibliography{geolog.bib}
+
+\end{document}

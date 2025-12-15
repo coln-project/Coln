@@ -1,0 +1,209 @@
+\documentclass{article}
+
+\usepackage{../macros}
+
+\title{Geolog Lecture 3}
+\author{Owen Lynch}
+
+\begin{document}
+
+\maketitle
+
+\section{Recap}
+
+Last week, we talked about:
+\begin{enumerate}
+  \item Syntactic presentation of regular theories
+  \item Finite models of regular theories
+  \item Semantic account of regular theories
+\end{enumerate}
+
+This time, we are going to further develop the semantic account of regular theories. We are then going to talk about ``derived signatures.'' The idea of the derived signature is that it splits a theory into a signature, which gives the data model for the theory, and a bunch of axioms, which give the ``well-formedness conditions'' for the theory.
+
+\section{Regular theories}
+
+\begin{ttrule}[Sigma theories]
+  \[\inferrule{\Gamma \yields A \jdg{theory} \and \Gamma, x \colon A \yields B \jdg{theory}}{\Gamma \yields \Sigma\,A\,B \jdg{theory}}\]
+  Recall:
+  \begin{itemize}
+    \item $\Gamma \colon \ms{Reg} \to \ms{Cat}$
+    \item $A \colon \groth \Gamma \to \ms{Cat}$
+    \item $B \colon \groth (\Gamma.A) \to \ms{Cat}$
+  \end{itemize}
+  This is fairly straightforward:
+  \[(\Sigma\,A\,B)(\mc{E},M) = (M_A \colon A(\mc{E},M)) \times B(\mc{E},(M,M_A))\]
+  As for introduction/elimination/beta/eta, this follows from the obvious isomorphism $\Gamma.A.B \cong \Gamma.(\Sigma\,A\,B)$.
+
+  This is representable because we can compose the display maps $S[\Gamma] \to S[\Gamma.A] \to S[\Gamma.A.B]$ to get $S[\Gamma] \to S[\Gamma.A.B] \cong S[\Gamma.(\Sigma\,A\,B)]$.
+\end{ttrule}
+
+\begin{ttrule}[Pi theories]
+  \[\inferrule{\Gamma \yields A \colon \ms{Theory} \and \Gamma, x \colon \ms{Elt}\,A \yields B \jdg{theory}}{\Gamma \yields (x \colon A) \to B \jdg{theory}}\]
+  Recall:
+  \begin{itemize}
+    \item $\Gamma \colon \ms{Reg} \to \ms{Cat}$
+    \item $A \colon ((\mc{E},M) \colon \groth \Gamma) \to \ms{Type}(\mc{E}, M) = \mc{E}$
+    \item $B \colon \groth (\Gamma.\ms{Elt}\,A) \to \ms{Cat}$
+  \end{itemize}
+  Then we have
+  \[((x \colon A) \to B) \colon \groth \Gamma \to \ms{Cat}\]
+
+  We define it in the following way. Suppose that $(\mc{E},M) \in \groth \Gamma$. Then let $A_{\mc{E}} = A(\mc{E},M) \in \mc{E}$. There is a functor $\ms{wkn}_{A} \colon \mc{E} \to \mc{E}/A_{\mc{E}}$ defined by $X \mapsto (X \times A_{\mc{E}} \xto{\pi_2} A_{\mc{E}})$. Thus, we have $\ms{wkn}_{A}(M) \in \Gamma(\mc{E}/A_{\mc{E}})$.
+
+  Now, by functoriality, $A(\mc{E}/A_{\mc{E}}, \ms{wkn}_A(M)) = (A_{\mc{E}} \times A_{\mc{E}} \to A_{\mc{E}})$. This has a section given by $\Delta_{A_{\mc{E}}} \colon A_{\mc{E}} \to A_{\mc{E}} \times A_{\mc{E}}$; that is $\Delta_{A_{\mc{E}}} \in (\ms{Elt}\,A)(\mc{E}/A_{\mc{E}}, \ms{wkn}_A(M))$. Thus, we have $(\ms{wkn}_A(M), \Delta_{A_{\mc{E}}}) \in (\Gamma.\ms{Elt}\,A)(\mc{E}/A_{\mc{E}})$. This all makes the following definition well-typed.
+  \[((x \colon A) \to B)(\mc{E},M) = B(\mc{E}/A_{\mc{E}}, (\ms{wkn}_A(M), \Delta_{A_\mc{E}}))\]
+
+  We now interpret the introduction and elimination rules. The introduction rule is:
+  \[\inferrule{\Gamma, x \colon \ms{Elt}\,A \yields b \colon B}{\Gamma \yields \lambda x. b \colon (x \colon A) \to B}\]
+  First, recall the type signature for $b$
+  \[ b \colon \left((\mc{E},M) \colon \groth(\Gamma.\ms{Elt}\,A)\right) \to B(\mc{E},M) \]
+  From this, we can directly define
+  \[ (\lambda x. b)(\mc{E},M) = b(\mc{E}/A_{\mc{E}}, (\ms{wkn}_A(M), \Delta_{A_{\mc{E}}})) \in B(\mc{E}/A_{\mc{E}}, (\ms{wkn}_A{M}, \Delta_{A_{\mc{E}}})) = ((x \colon A) \to B)(\mc{E},M)\]
+  For the elimination rule
+  \[\inferrule{\Gamma \yields a \colon \ms{Elt}\,A \and \Gamma \yields f \colon (x \colon A) \to B}{\Gamma \yields f\,a \colon B[x \subst a]}\]
+  we recall the type signature of $a$
+  \[a \colon ((\mc{E},M) \colon \groth \Gamma) \to (\ms{Elt}\,A)(\mc{E},M) = \mc{E}(1, A(\mc{E},M))\]
+  This gives us a functor $a^\ast \colon \mc{E}/A_{\mc{E}} \to \mc{E}/1 \cong \mc{E}$ given by sending $X \to A$ to
+  \[\begin{tikzcd}
+      a^\ast(X) \ar[r] \ar[d] & X \ar[d] \\
+      1 \ar[r, "a"] & A
+  \end{tikzcd}\]
+  We apply this functor to $f \colon B(\mc{E}/A_{\mc{E}}, (\ms{wkn}_A(M), \Delta_{A_\mc{E}}))$ and we get $a^\ast(f) \colon B(\mc{E}, (M, a))$, as required.
+  We leave verification of the beta/eta laws to the reader.
+
+  Now, we must also show that $(x \colon A) \to B$ is representable. This is actually not possible with our current definition of theory because it requires an induction argument on how the theory is built up; we will return to this when we have a more refined definition of theory.
+\end{ttrule}
+
+\begin{ttrule}[Propositional equality]
+  \[\inferrule{\Gamma \yields a\,a' \colon \ms{Elt}\,A}{\Gamma \yields a = a' \colon \ms{Prop}}\]
+  For now, we only treat equality of elements of types, rather than equality of models of general theories. This is because semantically speaking, two models are objects in a category, and it doesn't make sense to compare two objects for equality.
+
+  The semantic interpretation of $(a = a')(\mc{E}, M)$ is the equalizer
+  \[\begin{tikzcd}
+      a = a' \ar[r] & 1 \ar[r, "a", bend left] \ar[r, "a'"', bend right] & A
+    \end{tikzcd}
+  \]
+  This is a subobject of $1$, and hence an object of $\ms{Prop}(\mc{E}, M)$ as required.
+\end{ttrule}
+
+\begin{ttrule}[Propositional truncation]
+  \[\inferrule{\Gamma \yields A \colon \ms{Type}}{\Gamma \yields \Trunc{A} \colon \ms{Prop}}\]
+  For a fixed $(\mc{E},M) \in \int\Gamma$, the semantic interpretation of $\Trunc{A}$ is the regular-epi/mono factorization of the unique map $A \to 1$.
+  \[\begin{tikzcd}
+      A \ar[rr] \ar[rd, two heads] & & 1 \\
+      & \Trunc{A} \ar[ru, hook]
+    \end{tikzcd}\]
+  The introduction rule for $\Trunc{A}$ is easy:
+  \[\inferrule{\Gamma \yields a \colon \ms{Elt}\,A}{\Gamma \yields \Trunc{a} \colon \ms{Proof}\,\Trunc{A}}\]
+  If I have a section of $A \to 1$, then I also have a section of $\Trunc{A} \to 1$.
+
+  The elimination rule is more complicated
+  \[\inferrule{\Gamma \yields p \colon \ms{Proof}\,\Trunc{A} \and \Gamma,x \colon A \yields b \colon B \and \Gamma,x \colon A,x' \colon A \yields q \colon \ms{Proof}(b[x] = b[x'])}{\Gamma \yields (\ms{let}\: x \ot p \:\ms{via}\:(x\,x'. q) \:\ms{in}\: b) \colon B} \]
+  This says that if from an element of $A$ I can produce an element of $B$ in such a way that the specific choice of element of $A$ doesn't matter, then I can produce an element of $B$ from $\Trunc{A}$.
+
+  This is a stronger elimination rule than the alternative
+  \[\inferrule{\Gamma \yields a \colon \ms{Proof}\,\Trunc{A} \and \Gamma,x \colon A \yields p \colon \ms{Proof}\,P}{\Gamma \yields (\ms{let}\:x \ot a\:\ms{in}\: p) \colon \ms{Proof}\,P}\]
+  This alternative would correspond to an epi-mono factorization; the stronger elimination rule takes advantage of the fact that the epimorphism is \emph{regular}. Specifically, the regular elimination rule corresponds to the definition of $\Trunc{A}$ as a higher inductive type
+  \begin{align*}
+    &\ms{data}\:\Trunc{A} \colon \ms{Type} \:\ms{where} \\
+    &\quad \ms{squash} \colon A \to \Trunc{A} \\
+    &\quad \ms{squashed} \colon (x\,x' \colon A) \to \ms{squash}\,x = \ms{squash}\,x'
+  \end{align*}
+  This reflects the fact that regular categories are finite limit categories with a particular special class of colimits. We are going to see a lot of other examples of this general pattern.
+\end{ttrule}
+
+\begin{remark}
+  Propositional truncation and sigma types allow us to define existential quantification via
+  \[\inferrule{\Gamma \yields A \colon \ms{Type} \and \Gamma, x \colon \ms{Elt}\,A \yields P \colon \ms{Prop}}{\Gamma \yields (\exists (x \colon A). P) :\equiv \Trunc{\Sigma\,A\,P} \colon \ms{Prop}}\]
+\end{remark}
+
+\section{Regular theories with derived signatures}
+
+There's a problem with general regular theories: a finitely \emph{presented} model of a regular theory is not necessarily a \emph{finite} model.
+
+To understand what this means, let us temporarily work back in finite limit theories (which have all of the rules from above except for propositional truncation).
+
+If $\Gamma$ is a context, and $\Gamma \yields A \colon \ms{Type}$, then $A$ presents a model of $\Gamma$ in the following sense. The category $(\Gamma.A)(\ms{Set})$ has an initial object, and we may apply the forgetful functor $(\Gamma.A)(\ms{Set}) \to \Gamma(\ms{Set})$ to this initial object to get a model of $\Gamma$ in $\ms{Set}$.
+
+This is because the category of models of a finite limit theory in $\ms{Set}$ has all colimits (this is classically known).
+
+However, for most finite limit theories, a model presented by a type $A$ will not restrict to a model in $\ms{FinSet}$. For instance, this is the case in $\ms{Monoid}$, which might be defined by
+\begin{verbatim}
+  theory Monoid
+    car : Type
+    unit : car
+    mul : car -> car -> car
+
+    mul/runit : (x : car) -> mul x unit = x
+    mul/lunit : (x : car) -> mul unit x = x
+    mul/assoc : (x y z : car) -> (mul x (mul y z)) = (mul (mul x y) z)
+  end
+\end{verbatim}
+The type \verb|[x y : car, comm : mul x y = y x]| presents the monoid $\NN^2$, which is clearly not finite.
+
+The geolog operation log stores a finitely presented model; what we want is for that model to be finite. This is so that, for instance, we can take advantage of the finite Herbrand universe for datalog queries; in general many operations are only possible when the model is actually finite.
+
+The answer is that we give a semantics to our type theory which actually produces \emph{two} related theories from a context. The first theory is the ``actual'' theory (the theory from the previous section), while the second theory is the ``signature'' theory. The idea is that just like before when we had a ``signature'' and ``axioms'' and a model of the signature might or might not satisfy the axioms; here the ``signature'' theory tells us what might or might not satisfy
+
+To be more specific, consider the 2-category $\ms{CAT}^{\into}$ where an object is a fully-faithful functor $\iota_{\mc{C}} \colon \mc{C}_0 \into \mc{C}_1$.
+
+Then we take the following semantics for our type theory.
+
+\begin{itemize}
+  \item A context $\Gamma$ is a 2-functor $\ms{Reg} \to \ms{Cat}^{\into}$. We sometimes refer to $\Gamma$ in components as
+        \[\begin{tikzcd}
+            \ms{Reg} \ar[rr,bend left, "\Gamma_0", ""'{name=0}] \ar[rr,bend right,"\Gamma_1"', ""{name=1}] && \ms{Cat}
+            \arrow["\Gamma_{\mbox{\tiny $\into$}}", Rightarrow, from=0, to=1]
+          \end{tikzcd}\]
+  \item A substitution is a natural transformation.
+  \item A type $\Gamma \yields A \jdg{type}$ is interpreted as a diagram
+        \[\begin{tikzcd}
+            \groth \Gamma_0 \ar[rr, "\groth \Gamma"] \ar[""{name=0}, "A_0"', rd] && \groth \Gamma_1 \ar[""'{name=1}, "A_1", ld] \\
+            & \ms{Cat}
+            \arrow["A_{\into}", Rightarrow, from=0, to=1]
+            \end{tikzcd}\]
+  \item A term $\Gamma \yields a \colon A$ is interpreted as
+        \begin{itemize}
+          \item an object $a_0(\mc{C},M) \in A_0(\mc{C},M)$ for all $(\mc{C},M) \in \groth \Gamma_0$
+          \item an object $a_1(\mc{C},N) \in A_1(\mc{C},N)$ for all $(\mc{C},N) \in \groth \Gamma_1$
+          \item a morphism $a_{\into} \colon A_{\into}(\mc{C},M)(a_0(\mc{C},M)) \to a_1(\mc{C}, \Gamma(M))$ in $A_1(\mc{C},\Gamma(M))$ for all $(\mc{C},M) \in \groth \Gamma_0$.
+        \end{itemize}
+\end{itemize}
+
+We must then carefully re-examine the semantics for each of the type theory rules. The rules for the actual component will remain the same; the problem will be to reinterpret the constructions for the data component.
+
+\begin{ttrule}
+  \[\inferrule{}{\yields \ms{Type} \jdg{theory}}\]
+  This is the same as before; $\ms{Type}_0(\mc{C}) = \ms{Type}_1(\mc{C}) = \mc{C}$.
+\end{ttrule}
+
+\begin{ttrule} \label[ttrule]{rule:elt-to-subobject}
+  \[\inferrule{\Gamma \yields A \colon \ms{Type}}{\Gamma \yields \ms{Elt}\,A \jdg{theory}}\]
+  We define $(\ms{Elt}\,A)_1(\mc{C},N) = \ms{Sub}(A(\mc{C},N))$, the poset of subobjects of $A(\mc{C},N)$ in $\mc{C}$. The map $(\ms{Elt}\,A)_{\into} \colon \mc{C}(1,A(\mc{C},M)) \to \ms{Sub}(A(\mc{C},M))$ is the inclusion: note that any morphism out of $1$ is automatically a monomorphism.
+\end{ttrule}
+
+\cref{rule:elt-to-subobject} is the main departure for the data component. One way of thinking about it is that it is a systematic way of replacing all function symbols with relation symbols. It is helpful to look at an example for where this comes into play
+
+\begin{verbatim}
+theory Magma
+  car : Type
+  unit : car
+  mul : car -> car -> car
+end
+
+theory MagmaData
+  car : Type
+  is-unit : car -> Prop
+  is-mul : car -> car -> car -> Prop
+end
+
+instance DataFromActual (M : Magma) : MagmaData
+  car = M.car
+  is-unit x = x == M.unit
+  is-mul x y z = M.mul x y == z
+end
+\end{verbatim}
+
+\section{Query IR}
+
+\end{document}
