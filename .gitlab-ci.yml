@@ -1,0 +1,13 @@
+docs:
+  stage: build
+  tags: [nix]
+
+  script:
+    - ./shake docs
+
+check:
+  stage: build
+  tags: [nix]
+    
+  script:
+    - ./shake check
