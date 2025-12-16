@@ -18,6 +18,7 @@ data Token
   | RCURLY
   | COMMA
   | SEMICOLON
+  | NL
   | TAG Name
   | FIELD Name
   | EOF

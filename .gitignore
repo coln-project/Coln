@@ -328,3 +328,4 @@ TSWLatexianTemp*
 *.auctex-auto/*
 
 *dist-newstyle/
+.shake

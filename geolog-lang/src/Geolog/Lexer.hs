@@ -42,7 +42,6 @@ ws =
        [|
          case _ of
            " " -> ws
-           "\n" -> ws
            "\t" -> ws
            "\r" -> ws
            "--" -> lineComment
@@ -131,6 +130,7 @@ lex1 =
                 "}" -> pure RCURLY
                 "," -> pure COMMA
                 ";" -> pure SEMICOLON
+                "\n" -> pure NL
                 "'" -> TAG <$> name
                 "." -> FIELD <$> name
                 _ ->
