@@ -326,3 +326,5 @@ TSWLatexianTemp*
 #*Notes.bib
 
 *.auctex-auto/*
+
+*dist-newstyle/

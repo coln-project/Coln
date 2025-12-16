@@ -1,0 +1,87 @@
+cabal-version:      3.4
+name:               geolog-lang
+version:            0.1.0.0
+description:        The geolog language
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Owen Lynch
+maintainer:         root@owenlynch.org
+category:           Language
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:
+      Geolog.Common
+      Geolog.Diagnostics
+      Geolog.Diagnostics.Code
+      Geolog.Lexer
+      Geolog.Notation
+      Geolog.Parser
+    default-extensions:
+      BlockArguments
+      CPP
+      DataKinds
+      DeriveFoldable
+      DeriveFunctor
+      DeriveTraversable
+      DerivingVia
+      EmptyCase
+      EmptyDataDeriving
+      ExplicitNamespaces
+      FunctionalDependencies
+      ImplicitParams
+      ImportQualifiedPost
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MagicHash
+      MultiParamTypeClasses
+      OverloadedStrings
+      PatternSynonyms
+      PolyKinds
+      QualifiedDo
+      StandaloneKindSignatures
+      Strict
+      TemplateHaskell
+      TypeFamilies
+      TypeFamilyDependencies
+      TypeOperators
+      UnboxedSums
+      UnboxedTuples
+      UnicodeSyntax
+      ViewPatterns
+    build-depends:
+        base ^>=4.19.2.0
+      , bytestring
+      , containers
+      , deepseq
+      , directory
+      , dynamic-array
+      , filepath
+      , flatparse
+      , ghc-heap
+      , hashable
+      , microlens
+      , microlens-th
+      , mtl
+      , template-haskell
+      , vector
+      , vector-hashtables
+    ghc-options: -funbox-strict-fields
+    hs-source-dirs:   src
+    default-language: GHC2021
+
+test-suite geolog-parser-test
+    import:           warnings
+    default-language: GHC2021
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base ^>=4.19.2.0,
+        geolog-parser
