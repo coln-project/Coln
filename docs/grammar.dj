@@ -1,0 +1,126 @@
+# Grammar
+
+The grammar for geolog is largely inspired by [fnotation](https://github.com/ToposInstitute/fnotation) but with some small variations.
+
+It is built up from the following principles.
+
+## Names
+
+There are (at least) 6 "name-like" things:
+
+: identifiers
+
+  Identifiers start with a letter, and continue with letters, numbers, and `-`. Identifiers are used for variables, etc. Examples: `a`, `car`, `Monoid`, etc.
+
+: keywords
+
+  Whenever an identifier is lexed, it is checked against a list of reserved keywords, and is returned as a keyword instead of an identifier if it matches. Examples: `theory`, `instance`, `if`
+
+: operators
+
+  Operators are a contiguous sequence of "operator characters", e.g. `<`, `>`, `+`, etc.
+
+: keyword operators
+
+  Keyword operators are to operators as identifiers are to keywords.
+
+: fields
+
+  Fields are identifiers that start with `.`, e.g. `.a`, `.b`. They are typically used for projecting out of records, e.g. `x .a`, which is grammatically "`x` applied to `.a`". As a special case, `x.a` parses in the same way as `(x .a)`, so that `f x.a` is `f (x .a)` rather than `f x .a`.
+
+: tags
+
+  Tags are identifiers that start with `'`. They are typically used as constructors for sum types, e.g. `'just 1 : Maybe Nat`.
+
+We may introduce more classes of "identifier prefixed with sigil," for instance `?x` or `~x` for implicit variables.
+
+## Juxtaposition is application
+
+Very simple: `f x` is `f` applied to `x`. `f x y = (f x) y`.
+
+## Many things can be handled by precedence
+
+The expression
+
+```
+x : Nat = y + z
+```
+
+can be parsed generically using a precedence table for operators `:`, `=`, `+` into
+
+```
+=
+|-:
+  |-x
+  |-Nat
+  +
+  |-y
+  |-z
+```
+
+Even though the semantic roles of `:`, `=`, `+` are quite different, it makes sense to just treat them all the same for parsing. This also makes it easier for the user: parsing is resolved using a global precedence table that is the same in all contexts.
+
+## Parenthesization is clarification
+
+The only purpose of parentheses is to get a different parsing than would otherwise be gotten from precedence.
+
+This means that parentheses are always idempotent.
+
+## Square brackets are sequences
+
+This is fairly simple: `[x, y, z]` is the raw syntax for a sequence. This might be used for lists, tuples, records (`[a : Int, b : String]`), etc.
+
+## Blocks and declarations
+
+The main deviation from fnotation in the geolog syntax is that we use blocks that are signaled by keywords and have newline-separated elements. For instance:
+
+```
+theory Magma
+  car : Type
+  unit : car
+  mul : car -> car -> car
+end
+```
+
+We are still indentation-insensitive (which means that autoindent is workable), but we are newline sensitive.
+
+A *block* consists of
+
+- an opening symbol (e.g. `theory`, `instance`, etc.)
+- a "head" which is an arbitrary expression (e.g. `Magma`, `VectorSpace (F : Field)`, etc.)
+- a "body" which is a sequence of newline-delimited expressions
+- possibly some sub-blocks, e.g. in the case of
+
+  ```
+  if b
+    x
+  else
+    y
+  end
+  ```
+
+  `else` would start a subblock.
+- a block always finishes with `end`
+
+A *declaration* is something like
+
+```
+def f x y = x + y
+```
+
+and consists of
+
+- an opening symbol (e.g. `def`, `let`)
+- an expression
+
+Declarations basically are are prefix operators with an extremely low precedence.
+
+Combining declarations and blocks allows us to make syntax that looks something like this:
+
+```
+def f x y = do
+  let z = x + y
+  let w = 2 * z
+  z + w
+end
+```

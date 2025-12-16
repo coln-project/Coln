@@ -3,6 +3,7 @@ docs:
   tags: [nix]
 
   script:
+    - cabal update
     - ./shake docs
 
 check:
@@ -10,4 +11,5 @@ check:
   tags: [nix]
     
   script:
+    - cabal update
     - ./shake check
