@@ -5,6 +5,7 @@ docs:
   script:
     - cabal update
     - ./shake docs
+    - ./ci-deploy
 
 check:
   stage: build
