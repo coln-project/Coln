@@ -1,7 +1,7 @@
 \documentclass{acmart}
 
 \geometry{twoside=false}
-\usepackage{../macros}
+\usepackage{../../macros}
 \usepackage{agda}
 \DeclareUnicodeCharacter{225F}{=^?}
 
