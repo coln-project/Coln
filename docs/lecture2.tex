@@ -1,9 +1,11 @@
-\documentclass{acmart}
+\documentclass{article}
 
-\geometry{twoside=false}
-\usepackage{../../macros}
-\usepackage{agda}
-\DeclareUnicodeCharacter{225F}{=^?}
+\usepackage{fontspec}
+\setmonofont[Path=fonts/]{DejaVuSansMono}
+
+\usepackage{macros}
+\usepackage{fancyvrb}
+\DefineVerbatimEnvironment{code}{Verbatim}{}
 
 \begin{document}
 
@@ -183,7 +185,6 @@ This is the functor $\ms{Reg} \to \ms{Cat}$ that sends $\mc{C}$ to $\ms{Sub}(1)$
 \end{ttrule}
 
 \begin{ttrule}[Sigma types]
-\[\inferrule{}{}\]
 \end{ttrule}
 
 \end{document}
