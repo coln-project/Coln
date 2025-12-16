@@ -1,12 +1,12 @@
 module Geolog.Lexer where
 
 import Data.Char (isLetter)
+import Data.Vector.Hashtables (FrozenDictionary)
+import Data.Vector.Hashtables qualified as HT
+import Data.Vector.Strict as V
 import FlatParse.Basic hiding (Parser, runParser)
 import Geolog.Common
 import Geolog.Notation
-import Data.Vector.Strict as V
-import Data.Vector.Hashtables (FrozenDictionary)
-import Data.Vector.Hashtables qualified as HT
 import System.IO.Unsafe (unsafePerformIO)
 
 type Parser = ParserIO ()
@@ -42,7 +42,6 @@ ws =
        [|
          case _ of
            " " -> ws
-           "\n" -> ws
            "\t" -> ws
            "\r" -> ws
            "--" -> lineComment
@@ -61,23 +60,28 @@ isNameChar :: Char -> Bool
 isNameChar c = isLetter c || isDigit c || c == '-'
 
 opChar :: Parser ()
-opChar = $(switch [| case _ of
-                       "<" -> pure ()
-                       ">" -> pure ()
-                       "-" -> pure ()
-                       "+" -> pure ()
-                       "/" -> pure ()
-                       "*" -> pure ()
-                       ":" -> pure ()
-                       "=" -> pure ()
-                       _ -> failed
-                      |])
+opChar =
+  $( switch
+       [|
+         case _ of
+           "<" -> pure ()
+           ">" -> pure ()
+           "-" -> pure ()
+           "+" -> pure ()
+           "/" -> pure ()
+           "*" -> pure ()
+           ":" -> pure ()
+           "=" -> pure ()
+           _ -> failed
+         |]
+   )
 
 data OpData = KwOp Prec | UserOp Prec
 
 ops :: FrozenDictionary V.Vector RawName V.Vector OpData
-ops = unsafePerformIO (HT.fromList l >>= HT.unsafeFreeze) where
-  l = [ (":", KwOp (NonAssoc 20)) ]
+ops = unsafePerformIO (HT.fromList l >>= HT.unsafeFreeze)
+  where
+    l = [(":", KwOp (NonAssoc 20))]
 
 op :: Parser Token
 op = do
@@ -85,8 +89,8 @@ op = do
   case HT.findElem ops n of
     -1 -> error "no registered precedence"
     i -> pure $ case (HT.fvalue ops V.! i) of
-           KwOp p -> KEYWORD_OP (NRawName n) p
-           UserOp p -> OP (NRawName n) p
+      KwOp p -> KEYWORD_OP (NRawName n) p
+      UserOp p -> OP (NRawName n) p
 
 nameChar :: Parser ()
 nameChar = fusedSatisfy isNameAsciiChar isNameChar isNameChar isNameChar >> pure ()
@@ -98,8 +102,9 @@ name :: Parser Name
 name = NRawName <$> rawName
 
 keywords :: FrozenDictionary V.Vector RawName V.Vector ()
-keywords = unsafePerformIO (HT.fromList l >>= HT.unsafeFreeze) where
-  l = (,()) <$> [ "theory", "instance", "end" ]
+keywords = unsafePerformIO (HT.fromList l >>= HT.unsafeFreeze)
+  where
+    l = (,()) <$> ["theory", "instance", "end"]
 
 identOrKeyword :: Parser Token
 identOrKeyword = do
@@ -125,12 +130,14 @@ lex1 =
                 "}" -> pure RCURLY
                 "," -> pure COMMA
                 ";" -> pure SEMICOLON
+                "\n" -> pure NL
                 "'" -> TAG <$> name
                 "." -> FIELD <$> name
-                _ -> identOrKeyword <|>
-                  op <|>
-                  int <|>
-                  (eof >> pure EOF) <|>
-                  pure ERROR
+                _ ->
+                  identOrKeyword
+                    <|> op
+                    <|> int
+                    <|> (eof >> pure EOF)
+                    <|> pure ERROR
               |]
         )

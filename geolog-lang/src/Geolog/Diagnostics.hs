@@ -21,7 +21,7 @@ data File = File
     fileContents :: ByteString,
     fileNewlines :: Vector BytePos
   }
-  
+
 makeFields ''File
 
 newtype FileId = FileId Int
@@ -33,17 +33,17 @@ data FileSystem = FileSystem
 makeFields ''FileSystem
 
 data Reporter = Reporter
-  { reporterFileSystem :: FileSystem
-  , reporterHandle :: Handle
-  , reporterFancy :: Bool
+  { reporterFileSystem :: FileSystem,
+    reporterHandle :: Handle,
+    reporterFancy :: Bool
   }
 
 makeFields ''Reporter
 
 data Note = Note
-  { noteFileId :: FileId
-  , noteLoc :: SourceLoc
-  , noteMessage :: Maybe Builder
+  { noteFileId :: FileId,
+    noteLoc :: SourceLoc,
+    noteMessage :: Maybe Builder
   }
 
 makeFields ''Note
@@ -61,8 +61,8 @@ shortcode Code.UnexpectedCharacter = "E0000"
 shortcode Code.UnexpectedToken = "E0100"
 
 data Diagnostic = Diagnostic
-  { diagnosticCode :: Code
-  , diagnosticNotes :: [Note]
+  { diagnosticCode :: Code,
+    diagnosticNotes :: [Note]
   }
 
 makeFields ''Diagnostic

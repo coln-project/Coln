@@ -18,6 +18,7 @@ data Token
   | RCURLY
   | COMMA
   | SEMICOLON
+  | NL
   | TAG Name
   | FIELD Name
   | EOF
@@ -40,9 +41,9 @@ data Children
   | CN (Bwd Ntn)
 
 data Ntn = Ntn
-  { ntnKind :: NtnKind
-  , ntnLoc :: Span
-  , ntnChildren :: Children
+  { ntnKind :: NtnKind,
+    ntnLoc :: Span,
+    ntnChildren :: Children
   }
 
 makeFields ''Ntn
