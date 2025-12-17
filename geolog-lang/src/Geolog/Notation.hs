@@ -7,6 +7,9 @@ import Lens.Micro.TH
 data Token
   = IDENT Name
   | KEYWORD Name
+  | DECL Name
+  | BLOCK Name
+  | END
   | OP Name Prec
   | KEYWORD_OP Name Prec
   | INT Int

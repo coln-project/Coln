@@ -1,13 +1,11 @@
 module Geolog.Lexer where
 
 import Data.Char (isLetter)
-import Data.Vector.Hashtables (FrozenDictionary)
-import Data.Vector.Hashtables qualified as HT
-import Data.Vector.Strict as V
 import FlatParse.Basic hiding (Parser, runParser)
 import Geolog.Common
 import Geolog.Notation
-import System.IO.Unsafe (unsafePerformIO)
+import Symbolize qualified
+import Prelude hiding (lookup)
 
 type Parser = ParserIO ()
 
@@ -78,40 +76,49 @@ opChar =
 
 data OpData = KwOp Prec | UserOp Prec
 
-ops :: FrozenDictionary V.Vector RawName V.Vector OpData
-ops = unsafePerformIO (HT.fromList l >>= HT.unsafeFreeze)
- where
-  l = [(":", KwOp (NonAssoc 20))]
+ops :: ConfTable OpData
+ops =
+  fromList
+    [ (":", KwOp (NonAssoc 20))
+    ]
 
 op :: Parser Token
 op = do
-  n <- RawName <$> byteStringOf (some opChar)
-  case HT.findElem ops n of
-    -1 -> error "no registered precedence"
-    i -> pure $ case (HT.fvalue ops V.! i) of
-      KwOp p -> KEYWORD_OP (NRawName n) p
-      UserOp p -> OP (NRawName n) p
+  n <- Symbolize.intern <$> byteStringOf (some opChar)
+  case lookup ops n of
+    Nothing -> error "no registered precedence"
+    Just (KwOp p) -> pure $ KEYWORD_OP n p
+    Just (UserOp p) -> pure $ OP n p
 
 nameChar :: Parser ()
 nameChar = fusedSatisfy isNameAsciiChar isNameChar isNameChar isNameChar >> pure ()
 
-rawName :: Parser RawName
-rawName = RawName <$> byteStringOf (nameStartChar >> many nameChar)
-
 name :: Parser Name
-name = NRawName <$> rawName
+name = Symbolize.intern <$> byteStringOf (nameStartChar >> many nameChar)
 
-keywords :: FrozenDictionary V.Vector RawName V.Vector ()
-keywords = unsafePerformIO (HT.fromList l >>= HT.unsafeFreeze)
- where
-  l = (,()) <$> ["theory", "instance", "end"]
+data SpecialNameKind
+  = K_Block
+  | K_Decl
+  | K_Keyword
+  | K_End
 
-identOrKeyword :: Parser Token
-identOrKeyword = do
-  n <- rawName
-  pure $ case HT.findElem keywords n of
-    -1 -> IDENT $ NRawName n
-    _ -> KEYWORD $ NRawName n
+specialNames :: ConfTable SpecialNameKind
+specialNames =
+  fromList
+    [ ("theory", K_Block)
+    , ("instance", K_Block)
+    , ("def", K_Decl)
+    , ("let", K_Decl)
+    , ("end", K_End)
+    ]
+
+fromName :: Name -> Token
+fromName n = case lookup specialNames n of
+  Nothing -> IDENT n
+  Just K_Block -> BLOCK n
+  Just K_Decl -> DECL n
+  Just K_Keyword -> KEYWORD n
+  Just K_End -> END
 
 int :: Parser Token
 int = INT <$> anyAsciiDecimalInt
@@ -134,7 +141,7 @@ lex1 =
                 "'" -> TAG <$> name
                 "." -> FIELD <$> name
                 _ ->
-                  identOrKeyword
+                  (fromName <$> name)
                     <|> op
                     <|> int
                     <|> (eof >> pure EOF)

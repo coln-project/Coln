@@ -69,6 +69,7 @@ library
       , microlens
       , microlens-th
       , mtl
+      , symbolize
       , template-haskell
       , vector
       , vector-hashtables
