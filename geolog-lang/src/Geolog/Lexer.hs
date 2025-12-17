@@ -1,11 +1,11 @@
 module Geolog.Lexer where
 
-import Prelude hiding (lookup)
 import Data.Char (isLetter)
 import FlatParse.Basic hiding (Parser, runParser)
 import Geolog.Common
 import Geolog.Notation
 import Symbolize qualified
+import Prelude hiding (lookup)
 
 type Parser = ParserIO ()
 
@@ -77,9 +77,10 @@ opChar =
 data OpData = KwOp Prec | UserOp Prec
 
 ops :: ConfTable OpData
-ops = fromList [
-  (":", KwOp (NonAssoc 20))
-  ]
+ops =
+  fromList
+    [ (":", KwOp (NonAssoc 20))
+    ]
 
 op :: Parser Token
 op = do
@@ -102,13 +103,14 @@ data SpecialNameKind
   | K_End
 
 specialNames :: ConfTable SpecialNameKind
-specialNames = fromList [
-  ("theory", K_Block),
-  ("instance", K_Block),
-  ("def", K_Decl),
-  ("let", K_Decl),
-  ("end", K_End)
-  ]
+specialNames =
+  fromList
+    [ ("theory", K_Block),
+      ("instance", K_Block),
+      ("def", K_Decl),
+      ("let", K_Decl),
+      ("end", K_End)
+    ]
 
 fromName :: Name -> Token
 fromName n = case lookup specialNames n of
@@ -138,7 +140,8 @@ lex1 =
                 "\n" -> pure NL
                 "'" -> TAG <$> name
                 "." -> FIELD <$> name
-                _ -> (fromName <$> name)
+                _ ->
+                  (fromName <$> name)
                     <|> op
                     <|> int
                     <|> (eof >> pure EOF)
