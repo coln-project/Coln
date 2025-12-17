@@ -1,6 +1,6 @@
 # Geolog
 
-This is the central repo for geolog development.
+See [the prospectus](https://geolog.sgai.uk/prospectus.pdf) for an overview of the goals of the geolog project.
 
 ## Getting started
 
