@@ -12,3 +12,4 @@ check:
     
   script:
     - ./shake check
+    - ./shake test
