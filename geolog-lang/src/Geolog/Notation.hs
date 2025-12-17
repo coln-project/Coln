@@ -32,7 +32,9 @@ data Prec = LAssoc Int | NonAssoc Int | RAssoc Int
 data NtnKind
   = KApp1
   | KApp2 Prec
-  | KBlock
+  | KBlock Name
+  | KBlockHead
+  | KDecl Name
   | KLeaf Token
   | KError
 
