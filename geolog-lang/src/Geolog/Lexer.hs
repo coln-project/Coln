@@ -97,28 +97,30 @@ name :: Parser Name
 name = Symbolize.intern <$> byteStringOf (nameStartChar >> many nameChar)
 
 data SpecialNameKind
-  = K_Block
-  | K_Decl
-  | K_Keyword
-  | K_End
+  = NBlock
+  | NDecl
+  | NKeyword
+  | NEnd
 
 specialNames :: ConfTable SpecialNameKind
 specialNames =
   fromList
-    [ ("theory", K_Block)
-    , ("instance", K_Block)
-    , ("def", K_Decl)
-    , ("let", K_Decl)
-    , ("end", K_End)
+    [ ("theory", NBlock)
+    , ("instance", NBlock)
+    , ("def", NDecl)
+    , ("let", NDecl)
+    , ("open", NDecl)
+    , ("import", NDecl)
+    , ("end", NEnd)
     ]
 
 fromName :: Name -> Token
 fromName n = case lookup specialNames n of
   Nothing -> IDENT n
-  Just K_Block -> BLOCK n
-  Just K_Decl -> DECL n
-  Just K_Keyword -> KEYWORD n
-  Just K_End -> END
+  Just NBlock -> BLOCK n
+  Just NDecl -> DECL n
+  Just NKeyword -> KEYWORD n
+  Just NEnd -> END
 
 int :: Parser Token
 int = INT <$> anyAsciiDecimalInt

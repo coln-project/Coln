@@ -56,7 +56,7 @@ library
       UnicodeSyntax
       ViewPatterns
     build-depends:
-        base ^>=4.19.2.0
+        base >=4.19.2.0
       , bytestring
       , containers
       , deepseq
@@ -77,12 +77,15 @@ library
     hs-source-dirs:   src
     default-language: GHC2021
 
-test-suite geolog-parser-test
+test-suite geolog-lang-test
     import:           warnings
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          Main.hs
     build-depends:
-        base ^>=4.19.2.0,
-        geolog-parser
+        base >=4.19.2.0,
+        geolog-lang,
+        tasty,
+        tasty-golden,
+        tasty-quickcheck
