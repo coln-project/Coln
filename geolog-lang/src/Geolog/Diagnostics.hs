@@ -2,13 +2,12 @@ module Geolog.Diagnostics where
 
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder
--- import Data.ByteString qualified as BS
 import Data.Hashable
 import Data.Vector (Vector)
 import Data.Vector.Hashtables
 import Data.Vector.Strict.Mutable qualified as VM
 import Data.Vector.Unboxed.Mutable qualified as UM
-import Geolog.Common
+import FlatParse.Common.Position (Span)
 import Geolog.Diagnostics.Code (Code)
 import Geolog.Diagnostics.Code qualified as Code
 import Lens.Micro.TH (makeFields)
@@ -19,7 +18,7 @@ data FileLoc = Path FilePath | Memory
 data File = File
   { fileName :: FileLoc,
     fileContents :: ByteString,
-    fileNewlines :: Vector BytePos
+    fileNewlines :: Vector Int
   }
 
 makeFields ''File
@@ -42,7 +41,7 @@ makeFields ''Reporter
 
 data Note = Note
   { noteFileId :: FileId,
-    noteLoc :: SourceLoc,
+    noteSpan :: Span,
     noteMessage :: Maybe Builder
   }
 
