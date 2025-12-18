@@ -56,7 +56,7 @@ library
       UnicodeSyntax
       ViewPatterns
     build-depends:
-        base ^>=4.19.2.0
+        base >=4.19.2.0
       , bytestring
       , containers
       , deepseq
@@ -84,7 +84,7 @@ test-suite geolog-lang-test
     hs-source-dirs:   test
     main-is:          Main.hs
     build-depends:
-        base ^>=4.19.2.0,
+        base >=4.19.2.0,
         geolog-lang,
         tasty,
         tasty-golden,
