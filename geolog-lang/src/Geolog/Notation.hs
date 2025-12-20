@@ -29,32 +29,16 @@ data Token
 
 data Prec = LAssoc Int | NonAssoc Int | RAssoc Int
 
-data NtnKind
-  = KApp1
-  | KApp2 Prec
-  | KBlock Name
-  | KBlockHead
-  | KDecl Name
-  | KLeaf Token
-  | KError
+data Ntn
+  = App1 Span Ntn Ntn
+  | App2 Span Ntn Ntn Ntn
+  | Block Span Name (Maybe Ntn) (Bwd Ntn)
+  | Decl Span Name Ntn
+  | Error Span
 
-data Children
-  = C0
-  | C1 Ntn
-  | C2 Ntn Ntn
-  | C3 Ntn Ntn Ntn
-  | CN (Bwd Ntn)
-
-data Ntn = Ntn
-  { ntnKind :: NtnKind,
-    ntnLoc :: Span,
-    ntnChildren :: Children
-  }
-
-makeFields ''Ntn
-
-pattern Ident :: Name -> Ntn
-pattern Ident n <- Ntn (KLeaf (IDENT n)) _ C0
-
-pattern App1 :: Ntn -> Ntn -> Ntn
-pattern App1 f x <- Ntn KApp1 _ (C2 f x)
+spanOf :: Ntn -> Span
+spanOf (App1 s _ _) = s
+spanOf (App2 s _ _ _) = s
+spanOf (Block s _ _ _) = s
+spanOf (Decl s _ _) = s
+spanOf (Error s) = s
