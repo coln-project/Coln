@@ -47,6 +47,7 @@ Resources:
 - https://github.com/AndrasKovacs/elaboration-zoo
 - https://github.com/gwaithimirdain/narya
 - https://github.com/AndrasKovacs/smalltt
+- https://github.com/AndrasKovacs/2ltt-impl (this has the most up-to-date Andras Kovacs thought)
 - https://github.com/RedPRL/cooltt
 - https://github.com/ToposInstitute/emtt
 - https://github.com/ToposInstitute/CatColab/tree/main/packages/catlog/src/tt
