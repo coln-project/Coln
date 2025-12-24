@@ -1,91 +1,75 @@
-cabal-version:      3.4
-name:               geolog-lang
-version:            0.1.0.0
-description:        The geolog language
-license:            BSD-3-Clause
-license-file:       LICENSE
-author:             Owen Lynch
-maintainer:         root@owenlynch.org
-category:           Language
-build-type:         Simple
-extra-doc-files:    CHANGELOG.md
-
-common warnings
-    ghc-options: -Wall
+cabal-version:   3.4
+name:            geolog-lang
+version:         0.1.0.0
+license:         BSD-3-Clause
+license-file:    LICENSE
+maintainer:      root@owenlynch.org
+author:          Owen Lynch
+description:     The geolog language
+category:        Language
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
 
 library
-    import:           warnings
     exposed-modules:
-      Geolog.Common
-      Geolog.Diagnostics
-      Geolog.Diagnostics.Code
-      Geolog.Lexer
-      Geolog.Notation
-      Geolog.Parser
-    default-extensions:
-      BlockArguments
-      CPP
-      DataKinds
-      DeriveFoldable
-      DeriveFunctor
-      DeriveTraversable
-      DerivingVia
-      EmptyCase
-      EmptyDataDeriving
-      ExplicitNamespaces
-      FunctionalDependencies
-      ImplicitParams
-      ImportQualifiedPost
-      InstanceSigs
-      KindSignatures
-      LambdaCase
-      MagicHash
-      MultiParamTypeClasses
-      OverloadedStrings
-      PatternSynonyms
-      PolyKinds
-      QualifiedDo
-      StandaloneKindSignatures
-      Strict
-      TemplateHaskell
-      TypeFamilies
-      TypeFamilyDependencies
-      TypeOperators
-      UnboxedSums
-      UnboxedTuples
-      UnicodeSyntax
-      ViewPatterns
-    build-depends:
-        base >=4.19.2.0
-      , bytestring
-      , containers
-      , deepseq
-      , directory
-      , dynamic-array
-      , filepath
-      , flatparse
-      , ghc-heap
-      , hashable
-      , microlens
-      , microlens-th
-      , mtl
-      , symbolize
-      , template-haskell
-      , vector
-      , vector-hashtables
-    ghc-options: -funbox-strict-fields
-    hs-source-dirs:   src
-    default-language: GHC2021
+        Geolog.Common
+        Geolog.Diagnostics
+        Geolog.Diagnostics.Code
+        Geolog.Lexer
+        Geolog.Notation
+        Geolog.Parser
+        Geolog.Token
 
-test-suite geolog-lang-test
-    import:           warnings
-    default-language: GHC2021
-    type:             exitcode-stdio-1.0
-    hs-source-dirs:   test
-    main-is:          Main.hs
+    hs-source-dirs:     src
+    default-language:   GHC2021
+    default-extensions:
+        BlockArguments CPP DataKinds DeriveFoldable DeriveFunctor
+        DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
+        ExplicitNamespaces FunctionalDependencies
+        GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
+        InstanceSigs KindSignatures LambdaCase MagicHash
+        MultiParamTypeClasses OverloadedStrings PatternSynonyms PolyKinds
+        QualifiedDo StandaloneKindSignatures Strict TemplateHaskell
+        TypeFamilies TypeFamilyDependencies TypeOperators UnboxedSums
+        UnboxedTuples UnicodeSyntax ViewPatterns
+
+    ghc-options:        -Wall -funbox-strict-fields
     build-depends:
         base >=4.19.2.0,
+        bytestring,
+        containers,
+        deepseq,
+        directory,
+        dynamic-array,
+        filepath,
+        flatparse,
+        ghc-heap,
+        hashable,
+        microlens-platform,
+        mtl,
+        prettyprinter,
+        symbolize,
+        template-haskell,
+        text >=2.1.1,
+        vector,
+        vector-hashtables
+
+test-suite geolog-lang-test
+    type:               exitcode-stdio-1.0
+    main-is:            Main.hs
+    hs-source-dirs:     test
+    default-language:   GHC2021
+    default-extensions: OverloadedStrings
+    ghc-options:        -Wall
+    build-depends:
+        base >=4.19.2.0,
+        bytestring,
+        filepath,
         geolog-lang,
+        prettyprinter,
         tasty,
         tasty-golden,
-        tasty-quickcheck
+        tasty-quickcheck,
+        temporary >=1.3,
+        text >=2.1.1,
+        vector
