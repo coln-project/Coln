@@ -8,11 +8,11 @@ Nl (13:14)
 Eof (14:14)
 
 -- notation
-App2 (0:7)
+Infix (0:7)
   Ident a (0:1)
   Ident : (2:3)
   Ident int (4:7)
-App2 (8:13)
+Infix (8:13)
   Error (8:9)
   Ident : (8:9)
   Ident int (10:13)
