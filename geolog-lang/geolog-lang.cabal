@@ -13,12 +13,16 @@ extra-doc-files: CHANGELOG.md
 library
     exposed-modules:
         Geolog.Common
+        Geolog.Core
         Geolog.Diagnostics
         Geolog.Diagnostics.Code
+        Geolog.Elaboration
+        Geolog.Evaluation
         Geolog.Lexer
         Geolog.Notation
         Geolog.Parser
         Geolog.Token
+        Geolog.Unification
 
     hs-source-dirs:     src
     default-language:   GHC2021
