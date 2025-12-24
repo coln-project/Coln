@@ -1,0 +1,22 @@
+-- tokens
+AIdent a (0:1)
+SKeyword : (2:3)
+AIdent int (4:7)
+SKeyword : (8:9)
+AIdent int (10:13)
+Nl (13:14)
+Eof (14:14)
+
+-- notation
+Infix (0:7)
+  Ident a (0:1)
+  Ident : (2:3)
+  Ident int (4:7)
+Infix (8:13)
+  Error (8:9)
+  Ident : (8:9)
+  Ident int (10:13)
+
+-- messages
+error[E0202] Incompatible precedences
+error[E0200] Unexpected token kind SKeyword, expected a token that can start an expression

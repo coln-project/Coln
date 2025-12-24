@@ -1,4 +1,59 @@
 module Main (main) where
 
+import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as LBS
+import Data.Text.Encoding qualified as TE
+import Data.Text.Lazy.Encoding qualified as TLE
+import Data.Vector qualified as V
+import Geolog.Diagnostics
+import Geolog.Lexer (lex)
+import Geolog.Parser (parse)
+import Prettyprinter
+import Prettyprinter.Render.Text
+import System.FilePath (replaceExtension, takeBaseName)
+import System.IO
+import System.IO.Temp (withSystemTempFile)
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.Golden (findByExtension, goldenVsString)
+import Prelude hiding (lex)
+
 main :: IO ()
-main = putStrLn "Test suite not yet implemented."
+main = defaultMain =<< goldenTests
+
+render :: Doc ann -> LBS.ByteString
+render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
+
+parseToPretty :: FilePath -> IO LBS.ByteString
+parseToPretty fp = do
+  bs <- BS.readFile fp
+  let f = newFile fp bs
+  withSystemTempFile "reporter-output" $ \path h -> do
+    let r = Reporter h False
+    ts <- lex r f
+    ns <- parse r f ts
+    hFlush h
+    hClose h
+    msgs <- BS.readFile path
+    pure $
+      render $
+        vsep
+          [ "-- tokens"
+          , vsep $ pretty <$> V.toList ts
+          , ""
+          , "-- notation"
+          , vsep $ pretty <$> ns
+          , ""
+          , "-- messages"
+          , pretty $ TE.decodeUtf8 msgs
+          ]
+
+goldenTests :: IO TestTree
+goldenTests = do
+  ntnFiles <- findByExtension [".ntn"] "."
+  return $
+    testGroup
+      "Geolog golden tests"
+      [ goldenVsString (takeBaseName ntnFile) outputFile (parseToPretty ntnFile)
+      | ntnFile <- ntnFiles
+      , let outputFile = replaceExtension ntnFile ".output"
+      ]
