@@ -1,0 +1,5 @@
+theory Monoid
+  car : Type
+  unit : car
+  mul : car -> car -> car
+end

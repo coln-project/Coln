@@ -1,12 +1,40 @@
 module Geolog.Common where
 
+import Control.Monad.IO.Class
+import Control.Monad.ST (RealWorld)
+import Control.Monad.State.Class
+import Data.Hashable
+import Data.String (IsString, fromString)
+import Data.Text (Text)
+import Data.Vector.Generic qualified as VG
+import Data.Vector.Generic.Mutable qualified as VGM
 import Data.Vector.Hashtables (FrozenDictionary)
 import Data.Vector.Hashtables qualified as HT
-import Data.Vector.Strict as V
-import Symbolize (Symbol)
+import Data.Vector.Strict qualified as V
+import Lens.Micro.Platform
+import Prettyprinter
+import Symbolize (Symbol, unintern)
 import System.IO.Unsafe (unsafePerformIO)
 
-type Name = Symbol
+newtype Name = Name Symbol
+  deriving (Eq, Hashable) via Symbol
+
+instance Show Name where
+  show (Name s) = unintern s
+
+instance IsString Name where
+  fromString s = Name (fromString s)
+
+instance Pretty Name where
+  pretty (Name s) = pretty (unintern s :: Text)
+
+type Pos = Int
+
+data Span = Span Int Int
+  deriving (Eq, Show)
+
+instance Pretty Span where
+  pretty (Span s e) = pretty s <> ":" <> pretty e
 
 type Bwd a = [a]
 
@@ -46,3 +74,29 @@ instance FromList (ConfTable v) (Name, v) where
     d <- HT.fromList l
     fd <- HT.unsafeFreeze d
     pure $ ConfTable fd
+
+-- Our custom annotations for docs
+data Ann = AText
+
+data Buffer v e = Buffer Int (v RealWorld e)
+
+push ::
+  (MonadState s m, MonadIO m, VGM.MVector v e) =>
+  Lens' s (Buffer v e) ->
+  e ->
+  m ()
+push bl x = do
+  Buffer l v <- use bl
+  let cap = VGM.length v
+  v' <-
+    if cap <= l
+      then liftIO $ VGM.unsafeGrow v cap
+      else pure v
+  liftIO $ VGM.unsafeWrite v' l x
+  bl .= Buffer (l + 1) v'
+
+bufferWithCapacity :: (VGM.MVector v e) => Int -> IO (Buffer v e)
+bufferWithCapacity c = Buffer 0 <$> VGM.unsafeNew c
+
+bufferUnsafeFreeze :: (VG.Vector v e) => Buffer (VG.Mutable v) e -> IO (v e)
+bufferUnsafeFreeze (Buffer l v) = VG.take l <$> VG.unsafeFreeze v

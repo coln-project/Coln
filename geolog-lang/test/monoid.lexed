@@ -1,0 +1,24 @@
+0:6 Decl theory
+7:13 AIdent Monoid
+14:15 SKeyword =
+16:19 Block sig
+19:20 Nl
+22:25 AIdent car
+26:27 SKeyword :
+28:32 AIdent Type
+32:33 Nl
+35:39 AIdent unit
+40:41 SKeyword :
+42:45 AIdent car
+45:46 Nl
+48:51 AIdent mul
+52:53 SKeyword :
+54:57 AIdent car
+58:60 SKeyword ->
+61:64 AIdent car
+65:67 SKeyword ->
+68:71 AIdent car
+71:72 Nl
+72:75 End end
+75:76 Nl
+76:76 Eof
