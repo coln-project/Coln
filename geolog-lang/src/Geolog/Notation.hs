@@ -1,44 +1,56 @@
 module Geolog.Notation where
 
-import FlatParse.Common.Position
+import Data.Maybe (maybeToList)
 import Geolog.Common
-import Lens.Micro.TH
-
-data Token
-  = IDENT Name
-  | KEYWORD Name
-  | DECL Name
-  | BLOCK Name
-  | END
-  | OP Name Prec
-  | KEYWORD_OP Name Prec
-  | INT Int
-  | LPAREN
-  | RPAREN
-  | LBRACK
-  | RBRACK
-  | LCURLY
-  | RCURLY
-  | COMMA
-  | SEMICOLON
-  | NL
-  | TAG Name
-  | FIELD Name
-  | EOF
-  | ERROR
+import Prettyprinter
+import Prelude hiding (head, span)
 
 data Prec = LAssoc Int | NonAssoc Int | RAssoc Int
+  deriving (Eq, Show)
 
 data Ntn
-  = App1 Span Ntn Ntn
-  | App2 Span Ntn Ntn Ntn
-  | Block Span Name (Maybe Ntn) (Bwd Ntn)
-  | Decl Span Name Ntn
+  = App1 Ntn Ntn Span
+  | App2 Ntn Ntn Ntn Span
+  | Block Name (Maybe Ntn) (Fwd Ntn) Span
+  | Decl Name Ntn Span
+  | Ident Name Span
+  | Field Name Span
+  | Int Int Span
   | Error Span
 
-spanOf :: Ntn -> Span
-spanOf (App1 s _ _) = s
-spanOf (App2 s _ _ _) = s
-spanOf (Block s _ _ _) = s
-spanOf (Decl s _ _) = s
-spanOf (Error s) = s
+head :: Ntn -> Doc ann
+head (App1 _ _ _) = "App1"
+head (App2 _ _ _ _) = "App2"
+head (Block x _ _ _) = "Block" <+> pretty x
+head (Decl x _ _) = "Decl" <+> pretty x
+head (Ident x _) = "Ident" <+> pretty x
+head (Field x _) = "Field" <+> pretty x
+head (Int i _) = "Int" <+> pretty i
+head (Error _) = "Error"
+
+span :: Ntn -> Span
+span (App1 _ _ s) = s
+span (App2 _ _ _ s) = s
+span (Block _ _ _ s) = s
+span (Decl _ _ s) = s
+span (Ident _ s) = s
+span (Field _ s) = s
+span (Int _ s) = s
+span (Error s) = s
+
+children :: Ntn -> [Ntn]
+children (App1 f x _) = [f, x]
+children (App2 op x y _) = [x, op, y]
+children (Block _ mh xs _) = maybeToList mh ++ xs
+children (Decl _ x _) = [x]
+children (Ident _ _) = []
+children (Field _ _) = []
+children (Int _ _) = []
+children (Error _) = []
+
+instance Pretty Ntn where
+  pretty n =
+    vsep
+      [ head n <+> "(" <> pretty (span n) <> ")"
+      , indent 2 $ vsep $ map pretty (children n)
+      ]

@@ -1,63 +1,48 @@
 module Geolog.Diagnostics where
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Builder
-import Data.Hashable
+import Data.ByteString qualified as BS
 import Data.Vector (Vector)
-import Data.Vector.Hashtables
-import Data.Vector.Strict.Mutable qualified as VM
-import Data.Vector.Unboxed.Mutable qualified as UM
-import FlatParse.Common.Position (Span)
+import Data.Vector qualified as V
+import Geolog.Common
 import Geolog.Diagnostics.Code (Code)
-import Geolog.Diagnostics.Code qualified as Code
-import Lens.Micro.TH (makeFields)
+import Lens.Micro.Platform (makeFields, (^.))
+import Prettyprinter
+import Prettyprinter.Render.Text
 import System.IO (Handle)
 
-data FileLoc = Path FilePath | Memory
-
 data File = File
-  { fileName :: FileLoc
+  { fileName :: FilePath
   , fileContents :: ByteString
   , fileNewlines :: Vector Int
   }
 
 makeFields ''File
 
-newtype FileId = FileId Int
-  deriving (Eq, Hashable) via Int
-
-data FileSystem = FileSystem
-  {fileSystemLookup :: Dictionary RealWorld UM.MVector FileId VM.MVector File}
-
-makeFields ''FileSystem
+newFile :: FilePath -> ByteString -> File
+newFile x bs = File x bs (V.fromList $ BS.elemIndices 10 bs)
 
 data Reporter = Reporter
-  { reporterFileSystem :: FileSystem
-  , reporterHandle :: Handle
+  { reporterHandle :: Handle
   , reporterFancy :: Bool
   }
 
 makeFields ''Reporter
 
+data SourceLoc = SourceLoc
+  { sourceLocFile :: File
+  , sourceLocSpan :: Span
+  }
+
 data Note = Note
-  { noteFileId :: FileId
-  , noteSpan :: Span
-  , noteMessage :: Maybe Builder
+  { noteSourceLoc :: Maybe SourceLoc
+  , noteMessage :: Maybe (Doc Ann)
   }
 
 makeFields ''Note
 
-data Severity = Debug | Info | Warning | Error
-
-severity :: Code -> Severity
-severity Code.UnexpectedCharacter = Error
-severity Code.UnexpectedToken = Error
-
-shortcode :: Code -> Builder
--- codes 0-100 are for lexing
-shortcode Code.UnexpectedCharacter = "E0000"
--- codes 100-200 are for parsing
-shortcode Code.UnexpectedToken = "E0100"
+instance Pretty Note where
+  pretty _ = mempty
 
 data Diagnostic = Diagnostic
   { diagnosticCode :: Code
@@ -66,5 +51,8 @@ data Diagnostic = Diagnostic
 
 makeFields ''Diagnostic
 
+instance Pretty Diagnostic where
+  pretty d = vsep $ pretty (d ^. code) : (map pretty (d ^. notes))
+
 report :: Reporter -> Diagnostic -> IO ()
-report _ _ = pure ()
+report r d = hPutDoc (r ^. handle) (pretty d)
