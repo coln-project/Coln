@@ -1,0 +1,15 @@
+-- tokens
+AIdent a (0:1)
+SKeyword : (2:3)
+AIdent int (4:7)
+SKeyword : (8:9)
+AIdent int (10:13)
+Nl (13:14)
+Eof (14:14)
+-- notation
+App2 (0:7)
+  Ident a (0:1)
+  Ident : (2:3)
+  Ident int (4:7)
+-- messages
+error[E0202] Incompatible precedences
