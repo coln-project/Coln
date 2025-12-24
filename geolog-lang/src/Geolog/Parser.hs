@@ -139,14 +139,15 @@ precLe (Prec b a) (Prec b' a')
   | b < b' = Just True
   | b > b' = Just False
   | otherwise = case (a, a') of
-      (AssocL, AssocL) -> Just True
-      (AssocR, AssocR) -> Just False
+      (AssocL, AssocL) -> Just False
+      (AssocR, AssocR) -> Just True
       _ -> Nothing
 
 precs :: ConfTable Prec
 precs =
   fromList
     [ (":", Prec 10 AssocNon)
+    , ("->", Prec 20 AssocR)
     , ("+", Prec 50 AssocL)
     , ("-", Prec 50 AssocL)
     , ("*", Prec 60 AssocL)
@@ -154,7 +155,7 @@ precs =
     ]
 
 argStarts :: V.Vector T.Kind
-argStarts = V.fromList [T.LParen, T.AIdent, T.Field, T.Int]
+argStarts = V.fromList [T.LParen, T.AIdent, T.Field, T.Int, T.Block]
 
 argStart :: T.Kind -> Bool
 argStart k = V.elem k argStarts
@@ -177,6 +178,7 @@ arg = do
     T.Int -> do
       i <- curInt
       advanceClose m $ Int i
+    T.Block -> block
     k -> do
       s <- curSpan
       report s (Code.UnexpectedToken k T.CExprStart)
@@ -203,14 +205,53 @@ expr = arg >>= go (Prec 0 AssocNon)
           Just True -> do
             advance
             rhs <- arg >>= go p'
-            pure $ App2 lhs (Ident n s) rhs
+            pure $ Infix lhs (Ident n s) rhs
       k | argStart k -> do
         a <- arg
-        go p (App1 lhs a)
+        go p (App lhs a)
       _ -> pure lhs
 
-parse :: Reporter -> File -> V.Vector T.Token -> IO Ntn
+stmt :: Parser Ntn
+stmt =
+  cur >>= \case
+    T.Decl -> do
+      m <- openingPos
+      x <- curName
+      advance
+      n <- expr
+      pure $ Decl x n (Span m (endPos n))
+    _ -> expr
+
+stmts :: Parser (Fwd Ntn)
+stmts = go []
+ where
+  go ns =
+    cur >>= \case
+      T.Nl -> do
+        advance
+        go ns
+      k | k == T.End || k == T.Eof -> pure $ reverse ns
+      _ -> do
+        n <- stmt
+        go $ n : ns
+
+block :: Parser Ntn
+block =
+  cur >>= \case
+    T.Block -> do
+      m <- openingPos
+      x <- curName
+      advance
+      h <-
+        cur >>= \case
+          k | argStart k -> Just <$> arg
+          _ -> pure Nothing
+      ns <- stmts
+      advanceClose m $ Block x h ns
+    _ -> error "expected a block"
+
+parse :: Reporter -> File -> V.Vector T.Token -> IO [Ntn]
 parse r f ts = do
   let s = State 0 256
   let e = Env ts f r
-  evalStateT (runReaderT (runParser expr) e) s
+  evalStateT (runReaderT (runParser stmts) e) s
