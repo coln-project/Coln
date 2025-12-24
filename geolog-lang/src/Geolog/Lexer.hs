@@ -178,13 +178,12 @@ isLatinLetter b
 specialTable :: ConfTable Kind
 specialTable =
   fromList
-    [ ("theory", Decl),
-      ("instance", Decl),
+    [ ("theory", Block),
+      ("instance", Block),
       ("def", Decl),
       ("let", Decl),
       ("open", Decl),
       ("import", Decl),
-      ("sig", Block),
       ("end", End),
       ("=", SKeyword),
       (":", SKeyword),

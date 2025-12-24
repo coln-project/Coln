@@ -6,6 +6,7 @@ SIdent * (7:8)
 AIdent length (9:15)
 Nl (15:16)
 Eof (16:16)
+
 -- notation
 App2 (0:15)
   Int 1 (0:1)
@@ -14,4 +15,5 @@ App2 (0:15)
     Int 13 (4:6)
     Ident * (7:8)
     Ident length (9:15)
+
 -- messages

@@ -30,15 +30,17 @@ parseToPretty fp = do
   withSystemTempFile "reporter-output" $ \path h -> do
     let r = Reporter h False
     ts <- lex r f
-    n <- parse r f ts
+    ns <- parse r f ts
     hFlush h
     hClose h
     msgs <- BS.readFile path
     pure $ render $ vsep [
       "-- tokens",
       vsep $ pretty <$> V.toList ts,
+      "",
       "-- notation",
-      pretty n,
+      vsep $ pretty <$> ns,
+      "",
       "-- messages",
       pretty $ TE.decodeUtf8 msgs]
 
@@ -46,7 +48,7 @@ goldenTests :: IO TestTree
 goldenTests = do
   ntnFiles <- findByExtension [".ntn"] "."
   return $ testGroup "Geolog golden tests"
-    [ goldenVsString (takeBaseName ntnFile) lexedFile (parseToPretty ntnFile)
+    [ goldenVsString (takeBaseName ntnFile) outputFile (parseToPretty ntnFile)
     | ntnFile <- ntnFiles
-    , let lexedFile = replaceExtension ntnFile ".lexed"
+    , let outputFile = replaceExtension ntnFile ".output"
     ]
