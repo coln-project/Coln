@@ -1,7 +1,17 @@
-0:1 Int 1
-2:3 SIdent +
-4:6 Int 13
-7:8 SIdent *
-9:15 AIdent length
-15:16 Nl
-16:16 Eof
+-- tokens
+Int 1 (0:1)
+SIdent + (2:3)
+Int 13 (4:6)
+SIdent * (7:8)
+AIdent length (9:15)
+Nl (15:16)
+Eof (16:16)
+-- notation
+App2 (0:15)
+  Int 1 (0:1)
+  Ident + (2:3)
+  App2 (4:15)
+    Int 13 (4:6)
+    Ident * (7:8)
+    Ident length (9:15)
+-- messages

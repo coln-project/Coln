@@ -1,5 +1,6 @@
 module Geolog.Parser where
 
+import Prelude hiding (lookup)
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader.Class
@@ -7,11 +8,13 @@ import Control.Monad.State.Class
 import Control.Monad.State.Strict (StateT, evalStateT)
 import Data.Vector qualified as V
 import Geolog.Common
-import Geolog.Diagnostics
+import Geolog.Diagnostics hiding (report)
+import Geolog.Diagnostics qualified as D
 import Geolog.Diagnostics.Code qualified as Code
 import Geolog.Notation
 import Geolog.Token qualified as T
 import Lens.Micro.Platform hiding (at)
+import Prettyprinter
 
 data Env = Env
   { envTokens :: V.Vector T.Token,
@@ -30,6 +33,18 @@ makeFields ''State
 
 newtype Parser a = Parser {runParser :: ReaderT Env (StateT State IO) a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadReader Env)
+
+report :: Span -> Code.Code -> Parser ()
+report s c = do
+  e <- ask
+  let n = Note (Just (SourceLoc (e ^. file) s)) Nothing
+  let d = Diagnostic c [n]
+  liftIO $ D.report (e ^. reporter) d
+
+debug :: (forall ann. Doc ann) -> Parser ()
+debug m = do
+  s <- curSpan
+  report s (Code.DebugMisc m)
 
 cur :: Parser T.Kind
 cur = do
@@ -82,11 +97,8 @@ eat k = at k >>= \case
 
 reportUnexpected :: T.Kind -> T.Class -> Parser ()
 reportUnexpected k c = do
-  e <- ask
   s <- curSpan
-  let n = Note (Just (SourceLoc (e ^. file) s)) Nothing
-  let d = Diagnostic (Code.UnexpectedToken k c) [n]
-  liftIO $ report (e ^. reporter) d
+  report s (Code.UnexpectedToken k c)
 
 expect :: T.Kind -> Parser ()
 expect k = do
@@ -107,6 +119,43 @@ advanceClose s f = do
   advance
   pure n
 
+
+data Assoc = AssocL | AssocR | AssocNon
+  deriving (Eq, Show)
+
+data Prec = Prec
+  { precBinding :: Int,
+    precAssoc :: Assoc
+  }
+  deriving (Eq, Show)
+
+makeFields ''Prec
+
+precLe :: Prec -> Prec -> Maybe Bool
+precLe (Prec b a) (Prec b' a')
+  | b < b' = Just True
+  | b > b' = Just False
+  | otherwise = case (a, a') of
+      (AssocL, AssocL) -> Just True
+      (AssocR, AssocR) -> Just False
+      _ -> Nothing
+
+precs :: ConfTable Prec
+precs =
+  fromList
+    [ (":", Prec 10 AssocNon),
+      ("+", Prec 50 AssocL),
+      ("-", Prec 50 AssocL),
+      ("*", Prec 60 AssocL),
+      ("/", Prec 60 AssocL)
+    ]
+
+argStarts :: V.Vector T.Kind
+argStarts = V.fromList [T.LParen, T.AIdent, T.Field, T.Int]
+
+argStart :: T.Kind -> Bool
+argStart k = V.elem k argStarts
+
 arg :: Parser Ntn
 arg = do
   m <- openingPos
@@ -126,13 +175,36 @@ arg = do
       i <- curInt
       advanceClose m $ Int i
     k -> do
-      reportUnexpected k T.CExprStart
       s <- curSpan
-      advance
+      report s (Code.UnexpectedToken k T.CExprStart)
       pure $ Error s
 
 expr :: Parser Ntn
-expr = arg
+expr = arg >>= go (Prec 0 AssocNon) where
+  go p lhs = do
+    cur >>= \case
+      k | k == T.SIdent || k == T.SKeyword -> do
+            n <- curName
+            s <- curSpan
+            p' <- case lookup precs n of
+              Just p' -> pure p'
+              Nothing -> do
+                report s (Code.DefaultedPrec n)
+                pure $ Prec 50 AssocL
+            case precLe p p' of
+              Nothing -> do
+                report s Code.IncompatiblePrecedences
+                pure lhs
+              Just False -> pure lhs
+              Just True -> do
+                advance
+                rhs <- arg >>= go p'
+                pure $ App2 lhs (Ident n s) rhs
+      k | argStart k -> do
+            a <- arg
+            go p (App1 lhs a)
+                
+      _ -> pure lhs
 
 parse :: Reporter -> File -> V.Vector T.Token -> IO Ntn
 parse r f ts = do

@@ -30,7 +30,9 @@ instance Pretty Name where
 
 type Pos = Int
 
-data Span = Span Int Int
+data Span = Span
+  { spanStart :: Pos,
+    spanEnd :: Pos }
   deriving (Eq, Show)
 
 instance Pretty Span where
