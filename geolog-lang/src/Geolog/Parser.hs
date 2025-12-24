@@ -1,6 +1,5 @@
 module Geolog.Parser where
 
-import Prelude hiding (lookup)
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader.Class
@@ -15,6 +14,7 @@ import Geolog.Notation
 import Geolog.Token qualified as T
 import Lens.Micro.Platform hiding (at)
 import Prettyprinter
+import Prelude hiding (lookup)
 
 data Env = Env
   { envTokens :: V.Vector T.Token,
@@ -68,14 +68,16 @@ curValue = do
   pure $ T.tokenValue $ V.unsafeIndex ts i
 
 curName :: Parser Name
-curName = curValue >>= \case
-  T.VName x -> pure x
-  _ -> error "expected token to be associated with a name"
+curName =
+  curValue >>= \case
+    T.VName x -> pure x
+    _ -> error "expected token to be associated with a name"
 
 curInt :: Parser Int
-curInt = curValue >>= \case
-  T.VInt x -> pure x
-  _ -> error "expected token to be associated with an int"
+curInt =
+  curValue >>= \case
+    T.VInt x -> pure x
+    _ -> error "expected token to be associated with an int"
 
 at :: T.Kind -> Parser Bool
 at k = (k ==) <$> cur
@@ -91,9 +93,10 @@ advance = do
     else pure ()
 
 eat :: T.Kind -> Parser Bool
-eat k = at k >>= \case
-  True -> advance >> pure True
-  False -> pure False
+eat k =
+  at k >>= \case
+    True -> advance >> pure True
+    False -> pure False
 
 reportUnexpected :: T.Kind -> T.Class -> Parser ()
 reportUnexpected k c = do
@@ -109,8 +112,9 @@ expect k = do
       reportUnexpected k' (T.CSpecific k) >> pure ()
 
 openingPos :: Parser Pos
-openingPos = curSpan >>= \case
-  Span s _ -> pure s
+openingPos =
+  curSpan >>= \case
+    Span s _ -> pure s
 
 advanceClose :: Pos -> (Span -> Ntn) -> Parser Ntn
 advanceClose s f = do
@@ -118,7 +122,6 @@ advanceClose s f = do
   let n = f (Span s e)
   advance
   pure n
-
 
 data Assoc = AssocL | AssocR | AssocNon
   deriving (Eq, Show)
@@ -180,31 +183,31 @@ arg = do
       pure $ Error s
 
 expr :: Parser Ntn
-expr = arg >>= go (Prec 0 AssocNon) where
-  go p lhs = do
-    cur >>= \case
-      k | k == T.SIdent || k == T.SKeyword -> do
-            n <- curName
-            s <- curSpan
-            p' <- case lookup precs n of
-              Just p' -> pure p'
-              Nothing -> do
-                report s (Code.DefaultedPrec n)
-                pure $ Prec 50 AssocL
-            case precLe p p' of
-              Nothing -> do
-                report s Code.IncompatiblePrecedences
-                pure lhs
-              Just False -> pure lhs
-              Just True -> do
-                advance
-                rhs <- arg >>= go p'
-                pure $ App2 lhs (Ident n s) rhs
-      k | argStart k -> do
-            a <- arg
-            go p (App1 lhs a)
-                
-      _ -> pure lhs
+expr = arg >>= go (Prec 0 AssocNon)
+  where
+    go p lhs = do
+      cur >>= \case
+        k | k == T.SIdent || k == T.SKeyword -> do
+          n <- curName
+          s <- curSpan
+          p' <- case lookup precs n of
+            Just p' -> pure p'
+            Nothing -> do
+              report s (Code.DefaultedPrec n)
+              pure $ Prec 50 AssocL
+          case precLe p p' of
+            Nothing -> do
+              report s Code.IncompatiblePrecedences
+              pure lhs
+            Just False -> pure lhs
+            Just True -> do
+              advance
+              rhs <- arg >>= go p'
+              pure $ App2 lhs (Ident n s) rhs
+        k | argStart k -> do
+          a <- arg
+          go p (App1 lhs a)
+        _ -> pure lhs
 
 parse :: Reporter -> File -> V.Vector T.Token -> IO Ntn
 parse r f ts = do

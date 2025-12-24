@@ -32,7 +32,8 @@ type Pos = Int
 
 data Span = Span
   { spanStart :: Pos,
-    spanEnd :: Pos }
+    spanEnd :: Pos
+  }
   deriving (Eq, Show)
 
 instance Pretty Span where

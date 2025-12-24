@@ -1,9 +1,9 @@
 module Geolog.Notation where
 
-import Prelude hiding (head, span)
 import Data.Maybe (maybeToList)
 import Geolog.Common
 import Prettyprinter
+import Prelude hiding (head, span)
 
 -- We put the span last because in the parser we have utility methods
 -- which take `Span -> Ntn`, and if the span is last, we can use currying
@@ -62,6 +62,7 @@ children (Int _ _) = []
 children (Error _) = []
 
 instance Pretty Ntn where
-  pretty n = if null cs then h else vsep [h, indent 2 $ vsep cs] where
-    h = head n <+> "(" <> pretty (span n) <> ")"
-    cs = map pretty (children n)
+  pretty n = if null cs then h else vsep [h, indent 2 $ vsep cs]
+    where
+      h = head n <+> "(" <> pretty (span n) <> ")"
+      cs = map pretty (children n)
