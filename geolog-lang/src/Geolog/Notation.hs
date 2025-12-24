@@ -8,6 +8,9 @@ import Prettyprinter
 data Prec = LAssoc Int | NonAssoc Int | RAssoc Int
   deriving (Eq, Show)
 
+-- We put the span last because in the parser we have utility methods
+-- which take `Span -> Ntn`, and if the span is last, we can use currying
+-- to our advantage here
 data Ntn
   = App1 Ntn Ntn Span
   | App2 Ntn Ntn Ntn Span
