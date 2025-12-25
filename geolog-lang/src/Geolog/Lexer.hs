@@ -96,7 +96,7 @@ isAlphaNum :: Char -> Bool
 isAlphaNum c
   | isLetter c = True
   | isDigit c = True
-  | c == '_' = True
+  | c == '_' || c == '-' = True
   | otherwise = False
 
 alphaNum :: Lex Name

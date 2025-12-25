@@ -53,11 +53,11 @@ class Reverse a b | a -> b where
   rev :: a -> b
 
 infixl 5 :>
-
+  
 infixr 5 :<
-
+  
 data Bwd a = BwdNil | Bwd a :> a
-
+  
 newtype BId = BId Int
   deriving (Eq)
 
