@@ -11,7 +11,7 @@ import Prelude hiding (head, span)
 data Ntn
   = App Ntn Ntn
   | Infix Ntn Ntn Ntn
-  | Block Name (Maybe Ntn) (Fwd Ntn) Span
+  | Block Name (Maybe Ntn) [Ntn] Span
   | Decl Name Ntn Span
   | Ident Name Span
   | Field Name Span
