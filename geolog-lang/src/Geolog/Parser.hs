@@ -222,7 +222,7 @@ stmt =
       pure $ Decl x n (Span m (endPos n))
     _ -> expr
 
-stmts :: Parser (Fwd Ntn)
+stmts :: Parser [Ntn]
 stmts = go []
  where
   go ns =

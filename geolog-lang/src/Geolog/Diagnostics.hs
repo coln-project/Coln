@@ -1,7 +1,6 @@
 module Geolog.Diagnostics where
 
-import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
+import Data.Text qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as V
 import Geolog.Common
@@ -13,14 +12,22 @@ import System.IO (Handle)
 
 data File = File
   { fileName :: FilePath
-  , fileContents :: ByteString
-  , fileNewlines :: Vector Int
+  , fileContents :: T.Text
+  , fileNewlines :: Vector Pos
   }
 
 makeFields ''File
 
-newFile :: FilePath -> ByteString -> File
-newFile x bs = File x bs (V.fromList $ BS.elemIndices 10 bs)
+newFile :: FilePath -> T.Text -> File
+newFile x t = File x t (V.fromList [])
+
+-- Given a Span, we want to
+--
+-- 1. Figure out which lines it covers
+-- 2. Extract those lines as Text
+-- 3. Create `  ^^^  ` annotations under the lines for the parts
+--    of the lines that are covered by the Span.
+-- 4. Print line numbers in the margins
 
 data Reporter = Reporter
   { reporterHandle :: Handle

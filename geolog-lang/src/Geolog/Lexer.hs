@@ -5,10 +5,9 @@ import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader.Class
 import Control.Monad.State.Class
 import Control.Monad.State.Strict (StateT, execStateT)
-import Data.Bits
-import Data.ByteString qualified as BS
-import Data.ByteString.Internal (w2c)
-import Data.Char (chr, isDigit, isLetter, ord)
+import Data.Char (isDigit, isLetter, ord)
+import Data.Text qualified as T
+import Data.Text.Unsafe qualified as TU
 import Data.Vector qualified as V
 import Geolog.Common
 import Geolog.Diagnostics
@@ -21,6 +20,7 @@ import Prelude hiding (error, getChar, lex, lookup, span)
 data State = State
   { statePos :: Int
   , statePrev :: Int
+  , stateIter :: TU.Iter
   , stateTokens :: Buffer V.MVector Token
   }
 
@@ -33,7 +33,7 @@ data Env = Env
 
 makeFields ''Env
 
-source :: Lens' Env BS.ByteString
+source :: Lens' Env T.Text
 source = file . contents
 
 newtype Lex a = Lex {runLex :: ReaderT Env (StateT State IO) a}
@@ -54,89 +54,50 @@ emit k v = do
   prev <~ use pos
 
 -- peek a byte as a character
-peekb :: Lex (Maybe Char)
-peekb = do
-  st <- get
-  e <- ask
-  pure $ w2c <$> BS.indexMaybe (e ^. source) (st ^. pos)
+peek :: Lex Char
+peek = do
+  TU.Iter c _ <- use iter
+  pure c
 
-advance :: Int -> Lex ()
-advance j = pos += j
+advance :: Lex ()
+advance = do
+  src <- view source
+  TU.Iter _ j <- use iter
+  i <- use pos
+  let i' = i + j
+  pos .= i'
+  if i' >= TU.lengthWord8 src
+    then iter .= TU.Iter '\0' 0
+    else iter .= TU.iter src i'
 
-advanceb :: Lex ()
-advanceb = advance 1
+classify :: Kind -> Lex ()
+classify k = advance >> emit0 k
 
-classifyb :: Kind -> Lex ()
-classifyb k = advanceb >> emit0 k
-
-skipb :: Lex ()
-skipb = do
-  pos += 1
+skip :: Lex ()
+skip = do
+  advance
   prev <~ use pos
 
-getByte :: BS.ByteString -> Int -> Int
-getByte bs i = fromIntegral $ BS.index bs i
-
-getChar :: BS.ByteString -> Int -> (Char, Int)
-getChar bs i = over _1 chr $ case b 0 of
-  c | c <= 0x7F -> (c, 1)
-  c
-    | c <= 0xDF ->
-        ( ((c - 0xC0) `shift` 6)
-            .|. (b 1 - 0x80)
-        , 2
-        )
-  c
-    | c <= 0xEF ->
-        ( ((c - 0xE0) `shift` 12)
-            .|. ((b 1 - 0x80) `shift` 6)
-            .|. (b 2 - 0x80)
-        , 3
-        )
-  c ->
-    ( ((c - 0xF0) `shift` 18)
-        .|. ((b 1 - 0x80) `shift` 12)
-        .|. ((b 2 - 0x80) `shift` 6)
-        .|. (b 3 - 0x80)
-    , 4
-    )
- where
-  b j = getByte bs (i + j)
-
-peekc :: Lex (Char, Int)
-peekc = do
-  st <- get
-  e <- ask
-  pure $ getChar (e ^. source) (st ^. pos)
-
-advancebWhile :: (Char -> Bool) -> Lex ()
-advancebWhile f =
-  peekb >>= \case
-    Just b ->
-      if f b
-        then pos += 1 >> advancebWhile f
-        else pure ()
-    Nothing -> pure ()
-
 advanceWhile :: (Char -> Bool) -> Lex ()
-advanceWhile f = do
-  (c, j) <- peekc
-  if f c
-    then pos += j >> advanceWhile f
-    else pure ()
+advanceWhile f =
+  peek >>= \case
+    '\0' -> pure ()
+    c ->
+      if f c
+        then advance >> advanceWhile f
+        else pure ()
 
-slice :: Lex BS.ByteString
+slice :: Lex T.Text
 slice = do
   st <- get
   e <- ask
-  pure $ BS.drop (st ^. prev) $ BS.take (st ^. pos) (e ^. source)
+  pure $ TU.dropWord8 (st ^. prev) $ TU.takeWord8 (st ^. pos) (e ^. source)
 
--- Slice all but the first character, for field/tag
-slice1 :: Lex BS.ByteString
+slice1 :: Lex T.Text
 slice1 = do
   st <- get
   e <- ask
-  pure $ BS.take (st ^. pos) $ BS.drop (st ^. prev + 1) (e ^. source)
+  pure $ TU.dropWord8 (st ^. prev + 1) $ TU.takeWord8 (st ^. pos) (e ^. source)
 
 isAlphaNum :: Char -> Bool
 isAlphaNum c
@@ -147,7 +108,7 @@ isAlphaNum c
 
 alphaNum1 :: Lex Name
 alphaNum1 = do
-  advanceb
+  advance
   advanceWhile isAlphaNum
   s <- slice1
   pure $ Name $ Symbolize.intern s
@@ -161,13 +122,11 @@ alphaNum = do
 int :: Lex Int
 int = go 0
  where
-  go i =
-    peekb >>= \case
-      Just b ->
-        if isDigit b
-          then advanceb >> go (i * 10 + (ord b - ord '0'))
-          else pure i
-      Nothing -> pure i
+  go i = do
+    c <- peek
+    if isDigit c
+      then advance >> go (i * 10 + (ord c - ord '0'))
+      else pure i
 
 isLatinLetter :: Char -> Bool
 isLatinLetter b
@@ -212,13 +171,13 @@ isSymbol = \case
 
 symbol :: Lex Name
 symbol = do
-  advancebWhile isSymbol
+  advanceWhile isSymbol
   s <- slice
   pure $ Name $ Symbolize.intern s
 
-error :: Char -> Int -> Lex ()
-error c i = do
-  advance i
+error :: Char -> Lex ()
+error c = do
+  advance
   s <- span
   e <- ask
   let d = Diagnostic (Code.UnexpectedCharacter c) [Note (Just (SourceLoc (e ^. file) s)) Nothing]
@@ -227,41 +186,31 @@ error c i = do
 
 toks :: Lex ()
 toks =
-  peekb >>= \case
-    Just b ->
-      case b of
-        '\t' -> skipb >> toks
-        ' ' -> skipb >> toks
-        '(' -> classifyb LParen >> toks
-        ')' -> classifyb RParen >> toks
-        '[' -> classifyb LBrack >> toks
-        ']' -> classifyb RBrack >> toks
-        '{' -> classifyb LCurly >> toks
-        '}' -> classifyb RCurly >> toks
-        ',' -> classifyb Comma >> toks
-        ';' -> classifyb Semicolon >> toks
-        '\n' -> classifyb Nl >> toks
-        '.' -> (alphaNum1 >>= emit Field . VName) >> toks
-        '\'' -> (alphaNum1 >>= emit Tag . VName) >> toks
-        _ | isDigit b -> (int >>= emit Int . VInt) >> toks
-        _ | isLatinLetter b || b == '_' -> (alphaNum >>= emitName AIdent) >> toks
-        _ | isSymbol b -> (symbol >>= emitName SIdent) >> toks
-        _
-          | b >= '\x80' ->
-              peekc >>= \case
-                (c, j) | isLetter c -> do
-                  advance j
-                  alphaNum >>= emitName AIdent
-                  toks
-                (c, j) -> error c j >> toks
-        _ -> error b 1 >> toks
-    Nothing -> emit0 Eof
+  peek >>= \case
+    '\t' -> skip >> toks
+    ' ' -> skip >> toks
+    '(' -> classify LParen >> toks
+    ')' -> classify RParen >> toks
+    '[' -> classify LBrack >> toks
+    ']' -> classify RBrack >> toks
+    '{' -> classify LCurly >> toks
+    '}' -> classify RCurly >> toks
+    ',' -> classify Comma >> toks
+    ';' -> classify Semicolon >> toks
+    '\n' -> classify Nl >> toks
+    '.' -> (alphaNum1 >>= emit Field . VName) >> toks
+    '\'' -> (alphaNum1 >>= emit Tag . VName) >> toks
+    '\0' -> emit0 Eof
+    c | isDigit c -> (int >>= emit Int . VInt) >> toks
+    c | isLetter c || c == '_' -> (alphaNum >>= emitName AIdent) >> toks
+    c | isSymbol c -> (symbol >>= emitName SIdent) >> toks
+    c -> error c >> toks
 
 lex :: Reporter -> File -> IO (V.Vector Token)
 lex r f = do
   let src = f ^. contents
-  ts <- bufferWithCapacity (BS.length src)
-  let s = State 0 0 ts
+  ts <- bufferWithCapacity (TU.lengthWord8 src)
+  let s = State 0 0 (TU.iter src 0) ts
   let e = Env f r
   s' <- execStateT (runReaderT (runLex toks) e) s
   bufferUnsafeFreeze $ s' ^. tokens
