@@ -81,10 +81,11 @@ linePretty numWidth l (Span ls le) t (Span s e) =
     gutter = ln <+> "|"
 
 numDigits :: Int -> Int
-numDigits n = go (abs n) where
-  go x
-    | x < 10 = 1
-    | otherwise = 1 + go (x `div` 10)
+numDigits n = go (abs n)
+  where
+    go x
+      | x < 10 = 1
+      | otherwise = 1 + go (x `div` 10)
 
 linesPretty :: File -> Span -> Doc ann
 linesPretty f sp@(Span s e) =
