@@ -67,8 +67,8 @@ repeated n c
   | n == 1 = pretty c
   | otherwise = pretty (T.replicate n (T.singleton c))
 
-linePretty :: LineNum -> Span -> T.Text -> Span -> Doc ann
-linePretty l (Span ls le) t (Span s e) =
+linePretty :: Int -> LineNum -> Span -> T.Text -> Span -> Doc ann
+linePretty numWidth l (Span ls le) t (Span s e) =
   vsep
     [ gutter <+> pretty t
     , gutter <+> repeated (s' - ls) ' ' <> repeated nc '^'
@@ -77,15 +77,26 @@ linePretty l (Span ls le) t (Span s e) =
   s' = max ls s
   e' = min le e
   nc = min 1 (e' - s')
-  ln = fill 4 $ pretty $ l + 1
+  ln = fill numWidth $ pretty $ l + 1
   gutter = ln <+> "|"
+
+numDigits :: Int -> Int
+numDigits n = go (abs n)
+ where
+  go x
+    | x < 10 = 1
+    | otherwise = 1 + go (x `div` 10)
 
 linesPretty :: File -> Span -> Doc ann
 linesPretty f sp@(Span s e) =
   vsep
-    [ linePretty l (lineSpan f l) (lineContents f l) sp
-    | l <- [lineOf f s .. lineOf f e]
+    [ linePretty numWidth l (lineSpan f l) (lineContents f l) sp
+    | l <- [ls .. le]
     ]
+ where
+  ls = lineOf f s
+  le = lineOf f e
+  numWidth = max (numDigits ls) (numDigits le)
 
 data Reporter = Reporter
   { reporterHandle :: Handle
