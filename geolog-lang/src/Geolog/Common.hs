@@ -17,6 +17,9 @@ import Prettyprinter
 import Symbolize (Symbol, unintern)
 import System.IO.Unsafe (unsafePerformIO)
 
+impossible :: a
+impossible = error "impossible"
+
 newtype Name = Name Symbol
   deriving (Eq, Hashable) via Symbol
 
@@ -40,7 +43,8 @@ data Span = Span
 instance Pretty Span where
   pretty (Span s e) = pretty s <> ":" <> pretty e
 
-type Bwd a = [a]
+class Reverse a b | a -> b where
+  rev :: a -> b
 
 infixl 5 :>
 
