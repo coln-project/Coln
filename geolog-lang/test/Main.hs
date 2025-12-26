@@ -1,11 +1,10 @@
 module Main (main) where
 
 import Prelude hiding (lex)
-import Data.Vector qualified as V
-import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as LBS
+import Data.Vector qualified as V
+import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
-import Data.Text.Encoding qualified as TE
 import Geolog.Lexer (lex)
 import Geolog.Parser (parse)
 import Geolog.Diagnostics
@@ -25,15 +24,15 @@ render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 parseToPretty :: FilePath -> IO LBS.ByteString
 parseToPretty fp = do
-  bs <- BS.readFile fp
-  let f = newFile fp bs
+  src <- T.readFile fp
+  let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
     let r = Reporter h False
     ts <- lex r f
     ns <- parse r f ts
     hFlush h
     hClose h
-    msgs <- BS.readFile path
+    msgs <- T.readFile path
     pure $ render $ vsep [
       "-- tokens",
       vsep $ pretty <$> V.toList ts,
@@ -42,7 +41,7 @@ parseToPretty fp = do
       vsep $ pretty <$> ns,
       "",
       "-- messages",
-      pretty $ TE.decodeUtf8 msgs]
+      pretty $ msgs]
 
 goldenTests :: IO TestTree
 goldenTests = do
