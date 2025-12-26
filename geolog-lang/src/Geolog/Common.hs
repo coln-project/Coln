@@ -43,6 +43,7 @@ instance Pretty Span where
 type Bwd a = [a]
 
 infixl 5 :>
+
 infixr 5 :<
 
 data Bwd a = BwdNil | Bwd a :> a
