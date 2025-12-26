@@ -58,7 +58,7 @@ lineOf f i = go (UV.length (f ^. lineBreaks) `div` 2)
 linesFor :: File -> Span -> [(LineNum, Span, T.Text)]
 linesFor f (Span s e) =
   [ (l, lineSpan f l, lineContents f l)
-    | l <- [lineOf f s .. lineOf f e]
+  | l <- [lineOf f s .. lineOf f e]
   ]
 
 repeated :: Int -> Char -> Doc ann
@@ -91,7 +91,7 @@ linesPretty :: File -> Span -> Doc ann
 linesPretty f sp@(Span s e) =
   vsep
     [ linePretty numWidth l (lineSpan f l) (lineContents f l) sp
-      | l <- [ls .. le]
+    | l <- [ls .. le]
     ]
   where
     ls = lineOf f s
