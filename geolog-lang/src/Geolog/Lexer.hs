@@ -5,7 +5,7 @@ import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader.Class
 import Control.Monad.State.Class
 import Control.Monad.State.Strict (StateT, execStateT)
-import Data.Char (isLetter, isDigit, ord)
+import Data.Char (isDigit, isLetter, ord)
 import Data.Text qualified as T
 import Data.Text.Unsafe qualified as TU
 import Data.Vector qualified as V
@@ -120,12 +120,13 @@ alphaNum = do
   pure $ Name $ Symbolize.intern s
 
 int :: Lex Int
-int = go 0 where
-  go i = do
-    c <- peek
-    if isDigit c
-      then advance >> go (i * 10 + (ord c - ord '0'))
-      else pure i
+int = go 0
+  where
+    go i = do
+      c <- peek
+      if isDigit c
+        then advance >> go (i * 10 + (ord c - ord '0'))
+        else pure i
 
 isLatinLetter :: Char -> Bool
 isLatinLetter b
@@ -184,25 +185,26 @@ error c = do
   emit0 Error
 
 toks :: Lex ()
-toks = peek >>= \case
-  '\t' -> skip >> toks
-  ' ' -> skip >> toks
-  '(' -> classify LParen >> toks
-  ')' -> classify RParen >> toks
-  '[' -> classify LBrack >> toks
-  ']' -> classify RBrack >> toks
-  '{' -> classify LCurly >> toks
-  '}' -> classify RCurly >> toks
-  ',' -> classify Comma >> toks
-  ';' -> classify Semicolon >> toks
-  '\n' -> classify Nl >> toks
-  '.' -> (alphaNum1 >>= emit Field . VName) >> toks
-  '\'' -> (alphaNum1 >>= emit Tag . VName) >> toks
-  '\0' -> emit0 Eof
-  c | isDigit c -> (int >>= emit Int . VInt) >> toks
-  c | isLetter c || c == '_' -> (alphaNum >>= emitName AIdent) >> toks
-  c | isSymbol c -> (symbol >>= emitName SIdent) >> toks
-  c -> error c >> toks
+toks =
+  peek >>= \case
+    '\t' -> skip >> toks
+    ' ' -> skip >> toks
+    '(' -> classify LParen >> toks
+    ')' -> classify RParen >> toks
+    '[' -> classify LBrack >> toks
+    ']' -> classify RBrack >> toks
+    '{' -> classify LCurly >> toks
+    '}' -> classify RCurly >> toks
+    ',' -> classify Comma >> toks
+    ';' -> classify Semicolon >> toks
+    '\n' -> classify Nl >> toks
+    '.' -> (alphaNum1 >>= emit Field . VName) >> toks
+    '\'' -> (alphaNum1 >>= emit Tag . VName) >> toks
+    '\0' -> emit0 Eof
+    c | isDigit c -> (int >>= emit Int . VInt) >> toks
+    c | isLetter c || c == '_' -> (alphaNum >>= emitName AIdent) >> toks
+    c | isSymbol c -> (symbol >>= emitName SIdent) >> toks
+    c -> error c >> toks
 
 lex :: Reporter -> File -> IO (V.Vector Token)
 lex r f = do
