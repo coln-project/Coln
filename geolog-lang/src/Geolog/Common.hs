@@ -6,6 +6,7 @@ import Control.Monad.State.Class
 import Data.Hashable
 import Data.String (IsString, fromString)
 import Data.Text (Text)
+import Data.Text.Unsafe qualified as TU
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Generic.Mutable qualified as VGM
 import Data.Vector.Hashtables (FrozenDictionary)
@@ -15,6 +16,9 @@ import Lens.Micro.Platform
 import Prettyprinter
 import Symbolize (Symbol, unintern)
 import System.IO.Unsafe (unsafePerformIO)
+
+impossible :: a
+impossible = error "impossible"
 
 newtype Name = Name Symbol
   deriving (Eq, Hashable) via Symbol
@@ -39,19 +43,44 @@ data Span = Span
 instance Pretty Span where
   pretty (Span s e) = pretty s <> ":" <> pretty e
 
-type Bwd a = [a]
+class Reverse a b | a -> b where
+  rev :: a -> b
 
 infixl 5 :>
 
-pattern (:>) :: Bwd a -> a -> Bwd a
-pattern xs :> x = x : xs
-
-type Fwd a = [a]
-
 infixr 5 :<
 
-pattern (:<) :: a -> Fwd a -> Fwd a
-pattern x :< xs = x : xs
+data Bwd a = BwdNil | Bwd a :> a
+
+newtype BId = BId Int
+  deriving (Eq)
+
+instance ElemAt (Bwd a) BId a where
+  elemAt BwdNil _ = impossible
+  elemAt (_ :> x) (BId 0) = x
+  elemAt (xs :> _) (BId i) = elemAt xs (BId (i - 1))
+
+instance Reverse (Bwd a) (Fwd a) where
+  rev = go FwdNil
+   where
+    go xs' BwdNil = xs'
+    go xs' (xs :> x) = go (x :< xs') xs
+
+data Fwd a = FwdNil | a :< Fwd a
+
+newtype FId = FId Int
+  deriving (Eq)
+
+instance ElemAt (Fwd a) FId a where
+  elemAt FwdNil _ = impossible
+  elemAt (x :< _) (FId 0) = x
+  elemAt (_ :< xs) (FId i) = elemAt xs (FId (i - 1))
+
+instance Reverse (Fwd a) (Bwd a) where
+  rev = go BwdNil
+   where
+    go xs' FwdNil = xs'
+    go xs' (x :< xs) = go (xs' :> x) xs
 
 newtype ConfTable v = ConfTable (FrozenDictionary V.Vector Name V.Vector v)
 
@@ -103,3 +132,8 @@ bufferWithCapacity c = Buffer 0 <$> VGM.unsafeNew c
 
 bufferUnsafeFreeze :: (VG.Vector v e) => Buffer (VG.Mutable v) e -> IO (v e)
 bufferUnsafeFreeze (Buffer l v) = VG.take l <$> VG.unsafeFreeze v
+
+-- Text
+
+sliceWord8 :: Int -> Int -> Text -> Text
+sliceWord8 s e t = TU.dropWord8 s $ TU.takeWord8 e t
