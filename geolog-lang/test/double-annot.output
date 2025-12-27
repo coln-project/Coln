@@ -10,11 +10,11 @@ Eof (14:14)
 -- notation
 Infix (0:7)
   Ident a (0:1)
-  Ident : (2:3)
+  Keyword : (2:3)
   Ident int (4:7)
 Infix (8:13)
   Error (8:9)
-  Ident : (8:9)
+  Keyword : (8:9)
   Ident int (10:13)
 
 -- messages

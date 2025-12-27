@@ -55,7 +55,7 @@ test-suite geolog-lang-test
     hs-source-dirs:     test
     default-language:   GHC2021
     default-extensions: OverloadedStrings
-    ghc-options:        -Wall
+    ghc-options:        -Wall -g
     build-depends:
         base >=4.19.2.0,
         bytestring,
