@@ -48,7 +48,8 @@ lineContents :: File -> LineNum -> T.Text
 lineContents f l = sliceWord8 (lineStart f l) (lineEnd f l) (f ^. contents)
 
 lineOf :: File -> Pos -> LineNum
-lineOf f i = seq
+lineOf f i =
+  seq
     (0 <= i && i < TU.lengthWord8 (f ^. contents) || error "position out of bounds")
     (go 0 (UV.length (f ^. lineBreaks) - 1))
   where
@@ -57,7 +58,8 @@ lineOf f i = seq
       | i < lineStart f m = go l m
       | i > lineEnd f m = go m r
       | otherwise = m
-      where m = (l + r) `div` 2
+      where
+        m = (l + r) `div` 2
 
 repeated :: Int -> Char -> Doc ann
 repeated n c

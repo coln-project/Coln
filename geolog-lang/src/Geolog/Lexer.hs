@@ -97,7 +97,6 @@ isAlphaNum c
   | isLetter c = True
   | isDigit c = True
   | c == '_' = True
-  
   | otherwise = False
 
 alphaNum :: Lex Name
@@ -109,7 +108,7 @@ alphaNum = do
   pure $ Name $ Symbolize.intern x
 
 -- Parsing an identifier:
--- 
+--
 -- - Parse an alphanumeric name
 -- - Check if the name is special (block, keyword, etc.), if so, return.
 --   Special names don't participate in namespacing
@@ -154,33 +153,34 @@ alphaNum = do
 
 qname :: Lex ()
 qname = do
-  (x0,k) <- peek >>= \case
-    c | isLetter c || c == '_' -> do
-      x0 <- alphaNum
-      pure (x0, AIdent)
-    c | isSymbol c -> do
-      x0 <- symbol
-      pure (x0, SIdent)
-    _ -> impossible
+  (x0, k) <-
+    peek >>= \case
+      c | isLetter c || c == '_' -> do
+        x0 <- alphaNum
+        pure (x0, AIdent)
+      c | isSymbol c -> do
+        x0 <- symbol
+        pure (x0, SIdent)
+      _ -> impossible
   case fromName k x0 of
     k' | k == k' -> go [] x0 k
     k' -> emit k' (VName x0)
   where
-    go xs x k = peek >>= \case
-      '/' -> do
-        advance
-        peek >>= \case
-          c | isLetter c -> do
-                x' <- alphaNum
-                go (x:xs) x' AIdent
-          c | isSymbol c -> do
-                x' <- symbol
-                go (x:xs) x' SIdent
-          _ -> do
-            report Code.UncontinuedQualifiedName
-            emit k (VQName (QName (reverse xs) x))
-      _ -> emit k (VQName (QName (reverse xs) x))
-            
+    go xs x k =
+      peek >>= \case
+        '/' -> do
+          advance
+          peek >>= \case
+            c | isLetter c -> do
+              x' <- alphaNum
+              go (x : xs) x' AIdent
+            c | isSymbol c -> do
+              x' <- symbol
+              go (x : xs) x' SIdent
+            _ -> do
+              report Code.UncontinuedQualifiedName
+              emit k (VQName (QName (reverse xs) x))
+        _ -> emit k (VQName (QName (reverse xs) x))
 
 int :: Lex Int
 int = go 0

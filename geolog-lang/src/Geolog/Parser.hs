@@ -197,13 +197,14 @@ expr = arg >>= go (Prec 0 AssocNon)
       cur >>= \case
         k | k == T.SIdent || k == T.SKeyword -> do
           s <- curSpan
-          (n,x) <- if k == T.SIdent
-            then do
-              qx@(QName _ x) <- curQName
-              pure (Ident qx s, x)
-            else do
-              x <- curName
-              pure (Keyword x s, x)
+          (n, x) <-
+            if k == T.SIdent
+              then do
+                qx@(QName _ x) <- curQName
+                pure (Ident qx s, x)
+              else do
+                x <- curName
+                pure (Keyword x s, x)
           p' <- case lookup precs x of
             Just p' -> pure p'
             Nothing -> do
