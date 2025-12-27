@@ -87,17 +87,10 @@ advanceWhile f =
         then advance >> advanceWhile f
         else pure ()
 
-slice :: Lex T.Text
-slice = do
-  st <- get
-  e <- ask
-  pure $ TU.dropWord8 (st ^. prev) $ TU.takeWord8 (st ^. pos) (e ^. source)
-
-slice1 :: Lex T.Text
-slice1 = do
-  st <- get
-  e <- ask
-  pure $ TU.dropWord8 (st ^. prev + 1) $ TU.takeWord8 (st ^. pos) (e ^. source)
+slice :: Span -> Lex T.Text
+slice (Span s e) = do
+  env <- ask
+  pure $ sliceWord8 s e (env ^. source)
 
 isAlphaNum :: Char -> Bool
 isAlphaNum c
@@ -106,18 +99,89 @@ isAlphaNum c
   | c == '_' = True
   | otherwise = False
 
-alphaNum1 :: Lex Name
-alphaNum1 = do
-  advance
-  advanceWhile isAlphaNum
-  s <- slice1
-  pure $ Name $ Symbolize.intern s
-
 alphaNum :: Lex Name
 alphaNum = do
+  s <- use pos
   advanceWhile isAlphaNum
-  s <- slice
-  pure $ Name $ Symbolize.intern s
+  e <- use pos
+  x <- slice (Span s e)
+  pure $ Name $ Symbolize.intern x
+
+-- Parsing an identifier:
+--
+-- - Parse an alphanumeric name
+-- - Check if the name is special (block, keyword, etc.), if so, return.
+--   Special names don't participate in namespacing
+-- - extend: If the next character is '/', keep going; look for either a symbol or
+--   another alphanumeric segment.
+-- - If the next one is a symbol, then check if the symbol is a "symbolic keyword";
+--   if so, report an error, otherwise emit an `SIdent` token.
+-- - If the next one is an alphanumeric name, then go back to `extend`
+--
+-- Note:
+-- We should allow symbolic fields. E.g. .+ is a perfectly valid field.
+
+-- Note:
+-- Division can use unicode division (gah, why won't ormolu parse unicode??);
+-- otherwise `a//` is too confusing. How often do you need to divide in a
+-- database?
+
+-- Note:
+-- Do we want kebab case? It's very aesthetic, but perhaps is_type is just as
+-- good as is-type? Subtraction is more common than division. Also, negative
+-- numbers.  I think that if we want kebab case, we should require all binary
+-- operators to have spaces around them, not just `-`. Which is not the end of
+-- the world; this is maybe the right way to do it, and this is how it's done in
+-- Pyret and Agda.
+--
+-- Then symbolic identifiers and alphanumeric identifiers may both contain `-`;
+-- it's a wild card! When it starts a name, it makes that name symbolic, but it
+-- can appear in either alphanumeric or symbolic names.
+
+-- Note:
+-- Should `Name` be a sumtype of symbolic vs. alphanumeric? If we keep it as is,
+-- it's pretty easy to check by just looking at the first letter, and we can
+-- always look up precedence in the table, so I think that keeping name as a
+-- newtype wrapper around Symbol is going to be speediest.
+
+-- Note:
+-- Because we can always check if a name is a symbol or not, maybe we should do
+-- away with different tokens for alphanums vs symbols? Nah, that's fine
+
+-- Note:
+-- We should call "symbol" something else, because Symbolize already uses the word
+-- "symbol".
+
+qname :: Lex ()
+qname = do
+  (x0, k) <-
+    peek >>= \case
+      c | isLetter c || c == '_' -> do
+        x0 <- alphaNum
+        pure (x0, AIdent)
+      c | isSymbol c -> do
+        x0 <- symbol
+        pure (x0, SIdent)
+      _ -> impossible
+  case fromName k x0 of
+    k' | k == k' -> go [] x0 k
+    k' -> emit k' (VName x0)
+  where
+    go xs x k =
+      peek >>= \case
+        '/' -> do
+          advance
+          peek >>= \case
+            c | isLetter c -> do
+              x' <- alphaNum
+              go (x : xs) x' AIdent
+            c | isSymbol c -> do
+              x' <- symbol
+              go (x : xs) x' SIdent
+            _ -> do
+              report Code.UncontinuedQualifiedName
+              emit k (VQName (QName (reverse xs) x))
+        _ -> emit k (VQName (QName (reverse xs) x))
 
 int :: Lex Int
 int = go 0
@@ -171,18 +235,23 @@ isSymbol = \case
 
 symbol :: Lex Name
 symbol = do
+  s <- use pos
   advanceWhile isSymbol
-  s <- slice
-  pure $ Name $ Symbolize.intern s
+  e <- use pos
+  x <- slice (Span s e)
+  pure $ Name $ Symbolize.intern x
 
-error :: Char -> Lex ()
-error c = do
-  advance
+report :: Code.Code -> Lex ()
+report c = do
   s <- span
   e <- ask
-  let d = Diagnostic (Code.UnexpectedCharacter c) [Note (Just (SourceLoc (e ^. file) s)) Nothing]
-  liftIO $ report (e ^. reporter) d
-  emit0 Error
+  let d = Diagnostic c [Note (Just (SourceLoc (e ^. file) s)) Nothing]
+  liftIO $ reportIO (e ^. reporter) d
+
+unexpectedChar :: Char -> Lex ()
+unexpectedChar c = do
+  advance
+  report (Code.UnexpectedCharacter c)
 
 toks :: Lex ()
 toks =
@@ -198,13 +267,12 @@ toks =
     ',' -> classify Comma >> toks
     ';' -> classify Semicolon >> toks
     '\n' -> classify Nl >> toks
-    '.' -> (alphaNum1 >>= emit Field . VName) >> toks
-    '\'' -> (alphaNum1 >>= emit Tag . VName) >> toks
+    '.' -> advance >> (alphaNum >>= emit Field . VName) >> toks
+    '\'' -> advance >> (alphaNum >>= emit Tag . VName) >> toks
     '\0' -> emit0 Eof
     c | isDigit c -> (int >>= emit Int . VInt) >> toks
-    c | isLetter c || c == '_' -> (alphaNum >>= emitName AIdent) >> toks
-    c | isSymbol c -> (symbol >>= emitName SIdent) >> toks
-    c -> error c >> toks
+    c | isLetter c || c == '_' || isSymbol c -> qname >> toks
+    c -> unexpectedChar c >> toks
 
 lex :: Reporter -> File -> IO (V.Vector Token)
 lex r f = do

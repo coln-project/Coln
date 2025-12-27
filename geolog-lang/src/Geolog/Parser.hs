@@ -7,8 +7,7 @@ import Control.Monad.State.Class
 import Control.Monad.State.Strict (StateT, evalStateT)
 import Data.Vector qualified as V
 import Geolog.Common
-import Geolog.Diagnostics hiding (report)
-import Geolog.Diagnostics qualified as D
+import Geolog.Diagnostics
 import Geolog.Diagnostics.Code qualified as Code
 import Geolog.Notation
 import Geolog.Token qualified as T
@@ -39,7 +38,7 @@ report s c = do
   e <- ask
   let n = Note (Just (SourceLoc (e ^. file) s)) Nothing
   let d = Diagnostic c [n]
-  liftIO $ D.report (e ^. reporter) d
+  liftIO $ reportIO (e ^. reporter) d
 
 debug :: (forall ann. Doc ann) -> Parser ()
 debug m = do
@@ -51,7 +50,7 @@ cur = do
   st <- get
   if st ^. gas <= 0
     then error "out of gas"
-    else pure ()
+    else gas -= 1
   ts <- view tokens
   pure $ T.tokenKind $ V.unsafeIndex ts (st ^. pos)
 
@@ -72,6 +71,12 @@ curName =
   curValue >>= \case
     T.VName x -> pure x
     _ -> error "expected token to be associated with a name"
+
+curQName :: Parser QName
+curQName =
+  curValue >>= \case
+    T.VQName x -> pure x
+    _ -> error "expected token to be associated with a qualified name"
 
 curInt :: Parser Int
 curInt =
@@ -148,6 +153,7 @@ precs =
   fromList
     [ (":", Prec 10 AssocNon),
       ("->", Prec 20 AssocR),
+      ("=", Prec 30 AssocNon),
       ("+", Prec 50 AssocL),
       ("-", Prec 50 AssocL),
       ("*", Prec 60 AssocL),
@@ -170,10 +176,10 @@ arg = do
       expect T.RParen
       pure e
     T.AIdent -> do
-      x <- curName
+      x <- curQName
       advanceClose m $ Ident x
     T.Field -> do
-      x <- curName
+      x <- curQName
       advanceClose m $ Field x
     T.Int -> do
       i <- curInt
@@ -190,12 +196,19 @@ expr = arg >>= go (Prec 0 AssocNon)
     go p lhs = do
       cur >>= \case
         k | k == T.SIdent || k == T.SKeyword -> do
-          n <- curName
           s <- curSpan
-          p' <- case lookup precs n of
+          (n, x) <-
+            if k == T.SIdent
+              then do
+                qx@(QName _ x) <- curQName
+                pure (Ident qx s, x)
+              else do
+                x <- curName
+                pure (Keyword x s, x)
+          p' <- case lookup precs x of
             Just p' -> pure p'
             Nothing -> do
-              report s (Code.DefaultedPrec n)
+              report s (Code.DefaultedPrec x)
               pure $ Prec 50 AssocL
           case precLe p p' of
             Nothing -> do
@@ -205,20 +218,21 @@ expr = arg >>= go (Prec 0 AssocNon)
             Just True -> do
               advance
               rhs <- arg >>= go p'
-              pure $ Infix lhs (Ident n s) rhs
+              pure $ Infix lhs n rhs
         k | argStart k -> do
           a <- arg
           go p (App lhs a)
         _ -> pure lhs
 
 stmt :: Parser Ntn
-stmt =
+stmt = do
   cur >>= \case
     T.Decl -> do
       m <- openingPos
       x <- curName
       advance
       n <- expr
+      expect T.Nl
       pure $ Decl x n (Span m (endPos n))
     _ -> expr
 

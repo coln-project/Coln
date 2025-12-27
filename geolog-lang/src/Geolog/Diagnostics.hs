@@ -48,18 +48,18 @@ lineContents :: File -> LineNum -> T.Text
 lineContents f l = sliceWord8 (lineStart f l) (lineEnd f l) (f ^. contents)
 
 lineOf :: File -> Pos -> LineNum
-lineOf f i = go (UV.length (f ^. lineBreaks) `div` 2)
+lineOf f i =
+  seq
+    (0 <= i && i < TU.lengthWord8 (f ^. contents) || error "position out of bounds")
+    (go 0 (UV.length (f ^. lineBreaks) - 1))
   where
-    go l
-      | i < lineStart f l = go (l `div` 2)
-      | i > lineEnd f l = go (l + l `div` 2)
-      | otherwise = l
-
-linesFor :: File -> Span -> [(LineNum, Span, T.Text)]
-linesFor f (Span s e) =
-  [ (l, lineSpan f l, lineContents f l)
-  | l <- [lineOf f s .. lineOf f e]
-  ]
+    go l r
+      | l == r = l
+      | i < lineStart f m = go l m
+      | i > lineEnd f m = go m r
+      | otherwise = m
+      where
+        m = (l + r) `div` 2
 
 repeated :: Int -> Char -> Doc ann
 repeated n c
@@ -76,7 +76,7 @@ linePretty numWidth l (Span ls le) t (Span s e) =
   where
     s' = max ls s
     e' = min le e
-    nc = min 1 (e' - s')
+    nc = max 1 (e' - s')
     ln = fill numWidth $ pretty $ l + 1
     gutter = ln <+> "|"
 
@@ -133,5 +133,5 @@ makeFields ''Diagnostic
 instance Pretty Diagnostic where
   pretty d = vsep $ pretty (d ^. code) : (map pretty (d ^. notes))
 
-report :: Reporter -> Diagnostic -> IO ()
-report r d = hPutDoc (r ^. handle) (hardline <> pretty d <> hardline)
+reportIO :: Reporter -> Diagnostic -> IO ()
+reportIO r d = hPutDoc (r ^. handle) (hardline <> pretty d <> hardline)
