@@ -1,0 +1,26 @@
+# Namespacing
+
+I haven't had to think too much about namespacing in the past, mainly because I've only worked with toy languages. However, geolog is going to be a proper language, so we should get namespacing right from the start.
+
+Inspirations:
+
+- [yuujinchou](https://github.com/RedPRL/yuujinchou)
+- [Project Pterodactyl](https://www.jonmsterling.com/019E/index.xml)
+
+Here's a trial design.
+
+## Principle 1: Namespacing with `/`
+
+We are going to use `/` for namespacing, so `a/b` is an identifier which has components `a` and `b`.
+
+This is distinct from `a / b`, which would be division. Division will likely be fairly rare, so this shouldn't be too confusing.
+
+## Principle 2: Namespacing is distinct from projection
+
+When `r` is a record, `r.x = r .x` extracts the `x` field from it.
+
+Namespaces work differently; if `a` is associated to a certain value, `a/b` can be associated to any other value. Semantically speaking, `a` and `a/b` are completely distinct identifiers.
+
+However, they are identifiers which can be worked on by "meta" commands. For instance, `open a` is equivalent to `let b = a/b`.
+
+

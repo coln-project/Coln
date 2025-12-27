@@ -13,8 +13,9 @@ data Ntn
   | Infix Ntn Ntn Ntn
   | Block Name (Maybe Ntn) [Ntn] Span
   | Decl Name Ntn Span
-  | Ident Name Span
-  | Field Name Span
+  | Ident QName Span
+  | Keyword Name Span
+  | Field QName Span
   | Int Int Span
   | Error Span
 
@@ -24,6 +25,7 @@ head (Infix _ _ _) = "Infix"
 head (Block x _ _ _) = "Block" <+> pretty x
 head (Decl x _ _) = "Decl" <+> pretty x
 head (Ident x _) = "Ident" <+> pretty x
+head (Keyword x _) = "Keyword" <+> pretty x
 head (Field x _) = "Field" <+> pretty x
 head (Int i _) = "Int" <+> pretty i
 head (Error _) = "Error"
@@ -34,6 +36,7 @@ startPos (Infix x _ _) = startPos x
 startPos (Block _ _ _ s) = spanStart s
 startPos (Decl _ _ s) = spanStart s
 startPos (Ident _ s) = spanStart s
+startPos (Keyword _ s) = spanStart s
 startPos (Field _ s) = spanStart s
 startPos (Int _ s) = spanStart s
 startPos (Error s) = spanStart s
@@ -44,6 +47,7 @@ endPos (Infix _ _ y) = endPos y
 endPos (Block _ _ _ s) = spanEnd s
 endPos (Decl _ _ s) = spanEnd s
 endPos (Ident _ s) = spanEnd s
+endPos (Keyword _ s) = spanEnd s
 endPos (Field _ s) = spanEnd s
 endPos (Int _ s) = spanEnd s
 endPos (Error s) = spanEnd s
@@ -57,6 +61,7 @@ children (Infix x op y) = [x, op, y]
 children (Block _ mh xs _) = maybeToList mh ++ xs
 children (Decl _ x _) = [x]
 children (Ident _ _) = []
+children (Keyword _ _) = []
 children (Field _ _) = []
 children (Int _ _) = []
 children (Error _) = []
