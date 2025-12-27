@@ -122,8 +122,9 @@ alphaNum = do
 -- We should allow symbolic fields. E.g. .+ is a perfectly valid field.
 
 -- Note:
--- Division can use ÷; otherwise `a//` is too confusing. How often do you need
--- to divide in a database?
+-- Division can use unicode division (gah, why won't ormolu parse unicode??);
+-- otherwise `a//` is too confusing. How often do you need to divide in a
+-- database?
 
 -- Note:
 -- Do we want kebab case? It's very aesthetic, but perhaps is_type is just as
