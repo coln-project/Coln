@@ -6,6 +6,7 @@ import Prettyprinter
 
 data Code
   = UnexpectedCharacter Char
+  | UncontinuedQualifiedName
   | UnexpectedToken T.Kind T.Class
   | DefaultedPrec Name
   | IncompatiblePrecedences
@@ -23,6 +24,7 @@ instance Pretty Severity where
 severity :: Code -> Severity
 severity = \case
   UnexpectedCharacter _ -> Error
+  UncontinuedQualifiedName -> Warning
   UnexpectedToken _ _ -> Error
   DefaultedPrec _ -> Warning
   IncompatiblePrecedences -> Error
@@ -34,6 +36,7 @@ shortcode = \case
   DebugMisc _ -> "D0000"
   -- codes 100-200 are for parsing
   UnexpectedCharacter _ -> "E0100"
+  UncontinuedQualifiedName -> "W0101"
   -- codes 200-300 are for parsing
   UnexpectedToken _ _ -> "E0200"
   DefaultedPrec _ -> "W0201"
@@ -42,6 +45,7 @@ shortcode = \case
 description :: Code -> Doc ann
 description = \case
   UnexpectedCharacter c -> "Unexpected character" <+> "'" <> pretty c <> "'"
+  UncontinuedQualifiedName -> "Expected another name segment after '/'"
   UnexpectedToken k cl ->
     "Unexpected token kind" <+> pretty k <> ", expected" <+> pretty cl
   DefaultedPrec x -> "Defaulted precedence of" <+> pretty x <+> "to the same as +"

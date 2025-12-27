@@ -39,7 +39,7 @@ instance Pretty Class where
     CSpecific k -> pretty k
     CExprStart -> "a token that can start an expression"
 
-data TokenValue = VEmpty | VName Name | VInt Int
+data TokenValue = VEmpty | VName Name | VQName QName | VInt Int
   deriving (Eq, Show)
 
 data Token = Token
@@ -55,4 +55,5 @@ instance Pretty Token where
     pv = case v of
       VEmpty -> mempty
       VName x -> " " <> pretty x
+      VQName x -> " " <> pretty x
       VInt i -> " " <> pretty i
