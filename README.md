@@ -51,3 +51,9 @@ Resources:
 - https://github.com/RedPRL/cooltt
 - https://github.com/ToposInstitute/emtt
 - https://github.com/ToposInstitute/CatColab/tree/main/packages/catlog/src/tt
+
+### Datalog
+
+Resources:
+
+- [Paris Koutris' lecture notes](https://pages.cs.wisc.edu/~paris/lecture-notes/)
