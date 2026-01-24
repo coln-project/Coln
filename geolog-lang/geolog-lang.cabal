@@ -48,6 +48,8 @@ library
         microlens-platform,
         mtl,
         prettyprinter,
+        singletons,
+        singletons-th,
         symbolize,
         text >=2.1.1,
         vector,

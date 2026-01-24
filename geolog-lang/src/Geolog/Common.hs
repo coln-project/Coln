@@ -20,6 +20,9 @@ import System.IO.Unsafe (unsafePerformIO)
 impossible :: a
 impossible = error "impossible"
 
+unimplemented :: a
+unimplemented = error "unimplemented"
+
 newtype Name = Name Symbol
   deriving (Eq, Hashable) via Symbol
 
@@ -71,6 +74,13 @@ instance Reverse (Bwd a) (Fwd a) where
     where
       go xs' BwdNil = xs'
       go xs' (xs :> x) = go (x :< xs') xs
+
+instance Semigroup (Bwd a) where
+  xs <> BwdNil = xs
+  xs <> (ys :> y) = (xs <> ys) :> y
+
+instance Monoid (Bwd a) where
+  mempty = BwdNil
 
 data Fwd a = FwdNil | a :< Fwd a
 
