@@ -1,11 +1,11 @@
 module Geolog.Evaluation where
 
 import Data.Singletons
-
 import Geolog.Common
 import Geolog.Core
 
 type EnvArg = (?env :: Env)
+
 type CtxLenArg = (?ctxLen :: Int)
 
 fresh :: (CtxLenArg) => FId

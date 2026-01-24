@@ -1,8 +1,7 @@
 module Geolog.Core where
 
-import Data.Singletons.TH
-
 import Data.Kind (Type)
+import Data.Singletons.TH
 import Geolog.Common
 
 data Abs f l = Abs QName (f l)
