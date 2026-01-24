@@ -1,18 +1,17 @@
 module Geolog.Core where
 
-import Data.Singletons.TH
-
-import Geolog.Common
 import Data.Kind (Type)
+import Data.Singletons.TH
+import Geolog.Common
 
 data Abs f l = Abs QName (f l)
 
-$(singletons [d| data Level = Sort | Th | Set | Prim |])
+$(singletons [d|data Level = Sort | Th | Set | Prim|])
 
 data Any :: (Level -> Type) -> Type where
   Any :: Sing l -> f l -> Any f
 
-extract :: forall l f. SingI l => Any f -> f l
+extract :: forall l f. (SingI l) => Any f -> f l
 extract (Any s a) = case (s, sing :: Sing l) of
   (SSort, SSort) -> a
   (STh, STh) -> a
@@ -26,7 +25,7 @@ data LevelInclusion :: Level -> Level -> Type where
   ThInSet :: LevelInclusion Th Set
   PrimInSet :: LevelInclusion Prim Set
 
-withDom :: LevelInclusion l l' -> (SingI l => a) -> a
+withDom :: LevelInclusion l l' -> ((SingI l) => a) -> a
 withDom SortInTh x = x
 withDom SortInSet x = x
 withDom ThInSet x = x

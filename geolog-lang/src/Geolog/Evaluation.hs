@@ -1,25 +1,25 @@
 module Geolog.Evaluation where
 
 import Data.Singletons
-
 import Geolog.Common
 import Geolog.Core
 
 type EnvArg = (?env :: Env)
+
 type CtxLenArg = (?ctxLen :: Int)
 
-fresh :: CtxLenArg => FId
+fresh :: (CtxLenArg) => FId
 fresh = FId ?ctxLen
 
-bind :: CtxLenArg => Sing (l :: Level) -> (CtxLenArg => Any ElV -> a) -> a
+bind :: (CtxLenArg) => Sing (l :: Level) -> ((CtxLenArg) => Any ElV -> a) -> a
 bind s f =
-  let v = Any s (VNeu fresh SId) in
-    let ?ctxLen = ?ctxLen + 1 in f v
+  let v = Any s (VNeu fresh SId)
+   in let ?ctxLen = ?ctxLen + 1 in f v
 
 class Eval a b | a -> b where
-  eval :: EnvArg => SingI l => a l -> b l
+  eval :: (EnvArg) => (SingI l) => a l -> b l
 
-evalIn :: Eval a b => SingI l => Env -> a l -> b l
+evalIn :: (Eval a b) => (SingI l) => Env -> a l -> b l
 evalIn env t = let ?env = env in eval t
 
 thApp :: ElV Th -> ElV Sort -> ElV Th
@@ -28,7 +28,7 @@ thApp = undefined
 setApp :: ElV Set -> ElV Set -> ElV Set
 setApp = undefined
 
-proj :: SingI l => ElV l -> QName -> ElV l
+proj :: (SingI l) => ElV l -> QName -> ElV l
 proj = undefined
 
 instance Eval (Fields ElS) (Fields ElV) where
@@ -70,18 +70,18 @@ instance Eval TyS TyV where
     LiftTy a li -> VLiftTy (withDom li $ eval a) li
 
 class Quote a b | a -> b where
-  quote :: CtxLenArg => SingI l => a l -> b l
+  quote :: (CtxLenArg) => (SingI l) => a l -> b l
 
 type Const a l = a
 
-quoteSp :: CtxLenArg => SingI l => Sp l -> ElS l -> ElS l
+quoteSp :: (CtxLenArg) => (SingI l) => Sp l -> ElS l -> ElS l
 quoteSp sp t = case sp of
   SId -> t
   SThApp sp' v -> ThApp (quoteSp sp' t) (quote v)
   SSetApp sp' v -> SetApp (quoteSp sp' t) (quote v)
   SProj sp' x -> Proj (quoteSp sp' t) x
 
-quoteId :: CtxLenArg => FId -> BId
+quoteId :: (CtxLenArg) => FId -> BId
 quoteId (FId i) = BId (?ctxLen - i - 1)
 
 instance Quote ElV ElS where
@@ -106,10 +106,12 @@ instance Quote TyV TyS where
       Abs x $ quote $ evalIn (env :> v) b
     VSetPi a (Clo env x b) -> SetPi (quote a) $ bind SSet $ \v ->
       Abs x $ quote $ evalIn (env :> v) b
-    VRecord env (Fields fs) -> Record $ Fields $ go fs env where
-      go :: forall l. CtxLenArg => SingI l => [(QName, TyS l)] -> Env -> [(QName, TyS l)]
-      go [] _ = []
-      go ((x,a):rest) e = (x, a') : rest' where
-        a' = quote $ evalIn e a
-        rest' = bind @l sing $ \v -> go rest (e :> v)
+    VRecord env (Fields fs) -> Record $ Fields $ go fs env
+      where
+        go :: forall l. (CtxLenArg) => (SingI l) => [(QName, TyS l)] -> Env -> [(QName, TyS l)]
+        go [] _ = []
+        go ((x, a) : rest) e = (x, a') : rest'
+          where
+            a' = quote $ evalIn e a
+            rest' = bind @l sing $ \v -> go rest (e :> v)
     VLiftTy a li -> LiftTy (withDom li $ quote a) li
