@@ -1,8 +1,11 @@
 module Geolog.Diagnostics.Code where
 
-import Geolog.Common
-import Geolog.Token qualified as T
+import Data.Text (Text)
 import Prettyprinter
+
+import Geolog.Common
+import Geolog.Core
+import Geolog.Token qualified as T
 
 data Code
   = UnexpectedCharacter Char
@@ -11,6 +14,7 @@ data Code
   | DefaultedPrec Name
   | IncompatiblePrecedences
   | DebugMisc (forall ann. Doc ann)
+  | WrongLevel Text Level
 
 data Severity = Debug | Info | Warning | Error
 
@@ -29,18 +33,21 @@ severity = \case
   DefaultedPrec _ -> Warning
   IncompatiblePrecedences -> Error
   DebugMisc _ -> Debug
+  WrongLevel _ _ -> Error
 
 shortcode :: Code -> Doc ann
 shortcode = \case
-  -- codes 0-100 are special
+  -- codes 0-99 are special
   DebugMisc _ -> "D0000"
-  -- codes 100-200 are for parsing
+  -- codes 100-199 are for parsing
   UnexpectedCharacter _ -> "E0100"
   UncontinuedQualifiedName -> "W0101"
-  -- codes 200-300 are for parsing
+  -- codes 200-299 are for parsing
   UnexpectedToken _ _ -> "E0200"
   DefaultedPrec _ -> "W0201"
   IncompatiblePrecedences -> "E0202"
+  -- codes 300-399 are for elaboration
+  WrongLevel _ _ -> "E0300"
 
 description :: Code -> Doc ann
 description = \case
@@ -51,6 +58,7 @@ description = \case
   DefaultedPrec x -> "Defaulted precedence of" <+> pretty x <+> "to the same as +"
   IncompatiblePrecedences -> "Incompatible precedences"
   DebugMisc m -> m
+  WrongLevel t l -> pretty t <+> "not supported at level" <+> pretty l
 
 instance Pretty Code where
   pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> description c
