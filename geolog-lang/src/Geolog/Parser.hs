@@ -172,19 +172,20 @@ argStart :: T.Kind -> Bool
 argStart k = V.elem k argStarts
 
 tupleElems :: Parser [Ntn]
-tupleElems = cur >>= \case
-  T.RBrack -> pure []
-  k | argStart k -> do
-    n <- expr
-    cur >>= \case
-      T.RBrack -> pure [n]
-      T.Comma -> advance >> (n:) <$> tupleElems
-      k' -> do
-        reportUnexpected k' T.CTupleMark
-        pure [n]
-  k -> do
-    reportUnexpected k T.CExprStart
-    pure []
+tupleElems =
+  cur >>= \case
+    T.RBrack -> pure []
+    k | argStart k -> do
+      n <- expr
+      cur >>= \case
+        T.RBrack -> pure [n]
+        T.Comma -> advance >> (n :) <$> tupleElems
+        k' -> do
+          reportUnexpected k' T.CTupleMark
+          pure [n]
+    k -> do
+      reportUnexpected k T.CExprStart
+      pure []
 
 arg :: Parser Ntn
 arg = do
