@@ -1,11 +1,10 @@
 module Geolog.Diagnostics.Code where
 
 import Data.Text (Text)
-import Prettyprinter
-
 import Geolog.Common
 import Geolog.Core
 import Geolog.Token qualified as T
+import Prettyprinter
 
 data Code
   = UnexpectedCharacter Char

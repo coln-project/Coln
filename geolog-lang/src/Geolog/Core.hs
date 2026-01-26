@@ -42,9 +42,8 @@ module Geolog.Core where
 
 import Data.Kind (Type)
 import Data.Singletons.TH
-import Prettyprinter
-
 import Geolog.Common
+import Prettyprinter
 
 data Abs f l = Abs QName (f l)
 

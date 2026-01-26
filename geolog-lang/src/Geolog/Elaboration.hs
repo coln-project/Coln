@@ -17,8 +17,6 @@ module Geolog.Elaboration where
 
 import Control.Exception
 import Data.Singletons
-import Lens.Micro.Platform
-
 import Geolog.Common
 import Geolog.Core
 import Geolog.Diagnostics
@@ -27,6 +25,7 @@ import Geolog.Evaluation hiding (bind)
 import Geolog.Notation (Ntn)
 import Geolog.Notation qualified as N
 import Geolog.Pretty hiding (bind)
+import Lens.Micro.Platform
 
 type Ctx = Bwd (QName, Any TyV)
 
@@ -46,6 +45,7 @@ type Elab a = (DiagCtxArg, CtxArg, CtxLenArg, EnvArg) => a
 data Glued s v (l :: Level) = G (s l) ~(v l)
 
 type ElG = Glued ElS ElV
+
 type TyG = Glued TyS TyV
 
 gLiftTy :: LevelInclusion l l' -> TyG l -> TyG l'
@@ -64,16 +64,12 @@ annot n = ("_", n)
 
 bind :: forall l a. (SingI l) => Elab (QName -> TyV l -> (Elab a) -> a)
 bind x va f =
-  let
-    s = sing @l
-    vx = VNeu (FId ?ctxLen) SId
-   in
-    let
-      ?env = ?env :> (Any s vx)
-      ?ctx = ?ctx :> (x, Any s va)
-      ?ctxLen = ?ctxLen + 1
-     in
-      f
+  let s = sing @l
+      vx = VNeu (FId ?ctxLen) SId
+   in let ?env = ?env :> (Any s vx)
+          ?ctx = ?ctx :> (x, Any s va)
+          ?ctxLen = ?ctxLen + 1
+       in f
 
 report :: (DiagCtxArg) => Span -> C.Code -> IO a
 report s c = do
