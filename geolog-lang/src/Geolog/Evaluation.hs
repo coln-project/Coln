@@ -37,8 +37,8 @@ instance Eval (Fields ElS) (Fields ElV) where
 instance Eval ElS ElV where
   eval = \case
     Var i -> extract $ elemAt ?env i
-    QueryCode ty -> VQueryCode $ eval ty
-    TheoryCode ty -> VTheoryCode $ eval ty
+    QueryCode ty -> vQueryCode $ eval ty
+    TheoryCode ty -> vTheoryCode $ eval ty
     TheoryApp f t -> theoryApp (eval f) (eval t)
     MetaApp f t -> metaApp (eval f) (eval t)
     TheoryLam body -> VTheoryLam $ eval body
@@ -47,13 +47,37 @@ instance Eval ElS ElV where
     Cons fields -> VCons $ eval fields
     LiftEl t li -> VLiftEl (withDom li $ eval t) li
 
-queryEl :: ElV Theory -> TyV Query
-queryEl (VQueryCode ty) = ty
-queryEl v = VQueryEl v
+queryCode :: TyS Query -> ElS Theory
+queryCode (QueryEl t) = t
+queryCode ty = QueryCode ty
 
-theoryEl :: ElV Meta -> TyV Theory
-theoryEl (VTheoryCode ty) = ty
-theoryEl v = VTheoryEl v
+queryEl :: ElS Theory -> TyS Query
+queryEl (QueryCode ty) = ty
+queryEl t = QueryEl t
+
+theoryCode :: TyS Theory -> ElS Meta
+theoryCode (TheoryEl t) = t
+theoryCode ty = TheoryCode ty
+
+theoryEl :: ElS Meta -> TyS Theory
+theoryEl (TheoryCode ty) = ty
+theoryEl t = TheoryEl t
+
+vQueryCode :: TyV Query -> ElV Theory
+vQueryCode (VQueryEl t) = t
+vQueryCode ty = VQueryCode ty
+
+vQueryEl :: ElV Theory -> TyV Query
+vQueryEl (VQueryCode ty) = ty
+vQueryEl t = VQueryEl t
+
+vTheoryCode :: TyV Theory -> ElV Meta
+vTheoryCode (VTheoryEl t) = t
+vTheoryCode ty = VTheoryCode ty
+
+vTheoryEl :: ElV Meta -> TyV Theory
+vTheoryEl (VTheoryCode ty) = ty
+vTheoryEl t = VTheoryEl t
 
 instance Eval (Abs f) (Clo f) where
   eval (Abs x a) = Clo ?env x a
@@ -61,9 +85,9 @@ instance Eval (Abs f) (Clo f) where
 instance Eval TyS TyV where
   eval = \case
     QueryU -> VQueryU
-    QueryEl t -> queryEl (eval t)
+    QueryEl t -> vQueryEl (eval t)
     TheoryU -> VTheoryU
-    TheoryEl t -> theoryEl (eval t)
+    TheoryEl t -> vTheoryEl (eval t)
     TheoryPi a b -> VTheoryPi (eval a) (eval b)
     MetaPi a b -> VMetaPi (eval a) (eval b)
     Record fields -> VRecord ?env fields

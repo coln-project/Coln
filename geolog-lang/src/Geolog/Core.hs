@@ -59,13 +59,16 @@ instance Pretty Level where
 data Any :: (Level -> Type) -> Type where
   Any :: Sing l -> f l -> Any f
 
-extract :: forall l f. (SingI l) => Any f -> f l
-extract (Any s a) = case (s, sing :: Sing l) of
+extractAt :: Sing l -> Any f -> f l
+extractAt s (Any s' a) = case (s, s') of
   (SQuery, SQuery) -> a
   (STheory, STheory) -> a
   (SMeta, SMeta) -> a
   (SPrim, SPrim) -> a
   _ -> error "tried to extract at a non-matching level"
+
+extract :: forall l f. (SingI l) => Any f -> f l
+extract a = extractAt (sing :: Sing l) a
 
 data LevelInclusion :: Level -> Level -> Type where
   QueryInTheory :: LevelInclusion Query Theory

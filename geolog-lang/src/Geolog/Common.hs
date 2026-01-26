@@ -65,7 +65,7 @@ infixr 5 :<
 data Bwd a = BwdNil | Bwd a :> a
 
 newtype BId = BId Int
-  deriving (Eq)
+  deriving (Eq, Num)
 
 instance ElemAt (Bwd a) BId a where
   elemAt BwdNil _ = impossible

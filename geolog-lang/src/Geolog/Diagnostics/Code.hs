@@ -14,6 +14,10 @@ data Code
   | IncompatiblePrecedences
   | DebugMisc (forall ann. Doc ann)
   | WrongLevel Text Level
+  | MustChk Text
+  | NotInScope QName
+  | CannotApplyNonPi
+  | TupleFoundAtUnexpectedType (forall ann. Doc ann)
 
 data Severity = Debug | Info | Warning | Error
 
@@ -33,6 +37,10 @@ severity = \case
   IncompatiblePrecedences -> Error
   DebugMisc _ -> Debug
   WrongLevel _ _ -> Error
+  MustChk _ -> Error
+  NotInScope _ -> Error
+  CannotApplyNonPi -> Error
+  TupleFoundAtUnexpectedType _ -> Error
 
 shortcode :: Code -> Doc ann
 shortcode = \case
@@ -47,6 +55,10 @@ shortcode = \case
   IncompatiblePrecedences -> "E0202"
   -- codes 300-399 are for elaboration
   WrongLevel _ _ -> "E0300"
+  MustChk _ -> "E0301"
+  NotInScope _ -> "E0302"
+  CannotApplyNonPi -> "E0303"
+  TupleFoundAtUnexpectedType _ -> "E0304"
 
 description :: Code -> Doc ann
 description = \case
@@ -58,6 +70,11 @@ description = \case
   IncompatiblePrecedences -> "Incompatible precedences"
   DebugMisc m -> m
   WrongLevel t l -> pretty t <+> "not supported at level" <+> pretty l
+  MustChk t -> pretty t <+> "only supported in checking position"
+  NotInScope x -> pretty x <+> "is not in scope"
+  CannotApplyNonPi -> "cannot apply member of a non-pi type"
+  TupleFoundAtUnexpectedType a ->
+    "unexpected tuple syntax found while checking at type" <+> a
 
 instance Pretty Code where
   pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> description c
