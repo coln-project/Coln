@@ -41,11 +41,20 @@ module Geolog.Core where
 
 import Data.Kind (Type)
 import Data.Singletons.TH
+import Prettyprinter
+
 import Geolog.Common
 
 data Abs f l = Abs QName (f l)
 
-$(singletons [d|data Level = Query | Theory | Meta | Prim|])
+$(singletons [d| data Level = Query | Theory | Meta | Prim |])
+
+instance Pretty Level where
+  pretty = \case
+    Query -> "Query"
+    Theory -> "Theory"
+    Meta -> "Meta"
+    Prim -> "Prim"
 
 data Any :: (Level -> Type) -> Type where
   Any :: Sing l -> f l -> Any f
