@@ -22,11 +22,11 @@ class Eval a b | a -> b where
 evalIn :: (Eval a b) => (SingI l) => Env -> a l -> b l
 evalIn env t = let ?env = env in eval t
 
-thApp :: ElV Th -> ElV Sort -> ElV Th
-thApp = undefined
+theoryApp :: ElV Theory -> ElV Query -> ElV Theory
+theoryApp = undefined
 
-setApp :: ElV Set -> ElV Set -> ElV Set
-setApp = undefined
+metaApp :: ElV Meta -> ElV Meta -> ElV Meta
+metaApp = undefined
 
 proj :: (SingI l) => ElV l -> QName -> ElV l
 proj = undefined
@@ -37,35 +37,35 @@ instance Eval (Fields ElS) (Fields ElV) where
 instance Eval ElS ElV where
   eval = \case
     Var i -> extract $ elemAt ?env i
-    SortCode ty -> VSortCode $ eval ty
-    ThCode ty -> VThCode $ eval ty
-    ThApp f t -> thApp (eval f) (eval t)
-    SetApp f t -> setApp (eval f) (eval t)
-    ThLam body -> VThLam $ eval body
-    SetLam body -> VSetLam $ eval body
+    QueryCode ty -> VQueryCode $ eval ty
+    TheoryCode ty -> VTheoryCode $ eval ty
+    TheoryApp f t -> theoryApp (eval f) (eval t)
+    MetaApp f t -> metaApp (eval f) (eval t)
+    TheoryLam body -> VTheoryLam $ eval body
+    MetaLam body -> VMetaLam $ eval body
     Proj t x -> proj (eval t) x
     Cons fields -> VCons $ eval fields
     LiftEl t li -> VLiftEl (withDom li $ eval t) li
 
-sortEl :: ElV Th -> TyV Sort
-sortEl (VSortCode ty) = ty
-sortEl v = VSortEl v
+queryEl :: ElV Theory -> TyV Query
+queryEl (VQueryCode ty) = ty
+queryEl v = VQueryEl v
 
-thEl :: ElV Set -> TyV Th
-thEl (VThCode ty) = ty
-thEl v = VThEl v
+theoryEl :: ElV Meta -> TyV Theory
+theoryEl (VTheoryCode ty) = ty
+theoryEl v = VTheoryEl v
 
 instance Eval (Abs f) (Clo f) where
   eval (Abs x a) = Clo ?env x a
 
 instance Eval TyS TyV where
   eval = \case
-    SortU -> VSortU
-    SortEl t -> sortEl (eval t)
-    ThU -> VThU
-    ThEl t -> thEl (eval t)
-    ThPi a b -> VThPi (eval a) (eval b)
-    SetPi a b -> VSetPi (eval a) (eval b)
+    QueryU -> VQueryU
+    QueryEl t -> queryEl (eval t)
+    TheoryU -> VTheoryU
+    TheoryEl t -> theoryEl (eval t)
+    TheoryPi a b -> VTheoryPi (eval a) (eval b)
+    MetaPi a b -> VMetaPi (eval a) (eval b)
     Record fields -> VRecord ?env fields
     LiftTy a li -> VLiftTy (withDom li $ eval a) li
 
@@ -77,8 +77,8 @@ type Const a l = a
 quoteSp :: (CtxLenArg) => (SingI l) => Sp l -> ElS l -> ElS l
 quoteSp sp t = case sp of
   SId -> t
-  SThApp sp' v -> ThApp (quoteSp sp' t) (quote v)
-  SSetApp sp' v -> SetApp (quoteSp sp' t) (quote v)
+  STheoryApp sp' v -> TheoryApp (quoteSp sp' t) (quote v)
+  SMetaApp sp' v -> MetaApp (quoteSp sp' t) (quote v)
   SProj sp' x -> Proj (quoteSp sp' t) x
 
 quoteId :: (CtxLenArg) => FId -> BId
@@ -87,24 +87,24 @@ quoteId (FId i) = BId (?ctxLen - i - 1)
 instance Quote ElV ElS where
   quote = \case
     VNeu i sp -> quoteSp sp $ Var $ quoteId i
-    VSortCode a -> SortCode (quote a)
-    VThCode a -> ThCode (quote a)
+    VQueryCode a -> QueryCode (quote a)
+    VTheoryCode a -> TheoryCode (quote a)
     VLiftEl t li -> LiftEl (withDom li $ quote t) li
-    VThLam (Clo env x a) -> bind SSort $ \v ->
-      ThLam $ Abs x $ quote $ evalIn (env :> v) a
-    VSetLam (Clo env x a) -> bind SSet $ \v ->
-      SetLam $ Abs x $ quote $ evalIn (env :> v) a
+    VTheoryLam (Clo env x a) -> bind SQuery $ \v ->
+      TheoryLam $ Abs x $ quote $ evalIn (env :> v) a
+    VMetaLam (Clo env x a) -> bind SMeta $ \v ->
+      MetaLam $ Abs x $ quote $ evalIn (env :> v) a
     VCons (Fields fs) -> Cons $ Fields [(x, quote v) | (x, v) <- fs]
 
 instance Quote TyV TyS where
   quote = \case
-    VSortU -> SortU
-    VSortEl e -> SortEl (quote e)
-    VThU -> ThU
-    VThEl e -> ThEl (quote e)
-    VThPi a (Clo env x b) -> ThPi (quote a) $ bind SSort $ \v ->
+    VQueryU -> QueryU
+    VQueryEl e -> QueryEl (quote e)
+    VTheoryU -> TheoryU
+    VTheoryEl e -> TheoryEl (quote e)
+    VTheoryPi a (Clo env x b) -> TheoryPi (quote a) $ bind SQuery $ \v ->
       Abs x $ quote $ evalIn (env :> v) b
-    VSetPi a (Clo env x b) -> SetPi (quote a) $ bind SSet $ \v ->
+    VMetaPi a (Clo env x b) -> MetaPi (quote a) $ bind SMeta $ \v ->
       Abs x $ quote $ evalIn (env :> v) b
     VRecord env (Fields fs) -> Record $ Fields $ go fs env
       where

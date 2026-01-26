@@ -21,6 +21,7 @@ library
         Geolog.Lexer
         Geolog.Notation
         Geolog.Parser
+        Geolog.Pretty
         Geolog.Token
         Geolog.Unification
 
