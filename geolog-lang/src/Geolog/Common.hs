@@ -41,6 +41,9 @@ data QName = QName [Name] Name
 instance Pretty QName where
   pretty (QName q x) = mconcat [pretty y <> "/" | y <- q] <> pretty x
 
+instance IsString QName where
+  fromString s = QName [] (fromString s)
+
 type Pos = Int
 
 data Span = Span
