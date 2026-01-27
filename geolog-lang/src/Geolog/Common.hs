@@ -63,6 +63,7 @@ infixl 5 :>
 infixr 5 :<
 
 data Bwd a = BwdNil | Bwd a :> a
+  deriving (Functor)
 
 newtype BId = BId Int
   deriving (Eq, Num)

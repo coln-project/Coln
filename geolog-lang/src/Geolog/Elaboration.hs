@@ -26,6 +26,7 @@ import Geolog.Notation qualified as N
 import Geolog.Pretty hiding (bind)
 import Lens.Micro.Platform
 import Prelude hiding (lookup)
+import Prettyprinter (Doc)
 
 newtype Ctx = Ctx { ctxElts :: Bwd (QName, Any TyV) }
 
@@ -83,13 +84,6 @@ report s c = do
   let d = Diagnostic c [n]
   reportIO (?diagCtx ^. reporter) d
   throw GiveUp
-
-members :: Elab (Sing l -> [Ntn] -> IO [(QName, TyS l)])
-members _ [] = pure []
-members s (n:ns) = do
-  let (x, n') = annot n
-  G sa va <- typ s n'
-  ((x, sa):) <$> bind s x va (members s ns)
 
 -- | How do we avoid getting trapped in an infinite loop with Code/El?
 --
@@ -175,13 +169,30 @@ syn n = case n of
   N.Tuple _ _ -> report (N.span n) (C.MustChk "tuple syntax")
   _ -> unimplemented
 
+members :: Elab (Sing l -> [Ntn] -> IO [(QName, TyS l)])
+members _ [] = pure []
+members s (n:ns) = do
+  let (x, n') = annot n
+  G sa va <- typ s n'
+  ((x, sa):) <$> bind s x va (members s ns)
+
+withNames :: Elab ((NamesArg => a) -> a)
+withNames f = let ?names = fmap fst (ctxElts ?ctx) in f
+
+pp :: (Prt a) => Elab (a -> Doc ann)
+pp x = withNames $ prtPrec precTop x
+
 chk :: Elab (Sing l -> TyV l -> Ntn -> IO (ElG l))
 chk s va n = case n of
   N.Tuple ns _ -> case va of
-    VQueryU -> unimplemented
-    VTheoryU -> unimplemented
+    VQueryU -> do
+      fs <- Fields <$> members SQuery ns
+      pure $ G (QueryCode (Record fs)) (VQueryCode (VRecord ?env fs))
+    VTheoryU -> do
+      fs <- Fields <$> members STheory ns
+      pure $ G (TheoryCode (Record fs)) (VTheoryCode (VRecord ?env fs))
     VRecord env fields -> unimplemented
-    _ -> report (N.span n) (C.TupleFoundAtUnexpectedType (prtPrec precTop $ quote va))
+    _ -> report (N.span n) (C.TupleFoundAtUnexpectedType (pp $ quoteAt s va))
   _ -> unimplemented
 
 -- typ :: Elab (Sing l -> Ntn -> IO (TyG l))
