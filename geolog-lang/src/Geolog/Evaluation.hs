@@ -108,6 +108,9 @@ quoteSp sp t = case sp of
 quoteId :: (CtxLenArg) => FId -> BId
 quoteId (FId i) = BId (?ctxLen - i - 1)
 
+quoteAt :: (Quote a b) => (CtxLenArg) => Sing l -> a l -> b l
+quoteAt s x = withSingI s (quote x)
+
 instance Quote ElV ElS where
   quote = \case
     VNeu i sp -> quoteSp sp $ Var $ quoteId i
