@@ -142,3 +142,25 @@ instance Quote TyV TyS where
             a' = quote $ evalIn e a
             rest' = bind @l sing $ \v -> go rest (e :> v)
     VLiftTy a li -> LiftTy (withDom li $ quote a) li
+
+demoteEl :: Sing l -> ElV l -> Any ElV
+demoteEl _ (VLiftEl v li) = demoteEl (liDom li) v
+demoteEl _ (VQueryCode ty) = case demoteTy SQuery ty of
+  Any SQuery ty' -> Any STheory (vQueryCode ty')
+  _ -> impossible
+demoteEl _ (VTheoryCode ty) = case demoteTy STheory ty of
+  Any SQuery ty' -> Any STheory (vQueryCode ty')
+  Any STheory ty' -> Any SMeta (vTheoryCode ty')
+  _ -> impossible
+demoteEl s v = Any s v
+
+demoteTy :: Sing l -> TyV l -> Any TyV
+demoteTy _ (VLiftTy ty li) = demoteTy (liDom li) ty
+demoteTy _ (VQueryEl v) = case demoteEl STheory v of
+  Any STheory v' -> Any SQuery (vQueryEl v')
+  _ -> impossible
+demoteTy _ (VTheoryEl v) = case demoteEl SMeta v of
+  Any STheory v' -> Any SQuery (vQueryEl v')
+  Any SMeta v' -> Any STheory (vTheoryEl v')
+  _ -> impossible
+demoteTy s v = Any s v

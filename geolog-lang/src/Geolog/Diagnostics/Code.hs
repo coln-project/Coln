@@ -18,6 +18,11 @@ data Code
   | NotInScope QName
   | CannotApplyNonPi
   | TupleFoundAtUnexpectedType (forall ann. Doc ann)
+  | ExpectedField QName QName
+  | UnexpectedNotation Text
+  | WrongNumberOfFields Int Int
+  | OutOfUniverse Level Level
+  | SynthesizedNonUniverse
 
 data Severity = Debug | Info | Warning | Error
 
@@ -41,6 +46,11 @@ severity = \case
   NotInScope _ -> Error
   CannotApplyNonPi -> Error
   TupleFoundAtUnexpectedType _ -> Error
+  ExpectedField _ _ -> Error
+  UnexpectedNotation _ -> Error
+  WrongNumberOfFields _ _ -> Error
+  OutOfUniverse _ _ -> Error
+  SynthesizedNonUniverse -> Error
 
 shortcode :: Code -> Doc ann
 shortcode = \case
@@ -59,6 +69,11 @@ shortcode = \case
   NotInScope _ -> "E0302"
   CannotApplyNonPi -> "E0303"
   TupleFoundAtUnexpectedType _ -> "E0304"
+  ExpectedField _ _ -> "E0305"
+  UnexpectedNotation _ -> "E0306"
+  WrongNumberOfFields _ _ -> "E0307"
+  OutOfUniverse _ _ -> "E0308"
+  SynthesizedNonUniverse -> "E0309"
 
 description :: Code -> Doc ann
 description = \case
@@ -75,6 +90,11 @@ description = \case
   CannotApplyNonPi -> "cannot apply member of a non-pi type"
   TupleFoundAtUnexpectedType a ->
     "unexpected tuple syntax found while checking at type" <+> a
+  ExpectedField x x' -> "expected field" <+> pretty x <> ", got field" <+> pretty x'
+  UnexpectedNotation s -> "unexpected notation for" <+> pretty s
+  WrongNumberOfFields n m -> "wrong number of fields for record, expected:" <+> pretty n <> ", got" <+> pretty m
+  OutOfUniverse l l' -> "cannot decode an element of universe level" <+> pretty l <+> "to a level" <+> pretty l' <+> "type"
+  SynthesizedNonUniverse -> "synthesized a type that was a non-universe"
 
 instance Pretty Code where
   pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> description c

@@ -58,6 +58,9 @@ instance Pretty Level where
 data Any :: (Level -> Type) -> Type where
   Any :: Sing l -> f l -> Any f
 
+levelOf :: Any f -> Level
+levelOf (Any s _) = fromSing s
+
 extractAt :: Sing l -> Any f -> f l
 extractAt s (Any s' a) = case (s, s') of
   (SQuery, SQuery) -> a
@@ -74,6 +77,12 @@ data LevelInclusion :: Level -> Level -> Type where
   QueryInMeta :: LevelInclusion Query Meta
   TheoryInMeta :: LevelInclusion Theory Meta
   PrimInMeta :: LevelInclusion Prim Meta
+
+liDom :: LevelInclusion l l' -> Sing l
+liDom QueryInTheory = SQuery
+liDom QueryInMeta = SQuery
+liDom TheoryInMeta = STheory
+liDom PrimInMeta = SPrim
 
 withDom :: LevelInclusion l l' -> ((SingI l) => a) -> a
 withDom QueryInTheory x = x
@@ -133,3 +142,4 @@ data TyV :: Level -> Type where
   VMetaPi :: TyV Meta -> Clo TyS Meta -> TyV Meta
   VRecord :: Env -> Fields TyS l -> TyV l
   VLiftTy :: TyV l -> LevelInclusion l l' -> TyV l'
+

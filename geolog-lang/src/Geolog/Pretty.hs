@@ -84,5 +84,5 @@ instance Prt (TyS l) where
            in bind x $ go rest (d : ds)
     LiftTy a _ -> prt a
 
-prtTop :: (Prt a) => a -> Doc ann
-prtTop x = let ?prec = precTop in let ?names = BwdNil in prt x
+prtTop :: (NamesArg, Prt a) => a -> Doc ann
+prtTop x = let ?prec = precTop in prt x
