@@ -142,4 +142,3 @@ data TyV :: Level -> Type where
   VMetaPi :: TyV Meta -> Clo TyS Meta -> TyV Meta
   VRecord :: Env -> Fields TyS l -> TyV l
   VLiftTy :: TyV l -> LevelInclusion l l' -> TyV l'
-

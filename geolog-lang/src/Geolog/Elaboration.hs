@@ -27,7 +27,7 @@ import Geolog.Notation (Ntn)
 import Geolog.Notation qualified as N
 import Geolog.Pretty hiding (bind)
 import Lens.Micro.Platform
-import Prettyprinter 
+import Prettyprinter
 import Prelude hiding (lookup)
 
 newtype Ctx = Ctx {ctxElts :: Bwd (QName, Any TyV)}
@@ -189,14 +189,14 @@ typ s n = case n of
   _ -> do
     Any _ (Syn g a) <- syn n
     case (s, a) of
-      (SQuery,  VQueryU)  -> pure $ gQueryEl g
-      (STheory, VQueryU)  -> pure $ gLiftTy QueryInTheory $ gQueryEl g
-      (SMeta,   VQueryU)  -> pure $ gLiftTy QueryInMeta $ gQueryEl g
-      (_,       VQueryU)  ->
+      (SQuery, VQueryU) -> pure $ gQueryEl g
+      (STheory, VQueryU) -> pure $ gLiftTy QueryInTheory $ gQueryEl g
+      (SMeta, VQueryU) -> pure $ gLiftTy QueryInMeta $ gQueryEl g
+      (_, VQueryU) ->
         report (N.span n) $ C.OutOfUniverse Query (fromSing s)
       (STheory, VTheoryU) -> pure $ gTheoryEl g
-      (SMeta,   VTheoryU) -> pure $ gLiftTy TheoryInMeta $ gTheoryEl g
-      (_,       VTheoryU) ->
+      (SMeta, VTheoryU) -> pure $ gLiftTy TheoryInMeta $ gTheoryEl g
+      (_, VTheoryU) ->
         report (N.span n) $ C.OutOfUniverse Theory (fromSing s)
       _ -> report (N.span n) C.SynthesizedNonUniverse
 
@@ -285,39 +285,42 @@ instance Monad ConvM where
 
 type ConvCtx = (NamesArg, CtxLenArg)
 
-convFail :: ConvCtx => Any TyV -> Any TyV -> Doc Ann -> ConvM a
-convFail (Any sa a) (Any sb b) d = Failure
-  (NotConvertableTy
-   (prtTop $ withSingI sa $ quote a)
-   (prtTop $ withSingI sb $ quote b))
-  d
+convFail :: (ConvCtx) => Any TyV -> Any TyV -> Doc Ann -> ConvM a
+convFail (Any sa a) (Any sb b) d =
+  Failure
+    ( NotConvertableTy
+        (prtTop $ withSingI sa $ quote a)
+        (prtTop $ withSingI sb $ quote b)
+    )
+    d
 
-isConvAt :: ConvCtx => TyV l -> ElV l -> ElV l -> ConvM ()
+isConvAt :: (ConvCtx) => TyV l -> ElV l -> ElV l -> ConvM ()
 isConvAt a v v' = case (v, v') of
   _ -> unimplemented
 
-withFresh :: ConvCtx => QName -> (ConvCtx => ElV l -> a) -> a
+withFresh :: (ConvCtx) => QName -> ((ConvCtx) => ElV l -> a) -> a
 withFresh x f =
-  let vx = VNeu (FId ?ctxLen) SId in
-    let ?ctxLen = ?ctxLen + 1
-        ?names = ?names :> x
-    in f vx
+  let vx = VNeu (FId ?ctxLen) SId
+   in let ?ctxLen = ?ctxLen + 1
+          ?names = ?names :> x
+       in f vx
 
-isConv :: ConvCtx => Sing l -> TyV l -> TyV l -> ConvM ()
+isConv :: (ConvCtx) => Sing l -> TyV l -> TyV l -> ConvM ()
 isConv s a b = case (demoteTy s a, demoteTy s b) of
   (Any SQuery a', Any SQuery b') -> isConv' SQuery a' b'
   (Any STheory a', Any STheory b') -> isConv' STheory a' b'
   (Any SMeta a', Any SMeta b') -> isConv' SMeta a' b'
   (Any SPrim a', Any SPrim b') -> isConv' SPrim a' b'
-  (a', b') -> convFail a' b' $
-    "demoted types are at different levels:" <+>
-      pretty (levelOf a') <+>
-      "and" <+>
-      pretty (levelOf b')
+  (a', b') ->
+    convFail a' b' $
+      "demoted types are at different levels:"
+        <+> pretty (levelOf a')
+        <+> "and"
+        <+> pretty (levelOf b')
 
-isConvTele :: ConvCtx => Sing l -> Env -> Env -> [(QName, TyS l, TyS l)] -> ConvM ()
+isConvTele :: (ConvCtx) => Sing l -> Env -> Env -> [(QName, TyS l, TyS l)] -> ConvM ()
 isConvTele _ _ _ [] = pure ()
-isConvTele s e e' ((x,a,a'):ms) = do
+isConvTele s e e' ((x, a, a') : ms) = do
   let va = withSingI s $ evalIn e a
   let va' = withSingI s $ evalIn e' a'
   isConv s va va'
@@ -325,13 +328,13 @@ isConvTele s e e' ((x,a,a'):ms) = do
 
 zipFields :: [(QName, TyS l)] -> [(QName, TyS l)] -> Maybe [(QName, TyS l, TyS l)]
 zipFields [] [] = Just []
-zipFields ((x,a):ms) ((x',a'):ms')
-  | x == x' = ((x,a,a'):) <$> (zipFields ms ms')
+zipFields ((x, a) : ms) ((x', a') : ms')
+  | x == x' = ((x, a, a') :) <$> (zipFields ms ms')
   | otherwise = Nothing
 zipFields _ _ = Nothing
 
 -- Assumes that both types are already demoted
-isConv' :: ConvCtx => Sing l -> TyV l -> TyV l -> ConvM ()
+isConv' :: (ConvCtx) => Sing l -> TyV l -> TyV l -> ConvM ()
 isConv' s a a' = case (a, a') of
   (VQueryU, VQueryU) -> pure ()
   (VQueryEl v, VQueryEl v') -> isConvAt VQueryU v v'
