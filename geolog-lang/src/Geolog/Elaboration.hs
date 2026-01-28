@@ -16,7 +16,9 @@ When we implement unification, we can revisit this.
 module Geolog.Elaboration where
 
 import Control.Exception
+import Control.Monad (unless)
 import Data.Singletons
+import Data.Text (Text)
 import Geolog.Common
 import Geolog.Core
 import Geolog.Diagnostics
@@ -26,7 +28,7 @@ import Geolog.Notation (Ntn)
 import Geolog.Notation qualified as N
 import Geolog.Pretty hiding (bind)
 import Lens.Micro.Platform
-import Prettyprinter (Doc)
+import Prettyprinter
 import Prelude hiding (lookup)
 
 newtype Ctx = Ctx {ctxElts :: Bwd (QName, Any TyV)}
@@ -73,19 +75,24 @@ annot (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = (x, n)
 annot n = ("_", n)
 
 bind :: Elab (Sing l -> QName -> TyV l -> (Elab a) -> a)
-bind s x va f =
-  let vx = VNeu (FId ?ctxLen) SId
-   in let ?env = ?env :> (Any s vx)
-          ?ctx = Ctx $ ctxElts ?ctx :> (x, Any s va)
-          ?ctxLen = ?ctxLen + 1
-       in f
+bind s x va f = let vx = VNeu (FId ?ctxLen) SId in let_ s x vx va f
+
+bindVal :: Elab (Sing l -> QName -> TyV l -> (Elab (ElV l -> a)) -> a)
+bindVal s x va f = let vx = VNeu (FId ?ctxLen) SId in let_ s x vx va (f vx)
+
+let_ :: Elab (Sing l -> QName -> ElV l -> TyV l -> (Elab a) -> a)
+let_ s x vx va f =
+  let ?env = ?env :> (Any s vx)
+      ?ctx = Ctx $ ctxElts ?ctx :> (x, Any s va)
+      ?ctxLen = ?ctxLen + 1
+   in f
 
 report :: (DiagCtxArg) => Span -> C.Code -> IO a
 report s c = do
   let n = Note (Just (SourceLoc (?diagCtx ^. file) s)) Nothing
   let d = Diagnostic c [n]
   reportIO (?diagCtx ^. reporter) d
-  throw GiveUp
+  evaluate $ throw GiveUp
 
 {- | How do we avoid getting trapped in an infinite loop with Code/El?
 
@@ -114,16 +121,6 @@ gTheoryCode (G sa va) = G (theoryCode sa) (vTheoryCode va)
 gTheoryEl :: ElG Meta -> TyG Theory
 gTheoryEl (G sa va) = G (theoryEl sa) (vTheoryEl va)
 
-typ :: Elab (Sing l -> Ntn -> IO (TyG l))
-typ s n = case s of
-  SQuery -> do
-    ga <- chk STheory VQueryU n
-    pure $ gQueryEl ga
-  STheory -> do
-    ga <- chk SMeta VTheoryU n
-    pure $ gTheoryEl ga
-  _ -> error "cannot elaborate type at this level"
-
 theorySyn :: TyG Theory -> Any Syn
 theorySyn ga = Any SMeta $ Syn (gTheoryCode ga) VTheoryU
 
@@ -141,6 +138,69 @@ theoryCloApp (Clo env _ body) v = evalIn (env :> Any SQuery v) body
 
 metaCloApp :: Clo TyS Meta -> ElV Meta -> TyV Meta
 metaCloApp (Clo env _ body) v = evalIn (env :> Any SMeta v) body
+
+members :: Elab (Sing l -> [Ntn] -> IO [(QName, TyS l)])
+members _ [] = pure []
+members s (n : ns) = do
+  let (x, n') = annot n
+  G sa va <- typ s n'
+  ((x, sa) :) <$> bind s x va (members s ns)
+
+setting :: (DiagCtxArg) => QName -> Ntn -> IO Ntn
+setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
+  | x == x' = pure n'
+  | otherwise = report sp (C.ExpectedField x x')
+setting _ n = report (N.span n) (C.UnexpectedNotation "record entry")
+
+elts ::
+  forall (l :: Level).
+  Elab
+    ( Sing l ->
+      Env ->
+      [(QName, TyS l)] ->
+      [Ntn] ->
+      IO ([(QName, ElS l)], [(QName, ElV l)])
+    )
+elts _ _ [] [] = pure ([], [])
+elts s e ((x, a) : ms) (n : ns) = do
+  n' <- setting x n
+  let va = withSingI s $ evalIn e a
+  G st vt <- chk s va n'
+  (sfs, vfs) <- let_ s x vt va $ elts s (e :> Any s vt) ms ns
+  pure ((x, st) : sfs, (x, vt) : vfs)
+elts _ _ _ _ = impossible
+
+withNames :: Elab (((NamesArg) => a) -> a)
+withNames f = let ?names = fmap fst (ctxElts ?ctx) in f
+
+pp :: (Prt a) => Elab (a -> Doc ann)
+pp x = withNames $ prtPrec precTop x
+
+ident :: (DiagCtxArg) => Ntn -> IO QName
+ident (N.Ident x _) = pure x
+ident n = report (N.span n) (C.UnexpectedNotation "ident")
+
+gLiftEl :: ElG l -> LevelInclusion l l' -> ElG l'
+gLiftEl (G s v) li = G (LiftEl s li) (VLiftEl v li)
+
+typ :: Elab (Sing l -> Ntn -> IO (TyG l))
+typ s n = case n of
+  N.Tuple ns _ -> do
+    fs <- Fields <$> members s ns
+    pure $ G (Record fs) (VRecord ?env fs)
+  _ -> do
+    Any _ (Syn g a) <- syn n
+    case (s, a) of
+      (SQuery, VQueryU) -> pure $ gQueryEl g
+      (STheory, VQueryU) -> pure $ gLiftTy QueryInTheory $ gQueryEl g
+      (SMeta, VQueryU) -> pure $ gLiftTy QueryInMeta $ gQueryEl g
+      (_, VQueryU) ->
+        report (N.span n) $ C.OutOfUniverse Query (fromSing s)
+      (STheory, VTheoryU) -> pure $ gTheoryEl g
+      (SMeta, VTheoryU) -> pure $ gLiftTy TheoryInMeta $ gTheoryEl g
+      (_, VTheoryU) ->
+        report (N.span n) $ C.OutOfUniverse Theory (fromSing s)
+      _ -> report (N.span n) C.SynthesizedNonUniverse
 
 syn :: Elab (Ntn -> IO (Any Syn))
 syn n = case n of
@@ -171,57 +231,126 @@ syn n = case n of
   N.Tuple _ _ -> report (N.span n) (C.MustChk "tuple syntax")
   _ -> unimplemented
 
-members :: Elab (Sing l -> [Ntn] -> IO [(QName, TyS l)])
-members _ [] = pure []
-members s (n : ns) = do
-  let (x, n') = annot n
-  G sa va <- typ s n'
-  ((x, sa) :) <$> bind s x va (members s ns)
-
-withNames :: Elab (((NamesArg) => a) -> a)
-withNames f = let ?names = fmap fst (ctxElts ?ctx) in f
-
-pp :: (Prt a) => Elab (a -> Doc ann)
-pp x = withNames $ prtPrec precTop x
-
 chk :: Elab (Sing l -> TyV l -> Ntn -> IO (ElG l))
-chk s va n = case n of
-  N.Tuple ns _ -> case va of
-    VQueryU -> do
-      fs <- Fields <$> members SQuery ns
-      pure $ G (QueryCode (Record fs)) (VQueryCode (VRecord ?env fs))
-    VTheoryU -> do
-      fs <- Fields <$> members STheory ns
-      pure $ G (TheoryCode (Record fs)) (VTheoryCode (VRecord ?env fs))
-    VRecord env fields -> unimplemented
-    _ -> report (N.span n) (C.TupleFoundAtUnexpectedType (pp $ quoteAt s va))
+chk s va n = case va of
+  VLiftTy va' li -> do
+    g <- chk (liDom li) va' n
+    pure $ gLiftEl g li
+  VQueryU -> do
+    G sb vb <- typ SQuery n
+    pure $ G (QueryCode sb) (VQueryCode vb)
+  VTheoryU -> do
+    G sb vb <- typ STheory n
+    pure $ G (TheoryCode sb) (VTheoryCode vb)
+  _ -> case n of
+    N.Tuple ns _ -> case va of
+      VRecord env (Fields ms) -> do
+        unless (length ms == length ns) $ do
+          report (N.span n) (C.WrongNumberOfFields (length ms) (length ns))
+        (sfs, vfs) <- elts s env ms ns
+        pure $ G (Cons (Fields sfs)) (VCons (Fields vfs))
+      _ -> report (N.span n) (C.TupleFoundAtUnexpectedType $ pp $ quoteAt s va)
+    N.Infix n1 (N.Keyword "=>" _) n2 -> case va of
+      VTheoryPi vdom (Clo env _ cod) -> do
+        x <- ident n1
+        body <- bindVal SQuery x vdom $ \vx -> do
+          let vcod = withSingI s $ evalIn (env :> Any SQuery vx) cod
+          G body _ <- chk s vcod n2
+          pure body
+        pure $ G (TheoryLam (Abs x body)) (VTheoryLam (Clo ?env x body))
+      _ -> report (N.span n) (C.UnexpectedNotation "non-pi type")
+    _ -> do
+      Any s' (Syn g va') <- syn n
+      unimplemented
+
+-- We have to quote and pretty-print at the point of conversion failure because
+-- that's when we have access to all the names
+data ConvFailure
+  = NotConvertableEl (Doc Ann) (Doc Ann) (Doc Ann)
+  | NotConvertableTy (Doc Ann) (Doc Ann)
+
+data ConvM a = Success a | Failure ConvFailure (Doc Ann)
+  deriving (Functor)
+
+instance Applicative ConvM where
+  pure = Success
+  mf <*> mx = case mf of
+    Success f -> case mx of
+      Success x -> Success $ f x
+      Failure t e -> Failure t e
+    Failure t e -> Failure t e
+
+instance Monad ConvM where
+  mx >>= f = case mx of
+    Success x -> f x
+    Failure t e -> Failure t e
+
+type ConvCtx = (NamesArg, CtxLenArg)
+
+convFail :: (ConvCtx) => Any TyV -> Any TyV -> Doc Ann -> ConvM a
+convFail (Any sa a) (Any sb b) d =
+  Failure
+    ( NotConvertableTy
+        (prtTop $ withSingI sa $ quote a)
+        (prtTop $ withSingI sb $ quote b)
+    )
+    d
+
+isConvAt :: (ConvCtx) => TyV l -> ElV l -> ElV l -> ConvM ()
+isConvAt a v v' = case (v, v') of
   _ -> unimplemented
 
--- typ :: Elab (Sing l -> Ntn -> IO (TyG l))
--- typ s n = case n of
---   N.Keyword "Query" _ -> case s of
---     STheory -> pure $ G QueryU VQueryU
---     SMeta -> pure $ gLiftTy TheoryInMeta $ G QueryU VQueryU
---     _ -> report (N.span n) (C.WrongLevel "query universe" (fromSing s))
---   N.Keyword "Theory" _ -> case s of
---     SMeta -> pure $ G TheoryU VTheoryU
---     _ -> report (N.span n) (C.WrongLevel "theory universe" (fromSing s))
---   N.Infix n1 (N.Keyword "->" _) n2 -> case s of
---     STheory -> do
---       let (x, na) = annot n1
---       G sa va <- typ SQuery na
---       G sb _ <- bind SQuery x va $ typ STheory n2
---       pure $ G (TheoryPi sa (Abs x sb)) (VTheoryPi va (Clo ?env x sb))
---     SMeta -> do
---       let (x, na) = annot n1
---       G sa va <- typ SMeta na
---       G sb _ <- bind SMeta x va $ typ SMeta n2
---       pure $ G (MetaPi sa (Abs x sb)) (VMetaPi va (Clo ?env x sb))
---     _ -> report (N.span n) (C.WrongLevel "pi types" (fromSing s))
---   N.Tuple ns _ -> do
---     fs <- Fields <$> members s ns
---     pure $ G (Record fs) (VRecord ?env fs)
---   _ -> case s of
---     SSort -> QueryEl <$> chk s QueryU n
---     STheory -> TheoryEl <$> chk TheoryU n
---     _ ->
+withFresh :: (ConvCtx) => QName -> ((ConvCtx) => ElV l -> a) -> a
+withFresh x f =
+  let vx = VNeu (FId ?ctxLen) SId
+   in let ?ctxLen = ?ctxLen + 1
+          ?names = ?names :> x
+       in f vx
+
+isConv :: (ConvCtx) => Sing l -> TyV l -> TyV l -> ConvM ()
+isConv s a b = case (demoteTy s a, demoteTy s b) of
+  (Any SQuery a', Any SQuery b') -> isConv' SQuery a' b'
+  (Any STheory a', Any STheory b') -> isConv' STheory a' b'
+  (Any SMeta a', Any SMeta b') -> isConv' SMeta a' b'
+  (Any SPrim a', Any SPrim b') -> isConv' SPrim a' b'
+  (a', b') ->
+    convFail a' b' $
+      "demoted types are at different levels:"
+        <+> pretty (levelOf a')
+        <+> "and"
+        <+> pretty (levelOf b')
+
+isConvTele :: (ConvCtx) => Sing l -> Env -> Env -> [(QName, TyS l, TyS l)] -> ConvM ()
+isConvTele _ _ _ [] = pure ()
+isConvTele s e e' ((x, a, a') : ms) = do
+  let va = withSingI s $ evalIn e a
+  let va' = withSingI s $ evalIn e' a'
+  isConv s va va'
+  withFresh x $ \vx -> isConvTele s (e :> Any s vx) (e' :> Any s vx) ms
+
+zipFields :: [(QName, TyS l)] -> [(QName, TyS l)] -> Maybe [(QName, TyS l, TyS l)]
+zipFields [] [] = Just []
+zipFields ((x, a) : ms) ((x', a') : ms')
+  | x == x' = ((x, a, a') :) <$> (zipFields ms ms')
+  | otherwise = Nothing
+zipFields _ _ = Nothing
+
+-- Assumes that both types are already demoted
+isConv' :: (ConvCtx) => Sing l -> TyV l -> TyV l -> ConvM ()
+isConv' s a a' = case (a, a') of
+  (VQueryU, VQueryU) -> pure ()
+  (VQueryEl v, VQueryEl v') -> isConvAt VQueryU v v'
+  (VTheoryU, VTheoryU) -> pure ()
+  (VTheoryEl v, VTheoryEl v') -> isConvAt VTheoryU v v'
+  (VTheoryPi dom cod, VTheoryPi dom' cod') -> do
+    isConv SQuery dom dom'
+    withFresh "x" $ \vx -> isConv STheory (theoryCloApp cod vx) (theoryCloApp cod' vx)
+  (VMetaPi dom cod, VMetaPi dom' cod') -> do
+    isConv SMeta dom dom'
+    withFresh "x" $ \vx -> isConv SMeta (metaCloApp cod vx) (metaCloApp cod' vx)
+  (VRecord e (Fields ms), VRecord e' (Fields ms')) -> case zipFields ms ms' of
+    Just combined -> isConvTele s e e' combined
+    Nothing -> convFail (Any s a) (Any s a') "record types have different fields"
+  (VLiftTy _ _, _) -> impossible
+  (_, VLiftTy _ _) -> impossible
+  _ -> unimplemented
