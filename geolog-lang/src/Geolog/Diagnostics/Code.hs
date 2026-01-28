@@ -23,6 +23,8 @@ data Code
   | WrongNumberOfFields Int Int
   | OutOfUniverse Level Level
   | SynthesizedNonUniverse
+  | NotConvertableEl (Doc Ann) (Doc Ann) (Doc Ann)
+  | NotConvertableTy (Doc Ann) (Doc Ann) (Doc Ann)
 
 data Severity = Debug | Info | Warning | Error
 
@@ -51,6 +53,8 @@ severity = \case
   WrongNumberOfFields _ _ -> Error
   OutOfUniverse _ _ -> Error
   SynthesizedNonUniverse -> Error
+  NotConvertableEl _ _ _ -> Error
+  NotConvertableTy _ _ _ -> Error
 
 shortcode :: Code -> Doc ann
 shortcode = \case
@@ -74,8 +78,10 @@ shortcode = \case
   WrongNumberOfFields _ _ -> "E0307"
   OutOfUniverse _ _ -> "E0308"
   SynthesizedNonUniverse -> "E0309"
+  NotConvertableEl _ _ _ -> "E0310"
+  NotConvertableTy _ _ _ -> "E0311"
 
-description :: Code -> Doc ann
+description :: Code -> Doc Ann
 description = \case
   UnexpectedCharacter c -> "Unexpected character" <+> "'" <> pretty c <> "'"
   UncontinuedQualifiedName -> "Expected another name segment after '/'"
@@ -95,6 +101,8 @@ description = \case
   WrongNumberOfFields n m -> "wrong number of fields for record, expected:" <+> pretty n <> ", got" <+> pretty m
   OutOfUniverse l l' -> "cannot decode an element of universe level" <+> pretty l <+> "to a level" <+> pretty l' <+> "type"
   SynthesizedNonUniverse -> "synthesized a type that was a non-universe"
+  NotConvertableEl d d' r -> "during conversion check, could not convert elements" <+> d <+> "and" <+> d' <> ". Reason:" <+> r
+  NotConvertableTy d d' r -> "during conversion check, could not convert types" <+> d <+> "and" <+> d' <> ". Reason:" <+> r
 
 instance Pretty Code where
-  pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> description c
+  pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> unAnnotate (description c)

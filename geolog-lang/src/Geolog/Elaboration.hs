@@ -131,10 +131,10 @@ gTheoryApp (G sf vf) (G st vt) = G (TheoryApp sf st) (theoryApp vf vt)
 gMetaApp :: ElG Meta -> ElG Meta -> ElG Meta
 gMetaApp (G sf vf) (G st vt) = G (MetaApp sf st) (metaApp vf vt)
 
-theoryCloApp :: Clo TyS Theory -> ElV Query -> TyV Theory
+theoryCloApp :: (Eval a b) => Clo a Theory -> ElV Query -> b Theory
 theoryCloApp (Clo env _ body) v = evalIn (env :> Any SQuery v) body
 
-metaCloApp :: Clo TyS Meta -> ElV Meta -> TyV Meta
+metaCloApp :: (Eval a b) => Clo a Meta -> ElV Meta -> b Meta
 metaCloApp (Clo env _ body) v = evalIn (env :> Any SMeta v) body
 
 members :: Elab (Sing l -> [Ntn] -> IO [(QName, TyS l)])
@@ -259,12 +259,38 @@ chk s va n = case va of
       _ -> report (N.span n) (C.UnexpectedNotation "non-pi type")
     _ -> do
       Any s' (Syn g va') <- syn n
-      unimplemented
+      let sp = N.span n
+      case (s', s) of
+        (SQuery, SQuery) ->
+          tryConv sp s va va' g
+        (SQuery, STheory) ->
+          tryConv sp s va (VLiftTy va' QueryInTheory) (gLiftEl g QueryInTheory)
+        (SQuery, SMeta) ->
+          tryConv sp s va (VLiftTy va' QueryInMeta) (gLiftEl g QueryInMeta)
+        (STheory, STheory) ->
+          tryConv sp s va va' g
+        (STheory, SMeta) ->
+          tryConv sp s va (VLiftTy va' TheoryInMeta) (gLiftEl g TheoryInMeta)
+        (SMeta, SMeta) ->
+          tryConv sp s va va' g
+        (SPrim, SPrim) ->
+          tryConv sp s va va' g
+        (SPrim, SMeta) ->
+          tryConv sp s va (VLiftTy va' PrimInMeta) (gLiftEl g PrimInMeta)
+        _ -> unimplemented
+
+tryConv :: Elab (Span -> Sing l -> TyV l -> TyV l -> ElG l -> IO (ElG l))
+tryConv sp s a a' v =
+  let ?names = fmap fst (ctxElts ?ctx)
+   in case isConv s a a' of
+        Success () -> pure v
+        Failure (NotConvertableEl d d') r -> report sp (C.NotConvertableEl d d' r)
+        Failure (NotConvertableTy d d') r -> report sp (C.NotConvertableTy d d' r)
 
 -- We have to quote and pretty-print at the point of conversion failure because
 -- that's when we have access to all the names
 data ConvFailure
-  = NotConvertableEl (Doc Ann) (Doc Ann) (Doc Ann)
+  = NotConvertableEl (Doc Ann) (Doc Ann)
   | NotConvertableTy (Doc Ann) (Doc Ann)
 
 data ConvM a = Success a | Failure ConvFailure (Doc Ann)
@@ -294,9 +320,68 @@ convFail (Any sa a) (Any sb b) d =
     )
     d
 
-isConvAt :: (ConvCtx) => TyV l -> ElV l -> ElV l -> ConvM ()
-isConvAt a v v' = case (v, v') of
-  _ -> unimplemented
+convElFail :: (ConvCtx) => Any ElV -> Any ElV -> Doc Ann -> ConvM a
+convElFail (Any sa a) (Any sb b) d =
+  Failure
+    ( NotConvertableEl
+        (prtTop $ withSingI sa $ quote a)
+        (prtTop $ withSingI sb $ quote b)
+    )
+    d
+
+isConvSp :: (ConvCtx) => Sing l -> FId -> Sp l -> Sp l -> ConvM ()
+isConvSp _ _ SId SId = pure ()
+isConvSp s i (STheoryApp sp v) (STheoryApp sp' v') = do
+  isConvSp s i sp sp'
+  isConvEl SQuery v v'
+isConvSp s i (SMetaApp sp v) (SMetaApp sp' v') = do
+  isConvSp s i sp sp'
+  isConvEl SMeta v v'
+isConvSp s i (SProj sp x) (SProj sp' x') = do
+  isConvSp s i sp sp'
+  unless (x == x') $
+    convElFail
+      (Any s (VNeu i (SProj sp x)))
+      (Any s (VNeu i (SProj sp x)))
+      "projecting from non-equal fields"
+isConvSp s i sp sp' =
+  convElFail (Any s (VNeu i sp)) (Any s (VNeu i sp')) "mismatching spine heads"
+
+isConvElts :: (ConvCtx) => Sing l -> [(QName, ElV l, ElV l)] -> ConvM ()
+isConvElts _ [] = pure ()
+isConvElts s ((_, v, v') : es) = do
+  isConvEl s v v'
+  isConvElts s es
+
+zipFields :: [(QName, a)] -> [(QName, a)] -> Maybe [(QName, a, a)]
+zipFields [] [] = Just []
+zipFields ((x, a) : ms) ((x', a') : ms')
+  | x == x' = ((x, a, a') :) <$> (zipFields ms ms')
+  | otherwise = Nothing
+zipFields _ _ = Nothing
+
+-- TODO: type-directed conversion checking with eta expansion
+isConvEl :: (ConvCtx) => Sing l -> ElV l -> ElV l -> ConvM ()
+isConvEl s v v' = case (v, v') of
+  (VNeu i sp, VNeu i' sp') -> do
+    unless (i == i') $ convElFail (Any s v) (Any s v') "heads of neutrals do not match"
+    isConvSp s i sp sp'
+  (VQueryCode ty, VQueryCode ty') -> isConv SQuery ty ty'
+  (VTheoryCode ty, VTheoryCode ty') -> isConv STheory ty ty'
+  (VLiftEl w li, VLiftEl w' li') -> case (li, li') of
+    (QueryInTheory, QueryInTheory) -> isConvEl SQuery w w'
+    (QueryInMeta, QueryInMeta) -> isConvEl SQuery w w'
+    (TheoryInMeta, TheoryInMeta) -> isConvEl STheory w w'
+    (PrimInMeta, PrimInMeta) -> isConvEl SPrim w w'
+    _ -> convElFail (Any s v) (Any s v) "lifts from different levels"
+  (VTheoryLam clo, VTheoryLam clo') -> do
+    withFresh "x" $ \vx -> isConvEl STheory (theoryCloApp clo vx) (theoryCloApp clo' vx)
+  (VMetaLam clo, VMetaLam clo') -> do
+    withFresh "x" $ \vx -> isConvEl SMeta (metaCloApp clo vx) (metaCloApp clo' vx)
+  (VCons (Fields ms), VCons (Fields ms')) -> case zipFields ms ms' of
+    Just combined -> isConvElts s combined
+    Nothing -> convElFail (Any s v) (Any s v') "differing fields"
+  _ -> convElFail (Any s v) (Any s v') ""
 
 withFresh :: (ConvCtx) => QName -> ((ConvCtx) => ElV l -> a) -> a
 withFresh x f =
@@ -326,20 +411,13 @@ isConvTele s e e' ((x, a, a') : ms) = do
   isConv s va va'
   withFresh x $ \vx -> isConvTele s (e :> Any s vx) (e' :> Any s vx) ms
 
-zipFields :: [(QName, TyS l)] -> [(QName, TyS l)] -> Maybe [(QName, TyS l, TyS l)]
-zipFields [] [] = Just []
-zipFields ((x, a) : ms) ((x', a') : ms')
-  | x == x' = ((x, a, a') :) <$> (zipFields ms ms')
-  | otherwise = Nothing
-zipFields _ _ = Nothing
-
 -- Assumes that both types are already demoted
 isConv' :: (ConvCtx) => Sing l -> TyV l -> TyV l -> ConvM ()
 isConv' s a a' = case (a, a') of
   (VQueryU, VQueryU) -> pure ()
-  (VQueryEl v, VQueryEl v') -> isConvAt VQueryU v v'
+  (VQueryEl v, VQueryEl v') -> isConvEl STheory v v'
   (VTheoryU, VTheoryU) -> pure ()
-  (VTheoryEl v, VTheoryEl v') -> isConvAt VTheoryU v v'
+  (VTheoryEl v, VTheoryEl v') -> isConvEl SMeta v v'
   (VTheoryPi dom cod, VTheoryPi dom' cod') -> do
     isConv SQuery dom dom'
     withFresh "x" $ \vx -> isConv STheory (theoryCloApp cod vx) (theoryCloApp cod' vx)
