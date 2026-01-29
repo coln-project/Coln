@@ -104,6 +104,12 @@ data ElS :: Level -> Type where
 
 data Fields f l = Fields [(QName, f l)]
 
+instance ElemAt (Fields f l) QName (f l) where
+  elemAt (Fields []) _ = impossible
+  elemAt (Fields ((x,v):fs)) x'
+    | x == x' = v
+    | otherwise = elemAt (Fields fs) x'
+
 data TyS :: Level -> Type where
   QueryU :: TyS Theory
   QueryEl :: ElS Theory -> TyS Query
