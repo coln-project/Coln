@@ -6,6 +6,13 @@ import Geolog.Core
 import Geolog.Token qualified as T
 import Prettyprinter
 
+data NotationCategory
+  = Binding
+  | Definition
+  | Declaration
+  | ApplicationPattern
+  deriving (Show)
+
 data Code
   = UnexpectedCharacter Char
   | UncontinuedQualifiedName
@@ -25,6 +32,7 @@ data Code
   | SynthesizedNonUniverse
   | NotConvertableEl (Doc Ann) (Doc Ann) (Doc Ann)
   | NotConvertableTy (Doc Ann) (Doc Ann) (Doc Ann)
+  | Expected NotationCategory
 
 data Severity = Debug | Info | Warning | Error
 
@@ -55,6 +63,7 @@ severity = \case
   SynthesizedNonUniverse -> Error
   NotConvertableEl _ _ _ -> Error
   NotConvertableTy _ _ _ -> Error
+  Expected _ -> Error
 
 shortcode :: Code -> Doc ann
 shortcode = \case
@@ -80,6 +89,7 @@ shortcode = \case
   SynthesizedNonUniverse -> "E0309"
   NotConvertableEl _ _ _ -> "E0310"
   NotConvertableTy _ _ _ -> "E0311"
+  Expected _ -> "E0312"
 
 description :: Code -> Doc Ann
 description = \case
@@ -103,6 +113,7 @@ description = \case
   SynthesizedNonUniverse -> "synthesized a type that was a non-universe"
   NotConvertableEl d d' r -> "during conversion check, could not convert elements" <+> d <+> "and" <+> d' <> ". Reason:" <+> r
   NotConvertableTy d d' r -> "during conversion check, could not convert types" <+> d <+> "and" <+> d' <> ". Reason:" <+> r
+  Expected c -> "expected notation for" <+> pretty (show c)
 
 instance Pretty Code where
   pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> unAnnotate (description c)
