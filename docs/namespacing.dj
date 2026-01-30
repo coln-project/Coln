@@ -23,4 +23,14 @@ Namespaces work differently; if `a` is associated to a certain value, `a/b` can 
 
 However, they are identifiers which can be worked on by "meta" commands. For instance, `open a` is equivalent to `let b = a/b`.
 
+Conceptually speaking, `a/b` as a namespace is distince from `a/b` as a value. This is very similar to the Scala "companion object" concept, which allows making an object have the same name as a type.
 
+## Principle 2: Relative, absolute, and canonical names
+
+Just like in a file system, we have three types of names (should we call them paths?)
+
+1. Relative names. These are resolved with respect to the current scope, and start with an identifier.
+2. Absolute names. These are resolved with respect to the top-level scope, and start with /.
+3. Canonical names. The global namespace might contain "symlinks", however each top-level judgment has a canonical name assigned based on where it was first defined. This can be used for comparisons.
+
+When the code manager comes, maybe canonical names will be content-addressed, but we should probably have a "traditional" mode at least for testing.

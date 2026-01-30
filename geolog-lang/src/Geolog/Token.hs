@@ -33,11 +33,14 @@ instance Pretty Kind where
 data Class
   = CSpecific Kind
   | CExprStart
+  | CTupleMark
 
 instance Pretty Class where
   pretty = \case
     CSpecific k -> pretty k
     CExprStart -> "a token that can start an expression"
+    CTupleMark ->
+      "a token that can follow an element of a tuple, e.g. ',' or ']'"
 
 data TokenValue = VEmpty | VName Name | VQName QName | VInt Int
   deriving (Eq, Show)
