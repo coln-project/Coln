@@ -214,8 +214,10 @@ arg = do
   cur >>= \case
     T.LParen -> do
       advance
+      skipState <- startSkipNewlines
       e <- expr
       expect T.RParen
+      endSkipNewlines skipState
       pure e
     T.LBrack -> do
       advance
