@@ -8,6 +8,7 @@ import Prettyprinter
 
 data NotationCategory
   = Binding
+  | Annot
   | Definition
   | Declaration
   | ApplicationPattern

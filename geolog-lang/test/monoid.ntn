@@ -1,4 +1,4 @@
-theory Monoid
+theory Monoid = sig
   car : Type
   unit : car
   mul : car -> car -> car

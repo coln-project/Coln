@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 -- |
 -- This module contains the definition for geolog core.
 --
@@ -45,19 +46,23 @@ import Geolog.Common
 import Prettyprinter
 
 data Abs f l = Abs QName (f l)
+  deriving (Show)
 
 $(singletons [d|data Level = Query | Theory | Meta | Prim|])
 
-instance Pretty Level where
-  pretty = \case
+instance Show Level where
+  show = \case
     Query -> "Query"
     Theory -> "Theory"
     Meta -> "Meta"
     Prim -> "Prim"
 
+instance Pretty Level where
+  pretty = pretty . show
+
 data Any :: (Level -> Type) -> Type where
   Any :: Sing l -> f l -> Any f
-
+  
 levelOf :: Any f -> Level
 levelOf (Any s _) = fromSing s
 
@@ -77,6 +82,8 @@ data LevelInclusion :: Level -> Level -> Type where
   QueryInMeta :: LevelInclusion Query Meta
   TheoryInMeta :: LevelInclusion Theory Meta
   PrimInMeta :: LevelInclusion Prim Meta
+  
+deriving instance Show (LevelInclusion l l')
 
 liDom :: LevelInclusion l l' -> Sing l
 liDom QueryInTheory = SQuery
@@ -101,8 +108,11 @@ data ElS :: Level -> Type where
   Proj :: ElS l -> QName -> ElS l
   Cons :: Fields ElS l -> ElS l
   LiftEl :: ElS l -> LevelInclusion l l' -> ElS l'
+  
+deriving instance Show (ElS l)
 
 data Fields f l = Fields [(QName, f l)]
+  deriving (Show)
 
 instance ElemAt (Fields f l) QName (f l) where
   elemAt (Fields []) _ = impossible
@@ -119,6 +129,8 @@ data TyS :: Level -> Type where
   MetaPi :: TyS Meta -> Abs TyS Meta -> TyS Meta
   Record :: Fields TyS l -> TyS l
   LiftTy :: TyS l -> LevelInclusion l l' -> TyS l'
+  
+deriving instance Show (TyS l)
 
 type Env = Bwd (Any ElV)
 
