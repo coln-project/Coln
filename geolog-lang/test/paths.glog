@@ -1,0 +1,17 @@
+theory Graph = [
+  V : Query,
+  E : (x : V) -> (y : V) -> Query,
+]
+
+theory Path (G : Graph) = [
+  t : (x : G.V) -> (y : G.V) -> Query,
+  empty : (x : G.V) -> t x x,
+  cons : (
+    (x : G.V) ->
+    (y : G.V) ->
+    (z : G.V) ->
+    (e : G.E x y) ->
+    (p : t y z) ->
+    t x z
+  ),
+]
