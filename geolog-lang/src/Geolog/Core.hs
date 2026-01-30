@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+
 -- |
 -- This module contains the definition for geolog core.
 --
@@ -62,7 +63,7 @@ instance Pretty Level where
 
 data Any :: (Level -> Type) -> Type where
   Any :: Sing l -> f l -> Any f
-  
+
 levelOf :: Any f -> Level
 levelOf (Any s _) = fromSing s
 
@@ -82,7 +83,7 @@ data LevelInclusion :: Level -> Level -> Type where
   QueryInMeta :: LevelInclusion Query Meta
   TheoryInMeta :: LevelInclusion Theory Meta
   PrimInMeta :: LevelInclusion Prim Meta
-  
+
 deriving instance Show (LevelInclusion l l')
 
 liDom :: LevelInclusion l l' -> Sing l
@@ -108,7 +109,7 @@ data ElS :: Level -> Type where
   Proj :: ElS l -> QName -> ElS l
   Cons :: Fields ElS l -> ElS l
   LiftEl :: ElS l -> LevelInclusion l l' -> ElS l'
-  
+
 deriving instance Show (ElS l)
 
 data Fields f l = Fields [(QName, f l)]
@@ -116,7 +117,7 @@ data Fields f l = Fields [(QName, f l)]
 
 instance ElemAt (Fields f l) QName (f l) where
   elemAt (Fields []) _ = impossible
-  elemAt (Fields ((x,v):fs)) x'
+  elemAt (Fields ((x, v) : fs)) x'
     | x == x' = v
     | otherwise = elemAt (Fields fs) x'
 
@@ -129,7 +130,7 @@ data TyS :: Level -> Type where
   MetaPi :: TyS Meta -> Abs TyS Meta -> TyS Meta
   Record :: Fields TyS l -> TyS l
   LiftTy :: TyS l -> LevelInclusion l l' -> TyS l'
-  
+
 deriving instance Show (TyS l)
 
 type Env = Bwd (Any ElV)

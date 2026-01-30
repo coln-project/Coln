@@ -83,9 +83,10 @@ instance Reverse (Bwd a) (Fwd a) where
       go xs' (xs :> x) = go (x :< xs') xs
 
 instance ToList Bwd where
-  toList xs = go xs [] where
-    go BwdNil l = l
-    go (xs' :> x) l = go xs' (x:l)
+  toList xs = go xs []
+    where
+      go BwdNil l = l
+      go (xs' :> x) l = go xs' (x : l)
 
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs

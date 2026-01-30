@@ -60,11 +60,11 @@ data ElabException = GiveUp
 
 instance Exception ElabException
 
-binding :: DiagCtxArg => Ntn -> IO (QName, Ntn)
+binding :: (DiagCtxArg) => Ntn -> IO (QName, Ntn)
 binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
 binding n = report (N.span n) (C.Expected C.Binding)
 
-annot :: DiagCtxArg => Ntn -> IO (Ntn, Ntn)
+annot :: (DiagCtxArg) => Ntn -> IO (Ntn, Ntn)
 annot (N.Infix n1 (N.Keyword ":" _) n2) = pure (n1, n2)
 annot n = report (N.span n) (C.Expected C.Annot)
 
@@ -102,13 +102,11 @@ report s c = do
 -- Solution: we don't ever need to explicitly elaborate any meta-level types. They
 -- show up as the types of top-level declarations, but never actually get parsed.
 -- So therefore `typ` can just immediately call `chk` at a universe.
-
 theorySyn :: TyG Theory -> Any Syn
 theorySyn ga = Any SMeta $ Syn (gTheoryCode ga) VTheoryU
 
 gVar :: (EnvArg) => Sing l -> BId -> ElG l
 gVar s i = G (Var i) (extractAt s $ elemAt ?env i)
-
 
 members :: Elab (Sing l -> [Ntn] -> IO [(QName, TyS l)])
 members _ [] = pure []
@@ -262,13 +260,13 @@ definition (N.Infix n1 (N.Keyword "=" _) n2) = pure (n1, n2)
 definition n = report (N.span n) (C.Expected C.Definition)
 
 unpackArgs :: Elab (Ntn -> IO (QName, [(QName, Ntn)]))
-unpackArgs n = go n [] where
-  go (N.Ident x _) args = pure (x, args)
-  go (N.App n1 n2) args = do
-    b <- binding n2
-    go n1 $ b:args
-  go _ _ = report (N.span n) (C.Expected C.ApplicationPattern)
-
+unpackArgs n = go n []
+  where
+    go (N.Ident x _) args = pure (x, args)
+    go (N.App n1 n2) args = do
+      b <- binding n2
+      go n1 $ b : args
+    go _ _ = report (N.span n) (C.Expected C.ApplicationPattern)
 
 elabTheory :: Elab (Ntn -> IO (QName, Syn Meta))
 elabTheory n = do
@@ -281,18 +279,18 @@ elabTheory n = do
   where
     wrapPis :: [(QName, TyS Theory)] -> TyS Meta
     wrapPis [] = TheoryU
-    wrapPis ((x,a):rest) = MetaPi (LiftTy a TheoryInMeta) (Abs x (wrapPis rest))
+    wrapPis ((x, a) : rest) = MetaPi (LiftTy a TheoryInMeta) (Abs x (wrapPis rest))
     wrapLams :: [(QName, TyS Theory)] -> TyS Theory -> ElS Meta
     wrapLams [] body = TheoryCode body
-    wrapLams ((x,_):rest) body = MetaLam (Abs x (wrapLams rest body))
+    wrapLams ((x, _) : rest) body = MetaLam (Abs x (wrapLams rest body))
     go :: Elab ([(QName, Ntn)] -> Ntn -> IO ([(QName, TyS Theory)], TyS Theory))
     go [] bodyN = do
       G body _ <- typ STheory bodyN
       pure ([], body)
-    go ((x, tyN):argsN) bodyN = do
+    go ((x, tyN) : argsN) bodyN = do
       G a va <- typ STheory tyN
       (args, body) <- bind STheory x va $ go argsN bodyN
-      pure ((x,a):args, body)
+      pure ((x, a) : args, body)
 
 elabDef :: Elab (Ntn -> IO (QName, Syn Meta))
 elabDef n = do
@@ -304,26 +302,28 @@ elabDef n = do
   let el = wrapLams args body
   pure $ (x, Syn (G el (eval el)) (eval ty))
   where
-    go :: Elab (
-      [(QName, Ntn)] ->
-      Ntn ->
-      Ntn ->
-      IO ([(QName, TyS Theory)], TyS Theory, ElS Theory))
+    go ::
+      Elab
+        ( [(QName, Ntn)] ->
+          Ntn ->
+          Ntn ->
+          IO ([(QName, TyS Theory)], TyS Theory, ElS Theory)
+        )
     go [] tyN bodyN = do
       G a va <- typ STheory tyN
       G t _ <- chk STheory va bodyN
       pure ([], a, t)
-    go ((x, argTyN):argsN) tyN bodyN = do
+    go ((x, argTyN) : argsN) tyN bodyN = do
       G a va <- typ STheory argTyN
       (args, ty, body) <- bind STheory x va $ go argsN tyN bodyN
-      pure ((x,a):args, ty, body)
+      pure ((x, a) : args, ty, body)
     wrapPis :: [(QName, TyS Theory)] -> TyS Theory -> TyS Meta
     wrapPis [] ty = LiftTy ty TheoryInMeta
-    wrapPis ((x,a):args) ty =
+    wrapPis ((x, a) : args) ty =
       MetaPi (LiftTy a TheoryInMeta) (Abs x (wrapPis args ty))
     wrapLams :: [(QName, TyS Theory)] -> ElS Theory -> ElS Meta
     wrapLams [] body = LiftEl body TheoryInMeta
-    wrapLams ((x,_):args) body = MetaLam (Abs x (wrapLams args body))
+    wrapLams ((x, _) : args) body = MetaLam (Abs x (wrapLams args body))
 
 elabDecl :: Elab (Ntn -> IO (QName, Syn Meta))
 elabDecl (N.Decl "theory" n _) = elabTheory n
@@ -335,12 +335,13 @@ elabTop r f =
   let ?env = BwdNil
       ?diagCtx = DiagCtx r f
       ?ctx = Ctx BwdNil
-      ?ctxLen = 0 in go BwdNil
+      ?ctxLen = 0
+   in go BwdNil
   where
-  go ds [] = pure $ toList ds
-  go ds (n:ns) = do
-    try (elabDecl n) >>= \case
-      Right (x, Syn (G t v) va) -> do
-        let a = quote va
-        let_ SMeta x v va $ go (ds :> (x, t, a)) ns
-      Left (_ :: ElabException) -> go ds ns
+    go ds [] = pure $ toList ds
+    go ds (n : ns) = do
+      try (elabDecl n) >>= \case
+        Right (x, Syn (G t v) va) -> do
+          let a = quote va
+          let_ SMeta x v va $ go (ds :> (x, t, a)) ns
+        Left (_ :: ElabException) -> go ds ns
