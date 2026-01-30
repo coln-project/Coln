@@ -71,6 +71,7 @@ test-suite geolog-lang-test
         QualifiedDo StandaloneKindSignatures Strict TemplateHaskell
         TypeFamilies TypeFamilyDependencies TypeOperators UnboxedSums
         UnboxedTuples UnicodeSyntax ViewPatterns
+
     ghc-options:        -Wall -g
     build-depends:
         base >=4.19.2.0,
