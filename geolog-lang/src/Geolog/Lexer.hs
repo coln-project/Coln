@@ -190,8 +190,8 @@ ident :: Lex ()
 ident = do
   (x, k) <- qname'
   if k == SIdent || k == AIdent
-  then emit k (VQName x)
-  else emit k (VName $ qnameBase x)
+    then emit k (VQName x)
+    else emit k (VName $ qnameBase x)
 
 int :: Lex Int
 int = go 0

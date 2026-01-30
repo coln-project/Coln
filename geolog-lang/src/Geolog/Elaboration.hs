@@ -168,22 +168,26 @@ typ s n = case n of
         report (N.span n) $ C.OutOfUniverse Theory (fromSing s)
       _ -> report (N.span n) C.SynthesizedNonUniverse
 
-synProj :: forall l. Elab (
-  Sing l ->
-  Env ->
-  Fields TyS l ->
-  ElG l ->
-  QName ->
-  Span ->
-  IO (Syn l))
-synProj s env (Fields ms) (G t v) x sp = go env ms where
-  go :: Elab (Env -> [(QName, TyS l)] -> IO (Syn l))
-  go _ [] = report sp (C.NoSuchField x)
-  go e ((x',a):ms')
-    | x == x' = do
-        let va = withSingI s $ evalIn e a
-        pure $ Syn (G (Proj t x) (withSingI s $ proj v x)) va
-    | otherwise = go (e :> Any s (withSingI s $ proj v x')) ms'
+synProj ::
+  forall l.
+  Elab
+    ( Sing l ->
+      Env ->
+      Fields TyS l ->
+      ElG l ->
+      QName ->
+      Span ->
+      IO (Syn l)
+    )
+synProj s env (Fields ms) (G t v) x sp = go env ms
+  where
+    go :: Elab (Env -> [(QName, TyS l)] -> IO (Syn l))
+    go _ [] = report sp (C.NoSuchField x)
+    go e ((x', a) : ms')
+      | x == x' = do
+          let va = withSingI s $ evalIn e a
+          pure $ Syn (G (Proj t x) (withSingI s $ proj v x)) va
+      | otherwise = go (e :> Any s (withSingI s $ proj v x')) ms'
 
 syn :: Elab (Ntn -> IO (Any Syn))
 syn n = case n of
