@@ -17,6 +17,7 @@ data Ntn
   | Keyword Name Span
   | Field QName Span
   | Int Int Span
+  | Tuple [Ntn] Span
   | Error Span
 
 head :: Ntn -> Doc ann
@@ -28,6 +29,7 @@ head (Ident x _) = "Ident" <+> pretty x
 head (Keyword x _) = "Keyword" <+> pretty x
 head (Field x _) = "Field" <+> pretty x
 head (Int i _) = "Int" <+> pretty i
+head (Tuple _ _) = "Tuple"
 head (Error _) = "Error"
 
 startPos :: Ntn -> Pos
@@ -39,6 +41,7 @@ startPos (Ident _ s) = spanStart s
 startPos (Keyword _ s) = spanStart s
 startPos (Field _ s) = spanStart s
 startPos (Int _ s) = spanStart s
+startPos (Tuple _ s) = spanStart s
 startPos (Error s) = spanStart s
 
 endPos :: Ntn -> Pos
@@ -50,6 +53,7 @@ endPos (Ident _ s) = spanEnd s
 endPos (Keyword _ s) = spanEnd s
 endPos (Field _ s) = spanEnd s
 endPos (Int _ s) = spanEnd s
+endPos (Tuple _ s) = spanEnd s
 endPos (Error s) = spanEnd s
 
 span :: Ntn -> Span
@@ -64,6 +68,7 @@ children (Ident _ _) = []
 children (Keyword _ _) = []
 children (Field _ _) = []
 children (Int _ _) = []
+children (Tuple ns _) = ns
 children (Error _) = []
 
 instance Pretty Ntn where

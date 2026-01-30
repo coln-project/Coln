@@ -20,6 +20,9 @@ import System.IO.Unsafe (unsafePerformIO)
 impossible :: a
 impossible = error "impossible"
 
+unimplemented :: a
+unimplemented = error "unimplemented"
+
 newtype Name = Name Symbol
   deriving (Eq, Hashable) via Symbol
 
@@ -38,6 +41,9 @@ data QName = QName [Name] Name
 instance Pretty QName where
   pretty (QName q x) = mconcat [pretty y <> "/" | y <- q] <> pretty x
 
+instance IsString QName where
+  fromString s = QName [] (fromString s)
+
 type Pos = Int
 
 data Span = Span
@@ -52,14 +58,18 @@ instance Pretty Span where
 class Reverse a b | a -> b where
   rev :: a -> b
 
+class ToList t where
+  toList :: t a -> [a]
+
 infixl 5 :>
 
 infixr 5 :<
 
 data Bwd a = BwdNil | Bwd a :> a
+  deriving (Functor)
 
 newtype BId = BId Int
-  deriving (Eq)
+  deriving (Eq, Num, Show)
 
 instance ElemAt (Bwd a) BId a where
   elemAt BwdNil _ = impossible
@@ -71,6 +81,19 @@ instance Reverse (Bwd a) (Fwd a) where
    where
     go xs' BwdNil = xs'
     go xs' (xs :> x) = go (x :< xs') xs
+
+instance ToList Bwd where
+  toList xs = go xs []
+   where
+    go BwdNil l = l
+    go (xs' :> x) l = go xs' (x : l)
+
+instance Semigroup (Bwd a) where
+  xs <> BwdNil = xs
+  xs <> (ys :> y) = (xs <> ys) :> y
+
+instance Monoid (Bwd a) where
+  mempty = BwdNil
 
 data Fwd a = FwdNil | a :< Fwd a
 

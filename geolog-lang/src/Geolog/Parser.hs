@@ -121,10 +121,14 @@ openingPos =
   curSpan >>= \case
     Span s _ -> pure s
 
+close :: Pos -> (Span -> Ntn) -> Parser Ntn
+close s f = do
+  (Span _ e) <- curSpan
+  pure $ f (Span s e)
+
 advanceClose :: Pos -> (Span -> Ntn) -> Parser Ntn
 advanceClose s f = do
-  (Span _ e) <- curSpan
-  let n = f (Span s e)
+  n <- close s f
   advance
   pure n
 
@@ -153,6 +157,7 @@ precs =
   fromList
     [ (":", Prec 10 AssocNon)
     , ("->", Prec 20 AssocR)
+    , ("=>", Prec 20 AssocR)
     , ("=", Prec 30 AssocNon)
     , ("+", Prec 50 AssocL)
     , ("-", Prec 50 AssocL)
@@ -161,10 +166,26 @@ precs =
     ]
 
 argStarts :: V.Vector T.Kind
-argStarts = V.fromList [T.LParen, T.AIdent, T.Field, T.Int, T.Block]
+argStarts = V.fromList [T.LParen, T.LBrack, T.AIdent, T.AKeyword, T.Field, T.Int, T.Block]
 
 argStart :: T.Kind -> Bool
 argStart k = V.elem k argStarts
+
+tupleElems :: Parser [Ntn]
+tupleElems =
+  cur >>= \case
+    T.RBrack -> pure []
+    k | argStart k -> do
+      n <- expr
+      cur >>= \case
+        T.RBrack -> pure [n]
+        T.Comma -> advance >> (n :) <$> tupleElems
+        k' -> do
+          reportUnexpected k' T.CTupleMark
+          pure [n]
+    k -> do
+      reportUnexpected k T.CExprStart
+      pure []
 
 arg :: Parser Ntn
 arg = do
@@ -175,9 +196,17 @@ arg = do
       e <- expr
       expect T.RParen
       pure e
+    T.LBrack -> do
+      advance
+      ns <- tupleElems
+      expect T.RBrack
+      close m $ Tuple ns
     T.AIdent -> do
       x <- curQName
       advanceClose m $ Ident x
+    T.AKeyword -> do
+      x <- curName
+      advanceClose m $ Keyword x
     T.Field -> do
       x <- curQName
       advanceClose m $ Field x

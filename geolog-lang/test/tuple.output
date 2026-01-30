@@ -1,0 +1,19 @@
+-- tokens
+LBrack (0:1)
+AIdent a (1:2)
+Comma (2:3)
+LBrack (4:5)
+AIdent a (5:6)
+Comma (6:7)
+RBrack (7:8)
+RBrack (8:9)
+Nl (9:10)
+Eof (10:10)
+
+-- notation
+Tuple (0:10)
+  Ident a (1:2)
+  Tuple (4:9)
+    Ident a (5:6)
+
+-- messages
