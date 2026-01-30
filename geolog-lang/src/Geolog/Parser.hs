@@ -25,7 +25,8 @@ makeFields ''Env
 
 data State = State
   { statePos :: Int,
-    stateGas :: Int
+    stateGas :: Int,
+    stateSkipNewlines :: Bool
   }
 
 makeFields ''State
@@ -52,7 +53,27 @@ cur = do
     then error "out of gas"
     else gas -= 1
   ts <- view tokens
-  pure $ T.tokenKind $ V.unsafeIndex ts (st ^. pos)
+  let f i = T.tokenKind $ V.unsafeIndex ts i
+  if st ^. skipNewlines
+    then go f
+    else pure $ f (st ^. pos)
+  where
+    go :: (Int -> T.Kind) -> Parser T.Kind
+    go f =
+      f <$> (use pos) >>= \case
+        T.Nl -> do
+          pos += 1
+          go f
+        k -> pure k
+
+startSkipNewlines :: Parser Bool
+startSkipNewlines = do
+  st <- get
+  skipNewlines .= True
+  pure $ st ^. skipNewlines
+
+endSkipNewlines :: Bool -> Parser ()
+endSkipNewlines b = skipNewlines .= b
 
 curSpan :: Parser Span
 curSpan = do
@@ -198,8 +219,10 @@ arg = do
       pure e
     T.LBrack -> do
       advance
+      skipState <- startSkipNewlines
       ns <- tupleElems
       expect T.RBrack
+      endSkipNewlines skipState
       close m $ Tuple ns
     T.AIdent -> do
       x <- curQName
@@ -295,6 +318,6 @@ block =
 
 parse :: Reporter -> File -> V.Vector T.Token -> IO [Ntn]
 parse r f ts = do
-  let s = State 0 256
+  let s = State 0 256 False
   let e = Env ts f r
   evalStateT (runReaderT (runParser stmts) e) s
