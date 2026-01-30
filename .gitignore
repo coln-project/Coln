@@ -138,7 +138,6 @@ acs-*.bib
 
 # gregoriotex
 *.gaux
-*.glog
 *.gtex
 
 # htlatex
