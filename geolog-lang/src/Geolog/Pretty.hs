@@ -28,7 +28,7 @@ instance Prt BId where
       nx = length $ filter (== x) prev
       disamb = if nx > 0 then "^" <> pretty nx else ""
     go (xs :> x) n prev = go xs (n - 1) (x : prev)
-    go BwdNil _ _ = impossible
+    go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList ?names)
 
 precApp :: Prec
 precApp = Prec 100 AssocL
@@ -71,13 +71,14 @@ instance Prt (TyS l) where
     TheoryU -> "Theory"
     TheoryEl t -> prt t
     TheoryPi a (Abs x b) ->
-      let annot = "(" <> pretty x <+> ":" <+> prtPrec precTop a <> ")"
+      let annot = "(" <> pretty x <+> ":" <+> prtTop a <> ")"
        in par precLam (annot <+> "->" <+> bind x (prtPrec precLam b))
     MetaPi a (Abs x b) ->
-      let annot = "(" <> pretty x <+> ":" <+> prtPrec precTop a <> ")"
+      let annot = "(" <> pretty x <+> ":" <+> prtTop a <> ")"
        in par precLam (annot <+> "->" <+> bind x (prtPrec precLam b))
     Record (Fields fs) -> list $ go fs []
      where
+      go :: DoPretty ([(QName, TyS l)] -> [Doc ann] -> [Doc ann])
       go [] ds = reverse ds
       go ((x, a) : rest) ds =
         let d = pretty x <+> ":" <+> prtPrec precTop a

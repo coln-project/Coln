@@ -166,7 +166,7 @@ precs =
     ]
 
 argStarts :: V.Vector T.Kind
-argStarts = V.fromList [T.LParen, T.LBrack, T.AIdent, T.Field, T.Int, T.Block]
+argStarts = V.fromList [T.LParen, T.LBrack, T.AIdent, T.AKeyword, T.Field, T.Int, T.Block]
 
 argStart :: T.Kind -> Bool
 argStart k = V.elem k argStarts
@@ -204,6 +204,9 @@ arg = do
     T.AIdent -> do
       x <- curQName
       advanceClose m $ Ident x
+    T.AKeyword -> do
+      x <- curName
+      advanceClose m $ Keyword x
     T.Field -> do
       x <- curQName
       advanceClose m $ Field x

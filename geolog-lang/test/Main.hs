@@ -4,9 +4,13 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
+import Geolog.Common
+import Geolog.Core
 import Geolog.Diagnostics
+import Geolog.Elaboration (elabTop)
 import Geolog.Lexer (lex)
 import Geolog.Parser (parse)
+import Geolog.Pretty
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath (replaceExtension, takeBaseName)
@@ -46,13 +50,69 @@ parseToPretty fp = do
           , pretty $ msgs
           ]
 
-goldenTests :: IO TestTree
-goldenTests = do
+prettyDecls :: [(QName, ElS Meta, TyS Meta)] -> Doc ann
+prettyDecls = let ?names = BwdNil in vsep . go
+ where
+  go [] = []
+  go ((x, t, a) : ds) =
+    [ "declared: " <+> pretty x
+    , "type: " <+> prtTop a
+    , "value: " <+> prtTop t
+    ]
+      ++ let ?names = ?names :> x in go ds
+
+elaborate :: FilePath -> IO LBS.ByteString
+elaborate fp = do
+  src <- T.readFile fp
+  let f = newFile fp src
+  withSystemTempFile "reporter-output" $ \path h -> do
+    let r = Reporter h False
+    ts <- lex r f
+    ns <- parse r f ts
+    ds <- elabTop r f ns
+    hFlush h
+    hClose h
+    msgs <- T.readFile path
+    pure $
+      render $
+        vsep
+          [ "-- tokens"
+          , vsep $ pretty <$> V.toList ts
+          , ""
+          , "-- notation"
+          , vsep $ pretty <$> ns
+          , ""
+          , "-- elaborated"
+          , -- vsep $ pretty . show <$> ds,
+            prettyDecls ds
+          , ""
+          , "-- messages"
+          , pretty $ msgs
+          ]
+
+parserTests :: IO TestTree
+parserTests = do
   ntnFiles <- findByExtension [".ntn"] "."
   return $
     testGroup
-      "Geolog golden tests"
+      "Parser golden tests"
       [ goldenVsString (takeBaseName ntnFile) outputFile (parseToPretty ntnFile)
       | ntnFile <- ntnFiles
       , let outputFile = replaceExtension ntnFile ".output"
       ]
+
+elaboratorTests :: IO TestTree
+elaboratorTests = do
+  glogFiles <- findByExtension [".glog"] "."
+  return $
+    testGroup
+      "Elaborator golden tests"
+      [ goldenVsString (takeBaseName glogFile) outputFile (elaborate glogFile)
+      | glogFile <- glogFiles
+      , let outputFile = replaceExtension glogFile ".output"
+      ]
+
+goldenTests :: IO TestTree
+goldenTests = do
+  ts <- mapM id [parserTests, elaboratorTests]
+  return $ testGroup "All tests" ts

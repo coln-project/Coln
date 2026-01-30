@@ -65,6 +65,10 @@ binding :: (DiagCtxArg) => Ntn -> IO (QName, Ntn)
 binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
 binding n = report (N.span n) (C.Expected C.Binding)
 
+annot :: (DiagCtxArg) => Ntn -> IO (Ntn, Ntn)
+annot (N.Infix n1 (N.Keyword ":" _) n2) = pure (n1, n2)
+annot n = report (N.span n) (C.Expected C.Annot)
+
 bind :: Elab (Sing l -> QName -> TyV l -> (Elab a) -> a)
 bind s x va f = let vx = VNeu (FId ?ctxLen) SId in let_ s x vx va f
 
@@ -291,9 +295,55 @@ elabTheory n = do
     pure ((x, a) : args, body)
 
 elabDef :: Elab (Ntn -> IO (QName, Syn Meta))
-elabDef n = unimplemented
+elabDef n = do
+  (headN, bodyN) <- definition n
+  (pat, tyN) <- annot headN
+  (x, argsN) <- unpackArgs pat
+  (args, retTy, body) <- go argsN tyN bodyN
+  let ty = wrapPis args retTy
+  let el = wrapLams args body
+  pure $ (x, Syn (G el (eval el)) (eval ty))
+ where
+  go ::
+    Elab
+      ( [(QName, Ntn)] ->
+        Ntn ->
+        Ntn ->
+        IO ([(QName, TyS Theory)], TyS Theory, ElS Theory)
+      )
+  go [] tyN bodyN = do
+    G a va <- typ STheory tyN
+    G t _ <- chk STheory va bodyN
+    pure ([], a, t)
+  go ((x, argTyN) : argsN) tyN bodyN = do
+    G a va <- typ STheory argTyN
+    (args, ty, body) <- bind STheory x va $ go argsN tyN bodyN
+    pure ((x, a) : args, ty, body)
+  wrapPis :: [(QName, TyS Theory)] -> TyS Theory -> TyS Meta
+  wrapPis [] ty = LiftTy ty TheoryInMeta
+  wrapPis ((x, a) : args) ty =
+    MetaPi (LiftTy a TheoryInMeta) (Abs x (wrapPis args ty))
+  wrapLams :: [(QName, TyS Theory)] -> ElS Theory -> ElS Meta
+  wrapLams [] body = LiftEl body TheoryInMeta
+  wrapLams ((x, _) : args) body = MetaLam (Abs x (wrapLams args body))
 
-elabTop :: Elab (Ntn -> IO (QName, Syn Meta))
-elabTop (N.Decl "theory" n _) = elabTheory n
-elabTop (N.Decl "def" n _) = elabDef n
-elabTop n = report (N.span n) (C.Expected C.Declaration)
+elabDecl :: Elab (Ntn -> IO (QName, Syn Meta))
+elabDecl (N.Decl "theory" n _) = elabTheory n
+elabDecl (N.Decl "def" n _) = elabDef n
+elabDecl n = report (N.span n) (C.Expected C.Declaration)
+
+elabTop :: Reporter -> File -> [Ntn] -> IO [(QName, ElS Meta, TyS Meta)]
+elabTop r f =
+  let ?env = BwdNil
+      ?diagCtx = DiagCtx r f
+      ?ctx = Ctx BwdNil
+      ?ctxLen = 0
+   in go BwdNil
+ where
+  go ds [] = pure $ toList ds
+  go ds (n : ns) = do
+    try (elabDecl n) >>= \case
+      Right (x, Syn (G t v) va) -> do
+        let a = quote va
+        let_ SMeta x v va $ go (ds :> (x, t, a)) ns
+      Left (_ :: ElabException) -> go ds ns

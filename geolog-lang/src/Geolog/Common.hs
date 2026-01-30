@@ -58,6 +58,9 @@ instance Pretty Span where
 class Reverse a b | a -> b where
   rev :: a -> b
 
+class ToList t where
+  toList :: t a -> [a]
+
 infixl 5 :>
 
 infixr 5 :<
@@ -66,7 +69,7 @@ data Bwd a = BwdNil | Bwd a :> a
   deriving (Functor)
 
 newtype BId = BId Int
-  deriving (Eq, Num)
+  deriving (Eq, Num, Show)
 
 instance ElemAt (Bwd a) BId a where
   elemAt BwdNil _ = impossible
@@ -78,6 +81,12 @@ instance Reverse (Bwd a) (Fwd a) where
    where
     go xs' BwdNil = xs'
     go xs' (xs :> x) = go (x :< xs') xs
+
+instance ToList Bwd where
+  toList xs = go xs []
+   where
+    go BwdNil l = l
+    go (xs' :> x) l = go xs' (x : l)
 
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs
