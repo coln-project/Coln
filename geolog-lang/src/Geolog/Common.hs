@@ -38,6 +38,9 @@ instance Pretty Name where
 data QName = QName [Name] Name
   deriving (Eq, Show)
 
+qnameBase :: QName -> Name
+qnameBase (QName _ x) = x
+
 instance Pretty QName where
   pretty (QName q x) = mconcat [pretty y <> "/" | y <- q] <> pretty x
 
