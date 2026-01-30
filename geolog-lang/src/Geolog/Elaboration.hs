@@ -168,11 +168,33 @@ typ s n = case n of
         report (N.span n) $ C.OutOfUniverse Theory (fromSing s)
       _ -> report (N.span n) C.SynthesizedNonUniverse
 
+synProj :: forall l. Elab (
+  Sing l ->
+  Env ->
+  Fields TyS l ->
+  ElG l ->
+  QName ->
+  Span ->
+  IO (Syn l))
+synProj s env (Fields ms) (G t v) x sp = go env ms where
+  go :: Elab (Env -> [(QName, TyS l)] -> IO (Syn l))
+  go _ [] = report sp (C.NoSuchField x)
+  go e ((x',a):ms')
+    | x == x' = do
+        let va = withSingI s $ evalIn e a
+        pure $ Syn (G (Proj t x) (withSingI s $ proj v x)) va
+    | otherwise = go (e :> Any s (withSingI s $ proj v x')) ms'
+
 syn :: Elab (Ntn -> IO (Any Syn))
 syn n = case n of
   N.Ident x sp -> case lookup ?ctx x of
     Just (i, Any s va) -> pure $ Any s $ Syn (gVar s i) va
     Nothing -> report sp (C.NotInScope x)
+  N.App n1 (N.Field x sp) -> do
+    Any s (Syn gr va) <- syn n1
+    case va of
+      VRecord env fs -> Any s <$> synProj s env fs gr x sp
+      _ -> report (N.span n1) C.CannotProjectNonRecord
   N.App n1 n2 -> do
     Any s (Syn gf vab) <- syn n1
     case s of
@@ -338,6 +360,7 @@ elabTop r f =
       ?ctxLen = 0
    in go BwdNil
   where
+    go :: Elab (Bwd (QName, ElS Meta, TyS Meta) -> [Ntn] -> IO [(QName, ElS Meta, TyS Meta)])
     go ds [] = pure $ toList ds
     go ds (n : ns) = do
       try (elabDecl n) >>= \case

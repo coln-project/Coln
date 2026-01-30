@@ -34,6 +34,8 @@ data Code
   | NotConvertableEl (Doc Ann) (Doc Ann) (Doc Ann)
   | NotConvertableTy (Doc Ann) (Doc Ann) (Doc Ann)
   | Expected NotationCategory
+  | CannotProjectNonRecord
+  | NoSuchField QName
 
 data Severity = Debug | Info | Warning | Error
 
@@ -65,6 +67,8 @@ severity = \case
   NotConvertableEl _ _ _ -> Error
   NotConvertableTy _ _ _ -> Error
   Expected _ -> Error
+  CannotProjectNonRecord -> Error
+  NoSuchField _ -> Error
 
 shortcode :: Code -> Doc ann
 shortcode = \case
@@ -91,6 +95,8 @@ shortcode = \case
   NotConvertableEl _ _ _ -> "E0310"
   NotConvertableTy _ _ _ -> "E0311"
   Expected _ -> "E0312"
+  CannotProjectNonRecord -> "E0313"
+  NoSuchField _ -> "E0314"
 
 description :: Code -> Doc Ann
 description = \case
@@ -115,6 +121,8 @@ description = \case
   NotConvertableEl d d' r -> "during conversion check, could not convert elements" <+> d <+> "and" <+> d' <> ". Reason:" <+> r
   NotConvertableTy d d' r -> "during conversion check, could not convert types" <+> d <+> "and" <+> d' <> ". Reason:" <+> r
   Expected c -> "expected notation for" <+> pretty (show c)
+  CannotProjectNonRecord -> "cannot project from a member of a non-record type"
+  NoSuchField x -> "no such field" <+> pretty x
 
 instance Pretty Code where
   pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> unAnnotate (description c)
