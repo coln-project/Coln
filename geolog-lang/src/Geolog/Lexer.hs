@@ -152,8 +152,8 @@ alphaNum = do
 -- We should call "symbol" something else, because Symbolize already uses the word
 -- "symbol".
 
-qname :: Lex ()
-qname = do
+qname' :: Lex (QName, Kind)
+qname' = do
   (x0, k) <-
     peek >>= \case
       c | isLetter c || c == '_' -> do
@@ -165,7 +165,7 @@ qname = do
       _ -> impossible
   case fromName k x0 of
     k' | k == k' -> go [] x0 k
-    k' -> emit k' (VName x0)
+    k' -> pure (QName [] x0, k')
  where
   go xs x k =
     peek >>= \case
@@ -180,8 +180,18 @@ qname = do
             go (x : xs) x' SIdent
           _ -> do
             report Code.UncontinuedQualifiedName
-            emit k (VQName (QName (reverse xs) x))
-      _ -> emit k (VQName (QName (reverse xs) x))
+            pure (QName (reverse xs) x, k)
+      _ -> pure (QName (reverse xs) x, k)
+
+qname :: Lex QName
+qname = fst <$> qname'
+
+ident :: Lex ()
+ident = do
+  (x, k) <- qname'
+  if k == SIdent || k == AIdent
+    then emit k (VQName x)
+    else emit k (VName $ qnameBase x)
 
 int :: Lex Int
 int = go 0
@@ -268,11 +278,11 @@ toks =
     ',' -> classify Comma >> toks
     ';' -> classify Semicolon >> toks
     '\n' -> classify Nl >> toks
-    '.' -> advance >> (alphaNum >>= emit Field . VName) >> toks
-    '\'' -> advance >> (alphaNum >>= emit Tag . VName) >> toks
+    '.' -> advance >> (qname >>= emit Field . VQName) >> toks
+    '\'' -> advance >> (qname >>= emit Tag . VQName) >> toks
     '\0' -> emit0 Eof
     c | isDigit c -> (int >>= emit Int . VInt) >> toks
-    c | isLetter c || c == '_' || isSymbol c -> qname >> toks
+    c | isLetter c || c == '_' || isSymbol c -> ident >> toks
     c -> unexpectedChar c >> toks
 
 lex :: Reporter -> File -> IO (V.Vector Token)
