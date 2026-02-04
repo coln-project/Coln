@@ -17,11 +17,17 @@ import Prettyprinter
 import Symbolize (Symbol, unintern)
 import System.IO.Unsafe (unsafePerformIO)
 
+-- Panics
+--------------------------------------------------------------------------------
+
 impossible :: a
 impossible = error "impossible"
 
 unimplemented :: a
 unimplemented = error "unimplemented"
+
+-- Names
+--------------------------------------------------------------------------------
 
 newtype Name = Name Symbol
   deriving (Eq, Hashable) via Symbol
@@ -47,6 +53,9 @@ instance Pretty QName where
 instance IsString QName where
   fromString s = QName [] (fromString s)
 
+-- Source code locations
+--------------------------------------------------------------------------------
+
 type Pos = Int
 
 data Span = Span
@@ -58,15 +67,37 @@ data Span = Span
 instance Pretty Span where
   pretty (Span s e) = pretty s <> ":" <> pretty e
 
-class Reverse a b | a -> b where
-  rev :: a -> b
+-- Doc annotations (for prettyprinting)
+--------------------------------------------------------------------------------
+
+-- TODO: make more annotations, use them
+data Ann = AText
+
+-- Container classes
+--------------------------------------------------------------------------------
+
+class ElemAt a i b | a -> i b where
+  elemAt :: a -> i -> b
+
+class Lookup a i b | a -> i b where
+  lookup :: a -> i -> Maybe b
+
+class Contains a i | a -> i where
+  contains :: a -> i -> Bool
 
 class ToList t where
   toList :: t a -> [a]
 
-infixl 5 :>
+class FromList a e | a -> e where
+  fromList :: [e] -> a
 
-infixr 5 :<
+-- Forward and backwards lists
+--------------------------------------------------------------------------------
+
+class Reverse a b | a -> b where
+  rev :: a -> b
+
+infixl 5 :>
 
 data Bwd a = BwdNil | Bwd a :> a
   deriving (Functor)
@@ -78,12 +109,6 @@ instance ElemAt (Bwd a) BId a where
   elemAt BwdNil _ = impossible
   elemAt (_ :> x) (BId 0) = x
   elemAt (xs :> _) (BId i) = elemAt xs (BId (i - 1))
-
-instance Reverse (Bwd a) (Fwd a) where
-  rev = go FwdNil
-   where
-    go xs' BwdNil = xs'
-    go xs' (xs :> x) = go (x :< xs') xs
 
 instance ToList Bwd where
   toList xs = go xs []
@@ -98,6 +123,8 @@ instance Semigroup (Bwd a) where
 instance Monoid (Bwd a) where
   mempty = BwdNil
 
+infixr 5 :<
+
 data Fwd a = FwdNil | a :< Fwd a
 
 newtype FId = FId Int
@@ -108,30 +135,27 @@ instance ElemAt (Fwd a) FId a where
   elemAt (x :< _) (FId 0) = x
   elemAt (_ :< xs) (FId i) = elemAt xs (FId (i - 1))
 
+instance Reverse (Bwd a) (Fwd a) where
+  rev = go FwdNil
+   where
+    go xs' BwdNil = xs'
+    go xs' (xs :> x) = go (x :< xs') xs
+
 instance Reverse (Fwd a) (Bwd a) where
   rev = go BwdNil
    where
     go xs' FwdNil = xs'
     go xs' (x :< xs) = go (xs' :> x) xs
 
+-- Tables
+--------------------------------------------------------------------------------
+
 newtype ConfTable v = ConfTable (FrozenDictionary V.Vector Name V.Vector v)
-
-class ElemAt a i b | a -> i b where
-  elemAt :: a -> i -> b
-
-class Lookup a i b | a -> i b where
-  lookup :: a -> i -> Maybe b
-
-class Contains a i | a -> i where
-  contains :: a -> i -> Bool
 
 instance Lookup (ConfTable v) Name v where
   lookup (ConfTable d) x = case HT.findElem d x of
     -1 -> Nothing
     i -> Just (HT.fvalue d V.! i)
-
-class FromList a e | a -> e where
-  fromList :: [e] -> a
 
 instance FromList (ConfTable v) (Name, v) where
   fromList l = unsafePerformIO do
@@ -139,11 +163,12 @@ instance FromList (ConfTable v) (Name, v) where
     fd <- HT.unsafeFreeze d
     pure $ ConfTable fd
 
--- Our custom annotations for docs
-data Ann = AText
+-- Buffers
+--------------------------------------------------------------------------------
 
 data Buffer v e = Buffer Int (v RealWorld e)
 
+-- TODO: maybe we should refactor Lexer/Parser to use IORefs instead of StateT?
 push ::
   (MonadState s m, MonadIO m, VGM.MVector v e) =>
   Lens' s (Buffer v e) ->
@@ -166,6 +191,7 @@ bufferUnsafeFreeze :: (VG.Vector v e) => Buffer (VG.Mutable v) e -> IO (v e)
 bufferUnsafeFreeze (Buffer l v) = VG.take l <$> VG.unsafeFreeze v
 
 -- Text
+--------------------------------------------------------------------------------
 
 sliceWord8 :: Int -> Int -> Text -> Text
 sliceWord8 s e t = TU.dropWord8 s $ TU.takeWord8 e t

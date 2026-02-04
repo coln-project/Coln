@@ -47,8 +47,8 @@ import Data.Singletons.TH
 import Geolog.Common
 import Prettyprinter
 
-data Abs f l = Abs QName (f l)
-  deriving (Show)
+-- Levels
+--------------------------------------------------------------------------------
 
 $(singletons [d|data Level = Query | Theory | Meta | Prim|])
 
@@ -62,6 +62,7 @@ instance Show Level where
 instance Pretty Level where
   pretty = pretty . show
 
+-- TODO: Does this data structure already exist in the singletons library?
 data Any :: (Level -> Type) -> Type where
   Any :: Sing l -> f l -> Any f
 
@@ -99,6 +100,21 @@ withDom QueryInMeta x = x
 withDom TheoryInMeta x = x
 withDom PrimInMeta x = x
 
+-- Core syntax
+--------------------------------------------------------------------------------
+
+data Abs f l = Abs QName (f l)
+  deriving (Show)
+
+data Fields f l = Fields [(QName, f l)]
+  deriving (Show)
+
+instance ElemAt (Fields f l) QName (f l) where
+  elemAt (Fields []) _ = impossible
+  elemAt (Fields ((x, v) : fs)) x'
+    | x == x' = v
+    | otherwise = elemAt (Fields fs) x'
+
 data ElS :: Level -> Type where
   Var :: BId -> ElS l
   QueryCode :: TyS Query -> ElS Theory
@@ -113,15 +129,6 @@ data ElS :: Level -> Type where
 
 deriving instance Show (ElS l)
 
-data Fields f l = Fields [(QName, f l)]
-  deriving (Show)
-
-instance ElemAt (Fields f l) QName (f l) where
-  elemAt (Fields []) _ = impossible
-  elemAt (Fields ((x, v) : fs)) x'
-    | x == x' = v
-    | otherwise = elemAt (Fields fs) x'
-
 data TyS :: Level -> Type where
   QueryU :: TyS Theory
   QueryEl :: ElS Theory -> TyS Query
@@ -132,20 +139,24 @@ data TyS :: Level -> Type where
   Record :: Fields TyS l -> TyS l
   LiftTy :: TyS l -> LevelInclusion l l' -> TyS l'
 
+-- For debugging
 deriving instance Show (TyS l)
+
+-- Core values
+--------------------------------------------------------------------------------
 
 type Env = Bwd (Any ElV)
 
 data Clo f l = Clo Env QName (f l)
 
-data Sp :: Level -> Type where
-  SId :: Sp l
-  STheoryApp :: Sp Theory -> ElV Query -> Sp Theory
-  SMetaApp :: Sp Meta -> ElV Meta -> Sp Meta
-  SProj :: Sp l -> QName -> Sp l
+data Spine :: Level -> Type where
+  SId :: Spine l
+  STheoryApp :: Spine Theory -> ElV Query -> Spine Theory
+  SMetaApp :: Spine Meta -> ElV Meta -> Spine Meta
+  SProj :: Spine l -> QName -> Spine l
 
 data ElV :: Level -> Type where
-  VNeu :: FId -> Sp l -> ElV l
+  VNeu :: FId -> Spine l -> ElV l
   VQueryCode :: TyV Query -> ElV Theory
   VTheoryCode :: TyV Theory -> ElV Meta
   VLiftEl :: ElV l -> LevelInclusion l l' -> ElV l'

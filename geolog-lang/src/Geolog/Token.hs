@@ -3,11 +3,18 @@ module Geolog.Token where
 import Geolog.Common
 import Prettyprinter
 
+-- Token kinds
+--------------------------------------------------------------------------------
+
 data Kind
-  = AIdent -- alphanumerical identifier
-  | AKeyword -- alphanumerical keyword
-  | SIdent -- symbolic identifier
-  | SKeyword -- symbolic keyword
+  = -- | alphanumerical identifier
+    AIdent
+  | -- | alphanumerical keyword
+    AKeyword
+  | -- | symbolic identifier
+    SIdent
+  | -- | symbolic keyword
+    SKeyword
   | Decl
   | Block
   | End
@@ -30,21 +37,19 @@ data Kind
 instance Pretty Kind where
   pretty k = pretty (show k)
 
-data Class
-  = CSpecific Kind
-  | CExprStart
-  | CTupleMark
-
-instance Pretty Class where
-  pretty = \case
-    CSpecific k -> pretty k
-    CExprStart -> "a token that can start an expression"
-    CTupleMark ->
-      "a token that can follow an element of a tuple, e.g. ',' or ']'"
+-- Tokens
+--------------------------------------------------------------------------------
 
 data TokenValue = VEmpty | VName Name | VQName QName | VInt Int
   deriving (Eq, Show)
 
+{- | A @Token@ consists of a kind along with an attached value and a source code
+location.
+
+We split the kind and the attached value so that we can store a set of token
+kinds as a data structure; otherwise the only way to classify tokens would be
+functions.
+-}
 data Token = Token
   { tokenKind :: Kind
   , tokenValue :: TokenValue
@@ -60,3 +65,18 @@ instance Pretty Token where
       VName x -> " " <> pretty x
       VQName x -> " " <> pretty x
       VInt i -> " " <> pretty i
+
+-- Token classes (used for error messages)
+--------------------------------------------------------------------------------
+
+data Class
+  = CSpecific Kind
+  | CExprStart
+  | CTupleMark
+
+instance Pretty Class where
+  pretty = \case
+    CSpecific k -> pretty k
+    CExprStart -> "a token that can start an expression"
+    CTupleMark ->
+      "a token that can follow an element of a tuple, e.g. ',' or ']'"

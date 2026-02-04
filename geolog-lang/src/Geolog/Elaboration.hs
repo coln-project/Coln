@@ -31,6 +31,9 @@ import Lens.Micro.Platform
 import Prettyprinter
 import Prelude hiding (lookup)
 
+-- Contexts
+--------------------------------------------------------------------------------
+
 newtype Ctx = Ctx {ctxElts :: Bwd (QName, Any TyV)}
 
 instance Lookup Ctx QName (BId, Any TyV) where
@@ -41,7 +44,10 @@ instance Lookup Ctx QName (BId, Any TyV) where
       | x == x' = Just (i, va)
       | otherwise = go es (i + 1)
 
-type CtxArg = (?ctx :: Ctx)
+-- Diagnostic context
+--------------------------------------------------------------------------------
+
+-- TODO: should this be defined in Geolog.Diagnostics?
 
 data DiagCtx = DiagCtx
   { diagCtxReporter :: Reporter
@@ -50,11 +56,25 @@ data DiagCtx = DiagCtx
 
 makeFields ''DiagCtx
 
+-- Implicit arguments
+--------------------------------------------------------------------------------
+
+type CtxArg = (?ctx :: Ctx)
+
 type DiagCtxArg = (?diagCtx :: DiagCtx)
 
 type Elab a = (DiagCtxArg, CtxArg, CtxLenArg, EnvArg) => a
 
+-- Utilities for elaboration
+--------------------------------------------------------------------------------
+
 data Syn (l :: Level) = Syn (ElG l) (TyV l)
+
+-- TODO: Right now each top-level definition emits at most one error, and gives
+-- up after that error.
+--
+-- Once we have metavariables, we can investigate emitting holes on error
+-- instead of giving up.
 
 data ElabException = GiveUp
   deriving (Show)
@@ -89,21 +109,6 @@ report s c = do
   reportIO (?diagCtx ^. reporter) d
   evaluate $ throw GiveUp
 
-{- | How do we avoid getting trapped in an infinite loop with Code/El?
-
-One option is to pass around another implicit variable about whether or not
-we've tried a type yet. This seems hacky.
-
-The thing is, some of the notations for type should really synthesize, morally
-speaking.
-
-We could add a new universe at the top which was unmentionable, so that `typ`
-was really checking at this type...
-
-Solution: we don't ever need to explicitly elaborate any meta-level types. They
-show up as the types of top-level declarations, but never actually get parsed.
-So therefore `typ` can just immediately call `chk` at a universe.
--}
 theorySyn :: TyG Theory -> Any Syn
 theorySyn ga = Any SMeta $ Syn (gTheoryCode ga) VTheoryU
 

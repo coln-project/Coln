@@ -1,4 +1,4 @@
-module Geolog.Parser where
+module Geolog.Parser (Assoc (..), Prec (..), precLe, parse) where
 
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ReaderT, runReaderT)
@@ -14,6 +14,9 @@ import Geolog.Token qualified as T
 import Lens.Micro.Platform hiding (at)
 import Prettyprinter
 import Prelude hiding (lookup)
+
+-- Parser monad
+--------------------------------------------------------------------------------
 
 data Env = Env
   { envTokens :: V.Vector T.Token
@@ -33,6 +36,9 @@ makeFields ''State
 
 newtype Parser a = Parser {runParser :: ReaderT Env (StateT State IO) a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadReader Env)
+
+-- Parsing utilities
+--------------------------------------------------------------------------------
 
 report :: Span -> Code.Code -> Parser ()
 report s c = do
@@ -153,6 +159,12 @@ advanceClose s f = do
   advance
   pure n
 
+-- Precedence/associativity
+--------------------------------------------------------------------------------
+
+-- TODO: understand how to do associativity via assigning a precedence to each
+-- side?
+
 data Assoc = AssocL | AssocR | AssocNon
   deriving (Eq, Show)
 
@@ -185,6 +197,9 @@ precs =
     , ("*", Prec 60 AssocL)
     , ("/", Prec 60 AssocL)
     ]
+
+-- The geolog grammar
+--------------------------------------------------------------------------------
 
 argStarts :: V.Vector T.Kind
 argStarts = V.fromList [T.LParen, T.LBrack, T.AIdent, T.AKeyword, T.Field, T.Int, T.Block]
@@ -317,6 +332,9 @@ block =
       ns <- stmts
       advanceClose m $ Block x h ns
     _ -> error "expected a block"
+
+-- Toplevel parsing interface
+--------------------------------------------------------------------------------
 
 parse :: Reporter -> File -> V.Vector T.Token -> IO [Ntn]
 parse r f ts = do
