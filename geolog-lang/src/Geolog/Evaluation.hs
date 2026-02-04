@@ -7,23 +7,46 @@ import Geolog.Core
 import Geolog.Pretty hiding (bind)
 import Prettyprinter
 
+-- Implicit arguments
+--------------------------------------------------------------------------------
+
 type EnvArg = (?env :: Env)
 
 type CtxLenArg = (?ctxLen :: Int)
 
-fresh :: (CtxLenArg) => FId
-fresh = FId ?ctxLen
-
-bind :: (CtxLenArg) => Sing (l :: Level) -> ((CtxLenArg) => Any ElV -> a) -> a
-bind s f =
-  let v = Any s (VNeu fresh SId)
-   in let ?ctxLen = ?ctxLen + 1 in f v
+-- Type classes
+--------------------------------------------------------------------------------
 
 class Eval a b | a -> b where
   eval :: (EnvArg) => (SingI l) => a l -> b l
 
 evalIn :: (Eval a b) => (SingI l) => Env -> a l -> b l
 evalIn env t = let ?env = env in eval t
+
+class Quote a b | a -> b where
+  quote :: (CtxLenArg) => (SingI l) => a l -> b l
+
+quoteAt :: (Quote a b) => (CtxLenArg) => Sing l -> a l -> b l
+quoteAt s x = withSingI s (quote x)
+
+-- Utilities
+--------------------------------------------------------------------------------
+
+fresh :: (CtxLenArg) => FId
+fresh = FId ?ctxLen
+
+-- TODO: we reuse the word "bind" in Pretty, Evaluation, Elaboration; we should
+-- probably call these different things
+bind :: (CtxLenArg) => Sing (l :: Level) -> ((CtxLenArg) => Any ElV -> a) -> a
+bind s f =
+  let v = Any s (VNeu fresh SId)
+   in let ?ctxLen = ?ctxLen + 1 in f v
+
+theoryCloApp :: (Eval a b) => Clo a Theory -> ElV Query -> b Theory
+theoryCloApp (Clo env _ body) v = evalIn (env :> Any SQuery v) body
+
+metaCloApp :: (Eval a b) => Clo a Meta -> ElV Meta -> b Meta
+metaCloApp (Clo env _ body) v = evalIn (env :> Any SMeta v) body
 
 theoryApp :: ElV Theory -> ElV Query -> ElV Theory
 theoryApp (VTheoryLam clo) x = theoryCloApp clo x
@@ -35,47 +58,9 @@ metaApp (VMetaLam clo) x = metaCloApp clo x
 metaApp (VNeu i sp) x = VNeu i (SMetaApp sp x)
 metaApp _ _ = impossible
 
-proj :: (SingI l) => ElV l -> QName -> ElV l
-proj (VCons fs) x = elemAt fs x
-proj (VNeu i sp) x = VNeu i (SProj sp x)
-proj _ _ = impossible
-
-data Glued s v (l :: Level) = G {stx :: (s l), val :: ~(v l)}
-
-type ElG = Glued ElS ElV
-
-type TyG = Glued TyS TyV
-
-gLiftTy :: LevelInclusion l l' -> TyG l -> TyG l'
-gLiftTy li (G s v) = G (LiftTy s li) (VLiftTy v li)
-
-gQueryCode :: TyG Query -> ElG Theory
-gQueryCode (G sa va) = G (queryCode sa) (vQueryCode va)
-
-gQueryEl :: ElG Theory -> TyG Query
-gQueryEl (G sa va) = G (queryEl sa) (vQueryEl va)
-
-gTheoryCode :: TyG Theory -> ElG Meta
-gTheoryCode (G sa va) = G (theoryCode sa) (vTheoryCode va)
-
-gTheoryEl :: ElG Meta -> TyG Theory
-gTheoryEl (G sa va) = G (theoryEl sa) (vTheoryEl va)
-
-gTheoryApp :: ElG Theory -> ElG Query -> ElG Theory
-gTheoryApp (G sf vf) (G st vt) = G (TheoryApp sf st) (theoryApp vf vt)
-
-gMetaApp :: ElG Meta -> ElG Meta -> ElG Meta
-gMetaApp (G sf vf) (G st vt) = G (MetaApp sf st) (metaApp vf vt)
-
-theoryCloApp :: (Eval a b) => Clo a Theory -> ElV Query -> b Theory
-theoryCloApp (Clo env _ body) v = evalIn (env :> Any SQuery v) body
-
-metaCloApp :: (Eval a b) => Clo a Meta -> ElV Meta -> b Meta
-metaCloApp (Clo env _ body) v = evalIn (env :> Any SMeta v) body
-
-gLiftEl :: ElG l -> LevelInclusion l l' -> ElG l'
-gLiftEl (G s v) li = G (LiftEl s li) (VLiftEl v li)
-
+-- TODO: this seems like a premature optimization, also it messes with the
+-- naming scheme where lowercase functions named the same as syntax constructors
+-- act on values.
 queryCode :: TyS Query -> ElS Theory
 queryCode (QueryEl t) = t
 queryCode ty = QueryCode ty
@@ -108,6 +93,55 @@ vTheoryEl :: ElV Meta -> TyV Theory
 vTheoryEl (VTheoryCode ty) = ty
 vTheoryEl t = VTheoryEl t
 
+proj :: (SingI l) => ElV l -> QName -> ElV l
+proj (VCons fs) x = elemAt fs x
+proj (VNeu i sp) x = VNeu i (SProj sp x)
+proj _ _ = impossible
+
+-- Glued operations
+--------------------------------------------------------------------------------
+
+-- NOTE: this is glued evaluation in a different sense than typically used!
+-- Typically, glued evaluation pairs a value with a
+-- more-eta-expanded-and-beta-reduced value. This glued evalution pairs syntax
+-- with a value. These glued values are the results of elaboration, which
+-- ensures that we don't have to re-evaluate syntax more than once. In
+-- pathological cases, not doing this can cause elaboration to be asymptotically
+-- slower.
+
+data Glued s v (l :: Level) = G {stx :: (s l), val :: ~(v l)}
+
+type ElG = Glued ElS ElV
+
+type TyG = Glued TyS TyV
+
+gLiftTy :: LevelInclusion l l' -> TyG l -> TyG l'
+gLiftTy li (G s v) = G (LiftTy s li) (VLiftTy v li)
+
+gQueryCode :: TyG Query -> ElG Theory
+gQueryCode (G sa va) = G (queryCode sa) (vQueryCode va)
+
+gQueryEl :: ElG Theory -> TyG Query
+gQueryEl (G sa va) = G (queryEl sa) (vQueryEl va)
+
+gTheoryCode :: TyG Theory -> ElG Meta
+gTheoryCode (G sa va) = G (theoryCode sa) (vTheoryCode va)
+
+gTheoryEl :: ElG Meta -> TyG Theory
+gTheoryEl (G sa va) = G (theoryEl sa) (vTheoryEl va)
+
+gTheoryApp :: ElG Theory -> ElG Query -> ElG Theory
+gTheoryApp (G sf vf) (G st vt) = G (TheoryApp sf st) (theoryApp vf vt)
+
+gMetaApp :: ElG Meta -> ElG Meta -> ElG Meta
+gMetaApp (G sf vf) (G st vt) = G (MetaApp sf st) (metaApp vf vt)
+
+gLiftEl :: ElG l -> LevelInclusion l l' -> ElG l'
+gLiftEl (G s v) li = G (LiftEl s li) (VLiftEl v li)
+
+-- Evaluation
+--------------------------------------------------------------------------------
+
 instance Eval (Fields ElS) (Fields ElV) where
   eval (Fields fs) = Fields $ [(x, eval t) | (x, t) <- fs]
 
@@ -138,8 +172,8 @@ instance Eval TyS TyV where
     Record fields -> VRecord ?env fields
     LiftTy a li -> VLiftTy (withDom li $ eval a) li
 
-class Quote a b | a -> b where
-  quote :: (CtxLenArg) => (SingI l) => a l -> b l
+-- Quoting
+--------------------------------------------------------------------------------
 
 type Const a l = a
 
@@ -152,9 +186,6 @@ quoteSp sp t = case sp of
 
 quoteId :: (CtxLenArg) => FId -> BId
 quoteId (FId i) = BId (?ctxLen - i - 1)
-
-quoteAt :: (Quote a b) => (CtxLenArg) => Sing l -> a l -> b l
-quoteAt s x = withSingI s (quote x)
 
 instance Quote ElV ElS where
   quote = \case
@@ -209,6 +240,9 @@ demoteTy _ (VTheoryEl v) = case demoteEl SMeta v of
   Any SMeta v' -> Any STheory (vTheoryEl v')
   _ -> impossible
 demoteTy s v = Any s v
+
+-- Conversion checking
+--------------------------------------------------------------------------------
 
 -- We have to quote and pretty-print at the point of conversion failure because
 -- that's when we have access to all the names

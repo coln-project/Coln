@@ -38,7 +38,10 @@ library
         TypeFamilies TypeFamilyDependencies TypeOperators UnboxedSums
         UnboxedTuples UnicodeSyntax ViewPatterns
 
-    ghc-options:        -Wall -funbox-strict-fields -Wno-unused-imports
+    ghc-options:
+        -Wall -funbox-strict-fields -Wno-unused-imports
+        -Wno-unused-top-binds
+
     build-depends:
         base >=4.19.2.0,
         bytestring,

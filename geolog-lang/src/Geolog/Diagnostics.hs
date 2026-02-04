@@ -10,6 +10,17 @@ import Prettyprinter
 import Prettyprinter.Render.Text
 import System.IO (Handle)
 
+-- Files
+--------------------------------------------------------------------------------
+
+-- | A @File@ is used to display diagnostic messages.
+-- Specifically, a @File@ is used to convert the @Span@ in a diagnostic message
+-- into snippet of source code with the span underlined.
+--
+-- In order to do this, we need to convert the byte positions in the @Span@ into
+-- line/column positions. This can be done fairly efficiently by binary search
+-- through the vector of newline positions in the file, so we create this vector
+-- whenever we open a file and store it in the @File@ record.
 data File = File
   { fileName :: FilePath,
     fileContents :: T.Text,
@@ -87,6 +98,7 @@ numDigits n = go (abs n)
       | x < 10 = 1
       | otherwise = 1 + go (x `div` 10)
 
+-- | This is the function used to display the source code for a @Span@.
 linesPretty :: File -> Span -> Doc ann
 linesPretty f sp@(Span s e) =
   vsep
@@ -98,12 +110,22 @@ linesPretty f sp@(Span s e) =
     le = lineOf f e
     numWidth = max (numDigits ls) (numDigits le)
 
+-- Reporter
+--------------------------------------------------------------------------------
+
+-- | A @Reporter@ is a destination for diagnostic messages. Currently this is
+-- very simplistic; it's just a byte sink. The @reporterFancy@ flag is in theory
+-- used to configure whether colors should be used, but we don't even look at
+-- that yet.
 data Reporter = Reporter
   { reporterHandle :: Handle,
     reporterFancy :: Bool
   }
 
 makeFields ''Reporter
+
+-- Diagnostics
+--------------------------------------------------------------------------------
 
 data SourceLoc = SourceLoc
   { sourceLocFile :: File,

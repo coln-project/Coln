@@ -1,4 +1,4 @@
-module Geolog.Lexer where
+module Geolog.Lexer (lex) where
 
 import Control.Monad.IO.Class
 import Control.Monad.Reader (ReaderT, runReaderT)
@@ -16,6 +16,9 @@ import Geolog.Token
 import Lens.Micro.Platform
 import Symbolize qualified
 import Prelude hiding (error, getChar, lex, lookup, span)
+
+-- Lex monad
+--------------------------------------------------------------------------------
 
 data State = State
   { statePos :: Int,
@@ -38,6 +41,9 @@ source = file . contents
 
 newtype Lex a = Lex {runLex :: ReaderT Env (StateT State IO) a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadReader Env)
+
+-- Fundamental lexing actions
+--------------------------------------------------------------------------------
 
 emit0 :: Kind -> Lex ()
 emit0 k = emit k VEmpty
@@ -99,6 +105,21 @@ isAlphaNum c
   | c == '_' || c == '-' = True
   | otherwise = False
 
+report :: Code.Code -> Lex ()
+report c = do
+  s <- span
+  e <- ask
+  let d = Diagnostic c [Note (Just (SourceLoc (e ^. file) s)) Nothing]
+  liftIO $ reportIO (e ^. reporter) d
+
+unexpectedChar :: Char -> Lex ()
+unexpectedChar c = do
+  advance
+  report (Code.UnexpectedCharacter c)
+
+-- Lexemes
+--------------------------------------------------------------------------------
+
 alphaNum :: Lex Name
 alphaNum = do
   s <- use pos
@@ -107,51 +128,24 @@ alphaNum = do
   x <- slice (Span s e)
   pure $ Name $ Symbolize.intern x
 
--- Parsing an identifier:
---
--- - Parse an alphanumeric name
--- - Check if the name is special (block, keyword, etc.), if so, return.
---   Special names don't participate in namespacing
--- - extend: If the next character is '/', keep going; look for either a symbol or
---   another alphanumeric segment.
--- - If the next one is a symbol, then check if the symbol is a "symbolic keyword";
---   if so, report an error, otherwise emit an `SIdent` token.
--- - If the next one is an alphanumeric name, then go back to `extend`
---
--- Note:
--- We should allow symbolic fields. E.g. .+ is a perfectly valid field.
+specialTable :: ConfTable Kind
+specialTable =
+  fromList
+    [ ("sig", Block),
+      ("theory", Decl),
+      ("def", Decl),
+      ("let", Decl),
+      ("open", Decl),
+      ("import", Decl),
+      ("end", End),
+      ("Query", AKeyword),
+      ("=", SKeyword),
+      (":=", SKeyword),
+      (":", SKeyword),
+      ("->", SKeyword)
+    ]
 
--- Note:
--- Division can use unicode division (gah, why won't ormolu parse unicode??);
--- otherwise `a//` is too confusing. How often do you need to divide in a
--- database?
-
--- Note:
--- Do we want kebab case? It's very aesthetic, but perhaps is_type is just as
--- good as is-type? Subtraction is more common than division. Also, negative
--- numbers.  I think that if we want kebab case, we should require all binary
--- operators to have spaces around them, not just `-`. Which is not the end of
--- the world; this is maybe the right way to do it, and this is how it's done in
--- Pyret and Agda.
---
--- Then symbolic identifiers and alphanumeric identifiers may both contain `-`;
--- it's a wild card! When it starts a name, it makes that name symbolic, but it
--- can appear in either alphanumeric or symbolic names.
-
--- Note:
--- Should `Name` be a sumtype of symbolic vs. alphanumeric? If we keep it as is,
--- it's pretty easy to check by just looking at the first letter, and we can
--- always look up precedence in the table, so I think that keeping name as a
--- newtype wrapper around Symbol is going to be speediest.
-
--- Note:
--- Because we can always check if a name is a symbol or not, maybe we should do
--- away with different tokens for alphanums vs symbols? Nah, that's fine
-
--- Note:
--- We should call "symbol" something else, because Symbolize already uses the word
--- "symbol".
-
+-- | Lex a qualified name, and return its kind (configured in @specialTable@)
 qname' :: Lex (QName, Kind)
 qname' = do
   (x0, k) <-
@@ -183,6 +177,7 @@ qname' = do
               pure (QName (reverse xs) x, k)
         _ -> pure (QName (reverse xs) x, k)
 
+-- | Lex a qualified name and return it, ignoring kind
 qname :: Lex QName
 qname = fst <$> qname'
 
@@ -202,28 +197,6 @@ int = go 0
         then advance >> go (i * 10 + (ord c - ord '0'))
         else pure i
 
-isLatinLetter :: Char -> Bool
-isLatinLetter b
-  | 'a' <= b && b <= 'z' = True
-  | 'A' <= b && b <= 'Z' = True
-  | otherwise = False
-
-specialTable :: ConfTable Kind
-specialTable =
-  fromList
-    [ ("sig", Block),
-      ("theory", Decl),
-      ("def", Decl),
-      ("let", Decl),
-      ("open", Decl),
-      ("import", Decl),
-      ("end", End),
-      ("Query", AKeyword),
-      ("=", SKeyword),
-      (":", SKeyword),
-      ("->", SKeyword)
-    ]
-
 fromName :: Kind -> Name -> Kind
 fromName def x = case lookup specialTable x of
   Nothing -> def
@@ -232,6 +205,7 @@ fromName def x = case lookup specialTable x of
 emitName :: Kind -> Name -> Lex ()
 emitName def x = emit (fromName def x) (VName x)
 
+-- TODO: more symbols, including unicode symbols? See issue #6
 isSymbol :: Char -> Bool
 isSymbol = \case
   '<' -> True
@@ -252,18 +226,13 @@ symbol = do
   x <- slice (Span s e)
   pure $ Name $ Symbolize.intern x
 
-report :: Code.Code -> Lex ()
-report c = do
-  s <- span
-  e <- ask
-  let d = Diagnostic c [Note (Just (SourceLoc (e ^. file) s)) Nothing]
-  liftIO $ reportIO (e ^. reporter) d
+-- Top-level lexing interface
+--------------------------------------------------------------------------------
 
-unexpectedChar :: Char -> Lex ()
-unexpectedChar c = do
-  advance
-  report (Code.UnexpectedCharacter c)
-
+-- | Lex all the tokens
+--
+-- This has a short name so that the tail-recursion is less annoying to write
+-- out.
 toks :: Lex ()
 toks =
   peek >>= \case
@@ -285,6 +254,8 @@ toks =
     c | isLetter c || c == '_' || isSymbol c -> ident >> toks
     c -> unexpectedChar c >> toks
 
+-- | The only exported function; run the lexer, return a vector of tokens ready
+-- for parsing.
 lex :: Reporter -> File -> IO (V.Vector Token)
 lex r f = do
   let src = f ^. contents

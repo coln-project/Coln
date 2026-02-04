@@ -5,9 +5,18 @@ import Geolog.Common
 import Prettyprinter
 import Prelude hiding (head, span)
 
--- We put the span last because in the parser we have utility methods
--- which take `Span -> Ntn`, and if the span is last, we can use currying
--- to our advantage here
+-- Notation data structure
+--------------------------------------------------------------------------------
+
+-- | Notation is the output of parsing.
+--
+-- Each notation is associated with a span. Most variants store that span; `App`
+-- and `Infix` don't because the span can be inferred by looking at the left and
+-- right children.
+--
+-- In the variants which take a span, we put the span last because in the parser
+-- we have utility methods which take `Span -> Ntn`, and if the span is last, we
+-- can use currying to our advantage here.
 data Ntn
   = App Ntn Ntn
   | Infix Ntn Ntn Ntn
@@ -19,18 +28,6 @@ data Ntn
   | Int Int Span
   | Tuple [Ntn] Span
   | Error Span
-
-head :: Ntn -> Doc ann
-head (App _ _) = "App"
-head (Infix _ _ _) = "Infix"
-head (Block x _ _ _) = "Block" <+> pretty x
-head (Decl x _ _) = "Decl" <+> pretty x
-head (Ident x _) = "Ident" <+> pretty x
-head (Keyword x _) = "Keyword" <+> pretty x
-head (Field x _) = "Field" <+> pretty x
-head (Int i _) = "Int" <+> pretty i
-head (Tuple _ _) = "Tuple"
-head (Error _) = "Error"
 
 startPos :: Ntn -> Pos
 startPos (App f _) = startPos f
@@ -58,6 +55,21 @@ endPos (Error s) = spanEnd s
 
 span :: Ntn -> Span
 span n = Span (startPos n) (endPos n)
+
+-- Debug printing for notation
+--------------------------------------------------------------------------------
+
+head :: Ntn -> Doc ann
+head (App _ _) = "App"
+head (Infix _ _ _) = "Infix"
+head (Block x _ _ _) = "Block" <+> pretty x
+head (Decl x _ _) = "Decl" <+> pretty x
+head (Ident x _) = "Ident" <+> pretty x
+head (Keyword x _) = "Keyword" <+> pretty x
+head (Field x _) = "Field" <+> pretty x
+head (Int i _) = "Int" <+> pretty i
+head (Tuple _ _) = "Tuple"
+head (Error _) = "Error"
 
 children :: Ntn -> [Ntn]
 children (App f x) = [f, x]
