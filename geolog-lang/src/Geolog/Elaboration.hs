@@ -31,6 +31,9 @@ import Lens.Micro.Platform
 import Prettyprinter
 import Prelude hiding (lookup)
 
+-- Contexts
+--------------------------------------------------------------------------------
+
 newtype Ctx = Ctx {ctxElts :: Bwd (QName, Any TyV)}
 
 instance Lookup Ctx QName (BId, Any TyV) where
@@ -41,7 +44,10 @@ instance Lookup Ctx QName (BId, Any TyV) where
       | x == x' = Just (i, va)
       | otherwise = go es (i + 1)
 
-type CtxArg = (?ctx :: Ctx)
+-- Diagnostic context
+--------------------------------------------------------------------------------
+
+-- TODO: should this be defined in Geolog.Diagnostics?
 
 data DiagCtx = DiagCtx
   { diagCtxReporter :: Reporter
@@ -50,24 +56,49 @@ data DiagCtx = DiagCtx
 
 makeFields ''DiagCtx
 
+-- Implicit arguments
+--------------------------------------------------------------------------------
+
+type CtxArg = (?ctx :: Ctx)
+
 type DiagCtxArg = (?diagCtx :: DiagCtx)
 
 type Elab a = (DiagCtxArg, CtxArg, CtxLenArg, EnvArg) => a
 
+-- Utilities for elaboration
+--------------------------------------------------------------------------------
+
 data Syn (l :: Level) = Syn (ElG l) (TyV l)
+
+theoryAsSyn :: TyG Theory -> Any Syn
+theoryAsSyn ga = Any SMeta $ Syn (gTheoryCode ga) VTheoryU
+
+-- TODO: Right now each top-level definition emits at most one error, and gives
+-- up after that error.
+--
+-- Once we have metavariables, we can investigate emitting holes on error
+-- instead of giving up.
 
 data ElabException = GiveUp
   deriving (Show)
 
 instance Exception ElabException
 
-binding :: (DiagCtxArg) => Ntn -> IO (QName, Ntn)
-binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
-binding n = report (N.span n) (C.Expected C.Binding)
+report :: (DiagCtxArg) => Span -> C.Code -> IO a
+report s c = do
+  let n = Note (Just (SourceLoc (?diagCtx ^. file) s)) Nothing
+  let d = Diagnostic c [n]
+  reportIO (?diagCtx ^. reporter) d
+  evaluate $ throw GiveUp
 
-annot :: (DiagCtxArg) => Ntn -> IO (Ntn, Ntn)
-annot (N.Infix n1 (N.Keyword ":" _) n2) = pure (n1, n2)
-annot n = report (N.span n) (C.Expected C.Annot)
+withNames :: Elab (((NamesArg) => a) -> a)
+withNames f = let ?names = fmap fst (ctxElts ?ctx) in f
+
+pp :: (Prt a) => Elab (a -> Doc ann)
+pp x = withNames $ prtPrec precTop x
+
+-- Context manipulation
+--------------------------------------------------------------------------------
 
 bind :: Elab (Sing l -> QName -> TyV l -> (Elab a) -> a)
 bind s x va f = let vx = VNeu (FId ?ctxLen) SId in let_ s x vx va f
@@ -82,33 +113,25 @@ let_ s x vx va f =
       ?ctxLen = ?ctxLen + 1
    in f
 
-report :: (DiagCtxArg) => Span -> C.Code -> IO a
-report s c = do
-  let n = Note (Just (SourceLoc (?diagCtx ^. file) s)) Nothing
-  let d = Diagnostic c [n]
-  reportIO (?diagCtx ^. reporter) d
-  evaluate $ throw GiveUp
+-- Pattern matching
+--------------------------------------------------------------------------------
 
-{- | How do we avoid getting trapped in an infinite loop with Code/El?
+binding :: (DiagCtxArg) => Ntn -> IO (QName, Ntn)
+binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
+binding n = report (N.span n) (C.Expected C.Binding)
 
-One option is to pass around another implicit variable about whether or not
-we've tried a type yet. This seems hacky.
+annot :: (DiagCtxArg) => Ntn -> IO (Ntn, Ntn)
+annot (N.Infix n1 (N.Keyword ":" _) n2) = pure (n1, n2)
+annot n = report (N.span n) (C.Expected C.Annot)
 
-The thing is, some of the notations for type should really synthesize, morally
-speaking.
+setting :: (DiagCtxArg) => QName -> Ntn -> IO Ntn
+setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
+  | x == x' = pure n'
+  | otherwise = report sp (C.ExpectedField x x')
+setting _ n = report (N.span n) (C.UnexpectedNotation "record entry")
 
-We could add a new universe at the top which was unmentionable, so that `typ`
-was really checking at this type...
-
-Solution: we don't ever need to explicitly elaborate any meta-level types. They
-show up as the types of top-level declarations, but never actually get parsed.
-So therefore `typ` can just immediately call `chk` at a universe.
--}
-theorySyn :: TyG Theory -> Any Syn
-theorySyn ga = Any SMeta $ Syn (gTheoryCode ga) VTheoryU
-
-gVar :: (EnvArg) => Sing l -> BId -> ElG l
-gVar s i = G (Var i) (extractAt s $ elemAt ?env i)
+-- Utilities for elaborating records
+--------------------------------------------------------------------------------
 
 members :: Elab (Sing l -> [Ntn] -> IO [(QName, TyS l)])
 members _ [] = pure []
@@ -116,12 +139,6 @@ members s (n : ns) = do
   (x, n') <- binding n
   G sa va <- typ s n'
   ((x, sa) :) <$> bind s x va (members s ns)
-
-setting :: (DiagCtxArg) => QName -> Ntn -> IO Ntn
-setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
-  | x == x' = pure n'
-  | otherwise = report sp (C.ExpectedField x x')
-setting _ n = report (N.span n) (C.UnexpectedNotation "record entry")
 
 elts ::
   forall (l :: Level).
@@ -141,16 +158,16 @@ elts s e ((x, a) : ms) (n : ns) = do
   pure ((x, st) : sfs, (x, vt) : vfs)
 elts _ _ _ _ = impossible
 
-withNames :: Elab (((NamesArg) => a) -> a)
-withNames f = let ?names = fmap fst (ctxElts ?ctx) in f
+-- Elaborating types
+--------------------------------------------------------------------------------
 
-pp :: (Prt a) => Elab (a -> Doc ann)
-pp x = withNames $ prtPrec precTop x
+{- | We avoid an infinite recursion between `chk` and `typ` by a small amount of
+code duplication between them for record types.
 
-ident :: (DiagCtxArg) => Ntn -> IO QName
-ident (N.Ident x _) = pure x
-ident n = report (N.span n) (C.UnexpectedNotation "ident")
-
+Also, `typ` differs from `chk` in that `typ` will auto-promote notation that
+synthesizes a type at a lower level.
+TODO: do this in a more elegant way.
+-}
 typ :: Elab (Sing l -> Ntn -> IO (TyG l))
 typ s n = case n of
   N.Tuple ns _ -> do
@@ -169,6 +186,16 @@ typ s n = case n of
       (_, VTheoryU) ->
         report (N.span n) $ C.OutOfUniverse Theory (fromSing s)
       _ -> report (N.span n) C.SynthesizedNonUniverse
+
+-- Synthesis
+--------------------------------------------------------------------------------
+
+ident :: (DiagCtxArg) => Ntn -> IO QName
+ident (N.Ident x _) = pure x
+ident n = report (N.span n) (C.UnexpectedNotation "ident")
+
+gVar :: (EnvArg) => Sing l -> BId -> ElG l
+gVar s i = G (Var i) (extractAt s $ elemAt ?env i)
 
 synProj ::
   forall l.
@@ -216,14 +243,17 @@ syn n = case n of
         _ -> report (N.span n1) C.CannotApplyNonPi
       _ -> report (N.span n1) C.CannotApplyNonPi
   N.Infix _ (N.Keyword "=>" _) _ -> report (N.span n) (C.MustChk "lambda syntax")
-  N.Keyword "Query" _ -> pure $ theorySyn $ G QueryU VQueryU
+  N.Keyword "Query" _ -> pure $ theoryAsSyn $ G QueryU VQueryU
   N.Infix n1 (N.Keyword "->" _) n2 -> do
     (x, na) <- binding n1
     G sa va <- typ SQuery na
     G sb _ <- bind SQuery x va $ typ STheory n2
-    pure $ theorySyn (G (TheoryPi sa (Abs x sb)) (VTheoryPi va (Clo ?env x sb)))
+    pure $ theoryAsSyn (G (TheoryPi sa (Abs x sb)) (VTheoryPi va (Clo ?env x sb)))
   N.Tuple _ _ -> report (N.span n) (C.MustChk "tuple syntax")
   _ -> unimplemented
+
+-- Checking
+--------------------------------------------------------------------------------
 
 chk :: Elab (Sing l -> TyV l -> Ntn -> IO (ElG l))
 chk s va n = case va of
@@ -256,6 +286,7 @@ chk s va n = case va of
     _ -> do
       Any s' (Syn g va') <- syn n
       let sp = N.span n
+      -- TODO: handle this promotion in a more elegant way
       case (s', s) of
         (SQuery, SQuery) ->
           tryConv sp s va va' g
@@ -282,6 +313,9 @@ tryConv sp s a a' v =
         Success () -> pure v
         Failure (NotConvertableEl d d') r -> report sp (C.NotConvertableEl d d' r)
         Failure (NotConvertableTy d d') r -> report sp (C.NotConvertableTy d d' r)
+
+-- Elaboration of top-level declarations
+--------------------------------------------------------------------------------
 
 definition :: Elab (Ntn -> IO (Ntn, Ntn))
 definition (N.Infix n1 (N.Keyword "=" _) n2) = pure (n1, n2)
