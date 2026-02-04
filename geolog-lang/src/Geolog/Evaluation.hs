@@ -177,7 +177,7 @@ instance Eval TyS TyV where
 
 type Const a l = a
 
-quoteSp :: (CtxLenArg) => (SingI l) => Sp l -> ElS l -> ElS l
+quoteSp :: (CtxLenArg) => (SingI l) => Spine l -> ElS l -> ElS l
 quoteSp sp t = case sp of
   SId -> t
   STheoryApp sp' v -> TheoryApp (quoteSp sp' t) (quote v)
@@ -286,7 +286,7 @@ convElFail (Any sa a) (Any sb b) d =
     )
     d
 
-isConvSp :: (ConvCtx) => Sing l -> FId -> Sp l -> Sp l -> ConvM ()
+isConvSp :: (ConvCtx) => Sing l -> FId -> Spine l -> Spine l -> ConvM ()
 isConvSp _ _ SId SId = pure ()
 isConvSp s i (STheoryApp sp v) (STheoryApp sp' v') = do
   isConvSp s i sp sp'
