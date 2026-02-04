@@ -5,6 +5,9 @@ import Geolog.Core
 import Geolog.Parser (Assoc (..), Prec (..), precLe)
 import Prettyprinter
 
+-- Implicit arguments for pretty printing
+--------------------------------------------------------------------------------
+
 type NamesArg = (?names :: Bwd QName)
 
 bind :: (NamesArg) => QName -> ((NamesArg) => a) -> a
@@ -13,6 +16,9 @@ bind x f = let ?names = ?names :> x in f
 type PrecArg = (?prec :: Prec)
 
 type DoPretty a = (PrecArg) => (NamesArg) => a
+
+-- Pretty printing
+--------------------------------------------------------------------------------
 
 class Prt a where
   prt :: DoPretty (a -> Doc ann)

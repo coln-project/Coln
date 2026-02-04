@@ -1,10 +1,12 @@
 # Grammar
 
+## Principles
+
 The grammar for geolog is largely inspired by [fnotation](https://github.com/ToposInstitute/fnotation) but with some small variations.
 
 It is built up from the following principles.
 
-## Names
+### Names
 
 There are (at least) 6 "name-like" things:
 
@@ -34,11 +36,11 @@ There are (at least) 6 "name-like" things:
 
 We may introduce more classes of "identifier prefixed with sigil," for instance `?x` or `~x` for implicit variables.
 
-## Juxtaposition is application
+### Juxtaposition is application
 
 Very simple: `f x` is `f` applied to `x`. `f x y = (f x) y`.
 
-## Many things can be handled by precedence
+### Many things can be handled by precedence
 
 The expression
 
@@ -60,17 +62,17 @@ can be parsed generically using a precedence table for operators `:`, `=`, `+` i
 
 Even though the semantic roles of `:`, `=`, `+` are quite different, it makes sense to just treat them all the same for parsing. This also makes it easier for the user: parsing is resolved using a global precedence table that is the same in all contexts.
 
-## Parenthesization is clarification
+### Parenthesization is clarification
 
 The only purpose of parentheses is to get a different parsing than would otherwise be gotten from precedence.
 
 This means that parentheses are always idempotent.
 
-## Square brackets are sequences
+### Square brackets are sequences
 
 This is fairly simple: `[x, y, z]` is the raw syntax for a sequence. This might be used for lists, tuples, records (`[a : Int, b : String]`), etc.
 
-## Blocks and declarations
+### Blocks and declarations
 
 The main deviation from fnotation in the geolog syntax is that we use blocks that are signaled by keywords and have newline-separated elements. For instance:
 
@@ -124,3 +126,50 @@ def f x y = do
   z + w
 end
 ```
+
+## Misc notes
+
+Parsing an identifier:
+
+- Parse an alphanumeric name
+- Check if the name is special (block, keyword, etc.), if so, return.
+  Special names don't participate in namespacing
+- extend: If the next character is '/', keep going; look for either a symbol or
+  another alphanumeric segment.
+- If the next one is a symbol, then check if the symbol is a "symbolic keyword";
+  if so, report an error, otherwise emit an `SIdent` token.
+- If the next one is an alphanumeric name, then go back to `extend`
+
+Note:
+We should allow symbolic fields. E.g. .+ is a perfectly valid field.
+
+Note:
+Division can use unicode division (gah, why won't ormolu parse unicode??);
+otherwise `a//` is too confusing. How often do you need to divide in a
+database?
+
+Note:
+Do we want kebab case? It's very aesthetic, but perhaps is_type is just as
+good as is-type? Subtraction is more common than division. Also, negative
+numbers.  I think that if we want kebab case, we should require all binary
+operators to have spaces around them, not just `-`. Which is not the end of
+the world; this is maybe the right way to do it, and this is how it's done in
+Pyret and Agda.
+
+Then symbolic identifiers and alphanumeric identifiers may both contain `-`;
+it's a wild card! When it starts a name, it makes that name symbolic, but it
+can appear in either alphanumeric or symbolic names.
+
+Note:
+Should `Name` be a sumtype of symbolic vs. alphanumeric? If we keep it as is,
+it's pretty easy to check by just looking at the first letter, and we can
+always look up precedence in the table, so I think that keeping name as a
+newtype wrapper around Symbol is going to be speediest.
+
+Note:
+Because we can always check if a name is a symbol or not, maybe we should do
+away with different tokens for alphanums vs symbols? Nah, that's fine
+
+Note:
+We should call "symbol" something else, because Symbolize already uses the word
+"symbol".
