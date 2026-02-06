@@ -59,7 +59,7 @@ cur = do
     then error "out of gas"
     else gas -= 1
   ts <- view tokens
-  let f i = T.tokenKind $ V.unsafeIndex ts i
+  let f i = (V.unsafeIndex ts i).kind
   if st ^. skipNewlines
     then go f
     else pure $ f (st ^. pos)
@@ -85,13 +85,13 @@ curSpan :: Parser Span
 curSpan = do
   ts <- view tokens
   i <- use pos
-  pure $ T.tokenSpan $ V.unsafeIndex ts i
+  pure $ (V.unsafeIndex ts i).span
 
 curValue :: Parser T.TokenValue
 curValue = do
   ts <- view tokens
   i <- use pos
-  pure $ T.tokenValue $ V.unsafeIndex ts i
+  pure $ (V.unsafeIndex ts i).value
 
 curName :: Parser Name
 curName =
@@ -340,4 +340,4 @@ parse :: Reporter -> File -> V.Vector T.Token -> IO [Ntn]
 parse r f ts = do
   let s = State 0 256 False
   let e = Env ts f r
-  evalStateT (runReaderT (runParser stmts) e) s
+  evalStateT (runReaderT stmts.runParser e) s

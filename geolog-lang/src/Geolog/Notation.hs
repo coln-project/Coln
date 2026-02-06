@@ -32,26 +32,26 @@ data Ntn
 startPos :: Ntn -> Pos
 startPos (App f _) = startPos f
 startPos (Infix x _ _) = startPos x
-startPos (Block _ _ _ s) = spanStart s
-startPos (Decl _ _ s) = spanStart s
-startPos (Ident _ s) = spanStart s
-startPos (Keyword _ s) = spanStart s
-startPos (Field _ s) = spanStart s
-startPos (Int _ s) = spanStart s
-startPos (Tuple _ s) = spanStart s
-startPos (Error s) = spanStart s
+startPos (Block _ _ _ s) = s.start
+startPos (Decl _ _ s) = s.start
+startPos (Ident _ s) = s.start
+startPos (Keyword _ s) = s.start
+startPos (Field _ s) = s.start
+startPos (Int _ s) = s.start
+startPos (Tuple _ s) = s.start
+startPos (Error s) = s.start
 
 endPos :: Ntn -> Pos
 endPos (App _ x) = endPos x
 endPos (Infix _ _ y) = endPos y
-endPos (Block _ _ _ s) = spanEnd s
-endPos (Decl _ _ s) = spanEnd s
-endPos (Ident _ s) = spanEnd s
-endPos (Keyword _ s) = spanEnd s
-endPos (Field _ s) = spanEnd s
-endPos (Int _ s) = spanEnd s
-endPos (Tuple _ s) = spanEnd s
-endPos (Error s) = spanEnd s
+endPos (Block _ _ _ s) = s.end
+endPos (Decl _ _ s) = s.end
+endPos (Ident _ s) = s.end
+endPos (Keyword _ s) = s.end
+endPos (Field _ s) = s.end
+endPos (Int _ s) = s.end
+endPos (Tuple _ s) = s.end
+endPos (Error s) = s.end
 
 span :: Ntn -> Span
 span n = Span (startPos n) (endPos n)

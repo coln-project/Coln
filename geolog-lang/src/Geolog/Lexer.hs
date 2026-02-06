@@ -36,9 +36,6 @@ data Env = Env
 
 makeFields ''Env
 
-source :: Lens' Env T.Text
-source = file . contents
-
 newtype Lex a = Lex {runLex :: ReaderT Env (StateT State IO) a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadState State, MonadReader Env)
 
@@ -67,7 +64,8 @@ peek = do
 
 advance :: Lex ()
 advance = do
-  src <- view source
+  f <- view file
+  let src = f.contents
   TU.Iter _ j <- use iter
   i <- use pos
   let i' = i + j
@@ -96,7 +94,7 @@ advanceWhile f =
 slice :: Span -> Lex T.Text
 slice (Span s e) = do
   env <- ask
-  pure $ sliceWord8 s e (env ^. source)
+  pure $ sliceWord8 s e (env ^. file).contents
 
 isAlphaNum :: Char -> Bool
 isAlphaNum c
@@ -258,9 +256,9 @@ toks =
 -- for parsing.
 lex :: Reporter -> File -> IO (V.Vector Token)
 lex r f = do
-  let src = f ^. contents
+  let src = f.contents
   ts <- bufferWithCapacity (TU.lengthWord8 src)
   let s = State 0 0 (TU.iter src 0) ts
   let e = Env f r
-  s' <- execStateT (runReaderT (runLex toks) e) s
+  s' <- execStateT (runReaderT toks.runLex e) s
   bufferUnsafeFreeze $ s' ^. tokens

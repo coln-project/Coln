@@ -1,174 +1,161 @@
-{-# LANGUAGE UndecidableInstances #-}
-
--- |
--- This module contains the definition for geolog core.
---
--- Core is what we elaborate to. It is broken up into four datatypes
---
--- +---------+--------+-------+
--- |         | Syntax | Value |
--- +=========+========+=======+
--- | Element | `ElS`  | `ElV` |
--- +---------+--------+-------+
--- | Type    | `TyS`  | `TyV` |
--- +---------+--------+-------+
---
--- Each of these datatypes is indexed by a `Level` parameter. There are four
--- levels:
---
--- - `Query` (Kovacs's @Sort@)
--- - `Theory` (Kovacs's @Sig@)
--- - `Meta` (Kovacs's @Set@)
--- - `Prim` (Kovacs's @C@)
---
--- So in total, there are 16 different combinations of datatype and level;
--- it's a good thing we don't need separate datatypes for each of these! In
--- the original Rust EMTT implementation, we did in fact have eight datatypes
--- (we only had the query and theory levels).
---
--- This is similar to [Type-Theoretic Signatures for Algebraic Theories and
--- Inductive Types](https://andraskovacs.github.io/pdfs/wg6stockholm.pdf), except
--- we only have /universes/ for sorts and theories. That is, we have 8 judgment
--- formers (elements and types on each level). Then the type/element judgments for
--- queries are internalized in a theory-level universe (`QueryU`) and the
--- type/element judgments for theories are internalized in a meta-level universe
--- (`TheoryU`).
---
--- An alternative to this would be something like [Fuss-free universe
--- hierarchies](https://www.jonmsterling.com/01HX/). However, in geolog each level
--- is its own special snowflake, with slightly different type constructors, so I
--- think that it makes sense to really separate them out with completely different
--- judgments.
+-- Idea: instead of parameterizing the core by level, make it possible
+-- to do a O(1) lookup of the level of any syntax/value
 module Geolog.Core where
 
-import Data.Kind (Type)
-import Data.Singletons.TH
 import Geolog.Common
 import Prettyprinter
 
--- Levels
---------------------------------------------------------------------------------
+class PartialOrd a where
+  leq :: a -> a -> Bool
 
-$(singletons [d|data Level = Query | Theory | Meta | Prim|])
-
-instance Show Level where
-  show = \case
-    Query -> "Query"
-    Theory -> "Theory"
-    Meta -> "Meta"
-    Prim -> "Prim"
+data Level
+  = Prop
+  | Query
+  | Theory
+  | Top
+  | Prim
+  deriving (Eq, Show)
 
 instance Pretty Level where
   pretty = pretty . show
 
--- TODO: Does this data structure already exist in the singletons library?
-data Any :: (Level -> Type) -> Type where
-  Any :: Sing l -> f l -> Any f
+instance PartialOrd Level where
+  leq l1 l2 = case (l1, l2) of
+    (Prop, Prim) -> False
+    (Prop, _) -> True
+    (Query, Prim) -> False
+    (Query, Prop) -> False
+    (Query, _) -> True
+    (Theory, Prim) -> False
+    (Theory, Prop) -> False
+    (Theory, Query) -> False
+    (Theory, _) -> True
+    (Top, Top) -> True
+    (Top, _) -> False
+    (Prim, Prim) -> True
+    (Prim, Top) -> True
+    (Prim, _) -> False
 
-levelOf :: Any f -> Level
-levelOf (Any s _) = fromSing s
+class LevelOf a where
+  levelOf :: a -> Level
 
-extractAt :: Sing l -> Any f -> f l
-extractAt s (Any s' a) = case (s, s') of
-  (SQuery, SQuery) -> a
-  (STheory, STheory) -> a
-  (SMeta, SMeta) -> a
-  (SPrim, SPrim) -> a
-  _ -> error "tried to extract at a non-matching level"
+data Universe
+  = PropU
+  | QueryU
+  | PrimU
+  | TheoryU
+  deriving (Eq, Show)
 
-extract :: forall l f. (SingI l) => Any f -> f l
-extract a = extractAt (sing :: Sing l) a
+decodesInto :: Universe -> Level
+decodesInto = \case
+  PropU -> Prop
+  QueryU -> Query
+  PrimU -> Prim
+  TheoryU -> Theory
 
-data LevelInclusion :: Level -> Level -> Type where
-  QueryInTheory :: LevelInclusion Query Theory
-  QueryInMeta :: LevelInclusion Query Meta
-  TheoryInMeta :: LevelInclusion Theory Meta
-  PrimInMeta :: LevelInclusion Prim Meta
+codesInto :: Universe -> Level
+codesInto = \case
+  PropU -> Theory
+  QueryU -> Theory
+  PrimU -> Top
+  TheoryU -> Top
 
-deriving instance Show (LevelInclusion l l')
+universeFor :: Level -> Maybe Universe
+universeFor = \case
+  Prop -> Just PropU
+  Query -> Just QueryU
+  Theory -> Just TheoryU
+  Prim -> Just PrimU
+  Top -> Nothing
 
-liDom :: LevelInclusion l l' -> Sing l
-liDom QueryInTheory = SQuery
-liDom QueryInMeta = SQuery
-liDom TheoryInMeta = STheory
-liDom PrimInMeta = SPrim
+data PiVariant
+  = QueryTheory
+  | PrimTheory
+  | TopTop
+  deriving (Eq, Show)
 
-withDom :: LevelInclusion l l' -> ((SingI l) => a) -> a
-withDom QueryInTheory x = x
-withDom QueryInMeta x = x
-withDom TheoryInMeta x = x
-withDom PrimInMeta x = x
+instance Pretty PiVariant where
+  pretty = pretty . show
 
--- Core syntax
---------------------------------------------------------------------------------
+instance LevelOf PiVariant where
+  levelOf = \case
+    QueryTheory -> Theory
+    PrimTheory -> Theory
+    TopTop -> Top
 
-data Abs f l = Abs QName (f l)
-  deriving (Show)
+piVariant :: Level -> Level -> PiVariant
+piVariant l1 l2
+  | leq l1 Query && leq l2 Theory = QueryTheory
+  | leq l1 Prim && leq l2 Theory = PrimTheory
+  | otherwise = TopTop
 
-data Fields f l = Fields [(QName, f l)]
-  deriving (Show)
+class Codomain a b | a -> b where
+  codomain :: a -> b
 
-instance ElemAt (Fields f l) QName (f l) where
-  elemAt (Fields []) _ = impossible
-  elemAt (Fields ((x, v) : fs)) x'
-    | x == x' = v
-    | otherwise = elemAt (Fields fs) x'
+instance Codomain PiVariant Level where
+  codomain = \case
+    QueryTheory -> Theory
+    PrimTheory -> Theory
+    TopTop -> Top
 
-data ElS :: Level -> Type where
-  Var :: BId -> ElS l
-  QueryCode :: TyS Query -> ElS Theory
-  TheoryCode :: TyS Theory -> ElS Meta
-  TheoryApp :: ElS Theory -> ElS Query -> ElS Theory
-  TheoryLam :: Abs ElS Theory -> ElS Theory
-  MetaApp :: ElS Meta -> ElS Meta -> ElS Meta
-  MetaLam :: Abs ElS Meta -> ElS Meta
-  Proj :: ElS l -> QName -> ElS l
-  Cons :: Fields ElS l -> ElS l
-  LiftEl :: ElS l -> LevelInclusion l l' -> ElS l'
+data Abs a = Abs QName a
 
-deriving instance Show (ElS l)
+data Fields a = Fields [(QName, a)]
+  deriving (Functor)
 
-data TyS :: Level -> Type where
-  QueryU :: TyS Theory
-  QueryEl :: ElS Theory -> TyS Query
-  TheoryU :: TyS Meta
-  TheoryEl :: ElS Meta -> TyS Theory
-  TheoryPi :: TyS Query -> Abs TyS Theory -> TyS Theory
-  MetaPi :: TyS Meta -> Abs TyS Meta -> TyS Meta
-  Record :: Fields TyS l -> TyS l
-  LiftTy :: TyS l -> LevelInclusion l l' -> TyS l'
+instance ElemAt (Fields a) QName a where
+  elemAt (Fields fs) x = go fs
+    where
+      go [] = impossible
+      go ((x', v) : rest)
+        | x == x' = v
+        | otherwise = go rest
 
--- For debugging
-deriving instance Show (TyS l)
+data ElS
+  = Var BId
+  | Code TyS
+  | App ElS ElS
+  | Lam (Abs ElS)
+  | Proj ElS QName
+  | Cons (Fields ElS)
 
--- Core values
---------------------------------------------------------------------------------
+data TyS
+  = U Universe
+  | Decode Universe ElS
+  | Pi PiVariant TyS (Abs TyS)
+  | Record Level (Fields TyS)
 
-type Env = Bwd (Any ElV)
+instance LevelOf TyS where
+  levelOf = \case
+    U u -> codesInto u
+    Decode u _ -> decodesInto u
+    Pi pv _ _ -> levelOf pv
+    Record l _ -> l
 
-data Clo f l = Clo Env QName (f l)
+type Env = Bwd ElV
 
-data Spine :: Level -> Type where
-  SId :: Spine l
-  STheoryApp :: Spine Theory -> ElV Query -> Spine Theory
-  SMetaApp :: Spine Meta -> ElV Meta -> Spine Meta
-  SProj :: Spine l -> QName -> Spine l
+data Clo a = Clo Env QName a
 
-data ElV :: Level -> Type where
-  VNeu :: FId -> Spine l -> ElV l
-  VQueryCode :: TyV Query -> ElV Theory
-  VTheoryCode :: TyV Theory -> ElV Meta
-  VLiftEl :: ElV l -> LevelInclusion l l' -> ElV l'
-  VTheoryLam :: Clo ElS Theory -> ElV Theory
-  VMetaLam :: Clo ElS Meta -> ElV Meta
-  VCons :: Fields ElV l -> ElV l
+data Spine
+  = SId
+  | SApp Spine ElV
+  | SProj Spine QName
 
-data TyV :: Level -> Type where
-  VQueryU :: TyV Theory
-  VQueryEl :: ElV Theory -> TyV Query
-  VTheoryU :: TyV Meta
-  VTheoryEl :: ElV Meta -> TyV Theory
-  VTheoryPi :: TyV Query -> Clo TyS Theory -> TyV Theory
-  VMetaPi :: TyV Meta -> Clo TyS Meta -> TyV Meta
-  VRecord :: Env -> Fields TyS l -> TyV l
-  VLiftTy :: TyV l -> LevelInclusion l l' -> TyV l'
+data ElV
+  = VNeu FId Spine
+  | VCode TyV
+  | VLam (Clo ElS)
+  | VCons (Fields ElV)
+
+data TyV
+  = VU Universe
+  | VDecode Universe ElV
+  | VPi PiVariant TyV (Clo TyS)
+  | VRecord Level Env (Fields TyS)
+
+instance LevelOf TyV where
+  levelOf = \case
+    VU u -> codesInto u
+    VDecode u _ -> decodesInto u
+    VPi pv _ _ -> levelOf pv
+    VRecord l _ _ -> l
