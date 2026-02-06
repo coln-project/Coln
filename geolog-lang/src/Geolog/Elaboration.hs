@@ -11,13 +11,12 @@ import Geolog.Notation (Ntn)
 import Geolog.Notation qualified as N
 import Geolog.Pretty hiding (bind)
 import Prettyprinter
-
 import Prelude hiding (lookup)
 
 -- Elaboration context
 --------------------------------------------------------------------------------
 
-newtype Ctx = Ctx { elts :: Bwd (QName, TyV) }
+newtype Ctx = Ctx {elts :: Bwd (QName, TyV)}
 
 instance Lookup Ctx QName (BId, TyV) where
   lookup c x = go c.elts 0
@@ -29,7 +28,7 @@ instance Lookup Ctx QName (BId, TyV) where
 
 type CtxArg = (?ctx :: Ctx)
 
-data DiagCtx = DiagCtx { reporter :: Reporter, file :: File }
+data DiagCtx = DiagCtx {reporter :: Reporter, file :: File}
 
 type DiagCtxArg = (?diagCtx :: DiagCtx)
 
@@ -47,7 +46,7 @@ report s c = do
 
 type Elab a = (DiagCtxArg, CtxArg, CtxLenArg, EnvArg) => a
 
-withNames :: Elab ((NamesArg => a) -> a)
+withNames :: Elab (((NamesArg) => a) -> a)
 withNames f = let ?names = fst <$> ?ctx.elts in f
 
 pp :: (Prt a) => Elab (a -> Doc ann)
@@ -93,9 +92,10 @@ ident n = report (N.span n) (C.UnexpectedNotation "ident")
 -- Glued core
 --------------------------------------------------------------------------------
 
-data Glued s v = G { stx :: s, val :: v }
+data Glued s v = G {stx :: s, val :: v}
 
 type ElG = Glued ElS ElV
+
 type TyG = Glued TyS TyV
 
 instance Core ElG TyG where
@@ -138,7 +138,6 @@ typSyn n = do
 
 -- Synthesis
 --------------------------------------------------------------------------------
-  
 
 syn :: Elab (Ntn -> IO (ElG, TyV))
 syn n = case n of
@@ -169,10 +168,11 @@ syn n = case n of
     b <- bind x a.val $ typSyn n2
     let pv = piVariant (levelOf a) (levelOf b)
     case universeFor (levelOf pv) of
-      Just u -> pure
-        ( code $ G (Pi pv a.stx (Abs x b.stx)) (VPi pv a.val (Clo ?env x b.stx)),
-          VU u
-        )
+      Just u ->
+        pure
+          ( code $ G (Pi pv a.stx (Abs x b.stx)) (VPi pv a.val (Clo ?env x b.stx)),
+            VU u
+          )
       Nothing -> report (N.span n) (C.NoUniverseForPi pv)
   N.Infix _ (N.Keyword "=>" _) _ -> report (N.span n) (C.MustChk "lambda syntax")
   N.Tuple _ _ -> report (N.span n) (C.MustChk "tuple syntax")
@@ -180,7 +180,6 @@ syn n = case n of
 
 -- Checking
 --------------------------------------------------------------------------------
-
 
 elts ::
   Elab
@@ -199,7 +198,7 @@ elts e ((x, a) : ms) (n : ns) = do
 elts _ _ _ = impossible
 
 chk :: Elab (TyV -> Ntn -> IO ElG)
-chk va n =  case va of
+chk va n = case va of
   VU u -> do
     g <- typChk (decodesInto u) n
     pure $ code g
@@ -227,7 +226,6 @@ chk va n =  case va of
         Success () -> pure g
         Failure (NotConvertableEl d d') r -> report sp (C.NotConvertableEl d d' r)
         Failure (NotConvertableTy d d') r -> report sp (C.NotConvertableTy d d' r)
-      
 
 definition :: Elab (Ntn -> IO (Ntn, Ntn))
 definition (N.Infix n1 (N.Keyword "=" _) n2) = pure (n1, n2)
@@ -276,7 +274,7 @@ elabDef n = do
   let el = wrapLams args body
   pure $ (x, G el (eval el), eval ty)
   where
-    go :: Elab ( [(QName, Ntn)] -> Ntn -> Ntn -> IO ([(QName, TyS)], TyS, ElS))
+    go :: Elab ([(QName, Ntn)] -> Ntn -> Ntn -> IO ([(QName, TyS)], TyS, ElS))
     go [] tyN bodyN = do
       G a va <- typChk Theory tyN
       G t _ <- chk va bodyN

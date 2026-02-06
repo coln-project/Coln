@@ -34,10 +34,10 @@ instance Core ElV TyV where
   proj (VCons fs) x = elemAt fs x
   proj (VNeu i sp) x = VNeu i (SProj sp x)
   proj _ _ = impossible
-  
+
   code (VDecode _ v) = v
   code va = VCode va
-  
+
   decode _ (VCode va) = va
   decode u v = VDecode u v
 
@@ -49,7 +49,7 @@ instance Core ElV TyV where
 type EnvArg = (?env :: Env)
 
 class Eval a b | a -> b where
-  eval :: EnvArg => a -> b
+  eval :: (EnvArg) => a -> b
 
 evalIn :: (Eval a b) => Env -> a -> b
 evalIn env t = let ?env = env in eval t
@@ -76,16 +76,16 @@ instance Eval TyS TyV where
 type CtxLenArg = (?ctxLen :: Int)
 
 class Quote a b | a -> b where
-  quote :: CtxLenArg => a -> b
+  quote :: (CtxLenArg) => a -> b
 
-fresh :: CtxLenArg => FId
+fresh :: (CtxLenArg) => FId
 fresh = FId ?ctxLen
 
 withFresh :: (CtxLenArg) => ((CtxLenArg) => ElV -> a) -> a
 withFresh f =
-  let v = VNeu fresh SId in
-    let ?ctxLen = ?ctxLen + 1 in
-      f v
+  let v = VNeu fresh SId
+   in let ?ctxLen = ?ctxLen + 1
+       in f v
 
 instance Quote FId BId where
   quote (FId i) = BId (?ctxLen - i - 1)
@@ -148,17 +148,18 @@ type ConvCtx = (NamesArg, CtxLenArg)
 
 withNamedFresh :: (ConvCtx) => QName -> ((ConvCtx) => ElV -> a) -> a
 withNamedFresh x f =
-  let v = VNeu fresh SId in
-    let ?ctxLen = ?ctxLen + 1
-        ?names = ?names :> x in f v
+  let v = VNeu fresh SId
+   in let ?ctxLen = ?ctxLen + 1
+          ?names = ?names :> x
+       in f v
 
 convFail :: (ConvCtx) => TyV -> TyV -> Doc Ann -> ConvM a
 convFail a b d =
-  Failure ( NotConvertableTy (prtTop $ quote a) (prtTop $ quote b)) d
+  Failure (NotConvertableTy (prtTop $ quote a) (prtTop $ quote b)) d
 
 convElFail :: (ConvCtx) => ElV -> ElV -> Doc Ann -> ConvM a
 convElFail a b d =
-  Failure ( NotConvertableEl (prtTop $ quote a) (prtTop $ quote b)) d
+  Failure (NotConvertableEl (prtTop $ quote a) (prtTop $ quote b)) d
 
 isConvSp :: (ConvCtx) => FId -> Spine -> Spine -> ConvM ()
 isConvSp _ SId SId = pure ()
@@ -207,9 +208,9 @@ isConvTele _ _ [] = pure ()
 isConvTele e e' ((x, a, a') : ms) = do
   isConv (evalIn e a) (evalIn e' a')
   withNamedFresh x $ \vx -> isConvTele (e :> vx) (e' :> vx) ms
-  
+
 isConv :: (ConvCtx) => TyV -> TyV -> ConvM ()
-isConv a a' = case (a, a') of 
+isConv a a' = case (a, a') of
   (VU u, VU u') -> unless (u == u') $ convFail a a' "different universes"
   (VDecode _ v, VDecode _ v') -> isConvEl v v'
   (VPi pv dom cod, VPi pv' dom' cod') -> do

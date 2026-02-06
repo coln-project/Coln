@@ -30,11 +30,12 @@ library
     default-extensions:
         BlockArguments CPP DataKinds DeriveFoldable DeriveFunctor
         DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
-        ExplicitNamespaces FunctionalDependencies GeneralizedNewtypeDeriving
-        ImplicitParams ImportQualifiedPost InstanceSigs KindSignatures
-        LambdaCase MagicHash MultiParamTypeClasses NoFieldSelectors
-        OverloadedRecordDot OverloadedStrings PatternSynonyms PolyKinds
-        QualifiedDo StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
+        ExplicitNamespaces FunctionalDependencies
+        GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
+        InstanceSigs KindSignatures LambdaCase MagicHash
+        MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
+        OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
+        StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
         TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
@@ -67,11 +68,12 @@ test-suite geolog-lang-test
     default-extensions:
         BlockArguments CPP DataKinds DeriveFoldable DeriveFunctor
         DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
-        ExplicitNamespaces FunctionalDependencies GeneralizedNewtypeDeriving
-        ImplicitParams ImportQualifiedPost InstanceSigs KindSignatures
-        LambdaCase MagicHash MultiParamTypeClasses NoFieldSelectors
-        OverloadedRecordDot OverloadedStrings PatternSynonyms PolyKinds
-        QualifiedDo StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
+        ExplicitNamespaces FunctionalDependencies
+        GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
+        InstanceSigs KindSignatures LambdaCase MagicHash
+        MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
+        OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
+        StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
         TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 

@@ -104,11 +104,12 @@ data Fields a = Fields [(QName, a)]
   deriving (Functor)
 
 instance ElemAt (Fields a) QName a where
-  elemAt (Fields fs) x = go fs where
-    go [] = impossible
-    go ((x',v):rest)
-      | x == x' = v
-      | otherwise = go rest
+  elemAt (Fields fs) x = go fs
+    where
+      go [] = impossible
+      go ((x', v) : rest)
+        | x == x' = v
+        | otherwise = go rest
 
 data ElS
   = Var BId
