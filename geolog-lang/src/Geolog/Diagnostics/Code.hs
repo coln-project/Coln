@@ -36,6 +36,7 @@ data Code
   | Expected NotationCategory
   | CannotProjectNonRecord
   | NoSuchField QName
+  | NoUniverseForPi PiVariant
 
 data Severity = Debug | Info | Warning | Error
 
@@ -69,6 +70,7 @@ severity = \case
   Expected _ -> Error
   CannotProjectNonRecord -> Error
   NoSuchField _ -> Error
+  NoUniverseForPi _ -> Error
 
 shortcode :: Code -> Doc ann
 shortcode = \case
@@ -97,6 +99,7 @@ shortcode = \case
   Expected _ -> "E0312"
   CannotProjectNonRecord -> "E0313"
   NoSuchField _ -> "E0314"
+  NoUniverseForPi _ -> "E0315"
 
 description :: Code -> Doc Ann
 description = \case
@@ -123,6 +126,7 @@ description = \case
   Expected c -> "expected notation for" <+> pretty (show c)
   CannotProjectNonRecord -> "cannot project from a member of a non-record type"
   NoSuchField x -> "no such field" <+> pretty x
+  NoUniverseForPi pv -> "the pi variant" <+> pretty pv <+> "cannot be an element of any universe"
 
 instance Pretty Code where
   pretty c = pretty (severity c) <> "[" <> shortcode c <> "]" <+> unAnnotate (description c)
