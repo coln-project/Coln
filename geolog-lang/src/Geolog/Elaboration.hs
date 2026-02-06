@@ -11,7 +11,6 @@ import Geolog.Notation (Ntn)
 import Geolog.Notation qualified as N
 import Geolog.Pretty hiding (bind)
 import Prettyprinter
-
 import Prelude hiding (lookup)
 
 -- Elaboration context
@@ -96,6 +95,7 @@ ident n = report (N.span n) (C.UnexpectedNotation "ident")
 data Glued s v = G {stx :: s, val :: v}
 
 type ElG = Glued ElS ElV
+
 type TyG = Glued TyS TyV
 
 instance Core ElG TyG where
