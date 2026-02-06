@@ -51,9 +51,9 @@ kinds as a data structure; otherwise the only way to classify tokens would be
 functions.
 -}
 data Token = Token
-  { tokenKind :: Kind
-  , tokenValue :: TokenValue
-  , tokenSpan :: Span
+  { kind :: Kind
+  , value :: TokenValue
+  , span :: Span
   }
   deriving (Eq)
 

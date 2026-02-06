@@ -50,7 +50,7 @@ parseToPretty fp = do
           , pretty $ msgs
           ]
 
-prettyDecls :: [(QName, ElS Meta, TyS Meta)] -> Doc ann
+prettyDecls :: [(QName, ElS, TyS)] -> Doc ann
 prettyDecls = let ?names = BwdNil in vsep . go
  where
   go [] = []
