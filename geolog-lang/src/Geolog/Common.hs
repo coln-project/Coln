@@ -59,8 +59,8 @@ instance IsString QName where
 type Pos = Int
 
 data Span = Span
-  { spanStart :: Pos,
-    spanEnd :: Pos
+  { start :: Pos,
+    end :: Pos
   }
   deriving (Eq, Show)
 
