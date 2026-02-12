@@ -44,7 +44,7 @@ library
         -Wno-unused-top-binds
 
     build-depends:
-        base >=4.19.2.0,
+        base,
         bytestring,
         containers,
         directory,
@@ -79,7 +79,7 @@ test-suite geolog-lang-test
 
     ghc-options:        -Wall -g
     build-depends:
-        base >=4.19.2.0,
+        base,
         bytestring,
         filepath,
         geolog-lang,
