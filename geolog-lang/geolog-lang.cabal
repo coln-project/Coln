@@ -35,7 +35,7 @@ library
 
     ghc-options:        -Wall -funbox-strict-fields
     build-depends:
-        base >=4.19.2.0,
+        base,
         bytestring,
         containers,
         directory,
@@ -57,7 +57,7 @@ test-suite geolog-lang-test
     default-extensions: OverloadedStrings
     ghc-options:        -Wall -g
     build-depends:
-        base >=4.19.2.0,
+        base,
         bytestring,
         filepath,
         geolog-lang,
