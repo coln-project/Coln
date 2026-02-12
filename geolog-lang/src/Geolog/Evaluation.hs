@@ -223,3 +223,28 @@ isConv a a' = case (a, a') of
       Just combined -> isConvTele e e' combined
       Nothing -> convFail a a' "record types have different fields"
   _ -> convFail a a' "different type heads"
+
+-- Parametricity
+--------------------------------------------------------------------------------
+
+data HomEnv = HomEnv { i0 :: Env, i1 :: Env, i01 :: Env }
+
+ap :: Env -> HomEnv -> TyS -> ElV -> ElV
+ap e he a v = case a of
+  Decode u t -> app (evalIn (e <> he.i01) t) v
+  Record l fs -> unimplemented
+  Pi _ _ _ -> impossible
+  U _ -> impossible
+
+hom :: (CtxLenArg) => Env -> HomEnv -> TyS -> ElV -> ElV -> TyV
+hom e he a v0 v1 = case a of
+  U u ->
+    VPi
+      QueryTheory
+      (decode u v0)
+      (Clo (e <> he.i1) "x" (withFresh $ \_ -> quote (decode u v1)))
+  Pi QueryTheory dom (Abs x cod) ->
+    VPi
+      QueryTheory
+      (evalIn (e <> he.i0) dom)
+      (Clo () x (withFresh $ \vx -> hom e ()))
