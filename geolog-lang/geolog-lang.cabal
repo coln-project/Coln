@@ -28,7 +28,7 @@ library
     hs-source-dirs:     src
     default-language:   GHC2021
     default-extensions:
-        BlockArguments CPP DataKinds DeriveFoldable DeriveFunctor
+        BlockArguments CPP TypeData DeriveFoldable DeriveFunctor
         DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
         ExplicitNamespaces FunctionalDependencies
         GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
@@ -66,7 +66,7 @@ test-suite geolog-lang-test
     hs-source-dirs:     test
     default-language:   GHC2021
     default-extensions:
-        BlockArguments CPP DataKinds DeriveFoldable DeriveFunctor
+        BlockArguments CPP TypeData DeriveFoldable DeriveFunctor
         DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
         ExplicitNamespaces FunctionalDependencies
         GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
