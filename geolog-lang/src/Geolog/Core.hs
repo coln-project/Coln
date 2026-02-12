@@ -1,19 +1,15 @@
--- Idea: instead of parameterizing the core by level, make it possible
--- to do a O(1) lookup of the level of any syntax/value
 module Geolog.Core where
 
+import Data.Kind (Type)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Geolog.Common
 import Prettyprinter
 
-class PartialOrd a where
-  leq :: a -> a -> Bool
-
 data Level
-  = Prop
-  | Query
+  = Query
   | Theory
   | Top
-  | Prim
   deriving (Eq, Show)
 
 instance Pretty Level where
@@ -21,57 +17,42 @@ instance Pretty Level where
 
 instance PartialOrd Level where
   leq l1 l2 = case (l1, l2) of
-    (Prop, Prim) -> False
-    (Prop, _) -> True
-    (Query, Prim) -> False
-    (Query, Prop) -> False
     (Query, _) -> True
-    (Theory, Prim) -> False
-    (Theory, Prop) -> False
     (Theory, Query) -> False
     (Theory, _) -> True
     (Top, Top) -> True
     (Top, _) -> False
-    (Prim, Prim) -> True
-    (Prim, Top) -> True
-    (Prim, _) -> False
 
 class LevelOf a where
   levelOf :: a -> Level
 
 data Universe
-  = PropU
-  | QueryU
-  | PrimU
+  = QueryU
   | TheoryU
   deriving (Eq, Show)
 
 decodesInto :: Universe -> Level
 decodesInto = \case
-  PropU -> Prop
   QueryU -> Query
-  PrimU -> Prim
   TheoryU -> Theory
 
 codesInto :: Universe -> Level
 codesInto = \case
-  PropU -> Theory
   QueryU -> Theory
-  PrimU -> Top
   TheoryU -> Top
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case
-  Prop -> Just PropU
   Query -> Just QueryU
   Theory -> Just TheoryU
-  Prim -> Just PrimU
   Top -> Nothing
 
+-- NOTE: we could potentially replace TheoryTop with TopTop, which would allow
+-- for higher-order stuff. Not sure whether this is semantically good though? Or
+-- whether this would mess with things we care about...
 data PiVariant
   = QueryTheory
-  | PrimTheory
-  | TopTop
+  | TheoryTop
   deriving (Eq, Show)
 
 instance Pretty PiVariant where
@@ -80,82 +61,95 @@ instance Pretty PiVariant where
 instance LevelOf PiVariant where
   levelOf = \case
     QueryTheory -> Theory
-    PrimTheory -> Theory
-    TopTop -> Top
+    TheoryTop -> Top
 
-piVariant :: Level -> Level -> PiVariant
-piVariant l1 l2
-  | leq l1 Query && leq l2 Theory = QueryTheory
-  | leq l1 Prim && leq l2 Theory = PrimTheory
-  | otherwise = TopTop
+piVariant :: Level -> Level -> Maybe PiVariant
+piVariant dom cod
+  | leq dom Query && leq cod Theory = Just QueryTheory
+  | leq dom Theory = Just TheoryTop
+  | otherwise = Nothing
 
-class Codomain a b | a -> b where
-  codomain :: a -> b
+class HasCodomain a b | a -> b where
+  codOf :: a -> b
 
-instance Codomain PiVariant Level where
-  codomain = \case
+instance HasCodomain PiVariant Level where
+  codOf = \case
     QueryTheory -> Theory
-    PrimTheory -> Theory
-    TopTop -> Top
+    TheoryTop -> Top
 
-data Abs a = Abs QName a
+data Abs a = Abs QName a | Const a
 
-data Fields a = Fields [(QName, a)]
+data Fields a = FNil | FCons QName a (Fields a)
   deriving (Functor)
 
 instance ElemAt (Fields a) QName a where
-  elemAt (Fields fs) x = go fs
-   where
-    go [] = impossible
-    go ((x', v) : rest)
-      | x == x' = v
-      | otherwise = go rest
+  elemAt FNil _ = impossible
+  elemAt (FCons x' v fs) x
+    | x == x' = v
+    | otherwise = elemAt fs x
 
-data ElS
-  = Var BId
-  | Code TyS
-  | App ElS ElS
-  | Lam (Abs ElS)
-  | Proj ElS QName
-  | Cons (Fields ElS)
+type data Energy = Kinetic | Potential
 
-data TyS
-  = U Universe
-  | Decode Universe ElS
-  | Pi PiVariant TyS (Abs TyS)
-  | Record Level (Fields TyS)
+data ElS :: Energy -> Type where
+  Var :: BId -> ElS Kinetic
+  GlobalVar :: Constant -> ElS Kinetic
+  Code :: (TyS e) -> ElS e
+  Lam :: Abs (ElS e) -> ElS e
+  App :: ElS e -> ElS Kinetic -> ElS e
+  Cons :: Fields (ElS e) -> ElS e
+  Proj :: (ElS e) -> QName -> ElS e
 
-instance LevelOf TyS where
-  levelOf = \case
-    U u -> codesInto u
-    Decode u _ -> decodesInto u
-    Pi pv _ _ -> levelOf pv
-    Record l _ -> l
+data TyS :: Energy -> Type where
+  U :: Universe -> TyS e
+  Decode :: Universe -> ElS e -> TyS e
+  Pi :: PiVariant -> TyS Kinetic -> Abs (TyS Kinetic) -> TyS e
+  Record :: Level -> (Fields (TyS Kinetic)) -> TyS Potential
 
-type Env = Bwd ElV
+type Env = Bwd (ElV Kinetic)
 
-data Clo a = Clo Env QName a
+data Clo a b = Clo Env QName a | VConst b
 
 data Spine
   = SId
-  | SApp Spine ElV
+  | SApp Spine (ElV Kinetic)
   | SProj Spine QName
 
-data ElV
-  = VNeu FId Spine
-  | VCode TyV
-  | VLam (Clo ElS)
-  | VCons (Fields ElV)
+data BehavesAs a
+  = BehavesAs a
+  | TrueNeutral
+  deriving (Functor)
 
-data TyV
-  = VU Universe
-  | VDecode Universe ElV
-  | VPi PiVariant TyV (Clo TyS)
-  | VRecord Level Env (Fields TyS)
+data Constant = Constant {name :: QName}
+  deriving (Eq, Ord)
 
-instance LevelOf TyV where
-  levelOf = \case
-    VU u -> codesInto u
-    VDecode u _ -> decodesInto u
-    VPi pv _ _ -> levelOf pv
-    VRecord l _ _ -> l
+data Head
+  = Local FId
+  | Global Constant
+
+data Neutral = Neutral
+  { head :: Head
+  , spine :: Spine
+  , behavesAs :: BehavesAs (ElV Potential)
+  , ty :: ~(TyV Kinetic)
+  }
+
+data ElV :: Energy -> Type where
+  VNeu :: Neutral -> ElV Kinetic
+  VCode :: TyV e -> ElV e
+  VLam :: Clo (ElS e) (ElV e) -> ElV e
+  VCons :: Fields (ElV e) -> ElV e
+
+data TyV :: Energy -> Type where
+  VU :: Universe -> TyV e
+  VDecode :: Universe -> Neutral -> TyV Kinetic
+  VPi :: PiVariant -> TyV Kinetic -> Clo (TyS Kinetic) (TyV Kinetic) -> TyV e
+  VRecord :: Level -> Env -> Fields (TyS Kinetic) -> TyV Potential
+
+data GlobalEntry
+  = KineticEntry (ElS Kinetic) (ElV Kinetic) (TyV Kinetic)
+  | PotentialEntry (ElS Potential) (ElV Potential) (TyV Kinetic)
+
+newtype GlobalEnv = GlobalEnv (Map Constant GlobalEntry)
+
+instance ElemAt GlobalEnv Constant GlobalEntry where
+  elemAt (GlobalEnv m) c = m Map.! c

@@ -30,7 +30,7 @@ unimplemented = error "unimplemented"
 --------------------------------------------------------------------------------
 
 newtype Name = Name Symbol
-  deriving (Eq, Hashable) via Symbol
+  deriving (Eq, Ord, Hashable) via Symbol
 
 instance Show Name where
   show (Name s) = unintern s
@@ -42,7 +42,7 @@ instance Pretty Name where
   pretty (Name s) = pretty (unintern s :: Text)
 
 data QName = QName [Name] Name
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 qnameBase :: QName -> Name
 qnameBase (QName _ x) = x
@@ -90,6 +90,12 @@ class ToList t where
 
 class FromList a e | a -> e where
   fromList :: [e] -> a
+
+-- Partial orderings
+--------------------------------------------------------------------------------
+
+class PartialOrd a where
+  leq :: a -> a -> Bool
 
 -- Forward and backwards lists
 --------------------------------------------------------------------------------
