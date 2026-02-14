@@ -90,28 +90,56 @@ instance ElemAt (Fields a) QName a where
 
 type data Energy = Kinetic | Potential
 
+type K = Kinetic
+type P = Potential
+
 data ElS :: Energy -> Type where
-  Var :: BId -> ElS Kinetic
-  GlobalVar :: Constant -> ElS Kinetic
+  Var :: BId -> ElS K
+  GlobalVar :: Constant -> ElS K
   Code :: (TyS e) -> ElS e
   Lam :: Abs (ElS e) -> ElS e
-  App :: ElS e -> ElS Kinetic -> ElS e
+  App :: ElS e -> ElS K -> ElS e
   Cons :: Fields (ElS e) -> ElS e
-  Proj :: (ElS e) -> QName -> ElS e
+  Proj :: ElS e -> QName -> ElS e
+  TyRefl :: TyS K -> ElS K
+  TmRefl :: ElS K -> TyS K -> ElS K
+  Coerce ::
+    TyS K -> -- S type
+    ElS K -> -- a : S
+    TyS K -> -- T type
+    ElS K -> -- S = T
+    ElS K -- T
+  Subst ::
+    TyS K -> -- S type
+    Abs (TyS K) -> -- (x : S) |- T type
+    ElS K -> -- a0 : S
+    ElS K -> -- a1 : S
+    ElS K -> -- [a0 : S = a1 : S]
+    ElS K -- T a0 = T a1
+  Coh ::
+    TyS K -> -- S type
+    ElS e -> -- a : S
+    TyS K -> -- T type
+    ElS K -> -- S = T
+    ElS e -- [a : S = coe a : T]
+  Irrel :: ElS K
+    
 
 data TyS :: Energy -> Type where
   U :: Universe -> TyS e
   Decode :: Universe -> ElS e -> TyS e
-  Pi :: PiVariant -> TyS Kinetic -> Abs (TyS Kinetic) -> TyS e
-  Record :: Level -> (Fields (TyS Kinetic)) -> TyS Potential
+  Pi :: PiVariant -> TyS K -> Abs (TyS K) -> TyS e
+  Record :: Level -> (Fields (TyS K)) -> TyS P
+  TyEq :: TyS K -> TyS K -> TyS K
+  TmEq :: ElS K -> TyS K -> ElS K -> TyS K -> TyS K
 
-type Env = Bwd (ElV Kinetic)
+type Env = Bwd (ElV K)
 
-data Clo a b = Clo Env QName a | VConst b
+data Clo a = Clo QName (ElV K -> a)
 
 data Spine
   = SId
-  | SApp Spine (ElV Kinetic)
+  | SApp Spine (ElV K)
   | SProj Spine QName
 
 data BehavesAs a
@@ -125,29 +153,37 @@ data Constant = Constant { name :: QName }
 data Head
   = Local FId
   | Global Constant
+  | VCoe (ElV K) (TyV K) (TyV K)
 
 data Neutral = Neutral
   { head :: Head,
     spine :: Spine,
-    behavesAs :: BehavesAs (ElV Potential),
-    ty :: ~(TyV Kinetic)
+    behavesAs :: ~(BehavesAs (ElV P)),
+    ty :: ~(TyV K)
   }
 
 data ElV :: Energy -> Type where
-  VNeu :: Neutral -> ElV Kinetic
+  VNeu :: Neutral -> ElV K
   VCode :: TyV e -> ElV e
-  VLam :: Clo (ElS e) (ElV e) -> ElV e
+  VLam :: Clo (ElV e) -> ElV e
   VCons :: Fields (ElV e) -> ElV e
+  VIrrel :: ElV e
+
+data TeleV a = TVNil | TVCons a (ElV K -> TeleV a)
+
+data FieldsV a = FieldsV [QName] (TeleV a)
 
 data TyV :: Energy -> Type where
   VU :: Universe -> TyV e
-  VDecode :: Universe -> Neutral -> TyV Kinetic
-  VPi :: PiVariant -> TyV Kinetic -> Clo (TyS Kinetic) (TyV Kinetic) -> TyV e
-  VRecord :: Level -> Env -> Fields (TyS Kinetic) -> TyV Potential
+  VDecode :: Universe -> Neutral -> TyV K
+  VPi :: PiVariant -> TyV K -> Clo (TyV K) -> TyV e
+  VRecord :: Level -> FieldsV (TyV K) -> TyV P
+  VTyEq :: TyV K -> TyV K -> TyV K
+  VTmEq :: ElV K -> TyV K -> ElV K -> TyV K -> TyV K
 
 data GlobalEntry
-  = KineticEntry (ElS Kinetic) (ElV Kinetic) (TyV Kinetic)
-  | PotentialEntry (ElS Potential) (ElV Potential) (TyV Kinetic)
+  = KEntry (ElS K) (ElV K) (TyV K)
+  | PEntry (ElS P) (ElV P) (TyV K)
 
 newtype GlobalEnv = GlobalEnv (Map Constant GlobalEntry)
 
