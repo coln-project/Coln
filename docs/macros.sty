@@ -1,10 +1,20 @@
 \ProvidesPackage{macros}
 
 \usepackage{fontspec}
-\setmonofont[Path=fonts/]{DejaVuSansMono}
+\setmonofont[Path=fonts/, Scale=MatchLowercase]{Inconsolata-Regular}
 
 \RequirePackage{amsthm}
 \RequirePackage{amsmath}
+\RequirePackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    filecolor=blue,
+    citecolor=blue,
+    pdftitle={Geolog core},
+    pdfpagemode=FullScreen,
+    }
 \RequirePackage{cleveref}
 \RequirePackage{stmaryrd}
 \RequirePackage{tikz-cd}
