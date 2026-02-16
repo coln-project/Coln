@@ -1,0 +1,215 @@
+\documentclass[fleqn]{article}
+
+\usepackage[a4paper]{geometry}
+\usepackage{parskip}
+\usepackage{macros}
+
+\RequirePackage{tikz}
+\usetikzlibrary{graphs,graphdrawing}
+\usegdlibrary{trees}
+
+\NewDocumentCommand{\BehavesAs}{}{\rightsquigarrow}
+\NewDocumentCommand{\mLevel}{}{m\text{-}\ms{Level}}
+\NewDocumentCommand{\hLevel}{}{h\text{-}\ms{Level}}
+
+\title{GeoTT}
+\author{Owen Lynch}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+This document contains a specification for geott, which is the core type theory for geolog. This will evolve over time, and additionally will likely not match up exactly with what is implemented in \href{https://git.sgai.uk/creators/geolog/-/tree/main/geolog-lang}{geolog-lang}, however if any document should be considered authoritative for the geolog type theory, it is this one. Moreover, ideally this document will not lag the implementation, it will only ever lead.
+
+This document will not cover (but may mention)
+
+\begin{itemize}
+  \item The elaboration algorithm
+  \item Denotational/categorical semantics
+  \item Operational/algorithmic semantics
+\end{itemize}
+
+The form of this specification will be as a \emph{SOGAT} (second-order generalized algebraic theory). The reader unfamiliar with SOGATs is advised to consult the provided references (\cite{uemura-2021-abstract,bocquet-2023-metatheory,kaposi-2024-secondorder,bocquet-2025-relative}).
+
+SOGATs may be expressed as a type theoretic signature in a logical framework. We will assume various convenient features of this logical framework, such as:
+
+\begin{itemize}
+  \item Extensional equality
+  \item Do-what-I-mean unification (instantiation of implicit variables is done in the way that the reader expects)
+  \item Extensible notation
+\end{itemize}
+
+As these are impossible demands on a real typechecker, this specification will remain firmly in the realm of ``informal.''
+
+Moreover, we will assume (although to our knowledge the theory of this has not been fully worked out) that our logical framework is in fact a two-level type theory on top of a universe of sets $\ms{Set}$ which has quotient inductive inductive types, similar to how \cite{kovacs-2022-typetheoretic} handles ``external types'' for GATs. This is not a great semantic leap, because we will only assume functions \emph{out} of these types, and these may be replaced via the universal property of such types. But it is convenient to do this as functions out of inductive types, as it will permit us to do things like:
+\begin{gather*}
+  \mb{data} \:\: \ms{Energy}\colon \ms{Set} \:\: \mb{where} \\
+  \quad \ms{kinetic} \colon \ms{Energy} \\
+  \quad \ms{potential} \colon \ms{Energy} \\
+  \\
+  \ms{Ty} \colon \ms{Energy} \to \ms{Type}
+\end{gather*}
+instead of the equivalent:
+\begin{gather*}
+  \ms{Ty}_p \colon \ms{Type} \\
+  \ms{Ty}_k \colon \ms{Type}
+\end{gather*}
+
+\section{Type Theory}
+
+\subsection{Elements and types}
+
+The basic judgments of geott embellish the standard judgment structure for a dependent type theory in several ways. The first embellishment is a modification to handle nominal types.
+\begin{gather*}
+  \mb{data} \:\: \ms{Energy}\colon \ms{Set} \:\: \mb{where} \\
+  \quad \ms{kinetic} \colon \ms{Energy} \\
+  \quad \ms{potential} \colon \ms{Energy} \\
+  \\
+  \ms{Ty} \colon \ms{Energy} \to \ms{Type} \\
+  \ms{Ty}_k := \ms{Ty}\,\ms{kinetic} \\
+  \ms{Ty}_p := \ms{Ty}\,\ms{potential} \\
+  \_\BehavesAs^{\ms{Ty}}\_ \colon \ms{Ty}_k \to \ms{Ty}_p \to \ms{Type} \\
+  \ms{El} \colon \ms{Energy} \to \ms{Ty}_k \to \ms{Type}^+ \\
+  \ms{El}_k := \ms{El}\,\ms{kinetic} \\
+  \ms{El}_p := \ms{El}\,\ms{potential} \\
+  \_\BehavesAs^{\ms{El}}\_ \colon \{A \colon \ms{Ty}_k\} \to \ms{El}_k\,A \to \ms{El}_p\,A \to \ms{Type}^+
+\end{gather*}
+The idea here is that kinetic types and elements are the things we really care about. In a typical type theory, all types and elements are potential. However, it is very convenient to introduce new types which aren't equal to any previous types, but whose \emph{behavior} is completely defined. This is the purpose of potential elements: to characterize the behavior of kinetic elements.
+
+This ability is given by the ``potential let binder'':
+\begin{gather*}
+  \ms{let}_p \colon \{A \colon \ms{Ty}_k\} \to \{B \colon \ms{Ty}_k\} \to (a_p \colon \ms{El}_p\,A) \to ((a_k \colon \ms{El}_k\,A) \to a_k \BehavesAs^{\ms{El}} a_p \to \ms{El}_k\,B) \to \ms{El}_k\,B
+\end{gather*}
+The idea is that $\ms{let}_p$ allows one to introduce a fresh kinetic element of $A$ that behaves as a given potential element of $A$.\footnote{The top-level bindings in the geott implementation can be either kinetic or potential; the potential bindings implicitly use this let binder in order to achieve nominality.}
+
+We will see more uses for kinetic and potential elements later on as well.
+
+\subsection{Levels and universes}
+
+The second embellishment to the judgment structure is levels. In MLTT, we have infinitely many universe levels that all behave the same. In GeoTT, we have finitely many universe levels which all behave fairly differently. In fact, we have two separate hierarchies: $m$-levels and $h$-levels.
+
+$m$-levels are ``meta levels''. These are more similar to traditional universe levels, in that, for instance, there is a universe of query types at the theory level. However, various type formers (in particular $\Pi$-types) are restricted to various levels.
+
+$h$-levels, on the other hand, control equality. Taking equality types always bumps you down an $h$-level; if $A$ is at the $\ms{set}$ $h$-level then $\ms{Eq}\,A\,a\,a'$ is at the $\ms{prop}$ $h$-level. $h$-levels and $m$-levels may be freely mixed.
+
+In terms of the SOGAT, we start by defining the level types and their preorder structure.
+\begin{gather*}
+  \mb{class}\:\:\ms{Preorder}\:A\:\:\mb{where} \\
+  \quad \_\leq\_ \colon A \to A \to \ms{Prop} \\
+  \quad \leq/\ms{refl} \colon (a \colon A) \to a \leq a \\
+  \quad \leq/\ms{trans} \colon \{a\,b\,c \colon A\} \to a \leq b \to b \leq c \to a \leq c \\
+  \\
+  \mb{data}\:\:\mLevel\:\:\mb{where} \\
+  \quad \ms{query} \colon \mLevel \\
+  \quad \ms{theory} \colon \mLevel \\
+  \quad \ms{top} \colon \mLevel \\
+  \quad \ms{prim} \colon \mLevel \\
+  \\
+  \mb{instance}\:\:\ms{Preorder}\:\mLevel\:\:\mb{where} \\
+  \quad \text{(see \cref{fig:mlevel-hierarchy})} \\
+  \\
+  \mb{data}\:\:\hLevel\:\:\mb{where} \\
+  \quad \ms{unit} \colon \hLevel \\
+  \quad \ms{prop} \colon \hLevel \\
+  \quad \ms{set} \colon \hLevel \\
+  \\
+  \mb{instance}\:\:\ms{Preorder}\:\hLevel\:\:\mb{where} \\
+  \quad \text{(see \cref{fig:hlevel-hierarchy})} \\
+\end{gather*}
+
+\begin{figure}
+  \centering
+  \tikz\graph[tree layout] {
+    "$\ms{top}$" -- { "$\ms{theory}$" -- { "$\ms{query}$" }, "$\ms{prim}$" }
+  };
+  \caption{$m$-level hierarchy}
+  \label{fig:mlevel-hierarchy}
+\end{figure}
+
+\begin{figure}
+  \centering
+  \tikz\graph[tree layout] {
+    "$\ms{set}$" -- { "$\ms{prop}$" -- { "$\ms{unit}$" } }
+  };
+  \caption{$h$-level hierarchy}
+  \label{fig:hlevel-hierarchy}
+\end{figure}
+
+Then, we associate levels with types via order-preserving predicates:
+\begin{gather*}
+  \_@_m\_ \colon \{e \colon \ms{Energy}\} \to \ms{Ty}\,e \to \hLevel \to \ms{Prop} \\
+  @_m/\ms{order\text{-}preserving} \colon \{e \colon \ms{Energy}\} \to \{A \colon \ms{Ty}\,e\} \to \{\ell_1\,\ell_2 \colon \mLevel\} \to \{\ell_1 \leq \ell_2\} \to \\
+  \quad A@_m\ell_1 \to A@_m\ell_2 \\
+  \_@_h\_ \colon \{e \colon \ms{Energy}\} \to \ms{Ty}\,e \to \hLevel \to \ms{Prop} \\
+  @_m/\ms{order\text{-}preserving} \colon \{e \colon \ms{Energy}\} \to \{A \colon \ms{Ty}\,e\} \to \{\ell_1\,\ell_2 \colon \hLevel\} \to \{\ell_1 \leq \ell_2\} \to \\
+  \quad A@_h\ell_1 \to A@_h\ell_2
+\end{gather*}
+This means that any query-level type is also a theory-level type, and so on.
+
+% TODO: universes at different h-levels.
+
+We can then introduce universes in the following way.
+\begin{gather*}
+  \mb{data}\:\:\ms{Universe} \colon \mLevel \to \mLevel \to \ms{Set}\:\:\mb{where} \\
+  \quad \ms{U/query} \colon \ms{Universe}\,\ms{query}\,\ms{theory} \\
+  \quad \ms{U/theory} \colon \ms{Universe}\,\ms{theory}\,\ms{top} \\
+  \quad \ms{U/prim} \colon \ms{Universe}\,\ms{prim}\,\ms{top} \\
+  \\
+  \mb{variables}\:\:(\ell_1\,\ell_2 \colon \mLevel)\:(e \colon \ms{Energy}\} \\
+  \ms{U} \colon \ms{Universe}\,\ell_1\,\ell_2 \to \ms{Ty}\,e \\
+  (\ms{code},\ms{decode},\ms{U}/\beta, \ms{U}/\eta) \colon \{u \colon \ms{Universe}\,\ell_1\,\ell_2\} \to (A \colon \ms{Ty}\,e) \times A@_m\ell_1 \cong \ms{El}\,e\,(\ms{U}\,u) \\
+  \ms{U}/m\text{-}\ms{level} \colon \{u \colon \ms{Universe}\,\ell_1\,\ell_2\} \to (\ms{U}\,u)@_m\ell_2 \\
+  \ms{U}/h\text{-}\ms{level} \colon \{u \colon \ms{Universe}\,\ell_1\,\ell_2\} \to (\ms{U}\,u)@_h\ms{set}
+\end{gather*}
+The two type parameters for $\ms{Universe}$ are the $\mLevel$ of the elements of the universe, and the $\mLevel$ that the universe lives in, respectively. All universes live in the $h$-level of $\ms{set}$; these universes are not univalent.
+
+Notice that the line starting with $(\ms{code},\ldots$ contains the introduction, elimination, beta law and eta law for universes, as the four components of an isomorphism (function in one direction, function in the other, proof that one composite is equal to the identity, proof that the other composite is equal to the identity). This is how we will be axiomatizing most of our type formers.
+
+\subsection{Record types}
+
+It is the common practice in type theories to eschew the type former that is most convenient to program with (nominal record types) in favor of the type former that is most convenient to write down (structural binary dependent products, a.k.a. sigma types).
+
+Fortunately, with the expressivity of SOGATs we can be more accurate to the type theory that we actually want to implement. Assume that we have some fixed set $\ms{Name}$ of names, and let $[\ms{x} \colon A, \ms{y} \colon B]$ be the syntax for dependent records in the meta-theory.
+\begin{gather*}
+  \mb{data}\:\:\ms{Names} \colon \ms{Set}\:\:\mb{where} \\
+  \quad \ms{empty} \colon \ms{Names} \\
+  \quad \ms{cons} \colon \ms{Name} \to \ms{Names} \to \ms{Names} \\
+  \\
+  \ms{Tele} \colon \ms{Energy} \to \ms{Names} \to \ms{Type} \\
+  \ms{Tele}\,\_\,\ms{empty} := [] \\
+  \ms{Tele}\,e\,(\ms{cons}\,x\,xs) := [\ms{head} \colon \ms{Ty}\,e, \ms{tail} \colon \ms{El}_k\,\ms{head} \to \ms{Tele}\,e\,xs] \\
+  \ms{Tele}_k := \ms{Tele}\,\ms{kinetic} \\
+  \ms{Tele}_p := \ms{Tele}\,\ms{potential} \\
+  \\
+  \ms{Record} \colon \{xs \colon \ms{Names}\} \to \ms{Tele}_k\,xs \to \ms{Ty}_p \\
+  \\
+  \ms{Elts} \colon (e \colon \ms{Energy}) \to \{xs \colon \ms{Names}\} \to \ms{Tele}_k\,xs \to \ms{Type}^+ \\
+  \ms{Elts}\,\_\,\{\ms{empty}\}\,\_ = [] \\
+  \ms{Elts}\,e\,\{\ms{cons}\,x\,xs\}\,t = [\ms{head} \colon \ms{El}\,e\,t.\ms{head}, \ms{tail} \colon \ms{Elts}\,e\,(t.\ms{tail}\,\ms{head})] \\
+  \\
+  (\ms{pack},\ms{unpack},\ms{Record}/\beta,\ms{Record}/\eta) \colon \{e \colon \ms{Energy}\} \to \{t \colon \ms{Tele}_k\} \to \{A \colon \ms{Ty}_k\} \to  \\
+  \quad \{A\BehavesAs^{\ms{Ty}}\ms{Record}\,t\} \to \ms{Elts}\,e\,t \cong \ms{El}\,e\,A \\
+  \\
+  \_@@_m\_ \colon \{xs \colon \ms{Names}\} \to \{e \colon \ms{Energy}\} \to \ms{Tele}\,e \to \mLevel \to \ms{Prop} \\
+  \_@@_m\_\,\{\ms{empty}\}\,\_\,\_ := \top \\
+  \_@@_m\_\,\{\ms{cons}\,x\,xs\}\,t\,\ell := t.\ms{head}@_m\ell \wedge \forall (v \colon \ms{El}_k\,t.\ms{head}). (t.\ms{tail}\,v)@@_m\ell \\
+  \_@@_h\_ \colon \{xs \colon \ms{Names}\} \to \{e \colon \ms{Energy}\} \to \ms{Tele}\,e \to \hLevel \to \ms{Prop} \\
+  \_@@_h\_\,\{\ms{empty}\}\,\_\,\_ := \top \\
+  \_@@_h\_\,\{\ms{cons}\,x\,xs\}\,t\,\ell := t.\ms{head}@_h\ell \wedge \forall (v \colon \ms{El}_k\,t.\ms{head}). (t.\ms{tail}\,v)@@_h\ell \\
+  \\
+  \ms{Record}/m\text{-}\ms{level} \colon \{\ell \colon \mLevel\} \to \{t \colon \ms{Tele}_k\} \to (\ms{Record}\,t)@_m\ell \cong t@@_m\ell \\
+  \ms{Record}/h\text{-}\ms{level} \colon \{\ell \colon \hLevel\} \to \{t \colon \ms{Tele}_k\} \to (\ms{Record}\,t)@_h\ell \cong t@@_h\ell
+\end{gather*}
+
+\subsection{Pi types}
+
+\bibliographystyle{plainnat}
+\bibliography{geolog.bib}
+
+\end{document}
+
+% Local Variables:
+% TeX-engine: luatex
+% End:
