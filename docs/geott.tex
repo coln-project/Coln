@@ -4,10 +4,6 @@
 \usepackage{parskip}
 \usepackage{macros}
 
-\RequirePackage{tikz}
-\usetikzlibrary{graphs,graphdrawing}
-\usegdlibrary{trees}
-
 \NewDocumentCommand{\BehavesAs}{}{\rightsquigarrow}
 \NewDocumentCommand{\mLevel}{}{m\text{-}\ms{Level}}
 \NewDocumentCommand{\hLevel}{}{h\text{-}\ms{Level}}
@@ -121,18 +117,14 @@ In terms of the SOGAT, we start by defining the level types and their preorder s
 
 \begin{figure}
   \centering
-  \tikz\graph[tree layout] {
-    "$\ms{top}$" -- { "$\ms{theory}$" -- { "$\ms{query}$" }, "$\ms{prim}$" }
-  };
+  \includegraphics{mlevel}
   \caption{$m$-level hierarchy}
   \label{fig:mlevel-hierarchy}
 \end{figure}
 
 \begin{figure}
   \centering
-  \tikz\graph[tree layout] {
-    "$\ms{set}$" -- { "$\ms{prop}$" -- { "$\ms{unit}$" } }
-  };
+  \includegraphics{hlevel}
   \caption{$h$-level hierarchy}
   \label{fig:hlevel-hierarchy}
 \end{figure}
