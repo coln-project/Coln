@@ -334,3 +334,4 @@ TSWLatexianTemp*
 .shake
 
 _build/
+/cabal.project.local

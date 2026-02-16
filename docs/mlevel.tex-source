@@ -1,0 +1,9 @@
+\documentclass[tikz]{standalone}
+\usepackage{macros}
+\usetikzlibrary{graphs,graphdrawing}
+\usegdlibrary{trees}
+\begin{document}
+\tikz\graph[tree layout] {
+  "$\ms{top}$" -- { "$\ms{theory}$" -- { "$\ms{query}$" }, "$\ms{prim}$" }
+};
+\end{document}
