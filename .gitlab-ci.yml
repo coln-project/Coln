@@ -3,6 +3,7 @@ docs:
   tags: [nix]
 
   script:
+    - cabal update
     - ./shake docs
     - ./ci-deploy
 
@@ -11,5 +12,6 @@ check:
   tags: [nix]
     
   script:
+    - cabal update
     - ./shake check
     - ./shake test
