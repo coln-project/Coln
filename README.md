@@ -2,58 +2,33 @@
 
 See [the prospectus](https://geolog.sgai.uk/prospectus.pdf) for an overview of the goals of the geolog project.
 
+This is the *monorepo* for geolog development, which means that it contains a variety of experiments, resources, documentation, notes, and, eventually, bits and pieces of a geolog implementation.
+
 ## Getting started
 
-Dependencies:
+The shakefile (`Shakefile.hs`) is (should be) "command central" for everything in this repository. Currently it just controls geolog-lang and the website. In order to use ths shake file, you need:
 
-- A recent ghc, cabal
+- GHC 9.12
+- Cabal
 - [tectonic](https://tectonic-typesetting.github.io/en-US/) for building TeX
 
-The shakefile (`Shakefile.hs`) is "command central" for everything in this repository.
+Then you can run:
 
 - `./shake docs` builds the docs (which are deployed in ci to [geolog.sgai.uk](https://geolog.sgai.uk))
 - `./shake format` formats all of the Haskell files using ormolu (in ci, `./shake check` checks the formatting)
+- `./shake check` runs tests and checks formatting
 
-Check out the issues for what needs to be done.
+## Resources
 
-## Opinions and Resources
+Check out the [moodboard](https://git.sgai.uk/creators/geolog/-/wikis/Moodboard) for a list of references that may be useful in the development of geolog.
 
-This is a collection of resources (blog posts, papers, example code) for learning about various subjects involved in geolog.
+## Projects
 
-### Parsing
+When you add a new thing to the monorepo, try to update this list!
 
-In general, our perspective on parsing is the following
-
-1. Recursive descent is best
-2. Parser combinators are a convenient way of doing recursive descent, but really one should aim to be LL(1) with respect to the tokenizer. This means that you write a function `lex1 :: Parser Token`, and then you make decisions about what to do next based on the returned token; decisions that you don't backtrack on.
-3. Resolve precendence with Pratt parsing.
-4. Parsing always returns a syntax tree (which might include error nodes). *Diagnostics* are a separate problem from errors; diagnostics are logged while parsing but don't change the semantics of parsing.
-5. Parsing produces *notation*, which is much looser than syntax (https://parentheticallyspeaking.org/articles/bicameral-not-homoiconic/)
-
-Resources:
-
-- https://matklad.github.io/2023/05/21/resilient-ll-parsing-tutorial.html. This is good to get the "vibe" of resilient parsing, but it's not necessary to have a full concrete syntax tree unless you are actually building an LSP, which is not our aim.
-- https://github.com/ToposInstitute/fnotation
-- https://github.com/olynch/sifaka2/tree/main/fnotation
-- https://grugbrain.dev/#grug-on-parsing
-- https://github.com/AndrasKovacs/flatparse
-- https://github.com/flix/flix/blob/master/main/src/ca/uwaterloo/flix/language/phase/Parser2.scala
-
-### Elaboration
-
-Resources:
-
-- https://davidchristiansen.dk/tutorials/nbe/
-- https://github.com/AndrasKovacs/elaboration-zoo
-- https://github.com/gwaithimirdain/narya
-- https://github.com/AndrasKovacs/smalltt
-- https://github.com/AndrasKovacs/2ltt-impl (this has the most up-to-date Andras Kovacs thought)
-- https://github.com/RedPRL/cooltt
-- https://github.com/ToposInstitute/emtt
-- https://github.com/ToposInstitute/CatColab/tree/main/packages/catlog/src/tt
-
-### Datalog
-
-Resources:
-
-- [Paris Koutris' lecture notes](https://pages.cs.wisc.edu/~paris/lecture-notes/)
+- `geolog-lang` is an implementation of an elaborator for the geolog type theory.
+- `collaborative-geolog` is a vibecoded sketch for the backend version control system
+- `felix-db` is a collection of experiments around datalog
+- `toy-datalog` is a toy datalog implementation
+- `toy-datalog-web` is a web interface for `toy-datalog`
+- `docs` contains djot files and tex files which are built in CI and deployed to [geolog.sgai.uk](https://geolog.sgai.uk).
