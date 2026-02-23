@@ -77,16 +77,18 @@ instance HasCodomain PiVariant Level where
     QueryTheory -> Theory
     TheoryTop -> Top
 
-data Abs a = Abs QName a | Const a
+data Abs a = Abs QName a | AbsConst a
 
-data Fields a = FNil | FCons QName a (Fields a)
+data Fields a = Fields [QName] [a]
   deriving (Functor)
 
 instance ElemAt (Fields a) QName a where
-  elemAt FNil _ = impossible
-  elemAt (FCons x' v fs) x
-    | x == x' = v
-    | otherwise = elemAt fs x
+  elemAt (Fields xs vs) x = go xs vs
+   where
+    go (x' : xs') (v : vs')
+      | x == x' = v
+      | otherwise = go xs' vs'
+    go _ _ = impossible
 
 type data Energy = Kinetic | Potential
 
@@ -97,54 +99,30 @@ data ElS :: Energy -> Type where
   Var :: BId -> ElS K
   GlobalVar :: Constant -> ElS K
   Code :: (TyS e) -> ElS e
-  Lam :: Abs (ElS e) -> ElS e
+  Lam :: ~(TyS K) -> Abs (ElS e) -> ElS e
   App :: ElS e -> ElS K -> ElS e
   Cons :: Fields (ElS e) -> ElS e
   Proj :: ElS e -> QName -> ElS e
-  TyRefl :: TyS K -> ElS K
-  TmRefl :: ElS K -> TyS K -> ElS K
-  Coerce ::
-    TyS K -> -- S type
-    ElS K -> -- a : S
-    TyS K -> -- T type
-    ElS K -> -- S = T
-    ElS K -- T
-  Subst ::
-    TyS K -> -- S type
-    Abs (TyS K) -> -- (x : S) |- T type
-    ElS K -> -- a0 : S
-    ElS K -> -- a1 : S
-    ElS K -> -- [a0 : S = a1 : S]
-    ElS K -- T a0 = T a1
-  Coh ::
-    TyS K -> -- S type
-    ElS e -> -- a : S
-    TyS K -> -- T type
-    ElS K -> -- S = T
-    ElS e -- [a : S = coe a : T]
-  Irrel :: ElS K
 
 data TyS :: Energy -> Type where
   U :: Universe -> TyS e
   Decode :: Universe -> ElS e -> TyS e
   Pi :: PiVariant -> TyS K -> Abs (TyS K) -> TyS e
-  Record :: Level -> (Fields (TyS K)) -> TyS P
-  TyEq :: TyS K -> TyS K -> TyS K
-  TmEq :: ElS K -> TyS K -> ElS K -> TyS K -> TyS K
+  Record :: Level -> [QName] -> [TyS K] -> TyS P
 
 type Env = Bwd (ElV K)
 
-data Clo a = Clo QName (ElV K -> a)
+data Clo a = Clo QName (ElV K -> a) | CloConst a
 
 data Spine
   = SId
   | SApp Spine (ElV K)
   | SProj Spine QName
 
-data BehavesAs a
-  = BehavesAs a
+data Canonical
+  = BehavesAs (ElV P)
+  | ExpandsTo (ElV K)
   | TrueNeutral
-  deriving (Functor)
 
 data Constant = Constant {name :: QName}
   deriving (Eq, Ord)
@@ -152,33 +130,28 @@ data Constant = Constant {name :: QName}
 data Head
   = Local FId
   | Global Constant
-  | VCoe (ElV K) (TyV K) (TyV K)
+  deriving (Eq)
 
 data Neutral = Neutral
   { head :: Head
   , spine :: Spine
-  , behavesAs :: ~(BehavesAs (ElV P))
+  , canon :: ~Canonical
   , ty :: ~(TyV K)
   }
 
 data ElV :: Energy -> Type where
   VNeu :: Neutral -> ElV K
   VCode :: TyV e -> ElV e
-  VLam :: Clo (ElV e) -> ElV e
+  VLam :: ~(TyV K) -> Clo (ElV e) -> ElV e
   VCons :: Fields (ElV e) -> ElV e
-  VIrrel :: ElV e
 
 data TeleV a = TVNil | TVCons a (ElV K -> TeleV a)
-
-data FieldsV a = FieldsV [QName] (TeleV a)
 
 data TyV :: Energy -> Type where
   VU :: Universe -> TyV e
   VDecode :: Universe -> Neutral -> TyV K
   VPi :: PiVariant -> TyV K -> Clo (TyV K) -> TyV e
-  VRecord :: Level -> FieldsV (TyV K) -> TyV P
-  VTyEq :: TyV K -> TyV K -> TyV K
-  VTmEq :: ElV K -> TyV K -> ElV K -> TyV K -> TyV K
+  VRecord :: Level -> [QName] -> TeleV (TyV K) -> TyV P
 
 data GlobalEntry
   = KEntry (ElS K) (ElV K) (TyV K)

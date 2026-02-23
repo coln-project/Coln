@@ -73,6 +73,8 @@ instance Pretty Span where
 -- TODO: make more annotations, use them
 data Ann = AText
 
+type ADoc = Doc Ann
+
 -- Container classes
 --------------------------------------------------------------------------------
 

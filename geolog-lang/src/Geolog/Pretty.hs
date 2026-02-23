@@ -48,33 +48,38 @@ precLam = Prec 20 AssocL
 precTop :: Prec
 precTop = Prec 0 AssocNon
 
-instance Prt ElS where
+instance Prt (ElS e) where
   prt = \case
     Var i -> prt i
+    GlobalVar (Constant x) -> pretty x
     Code ty -> prt ty
     App f t -> par precApp $ (prtPrec precApp f) <+> (prtPrec precApp t)
-    Lam (Abs x t) ->
+    Lam _ (Abs x t) ->
       par precLam (pretty x <+> "=>" <+> bind x (prtPrec precLam t))
+    Lam _ (AbsConst t) ->
+      par precLam ("_" <+> "=>" <+> prtPrec precLam t)
     Proj t f -> par precApp $ (prtPrec precApp t) <+> "." <> pretty f
-    Cons (Fields fs) ->
+    Cons (Fields xs ts) ->
       list
-        ["." <> pretty x <+> "=" <+> prtPrec precTop t | (x, t) <- fs]
+        ["." <> pretty x <+> "=" <+> prtPrec precTop t | (x, t) <- zip xs ts]
 
-par :: (PrecArg) => Prec -> Doc ann -> Doc ann
+par :: (PrecArg) => Prec -> ((PrecArg) => Doc ann) -> Doc ann
 par p s
-  | precLe p ?prec == Just True = "(" <> s <> ")"
+  | precLe p ?prec == Just True = "(" <> let ?prec = precTop in s <> ")"
   | True = s
 
-instance Prt TyS where
+instance Prt (TyS e) where
   prt = \case
     U u -> pretty $ decodesInto u
     Decode _ t -> prt t
     Pi _ a (Abs x b) ->
       let annot = "(" <> pretty x <+> ":" <+> prtTop a <> ")"
        in par precLam (annot <+> "->" <+> bind x (prtPrec precLam b))
-    Record _ (Fields fs) -> list $ go fs []
+    Pi _ a (AbsConst b) ->
+      par precLam (prt a <+> "->" <+> prtPrec precLam b)
+    Record _ xs as -> list $ go (zip xs as) []
      where
-      go :: DoPretty ([(QName, TyS)] -> [Doc ann] -> [Doc ann])
+      go :: DoPretty ([(QName, TyS e')] -> [Doc ann] -> [Doc ann])
       go [] ds = reverse ds
       go ((x, a) : rest) ds =
         let d = pretty x <+> ":" <+> prtPrec precTop a

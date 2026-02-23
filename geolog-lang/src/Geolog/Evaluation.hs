@@ -1,8 +1,11 @@
 module Geolog.Evaluation where
 
+import Control.Monad (forM_, unless)
 import Data.Kind (Type)
 import Geolog.Common
 import Geolog.Core
+import Geolog.Pretty
+import Prettyprinter
 
 -- Core Operations
 --------------------------------------------------------------------------------
@@ -25,15 +28,16 @@ instance Core ElS TyS where
 
 appClo :: Clo (b e) -> ElV K -> b e
 appClo (Clo _ f) v = f v
+appClo (CloConst v) _ = v
 
 appTy :: TyV Kinetic -> ElV Kinetic -> TyV Kinetic
 appTy a v = case behavesAs a of
-  BehavesAs (VPi _ _ cod) -> appClo cod v
+  Just (VPi _ _ cod) -> appClo cod v
   _ -> impossible
 
 projTy :: TyV Kinetic -> QName -> ElV Kinetic -> TyV Kinetic
 projTy a x v = case behavesAs a of
-  BehavesAs (VRecord _ (FieldsV names tys)) -> go names tys
+  Just (VRecord _ names tys) -> go names tys
    where
     go [] _ = impossible
     go (x' : xs) (TVCons a' tys')
@@ -43,19 +47,16 @@ projTy a x v = case behavesAs a of
   _ -> impossible
 
 instance Core ElV TyV where
-  app (VLam clo) v = appClo clo v
-  app (VNeu n) v = VNeu n'
-   where
-    b' = fmap (flip app v) n.behavesAs
-    n' = Neutral n.head (SApp n.spine v) b' (appTy n.ty v)
+  app (VLam _ clo) v = appClo clo v
+  app (VNeu n) v = case n.canon of
+    ExpandsTo (VLam _ clo) -> appClo clo v
+    _ -> impossible
   app _ _ = impossible
 
-  -- TODO: this is quadratic!! (maybe linear if laziness smiles on me)
   proj (VCons fs) x = elemAt fs x
-  proj (VNeu n) x = VNeu n'
-   where
-    b' = fmap (flip proj x) n.behavesAs
-    n' = Neutral n.head (SProj n.spine x) b' (projTy n.ty x (VNeu n))
+  proj (VNeu n) x = case n.canon of
+    ExpandsTo (VCons fs) -> elemAt fs x
+    _ -> impossible
   proj _ _ = impossible
 
   code (VDecode _ n) = VNeu n
@@ -68,51 +69,37 @@ instance Core ElV TyV where
 
   universe = VU
 
-teleEq :: ElV K -> ElV K -> [QName] -> TeleV (TyV K) -> TeleV (TyV K) -> TeleV (TyV K)
-teleEq _ _ _ TVNil TVNil = TVNil
-teleEq v v' (x : xs) (TVCons a fs) (TVCons a' fs') =
-  let vx = proj v x
-      vx' = proj v' x
-      fs'' = teleEq v v' xs (fs vx) (fs' vx')
-   in TVCons (VTmEq (proj v x) a (proj v' x) a') (\_ -> fs'')
-teleEq _ _ _ _ _ = impossible
+behavesAs :: TyV K -> Maybe (TyV P)
+behavesAs (VU u) = Just (VU u)
+behavesAs (VDecode u n) = case n.canon of
+  BehavesAs v -> Just (decode u v)
+  ExpandsTo _ -> Nothing
+  TrueNeutral -> Nothing
+behavesAs (VPi pv a b) = Just (VPi pv a b)
 
-behavesAs :: TyV K -> BehavesAs (TyV Potential)
-behavesAs (VU u) = BehavesAs (VU u)
-behavesAs (VDecode u n) = case n.behavesAs of
-  BehavesAs v -> BehavesAs (decode u v)
-  TrueNeutral -> TrueNeutral
-behavesAs (VPi pv a b) = BehavesAs (VPi pv a b)
-behavesAs (VTyEq _ _) = TrueNeutral
-behavesAs (VTmEq v a v' a') = case (behavesAs a, behavesAs a') of
-  (BehavesAs b, BehavesAs b') -> case (b, b') of
-    (VPi pv dom (Clo x f), VPi pv' dom' (Clo x' f')) ->
-      if pv == pv'
-        then
-          BehavesAs $
-            VPi
-              pv
-              dom
-              ( Clo x $ \vx ->
-                  VPi
-                    pv
-                    dom'
-                    ( Clo x' $ \vx' ->
-                        VPi
-                          pv
-                          (VTmEq vx dom vx' dom')
-                          ( Clo "pf" $ \_ ->
-                              VTmEq (app v vx) (f vx) (app v' vx') (f' vx')
-                          )
-                    )
-              )
-        else TrueNeutral
-    (VRecord l (FieldsV names tele), VRecord l' (FieldsV names' tele')) ->
-      if l == l' && names == names'
-        then BehavesAs $ VRecord l (FieldsV names (teleEq v v' names tele tele'))
-        else TrueNeutral
-    _ -> TrueNeutral
-  _ -> TrueNeutral
+expandRecord :: Head -> Spine -> [QName] -> TeleV (TyV K) -> Fields (ElV K)
+expandRecord h sp xs te = Fields xs (go xs te)
+ where
+  go [] TVNil = []
+  go (x : xs') (TVCons a f) =
+    let v = neu a h (SProj sp x)
+     in v : go xs' (f v)
+  go _ _ = impossible
+
+neu :: TyV K -> Head -> Spine -> ElV K
+neu a h sp =
+  let
+    v = VNeu $ Neutral h sp c a
+    c = case behavesAs a of
+      Just (VU _) -> TrueNeutral
+      Just (VRecord _ xs as) -> ExpandsTo $ VCons $ expandRecord h sp xs as
+      Just (VPi _ dom _) -> ExpandsTo $ VLam dom $ Clo "x" $ \v' -> app v v'
+      Nothing -> TrueNeutral
+   in
+    v
+
+local :: TyV K -> FId -> ElV K
+local a i = neu a (Local i) SId
 
 -- Evaluation
 --------------------------------------------------------------------------------
@@ -127,34 +114,7 @@ evalIn env t = let ?env = env in eval t
 
 evalAbs :: (GlobalEnvArg, EnvArg, Eval a b) => Abs (a e) -> Clo (b e)
 evalAbs (Abs x t) = Clo x (\v -> evalIn (?env :> v) t)
-evalAbs (Const t) = let v = eval t in Clo "x" (\_ -> v)
-
-coerceCons :: [QName] -> TeleV (TyV K) -> TeleV (TyV K) -> ElV K -> Fields (ElV K)
-coerceCons [] _ _ _ = FNil
-coerceCons (x : xs) (TVCons a f) (TVCons a' f') v =
-  let vx = proj v x
-      vx' = coerce (proj v x) a a'
-   in FCons x vx' (coerceCons xs (f vx) (f' vx') v)
-coerceCons _ _ _ _ = impossible
-
-coerce :: ElV K -> TyV K -> TyV K -> ElV K
-coerce v a a' = case (behavesAs a, behavesAs a') of
-  (BehavesAs b, BehavesAs b') -> case (b, b') of
-    (VU u, VU u') | u == u' -> v
-    (VPi pv dom (Clo _ f), VPi pv' dom' (Clo _ f'))
-      | pv == pv' ->
-          VLam $
-            Clo
-              "x"
-              ( \vx' ->
-                  let vx = coerce vx' dom' dom
-                   in coerce (app v vx) (f vx) (f' vx')
-              )
-    (VRecord l (FieldsV xs te), VRecord l' (FieldsV xs' te'))
-      | l == l' && xs == xs' -> VCons (coerceCons xs te te' v)
-    _ -> VNeu $ Neutral (VCoe v a a') SId TrueNeutral a'
-  (TrueNeutral, TrueNeutral) | isConv a a' -> v
-  _ -> VNeu $ Neutral (VCoe v a a') SId TrueNeutral a'
+evalAbs (AbsConst t) = CloConst (eval t)
 
 instance Eval ElS ElV where
   eval = \case
@@ -164,32 +124,20 @@ instance Eval ElS ElV where
       PEntry _ v a -> VNeu (Neutral (Global c) SId (BehavesAs v) a)
     Code t -> code $ eval t
     App t1 t2 -> eval t1 `app` eval t2
-    Lam c -> VLam (evalAbs c)
+    Lam dom c -> VLam (eval dom) (evalAbs c)
     Proj t x -> eval t `proj` x
     Cons fs -> VCons $ eval <$> fs
-    TyRefl _ -> VIrrel
-    TmRefl _ _ -> VIrrel
-    Subst _ _ _ _ _ -> VIrrel
-    Coh _ _ _ _ -> VIrrel
-    Irrel -> VIrrel
-    Coerce a t b _ -> coerce (eval t) (eval a) (eval b)
 
-evalFields :: (GlobalEnvArg, EnvArg) => Fields (TyS e) -> TeleV (TyV e)
-evalFields FNil = TVNil
-evalFields (FCons _ a fs) = TVCons (eval a) (\v -> let ?env = ?env :> v in evalFields fs)
-
-fieldNames :: Fields a -> [QName]
-fieldNames FNil = []
-fieldNames (FCons x _ fs) = x : fieldNames fs
+evalTele :: (GlobalEnvArg, EnvArg) => [TyS e] -> TeleV (TyV e)
+evalTele [] = TVNil
+evalTele (a : as) = TVCons (eval a) (\v -> let ?env = ?env :> v in evalTele as)
 
 instance Eval TyS TyV where
   eval = \case
     U u -> VU u
     Decode u t -> decode u (eval t)
     Pi pv dom cod -> VPi pv (eval dom) (evalAbs cod)
-    Record l fs -> VRecord l (FieldsV (fieldNames fs) (evalFields fs))
-    TyEq a b -> VTyEq (eval a) (eval b)
-    TmEq t a t' a' -> VTmEq (eval t) (eval a) (eval t') (eval a')
+    Record l xs te -> VRecord l xs (evalTele te)
 
 -- Quoting
 --------------------------------------------------------------------------------
@@ -197,10 +145,145 @@ instance Eval TyS TyV where
 type CtxLenArg = (?ctxLen :: Int)
 
 class Quote (a :: Energy -> Type) (b :: Energy -> Type) | a -> b where
-  quote :: (CtxLenArg, GlobalEnvArg) => a e -> b e
+  quote :: (CtxLenArg) => a e -> b e
 
--- Conversion
+quoteId :: (CtxLenArg) => FId -> BId
+quoteId (FId i) = BId (?ctxLen - i - 1)
+
+quoteHead :: (CtxLenArg) => Head -> ElS K
+quoteHead = \case
+  Local i -> Var (quoteId i)
+  Global c -> GlobalVar c
+
+quoteSp :: (CtxLenArg) => Spine -> ElS K -> ElS K
+quoteSp sp t = case sp of
+  SId -> t
+  SApp sp' t' -> App (quoteSp sp' t) (quote t')
+  SProj sp' x -> Proj (quoteSp sp' t) x
+
+withFresh :: (CtxLenArg) => TyV K -> ((CtxLenArg) => ElV K -> a) -> a
+withFresh a f =
+  let i = FId ?ctxLen
+   in let ?ctxLen = ?ctxLen + 1
+       in f (local a i)
+
+quoteClo :: (CtxLenArg, Quote a b) => TyV K -> Clo (a e) -> Abs (b e)
+quoteClo a (Clo x f) = Abs x (withFresh a $ \v -> quote (f v))
+quoteClo _ (CloConst t) = AbsConst (quote t)
+
+quoteTele :: (CtxLenArg) => TeleV (TyV K) -> [TyS K]
+quoteTele TVNil = []
+quoteTele (TVCons a f) = quote a : withFresh a (\v -> quoteTele (f v))
+
+instance Quote ElV ElS where
+  quote = \case
+    VNeu (Neutral h sp _ _) -> quoteSp sp (quoteHead h)
+    VCode a -> Code (quote a)
+    VLam dom c -> Lam (quote dom) (quoteClo dom c)
+    VCons fs -> Cons (quote <$> fs)
+
+instance Quote TyV TyS where
+  quote = \case
+    VU u -> U u
+    VDecode u n -> Decode u (quote (VNeu n))
+    VPi pv a b -> Pi pv (quote a) (quoteClo a b)
+    VRecord l xs te -> Record l xs (quoteTele te)
+
+-- Definitional equality
 --------------------------------------------------------------------------------
 
-isConv :: TyV K -> TyV K -> Bool
-isConv = unimplemented
+-- When we do a definitional equality check, how should we report failure?
+-- We should report the two things that we were originally looking at (which is
+-- not in this code) and the two things which were provably not equal.
+
+-- We only have access to the right bound names at the point in time that we
+-- fail to check these things, so we have to pretty print them there.
+
+data DefEqCheckError
+  = UnequalTys ADoc ADoc (Maybe ADoc)
+  | --           ty   ty   explanation
+    UnequalEls ADoc ADoc (Maybe ADoc)
+  | --           el   el   explanation
+    UnequalSpines Spine Spine (Maybe ADoc)
+
+-- this error should always be caught
+
+type DefEqM a = Either DefEqCheckError ()
+
+throwUnequalTys :: (NamesArg, CtxLenArg) => TyV K -> TyV K -> Maybe ADoc -> DefEqM ()
+throwUnequalTys a a' e = Left (UnequalTys (prtTop $ quote a) (prtTop $ quote a') e)
+
+throwUnequalEls :: (NamesArg, CtxLenArg) => ElV K -> ElV K -> Maybe ADoc -> DefEqM ()
+throwUnequalEls v v' e = Left (UnequalEls (prtTop $ quote v) (prtTop $ quote v') e)
+
+throwUnequalSpines :: Spine -> Spine -> Maybe ADoc -> DefEqM ()
+throwUnequalSpines sp sp' e = Left $ UnequalSpines sp sp' e
+
+withFresh' :: (NamesArg, CtxLenArg) => TyV K -> ((NamesArg, CtxLenArg) => ElV K -> a) -> a
+withFresh' a f =
+  let i = FId ?ctxLen
+   in let ?ctxLen = ?ctxLen + 1
+          ?names = ?names :> "x"
+       in f $ local a i
+
+class DefEq a where
+  defEq :: (NamesArg, CtxLenArg) => a -> a -> DefEqM ()
+
+instance DefEq (TyV K) where
+  defEq a a' = case (a, a') of
+    (VU u, VU u') | u == u' -> pure ()
+    (VDecode _ n, VDecode _ n') -> defEq n n'
+    (VPi pv dom cod, VPi pv' dom' cod') -> do
+      unless (pv == pv') $
+        throwUnequalTys a a' $
+          Just $
+            "different pi variants:" <+> pretty pv <+> "and" <+> pretty pv'
+      defEq dom dom'
+      withFresh' dom $ \v -> defEq (appClo cod v) (appClo cod' v)
+    _ -> throwUnequalTys a a' Nothing
+
+prtHead :: (NamesArg, CtxLenArg) => Head -> ADoc
+prtHead (Local i) = prtTop $ quoteId i
+prtHead (Global (Constant x)) = pretty x
+
+instance DefEq Neutral where
+  defEq n n' = do
+    unless (n.head == n'.head) $
+      throwUnequalEls (VNeu n) (VNeu n') $
+        Just $
+          "different heads for neutral:"
+            <+> prtHead n.head
+            <+> "and"
+            <+> prtHead n'.head
+    defEq n.spine n'.spine
+
+instance DefEq Spine where
+  defEq sp sp' = case (sp, sp') of
+    (SId, SId) -> pure ()
+    (SApp sq v, SApp sq' v') -> do
+      defEq sq sq'
+      defEq v v'
+    (SProj sq x, SProj sq' x') -> do
+      defEq sq sq'
+      unless (x == x') $
+        throwUnequalSpines sq sq' $
+          Just $
+            "fields are not equal:" <+> pretty x <+> "and" <+> pretty x'
+    _ -> throwUnequalSpines sp sp' Nothing
+
+canon :: ElV K -> ElV K
+canon v@(VNeu n)
+  | ExpandsTo v' <- n.canon = v'
+  | otherwise = v
+canon v = v
+
+instance DefEq (ElV K) where
+  -- Note: we expect v and v' to be eta-expanded here, because we reflect
+  defEq v v' = case (canon v, canon v') of
+    (VNeu n, VNeu n') -> defEq n n'
+    (VCode a, VCode a') -> defEq a a'
+    (VLam a c, VLam _ c') -> withFresh a $
+      \w -> defEq (appClo c v) (appClo c' w)
+    (VCons (Fields _ vs), VCons (Fields _ vs')) ->
+      forM_ (zip vs vs') (uncurry defEq)
+    _ -> throwUnequalEls v v' Nothing
