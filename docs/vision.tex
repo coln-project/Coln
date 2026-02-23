@@ -127,10 +127,66 @@ There may also be cases where, before verification of an answer received from th
 There will be a special namespace, pronounced ``session'', for relations and such created and used during the session.  Any events that reference the session namespace will be translated into events that use only persistent namespaces, as if they were issued that way in the first place.  As this can lead to different results on merge than using things with the same definitions in the persistent namespace, use with caution.
 
 \section{Events and transactions}
+
+\subsection{Events}
+
+\emph{Events} are how data enters the database.  Each event happens at (or strictly, just before) a moment, and is associated with a relation and a value of the relation's associated row type.  \emph{Named events} are how data exits the database, and are dependent tuples of an event with a row identifier for its relation.
+
 \subsection{Transactions}
 \label{transactions}
+
+A \emph{transaction} creates a new moment.  It consists of a set of predecessor moments and a set of events.  Transactions can be created incrementally, but all the predecessor moments must be specified before any events.  An open transaction can have read-only queries associated with it, which are evaluated incrementally in order to provide (temporary?) row identifiers for use in formulating further events for the transaction.  An open transaction may be discarded or closed.  In the latter case, it becomes a moment.
+
+\begin{question}
+	How do we formulate this facility to prevent fragility?  Specifically, how do we record row identifiers that reference newly created rows in the underlying event log?
+\end{question}
+
+\begin{question}
+	Do we want to support some kind of distributed partitioning of event logs?  If so it calls into question the entire transaction mechanism, as well as the idea of merges.
+\end{question}
+
+A \emph{named transaction} describes a moment.  It consists of a moment identifier, a set of predecessor moments, and a set of named events ordered in dependency order.  These are the usual results of read-only queries, although read-only queries internal to a transaction simply return sets of named events incrementally.
+
 \section{Queries and their optimization}
+
+\subsection{Kinds of queries}
 \label{queries}
+
+A \emph{read query} is specified as a set of logical relations decorated with conditions, and a range of moments, and returns a set of named transactions.  An \emph{insert query} is specified as an event in the context of an open transaction and returns a set of named events corresponding to monitor queries.  A \emph{monitor query} is specified as a logical relation decorated with conditions in the context of an open transaction and returns nothing.
+
+There will be a facility to easily rerun a read query with different time bounds.
+\begin{question}
+	Instead of monitor queries, should some kind of ``INSERT RETURNING'' construct be used as a substitute?
+\end{question}
+
+There are also special queries.  A \emph{clock query} is specified as a moment and ongoingly returns new moments coming after that moment as they enter the database.
+
+\subsection{Semantics of query execution}
+
+All normal queries consist of optimized versions of a dependency chase.  Dependencies will be chased during a read query when they may recursively lead to creation of a row under the purview of the read query.
+
+For insert queries, dependencies will be chased when they may recursively lead to any of:
+\begin{enumerate}
+	\item Creation of a row subject to an active monitor query.
+	\item Creation of a row in a materialized relation.
+	\item A constraint that can fail, like a check constraint or functional dependency.
+\end{enumerate}
+
+In addition, when adding a second or subsequent predecessor moment to an open transaction, dependencies will be chased as if for an insert.
+
+\subsection{Optimization of queries}
+
+There are three primary ways you can optimize a dependency chase:
+
+\begin{enumerate}
+	\item	By chasing dependencies in bulk and ordering the phases of dependency discovery and bulk chasing appropriately, redundant chasing can be reduced on an intra-query basis and locality of disk access improved.
+
+		This form of optimization is similar to join order optimization and can use similar techniques and data structures.
+
+	\item	By materializing relations, redundant chasing can be reduced on an inter-query basis and depending on the data structure into which they are materialized, the former method may become more efficient by taking advantage of the characteristics of the data structure(s) to optimize discovery.
+
+	\item	By adding auxiliary relations and dependencies and pruning the original dependencies that become logically redundant, better opportunities are created for the above two processes to work.  This is especially important for incremental and/or time-range querying.
+\end{enumerate}
 
 \bibliographystyle{plainnat}
 \bibliography{geolog.bib}
