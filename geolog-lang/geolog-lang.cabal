@@ -35,7 +35,7 @@ library
         InstanceSigs KindSignatures LambdaCase MagicHash
         MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
         OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
-        StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
+        StandaloneKindSignatures StrictData TemplateHaskell TypeFamilies
         TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
@@ -73,7 +73,7 @@ test-suite geolog-lang-test
         InstanceSigs KindSignatures LambdaCase MagicHash
         MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
         OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
-        StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
+        StandaloneKindSignatures StrictData TemplateHaskell TypeFamilies
         TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 

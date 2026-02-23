@@ -148,3 +148,5 @@ instance Pretty Diagnostic where
 
 reportIO :: Reporter -> Diagnostic -> IO ()
 reportIO r d = hPutDoc r.handle (hardline <> pretty d <> hardline)
+
+type ReporterArg = (?reporter :: Reporter)
