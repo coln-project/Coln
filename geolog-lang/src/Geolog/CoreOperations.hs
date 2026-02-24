@@ -205,12 +205,9 @@ instance Quote TyV TyS where
 
 data DefEqCheckError
   = UnequalTys ADoc ADoc (Maybe ADoc)
-  | --           ty   ty   explanation
-    UnequalEls ADoc ADoc (Maybe ADoc)
-  | --           el   el   explanation
-    UnequalSpines Spine Spine (Maybe ADoc)
+  | UnequalEls ADoc ADoc (Maybe ADoc)
+  | UnequalSpines Spine Spine (Maybe ADoc)
 
--- this error should always be caught
 
 type DefEqM a = Either DefEqCheckError ()
 
@@ -267,6 +264,7 @@ instance DefEq Neutral where
             <+> prtHead n.head
             <+> "and"
             <+> prtHead n'.head
+    -- TODO: catch the UnequalSpines error and rethrow it as UnequalEls
     defEq n.spine n'.spine
 
 instance DefEq Spine where
@@ -290,7 +288,6 @@ canon v@(VNeu n)
 canon v = v
 
 instance DefEq (ElV K) where
-  -- Note: we expect v and v' to be eta-expanded here, because we reflect
   defEq v v' = case (canon v, canon v') of
     (VNeu n, VNeu n') -> defEq n n'
     (VCode a, VCode a') -> defEq a a'

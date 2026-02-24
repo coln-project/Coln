@@ -1,6 +1,7 @@
 module Geolog.Elaborator where
 
 import Control.Exception
+import Control.Monad (unless)
 import Geolog.Common
 import Geolog.Core
 import Geolog.CoreOperations
@@ -28,13 +29,17 @@ type Elab a = (CtxArg, CtxLenArg, NamesArg, EnvArg, GlobalEnvArg, DiagnosticCtxA
 bind :: Elab (QName -> TyV K -> Elab (ElV K -> a) -> a)
 bind x a action =
   let i = FId ?ctxLen
-      v = local a i in
+      v = local a i in let_ x v a action
+                       
+let_ :: Elab (QName -> ElV K -> TyV K -> Elab (ElV K -> a) -> a)
+let_ x v a action =
   let
     ?ctx = ?ctx :> a
     ?ctxLen = ?ctxLen + 1
     ?names = ?names :> x
-    ?env = ?env :> local a i
+    ?env = ?env :> v
     in action v
+
 
 data Glued a b e = G
   { stx :: (a e),
@@ -176,13 +181,67 @@ unexpectedLambda s a = failWith s UnexpectedLambda $
 conversionError :: (DiagnosticCtxArg) => Span -> ADoc -> ADoc -> DefEqCheckError -> IO a
 conversionError = unimplemented
 
+binding :: (DiagnosticCtxArg) => Ntn -> IO (QName, Ntn)
+binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
+binding n = unexpectedNotation n "binding"
+
+members :: Elab (Universe -> [Ntn] -> IO ([QName], [TyS K]))
+members _ [] = pure ([], [])
+members u (n : ns) = do
+  (x, n') <- binding n
+  ga <- typ u n'
+  (xs, as) <- bind x ga.val $ \_ -> members u ns
+  pure (x:xs, ga.stx : as)
+
+setting :: (DiagnosticCtxArg) => QName -> Ntn -> IO Ntn
+setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
+  | x == x' = pure n'
+  | otherwise = failWith sp UnexpectedField $
+      "got field" <+> pretty x' <> ", expected field" <+> pretty x
+setting _ n = unexpectedNotation n "record field"
+
+ident :: (DiagnosticCtxArg) => Ntn -> IO QName
+ident (N.Ident x _) = pure x
+ident n = unexpectedNotation n "ident"
+
+elts :: Elab ([QName] -> TeleV (TyV K) -> [Ntn] -> IO ([ElS K], [ElV K]))
+elts [] TVNil [] = pure ([], [])
+elts (x:xs) (TVCons a f) (n:ns) = do
+  n' <- setting x n
+  G t v <- chkK a n'
+  (ts, vs) <- let_ x v a $ \_ -> elts xs (f v) ns
+  pure (t:ts, v:vs)
+elts _ _ _ = panic "fail earlier if we don't have right number of fields"
+
 chk :: Elab (SEnergy e -> TyV K -> Ntn -> IO (ElG e))
-chk e a (N.Tuple ns s) = case behavesAs a of
-  Just (VU u) -> unimplemented
-  Just (VRecord _ xs te) -> unimplemented
+chk e a n@(N.Tuple ns s) = case behavesAs a of
+  Just (VU u) ->
+    case e of
+      SKinetic -> unsupportedInKineticMode (N.span n) "record type"
+      SPotential -> do
+        (xs, as) <- members u ns
+        let ty = Record (decodesInto u) xs as
+        pure $ code $ G ty (eval ty)
+  Just (VRecord _ xs te) -> do
+    case e of
+      SPotential -> unsupportedInPotentialMode (N.span n) "tuple literal"
+      SKinetic -> do
+        unless (length xs == length ns) $
+          failWith (N.span n) WrongNumberOfFields $
+            "wrong number of fields, expected:" <+>
+            pretty (length xs) <> ", but got:" <+> pretty (length ns)
+        (ts, vs) <- elts xs te ns
+        pure $ G (Cons (Fields xs ts)) (VCons (Fields xs vs))
   _ -> unexpectedTuple s $ prtTop $ quote a
 chk e a n@(N.Infix n1 (N.Keyword "=>" _) n2) = case behavesAs a of
-  Just (VPi _ dom cod) -> unimplemented
+  Just (VPi _ dom cod) -> do
+    x <- ident n1
+    body <- bind x dom $ \v -> do
+      g <- chk e (appClo cod v) n2
+      pure g.stx
+    pure $ G
+      (Lam (quote dom) (Abs x body))
+      (VLam dom (Clo x (\v -> evalIn (?env :> v) body)))
   _ -> unexpectedLambda (N.span n) $ prtTop $ quote a
 chk e a n = do
   (g, a') <- syn e n
