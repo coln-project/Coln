@@ -1,13 +1,13 @@
-module Geolog.Elaboration where
+module Geolog.Elaborator where
 
 import Geolog.Common
 import Geolog.Core
+import Geolog.CoreOperations
 import Geolog.Diagnostics
-import Geolog.Diagnostics.Code qualified as C
-import Geolog.Pretty
 import Geolog.Evaluation
-import Geolog.Notation qualified as N
 import Geolog.Notation (Ntn)
+import Geolog.Notation qualified as N
+import Geolog.Pretty
 
 data Ctx = Bwd (TyV K)
 
@@ -26,11 +26,23 @@ instance Core ElG TyG where
   decode u (ElG t v) = TyG (decode u t) (decode u v)
   universe u = TyG (universe u) (universe u)
 
-typ :: Elab (Ntn -> IO (TyG K))
-typ = unimplemented
+typ :: Elab (Maybe Level -> Ntn -> IO (TyG K))
+typ (Just l) n = case universeFor l of
+  Just u -> decode u <$> chkK (VU u) n
+  Nothing -> do
+    (g, a) <- synK n
+    case a of
+      VU u -> decode u g
+      _ -> unimplemented
 
-syn :: Elab (Ntn -> IO (ElG K, TyG K))
-syn = unimplemented
+synK :: Elab (Ntn -> IO (ElG K, TyG K))
+synK = unimplemented
 
-chk :: Elab (TyV K -> Ntn -> IO (ElG K))
-chk = unimplemented
+synP :: Elab (Ntn -> IO (ElG P, TyG K))
+synP = unimplemented
+
+chkK :: Elab (TyV K -> Ntn -> IO (ElG K))
+chkK = unimplemented
+
+chkP :: Elab (TyV K -> Ntn -> IO (ElG P))
+chkP = unimplemented

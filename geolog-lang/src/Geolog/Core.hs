@@ -1,10 +1,10 @@
 module Geolog.Core where
 
 import Data.Kind (Type)
-import Geolog.Common
-import Prettyprinter
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Geolog.Common
+import Prettyprinter
 
 data Level
   = Query
@@ -85,14 +85,15 @@ data Fields a = Fields [QName] [a]
 instance ElemAt (Fields a) QName a where
   elemAt (Fields xs vs) x = go xs vs
     where
-      go (x':xs') (v:vs')
+      go (x' : xs') (v : vs')
         | x == x' = v
         | otherwise = go xs' vs'
-      go _ _ = impossible
+      go _ _ = panic "`elemAt xs i` should only be called if i is a valid index into xs"
 
 type data Energy = Kinetic | Potential
 
 type K = Kinetic
+
 type P = Potential
 
 data ElS :: Energy -> Type where
@@ -124,7 +125,7 @@ data Canonical
   | ExpandsTo (ElV K)
   | TrueNeutral
 
-data Constant = Constant { name :: QName }
+data Constant = Constant {name :: QName}
   deriving (Eq, Ord)
 
 data Head

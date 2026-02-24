@@ -63,7 +63,7 @@ instance Prt (ElS e) where
       list
         ["." <> pretty x <+> "=" <+> prtPrec precTop t | (x, t) <- zip xs ts]
 
-par :: (PrecArg) => Prec -> (PrecArg => Doc ann) -> Doc ann
+par :: (PrecArg) => Prec -> ((PrecArg) => Doc ann) -> Doc ann
 par p s
   | precLe p ?prec == Just True = "(" <> let ?prec = precTop in s <> ")"
   | True = s
