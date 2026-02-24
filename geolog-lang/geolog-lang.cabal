@@ -14,13 +14,16 @@ library
     exposed-modules:
         Geolog.Common
         Geolog.Core
-        Geolog.Diagnostics
-        Geolog.Diagnostics.Code
-        Geolog.Elaboration
-        Geolog.Evaluation
+        Geolog.CoreOperations
+        Geolog.Diagnostician
+        Geolog.Diagnostician.CodeMeta
+        Geolog.Elaborator
+        Geolog.Elaborator.Diagnostics
         Geolog.Lexer
+        Geolog.Lexer.Diagnostics
         Geolog.Notation
         Geolog.Parser
+        Geolog.Parser.Diagnostics
         Geolog.Pretty
         Geolog.Token
         Geolog.Unification

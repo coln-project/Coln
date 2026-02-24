@@ -154,7 +154,7 @@ qname' = do
       c | isSymbol c -> do
         x0 <- symbol
         pure (x0, SIdent)
-      _ -> impossible
+      _ -> panic "qname' should only be called if the current character is a letter or symbol"
   case fromName k x0 of
     k' | k == k' -> go [] x0 k
     k' -> pure (QName [] x0, k')

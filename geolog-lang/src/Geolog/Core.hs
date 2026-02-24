@@ -88,11 +88,12 @@ instance ElemAt (Fields a) QName a where
     go (x' : xs') (v : vs')
       | x == x' = v
       | otherwise = go xs' vs'
-    go _ _ = impossible
+    go _ _ = panic "`elemAt xs i` should only be called if i is a valid index into xs"
 
 type data Energy = Kinetic | Potential
 
 type K = Kinetic
+
 type P = Potential
 
 data ElS :: Energy -> Type where

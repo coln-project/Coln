@@ -10,8 +10,6 @@ import Prettyprinter
 -- Core Operations
 --------------------------------------------------------------------------------
 
-type GlobalEnvArg = (?globalEnv :: GlobalEnv)
-
 class Core (el :: Energy -> Type) (ty :: Energy -> Type) | el -> ty, ty -> el where
   app :: el e -> el K -> el e
   proj :: el e -> QName -> el e
@@ -33,31 +31,31 @@ appClo (CloConst v) _ = v
 appTy :: TyV Kinetic -> ElV Kinetic -> TyV Kinetic
 appTy a v = case behavesAs a of
   Just (VPi _ _ cod) -> appClo cod v
-  _ -> impossible
+  _ -> panic "appTy should only be called on types that behave like pi types"
 
 projTy :: TyV Kinetic -> QName -> ElV Kinetic -> TyV Kinetic
 projTy a x v = case behavesAs a of
   Just (VRecord _ names tys) -> go names tys
    where
-    go [] _ = impossible
     go (x' : xs) (TVCons a' tys')
       | x == x' = a'
       | otherwise = go xs (tys' (proj v x'))
-    go _ _ = impossible
-  _ -> impossible
+    go _ _ =
+      panic "projTy should only be called on fields that exist within the record"
+  _ -> panic "projTy should only be called on types that behave like records"
 
 instance Core ElV TyV where
   app (VLam _ clo) v = appClo clo v
   app (VNeu n) v = case n.canon of
     ExpandsTo (VLam _ clo) -> appClo clo v
-    _ -> impossible
-  app _ _ = impossible
+    _ -> panic "a neutral of pi type should have its eta-expansion in its canon field"
+  app _ _ = panic "a value of pi type should be a neutral or lambda"
 
   proj (VCons fs) x = elemAt fs x
   proj (VNeu n) x = case n.canon of
     ExpandsTo (VCons fs) -> elemAt fs x
-    _ -> impossible
-  proj _ _ = impossible
+    _ -> panic "a neutral of record type should have its eta-expansion in its canon field"
+  proj _ _ = panic "a value of record type should be a neutral or cons"
 
   code (VDecode _ n) = VNeu n
   code a = VCode a
@@ -65,7 +63,7 @@ instance Core ElV TyV where
   decode :: Universe -> ElV e -> TyV e
   decode _ (VCode a) = a
   decode u (VNeu n) = VDecode u n
-  decode _ _ = impossible
+  decode _ _ = panic "a value of universe type should be a neutral or an encoding of a type"
 
   universe = VU
 
@@ -84,25 +82,25 @@ expandRecord h sp xs te = Fields xs (go xs te)
   go (x : xs') (TVCons a f) =
     let v = neu a h (SProj sp x)
      in v : go xs' (f v)
-  go _ _ = impossible
+  go _ _ = panic "xs and te should have the same length"
 
 neu :: TyV K -> Head -> Spine -> ElV K
 neu a h sp =
-  let
-    v = VNeu $ Neutral h sp c a
-    c = case behavesAs a of
-      Just (VU _) -> TrueNeutral
-      Just (VRecord _ xs as) -> ExpandsTo $ VCons $ expandRecord h sp xs as
-      Just (VPi _ dom _) -> ExpandsTo $ VLam dom $ Clo "x" $ \v' -> app v v'
-      Nothing -> TrueNeutral
-   in
-    v
+  let v = VNeu $ Neutral h sp c a
+      c = case behavesAs a of
+        Just (VU _) -> TrueNeutral
+        Just (VRecord _ xs as) -> ExpandsTo $ VCons $ expandRecord h sp xs as
+        Just (VPi _ dom _) -> ExpandsTo $ VLam dom $ Clo "x" $ \v' -> app v v'
+        Nothing -> TrueNeutral
+   in v
 
 local :: TyV K -> FId -> ElV K
 local a i = neu a (Local i) SId
 
 -- Evaluation
 --------------------------------------------------------------------------------
+
+type GlobalEnvArg = (?globalEnv :: GlobalEnv)
 
 type EnvArg = (?env :: Env)
 
@@ -210,16 +208,24 @@ data DefEqCheckError
 
 type DefEqM a = Either DefEqCheckError ()
 
-throwUnequalTys :: (NamesArg, CtxLenArg) => TyV K -> TyV K -> Maybe ADoc -> DefEqM ()
-throwUnequalTys a a' e = Left (UnequalTys (prtTop $ quote a) (prtTop $ quote a') e)
+throwUnequalTys ::
+  (NamesArg, CtxLenArg) =>
+  TyV K -> TyV K -> Maybe ADoc -> DefEqM ()
+throwUnequalTys a a' e =
+  Left (UnequalTys (prtTop $ quote a) (prtTop $ quote a') e)
 
-throwUnequalEls :: (NamesArg, CtxLenArg) => ElV K -> ElV K -> Maybe ADoc -> DefEqM ()
-throwUnequalEls v v' e = Left (UnequalEls (prtTop $ quote v) (prtTop $ quote v') e)
+throwUnequalEls ::
+  (NamesArg, CtxLenArg) =>
+  ElV K -> ElV K -> Maybe ADoc -> DefEqM ()
+throwUnequalEls v v' e =
+  Left (UnequalEls (prtTop $ quote v) (prtTop $ quote v') e)
 
 throwUnequalSpines :: Spine -> Spine -> Maybe ADoc -> DefEqM ()
 throwUnequalSpines sp sp' e = Left $ UnequalSpines sp sp' e
 
-withFresh' :: (NamesArg, CtxLenArg) => TyV K -> ((NamesArg, CtxLenArg) => ElV K -> a) -> a
+withFresh' ::
+  (NamesArg, CtxLenArg) =>
+  TyV K -> ((NamesArg, CtxLenArg) => ElV K -> a) -> a
 withFresh' a f =
   let i = FId ?ctxLen
    in let ?ctxLen = ?ctxLen + 1
@@ -282,8 +288,8 @@ instance DefEq (ElV K) where
   defEq v v' = case (canon v, canon v') of
     (VNeu n, VNeu n') -> defEq n n'
     (VCode a, VCode a') -> defEq a a'
-    (VLam a c, VLam _ c') -> withFresh a $
-      \w -> defEq (appClo c v) (appClo c' w)
+    (VLam a c, VLam _ c') ->
+      withFresh a $ \w -> defEq (appClo c v) (appClo c' w)
     (VCons (Fields _ vs), VCons (Fields _ vs')) ->
       forM_ (zip vs vs') (uncurry defEq)
     _ -> throwUnequalEls v v' Nothing

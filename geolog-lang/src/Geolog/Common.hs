@@ -4,6 +4,7 @@ import Control.Monad.IO.Class
 import Control.Monad.ST (RealWorld)
 import Control.Monad.State.Class
 import Data.Hashable
+import Data.Kind (Constraint)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text.Unsafe qualified as TU
@@ -17,13 +18,23 @@ import Prettyprinter
 import Symbolize (Symbol, unintern)
 import System.IO.Unsafe (unsafePerformIO)
 
+#ifdef DEBUG
+import GHC.Stack
+#endif
+
 -- Panics
 --------------------------------------------------------------------------------
 
-impossible :: a
-impossible = error "impossible"
+#ifdef DEBUG
+type Dbg = HasCallStack
+#else
+type Dbg = () :: Constraint
+#endif
 
-unimplemented :: a
+panic :: (Dbg) => String -> a
+panic invariant = error $ "invariant violated: " ++ invariant
+
+unimplemented :: (Dbg) => a
 unimplemented = error "unimplemented"
 
 -- Names
@@ -114,7 +125,8 @@ newtype BId = BId Int
   deriving (Eq, Num, Show)
 
 instance ElemAt (Bwd a) BId a where
-  elemAt BwdNil _ = impossible
+  elemAt BwdNil _ =
+    panic "`elemAt xs i` should only be called if i is a valid index in xs"
   elemAt (_ :> x) (BId 0) = x
   elemAt (xs :> _) (BId i) = elemAt xs (BId (i - 1))
 
@@ -139,7 +151,8 @@ newtype FId = FId Int
   deriving (Eq)
 
 instance ElemAt (Fwd a) FId a where
-  elemAt FwdNil _ = impossible
+  elemAt FwdNil _ =
+    panic "`elemAt xs i` should only be called if i is a valid index in xs"
   elemAt (x :< _) (FId 0) = x
   elemAt (_ :< xs) (FId i) = elemAt xs (FId (i - 1))
 
