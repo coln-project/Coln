@@ -2,13 +2,13 @@ module Geolog.Lexer.Diagnostics where
 
 import Geolog.Diagnostician.CodeMeta
 
-data Code
+data LexerCode
   = UnexpectedCharacter
   | UncontinuedQualifiedName
   deriving (Eq, Ord)
 
-table :: [(Code, Int, CodeMeta)]
-table =
+lexerCodeTable :: [(LexerCode, Int, CodeMeta)]
+lexerCodeTable =
   [ (UnexpectedCharacter, 0, CodeMeta Error Nothing)
   , (UncontinuedQualifiedName, 1, CodeMeta Error Nothing)
   ]

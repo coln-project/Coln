@@ -7,9 +7,9 @@ import Control.Monad.State.Class
 import Control.Monad.State.Strict (StateT, evalStateT)
 import Data.Vector qualified as V
 import Geolog.Common
-import Geolog.Diagnostics
-import Geolog.Diagnostics.Code qualified as Code
+import Geolog.Diagnostician
 import Geolog.Notation
+import Geolog.Parser.Diagnostics
 import Geolog.Token qualified as T
 import Lens.Micro.Platform hiding (at)
 import Prettyprinter
@@ -40,17 +40,20 @@ newtype Parser a = Parser {runParser :: ReaderT Env (StateT State IO) a}
 -- Parsing utilities
 --------------------------------------------------------------------------------
 
-report :: Span -> Code.Code -> Parser ()
-report s c = do
+report :: Span -> ParserCode -> ADoc -> Parser ()
+report s c m = do
   e <- ask
   let n = Note (Just (SourceLoc (e ^. file) s)) Nothing
-  let d = Diagnostic c [n]
+  let d = Diagnostic (ParserCode c) m [n]
   liftIO $ reportIO (e ^. reporter) d
 
 debug :: (forall ann. Doc ann) -> Parser ()
 debug m = do
   s <- curSpan
-  report s (Code.DebugMisc m)
+  e <- ask
+  let n = Note (Just (SourceLoc (e ^. file) s)) Nothing
+  let d = Diagnostic DebugMisc m [n]
+  liftIO $ reportIO (e ^. reporter) d
 
 cur :: Parser T.Kind
 cur = do
@@ -133,7 +136,8 @@ eat k =
 reportUnexpected :: T.Kind -> T.Class -> Parser ()
 reportUnexpected k c = do
   s <- curSpan
-  report s (Code.UnexpectedToken k c)
+  report s UnexpectedToken $
+    "Unexpected token kind" <+> pretty k <> ", expected" <+> pretty c
 
 expect :: T.Kind -> Parser ()
 expect k = do
@@ -255,8 +259,8 @@ arg = do
       advanceClose m $ Int i
     T.Block -> block
     k -> do
+      reportUnexpected k T.CExprStart
       s <- curSpan
-      report s (Code.UnexpectedToken k T.CExprStart)
       pure $ Error s
 
 expr :: Parser Ntn
@@ -277,11 +281,12 @@ expr = arg >>= go (Prec 0 AssocNon)
         p' <- case lookup precs x of
           Just p' -> pure p'
           Nothing -> do
-            report s (Code.DefaultedPrec x)
+            report s DefaultedPrec $
+              "Defaulted precedence of" <+> pretty x <+> "to the same as +"
             pure $ Prec 50 AssocL
         case precLe p p' of
           Nothing -> do
-            report s Code.IncompatiblePrecedences
+            report s IncompatiblePrecedences "Incompatible precedences"
             pure lhs
           Just False -> pure lhs
           Just True -> do

@@ -7,9 +7,9 @@ import Data.Text.Unsafe qualified as TU
 import Data.Vector.Unboxed qualified as UV
 import Geolog.Common
 import Geolog.Diagnostician.CodeMeta
-import Geolog.Elaborator.Diagnostics qualified as ED
-import Geolog.Lexer.Diagnostics qualified as LD
-import Geolog.Parser.Diagnostics qualified as PD
+import Geolog.Elaborator.Diagnostics
+import Geolog.Lexer.Diagnostics
+import Geolog.Parser.Diagnostics
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.IO (Handle)
@@ -131,9 +131,9 @@ data Reporter = Reporter
 --------------------------------------------------------------------------------
 
 data Code
-  = LexerCode LD.Code
-  | ParserCode PD.Code
-  | ElaboratorCode ED.Code
+  = LexerCode LexerCode
+  | ParserCode ParserCode
+  | ElaboratorCode ElaboratorCode
   | DebugMisc
   deriving (Eq, Ord)
 
@@ -145,9 +145,9 @@ codeTable =
     , CodeMeta Debug (Just "a code used for miscellaneous debugging")
     )
   ]
-    ++ fmap (\(c, i, m) -> (LexerCode c, i + 100, m)) LD.table
-    ++ fmap (\(c, i, m) -> (ParserCode c, i + 200, m)) PD.table
-    ++ fmap (\(c, i, m) -> (ElaboratorCode c, i + 300, m)) ED.table
+    ++ fmap (\(c, i, m) -> (LexerCode c, i + 100, m)) lexerCodeTable
+    ++ fmap (\(c, i, m) -> (ParserCode c, i + 200, m)) parserCodeTable
+    ++ fmap (\(c, i, m) -> (ElaboratorCode c, i + 300, m)) elaboratorCodeTable
 
 codeLookup :: Map Code (Int, CodeMeta)
 codeLookup = Map.fromList [(c, (i, m)) | (c, i, m) <- codeTable]
