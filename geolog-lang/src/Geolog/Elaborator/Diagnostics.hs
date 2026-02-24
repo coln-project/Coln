@@ -14,6 +14,8 @@ data ElaboratorCode
   | UnexpectedNotation
   | UnexpectedTuple
   | UnexpectedLambda
+  | UnexpectedField
+  | WrongNumberOfFields
   deriving (Eq, Ord)
 
 elaboratorCodeTable :: [(ElaboratorCode, Int, CodeMeta)]
@@ -29,4 +31,6 @@ elaboratorCodeTable =
   , (UnexpectedNotation, 8, CodeMeta Error Nothing)
   , (UnexpectedTuple, 9, CodeMeta Error Nothing)
   , (UnexpectedLambda, 10, CodeMeta Error Nothing)
+  , (UnexpectedField, 11, CodeMeta Error Nothing)
+  , (WrongNumberOfFields, 11, CodeMeta Error Nothing)
   ]
