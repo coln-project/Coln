@@ -1,4 +1,4 @@
-module Geolog.Evaluation where
+module Geolog.CoreOperations where
 
 import Control.Monad (forM_, unless)
 import Data.Kind (Type)
@@ -7,7 +7,7 @@ import Geolog.Core
 import Geolog.Pretty
 import Prettyprinter
 
--- Core Operations
+-- Core typeclass
 --------------------------------------------------------------------------------
 
 class Core (el :: Energy -> Type) (ty :: Energy -> Type) | el -> ty, ty -> el where
@@ -44,18 +44,23 @@ projTy a x v = case behavesAs a of
       panic "projTy should only be called on fields that exist within the record"
   _ -> panic "projTy should only be called on types that behave like records"
 
-instance Core ElV TyV where
-  app (VLam _ clo) v = appClo clo v
-  app (VNeu n) v = case n.canon of
-    ExpandsTo (VLam _ clo) -> appClo clo v
-    _ -> panic "a neutral of pi type should have its eta-expansion in its canon field"
-  app _ _ = panic "a value of pi type should be a neutral or lambda"
+coerceToFields :: ElV e -> Fields (ElV e)
+coerceToFields (VCons fs) = fs
+coerceToFields (VNeu n) = case n.canon of
+  ExpandsTo (VCons fs) -> fs
+  _ -> panic "a neutral of record type should have its eta-expansion in its canon field"
+coerceToFields _ = panic "a value of record type should be a neutral or cons"
 
-  proj (VCons fs) x = elemAt fs x
-  proj (VNeu n) x = case n.canon of
-    ExpandsTo (VCons fs) -> elemAt fs x
-    _ -> panic "a neutral of record type should have its eta-expansion in its canon field"
-  proj _ _ = panic "a value of record type should be a neutral or cons"
+coerceToClo :: ElV e -> Clo (ElV e)
+coerceToClo (VLam _ clo) = clo
+coerceToClo (VNeu n) = case n.canon of
+  ExpandsTo (VLam _ clo) -> clo
+  _ -> panic "a neutral of pi type should have its eta-expansion in its canon field"
+coerceToClo _ = panic "a value of pi type should be a neutral or lambda"
+
+instance Core ElV TyV where
+  app f v = appClo (coerceToClo f) v
+  proj v x = elemAt (coerceToFields v) x
 
   code (VDecode _ n) = VNeu n
   code a = VCode a
@@ -63,7 +68,8 @@ instance Core ElV TyV where
   decode :: Universe -> ElV e -> TyV e
   decode _ (VCode a) = a
   decode u (VNeu n) = VDecode u n
-  decode _ _ = panic "a value of universe type should be a neutral or an encoding of a type"
+  decode _ _ =
+    panic "a value of universe type should be a neutral or an encoding of a type"
 
   universe = VU
 

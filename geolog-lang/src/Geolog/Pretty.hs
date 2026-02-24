@@ -10,8 +10,8 @@ import Prettyprinter
 
 type NamesArg = (?names :: Bwd QName)
 
-bind :: (NamesArg) => QName -> ((NamesArg) => a) -> a
-bind x f = let ?names = ?names :> x in f
+bindName :: (NamesArg) => QName -> ((NamesArg) => a) -> a
+bindName x f = let ?names = ?names :> x in f
 
 type PrecArg = (?prec :: Prec)
 
@@ -55,7 +55,7 @@ instance Prt (ElS e) where
     Code ty -> prt ty
     App f t -> par precApp $ (prtPrec precApp f) <+> (prtPrec precApp t)
     Lam _ (Abs x t) ->
-      par precLam (pretty x <+> "=>" <+> bind x (prtPrec precLam t))
+      par precLam (pretty x <+> "=>" <+> bindName x (prtPrec precLam t))
     Lam _ (AbsConst t) ->
       par precLam ("_" <+> "=>" <+> prtPrec precLam t)
     Proj t f -> par precApp $ (prtPrec precApp t) <+> "." <> pretty f
@@ -74,7 +74,7 @@ instance Prt (TyS e) where
     Decode _ t -> prt t
     Pi _ a (Abs x b) ->
       let annot = "(" <> pretty x <+> ":" <+> prtTop a <> ")"
-       in par precLam (annot <+> "->" <+> bind x (prtPrec precLam b))
+       in par precLam (annot <+> "->" <+> bindName x (prtPrec precLam b))
     Pi _ a (AbsConst b) ->
       par precLam (prt a <+> "->" <+> prtPrec precLam b)
     Record _ xs as -> list $ go (zip xs as) []
@@ -83,7 +83,7 @@ instance Prt (TyS e) where
       go [] ds = reverse ds
       go ((x, a) : rest) ds =
         let d = pretty x <+> ":" <+> prtPrec precTop a
-         in bind x $ go rest (d : ds)
+         in bindName x $ go rest (d : ds)
 
 prtTop :: (NamesArg, Prt a) => a -> Doc ann
 prtTop x = let ?prec = precTop in prt x
