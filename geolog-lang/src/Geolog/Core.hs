@@ -79,7 +79,10 @@ instance HasCodomain PiVariant Level where
 
 data Abs a = Abs QName a | AbsConst a
 
-data Fields a = Fields [QName] [a]
+data Fields a = Fields
+  { names :: [QName],
+    values :: [a]
+  }
   deriving (Functor)
 
 instance ElemAt (Fields a) QName a where
@@ -95,6 +98,10 @@ type data Energy = Kinetic | Potential
 type K = Kinetic
 
 type P = Potential
+
+data SEnergy :: Energy -> Type where
+  SKinetic :: SEnergy Kinetic
+  SPotential :: SEnergy Potential
 
 data ElS :: Energy -> Type where
   Var :: BId -> ElS K
@@ -133,6 +140,8 @@ data Head
   | Global Constant
   deriving (Eq)
 
+-- TODO: support lazy eta-expansion of potential pi-type neutrals
+-- by splitting `canon` into `behavior` and `eta`
 data Neutral = Neutral
   { head :: Head,
     spine :: Spine,
@@ -162,3 +171,6 @@ newtype GlobalEnv = GlobalEnv (Map Constant GlobalEntry)
 
 instance ElemAt GlobalEnv Constant GlobalEntry where
   elemAt (GlobalEnv m) c = m Map.! c
+
+instance Lookup GlobalEnv Constant GlobalEntry where
+  lookup (GlobalEnv m) c = Map.lookup c m
