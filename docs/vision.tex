@@ -72,6 +72,8 @@ Dependencies are used to express semantic constraints, queries, and migrations. 
 In order to support incremental querying, the language of dependencies must be strong enough to express all the following:
 \begin{enumerate}
 \item Tuple generating dependencies, that is, rows that must exist given a logical condition.  Semantics for generation of new rows by rows that are "duplicates"--that is, distinguished solely by row identifiers--will be handled according to the calculus of spans.
+\item Tuple requiring dependencies.  These are like tuple generating dependencies, but they are assumed to generally not generate their tuples freely.  Therefore they are chased only in a verification mode, and this chase is suspended while a transaction is open.  They also do not need to specify the exact value of the asspciated type of the row, but only a constraint on it.
+\item Soft tuple requiring dependencies.  These are like tuple requiring dependencies, but instead of having to hold at all moments, moments are logically marked with the set of failing soft tuple requiring dependencies.  (The full set may be generated lazily and require a separate API call over and above the one(s) indicating that there *are* failures.)
 \item Functional dependencies, including keys (functional dependency of the row identifier on some part of the row content).
 \item Aggregates of some sort.
 \item Invertibility of dependencies.
@@ -105,7 +107,7 @@ The tool {\tt geolog-lang} will be used to elaborate from a user-friendly and co
 
 \subsection{Non-logical restrictions on schema evolution}
 
-In order to prevent problems, there will be mechanisms to restrict evolution of the schema (including its logical portion) 
+In order to prevent problems, there will be mechanisms to restrict evolution of the schema (including its logical portion) in order to make certain queries asymptotically efficient.  This involves a certain degree of synchronization between the logical and system clocks, as well as the ability to optimize queries in an abstract mode.
 
 \section{Namespaces and security}
 
@@ -169,7 +171,7 @@ For insert queries, dependencies will be chased when they may recursively lead t
 \begin{enumerate}
 	\item Creation of a row subject to an active monitor query.
 	\item Creation of a row in a materialized relation.
-	\item A constraint that can fail, like a check constraint or functional dependency.
+	\item A constraint that can hard fail, like a check constraint or functional dependency.
 \end{enumerate}
 
 In addition, when adding a second or subsequent predecessor moment to an open transaction, dependencies will be chased as if for an insert.
@@ -187,6 +189,37 @@ There are three primary ways you can optimize a dependency chase:
 
 	\item	By adding auxiliary relations and dependencies and pruning the original dependencies that become logically redundant, better opportunities are created for the above two processes to work.  This is especially important for incremental and/or time-range querying.
 \end{enumerate}
+
+\section{Functional parts of the system}
+
+The logical database is divided into three essential tools and several auxiliary tools.
+
+\subsection{\tt geolog-lang}
+
+The tool {\tt geolog-lang} has the following roles:
+
+\begin{itemize}
+	\item	Generating database schemas in the above form from high-level, compositional specifications.
+	\item	Creating or migrating databases to a certain schema.
+	\item	Generating code (to be compiled against {\tt geolog-lib}) to verify conformance to a schema.
+	\item   Generating code (to be compiled against {\tt geolog-lib}) to perform queries from high-level, compositional specifications.
+\end{itemize}
+
+\subsection{\tt geode}
+
+The tool {\tt geode} acts as the database backend, performing queries, query optimization, migrations, merges, and transactions.
+
+\subsection{\tt geolog-lib}
+
+The library {\tt geolog-lib} performs (both ends of) communication with the backend including the serialization and deserialization of events.  There may be different incarnations of {\tt geolog-lib} for different languages, or in some cases the same library may be wrapped via FFI.  Decisions on this matter should be made to maximize efficiency of maintenance.
+
+\subsection{\tt geolog-repl}
+
+The tool {\tt geolog-repl} is the most basic tool to perform one-off queries and database exploration via a command-line interface.
+
+\subsection{\tt geolog-web}
+
+The tool {\tt geolog-web} is a web-based tool for designing schemas and exploring the databases that use them.
 
 \bibliographystyle{plainnat}
 \bibliography{geolog.bib}
