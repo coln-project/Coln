@@ -19,10 +19,10 @@ Infix (8:13)
 
 -- messages
 
-error[E0202] Incompatible precedences
+error[E0202]: Incompatible precedences
 1 | a : int : int
 1 |         ^
 
-error[E0200] Unexpected token kind SKeyword, expected a token that can start an expression
+error[E0200]: Unexpected token kind SKeyword, expected a token that can start an expression
 1 | a : int : int
 1 |         ^

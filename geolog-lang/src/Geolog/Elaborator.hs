@@ -13,6 +13,9 @@ import Geolog.Pretty
 import Prettyprinter
 import Prelude hiding (lookup)
 
+-- Elaboration implicits
+--------------------------------------------------------------------------------
+
 type Ctx = Bwd (TyV K)
 
 type CtxArg = (?ctx :: Ctx)
@@ -42,21 +45,6 @@ let_ x v a action =
    in
     action v
 
-data Glued a b e = G
-  { stx :: (a e)
-  , val :: (b e)
-  }
-
-type TyG = Glued TyS TyV
-type ElG = Glued ElS ElV
-
-instance Core ElG TyG where
-  app (G ft fv) (G xt xv) = G (app ft xt) (app fv xv)
-  proj (G t v) x = G (proj t x) (proj v x)
-  code (G t v) = G (code t) (code v)
-  decode u (G t v) = G (decode u t) (decode u v)
-  universe u = G (universe u) (universe u)
-
 report :: (DiagnosticCtxArg) => Span -> ElaboratorCode -> ADoc -> IO ()
 report s c m = do
   let n = Note (Just (SourceLoc ?diagnosticCtx.file s)) Nothing
@@ -73,23 +61,26 @@ failWith s c m = do
   report s c m
   evaluate $ throw GiveUp
 
-typ :: Elab (Universe -> Ntn -> IO (TyG K))
-typ u n = decode u <$> chkK (VU u) n
+-- Glued values
+--------------------------------------------------------------------------------
 
-findLocal :: Elab (QName -> Maybe (ElG K, TyV K))
-findLocal x = go ?names ?ctx ?env 0
- where
-  go :: Bwd QName -> Bwd (TyV K) -> Bwd (ElV K) -> BId -> Maybe (ElG K, TyV K)
-  go (xs :> x') (as :> a) (vs :> v) i
-    | x == x' = Just (G (Var i) v, a)
-    | otherwise = go xs as vs (i + 1)
-  go _ _ _ _ = Nothing
+data Glued a b e = G
+  { stx :: (a e)
+  , val :: (b e)
+  }
 
-findProj :: Elab ([QName] -> TeleV (TyV K) -> [ElV K] -> QName -> Maybe (ElV K, TyV K))
-findProj (x : xs) (TVCons a f) (v : vs) x'
-  | x == x' = Just (v, a)
-  | otherwise = findProj xs (f v) vs x'
-findProj _ _ _ _ = Nothing
+type TyG = Glued TyS TyV
+type ElG = Glued ElS ElV
+
+instance Core ElG TyG where
+  app (G ft fv) (G xt xv) = G (app ft xt) (app fv xv)
+  proj (G t v) x = G (proj t x) (proj v x)
+  code (G t v) = G (code t) (code v)
+  decode u (G t v) = G (decode u t) (decode u v)
+  universe u = G (universe u) (universe u)
+
+-- Diagnostics
+--------------------------------------------------------------------------------
 
 notInScope :: (DiagnosticCtxArg) => Span -> QName -> IO a
 notInScope s x = failWith s NotInScope $ "identifier" <+> pretty x <+> "not in scope"
@@ -113,6 +104,105 @@ unexpectedNotation :: (DiagnosticCtxArg) => Ntn -> ADoc -> IO a
 unexpectedNotation n c =
   failWith (N.span n) UnexpectedNotation $
     "unexpected notation for" <+> c <> ":" <+> N.head n
+
+unexpectedTuple :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
+unexpectedTuple s a =
+  failWith s UnexpectedTuple $
+    "tried to check tuple notation at type" <+> a <+> "which is not a record type"
+
+unexpectedLambda :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
+unexpectedLambda s a =
+  failWith s UnexpectedLambda $
+    "tried to check lambda notation at type" <+> a <+> "which is not a pi type"
+
+conversionError :: (DiagnosticCtxArg) => Span -> ADoc -> ADoc -> DefEqCheckError -> IO a
+conversionError = unimplemented
+
+-- Helpers
+--------------------------------------------------------------------------------
+
+findLocal :: Elab (QName -> Maybe (ElG K, TyV K))
+findLocal x = go ?names ?ctx ?env 0
+ where
+  go :: Bwd QName -> Bwd (TyV K) -> Bwd (ElV K) -> BId -> Maybe (ElG K, TyV K)
+  go (xs :> x') (as :> a) (vs :> v) i
+    | x == x' = Just (G (Var i) v, a)
+    | otherwise = go xs as vs (i + 1)
+  go _ _ _ _ = Nothing
+
+findProj :: Elab ([QName] -> TeleV (TyV K) -> [ElV K] -> QName -> Maybe (ElV K, TyV K))
+findProj (x : xs) (TVCons a f) (v : vs) x'
+  | x == x' = Just (v, a)
+  | otherwise = findProj xs (f v) vs x'
+findProj _ _ _ _ = Nothing
+
+binding :: (DiagnosticCtxArg) => Ntn -> IO (QName, Ntn)
+binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
+binding n = unexpectedNotation n "binding"
+
+annot :: (DiagnosticCtxArg) => Ntn -> IO (Ntn, Ntn)
+annot (N.Infix n1 (N.Keyword ":" _) n2) = pure (n1, n2)
+annot n = unexpectedNotation n "type annotation"
+
+members :: Elab (Universe -> [Ntn] -> IO ([QName], [TyS K]))
+members _ [] = pure ([], [])
+members u (n : ns) = do
+  (x, n') <- binding n
+  ga <- typ u n'
+  (xs, as) <- bind x ga.val $ \_ -> members u ns
+  pure (x : xs, ga.stx : as)
+
+setting :: (DiagnosticCtxArg) => QName -> Ntn -> IO Ntn
+setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
+  | x == x' = pure n'
+  | otherwise =
+      failWith sp UnexpectedField $
+        "got field" <+> pretty x' <> ", expected field" <+> pretty x
+setting _ n = unexpectedNotation n "record field"
+
+ident :: (DiagnosticCtxArg) => Ntn -> IO QName
+ident (N.Ident x _) = pure x
+ident n = unexpectedNotation n "ident"
+
+definition :: (DiagnosticCtxArg) => Ntn -> IO (Ntn, Ntn)
+definition (N.Infix n1 (N.Keyword ":=" _) n2) = pure (n1, n2)
+definition n = unexpectedNotation n "definition"
+
+unpackArgs :: (DiagnosticCtxArg) => Ntn -> IO (QName, [(QName, Ntn)])
+unpackArgs n = go n []
+ where
+  go (N.Ident x _) args = pure (x, args)
+  go (N.App n1 n2) args = do
+    b <- binding n2
+    go n1 $ b : args
+  go n' _ = unexpectedNotation n' "application or identifier"
+
+elts :: Elab ([QName] -> TeleV (TyV K) -> [Ntn] -> IO ([ElS K], [ElV K]))
+elts [] TVNil [] = pure ([], [])
+elts (x : xs) (TVCons a f) (n : ns) = do
+  n' <- setting x n
+  G t v <- chkK a n'
+  (ts, vs) <- let_ x v a $ \_ -> elts xs (f v) ns
+  pure (t : ts, v : vs)
+elts _ _ _ = panic "fail earlier if we don't have right number of fields"
+
+typ :: Elab (Universe -> Ntn -> IO (TyG K))
+typ u n = decode u <$> chkK (VU u) n
+
+synK :: Elab (Ntn -> IO (ElG K, TyV K))
+synK = syn SKinetic
+
+synP :: Elab (Ntn -> IO (ElG P, TyV K))
+synP = syn SPotential
+
+chkK :: Elab (TyV K -> Ntn -> IO (ElG K))
+chkK = chk SKinetic
+
+chkP :: Elab (TyV K -> Ntn -> IO (ElG P))
+chkP = chk SPotential
+
+-- syn and chk
+--------------------------------------------------------------------------------
 
 syn :: Elab (SEnergy e -> Ntn -> IO (ElG e, TyV K))
 syn SKinetic (N.Ident x s) = case findLocal x of
@@ -177,58 +267,6 @@ syn _ n@(N.Infix _ (N.Keyword "=>" _) _) = mustChk (N.span n) "lambda syntax"
 syn _ n@(N.Tuple _ _) = mustChk (N.span n) "tuple syntax"
 syn _ n = unexpectedNotation n "element"
 
-synK :: Elab (Ntn -> IO (ElG K, TyV K))
-synK = syn SKinetic
-
-synP :: Elab (Ntn -> IO (ElG P, TyV K))
-synP = syn SPotential
-
-unexpectedTuple :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
-unexpectedTuple s a =
-  failWith s UnexpectedTuple $
-    "tried to check tuple notation at type" <+> a <+> "which is not a record type"
-
-unexpectedLambda :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
-unexpectedLambda s a =
-  failWith s UnexpectedLambda $
-    "tried to check lambda notation at type" <+> a <+> "which is not a pi type"
-
-conversionError :: (DiagnosticCtxArg) => Span -> ADoc -> ADoc -> DefEqCheckError -> IO a
-conversionError = unimplemented
-
-binding :: (DiagnosticCtxArg) => Ntn -> IO (QName, Ntn)
-binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
-binding n = unexpectedNotation n "binding"
-
-members :: Elab (Universe -> [Ntn] -> IO ([QName], [TyS K]))
-members _ [] = pure ([], [])
-members u (n : ns) = do
-  (x, n') <- binding n
-  ga <- typ u n'
-  (xs, as) <- bind x ga.val $ \_ -> members u ns
-  pure (x : xs, ga.stx : as)
-
-setting :: (DiagnosticCtxArg) => QName -> Ntn -> IO Ntn
-setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
-  | x == x' = pure n'
-  | otherwise =
-      failWith sp UnexpectedField $
-        "got field" <+> pretty x' <> ", expected field" <+> pretty x
-setting _ n = unexpectedNotation n "record field"
-
-ident :: (DiagnosticCtxArg) => Ntn -> IO QName
-ident (N.Ident x _) = pure x
-ident n = unexpectedNotation n "ident"
-
-elts :: Elab ([QName] -> TeleV (TyV K) -> [Ntn] -> IO ([ElS K], [ElV K]))
-elts [] TVNil [] = pure ([], [])
-elts (x : xs) (TVCons a f) (n : ns) = do
-  n' <- setting x n
-  G t v <- chkK a n'
-  (ts, vs) <- let_ x v a $ \_ -> elts xs (f v) ns
-  pure (t : ts, v : vs)
-elts _ _ _ = panic "fail earlier if we don't have right number of fields"
-
 chk :: Elab (SEnergy e -> TyV K -> Ntn -> IO (ElG e))
 chk e a n@(N.Tuple ns s) = case behavesAs a of
   Just (VU u) ->
@@ -269,8 +307,56 @@ chk e a n = do
       conversionError (N.span n) (prtTop $ quote a) (prtTop $ quote a') err
     Right () -> pure g
 
-chkK :: Elab (TyV K -> Ntn -> IO (ElG K))
-chkK = chk SKinetic
+-- Toplevel elaboration
+--------------------------------------------------------------------------------
 
-chkP :: Elab (TyV K -> Ntn -> IO (ElG P))
-chkP = chk SPotential
+withArgs :: Elab ([(QName, Ntn)] -> Elab (IO (ElS e, TyS K)) -> IO (ElS e, TyS K))
+withArgs [] action = action
+withArgs ((x, a_n) : args) action = do
+  a <- typ TheoryU a_n
+  bind x a.val $ \_ -> do
+    (t, b) <- withArgs args action
+    pure (Lam a.stx (Abs x t), Pi TheoryTop a.stx (Abs x b))
+
+elabTheory :: Elab (Ntn -> IO (QName, GlobalEntry))
+elabTheory n = do
+  (pat, body_n) <- definition n
+  (name, args) <- unpackArgs pat
+  (t, a) <- withArgs args $ do
+    g <- chkP (VU TheoryU) body_n
+    pure (g.stx, U TheoryU)
+  pure (name, PEntry t (eval t) (eval a))
+
+elabDef :: Elab (Ntn -> IO (QName, GlobalEntry))
+elabDef n = do
+  (head, body_n) <- definition n
+  (pat, a_n) <- annot head
+  (name, args) <- unpackArgs pat
+  (t, a) <- withArgs args $ do
+    ga <- typ TheoryU a_n
+    g <- chkK ga.val body_n
+    pure (g.stx, ga.stx)
+  pure (name, KEntry t (eval t) (eval a))
+
+elabDecl :: Elab (Ntn -> IO (QName, GlobalEntry))
+elabDecl (N.Decl "theory" n _) = elabTheory n
+elabDecl (N.Decl "def" n _) = elabDef n
+elabDecl n = unexpectedNotation n "top-level declaration"
+
+elabTop :: Reporter -> File -> [Ntn] -> IO GlobalEnv
+elabTop r f =
+  let ?env = BwdNil
+      ?diagnosticCtx = DiagnosticCtx r f
+      ?ctx = BwdNil
+      ?ctxLen = 0
+      ?names = BwdNil
+      ?globalEnv = emptyGlobalEnv
+   in go
+ where
+  go :: Elab ([Ntn] -> IO GlobalEnv)
+  go [] = pure ?globalEnv
+  go (n : ns) = do
+    try (elabDecl n) >>= \case
+      Right (x, entry) ->
+        let ?globalEnv = insertEntry ?globalEnv (Constant x) entry in go ns
+      Left (_ :: ElabException) -> go ns

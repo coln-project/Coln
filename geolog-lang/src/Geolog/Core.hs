@@ -135,6 +135,9 @@ data Canonical
 data Constant = Constant {name :: QName}
   deriving (Eq, Ord)
 
+instance Pretty Constant where
+  pretty (Constant x) = pretty x
+
 data Head
   = Local FId
   | Global Constant
@@ -168,6 +171,15 @@ data GlobalEntry
   | PEntry (ElS P) (ElV P) (TyV K)
 
 newtype GlobalEnv = GlobalEnv (Map Constant GlobalEntry)
+
+emptyGlobalEnv :: GlobalEnv
+emptyGlobalEnv = GlobalEnv Map.empty
+
+insertEntry :: GlobalEnv -> Constant -> GlobalEntry -> GlobalEnv
+insertEntry (GlobalEnv m) c e = GlobalEnv (Map.insert c e m)
+
+globalEntries :: GlobalEnv -> [(Constant, GlobalEntry)]
+globalEntries (GlobalEnv m) = Map.toList m
 
 instance ElemAt GlobalEnv Constant GlobalEntry where
   elemAt (GlobalEnv m) c = m Map.! c

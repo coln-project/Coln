@@ -6,8 +6,10 @@ import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
 import Geolog.Common
 import Geolog.Core
-import Geolog.Diagnostics
-import Geolog.Elaboration (elabTop)
+import Geolog.Core (globalEntries)
+import Geolog.CoreOperations (quote)
+import Geolog.Diagnostician
+import Geolog.Elaborator (elabTop)
 import Geolog.Lexer (lex)
 import Geolog.Parser (parse)
 import Geolog.Pretty
@@ -50,16 +52,27 @@ parseToPretty fp = do
           , pretty $ msgs
           ]
 
-prettyDecls :: [(QName, ElS, TyS)] -> Doc ann
-prettyDecls = let ?names = BwdNil in vsep . go
+prettyDecls :: GlobalEnv -> Doc ann
+prettyDecls ge =
+  let
+    ?names = BwdNil
+    ?ctxLen = 0
+   in
+    vsep $ go (globalEntries ge)
  where
   go [] = []
-  go ((x, t, a) : ds) =
-    [ "declared: " <+> pretty x
-    , "type: " <+> prtTop a
+  go ((x, PEntry t _ a) : ds) =
+    [ "potential entry named" <+> pretty x
+    , "type: " <+> prtTop (quote a)
     , "value: " <+> prtTop t
     ]
-      ++ let ?names = ?names :> x in go ds
+      ++ go ds
+  go ((x, KEntry t _ a) : ds) =
+    [ "kinetic entry named" <+> pretty x
+    , "type:" <+> prtTop (quote a)
+    , "value:" <+> prtTop t
+    ]
+      ++ go ds
 
 elaborate :: FilePath -> IO LBS.ByteString
 elaborate fp = do
@@ -69,7 +82,7 @@ elaborate fp = do
     let r = Reporter h False
     ts <- lex r f
     ns <- parse r f ts
-    ds <- elabTop r f ns
+    ge <- elabTop r f ns
     hFlush h
     hClose h
     msgs <- T.readFile path
@@ -83,8 +96,7 @@ elaborate fp = do
           , vsep $ pretty <$> ns
           , ""
           , "-- elaborated"
-          , -- vsep $ pretty . show <$> ds,
-            prettyDecls ds
+          , prettyDecls ge
           , ""
           , "-- messages"
           , pretty $ msgs

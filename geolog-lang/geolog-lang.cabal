@@ -44,7 +44,7 @@ library
 
     ghc-options:
         -Wall -funbox-strict-fields -Wno-unused-imports
-        -Wno-unused-top-binds
+        -Wno-unused-top-binds -Wno-name-shadowing
 
     build-depends:
         base,
@@ -84,6 +84,7 @@ test-suite geolog-lang-test
     build-depends:
         base,
         bytestring,
+        containers,
         filepath,
         geolog-lang,
         prettyprinter,
