@@ -179,8 +179,14 @@ data Note = Note
   , noteMessage :: Maybe (Doc Ann)
   }
 
+maybeToList :: Maybe a -> [a]
+maybeToList (Just x) = [x]
+maybeToList Nothing = []
+
 instance Pretty Note where
-  pretty (Note loc _) = pretty loc
+  pretty (Note loc message) =
+    vsep $
+      (pretty <$> maybeToList loc) ++ (unAnnotate <$> maybeToList message)
 
 data Diagnostic = Diagnostic
   { code :: Code

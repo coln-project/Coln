@@ -6,7 +6,6 @@ import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
 import Geolog.Common
 import Geolog.Core
-import Geolog.Core (globalEntries)
 import Geolog.CoreOperations (quote)
 import Geolog.Diagnostician
 import Geolog.Elaborator (elabTop)
