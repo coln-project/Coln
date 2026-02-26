@@ -5,7 +5,6 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Vector qualified as V
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
-import Geolog.Core (globalEntries)
 import Geolog.CoreOperations (quote)
 import Geolog.Lexer (lex)
 import Geolog.Parser (parse)

@@ -208,6 +208,10 @@ data DefEqCheckError
   | UnequalEls ADoc ADoc (Maybe ADoc)
   | UnequalSpines Spine Spine (Maybe ADoc)
 
+instance Pretty DefEqCheckError where
+  pretty (UnequalTys a a' _) = unAnnotate $ "mismatching types" <+> a <+> "and" <+> a'
+  pretty (UnequalEls a a' _) = unAnnotate $ "mismatching elements" <+> a <+> "and" <+> a'
+  pretty (UnequalSpines _ _ _) = "can't display unequal spines right now"
 
 type DefEqM a = Either DefEqCheckError ()
 

@@ -108,7 +108,16 @@ unexpectedLambda s a = failWith s UnexpectedLambda $
   "tried to check lambda notation at type" <+> a <+> "which is not a pi type"
 
 conversionError :: (DiagnosticCtxArg) => Span -> ADoc -> ADoc -> DefEqCheckError -> IO a
-conversionError = unimplemented
+conversionError s t t' e = do
+  let convMessage = "synthesized" <+> t' <+> "while expecting" <+> t
+  let convNote = Note Nothing (Just (pretty e))
+  let locNote = Note (Just (SourceLoc ?diagnosticCtx.file s)) Nothing
+  let d = Diagnostic (ElaboratorCode FailedConversion) convMessage [locNote, convNote]
+  reportIO ?diagnosticCtx.reporter d
+  evaluate $ throw GiveUp
+
+wrongLevel :: (DiagnosticCtxArg) => Span -> IO a
+wrongLevel s = failWith s WrongLevel "wrong level"
 
 -- Helpers
 --------------------------------------------------------------------------------
@@ -282,10 +291,13 @@ chk e a n@(N.Infix n1 (N.Keyword "=>" _) n2) = case behavesAs a of
   _ -> unexpectedLambda (N.span n) $ prtTop $ quote a
 chk e a n = do
   (g, a') <- syn e n
-  case defEq a a' of
-    Left err ->
-      conversionError (N.span n) (prtTop $ quote a) (prtTop $ quote a') err
-    Right () -> pure g
+  case (a, a') of
+    (VU u, VU u') ->
+      if leq (decodesInto u') (decodesInto u) then pure g else wrongLevel (N.span n)
+    _ -> case defEq a a' of
+      Left err ->
+        conversionError (N.span n) (prtTop $ quote a) (prtTop $ quote a') err
+      Right () -> pure g
 
 -- Toplevel elaboration
 --------------------------------------------------------------------------------
