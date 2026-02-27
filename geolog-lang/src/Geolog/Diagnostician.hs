@@ -1,10 +1,15 @@
-module Geolog.Diagnostics where
+module Geolog.Diagnostician where
 
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text qualified as T
 import Data.Text.Unsafe qualified as TU
 import Data.Vector.Unboxed qualified as UV
 import Geolog.Common
-import Geolog.Diagnostics.Code (Code)
+import Geolog.Diagnostician.CodeMeta
+import Geolog.Elaborator.Diagnostics
+import Geolog.Lexer.Diagnostics
+import Geolog.Parser.Diagnostics
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.IO (Handle)
@@ -79,12 +84,13 @@ linePretty :: Int -> LineNum -> Span -> T.Text -> Span -> Doc ann
 linePretty numWidth l (Span ls le) t (Span s e) =
   vsep
     [ gutter <+> pretty t,
-      gutter <+> repeated (s' - ls) ' ' <> repeated nc '^'
+      gutter <+> repeated ns ' ' <> repeated nc '^'
     ]
   where
     s' = max ls s
     e' = min le e
-    nc = max 1 (e' - s')
+    ns = T.length $ sliceWord8 0 (s' - ls) t
+    nc = max 1 $ T.length $ sliceWord8 (s' - ls) (e' - ls) t
     ln = fill numWidth $ pretty $ l + 1
     gutter = ln <+> "|"
 
@@ -122,6 +128,41 @@ data Reporter = Reporter
 -- Diagnostics
 --------------------------------------------------------------------------------
 
+data Code
+  = LexerCode LexerCode
+  | ParserCode ParserCode
+  | ElaboratorCode ElaboratorCode
+  | DebugMisc
+  deriving (Eq, Ord)
+
+codeTable :: [(Code, Int, CodeMeta)]
+codeTable =
+  [ ( DebugMisc,
+      0,
+      CodeMeta Debug (Just "a code used for miscellaneous debugging")
+    )
+  ]
+    ++ fmap (\(c, i, m) -> (LexerCode c, i + 100, m)) lexerCodeTable
+    ++ fmap (\(c, i, m) -> (ParserCode c, i + 200, m)) parserCodeTable
+    ++ fmap (\(c, i, m) -> (ElaboratorCode c, i + 300, m)) elaboratorCodeTable
+
+codeLookup :: Map Code (Int, CodeMeta)
+codeLookup = Map.fromList [(c, (i, m)) | (c, i, m) <- codeTable]
+
+padWithZerosTo :: Int -> Int -> Doc ann
+padWithZerosTo w i = repeated (w - numDigits i) '0' <> pretty i
+
+instance Pretty Code where
+  pretty c = case Map.lookup c codeLookup of
+    Just (i, m) -> s <> "[" <> sl <> padWithZerosTo 4 i <> "]"
+      where
+        (s, sl) = case m.severity of
+          Debug -> ("debug", "D")
+          Info -> ("info", "I")
+          Warning -> ("warning", "W")
+          Error -> ("error", "E")
+    Nothing -> panic "unregistered code"
+
 data SourceLoc = SourceLoc
   { file :: File,
     span :: Span
@@ -135,16 +176,27 @@ data Note = Note
     noteMessage :: Maybe (Doc Ann)
   }
 
+maybeToList :: Maybe a -> [a]
+maybeToList (Just x) = [x]
+maybeToList Nothing = []
+
 instance Pretty Note where
-  pretty (Note loc _) = pretty loc
+  pretty (Note loc message) =
+    vsep $
+      (pretty <$> maybeToList loc) ++ (unAnnotate <$> maybeToList message)
 
 data Diagnostic = Diagnostic
   { code :: Code,
+    summary :: ADoc,
     notes :: [Note]
   }
 
 instance Pretty Diagnostic where
-  pretty d = vsep $ pretty d.code : (map pretty d.notes)
+  pretty d =
+    vsep $
+      (pretty d.code <> ": " <> unAnnotate d.summary) : (map pretty d.notes)
 
 reportIO :: Reporter -> Diagnostic -> IO ()
 reportIO r d = hPutDoc r.handle (hardline <> pretty d <> hardline)
+
+type ReporterArg = (?reporter :: Reporter)
