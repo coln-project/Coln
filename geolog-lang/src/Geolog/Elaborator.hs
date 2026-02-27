@@ -37,13 +37,11 @@ bind x a action =
 
 let_ :: Elab (QName -> ElV K -> TyV K -> Elab (ElV K -> a) -> a)
 let_ x v a action =
-  let
-    ?ctx = ?ctx :> a
-    ?ctxLen = ?ctxLen + 1
-    ?names = ?names :> x
-    ?env = ?env :> v
-   in
-    action v
+  let ?ctx = ?ctx :> a
+      ?ctxLen = ?ctxLen + 1
+      ?names = ?names :> x
+      ?env = ?env :> v
+   in action v
 
 report :: (DiagnosticCtxArg) => Span -> ElaboratorCode -> ADoc -> IO ()
 report s c m = do
@@ -70,6 +68,7 @@ data Glued a b e = G
   }
 
 type TyG = Glued TyS TyV
+
 type ElG = Glued ElS ElV
 
 instance Core ElG TyG where
