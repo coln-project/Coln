@@ -195,7 +195,7 @@ precs =
     [ (":", Prec 10 AssocNon)
     , ("->", Prec 20 AssocR)
     , ("=>", Prec 20 AssocR)
-    , ("=", Prec 30 AssocNon)
+    , (":=", Prec 30 AssocNon)
     , ("+", Prec 50 AssocL)
     , ("-", Prec 50 AssocL)
     , ("*", Prec 60 AssocL)

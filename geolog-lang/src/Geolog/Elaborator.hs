@@ -220,9 +220,9 @@ syn SKinetic (N.Ident x s) = case findLocal x of
     let c = Constant x
      in case lookup ?globalEnv c of
           Just (KEntry _ v a) -> pure (G (GlobalVar c) v, a)
-          Just (PEntry _ v a) -> pure (G (GlobalVar c) (VNeu n), a)
+          Just (PEntry _ v a) -> pure (G (GlobalVar c) v', a)
            where
-            n = Neutral (Global c) SId (BehavesAs v) a
+            v' = neu a (Global c) SId (Just v)
           Nothing -> notInScope s x
 syn SPotential (N.Ident _ s) = unsupportedInPotentialMode s "variables"
 syn SKinetic (N.App n (N.Field x s)) = do

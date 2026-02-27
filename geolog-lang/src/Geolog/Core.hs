@@ -127,11 +127,6 @@ data Spine
   | SApp Spine (ElV K)
   | SProj Spine QName
 
-data Canonical
-  = BehavesAs (ElV P)
-  | ExpandsTo (ElV K)
-  | TrueNeutral
-
 data Constant = Constant {name :: QName}
   deriving (Eq, Ord)
 
@@ -148,7 +143,8 @@ data Head
 data Neutral = Neutral
   { head :: Head
   , spine :: Spine
-  , canon :: ~Canonical
+  , behavesAs :: ~(Maybe (ElV P))
+  , fields :: ~(Maybe (Fields (ElV K)))
   , ty :: ~(TyV K)
   }
 

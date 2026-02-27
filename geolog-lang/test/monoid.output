@@ -191,3 +191,19 @@ Decl theory (0:248)
                     Ident z (242:243)
 
 -- messages
+
+warning[W0201]: Defaulted precedence of = to the same as +
+1 | theory Monoid = sig
+1 |               ^
+
+warning[W0201]: Defaulted precedence of = to the same as +
+6 |   mul/unitl : (x : car) -> mul unit x = x
+6 |                                       ^
+
+warning[W0201]: Defaulted precedence of = to the same as +
+7 |   mul/unitr : (x : car) -> mul x unit = x
+7 |                                       ^
+
+warning[W0201]: Defaulted precedence of = to the same as +
+9 |   mul/assoc : (x : car) -> (y : car) -> (z : car) -> mul (mul x y) z = mul x (mul y z)
+9 |                                                                      ^
