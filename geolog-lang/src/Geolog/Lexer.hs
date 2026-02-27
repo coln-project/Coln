@@ -10,10 +10,11 @@ import Data.Text qualified as T
 import Data.Text.Unsafe qualified as TU
 import Data.Vector qualified as V
 import Geolog.Common
-import Geolog.Diagnostics
-import Geolog.Diagnostics.Code qualified as Code
+import Geolog.Diagnostician
+import Geolog.Lexer.Diagnostics
 import Geolog.Token
 import Lens.Micro.Platform
+import Prettyprinter
 import Symbolize qualified
 import Prelude hiding (error, getChar, lex, lookup, span)
 
@@ -103,17 +104,17 @@ isAlphaNum c
   | c == '_' || c == '-' = True
   | otherwise = False
 
-report :: Code.Code -> Lex ()
-report c = do
+report :: LexerCode -> ADoc -> Lex ()
+report c m = do
   s <- span
   e <- ask
-  let d = Diagnostic c [Note (Just (SourceLoc (e ^. file) s)) Nothing]
+  let d = Diagnostic (LexerCode c) m [Note (Just (SourceLoc (e ^. file) s)) Nothing]
   liftIO $ reportIO (e ^. reporter) d
 
 unexpectedChar :: Char -> Lex ()
 unexpectedChar c = do
   advance
-  report (Code.UnexpectedCharacter c)
+  report UnexpectedCharacter $ "Unexpected character" <+> "'" <> pretty c <> "'"
 
 -- Lexemes
 --------------------------------------------------------------------------------
@@ -154,7 +155,7 @@ qname' = do
       c | isSymbol c -> do
         x0 <- symbol
         pure (x0, SIdent)
-      _ -> impossible
+      _ -> panic "qname' should only be called if the current character is a letter or symbol"
   case fromName k x0 of
     k' | k == k' -> go [] x0 k
     k' -> pure (QName [] x0, k')
@@ -171,7 +172,7 @@ qname' = do
             x' <- symbol
             go (x : xs) x' SIdent
           _ -> do
-            report Code.UncontinuedQualifiedName
+            report UncontinuedQualifiedName "Expected another name segment after '/'"
             pure (QName (reverse xs) x, k)
       _ -> pure (QName (reverse xs) x, k)
 
@@ -224,6 +225,11 @@ symbol = do
   x <- slice (Span s e)
   pure $ Name $ Symbolize.intern x
 
+comment :: Lex ()
+comment = do
+  advanceWhile (\c -> c /= '\n')
+  advance
+
 -- Top-level lexing interface
 --------------------------------------------------------------------------------
 
@@ -246,6 +252,7 @@ toks =
     ',' -> classify Comma >> toks
     ';' -> classify Semicolon >> toks
     '\n' -> classify Nl >> toks
+    '#' -> comment >> toks
     '.' -> advance >> (qname >>= emit Field . VQName) >> toks
     '\'' -> advance >> (qname >>= emit Tag . VQName) >> toks
     '\0' -> emit0 Eof

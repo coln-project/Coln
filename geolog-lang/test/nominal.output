@@ -1,0 +1,78 @@
+-- tokens
+Decl theory (0:6)
+AIdent A (7:8)
+SKeyword := (9:11)
+LBrack (12:13)
+RBrack (13:14)
+Nl (14:15)
+Nl (15:16)
+Decl theory (16:22)
+AIdent B (23:24)
+SKeyword := (25:27)
+LBrack (28:29)
+RBrack (29:30)
+Nl (30:31)
+Nl (31:32)
+Decl def (32:35)
+AIdent a (36:37)
+SKeyword : (38:39)
+AIdent A (40:41)
+SKeyword := (42:44)
+LBrack (45:46)
+RBrack (46:47)
+Nl (47:48)
+Nl (48:49)
+Decl def (49:52)
+AIdent b (53:54)
+SKeyword : (55:56)
+AIdent B (57:58)
+SKeyword := (59:61)
+AIdent a (62:63)
+Nl (63:64)
+Eof (64:64)
+
+-- notation
+Decl theory (0:15)
+  Infix (7:15)
+    Ident A (7:8)
+    Keyword := (9:11)
+    Tuple (12:15)
+Decl theory (16:31)
+  Infix (23:31)
+    Ident B (23:24)
+    Keyword := (25:27)
+    Tuple (28:31)
+Decl def (32:48)
+  Infix (36:48)
+    Infix (36:41)
+      Ident a (36:37)
+      Keyword : (38:39)
+      Ident A (40:41)
+    Keyword := (42:44)
+    Tuple (45:48)
+Decl def (49:63)
+  Infix (53:63)
+    Infix (53:58)
+      Ident b (53:54)
+      Keyword : (55:56)
+      Ident B (57:58)
+    Keyword := (59:61)
+    Ident a (62:63)
+
+-- elaborated
+potential entry named A
+type:  Theory
+value:  []
+potential entry named B
+type:  Theory
+value:  []
+kinetic entry named a
+type: A
+value: []
+
+-- messages
+
+error[E0300]: synthesized A while expecting B
+7 | def b : B := a
+7 |              ^
+mismatching elements B and A

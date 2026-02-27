@@ -4,6 +4,7 @@ import Control.Monad.IO.Class
 import Control.Monad.ST (RealWorld)
 import Control.Monad.State.Class
 import Data.Hashable
+import Data.Kind (Constraint)
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text.Unsafe qualified as TU
@@ -17,20 +18,34 @@ import Prettyprinter
 import Symbolize (Symbol, unintern)
 import System.IO.Unsafe (unsafePerformIO)
 
+#ifdef DEBUG
+import GHC.Stack
+#endif
+
 -- Panics
 --------------------------------------------------------------------------------
 
-impossible :: a
-impossible = error "impossible"
+#ifdef DEBUG
+type Dbg = HasCallStack
+#else
+type Dbg = () :: Constraint
+#endif
 
-unimplemented :: a
+panic :: (Dbg) => String -> a
+panic invariant = error $ "invariant violated: " ++ invariant
+
+unimplemented :: (Dbg) => a
 unimplemented = error "unimplemented"
+
+unwrap :: Maybe a -> a
+unwrap (Just x) = x
+unwrap Nothing = panic "should only unwrap a Just"
 
 -- Names
 --------------------------------------------------------------------------------
 
 newtype Name = Name Symbol
-  deriving (Eq, Hashable) via Symbol
+  deriving (Eq, Ord, Hashable) via Symbol
 
 instance Show Name where
   show (Name s) = unintern s
@@ -42,7 +57,7 @@ instance Pretty Name where
   pretty (Name s) = pretty (unintern s :: Text)
 
 data QName = QName [Name] Name
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 qnameBase :: QName -> Name
 qnameBase (QName _ x) = x
@@ -73,6 +88,8 @@ instance Pretty Span where
 -- TODO: make more annotations, use them
 data Ann = AText
 
+type ADoc = Doc Ann
+
 -- Container classes
 --------------------------------------------------------------------------------
 
@@ -91,6 +108,12 @@ class ToList t where
 class FromList a e | a -> e where
   fromList :: [e] -> a
 
+-- Partial orderings
+--------------------------------------------------------------------------------
+
+class PartialOrd a where
+  leq :: a -> a -> Bool
+
 -- Forward and backwards lists
 --------------------------------------------------------------------------------
 
@@ -106,7 +129,8 @@ newtype BId = BId Int
   deriving (Eq, Num, Show)
 
 instance ElemAt (Bwd a) BId a where
-  elemAt BwdNil _ = impossible
+  elemAt BwdNil _ =
+    panic "`elemAt xs i` should only be called if i is a valid index in xs"
   elemAt (_ :> x) (BId 0) = x
   elemAt (xs :> _) (BId i) = elemAt xs (BId (i - 1))
 
@@ -131,7 +155,8 @@ newtype FId = FId Int
   deriving (Eq)
 
 instance ElemAt (Fwd a) FId a where
-  elemAt FwdNil _ = impossible
+  elemAt FwdNil _ =
+    panic "`elemAt xs i` should only be called if i is a valid index in xs"
   elemAt (x :< _) (FId 0) = x
   elemAt (_ :< xs) (FId i) = elemAt xs (FId (i - 1))
 
