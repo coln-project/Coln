@@ -46,20 +46,20 @@ projTy a x v = case behavesAs a of
 
 coerceToFields :: ElV e -> Fields (ElV e)
 coerceToFields (VCons fs) = fs
-coerceToFields (VNeu n) = case n.canon of
-  ExpandsTo (VCons fs) -> fs
-  _ -> panic "a neutral of record type should have its eta-expansion in its canon field"
+coerceToFields (VNeu n) = case n.fields of
+  Just fs -> fs
+  _ -> panic "a neutral of record type should have been created with a thunk for its fields"
 coerceToFields _ = panic "a value of record type should be a neutral or cons"
 
-coerceToClo :: ElV e -> Clo (ElV e)
-coerceToClo (VLam _ clo) = clo
-coerceToClo (VNeu n) = case n.canon of
-  ExpandsTo (VLam _ clo) -> clo
-  _ -> panic "a neutral of pi type should have its eta-expansion in its canon field"
-coerceToClo _ = panic "a value of pi type should be a neutral or lambda"
-
 instance Core ElV TyV where
-  app f v = appClo (coerceToClo f) v
+  app (VLam _ clo) v = appClo clo v
+  app (VNeu n) v =
+    let
+      a = appTy n.ty v
+      behavesAs = app <$> n.behavesAs <*> pure v in
+      neu a n.head (SApp n.spine v) behavesAs
+  app _ _ = panic "a value of pi type should be a neutral or lam"
+  
   proj v x = elemAt (coerceToFields v)  x
 
   code (VDecode _ n) = VNeu n
@@ -75,10 +75,7 @@ instance Core ElV TyV where
 
 behavesAs :: TyV K -> Maybe (TyV P)
 behavesAs (VU u) = Just (VU u)
-behavesAs (VDecode u n) = case n.canon of
-  BehavesAs v -> Just (decode u v)
-  ExpandsTo _ -> Nothing
-  TrueNeutral -> Nothing
+behavesAs (VDecode u n) = decode u <$> n.behavesAs
 behavesAs (VPi pv a b) = Just (VPi pv a b)
 
 expandRecord :: Head -> Spine -> [QName] -> TeleV (TyV K) -> Fields (ElV K)
@@ -86,22 +83,20 @@ expandRecord h sp xs te = Fields xs (go xs te)
   where
     go [] TVNil = []
     go (x : xs') (TVCons a f) =
-      let v = neu a h (SProj sp x)
+      let v = neu a h (SProj sp x) Nothing
        in v : go xs' (f v)
     go _ _ = panic "xs and te should have the same length"
 
-neu :: TyV K -> Head -> Spine -> ElV K
-neu a h sp =
-  let v = VNeu $ Neutral h sp c a
-      c = case behavesAs a of
-        Just (VU _) -> TrueNeutral
-        Just (VRecord _ xs as) -> ExpandsTo $ VCons $ expandRecord h sp xs as
-        Just (VPi _ dom _) -> ExpandsTo $ VLam dom $ Clo "x" $ \v' -> app v v'
-        Nothing -> TrueNeutral
+neu :: TyV K -> Head -> Spine -> Maybe (ElV P) -> ElV K
+neu a h sp be =
+  let v = VNeu $ Neutral h sp be fs a
+      fs = case behavesAs a of
+        Just (VRecord _ xs as) -> Just $ expandRecord h sp xs as
+        _ -> Nothing
    in v
 
 local :: TyV K -> FId -> ElV K
-local a i = neu a (Local i) SId
+local a i = neu a (Local i) SId Nothing
 
 -- Evaluation
 --------------------------------------------------------------------------------
@@ -125,7 +120,7 @@ instance Eval ElS ElV where
     Var i -> elemAt ?env i
     GlobalVar c -> case elemAt ?globalEnv c of
       KEntry _ v _ -> v
-      PEntry _ v a -> VNeu (Neutral (Global c) SId (BehavesAs v) a)
+      PEntry _ v a -> neu a (Global c) SId (Just v)
     Code t -> code $ eval t
     App t1 t2 -> eval t1 `app` eval t2
     Lam dom c -> VLam (eval dom) (evalAbs c)
@@ -181,7 +176,7 @@ quoteTele (TVCons a f) = quote a : withFresh a (\v -> quoteTele (f v))
 
 instance Quote ElV ElS where
   quote = \case
-    VNeu (Neutral h sp _ _) -> quoteSp sp (quoteHead h)
+    VNeu (Neutral h sp _ _ _) -> quoteSp sp (quoteHead h)
     VCode a -> Code (quote a)
     VLam dom c -> Lam (quote dom) (quoteClo dom c)
     VCons fs -> Cons (quote <$> fs)
@@ -286,9 +281,10 @@ instance DefEq Spine where
     _ -> throwUnequalSpines sp sp' Nothing
 
 canon :: ElV K -> ElV K
-canon v@(VNeu n)
-  | ExpandsTo v' <- n.canon = v'
-  | otherwise = v
+canon v@(VNeu n) = case behavesAs n.ty of
+  Just (VRecord _ _ _) -> VCons (unwrap n.fields)
+  Just (VPi _ dom _) -> VLam dom $ Clo "x" $ \w -> app v w
+  _ -> v
 canon v = v
 
 instance DefEq (ElV K) where

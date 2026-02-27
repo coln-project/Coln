@@ -225,6 +225,11 @@ symbol = do
   x <- slice (Span s e)
   pure $ Name $ Symbolize.intern x
 
+comment :: Lex ()
+comment = do
+  advanceWhile (\c -> c /= '\n')
+  advance
+
 -- Top-level lexing interface
 --------------------------------------------------------------------------------
 
@@ -246,6 +251,7 @@ toks =
     ',' -> classify Comma >> toks
     ';' -> classify Semicolon >> toks
     '\n' -> classify Nl >> toks
+    '#' -> comment >> toks
     '.' -> advance >> (qname >>= emit Field . VQName) >> toks
     '\'' -> advance >> (qname >>= emit Tag . VQName) >> toks
     '\0' -> emit0 Eof

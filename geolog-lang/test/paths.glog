@@ -21,15 +21,15 @@ theory Path (G : Graph) := [
   ),
 ]
 
-theory Path/hom (G : Graph) (P0 : Path G) (P1 : Path G) := [
-  t : (x : G.V) -> (y : G.V) -> P0.t x y -> P1.t x y,
-  empty : (x : G.V) -> t (P0.empty x) = P1.empty x,
-  cons : (
-    (x : G.V) ->
-    (y : G.V) ->
-    (z : G.V) ->
-    (e : G.E x y) ->
-    (p0 : P0.t y z) ->
-    t (P0.cons x y z e p0) = P1.cons x y z e (t p0)
-  )
-]
+# theory Path/hom (G : Graph) (P0 : Path G) (P1 : Path G) := [
+#   t : (x : G.V) -> (y : G.V) -> P0.t x y -> P1.t x y,
+#   empty : (x : G.V) -> t (P0.empty x) = P1.empty x,
+#   cons : (
+#     (x : G.V) ->
+#     (y : G.V) ->
+#     (z : G.V) ->
+#     (e : G.E x y) ->
+#     (p0 : P0.t y z) ->
+#     t (P0.cons x y z e p0) = P1.cons x y z e (t p0)
+#   )
+# ]

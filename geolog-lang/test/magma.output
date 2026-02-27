@@ -62,7 +62,3 @@ type:  Theory
 value:  [car : Query, mul : (x : car) -> (y : car) -> car]
 
 -- messages
-
-warning[W0201]: Defaulted precedence of := to the same as +
-1 | theory Magma := [
-1 |              ^^
