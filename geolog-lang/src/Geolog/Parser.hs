@@ -192,10 +192,10 @@ precLe (Prec b a) (Prec b' a')
 precs :: ConfTable Prec
 precs =
   fromList
-    [ (":", Prec 10 AssocNon)
-    , ("->", Prec 20 AssocR)
-    , ("=>", Prec 20 AssocR)
-    , (":=", Prec 30 AssocNon)
+    [ (":=", Prec 10 AssocNon)
+    , (":", Prec 20 AssocNon)
+    , ("->", Prec 30 AssocR)
+    , ("=>", Prec 30 AssocR)
     , ("+", Prec 50 AssocL)
     , ("-", Prec 50 AssocL)
     , ("*", Prec 60 AssocL)
@@ -292,7 +292,7 @@ expr = arg >>= go (Prec 0 AssocNon)
           Just True -> do
             advance
             rhs <- arg >>= go p'
-            pure $ Infix lhs n rhs
+            go p (Infix lhs n rhs)
       k | argStart k -> do
         a <- arg
         go p (App lhs a)
