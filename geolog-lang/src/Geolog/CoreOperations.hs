@@ -54,13 +54,12 @@ coerceToFields _ = panic "a value of record type should be a neutral or cons"
 instance Core ElV TyV where
   app (VLam _ clo) v = appClo clo v
   app (VNeu n) v =
-    let
-      a = appTy n.ty v
-      behavesAs = app <$> n.behavesAs <*> pure v in
-      neu a n.head (SApp n.spine v) behavesAs
+    let a = appTy n.ty v
+        behavesAs = app <$> n.behavesAs <*> pure v
+     in neu a n.head (SApp n.spine v) behavesAs
   app _ _ = panic "a value of pi type should be a neutral or lam"
-  
-  proj v x = elemAt (coerceToFields v)  x
+
+  proj v x = elemAt (coerceToFields v) x
 
   code (VDecode _ n) = VNeu n
   code a = VCode a

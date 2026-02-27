@@ -8,7 +8,7 @@ data LexerCode
   deriving (Eq, Ord)
 
 lexerCodeTable :: [(LexerCode, Int, CodeMeta)]
-lexerCodeTable = [
-  (UnexpectedCharacter, 0, CodeMeta Error Nothing),
-  (UncontinuedQualifiedName, 1, CodeMeta Error Nothing)
+lexerCodeTable =
+  [ (UnexpectedCharacter, 0, CodeMeta Error Nothing),
+    (UncontinuedQualifiedName, 1, CodeMeta Error Nothing)
   ]

@@ -7,9 +7,9 @@ import Data.Text.Unsafe qualified as TU
 import Data.Vector.Unboxed qualified as UV
 import Geolog.Common
 import Geolog.Diagnostician.CodeMeta
+import Geolog.Elaborator.Diagnostics
 import Geolog.Lexer.Diagnostics
 import Geolog.Parser.Diagnostics
-import Geolog.Elaborator.Diagnostics
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.IO (Handle)
@@ -137,13 +137,14 @@ data Code
 
 codeTable :: [(Code, Int, CodeMeta)]
 codeTable =
-  [(DebugMisc,
-    0,
-    CodeMeta Debug (Just "a code used for miscellaneous debugging")
-   )] ++
-  fmap (\(c,i,m) -> (LexerCode c, i + 100, m)) lexerCodeTable ++
-  fmap (\(c,i,m) -> (ParserCode c, i + 200, m)) parserCodeTable ++
-  fmap (\(c,i,m) -> (ElaboratorCode c, i + 300, m)) elaboratorCodeTable
+  [ ( DebugMisc,
+      0,
+      CodeMeta Debug (Just "a code used for miscellaneous debugging")
+    )
+  ]
+    ++ fmap (\(c, i, m) -> (LexerCode c, i + 100, m)) lexerCodeTable
+    ++ fmap (\(c, i, m) -> (ParserCode c, i + 200, m)) parserCodeTable
+    ++ fmap (\(c, i, m) -> (ElaboratorCode c, i + 300, m)) elaboratorCodeTable
 
 codeLookup :: Map Code (Int, CodeMeta)
 codeLookup = Map.fromList [(c, (i, m)) | (c, i, m) <- codeTable]
@@ -180,8 +181,9 @@ maybeToList (Just x) = [x]
 maybeToList Nothing = []
 
 instance Pretty Note where
-  pretty (Note loc message) = vsep $
-    (pretty <$> maybeToList loc) ++ (unAnnotate <$> maybeToList message)
+  pretty (Note loc message) =
+    vsep $
+      (pretty <$> maybeToList loc) ++ (unAnnotate <$> maybeToList message)
 
 data Diagnostic = Diagnostic
   { code :: Code,
@@ -190,8 +192,9 @@ data Diagnostic = Diagnostic
   }
 
 instance Pretty Diagnostic where
-  pretty d = vsep $
-    (pretty d.code <> ": " <> unAnnotate d.summary) : (map pretty d.notes)
+  pretty d =
+    vsep $
+      (pretty d.code <> ": " <> unAnnotate d.summary) : (map pretty d.notes)
 
 reportIO :: Reporter -> Diagnostic -> IO ()
 reportIO r d = hPutDoc r.handle (hardline <> pretty d <> hardline)

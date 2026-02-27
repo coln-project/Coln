@@ -9,8 +9,8 @@ data ParserCode
   deriving (Eq, Ord)
 
 parserCodeTable :: [(ParserCode, Int, CodeMeta)]
-parserCodeTable = [
-  (UnexpectedToken, 0, CodeMeta Error Nothing),
-  (DefaultedPrec, 1, CodeMeta Warning Nothing),
-  (IncompatiblePrecedences, 2, CodeMeta Error Nothing)
+parserCodeTable =
+  [ (UnexpectedToken, 0, CodeMeta Error Nothing),
+    (DefaultedPrec, 1, CodeMeta Warning Nothing),
+    (IncompatiblePrecedences, 2, CodeMeta Error Nothing)
   ]

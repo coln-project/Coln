@@ -14,9 +14,9 @@ import Geolog.Diagnostician
 import Geolog.Lexer.Diagnostics
 import Geolog.Token
 import Lens.Micro.Platform
+import Prettyprinter
 import Symbolize qualified
 import Prelude hiding (error, getChar, lex, lookup, span)
-import Prettyprinter
 
 -- Lex monad
 --------------------------------------------------------------------------------
