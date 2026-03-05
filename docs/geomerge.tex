@@ -116,12 +116,12 @@ operations on an instance concurrently, and exchange new operations when needed
 to (e.g. they wish to merge). And thanks to monotonicity, when receiving the new 
 operations, the query engine only can apply incremental evaluation.
 
-As an example, the simplest case one might imagine is adding another element `d:V`
-to instance `G` and an edge `e3:E` with `e3 src: c` and `e3 tgt: d`. And if we
-want to query the `reachable` relation, we just need to run the axioms on our
+As an example, the simplest case one might imagine is adding another element \verb|d:V|
+to instance \verb|G| and an edge \verb|e3:E| with \verb|e3 src: c| and \verb|e3 tgt: d|. And if we
+want to query the \verb|reachable| relation, we just need to run the axioms on our
 existing data against the newly added data, and repeat until we reach the fixpoint.
-The new `reachable(c, d), reachable(a, d), reachable(b, d)` should be added
-to the instance data as an operation `assert` as well (?).
+The new \verb|reachable(c, d), reachable(a, d), reachable(b, d)| should be added
+to the instance data as an operation \verb|assert| as well (?).
 
 Now let's consider what happens when two agents merge their instances. If we disallow
 retraction, this will be trivial, since we can simply merge the new data, and run
@@ -144,10 +144,11 @@ As an illustration, this is an example of what the opset might look like:
 \begin{tabular}{cccccccccccccc}\toprule
   \multicolumn{2}{c}{objectId} & \multicolumn{3}{c}{key} & \multicolumn{2}{c}{opId} & action & insert & \multicolumn{2}{c}{value} & \multicolumn{3}{c}{succs} \\
   \cmidrule(lr){1-2}\cmidrule(lr){3-5}\cmidrule(lr){6-7}\cmidrule(lr){10-11}\cmidrule(lr){12-14}
-  int & actor & str & int & actor & int & actor & & & type & raw & num & int & actor \\\midrule
-  - & - & d & - & - & - & - & add & - & V & - & - & - & - \\
-  - & - & e & - & - & - & - & add & - & E & - & - & - & - \\
-  - & - & reachable & - & - & - & - & assert & - & RelArgs & (a, b) & - & - & - \\\bottomrule
+  int & actor & str       & int & actor & int   & actor &        &       & type    & raw    & num   & int & actor \\\midrule
+  -   & -     & instance  & -   & -     & \(1\) & A     & mkInst & false & -       & -      & \(0\) &     & \\
+  1   & A     & d         & -   & -     & 2     & B     & add    & false & V       & -      & \(0\) & -   & - \\
+  1   & A     & e         & -   & -     & 3     & A     & add    & false & E       & -      & \(0\) & -   & - \\
+  1   & A     & reachable & -   & -     & 4     & A     & assert & false & RelArgs & (a, b) & \(0\) & -   & - \\\bottomrule
 \end{tabular}
 \end{table}
 
@@ -155,16 +156,20 @@ As an illustration, this is an example of what the opset might look like:
   \item objectId would be the instance/theory id. For our case, we should consider each instance/theory 
   as an object
   \item key is a 3-tuple, where the str would be the name of element being added, 
-  e.g.\ \verb|d| would be the name of the element added\@. (int,actor) is not relevant here
-  \item opId is the unique operation identifier. Omitted here for now
+  e.g.\ \verb|d| would be the name of the element added\@. (int,actor) here is
+  not relevant.
+  \item opId is the unique operation identifier. Here we are using the clock at
+  each node.
   \item action would consist of the three instance mutation opertaion: add, retract and assert
   (how to add function definitions?)
   \item insert is used for operations on a list, not relevant here
   \item value is a 2-tuple, where the first element specifies the type of the element,
   if this was adding an element, that would be its sort. If it's asserting a relation,
   then it would be \verb|RelArgs|. Although I am not sure if we should store all the payload
-  of the relation in this single column. I do not see big problems with it (?)
-  \item succ is for dependency tracking, omitted here.
+  of the relation in this single column. We should probably store a pointer (foreign key)
+  of some kind that points to the actual storage of the arguments of the tuple.
+  \item succ is for dependency tracking, and is only needed when two actors make
+  operations on the same element.
 \end{itemize}
 
 This is a small change to what the is already supported in Automerge's opset,
