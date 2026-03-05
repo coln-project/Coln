@@ -31,8 +31,15 @@ performed on a database instance.
 
 And we should do so by looking at a concrete example of a problem that can be
 expressed in Geolog. This has the danger of overfitting our design to it, so
-this doc would evolve as we discover more. But my hope is that this can inform
-discussions both across and within different teams working on Geolog.
+this doc would evolve as we discover more. 
+
+This design is currently also reusing Automerge's opset design, but with a few
+tweaks. The basic opset structure remains the same. Given that Automerge's opset
+design is largely optimised for text editing, i.e.\ with lots of deleting and inserting
+of characters all over the place, which might be different from what geolog is
+doing (monotonically increasing log). We can/should review whether
+we need to redesign a new operation log format for geolog, depending on our particular
+use case. 
 
 \section{Motivating example}
 
