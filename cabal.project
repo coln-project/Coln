@@ -1,1 +1,3 @@
-packages: geolog-lang/geolog-lang.cabal
+packages:
+  geolog-lang/geolog-lang.cabal
+  toy-datalog/toy-datalog.cabal
