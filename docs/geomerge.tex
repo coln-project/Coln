@@ -1,0 +1,208 @@
+\documentclass[12pt,a4paper,twoside]{article}
+
+\usepackage{parskip}
+\usepackage{ebgaramond}
+\usepackage{csquotes}
+\usepackage{booktabs}
+
+
+\title{Geomerge}
+\author{Vincent Liu}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+The purpose of this doc is to expand on the operation log part of the original
+Geolog prospectus with more details on what/how we might want to store in the
+operation log. Quoting from the prospectus:
+
+\begin{displayquote}
+An operation log which stores a (not-necessarily linear) history of all operations
+performed on a database instance.
+\end{displayquote}
+
+\begin{displayquote}
+  The ``operation log'' part is intended to be very similar to current data structures
+  inside Automerge.
+\end{displayquote}
+
+And we should do so by looking at a concrete example of a problem that can be
+expressed in Geolog. This has the danger of overfitting our design to it, so
+this doc would evolve as we discover more. 
+
+This design is currently also reusing Automerge's opset design, but with a few
+tweaks. The basic opset structure remains the same. Given that Automerge's opset
+design is largely optimised for text editing, i.e.\ with lots of deleting and inserting
+of characters all over the place, which might be different from what geolog is
+doing (monotonically increasing log). We can/should review whether
+we need to redesign a new operation log format for geolog, depending on our particular
+use case. 
+
+\section{Motivating example}
+
+Let us consider this graph example from geolog-zeta:
+
+\begin{verbatim}
+  theory Graph {
+    V : Sort;
+    E : Sort;
+    src : E -> V;
+    tgt : E -> V;
+    reachable : [from: V, to: V] -> Prop;
+  
+    ax/edge : forall e : E. |- [from: e src, to: e tgt] reachable;
+    ax/trans : forall x,y,z : V.
+      [from: x, to: y] reachable, [from: y, to: z] reachable
+      |- [from: x, to: z] reachable;
+  }
+  
+  
+  instance G : Graph = chase {
+    a, b, c : V;
+    e1, e2 : E;
+    e1 src = a; e1 tgt = b;
+    e2 src = b; e2 tgt = c;
+  } 
+\end{verbatim}
+
+Here we have a theory \verb|Graph| which defines data of different sorts (\verb|V| and
+\verb|E|), functions (\verb|src| and \verb|tgt|) and relations (\verb|reachable|). 
+And two axioms written as sequents (i.e.\ geometric theory) that defines what 
+must hold for the data, functions and relations.
+
+Then we have a concrete instance \verb|G| that gives the sorts and functions, but not
+relations. If we did not include \verb|chase| in our definition, this will be rejected
+by the elaborator because \verb|ax/edge| is not satisfied.
+
+However, if we do include \verb|chase|, then the chase algorithm will compute the
+fixpoint for us:
+
+\begin{verbatim}
+  instance G : Graph = {
+  // V (3):
+  a : V;
+  b : V;
+  c : V;
+  // E (2):
+  e1 : E;
+  e2 : E;
+  // src:
+  e1 src = a;
+  e2 src = b;
+  // tgt:
+  e1 tgt = b;
+  e2 tgt = c;
+  // reachable (3 tuples):
+  [from: a, to: b] reachable;
+  [from: b, to: c] reachable;
+  [from: a, to: c] reachable;
+} 
+\end{verbatim}
+
+Now what exactly do we want to store in our operation log? We can encode the theory
+and instances. But I imagine the instance is where there will be lots of data
+and ``operations'', such as adding and retracting elements from it, etc.
+
+\section{Operation log content}
+
+To understand what we want to store in our operation log, we need to first define
+what an operation is. Looking at the geolog-zeta, there are three supported operations:
+`add`, `retract` and `assert`, corresponding to adding an element, removing an
+element, and adding a new relation. These are viable candidates to be defined
+as our operations. And the idea is that, because our log is monotonic (need to
+be careful with retraction), we can achieve incremental evaluation, by, say,
+applying Datalog style semi-naive evaluation strategy where only the new elements
+added need to be evaluated against the existing data.
+
+By utilising Automerge's opset design, this would give us the ability to build
+concurrency into Geolog, where multiple agents/people/threads can perform these
+operations on an instance concurrently, and exchange new operations when needed
+to (e.g. they wish to merge). And thanks to monotonicity, when receiving the new 
+operations, the query engine only can apply incremental evaluation.
+
+As an example, the simplest case one might imagine is adding another element \verb|d:V|
+to instance \verb|G| and an edge \verb|e3:E| with \verb|e3 src: c| and \verb|e3 tgt: d|. And if we
+want to query the \verb|reachable| relation, we just need to run the axioms on our
+existing data against the newly added data, and repeat until we reach the fixpoint.
+The new \verb|reachable(c, d), reachable(a, d), reachable(b, d)| should be added
+to the instance data as an operation \verb|assert| as well (?).
+
+Now let's consider what happens when two agents merge their instances. If we disallow
+retraction, this will be trivial, since we can simply merge the new data, and run
+our chase algorithm on the new data until fix point. This behaviour would be similar
+to a grow-only set CRDT (G-Set).
+ 
+\section{Operation log format}
+
+The format of the operation log will be similar to what already exists in Automerge.
+Automerge already supports three types of objects: Map, List and Text. The datamodel
+used by Geolog behaves like a set, which is more or less a boolean valued Map.
+So we could easily use Automerge's opset to do the job, along with columnar compression,
+and other nice features.
+
+As an illustration, this is an example of what the opset might look like:
+
+
+\begin{table}
+\footnotesize
+\begin{tabular}{cccccccccccccc}\toprule
+  \multicolumn{2}{c}{objectId} & \multicolumn{3}{c}{key} & \multicolumn{2}{c}{opId} & action & insert & \multicolumn{2}{c}{value} & \multicolumn{3}{c}{succs} \\
+  \cmidrule(lr){1-2}\cmidrule(lr){3-5}\cmidrule(lr){6-7}\cmidrule(lr){10-11}\cmidrule(lr){12-14}
+  int & actor & str       & int & actor & int   & actor &        &       & type    & raw    & num   & int & actor \\\midrule
+  -   & -     & instance  & -   & -     & \(1\) & A     & mkInst & false & -       & -      & \(0\) &     & \\
+  1   & A     & d         & -   & -     & 2     & B     & add    & false & V       & -      & \(0\) & -   & - \\
+  1   & A     & e         & -   & -     & 3     & A     & add    & false & E       & -      & \(0\) & -   & - \\
+  1   & A     & reachable & -   & -     & 4     & A     & assert & false & RelArgs & (a, b) & \(0\) & -   & - \\\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+  \item objectId would be the instance/theory id. For our case, we should consider each instance/theory 
+  as an object
+  \item key is a 3-tuple, where the str would be the name of element being added, 
+  e.g.\ \verb|d| would be the name of the element added\@. (int,actor) here is
+  not relevant.
+  \item opId is the unique operation identifier. Here we are using the clock at
+  each node.
+  \item action would consist of the three instance mutation opertaion: add, retract and assert
+  (how to add function definitions?)
+  \item insert is used for operations on a list, not relevant here
+  \item value is a 2-tuple, where the first element specifies the type of the element,
+  if this was adding an element, that would be its sort. If it's asserting a relation,
+  then it would be \verb|RelArgs|. Although I am not sure if we should store all the payload
+  of the relation in this single column. We should probably store a pointer (foreign key)
+  of some kind that points to the actual storage of the arguments of the tuple.
+  \item succ is for dependency tracking, and is only needed when two actors make
+  operations on the same element.
+\end{itemize}
+
+This is a small change to what the is already supported in Automerge's opset,
+essentially the table format remains the same, but some of the fields have been
+modified slightly. I want to use this as a starting point, and if we have more
+real world use cases, we can consider redesigning as necessary. 
+
+
+\section{Problems to think about}
+
+\begin{itemize}
+  \item When the user declares an instance with some initial elements in it, do we
+  just store them as if these are added one by one?
+  \item Is there anything that the opset needs to do to help with the query engine?
+  What would their interaction be like?
+\end{itemize}
+
+
+% Regarding the interaction between Geomerge and Geodeed (query engine). I believe 
+% there is not much, Geomerge is concerned about tracking dependencies of the operation
+% history, and provide the right dependency (or the notion of time) to the upper layer,
+% while Geodeed would be responsible for tracking the edb and idb and perform the
+% correct incremental evaluation.
+
+
+\bibliographystyle{plainnat}
+\bibliography{geolog.bib}
+
+\end{document}

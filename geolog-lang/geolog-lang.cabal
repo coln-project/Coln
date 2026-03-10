@@ -14,13 +14,16 @@ library
     exposed-modules:
         Geolog.Common
         Geolog.Core
-        Geolog.Diagnostics
-        Geolog.Diagnostics.Code
-        Geolog.Elaboration
-        Geolog.Evaluation
+        Geolog.CoreOperations
+        Geolog.Diagnostician
+        Geolog.Diagnostician.CodeMeta
+        Geolog.Elaborator
+        Geolog.Elaborator.Diagnostics
         Geolog.Lexer
+        Geolog.Lexer.Diagnostics
         Geolog.Notation
         Geolog.Parser
+        Geolog.Parser.Diagnostics
         Geolog.Pretty
         Geolog.Token
         Geolog.Unification
@@ -28,23 +31,23 @@ library
     hs-source-dirs:     src
     default-language:   GHC2021
     default-extensions:
-        BlockArguments CPP DataKinds DeriveFoldable DeriveFunctor
+        BlockArguments CPP TypeData DeriveFoldable DeriveFunctor
         DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
         ExplicitNamespaces FunctionalDependencies
         GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
         InstanceSigs KindSignatures LambdaCase MagicHash
         MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
         OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
-        StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
+        StandaloneKindSignatures StrictData TemplateHaskell TypeFamilies
         TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
     ghc-options:
         -Wall -funbox-strict-fields -Wno-unused-imports
-        -Wno-unused-top-binds
+        -Wno-unused-top-binds -Wno-name-shadowing
 
     build-depends:
-        base >=4.19.2.0,
+        base,
         bytestring,
         containers,
         directory,
@@ -66,21 +69,22 @@ test-suite geolog-lang-test
     hs-source-dirs:     test
     default-language:   GHC2021
     default-extensions:
-        BlockArguments CPP DataKinds DeriveFoldable DeriveFunctor
+        BlockArguments CPP TypeData DeriveFoldable DeriveFunctor
         DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
         ExplicitNamespaces FunctionalDependencies
         GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
         InstanceSigs KindSignatures LambdaCase MagicHash
         MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
         OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
-        StandaloneKindSignatures Strict TemplateHaskell TypeFamilies
+        StandaloneKindSignatures StrictData TemplateHaskell TypeFamilies
         TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
     ghc-options:        -Wall -g
     build-depends:
-        base >=4.19.2.0,
+        base,
         bytestring,
+        containers,
         filepath,
         geolog-lang,
         prettyprinter,

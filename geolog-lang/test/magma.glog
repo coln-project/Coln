@@ -1,4 +1,4 @@
-theory Magma = [
+theory Magma := [
   car : Query,
   mul : (x : car) -> (y : car) -> car
 ]

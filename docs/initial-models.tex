@@ -1,0 +1,50 @@
+\documentclass[fleqn,leqno]{article}
+
+\usepackage[a4paper]{geometry}
+\usepackage{parskip}
+\usepackage{macros}
+
+\title{Initial Models via a Modality}
+\author{Owen Lynch}
+
+\begin{document}
+
+\maketitle
+
+NOTE: very work-in-progress
+
+\section{Intuition}
+
+Consider the following theories:
+
+\begin{verbatim}
+theory Graph := sig
+  V : Query
+  E : V -> V -> Query
+end
+
+theory Paths (G : Graph) := sig
+  open G
+  P : V -> V -> Query
+  empty : (v : V) -> P v v
+  snoc : (a b c : V) -> P a b -> E b c -> P a c
+end
+\end{verbatim}
+
+Intuitively, for every model \verb|G : Graph| there should exist an \emph{initial} model of \verb|Paths G|. However, this is not true for every theory extension of \verb|Graph|. For instance the theory \verb|G.V| does not have an initial model in general (it does if \verb|G.V| happens to be a singleton).
+
+The general rule is that ``a theory has an initial model if it does not postulate any elements in types that it did not introduce.'' Bob Atkey suggested formalizing this rule with a \emph{modality}, which would ``lock away'' all previously defined types, preventing them from being the codomain of term constructors in a theory.
+
+However, when Bob Atkey proposed this initially, we couldn't figure out what it meant semantically. This document is an attempt to sketch a possible semantics for initial models.
+
+\section{Gros doctrines and left adjoints}
+
+Recall that a context $\Gamma$ in the type theory is meant to be interpreted as a geometric theory.
+
+which is a functor $\Gamma \colon \ms{Log} \to \ms{CAT}$, where $\ms{Log}$ is the category of logoi and $\ms{CAT}$ is the category of large categories.
+
+\end{document}
+
+% Local Variables:
+% TeX-engine: luatex
+% End:

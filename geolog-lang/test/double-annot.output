@@ -8,21 +8,16 @@ Nl (13:14)
 Eof (14:14)
 
 -- notation
-Infix (0:7)
-  Ident a (0:1)
-  Keyword : (2:3)
-  Ident int (4:7)
-Infix (8:13)
-  Error (8:9)
+Infix (0:13)
+  Infix (0:7)
+    Ident a (0:1)
+    Keyword : (2:3)
+    Ident int (4:7)
   Keyword : (8:9)
   Ident int (10:13)
 
 -- messages
 
-error[E0202] Incompatible precedences
-1 | a : int : int
-1 |         ^
-
-error[E0200] Unexpected token kind SKeyword, expected a token that can start an expression
+error[E0202]: Incompatible precedences
 1 | a : int : int
 1 |         ^
