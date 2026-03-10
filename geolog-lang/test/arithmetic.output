@@ -22,6 +22,6 @@ Infix (1:21)
 
 -- messages
 
-warning[W0201] Defaulted precedence of ++ to the same as +
+warning[W0201]: Defaulted precedence of ++ to the same as +
 2 |   ++ 13
 2 |   ^^
