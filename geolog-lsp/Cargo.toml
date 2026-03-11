@@ -1,0 +1,16 @@
+# Geolog Language Server (prototype)
+# Standalone LSP; follows docs/SYNTAX.md. No dependency on the main geolog crate.
+# Can be moved to a separate repo later.
+
+[package]
+name = "geolog-lsp"
+version = "0.1.0"
+edition = "2021"
+description = "Language Server Protocol implementation for Geolog"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+tower-lsp = "0.20"
+lsp-types = "0.94"
+tokio = { version = "1", features = ["full"] }
+url = "2"
