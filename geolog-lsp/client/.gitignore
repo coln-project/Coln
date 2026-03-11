@@ -1,0 +1,5 @@
+node_modules/
+out/
+*.vsix
+# Bundled server binaries (produced by scripts/package.sh)
+server/
