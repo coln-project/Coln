@@ -62,21 +62,28 @@ instance Prt (ElS e) where
     Cons (Fields xs ts) ->
       list
         ["." <> pretty x <+> "=" <+> prtPrec precTop t | (x, t) <- zip xs ts]
+    Lit l -> pretty l
 
 par :: (PrecArg) => Prec -> ((PrecArg) => Doc ann) -> Doc ann
 par p s
   | precLe p ?prec == Just True = "(" <> let ?prec = precTop in s <> ")"
   | True = s
 
+piVariantArr :: PiVariant -> Doc a
+piVariantArr = \case
+  PrimTheory -> "~>"
+  QueryTheory -> "->"
+  TheoryTop -> "->"
+
 instance Prt (TyS e) where
   prt = \case
     U u -> pretty $ decodesInto u
     Decode _ t -> prt t
-    Pi _ a (Abs x b) ->
+    Pi pv a (Abs x b) ->
       let annot = "(" <> pretty x <+> ":" <+> prtTop a <> ")"
-       in par precLam (annot <+> "->" <+> bindName x (prtPrec precLam b))
-    Pi _ a (AbsConst b) ->
-      par precLam (prt a <+> "->" <+> prtPrec precLam b)
+       in par precLam (annot <+> piVariantArr pv <+> bindName x (prtPrec precLam b))
+    Pi pv a (AbsConst b) ->
+      par precLam (prt a <+> piVariantArr pv <+> prtPrec precLam b)
     Record _ xs as -> list $ go (zip xs as) []
       where
         go :: DoPretty ([(QName, TyS e')] -> [Doc ann] -> [Doc ann])
@@ -84,6 +91,7 @@ instance Prt (TyS e) where
         go ((x, a) : rest) ds =
           let d = pretty x <+> ":" <+> prtPrec precTop a
            in bindName x $ go rest (d : ds)
+    BuiltinTy a -> pretty a
 
 prtTop :: (NamesArg, Prt a) => a -> Doc ann
 prtTop x = let ?prec = precTop in prt x

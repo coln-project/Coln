@@ -16,6 +16,8 @@ class Core (el :: Energy -> Type) (ty :: Energy -> Type) | el -> ty, ty -> el wh
   code :: ty e -> el e
   decode :: Universe -> el e -> ty e
   universe :: Universe -> ty e
+  builtinTy :: BuiltinTy -> ty e
+  lit :: Literal -> el K
 
 instance Core ElS TyS where
   app = App
@@ -23,6 +25,8 @@ instance Core ElS TyS where
   code = Code
   decode = Decode
   universe = U
+  builtinTy = BuiltinTy
+  lit = Lit
 
 appClo :: Clo (b e) -> ElV K -> b e
 appClo (Clo _ f) v = f v
@@ -71,11 +75,15 @@ instance Core ElV TyV where
     panic "a value of universe type should be a neutral or an encoding of a type"
 
   universe = VU
+  
+  builtinTy = VBuiltinTy
+  lit = VLit
 
 behavesAs :: TyV K -> Maybe (TyV P)
 behavesAs (VU u) = Just (VU u)
 behavesAs (VDecode u n) = decode u <$> n.behavesAs
 behavesAs (VPi pv a b) = Just (VPi pv a b)
+behavesAs (VBuiltinTy a) = Just $ VBuiltinTy a
 
 expandRecord :: Head -> Spine -> [QName] -> TeleV (TyV K) -> Fields (ElV K)
 expandRecord h sp xs te = Fields xs (go xs te)
@@ -125,6 +133,7 @@ instance Eval ElS ElV where
     Lam dom c -> VLam (eval dom) (evalAbs c)
     Proj t x -> eval t `proj` x
     Cons fs -> VCons $ eval <$> fs
+    Lit l -> VLit l
 
 evalTele :: (GlobalEnvArg, EnvArg) => [TyS e] -> TeleV (TyV e)
 evalTele [] = TVNil
@@ -136,6 +145,7 @@ instance Eval TyS TyV where
     Decode u t -> decode u (eval t)
     Pi pv dom cod -> VPi pv (eval dom) (evalAbs cod)
     Record l xs te -> VRecord l xs (evalTele te)
+    BuiltinTy t -> VBuiltinTy t
 
 -- Quoting
 --------------------------------------------------------------------------------
@@ -179,6 +189,7 @@ instance Quote ElV ElS where
     VCode a -> Code (quote a)
     VLam dom c -> Lam (quote dom) (quoteClo dom c)
     VCons fs -> Cons (quote <$> fs)
+    VLit l -> Lit l
 
 instance Quote TyV TyS where
   quote = \case
@@ -186,6 +197,7 @@ instance Quote TyV TyS where
     VDecode u n -> Decode u (quote (VNeu n))
     VPi pv a b -> Pi pv (quote a) (quoteClo a b)
     VRecord l xs te -> Record l xs (quoteTele te)
+    VBuiltinTy a -> BuiltinTy a
 
 -- Definitional equality
 --------------------------------------------------------------------------------
@@ -247,6 +259,8 @@ instance DefEq (TyV K) where
             "different pi variants:" <+> pretty pv <+> "and" <+> pretty pv'
       defEq dom dom'
       withFresh' dom $ \v -> defEq (appClo cod v) (appClo cod' v)
+    (VBuiltinTy b, VBuiltinTy b') ->
+      unless (b == b') $ throwUnequalTys a a' $ Just "unequal builtin types"
     _ -> throwUnequalTys a a' Nothing
 
 prtHead :: (NamesArg, CtxLenArg) => Head -> ADoc
@@ -294,4 +308,6 @@ instance DefEq (ElV K) where
       withFresh a $ \w -> defEq (appClo c v) (appClo c' w)
     (VCons (Fields _ vs), VCons (Fields _ vs')) ->
       forM_ (zip vs vs') (uncurry defEq)
+    (VLit l, VLit l') ->
+      unless (l == l') $ throwUnequalEls v v' $ Just "unequal literals"
     _ -> throwUnequalEls v v' Nothing

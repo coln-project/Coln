@@ -1,0 +1,12 @@
+theory WeightedGraph := [
+  V : Query,
+  E : V -> V -> Int ~> Query,
+]
+
+theory Q (G : WeightedGraph) := [
+  x : G.V,
+  y : G.V,
+  z : G.V,
+  e1 : G.E x y 1,
+  e1 : G.E y z 3,
+]

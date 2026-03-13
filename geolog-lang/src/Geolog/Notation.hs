@@ -1,5 +1,6 @@
 module Geolog.Notation where
 
+import Data.Text (Text)
 import Data.Maybe (maybeToList)
 import Geolog.Common
 import Prettyprinter
@@ -26,6 +27,7 @@ data Ntn
   | Keyword Name Span
   | Field QName Span
   | Int Int Span
+  | String Text Span
   | Tuple [Ntn] Span
   | Error Span
 
@@ -38,6 +40,7 @@ startPos (Ident _ s) = s.start
 startPos (Keyword _ s) = s.start
 startPos (Field _ s) = s.start
 startPos (Int _ s) = s.start
+startPos (String _ s) = s.start
 startPos (Tuple _ s) = s.start
 startPos (Error s) = s.start
 
@@ -50,6 +53,7 @@ endPos (Ident _ s) = s.end
 endPos (Keyword _ s) = s.end
 endPos (Field _ s) = s.end
 endPos (Int _ s) = s.end
+endPos (String _ s) = s.end
 endPos (Tuple _ s) = s.end
 endPos (Error s) = s.end
 
@@ -68,6 +72,7 @@ head (Ident x _) = "Ident" <+> pretty x
 head (Keyword x _) = "Keyword" <+> pretty x
 head (Field x _) = "Field" <+> pretty x
 head (Int i _) = "Int" <+> pretty i
+head (String i _) = "Int" <+> pretty i
 head (Tuple _ _) = "Tuple"
 head (Error _) = "Error"
 
@@ -80,6 +85,7 @@ children (Ident _ _) = []
 children (Keyword _ _) = []
 children (Field _ _) = []
 children (Int _ _) = []
+children (String _ _) = []
 children (Tuple ns _) = ns
 children (Error _) = []
 
