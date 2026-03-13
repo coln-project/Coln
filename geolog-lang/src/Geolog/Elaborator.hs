@@ -77,6 +77,8 @@ instance Core ElG TyG where
   code (G t v) = G (code t) (code v)
   decode u (G t v) = G (decode u t) (decode u v)
   universe u = G (universe u) (universe u)
+  builtinTy a = G (builtinTy a) (builtinTy a)
+  lit l = G (lit l) (lit l)
 
 -- Diagnostics
 --------------------------------------------------------------------------------
@@ -254,26 +256,36 @@ syn SKinetic (N.Keyword "Query" _) =
   pure (code $ universe QueryU, universe TheoryU)
 syn SPotential (N.Keyword "Query" s) =
   unsupportedInPotentialMode s "universes"
-syn SKinetic (N.Infix n1 (N.Keyword "->" _) nb) = case n1 of
-  (N.Infix (N.Ident x _) (N.Keyword ":" _) na) -> do
-    ga <- typ QueryU na
-    gb <- bind x ga.val $ \_ -> typ TheoryU nb
-    let pv = QueryTheory
-    let t = Pi pv ga.stx (Abs x gb.stx)
-    let v = VPi pv ga.val (Clo x (\w -> evalIn (?env :> w) gb.stx))
-    pure (code $ G t v, universe TheoryU)
-  na -> do
-    ga <- typ QueryU na
-    gb <- typ TheoryU nb
-    let pv = QueryTheory
-    let t = Pi pv ga.stx (AbsConst gb.stx)
-    let v = VPi pv ga.val (CloConst gb.val)
-    pure (code $ G t v, universe TheoryU)
+syn SKinetic (N.Infix n1 (N.Keyword arr@("~>"; "->") _) nb) =
+  let (domU, pv) = case arr of
+        "~>" -> (PrimU, PrimTheory)
+        "->" -> (QueryU, QueryTheory)
+   in case n1 of
+        (N.Infix (N.Ident x _) (N.Keyword ":" _) na) -> do
+          ga <- typ domU na
+          gb <- bind x ga.val $ \_ -> typ TheoryU nb
+          let t = Pi pv ga.stx (Abs x gb.stx)
+          let v = VPi pv ga.val (Clo x (\w -> evalIn (?env :> w) gb.stx))
+          pure (code $ G t v, universe TheoryU)
+        na -> do
+          ga <- typ domU na
+          gb <- typ TheoryU nb
+          let t = Pi pv ga.stx (AbsConst gb.stx)
+          let v = VPi pv ga.val (CloConst gb.val)
+          pure (code $ G t v, universe TheoryU)
 syn SPotential n@(N.Infix _ (N.Keyword "->" _) _) =
   unsupportedInPotentialMode (N.span n) "pi types"
+syn _ (N.Keyword "Int" _) = pure (code $ builtinTy BuiltinInt, universe PrimU)
+syn _ (N.Keyword "String" _) = pure (code $ builtinTy BuiltinString, universe PrimU)
+syn SKinetic (N.String s _) = pure (lit $ LitString s, builtinTy BuiltinString)
+syn SPotential (N.String _ sp) =
+  unsupportedInPotentialMode sp "string literals"
+syn SKinetic (N.Int i _) = pure (lit $ LitInt i, builtinTy BuiltinInt)
+syn SPotential (N.Int _ sp) =
+  unsupportedInPotentialMode sp "int literals"
 syn _ n@(N.Infix _ (N.Keyword "=>" _) _) = mustChk (N.span n) "lambda syntax"
 syn _ n@(N.Tuple _ _) = mustChk (N.span n) "tuple syntax"
-syn _ n = unexpectedNotation n "element"
+syn _ n = unexpectedNotation n "term in synthesizing position"
 
 chk :: Elab (SEnergy e -> TyV K -> Ntn -> IO (ElG e))
 chk e a n@(N.Tuple ns s) = case behavesAs a of

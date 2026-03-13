@@ -5,6 +5,7 @@ import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader.Class
 import Control.Monad.State.Class
 import Control.Monad.State.Strict (StateT, evalStateT)
+import Data.Text (Text)
 import Data.Vector qualified as V
 import Geolog.Common
 import Geolog.Diagnostician
@@ -114,6 +115,12 @@ curInt =
     T.VInt x -> pure x
     _ -> error "expected token to be associated with an int"
 
+curString :: Parser Text
+curString =
+  curValue >>= \case
+    T.VString x -> pure x
+    _ -> error "expected token to be associated with an string"
+
 at :: T.Kind -> Parser Bool
 at k = (k ==) <$> cur
 
@@ -195,6 +202,7 @@ precs =
     [ (":=", Prec 10 AssocNon)
     , (":", Prec 20 AssocNon)
     , ("->", Prec 30 AssocR)
+    , ("~>", Prec 30 AssocR)
     , ("=>", Prec 30 AssocR)
     , ("+", Prec 50 AssocL)
     , ("-", Prec 50 AssocL)
@@ -257,6 +265,9 @@ arg = do
     T.Int -> do
       i <- curInt
       advanceClose m $ Int i
+    T.String -> do
+      x <- curString
+      advanceClose m $ String x
     T.Block -> block
     k -> do
       reportUnexpected k T.CExprStart
