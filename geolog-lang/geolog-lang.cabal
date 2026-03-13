@@ -29,17 +29,12 @@ library
         Geolog.Unification
 
     hs-source-dirs:     src
-    default-language:   GHC2021
+    default-language:   GHC2024
     default-extensions:
-        BlockArguments CPP TypeData DeriveFoldable DeriveFunctor
-        DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
-        ExplicitNamespaces FunctionalDependencies
-        GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
-        InstanceSigs KindSignatures LambdaCase MagicHash
-        MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
-        OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
-        StandaloneKindSignatures StrictData TemplateHaskell TypeFamilies
-        TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
+        BlockArguments CPP TypeData DerivingVia FunctionalDependencies
+        ImplicitParams MagicHash NoFieldSelectors OrPatterns OverloadedRecordDot
+        OverloadedStrings PatternSynonyms QualifiedDo StrictData TemplateHaskell
+        TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
     ghc-options:
@@ -67,17 +62,12 @@ test-suite geolog-lang-test
     type:               exitcode-stdio-1.0
     main-is:            Main.hs
     hs-source-dirs:     test
-    default-language:   GHC2021
+    default-language:   GHC2024
     default-extensions:
-        BlockArguments CPP TypeData DeriveFoldable DeriveFunctor
-        DeriveTraversable DerivingVia EmptyCase EmptyDataDeriving
-        ExplicitNamespaces FunctionalDependencies
-        GeneralizedNewtypeDeriving ImplicitParams ImportQualifiedPost
-        InstanceSigs KindSignatures LambdaCase MagicHash
-        MultiParamTypeClasses NoFieldSelectors OverloadedRecordDot
-        OverloadedStrings PatternSynonyms PolyKinds QualifiedDo
-        StandaloneKindSignatures StrictData TemplateHaskell TypeFamilies
-        TypeFamilyDependencies TypeOperators UnboxedSums UnboxedTuples
+        BlockArguments CPP TypeData DerivingVia FunctionalDependencies
+        ImplicitParams MagicHash NoFieldSelectors OrPatterns OverloadedRecordDot
+        OverloadedStrings PatternSynonyms QualifiedDo StrictData TemplateHaskell
+        TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
     ghc-options:        -Wall -g

@@ -1,5 +1,6 @@
 module Geolog.Token where
 
+import Data.Text (Text)
 import Geolog.Common
 import Prettyprinter
 
@@ -21,6 +22,7 @@ data Kind
   | Tag
   | Field
   | Int
+  | String
   | LParen
   | RParen
   | LBrack
@@ -40,7 +42,7 @@ instance Pretty Kind where
 -- Tokens
 --------------------------------------------------------------------------------
 
-data TokenValue = VEmpty | VName Name | VQName QName | VInt Int
+data TokenValue = VEmpty | VName Name | VQName QName | VInt Int | VString Text
   deriving (Eq, Show)
 
 {- | A @Token@ consists of a kind along with an attached value and a source code
@@ -65,6 +67,7 @@ instance Pretty Token where
       VName x -> " " <> pretty x
       VQName x -> " " <> pretty x
       VInt i -> " " <> pretty i
+      VString i -> " " <> pretty i
 
 -- Token classes (used for error messages)
 --------------------------------------------------------------------------------

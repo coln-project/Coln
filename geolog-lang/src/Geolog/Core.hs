@@ -3,6 +3,7 @@ module Geolog.Core where
 import Data.Kind (Type)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Text (Text)
 import Geolog.Common
 import Prettyprinter
 
@@ -10,6 +11,7 @@ data Level
   = Query
   | Theory
   | Top
+  | Prim
   deriving (Eq, Show)
 
 instance Pretty Level where
@@ -17,11 +19,16 @@ instance Pretty Level where
 
 instance PartialOrd Level where
   leq l1 l2 = case (l1, l2) of
+    (Query, Prim) -> False
     (Query, _) -> True
     (Theory, Query) -> False
+    (Theory, Prim) -> False
     (Theory, _) -> True
     (Top, Top) -> True
     (Top, _) -> False
+    (Prim, Top) -> True
+    (Prim, Prim) -> True
+    (Prim, _) -> False
 
 class LevelOf a where
   levelOf :: a -> Level
@@ -29,22 +36,26 @@ class LevelOf a where
 data Universe
   = QueryU
   | TheoryU
+  | PrimU
   deriving (Eq, Show)
 
 decodesInto :: Universe -> Level
 decodesInto = \case
   QueryU -> Query
   TheoryU -> Theory
+  PrimU -> Prim
 
 codesInto :: Universe -> Level
 codesInto = \case
   QueryU -> Theory
   TheoryU -> Top
+  PrimU -> Top
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case
   Query -> Just QueryU
   Theory -> Just TheoryU
+  Prim -> Just PrimU
   Top -> Nothing
 
 -- NOTE: we could potentially replace TheoryTop with TopTop, which would allow
@@ -52,6 +63,7 @@ universeFor = \case
 -- whether this would mess with things we care about...
 data PiVariant
   = QueryTheory
+  | PrimTheory
   | TheoryTop
   deriving (Eq, Show)
 
@@ -61,11 +73,13 @@ instance Pretty PiVariant where
 instance LevelOf PiVariant where
   levelOf = \case
     QueryTheory -> Theory
+    PrimTheory -> Theory
     TheoryTop -> Top
 
 piVariant :: Level -> Level -> Maybe PiVariant
 piVariant dom cod
   | leq dom Query && leq cod Theory = Just QueryTheory
+  | leq dom Prim && leq cod Theory = Just PrimTheory
   | leq dom Theory = Just TheoryTop
   | otherwise = Nothing
 
@@ -75,6 +89,7 @@ class HasCodomain a b | a -> b where
 instance HasCodomain PiVariant Level where
   codOf = \case
     QueryTheory -> Theory
+    PrimTheory -> Theory
     TheoryTop -> Top
 
 data Abs a = Abs QName a | AbsConst a
@@ -103,6 +118,26 @@ data SEnergy :: Energy -> Type where
   SKinetic :: SEnergy Kinetic
   SPotential :: SEnergy Potential
 
+data Literal
+  = LitInt Int
+  | LitString Text
+  deriving (Eq)
+
+instance Pretty Literal where
+  pretty = \case
+    LitInt i -> pretty i
+    LitString t -> "\"" <> pretty t <> "\""
+
+data BuiltinTy
+  = BuiltinInt
+  | BuiltinString
+  deriving (Eq)
+
+instance Pretty BuiltinTy where
+  pretty = \case
+    BuiltinInt -> "Int"
+    BuiltinString -> "String"
+
 data ElS :: Energy -> Type where
   Var :: BId -> ElS K
   GlobalVar :: Constant -> ElS K
@@ -111,12 +146,14 @@ data ElS :: Energy -> Type where
   App :: ElS e -> ElS K -> ElS e
   Cons :: Fields (ElS e) -> ElS e
   Proj :: ElS e -> QName -> ElS e
+  Lit :: Literal -> ElS K
 
 data TyS :: Energy -> Type where
   U :: Universe -> TyS e
   Decode :: Universe -> ElS e -> TyS e
   Pi :: PiVariant -> TyS K -> Abs (TyS K) -> TyS e
   Record :: Level -> [QName] -> [TyS K] -> TyS P
+  BuiltinTy :: BuiltinTy -> TyS e
 
 type Env = Bwd (ElV K)
 
@@ -153,6 +190,7 @@ data ElV :: Energy -> Type where
   VCode :: TyV e -> ElV e
   VLam :: ~(TyV K) -> Clo (ElV e) -> ElV e
   VCons :: Fields (ElV e) -> ElV e
+  VLit :: Literal -> ElV K
 
 data TeleV a = TVNil | TVCons a (ElV K -> TeleV a)
 
@@ -161,6 +199,7 @@ data TyV :: Energy -> Type where
   VDecode :: Universe -> Neutral -> TyV K
   VPi :: PiVariant -> TyV K -> Clo (TyV K) -> TyV e
   VRecord :: Level -> [QName] -> TeleV (TyV K) -> TyV P
+  VBuiltinTy :: BuiltinTy -> TyV e
 
 data GlobalEntry
   = KEntry (ElS K) (ElV K) (TyV K)
