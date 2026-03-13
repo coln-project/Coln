@@ -1,7 +1,7 @@
 module Geolog.Notation where
 
-import Data.Text (Text)
 import Data.Maybe (maybeToList)
+import Data.Text (Text)
 import Geolog.Common
 import Prettyprinter
 import Prelude hiding (head, span)

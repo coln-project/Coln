@@ -243,7 +243,6 @@ string = do
   e <- use pos
   x <- slice (Span (s + 1) (e - 1))
   emit String (VString x)
-  
 
 -- Top-level lexing interface
 --------------------------------------------------------------------------------

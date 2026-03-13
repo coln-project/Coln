@@ -32,10 +32,10 @@ library
     default-language:   GHC2024
     default-extensions:
         BlockArguments CPP TypeData DerivingVia FunctionalDependencies
-        ImplicitParams MagicHash NoFieldSelectors OrPatterns OverloadedRecordDot
-        OverloadedStrings PatternSynonyms QualifiedDo StrictData TemplateHaskell
-        TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
-        UnicodeSyntax ViewPatterns
+        ImplicitParams MagicHash NoFieldSelectors OrPatterns
+        OverloadedRecordDot OverloadedStrings PatternSynonyms QualifiedDo
+        StrictData TemplateHaskell TypeFamilies TypeFamilyDependencies
+        UnboxedSums UnboxedTuples UnicodeSyntax ViewPatterns
 
     ghc-options:
         -Wall -funbox-strict-fields -Wno-unused-imports
@@ -65,10 +65,10 @@ test-suite geolog-lang-test
     default-language:   GHC2024
     default-extensions:
         BlockArguments CPP TypeData DerivingVia FunctionalDependencies
-        ImplicitParams MagicHash NoFieldSelectors OrPatterns OverloadedRecordDot
-        OverloadedStrings PatternSynonyms QualifiedDo StrictData TemplateHaskell
-        TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
-        UnicodeSyntax ViewPatterns
+        ImplicitParams MagicHash NoFieldSelectors OrPatterns
+        OverloadedRecordDot OverloadedStrings PatternSynonyms QualifiedDo
+        StrictData TemplateHaskell TypeFamilies TypeFamilyDependencies
+        UnboxedSums UnboxedTuples UnicodeSyntax ViewPatterns
 
     ghc-options:        -Wall -g
     build-depends:

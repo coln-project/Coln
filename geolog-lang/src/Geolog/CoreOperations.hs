@@ -75,7 +75,7 @@ instance Core ElV TyV where
     panic "a value of universe type should be a neutral or an encoding of a type"
 
   universe = VU
-  
+
   builtinTy = VBuiltinTy
   lit = VLit
 

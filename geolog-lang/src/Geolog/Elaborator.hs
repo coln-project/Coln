@@ -256,23 +256,23 @@ syn SKinetic (N.Keyword "Query" _) =
   pure (code $ universe QueryU, universe TheoryU)
 syn SPotential (N.Keyword "Query" s) =
   unsupportedInPotentialMode s "universes"
-syn SKinetic (N.Infix n1 (N.Keyword arr@("~>" ; "->") _) nb) =
+syn SKinetic (N.Infix n1 (N.Keyword arr@("~>"; "->") _) nb) =
   let (domU, pv) = case arr of
         "~>" -> (PrimU, PrimTheory)
-        "->" -> (QueryU, QueryTheory) in
-  case n1 of
-    (N.Infix (N.Ident x _) (N.Keyword ":" _) na) -> do
-      ga <- typ domU na
-      gb <- bind x ga.val $ \_ -> typ TheoryU nb
-      let t = Pi pv ga.stx (Abs x gb.stx)
-      let v = VPi pv ga.val (Clo x (\w -> evalIn (?env :> w) gb.stx))
-      pure (code $ G t v, universe TheoryU)
-    na -> do
-      ga <- typ domU na
-      gb <- typ TheoryU nb
-      let t = Pi pv ga.stx (AbsConst gb.stx)
-      let v = VPi pv ga.val (CloConst gb.val)
-      pure (code $ G t v, universe TheoryU)
+        "->" -> (QueryU, QueryTheory)
+   in case n1 of
+        (N.Infix (N.Ident x _) (N.Keyword ":" _) na) -> do
+          ga <- typ domU na
+          gb <- bind x ga.val $ \_ -> typ TheoryU nb
+          let t = Pi pv ga.stx (Abs x gb.stx)
+          let v = VPi pv ga.val (Clo x (\w -> evalIn (?env :> w) gb.stx))
+          pure (code $ G t v, universe TheoryU)
+        na -> do
+          ga <- typ domU na
+          gb <- typ TheoryU nb
+          let t = Pi pv ga.stx (AbsConst gb.stx)
+          let v = VPi pv ga.val (CloConst gb.val)
+          pure (code $ G t v, universe TheoryU)
 syn SPotential n@(N.Infix _ (N.Keyword "->" _) _) =
   unsupportedInPotentialMode (N.span n) "pi types"
 syn _ (N.Keyword "Int" _) = pure (code $ builtinTy BuiltinInt, universe PrimU)
