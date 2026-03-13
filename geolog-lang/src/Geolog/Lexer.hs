@@ -138,10 +138,13 @@ specialTable =
       ("import", Decl),
       ("end", End),
       ("Query", AKeyword),
+      ("Int", AKeyword),
+      ("String", AKeyword),
       ("=", SKeyword),
       (":=", SKeyword),
       (":", SKeyword),
-      ("->", SKeyword)
+      ("->", SKeyword),
+      ("~>", SKeyword)
     ]
 
 -- | Lex a qualified name, and return its kind (configured in @specialTable@)
@@ -213,6 +216,7 @@ isSymbol = \case
   '+' -> True
   '/' -> True
   '*' -> True
+  '~' -> True
   ':' -> True
   '=' -> True
   _ -> False
@@ -227,8 +231,18 @@ symbol = do
 
 comment :: Lex ()
 comment = do
-  advanceWhile (\c -> c /= '\n')
+  advanceWhile (/= '\n')
   advance
+
+string :: Lex ()
+string = do
+  s <- use pos
+  advance
+  advanceWhile (/= '\"')
+  advance
+  e <- use pos
+  x <- slice (Span (s + 1) (e - 1))
+  emit String (VString x)
 
 -- Top-level lexing interface
 --------------------------------------------------------------------------------
@@ -252,6 +266,7 @@ toks =
     ';' -> classify Semicolon >> toks
     '\n' -> classify Nl >> toks
     '#' -> comment >> toks
+    '\"' -> string >> toks
     '.' -> advance >> (qname >>= emit Field . VQName) >> toks
     '\'' -> advance >> (qname >>= emit Tag . VQName) >> toks
     '\0' -> emit0 Eof
