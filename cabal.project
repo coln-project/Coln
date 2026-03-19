@@ -1,5 +1,5 @@
 packages:
-  geolog-lang/geolog-lang.cabal
-  toy-datalog/toy-datalog.cabal
+  geolog-lang
+  toy-datalog
 jobs: $ncpus
 semaphore: true
