@@ -1,0 +1,138 @@
+#-------------------------------------------------------------
+def PathRel (X : Query) (rel : X -> X -> Prop) := initial
+  path : X -> X -> Prop
+  empty : (x : X) -> path x x
+  snoc : (x y z : X) -> path x y -> rel y z -> path x z
+end
+
+theory AntiSym (X : Query) (rel : X -> X -> Prop) := (x y : X) -> rel x y -> rel y x -> x == y
+
+theory LinearOrder (X : Query) := sig
+  first : X
+  last : X
+  next : X -> X
+  prev : X -> X
+
+  next/prev : (x : X) -> next (prev x) == x
+  prev/next : (x : X) -> prev (next x) == x
+
+  first/prev : prev first == first
+  last/next : next last == last
+
+  linked : X -> X -> Prop
+  linked := (x y : X) => next x == y
+
+  follows : X -> X -> Prop
+  follows := PathRel X linked
+
+  acyclic : AntiSym X follows.path
+  first-is-top : (x : X) -> follows.path first x
+  last-is-bot : (x : X) -> follows.path x last
+end
+
+theory OpOperand := sig
+  Id: Query
+  # A pointer to the value that this operand is using
+  # this needs to be a sum type of either opresult or block argument
+  ValueId: Query 
+  
+  # theory
+  # OpOperand is also a doubly linked list that links together all users of the same value
+  operand/linear: LinearOrder Id
+  use_same_value: (v1: ValueId) -> (v2: ValueId) -> v1 = v2
+
+end
+
+# Parameterized operation theory 
+theory Operation (OpInfo : Query) := sig
+  # data
+  OpId: Query,
+
+  OpResult : Query,
+  Index: Query,
+  BlockId: Query,
+  ByteArray: Query,
+  Attribute: Query, # TODO this needs to be a sum type
+  BlockOperand: Query,
+  RegionId: Query, # points to the Region table
+  OpOperandId: Query,
+
+  AttrEntry: [ByteArray, Attribute], # TODO we need product type
+  
+  result/op: Index -> OpResult, # result: Array OpResult
+  parent: BlockId, # this needs to be an option / sum type
+  opType: OpInfo,
+  attrs: Index -> AttrEntry, # attrs: DictionaryAttr
+  # properties: HasOpInfo.properties opType is complicated... 
+  blockOperands: Index -> BlockOperand, # blockOperands: Array BlockOperand
+  regions: Index -> RegionId, # regions: Array RegionPtr
+  operands: Index -> OpOperandId, # operands: Array OpOperand
+
+  # theory
+  op/linear := LinearOrder OpId
+  # A memory safety, i.e. that a pointer refers to a valid memory location would
+  # be a foreign key integrity
+
+end
+
+
+theory IRContext (OpInfo: Query) := sig
+
+  operations := Operation OpInfo # import theory?
+  regions := Region
+  blocks := Block
+
+
+  ax/opregion_inbound: forall rid: operations/RegionId. |- exists id: regions/Id. rid = id
+  ax/opparent_inbound: forall parent: operations/parent. |- exists id: blocks/Id. parent = id
+
+
+end
+
+
+theory Region := sig
+  RegionId: Query
+
+end
+
+
+theory Block := sig
+  index: Query,
+  block_argument: Query,
+
+  arguments: index -> block_argument,
+
+end
+
+#----------------------------------------------------------------
+
+
+theory TotalOrder {
+  Element : Sort;
+  Link: Sort;
+  
+  prev/elem: Element
+
+  src: Link -> Element;
+  tgt: Link -> Element;
+
+  reachable : [from: Element, to: Element] -> Prop;
+  first: Element -> Prop;
+  last: Element -> Prop;
+
+  ax/edge : forall e : Link. |- [from: e src, to: e tgt] reachable;
+  ax/trans : forall x,y,z : Element.
+    [from: x, to: y] reachable, [from: y, to: z] reachable
+    |- [from: x, to: z] reachable;
+  ax/irrefl: forall x: Element. [from: x, to: x] reachable |- false;
+  ax/connected: forall x,y: Element. |- x = y \/ [from: x, to: y] reachable \/ [from: y, to: x] reachable;
+
+  ax/first: forall x: Element. |- x first \/ (exists y: Element. [from: y, to: x] reachable);
+  ax/first_unique: forall x,y:Element. x first /\ y first |- x = y;
+
+  ax/last: forall x: Element. |- x last \/ (exists y: Element. [from: x, to: y] reachable);
+  ax/last_unique: forall x,y:Element. x last /\ y last |- x = y;
+}
+
+
+
