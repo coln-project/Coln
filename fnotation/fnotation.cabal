@@ -23,20 +23,21 @@ library
     default-language:   GHC2024
     default-extensions:
         BlockArguments CPP TypeData DerivingVia FunctionalDependencies
-        ImplicitParams MagicHash NoFieldSelectors OrPatterns
-        OverloadedRecordDot OverloadedStrings PatternSynonyms QualifiedDo
-        StrictData TypeFamilies TypeFamilyDependencies UnboxedSums
-        UnboxedTuples UnicodeSyntax ViewPatterns
+        MagicHash NoFieldSelectors OrPatterns OverloadedRecordDot
+        OverloadedStrings PatternSynonyms QualifiedDo StrictData
+        TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
+        UnicodeSyntax ViewPatterns
 
     ghc-options:        -Wall
     build-depends:
-        base ^>=4.21.0.0,
-        diagnostician,
-        hashable,
-        prettyprinter,
-        text,
-        vector,
-        vector-hashtables >=0.1.2.1
+                  base ^>=4.21.0.0,
+                  containers,
+                  diagnostician,
+                  hashable,
+                  prettyprinter,
+                  text,
+                  vector,
+                  vector-hashtables >=0.1.2.1
 
 test-suite fnotation-test
     type:               exitcode-stdio-1.0
@@ -45,12 +46,22 @@ test-suite fnotation-test
     default-language:   GHC2024
     default-extensions:
         BlockArguments CPP TypeData DerivingVia FunctionalDependencies
-        ImplicitParams MagicHash NoFieldSelectors OrPatterns
-        OverloadedRecordDot OverloadedStrings PatternSynonyms QualifiedDo
-        StrictData TypeFamilies TypeFamilyDependencies UnboxedSums
-        UnboxedTuples UnicodeSyntax ViewPatterns
+        MagicHash NoFieldSelectors OrPatterns OverloadedRecordDot
+        OverloadedStrings PatternSynonyms QualifiedDo StrictData
+        TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
+        UnicodeSyntax ViewPatterns
 
-    ghc-options:        -Wall
+    ghc-options:        -Wall -Wno-unused-imports
     build-depends:
-        base ^>=4.21.0.0,
-        fnotation
+                  base ^>=4.21.0.0,
+                  bytestring,
+                  containers,
+                  diagnostician,
+                  filepath,
+                  fnotation,
+                  prettyprinter,
+                  tasty,
+                  tasty-golden,
+                  temporary,
+                  text,
+                  vector

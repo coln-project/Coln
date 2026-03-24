@@ -1,5 +1,7 @@
 module Diagnostician where
 
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -157,19 +159,28 @@ data Reporter = Reporter
 
 data Severity = SDebug | SInfo | SWarning | SError
 
+data CodeMeta = CodeMeta
+  { number :: Int
+  , severity :: Severity
+  , about :: Maybe Text
+  }
+
 class Code a where
-  codeNumber :: a -> Int
-  codeSeverity :: a -> Severity
-  codeAbout :: a -> Maybe Text
+  codeMeta :: a -> CodeMeta
+
+promoteCodeTable :: (Ord b) => Map a CodeMeta -> (a -> b) -> Int -> Map b CodeMeta
+promoteCodeTable t f offset =
+  Map.fromList
+    [(f c, m{number = m.number + offset}) | (c, m) <- Map.toList t]
 
 padWithZerosTo :: Int -> Int -> Doc ann
 padWithZerosTo w i = repeated (w - numDigits i) '0' <> pretty i
 
 prtCode :: (Code a) => a -> DDoc
-prtCode c = s <> "[" <> sl <> padWithZerosTo 4 i <> "]"
+prtCode c = s <> "[" <> sl <> padWithZerosTo 4 m.number <> "]"
  where
-  i = codeNumber c
-  (s, sl) = case codeSeverity c of
+  m = codeMeta c
+  (s, sl) = case m.severity of
     SDebug -> ("debug", "D")
     SInfo -> ("info", "I")
     SWarning -> ("warning", "W")

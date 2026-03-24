@@ -2,6 +2,8 @@ module FNotation.Lexer where
 
 import Data.Char (isDigit, isLetter, ord)
 import Data.IORef
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Unsafe qualified as TU
@@ -52,11 +54,12 @@ data LexerCode
   | UncontinuedQualifiedName
   deriving (Eq, Ord)
 
-lexerCodeTable :: [(LexerCode, Int, Severity, Maybe Text)]
+lexerCodeTable :: Map LexerCode CodeMeta
 lexerCodeTable =
-  [ (UnexpectedCharacter, 0, SError, Nothing)
-  , (UncontinuedQualifiedName, 1, SError, Nothing)
-  ]
+  Map.fromList
+    [ (UnexpectedCharacter, CodeMeta 0 SError Nothing)
+    , (UncontinuedQualifiedName, CodeMeta 1 SError Nothing)
+    ]
 
 -- Lex monad
 --------------------------------------------------------------------------------

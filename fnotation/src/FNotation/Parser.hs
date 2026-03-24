@@ -1,6 +1,8 @@
 module FNotation.Parser where
 
 import Data.IORef
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Vector qualified as V
 import Diagnostician
@@ -20,12 +22,13 @@ data ParserCode
   | IncompatiblePrecedences
   deriving (Eq, Ord)
 
-parserCodeTable :: [(ParserCode, Int, Severity, Maybe Text)]
+parserCodeTable :: Map ParserCode CodeMeta
 parserCodeTable =
-  [ (UnexpectedToken, 0, SError, Nothing)
-  , (DefaultedPrec, 1, SWarning, Nothing)
-  , (IncompatiblePrecedences, 2, SError, Nothing)
-  ]
+  Map.fromList
+    [ (UnexpectedToken, CodeMeta 0 SError Nothing)
+    , (DefaultedPrec, CodeMeta 1 SWarning Nothing)
+    , (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
+    ]
 
 -- Parser monad
 --------------------------------------------------------------------------------
