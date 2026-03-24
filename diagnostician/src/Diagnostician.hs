@@ -1,18 +1,43 @@
-module Geolog.Diagnostician where
+module Diagnostician where
 
-import Data.Map (Map)
-import Data.Map qualified as Map
+import Data.Maybe (maybeToList)
 import Data.Text qualified as T
+import Data.Text (Text)
 import Data.Text.Unsafe qualified as TU
 import Data.Vector.Unboxed qualified as UV
-import Geolog.Common
-import Geolog.Diagnostician.CodeMeta
-import Geolog.Elaborator.Diagnostics
-import Geolog.Lexer.Diagnostics
-import Geolog.Parser.Diagnostics
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.IO (Handle)
+
+-- Pretty printer annotations
+--------------------------------------------------------------------------------
+
+-- TODO: more annotations for colors
+data DiagnosticAnn = DPlain
+
+-- Diagnostician doc
+type DDoc = Doc DiagnosticAnn
+
+-- | Pretty for diagnostics
+class DPretty a where
+  dpretty :: a -> DDoc
+
+-- Source locations
+--------------------------------------------------------------------------------
+
+type Pos = Int
+
+data Span = Span { start :: Int, end :: Int }
+  deriving (Eq)
+
+instance DPretty Span where
+  dpretty (Span s e) = pretty s <> ":" <> pretty e
+
+-- Util
+--------------------------------------------------------------------------------
+
+sliceWord8 :: Pos -> Pos -> Text -> Text
+sliceWord8 s e t = TU.dropWord8 s $ TU.takeWord8 e t
 
 -- Files
 --------------------------------------------------------------------------------
@@ -80,7 +105,7 @@ repeated n c
   | n == 1 = pretty c
   | otherwise = pretty (T.replicate n (T.singleton c))
 
-linePretty :: Int -> LineNum -> Span -> T.Text -> Span -> Doc ann
+linePretty :: Int -> LineNum -> Span -> T.Text -> Span -> DDoc
 linePretty numWidth l (Span ls le) t (Span s e) =
   vsep
     [ gutter <+> pretty t,
@@ -102,7 +127,7 @@ numDigits n = go (abs n)
       | otherwise = 1 + go (x `div` 10)
 
 -- | This is the function used to display the source code for a @Span@.
-linesPretty :: File -> Span -> Doc ann
+linesPretty :: File -> Span -> DDoc
 linesPretty f sp@(Span s e) =
   vsep
     [ linePretty numWidth l (lineSpan f l) (lineContents f l) sp
@@ -128,75 +153,61 @@ data Reporter = Reporter
 -- Diagnostics
 --------------------------------------------------------------------------------
 
-data Code
-  = LexerCode LexerCode
-  | ParserCode ParserCode
-  | ElaboratorCode ElaboratorCode
-  | DebugMisc
-  deriving (Eq, Ord)
+data Severity = SDebug | SInfo | SWarning | SError
 
-codeTable :: [(Code, Int, CodeMeta)]
-codeTable =
-  [ ( DebugMisc,
-      0,
-      CodeMeta Debug (Just "a code used for miscellaneous debugging")
-    )
-  ]
-    ++ fmap (\(c, i, m) -> (LexerCode c, i + 100, m)) lexerCodeTable
-    ++ fmap (\(c, i, m) -> (ParserCode c, i + 200, m)) parserCodeTable
-    ++ fmap (\(c, i, m) -> (ElaboratorCode c, i + 300, m)) elaboratorCodeTable
-
-codeLookup :: Map Code (Int, CodeMeta)
-codeLookup = Map.fromList [(c, (i, m)) | (c, i, m) <- codeTable]
+class Code a where
+  codeNumber :: a -> Int
+  codeSeverity :: a -> Severity
+  codeAbout :: a -> Maybe Text
 
 padWithZerosTo :: Int -> Int -> Doc ann
 padWithZerosTo w i = repeated (w - numDigits i) '0' <> pretty i
 
-instance Pretty Code where
-  pretty c = case Map.lookup c codeLookup of
-    Just (i, m) -> s <> "[" <> sl <> padWithZerosTo 4 i <> "]"
-      where
-        (s, sl) = case m.severity of
-          Debug -> ("debug", "D")
-          Info -> ("info", "I")
-          Warning -> ("warning", "W")
-          Error -> ("error", "E")
-    Nothing -> panic "unregistered code"
+prtCode :: (Code a) => a -> DDoc
+prtCode c = s <> "[" <> sl <> padWithZerosTo 4 i <> "]"
+  where
+    i = codeNumber c
+    (s, sl) = case codeSeverity c of
+      SDebug -> ("debug", "D")
+      SInfo -> ("info", "I")
+      SWarning -> ("warning", "W")
+      SError -> ("error", "E")
 
 data SourceLoc = SourceLoc
   { file :: File,
     span :: Span
   }
 
-instance Pretty SourceLoc where
-  pretty (SourceLoc f s) = linesPretty f s
+instance DPretty SourceLoc where
+  dpretty (SourceLoc f s) = linesPretty f s
 
 data Note = Note
   { noteSourceLoc :: Maybe SourceLoc,
-    noteMessage :: Maybe (Doc Ann)
+    noteMessage :: Maybe DDoc
   }
 
-maybeToList :: Maybe a -> [a]
-maybeToList (Just x) = [x]
-maybeToList Nothing = []
-
-instance Pretty Note where
-  pretty (Note loc message) =
+instance DPretty Note where
+  dpretty (Note loc message) =
     vsep $
-      (pretty <$> maybeToList loc) ++ (unAnnotate <$> maybeToList message)
+      (dpretty <$> maybeToList loc) ++ (unAnnotate <$> maybeToList message)
 
-data Diagnostic = Diagnostic
-  { code :: Code,
-    summary :: ADoc,
+data Diagnostic a = Diagnostic
+  { code :: a,
+    summary :: DDoc,
     notes :: [Note]
   }
+  deriving (Functor)
 
-instance Pretty Diagnostic where
-  pretty d =
+instance (Code a) => DPretty (Diagnostic a) where
+  dpretty d =
     vsep $
-      (pretty d.code <> ": " <> unAnnotate d.summary) : (map pretty d.notes)
+      (prtCode d.code <> ": " <> unAnnotate d.summary) : (map dpretty d.notes)
 
-reportIO :: Reporter -> Diagnostic -> IO ()
-reportIO r d = hPutDoc r.handle (hardline <> pretty d <> hardline)
+reportIO :: (Code a) => Reporter -> Diagnostic a -> IO ()
+reportIO r d = hPutDoc r.handle (hardline <> dpretty d <> hardline)
 
-type ReporterArg = (?reporter :: Reporter)
+data ReporterFor a = forall c. (Code c) =>
+  ReporterFor { translator :: a -> c, reporter :: Reporter }
+
+reportTo :: ReporterFor a -> Diagnostic a -> IO ()
+reportTo (ReporterFor t r) d = reportIO r (fmap t d)
