@@ -33,4 +33,8 @@ Tuple (11:27)
   Tuple (20:26)
     Ident d (21:22)
 
+-- pretty
+[a, [b]]
+[c, [d]]
+
 -- messages

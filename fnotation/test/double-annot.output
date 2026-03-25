@@ -16,6 +16,9 @@ Infix (0:13)
   Keyword : (8:9)
   Ident int (10:13)
 
+-- pretty
+(a : int) : int
+
 -- messages
 
 error[E0102]: Incompatible precedences

@@ -33,11 +33,11 @@ prettyDecls ge = vsep $ go (globalEntries ge) where
   go ((x, PEntry t _ a):ds) =
     [ "potential entry named" <+> dpretty x
     , "type: " <+> prtVal mempty a
-    , "value: " <+> prtTop mempty t ] ++ go ds
+    , "value: " <+> dprettyWithNames mempty t ] ++ go ds
   go ((x, KEntry t _ a):ds) =
     [ "kinetic entry named" <+> dpretty x
     , "type:" <+> prtVal mempty a
-    , "value:" <+> prtTop mempty t ] ++ go ds
+    , "value:" <+> dprettyWithNames mempty t ] ++ go ds
 
 elaborate :: FilePath -> IO LBS.ByteString
 elaborate fp = do

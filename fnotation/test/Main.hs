@@ -92,6 +92,9 @@ parseToPretty fp = do
       "-- notation",
       vsep $ dpretty <$> ns,
       "",
+      "-- pretty",
+      vsep $ dprettyWithPrecs parseConfig <$> ns,
+      "",
       "-- messages",
       pretty $ msgs]
 
