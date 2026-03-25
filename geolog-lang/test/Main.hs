@@ -53,11 +53,9 @@ parseToPretty fp = do
 
 prettyDecls :: GlobalEnv -> Doc ann
 prettyDecls ge =
-  let
-    ?names = BwdNil
-    ?ctxLen = 0
-   in
-    vsep $ go (globalEntries ge)
+  let ?names = BwdNil
+      ?ctxLen = 0
+   in vsep $ go (globalEntries ge)
  where
   go [] = []
   go ((x, PEntry t _ a) : ds) =
