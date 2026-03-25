@@ -20,6 +20,9 @@ Infix (1:21)
     Ident * (13:14)
     Ident length (15:21)
 
+-- pretty
+1 ++ 13 * length
+
 -- messages
 
 warning[W0101]: Defaulted precedence of ++ to the same as +

@@ -1,0 +1,30 @@
+-- tokens
+LParen (0:1)
+AIdent f (1:2)
+LParen (3:4)
+AIdent x (4:5)
+Field a (6:8)
+RParen (8:9)
+RParen (9:10)
+LParen (11:12)
+AIdent x (12:13)
+Field b (14:16)
+RParen (16:17)
+Nl (17:18)
+Eof (18:18)
+
+-- notation
+App (1:16)
+  App (1:8)
+    Ident f (1:2)
+    App (4:8)
+      Ident x (4:5)
+      Field a (6:8)
+  App (12:16)
+    Ident x (12:13)
+    Field b (14:16)
+
+-- pretty
+f (x .a) (x .b)
+
+-- messages
