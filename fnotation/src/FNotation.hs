@@ -5,7 +5,8 @@ module FNotation (
   module FNotation.Parser,
   module FNotation.Tokens,
   module FNotation.Trees,
-) where
+)
+where
 
 import FNotation.Config
 import FNotation.Lexer (LexerCode (..), lex, lexerCodeTable)

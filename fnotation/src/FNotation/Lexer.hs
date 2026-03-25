@@ -191,12 +191,10 @@ nameSeg st =
 
 nameFromHeadTail :: Text -> [Text] -> Name
 nameFromHeadTail head tail =
-  let
-    go s [] = ([], s)
-    go s (t : ts) = let (ts', t') = go t ts in (s : ts', t')
-    (init, last) = go head tail
-   in
-    Name init last
+  let go s [] = ([], s)
+      go s (t : ts) = let (ts', t') = go t ts in (s : ts', t')
+      (init, last) = go head tail
+   in Name init last
 
 -- | Lex a name
 name :: LexState -> IO Name
