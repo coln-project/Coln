@@ -140,7 +140,7 @@ instance Pretty BuiltinTy where
     BuiltinString -> "String"
 
 data ElS :: Energy -> Type where
-  Var :: BId -> ElS K
+  LocalVar :: BId -> ElS K
   GlobalVar :: Name -> ElS K
   Code :: (TyS e) -> ElS e
   Lam :: ~(TyS K) -> Abs (ElS e) -> ElS e
@@ -149,11 +149,13 @@ data ElS :: Energy -> Type where
   Proj :: ElS e -> Name -> ElS e
   Lit :: Literal -> ElS K
 
+data TeleS e = TSNil | TSCons (TyS e) (TeleS e)
+
 data TyS :: Energy -> Type where
   U :: Universe -> TyS e
   Decode :: Universe -> ElS e -> TyS e
   Pi :: PiVariant -> TyS K -> Abs (TyS K) -> TyS e
-  Record :: Level -> [Name] -> [TyS K] -> TyS P
+  Record :: Level -> [Name] -> TeleS K -> TyS P
   BuiltinTy :: BuiltinTy -> TyS e
 
 type Env = Bwd (ElV K)
@@ -187,13 +189,13 @@ data ElV :: Energy -> Type where
   VCons :: Fields (ElV e) -> ElV e
   VLit :: Literal -> ElV K
 
-data TeleV a = TVNil | TVCons a (ElV K -> TeleV a)
+data TeleV e = TVNil | TVCons (TyV e) (ElV K -> TeleV e)
 
 data TyV :: Energy -> Type where
   VU :: Universe -> TyV e
   VDecode :: Universe -> Neutral -> TyV K
   VPi :: PiVariant -> TyV K -> Clo (TyV K) -> TyV e
-  VRecord :: Level -> [Name] -> TeleV (TyV K) -> TyV P
+  VRecord :: Level -> [Name] -> TeleV K -> TyV P
   VBuiltinTy :: BuiltinTy -> TyV e
 
 data GlobalEntry
