@@ -102,6 +102,12 @@ data MeasuredBwd a = MeasuredBwd
 (++>) :: MeasuredBwd a -> a -> MeasuredBwd a
 (++>) (MeasuredBwd xs n) x = MeasuredBwd (xs :> x) (n + 1)
 
+instance Semigroup (MeasuredBwd a) where
+  xs <> ys = MeasuredBwd (xs.values <> ys.values) (xs.length + ys.length)
+
+instance Monoid (MeasuredBwd a) where
+  mempty = MeasuredBwd mempty 0
+
 infixr 5 :<
 
 data Fwd a = FwdNil | a :< Fwd a

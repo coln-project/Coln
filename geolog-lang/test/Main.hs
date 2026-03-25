@@ -6,9 +6,8 @@ import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation
-import Geolog.Common
 import Geolog.Core
-import Geolog.CoreOperations (quote)
+import Geolog.CoreOperations (prtVal)
 import Geolog.Diagnostics
 import Geolog.Elaborator (elabTop)
 import Geolog.Notation
@@ -29,24 +28,19 @@ render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 prettyDecls :: GlobalEnv -> DDoc
-prettyDecls ge =
-  let
-    ?names = BwdNil
-    ?ctxLen = 0
-   in
-    vsep $ go (globalEntries ge)
+prettyDecls ge = vsep $ go (globalEntries ge)
  where
   go [] = []
   go ((x, PEntry t _ a) : ds) =
     [ "potential entry named" <+> dpretty x
-    , "type: " <+> prtTop (quote a)
-    , "value: " <+> prtTop t
+    , "type: " <+> prtVal mempty a
+    , "value: " <+> prtTop mempty t
     ]
       ++ go ds
   go ((x, KEntry t _ a) : ds) =
     [ "kinetic entry named" <+> dpretty x
-    , "type:" <+> prtTop (quote a)
-    , "value:" <+> prtTop t
+    , "type:" <+> prtVal mempty a
+    , "value:" <+> prtTop mempty t
     ]
       ++ go ds
 
