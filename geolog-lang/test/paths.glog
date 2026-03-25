@@ -1,22 +1,22 @@
 theory Graph := [
   V : Query,
-  E : (x : V) -> (y : V) -> Query,
+  E : V -> V -> Query,
 ]
 
 theory Graph/hom (G0 : Graph) (G1 : Graph) := [
-  V : (v : G0.V) -> G1.V,
-  E : (x : G0.V) -> (y : G0.V) -> (G0.E x y) -> (G1.E (V x) (V y))
+  V : G0.V -> G1.V,
+  E : (x : G0.V) -> (y : G0.V) -> G0.E x y -> (G1.E (V x) (V y))
 ]
 
 theory Path (G : Graph) := [
-  t : (x : G.V) -> (y : G.V) -> Query,
+  t : G.V -> G.V -> Query,
   empty : (x : G.V) -> t x x,
   cons : (
     (x : G.V) ->
     (y : G.V) ->
     (z : G.V) ->
-    (e : G.E x y) ->
-    (p : t y z) ->
+    G.E x y ->
+    t y z ->
     t x z
   ),
 ]

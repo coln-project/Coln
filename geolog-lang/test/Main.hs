@@ -5,14 +5,13 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Vector qualified as V
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
-import Geolog.CoreOperations (quote)
 import FNotation
 import Diagnostician
 import Geolog.Notation
 import Geolog.Diagnostics
 import Geolog.Elaborator (elabTop)
+import Geolog.CoreOperations (prtVal)
 import Geolog.Pretty
-import Geolog.Common
 import Geolog.Core
 import Prettyprinter
 import Prettyprinter.Render.Text
@@ -29,19 +28,16 @@ render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 prettyDecls :: GlobalEnv -> DDoc
-prettyDecls ge =
-  let
-    ?names = BwdNil
-    ?ctxLen = 0 in vsep $ go (globalEntries ge) where
+prettyDecls ge = vsep $ go (globalEntries ge) where
   go [] = []
   go ((x, PEntry t _ a):ds) =
     [ "potential entry named" <+> dpretty x
-    , "type: " <+> prtTop (quote a)
-    , "value: " <+> prtTop t ] ++ go ds
+    , "type: " <+> prtVal mempty a
+    , "value: " <+> prtTop mempty t ] ++ go ds
   go ((x, KEntry t _ a):ds) =
     [ "kinetic entry named" <+> dpretty x
-    , "type:" <+> prtTop (quote a)
-    , "value:" <+> prtTop t ] ++ go ds
+    , "type:" <+> prtVal mempty a
+    , "value:" <+> prtTop mempty t ] ++ go ds
 
 elaborate :: FilePath -> IO LBS.ByteString
 elaborate fp = do
