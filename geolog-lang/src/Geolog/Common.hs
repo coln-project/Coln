@@ -94,6 +94,14 @@ instance Semigroup (Bwd a) where
 instance Monoid (Bwd a) where
   mempty = BwdNil
 
+data MeasuredBwd a = MeasuredBwd
+  { values :: Bwd a,
+    length :: Int
+  }
+
+(++>) :: MeasuredBwd a -> a -> MeasuredBwd a
+(++>) (MeasuredBwd xs n) x = MeasuredBwd (xs :> x) (n + 1)
+
 infixr 5 :<
 
 data Fwd a = FwdNil | a :< Fwd a
