@@ -2,16 +2,56 @@ module Geolog.Elaborator where
 
 import Control.Exception
 import Control.Monad (unless)
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Diagnostician
+import FNotation (Name, Ntn)
+import FNotation qualified as N
 import Geolog.Common
 import Geolog.Core
 import Geolog.CoreOperations
-import Geolog.Diagnostician
-import Geolog.Elaborator.Diagnostics
-import Geolog.Notation (Ntn)
-import Geolog.Notation qualified as N
 import Geolog.Pretty
 import Prettyprinter
 import Prelude hiding (lookup)
+
+-- Diagnostic codes
+--------------------------------------------------------------------------------
+
+data ElaboratorCode
+  = FailedConversion
+  | NotInScope
+  | UnsupportedInPotentialMode
+  | UnsupportedInKineticMode
+  | ProjectionFromNonRecord
+  | NoSuchField
+  | ApplicationOfNonPi
+  | MustChk
+  | UnexpectedNotation
+  | UnexpectedTuple
+  | UnexpectedLambda
+  | UnexpectedField
+  | WrongNumberOfFields
+  | WrongLevel
+  deriving (Eq, Ord)
+
+elaboratorCodeTable :: Map ElaboratorCode CodeMeta
+elaboratorCodeTable =
+  Map.fromList
+    [ (FailedConversion, CodeMeta 0 SError Nothing)
+    , (NotInScope, CodeMeta 1 SError Nothing)
+    , (UnsupportedInPotentialMode, CodeMeta 2 SError Nothing)
+    , (UnsupportedInKineticMode, CodeMeta 3 SError Nothing)
+    , (ProjectionFromNonRecord, CodeMeta 4 SError Nothing)
+    , (NoSuchField, CodeMeta 5 SError Nothing)
+    , (ApplicationOfNonPi, CodeMeta 6 SError Nothing)
+    , (MustChk, CodeMeta 7 SError Nothing)
+    , (UnexpectedNotation, CodeMeta 8 SError Nothing)
+    , (UnexpectedTuple, CodeMeta 9 SError Nothing)
+    , (UnexpectedLambda, CodeMeta 10 SError Nothing)
+    , (UnexpectedField, CodeMeta 11 SError Nothing)
+    , (WrongNumberOfFields, CodeMeta 12 SError Nothing)
+    , (WrongLevel, CodeMeta 13 SError Nothing)
+    ]
 
 -- Elaboration implicits
 --------------------------------------------------------------------------------
@@ -21,7 +61,7 @@ type Ctx = Bwd (TyV K)
 type CtxArg = (?ctx :: Ctx)
 
 data DiagnosticCtx = DiagnosticCtx
-  { reporter :: Reporter
+  { reporter :: ReporterFor ElaboratorCode
   , file :: File
   }
 
@@ -29,13 +69,13 @@ type DiagnosticCtxArg = (?diagnosticCtx :: DiagnosticCtx)
 
 type Elab a = (CtxArg, CtxLenArg, NamesArg, EnvArg, GlobalEnvArg, DiagnosticCtxArg) => a
 
-bind :: Elab (QName -> TyV K -> Elab (ElV K -> a) -> a)
+bind :: Elab (Name -> TyV K -> Elab (ElV K -> a) -> a)
 bind x a action =
   let i = FId ?ctxLen
       v = local a i
    in let_ x v a action
 
-let_ :: Elab (QName -> ElV K -> TyV K -> Elab (ElV K -> a) -> a)
+let_ :: Elab (Name -> ElV K -> TyV K -> Elab (ElV K -> a) -> a)
 let_ x v a action =
   let ?ctx = ?ctx :> a
       ?ctxLen = ?ctxLen + 1
@@ -43,18 +83,18 @@ let_ x v a action =
       ?env = ?env :> v
    in action v
 
-report :: (DiagnosticCtxArg) => Span -> ElaboratorCode -> ADoc -> IO ()
+report :: (DiagnosticCtxArg) => Span -> ElaboratorCode -> DDoc -> IO ()
 report s c m = do
   let n = Note (Just (SourceLoc ?diagnosticCtx.file s)) Nothing
-  let d = Diagnostic (ElaboratorCode c) m [n]
-  reportIO ?diagnosticCtx.reporter d
+  let d = Diagnostic c m [n]
+  reportTo ?diagnosticCtx.reporter d
 
 data ElabException = GiveUp
   deriving (Show)
 
 instance Exception ElabException
 
-failWith :: (DiagnosticCtxArg) => Span -> ElaboratorCode -> ADoc -> IO a
+failWith :: (DiagnosticCtxArg) => Span -> ElaboratorCode -> DDoc -> IO a
 failWith s c m = do
   report s c m
   evaluate $ throw GiveUp
@@ -83,46 +123,46 @@ instance Core ElG TyG where
 -- Diagnostics
 --------------------------------------------------------------------------------
 
-notInScope :: (DiagnosticCtxArg) => Span -> QName -> IO a
-notInScope s x = failWith s NotInScope $ "identifier" <+> pretty x <+> "not in scope"
+notInScope :: (DiagnosticCtxArg) => Span -> Name -> IO a
+notInScope s x = failWith s NotInScope $ "identifier" <+> dpretty x <+> "not in scope"
 
-unsupportedInPotentialMode :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
+unsupportedInPotentialMode :: (DiagnosticCtxArg) => Span -> DDoc -> IO a
 unsupportedInPotentialMode s feature =
   failWith s UnsupportedInPotentialMode $
     feature <+> "unsupported while elaborating a potential term"
 
-unsupportedInKineticMode :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
+unsupportedInKineticMode :: (DiagnosticCtxArg) => Span -> DDoc -> IO a
 unsupportedInKineticMode s feature =
   failWith s UnsupportedInKineticMode $
     feature <+> "unsupported while elaborating a kinetic term"
 
-mustChk :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
+mustChk :: (DiagnosticCtxArg) => Span -> DDoc -> IO a
 mustChk s feature =
   failWith s MustChk $
     feature <+> "unsupported while in synthesis mode"
 
-unexpectedNotation :: (DiagnosticCtxArg) => Ntn -> ADoc -> IO a
+unexpectedNotation :: (DiagnosticCtxArg) => Ntn -> DDoc -> IO a
 unexpectedNotation n c =
   failWith (N.span n) UnexpectedNotation $
     "unexpected notation for" <+> c <> ":" <+> N.head n
 
-unexpectedTuple :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
+unexpectedTuple :: (DiagnosticCtxArg) => Span -> DDoc -> IO a
 unexpectedTuple s a =
   failWith s UnexpectedTuple $
     "tried to check tuple notation at type" <+> a <+> "which is not a record type"
 
-unexpectedLambda :: (DiagnosticCtxArg) => Span -> ADoc -> IO a
+unexpectedLambda :: (DiagnosticCtxArg) => Span -> DDoc -> IO a
 unexpectedLambda s a =
   failWith s UnexpectedLambda $
     "tried to check lambda notation at type" <+> a <+> "which is not a pi type"
 
-conversionError :: (DiagnosticCtxArg) => Span -> ADoc -> ADoc -> DefEqCheckError -> IO a
+conversionError :: (DiagnosticCtxArg) => Span -> DDoc -> DDoc -> DefEqCheckError -> IO a
 conversionError s t t' e = do
   let convMessage = "synthesized" <+> t' <+> "while expecting" <+> t
   let convNote = Note Nothing (Just (pretty e))
   let locNote = Note (Just (SourceLoc ?diagnosticCtx.file s)) Nothing
-  let d = Diagnostic (ElaboratorCode FailedConversion) convMessage [locNote, convNote]
-  reportIO ?diagnosticCtx.reporter d
+  let d = Diagnostic FailedConversion convMessage [locNote, convNote]
+  reportTo ?diagnosticCtx.reporter d
   evaluate $ throw GiveUp
 
 wrongLevel :: (DiagnosticCtxArg) => Span -> IO a
@@ -131,22 +171,22 @@ wrongLevel s = failWith s WrongLevel "wrong level"
 -- Helpers
 --------------------------------------------------------------------------------
 
-findLocal :: Elab (QName -> Maybe (ElG K, TyV K))
+findLocal :: Elab (Name -> Maybe (ElG K, TyV K))
 findLocal x = go ?names ?ctx ?env 0
  where
-  go :: Bwd QName -> Bwd (TyV K) -> Bwd (ElV K) -> BId -> Maybe (ElG K, TyV K)
+  go :: Bwd Name -> Bwd (TyV K) -> Bwd (ElV K) -> BId -> Maybe (ElG K, TyV K)
   go (xs :> x') (as :> a) (vs :> v) i
     | x == x' = Just (G (Var i) v, a)
     | otherwise = go xs as vs (i + 1)
   go _ _ _ _ = Nothing
 
-findProj :: Elab ([QName] -> TeleV (TyV K) -> [ElV K] -> QName -> Maybe (ElV K, TyV K))
+findProj :: Elab ([Name] -> TeleV (TyV K) -> [ElV K] -> Name -> Maybe (ElV K, TyV K))
 findProj (x : xs) (TVCons a f) (v : vs) x'
   | x == x' = Just (v, a)
   | otherwise = findProj xs (f v) vs x'
 findProj _ _ _ _ = Nothing
 
-binding :: (DiagnosticCtxArg) => Ntn -> IO (QName, Ntn)
+binding :: (DiagnosticCtxArg) => Ntn -> IO (Name, Ntn)
 binding (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = pure (x, n)
 binding n = unexpectedNotation n "binding"
 
@@ -154,7 +194,15 @@ annot :: (DiagnosticCtxArg) => Ntn -> IO (Ntn, Ntn)
 annot (N.Infix n1 (N.Keyword ":" _) n2) = pure (n1, n2)
 annot n = unexpectedNotation n "type annotation"
 
-members :: Elab (Universe -> [Ntn] -> IO ([QName], [TyS K]))
+unpackArgs :: (DiagnosticCtxArg) => Ntn -> IO (Name, [(Name, Ntn)])
+unpackArgs (N.App n ns) = do
+  x <- ident n
+  args <- mapM binding ns
+  pure (x, args)
+unpackArgs (N.Ident x _) = pure (x, [])
+unpackArgs n = unexpectedNotation n "application or identifier"
+
+members :: Elab (Universe -> [Ntn] -> IO ([Name], [TyS K]))
 members _ [] = pure ([], [])
 members u (n : ns) = do
   (x, n') <- binding n
@@ -162,15 +210,15 @@ members u (n : ns) = do
   (xs, as) <- bind x ga.val $ \_ -> members u ns
   pure (x : xs, ga.stx : as)
 
-setting :: (DiagnosticCtxArg) => QName -> Ntn -> IO Ntn
+setting :: (DiagnosticCtxArg) => Name -> Ntn -> IO Ntn
 setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
   | x == x' = pure n'
   | otherwise =
       failWith sp UnexpectedField $
-        "got field" <+> pretty x' <> ", expected field" <+> pretty x
+        "got field" <+> dpretty x' <> ", expected field" <+> dpretty x
 setting _ n = unexpectedNotation n "record field"
 
-ident :: (DiagnosticCtxArg) => Ntn -> IO QName
+ident :: (DiagnosticCtxArg) => Ntn -> IO Name
 ident (N.Ident x _) = pure x
 ident n = unexpectedNotation n "ident"
 
@@ -178,16 +226,7 @@ definition :: (DiagnosticCtxArg) => Ntn -> IO (Ntn, Ntn)
 definition (N.Infix n1 (N.Keyword ":=" _) n2) = pure (n1, n2)
 definition n = unexpectedNotation n "definition"
 
-unpackArgs :: (DiagnosticCtxArg) => Ntn -> IO (QName, [(QName, Ntn)])
-unpackArgs n = go n []
- where
-  go (N.Ident x _) args = pure (x, args)
-  go (N.App n1 n2) args = do
-    b <- binding n2
-    go n1 $ b : args
-  go n' _ = unexpectedNotation n' "application or identifier"
-
-elts :: Elab ([QName] -> TeleV (TyV K) -> [Ntn] -> IO ([ElS K], [ElV K]))
+elts :: Elab ([Name] -> TeleV (TyV K) -> [Ntn] -> IO ([ElS K], [ElV K]))
 elts [] TVNil [] = pure ([], [])
 elts (x : xs) (TVCons a f) (n : ns) = do
   n' <- setting x n
@@ -214,42 +253,48 @@ chkP = chk SPotential
 -- syn and chk
 --------------------------------------------------------------------------------
 
-syn :: Elab (SEnergy e -> Ntn -> IO (ElG e, TyV K))
-syn SKinetic (N.Ident x s) = case findLocal x of
-  Just res -> pure res
-  Nothing ->
-    let c = Constant x
-     in case lookup ?globalEnv c of
-          Just (KEntry _ v a) -> pure (G (GlobalVar c) v, a)
-          Just (PEntry _ v a) -> pure (G (GlobalVar c) v', a)
-           where
-            v' = neu a (Global c) SId (Just v)
-          Nothing -> notInScope s x
-syn SPotential (N.Ident _ s) = unsupportedInPotentialMode s "variables"
-syn SKinetic (N.App n (N.Field x s)) = do
-  (g, a) <- synK n
+elim :: Elab (ElG K -> TyV K -> Ntn -> IO (ElG K, TyV K))
+elim g a (N.Field x s) =
   case behavesAs a of
     Just (VRecord _ xs te) -> case findProj xs te (coerceToFields g.val).values x of
       Just (v, a') -> pure (G (Proj g.stx x) v, a')
       Nothing ->
         failWith s NoSuchField $
-          "no such field:" <+> pretty x
+          "no such field:" <+> dpretty x
+    _ ->
+      failWith
+        s
+        ProjectionFromNonRecord
+        "target of attempted field projection is not of a record type"
+elim g a n =
+  case behavesAs a of
+    Just (VPi _ dom cod) -> do
+      g' <- chkK dom n
+      pure (app g g', appClo cod g'.val)
     _ ->
       failWith
         (N.span n)
-        ProjectionFromNonRecord
-        "target of attempted field projection is not of a record type"
-syn SKinetic (N.App n1 n2) = do
-  (g1, a1) <- synK n1
-  case behavesAs a1 of
-    Just (VPi _ a b) -> do
-      g2 <- chkK a n2
-      pure (app g1 g2, appClo b g2.val)
-    _ ->
-      failWith
-        (N.span n1)
         ApplicationOfNonPi
         "target of attempted application is not of a pi type"
+
+syn :: Elab (SEnergy e -> Ntn -> IO (ElG e, TyV K))
+syn SKinetic (N.Ident x s) = case findLocal x of
+  Just res -> pure res
+  Nothing -> case lookup ?globalEnv x of
+    Just (KEntry _ v a) -> pure (G (GlobalVar x) v, a)
+    Just (PEntry _ v a) -> pure (G (GlobalVar x) v', a)
+     where
+      v' = neu a (Global x) SId (Just v)
+    Nothing -> notInScope s x
+syn SPotential (N.Ident _ s) = unsupportedInPotentialMode s "variables"
+syn SKinetic (N.App n ns) = do
+  (g, a) <- synK n
+  go g a ns
+ where
+  go g a [] = pure (g, a)
+  go g a (n : ns) = do
+    (g', a') <- elim g a n
+    go g' a' ns
 syn SPotential n@(N.App _ _) =
   unsupportedInPotentialMode (N.span n) "application"
 syn SKinetic (N.Keyword "Query" _) =
@@ -333,7 +378,7 @@ chk e a n = do
 -- Toplevel elaboration
 --------------------------------------------------------------------------------
 
-withArgs :: Elab ([(QName, Ntn)] -> Elab (IO (ElS e, TyS K)) -> IO (ElS e, TyS K))
+withArgs :: Elab ([(Name, Ntn)] -> Elab (IO (ElS e, TyS K)) -> IO (ElS e, TyS K))
 withArgs [] action = action
 withArgs ((x, a_n) : args) action = do
   a <- typ TheoryU a_n
@@ -341,7 +386,7 @@ withArgs ((x, a_n) : args) action = do
     (t, b) <- withArgs args action
     pure (Lam a.stx (Abs x t), Pi TheoryTop a.stx (Abs x b))
 
-elabTheory :: Elab (Ntn -> IO (QName, GlobalEntry))
+elabTheory :: Elab (Ntn -> IO (Name, GlobalEntry))
 elabTheory n = do
   (pat, body_n) <- definition n
   (name, args) <- unpackArgs pat
@@ -350,7 +395,7 @@ elabTheory n = do
     pure (g.stx, U TheoryU)
   pure (name, PEntry t (eval t) (eval a))
 
-elabDef :: Elab (Ntn -> IO (QName, GlobalEntry))
+elabDef :: Elab (Ntn -> IO (Name, GlobalEntry))
 elabDef n = do
   (head, body_n) <- definition n
   (pat, a_n) <- annot head
@@ -361,12 +406,12 @@ elabDef n = do
     pure (g.stx, ga.stx)
   pure (name, KEntry t (eval t) (eval a))
 
-elabDecl :: Elab (Ntn -> IO (QName, GlobalEntry))
+elabDecl :: Elab (Ntn -> IO (Name, GlobalEntry))
 elabDecl (N.Decl "theory" n _) = elabTheory n
 elabDecl (N.Decl "def" n _) = elabDef n
 elabDecl n = unexpectedNotation n "top-level declaration"
 
-elabTop :: Reporter -> File -> [Ntn] -> IO GlobalEnv
+elabTop :: ReporterFor ElaboratorCode -> File -> [Ntn] -> IO GlobalEnv
 elabTop r f =
   let ?env = BwdNil
       ?diagnosticCtx = DiagnosticCtx r f
@@ -381,5 +426,5 @@ elabTop r f =
   go (n : ns) = do
     try (elabDecl n) >>= \case
       Right (x, entry) ->
-        let ?globalEnv = insertEntry ?globalEnv (Constant x) entry in go ns
+        let ?globalEnv = insertEntry ?globalEnv x entry in go ns
       Left (_ :: ElabException) -> go ns

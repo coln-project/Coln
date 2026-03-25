@@ -18,6 +18,6 @@ Infix (0:13)
 
 -- messages
 
-error[E0202]: Incompatible precedences
+error[E0102]: Incompatible precedences
 1 | a : int : int
 1 |         ^
