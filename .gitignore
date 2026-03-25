@@ -335,3 +335,6 @@ TSWLatexianTemp*
 
 _build/
 /cabal.project.local
+.envrc
+.direnv/
+
