@@ -4,13 +4,14 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
+import Diagnostician
+import FNotation
 import Geolog.Common
 import Geolog.Core
 import Geolog.CoreOperations (quote)
-import Geolog.Diagnostician
+import Geolog.Diagnostics
 import Geolog.Elaborator (elabTop)
-import Geolog.Lexer (lex)
-import Geolog.Parser (parse)
+import Geolog.Notation
 import Geolog.Pretty
 import Prettyprinter
 import Prettyprinter.Render.Text
@@ -27,45 +28,23 @@ main = defaultMain =<< goldenTests
 render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
-parseToPretty :: FilePath -> IO LBS.ByteString
-parseToPretty fp = do
-  src <- T.readFile fp
-  let f = newFile fp src
-  withSystemTempFile "reporter-output" $ \path h -> do
-    let r = Reporter h False
-    ts <- lex r f
-    ns <- parse r f ts
-    hFlush h
-    hClose h
-    msgs <- T.readFile path
-    pure $
-      render $
-        vsep
-          [ "-- tokens"
-          , vsep $ pretty <$> V.toList ts
-          , ""
-          , "-- notation"
-          , vsep $ pretty <$> ns
-          , ""
-          , "-- messages"
-          , pretty $ msgs
-          ]
-
-prettyDecls :: GlobalEnv -> Doc ann
+prettyDecls :: GlobalEnv -> DDoc
 prettyDecls ge =
-  let ?names = BwdNil
-      ?ctxLen = 0
-   in vsep $ go (globalEntries ge)
+  let
+    ?names = BwdNil
+    ?ctxLen = 0
+   in
+    vsep $ go (globalEntries ge)
  where
   go [] = []
   go ((x, PEntry t _ a) : ds) =
-    [ "potential entry named" <+> pretty x
+    [ "potential entry named" <+> dpretty x
     , "type: " <+> prtTop (quote a)
     , "value: " <+> prtTop t
     ]
       ++ go ds
   go ((x, KEntry t _ a) : ds) =
-    [ "kinetic entry named" <+> pretty x
+    [ "kinetic entry named" <+> dpretty x
     , "type:" <+> prtTop (quote a)
     , "value:" <+> prtTop t
     ]
@@ -87,10 +66,10 @@ elaborate fp = do
       render $
         vsep
           [ "-- tokens"
-          , vsep $ pretty <$> V.toList ts
+          , vsep $ dpretty <$> V.toList ts
           , ""
           , "-- notation"
-          , vsep $ pretty <$> ns
+          , vsep $ dpretty <$> ns
           , ""
           , "-- elaborated"
           , prettyDecls ge
@@ -98,17 +77,6 @@ elaborate fp = do
           , "-- messages"
           , pretty $ msgs
           ]
-
-parserTests :: IO TestTree
-parserTests = do
-  ntnFiles <- findByExtension [".ntn"] "."
-  return $
-    testGroup
-      "Parser golden tests"
-      [ goldenVsString (takeBaseName ntnFile) outputFile (parseToPretty ntnFile)
-      | ntnFile <- ntnFiles
-      , let outputFile = replaceExtension ntnFile ".output"
-      ]
 
 elaboratorTests :: IO TestTree
 elaboratorTests = do
