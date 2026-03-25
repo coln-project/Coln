@@ -1,0 +1,49 @@
+cabal-version:   3.4
+name:            geolog-lsp
+version:         0.1.0.0
+license:         BSD-3-Clause
+license-file:    LICENSE
+maintainer:      patrick.aldis@obsidian.systems
+author:          Patrick Aldis
+description:     A Language Server Protocol implementation for the geolog language
+category:        Language
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
+
+executable geolog-lsp
+    main-is:          Main.hs
+    build-depends:
+                      base,
+                      containers,
+                      text,
+                      vector,
+                      lsp,
+                      stm,
+                      megaparsec,
+                      prettyprinter,
+                      transformers,
+                      mtl,
+                      lens,
+                      fnotation,
+                      geolog-lang,
+                      diagnostician,
+    other-modules:
+        Geolog.LSP
+        Geolog.LSP.DocChange
+        Geolog.LSP.Types
+        Geolog.LSP.Highlight
+        Geolog.LSP.Hover
+        Geolog.LSP.Diagnostics
+        Geolog.LSP.Buffer
+        Geolog.LSP.Utils
+    hs-source-dirs:   src
+    default-language: GHC2021
+    default-extensions:
+        LambdaCase,
+        TypeFamilies,
+        NamedFieldPuns,
+        DisambiguateRecordFields,
+        OverloadedStrings,
+        OverloadedRecordDot,
+        NoFieldSelectors,
+    ghc-options: -Wall
