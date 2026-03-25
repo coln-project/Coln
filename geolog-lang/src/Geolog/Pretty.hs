@@ -76,7 +76,7 @@ instance Prt (TyS e) where
       where
         go :: Names -> [Name] -> TeleS K -> [DDoc] -> [DDoc]
         go _ [] TSNil ds = reverse ds
-        go xs (x:xs') (TSCons a te) ds =
+        go xs (x : xs') (TSCons a te) ds =
           let d = dpretty x <+> ":" <+> prtTop xs a
            in go (xs :> x) xs' te (d : ds)
         go _ _ _ _ = panic "names and telescope should be same length"
