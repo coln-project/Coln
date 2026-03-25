@@ -46,6 +46,43 @@
           ];
         };
 
+        checks = (project.checks // {
+          formatting = pkgs.stdenv.mkDerivation {
+          name = "check formatting";
+          src = self;
+
+          nativeBuildInputs = [ pkgs.haskellPackages.ormolu ];
+          doCheck = true;
+
+          checkPhase = /* sh */ ''
+            failed=()
+            succeeded=0
+
+            readarray -t files < <(find . -name '*.hs' -printf '%P\n'| grep -E '${haskellDirs}')
+
+            for file in "''${files[@]}"; do
+              if ! ormolu -m 'check' "$file" >/dev/null 2>&1; then
+                failed+=("$file")
+              else
+                ((succeeded+=1))
+              fi
+            done
+
+            printf '%d files succeeded.\n' "''${succeeded}"
+            printf '%d files failed:\n' "''${#failed[@]}"
+            printf '%s\n' "''${failed[@]}"
+
+            if [ "''${#failed[@]}" -ne 0 ]; then
+              exit 1
+            fi
+          '';
+
+          installPhase = ''
+            touch $out
+          '';
+        };
+      });
+
         formatter = (
           pkgs.writeShellApplication {
             name = "format-haskell";
@@ -80,53 +117,5 @@
             '';
           }
         );
-
-        checks.formatting = pkgs.stdenv.mkDerivation {
-          name = "check formatting";
-          src = self;
-
-          nativeBuildInputs = [ pkgs.haskellPackages.ormolu ];
-          doCheck = true;
-
-          checkPhase = /* sh */ ''
-            failed=()
-            succeeded=0
-
-            readarray -t files < <(find . -name '*.hs' -printf '%P\n'| grep -E '${haskellDirs}')
-
-            for file in "''${files[@]}"; do
-              if ! ormolu -m 'check' "$file" >/dev/null 2>&1; then
-                failed+=("$file")
-              else
-                ((succeeded+=1))
-              fi
-            done
-
-            printf '%d files succeeded.\n' "''${succeeded}"
-            printf '%d files failed:\n' "''${#failed[@]}"
-            printf '%s\n' "''${failed[@]}"
-
-            if [ "''${#failed[@]}" -ne 0 ]; then
-              exit 1
-            fi
-          '';
-
-          installPhase = ''
-            touch $out
-          '';
-        };
-
-        checks.test =
-          pkgs.runCommand "run unit tests"
-            {
-              buildInputs = [
-                project.packages."geolog-lang:test:geolog-lang-test"
-              ];
-            }
-            ''
-              geolog-lang-test
-              touch $out
-            '';
-      }
-    );
+    });
 }
