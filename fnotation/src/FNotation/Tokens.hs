@@ -2,8 +2,8 @@ module FNotation.Tokens where
 
 import Data.Text (Text)
 import Diagnostician
-import Prettyprinter
 import FNotation.Names
+import Prettyprinter
 
 -- Token kinds
 --------------------------------------------------------------------------------

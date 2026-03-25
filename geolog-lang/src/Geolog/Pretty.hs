@@ -1,9 +1,9 @@
 module Geolog.Pretty where
 
+import Diagnostician
+import FNotation (Assoc (..), Name, Prec (..), precLe)
 import Geolog.Common
 import Geolog.Core
-import FNotation (Name, Prec (..), Assoc (..), precLe)
-import Diagnostician
 import Prettyprinter
 
 -- Implicit arguments for pretty printing

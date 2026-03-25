@@ -3,8 +3,8 @@ module Diagnostician where
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (maybeToList)
-import Data.Text qualified as T
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Unsafe qualified as TU
 import Data.Vector.Unboxed qualified as UV
 import Prettyprinter
@@ -29,7 +29,7 @@ class DPretty a where
 
 type Pos = Int
 
-data Span = Span { start :: Int, end :: Int }
+data Span = Span {start :: Int, end :: Int}
   deriving (Eq)
 
 instance DPretty Span where
@@ -167,8 +167,9 @@ class Code a where
   codeMeta :: a -> CodeMeta
 
 promoteCodeTable :: (Ord b) => Map a CodeMeta -> (a -> b) -> Int -> Map b CodeMeta
-promoteCodeTable t f offset = Map.fromList
-  [ (f c, m { number = m.number + offset }) | (c, m) <- Map.toList t ]
+promoteCodeTable t f offset =
+  Map.fromList
+    [(f c, m {number = m.number + offset}) | (c, m) <- Map.toList t]
 
 padWithZerosTo :: Int -> Int -> Doc ann
 padWithZerosTo w i = repeated (w - numDigits i) '0' <> pretty i
@@ -216,8 +217,10 @@ instance (Code a) => DPretty (Diagnostic a) where
 reportIO :: (Code a) => Reporter -> Diagnostic a -> IO ()
 reportIO r d = hPutDoc r.handle (hardline <> dpretty d <> hardline)
 
-data ReporterFor a = forall c. (Code c) =>
-  ReporterFor { translator :: a -> c, reporter :: Reporter }
+data ReporterFor a
+  = forall c.
+  (Code c) =>
+  ReporterFor {translator :: a -> c, reporter :: Reporter}
 
 reportTo :: ReporterFor a -> Diagnostic a -> IO ()
 reportTo (ReporterFor t r) d = reportIO r (fmap t d)

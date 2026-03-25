@@ -2,12 +2,12 @@ module Geolog.CoreOperations where
 
 import Control.Monad (forM_, unless)
 import Data.Kind (Type)
+import Diagnostician
+import FNotation (Name)
 import Geolog.Common
 import Geolog.Core
 import Geolog.Pretty
 import Prettyprinter
-import FNotation (Name)
-import Diagnostician
 
 -- Core typeclass
 --------------------------------------------------------------------------------

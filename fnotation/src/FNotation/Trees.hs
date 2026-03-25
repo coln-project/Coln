@@ -4,8 +4,8 @@ import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Diagnostician
 import FNotation.Names
-import Prelude hiding (head, span)
 import Prettyprinter
+import Prelude hiding (head, span)
 
 -- Notation data structure
 --------------------------------------------------------------------------------

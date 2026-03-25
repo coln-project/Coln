@@ -1,20 +1,20 @@
 module FNotation.Lexer where
 
-import Data.IORef
 import Data.Char (isDigit, isLetter, ord)
+import Data.IORef
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Text qualified as T
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Unsafe qualified as TU
-import Data.Vector.Mutable qualified as VM
 import Data.Vector qualified as V
+import Data.Vector.Mutable qualified as VM
 import Diagnostician
 import FNotation.Config
 import FNotation.Names
 import FNotation.Tokens
 import Prettyprinter
-import Prelude hiding (error, getChar, lex, lookup, span, head, tail, init, last)
+import Prelude hiding (error, getChar, head, init, last, lex, lookup, span, tail)
 import Prelude qualified as P
 
 -- Buffer
@@ -55,10 +55,11 @@ data LexerCode
   deriving (Eq, Ord)
 
 lexerCodeTable :: Map LexerCode CodeMeta
-lexerCodeTable = Map.fromList
-  [ (UnexpectedCharacter, CodeMeta 0 SError Nothing),
-    (UncontinuedQualifiedName, CodeMeta 1 SError Nothing)
-  ]
+lexerCodeTable =
+  Map.fromList
+    [ (UnexpectedCharacter, CodeMeta 0 SError Nothing),
+      (UncontinuedQualifiedName, CodeMeta 1 SError Nothing)
+    ]
 
 -- Lex monad
 --------------------------------------------------------------------------------
@@ -111,7 +112,7 @@ classify st k = advance st >> emit0 st k
 skip :: LexState -> IO ()
 skip st = do
   advance st
-  readIORef st.pos >>= writeIORef st.prev 
+  readIORef st.pos >>= writeIORef st.prev
 
 advanceWhile :: LexState -> (Char -> Bool) -> IO ()
 advanceWhile st f =
@@ -172,8 +173,8 @@ classifyName st x = case confTableLookup st.config x.last of
   Just kind -> kind
   Nothing ->
     if isAlphaNumStart (T.head x.last)
-    then AIdent
-    else SIdent
+      then AIdent
+      else SIdent
 
 isAlphaNumStart :: Char -> Bool
 isAlphaNumStart c
@@ -182,26 +183,27 @@ isAlphaNumStart c
   | otherwise = False
 
 nameSeg :: LexState -> IO Text
-nameSeg st = peek st >>= \case
-  c | isAlphaNumStart c -> sliceWhile st isAlphaNum
-  c | isSymbol c -> sliceWhile st isSymbol
-  _ -> P.error "nameSeg should only be called if current character is a letter"
+nameSeg st =
+  peek st >>= \case
+    c | isAlphaNumStart c -> sliceWhile st isAlphaNum
+    c | isSymbol c -> sliceWhile st isSymbol
+    _ -> P.error "nameSeg should only be called if current character is a letter"
 
 nameFromHeadTail :: Text -> [Text] -> Name
-nameFromHeadTail head tail = 
-  let
-    go s [] = ([], s)
-    go s (t:ts) = let (ts', t') = go t ts in (s:ts', t')
-    (init, last) = go head tail
-  in Name init last
+nameFromHeadTail head tail =
+  let go s [] = ([], s)
+      go s (t : ts) = let (ts', t') = go t ts in (s : ts', t')
+      (init, last) = go head tail
+   in Name init last
 
 -- | Lex a name
 name :: LexState -> IO Name
 name st = nameFromHeadTail <$> nameSeg st <*> tail
   where
-    tail = peek st >>= \case
-      '/' -> advance st >> (:) <$> nameSeg st <*> tail
-      _ -> pure []
+    tail =
+      peek st >>= \case
+        '/' -> advance st >> (:) <$> nameSeg st <*> tail
+        _ -> pure []
 
 ident :: LexState -> IO ()
 ident st = do

@@ -8,8 +8,8 @@ import Data.Vector qualified as V
 import Diagnostician
 import FNotation.Config
 import FNotation.Names
-import FNotation.Trees
 import FNotation.Tokens qualified as T
+import FNotation.Trees
 import Prettyprinter
 import Prelude hiding (lookup)
 
@@ -23,11 +23,12 @@ data ParserCode
   deriving (Eq, Ord)
 
 parserCodeTable :: Map ParserCode CodeMeta
-parserCodeTable = Map.fromList
-  [ (UnexpectedToken, CodeMeta 0 SError Nothing),
-    (DefaultedPrec, CodeMeta 1 SWarning Nothing),
-    (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
-  ]
+parserCodeTable =
+  Map.fromList
+    [ (UnexpectedToken, CodeMeta 0 SError Nothing),
+      (DefaultedPrec, CodeMeta 1 SWarning Nothing),
+      (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
+    ]
 
 -- Parser monad
 --------------------------------------------------------------------------------
@@ -88,19 +89,22 @@ curValue st = do
   pure (V.unsafeIndex st.tokens pos).value
 
 curName :: ParseState -> IO Name
-curName st = curValue st >>= \case
-  T.VName x -> pure x
-  _ -> error "expected token to be associated with a name"
+curName st =
+  curValue st >>= \case
+    T.VName x -> pure x
+    _ -> error "expected token to be associated with a name"
 
 curInt :: ParseState -> IO Int
-curInt st = curValue st >>= \case
-  T.VInt x -> pure x
-  _ -> error "expected token to be associated with an int"
+curInt st =
+  curValue st >>= \case
+    T.VInt x -> pure x
+    _ -> error "expected token to be associated with an int"
 
 curString :: ParseState -> IO Text
-curString st = curValue st >>= \case
-  T.VString x -> pure x
-  _ -> error "expected token to be associated with a string"
+curString st =
+  curValue st >>= \case
+    T.VString x -> pure x
+    _ -> error "expected token to be associated with a string"
 
 at :: ParseState -> T.Kind -> IO Bool
 at st k = (k ==) <$> cur st
@@ -160,16 +164,17 @@ advanceClose st s f = do
 --------------------------------------------------------------------------------
 
 argStarts :: V.Vector T.Kind
-argStarts = V.fromList
-  [ T.LParen,
-    T.LBrack,
-    T.AIdent,
-    T.AKeyword,
-    T.Field,
-    T.Tag,
-    T.Int,
-    T.Block
-  ]
+argStarts =
+  V.fromList
+    [ T.LParen,
+      T.LBrack,
+      T.AIdent,
+      T.AKeyword,
+      T.Field,
+      T.Tag,
+      T.Int,
+      T.Block
+    ]
 
 argStart :: T.Kind -> Bool
 argStart k = V.elem k argStarts
@@ -185,7 +190,7 @@ tupleElems st =
         T.Comma -> do
           advance st
           ns <- tupleElems st
-          pure $ n:ns
+          pure $ n : ns
         k' -> do
           reportUnexpected st k' T.CTupleMark
           pure [n]
@@ -239,7 +244,7 @@ expr st = arg st >>= go (Prec 0 AssocNon)
   where
     go p lhs = do
       cur st >>= \case
-        k@(T.SIdent ; T.SKeyword) -> do
+        k@(T.SIdent; T.SKeyword) -> do
           s <- curSpan st
           x <- curName st
           let n = case k of

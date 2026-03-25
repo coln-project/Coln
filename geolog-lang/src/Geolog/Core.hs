@@ -4,8 +4,8 @@ import Data.Kind (Type)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
-import Geolog.Common
 import FNotation (Name)
+import Geolog.Common
 import Prettyprinter
 
 data Level

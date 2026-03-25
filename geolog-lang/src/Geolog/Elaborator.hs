@@ -4,12 +4,12 @@ import Control.Exception
 import Control.Monad (unless)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Diagnostician
+import FNotation (Name, Ntn)
+import FNotation qualified as N
 import Geolog.Common
 import Geolog.Core
 import Geolog.CoreOperations
-import Diagnostician
-import FNotation (Ntn, Name)
-import FNotation qualified as N
 import Geolog.Pretty
 import Prettyprinter
 import Prelude hiding (lookup)
@@ -35,22 +35,23 @@ data ElaboratorCode
   deriving (Eq, Ord)
 
 elaboratorCodeTable :: Map ElaboratorCode CodeMeta
-elaboratorCodeTable = Map.fromList
-  [ (FailedConversion, CodeMeta 0 SError Nothing),
-    (NotInScope, CodeMeta 1 SError Nothing),
-    (UnsupportedInPotentialMode, CodeMeta 2 SError Nothing),
-    (UnsupportedInKineticMode, CodeMeta 3 SError Nothing),
-    (ProjectionFromNonRecord, CodeMeta 4 SError Nothing),
-    (NoSuchField, CodeMeta 5 SError Nothing),
-    (ApplicationOfNonPi, CodeMeta 6 SError Nothing),
-    (MustChk, CodeMeta 7 SError Nothing),
-    (UnexpectedNotation, CodeMeta 8 SError Nothing),
-    (UnexpectedTuple, CodeMeta 9 SError Nothing),
-    (UnexpectedLambda, CodeMeta 10 SError Nothing),
-    (UnexpectedField, CodeMeta 11 SError Nothing),
-    (WrongNumberOfFields, CodeMeta 12 SError Nothing),
-    (WrongLevel, CodeMeta 13 SError Nothing)
-  ]
+elaboratorCodeTable =
+  Map.fromList
+    [ (FailedConversion, CodeMeta 0 SError Nothing),
+      (NotInScope, CodeMeta 1 SError Nothing),
+      (UnsupportedInPotentialMode, CodeMeta 2 SError Nothing),
+      (UnsupportedInKineticMode, CodeMeta 3 SError Nothing),
+      (ProjectionFromNonRecord, CodeMeta 4 SError Nothing),
+      (NoSuchField, CodeMeta 5 SError Nothing),
+      (ApplicationOfNonPi, CodeMeta 6 SError Nothing),
+      (MustChk, CodeMeta 7 SError Nothing),
+      (UnexpectedNotation, CodeMeta 8 SError Nothing),
+      (UnexpectedTuple, CodeMeta 9 SError Nothing),
+      (UnexpectedLambda, CodeMeta 10 SError Nothing),
+      (UnexpectedField, CodeMeta 11 SError Nothing),
+      (WrongNumberOfFields, CodeMeta 12 SError Nothing),
+      (WrongLevel, CodeMeta 13 SError Nothing)
+    ]
 
 -- Elaboration implicits
 --------------------------------------------------------------------------------
@@ -121,7 +122,6 @@ instance Core ElG TyG where
 
 -- Diagnostics
 --------------------------------------------------------------------------------
-
 
 notInScope :: (DiagnosticCtxArg) => Span -> Name -> IO a
 notInScope s x = failWith s NotInScope $ "identifier" <+> dpretty x <+> "not in scope"
@@ -254,7 +254,7 @@ chkP = chk SPotential
 --------------------------------------------------------------------------------
 
 elim :: Elab (ElG K -> TyV K -> Ntn -> IO (ElG K, TyV K))
-elim g a (N.Field x s) = 
+elim g a (N.Field x s) =
   case behavesAs a of
     Just (VRecord _ xs te) -> case findProj xs te (coerceToFields g.val).values x of
       Just (v, a') -> pure (G (Proj g.stx x) v, a')
@@ -266,7 +266,7 @@ elim g a (N.Field x s) =
         s
         ProjectionFromNonRecord
         "target of attempted field projection is not of a record type"
-elim g a n = 
+elim g a n =
   case behavesAs a of
     Just (VPi _ dom cod) -> do
       g' <- chkK dom n
@@ -292,7 +292,7 @@ syn SKinetic (N.App n ns) = do
   go g a ns
   where
     go g a [] = pure (g, a)
-    go g a (n:ns) = do
+    go g a (n : ns) = do
       (g', a') <- elim g a n
       go g' a' ns
 syn SPotential n@(N.App _ _) =

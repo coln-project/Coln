@@ -1,12 +1,12 @@
 module FNotation.Names where
 
-import Diagnostician
-import Prettyprinter
 import Data.String (IsString, fromString)
 import Data.Text (Text)
+import Diagnostician
+import Prettyprinter
 
 -- | A name of the form `a/b/c`
--- 
+--
 -- The properties of a name (such as the precedence when used as an operator) are
 -- determined by the *last* segment. Thus, `a/+` is an infix operator with the
 -- same precedence as `+`.
