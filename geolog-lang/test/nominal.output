@@ -72,7 +72,7 @@ value: []
 
 -- messages
 
-error[E0300]: synthesized A while expecting B
+error[E0200]: synthesized A while expecting B
 7 | def b : B := a
 7 |              ^
 mismatching elements B and A

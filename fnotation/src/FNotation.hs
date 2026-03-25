@@ -11,5 +11,5 @@ import FNotation.Config
 import FNotation.Lexer (lex, LexerCode (..), lexerCodeTable)
 import FNotation.Names
 import FNotation.Parser (parse, ParserCode (..), parserCodeTable)
-import FNotation.Trees (Ntn (..))
+import FNotation.Trees (Ntn (..), span, head)
 import FNotation.Tokens (Kind)

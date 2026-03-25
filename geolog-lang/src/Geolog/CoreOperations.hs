@@ -6,13 +6,15 @@ import Geolog.Common
 import Geolog.Core
 import Geolog.Pretty
 import Prettyprinter
+import FNotation (Name)
+import Diagnostician
 
 -- Core typeclass
 --------------------------------------------------------------------------------
 
 class Core (el :: Energy -> Type) (ty :: Energy -> Type) | el -> ty, ty -> el where
   app :: el e -> el K -> el e
-  proj :: el e -> QName -> el e
+  proj :: el e -> Name -> el e
   code :: ty e -> el e
   decode :: Universe -> el e -> ty e
   universe :: Universe -> ty e
@@ -37,7 +39,7 @@ appTy a v = case behavesAs a of
   Just (VPi _ _ cod) -> appClo cod v
   _ -> panic "appTy should only be called on types that behave like pi types"
 
-projTy :: TyV Kinetic -> QName -> ElV Kinetic -> TyV Kinetic
+projTy :: TyV Kinetic -> Name -> ElV Kinetic -> TyV Kinetic
 projTy a x v = case behavesAs a of
   Just (VRecord _ names tys) -> go names tys
     where
@@ -85,7 +87,7 @@ behavesAs (VDecode u n) = decode u <$> n.behavesAs
 behavesAs (VPi pv a b) = Just (VPi pv a b)
 behavesAs (VBuiltinTy a) = Just $ VBuiltinTy a
 
-expandRecord :: Head -> Spine -> [QName] -> TeleV (TyV K) -> Fields (ElV K)
+expandRecord :: Head -> Spine -> [Name] -> TeleV (TyV K) -> Fields (ElV K)
 expandRecord h sp xs te = Fields xs (go xs te)
   where
     go [] TVNil = []
@@ -210,9 +212,9 @@ instance Quote TyV TyS where
 -- fail to check these things, so we have to pretty print them there.
 
 data DefEqCheckError
-  = UnequalTys ADoc ADoc (Maybe ADoc)
-  | UnequalEls ADoc ADoc (Maybe ADoc)
-  | UnequalSpines Spine Spine (Maybe ADoc)
+  = UnequalTys DDoc DDoc (Maybe DDoc)
+  | UnequalEls DDoc DDoc (Maybe DDoc)
+  | UnequalSpines Spine Spine (Maybe DDoc)
 
 instance Pretty DefEqCheckError where
   pretty (UnequalTys a a' _) = unAnnotate $ "mismatching types" <+> a <+> "and" <+> a'
@@ -223,17 +225,17 @@ type DefEqM a = Either DefEqCheckError ()
 
 throwUnequalTys ::
   (NamesArg, CtxLenArg) =>
-  TyV K -> TyV K -> Maybe ADoc -> DefEqM ()
+  TyV K -> TyV K -> Maybe DDoc -> DefEqM ()
 throwUnequalTys a a' e =
   Left (UnequalTys (prtTop $ quote a) (prtTop $ quote a') e)
 
 throwUnequalEls ::
   (NamesArg, CtxLenArg) =>
-  ElV K -> ElV K -> Maybe ADoc -> DefEqM ()
+  ElV K -> ElV K -> Maybe DDoc -> DefEqM ()
 throwUnequalEls v v' e =
   Left (UnequalEls (prtTop $ quote v) (prtTop $ quote v') e)
 
-throwUnequalSpines :: Spine -> Spine -> Maybe ADoc -> DefEqM ()
+throwUnequalSpines :: Spine -> Spine -> Maybe DDoc -> DefEqM ()
 throwUnequalSpines sp sp' e = Left $ UnequalSpines sp sp' e
 
 withFresh' ::
@@ -263,9 +265,9 @@ instance DefEq (TyV K) where
       unless (b == b') $ throwUnequalTys a a' $ Just "unequal builtin types"
     _ -> throwUnequalTys a a' Nothing
 
-prtHead :: (NamesArg, CtxLenArg) => Head -> ADoc
+prtHead :: (NamesArg, CtxLenArg) => Head -> DDoc
 prtHead (Local i) = prtTop $ quoteId i
-prtHead (Global (Constant x)) = pretty x
+prtHead (Global x) = dpretty x
 
 instance DefEq Neutral where
   defEq n n' = do
@@ -290,7 +292,7 @@ instance DefEq Spine where
       unless (x == x') $
         throwUnequalSpines sq sq' $
           Just $
-            "fields are not equal:" <+> pretty x <+> "and" <+> pretty x'
+            "fields are not equal:" <+> dpretty x <+> "and" <+> dpretty x'
     _ -> throwUnequalSpines sp sp' Nothing
 
 canon :: ElV K -> ElV K

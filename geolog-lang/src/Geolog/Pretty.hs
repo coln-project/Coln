@@ -2,15 +2,16 @@ module Geolog.Pretty where
 
 import Geolog.Common
 import Geolog.Core
-import Geolog.Parser (Assoc (..), Prec (..), precLe)
+import FNotation (Name, Prec (..), Assoc (..), precLe)
+import Diagnostician
 import Prettyprinter
 
 -- Implicit arguments for pretty printing
 --------------------------------------------------------------------------------
 
-type NamesArg = (?names :: Bwd QName)
+type NamesArg = (?names :: Bwd Name)
 
-bindName :: (NamesArg) => QName -> ((NamesArg) => a) -> a
+bindName :: (NamesArg) => Name -> ((NamesArg) => a) -> a
 bindName x f = let ?names = ?names :> x in f
 
 type PrecArg = (?prec :: Prec)
@@ -21,15 +22,15 @@ type DoPretty a = (PrecArg) => (NamesArg) => a
 --------------------------------------------------------------------------------
 
 class Prt a where
-  prt :: DoPretty (a -> Doc ann)
+  prt :: DoPretty (a -> DDoc)
 
-prtPrec :: (Prt a) => (NamesArg) => Prec -> a -> Doc ann
+prtPrec :: (Prt a) => (NamesArg) => Prec -> a -> DDoc
 prtPrec p x = let ?prec = p in prt x
 
 instance Prt BId where
   prt (BId i) = go ?names i []
     where
-      go (_ :> x) 0 prev = pretty x <> disamb
+      go (_ :> x) 0 prev = dpretty x <> disamb
         where
           nx = length $ filter (== x) prev
           disamb = if nx > 0 then "^" <> pretty nx else ""
@@ -51,25 +52,25 @@ precTop = Prec 0 AssocNon
 instance Prt (ElS e) where
   prt = \case
     Var i -> prt i
-    GlobalVar (Constant x) -> pretty x
+    GlobalVar x -> dpretty x
     Code ty -> prt ty
     App f t -> par precApp $ (prtPrec precApp f) <+> (prtPrec precApp t)
     Lam _ (Abs x t) ->
-      par precLam (pretty x <+> "=>" <+> bindName x (prtPrec precLam t))
+      par precLam (dpretty x <+> "=>" <+> bindName x (prtPrec precLam t))
     Lam _ (AbsConst t) ->
       par precLam ("_" <+> "=>" <+> prtPrec precLam t)
-    Proj t f -> par precApp $ (prtPrec precApp t) <+> "." <> pretty f
+    Proj t f -> par precApp $ (prtPrec precApp t) <+> "." <> dpretty f
     Cons (Fields xs ts) ->
       list
-        ["." <> pretty x <+> "=" <+> prtPrec precTop t | (x, t) <- zip xs ts]
+        ["." <> dpretty x <+> "=" <+> prtPrec precTop t | (x, t) <- zip xs ts]
     Lit l -> pretty l
 
-par :: (PrecArg) => Prec -> ((PrecArg) => Doc ann) -> Doc ann
+par :: (PrecArg) => Prec -> ((PrecArg) => DDoc) -> DDoc
 par p s
   | precLe p ?prec == Just True = "(" <> let ?prec = precTop in s <> ")"
   | True = s
 
-piVariantArr :: PiVariant -> Doc a
+piVariantArr :: PiVariant -> DDoc
 piVariantArr = \case
   PrimTheory -> "~>"
   QueryTheory -> "->"
@@ -80,18 +81,18 @@ instance Prt (TyS e) where
     U u -> pretty $ decodesInto u
     Decode _ t -> prt t
     Pi pv a (Abs x b) ->
-      let annot = "(" <> pretty x <+> ":" <+> prtTop a <> ")"
+      let annot = "(" <> dpretty x <+> ":" <+> prtTop a <> ")"
        in par precLam (annot <+> piVariantArr pv <+> bindName x (prtPrec precLam b))
     Pi pv a (AbsConst b) ->
       par precLam (prt a <+> piVariantArr pv <+> prtPrec precLam b)
     Record _ xs as -> list $ go (zip xs as) []
       where
-        go :: DoPretty ([(QName, TyS e')] -> [Doc ann] -> [Doc ann])
+        go :: DoPretty ([(Name, TyS e')] -> [DDoc] -> [DDoc])
         go [] ds = reverse ds
         go ((x, a) : rest) ds =
-          let d = pretty x <+> ":" <+> prtPrec precTop a
+          let d = dpretty x <+> ":" <+> prtPrec precTop a
            in bindName x $ go rest (d : ds)
     BuiltinTy a -> pretty a
 
-prtTop :: (NamesArg, Prt a) => a -> Doc ann
+prtTop :: (NamesArg, Prt a) => a -> DDoc
 prtTop x = let ?prec = precTop in prt x

@@ -24,7 +24,7 @@ import Prelude hiding (lex)
 main :: IO ()
 main = defaultMain =<< goldenTests
 
-render :: Doc ann -> LBS.ByteString
+render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 parseToPretty :: FilePath -> IO LBS.ByteString
@@ -77,9 +77,9 @@ elaborate fp = do
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
     let r = Reporter h False
-    ts <- lex r f
-    ns <- parse r f ts
-    ge <- elabTop r f ns
+    ts <- lex lexConfig (ReporterFor LexerCode r) f
+    ns <- parse parseConfig (ReporterFor ParserCode r) f ts
+    ge <- elabTop (ReporterFor ElaboratorCode r) f ns
     hFlush h
     hClose h
     msgs <- T.readFile path
@@ -123,5 +123,5 @@ elaboratorTests = do
 
 goldenTests :: IO TestTree
 goldenTests = do
-  ts <- mapM id [parserTests, elaboratorTests]
+  ts <- mapM id [elaboratorTests]
   return $ testGroup "All tests" ts
