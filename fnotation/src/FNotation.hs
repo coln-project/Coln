@@ -12,4 +12,4 @@ import FNotation.Lexer (LexerCode (..), lex, lexerCodeTable)
 import FNotation.Names
 import FNotation.Parser (ParserCode (..), parse, parserCodeTable)
 import FNotation.Tokens (Kind)
-import FNotation.Trees (Ntn (..))
+import FNotation.Trees (Ntn (..), head, span)

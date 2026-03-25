@@ -15,17 +15,10 @@ library
         Geolog.Common
         Geolog.Core
         Geolog.CoreOperations
-        Geolog.Diagnostician
-        Geolog.Diagnostician.CodeMeta
+        Geolog.Diagnostics
         Geolog.Elaborator
-        Geolog.Elaborator.Diagnostics
-        Geolog.Lexer
-        Geolog.Lexer.Diagnostics
         Geolog.Notation
-        Geolog.Parser
-        Geolog.Parser.Diagnostics
         Geolog.Pretty
-        Geolog.Token
         Geolog.Unification
 
     hs-source-dirs:     src
@@ -45,16 +38,15 @@ library
         base,
         bytestring,
         containers,
+        diagnostician,
         directory,
         filepath,
+        fnotation,
         hashable,
-        microlens-platform,
-        mtl,
         prettyprinter,
         singletons,
         singletons-th,
-        symbolize,
-        text >=2.1.1,
+        text,
         vector,
         vector-hashtables
 
@@ -75,7 +67,9 @@ test-suite geolog-lang-test
         base,
         bytestring,
         containers,
+        diagnostician,
         filepath,
+        fnotation,
         geolog-lang,
         prettyprinter,
         tasty,

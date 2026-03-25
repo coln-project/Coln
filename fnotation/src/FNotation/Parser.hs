@@ -56,7 +56,10 @@ cur :: ParseState -> IO T.Kind
 cur st = do
   gas <- readIORef st.gas
   if gas <= 0
-    then error "out of gas"
+    then do
+      pos <- readIORef st.pos
+      let token = V.unsafeIndex st.tokens pos
+      error $ "out of gas at token " ++ show (dpretty token)
     else writeIORef st.gas (gas - 1)
   pos <- readIORef st.pos
   pure (V.unsafeIndex st.tokens pos).kind
@@ -118,8 +121,8 @@ advance st = do
                 _ -> j
             | otherwise = j
       readIORef st.skipNewlines >>= \case
-        True -> writeIORef st.pos (next (pos + 1))
-        False -> writeIORef st.pos (pos + 1)
+        True -> writeIORef st.pos $ next (pos + 1)
+        False -> writeIORef st.pos $ pos + 1
       writeIORef st.gas 256
     else pure ()
 
@@ -184,7 +187,10 @@ tupleElems st =
       n <- expr st
       cur st >>= \case
         T.RBrack -> pure [n]
-        T.Comma -> advance st >> (n :) <$> tupleElems st
+        T.Comma -> do
+          advance st
+          ns <- tupleElems st
+          pure $ n : ns
         k' -> do
           reportUnexpected st k' T.CTupleMark
           pure [n]
@@ -197,13 +203,15 @@ arg st = do
   m <- openingPos st
   cur st >>= \case
     T.LParen -> do
-      advance st
-      e <- ignoreNewlines st (expr st)
+      e <- ignoreNewlines st $ do
+        advance st
+        expr st
       expect st T.RParen
       pure e
     T.LBrack -> do
-      advance st
-      ns <- ignoreNewlines st (tupleElems st)
+      ns <- ignoreNewlines st $ do
+        advance st
+        tupleElems st
       expect st T.RBrack
       close st m $ Tuple ns
     T.AIdent -> do
@@ -222,10 +230,7 @@ arg st = do
       x <- curString st
       advanceClose st m $ String x
     T.Block -> block st
-    k -> do
-      reportUnexpected st k T.CExprStart
-      s <- curSpan st
-      pure $ Error s
+    k -> error $ "should only call arg when the starting token is in argStarts, got: " ++ show k
 
 args :: ParseState -> IO [Ntn]
 args st = do

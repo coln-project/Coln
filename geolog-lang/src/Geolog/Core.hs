@@ -4,6 +4,7 @@ import Data.Kind (Type)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import FNotation (Name)
 import Geolog.Common
 import Prettyprinter
 
@@ -92,15 +93,15 @@ instance HasCodomain PiVariant Level where
     PrimTheory -> Theory
     TheoryTop -> Top
 
-data Abs a = Abs QName a | AbsConst a
+data Abs a = Abs Name a | AbsConst a
 
 data Fields a = Fields
-  { names :: [QName]
+  { names :: [Name]
   , values :: [a]
   }
   deriving (Functor)
 
-instance ElemAt (Fields a) QName a where
+instance ElemAt (Fields a) Name a where
   elemAt (Fields xs vs) x = go xs vs
    where
     go (x' : xs') (v : vs')
@@ -140,39 +141,33 @@ instance Pretty BuiltinTy where
 
 data ElS :: Energy -> Type where
   Var :: BId -> ElS K
-  GlobalVar :: Constant -> ElS K
+  GlobalVar :: Name -> ElS K
   Code :: (TyS e) -> ElS e
   Lam :: ~(TyS K) -> Abs (ElS e) -> ElS e
   App :: ElS e -> ElS K -> ElS e
   Cons :: Fields (ElS e) -> ElS e
-  Proj :: ElS e -> QName -> ElS e
+  Proj :: ElS e -> Name -> ElS e
   Lit :: Literal -> ElS K
 
 data TyS :: Energy -> Type where
   U :: Universe -> TyS e
   Decode :: Universe -> ElS e -> TyS e
   Pi :: PiVariant -> TyS K -> Abs (TyS K) -> TyS e
-  Record :: Level -> [QName] -> [TyS K] -> TyS P
+  Record :: Level -> [Name] -> [TyS K] -> TyS P
   BuiltinTy :: BuiltinTy -> TyS e
 
 type Env = Bwd (ElV K)
 
-data Clo a = Clo QName (ElV K -> a) | CloConst a
+data Clo a = Clo Name (ElV K -> a) | CloConst a
 
 data Spine
   = SId
   | SApp Spine (ElV K)
-  | SProj Spine QName
-
-data Constant = Constant {name :: QName}
-  deriving (Eq, Ord)
-
-instance Pretty Constant where
-  pretty (Constant x) = pretty x
+  | SProj Spine Name
 
 data Head
   = Local FId
-  | Global Constant
+  | Global Name
   deriving (Eq)
 
 -- TODO: support lazy eta-expansion of potential pi-type neutrals
@@ -198,26 +193,26 @@ data TyV :: Energy -> Type where
   VU :: Universe -> TyV e
   VDecode :: Universe -> Neutral -> TyV K
   VPi :: PiVariant -> TyV K -> Clo (TyV K) -> TyV e
-  VRecord :: Level -> [QName] -> TeleV (TyV K) -> TyV P
+  VRecord :: Level -> [Name] -> TeleV (TyV K) -> TyV P
   VBuiltinTy :: BuiltinTy -> TyV e
 
 data GlobalEntry
   = KEntry (ElS K) (ElV K) (TyV K)
   | PEntry (ElS P) (ElV P) (TyV K)
 
-newtype GlobalEnv = GlobalEnv (Map Constant GlobalEntry)
+newtype GlobalEnv = GlobalEnv (Map Name GlobalEntry)
 
 emptyGlobalEnv :: GlobalEnv
 emptyGlobalEnv = GlobalEnv Map.empty
 
-insertEntry :: GlobalEnv -> Constant -> GlobalEntry -> GlobalEnv
+insertEntry :: GlobalEnv -> Name -> GlobalEntry -> GlobalEnv
 insertEntry (GlobalEnv m) c e = GlobalEnv (Map.insert c e m)
 
-globalEntries :: GlobalEnv -> [(Constant, GlobalEntry)]
+globalEntries :: GlobalEnv -> [(Name, GlobalEntry)]
 globalEntries (GlobalEnv m) = Map.toList m
 
-instance ElemAt GlobalEnv Constant GlobalEntry where
+instance ElemAt GlobalEnv Name GlobalEntry where
   elemAt (GlobalEnv m) c = m Map.! c
 
-instance Lookup GlobalEnv Constant GlobalEntry where
+instance Lookup GlobalEnv Name GlobalEntry where
   lookup (GlobalEnv m) c = Map.lookup c m
