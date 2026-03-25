@@ -34,13 +34,13 @@ prettyDecls ge = vsep $ go (globalEntries ge)
   go ((x, PEntry t _ a) : ds) =
     [ "potential entry named" <+> dpretty x
     , "type: " <+> prtVal mempty a
-    , "value: " <+> prtTop mempty t
+    , "value: " <+> dprettyWithNames mempty t
     ]
       ++ go ds
   go ((x, KEntry t _ a) : ds) =
     [ "kinetic entry named" <+> dpretty x
     , "type:" <+> prtVal mempty a
-    , "value:" <+> prtTop mempty t
+    , "value:" <+> dprettyWithNames mempty t
     ]
       ++ go ds
 

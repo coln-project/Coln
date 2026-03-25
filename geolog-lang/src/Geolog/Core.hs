@@ -134,8 +134,8 @@ data BuiltinTy
   | BuiltinString
   deriving (Eq)
 
-instance Pretty BuiltinTy where
-  pretty = \case
+instance Show BuiltinTy where
+  show = \case
     BuiltinInt -> "Int"
     BuiltinString -> "String"
 

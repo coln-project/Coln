@@ -195,8 +195,8 @@ instance Quote (TyV e) (TyS e) where
 
 type CtxShape = MeasuredBwd Name
 
-prtVal :: (Quote a b, Prt b) => CtxShape -> a -> DDoc
-prtVal c v = prtTop c.values $ quote c.length v
+prtVal :: (Quote a b, DPrettyWithNames b) => CtxShape -> a -> DDoc
+prtVal c v = dprettyWithNames c.values $ quote c.length v
 
 -- When we do a definitional equality check, how should we report failure?
 -- We should report the two things that we were originally looking at (which is

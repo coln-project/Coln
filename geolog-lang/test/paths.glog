@@ -1,16 +1,16 @@
-theory Graph := [
-  V : Query,
-  E : V -> V -> Query,
-]
+theory Graph := sig
+  V : Query
+  E : V -> V -> Query
+end
 
-theory Graph/hom (G0 : Graph) (G1 : Graph) := [
-  V : G0.V -> G1.V,
+theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
+  V : G0.V -> G1.V
   E : (x : G0.V) -> (y : G0.V) -> G0.E x y -> (G1.E (V x) (V y))
-]
+end
 
-theory Path (G : Graph) := [
-  t : G.V -> G.V -> Query,
-  empty : (x : G.V) -> t x x,
+theory Path (G : Graph) := sig
+  t : G.V -> G.V -> Query
+  empty : (x : G.V) -> t x x
   cons : (
     (x : G.V) ->
     (y : G.V) ->
@@ -18,12 +18,12 @@ theory Path (G : Graph) := [
     G.E x y ->
     t y z ->
     t x z
-  ),
-]
+  )
+end
 
-# theory Path/hom (G : Graph) (P0 : Path G) (P1 : Path G) := [
-#   t : (x : G.V) -> (y : G.V) -> P0.t x y -> P1.t x y,
-#   empty : (x : G.V) -> t (P0.empty x) = P1.empty x,
+# theory Path/hom (G : Graph) (P0 : Path G) (P1 : Path G) := sig
+#   t : (x : G.V) -> (y : G.V) -> P0.t x y -> P1.t x y
+#   empty : (x : G.V) -> t (P0.empty x) = P1.empty x
 #   cons : (
 #     (x : G.V) ->
 #     (y : G.V) ->
@@ -32,4 +32,4 @@ theory Path (G : Graph) := [
 #     (p0 : P0.t y z) ->
 #     t (P0.cons x y z e p0) = P1.cons x y z e (t p0)
 #   )
-# ]
+# end

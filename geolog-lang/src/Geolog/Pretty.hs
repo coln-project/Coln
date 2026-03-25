@@ -1,9 +1,13 @@
 module Geolog.Pretty where
 
+import Data.String (fromString)
+import Data.Text qualified as T
 import Diagnostician
-import FNotation (Assoc (..), Name, Prec (..), precLe)
+import FNotation qualified as N
+import FNotation.Names
 import Geolog.Common
 import Geolog.Core
+import Geolog.Notation
 import Prettyprinter
 
 -- Pretty printing
@@ -11,76 +15,73 @@ import Prettyprinter
 
 type Names = Bwd Name
 
-class Prt a where
-  prt :: Prec -> Names -> a -> DDoc
+class Delab a where
+  delab :: Names -> a -> N.Ntn0
 
-instance Prt BId where
-  prt _ xs (BId i) = go xs i []
+instance Delab BId where
+  delab xs (BId i) = go xs i []
    where
-    go (_ :> x) 0 prev = dpretty x <> disamb
+    go (_ :> x) 0 prev = N.Ident (x{last = x.last <> disamb}) ()
      where
       nx = length $ filter (== x) prev
-      disamb = if nx > 0 then "^" <> pretty nx else ""
+      disamb = if nx > 0 then "^" <> T.pack (show nx) else ""
     go (xs' :> x) n prev = go xs' (n - 1) (x : prev)
     go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
 
-precApp :: Prec
-precApp = Prec 100 AssocL
-
-precArg :: Prec
-precArg = Prec 101 AssocL
-
-precLam :: Prec
-precLam = Prec 20 AssocL
-
-precTop :: Prec
-precTop = Prec 0 AssocNon
-
-instance Prt (ElS e) where
-  prt p xs = \case
-    LocalVar i -> prt p xs i
-    GlobalVar x -> dpretty x
-    Code ty -> prt p xs ty
-    App f t -> par p precApp (\_ -> prt precApp xs f <+> (prt precApp xs t))
+instance Delab (ElS e) where
+  delab xs = \case
+    LocalVar i -> delab xs i
+    GlobalVar x -> N.Ident x ()
+    Code ty -> delab xs ty
+    App f t -> N.App (delab xs f) [delab xs t]
     Lam _ (Abs x t) ->
-      par p precLam (\_ -> dpretty x <+> "=>" <+> (prt precLam (xs :> x) t))
+      N.Infix (N.Ident x ()) (N.Keyword "=>" ()) (delab (xs :> x) t)
     Lam _ (AbsConst t) ->
-      par p precLam (\_ -> "_" <+> "=>" <+> prt precLam xs t)
-    Proj t f -> par p precApp (\_ -> prt precApp xs t <+> "." <> dpretty f)
+      N.Infix (N.Ident "_" ()) (N.Keyword "=>" ()) (delab xs t)
+    Proj t f -> N.App (delab xs t) [N.Field f ()]
     Cons (Fields ys ts) ->
-      list
-        ["." <> dpretty y <+> "=" <+> prtTop xs t | (y, t) <- zip ys ts]
-    Lit l -> pretty l
+      N.Tuple [field y t | (y, t) <- zip ys ts] ()
+     where
+      field y t = N.Infix (N.Ident y ()) (N.Keyword ":" ()) (delab xs t)
+    Lit (LitInt i) -> N.Int i ()
+    Lit (LitString s) -> N.String s ()
 
-par :: Prec -> Prec -> (Prec -> DDoc) -> DDoc
-par p p' s
-  | precLe p' p == Just True = "(" <> s precTop <> ")"
-  | otherwise = s p
-
-piVariantArr :: PiVariant -> DDoc
+piVariantArr :: PiVariant -> Name
 piVariantArr = \case
   PrimTheory -> "~>"
   QueryTheory -> "->"
   TheoryTop -> "->"
 
-instance Prt (TyS e) where
-  prt p xs = \case
-    U u -> pretty $ decodesInto u
-    Decode _ t -> prt p xs t
-    Pi pv a (Abs x b) ->
-      let annot = "(" <> dpretty x <+> ":" <+> prtTop xs a <> ")"
-       in par p precLam (\_ -> annot <+> piVariantArr pv <+> prt precLam (xs :> x) b)
-    Pi pv a (AbsConst b) ->
-      par p precLam (\_ -> prt p xs a <+> piVariantArr pv <+> prt precLam xs b)
-    Record _ names te -> list $ go xs names te []
-     where
-      go :: Names -> [Name] -> TeleS K -> [DDoc] -> [DDoc]
-      go _ [] TSNil ds = reverse ds
-      go xs (x : xs') (TSCons a te) ds =
-        let d = dpretty x <+> ":" <+> prtTop xs a
-         in go (xs :> x) xs' te (d : ds)
-      go _ _ _ _ = panic "names and telescope should be same length"
-    BuiltinTy a -> pretty a
+nbinding :: Name -> N.Ntn0 -> N.Ntn0
+nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 
-prtTop :: (Prt a) => Names -> a -> DDoc
-prtTop = prt precTop
+instance Delab (TyS e) where
+  delab xs = \case
+    U u -> N.Keyword (fromString $ show $ decodesInto u) ()
+    Decode _ t -> delab xs t
+    Pi pv a (Abs x b) ->
+      N.Infix
+        (nbinding x (delab xs a))
+        (N.Keyword (piVariantArr pv) ())
+        (delab (xs :> x) b)
+    Pi pv a (AbsConst b) ->
+      N.Infix (delab xs a) (N.Keyword (piVariantArr pv) ()) (delab xs b)
+    Record _ ys te -> N.Block "sig" Nothing (go xs ys te) ()
+     where
+      go _ [] TSNil = []
+      go xs' (y : ys') (TSCons a te') =
+        nbinding y (delab xs' a) : go (xs' :> y) ys' te'
+      go _ _ _ = error "mismatching length for names and telescope"
+    BuiltinTy a -> N.Keyword (fromString $ show a) ()
+
+class DPrettyWithNames a where
+  dprettyWithNames :: Names -> a -> DDoc
+
+instance DPrettyWithNames BId where
+  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
+
+instance DPrettyWithNames (ElS e) where
+  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
+
+instance DPrettyWithNames (TyS e) where
+  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t

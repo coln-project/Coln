@@ -10,7 +10,6 @@ import FNotation qualified as N
 import Geolog.Common
 import Geolog.Core
 import Geolog.CoreOperations
-import Geolog.Pretty
 import Prettyprinter
 import Prelude hiding (lookup)
 
@@ -334,11 +333,12 @@ syn SKinetic _ (N.Int i _) = pure (lit $ LitInt i, builtinTy BuiltinInt)
 syn SPotential _ (N.Int _ sp) =
   unsupportedInPotentialMode sp "int literals"
 syn _ _ n@(N.Infix _ (N.Keyword "=>" _) _) = mustChk (N.span n) "lambda syntax"
-syn _ _ n@(N.Tuple _ _) = mustChk (N.span n) "tuple syntax"
+syn _ _ n@(N.Block "sig" _ _ _) = mustChk (N.span n) "signature"
+syn _ _ n@(N.Block "struct" _ _ _) = mustChk (N.span n) "struct"
 syn _ _ n = unexpectedNotation n "term in synthesizing position"
 
 chk :: (ElabArgs) => SEnergy e -> Ctx -> TyV K -> Ntn -> IO (ElG e)
-chk e c a n@(N.Tuple ns s) = case behavesAs a of
+chk e c a n@(N.Block "sig" Nothing ns s) = case behavesAs a of
   Just (VU u) ->
     case e of
       SKinetic -> unsupportedInKineticMode (N.span n) "record type"
@@ -346,9 +346,11 @@ chk e c a n@(N.Tuple ns s) = case behavesAs a of
         (xs, as) <- members c u ns
         let ty = Record (decodesInto u) xs as
         pure $ code $ G ty (eval c.elts ty)
+  _ -> unexpectedTuple s $ prtVal c.shape a
+chk e c a n@(N.Block "struct" Nothing ns s) = case behavesAs a of
   Just (VRecord _ xs te) -> do
     case e of
-      SPotential -> unsupportedInPotentialMode (N.span n) "tuple literal"
+      SPotential -> unsupportedInPotentialMode (N.span n) "struct literal"
       SKinetic -> do
         unless (length xs == length ns) $
           failWith (N.span n) WrongNumberOfFields $

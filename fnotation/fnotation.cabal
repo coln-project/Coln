@@ -16,6 +16,7 @@ library
         FNotation.Lexer
         FNotation.Names
         FNotation.Parser
+        FNotation.Pretty
         FNotation.Tokens
         FNotation.Trees
 
@@ -23,10 +24,10 @@ library
     default-language:   GHC2024
     default-extensions:
         BlockArguments CPP TypeData DerivingVia FunctionalDependencies
-        MagicHash NoFieldSelectors OrPatterns OverloadedRecordDot
-        OverloadedStrings PatternSynonyms QualifiedDo StrictData
-        TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
-        UnicodeSyntax ViewPatterns
+        ImplicitParams MagicHash NoFieldSelectors OrPatterns
+        OverloadedRecordDot OverloadedStrings PatternSynonyms QualifiedDo
+        StrictData TypeFamilies TypeFamilyDependencies UnboxedSums
+        UnboxedTuples UnicodeSyntax ViewPatterns
 
     ghc-options:        -Wall
     build-depends:

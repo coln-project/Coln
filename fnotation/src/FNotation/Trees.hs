@@ -20,18 +20,23 @@ In the variants which take a span, we put the span last because in the parser
 we have utility methods which take `Span -> Ntn`, and if the span is last, we
 can use currying to our advantage here.
 -}
-data Ntn
-  = App Ntn [Ntn]
-  | Infix Ntn Ntn Ntn
-  | Block Name (Maybe Ntn) [Ntn] Span
-  | Decl Name Ntn Span
-  | Ident Name Span
-  | Keyword Name Span
-  | Field Name Span
-  | Int Int Span
-  | String Text Span
-  | Tuple [Ntn] Span
-  | Error Span
+data NtnGeneric a
+  = App (NtnGeneric a) [NtnGeneric a]
+  | Infix (NtnGeneric a) (NtnGeneric a) (NtnGeneric a)
+  | Block Name (Maybe (NtnGeneric a)) [NtnGeneric a] a
+  | Decl Name (NtnGeneric a) a
+  | Tuple [NtnGeneric a] a
+  | Ident Name a
+  | Keyword Name a
+  | Field Name a
+  | Tag Name a
+  | Int Int a
+  | String Text a
+  | Error a
+
+type Ntn = NtnGeneric Span
+
+type Ntn0 = NtnGeneric ()
 
 startPos :: Ntn -> Pos
 startPos (App f _) = startPos f
@@ -41,6 +46,7 @@ startPos (Decl _ _ s) = s.start
 startPos (Ident _ s) = s.start
 startPos (Keyword _ s) = s.start
 startPos (Field _ s) = s.start
+startPos (Tag _ s) = s.start
 startPos (Int _ s) = s.start
 startPos (String _ s) = s.start
 startPos (Tuple _ s) = s.start
@@ -54,6 +60,7 @@ endPos (Decl _ _ s) = s.end
 endPos (Ident _ s) = s.end
 endPos (Keyword _ s) = s.end
 endPos (Field _ s) = s.end
+endPos (Tag _ s) = s.end
 endPos (Int _ s) = s.end
 endPos (String _ s) = s.end
 endPos (Tuple _ s) = s.end
@@ -73,6 +80,7 @@ head (Decl x _ _) = "Decl" <+> dpretty x
 head (Ident x _) = "Ident" <+> dpretty x
 head (Keyword x _) = "Keyword" <+> dpretty x
 head (Field x _) = "Field" <+> dpretty x
+head (Tag x _) = "Tag" <+> dpretty x
 head (Int i _) = "Int" <+> pretty i
 head (String i _) = "Int" <+> pretty i
 head (Tuple _ _) = "Tuple"
@@ -86,6 +94,7 @@ children (Decl _ x _) = [x]
 children (Ident _ _) = []
 children (Keyword _ _) = []
 children (Field _ _) = []
+children (Tag _ _) = []
 children (Int _ _) = []
 children (String _ _) = []
 children (Tuple ns _) = ns
