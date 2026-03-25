@@ -1,7 +1,8 @@
-module Geolog.Token where
+module FNotation.Tokens where
 
 import Data.Text (Text)
-import Geolog.Common
+import Diagnostician
+import FNotation.Names
 import Prettyprinter
 
 -- Token kinds
@@ -36,13 +37,13 @@ data Kind
   | Error
   deriving (Eq, Show)
 
-instance Pretty Kind where
-  pretty k = pretty (show k)
+instance DPretty Kind where
+  dpretty k = pretty (show k)
 
 -- Tokens
 --------------------------------------------------------------------------------
 
-data TokenValue = VEmpty | VName Name | VQName QName | VInt Int | VString Text
+data TokenValue = VEmpty | VName Name | VInt Int | VString Text
   deriving (Eq, Show)
 
 -- | A @Token@ consists of a kind along with an attached value and a source code
@@ -58,13 +59,12 @@ data Token = Token
   }
   deriving (Eq)
 
-instance Pretty Token where
-  pretty (Token k v s) = pretty k <> pv <+> "(" <> pretty s <> ")"
+instance DPretty Token where
+  dpretty (Token k v s) = dpretty k <> pv <+> "(" <> dpretty s <> ")"
     where
       pv = case v of
         VEmpty -> mempty
-        VName x -> " " <> pretty x
-        VQName x -> " " <> pretty x
+        VName x -> " " <> dpretty x
         VInt i -> " " <> pretty i
         VString i -> " " <> pretty i
 
@@ -76,9 +76,9 @@ data Class
   | CExprStart
   | CTupleMark
 
-instance Pretty Class where
-  pretty = \case
-    CSpecific k -> pretty k
+instance DPretty Class where
+  dpretty = \case
+    CSpecific k -> dpretty k
     CExprStart -> "a token that can start an expression"
     CTupleMark ->
       "a token that can follow an element of a tuple, e.g. ',' or ']'"
