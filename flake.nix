@@ -117,5 +117,6 @@
             '';
           }
         );
+        packages.geolog-lsp = project.packages."geolog-lsp:exe:geolog-lsp";
     });
 }
