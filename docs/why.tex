@@ -1,0 +1,54 @@
+\documentclass{article}
+
+\usepackage{macros}
+
+\title{Why Geolog?}
+\author{Martin Kleppmann}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+    The ARIA Safeguarded AI programme is developing a system called Geolog.
+    Other documents explain the details of its design, but leave much of the motivation behind those design decisions implicit.
+    This document offers an opinionated justification for why I believe Geolog is important.
+    It incorporates insights from others in the SGAI programme, but it's my personal opinion, not a statement for the programme as a whole.
+\end{abstract}
+
+\section{The national security case for formal verification}
+
+AI is rapidly advancing in many areas, but one particular area of concern is that AI agents are now able to independently find and exploit large numbers of high-severity security vulnerabilities in widely-used systems~\citep{firefox-vulnerabilities,anthropic-2026}.
+As cybersecurity operations are now considered an indispensible element of military strength and deterrence~\citep{DoD-2023-cyber}, we have to assume that these public reports are only the tip of the iceberg, and that nation states have secret research programmes that are stockpiling security vulnerabilities in software, hardware, and protocols for use in a potential future armed conflict.
+Just a few years ago, finding and exploiting vulnerabilties in computer systems was expensive~\citep{slayton-2017-cyber}, but this is no longer true.
+
+Cybersecurity generally favours the attacker, who has to find only one vulnerability to compromise a system, whereas the defender has to find and patch \emph{all} vulnerabilities to make their system secure \citep{ryseff-2017-cyberwarfare}.
+This fact, together with AI's rapidly growing capability for finding vulnerabilities, worries me a lot.
+The theory of \emph{offense-defense balance} \citep{jervis-1978-balance}, which is widely believed in international relations, says that when offensive technologies advance faster than defensive ones, this has a destabilising effect: a country that believes it has a temporary advantage in some offensive technology may decide to attack an opponent in order to exploit that advantage while it lasts.
+What matters is not so much whether this offensive advantage is real, but rather whether a potential aggressor \emph{believes} it is sufficient to warrant starting a war \citep{ryseff-2017-cyberwarfare}.
+
+In a time of increasing geopolitical tensions, with commentators warning that we may already be in the foothills of World War 3 \citep{smith-2026-foothills}, there is an urgent need to stabilise the situation as much as possible to reduce the risk of a catastrophic escalation.
+(Personally I am less worried about the risk of a superhuman AI deciding to eradicate humanity, and more worried about humans deciding to attack other humans with the help of AI-enabled technology.)
+One way we can contribute to stabilisation is through advancing defensive technologies and making them widely available, so that a would-be aggressor is more likely to decide that it is not worth launching an attack in the first place.
+
+In the cybersecurity domain, eliminating vulnerabilities is one of the best defensive measures.
+Some types of vulnerability can be avoided by using better tools: for example, using a memory-safe language like Rust instead of C/C++.
+However, many critical software systems like operating system kernels or JIT compilers for JavaScript/Wasm in web browsers inherently need to perform unsafe operations (interfacing with hardware devices, or generating machine code from untrusted input and executing it), which cannot be made safe simply by porting to Rust.
+Rust also provides only memory safety, but cannot rule out vulnerabilties due to logic bugs, such as incorrect access control checks.
+
+A more comprehensive approach is to use formal verification, i.e.\ to prove that a program conforms to some specification under all possible executions.
+This specification can include memory safety properties, but also properties about the logical correctness of the program's security features, and any other properties that are considered important.
+These proofs are typically written in a specialised programming language and then checked by a tool such as Lean, Rocq, or Isabelle, which have a small, trusted proof-checking kernel, making it very unlikely that any bugs remain in the verified aspects of the program.
+
+Until recently, formal verification was very expensive, requiring a large time investment from people with highly specialised skills to write the proofs even for small systems.
+For example, in 2009, the formally verified seL4 microkernel consisted of 8,700 lines of C code, but proving it correct required 20 person-years and 200,000 lines of Isabelle code~-- or 23 lines of proof and half a person-day for every single line of implementation \citep{Klein2009}.
+
+Fortunately, AI is also getting very good at writing formal proofs; a lot of the current focus is on AI agents for writing proofs in Lean \citep{deMoura2026,Aristotle,LogicalIntelligence,Leanstral,OpenGauss,Chen2025,Ren2025}.
+This offers the prospect of formally verifying all of the software on which our critical infrastructure depends in the foreseeable future~-- an idea that would have been ludicrous a few years ago.
+And since formal proofs are automatically checked by the kernel, hallucinated proofs are rejected without any human involvement, making formal verification an excellent use case for our current powerful but imperfect LLMs \citep{Kleppmann2025}.
+
+The pervasive use of formally verified computer systems would strengthen the defensive side of cybersecurity, and thereby shift the offense-defense balance towards stability, reducing the risk of armed conflict.
+It would also reduce the risk of other harms created by security vulnerabilties, such as the WannaCry ransomware attack that seriously affected the NHS in 2017.
+
+\bibliographystyle{plainnat}
+\bibliography{geolog.bib,why.bib}
+\end{document}
