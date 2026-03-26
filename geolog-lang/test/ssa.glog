@@ -1,0 +1,66 @@
+theory IsTransClosure (X : Query) (R : X -> X -> Query) (P : X -> X -> Query) := sig
+  refl : (x : X) -> P x x
+  snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
+end
+
+theory LinearOrder := sig
+  car : Query
+  first : car
+  last : car
+  next : car -> car
+  prev : car -> car
+
+  next/prev : (x : car) -> next (prev x) = x
+  prev/next : (x : car) -> prev (next x) = x
+
+  follows : car -> car -> Query
+
+  follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
+
+  acyclic : (x : car) -> (y : car) -> follows x y -> follows y x -> x = y
+  first-is-top : (x : car) -> follows first x
+  last-is-bot : (x : car) -> follows x last
+end
+
+theory OpInfo := sig
+  OpType : Query
+  inputArity : OpType -> Query
+  outputArity : OpType -> Query
+end
+
+theory Iso (A : Query) (B : Query) := sig
+  fwd : A -> B
+  bwd : B -> A
+  fwd/bwd : (a : A) -> bwd (fwd a) = a
+  bwd/fwd : (b : B) -> fwd (bwd b) = b
+end
+
+theory Operation (opInfo : OpInfo) (val : Query) (outputs : Query) := sig
+  opType : opInfo.OpType
+  opInputs : opInfo.inputArity opType -> val
+  opOutputs : Iso outputs (opInfo.outputArity opType)
+end
+
+query PrecedingOutput (X : Query) (rel : X -> X -> Query) (x : X) (outputs : X -> Query) := sig
+  y : X
+  isPreceding : rel y x
+  output : outputs y
+end
+
+theory Block (opInfo : OpInfo) := sig
+  ops : LinearOrder
+  outputs : ops.car -> Query
+  payload : (x : ops.car) -> (
+    Operation
+      opInfo
+      (PrecedingOutput (ops.car) (ops.follows) x outputs)
+      (outputs x)
+  )
+  args : LinearOrder
+end
+
+theory SSA (opInfo : OpInfo) := sig
+  RegionId : Query
+  BlockId : RegionId -> Query
+  ops : (r : RegionId) -> BlockId r -> Block opInfo
+end
