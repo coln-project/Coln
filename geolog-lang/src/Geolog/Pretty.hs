@@ -8,7 +8,6 @@ import FNotation.Names
 import Geolog.Common
 import Geolog.Core
 import Geolog.Notation
-import Prettyprinter
 
 -- Pretty printing
 --------------------------------------------------------------------------------
@@ -58,7 +57,7 @@ nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 instance Delab (TyS e) where
   delab xs = \case
     U u -> N.Keyword (fromString $ show $ decodesInto u) ()
-    Decode _ t -> delab xs t
+    Decode t -> delab xs t
     Pi pv a (Abs x b) ->
       N.Infix
         (nbinding x (delab xs a))
@@ -72,6 +71,7 @@ instance Delab (TyS e) where
       go xs' (y : ys') (TSCons a te') =
         nbinding y (delab xs' a) : go (xs' :> y) ys' te'
       go _ _ _ = error "mismatching length for names and telescope"
+    Eq _ t0 t1 -> N.Infix (delab xs t0) (N.Keyword "=" ()) (delab xs t1)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
 
 class DPrettyWithNames a where
