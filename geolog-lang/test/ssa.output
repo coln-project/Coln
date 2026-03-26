@@ -1002,11 +1002,43 @@ Decl theory (1532:1672)
               Ident opInfo (1662:1668)
 
 -- elaborated
+potential entry named Block
+type:  (opInfo : OpInfo) -> Theory
+value:  opInfo => sig
+  ops : LinearOrder
+  outputs : ops .car -> Query
+  payload : (x : ops .car) -> Operation opInfo (PrecedingOutput (ops .car) (ops .follows) x outputs) (outputs x)
+  args : LinearOrder
+end
 potential entry named IsTransClosure
 type:  (X : Query) -> (R : X -> X -> Query) -> (P : X -> X -> Query) -> Theory
 value:  X => R => P => sig
   refl : (x : X) -> P x x
   snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
+end
+potential entry named Iso
+type:  (A : Query) -> (B : Query) -> Theory
+value:  A => B => sig
+  fwd : A -> B
+  bwd : B -> A
+  fwd/bwd : (a : A) -> bwd (fwd a) = a
+  bwd/fwd : (b : B) -> fwd (bwd b) = b
+end
+potential entry named LinearOrder
+type:  Theory
+value:  sig
+  car : Query
+  first : car
+  last : car
+  next : car -> car
+  prev : car -> car
+  next/prev : (x : car) -> next (prev x) = x
+  prev/next : (x : car) -> prev (next x) = x
+  follows : car -> car -> Query
+  follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
+  acyclic : (x : car) -> (y : car) -> follows x y -> follows y x -> x = y
+  first-is-top : (x : car) -> follows first x
+  last-is-bot : (x : car) -> follows x last
 end
 potential entry named OpInfo
 type:  Theory
@@ -1015,6 +1047,13 @@ value:  sig
   inputArity : OpType -> Query
   outputArity : OpType -> Query
 end
+potential entry named Operation
+type:  (opInfo : OpInfo) -> (val : Query) -> (outputs : Query) -> Theory
+value:  opInfo => val => outputs => sig
+  opType : opInfo .OpType
+  opInputs : opInfo .inputArity opType -> val
+  opOutputs : Iso outputs (opInfo .outputArity opType)
+end
 potential entry named PrecedingOutput
 type:  (X : Query) -> (rel : X -> X -> Query) -> (x : X) -> (outputs : X -> Query) -> Query
 value:  X => rel => x => outputs => sig
@@ -1022,25 +1061,12 @@ value:  X => rel => x => outputs => sig
   isPreceding : rel y x
   output : outputs y
 end
+potential entry named SSA
+type:  (opInfo : OpInfo) -> Theory
+value:  opInfo => sig
+  RegionId : Query
+  BlockId : RegionId -> Query
+  ops : (r : RegionId) -> BlockId r -> Block opInfo
+end
 
 -- messages
-
-error[E0208]: unexpected notation for term in synthesizing position: Infix
-13 |   next/prev : (x : car) -> next (prev x) = x
-13 |                            ^^^^^^^^^^^^^^^^^
-
-error[E0208]: unexpected notation for term in synthesizing position: Infix
-34 |   fwd/bwd : (a : A) -> bwd (fwd a) = a
-34 |                        ^^^^^^^^^^^^^^^
-
-error[E0201]: identifier Iso not in scope
-41 |   opOutputs : Iso outputs (opInfo.outputArity opType)
-41 |               ^^^
-
-error[E0201]: identifier LinearOrder not in scope
-51 |   ops : LinearOrder
-51 |         ^^^^^^^^^^^
-
-error[E0201]: identifier Block not in scope
-65 |   ops : (r : RegionId) -> BlockId r -> Block opInfo
-65 |                                        ^^^^^
