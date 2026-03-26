@@ -12,7 +12,7 @@ import Geolog.Core
 import Geolog.CoreOperations
 import Geolog.Pretty
 import Prettyprinter
-import Prelude hiding (lookup, head)
+import Prelude hiding (head, lookup)
 
 -- Diagnostic codes
 --------------------------------------------------------------------------------
@@ -176,8 +176,9 @@ wrongLevel :: (DiagnosticCtxArg) => Span -> IO a
 wrongLevel s = failWith s WrongLevel "wrong level"
 
 equalityUnsupportedAtLevel :: (DiagnosticCtxArg) => Span -> Level -> DDoc -> IO a
-equalityUnsupportedAtLevel s l a = failWith s EqualityUnsupportedAtLevel $
-  "equality types are unsupported at level" <+> dpretty l <> ", which is the inferred level of the type" <+> a
+equalityUnsupportedAtLevel s l a =
+  failWith s EqualityUnsupportedAtLevel $
+    "equality types are unsupported at level" <+> dpretty l <> ", which is the inferred level of the type" <+> a
 
 -- Helpers
 --------------------------------------------------------------------------------
@@ -345,7 +346,6 @@ syn SKinetic c n@(N.Infix n0 (N.Keyword "=" _) n1) = do
   unless (levelOf a == Query) $
     equalityUnsupportedAtLevel (N.span n) (levelOf a) (prtVal c.shape a)
   pure (code $ G (Eq (quote c.shape.length a) g0.stx g1.stx) (VEq a g0.val g1.val), universe QueryU)
-  
 syn _ _ (N.Keyword "Int" _) = pure (code $ builtinTy BuiltinInt, universe PrimU)
 syn _ _ (N.Keyword "String" _) = pure (code $ builtinTy BuiltinString, universe PrimU)
 syn SKinetic _ (N.String s _) = pure (lit $ LitString s, builtinTy BuiltinString)

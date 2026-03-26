@@ -9,7 +9,6 @@ import Geolog.Common
 import Geolog.Core
 import Geolog.Notation
 
-
 -- Pretty printing
 --------------------------------------------------------------------------------
 
