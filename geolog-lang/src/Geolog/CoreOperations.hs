@@ -16,7 +16,7 @@ class Core (el :: Energy -> Type) (ty :: Energy -> Type) | el -> ty, ty -> el wh
   app :: el e -> el K -> el e
   proj :: el e -> Name -> el e
   code :: ty e -> el e
-  decode :: Universe -> el e -> ty e
+  decode :: el e -> ty e
   universe :: Universe -> ty e
   builtinTy :: BuiltinTy -> ty e
   lit :: Literal -> el K
@@ -61,19 +61,19 @@ instance Core ElV TyV where
   app (VLam _ clo) v = appClo clo v
   app (VNeu n) v =
     let a = appTy n.ty v
-        behavesAs = app <$> n.behavesAs <*> pure v
-     in neu a n.head (SApp n.spine v) behavesAs
+        be = app <$> n.behavesAs <*> pure v
+     in neu a n.head (SApp n.spine v) be
   app _ _ = panic "a value of pi type should be a neutral or lam"
 
   proj v x = elemAt (coerceToFields v) x
 
-  code (VDecode _ n) = VNeu n
+  code (VDecode n) = VNeu n
   code a = VCode a
 
-  decode :: Universe -> ElV e -> TyV e
-  decode _ (VCode a) = a
-  decode u (VNeu n) = VDecode u n
-  decode _ _ =
+  decode :: ElV e -> TyV e
+  decode (VCode a) = a
+  decode (VNeu n) = VDecode n
+  decode _ =
     panic "a value of universe type should be a neutral or an encoding of a type"
 
   universe = VU
@@ -83,8 +83,9 @@ instance Core ElV TyV where
 
 behavesAs :: TyV K -> Maybe (TyV P)
 behavesAs (VU u) = Just (VU u)
-behavesAs (VDecode u n) = decode u <$> n.behavesAs
+behavesAs (VDecode n) = decode <$> n.behavesAs
 behavesAs (VPi pv a b) = Just (VPi pv a b)
+behavesAs (VEq _ _ _) = Nothing
 behavesAs (VBuiltinTy a) = Just $ VBuiltinTy a
 
 expandRecord :: Head -> Spine -> [Name] -> TeleV K -> Fields (ElV K)
@@ -139,9 +140,10 @@ instance Eval (TeleS e) (TeleV e) where
 instance Eval (TyS e) (TyV e) where
   eval e = \case
     U u -> VU u
-    Decode u t -> decode u (eval e t)
+    Decode t -> decode (eval e t)
     Pi pv dom cod -> VPi pv (eval e dom) (evalAbs e cod)
     Record l xs te -> VRecord l xs (eval e te)
+    Eq a t0 t1 -> VEq (eval e a) (eval e t0) (eval e t1)
     BuiltinTy t -> VBuiltinTy t
 
 -- Quoting
@@ -185,9 +187,10 @@ instance Quote (ElV e) (ElS e) where
 instance Quote (TyV e) (TyS e) where
   quote n = \case
     VU u -> U u
-    VDecode u ne -> Decode u (quote n (VNeu ne))
+    VDecode ne -> Decode (quote n (VNeu ne))
     VPi pv a b -> Pi pv (quote n a) (quoteClo n a b)
     VRecord l xs te -> Record l xs (quote n te)
+    VEq a v0 v1 -> Eq (quote n a) (quote n v0) (quote n v1)
     VBuiltinTy a -> BuiltinTy a
 
 -- Definitional equality
@@ -234,7 +237,7 @@ class DefEq a where
 instance DefEq (TyV K) where
   defEq cs a a' = case (a, a') of
     (VU u, VU u') | u == u' -> pure ()
-    (VDecode _ n, VDecode _ n') -> defEq cs n n'
+    (VDecode n, VDecode n') -> defEq cs n n'
     (VPi pv dom cod, VPi pv' dom' cod') -> do
       unless (pv == pv') $
         throwUnequalTys cs a a' $
@@ -289,8 +292,8 @@ instance DefEq (ElV K) where
     (VNeu n, VNeu n') -> defEq cs n n'
     (VCode a, VCode a') -> defEq cs a a'
     (VLam a c, VLam _ c') -> do
-      let v = local a (FId cs.length)
-      defEq (cs ++> "x") (appClo c v) (appClo c' v)
+      let w = local a (FId cs.length)
+      defEq (cs ++> "x") (appClo c w) (appClo c' w)
     (VCons (Fields _ vs), VCons (Fields _ vs')) ->
       forM_ (zip vs vs') (uncurry (defEq cs))
     (VLit l, VLit l') ->
