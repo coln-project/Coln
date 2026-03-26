@@ -7,19 +7,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "==> Building geolog-lsp (release)..."
-cargo build --release
+cabal build geolog-lsp
 
 PLATFORM="linux-x64"
 SERVER_DIR="$ROOT/client/server/$PLATFORM"
 mkdir -p "$SERVER_DIR"
 
-BINARY="$ROOT/target/release/geolog-lsp"
+BINARY="$(cabal list-bin geolog-lsp)"
 if [[ ! -f "$BINARY" ]]; then
-  BINARY="$ROOT/target/debug/geolog-lsp"
-  echo "==> Release binary not found, using debug build"
-fi
-if [[ ! -f "$BINARY" ]]; then
-  echo "ERROR: No geolog-lsp binary found. Run 'cargo build' or 'cargo build --release' first."
+  echo "ERROR: No geolog-lsp binary found."
   exit 1
 fi
 echo "==> Copying binary to $SERVER_DIR/"
@@ -35,7 +31,7 @@ echo "==> Building client extension..."
 # (cd "$ROOT/client" && npm prune --production)
 
 echo "==> Packaging .vsix..."
-(cd "$ROOT/client" && npx --yes @vscode/vsce package)
+(cd "$ROOT/client" && npx --yes @vscode/vsce package --allow-missing-repository)
 
 echo "==> Done. .vsix is in client/"
 ls -la "$ROOT/client"/*.vsix 2>/dev/null || true
