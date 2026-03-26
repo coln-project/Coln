@@ -10,8 +10,9 @@ import FNotation qualified as N
 import Geolog.Common
 import Geolog.Core
 import Geolog.CoreOperations
+import Geolog.Pretty
 import Prettyprinter
-import Prelude hiding (lookup)
+import Prelude hiding (head, lookup)
 
 -- Diagnostic codes
 --------------------------------------------------------------------------------
@@ -31,6 +32,7 @@ data ElaboratorCode
   | UnexpectedField
   | WrongNumberOfFields
   | WrongLevel
+  | EqualityUnsupportedAtLevel
   deriving (Eq, Ord)
 
 elaboratorCodeTable :: Map ElaboratorCode CodeMeta
@@ -50,6 +52,7 @@ elaboratorCodeTable =
     , (UnexpectedField, CodeMeta 11 SError Nothing)
     , (WrongNumberOfFields, CodeMeta 12 SError Nothing)
     , (WrongLevel, CodeMeta 13 SError Nothing)
+    , (EqualityUnsupportedAtLevel, CodeMeta 14 SError Nothing)
     ]
 
 -- Elaboration implicits
@@ -119,7 +122,7 @@ instance Core ElG TyG where
   app (G ft fv) (G xt xv) = G (app ft xt) (app fv xv)
   proj (G t v) x = G (proj t x) (proj v x)
   code (G t v) = G (code t) (code v)
-  decode u (G t v) = G (decode u t) (decode u v)
+  decode (G t v) = G (decode t) (decode v)
   universe u = G (universe u) (universe u)
   builtinTy a = G (builtinTy a) (builtinTy a)
   lit l = G (lit l) (lit l)
@@ -171,6 +174,11 @@ conversionError s t t' e = do
 
 wrongLevel :: (DiagnosticCtxArg) => Span -> IO a
 wrongLevel s = failWith s WrongLevel "wrong level"
+
+equalityUnsupportedAtLevel :: (DiagnosticCtxArg) => Span -> Level -> DDoc -> IO a
+equalityUnsupportedAtLevel s l a =
+  failWith s EqualityUnsupportedAtLevel $
+    "equality types are unsupported at level" <+> dpretty l <> ", which is the inferred level of the type" <+> a
 
 -- Helpers
 --------------------------------------------------------------------------------
@@ -240,7 +248,7 @@ elts c (x : xs) (TVCons a f) (n : ns) = do
 elts _ _ _ _ = panic "fail earlier if we don't have right number of fields"
 
 typ :: (ElabArgs) => Ctx -> Universe -> Ntn -> IO (TyG K)
-typ c u n = decode u <$> chkK c (VU u) n
+typ c u n = decode <$> chkK c (VU u) n
 
 synK :: (ElabArgs) => Ctx -> Ntn -> IO (ElG K, TyV K)
 synK = syn SKinetic
@@ -253,6 +261,13 @@ chkK = chk SKinetic
 
 chkP :: (ElabArgs) => Ctx -> TyV K -> Ntn -> IO (ElG P)
 chkP = chk SPotential
+
+guardDefEq :: (ElabArgs, DefEq a, Quote a b, DPrettyWithNames b) => Span -> Ctx -> a -> a -> c -> IO c
+guardDefEq s c v0 v1 x =
+  case defEq c.shape v0 v1 of
+    Left err ->
+      conversionError s (prtVal c.shape v0) (prtVal c.shape v1) err
+    Right () -> pure x
 
 -- syn and chk
 --------------------------------------------------------------------------------
@@ -296,9 +311,9 @@ syn SKinetic c (N.App n ns) = do
   go g a ns
  where
   go g a [] = pure (g, a)
-  go g a (n : ns) = do
-    (g', a') <- elim c g a n
-    go g' a' ns
+  go g a (n' : ns') = do
+    (g', a') <- elim c g a n'
+    go g' a' ns'
 syn SPotential _ n@(N.App _ _) =
   unsupportedInPotentialMode (N.span n) "application"
 syn SKinetic _ (N.Keyword "Query" _) =
@@ -324,6 +339,13 @@ syn SKinetic c (N.Infix n1 (N.Keyword arr@("~>"; "->") _) nb) =
           pure (code $ G t v, universe TheoryU)
 syn SPotential _ n@(N.Infix _ (N.Keyword "->" _) _) =
   unsupportedInPotentialMode (N.span n) "pi types"
+syn SKinetic c n@(N.Infix n0 (N.Keyword "=" _) n1) = do
+  (g0, a0) <- synK c n0
+  (g1, a1) <- synK c n1
+  a <- guardDefEq (N.span n1) c a0 a1 a0
+  unless (levelOf a == Query) $
+    equalityUnsupportedAtLevel (N.span n) (levelOf a) (prtVal c.shape a)
+  pure (code $ G (Eq (quote c.shape.length a) g0.stx g1.stx) (VEq a g0.val g1.val), universe QueryU)
 syn _ _ (N.Keyword "Int" _) = pure (code $ builtinTy BuiltinInt, universe PrimU)
 syn _ _ (N.Keyword "String" _) = pure (code $ builtinTy BuiltinString, universe PrimU)
 syn SKinetic _ (N.String s _) = pure (lit $ LitString s, builtinTy BuiltinString)

@@ -4,6 +4,7 @@ import Data.Kind (Type)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Diagnostician
 import FNotation (Name)
 import Geolog.Common
 import Prettyprinter
@@ -15,8 +16,8 @@ data Level
   | Prim
   deriving (Eq, Show)
 
-instance Pretty Level where
-  pretty = pretty . show
+instance DPretty Level where
+  dpretty = pretty . show
 
 instance PartialOrd Level where
   leq l1 l2 = case (l1, l2) of
@@ -153,9 +154,10 @@ data TeleS e = TSNil | TSCons (TyS e) (TeleS e)
 
 data TyS :: Energy -> Type where
   U :: Universe -> TyS e
-  Decode :: Universe -> ElS e -> TyS e
+  Decode :: ElS e -> TyS e
   Pi :: PiVariant -> TyS K -> Abs (TyS K) -> TyS e
   Record :: Level -> [Name] -> TeleS K -> TyS P
+  Eq :: TyS K -> ElS K -> ElS K -> TyS K
   BuiltinTy :: BuiltinTy -> TyS e
 
 type Env = Bwd (ElV K)
@@ -193,10 +195,22 @@ data TeleV e = TVNil | TVCons (TyV e) (ElV K -> TeleV e)
 
 data TyV :: Energy -> Type where
   VU :: Universe -> TyV e
-  VDecode :: Universe -> Neutral -> TyV K
+  VDecode :: Neutral -> TyV K
   VPi :: PiVariant -> TyV K -> Clo (TyV K) -> TyV e
   VRecord :: Level -> [Name] -> TeleV K -> TyV P
+  VEq :: TyV K -> ElV K -> ElV K -> TyV K
   VBuiltinTy :: BuiltinTy -> TyV e
+
+instance LevelOf (TyV e) where
+  levelOf = \case
+    VU u -> codesInto u
+    VDecode n -> case n.ty of
+      VU u -> decodesInto u
+      _ -> error "decoded a non-type"
+    VPi pv _ _ -> codOf pv
+    VRecord l _ _ -> l
+    VEq _ _ _ -> Query
+    VBuiltinTy _ -> Prim
 
 data GlobalEntry
   = KEntry (ElS K) (ElV K) (TyV K)
