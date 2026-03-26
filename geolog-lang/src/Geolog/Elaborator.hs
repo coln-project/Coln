@@ -414,13 +414,13 @@ withArgs c ((x, a_n) : args) action = do
   (t, b) <- withArgs (bind x a.val c) args action
   pure (Lam a.stx (Abs x t), Pi TheoryTop a.stx (Abs x b))
 
-elabTheory :: (ElabArgs) => Ntn -> IO (Name, GlobalEntry)
-elabTheory n = do
+elabType :: (ElabArgs) => Universe -> Ntn -> IO (Name, GlobalEntry)
+elabType u n = do
   (pat, body_n) <- definition n
   (name, args) <- unpackArgs pat
   (t, a) <- withArgs emptyCtx args $ \c -> do
-    g <- chkP c (VU TheoryU) body_n
-    pure (g.stx, U TheoryU)
+    g <- chkP c (VU u) body_n
+    pure (g.stx, U u)
   pure (name, PEntry t (eval mempty t) (eval mempty a))
 
 elabDef :: (ElabArgs) => Ntn -> IO (Name, GlobalEntry)
@@ -435,7 +435,8 @@ elabDef n = do
   pure (name, KEntry t (eval mempty t) (eval mempty a))
 
 elabDecl :: (ElabArgs) => Ntn -> IO (Name, GlobalEntry)
-elabDecl (N.Decl "theory" n _) = elabTheory n
+elabDecl (N.Decl "theory" n _) = elabType TheoryU n
+elabDecl (N.Decl "query" n _) = elabType QueryU n
 elabDecl (N.Decl "def" n _) = elabDef n
 elabDecl n = unexpectedNotation n "top-level declaration"
 
