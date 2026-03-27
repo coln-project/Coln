@@ -338,3 +338,6 @@ _build/
 
 # nix result
 **/result
+
+# Geolog REPL history
+.history
