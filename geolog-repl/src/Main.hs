@@ -13,6 +13,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Diagnostician
 import FNotation
+import Geolog.Common
 import Geolog.Core
 import Geolog.CoreOperations hiding (eval)
 import Geolog.Diagnostics
@@ -79,6 +80,15 @@ eval file = do
       Decl name _ _ -> do
         put =<< liftIO (uncurry (insertEntry ge) <$> elabDecl ntn)
         tell [name]
+      -- look up name
+      Ident name _ -> lift do
+        gets (flip lookup name) >>= \case
+          Nothing -> liftIO $ putStrLn $ "Not in scope: " <> show name
+          Just r -> case r of
+            PEntry _ v a -> p v a
+            KEntry _ v a -> p v a
+            where
+              p v a = liftIO $ putDoc $ prtVal mempty a <> line <> prtVal mempty v <> line
       -- evaluate expression
       _ ->
         liftIO $
