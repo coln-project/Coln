@@ -19,7 +19,7 @@
 
 AI is rapidly advancing in many areas, but one particular area of concern is that AI agents are now able to independently find and exploit large numbers of high-severity security vulnerabilities in widely-used systems~\citep{firefox-vulnerabilities,anthropic-2026}.
 As cybersecurity operations are now considered an indispensible element of military strength and deterrence~\citep{DoD-2023-cyber}, we have to assume that these public reports are only the tip of the iceberg, and that nation states have secret research programmes that are stockpiling security vulnerabilities in software, hardware, and protocols for use in a potential future armed conflict.
-Just a few years ago, finding and exploiting vulnerabilties in computer systems was expensive~\citep{slayton-2017-cyber}, but this is no longer true.
+Just a few years ago, finding and exploiting vulnerabilities in computer systems was expensive~\citep{slayton-2017-cyber}, but this is no longer true.
 
 Cybersecurity generally favours the attacker, who has to find only one vulnerability to compromise a system, whereas the defender has to find and patch \emph{all} vulnerabilities to make their system secure \citep{ryseff-2017-cyberwarfare}.
 This fact, together with AI's rapidly growing capability for finding vulnerabilities, worries me a lot.
@@ -33,7 +33,7 @@ One way we can contribute to stabilisation is through advancing defensive techno
 In the cybersecurity domain, eliminating vulnerabilities is one of the best defensive measures.
 Some types of vulnerability can be avoided by using better tools: for example, using a memory-safe language like Rust instead of C/C++.
 However, many critical software systems like operating system kernels or JIT compilers for JavaScript/Wasm in web browsers inherently need to perform unsafe operations (interfacing with hardware devices, or generating machine code from untrusted input and executing it), which cannot be made safe simply by porting to Rust.
-Rust also provides only memory safety, but cannot rule out vulnerabilties due to logic bugs, such as incorrect access control checks.
+Rust also provides only memory safety, but cannot rule out vulnerabilities due to logic bugs, such as incorrect access control checks.
 
 A more comprehensive approach is to use formal verification, i.e.\ to prove that a program conforms to some specification under all possible executions.
 This specification can include memory safety properties, but also properties about the logical correctness of the program's security features, and any other properties that are considered important.
@@ -47,13 +47,13 @@ This offers the prospect of formally verifying all of the software on which our 
 And since formal proofs are automatically checked by the kernel, hallucinated proofs are rejected without any human involvement, making formal verification an excellent use case for our current powerful but imperfect LLMs \citep{Kleppmann2025}.
 
 The pervasive use of formally verified computer systems would strengthen the defensive side of cybersecurity, and thereby shift the offense-defense balance towards stability, reducing the risk of armed conflict.
-It would also reduce the risk of other harms created by security vulnerabilties, such as the WannaCry ransomware attack that seriously affected the NHS in 2017.
+It would also reduce the risk of other harms created by security vulnerabilities, such as the WannaCry ransomware attack that seriously affected the NHS in 2017.
 
 \section{The case for going beyond Lean}
 
 To make this concrete: what would it take to prove that, for example, a version of the Linux kernel or the Firefox web browser is free from security vulnerabilities?
 Both of these systems consist of tens of millions of lines of code, making them several orders of magnitude larger than any formal verification project that has been attempted before.
-A proof of such scale cannot be accomplished by a single agent~-- it will definitely require many agents working on parallel on different aspects of the proof, for example verifying different modules in the code base, or trying different proof strategies on the same module in parallel to see which one works.
+A proof of such scale cannot be accomplished by a single agent~-- it will definitely require many agents working in parallel on different aspects of the proof, for example verifying different modules in the code base, or trying different proof strategies on the same module in parallel to see which one works.
 
 Coordinating between all those agents will require an infrastructure to keep track of which agent is working on what, which theorems have already been proved, which proof strategies have been attempted (including any dead ends, so that they don't get tried again), and so on.
 The Categorical Core of SGAI is that infrastructure, and Geolog is the language and data model of the Categorical Core.
@@ -175,7 +175,7 @@ But in general, resolving the merge conflict may not be deterministic, and requi
 Although the Geolog language is very powerful, it is also deliberately restricted compared to other dependently typed programming languages like Agda or Lean.
 It only allows the expression of constraints that can be represented in \emph{geometric logic} (hence the name Geolog), a fragment of first-order logic that does not allow negation and restricts the use of implication and quantifiers.
 There are several reasons for this choice of logic; the main one is that it guarantees that constraints can be checked efficiently.
-In particular, if some new data is written to the database, the system only has to examine the new data that was written, and it don't have to go and re-check all of the constraints for all of the existing data~-- in other words, constraints can be checked \emph{incrementally}.
+In particular, if some new data is written to the database, the system only has to examine the new data that was written, and it doesn't have to go and re-check all of the constraints for all of the existing data~-- in other words, constraints can be checked \emph{incrementally}.
 In a large database with frequent writes, that is essential for getting good performance.
 
 These restrictions on the dependent types that can be used in Geolog do not affect the semantic power of the proofs you can write inside a Geolog instance.
