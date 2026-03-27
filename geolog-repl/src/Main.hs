@@ -2,6 +2,7 @@ module Main (main) where
 
 import Control.Monad
 import Control.Monad.State.Strict
+import Control.Monad.Writer
 import Data.Bifunctor
 import Data.Char
 import Data.Foldable
@@ -72,23 +73,20 @@ main =
 eval :: File -> Repl ()
 eval file = do
   ns <- liftIO $ parse parseConfig (reporter ParserCode) file =<< lex lexConfig (reporter LexerCode) file
-  let (decls, exprs) =
-        ns & partition \case
-          N.Decl{} -> True
-          _ -> False
   let ?diagnosticCtx = DiagnosticCtx{reporter = reporter ElaboratorCode, file}
-  -- register declarations
-  ge <-
-    liftIO
-      . flip (foldlM \ge' n -> let ?globalEnv = ge' in uncurry (insertEntry ge') <$> elabDecl n) decls
-      =<< get
-  when (not $ null decls) $ liftIO $ putStrLn $ show (length decls) <> " declarations added."
-  put ge
-  -- evaluate expressions
-  forM_ exprs \n ->
+  ((), newDeclNames) <- runWriterT $ for_ ns \n -> do
+    ge <- get
     let ?globalEnv = ge
-     in liftIO $
+    case n of
+      -- register declaration
+      N.Decl name _ _ -> do
+        put =<< liftIO (uncurry (insertEntry ge) <$> elabDecl n)
+        tell [name]
+      -- evaluate expression
+      _ ->
+        liftIO $
           synK emptyCtx n
             >>= \(v, t) -> putDoc $ prtVal mempty v.val <+> ":" <+> prtVal mempty t <> line
+  when (not $ null newDeclNames) $ liftIO $ putStrLn $ show (length newDeclNames) <> " declarations added."
  where
   reporter translator = ReporterFor{translator, reporter = Reporter{handle = stdout, fancy = True}}
