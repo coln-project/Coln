@@ -70,20 +70,20 @@ main =
 
 eval :: File -> Repl ()
 eval file = do
-  ns <- liftIO $ parse parseConfig (reporter ParserCode) file =<< lex lexConfig (reporter LexerCode) file
+  ntns <- liftIO $ parse parseConfig (reporter ParserCode) file =<< lex lexConfig (reporter LexerCode) file
   let ?diagnosticCtx = DiagnosticCtx {reporter = reporter ElaboratorCode, file}
-  ((), newDeclNames) <- runWriterT $ for_ ns \n -> do
+  ((), newDeclNames) <- runWriterT $ for_ ntns \ntn -> do
     ge <- get
     let ?globalEnv = ge
-    case n of
+    case ntn of
       -- register declaration
       N.Decl name _ _ -> do
-        put =<< liftIO (uncurry (insertEntry ge) <$> elabDecl n)
+        put =<< liftIO (uncurry (insertEntry ge) <$> elabDecl ntn)
         tell [name]
       -- evaluate expression
       _ ->
         liftIO $
-          synK emptyCtx n
+          synK emptyCtx ntn
             >>= \(v, t) -> putDoc $ prtVal mempty v.val <+> ":" <+> prtVal mempty t <> line
   when (not $ null newDeclNames) $ liftIO $ putStrLn $ show (length newDeclNames) <> " declarations added."
   where
