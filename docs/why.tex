@@ -97,6 +97,41 @@ Some of the key differences between Lean and Geolog are:
         The textual representation is then only an incidental detail of the LLM/Geolog interface, and the structured representation stored by Geolog is the primary one.} and allows the AI to interface directly with the AST or IR representation of programs and proofs.
 \end{itemize}
 
+Those differences motivate why the SGAI programme is starting afresh with Geolog, and incorporating lessons learnt from Lean and other proof assistants, rather than using the Lean system as it stands today.
+
+\section{The case for a new database}
+
+In addition to being a proof assistant, Geolog is also a new kind of database crossed with a version control system~-- one that is optimised for storing a structured representation of programs and proofs about those programs.
+That raises the next question: building a new database is hard (folklore in the databases community says that it takes 10 years to build a new database), so can't we just use an existing one and save ourselves a lot of effort?
+
+There is some related work: for example, Joern CPG \citep{joern-cpg} and Fraunhofer AISEC CPG \citep{fraunhofer-cpg} define ways of mapping code structure onto a graph database such as Neo4j, and Galois MATE CPG \citep{galois-cpg} stores the IR of a program in PostgreSQL.
+These tools are already widely used for finding security vulnerabilities through static program analysis.
+However, they are not designed to support proofs about programs, and they assume a static program rather than one that is being manipulated by agents.
+
+In the context of AI agents collaborating on proofs, a server-centric database like Neo4j or PostgreSQL is not suitable, for the following reasons:
+
+\begin{itemize}
+    \item In order to make the feedback loop for trying proof steps as fast as possible, we cannot have a network round-trip on every access to the database.
+        It is essential that each agent can read and write its own local copy of the database, and replicate any writes asynchronously to other agents' replicas without blocking the AI's progress.
+        In other words, we need a local-first approach \citep{kleppmann-2019-localfirst}.
+
+    \item In order to allow multiple agents to make progress in parallel without interfering with each other, we may want to let each work for a while on a private \emph{branch} (in the version control sense), and decide later which (if any) branches to merge.
+        In case one branch of a proof gets stuck, we want an agent to be able to go back to an older state and try branching off some previous version with a different proof strategy.
+        These operations are supported by version control systems, but not by most databases.
+\end{itemize}
+
+A version control system like Git is closer to what we need in terms of supporting local reads/writes, branching, and reverting to old versions.
+But the downside of most version control systems is that they operate only on text (you can commit binary files to a repository, but the VCS doesn't provide any help with diffing or merging those files).
+As discussed previously, we need to operate on a structured data model with well-defined semantics for merging updates from different agents, which Git or similar systems do not provide.
+In fact, Git's merge semantics are poorly understood and surprising in various ways \citep{glodny-2025}.
+
+The closest existing system to what we need is Automerge, an embedded database for local-first software with support for Git-like version control that uses CRDTs \citep{shapiro-2025-crdt} to merge branches with well-defined semantics.
+However, Automerge's data model is JSON (with a few extensions), which is not well suited for representing programs and proofs.
+
+Fortunately, the Automerge team is part of the SGAI programme.
+Our intention is to reuse the infrastructure we have already built for Automerge (physical data layout, versioning mechanisms, compression, replication protocols, access control, sync servers and clients, user interface tooling, \dots), and replace only the JSON data model layer with a new data model that is designed for programs and proofs.
+That way, we are starting the 10-year process of building a new database with a head start of several years, while at the same time having the freedom to build a system that is targeted towards the specific needs of the SGAI programme.
+
 \bibliographystyle{plainnat}
 \bibliography{geolog.bib,why.bib}
 \end{document}
