@@ -40,7 +40,7 @@ main =
     map
       (second \f s -> dontCrash $ f $ strip s)
       [
-        ( "load"
+        ( "source"
         , \fp -> eval . newFile fp =<< liftIO (T.readFile fp)
         )
       ,
@@ -59,7 +59,7 @@ main =
           let nameStrings = map (\n -> mconcat ((<> "/") . T.unpack <$> n.init) <> T.unpack n.last) names
           pure $ filter (s `isPrefixOf`) $ cmdStrings <> nameStrings
       )
-      [ (":load", fileCompleter)
+      [ (":source", fileCompleter)
       , (":list", \_ -> pure ("", []))
       ]
    where
