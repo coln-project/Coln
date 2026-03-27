@@ -13,7 +13,6 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Diagnostician
 import FNotation
-import FNotation qualified as N
 import Geolog.Core
 import Geolog.CoreOperations hiding (eval)
 import Geolog.Diagnostics
@@ -79,7 +78,7 @@ eval file = do
     let ?globalEnv = ge
     case ntn of
       -- register declaration
-      N.Decl name _ _ -> do
+      Decl name _ _ -> do
         put =<< liftIO (uncurry (insertEntry ge) <$> elabDecl ntn)
         tell [name]
       -- evaluate expression
