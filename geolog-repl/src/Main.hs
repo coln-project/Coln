@@ -42,7 +42,7 @@ main =
         [ ( "load",
             \fp -> eval . newFile fp =<< liftIO (T.readFile fp)
           ),
-          ( "theories",
+          ( "list",
             const $ liftIO . putDoc . (<> line) . vcat . map (dpretty . fst) . globalEntries =<< get
           )
         ]
@@ -58,7 +58,7 @@ main =
             pure $ filter (s `isPrefixOf`) $ cmdStrings <> nameStrings
         )
         [ (":load", fileCompleter),
-          (":theories", \_ -> pure ("", []))
+          (":list", \_ -> pure ("", []))
         ]
       where
         cmdStrings = map (cmdPrefix :) $ map fst opts <> [multiCmd]
