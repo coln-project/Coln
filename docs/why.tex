@@ -132,6 +132,67 @@ Fortunately, the Automerge team is part of the SGAI programme.
 Our intention is to reuse the infrastructure we have already built for Automerge (physical data layout, versioning mechanisms, compression, replication protocols, access control, sync servers and clients, user interface tooling, \dots), and replace only the JSON data model layer with a new data model that is designed for programs and proofs.
 That way, we are starting the 10-year process of building a new database with a head start of several years, while at the same time having the freedom to build a system that is targeted towards the specific needs of the SGAI programme.
 
+\section{The case for a new data model}
+
+But what data model should Geolog use?
+The aforementioned CPG projects demonstrate that it is possible to map code ASTs and IR to property graphs and the relational model.
+These general-purpose data models have the advantage that they are implemented by existing databases.
+But since no existing database meets the needs of SGAI anyway, we also have the opportunity to design a new data model that is better suited to the task.
+
+The relational data model, despite being over half a century old \citep{codd-1970}, has proved extremely versatile and long-lasting.
+Almost any data structure, including structured representations of programs and proofs, can be represented in a relational way.
+However, the implementation of the relational model in SQL databases has limitations.
+In particular, SQL offers only very few types of constraints that an application can declare on a database: there are foreign key constraints, constraints on the values within a single row (check constraints), uniqueness constraints{\dots} and that's it.
+There is no way of specifying that the data must have the shape of, say, a linear linked list, or a tree, or a DAG.
+
+In a server-centric database that is not a big problem, because consistency of the database can rely on serializable transactions: if the database starts off in a consistent state, and every transaction transforms the database from one consistent state to another consistent state, then by induction it will remain consistent, even if the consistency property is not explicitly declared as a constraint.
+However, in a local-first model there are no serializable transactions (since that would require coordination between concurrent writes, slowing down parallel agents, and it would also rule out branching and merging workflows).
+It could then easily happen that two agents make updates that individually preserve consistency, but that break the linearity of the list or the acyclicity of the graph when merged.
+Consequently, if we want branching/local-first and also want to ensure that the data has some well-formed structure, we need a more powerful way of declaring constraints than is offered by SQL.
+
+This is the key thing that Geolog provides.
+Geolog is a dependently typed programming language that makes it possible to declare a relational schema with database constraints that are vastly more expressive than what SQL provides.
+As a user of Geolog you can write \emph{theories} in this programming language, which are definitions of a database schema (data types that can be stored) and \emph{axioms} (logical statements about the data in the database; the database will reject any writes that would violate an axiom).
+An \emph{instance} of a theory is a dataset that conforms to the data types and axioms encoded in the theory.
+
+You can think of a Geolog theory as a way of defining a custom data model for a database: it is easy to define a theory of graphs, and then you have a graph database.
+But you can also define a theory for an IR to represent programs, and define constraints that ensure it is well-formed.
+For example, you can express that a sequence of instructions must appear in a linear order, and that the inputs to one instruction must be the outputs of instructions that appear earlier in that linear order.
+You can also express that every type of instruction must have a certain number of inputs, and check that every instruction has the correct number of inputs based on its type.
+These are just examples; Geolog is extremely general and flexible in what you can express.
+
+It is even possible to implement a proof checker, analogous to Lean's kernel, using Geolog.
+This way, the database will only allow you to write data that is accompanied by a proof that demonstrates why it is true~-- for example, proving that one version of a program is semantically equivalent to another version by referencing an axiom or proof rule that allows a semantic-preserving rewrite of one version into the other version.
+Database constraint checking then becomes equivalent to proof checking, and any theorems stored in the database are guaranteed to be true (provided that the proof checker and its axioms are correct).
+
+Now assume that two agents make concurrent updates to a database that individually satisfy the constraints and proof rules, but which violate a constraint when merged.
+In this case the database will detect a merge conflict, and ask the AI agent to resolve it.
+Due to the precise nature of how constraints are specified in Geolog, resolving this merge conflict is a very different matter from resolving a textual merge conflict in Git: in Geolog, the conflict specifies exactly which constraint is violated by which rows in which tables.
+The best way of resolving the conflict will depend on what the agents were trying to achieve; one option might be to simply discard one of the branches.
+In some situations, it might be possible to do a CRDT-style automatic merge that ensures all constraints are satisfied in the merged version.
+But in general, resolving the merge conflict may not be deterministic, and require the same kind of AI `creativity' or `intuition' that is needed to write proof steps.
+
+Although the Geolog language is very powerful, it is also deliberately restricted compared to other dependently typed programming languages like Agda or Lean.
+It only allows the expression of constraints that can be represented in \emph{geometric logic} (hence the name Geolog), a fragment of first-order logic that does not allow negation and restricts the use of implication and quantifiers.
+There are several reasons for this choice of logic; the main one is that it guarantees that constraints can be checked efficiently.
+In particular, if some new data is written to the database, the system only has to examine the new data that was written, and it don't have to go and re-check all of the constraints for all of the existing data~-- in other words, constraints can be checked \emph{incrementally}.
+In a large database with frequent writes, that is essential for getting good performance.
+
+These restrictions on the dependent types that can be used in Geolog do not affect the semantic power of the proofs you can write inside a Geolog instance.
+The restrictions are only on the logic that is used in the definition of database constraints, not on the logic of the proofs that are stored within the database.
+In fact, Geolog says nothing about what logic is used for the proofs within the database~-- it only provides the database, and the proof rules are defined by the authors of Geolog theories.
+But with the appropriate theories, anything that can be proved in Lean can also be proved in Geolog.
+
+Also, the restriction on negation applies only to the language for defining constraints, not to queries in general.
+It is possible to run arbitrary queries on a database snapshot (an instance of a theory at some point in time)~-- such queries are allowed to use negation, and they could be written in an existing relational query language such as SQL or Datalog.
+However, any nonmonotonic queries would not be incremental: that is, if the database changes, you would have to re-run the query to refresh the results.
+
+I have motivated Geolog in the context of reasoning about traditional programs and their IR, but the language is flexible enough to represent a wide variety of different models of computation and reason about them.
+It could represent spreadsheets, which are essentially a graph of cells containing formulas that can reference other cells.
+It could represent string diagrams, petri nets, probabilistic programming languages, and all sorts of other models.
+It is particularly well-suited to diagrammatic forms of reasoning that are widely used in category theory, in contrast to the reasoning based on textual syntax that dominates existing proof assistants.
+Hence the database system based on Geolog is called the Categorical Core.
+
 \bibliographystyle{plainnat}
 \bibliography{geolog.bib,why.bib}
 \end{document}
