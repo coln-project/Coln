@@ -1,4 +1,5 @@
 packages:
+  geolog-repl/geolog-repl.cabal
   geolog-lang/geolog-lang.cabal
   toy-datalog/toy-datalog.cabal
   diagnostician/diagnostician.cabal
