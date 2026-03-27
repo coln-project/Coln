@@ -51,18 +51,15 @@ main =
     cmdPrefix = ':'
     multiCmd = "multiline"
     completer =
-      Combine
-        ( Prefix
-            (wordCompleter \_ -> pure [])
-            [ (":load", fileCompleter),
-              (":theories", \_ -> pure ("", []))
-            ]
-        )
-        ( Word0 \s -> do
+      Prefix
+        ( wordCompleter \s -> do
             names <- gets $ map fst . globalEntries
             let nameStrings = map (\n -> mconcat ((<> "/") . T.unpack <$> n.init) <> T.unpack n.last) names
             pure $ filter (s `isPrefixOf`) $ cmdStrings <> nameStrings
         )
+        [ (":load", fileCompleter),
+          (":theories", \_ -> pure ("", []))
+        ]
       where
         cmdStrings = map (cmdPrefix :) $ map fst opts <> [multiCmd]
     start = liftIO $ putStrLn "Welcome to the Geolog REPL!"
