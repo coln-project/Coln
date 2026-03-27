@@ -49,6 +49,54 @@ And since formal proofs are automatically checked by the kernel, hallucinated pr
 The pervasive use of formally verified computer systems would strengthen the defensive side of cybersecurity, and thereby shift the offense-defense balance towards stability, reducing the risk of armed conflict.
 It would also reduce the risk of other harms created by security vulnerabilties, such as the WannaCry ransomware attack that seriously affected the NHS in 2017.
 
+\section{The case for going beyond Lean}
+
+To make this concrete: what would it take to prove that, for example, a version of the Linux kernel or the Firefox web browser is free from security vulnerabilities?
+Both of these systems consist of tens of millions of lines of code, making them several orders of magnitude larger than any formal verification project that has been attempted before.
+A proof of such scale cannot be accomplished by a single agent~-- it will definitely require many agents working on parallel on different aspects of the proof, for example verifying different modules in the code base, or trying different proof strategies on the same module in parallel to see which one works.
+
+Coordinating between all those agents will require an infrastructure to keep track of which agent is working on what, which theorems have already been proved, which proof strategies have been attempted (including any dead ends, so that they don't get tried again), and so on.
+The Categorical Core of SGAI is that infrastructure, and Geolog is the language and data model of the Categorical Core.
+Think of Geolog as a database that is optimised for storing large programs and AI-generated proofs about those programs.
+
+In fact, Geolog is a general-purpose database, and not specific to software verification.
+Building an automated researcher, as AI firms are now focussing on \citep{Heaven2026}, will require the same kind of infrastructure.
+However, I think that examining a concrete use case like ``how could we make the Linux kernel provably secure?'' helps bring clear justifications to design decisions that would otherwise remain abstract and vague.
+It also gives us a potential long-term vision to rally around, even if we are still years away from actually being able to verify a system as large as Linux.
+
+AI agents writing formal proofs work best by rapidly iterating on small proof steps, and getting feedback from the proof checker after each step whether it is valid or not~-- much like the interaction that many proof assistants offer to human users, but with the AI providing the `intuition' and guidance on which proof step to try next.
+At present, this can be done with Lean by using the Lean Language Server to expose an interactive LSP interface to the prover, and allowing an AI agent to call into this language server via MCP \citep{lean-lsp-mcp}.
+
+That raises the question: why not simply use Lean, given that so much investment in AI-generated proofs is already focussing on Lean?
+A core hypothesis of the SGAI program is that Lean will not scale to the size of proofs we are contemplating, because it is fundamentally designed for human-written proofs, and its support for AI-generated proofs is bolted on retroactively.
+By starting from a clean slate, we can design Geolog from the ground up to take advantage of the strengths of AI agents.
+While this is more work up front, we believe that it will unlock the ability to tackle more ambitious proof projects than will be possible in Lean.
+
+Some of the key differences between Lean and Geolog are:
+
+\begin{itemize}
+    \item Lean does not have any mechanism that allows multiple agents to collaborate on a proof, or to backtrack in case they hit a dead end in the proof search.
+        The best option is to put the Lean source files in a Git repository and let the agents make Git commits and inspect the Git history in the same way as a human would.
+        But concurrent work on the same module would quickly lead to merge conflicts that are messy to resolve at the level of the textual source, and the proof structure has no way of referencing the Git commit history since Lean and Git are two separate systems.
+        In contrast, Geolog is a database with built-in version control facilities, including principled ways of merging concurrent work from different agents.
+        We are planning to allow the data in the database to reference its own version history, making it possible to record structured information about the meaning of the version history within the system itself.
+        For example, the version history could encode the step-by-step evolution of a complex proof, and the database can record which proof rules, axioms, and lemmas were invoked at each step of the proof.
+
+    \item The current integration between Lean and AI agents via MCP and LSP is baroque and slow, since the language server was designed for interaction with humans, not AIs.
+        The faster we can make the feedback loop between AI and proof checker, the faster a correct proof can be found.
+        With Geolog, we can bring the proof checker as close as possible to the AI model that is driving it: not just on the same machine, but potentially even running on the same GPU as the LLM, to enable extremely fast round-trip times.
+
+    \item Lean uses text files as its representation, i.e.\ a linear sequence of symbols, because this is convenient for humans to enter on a keyboard and convenient to display on a two-dimensional screen for humans to read.
+        But text is not amenable for reasoning: in order to prove something about a program, it first has to be parsed into a richer structure such as an abstract syntax tree (AST) or an intermediate representation (IR), and then manipulated at that level.
+        AIs are not limited to keyboard input and they can work with multidimensional data better than humans can, and so Geolog skips the textual representation,\footnote{But LLMs are \emph{language models}, I hear you cry, and language is inherently textual!
+        Thus, does it really make sense to drop the textual representation?
+
+        Yes, in order for the LLM to interact with Geolog, it will probably output tool call requests as a stream of tokens, and the response from Geolog will go back into the LLM as tokens.
+        However, following the principle of small proof steps, these requests and responses will be quite small.
+        Rather than feeding an entire module of a program into the LLM as source code text turned into a token stream, it will be much more efficient for Geolog to store the code in a structured form, and to allow the LLM to interactively query it to learn exactly those things that it needs to know about the code.
+        The textual representation is then only an incidental detail of the LLM/Geolog interface, and the structured representation stored by Geolog is the primary one.} and allows the AI to interface directly with the AST or IR representation of programs and proofs.
+\end{itemize}
+
 \bibliographystyle{plainnat}
 \bibliography{geolog.bib,why.bib}
 \end{document}
