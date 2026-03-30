@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::ops::Op;
-use crate::table::{CellValue, Table, TableOid, ValidationError};
+use crate::table::{CellValue, RowId, Table, TableOid, ValidationError};
 
 pub struct Store {
     next_oid: TableOid,
@@ -83,15 +83,17 @@ impl Store {
 
     /// Validates the full batch against current store state (including PK clashes **within** the
     /// batch), then applies each op in order. On validation failure, the store is unchanged.
-    pub fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), ValidationError> {
+    /// Returns a vector of row_ids, in the same order as ops
+    pub fn apply_batch(&mut self, ops: Vec<Op>) -> Result<Vec<RowId>, ValidationError> {
         self.validate_batch(&ops)?;
+        let mut row_ids = vec![];
         for op in ops {
             let Op::Add { table, values } = op;
             let oid = self.resolve_table(&table).expect("validated batch");
             let t = self.table_mut(oid).expect("validated batch");
-            t.apply(Op::Add { table, values })?;
+            row_ids.push(t.append_row(values));
         }
-        Ok(())
+        Ok(row_ids)
     }
 
     fn validate_batch(&self, ops: &[Op]) -> Result<(), ValidationError> {
@@ -99,6 +101,7 @@ impl Store {
 
         for op in ops {
             let Op::Add { table, values } = op;
+            // Check ops have the right table path
             let oid = self
                 .resolve_table(table)
                 .ok_or_else(|| ValidationError::UnknownTable {
@@ -111,6 +114,7 @@ impl Store {
                 })?;
             t.validate_new_row(values)?;
 
+            // Check primary key conflicts within ops batch
             if let Some(key) = t.primary_key_values(values) {
                 let keys = pending_pk.entry(oid).or_default();
                 if keys.iter().any(|k| k == &key) {

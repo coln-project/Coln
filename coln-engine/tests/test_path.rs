@@ -70,16 +70,28 @@ fn test_create_table_for_path() {
     assert_eq!(store.laws().len(), n_laws);
     assert!(store.resolve_table(&Path::from("Graphs")).is_some());
 
-    {
-        let ge = store.table_at_mut(&Path::from("G.E")).expect("G.E table");
-        assert_eq!(ge.schema().columns.len(), 3);
-        assert_eq!(ge.row_count(), 0);
-    }
+    let graphs = store.table_at(&Path::from("Graphs")).expect("Graph table");
+    let gv = store.table_at(&Path::from("G.V")).expect("G.V table");
 
-    let gv = store.table_at_mut(&Path::from("G.V")).expect("G.V table");
-    
-    let mut values = vec![CellValue::Id(1), CellValue::Id(1)];
-    // add two vertices to the Grahph table of id 1, the vertex id would be implicit
-    let op1 = gv.add(values);
-    gv.apply(op).expect("add row to G.V");
+    // One explicit column (Graphs); row id will be assigned by the db.
+    let op0 = graphs.add(vec![]);
+
+    let op1 = gv.add(vec![CellValue::Id(1)]);
+    let op2 = gv.add(vec![CellValue::Id(1)]);
+
+    let gid = store.apply_batch(vec![op0]).unwrap()[0];
+    let vids = store
+        .apply_batch(vec![op1, op2])
+        .expect("inserting vs successful");
+
+    let ge = store.table_at(&Path::from("G.E")).expect("G.E table");
+    assert_eq!(ge.schema().columns.len(), 3);
+    assert_eq!(ge.row_count(), 0);
+
+    let op3 = ge.add(vec![
+        CellValue::Id(gid),
+        CellValue::Id(vids[0]),
+        CellValue::Id(vids[1]),
+    ]);
+    assert!(store.apply_batch(vec![op3]).is_ok());
 }

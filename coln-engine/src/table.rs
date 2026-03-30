@@ -9,6 +9,10 @@ use crate::{
 
 pub type TableOid = u64;
 
+/// The unique id that identifies each row in a table
+/// It is managed by the database, read-only for the user
+pub type RowId = u64;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
     ColumnCount {
@@ -62,47 +66,45 @@ impl Error for ValidationError {}
 /// One cell in columnar storage: entity id, or primitive.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CellValue {
-    Id(u64),
+    Id(RowId),
     Int(i64),
     Str(String),
 }
 
-fn cell_matches_schema(
-    col_type: &ColType,
-    value: &CellValue,
-    column: usize,
-) -> Result<(), ValidationError> {
-    match col_type {
-        ColType::EntityType { .. } => match value {
-            CellValue::Id(_) => Ok(()),
-            _ => Err(ValidationError::TypeMismatch {
-                column,
-                expected: "entity id",
-                got: cell_kind(value),
-            }),
-        },
-        ColType::PrimType { prim } => match (prim, value) {
-            (PrimType::PrimInt, CellValue::Int(_)) => Ok(()),
-            (PrimType::PrimString, CellValue::Str(_)) => Ok(()),
-            _ => Err(ValidationError::TypeMismatch {
-                column,
-                expected: match prim {
-                    PrimType::PrimInt => "int",
-                    PrimType::PrimString => "string",
-                },
-                got: cell_kind(value),
-            }),
-        },
-        ColType::Tuple { .. } => Err(ValidationError::UnsupportedTuple { column }),
+impl CellValue {
+    // TODO perhaps do a display trait
+    pub fn kind(&self) -> &'static str {
+        match self {
+            CellValue::Id(_) => "id",
+            CellValue::Int(_) => "int",
+            CellValue::Str(_) => "string",
+        }
     }
-}
 
-// TODO perhaps do a display trait
-fn cell_kind(v: &CellValue) -> &'static str {
-    match v {
-        CellValue::Id(_) => "id",
-        CellValue::Int(_) => "int",
-        CellValue::Str(_) => "string",
+    fn matches_schema(&self, col_type: &ColType, column: usize) -> Result<(), ValidationError> {
+        match col_type {
+            ColType::EntityType { .. } => match self {
+                CellValue::Id(_) => Ok(()),
+                _ => Err(ValidationError::TypeMismatch {
+                    column,
+                    expected: "entity id",
+                    got: self.kind(),
+                }),
+            },
+            ColType::PrimType { prim } => match (prim, self) {
+                (PrimType::PrimInt, CellValue::Int(_)) => Ok(()),
+                (PrimType::PrimString, CellValue::Str(_)) => Ok(()),
+                _ => Err(ValidationError::TypeMismatch {
+                    column,
+                    expected: match prim {
+                        PrimType::PrimInt => "int",
+                        PrimType::PrimString => "string",
+                    },
+                    got: self.kind(),
+                }),
+            },
+            ColType::Tuple { .. } => Err(ValidationError::UnsupportedTuple { column }),
+        }
     }
 }
 
@@ -110,6 +112,8 @@ fn cell_kind(v: &CellValue) -> &'static str {
 pub struct Table {
     path: ir::Path,
     schema: Schema,
+    next_rowid: u64,
+    row_ids: Vec<RowId>,
     cols: Vec<Vec<CellValue>>,
 }
 
@@ -119,6 +123,8 @@ impl Table {
         Self {
             path,
             schema,
+            next_rowid: 0,
+            row_ids: vec![],
             cols: vec![Vec::new(); n],
         }
     }
@@ -141,7 +147,7 @@ impl Table {
             });
         }
         for (i, (col_type, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
-            cell_matches_schema(col_type, value, i)?;
+            value.matches_schema(col_type, i)?;
         }
         Ok(())
     }
@@ -184,20 +190,33 @@ impl Table {
         Ok(())
     }
 
-    pub fn apply(&mut self, op: Op) -> Result<(), ValidationError> {
+    /// Append a row to columnar storage and assign a new [`RowId`].
+    ///
+    /// Does **not** run [`validate_new_row`]; call that (or [`apply`]) before appending, unless
+    /// validation was already done for the whole batch elsewhere.
+    pub(crate) fn append_row(&mut self, values: Vec<CellValue>) -> RowId {
+        debug_assert_eq!(values.len(), self.schema.columns.len());
+
+        let row_id = self.next_rowid;
+        self.row_ids.push(row_id);
+        self.next_rowid += 1;
+        for (i, v) in values.into_iter().enumerate() {
+            self.cols[i].push(v);
+        }
+        row_id
+    }
+
+    pub fn apply(&mut self, op: Op) -> Result<RowId, ValidationError> {
         match op {
             Op::Add { values, .. } => {
                 self.validate_new_row(&values)?;
-                for (i, v) in values.iter().enumerate() {
-                    self.cols[i].push(v.clone());
-                }
-                Ok(())
+                Ok(self.append_row(values))
             }
         }
     }
 
     /// Append one row after validation and primary-key uniqueness check.
-    pub fn add(&mut self, values: Vec<CellValue>) -> Op {
+    pub fn add(&self, values: Vec<CellValue>) -> Op {
         Op::Add {
             table: self.path.clone(),
             values,
@@ -223,7 +242,7 @@ mod tests {
         let mut tbl = Table::new(Path::from("test.table"), gv_schema);
         let values = vec![CellValue::Id(1)];
         let op = tbl.add(values);
-        assert_eq!(tbl.apply(op), Ok(()));
+        assert!(tbl.apply(op).is_ok());
         assert_eq!(tbl.row_count(), 1);
     }
 
@@ -239,7 +258,7 @@ mod tests {
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
         let op0 = tbl.add(vec![CellValue::Int(0)]);
-        assert_eq!(tbl.apply(op0), Ok(()));
+        assert!(tbl.apply(op0).is_ok());
         assert_eq!(tbl.row_count(), 1);
 
         let op1 = tbl.add(vec![CellValue::Int(1)]);
