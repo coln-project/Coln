@@ -27,22 +27,29 @@ base3 : Point
 
   # === Axioms ===
 
-  # Generate a quadruple for each ordered 4-tuple of distinct points
-#  ax/quad_gen : (a : Point) -> (b : Point) -> (c : Point) -> (d : Point) ->
-#    a = b \/ a = c \/ a = d \/ b = c \/ b = d \/ c = d \/ (
-#        exists q : Quad. q q0 = a, q q1 = b, q q2 = c, q q3 = d)
+  make_quad: Point -> Point -> Point -> Point -> Quad
+
+  ax/quad_gen : (a : Point) -> (b : Point) -> (c : Point) -> (d : Point) -> (
+    (a = b) \/ (b = c) \/ (a = c) \/ (a = d) \/ (b = d) \/ (c = d) \/ (
+      (q0 (make_quad a b c d) = a) /\ 
+        (q1 (make_quad a b c d) = b) /\ 
+        (q2 (make_quad a b c d) = c) /\
+        (q3 (make_quad a b c d) = d)
+    )
+  )
 
   # Each quadruple acts as indicated on the base points
-  ax/quad_acts_base0 : (q : Quad) -> (b : Point) -> act q base0 = q q0
-  ax/quad_acts_base1 : (q : Quad) -> (b : Point) -> act q base1 = q q1
-  ax/quad_acts_base2 : (q : Quad) -> (b : Point) -> act q base2 = q q2
-  ax/quad_acts_base3 : (q : Quad) -> (b : Point) -> act q base3 = q q3
+  ax/quad_acts_base0 : (q : Quad) -> (b : Point) -> act q base0 = q0 q
+  ax/quad_acts_base1 : (q : Quad) -> (b : Point) -> act q base1 = q1 q
+  ax/quad_acts_base2 : (q : Quad) -> (b : Point) -> act q base2 = q2 q
+  ax/quad_acts_base3 : (q : Quad) -> (b : Point) -> act q base3 = q3 q
 
   # Sharpness: quads agreeing on all projections are equal
 #  ax/sharp : (q : Quad) -> (r : Quad) ->
 #    q q0 = r q0, q q1 = r q1, q q2 = r q2, q q3 = r q3
 #    |- q = r
 
+  ax/sharp : (q : Quad) -> q = make_quad (q0 q) (q1 q) (q2 q) (q3 q)
 
   # Action respects multiplication
   ax/act_mul : (q : Quad) -> (r : Quad) -> p : Point -> act (mul q r) p = act q (act r p)
