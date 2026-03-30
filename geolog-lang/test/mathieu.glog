@@ -20,6 +20,11 @@ theory MathieuTemplate := sig
 #  base2 : Point -> Prop
 #  base3 : Point -> Prop
 
+base0 : Point
+base1 : Point
+base2 : Point
+base3 : Point
+
   # === Axioms ===
 
   # Generate a quadruple for each ordered 4-tuple of distinct points
@@ -28,27 +33,22 @@ theory MathieuTemplate := sig
 #        exists q : Quad. q q0 = a, q q1 = b, q q2 = c, q q3 = d)
 
   # Each quadruple acts as indicated on the base points
-#  ax/quad_acts_base0 : (q : Quad) -> (b : Point) ->
-#    base0 b |- act q b = q q0
-#  ax/quad_acts_base1 : (q : Quad) -> (b : Point) ->
-#    base1 b |- act q b = q q1
-#  ax/quad_acts_base2 : (q : Quad) -> (b : Point) ->
-#    base2 b |- act q b = q q2
-#  ax/quad_acts_base3 : (q : Quad) -> (b : Point) ->
-#    base3 b |- act q b = q q3
+  ax/quad_acts_base0 : (q : Quad) -> (b : Point) -> act q base0 = q q0
+  ax/quad_acts_base1 : (q : Quad) -> (b : Point) -> act q base1 = q q1
+  ax/quad_acts_base2 : (q : Quad) -> (b : Point) -> act q base2 = q q2
+  ax/quad_acts_base3 : (q : Quad) -> (b : Point) -> act q base3 = q q3
 
   # Sharpness: quads agreeing on all projections are equal
 #  ax/sharp : (q : Quad) -> (r : Quad) ->
 #    q q0 = r q0, q q1 = r q1, q q2 = r q2, q q3 = r q3
 #    |- q = r
 
+
   # Action respects multiplication
   ax/act_mul : (q : Quad) -> (r : Quad) -> p : Point -> act (mul q r) p = act q (act r p)
 
   # Associativity of multiplication
   ax/mul_assoc : (q : Quad) -> (r : Quad) -> (s : Quad) -> mul (mul q r) s  = mul q (mul r s)
-
-# mul/assoc : (x : Quad) -> (y : Quad) -> (z : Quad) -> mul (mul x y) z = mul x (mul y z)
 
 end
 
