@@ -1,11 +1,38 @@
 #-------------------------------------------------------------
 def PathRel (X : Query) (rel : X -> X -> Prop) := initial
   path : X -> X -> Prop
+
   empty : (x : X) -> path x x
   snoc : (x y z : X) -> path x y -> rel y z -> path x z
 end
 
 theory AntiSym (X : Query) (rel : X -> X -> Prop) := (x y : X) -> rel x y -> rel y x -> x == y
+
+
+# theory ScopedLinearOrder  (Block: Query) (Op : Query):= sig
+
+# theory ScopedLinearOrder (Op : Query) (Block: Query) (parent: Op -> Block -> Prop) := sig
+#   first : Block -> Op
+#   last : Block -> Op
+#   next : Op -> Op
+#   prev : Op -> Op
+
+#   next/prev : (x : Op) -> next (prev x) == x
+#   prev/next : (x : Op) -> prev (next x) == x
+
+#   first/prev : (b: Block) -> prev (first b)== first b
+#   last/next : (b: Block) -> next (last b) == last b
+
+#   linked : Op -> Op -> Prop
+#   linked := (x y : Op) => next x == y
+
+#   follows : Op -> Op -> Prop
+#   follows := PathRel Op linked
+
+#   acyclic : AntiSym Op follows.path
+#   first-is-top : (b: Block) -> (x : Op) -> (parent x = b) -> follows.path (first b) x
+#   last-is-bot : (x : X) -> follows.path x last
+# end
 
 theory LinearOrder (X : Query) := sig
   first : X
@@ -23,11 +50,30 @@ theory LinearOrder (X : Query) := sig
   linked := (x y : X) => next x == y
 
   follows : X -> X -> Prop
-  follows := PathRel X linked
+  follows := (PathRel X linked).path
 
-  acyclic : AntiSym X follows.path
-  first-is-top : (x : X) -> follows.path first x
-  last-is-bot : (x : X) -> follows.path x last
+  acyclic : AntiSym X follows
+  first-is-top : (x : X) -> follows first x
+  last-is-bot : (x : X) -> follows x last
+end
+
+theory OpResult := sig
+  Id: Sort
+
+end
+
+
+theory BlockArg := sig
+  Id: Sort
+
+end
+
+
+theory Value := sig
+  Id: Query
+
+  # A value would be either an op result or a block argument, like an enum in postgresql
+  Val: OpResultId | BlockArgId
 end
 
 theory OpOperand := sig
@@ -43,48 +89,64 @@ theory OpOperand := sig
 
 end
 
+theory BlockOperand := sig
+  Id: Query
+
+  operand/linear : LinearOrder Id
+
+end
+
 # Parameterized operation theory 
 theory Operation (OpInfo : Query) := sig
   # data
-  OpId: Query,
+  Op: Query,
 
   OpResult : Query,
-  Index: Query,
-  BlockId: Query,
-  ByteArray: Query,
-  Attribute: Query, # TODO this needs to be a sum type
+  Block: Query,
   BlockOperand: Query,
-  RegionId: Query, # points to the Region table
-  OpOperandId: Query,
+  Region: Query, # points to the Region table
+  OpOperand: Query,
+
+  ByteArray: Query, 
+  Attribute: Query, # TODO this needs to be a sum type
 
   AttrEntry: [ByteArray, Attribute], # TODO we need product type
   
-  result/op: Index -> OpResult, # result: Array OpResult
-  parent: BlockId, # this needs to be an option / sum type
-  opType: OpInfo,
-  attrs: Index -> AttrEntry, # attrs: DictionaryAttr
+  result/op: Int -> OpResult, # result: Array OpResult, a two column table indexed by integers
+  parent: Op -> Block, # this needs to be an option / sum type, given concrete opid, give back a concrete block id
+  opType: OpInfo
+  attrs: Int -> AttrEntry, # attrs: DictionaryAttr
   # properties: HasOpInfo.properties opType is complicated... 
-  blockOperands: Index -> BlockOperand, # blockOperands: Array BlockOperand
-  regions: Index -> RegionId, # regions: Array RegionPtr
-  operands: Index -> OpOperandId, # operands: Array OpOperand
 
+  # A block operand is a pointer to a block
+  # An operation might have a block as its operand, e.g. a terminator operation
+  blockOperands: Int -> BlockOperandId, # blockOperands: Array BlockOperand
+  regions: Int -> RegionId, # regions: Array RegionPtr
+  operands: Int -> OpOperandId, # operands: Array OpOperand
+
+  next/op: OpId -> OpId
   # theory
-  op/linear := LinearOrder OpId
+  op/linear := ScopedLinearOrder (OpId) (BlockId) (parent)
   # A memory safety, i.e. that a pointer refers to a valid memory location would
   # be a foreign key integrity
 
 end
 
 
-theory IRContext (OpInfo: Query) := sig
+theory IRContext := sig
 
-  operations := Operation OpInfo # import theory?
-  regions := Region
-  blocks := Block
+  Block: Query,
+  Operations: Query,
+  Region: Query,
+
+  ops/linear: Block -> LinearOrder
+
 
 
   ax/opregion_inbound: forall rid: operations/RegionId. |- exists id: regions/Id. rid = id
   ax/opparent_inbound: forall parent: operations/parent. |- exists id: blocks/Id. parent = id
+  ax/opoperand_inbound: forall operand: opertions/OpOperand |- exists id: opoperands/Id. operand = id
+  # And a bunch of other pointer in bounds theorem
 
 
 end
