@@ -39,9 +39,9 @@ updateState req = do
           }
 
   flip runReaderT bufInfo $ do
-    (_, ns, _, ds) <- analyzeBuffer
-    updateParseState ns
-    publishDiagnostics ds
+    result <- analyzeBuffer
+    updateParseState result.notations
+    publishDiagnostics result.diagnostics
 
 updateParseState :: (MonadIO m, MonadLsp LSPState m) => [Ntn] -> LSPBufferT m ()
 updateParseState ns = do
