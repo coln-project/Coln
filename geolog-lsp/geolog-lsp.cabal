@@ -27,6 +27,7 @@ executable geolog-lsp
                       fnotation,
                       geolog-lang,
                       diagnostician,
+                      exceptions,
     other-modules:
         Geolog.LSP
         Geolog.LSP.DocChange
