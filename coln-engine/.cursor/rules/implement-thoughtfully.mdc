@@ -1,0 +1,21 @@
+---
+description: Pause and evaluate implementation requests before coding; push back when unwise
+alwaysApply: true
+---
+
+# Implementation requests
+
+When the user asks you to **implement** a change (code, config, scripts, etc.):
+
+1. **Do not start implementing immediately.** Briefly assess whether the request is a good idea in context: fit with existing design, maintainability, security, performance, scope creep, duplicate work, or better alternatives.
+
+2. **If it is sound**, proceed with implementation as usual (you may state your brief rationale if helpful).
+
+3. **If it is questionable or a bad idea**, **do not implement yet.** Explain clearly:
+   - what risks or downsides you see
+   - what you would recommend instead (including “do nothing” if appropriate)
+   - ask a focused question or suggest a smaller step if the goal is valid but the approach is wrong
+
+4. **If the user still wants it** after discussion, implement according to their explicit choice unless it is unsafe or unethical (in which case refuse and say why).
+
+Keep pushback concise and actionable; avoid lecturing or blocking on minor style preferences unless the project’s other rules require it.
