@@ -1,0 +1,66 @@
+theory MathieuTemplate := sig
+  Point : Query
+  Quad : Query   # Ordered 4-tuples of distinct points
+
+  # Quadruple projections
+  q0 : Quad -> Point
+  q1 : Quad -> Point
+  q2 : Quad -> Point
+  q3 : Quad -> Point
+
+  # Group action
+  act : Quad -> Point -> Point
+
+  # Group multiplication
+  mul : Quad -> Quad -> Quad
+
+  # Base point markers (p0, p1, p2, p3 form the canonical base 4-tuple)
+#  base0 : Point -> Prop
+#  base1 : Point -> Prop
+#  base2 : Point -> Prop
+#  base3 : Point -> Prop
+
+  # === Axioms ===
+
+  # Generate a quadruple for each ordered 4-tuple of distinct points
+#  ax/quad_gen : (a : Point) -> (b : Point) -> (c : Point) -> (d : Point) ->
+#    a = b \/ a = c \/ a = d \/ b = c \/ b = d \/ c = d \/ (
+#        exists q : Quad. q q0 = a, q q1 = b, q q2 = c, q q3 = d)
+
+  # Each quadruple acts as indicated on the base points
+#  ax/quad_acts_base0 : (q : Quad) -> (b : Point) ->
+#    base0 b |- act q b = q q0
+#  ax/quad_acts_base1 : (q : Quad) -> (b : Point) ->
+#    base1 b |- act q b = q q1
+#  ax/quad_acts_base2 : (q : Quad) -> (b : Point) ->
+#    base2 b |- act q b = q q2
+#  ax/quad_acts_base3 : (q : Quad) -> (b : Point) ->
+#    base3 b |- act q b = q q3
+
+  # Sharpness: quads agreeing on all projections are equal
+#  ax/sharp : (q : Quad) -> (r : Quad) ->
+#    q q0 = r q0, q q1 = r q1, q q2 = r q2, q q3 = r q3
+#    |- q = r
+
+  # Action respects multiplication
+  ax/act_mul : (q : Quad) -> (r : Quad) -> p : Point -> act (mul q r) p = act q (act r p)
+
+  # Associativity of multiplication
+  ax/mul_assoc : (q : Quad) -> (r : Quad) -> (s : Quad) -> mul (mul q r) s  = mul q (mul r s)
+
+# mul/assoc : (x : Quad) -> (y : Quad) -> (z : Quad) -> mul (mul x y) z = mul x (mul y z)
+
+end
+
+# M_11: 11 points
+# The chase generates 7920 quadruples as a permutation group structure
+#instance M11 : MathieuTemplate = chase {
+#  // The 11 points
+#  p0 : Point; p1 : Point; p2 : Point; p3 : Point; p4 : Point;
+#  p5 : Point; p6 : Point; p7 : Point; p8 : Point; p9 : Point;
+#  p10 : Point;
+#
+#  // Mark the base 4-tuple
+#  p0 base0; p1 base1; p2 base2; p3 base3;
+# }
+

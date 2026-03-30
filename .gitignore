@@ -338,3 +338,4 @@ _build/
 
 # nix result
 **/result
+**/.direnv
