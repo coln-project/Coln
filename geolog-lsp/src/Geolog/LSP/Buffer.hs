@@ -1,4 +1,4 @@
-module Geolog.LSP.Buffer (LSPBufferInfo (..), LSPBufferT, LSPBuffer, analyzeBuffer) where
+module Geolog.LSP.Buffer (LSPBufferInfo (..), LSPBufferT, LSPBuffer, analyzeBuffer, AnalyzedBuffer (..)) where
 
 import Control.Monad.Trans
 import Control.Monad.Trans.Reader (ReaderT, ask)
@@ -27,7 +27,14 @@ type LSPBufferT m = ReaderT LSPBufferInfo m
 
 type LSPBuffer = LSPBufferT Identity
 
-analyzeBuffer :: (MonadIO m) => LSPBufferT m (Vector Token, [Ntn], GlobalEnv, [D.Diagnostic GeologCode])
+data AnalyzedBuffer = AnalyzedBuffer {
+    tokens :: Vector Token,
+    notations :: [Ntn],
+    elaborated :: GlobalEnv,
+    diagnostics :: [D.Diagnostic GeologCode]
+  }
+
+analyzeBuffer :: (MonadIO m) => LSPBufferT m AnalyzedBuffer
 analyzeBuffer = do
   bufInfo <- ask
 
@@ -35,9 +42,9 @@ analyzeBuffer = do
     diagRef <- newIORef ([] @(D.Diagnostic GeologCode))
     let r = D.pureReporter diagRef
 
-    ts <- lex lexConfig (contramap LexerCode r) bufInfo.file
-    ns <- parse parseConfig (contramap ParserCode r) bufInfo.file ts
-    ge <- elabTop (contramap ElaboratorCode r) bufInfo.file ns
-    ds <- readIORef diagRef
+    tokens <- lex lexConfig (contramap LexerCode r) bufInfo.file
+    notations <- parse parseConfig (contramap ParserCode r) bufInfo.file tokens 
+    elaborated <- elabTop (contramap ElaboratorCode r) bufInfo.file notations
+    diagnostics <- readIORef diagRef
 
-    pure (ts, ns, ge, ds)
+    pure $ AnalyzedBuffer {tokens, notations, elaborated, diagnostics}
