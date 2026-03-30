@@ -1,5 +1,5 @@
 # Revision history for diagnostician
 
-## 0.1.0.0 -- YYYY-mm-dd
+## 0.1.0.0 -- 2026-03-30
 
-* First version. Released on an unsuspecting world.
+* Initial export from internal project. Basic features are in place.
