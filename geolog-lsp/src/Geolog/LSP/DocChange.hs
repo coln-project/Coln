@@ -3,6 +3,7 @@
 module Geolog.LSP.DocChange (docChangeHandler, docOpenHandler) where
 
 import Control.Lens ((^.))
+import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Trans
 import Control.Monad.Trans.Reader (ask, runReaderT)
 import Data.IORef (modifyIORef')
@@ -15,7 +16,7 @@ import Geolog.LSP.Diagnostics (publishDiagnostics)
 import Geolog.LSP.Types
 import Geolog.LSP.Utils (currentBufferText, currentBufferUri, currentBufferUriUnNormalized)
 import Language.LSP.Protocol.Lens (HasParams, HasTextDocument, HasUri)
-import Language.LSP.Protocol.Message (SMethod (SMethod_TextDocumentDidChange, SMethod_TextDocumentDidOpen))
+import Language.LSP.Protocol.Message (SMethod (..))
 import Language.LSP.Protocol.Types (Uri)
 import Language.LSP.Server (Handlers, MonadLsp, getConfig, notificationHandler)
 import Prelude hiding (lex)
@@ -26,7 +27,15 @@ docOpenHandler = notificationHandler SMethod_TextDocumentDidOpen updateState
 docChangeHandler :: Handlers DLogLspM
 docChangeHandler = notificationHandler SMethod_TextDocumentDidChange updateState
 
-updateState :: (MonadIO m, MonadLsp LSPState m, HasParams s a1, HasTextDocument a1 a2, HasUri a2 Uri) => s -> m ()
+updateState ::
+  ( MonadIO m
+  , MonadCatch m
+  , MonadLsp LSPState m
+  , HasParams s a1
+  , HasTextDocument a1 a2
+  , HasUri a2 Uri
+  ) =>
+  s -> m ()
 updateState req = do
   (bufferText, bufferUriNormalised, bufferUri) <- (,currentBufferUri req,req ^. currentBufferUriUnNormalized) <$> currentBufferText req
 
@@ -40,7 +49,7 @@ updateState req = do
 
   flip runReaderT bufInfo $ do
     result <- analyzeBuffer
-    updateParseState result.notations
+    mapM_ updateParseState result.notations
     publishDiagnostics result.diagnostics
 
 updateParseState :: (MonadIO m, MonadLsp LSPState m) => [Ntn] -> LSPBufferT m ()
