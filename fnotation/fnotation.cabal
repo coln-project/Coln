@@ -1,5 +1,6 @@
 cabal-version:   3.4
 name:            fnotation
+description:     A lower house syntax for programming language experimentation.
 version:         0.1.0.0
 license:         MPL-2.0
 license-file:    LICENSE
