@@ -2,6 +2,8 @@
 
 \usepackage{macros}
 
+\hyphenation{Geo-log}
+
 \title{Why Geolog?}
 \author{Martin Kleppmann}
 
@@ -68,7 +70,7 @@ AI agents writing formal proofs work best by rapidly iterating on small proof st
 At present, this can be done with Lean by using the Lean Language Server to expose an interactive LSP interface to the prover, and allowing an AI agent to call into this language server via MCP \citep{lean-lsp-mcp}.
 
 That raises the question: why not simply use Lean, given that so much investment in AI-generated proofs is already focussing on Lean?
-A core hypothesis of the SGAI program is that Lean will not scale to the size of proofs we are contemplating, because it is fundamentally designed for human-written proofs, and its support for AI-generated proofs is bolted on retroactively.
+A core hypothesis of the SGAI programme is that Lean will not scale to the size of proofs we are contemplating, because it is fundamentally designed for human-written proofs, and its support for AI-generated proofs is bolted on retroactively.
 By starting from a clean slate, we can design Geolog from the ground up to take advantage of the strengths of AI agents.
 While this is more work up front, we believe that it will unlock the ability to tackle more ambitious proof projects than will be possible in Lean.
 
@@ -143,7 +145,7 @@ A new data model is needed.
 
 In category theory it is common to reason using \emph{diagrams}, in contrast to the reasoning based on textual syntax that dominates existing proof assistants.
 A diagram is not necessarily represented visually (although it can be); it is really a collection of objects that may be related to each other according to certain rules (different types of diagrams can set different rules).
-Data structures like graphs, trees, ASTs, IRs, string diagrams, petri nets, etc.\ are all diagrams.
+Data structures like graphs, trees, ASTs, IRs, string diagrams, petri nets, electronic circuits, etc.\ are all diagrams.
 Rather than picking one of these models, Geolog offers a generalised way for users to define their own types of diagrams by specifying their own rules for what types exist and how they can be related.
 As this is convenient for work in category theory, the database system based on Geolog is called the \emph{Categorical Core}.
 
@@ -199,6 +201,7 @@ However, nonmonotonic queries would probably not be incremental: that is, if the
 I have motivated Geolog in the context of reasoning about traditional programs and their IR, but the language is flexible enough to represent a wide variety of different models of computation and reason about them.
 It could represent spreadsheets, which are essentially a graph of cells containing formulas that can reference other cells.
 It could represent string diagrams, petri nets, probabilistic programming languages, circuits, and all sorts of other diagrammatic models.
+Other creators within the SGAI programme are developing techniques for cyber-physical modelling that could eventually be implemented in Geolog, enabling a much broader range of scientific modelling, engineering, and verification, from microelectronics to supply-chain management.
 
 An exciting aspect of Geolog theories is the way they compose.
 For example, say you have a theory that represents a particular version of a particular program.
@@ -209,18 +212,30 @@ I don't know of any existing database that has a comparably powerful data model.
 
 \section{Research roadmap for the physical database}
 
+So far, the justifications for the design decisions behind Geolog are mostly hypotheses that are yet to be experimentally validated.
+Does AI really need parallelisation and human-style division of labour, or can enough be achieved by a single agent by making it really fast?
+How much do version-control workflows and diagrammatic reasoning actually affect agent performance in writing proofs?
+We believe that these things will be important, but we should aim to test our hypotheses empirically as soon as possible.
+Careful experiments will be needed, such as ablation studies that measure the effectiveness of different approaches to proofs, and quantify the impact of different factors.
+
+However, before we can run such experiments, we need an implementation that is sufficiently complete that it can be used for non-trivial example proofs.
+Our team is therefore pushing towards having working software as soon as possible, even if it is incomplete and slow, so that we can start putting it to use on realistic problems and learn from those applications.
+I strongly believe that \emph{effective system design requires insights drawn from serious contexts of use}~\citep{matuschak-2023}.
+The people developing the theory and the people developing the system need to be in constant close collaboration with the people who are trying to put both to serious use in a realistic application.
+It is important for these applications to be realistic and demanding, not just toy examples.
+
 The implementation of Geolog is still at an early stage, but it is taking shape.
-Others already have written a compiler that can parse Geolog theories, type-check them, and lower them into an IR that consists of relational table definitions and constraints in the form of geometric sequents (very roughly: one conjunctive query implies another conjunctive query).
+Others have already written a compiler that can parse Geolog theories, type-check them, and lower them into an IR that consists of relational table definitions and constraints in the form of geometric sequents (very roughly: one conjunctive query implies another conjunctive query).
 It's not yet complete~-- for example, it does not yet support computing a least fixed point, such as the transitive closure of a graph (aka an initial model, to use the category theory term)~-- but the software exists and is sufficiently complete that we can start playing with it.
 Others are also thinking about how to efficiently check constraints, a problem that is related to incremental Datalog query evaluation.
 
 However, although you can define a Geolog theory for a graph, which will ensure that the data in the database is always a well-formed graph, that does not ensure the resulting system has the \emph{performance characteristics} of a graph database.
 Getting good performance requires carefully designing the physical data representation (e.g.\ indexes), and that requires detailed knowledge about the workload that the database will have to run~-- i.e., what the size and distribution of the data looks like, and what types of queries will be run frequently.
 Thus, even though Geolog as a data model is very general-purpose, we need to look at a couple of specific example use cases and datasets in order to be able to start making design decisions about the physical data layout.
+This is what our team is thinking about now.
 
 \subsection{Physical data layout}
 
-This is what our team is thinking about now.
 As an example application, we are developing a Geolog theory for the \emph{static single assignment} (SSA) data structure of MLIR, the multi-level intermediate representation used internally by various compilers.
 We chose it because it is a general-purpose structural representation of programs that is widely used in practice, which means that it should be easy to get lots of example data (programs) and transformations of that example data (such as rewrites applied by compiler optimisation passes).
 It is complex enough to test the limits of Geolog, while also being simple enough that implementing it should not be a huge project.
@@ -229,7 +244,7 @@ We could look at how Datalog is used for program analysis (since that also requi
 
 Once we have an example Geolog theory and some sizeable instances (example datasets) of that theory, we will start working on the physical data representation.
 Our current hypothesis is that a columnar representation \citep{stonebraker-2005-c-store,abadi-2013-columnar} will probably work well.
-Automerge already contains a good column storage engine in Rust, which we are factoring out into a separate library called Hexane and planning to use for Geolog.
+Automerge already contains a good columnar storage engine in Rust, which we are factoring out into a separate library called Hexane and planning to use for Geolog.
 Unlike Parquet, Apache Arrow, and many other columnar formats designed for read-only analytics, Hexane also supports efficient updates (inserting values into the middle of a column), which is a key requirement for the Categorical Core.
 Automerge's new compressed on-disk storage format (Sedimentree), replication protocol (Subduction), and authentication and access control system (Keyhive) are further existing components that we plan to use.
 
@@ -285,7 +300,7 @@ This document started by arguing for the importance of using AI for large-scale 
 Whether this is sufficient to significantly reduce the risk of World War 3 is perhaps debatable, but it is hopefully uncontroversial that it would be very beneficial to society if we can drastically reduce the number of security vulnerabilities that currently afflict our critical infrastructure.
 
 Until recently, formal verification was too expensive to contemplate at large scale, but AI is drastically changing the economics of proof.
-Geolog and the Categorical Core are a system that is designed to maximise the chances of AI agents successfully verifying the correctness of large systems by enabling many agents to collaborate effectively.
+Geolog and the Categorical Core form a system that is designed to maximise the chances of AI agents successfully verifying the correctness of large systems by enabling many agents to collaborate effectively.
 I believe that we have an opportunity to harness AI as a force for good by building this foundation and then using it for ambitious verification projects.
 
 \bibliographystyle{plainnat}
