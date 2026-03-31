@@ -96,7 +96,7 @@ LParen (471:472)
 Nl (472:473)
 AIdent meet (477:481)
 AIdent a (482:483)
-AIdent b (484:485)
+AIdent a (484:485)
 SKeyword = (486:487)
 AIdent a (488:489)
 Nl (489:490)
@@ -189,7 +189,7 @@ LParen (917:918)
 Nl (918:919)
 AIdent join (923:927)
 AIdent a (928:929)
-AIdent b (930:931)
+AIdent a (930:931)
 SKeyword = (932:933)
 AIdent a (934:935)
 Nl (935:936)
@@ -365,11 +365,12 @@ AIdent join (3287:3291)
 AIdent top (3292:3295)
 AIdent top (3296:3299)
 SKeyword = (3300:3301)
-AIdent bot (3302:3305)
-End end (3306:3421)
-Nl (3421:3422)
-Nl (3422:3423)
-Eof (3423:3423)
+AIdent top (3302:3305)
+Nl (3404:3405)
+End end (3405:3408)
+Nl (3408:3409)
+Nl (3409:3410)
+Eof (3410:3410)
 
 -- notation
 Decl theory (0:1423)
@@ -466,7 +467,7 @@ Decl theory (0:1423)
             App (477:485)
               Ident meet (477:481)
               Ident a (482:483)
-              Ident b (484:485)
+              Ident a (484:485)
             Keyword = (486:487)
             Ident a (488:489)
       Infix (518:554)
@@ -554,7 +555,7 @@ Decl theory (0:1423)
             App (923:931)
               Ident join (923:927)
               Ident a (928:929)
-              Ident b (930:931)
+              Ident a (930:931)
             Keyword = (932:933)
             Ident a (934:935)
       Infix (1043:1122)
@@ -650,14 +651,14 @@ Decl theory (0:1423)
                       Ident b (1408:1409)
                     Ident x (1411:1412)
                   Ident b (1414:1415)
-Decl def (1425:3421)
-  Infix (1429:3421)
+Decl def (1425:3408)
+  Infix (1429:3408)
     Infix (1429:1463)
       Ident TwoElementLattice (1429:1446)
       Keyword : (1447:1448)
       Ident ModularLattice (1449:1463)
     Keyword := (1464:1466)
-    Block struct (1467:3421)
+    Block struct (1467:3408)
       Infix (1671:1684)
         Ident bot (1671:1674)
         Keyword : (1675:1676)
@@ -721,17 +722,64 @@ Decl def (1425:3421)
           Ident top (3292:3295)
           Ident top (3296:3299)
         Keyword = (3300:3301)
-        Ident bot (3302:3305)
+        Ident top (3302:3305)
 
 -- elaborated
-
+potential entry named ModularLattice
+type:  Theory
+value:  sig
+  Element : Query
+  meet : Element -> Element -> Element
+  meet/associative : (a : Element) -> (b : Element) -> (c : Element) -> meet (meet a b) c = meet a (meet b c)
+  meet/commutative : (a : Element) -> (b : Element) -> meet a b = meet b a
+  meet/idempotent : (a : Element) -> meet a a = a
+  join : Element -> Element -> Element
+  join/associative : (a : Element) -> (b : Element) -> (c : Element) -> join (join a b) c = join a (join b c)
+  join/associative : (a : Element) -> (b : Element) -> join a b = join b a
+  join/idempotent : (a : Element) -> join a a = a
+  ax/absorptive1 : (a : Element) -> (b : Element) -> meet a (join a b) = a
+  ax/absorptive2 : (a : Element) -> (b : Element) -> join a (meet a b) = a
+  ax/modular : (a : Element) -> (b : Element) -> (x : Element) -> join (meet a b) (meet x b) = meet (join (meet a b) x) b
+end
 
 -- messages
 
-error[E0201]: identifier b not in scope
-17 |     meet a b = a
-17 |            ^
-
-error[E0201]: identifier ModularLattice not in scope
+error[E0212]: wrong number of fields, expected: 12, but got: 10
 47 | def TwoElementLattice : ModularLattice := struct                                                                       
-47 |                         ^^^^^^^^^^^^^^
+47 |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+48 |     # The carrier set - two elements: bottom and top                                                                     
+48 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+49 |     bot : Element                                                                                                        
+49 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+50 |     top : Element
+50 | ^^^^^^^^^^^^^^^^^
+51 | 
+51 | ^
+52 |     # Meet operation (minimum/and)                                                                                       
+52 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+53 |     # bot ∧ x = bot, top ∧ x = x                                                                                         
+53 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+54 |     meet bot bot = bot                                                                                                   
+54 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 |     meet bot top = bot                                                                                                   
+55 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+56 |     meet top bot = bot                                                                                                   
+56 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+57 |     meet top top = top                                                                                                   
+57 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+58 |                                                                                                                             
+58 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+59 |     # Join operation (maximum/or)                                                                                        
+59 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+60 |     # bot ∨ x = x, top ∨ x = top                                                                                         
+60 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+61 |     join bot bot = bot                                                                                                   
+61 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+62 |     join bot top = top                                                                                                   
+62 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+63 |     join top bot = top                                                                                                   
+63 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+64 |     join top top = top                                                                                                   
+64 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+65 | end
+65 | ^^^

@@ -14,7 +14,7 @@ theory ModularLattice := sig
   )
   # Idempotence: a ⋀ a = a
   meet/idempotent : (a : Element) -> (
-    meet a b = a
+    meet a a = a
   )
   # ⋁ as a function
   join : Element -> Element -> Element
@@ -29,7 +29,7 @@ theory ModularLattice := sig
   )
   # Idempotence: a ⋁ a = a
   join/idempotent : (a : Element) -> (
-    join a b = a
+    join a a = a
   )
   # absorptive laws, which actually imply idempotence but nvm: a ⋀ (a ⋁ b) = a ⋁ (a ⋀ b) = a
   ax/absorptive1 : (a : Element) -> (b : Element) ->  (
