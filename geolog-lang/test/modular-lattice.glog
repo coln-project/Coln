@@ -42,9 +42,25 @@ theory ModularLattice := sig
   ax/modular : (a : Element) -> (b : Element) -> (x : Element) -> (
     join (meet a b) (meet x b) = meet (join (meet a b) x) b
   )
-#  ax/modular : (a : Element) -> (b : Element) -> (c : Element) -> (
-#    |- [x: [x: a, y: b] ⋀, y: [x: x, y: b] ⋀] ⋁ = [x: [ x: [x: a, y : b] ⋀, y: x] ⋁, y: b] ⋀
-#  )
+end
 
+def TwoElementLattice : ModularLattice := struct                                                                       
+    # The carrier set - two elements: bottom and top                                                                     
+    bot : Element                                                                                                        
+    top : Element
+
+    # Meet operation (minimum/and)                                                                                       
+    # bot ∧ x = bot, top ∧ x = x                                                                                         
+    meet bot bot = bot                                                                                                   
+    meet bot top = bot                                                                                                   
+    meet top bot = bot                                                                                                   
+    meet top top = top                                                                                                   
+                                                                                                                            
+    # Join operation (maximum/or)                                                                                        
+    # bot ∨ x = x, top ∨ x = top                                                                                         
+    join bot bot = bot                                                                                                   
+    join bot top = top                                                                                                   
+    join top bot = top                                                                                                   
+    join top top = top                                                                                                   
 end
 
