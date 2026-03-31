@@ -1,5 +1,6 @@
 cabal-version:   3.4
 name:            diagnostician
+description:     A minimal, opinionated library for compiler error messages
 version:         0.1.0.0
 license:         MPL-2.0
 license-file:    LICENSE
@@ -43,5 +44,5 @@ test-suite diagnostician-test
     ghc-options:        -Wall
     build-depends:
         base ^>=4.21.0.0,
-        containers >=0.7,
+        containers,
         diagnostician
