@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::ops::Op;
+use crate::solver;
+use crate::solver::compile::{CompLaw, CompileError};
 use crate::table::{CellValue, RowId, Table, TableOid, ValidationError};
 
 pub struct Store {
@@ -22,7 +24,8 @@ impl Store {
         }
     }
 
-    /// Builds an empty column store per `theory.tables` and keeps only `theory.laws` (schemas are stored on each [`Table`]).
+    /// Builds an empty column store per `theory.tables` and keeps only `theory.laws`
+    /// (schemas are stored on each [`Table`]).
     pub fn from_theory(theory: FlatTheory) -> Self {
         let FlatTheory { tables, laws } = theory;
 
@@ -41,7 +44,7 @@ impl Store {
             next_oid,
             path_to_oid,
             tables: tables_map,
-            laws,
+            laws: laws,
         }
     }
 
@@ -124,6 +127,15 @@ impl Store {
             }
         }
         Ok(())
+    }
+
+    pub fn compile_laws(&self) -> Result<Vec<CompLaw>, CompileError> {
+        let comp = self
+            .laws()
+            .iter()
+            .map(|law_entry| Ok(solver::compile::compile_law(self, law_entry)?))
+            .collect::<Result<Vec<_>, CompileError>>()?;
+        Ok(comp)
     }
 }
 

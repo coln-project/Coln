@@ -46,14 +46,14 @@ impl<'de> Deserialize<'de> for PrimType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TupleField {
     name: QName,
     col_type: Box<ColType>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum ColType {
     EntityType { path: Path }, // this is the foreign key?
@@ -68,7 +68,7 @@ pub struct Schema {
     pub primary_key: Option<Vec<i64>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Lit {
     #[serde(rename = "int")]
@@ -77,14 +77,14 @@ pub enum Lit {
     String { value: String },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ConsField {
     name: QName,
     term: Box<Term>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Term {
     Lit { lit: Lit },
@@ -93,18 +93,18 @@ pub enum Term {
     Cons { fields: Vec<ConsField> },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ValueEntry {
-    column: i64,
-    term: Term,
+    pub column: i64,
+    pub term: Term,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Atom {
-    table: Path,
-    row_id: Option<Term>,
-    values: Vec<ValueEntry>,
+    pub table: Path,
+    pub row_id: Option<Term>,
+    pub values: Vec<ValueEntry>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

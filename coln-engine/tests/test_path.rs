@@ -95,3 +95,16 @@ fn test_create_table_for_path() {
     ]);
     assert!(store.apply_batch(vec![op3]).is_ok());
 }
+
+
+#[test]
+fn test_compile_path_laws() {
+    let theory = fixture_theory(PATHS_IR);
+    let expected_law_count = theory.laws.len();
+    let store = Store::from_theory(theory);
+
+    assert!(expected_law_count > 0, "fixture should contain laws");
+    let compiled = store.compile_laws().expect("compile laws from paths.json");
+    eprintln!("{:#?}", compiled);
+    assert_eq!(compiled.len(), expected_law_count);
+}
