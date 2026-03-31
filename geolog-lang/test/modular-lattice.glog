@@ -1,0 +1,50 @@
+theory ModularLattice := sig
+  Element : Query
+
+  # ⋀ as a function
+  meet : Element -> Element -> Element
+
+  # Associativity: a ⋀ (b ⋀ c) = (a ⋀ b) ⋀ c
+  meet/associative : (a : Element) -> (b : Element) -> (c : Element) -> (
+    meet (meet a b) c = meet a (meet b c)
+  )
+  # Commutativity: a ⋀ b = b ⋀ a
+  meet/commutative : (a : Element) -> (b : Element) -> (
+    meet a b = meet b a
+  )
+  # Idempotence: a ⋀ a = a
+  meet/idempotent : (a : Element) -> (
+    meet a b = a
+  )
+  # ⋁ as a function
+  join : Element -> Element -> Element
+
+  # Associativity: a ⋁ (b ⋁ c) = (a ⋁ b) ⋁ c
+  join/associative : (a : Element) -> (b : Element) -> (c : Element) -> (
+    join (join a b) c = join a (join b c)
+  )
+  # Commutativity: a ⋁ b = b ⋁ a
+  join/associative : (a : Element) -> (b : Element) -> (
+    join a b = join b a
+  )
+  # Idempotence: a ⋁ a = a
+  join/idempotent : (a : Element) -> (
+    join a b = a
+  )
+  # absorptive laws, which actually imply idempotence but nvm: a ⋀ (a ⋁ b) = a ⋁ (a ⋀ b) = a
+  ax/absorptive1 : (a : Element) -> (b : Element) ->  (
+    meet a (join a b) = a
+  )
+  ax/absorptive2 : (a : Element) -> (b : Element) -> (
+    join a (meet a b) = a
+  )
+  # the modular identity (a ⋀ b) ⋁ (x ⋀ b) = ((a ⋀ b) ⋁ x) ⋀ b.
+  ax/modular : (a : Element) -> (b : Element) -> (x : Element) -> (
+    join (meet a b) (meet x b) = meet (join (meet a b) x) b
+  )
+#  ax/modular : (a : Element) -> (b : Element) -> (c : Element) -> (
+#    |- [x: [x: a, y: b] ⋀, y: [x: x, y: b] ⋀] ⋁ = [x: [ x: [x: a, y : b] ⋀, y: x] ⋁, y: b] ⋀
+#  )
+
+end
+
