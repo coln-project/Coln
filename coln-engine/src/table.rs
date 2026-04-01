@@ -133,8 +133,22 @@ impl Table {
         &self.schema
     }
 
+    pub fn path(&self) -> &ir::Path {
+        &self.path
+    }
+
     pub fn row_count(&self) -> usize {
         self.cols.first().map(|c| c.len()).unwrap_or(0)
+    }
+
+    /// Row id at a given physical row index.
+    pub fn row_id_at(&self, row_idx: usize) -> Option<RowId> {
+        self.row_ids.get(row_idx).copied()
+    }
+
+    /// Cell at `(row_idx, col_idx)` in columnar storage.
+    pub fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<&CellValue> {
+        self.cols.get(col_idx).and_then(|col| col.get(row_idx))
     }
 
     /// Checks that the values to be inserted matches the schema definition
@@ -265,5 +279,31 @@ mod tests {
         let err = tbl.apply(op1).unwrap_err();
         assert_eq!(err, ValidationError::DuplicatePrimaryKey);
         assert_eq!(tbl.row_count(), 1);
+    }
+
+    #[test]
+    fn row_read_helpers_return_row_id_and_cells() {
+        let schema = ir::Schema {
+            columns: vec![
+                ColType::PrimType {
+                    prim: PrimType::PrimInt,
+                },
+                ColType::PrimType {
+                    prim: PrimType::PrimString,
+                },
+            ],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("readable"), schema);
+
+        let row_id = tbl
+            .apply(tbl.add(vec![CellValue::Int(7), CellValue::Str("x".to_string())]))
+            .expect("insert row");
+
+        assert_eq!(tbl.row_id_at(0), Some(row_id));
+        assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
+        assert_eq!(tbl.cell_at(0, 1), Some(&CellValue::Str("x".to_string())));
+        assert_eq!(tbl.row_id_at(1), None);
+        assert_eq!(tbl.cell_at(0, 2), None);
     }
 }

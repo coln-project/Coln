@@ -1,5 +1,4 @@
-
 pub mod compile;
 pub mod bind;
+pub mod validate;
 
-// pub fn check_law(tables: HashMap<TableOid, Table>, law: LawEntry) -> Result<(), Error> {}

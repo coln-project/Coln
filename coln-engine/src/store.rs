@@ -133,7 +133,7 @@ impl Store {
         let comp = self
             .laws()
             .iter()
-            .map(|law_entry| Ok(solver::compile::compile_law(self, law_entry)?))
+            .map(|law_entry| Ok(solver::compile::compile_law(law_entry)?))
             .collect::<Result<Vec<_>, CompileError>>()?;
         Ok(comp)
     }

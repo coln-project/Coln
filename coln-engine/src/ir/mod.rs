@@ -68,7 +68,7 @@ pub struct Schema {
     pub primary_key: Option<Vec<i64>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Lit {
     #[serde(rename = "int")]
