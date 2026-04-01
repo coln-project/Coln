@@ -35,7 +35,7 @@ main =
     banner = \case
       SingleLine -> pure "geolog> "
       MultiLine -> pure "| "
-    runCmd = dontCrash . eval . newFile "<interactive>" . T.pack
+    runCmd = dontCrash . eval . newFile "<interactive>" . (<> "\n") . T.pack
     opts =
       map
         (second \f s -> dontCrash $ f $ strip s)
