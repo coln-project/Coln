@@ -31,7 +31,7 @@ locToDiag f d =
         Diagnostic
           { _range = loc,
             _severity = Just $ lspSeverityLevel d,
-            _code = Nothing,
+            _code = Just . InL . fromIntegral . (.number) . D.codeMeta $ d.code,
             _codeDescription = Nothing,
             _source = Nothing,
             _message = T.pack . show $ d.summary,
