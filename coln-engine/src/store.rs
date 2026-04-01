@@ -1,17 +1,61 @@
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::ops::Op;
-use crate::solver;
 use crate::solver::compile::{CompLaw, CompileError};
+use crate::solver::validate::LawViolation;
+use crate::solver::{self};
 use crate::table::{CellValue, RowId, Table, TableOid, ValidationError};
 
+// TODO this should not be cloneable for efficiency reasons. In the future we should
+// be able to teach the law validator to check the delta
+#[derive(Debug, Clone)]
 pub struct Store {
     next_oid: TableOid,
     path_to_oid: HashMap<ir::Path, TableOid>,
     tables: HashMap<TableOid, Table>,
-    /// Laws for this instance; table schemas live only on each [`Table`].
-    laws: Vec<LawEntry>,
+    /// Compiled law for this instance; table schemas live only on each [`Table`].
+    laws: Vec<CompLaw>,
+}
+
+/// Store integrity error
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoreIntError {
+    Validation(ValidationError),
+    Law(LawViolation),
+    Compile(CompileError),
+}
+
+impl fmt::Display for StoreIntError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StoreIntError::Validation(err) => write!(f, "{err}"),
+            StoreIntError::Law(err) => write!(f, "{err}"),
+            StoreIntError::Compile(err) => write!(f, "{err:?}"),
+        }
+    }
+}
+
+impl Error for StoreIntError {}
+
+impl From<ValidationError> for StoreIntError {
+    fn from(value: ValidationError) -> Self {
+        Self::Validation(value)
+    }
+}
+
+impl From<LawViolation> for StoreIntError {
+    fn from(value: LawViolation) -> Self {
+        Self::Law(value)
+    }
+}
+
+impl From<CompileError> for StoreIntError {
+    fn from(value: CompileError) -> Self {
+        Self::Compile(value)
+    }
 }
 
 impl Store {
@@ -24,9 +68,17 @@ impl Store {
         }
     }
 
+    fn compile_laws(laws: &[LawEntry]) -> Result<Vec<CompLaw>, CompileError> {
+        let comp = laws
+            .iter()
+            .map(|law_entry| Ok(solver::compile::compile_law(law_entry)?))
+            .collect::<Result<Vec<_>, CompileError>>()?;
+        Ok(comp)
+    }
+
     /// Builds an empty column store per `theory.tables` and keeps only `theory.laws`
     /// (schemas are stored on each [`Table`]).
-    pub fn from_theory(theory: FlatTheory) -> Self {
+    pub fn try_from_theory(theory: FlatTheory) -> Result<Self, StoreIntError> {
         let FlatTheory { tables, laws } = theory;
 
         let mut next_oid: TableOid = 0;
@@ -40,15 +92,16 @@ impl Store {
             tables_map.insert(oid, Table::new(entry.path, entry.table));
         }
 
-        Self {
+        let comp_laws = Store::compile_laws(&laws)?;
+        Ok(Self {
             next_oid,
             path_to_oid,
             tables: tables_map,
-            laws: laws,
-        }
+            laws: comp_laws,
+        })
     }
 
-    pub fn laws(&self) -> &[LawEntry] {
+    pub fn laws(&self) -> &[CompLaw] {
         &self.laws
     }
 
@@ -87,19 +140,27 @@ impl Store {
     /// Validates the full batch against current store state (including PK clashes **within** the
     /// batch), then applies each op in order. On validation failure, the store is unchanged.
     /// Returns a vector of row_ids, in the same order as ops
-    pub fn apply_batch(&mut self, ops: Vec<Op>) -> Result<Vec<RowId>, ValidationError> {
+    pub fn apply_batch(&mut self, ops: Vec<Op>) -> Result<Vec<RowId>, StoreIntError> {
         self.validate_batch(&ops)?;
+        let mut preview_store = self.clone();
+
         let mut row_ids = vec![];
-        for op in ops {
+        for op in &ops {
             let Op::Add { table, values } = op;
-            let oid = self.resolve_table(&table).expect("validated batch");
-            let t = self.table_mut(oid).expect("validated batch");
-            row_ids.push(t.append_row(values));
+            let oid = preview_store
+                .resolve_table(&table)
+                .expect("validated batch");
+            let t = preview_store.table_mut(oid).expect("validated batch");
+            row_ids.push(t.append_row(values.clone()));
         }
+
+        preview_store.check_laws()?;
+        *self = preview_store;
+
         Ok(row_ids)
     }
 
-    fn validate_batch(&self, ops: &[Op]) -> Result<(), ValidationError> {
+    fn validate_batch(&self, ops: &[Op]) -> Result<(), StoreIntError> {
         let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
 
         for op in ops {
@@ -121,7 +182,7 @@ impl Store {
             if let Some(key) = t.primary_key_values(values) {
                 let keys = pending_pk.entry(oid).or_default();
                 if keys.iter().any(|k| k == &key) {
-                    return Err(ValidationError::DuplicatePrimaryKey);
+                    return Err(ValidationError::DuplicatePrimaryKey)?;
                 }
                 keys.push(key);
             }
@@ -129,13 +190,12 @@ impl Store {
         Ok(())
     }
 
-    pub fn compile_laws(&self) -> Result<Vec<CompLaw>, CompileError> {
-        let comp = self
-            .laws()
+    pub fn check_laws(&self) -> Result<(), StoreIntError> {
+        self.laws()
             .iter()
-            .map(|law_entry| Ok(solver::compile::compile_law(law_entry)?))
-            .collect::<Result<Vec<_>, CompileError>>()?;
-        Ok(comp)
+            .map(|law_entry| Ok(solver::validate::check_law(self, law_entry)?))
+            .collect::<Result<Vec<_>, LawViolation>>()?;
+        Ok(())
     }
 }
 
@@ -251,7 +311,10 @@ mod tests {
             ])
             .unwrap_err();
 
-        assert!(matches!(err, ValidationError::UnknownTable { .. }));
+        assert!(matches!(
+            err,
+            StoreIntError::Validation(ValidationError::UnknownTable { .. })
+        ));
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
     }
 
@@ -280,7 +343,47 @@ mod tests {
             ])
             .unwrap_err();
 
-        assert_eq!(err, ValidationError::DuplicatePrimaryKey);
+        assert_eq!(
+            err,
+            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+        );
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
+    }
+
+    #[test]
+    fn apply_error_from_inner_errors() {
+        let validation = StoreIntError::from(ValidationError::DuplicatePrimaryKey);
+        assert_eq!(
+            validation,
+            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+        );
+
+        let compile = StoreIntError::from(CompileError::UnsupportedTerm);
+        assert_eq!(
+            compile,
+            StoreIntError::Compile(CompileError::UnsupportedTerm)
+        );
+
+        let law = StoreIntError::from(LawViolation {
+            law: Path::from("T.total"),
+            atom: solver::compile::CompAtom {
+                table: Path::from("T"),
+                row_id: None,
+                values: vec![],
+            },
+            binding: vec![],
+        });
+        assert_eq!(
+            law,
+            StoreIntError::Law(LawViolation {
+                law: Path::from("T.total"),
+                atom: solver::compile::CompAtom {
+                    table: Path::from("T"),
+                    row_id: None,
+                    values: vec![],
+                },
+                binding: vec![],
+            })
+        );
     }
 }

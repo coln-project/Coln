@@ -109,6 +109,7 @@ impl CellValue {
 }
 
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
+#[derive(Debug, Clone)]
 pub struct Table {
     path: ir::Path,
     schema: Schema,
@@ -220,7 +221,9 @@ impl Table {
         row_id
     }
 
-    pub fn apply(&mut self, op: Op) -> Result<RowId, ValidationError> {
+    /// This is a table local addition of ops, this will NOT enfoce laws, for that
+    /// use [`store::apply_batch``]
+    pub(crate) fn apply(&mut self, op: Op) -> Result<RowId, ValidationError> {
         match op {
             Op::Add { values, .. } => {
                 self.validate_new_row(&values)?;

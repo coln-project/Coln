@@ -61,7 +61,7 @@ pub enum ColType {
     Tuple { fields: Vec<TupleField> },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Schema {
     pub columns: Vec<ColType>,

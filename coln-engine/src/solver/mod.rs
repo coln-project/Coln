@@ -1,4 +1,3 @@
-pub mod compile;
 pub mod bind;
+pub mod compile;
 pub mod validate;
-
