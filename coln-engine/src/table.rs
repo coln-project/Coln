@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use std::fmt::Write;
 
 use crate::ir;
 use crate::{
@@ -108,6 +109,16 @@ impl CellValue {
     }
 }
 
+impl fmt::Display for CellValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CellValue::Id(id) => write!(f, "#{id}"),
+            CellValue::Int(value) => write!(f, "{value}"),
+            CellValue::Str(value) => write!(f, "{value:?}"),
+        }
+    }
+}
+
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
 #[derive(Debug, Clone)]
 pub struct Table {
@@ -150,6 +161,30 @@ impl Table {
     /// Cell at `(row_idx, col_idx)` in columnar storage.
     pub fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<&CellValue> {
         self.cols.get(col_idx).and_then(|col| col.get(row_idx))
+    }
+
+    /// Dump table contents row by row for debugging.
+    pub fn debug_dump(&self) -> String {
+        let mut out = String::new();
+        let _ = writeln!(
+            out,
+            "table {:?} (rows: {}, cols: {})",
+            self.path,
+            self.row_count(),
+            self.schema.columns.len()
+        );
+
+        for row_idx in 0..self.row_count() {
+            let row_id = self.row_ids[row_idx];
+            let _ = write!(out, "[{row_idx}] row_id={row_id}");
+            for col_idx in 0..self.schema.columns.len() {
+                let value = &self.cols[col_idx][row_idx];
+                let _ = write!(out, " | c{col_idx}={value}");
+            }
+            let _ = writeln!(out);
+        }
+
+        out
     }
 
     /// Checks that the values to be inserted matches the schema definition
@@ -207,7 +242,7 @@ impl Table {
 
     /// Append a row to columnar storage and assign a new [`RowId`].
     ///
-    /// Does **not** run [`validate_new_row`]; call that (or [`apply`]) before appending, unless
+    /// Does **not** run [`validate_new_row`]; call that before appending, unless
     /// validation was already done for the whole batch elsewhere.
     pub(crate) fn append_row(&mut self, values: Vec<CellValue>) -> RowId {
         debug_assert_eq!(values.len(), self.schema.columns.len());
@@ -219,17 +254,6 @@ impl Table {
             self.cols[i].push(v);
         }
         row_id
-    }
-
-    /// This is a table local addition of ops, this will NOT enfoce laws, for that
-    /// use [`store::apply_batch``]
-    pub(crate) fn apply(&mut self, op: Op) -> Result<RowId, ValidationError> {
-        match op {
-            Op::Add { values, .. } => {
-                self.validate_new_row(&values)?;
-                Ok(self.append_row(values))
-            }
-        }
     }
 
     /// Append one row after validation and primary-key uniqueness check.
@@ -258,8 +282,8 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("test.table"), gv_schema);
         let values = vec![CellValue::Id(1)];
-        let op = tbl.add(values);
-        assert!(tbl.apply(op).is_ok());
+        assert!(tbl.validate_new_row(&values).is_ok());
+        tbl.append_row(values);
         assert_eq!(tbl.row_count(), 1);
     }
 
@@ -274,12 +298,13 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
-        let op0 = tbl.add(vec![CellValue::Int(0)]);
-        assert!(tbl.apply(op0).is_ok());
+        let values0 = vec![CellValue::Int(0)];
+        assert!(tbl.validate_new_row(&values0).is_ok());
+        tbl.append_row(values0);
         assert_eq!(tbl.row_count(), 1);
 
-        let op1 = tbl.add(vec![CellValue::Int(1)]);
-        let err = tbl.apply(op1).unwrap_err();
+        let values1 = vec![CellValue::Int(1)];
+        let err = tbl.validate_new_row(&values1).unwrap_err();
         assert_eq!(err, ValidationError::DuplicatePrimaryKey);
         assert_eq!(tbl.row_count(), 1);
     }
@@ -299,14 +324,47 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("readable"), schema);
 
-        let row_id = tbl
-            .apply(tbl.add(vec![CellValue::Int(7), CellValue::Str("x".to_string())]))
-            .expect("insert row");
+        let values = vec![CellValue::Int(7), CellValue::Str("x".to_string())];
+        tbl.validate_new_row(&values).expect("validate row");
+        let row_id = tbl.append_row(values);
 
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
         assert_eq!(tbl.cell_at(0, 1), Some(&CellValue::Str("x".to_string())));
         assert_eq!(tbl.row_id_at(1), None);
         assert_eq!(tbl.cell_at(0, 2), None);
+    }
+
+    #[test]
+    fn debug_dumps_rows() {
+        let schema = ir::Schema {
+            columns: vec![
+                ColType::PrimType {
+                    prim: PrimType::PrimInt,
+                },
+                ColType::PrimType {
+                    prim: PrimType::PrimString,
+                },
+            ],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("debug.table"), schema);
+
+        let first = vec![CellValue::Int(7), CellValue::Str("x".to_string())];
+        tbl.validate_new_row(&first).expect("validate first row");
+        tbl.append_row(first);
+
+        let second = vec![CellValue::Int(8), CellValue::Str("y".to_string())];
+        tbl.validate_new_row(&second).expect("validate second row");
+        tbl.append_row(second);
+
+        assert_eq!(
+            tbl.debug_dump(),
+            concat!(
+                "table Path([[\"debug\"], [\"table\"]]) (rows: 2, cols: 2)\n",
+                "[0] row_id=0 | c0=7 | c1=\"x\"\n",
+                "[1] row_id=1 | c0=8 | c1=\"y\"\n"
+            )
+        );
     }
 }

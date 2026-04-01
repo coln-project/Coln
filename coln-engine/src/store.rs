@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use tracing::{debug, info};
 
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::ops::Op;
@@ -69,10 +70,12 @@ impl Store {
     }
 
     fn compile_laws(laws: &[LawEntry]) -> Result<Vec<CompLaw>, CompileError> {
+        debug!(law_count = laws.len(), "compiling laws");
         let comp = laws
             .iter()
             .map(|law_entry| Ok(solver::compile::compile_law(law_entry)?))
             .collect::<Result<Vec<_>, CompileError>>()?;
+        debug!(compiled_law_count = comp.len(), "compiled laws");
         Ok(comp)
     }
 
@@ -80,6 +83,11 @@ impl Store {
     /// (schemas are stored on each [`Table`]).
     pub fn try_from_theory(theory: FlatTheory) -> Result<Self, StoreIntError> {
         let FlatTheory { tables, laws } = theory;
+        info!(
+            table_count = tables.len(),
+            law_count = laws.len(),
+            "building store from theory"
+        );
 
         let mut next_oid: TableOid = 0;
         let mut path_to_oid = HashMap::new();
@@ -93,6 +101,11 @@ impl Store {
         }
 
         let comp_laws = Store::compile_laws(&laws)?;
+        info!(
+            table_count = tables_map.len(),
+            compiled_law_count = comp_laws.len(),
+            "store initialized"
+        );
         Ok(Self {
             next_oid,
             path_to_oid,
@@ -141,6 +154,7 @@ impl Store {
     /// batch), then applies each op in order. On validation failure, the store is unchanged.
     /// Returns a vector of row_ids, in the same order as ops
     pub fn apply_batch(&mut self, ops: Vec<Op>) -> Result<Vec<RowId>, StoreIntError> {
+        info!(op_count = ops.len(), "applying batch");
         self.validate_batch(&ops)?;
         let mut preview_store = self.clone();
 
@@ -157,10 +171,12 @@ impl Store {
         preview_store.check_laws()?;
         *self = preview_store;
 
+        info!(row_count = row_ids.len(), "applied batch");
         Ok(row_ids)
     }
 
     fn validate_batch(&self, ops: &[Op]) -> Result<(), StoreIntError> {
+        debug!(op_count = ops.len(), "validating batch");
         let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
 
         for op in ops {
@@ -191,10 +207,12 @@ impl Store {
     }
 
     pub fn check_laws(&self) -> Result<(), StoreIntError> {
+        debug!(law_count = self.laws.len(), "checking laws");
         self.laws()
             .iter()
             .map(|law_entry| Ok(solver::validate::check_law(self, law_entry)?))
             .collect::<Result<Vec<_>, LawViolation>>()?;
+        debug!(law_count = self.laws.len(), "all laws satisfied");
         Ok(())
     }
 }
@@ -364,26 +382,23 @@ mod tests {
             StoreIntError::Compile(CompileError::UnsupportedTerm)
         );
 
-        let law = StoreIntError::from(LawViolation {
-            law: Path::from("T.total"),
+        let compiled_law = solver::compile::CompLaw {
+            path: Path::from("T.total"),
+            vars: vec![],
+            antecedent: vec![],
+            consequent: vec![],
+            tables: vec![Path::from("T")],
+        };
+        let violation = LawViolation {
+            law: compiled_law,
             atom: solver::compile::CompAtom {
                 table: Path::from("T"),
                 row_id: None,
                 values: vec![],
             },
             binding: vec![],
-        });
-        assert_eq!(
-            law,
-            StoreIntError::Law(LawViolation {
-                law: Path::from("T.total"),
-                atom: solver::compile::CompAtom {
-                    table: Path::from("T"),
-                    row_id: None,
-                    values: vec![],
-                },
-                binding: vec![],
-            })
-        );
+        };
+        let law = StoreIntError::from(violation.clone());
+        assert_eq!(law, StoreIntError::Law(violation));
     }
 }

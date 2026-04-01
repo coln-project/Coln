@@ -1,6 +1,8 @@
 use crate::{
-    ir,
-    solver::compile::{CompAtom, CompLaw, CompTerm, CompVal},
+    solver::{
+        compile::{CompAtom, CompLaw, CompTerm, CompVal},
+        matcher::term_matches,
+    },
     store::Store,
     table::{CellValue, RowId, Table},
 };
@@ -13,25 +15,6 @@ pub enum BoundValue {
 
 pub type Binding = Vec<Option<BoundValue>>;
 
-pub(crate) fn slot_satisfies(binding: &Binding, slot: usize, value: &BoundValue) -> bool {
-    match binding.get(slot) {
-        Some(Some(bound)) => bound == value,
-        _ => false,
-    }
-}
-
-pub(crate) fn term_satisfies(binding: &Binding, term: &CompTerm, value: &BoundValue) -> bool {
-    match term {
-        CompTerm::Var(slot) => slot_satisfies(binding, *slot, value),
-        CompTerm::Lit(ir::Lit::Int { value: expected }) => {
-            *value == BoundValue::Cell(CellValue::Int(*expected))
-        }
-        CompTerm::Lit(ir::Lit::String { value: expected }) => {
-            *value == BoundValue::Cell(CellValue::Str(expected.clone()))
-        }
-    }
-}
-
 fn bind_slot(binding: &mut Binding, slot: usize, value: BoundValue) -> bool {
     match binding.get_mut(slot) {
         Some(existing @ None) => {
@@ -43,10 +26,13 @@ fn bind_slot(binding: &mut Binding, slot: usize, value: BoundValue) -> bool {
     }
 }
 
+/// Bind a [`CompTerm`] to the `value`. If the term is not a Var, then check whether
+/// it matches the value, otherwise check if the Var is already bound, and if so
+/// whether the existing binding is valid
 fn bind_term(binding: &mut Binding, term: &CompTerm, value: BoundValue) -> bool {
     match term {
         CompTerm::Var(slot) => bind_slot(binding, *slot, value),
-        _ => term_satisfies(binding, term, &value),
+        _ => term_matches(binding, term, &value),
     }
 }
 

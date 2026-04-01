@@ -46,14 +46,14 @@ impl<'de> Deserialize<'de> for PrimType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TupleField {
     name: QName,
     col_type: Box<ColType>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum ColType {
     EntityType { path: Path }, // this is the foreign key?

@@ -1,18 +1,19 @@
 use std::error::Error;
 use std::fmt;
+use tracing::debug;
 
 use crate::{
-    ir,
     solver::{
-        bind::{Binding, BoundValue, bind_law, term_satisfies},
+        bind::{Binding, BoundValue, bind_law},
         compile::{CompAtom, CompLaw, CompVal},
+        matcher::term_matches,
     },
     store::Store,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LawViolation {
-    pub law: ir::Path,
+    pub law: CompLaw,
     pub atom: CompAtom,
     pub binding: Binding,
 }
@@ -32,6 +33,7 @@ impl Error for LawViolation {}
 // TODO: completely ignoring efficiency for now
 pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) -> bool {
     let Some(table) = store.table_at(&atom.table) else {
+        debug!(table = ?atom.table, "consequent table missing from store");
         return false;
     };
 
@@ -42,7 +44,7 @@ pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) 
                 continue;
             };
             let value = BoundValue::RId(rid);
-            if !term_satisfies(binding, term, &value) {
+            if !term_matches(binding, term, &value) {
                 continue;
             }
         }
@@ -51,7 +53,7 @@ pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) 
             let Some(value) = table.cell_at(row_idx, *column_idx) else {
                 continue 'row;
             };
-            if !term_satisfies(binding, term, &BoundValue::Cell(value.clone())) {
+            if !term_matches(binding, term, &BoundValue::Cell(value.clone())) {
                 continue 'row;
             }
         }
@@ -66,14 +68,16 @@ pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), LawViolation> {
     for binding in bindings {
         for atom in &law.consequent {
             if !consequent_atom_holds(store, atom, &binding) {
+                debug!(law = ?law.path, table = ?atom.table, "law violation detected");
                 return Err(LawViolation {
-                    law: law.path.clone(),
+                    law: law.clone(),
                     atom: atom.clone(),
                     binding: binding,
                 });
             }
         }
     }
+    debug!(law = ?law.path, "law satisfied");
     Ok(())
 }
 
@@ -119,7 +123,7 @@ mod tests {
         let compiled = compile_law(&law).expect("compile law");
         let violation = check_law(&store, &compiled).expect_err("missing G0 row should violate");
 
-        assert_eq!(violation.law, Path::from("G0.total"));
+        assert_eq!(violation.law.path, Path::from("G0.total"));
         assert_eq!(violation.atom.table, g0_path);
         assert!(violation.binding.is_empty());
     }
@@ -308,7 +312,7 @@ mod tests {
             .expect("insert referencing row");
 
         let violation = check_law(&store, &compiled).expect_err("missing referenced rows");
-        assert_eq!(violation.law, Path::from("Link.foreignKeys"));
+        assert_eq!(violation.law.path, Path::from("Link.foreignKeys"));
         assert_eq!(violation.atom.table, left);
         assert_eq!(
             violation.binding,

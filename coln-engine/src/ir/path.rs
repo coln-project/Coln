@@ -1,4 +1,9 @@
-use std::{convert::Infallible, ops::Deref, str::FromStr};
+use std::{
+    convert::Infallible,
+    fmt::{self, Display},
+    ops::Deref,
+    str::FromStr,
+};
 
 use crate::ir::{Path, QName};
 
@@ -7,6 +12,25 @@ impl Deref for Path {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, qname) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, ".")?;
+            }
+
+            for (j, part) in qname.iter().enumerate() {
+                if j > 0 {
+                    write!(f, "/")?;
+                }
+                write!(f, "{part}")?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -125,5 +149,18 @@ mod path_parse_tests {
     fn from_str_parse() {
         let p: Path = "G.V".parse().unwrap();
         assert_eq!(p, Path::from("G.V"));
+    }
+
+    #[test]
+    fn display_round_trips_normalized_path() {
+        assert_eq!(
+            Path::from(" Hom . E / D . foreignKeys ").to_string(),
+            "Hom.E/D.foreignKeys"
+        );
+    }
+
+    #[test]
+    fn display_empty_path() {
+        assert_eq!(Path(vec![]).to_string(), "");
     }
 }

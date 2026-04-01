@@ -16,7 +16,7 @@ pub enum CompileError {
 ///
 /// This keeps only the subset currently supported by the solver:
 /// antecedent/consequent atoms over variables and literals.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompLaw {
     pub path: ir::Path,
     pub vars: Vec<VarSpec>,
@@ -25,7 +25,7 @@ pub struct CompLaw {
     pub tables: Vec<ir::Path>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarSpec {
     pub index: usize,
     // TODO consider not using ir
