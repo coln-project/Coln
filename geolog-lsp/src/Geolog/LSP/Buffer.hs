@@ -39,15 +39,15 @@ data AnalyzedBuffer = AnalyzedBuffer
   , diagnostics :: [D.Diagnostic GeologCode]
   }
 
-dontCrash :: (MonadIO m, MonadCatch m, MonadLsp LSPState m) => IO a -> m (Maybe a)
-dontCrash m =
+reportCrash :: (MonadIO m, MonadCatch m, MonadLsp LSPState m) => IO a -> T.Text -> m (Maybe a)
+reportCrash m msg =
   catch
     (liftIO (m >>= evaluate . Just))
     ( \e@SomeException{} -> do
         sendNotification
           SMethod_WindowShowMessage
           ( ShowMessageParams MessageType_Error $
-              "Error while evaluating IO action:"
+              msg
                 <> (T.pack . show $ e)
           )
         pure Nothing
@@ -62,13 +62,13 @@ analyzeBuffer = do
     pure (D.pureReporter diagRef, diagRef)
 
   analysis <- do
-    dontCrash (FNotation.lex lexConfig (contramap LexerCode r) bufInfo.file) >>= \case
+    reportCrash (FNotation.lex lexConfig (contramap LexerCode r) bufInfo.file) "Lexing Error: " >>= \case
       Nothing -> pure $ AnalyzedBuffer Nothing Nothing Nothing []
       Just tokens ->
-        dontCrash (FNotation.parse parseConfig (contramap ParserCode r) bufInfo.file tokens) >>= \case
+        reportCrash (FNotation.parse parseConfig (contramap ParserCode r) bufInfo.file tokens) "Parsing Error: " >>= \case
           Nothing -> pure $ AnalyzedBuffer (Just tokens) Nothing Nothing []
           Just notations ->
-            dontCrash (elabTop (contramap ElaboratorCode r) bufInfo.file notations) >>= \case
+            reportCrash (elabTop (contramap ElaboratorCode r) bufInfo.file notations) "Elaboration Error: " >>= \case
               Nothing -> pure $ AnalyzedBuffer (Just tokens) (Just notations) Nothing []
               Just elaborated -> pure $ AnalyzedBuffer (Just tokens) (Just notations) (Just elaborated) []
 
