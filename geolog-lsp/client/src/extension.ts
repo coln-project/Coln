@@ -19,10 +19,7 @@ const SERVER_PATH_SETTING = "geolog-lsp.server.path";
 
 /** VS Code platform name for bundled server (e.g. linux-x64, darwin-arm64, win32-x64). */
 function getServerPlatform(): string {
-  const p = process.platform;
-  const a = process.arch === "x64" ? "x64" : process.arch;
-  if (p === "win32") return `win32-${a}`;
-  return `${p}-${a}`;
+  return `${process.platform}-${process.arch}`;
 }
 
 /** Resolve path to geolog-lsp binary: config, then bundled server, then workspace, then extension dir. */
