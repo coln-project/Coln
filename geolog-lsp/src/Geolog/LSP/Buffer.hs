@@ -3,7 +3,6 @@ module Geolog.LSP.Buffer (analyzeBuffer) where
 import Control.Exception (SomeException (..), evaluate)
 import Control.Monad.Catch (MonadCatch, catch)
 import Control.Monad.Trans
-import Control.Monad.Trans.Reader (ask)
 import Data.Functor.Contravariant (contramap)
 import Data.IORef (newIORef, readIORef)
 import Data.Text qualified as T
@@ -11,7 +10,7 @@ import Diagnostician qualified as D
 import FNotation
 import Geolog.Diagnostics (GeologCode (..))
 import Geolog.Elaborator (elabTop)
-import Geolog.LSP.Types (AnalyzedBuffer (..), LSPBufferT, LSPState, LSPBufferInfo (..))
+import Geolog.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
 import Geolog.Notation (lexConfig, parseConfig)
 import Language.LSP.Protocol.Message (SMethod (..))
 import Language.LSP.Protocol.Types (MessageType (..), ShowMessageParams (..))
@@ -32,10 +31,8 @@ reportCrash m msg =
         pure Nothing
     )
 
-analyzeBuffer :: (MonadIO m, MonadCatch m, MonadLsp LSPState m) => LSPBufferT m AnalyzedBuffer
-analyzeBuffer = do
-  bufInfo <- ask
-
+analyzeBuffer :: (MonadIO m, MonadCatch m, MonadLsp LSPState m) => LSPBufferInfo -> m AnalyzedBuffer
+analyzeBuffer bufInfo = do
   (r, diagRef) <- liftIO $ do
     diagRef <- newIORef ([] @(D.Diagnostic GeologCode))
     pure (D.pureReporter diagRef, diagRef)

@@ -1,27 +1,23 @@
 module Geolog.LSP.Diagnostics where
 
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Trans (lift)
-import Control.Monad.Trans.Reader (ask)
 import Data.Maybe (maybeToList)
 import Data.Text qualified as T
 import Diagnostician qualified as D
-import Geolog.LSP.Types (LSPBufferInfo (..), LSPBufferT, LSPState)
+import Geolog.LSP.Types (LSPBufferInfo (..), LSPState)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server
 
-publishDiagnostics :: (MonadIO m, MonadLsp LSPState m, D.Code a) => [D.Diagnostic a] -> LSPBufferT m ()
-publishDiagnostics ds = do
-  bufInfo <- ask
-  lift $
-    sendNotification
-      SMethod_TextDocumentPublishDiagnostics
-      PublishDiagnosticsParams
-        { _uri = bufInfo.uri,
-          _version = Nothing,
-          _diagnostics = concatMap (locToDiag bufInfo.file) ds
-        }
+publishDiagnostics :: (MonadIO m, MonadLsp LSPState m, D.Code a) => [D.Diagnostic a] -> LSPBufferInfo -> m ()
+publishDiagnostics ds bufInfo = do
+  sendNotification
+    SMethod_TextDocumentPublishDiagnostics
+    PublishDiagnosticsParams
+      { _uri = bufInfo.uri,
+        _version = Nothing,
+        _diagnostics = concatMap (locToDiag bufInfo.file) ds
+      }
 
 locToDiag :: (D.Code a) => D.File -> D.Diagnostic a -> [Diagnostic]
 locToDiag f d =
