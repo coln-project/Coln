@@ -1,9 +1,9 @@
 module Main (main) where
 
-import Data.IORef (newIORef)
-import Geolog.LSP (serverDefinition)
-import Geolog.LSP.Types (LSPState (..))
-import Language.LSP.Server (runServer)
+import Data.IORef
+import Geolog.LSP
+import Geolog.LSP.Types
+import Language.LSP.Server
 
 main :: IO Int
 main = do
