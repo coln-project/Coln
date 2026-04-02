@@ -70,7 +70,7 @@ data LexState = LexState
     iter :: IORef TU.Iter,
     out :: Buffer Token,
     file :: File,
-    reporter :: ReporterFor LexerCode,
+    reporter :: Reporter LexerCode,
     config :: ConfTable Kind
   }
 
@@ -151,7 +151,7 @@ report :: LexState -> LexerCode -> DDoc -> IO ()
 report st c m = do
   s <- span st
   let d = Diagnostic c m [Note (Just (SourceLoc (st.file) s)) Nothing]
-  reportTo st.reporter d
+  st.reporter.reportIO d
 
 unexpectedChar :: LexState -> Char -> IO ()
 unexpectedChar st c = do
@@ -262,7 +262,7 @@ run st =
     c -> unexpectedChar st c >> run st
 
 -- | Run the lexer, return a vector of tokens ready for parsing.
-lex :: ConfTable Kind -> ReporterFor LexerCode -> File -> IO (V.Vector Token)
+lex :: ConfTable Kind -> Reporter LexerCode -> File -> IO (V.Vector Token)
 lex config reporter file = do
   pos <- newIORef 0
   prev <- newIORef 0
