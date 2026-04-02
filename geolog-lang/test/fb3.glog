@@ -1,0 +1,25 @@
+theory IdempotentSemigroup := sig
+  Element : Query
+
+  # Multiplication as a function
+  mul : (x : Element) -> (y : Element) -> Element
+
+  mul/idempotent : (x : Element) -> mul x x = x
+
+  mul/assoc : (x : Element) -> (y : Element) -> (z : Element) -> (mul (mul x y) z) = (mul x (mul y z))
+end
+
+# instance FreeIS : IdempotentSemigroup = chase {
+#  # calculate the free idempotent semigroup on a small number of generators
+#  a : Element ;
+#  b : Element ;
+#  c : Element ;
+#  # d : Element ;
+#}
+
+  # def FreeIS : IdempotentSemigroup := [                                                                                              
+  #   Element := ...,                                                                                                                  
+  #   mul := ...,                                                                                                                      
+  #   mul/assoc := ...,                                                                                                                
+  #   mul/idempotent := ...                                                                                                            
+  # ]  
