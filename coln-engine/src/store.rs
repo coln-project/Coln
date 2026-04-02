@@ -9,6 +9,7 @@ use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
 use crate::solver::{self};
 use crate::table::{CellValue, RowId, Table, TableOid, ValidationError};
+use crate::transaction::OwnedTransaction;
 
 // TODO this should not be cloneable for efficiency reasons. In the future we should
 // be able to teach the law validator to check the delta
@@ -186,6 +187,13 @@ impl Store {
         Ok(row_ids)
     }
 
+    pub fn into_transaction<F, O>(self, f: F) -> OwnedTransaction<F, O>
+    where
+        F: FnOnce(&mut Store) -> Result<O, StoreIntError>,
+    {
+        OwnedTransaction::new(self, f)
+    }
+
     pub fn transact<F, O>(&mut self, f: F) -> Result<O, StoreIntError>
     where
         F: FnOnce(&mut Store) -> Result<O, StoreIntError>,
@@ -248,17 +256,15 @@ impl Default for Store {
     }
 }
 
+/// Shared theory fixtures for unit tests (`store`, `transaction`, etc.).
 #[cfg(test)]
-mod tests {
-
-    use super::*;
+pub(crate) mod test_support {
     use crate::ir::{
         Atom, ColType, FlatTheory, Law, LawEntry, Path, PrimType, Prop, Schema, TableEntry, Term,
         ValueEntry,
     };
-    use crate::ops::Op;
 
-    fn link_foreign_key_theory() -> FlatTheory {
+    pub fn link_foreign_key_theory() -> FlatTheory {
         let left = Path::from("Left");
         let right = Path::from("Right");
         let link = Path::from("Link");
@@ -344,6 +350,15 @@ mod tests {
             }],
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::test_support::link_foreign_key_theory;
+    use super::*;
+    use crate::ir::{ColType, Path, PrimType, Schema};
+    use crate::ops::Op;
 
     #[test]
     fn test_store_create_table() {
