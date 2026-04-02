@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Data.ByteString.Lazy qualified as LBS
+import Data.Functor.Contravariant (contramap)
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
@@ -49,10 +50,10 @@ elaborate fp = do
   src <- T.readFile fp
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
-    let r = Reporter h False
-    ts <- lex lexConfig (ReporterFor LexerCode r) f
-    ns <- parse parseConfig (ReporterFor ParserCode r) f ts
-    ge <- elabTop (ReporterFor ElaboratorCode r) f ns
+    let r = fileReporter h
+    ts <- lex lexConfig (contramap LexerCode r) f
+    ns <- parse parseConfig (contramap ParserCode r) f ts
+    ge <- elabTop (contramap ElaboratorCode r) f ns
     hFlush h
     hClose h
     msgs <- T.readFile path
