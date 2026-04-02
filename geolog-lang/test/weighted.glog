@@ -10,10 +10,3 @@ theory Q (G : WeightedGraph) := sig
   e1 : G.E x y 1
   e1 : G.E y z 3
 end
-
-theory Q (G : WeightedGraph) := sig
-  x : G.
-end
-
-
-
