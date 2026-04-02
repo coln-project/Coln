@@ -41,13 +41,14 @@ pub fn parse_add_statement(input: &str) -> Result<Command, String> {
 pub fn parse_command(input: &str) -> Result<Command, String> {
     let input = input.trim();
     if input.starts_with('/') {
-        return parse_meta_command(input);
+        parse_meta_command(input)
+    } else {
+        let Some(input) = input.strip_suffix(';') else {
+            return Err("statements must end with `;`".to_string());
+        };
+        let input = input.trim_end();
+        parse_statement(input)
     }
-    let Some(input) = input.strip_suffix(';') else {
-        return Err("statements must end with `;`".to_string());
-    };
-    let input = input.trim_end();
-    parse_statement(input)
 }
 
 pub fn parse_meta_command(input: &str) -> Result<Command, String> {
@@ -102,6 +103,17 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
     }
 }
 
+/// Split `values ( ... ), ( ... )` into row bodies between outer parentheses.
+///
+/// We only need to find the matching `)` for each `(`. Inside double-quoted strings, `)` and `,`
+/// are ignored so they do not end the row. We do not support backslash escapes; `"` delimits
+/// quoted strings.
+///
+/// Row *values* are split with [`split_add_row_tokens`], not `shlex::split`: Unix shell rules
+/// treat `#` as starting a comment, which would drop entity ids like `#11`.
+///
+/// Regex is a poor fit here: a pattern like `\(([^)]*)\)` breaks when a string column contains
+/// `)`.
 pub fn parse_add_rows(input: &str) -> Result<Vec<Vec<String>>, String> {
     let mut rows = Vec::new();
     let mut chars = input.char_indices().peekable();
@@ -118,16 +130,11 @@ pub fn parse_add_rows(input: &str) -> Result<Vec<Vec<String>>, String> {
         chars.next();
         let start = chars.peek().map(|(idx, _)| *idx).unwrap_or(input.len());
         let mut in_quotes = false;
-        let mut escaped = false;
         let mut end = None;
 
         for (idx, ch) in chars.by_ref() {
             if in_quotes {
-                if escaped {
-                    escaped = false;
-                } else if ch == '\\' {
-                    escaped = true;
-                } else if ch == '"' {
+                if ch == '"' {
                     in_quotes = false;
                 }
                 continue;
@@ -145,11 +152,45 @@ pub fn parse_add_rows(input: &str) -> Result<Vec<Vec<String>>, String> {
 
         let end = end.ok_or_else(|| "unterminated row in add statement".to_string())?;
         let row_src = &input[start..end];
-        let row = shlex::split(row_src).ok_or_else(|| "could not parse row values".to_string())?;
+        let row = split_add_row_tokens(row_src);
         rows.push(row);
     }
 
     Ok(rows)
+}
+
+/// Split the inside of one `( ... )` into values: whitespace-separated, with `"..."` for
+/// tokens that contain spaces. Does not treat `#` as a comment (entity ids are `#12`-style).
+fn split_add_row_tokens(row_src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chars = row_src.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        if c.is_whitespace() {
+            chars.next();
+            continue;
+        }
+        if c == '"' {
+            chars.next();
+            let mut s = String::new();
+            for ch in chars.by_ref() {
+                if ch == '"' {
+                    break;
+                }
+                s.push(ch);
+            }
+            out.push(s);
+        } else {
+            let mut s = String::new();
+            while let Some(&ch) = chars.peek() {
+                if ch.is_whitespace() {
+                    break;
+                }
+                s.push(chars.next().expect("peeked"));
+            }
+            out.push(s);
+        }
+    }
+    out
 }
 
 pub fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, String> {
@@ -203,6 +244,17 @@ mod tests {
                     vec!["7".to_string(), "alice".to_string()],
                     vec!["8".to_string(), "bob".to_string()],
                 ],
+            }
+        );
+    }
+
+    #[test]
+    fn parses_add_command_single_value() {
+        assert_eq!(
+            parse_command("add T values (#11);").unwrap(),
+            Command::Add {
+                table: "T".to_string(),
+                rows: vec![vec!["#11".to_string()],],
             }
         );
     }
