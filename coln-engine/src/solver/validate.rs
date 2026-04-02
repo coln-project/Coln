@@ -36,7 +36,7 @@ pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) 
         debug!(table = ?atom.table, "consequent table missing from store");
         return false;
     };
-
+    debug!(atom = ?atom, binding=?binding, "checking");
     // Check each row in the table, if any one row satisfies, then return true
     'row: for row_idx in 0..table.row_count() {
         if let Some(term) = &atom.row_id {
@@ -65,10 +65,12 @@ pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) 
 
 pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), LawViolation> {
     let bindings = bind_law(store, law);
+    debug!(law = %law.path, bindings = ?bindings, "checking law with bindings");
+
     for binding in bindings {
         for atom in &law.consequent {
             if !consequent_atom_holds(store, atom, &binding) {
-                debug!(law = ?law.path, table = ?atom.table, "law violation detected");
+                debug!(law = %law.path, table = ?atom.table, "law violation detected");
                 return Err(LawViolation {
                     law: law.clone(),
                     atom: atom.clone(),
@@ -77,7 +79,7 @@ pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), LawViolation> {
             }
         }
     }
-    debug!(law = ?law.path, "law satisfied");
+    debug!(law = %law.path, "law satisfied");
     Ok(())
 }
 

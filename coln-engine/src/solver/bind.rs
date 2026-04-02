@@ -1,3 +1,5 @@
+use tracing::debug;
+
 use crate::{
     solver::{
         compile::{CompAtom, CompLaw, CompTerm, CompVal},
@@ -60,6 +62,7 @@ fn match_atom_row(
 }
 
 pub fn bind_law(store: &Store, law: &CompLaw) -> Vec<Binding> {
+    debug!(law_name = %law.path, law=?law, "binding vars for law");
     let mut bindings = vec![vec![None; law.vars.len()]];
 
     for atom in &law.antecedent {

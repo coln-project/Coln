@@ -1,7 +1,18 @@
+use std::collections::HashMap;
+
 use crate::{
     ir::{ColType, PrimType},
-    table::CellValue,
+    repl::error::TransactCellParseError,
+    table::{CellValue, RowId},
 };
+
+/// One `name = add <table> values (...);` step inside a transaction block (exactly one row).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransactAssignment {
+    pub name: String,
+    pub table: String,
+    pub row: Vec<String>,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -14,6 +25,14 @@ pub enum Command {
         table: String,
         rows: Vec<Vec<String>>,
     },
+    /// `begin transact;` … `commit;` with assignments using previous bindings in entity columns.
+    Transact {
+        assignments: Vec<TransactAssignment>,
+    },
+    DumpTbl {
+        name: String,
+    },
+    DumpStore,
     Exit,
 }
 
@@ -79,6 +98,11 @@ pub fn parse_meta_command(input: &str) -> Result<Command, String> {
 }
 
 pub fn parse_statement(input: &str) -> Result<Command, String> {
+    let input = input.trim();
+    if input.starts_with("begin transact") {
+        return parse_transact_block(input);
+    }
+
     let parts = shlex::split(input).ok_or_else(|| "could not parse input".to_string())?;
     let Some(command) = parts.first() else {
         return Err("empty command".to_string());
@@ -97,10 +121,143 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
             }
         }
         "add" => parse_add_statement(input),
+        "dump-table" => match parts.as_slice() {
+            [_, name] => Ok(Command::DumpTbl { name: name.clone() }),
+            _ => Err("usage: dump-table <table>;".to_string()),
+        },
+        "dump-store" => Ok(Command::DumpStore),
         _ => Err(format!(
             "unknown statement: {command}. Statements must end with `;`, or use `/help` for meta commands."
         )),
     }
+}
+
+/// Resolve one cell for a transactional insert: entity columns accept `#id` or a prior binding name.
+pub fn parse_cell_value_transact(
+    col_type: &ColType,
+    raw: &str,
+    bindings: &HashMap<String, RowId>,
+) -> Result<CellValue, TransactCellParseError> {
+    match col_type {
+        ColType::EntityType { .. } => {
+            if raw.starts_with('#') {
+                parse_cell_value(col_type, raw).map_err(TransactCellParseError::InvalidValue)
+            } else if is_binding_ident(raw) {
+                let id = bindings
+                    .get(raw)
+                    .copied()
+                    .ok_or_else(|| TransactCellParseError::UnknownBinding(raw.to_string()))?;
+                Ok(CellValue::Id(id))
+            } else {
+                Err(TransactCellParseError::InvalidValue(format!(
+                    "expected entity id like #12 or a binding name, got {raw}"
+                )))
+            }
+        }
+        _ => parse_cell_value(col_type, raw).map_err(TransactCellParseError::InvalidValue),
+    }
+}
+
+/// Parse `begin transact;` … `commit` (outer `;` already stripped by [`parse_command`]).
+fn parse_transact_block(input: &str) -> Result<Command, String> {
+    let input = input.trim();
+    let Some(rest) = input.strip_prefix("begin transact") else {
+        return Err("internal error: expected begin transact".to_string());
+    };
+    let mut rest = rest.trim_start();
+    let Some(after_kw) = rest.strip_prefix(';') else {
+        return Err("expected `begin transact;`".to_string());
+    };
+    rest = after_kw.trim();
+    let Some(inner) = rest.strip_suffix("commit") else {
+        return Err("transaction block must end with `commit`".to_string());
+    };
+    let inner = inner.trim().strip_suffix(';').unwrap_or(inner).trim();
+    let assignments = parse_transact_assignments(inner)?;
+    Ok(Command::Transact { assignments })
+}
+
+pub fn is_binding_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn split_semicolon_statements(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    for ch in s.chars() {
+        if ch == '"' {
+            in_quotes = !in_quotes;
+        }
+        if ch == ';' && !in_quotes {
+            let t = cur.trim();
+            if !t.is_empty() {
+                out.push(t.to_string());
+            }
+            cur.clear();
+        } else {
+            cur.push(ch);
+        }
+    }
+    let tail = cur.trim();
+    if !tail.is_empty() {
+        out.push(tail.to_string());
+    }
+    out
+}
+
+fn parse_transact_assignments(inner: &str) -> Result<Vec<TransactAssignment>, String> {
+    let mut v = Vec::new();
+    for stmt in split_semicolon_statements(inner) {
+        v.push(parse_transact_assignment(&stmt)?);
+    }
+    Ok(v)
+}
+
+fn parse_transact_assignment(line: &str) -> Result<TransactAssignment, String> {
+    let line = line.trim();
+    if line.is_empty() {
+        return Err("empty statement inside transaction block".to_string());
+    }
+    let Some((name, rhs)) = line.split_once(" = add ") else {
+        return Err(format!(
+            "expected `name = add <table> values (...)`, got: {line}"
+        ));
+    };
+    let name = name.trim();
+    if name.is_empty() || !is_binding_ident(name) {
+        return Err(format!("invalid binding name: {name}"));
+    }
+    let rhs = rhs.trim();
+    let Some((table, rows_src)) = rhs.split_once(" values ") else {
+        return Err(format!(
+            "expected `values (...)` after table name in: {line}"
+        ));
+    };
+    let table = table.trim();
+    if table.is_empty() {
+        return Err("missing table name".to_string());
+    }
+    let rows = parse_add_rows(rows_src.trim())?;
+    if rows.len() != 1 {
+        return Err(
+            "each transaction assignment must insert exactly one row (one `values (...)` group)"
+                .to_string(),
+        );
+    }
+    let row = rows.into_iter().next().expect("one row");
+    Ok(TransactAssignment {
+        name: name.to_string(),
+        table: table.to_string(),
+        row,
+    })
 }
 
 /// Split `values ( ... ), ( ... )` into row bodies between outer parentheses.
@@ -225,6 +382,11 @@ mod tests {
     }
 
     #[test]
+    fn valid_binding_name() {
+        assert!(is_binding_ident("g0"));
+    }
+
+    #[test]
     fn parses_load_schema_with_quotes() {
         assert_eq!(
             parse_command("load-schema \"tests/data/paths.json\";").unwrap(),
@@ -274,5 +436,46 @@ mod tests {
     #[test]
     fn parses_quit_without_semicolon() {
         assert_eq!(parse_command("/quit").unwrap(), Command::Exit);
+    }
+
+    #[test]
+    fn parses_transact_empty() {
+        assert_eq!(
+            parse_command("begin transact; commit;").unwrap(),
+            Command::Transact {
+                assignments: vec![]
+            }
+        );
+    }
+
+    #[test]
+    fn parses_transact_with_bindings() {
+        let cmd = parse_command(
+            "begin transact; g = add Graphs values (); x = add G0 values (g); commit;",
+        )
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Transact {
+                assignments: vec![
+                    TransactAssignment {
+                        name: "g".to_string(),
+                        table: "Graphs".to_string(),
+                        row: vec![],
+                    },
+                    TransactAssignment {
+                        name: "x".to_string(),
+                        table: "G0".to_string(),
+                        row: vec!["g".to_string()],
+                    },
+                ]
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_transact_without_commit_keyword() {
+        let err = parse_command("begin transact; g = add T values (1);").unwrap_err();
+        assert!(err.contains("transaction block must end with `commit`") || err.contains("commit"));
     }
 }

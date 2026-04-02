@@ -122,6 +122,17 @@ impl Store {
         self.tables.len()
     }
 
+    /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
+    /// separated by a blank line.
+    pub fn dump(&self) -> String {
+        let mut oids: Vec<TableOid> = self.tables.keys().copied().collect();
+        oids.sort_unstable();
+        oids.into_iter()
+            .map(|oid| self.tables[&oid].dump())
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
     pub fn insert_table(&mut self, path: ir::Path, table: Table) -> TableOid {
         let oid = self.next_oid;
         self.next_oid = self.next_oid.saturating_add(1);

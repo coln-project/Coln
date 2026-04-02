@@ -161,7 +161,6 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
 
 #[test]
 fn test_fk() {
-    init_test_logging();
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 

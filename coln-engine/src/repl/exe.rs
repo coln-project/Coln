@@ -1,13 +1,17 @@
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
 
 use crate::{
     ir::{ColType, FlatTheory, PrimType},
-    repl::{error::ReplError, parse::parse_cell_value},
+    repl::{
+        error::ReplError,
+        parse::{TransactAssignment, parse_cell_value, parse_cell_value_transact},
+    },
     store::Store,
-    table::CellValue,
+    table::{CellValue, RowId},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +138,70 @@ pub fn add_rows(
         .collect::<Result<Vec<_>, _>>()?;
 
     store.apply_batch(ops).map_err(Into::into)
+}
+
+/// Sequential inserts on a preview store, then [`Store::check_laws`]. Mirrors [`Store::transact`]
+/// but surfaces [`ReplError`] from validation.
+pub fn run_transact(
+    store: &mut Store,
+    assignments: &[TransactAssignment],
+) -> Result<String, ReplError> {
+    let mut preview = store.clone();
+    let message = transact_body(&mut preview, assignments)?;
+    preview.check_laws().map_err(ReplError::from)?;
+    *store = preview;
+    Ok(message)
+}
+
+fn transact_body(
+    store: &mut Store,
+    assignments: &[TransactAssignment],
+) -> Result<String, ReplError> {
+    let mut bindings: HashMap<String, RowId> = HashMap::new();
+    let mut parts = Vec::new();
+
+    for a in assignments {
+        if bindings.contains_key(&a.name) {
+            return Err(ReplError::DuplicateBinding(a.name.clone()));
+        }
+        let table_path = crate::ir::Path::from(a.table.as_str());
+        let table = store
+            .table_at(&table_path)
+            .ok_or_else(|| ReplError::UnknownTable(a.table.clone()))?;
+
+        let expected = table.schema().columns.len();
+        if a.row.len() != expected {
+            return Err(ReplError::ColumnCountMismatch {
+                expected,
+                got: a.row.len(),
+            });
+        }
+
+        let mut values = Vec::with_capacity(expected);
+        for (idx, col_type) in table.schema().columns.iter().enumerate() {
+            let v = parse_cell_value_transact(col_type, &a.row[idx], &bindings).map_err(|e| {
+                let err: ReplError = e.into();
+                match err {
+                    ReplError::BadValue { message, .. } => ReplError::BadValue {
+                        column: idx,
+                        message,
+                    },
+                    other => other,
+                }
+            })?;
+            values.push(v);
+        }
+
+        let oid = store
+            .resolve_table(&table_path)
+            .expect("table exists after table_at");
+        let t = store.table_mut(oid).expect("table exists");
+        let row_id = t.append_row_validated(values)?;
+        bindings.insert(a.name.clone(), row_id);
+        parts.push(format!("{}=#{}", a.name, row_id));
+    }
+
+    Ok(format!("committed transaction: {}", parts.join(", ")))
 }
 
 fn build_add_op(

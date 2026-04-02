@@ -5,11 +5,11 @@ use rustyline::hint::Hinter;
 use rustyline::history::DefaultHistory;
 use rustyline::validate::Validator;
 use rustyline::{Context, Editor, Helper};
-use std::path::Path;
 use tracing::{info, warn};
 
+use crate::ir::Path;
 use crate::repl::error::ReplError;
-use crate::repl::exe::{LoadedState, add_rows, load_schema, render_schema_summary};
+use crate::repl::exe::{LoadedState, add_rows, load_schema, render_schema_summary, run_transact};
 use crate::repl::parse::Command;
 use crate::repl::parse::parse_command;
 
@@ -23,7 +23,10 @@ const COMMANDS: &[&str] = &[
     "/quit",
     "load-schema",
     "list-schema",
+    "dump-table",
+    "dump-store",
     "add",
+    "begin",
 ];
 #[derive(Default)]
 struct Session {
@@ -113,6 +116,14 @@ fn push_statement_line(pending: &mut Option<String>, line: &str) -> Option<Strin
     }
     pending_line.push_str(line.trim());
 
+    let buf = pending_line.trim_start();
+    if buf.starts_with("begin transact") {
+        if pending_line.trim_end().ends_with("commit;") {
+            return pending.take();
+        }
+        return None;
+    }
+
     if pending_line.trim_end().ends_with(';') {
         pending.take()
     } else {
@@ -148,7 +159,7 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
     match command {
         Command::Help => Ok(Step::Continue(help_text())),
         Command::LoadSchema { path } => {
-            let loaded = load_schema(Path::new(&path))?;
+            let loaded = load_schema(std::path::Path::new(&path))?;
             info!(
                 source = %loaded.schema.source.display(),
                 table_count = loaded.store.table_count(),
@@ -179,6 +190,25 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
                 "inserted into {table} rows [{row_ids}]"
             )))
         }
+        Command::Transact { assignments } => {
+            let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
+            let message = run_transact(&mut loaded.store, &assignments)?;
+            Ok(Step::Continue(message))
+        }
+        Command::DumpTbl { name } => {
+            let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
+            let tbl = loaded
+                .store
+                .table_at(&Path::from(name.clone()))
+                .ok_or(ReplError::UnknownTable(name))?;
+            let message = tbl.dump();
+            Ok(Step::Continue(message))
+        }
+        Command::DumpStore => {
+            let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
+            let message = loaded.store.dump();
+            Ok(Step::Continue(message))
+        }
         Command::Exit => Ok(Step::Exit),
     }
 }
@@ -192,12 +222,16 @@ fn help_text() -> String {
         "  load-schema <path>;",
         "  list-schema;",
         "  add <table> values (...), (...);",
+        "  dump-table <table>;",
+        "  dump-store;",
+        "  begin transact; name = add <table> values (...); ... commit;",
         "",
         "Examples:",
         "  /help",
         "  load-schema tests/data/paths.json;",
         "  list-schema;",
         "  add T values (7 \"alice\"), (8 \"bob\");",
+        "  begin transact; g = add Graphs values (); e = add G0 values (g); commit;",
     ]
     .join("\n")
 }
@@ -362,6 +396,21 @@ mod tests {
         assert_eq!(
             push_statement_line(&mut pending, "\"alice\";"),
             Some("add T 7 \"alice\";".to_string())
+        );
+        assert_eq!(pending, None);
+    }
+
+    #[test]
+    fn transact_buffer_waits_for_commit_semicolon() {
+        let mut pending = None;
+        assert_eq!(push_statement_line(&mut pending, "begin transact;"), None);
+        assert_eq!(
+            push_statement_line(&mut pending, "x = add T values (1);"),
+            None
+        );
+        assert_eq!(
+            push_statement_line(&mut pending, "commit;"),
+            Some("begin transact; x = add T values (1); commit;".to_string())
         );
         assert_eq!(pending, None);
     }
