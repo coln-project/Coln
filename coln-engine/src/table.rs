@@ -73,7 +73,6 @@ pub enum CellValue {
 }
 
 impl CellValue {
-    // TODO perhaps do a display trait
     pub fn kind(&self) -> &'static str {
         match self {
             CellValue::Id(_) => "id",
