@@ -44,6 +44,7 @@
           packages = with pkgs; [
             ghcid
             nodejs
+            typescript
           ];
         };
 
