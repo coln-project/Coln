@@ -1,3 +1,5 @@
+module Main (main) where
+
 import Data.IORef (newIORef)
 import Geolog.LSP (serverDefinition)
 import Geolog.LSP.Types (LSPState (..))
