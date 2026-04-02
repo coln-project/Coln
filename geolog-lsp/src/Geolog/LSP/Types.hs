@@ -1,7 +1,6 @@
 module Geolog.LSP.Types  where
 
 import Language.LSP.Server (LspM)
-import Data.Text (Text)
 import Data.Map (Map)
 import Language.LSP.Protocol.Types qualified as J
 import FNotation.Trees ( Ntn )

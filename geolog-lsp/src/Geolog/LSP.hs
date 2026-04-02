@@ -5,7 +5,7 @@ import Geolog.LSP.DocChange (docChangeHandler, docOpenHandler)
 import Geolog.LSP.Highlight (tokenHandler)
 import Geolog.LSP.Types (DLogLspM, LSPState)
 import Language.LSP.Protocol.Message (SMethod (..))
-import Language.LSP.Protocol.Types (SaveOptions (..), TextDocumentSyncKind (..), TextDocumentSyncOptions (..), type (|?) (InR))
+import Language.LSP.Protocol.Types (TextDocumentSyncKind (..), TextDocumentSyncOptions (..))
 import Language.LSP.Server
 
 handlers :: Handlers DLogLspM
