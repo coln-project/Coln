@@ -1,5 +1,7 @@
 module Diagnostician where
 
+import Data.Functor.Contravariant
+import Data.IORef (IORef, atomicModifyIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (maybeToList)
@@ -144,15 +146,27 @@ linesPretty f sp@(Span s e) =
 -- Reporter
 --------------------------------------------------------------------------------
 
-{- | A @Reporter@ is a destination for diagnostic messages. Currently this is
-very simplistic; it's just a byte sink. The @reporterFancy@ flag is in theory
-used to configure whether colors should be used, but we don't even look at
-that yet.
+{- | A @Reporter@ is a destination for diagnostic messages. It corresponds
+to an IO action `reportIO` that logs a diagnostic
 -}
-data Reporter = Reporter
-  { handle :: Handle
-  , fancy :: Bool
-  }
+newtype Reporter a = Reporter {reportIO :: Diagnostic a -> IO ()}
+
+instance Contravariant Reporter where
+  contramap f (Reporter r) = Reporter $ r . fmap f
+
+-- | Create a `Reporter` that writes the prettyprinted diagnostic to a file
+fileReporter :: (Code a) => Handle -> Reporter a
+fileReporter handle =
+  Reporter
+    { reportIO = \d -> hPutDoc handle (hardline <> dpretty d <> hardline)
+    }
+
+-- | Create a `Reporter` that appends a diagnostic to a list
+pureReporter :: (Code a) => IORef [Diagnostic a] -> Reporter a
+pureReporter ref =
+  Reporter
+    { reportIO = \d -> atomicModifyIORef ref (\ds -> (d : ds, ()))
+    }
 
 -- Diagnostics
 --------------------------------------------------------------------------------
@@ -215,14 +229,3 @@ instance (Code a) => DPretty (Diagnostic a) where
   dpretty d =
     vsep $
       (prtCode d.code <> ": " <> unAnnotate d.summary) : (map dpretty d.notes)
-
-reportIO :: (Code a) => Reporter -> Diagnostic a -> IO ()
-reportIO r d = hPutDoc r.handle (hardline <> dpretty d <> hardline)
-
-data ReporterFor a
-  = forall c.
-  (Code c) =>
-  ReporterFor {translator :: a -> c, reporter :: Reporter}
-
-reportTo :: ReporterFor a -> Diagnostic a -> IO ()
-reportTo (ReporterFor t r) d = reportIO r (fmap t d)

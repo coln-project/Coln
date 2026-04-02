@@ -39,7 +39,7 @@ data ParseState = ParseState
   , skipNewlines :: IORef Bool
   , tokens :: V.Vector T.Token
   , file :: File
-  , reporter :: ReporterFor ParserCode
+  , reporter :: Reporter ParserCode
   , config :: ConfTable Prec
   }
 
@@ -50,7 +50,7 @@ report :: ParseState -> Span -> ParserCode -> DDoc -> IO ()
 report st s c m = do
   let n = Note (Just (SourceLoc st.file s)) Nothing
   let d = Diagnostic c m [n]
-  reportTo st.reporter d
+  st.reporter.reportIO d
 
 cur :: ParseState -> IO T.Kind
 cur st = do
@@ -313,7 +313,7 @@ block st =
 -- Toplevel parsing interface
 --------------------------------------------------------------------------------
 
-parse :: ConfTable Prec -> ReporterFor ParserCode -> File -> V.Vector T.Token -> IO [Ntn]
+parse :: ConfTable Prec -> Reporter ParserCode -> File -> V.Vector T.Token -> IO [Ntn]
 parse config reporter file tokens = do
   pos <- newIORef 0
   gas <- newIORef 256
