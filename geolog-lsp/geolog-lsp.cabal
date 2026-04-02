@@ -48,5 +48,21 @@ executable geolog-lsp
         OverloadedStrings
         OverloadedRecordDot
         NoFieldSelectors
-    ghc-options:
-        -Wall
+    ghc-options: -Wall
+
+test-suite geolog-lsp-test
+    type:               exitcode-stdio-1.0
+    main-is:            Main.hs
+    hs-source-dirs:     test
+    default-language:   GHC2021
+    default-extensions:
+    ghc-options:        -Wall
+    build-depends:
+      base,
+      tasty,
+      tasty-hunit,
+      text,
+      process,
+      lsp-test,
+    build-tool-depends:
+      geolog-lsp:geolog-lsp
