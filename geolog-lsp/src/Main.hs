@@ -8,7 +8,6 @@ main = do
   ref <- newIORef mempty
   runServer $
     serverDefinition
-      ( LSPState
-          { parseState = ref
-          }
-      )
+      LSPState
+        { parseState = ref
+        }
