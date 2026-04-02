@@ -11,23 +11,23 @@ build-type:      Simple
 extra-doc-files: CHANGELOG.md
 
 executable geolog-lsp
-    main-is:          Main.hs
+    main-is: Main.hs
     build-depends:
-                      base,
-                      containers,
-                      text,
-                      vector,
-                      lsp,
-                      stm,
-                      megaparsec,
-                      prettyprinter,
-                      transformers,
-                      mtl,
-                      lens,
-                      fnotation,
-                      geolog-lang,
-                      diagnostician,
-                      exceptions,
+        base,
+        containers,
+        text,
+        vector,
+        lsp,
+        stm,
+        megaparsec,
+        prettyprinter,
+        transformers,
+        mtl,
+        lens,
+        fnotation,
+        geolog-lang,
+        diagnostician,
+        exceptions,
     other-modules:
         Geolog.LSP
         Geolog.LSP.DocChange
@@ -37,14 +37,15 @@ executable geolog-lsp
         Geolog.LSP.Diagnostics
         Geolog.LSP.Buffer
         Geolog.LSP.Utils
-    hs-source-dirs:   src
+    hs-source-dirs: src
     default-language: GHC2021
     default-extensions:
-        LambdaCase,
-        TypeFamilies,
-        NamedFieldPuns,
-        DisambiguateRecordFields,
-        OverloadedStrings,
-        OverloadedRecordDot,
-        NoFieldSelectors,
-    ghc-options: -Wall
+        LambdaCase
+        TypeFamilies
+        NamedFieldPuns
+        DisambiguateRecordFields
+        OverloadedStrings
+        OverloadedRecordDot
+        NoFieldSelectors
+    ghc-options:
+        -Wall
