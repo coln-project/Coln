@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Rust server, bundle it into client/server/<platform>/, then package the VS Code extension as a .vsix.
+# Build the server, bundle it into client/server/<platform>/, then package the VS Code extension as a .vsix.
 # Run from repo root. Linux only for now (server goes to client/server/linux-x64/).
 
 set -e
