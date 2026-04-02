@@ -1,7 +1,5 @@
 module Geolog.LSP.Types where
 
-import Control.Monad.Trans.Reader (ReaderT)
-import Data.Functor.Identity (Identity)
 import Data.IORef
 import Data.Map (Map)
 import Data.Vector
@@ -18,10 +16,6 @@ data LSPBufferInfo = LSPBufferInfo
   , uriNormalised :: J.NormalizedUri
   , file :: D.File
   }
-
-type LSPBufferT m = ReaderT LSPBufferInfo m
-
-type LSPBuffer = LSPBufferT Identity
 
 data AnalyzedBuffer = AnalyzedBuffer
   { raw :: D.File

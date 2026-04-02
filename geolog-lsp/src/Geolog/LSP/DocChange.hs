@@ -3,7 +3,6 @@ module Geolog.LSP.DocChange (docChangeHandler, docOpenHandler) where
 import Control.Lens ((^.))
 import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Trans
-import Control.Monad.Trans.Reader (ask, runReaderT)
 import Data.IORef (modifyIORef')
 import Data.Map qualified as M
 import Diagnostician (newFile)
@@ -43,13 +42,11 @@ updateState req = do
           , file = bufferFile
           }
 
-  flip runReaderT bufInfo do
-    result <- analyzeBuffer
-    updateParseState result
-    publishDiagnostics result.diagnostics
+  result <- analyzeBuffer bufInfo
+  updateParseState result bufInfo
+  publishDiagnostics result.diagnostics bufInfo
 
-updateParseState :: (MonadIO m, MonadLsp LSPState m) => AnalyzedBuffer -> LSPBufferT m ()
-updateParseState a = do
-  bufInfo <- ask
-  ref <- (.parseState) <$> lift getConfig
+updateParseState :: (MonadIO m, MonadLsp LSPState m) => AnalyzedBuffer -> LSPBufferInfo -> m ()
+updateParseState a bufInfo = do
+  ref <- (.parseState) <$> getConfig
   liftIO $ modifyIORef' ref (M.insert bufInfo.uriNormalised a)
