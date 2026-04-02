@@ -149,7 +149,8 @@ impl Table {
     }
 
     pub fn row_count(&self) -> usize {
-        self.cols.first().map(|c| c.len()).unwrap_or(0)
+        // We need to return row_ids here, because cols might be empty for tables with only ids but nothing else
+        self.row_ids.len()
     }
 
     /// Row id at a given physical row index.
@@ -163,11 +164,11 @@ impl Table {
     }
 
     /// Dump table contents row by row for debugging.
-    pub fn debug_dump(&self) -> String {
+    pub fn dump(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(
             out,
-            "table {:?} (rows: {}, cols: {})",
+            "table {} (rows: {}, cols: {})",
             self.path,
             self.row_count(),
             self.schema.columns.len()
@@ -279,6 +280,27 @@ mod tests {
     use super::*;
     use crate::ir::{self, Path};
 
+    /// Tables with no data columns still allocate row ids on insert; `row_count` must reflect
+    /// those rows (it cannot use column length when `cols` is empty).
+    #[test]
+    fn row_count_matches_inserts_when_schema_has_no_columns() {
+        let schema = ir::Schema {
+            columns: vec![],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("id_only"), schema);
+        assert!(tbl.cols.is_empty());
+        assert_eq!(tbl.row_count(), 0);
+
+        let r0 = tbl.append_row_validated(vec![]).expect("first row");
+        assert_eq!(tbl.row_count(), 1);
+        assert_eq!(tbl.row_id_at(0), Some(r0));
+
+        let r1 = tbl.append_row_validated(vec![]).expect("second row");
+        assert_eq!(tbl.row_count(), 2);
+        assert_eq!(tbl.row_id_at(1), Some(r1));
+    }
+
     #[test]
     fn test_table_add() {
         let columns = vec![ColType::EntityType {
@@ -362,9 +384,9 @@ mod tests {
             .expect("second");
 
         assert_eq!(
-            tbl.debug_dump(),
+            tbl.dump(),
             concat!(
-                "table Path([[\"debug\"], [\"table\"]]) (rows: 2, cols: 2)\n",
+                "table debug.table (rows: 2, cols: 2)\n",
                 "[0] row_id=0 | c0=7 | c1=\"x\"\n",
                 "[1] row_id=1 | c0=8 | c1=\"y\"\n"
             )
