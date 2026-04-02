@@ -14,12 +14,13 @@ check:
     - ./shake check
     - ./shake test
 
-vscode:
-  stage: build
-  tags: [nix]
+# TODO artefact is too big for current CI limits
+# vscode:
+#   stage: build
+#   tags: [nix]
 
-  script:
-    - ./geolog-lsp/scripts/package.sh
-  artifacts:
-    paths:
-      - geolog-lsp/client/geolog-lsp-client*.vsix
+#   script:
+#     - ./geolog-lsp/scripts/package.sh
+#   artifacts:
+#     paths:
+#       - geolog-lsp/client/geolog-lsp-client*.vsix
