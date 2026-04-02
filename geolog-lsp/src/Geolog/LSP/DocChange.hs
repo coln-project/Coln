@@ -7,8 +7,6 @@ import Control.Monad.Trans.Reader (ask, runReaderT)
 import Data.IORef (modifyIORef')
 import Data.Map qualified as M
 import Diagnostician (newFile)
-import Diagnostician qualified as D
-import FNotation
 import Geolog.LSP.Buffer
 import Geolog.LSP.Diagnostics (publishDiagnostics)
 import Geolog.LSP.Types

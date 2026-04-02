@@ -4,7 +4,6 @@ import Control.Monad.Trans.Reader (ReaderT)
 import Data.Functor.Identity (Identity)
 import Data.IORef
 import Data.Map (Map)
-import Data.Text (Text)
 import Data.Vector
 import Diagnostician qualified as D
 import FNotation.Tokens (Token)
