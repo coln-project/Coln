@@ -1,17 +1,17 @@
-module Geolog.LSP.Types  where
+module Geolog.LSP.Types where
 
-import Language.LSP.Server (LspM)
-import Data.Map (Map)
-import Language.LSP.Protocol.Types qualified as J
-import FNotation.Trees ( Ntn )
-import Data.IORef
-import qualified Diagnostician as D
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.Functor.Identity (Identity)
+import Data.IORef
+import Data.Map (Map)
 import Data.Vector
+import Diagnostician qualified as D
 import FNotation.Tokens (Token)
+import FNotation.Trees (Ntn)
 import Geolog.Core (GlobalEnv)
 import Geolog.Diagnostics (GeologCode)
+import Language.LSP.Protocol.Types qualified as J
+import Language.LSP.Server (LspM)
 
 data LSPBufferInfo = LSPBufferInfo
   { uri :: J.Uri,
@@ -36,5 +36,5 @@ type DLogLspM = LspM LSPState
 type UriBundle a = Map J.NormalizedUri a
 
 newtype LSPState = LSPState
-    { parseState :: IORef (UriBundle AnalyzedBuffer)
-    }
+  { parseState :: IORef (UriBundle AnalyzedBuffer)
+  }
