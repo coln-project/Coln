@@ -8,6 +8,7 @@ import Data.Char
 import Data.Foldable
 import Data.Function
 import Data.Functor
+import Data.Functor.Contravariant
 import Data.List hiding (lookup)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
@@ -95,4 +96,4 @@ eval file = do
             >>= \(v, t) -> putDoc $ prtVal mempty v.val <+> ":" <+> prtVal mempty t <> line
   when (not $ null newDeclNames) $ liftIO $ putStrLn $ show (length newDeclNames) <> " declarations added."
  where
-  reporter translator = ReporterFor{translator, reporter = Reporter{handle = stdout, fancy = True}}
+  reporter translator = contramap translator $ Reporter{reportIO = putDoc . dpretty}

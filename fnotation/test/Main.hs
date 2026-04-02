@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Data.ByteString.Lazy qualified as LBS
+import Data.Functor.Contravariant (contramap, (>$<))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text.IO.Utf8 qualified as T
@@ -82,9 +83,9 @@ parseToPretty fp = do
   src <- T.readFile fp
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
-    let r = Reporter h False
-    tokens <- lex lexConfig (ReporterFor LexerCode r) f
-    ns <- parse parseConfig (ReporterFor ParserCode r) f tokens
+    let r = fileReporter h
+    tokens <- lex lexConfig (contramap LexerCode r) f
+    ns <- parse parseConfig (contramap ParserCode r) f tokens
     hFlush h
     hClose h
     msgs <- T.readFile path
