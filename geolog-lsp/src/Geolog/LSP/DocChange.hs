@@ -49,11 +49,11 @@ updateState req = do
 
   flip runReaderT bufInfo $ do
     result <- analyzeBuffer
-    mapM_ updateParseState result.notations
+    updateParseState result
     publishDiagnostics result.diagnostics
 
-updateParseState :: (MonadIO m, MonadLsp LSPState m) => [Ntn] -> LSPBufferT m ()
-updateParseState ns = do
+updateParseState :: (MonadIO m, MonadLsp LSPState m) => AnalyzedBuffer -> LSPBufferT m ()
+updateParseState a = do
   bufInfo <- ask
   ref <- (.parseState) <$> lift getConfig
-  liftIO $ modifyIORef' ref (M.insert bufInfo.uriNormalised (FileParseState bufInfo.file.contents ns))
+  liftIO $ modifyIORef' ref (M.insert bufInfo.uriNormalised a)

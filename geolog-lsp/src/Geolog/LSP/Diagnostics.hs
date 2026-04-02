@@ -6,8 +6,7 @@ import Control.Monad.Trans.Reader (ask)
 import Data.Maybe (maybeToList)
 import Data.Text qualified as T
 import Diagnostician qualified as D
-import Geolog.LSP.Buffer (LSPBufferInfo (..), LSPBufferT)
-import Geolog.LSP.Types (LSPState)
+import Geolog.LSP.Types (LSPBufferInfo (..), LSPBufferT, LSPState)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server
