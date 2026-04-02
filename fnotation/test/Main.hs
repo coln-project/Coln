@@ -17,6 +17,7 @@ import Test.Tasty.Golden (goldenVsString, findByExtension)
 import System.FilePath (takeBaseName, replaceExtension)
 import System.IO
 import System.IO.Temp (withSystemTempFile)
+import Data.Functor.Contravariant ((>$<), contramap)
 
 main :: IO ()
 main = defaultMain =<< goldenTests
@@ -79,9 +80,9 @@ parseToPretty fp = do
   src <- T.readFile fp
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
-    let r = Reporter h False
-    tokens <- lex lexConfig (ReporterFor LexerCode r) f
-    ns <- parse parseConfig (ReporterFor ParserCode r) f tokens
+    let r = fileReporter h
+    tokens <- lex lexConfig (contramap LexerCode r) f
+    ns <- parse parseConfig (contramap ParserCode r) f tokens
     hFlush h
     hClose h
     msgs <- T.readFile path

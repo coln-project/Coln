@@ -68,7 +68,7 @@ emptyCtx :: Ctx
 emptyCtx = Ctx mempty mempty mempty
 
 data DiagnosticCtx = DiagnosticCtx
-  { reporter :: ReporterFor ElaboratorCode,
+  { reporter :: Reporter ElaboratorCode,
     file :: File
   }
 
@@ -94,7 +94,7 @@ report :: (DiagnosticCtxArg) => Span -> ElaboratorCode -> DDoc -> IO ()
 report s c m = do
   let n = Note (Just (SourceLoc ?diagnosticCtx.file s)) Nothing
   let d = Diagnostic c m [n]
-  reportTo ?diagnosticCtx.reporter d
+  ?diagnosticCtx.reporter.reportIO d
 
 data ElabException = GiveUp
   deriving (Show)
@@ -169,7 +169,7 @@ conversionError s t t' e = do
   let convNote = Note Nothing (Just (pretty e))
   let locNote = Note (Just (SourceLoc ?diagnosticCtx.file s)) Nothing
   let d = Diagnostic FailedConversion convMessage [locNote, convNote]
-  reportTo ?diagnosticCtx.reporter d
+  ?diagnosticCtx.reporter.reportIO d
   evaluate $ throw GiveUp
 
 wrongLevel :: (DiagnosticCtxArg) => Span -> IO a
@@ -440,7 +440,7 @@ elabDecl (N.Decl "query" n _) = elabType QueryU n
 elabDecl (N.Decl "def" n _) = elabDef n
 elabDecl n = unexpectedNotation n "top-level declaration"
 
-elabTop :: ReporterFor ElaboratorCode -> File -> [Ntn] -> IO GlobalEnv
+elabTop :: Reporter ElaboratorCode -> File -> [Ntn] -> IO GlobalEnv
 elabTop r f =
   let ?diagnosticCtx = DiagnosticCtx r f
       ?globalEnv = emptyGlobalEnv

@@ -20,6 +20,7 @@ import Test.Tasty.Golden (goldenVsString, findByExtension)
 import System.FilePath (takeBaseName, replaceExtension)
 import System.IO
 import System.IO.Temp (withSystemTempFile)
+import Data.Functor.Contravariant (contramap)
 
 main :: IO ()
 main = defaultMain =<< goldenTests
@@ -44,10 +45,10 @@ elaborate fp = do
   src <- T.readFile fp
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
-    let r = Reporter h False
-    ts <- lex lexConfig (ReporterFor LexerCode r) f
-    ns <- parse parseConfig (ReporterFor ParserCode r) f ts
-    ge <- elabTop (ReporterFor ElaboratorCode r) f ns
+    let r = fileReporter h
+    ts <- lex lexConfig (contramap LexerCode r) f
+    ns <- parse parseConfig (contramap ParserCode r) f ts
+    ge <- elabTop (contramap ElaboratorCode r) f ns
     hFlush h
     hClose h
     msgs <- T.readFile path
