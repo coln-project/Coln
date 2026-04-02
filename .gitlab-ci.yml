@@ -19,7 +19,7 @@ vscode:
   tags: [nix]
 
   script:
-    - ./geolog-lsp/scripts/package.sh
+    - ./shake vsce
   artifacts:
     expire_in: 3 days
     paths:
