@@ -63,7 +63,7 @@ export function activate(context: vscode.ExtensionContext): void {
       path.join(extRoot, "target", "debug", "geolog-lsp"),
     ];
     vscode.window.showErrorMessage(
-      `Geolog LSP: server binary not found. Tried: ${tried.join("; ")}. Run \`cargo build\` in the geolog-lsp repo.`
+      `Geolog LSP: server binary not found. Tried: ${tried.join("; ")}.`
     );
     return;
   }
@@ -119,7 +119,7 @@ export function activate(context: vscode.ExtensionContext): void {
     (err) => {
       client = undefined;
       vscode.window.showErrorMessage(
-        `Geolog LSP failed to start: ${err.message}. Run \`cargo build\` in the project root.`
+        `Geolog LSP failed to start: ${err.message}.`
       );
     }
   );
