@@ -33,5 +33,9 @@ echo "==> Building client extension..."
 echo "==> Packaging .vsix..."
 (cd "$ROOT/client" && npx --yes @vscode/vsce package --allow-missing-repository)
 
-echo "==> Done. .vsix is in client/"
-ls -la "$ROOT/client"/*.vsix 2>/dev/null || true
+VSIX=$(ls client/*.vsix 2>/dev/null)
+if [[ -z "$VSIX" ]]; then
+  echo "ERROR: No .vsix file produced."
+  exit 1
+fi
+echo "==> Done: $ROOT/$VSIX"
