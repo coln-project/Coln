@@ -17,9 +17,28 @@ function serverBinaryExists(serverPath: string): boolean {
 
 const SERVER_PATH_SETTING = "geolog-lsp.server.path";
 
-/** VS Code platform name for bundled server (e.g. linux-x64, darwin-arm64, win32-x64). */
+/** VS Code platform name for bundled server, e.g. x86_64-linux, aarch64-darwin, x86_64-mingw32.
+ * Attempts to match build system names, which come from Haskell's `System.Info` module. */
 function getServerPlatform(): string {
-  return `${process.platform}-${process.arch}`;
+  const arch = (() => {
+    switch (process.arch) {
+      case "x64":
+        return "x86_64";
+      case "arm64":
+        return "aarch64";
+      default:
+        return process.arch;
+    }
+  })();
+  const platform = (() => {
+    switch (process.platform) {
+      case "win32":
+        return "mingw32";
+      default:
+        return process.platform;
+    }
+  })();
+  return `${arch}-${platform}`;
 }
 
 /** Resolve path to geolog-lsp binary: config, then bundled server, then workspace, then extension dir. */
