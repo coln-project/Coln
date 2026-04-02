@@ -1,5 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
-
 module Geolog.LSP.DocChange (docChangeHandler, docOpenHandler) where
 
 import Control.Lens ((^.))
@@ -47,7 +45,7 @@ updateState req = do
           , file = bufferFile
           }
 
-  flip runReaderT bufInfo $ do
+  flip runReaderT bufInfo do
     result <- analyzeBuffer
     updateParseState result
     publishDiagnostics result.diagnostics
