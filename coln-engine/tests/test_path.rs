@@ -99,38 +99,37 @@ fn test_add_data_and_law_enforce() {
 
     // One explicit column (Graphs); row id will be assigned by the db.
 
-    let g0 = store.table_at(&Path::from("G0")).expect("G0 table");
-    let g1 = store.table_at(&Path::from("G1")).expect("G1 table");
-    // XXX: workaround, we should not use arbitrary ids for g0 and g1
-    let g0_op = g0.add(vec![CellValue::Id(3)]);
-    let g1_op = g1.add(vec![CellValue::Id(3)]);
-    store.apply_batch(vec![g0_op, g1_op]).unwrap();
+    let r = store.transact(|store| {
+        let graphs = store
+            .table_at_mut(&Path::from("Graphs"))
+            .expect("Graph table");
 
-    let graphs = store.table_at(&Path::from("Graphs")).expect("Graph table");
-    let op0 = graphs.add(vec![]);
-    let op1 = graphs.add(vec![]);
-    let gids = store.apply_batch(vec![op0, op1]).unwrap();
+        let gid1 = graphs.append_row_validated(vec![])?;
+        let gid2 = graphs.append_row_validated(vec![])?;
+        let g0 = store.table_at_mut(&Path::from("G0")).expect("G0 table");
+        g0.append_row_validated(vec![CellValue::Id(gid2)])?;
+        let g1 = store.table_at_mut(&Path::from("G1")).expect("G1 table");
+        g1.append_row_validated(vec![CellValue::Id(gid2)])?;
 
-    let gv = store.table_at(&Path::from("G.V")).expect("G.V table");
-    let opv1 = gv.add(vec![CellValue::Id(gids[0])]);
-    let opv2 = gv.add(vec![CellValue::Id(gids[0])]);
-    let vids = store
-        .apply_batch(vec![opv1, opv2])
-        .expect("inserting vs successful");
+        let gv = store.table_at_mut(&Path::from("G.V")).expect("G.V table");
+        let v1 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
+        let v2 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
 
-    let ge = store.table_at(&Path::from("G.E")).expect("G.E table");
+        let ge = store.table_at_mut(&Path::from("G.E")).expect("G.E table");
+
+        ge.append_row_validated(vec![
+            CellValue::Id(gid1),
+            CellValue::Id(v1),
+            CellValue::Id(v2),
+        ])?;
+
+        Ok(())
+    });
+
+    let ge = store.table_at(&Path::from("G.E")).expect("get table G.E");
     assert_eq!(ge.schema().columns.len(), 3);
-    assert_eq!(ge.row_count(), 0);
-
-    let op3 = ge.add(vec![
-        CellValue::Id(gids[0]),
-        CellValue::Id(vids[0]),
-        CellValue::Id(vids[1]),
-    ]);
-    let ids = store
-        .apply_batch(vec![op3])
-        .expect("adding edge successful");
-    assert_eq!(ids.len(), 1);
+    assert_eq!(ge.row_count(), 1);
+    assert!(r.is_ok());
 }
 
 #[test]

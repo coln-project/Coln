@@ -175,6 +175,20 @@ impl Store {
         Ok(row_ids)
     }
 
+    pub fn transact<F, O>(&mut self, f: F) -> Result<O, StoreIntError>
+    where
+        F: FnOnce(&mut Store) -> Result<O, StoreIntError>,
+    {
+        info!("start transaction");
+        let mut preview_store = self.clone();
+        let r = f(&mut preview_store)?;
+        // TODO add primary key check
+        preview_store.check_laws()?;
+        *self = preview_store;
+        info!("transaction successful");
+        Ok(r)
+    }
+
     fn validate_batch(&self, ops: &[Op]) -> Result<(), StoreIntError> {
         debug!(op_count = ops.len(), "validating batch");
         let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
@@ -227,8 +241,98 @@ impl Default for Store {
 mod tests {
 
     use super::*;
-    use crate::ir::{ColType, Path, PrimType, Schema};
+    use crate::ir::{
+        Atom, ColType, FlatTheory, Law, LawEntry, Path, PrimType, Prop, Schema, TableEntry, Term,
+        ValueEntry,
+    };
     use crate::ops::Op;
+
+    fn link_foreign_key_theory() -> FlatTheory {
+        let left = Path::from("Left");
+        let right = Path::from("Right");
+        let link = Path::from("Link");
+        let int_col = || ColType::PrimType {
+            prim: PrimType::PrimInt,
+        };
+        FlatTheory {
+            tables: vec![
+                TableEntry {
+                    path: left.clone(),
+                    table: Schema {
+                        columns: vec![int_col()],
+                        primary_key: None,
+                    },
+                },
+                TableEntry {
+                    path: right.clone(),
+                    table: Schema {
+                        columns: vec![int_col()],
+                        primary_key: None,
+                    },
+                },
+                TableEntry {
+                    path: link.clone(),
+                    table: Schema {
+                        columns: vec![int_col(), int_col()],
+                        primary_key: None,
+                    },
+                },
+            ],
+            laws: vec![LawEntry {
+                path: Path::from("Link.foreignKeys"),
+                law: Law {
+                    variables: vec![
+                        ColType::PrimType {
+                            prim: PrimType::PrimInt,
+                        },
+                        ColType::PrimType {
+                            prim: PrimType::PrimInt,
+                        },
+                    ],
+                    antecedent: Prop::Atom {
+                        atom: Atom {
+                            table: link.clone(),
+                            row_id: None,
+                            values: vec![
+                                ValueEntry {
+                                    column: 0,
+                                    term: Term::Var { index: 0 },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Term::Var { index: 1 },
+                                },
+                            ],
+                        },
+                    },
+                    consequent: Prop::And {
+                        props: vec![
+                            Prop::Atom {
+                                atom: Atom {
+                                    table: left.clone(),
+                                    row_id: None,
+                                    values: vec![ValueEntry {
+                                        column: 0,
+                                        term: Term::Var { index: 0 },
+                                    }],
+                                },
+                            },
+                            Prop::Atom {
+                                atom: Atom {
+                                    table: right.clone(),
+                                    row_id: None,
+                                    values: vec![ValueEntry {
+                                        column: 0,
+                                        term: Term::Var { index: 1 },
+                                    }],
+                                },
+                            },
+                        ],
+                    },
+                },
+            }],
+        }
+    }
 
     #[test]
     fn test_store_create_table() {
@@ -366,6 +470,84 @@ mod tests {
             StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
         );
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
+    }
+
+    #[test]
+    fn transact_commits_on_success() {
+        let path = Path::from("T");
+        let schema = Schema {
+            columns: vec![ColType::PrimType {
+                prim: PrimType::PrimInt,
+            }],
+            primary_key: None,
+        };
+        let mut store = Store::new();
+        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+
+        let out = store
+            .transact(|s| {
+                let oid = s.resolve_table(&path).expect("T");
+                let t = s.table_mut(oid).expect("T");
+                t.append_row_validated(vec![CellValue::Int(42)])?;
+                Ok("done")
+            })
+            .expect("transact");
+
+        assert_eq!(out, "done");
+        assert_eq!(store.table_at(&path).expect("T").row_count(), 1);
+        assert_eq!(
+            store.table_at(&path).expect("T").cell_at(0, 0),
+            Some(&CellValue::Int(42))
+        );
+    }
+
+    #[test]
+    fn transact_rolls_back_when_closure_returns_err() {
+        let path = Path::from("T");
+        let schema = Schema {
+            columns: vec![ColType::PrimType {
+                prim: PrimType::PrimInt,
+            }],
+            primary_key: None,
+        };
+        let mut store = Store::new();
+        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+
+        let err = store
+            .transact(|s| -> Result<(), StoreIntError> {
+                let oid = s.resolve_table(&path).expect("T");
+                let t = s.table_mut(oid).expect("T");
+                t.append_row_validated(vec![CellValue::Int(1)])?;
+                Err(StoreIntError::Validation(ValidationError::UnknownTable {
+                    path: Path::from("never"),
+                }))
+            })
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            StoreIntError::Validation(ValidationError::UnknownTable { .. })
+        ));
+        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
+    }
+
+    #[test]
+    fn transact_rolls_back_when_laws_fail() {
+        let theory = link_foreign_key_theory();
+        let link = Path::from("Link");
+        let mut store = Store::try_from_theory(theory).expect("theory");
+
+        let err = store
+            .transact(|s| {
+                let oid = s.resolve_table(&link).expect("Link");
+                let t = s.table_mut(oid).expect("Link");
+                t.append_row_validated(vec![CellValue::Int(10), CellValue::Int(20)])?;
+                Ok(())
+            })
+            .unwrap_err();
+
+        assert!(matches!(err, StoreIntError::Law(_)));
+        assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
     }
 
     #[test]

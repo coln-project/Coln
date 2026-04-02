@@ -214,7 +214,7 @@ impl Table {
         })
     }
 
-    /// Schema and primary-key check against rows already stored (does not mutate).
+    /// Schema and primary-key check against rows already stored.
     pub fn validate_new_row(&self, values: &[CellValue]) -> Result<(), ValidationError> {
         self.validate(values)?;
 
@@ -239,10 +239,19 @@ impl Table {
         Ok(())
     }
 
+    /// Validates `values` ([`validate_new_row`]), then appends and returns the new [`RowId`].
+    pub fn append_row_validated(
+        &mut self,
+        values: Vec<CellValue>,
+    ) -> Result<RowId, ValidationError> {
+        self.validate_new_row(&values)?;
+        Ok(self.append_row(values))
+    }
+
     /// Append a row to columnar storage and assign a new [`RowId`].
     ///
-    /// Does **not** run [`validate_new_row`]; call that before appending, unless
-    /// validation was already done for the whole batch elsewhere.
+    /// Does **not** validate. Used internally when the caller has already checked the row
+    /// (e.g. batch validation); otherwise use [`try_append_row`].
     pub(crate) fn append_row(&mut self, values: Vec<CellValue>) -> RowId {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
@@ -280,9 +289,8 @@ mod tests {
             primary_key: None,
         };
         let mut tbl = Table::new(Path::from("test.table"), gv_schema);
-        let values = vec![CellValue::Id(1)];
-        assert!(tbl.validate_new_row(&values).is_ok());
-        tbl.append_row(values);
+        tbl.append_row_validated(vec![CellValue::Id(1)])
+            .expect("row");
         assert_eq!(tbl.row_count(), 1);
     }
 
@@ -297,9 +305,8 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
-        let values0 = vec![CellValue::Int(0)];
-        assert!(tbl.validate_new_row(&values0).is_ok());
-        tbl.append_row(values0);
+        tbl.append_row_validated(vec![CellValue::Int(0)])
+            .expect("first row");
         assert_eq!(tbl.row_count(), 1);
 
         let values1 = vec![CellValue::Int(1)];
@@ -323,9 +330,9 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("readable"), schema);
 
-        let values = vec![CellValue::Int(7), CellValue::Str("x".to_string())];
-        tbl.validate_new_row(&values).expect("validate row");
-        let row_id = tbl.append_row(values);
+        let row_id = tbl
+            .append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())])
+            .expect("row");
 
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
@@ -349,13 +356,10 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("debug.table"), schema);
 
-        let first = vec![CellValue::Int(7), CellValue::Str("x".to_string())];
-        tbl.validate_new_row(&first).expect("validate first row");
-        tbl.append_row(first);
-
-        let second = vec![CellValue::Int(8), CellValue::Str("y".to_string())];
-        tbl.validate_new_row(&second).expect("validate second row");
-        tbl.append_row(second);
+        tbl.append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())])
+            .expect("first");
+        tbl.append_row_validated(vec![CellValue::Int(8), CellValue::Str("y".to_string())])
+            .expect("second");
 
         assert_eq!(
             tbl.debug_dump(),
