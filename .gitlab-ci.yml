@@ -24,7 +24,7 @@ vscode:
   tags: [nix]
 
   script:
-    - ./shake vsce
+    - nix develop -c ./shake vsce
   artifacts:
     expire_in: 3 days
     paths:
