@@ -58,11 +58,11 @@ cur st = do
   if gas <= 0
     then do
       pos <- readIORef st.pos
-      let token = V.unsafeIndex st.tokens pos
+      let token = st.tokens V.! pos
       error $ "out of gas at token " ++ show (dpretty token)
     else writeIORef st.gas (gas - 1)
   pos <- readIORef st.pos
-  pure (V.unsafeIndex st.tokens pos).kind
+  pure (st.tokens V.! pos).kind
 
 locally :: IORef a -> a -> IO b -> IO b
 locally ref v action = do
