@@ -27,6 +27,7 @@
             zlib
             zlib.dev
             pkg-config
+            ormolu
           ];
         };
         devShells.haskell-nix =
