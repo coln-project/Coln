@@ -31,7 +31,7 @@ entire store with `dump-store;`.
 
 ```
 geomerge> load-schema tests/data/paths.json;
-begin transact;
+begin batch;
   g0 = add Graphs values ();
   g1 = add Graphs values ();
 

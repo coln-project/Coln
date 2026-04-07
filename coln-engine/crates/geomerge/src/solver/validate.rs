@@ -221,9 +221,9 @@ mod tests {
             ),
         );
 
-        let src = store.table_at(&source).expect("Src table");
-        let dst = store.table_at(&target).expect("Dst table");
+        let src = store.table_at_mut(&source).expect("Src table");
         let src_row = src.add(vec![CellValue::Int(7)]);
+        let dst = store.table_at_mut(&target).expect("Dst table");
         let dst_row = dst.add(vec![CellValue::Int(7)]);
         store
             .apply_batch(vec![src_row, dst_row])
@@ -367,7 +367,7 @@ mod tests {
         let compiled = compile_law(&law).expect("compile law");
 
         let only_link = store
-            .table_at(&link)
+            .table_at_mut(&link)
             .expect("Link table")
             .add(vec![CellValue::Int(10), CellValue::Int(20)]);
         store
@@ -389,11 +389,11 @@ mod tests {
         );
 
         let left_row = store
-            .table_at(&Path::from("Left"))
+            .table_at_mut(&Path::from("Left"))
             .expect("Left table")
             .add(vec![CellValue::Int(10)]);
         let right_row = store
-            .table_at(&Path::from("Right"))
+            .table_at_mut(&Path::from("Right"))
             .expect("Right table")
             .add(vec![CellValue::Int(20)]);
         store

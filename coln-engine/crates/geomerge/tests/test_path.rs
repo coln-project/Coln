@@ -35,33 +35,34 @@ fn fixture_theory(name: &str) -> FlatTheory {
     serde_json::from_str(&json).expect("parse FlatTheory from JSON")
 }
 
-fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
-    store.transact(|store| {
-        let graphs = store
-            .table_at_mut(&Path::from("Graphs"))
-            .expect("Graph table");
+fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
+    let graphs = store
+        .table_at_mut(&Path::from("Graphs"))
+        .expect("Graph table");
 
-        let gid1 = graphs.append_row_validated(vec![])?;
-        let gid2 = graphs.append_row_validated(vec![])?;
-        let g0 = store.table_at_mut(&Path::from("G0")).expect("G0 table");
-        g0.append_row_validated(vec![CellValue::Id(gid2)])?;
-        let g1 = store.table_at_mut(&Path::from("G1")).expect("G1 table");
-        g1.append_row_validated(vec![CellValue::Id(gid2)])?;
+    let gid1 = graphs.add(vec![]);
+    let gid2 = graphs.add(vec![]);
+    let g0 = store.table_at_mut(&Path::from("G0")).expect("G0 table");
+    let g0_op = g0.add(vec![CellValue::Id(gid2.id())]);
+    let g1 = store.table_at_mut(&Path::from("G1")).expect("G1 table");
+    let g1_op = g1.add(vec![CellValue::Id(gid2.id())]);
 
-        let gv = store.table_at_mut(&Path::from("G.V")).expect("G.V table");
-        let v1 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
-        let v2 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
+    let gv = store.table_at_mut(&Path::from("G.V")).expect("G.V table");
+    let v1 = gv.add(vec![CellValue::Id(gid1.id())]);
+    let v2 = gv.add(vec![CellValue::Id(gid1.id())]);
 
-        let ge = store.table_at_mut(&Path::from("G.E")).expect("G.E table");
+    let ge = store.table_at_mut(&Path::from("G.E")).expect("G.E table");
 
-        ge.append_row_validated(vec![
-            CellValue::Id(gid1),
-            CellValue::Id(v1),
-            CellValue::Id(v2),
-        ])?;
+    let eop = ge.add(vec![
+        CellValue::Id(gid1.id()),
+        CellValue::Id(v1.id()),
+        CellValue::Id(v2.id()),
+    ]);
 
-        Ok(())
-    })
+    store
+        .apply_batch(vec![gid1, gid2, g0_op, g1_op, v1, v2, eop])
+        .expect("applied successfully");
+    Ok(())
 }
 
 #[test]
@@ -136,7 +137,6 @@ fn test_add_data_and_law_enforce() {
     let ge = store.table_at(&Path::from("G.E")).expect("get table G.E");
     assert_eq!(ge.schema().columns.len(), 3);
     assert_eq!(ge.row_count(), 1);
-    assert!(r.is_ok());
 }
 
 #[test]
@@ -154,7 +154,10 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     assert_eq!(g0.row_count(), 0);
     assert_eq!(g1.row_count(), 0);
 
-    let op = graphs.add(vec![]);
+    let op = store
+        .table_at_mut(&Path::from("Graphs"))
+        .expect("Graph table")
+        .add(vec![]);
     let err = store.apply_batch(vec![op]).expect_err("missing g0 and g1");
     assert!(matches!(*err, StoreIntError::Law(_)));
 
@@ -171,29 +174,40 @@ fn test_fk() {
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
-    let g0 = store.table_at(&Path::from("G0")).expect("G0 table");
-    let g1 = store.table_at(&Path::from("G1")).expect("G1 table");
-    let graphs = store.table_at(&Path::from("Graphs")).expect("Graph table");
-    let gv = store.table_at(&Path::from("G.V")).expect("G.V table");
+    let op0 = store
+        .table_at_mut(&Path::from("Graphs"))
+        .expect("Graph table")
+        .add(vec![]);
+    let gid = op0.id();
+    let g0_op = store
+        .table_at_mut(&Path::from("G0"))
+        .expect("G0")
+        .add(vec![CellValue::Id(0)]);
+    let g1_op = store
+        .table_at_mut(&Path::from("G1"))
+        .expect("G1")
+        .add(vec![CellValue::Id(0)]);
 
-    let op0 = graphs.add(vec![]);
-    let g0_op = g0.add(vec![CellValue::Id(0)]);
-    let g1_op = g1.add(vec![CellValue::Id(0)]);
+    let op1 = store
+        .table_at_mut(&Path::from("G.V"))
+        .expect("G.V")
+        .add(vec![CellValue::Id(1)]);
 
-    let op1 = gv.add(vec![CellValue::Id(1)]);
-
-    let gid = store.apply_batch(vec![op0, g0_op, g1_op]).unwrap()[0];
-    let vid = store
+    store.apply_batch(vec![op0, g0_op, g1_op]).unwrap();
+    let vid = op1.id();
+    store
         .apply_batch(vec![op1])
-        .expect("inserting v1 successful")[0];
+        .expect("inserting v1 successful");
 
     let dummy_vid = u64::MAX;
-    let ge = store.table_at(&Path::from("G.E")).expect("G.E table");
-    let ope = ge.add(vec![
-        CellValue::Id(gid),
-        CellValue::Id(vid),
-        CellValue::Id(dummy_vid),
-    ]);
+    let ope = store
+        .table_at_mut(&Path::from("G.E"))
+        .expect("G.E")
+        .add(vec![
+            CellValue::Id(gid),
+            CellValue::Id(vid),
+            CellValue::Id(dummy_vid),
+        ]);
     let err = store.apply_batch(vec![ope]).expect_err("missing v2");
 
     assert!(matches!(*err, StoreIntError::Law(_)));

@@ -18,9 +18,9 @@ pub enum ReplError {
     Persist(PersisError),
 }
 
-/// Parse failure for a single cell inside a `begin transact` block (before column index is known).
+/// Parse failure for a single cell inside a `begin batch` block (before column index is known).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransactCellParseError {
+pub enum BatchCellParseError {
     UnknownBinding(String),
     InvalidValue(String),
 }
@@ -82,11 +82,11 @@ impl From<ValidationError> for ReplError {
     }
 }
 
-impl From<TransactCellParseError> for ReplError {
-    fn from(value: TransactCellParseError) -> Self {
+impl From<BatchCellParseError> for ReplError {
+    fn from(value: BatchCellParseError) -> Self {
         match value {
-            TransactCellParseError::UnknownBinding(name) => Self::UnknownBinding(name),
-            TransactCellParseError::InvalidValue(message) => Self::BadValue { column: 0, message },
+            BatchCellParseError::UnknownBinding(name) => Self::UnknownBinding(name),
+            BatchCellParseError::InvalidValue(message) => Self::BadValue { column: 0, message },
         }
     }
 }

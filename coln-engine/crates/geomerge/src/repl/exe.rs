@@ -9,7 +9,7 @@ use crate::{
     persist::pst::decode_store,
     repl::{
         error::ReplError,
-        parse::{TransactAssignment, parse_cell_value, parse_cell_value_transact},
+        parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
     },
     store::Store,
     table::{CellValue, RowId},
@@ -165,39 +165,30 @@ pub fn add_rows(
     store: &mut Store,
     table_name: &str,
     raw_rows: &[Vec<String>],
-) -> Result<Vec<u64>, ReplError> {
+) -> Result<Vec<RowId>, ReplError> {
     let table_path = crate::ir::Path::from(table_name);
-    let table = store
-        .table_at(&table_path)
+    let oid = store
+        .resolve_table(&table_path)
         .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
 
-    let ops = raw_rows
-        .iter()
-        .map(|raw_values| build_add_op(table, raw_values))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut ops = Vec::new();
+    for raw_values in raw_rows {
+        let t = store
+            .table_mut(oid)
+            .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
+        ops.push(build_add_op(t, raw_values)?);
+    }
 
-    store.apply_batch(ops).map_err(Into::into)
+    let row_ids: Vec<RowId> = ops.iter().map(|op| op.id()).collect();
+    store.apply_batch(ops)?;
+    Ok(row_ids)
 }
 
-/// Sequential inserts on a preview store, then [`Store::check_laws`]. Mirrors [`Store::transact`]
-/// but surfaces [`ReplError`] from validation.
-pub fn run_transact(
-    store: &mut Store,
-    assignments: &[TransactAssignment],
-) -> Result<String, ReplError> {
-    let mut preview = store.clone();
-    let message = transact_body(&mut preview, assignments)?;
-    preview.check_laws().map_err(ReplError::from)?;
-    *store = preview;
-    Ok(message)
-}
-
-fn transact_body(
-    store: &mut Store,
-    assignments: &[TransactAssignment],
-) -> Result<String, ReplError> {
+/// Builds [`crate::ops::Op`]s with [`Table::add`], then commits with [`Store::apply_batch`].
+pub fn run_batch(store: &mut Store, assignments: &[BatchAssignment]) -> Result<String, ReplError> {
     let mut bindings: HashMap<String, RowId> = HashMap::new();
     let mut parts = Vec::new();
+    let mut ops = Vec::new();
 
     for a in assignments {
         if bindings.contains_key(&a.name) {
@@ -218,7 +209,7 @@ fn transact_body(
 
         let mut values = Vec::with_capacity(expected);
         for (idx, col_type) in table.schema().columns.iter().enumerate() {
-            let v = parse_cell_value_transact(col_type, &a.row[idx], &bindings).map_err(|e| {
+            let v = parse_cell_value_batch(col_type, &a.row[idx], &bindings).map_err(|e| {
                 let err: ReplError = e.into();
                 match err {
                     ReplError::BadValue { message, .. } => ReplError::BadValue {
@@ -235,16 +226,19 @@ fn transact_body(
             .resolve_table(&table_path)
             .expect("table exists after table_at");
         let t = store.table_mut(oid).expect("table exists");
-        let row_id = t.append_row_validated(values)?;
-        bindings.insert(a.name.clone(), row_id);
-        parts.push(format!("{}=#{}", a.name, row_id));
+        let op = t.add(values);
+        bindings.insert(a.name.clone(), op.id());
+        parts.push(format!("{}=#{}", a.name, op.id()));
+        ops.push(op);
     }
 
-    Ok(format!("committed transaction: {}", parts.join(", ")))
+    let message = format!("committed batch: {}", parts.join(", "));
+    store.apply_batch(ops)?;
+    Ok(message)
 }
 
 fn build_add_op(
-    table: &crate::table::Table,
+    table: &mut crate::table::Table,
     raw_values: &[String],
 ) -> Result<crate::ops::Op, ReplError> {
     let expected = table.schema().columns.len();

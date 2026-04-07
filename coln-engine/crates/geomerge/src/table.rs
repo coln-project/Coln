@@ -255,34 +255,35 @@ impl Table {
         Ok(())
     }
 
-    /// Validates `values` ([`validate_new_row`]), then appends and returns the new [`RowId`].
+    /// Validates `values` ([`validate_new_row`]), then appends with the given [`RowId`].
     pub fn append_row_validated(
         &mut self,
         values: Vec<CellValue>,
-    ) -> Result<RowId, ValidationError> {
+        row_id: RowId,
+    ) -> Result<(), ValidationError> {
         self.validate_new_row(&values)?;
-        Ok(self.append_row(values))
+        Ok(self.append_row(values, row_id))
     }
 
     /// Append a row to columnar storage and assign a new [`RowId`].
     ///
     /// Does **not** validate. Used internally when the caller has already checked the row
     /// (e.g. batch validation); otherwise use [`try_append_row`].
-    pub(crate) fn append_row(&mut self, values: Vec<CellValue>) -> RowId {
+    pub(crate) fn append_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
-        let row_id = self.next_rowid;
         self.row_ids.push(row_id);
-        self.next_rowid += 1;
         for (i, v) in values.into_iter().enumerate() {
             self.cols[i].push(v);
         }
-        row_id
     }
 
     /// Append one row after validation and primary-key uniqueness check.
-    pub fn add(&self, values: Vec<CellValue>) -> Op {
+    pub fn add(&mut self, values: Vec<CellValue>) -> Op {
+        let row_id = self.next_rowid;
+        self.next_rowid += 1;
         Op::Add {
+            row_id,
             table: self.path.clone(),
             values,
         }
@@ -307,11 +308,13 @@ mod tests {
         assert!(tbl.cols.is_empty());
         assert_eq!(tbl.row_count(), 0);
 
-        let r0 = tbl.append_row_validated(vec![]).expect("first row");
+        let r0: RowId = 100;
+        tbl.append_row_validated(vec![], r0).expect("first row");
         assert_eq!(tbl.row_count(), 1);
         assert_eq!(tbl.row_id_at(0), Some(r0));
 
-        let r1 = tbl.append_row_validated(vec![]).expect("second row");
+        let r1: RowId = 101;
+        tbl.append_row_validated(vec![], r1).expect("second row");
         assert_eq!(tbl.row_count(), 2);
         assert_eq!(tbl.row_id_at(1), Some(r1));
     }
@@ -326,7 +329,7 @@ mod tests {
             primary_key: None,
         };
         let mut tbl = Table::new(Path::from("test.table"), gv_schema);
-        tbl.append_row_validated(vec![CellValue::Id(1)])
+        tbl.append_row_validated(vec![CellValue::Id(1)], 0)
             .expect("row");
         assert_eq!(tbl.row_count(), 1);
     }
@@ -342,7 +345,7 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
-        tbl.append_row_validated(vec![CellValue::Int(0)])
+        tbl.append_row_validated(vec![CellValue::Int(0)], 0)
             .expect("first row");
         assert_eq!(tbl.row_count(), 1);
 
@@ -367,9 +370,12 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("readable"), schema);
 
-        let row_id = tbl
-            .append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())])
-            .expect("row");
+        let row_id: RowId = 42;
+        tbl.append_row_validated(
+            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
+            row_id,
+        )
+        .expect("row");
 
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
@@ -393,9 +399,9 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("debug.table"), schema);
 
-        tbl.append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())])
+        tbl.append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())], 0)
             .expect("first");
-        tbl.append_row_validated(vec![CellValue::Int(8), CellValue::Str("y".to_string())])
+        tbl.append_row_validated(vec![CellValue::Int(8), CellValue::Str("y".to_string())], 1)
             .expect("second");
 
         assert_eq!(
