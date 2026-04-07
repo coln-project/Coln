@@ -13,13 +13,14 @@ geolog theory, load it, and then add data to its tables.
 
 Example of loading a schema and inserting several related rows. Type `/help`
 for the full command list (for example `load-schema`, `add`, `dump-table`,
-`dump-store`, and the transactional form below).
+`dump-store`, and the batch form below).
 
-A **transaction** in the REPL is a single multi-line statement: `begin transact;`
-… `commit;`. Each line inside may bind the new row id to a name (`name = add
-<table> values (...);`). Those names act as variables for the rest of the
-transaction, so later rows can refer to graphs and vertices inserted earlier.
-The block is submitted when you end it with `commit;`.
+A **batch** is a single multi-line statement: `begin batch;` … `commit;`. Each
+line inside is an `add` that may bind the new row id to a name (`name = add
+<table> values (...);`). These ids are assigned by the storage layer and can then
+be referred to later on. For example, `e1 = add G.E values (g0 v1 v2);` is
+referring to `v1` and `v2` as vertex ids previously inserted.
+The whole batch is submitted when you end it with `commit;`.
 
 The snippet below loads the `paths` theory, creates two graphs (`g0`, `g1`),
 records `g1` as the designated graph for the `G0` and `G1` indices, adds two
