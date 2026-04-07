@@ -11,37 +11,171 @@
 
 \maketitle
 
-NOTE: very work-in-progress
+\section{Overview}
 
-\section{Intuition}
+In this document, we give a sketch of how to incorporate initial models into geolog.
 
-Consider the following theories:
+As suggested by Bob Atkey, we do this via a modality that controls how we are permitted to use query-types in the context when forming theories that are to have initial models.
 
+For this, we follow Shulman's account of modal type theory from (\cite{shulman-2023-semantics}). Shulman's type theory is very general because it is parameterized by an arbitrary ``mode theory.'' Fortunately, as the mode theory that we use is quite simple, we can dispense with a lot of the complexity of the general setup, and use more tightly tailored notation as well.
+
+We will start in \cref{sec:matt} by reviewing the rules of multimodal adjoint type theory, as specialized to our concrete use case. Then in \cref{sec:initial} we will discuss how to use this modality to restrict the formation of initial models. Finally, in \cref{sec:semantics} we will propose a semantics.
+
+\section{Review of multimodal adjoint type theory} \label{sec:matt}
+
+Multimodal adjoint type theory is parameterized by a 2-category. In our case, we are parameterized by the 2-category $\mc{A}$ with the following parts.
+
+\begin{enumerate}
+  \item Objects $c$ and $i$ called ``the conjunctive mode'' and ``the inductive mode'' respectively.
+  \item A morphism $l \colon c \to i$ called the ``lock'' along with its right adjoint $l^\dagger \colon c \to i$ called the ``unlock.''
+  \item We have equations $l \circ l^\dagger = 1_i$ and the counit $\epsilon \colon l \circ l^\dagger \to 1_i$ is the identity 2-morphism, but the unit $\eta \colon 1_c \to l^\dagger \circ l$ is non-trivial.
+\end{enumerate}
+
+We then have copies of the type theory at each mode (object). We denote the mode we are in by subscripting the judgment, so we have judgments
+%
+\begin{mathpar}
+  \Gamma \jctx_c \and \Gamma \jctx_i \and
+  \Gamma \yields_c A \jtype \and \Gamma \yields_i A \jtype \and
+  \Gamma \yields_c a \colon A \and \Gamma \yields_i a \colon A
+\end{mathpar}
+%
+We move between the modes using the 1-morphisms.
+%
+\begin{mathpar}
+  \inferrule{\mu \colon m \to n \and \Gamma \jctx_n}{\Gamma/_\mu \jctx_m} \and
+  \inferrule{\Gamma \jctx_m}{\Gamma/_{1_m} \equiv \Gamma \jctx_m} \and \inferrule{\mu \colon n \to p \and \nu \colon m \to p \and \Gamma \jctx_p}{\Gamma/_\mu/_\nu \equiv \Gamma/_{\mu \circ \nu} \jctx_m}
+\end{mathpar}
+%
+So in particular, if $\Gamma \jctx_i$, then $\Gamma/_l/_{l^\dagger} \equiv \Gamma/_{l \circ l^\dagger} \equiv \Gamma/_{1_i} \equiv \Gamma$. This is what motivates the ``lock/unlock'' terminology; if we ``lock'' $\Gamma$, forming $\Gamma/_l$, then applying $-/_{l^\dagger}$ ``unlocks'' $\Gamma/_l$. The other way around does not become the identity, however, because $l^\dagger \circ l$ is not the identity. Intuitively, unlocking followed by locking produces a locked context.
+
+The context formation rule is then modified to permit cross-mode bindings.
+%
+\begin{mathpar}
+  \inferrule{\Gamma \jctx_n \and \mu \colon m \to n \and \Gamma/\mu \yields_m A \jtype}{\Gamma, x \bindvia{\mu} A \jctx_n}
+\end{mathpar}
+%
+We can also incorporate 2-morphisms into substitutions
+%
+\begin{mathpar}
+  \inferrule{\Gamma \yields_n \theta \colon \Delta \and \mu,\nu \colon m \to n \and \alpha \colon \mu \To \nu}{\Gamma/_\nu \yields_m \theta/_\alpha \colon \Delta/_\mu}
+\end{mathpar}
+Finally, we give the variable rule (note that $\uparrow^\alpha$ is the weakening substitution slashed with $\alpha$).
+%
+\begin{mathpar}
+  \locks(\cdot_m) = 1_m \and
+  \locks(\Gamma, x \bindvia{\mu} A) = \locks(\Gamma) \and 
+  \locks(\Gamma/_\mu) = \locks(\Gamma) \circ \mu \\
+  \inferrule{\alpha \colon \mu \To \locks(\Delta) \colon m \to n}{\Gamma, x \bindvia{\mu} A, \Delta \yields_m A[\uparrow^\alpha]} \and
+  \inferrule{\alpha \colon \mu \To \locks(\Delta) \circ \nu \and \beta \colon \nu \To \varsigma}{(\Gamma, x \bindvia{\mu}, \Delta)/_\varsigma \yields x^\alpha[1_{(\Gamma,x\bindvia{\mu},\Delta)}/_\beta] = x^{(\locks(\Delta) \triangleright \beta) \circ \alpha}}
+\end{mathpar}
+%
+Essentially, any variable in context which was previously ``cross-mode bound'' in the mode that we are \emph{currently in} can be used if we give a 2-cell between the 1-morphism that it was bound via and the 1-morphism given by all of the locks between it and the end of the context. As a special case, we have
+%
+\begin{mathpar}
+  (\Gamma,x \bindvia{\mu} A)/_\mu \yields x := x^{1_\mu} \colon A
+\end{mathpar}
+%
+That is, we omit the 2-morphism if it is the identity.
+
+The positive modality for $l$ then allows us to use a conjunctive type in the inductive mode.
+%
+\begin{mathpar}
+  \inferrule{\Gamma/_l \yields_c A \jtype}{\Gamma \yields_i \lozenge A \jtype} \\
+  \inferrule{\Gamma/_l \yields_c a \colon A \jtype}{\Gamma \yields_i [a]_\lozenge \colon \lozenge A} \and
+  \inferrule{\Gamma/_{l^\dagger} \yields_i d \colon \lozenge A \and \Gamma, y \bindvia{l^\dagger} \lozenge A \yields_c B \jtype \and \Gamma, x \bindvia{l^\dagger \circ l} A \yields_c b \colon B[y \subst [x]_\lozenge]}{\Gamma \yields_c (\llet [x]_\lozenge \ot d \inn b) \colon B[y \subst d]} \\
+  (\llet [x]_\lozenge \ot [a]_\lozenge \inn b) \equiv b[x \subst a]
+\end{mathpar}
+Crucially, because there is no morphism $l^\dagger \circ l \to 1_c$, we cannot use a variable $x \bindvia{l^\dagger \circ l} A$ in the same way that we would use a variable $x \colon A$. We think of a variable $x \bindvia{l^\dagger \circ l} A$ as an ``inductive model'' of $A$, and a variable $x \colon A$ as a ``conjunctive model.''
+
+\section{Initial models and modal pi types} \label{sec:initial}
+
+Now that we have laboriously set up the modal type theory, the rule for initial models is very simple.
+%
+\begin{mathpar}
+  \inferrule{\Gamma/_l \yields_c A \jtype}{\Gamma \yields_i \init A \colon \lozenge A}
+\end{mathpar}
+%
+This gives both the formation and introduction rules for inductive types (we will see exactly how in a bit). The elimination and computation rules need a lot of machinery to set up, so we will not cover them just yet.
+
+One of the points of this whole machinery was to do initial models \emph{in context}. In order to do this, we still need to use the variables in $\Gamma/_l$ \emph{somehow} in forming $A$. The way this works is that we generalize the pi theories in geott to \emph{modal pi theories}. Assume that we have ``types at level'' judgments $A \jtype_{\ms{query}}$ and $A \jtype_{\ms{theory}}$, as in geott.
+%
+\begin{mathpar}
+  \inferrule{\Gamma/_{l^\dagger} \yields_i A \jtype_{\ms{query}} \and \Gamma, x \bindvia{l^\dagger} A \yields_c B \jtype_{\ms{theory}}}{\Gamma \yields_c (x \bindvia{l^\dagger} A) \to B \jtype_{\ms{theory}}} \\
+  \inferrule{\Gamma, x \bindvia{l^\dagger} A \yields_c b \colon B}{\Gamma \yields (\lambda x.b) \colon (x \bindvia{l^\dagger} A) \to B} \and
+  \inferrule{\Gamma \yields_c f \colon (x \bindvia{l^\dagger} A) \to B \and \Gamma/_{l^\dagger} \yields_i a \colon A}{\Gamma \yields_c f \, a \colon B[x \subst a]} \\
+  (\lambda x.b)\,a \equiv b[x \subst a] \and f \equiv \lambda x. (f\, x)
+\end{mathpar}
+
+This allows us to use variables behind the lock in the domain of pi theories, but not in the codomain, which is precisely the restriction we needed for initial models.
+
+\begin{example}
+  Sum types are given by the following initial model.
+  \begin{mathpar}
+    \inferrule{(A \colon \ms{Query}, B \colon \ms{Query})/_{l^\dagger}/_l \yields_c [t \colon \ms{Query}, l \colon A \to t, r \colon B \to t] \jtype}{(A \colon \ms{Query}, B \colon \ms{Query})/_{l^\dagger} \yields_i \init \, [t \colon \ms{Query}, l \colon A \to t, r \colon B \to t] \colon \lozenge [t \colon \ms{Query}, l \colon A \to t, r \colon B \to t]}
+  \end{mathpar}
+  In order to derive this, we must have rules sufficient to derive $(A \colon \ms{Query})/_{l^\dagger} \yields_i A \jtype_{\ms{query}}$. It is not immediately obvious what sequence of derivations yields this, but it should at least be intuitive that this is permitted.
+\end{example}
+
+One thing to note is that ideally $\lozenge A$ would compute through on the various theory formers. E.g., $\lozenge \ms{Query}_c \equiv \ms{Query}_i$, $\lozenge (\Sigma\,A\,B) \equiv \Sigma (\lozenge A) (\lozenge B)$, $\lozenge ((x \bindvia{l^\dagger} A) \to B) \equiv (x \colon A) \to \lozenge B$, etc. Thus, when we get an initial model it is in a form which we can immediately use, via the relevant eliminators.
+
+Another option here would be that $\lozenge (\Sigma\,A\,B)$ \emph{behaves like} $\Sigma\,(\lozenge A)\,(\lozenge B)$, in the sense of the kinetic/potential distinction. This is perhaps ideal when $A$ is itself nominal, because $\lozenge$ can't ``compute through'' here, but $\lozenge$ can act as a ``modifier'' on the behavior of $A$.
+
+Tentatively, the notation for this could look like \verb|ind A|. The intuition for this is that if \verb|a : ind A| then \verb|a| is an inductive model of \verb|A|. So, for instance, if \verb|Either A B| is the initial model of \verb|Either/theory A B|, where
 \begin{verbatim}
-theory Graph := sig
-  V : Query
-  E : V -> V -> Query
-end
-
-theory Paths (G : Graph) := sig
-  open G
-  P : V -> V -> Query
-  empty : (v : V) -> P v v
-  snoc : (a b c : V) -> P a b -> E b c -> P a c
+theory Either/theory (A : Query) (B : Query) := sig
+  t : Query
+  left : A -> t
+  right : B -> t
 end
 \end{verbatim}
+then we would have \verb|Either A B .t : ind Query|.
 
-Intuitively, for every model \verb|G : Graph| there should exist an \emph{initial} model of \verb|Paths G|. However, this is not true for every theory extension of \verb|Graph|. For instance the theory \verb|G.V| does not have an initial model in general (it does if \verb|G.V| happens to be a singleton).
+\section{Semantics} \label{sec:semantics}
 
-The general rule is that ``a theory has an initial model if it does not postulate any elements in types that it did not introduce.'' Bob Atkey suggested formalizing this rule with a \emph{modality}, which would ``lock away'' all previously defined types, preventing them from being the codomain of term constructors in a theory.
+This section relies on the assumption that the reader has read the lecture notes on the semantics of geolog.
 
-However, when Bob Atkey proposed this initially, we couldn't figure out what it meant semantically. This document is an attempt to sketch a possible semantics for initial models.
+For the semantics, let $\ms{Conj}$ and $\ms{Ind}$ be two 2-categories, with a 2-adjunction
+% https://q.uiver.app/#q=WzAsMixbMCwwLCJcXG1ze0luZH0iXSxbMCwyLCJcXG1ze0Nvbmp9Il0sWzEsMCwiRiIsMCx7ImN1cnZlIjotMn1dLFswLDEsIlUiLDAseyJjdXJ2ZSI6LTJ9XSxbMiwzLCIiLDAseyJsZXZlbCI6MSwic3R5bGUiOnsibmFtZSI6ImFkanVuY3Rpb24ifX1dXQ==
+\[\begin{tikzcd}
+	{\ms{Ind}} \\
+	\\
+	{\ms{Conj}}
+	\arrow[""{name=0, anchor=center, inner sep=0}, "U", curve={height=-12pt}, from=1-1, to=3-1]
+	\arrow[""{name=1, anchor=center, inner sep=0}, "F", curve={height=-12pt}, from=3-1, to=1-1]
+	\arrow["\dashv"{anchor=center}, draw=none, from=1, to=0]
+\end{tikzcd}\]
+such that the counit $\epsilon \colon FU \to 1_{\ms{Ind}}$ is a 2-natural equivalence.
 
-\section{Gros doctrines and left adjoints}
+Tentatively, we might have $\ms{Ind}$ be the 2-category of locally small finite limit categories, and $\ms{Conj}$ be the 2-category of arithmetic universes, where $F$ is the \emph{conservative completion} that completes a finite limit category to an arithmetic universes while preserving those finite coproducts/quotients/list objects that may already exist. Another option would be to let $\ms{Ind}$ be the opposite of the category of Grothendieck topoi and geometric morphisms, with $F$ the conservative cocompletion functor.
 
-Recall that a context $\Gamma$ in the type theory is meant to be interpreted as a geometric theory.
+We will call objects of $\ms{Conj}$ \defcase{conjunctive domains} and objects of $\ms{Ind}$ \defcase{inductive domains}. For a conjunctive domain $\mc{C}$, we call $F(\mc{C})$ its inductive completion (and remember that this is a \emph{conservative} completion).
 
-which is a functor $\Gamma \colon \ms{Log} \to \ms{CAT}$, where $\ms{Log}$ is the category of logoi and $\ms{CAT}$ is the category of large categories.
+We then have an induced 2-adjunction in the other direction between the categories of \emph{prestacks} (contravariant functors to $\ms{Cat}$). (Recall from Johnstone that a geometric theory is a prestack on topoi generated by a finite sequence of PIE limits).
+% https://q.uiver.app/#q=WzAsMixbMCwwLCJcXG1ze1BzdH0oXFxtc3tJbmR9KSJdLFswLDIsIlxcbXN7UHN0fShcXG1ze0Nvbmp9KSJdLFswLDEsIkZeXFxhc3QiLDIseyJjdXJ2ZSI6Mn1dLFsxLDAsIlVeXFxhc3QiLDIseyJjdXJ2ZSI6Mn1dLFszLDIsIiIsMix7ImxldmVsIjoxLCJzdHlsZSI6eyJuYW1lIjoiYWRqdW5jdGlvbiJ9fV1d
+\[\begin{tikzcd}
+	{\ms{Pst}(\ms{Ind})} \\
+	\\
+	{\ms{Pst}(\ms{Conj})}
+	\arrow[""{name=0, anchor=center, inner sep=0}, "{F^\ast}"', curve={height=12pt}, from=1-1, to=3-1]
+	\arrow[""{name=1, anchor=center, inner sep=0}, "{U^\ast}"', curve={height=12pt}, from=3-1, to=1-1]
+	\arrow["\dashv"{anchor=center, rotate=-180}, draw=none, from=1, to=0]
+\end{tikzcd}\]
+This describes the functor from our mode theory $\mc{A}$ to $\ms{Cat}$. More specifically:
+\begin{itemize}
+  \item Contexts in mode $i$ are prestacks on $\ms{Ind}$
+  \item Contexts in mode $c$ are prestacks on $\ms{Conj}$
+  \item The lock $\Gamma \mapsto \Gamma/_l$ is interpreted by $F^\ast$
+  \item Unlocking $\Gamma \mapsto \Gamma/_{l^\dagger}$ is interpreted by $U^\ast$
+\end{itemize}
+
+Let's use this to work out what the interpretation of the context $(A \colon \ms{Query}, B \colon \ms{Query})/_l$ is. First of all $A \colon \ms{Query}, B \colon \ms{Query}$ is the context which sends an inductive domain $\mc{I}$ to the category of pairs of objects in $\mc{I}$, e.g. $\mc{I} \times \mc{I}$.
+
+Then $(A \colon \ms{Query}, B \colon \ms{Query})/_l$ is the context which sends a conjunctive domain $\mc{C}$ to the category of pairs of objects in $F(\mc{C})$, e.g. $F(\mc{C}) \times F(\mc{C})$. This is why we can't have $(A \colon \ms{Query}, B \colon \ms{Query})/_l \yields_c A \colon \ms{Query}$; we are trying to produce an object of $\mc{C}$ but we only have access to objects of $F(\mc{C})$.
+
+It is currently only a conjecture that the rule for initial models does in fact have semantics in this setup.
+
+\bibliographystyle{plainnat}
+\bibliography{geolog.bib}
 
 \end{document}
 
