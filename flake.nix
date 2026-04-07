@@ -22,6 +22,7 @@
             zlib.dev
             pkg-config
             nodejs
+            typescript
           ];
         };
     });
