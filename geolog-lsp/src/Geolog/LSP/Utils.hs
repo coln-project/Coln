@@ -16,4 +16,3 @@ currentBufferUri = toNormalizedUri . view currentBufferUriUnNormalized
 
 currentBufferUriUnNormalized :: (HasParams s a1, HasTextDocument a1 a2, HasUri a2 a3) => Lens' s a3
 currentBufferUriUnNormalized = params . textDocument . uri
-
