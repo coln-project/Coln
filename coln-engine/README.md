@@ -11,8 +11,23 @@ Roughly it ought to support:
 This repo as is now is only a store engine that allows you to give it a compiled
 geolog theory, load it, and then add data to its tables.
 
-Example of loading a schema and then add some data to it in a transaction. Also
-type `/help` to see what is available.
+Example of loading a schema and inserting several related rows. Type `/help`
+for the full command list (for example `load-schema`, `add`, `dump-table`,
+`dump-store`, and the transactional form below).
+
+A **transaction** in the REPL is a single multi-line statement: `begin transact;`
+… `commit;`. Each line inside may bind the new row id to a name (`name = add
+<table> values (...);`). Those names act as variables for the rest of the
+transaction, so later rows can refer to graphs and vertices inserted earlier.
+The block is submitted when you end it with `commit;`.
+
+The snippet below loads the `paths` theory, creates two graphs (`g0`, `g1`),
+records `g1` as the designated graph for the `G0` and `G1` indices, adds two
+vertices on `g0`, and adds one edge between them on `g0`.
+
+After `commit`, inspect what landed with `dump-table <table>;` — for example
+`dump-table Graphs;`, `dump-table G.V;`, or `dump-table G.E;` — or print the
+entire store with `dump-store;`.
 
 ```
 geomerge> load-schema tests/data/paths.json;
