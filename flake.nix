@@ -19,6 +19,7 @@
             haskell.compiler.ghc912
             cabal-install
             zlib
+            zlib.dev
             pkg-config
             nodejs
           ];
