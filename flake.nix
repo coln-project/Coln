@@ -15,7 +15,7 @@
       in {
         devShells.default = pkgs.mkShell {
           name = "geolog";
-          packages = with pkgs; with haskell.packages.ghc912; [
+          packages = with pkgs; [
             haskell.compiler.ghc912
             cabal-install
             zlib
