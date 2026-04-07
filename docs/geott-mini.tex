@@ -1,0 +1,48 @@
+\documentclass[fleqn,leqno]{article}
+
+\usepackage[a4paper]{geometry}
+\usepackage{parskip}
+\usepackage{macros}
+
+\makeatletter
+\renewcommand{\tagform@}[1]{\maketag@@@{#1}}
+\makeatother
+
+\NewDocumentCommand{\BehavesAs}{}{\rightsquigarrow}
+\NewDocumentCommand{\mLevel}{}{m\text{-}\ms{Level}}
+\NewDocumentCommand{\hLevel}{}{h\text{-}\ms{Level}}
+
+\begin{document}
+
+This is the conjunctive fragment of geott, in simplified form (no general record types, no potential/kinetic distinction, no theory universe so all types are theories, intensional equality types).
+
+The one extra judgment compared to MLTT is $\Gamma \yields A@\ms{set}$, which is well-formed in the case we already have $\Gamma \yields A \jtype$. It is the judgment that $A$ is a set-level type.
+
+\begin{mathpar}
+  \inferrule{\phantom{-}}{\yields \ms{Set} \jtype} \\
+  \inferrule{\Gamma \yields A \jtype \and \Gamma \yields A @ \ms{set}}{\Gamma \yields \ms{code}\,A \colon \ms{Set}} \and
+  \inferrule{\Gamma \yields c \colon \ms{Set}}{\Gamma \yields \ms{decode}\,c \jtype \and \Gamma \yields (\ms{decode}\,c) @ \ms{set}} \\
+  \inferrule{\Gamma \yields A \jtype \and \Gamma \yields A @ \ms{set}}{\Gamma \yields \ms{decode}\,(\ms{code}\,A) \equiv A \jtype} \and
+  \inferrule{\Gamma \yields c \colon \ms{Set}}{\Gamma \yields \ms{code}\,(\ms{decode}\,c) \equiv c \colon \ms{Set}} \\
+  \inferrule{\Gamma \yields A \jtype \and \Gamma, x \colon A \yields b \jtype}{\Gamma \yields \Sigma\,A\,B \jtype} \and
+  \inferrule{\Gamma \yields A @ \ms{set} \and \Gamma,x \colon A \yields B @ \ms{set}}{\Gamma \yields \Sigma\,A\,B @ \ms{set}} \\
+  \inferrule{\Gamma \yields a \colon A \and \Gamma \yields b \colon B[a]}{\Gamma \yields (a,b) \colon \Sigma\,A\,B} \and
+  \inferrule{\Gamma \yields p \colon \Sigma\,A\,B}{\Gamma \yields p.0 \colon A \and \Gamma \yields p.1 \colon B[p.0]} \\
+  \inferrule{\Gamma \yields a \colon A \and \Gamma \yields b \colon B[a]}{\Gamma \yields (a,b).0 \equiv a \colon A \and \Gamma \yields (a,b).1 \equiv b \colon B[a]} \and
+  \inferrule{\Gamma \yields p \colon \Sigma\,A\,B}{\Gamma \yields p \equiv (p.0,p.1) \colon \Sigma\,A\,B} \\
+  \inferrule{\Gamma \yields A \jtype \and \Gamma \yields A@\ms{set} \and \Gamma,x\colon A \yields B \jtype}{\Gamma \yields \Pi\,A\,B \jtype} \\
+  \inferrule{\Gamma, x \colon A \yields b \colon B}{\Gamma \yields (\lambda x.b) \colon \Pi\,A\,B} \and
+  \inferrule{\Gamma \yields f \colon \Pi\,A\,B \and \Gamma \yields a \colon A}{\Gamma \yields f\,a \colon B[a]} \\
+  \inferrule{\Gamma, x \colon A \yields b \colon B \and \Gamma \yields a \colon A}{\Gamma \yields (\lambda x.b)\,a \equiv b[a] \colon B[a]} \and
+  \inferrule{\Gamma \yields f \colon \Pi\,A\,B}{\Gamma \yields f \equiv (\lambda x. f\,x) \colon \Pi\,A\,B} \\
+  \inferrule{\Gamma \yields A @\ms{set} \and \Gamma \yields a_0, a_1 \colon A}{\Gamma \yields a_0 =_A a_1 \jtype \and \Gamma \yields a_0 =_A a_1 @ \ms{set}} \\
+  \inferrule{\Gamma \yields a \colon A}{\Gamma \yields \ms{refl}\,a \colon a =_A a} \and
+  \inferrule{\Gamma, x_0 \colon A, x_1 \colon A, x_2 \colon x_0 =_A x_1 \yields B\jtype \and \Gamma, x \colon A \yields b \colon B[x, x, \ms{refl}\,x] \and \Gamma \yields a_0, a_1 \colon A \and \Gamma \yields a_2 \colon a_0 =_A a_1}{\Gamma \yields \ccase a_2 \oof \{\ms{refl}\,x \to b\} \colon B[a_0, a_1, a_2]} \and
+  \inferrule{\Gamma, x_0 \colon A, x_1 \colon A, x_2 \colon x_0 =_A x_1 \yields B\jtype \and \Gamma, x \colon A \yields b \colon B[x, x, \ms{refl}\,x] \and \Gamma \yields a \colon A}{\Gamma \yields (\ccase \ms{refl}\,a \oof \{\ms{refl}\,x \to b\}) \equiv b[a] \colon B[a,a,\ms{refl}\,a]}
+\end{mathpar}
+
+\end{document}
+
+% Local Variables:
+% TeX-engine: xetex
+% End:
