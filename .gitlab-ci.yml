@@ -3,16 +3,21 @@ docs:
   tags: [nix]
 
   script:
-    - ./shake docs
+    - nix develop -c ./shake docs
     - ./ci-deploy
 
-check:
+format-check:
   stage: build
   tags: [nix]
     
   script:
-    - ./shake check
-    - ./shake test
+    - nix develop -c ./shake check
+
+tests:
+  stage: build
+  tags: [nix]
+  script:
+    - nix develop -c ./shake test
 
 vscode:
   stage: build
