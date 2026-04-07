@@ -78,6 +78,8 @@ findLineBreaks t = UV.unfoldr nextNewline (-1)
 
 type LineNum = Int
 
+type ColNum = Int
+
 lineStart :: File -> LineNum -> Pos
 lineStart f l = (f.lineBreaks UV.! l) + 1
 
@@ -90,19 +92,20 @@ lineSpan f l = Span (lineStart f l) (lineEnd f l)
 lineContents :: File -> LineNum -> T.Text
 lineContents f l = sliceWord8 (lineStart f l) (lineEnd f l) f.contents
 
-lineOf :: File -> Pos -> LineNum
-lineOf f i =
+srcOf :: File -> Pos -> (LineNum, ColNum)
+srcOf f i =
   seq
-    (0 <= i && i < TU.lengthWord8 f.contents || error "position out of bounds")
+    (0 <= i && i <= TU.lengthWord8 f.contents || error "position out of bounds")
     (go 0 (UV.length f.lineBreaks - 1))
  where
   go l r
-    | l == r = l
+    | l == r = (l, c l)
     | i < lineStart f m = go l m
     | i > lineEnd f m = go m r
-    | otherwise = m
+    | otherwise = (m, c m)
    where
     m = (l + r) `div` 2
+    c lineNo = i - lineStart f lineNo
 
 repeated :: Int -> Char -> Doc ann
 repeated n c
@@ -139,8 +142,8 @@ linesPretty f sp@(Span s e) =
     | l <- [ls .. le]
     ]
  where
-  ls = lineOf f s
-  le = lineOf f e
+  ls = fst $ srcOf f s
+  le = fst $ srcOf f e
   numWidth = max (numDigits ls) (numDigits le)
 
 -- Reporter
