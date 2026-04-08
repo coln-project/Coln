@@ -37,16 +37,25 @@ analyzeBuffer bufInfo = do
     diagRef <- newIORef ([] @(D.Diagnostic GeologCode))
     pure (D.pureReporter diagRef, diagRef)
 
+  let buf tokens notations elaborated =
+        AnalyzedBuffer
+          { raw = bufInfo.file
+          , tokens
+          , notations
+          , elaborated
+          , diagnostics = []
+          }
+
   analysis <- do
     reportCrash (FNotation.lex lexConfig (contramap LexerCode r) bufInfo.file) "Lexing Error: " >>= \case
-      Nothing -> pure $ AnalyzedBuffer bufInfo.file Nothing Nothing Nothing []
+      Nothing -> pure $ buf Nothing Nothing Nothing
       Just tokens ->
         reportCrash (FNotation.parse parseConfig (contramap ParserCode r) bufInfo.file tokens) "Parsing Error: " >>= \case
-          Nothing -> pure $ AnalyzedBuffer bufInfo.file (Just tokens) Nothing Nothing []
+          Nothing -> pure $ buf (Just tokens) Nothing Nothing
           Just notations ->
             reportCrash (elabTop (contramap ElaboratorCode r) bufInfo.file notations) "Elaboration Error: " >>= \case
-              Nothing -> pure $ AnalyzedBuffer bufInfo.file (Just tokens) (Just notations) Nothing []
-              Just elaborated -> pure $ AnalyzedBuffer bufInfo.file (Just tokens) (Just notations) (Just elaborated) []
+              Nothing -> pure $ buf (Just tokens) (Just notations) Nothing
+              Just elaborated -> pure $ buf (Just tokens) (Just notations) (Just elaborated)
 
   diagnostics <- liftIO $ readIORef diagRef
 
