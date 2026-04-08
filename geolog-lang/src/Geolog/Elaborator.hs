@@ -316,14 +316,14 @@ syn SKinetic c (N.App n ns) = do
       go g' a' ns'
 syn SPotential _ n@(N.App _ _) =
   unsupportedInPotentialMode (N.span n) "application"
-syn SKinetic _ (N.Keyword "Query" _) =
-  pure (code $ universe QueryU, universe TheoryU)
-syn SPotential _ (N.Keyword "Query" s) =
+syn SKinetic _ (N.Keyword "Set" _) =
+  pure (code $ universe SetU, universe TheoryU)
+syn SPotential _ (N.Keyword "Set" s) =
   unsupportedInPotentialMode s "universes"
 syn SKinetic c (N.Infix n1 (N.Keyword arr@("~>"; "->") _) nb) =
   let (domU, pv) = case arr of
         "~>" -> (PrimU, PrimTheory)
-        "->" -> (QueryU, QueryTheory)
+        "->" -> (SetU, SetTheory)
    in case n1 of
         (N.Infix (N.Ident x _) (N.Keyword ":" _) na) -> do
           ga <- typ c domU na
@@ -343,9 +343,9 @@ syn SKinetic c n@(N.Infix n0 (N.Keyword "=" _) n1) = do
   (g0, a0) <- synK c n0
   (g1, a1) <- synK c n1
   a <- guardDefEq (N.span n1) c a0 a1 a0
-  unless (levelOf a == Query) $
+  unless (levelOf a == Set) $
     equalityUnsupportedAtLevel (N.span n) (levelOf a) (prtVal c.shape a)
-  pure (code $ G (Eq (quote c.shape.length a) g0.stx g1.stx) (VEq a g0.val g1.val), universe QueryU)
+  pure (code $ G (Eq (quote c.shape.length a) g0.stx g1.stx) (VEq a g0.val g1.val), universe SetU)
 syn _ _ (N.Keyword "Int" _) = pure (code $ builtinTy BuiltinInt, universe PrimU)
 syn _ _ (N.Keyword "String" _) = pure (code $ builtinTy BuiltinString, universe PrimU)
 syn SKinetic _ (N.String s _) = pure (lit $ LitString s, builtinTy BuiltinString)
@@ -436,7 +436,7 @@ elabDef n = do
 
 elabDecl :: (ElabArgs) => Ntn -> IO (Name, GlobalEntry)
 elabDecl (N.Decl "theory" n _) = elabType TheoryU n
-elabDecl (N.Decl "query" n _) = elabType QueryU n
+elabDecl (N.Decl "set" n _) = elabType SetU n
 elabDecl (N.Decl "def" n _) = elabDef n
 elabDecl n = unexpectedNotation n "top-level declaration"
 

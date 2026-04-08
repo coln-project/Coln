@@ -1,6 +1,6 @@
 theory Graph := sig
-  V : Query
-  E : V -> V -> Query
+  V : Set
+  E : V -> V -> Set
 end
 
 theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
@@ -9,7 +9,7 @@ theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
 end
 
 theory Path (G : Graph) := sig
-  t : G.V -> G.V -> Query
+  t : G.V -> G.V -> Set
   empty : (x : G.V) -> t x x
   cons : (
     (x : G.V) ->
