@@ -113,7 +113,7 @@ actions = do
   -- Build VSCode extension
   phony "vsce" $ do
     cmd_ "cabal build geolog-lsp"
-    let serverDir = "geolog-lsp/client/server" </> (System.Info.os <> "-" <> System.Info.arch)
+    let serverDir = "geolog-lsp/client/server" </> (System.Info.arch <> "-" <> System.Info.os)
     liftIO $ createDirectoryIfMissing True serverDir
     StdoutTrim binary <- cmd "cabal list-bin geolog-lsp"
     copyFileChanged binary $ serverDir </> "geolog-lsp"
