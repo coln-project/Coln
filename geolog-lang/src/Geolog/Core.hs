@@ -10,7 +10,7 @@ import Geolog.Common
 import Prettyprinter
 
 data Level
-  = Query
+  = Set
   | Theory
   | Top
   | Prim
@@ -21,9 +21,9 @@ instance DPretty Level where
 
 instance PartialOrd Level where
   leq l1 l2 = case (l1, l2) of
-    (Query, Prim) -> False
-    (Query, _) -> True
-    (Theory, Query) -> False
+    (Set, Prim) -> False
+    (Set, _) -> True
+    (Theory, Set) -> False
     (Theory, Prim) -> False
     (Theory, _) -> True
     (Top, Top) -> True
@@ -36,26 +36,26 @@ class LevelOf a where
   levelOf :: a -> Level
 
 data Universe
-  = QueryU
+  = SetU
   | TheoryU
   | PrimU
   deriving (Eq, Show)
 
 decodesInto :: Universe -> Level
 decodesInto = \case
-  QueryU -> Query
+  SetU -> Set
   TheoryU -> Theory
   PrimU -> Prim
 
 codesInto :: Universe -> Level
 codesInto = \case
-  QueryU -> Theory
+  SetU -> Theory
   TheoryU -> Top
   PrimU -> Top
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case
-  Query -> Just QueryU
+  Set -> Just SetU
   Theory -> Just TheoryU
   Prim -> Just PrimU
   Top -> Nothing
@@ -64,7 +64,7 @@ universeFor = \case
 -- for higher-order stuff. Not sure whether this is semantically good though? Or
 -- whether this would mess with things we care about...
 data PiVariant
-  = QueryTheory
+  = SetTheory
   | PrimTheory
   | TheoryTop
   deriving (Eq, Show)
@@ -74,13 +74,13 @@ instance Pretty PiVariant where
 
 instance LevelOf PiVariant where
   levelOf = \case
-    QueryTheory -> Theory
+    SetTheory -> Theory
     PrimTheory -> Theory
     TheoryTop -> Top
 
 piVariant :: Level -> Level -> Maybe PiVariant
 piVariant dom cod
-  | leq dom Query && leq cod Theory = Just QueryTheory
+  | leq dom Set && leq cod Theory = Just SetTheory
   | leq dom Prim && leq cod Theory = Just PrimTheory
   | leq dom Theory = Just TheoryTop
   | otherwise = Nothing
@@ -90,7 +90,7 @@ class HasCodomain a b | a -> b where
 
 instance HasCodomain PiVariant Level where
   codOf = \case
-    QueryTheory -> Theory
+    SetTheory -> Theory
     PrimTheory -> Theory
     TheoryTop -> Top
 
@@ -209,7 +209,7 @@ instance LevelOf (TyV e) where
       _ -> error "decoded a non-type"
     VPi pv _ _ -> codOf pv
     VRecord l _ _ -> l
-    VEq _ _ _ -> Query
+    VEq _ _ _ -> Set
     VBuiltinTy _ -> Prim
 
 data GlobalEntry

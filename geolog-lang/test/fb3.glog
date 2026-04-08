@@ -1,5 +1,5 @@
 theory IdempotentSemigroup := sig
-  Element : Query
+  Element : Set
 
   # Multiplication as a function
   mul : (x : Element) -> (y : Element) -> Element
