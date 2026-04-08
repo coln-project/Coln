@@ -18,3 +18,14 @@ tests:
   tags: [nix]
   script:
     - nix develop -c ./shake test
+
+vscode:
+  stage: build
+  tags: [nix]
+
+  script:
+    - nix develop -c ./shake vsce
+  artifacts:
+    expire_in: 3 days
+    paths:
+      - geolog-lsp/client/geolog-lsp-client*.vsix

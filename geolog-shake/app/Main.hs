@@ -10,7 +10,9 @@ import Development.Shake
 import Development.Shake.FilePath
 import Djot
 import GHC.Stack (withFrozenCallStack)
+import System.Directory (createDirectoryIfMissing, getCurrentDirectory)
 import System.Environment (setEnv)
+import System.Info qualified
 
 ignoreTheseProjects :: [String]
 ignoreTheseProjects = ["toy-datalog", "felix-db"]
@@ -69,6 +71,7 @@ actions = do
 
   phony "test" $ do
     cmd_ (Cwd "geolog-lang") "cabal test"
+    cmd_ (Cwd "geolog-lsp") "cabal test"
     cmd_ (Cwd "fnotation") "cabal test"
     cmd_ (Cwd "diagnostician") "cabal test"
 
@@ -106,6 +109,18 @@ actions = do
     need [tex]
     cmd_ "tectonic -o _build/site" [tex]
     needed support
+
+  -- Build VSCode extension
+  phony "vsce" $ do
+    cmd_ "cabal build geolog-lsp"
+    let serverDir = "geolog-lsp/client/server" </> (System.Info.os <> "-" <> System.Info.arch)
+    liftIO $ createDirectoryIfMissing True serverDir
+    StdoutTrim binary <- cmd "cabal list-bin geolog-lsp"
+    copyFileChanged binary $ serverDir </> "geolog-lsp"
+    cmd_ (Cwd "geolog-lsp/client") "npm install"
+    cmd_ (Cwd "geolog-lsp/client") "npm run compile"
+    cmd_ (Cwd "geolog-lsp/client") "npm prune --production"
+    cmd_ (Cwd "geolog-lsp/client") "npx --yes @vscode/vsce package --allow-missing-repository"
 
 main :: IO ()
 main = do

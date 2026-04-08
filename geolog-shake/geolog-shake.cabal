@@ -17,6 +17,7 @@ executable geolog-shake
     build-depends:
         base ^>=4.21.0.0,
         bytestring,
+        directory,
         djot,
         extra,
         shake,
