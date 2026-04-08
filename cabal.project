@@ -2,6 +2,7 @@ packages:
   geolog-shake/geolog-shake.cabal
   geolog-repl/geolog-repl.cabal
   geolog-lang/geolog-lang.cabal
+  geolog-lsp/geolog-lsp.cabal
   toy-datalog/toy-datalog.cabal
   diagnostician/diagnostician.cabal
   fnotation/fnotation.cabal
