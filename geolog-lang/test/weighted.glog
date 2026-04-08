@@ -1,6 +1,6 @@
 theory WeightedGraph := sig
-  V : Query
-  E : V -> V -> Int ~> Query
+  V : Set
+  E : V -> V -> Int ~> Set
 end
 
 theory Q (G : WeightedGraph) := sig

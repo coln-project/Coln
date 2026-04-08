@@ -1,6 +1,6 @@
 theory MathieuTemplate := sig
-  Point : Query
-  Quad : Query   # Ordered 4-tuples of distinct points
+  Point : Set
+  Quad : Set   # Ordered 4-tuples of distinct points
 
   # Quadruple projections
   q0 : Quad -> Point
