@@ -1,5 +1,5 @@
 theory ModularLattice := sig
-  Element : Query
+  Element : Set
 
   # ⋀ as a function
   meet : Element -> Element -> Element

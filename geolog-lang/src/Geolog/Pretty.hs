@@ -48,7 +48,7 @@ instance Delab (ElS e) where
 piVariantArr :: PiVariant -> Name
 piVariantArr = \case
   PrimTheory -> "~>"
-  QueryTheory -> "->"
+  SetTheory -> "->"
   TheoryTop -> "->"
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
