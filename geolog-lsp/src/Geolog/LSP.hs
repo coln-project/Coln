@@ -1,11 +1,10 @@
 module Geolog.LSP (serverDefinition) where
 
 import Control.Monad.IO.Class
-import Geolog.LSP.ConfigChange (workspaceChangeConfigurationHandler)
 import Geolog.LSP.DocChange (docChangeHandler, docOpenHandler)
 import Geolog.LSP.Highlight (tokenHandler)
+import Geolog.LSP.TrivialHandlers (cancelRequestHandler, didCloseHandler, initHandler, workspaceChangeConfigurationHandler)
 import Geolog.LSP.Types (GLogLspM, LSPState)
-import Language.LSP.Protocol.Message (SMethod (..))
 import Language.LSP.Protocol.Types (TextDocumentSyncKind (..), TextDocumentSyncOptions (..))
 import Language.LSP.Server
 
@@ -13,14 +12,13 @@ handlers :: Handlers GLogLspM
 handlers =
   mconcat
     [ initHandler
+    , workspaceChangeConfigurationHandler
+    , cancelRequestHandler
+    , didCloseHandler
     , docChangeHandler
     , docOpenHandler
     , tokenHandler
-    , workspaceChangeConfigurationHandler
     ]
-
-initHandler :: Handlers GLogLspM
-initHandler = notificationHandler SMethod_Initialized $ \_ -> pure ()
 
 serverDefinition :: LSPState -> ServerDefinition LSPState
 serverDefinition context =
