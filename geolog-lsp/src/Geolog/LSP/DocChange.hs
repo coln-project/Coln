@@ -16,10 +16,10 @@ import Language.LSP.Protocol.Types (Uri)
 import Language.LSP.Server (Handlers, MonadLsp, getConfig, notificationHandler)
 import Prelude hiding (lex)
 
-docOpenHandler :: Handlers DLogLspM
+docOpenHandler :: Handlers GLogLspM
 docOpenHandler = notificationHandler SMethod_TextDocumentDidOpen updateState
 
-docChangeHandler :: Handlers DLogLspM
+docChangeHandler :: Handlers GLogLspM
 docChangeHandler = notificationHandler SMethod_TextDocumentDidChange updateState
 
 updateState ::
