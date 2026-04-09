@@ -8,13 +8,13 @@ import Data.Maybe (catMaybes)
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation.Tokens
-import Geolog.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), DLogLspM, LSPState (..))
+import Geolog.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), GLogLspM, LSPState (..))
 import Geolog.LSP.Utils (currentBufferUri)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server
 
-tokenHandler :: Handlers DLogLspM
+tokenHandler :: Handlers GLogLspM
 tokenHandler = requestHandler SMethod_TextDocumentSemanticTokensFull $ \req responder -> do
   LSPState parseRef <- getConfig
   p <- lift . readIORef $ parseRef

@@ -25,7 +25,7 @@ data AnalyzedBuffer = AnalyzedBuffer
     diagnostics :: [D.Diagnostic GeologCode]
   }
 
-type DLogLspM = LspM LSPState
+type GLogLspM = LspM LSPState
 
 type UriBundle a = Map J.NormalizedUri a
 
