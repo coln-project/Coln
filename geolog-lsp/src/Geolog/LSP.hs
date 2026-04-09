@@ -1,6 +1,7 @@
 module Geolog.LSP (serverDefinition) where
 
 import Control.Monad.IO.Class
+import Geolog.LSP.ConfigChange (workspaceChangeConfigurationHandler)
 import Geolog.LSP.DocChange (docChangeHandler, docOpenHandler)
 import Geolog.LSP.Highlight (tokenHandler)
 import Geolog.LSP.Types (DLogLspM, LSPState)
@@ -14,7 +15,8 @@ handlers =
     [ initHandler,
       docChangeHandler,
       docOpenHandler,
-      tokenHandler
+      tokenHandler,
+      workspaceChangeConfigurationHandler
     ]
 
 initHandler :: Handlers DLogLspM
