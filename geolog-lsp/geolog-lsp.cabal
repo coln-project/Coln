@@ -17,6 +17,7 @@ executable geolog-lsp
     hs-source-dirs:     src
     other-modules:
         Geolog.LSP
+        Geolog.LSP.ConfigChange
         Geolog.LSP.DocChange
         Geolog.LSP.Types
         Geolog.LSP.Highlight

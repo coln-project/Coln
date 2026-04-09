@@ -30,7 +30,8 @@ updateState ::
   , HasTextDocument a1 a2
   , HasUri a2 Uri
   ) =>
-  s -> m ()
+  s ->
+  m ()
 updateState req = do
   (bufferText, bufferUriNormalised, bufferUri) <- (,currentBufferUri req,req ^. currentBufferUriUnNormalized) <$> currentBufferText req
 
