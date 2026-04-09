@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use crate::ir::{Path, QName};
+use super::{Path, QName};
 
 impl Deref for Path {
     type Target = Vec<QName>;

@@ -1,4 +1,4 @@
-pub mod ir;
+pub use geolog_lang::ir;
 pub mod ops;
 pub mod repl;
 pub mod solver;
