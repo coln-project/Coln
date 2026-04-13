@@ -3,7 +3,8 @@ use std::sync::Once;
 use tracing_subscriber::EnvFilter;
 
 use geomerge::{
-    ir::{FlatTheory, Path},
+    ir::{self, FlatTheory, Path},
+    persist::pst,
     store::{Store, StoreIntError},
     table::CellValue,
 };
@@ -30,6 +31,35 @@ fn fixture_theory(name: &str) -> FlatTheory {
 
     let json = std::fs::read_to_string(p).expect("read tests/data/paths.json");
     serde_json::from_str(&json).expect("parse FlatTheory from JSON")
+}
+
+fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
+    store.transact(|store| {
+        let graphs = store
+            .table_at_mut(&Path::from("Graphs"))
+            .expect("Graph table");
+
+        let gid1 = graphs.append_row_validated(vec![])?;
+        let gid2 = graphs.append_row_validated(vec![])?;
+        let g0 = store.table_at_mut(&Path::from("G0")).expect("G0 table");
+        g0.append_row_validated(vec![CellValue::Id(gid2)])?;
+        let g1 = store.table_at_mut(&Path::from("G1")).expect("G1 table");
+        g1.append_row_validated(vec![CellValue::Id(gid2)])?;
+
+        let gv = store.table_at_mut(&Path::from("G.V")).expect("G.V table");
+        let v1 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
+        let v2 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
+
+        let ge = store.table_at_mut(&Path::from("G.E")).expect("G.E table");
+
+        ge.append_row_validated(vec![
+            CellValue::Id(gid1),
+            CellValue::Id(v1),
+            CellValue::Id(v2),
+        ])?;
+
+        Ok(())
+    })
 }
 
 #[test]
@@ -99,32 +129,7 @@ fn test_add_data_and_law_enforce() {
 
     // One explicit column (Graphs); row id will be assigned by the db.
 
-    let r = store.transact(|store| {
-        let graphs = store
-            .table_at_mut(&Path::from("Graphs"))
-            .expect("Graph table");
-
-        let gid1 = graphs.append_row_validated(vec![])?;
-        let gid2 = graphs.append_row_validated(vec![])?;
-        let g0 = store.table_at_mut(&Path::from("G0")).expect("G0 table");
-        g0.append_row_validated(vec![CellValue::Id(gid2)])?;
-        let g1 = store.table_at_mut(&Path::from("G1")).expect("G1 table");
-        g1.append_row_validated(vec![CellValue::Id(gid2)])?;
-
-        let gv = store.table_at_mut(&Path::from("G.V")).expect("G.V table");
-        let v1 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
-        let v2 = gv.append_row_validated(vec![CellValue::Id(gid1)])?;
-
-        let ge = store.table_at_mut(&Path::from("G.E")).expect("G.E table");
-
-        ge.append_row_validated(vec![
-            CellValue::Id(gid1),
-            CellValue::Id(v1),
-            CellValue::Id(v2),
-        ])?;
-
-        Ok(())
-    });
+    let r = add_basic_data_to_path(&mut store);
 
     let ge = store.table_at(&Path::from("G.E")).expect("get table G.E");
     assert_eq!(ge.schema().columns.len(), 3);
@@ -190,4 +195,27 @@ fn test_fk() {
     let err = store.apply_batch(vec![ope]).expect_err("missing v2");
 
     assert!(matches!(err, StoreIntError::Law(_)));
+}
+
+#[test]
+fn test_persist_roundtrip() {
+    let theory = fixture_theory(PATHS_IR);
+
+    let mut store = Store::try_from_theory(theory).expect("valid theory");
+
+    let r = add_basic_data_to_path(&mut store);
+    assert!(r.is_ok());
+    assert!(
+        store
+            .table_at(&ir::Path::from("G.V"))
+            .expect("table G.V")
+            .row_count()
+            > 0
+    );
+
+    let content = store.dump();
+    let data = pst::encode_store(&store).expect("encoding store success");
+    let st = pst::decode_store(&data).expect("decode store success");
+
+    assert_eq!(content, st.dump());
 }

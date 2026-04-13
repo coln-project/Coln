@@ -18,6 +18,8 @@ pub struct Store {
     next_oid: TableOid,
     path_to_oid: HashMap<ir::Path, TableOid>,
     tables: HashMap<TableOid, Table>,
+    /// Source law entries retained for persistence. Compiled form lives in `laws`.
+    law_entries: Vec<ir::LawEntry>,
     /// Compiled law for this instance; table schemas live only on each [`Table`].
     laws: Vec<CompLaw>,
 }
@@ -66,8 +68,79 @@ impl Store {
             next_oid: 0,
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
+            law_entries: vec![],
             laws: vec![],
         }
+    }
+
+    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, &Table)> {
+        self.tables.iter()
+    }
+
+    pub(crate) fn next_oid(&self) -> TableOid {
+        self.next_oid
+    }
+
+    pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
+        self.path_to_oid.get(path).copied()
+    }
+
+    pub fn table(&self, oid: TableOid) -> Option<&Table> {
+        self.tables.get(&oid)
+    }
+
+    pub fn table_mut(&mut self, oid: TableOid) -> Option<&mut Table> {
+        self.tables.get_mut(&oid)
+    }
+
+    pub fn table_at(&self, path: &ir::Path) -> Option<&Table> {
+        self.resolve_table(path).and_then(|oid| self.table(oid))
+    }
+
+    pub fn table_at_mut(&mut self, path: &ir::Path) -> Option<&mut Table> {
+        self.resolve_table(path).and_then(|oid| self.table_mut(oid))
+    }
+
+    /// This will be test only, we won't allow adding tables from anything other
+    /// than the theory/schema
+    #[cfg(test)]
+    pub(crate) fn add_table(&mut self, path: ir::Path, schema: ir::Schema) -> TableOid {
+        let table = Table::new(path.clone(), schema);
+        self.insert_table(path, table)
+    }
+
+    pub fn laws(&self) -> &[CompLaw] {
+        &self.laws
+    }
+
+    pub fn table_count(&self) -> usize {
+        self.tables.len()
+    }
+
+    pub(crate) fn law_entries(&self) -> &[ir::LawEntry] {
+        &self.law_entries
+    }
+
+    /// Reconstruct a store from persisted data, recompiling laws from their source entries.
+    pub(crate) fn from_persisted(
+        next_oid: TableOid,
+        tables: Vec<(TableOid, Table)>,
+        law_entries: Vec<ir::LawEntry>,
+    ) -> Result<Self, CompileError> {
+        let mut path_to_oid = HashMap::new();
+        let mut tables_map = HashMap::new();
+        for (oid, table) in tables {
+            path_to_oid.insert(table.path().clone(), oid);
+            tables_map.insert(oid, table);
+        }
+        let laws = Store::compile_laws(&law_entries)?;
+        Ok(Self {
+            next_oid,
+            path_to_oid,
+            tables: tables_map,
+            law_entries,
+            laws,
+        })
     }
 
     fn compile_laws(laws: &[LawEntry]) -> Result<Vec<CompLaw>, CompileError> {
@@ -111,16 +184,9 @@ impl Store {
             next_oid,
             path_to_oid,
             tables: tables_map,
+            law_entries: laws,
             laws: comp_laws,
         })
-    }
-
-    pub fn laws(&self) -> &[CompLaw] {
-        &self.laws
-    }
-
-    pub fn table_count(&self) -> usize {
-        self.tables.len()
     }
 
     /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
@@ -140,26 +206,6 @@ impl Store {
         self.path_to_oid.insert(path, oid);
         self.tables.insert(oid, table);
         oid
-    }
-
-    pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
-        self.path_to_oid.get(path).copied()
-    }
-
-    pub fn table(&self, oid: TableOid) -> Option<&Table> {
-        self.tables.get(&oid)
-    }
-
-    pub fn table_mut(&mut self, oid: TableOid) -> Option<&mut Table> {
-        self.tables.get_mut(&oid)
-    }
-
-    pub fn table_at(&self, path: &ir::Path) -> Option<&Table> {
-        self.resolve_table(path).and_then(|oid| self.table(oid))
-    }
-
-    pub fn table_at_mut(&mut self, path: &ir::Path) -> Option<&mut Table> {
-        self.resolve_table(path).and_then(|oid| self.table_mut(oid))
     }
 
     /// Validates the full batch against current store state (including PK clashes **within** the

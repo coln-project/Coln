@@ -111,7 +111,7 @@ pub struct ValueEntry {
     pub term: Term,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct Atom {
@@ -120,7 +120,7 @@ pub struct Atom {
     pub values: Vec<ValueEntry>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "tag", rename_all = "lowercase"))]
 pub enum Prop {
@@ -130,7 +130,7 @@ pub enum Prop {
     Or { props: Vec<Prop> },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Law {
     pub variables: Vec<ColType>,
@@ -138,21 +138,21 @@ pub struct Law {
     pub consequent: Prop,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TableEntry {
     pub path: Path,
     pub table: Schema,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct LawEntry {
     pub path: Path,
     pub law: Law,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FlatTheory {
     pub tables: Vec<TableEntry>,
