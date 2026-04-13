@@ -154,6 +154,9 @@ to an IO action `reportIO` that logs a diagnostic
 -}
 newtype Reporter a = Reporter {reportIO :: Diagnostic a -> IO ()}
 
+reportTo :: Reporter a -> Diagnostic a -> IO ()
+reportTo r d = r.reportIO d
+
 instance Contravariant Reporter where
   contramap f (Reporter r) = Reporter $ r . fmap f
 
