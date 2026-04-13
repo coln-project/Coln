@@ -123,9 +123,9 @@ impl fmt::Display for CellValue {
 pub struct Table {
     path: ir::Path,
     schema: Schema,
-    next_rowid: u64,
-    row_ids: Vec<RowId>,
-    cols: Vec<Vec<CellValue>>,
+    pub(crate) next_rowid: u64,
+    pub(crate) row_ids: Vec<RowId>,
+    pub(crate) cols: Vec<Vec<CellValue>>,
 }
 
 impl Table {
