@@ -6,6 +6,7 @@ use std::{
 
 use crate::{
     ir::{ColType, FlatTheory, PrimType},
+    persist::pst::decode_store,
     repl::{
         error::ReplError,
         parse::{TransactAssignment, parse_cell_value, parse_cell_value_transact},
@@ -42,6 +43,12 @@ pub struct LoadedState {
     pub(crate) schema: SchemaSummary,
 }
 
+impl LoadedState {
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+}
+
 fn format_primary_key(primary_key: &PrimaryKeySummary) -> String {
     match primary_key {
         PrimaryKeySummary::None => "none".to_string(),
@@ -62,6 +69,31 @@ fn format_col_type(col_type: &ColType) -> String {
 }
 
 impl SchemaSummary {
+    fn from_store(source: PathBuf, store: &Store) -> Self {
+        let mut tables: Vec<TableSummary> = store
+            .tables()
+            .map(|(_, table)| TableSummary {
+                path: table.path().to_string(),
+                column_count: table.schema().columns.len(),
+                primary_key: match &table.schema().primary_key {
+                    None => PrimaryKeySummary::None,
+                    Some(columns) if columns.is_empty() => PrimaryKeySummary::Singleton,
+                    Some(columns) => PrimaryKeySummary::Columns(columns.clone()),
+                },
+                columns: table.schema().columns.iter().map(format_col_type).collect(),
+            })
+            .collect();
+        tables.sort_by(|a, b| a.path.cmp(&b.path));
+        let law_count = store.law_entries().len();
+        let table_count = tables.len();
+        Self {
+            source,
+            table_count,
+            law_count,
+            tables,
+        }
+    }
+
     fn from_theory(source: PathBuf, theory: &FlatTheory) -> Self {
         let tables = theory
             .tables
@@ -85,6 +117,13 @@ impl SchemaSummary {
             tables,
         }
     }
+}
+
+pub fn load_store(path: &Path) -> Result<LoadedState, ReplError> {
+    let bytes = fs::read(path)?;
+    let store = decode_store(&bytes)?;
+    let schema = SchemaSummary::from_store(path.to_path_buf(), &store);
+    Ok(LoadedState { store, schema })
 }
 
 pub fn load_schema(path: &Path) -> Result<LoadedState, ReplError> {

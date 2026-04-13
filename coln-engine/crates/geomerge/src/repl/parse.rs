@@ -20,6 +20,9 @@ pub enum Command {
     LoadSchema {
         path: String,
     },
+    LoadStore {
+        path: String,
+    },
     ListSchema,
     Add {
         table: String,
@@ -33,6 +36,9 @@ pub enum Command {
         name: String,
     },
     DumpStore,
+    Persist {
+        path: String,
+    },
     Exit,
 }
 
@@ -113,6 +119,10 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
             [_, path] => Ok(Command::LoadSchema { path: path.clone() }),
             _ => Err("usage: load-schema <path>;".to_string()),
         },
+        "load-store" => match parts.as_slice() {
+            [_, path] => Ok(Command::LoadStore { path: path.clone() }),
+            _ => Err("usage: load-store <path>;".to_string()),
+        },
         "list-schema" => {
             if parts.len() == 1 {
                 Ok(Command::ListSchema)
@@ -126,6 +136,10 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
             _ => Err("usage: dump-table <table>;".to_string()),
         },
         "dump-store" => Ok(Command::DumpStore),
+        "persist" => match parts.as_slice() {
+            [_, path] => Ok(Command::Persist { path: path.clone() }),
+            _ => Err("usage: persist <path>;".to_string()),
+        },
         _ => Err(format!(
             "unknown statement: {command}. Statements must end with `;`, or use `/help` for meta commands."
         )),

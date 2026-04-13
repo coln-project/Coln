@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::persist::error::PersisError;
 use crate::store::StoreIntError;
 use crate::table::ValidationError;
 
@@ -14,6 +15,7 @@ pub enum ReplError {
     Io(std::io::Error),
     Json(serde_json::Error),
     Store(StoreIntError),
+    Persist(PersisError),
 }
 
 /// Parse failure for a single cell inside a `begin transact` block (before column index is known).
@@ -37,6 +39,7 @@ impl fmt::Display for ReplError {
             ReplError::Io(err) => write!(f, "{err}"),
             ReplError::Json(err) => write!(f, "{err}"),
             ReplError::Store(err) => write!(f, "{err}"),
+            ReplError::Persist(err) => write!(f, "{err}"),
         }
     }
 }
@@ -58,6 +61,12 @@ impl From<serde_json::Error> for ReplError {
 impl From<StoreIntError> for ReplError {
     fn from(value: StoreIntError) -> Self {
         Self::Store(value)
+    }
+}
+
+impl From<PersisError> for ReplError {
+    fn from(value: PersisError) -> Self {
+        Self::Persist(value)
     }
 }
 

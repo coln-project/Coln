@@ -44,4 +44,7 @@ begin transact;
   e1 = add G.E values (g0 v1 v2);
 
 commit;
+
+persist paths.bin;
+load-store paths.bin;
 ```

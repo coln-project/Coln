@@ -1,4 +1,4 @@
-//! Integration tests for `begin transact` … `commit` CLI semantics.
+//! Integration tests for REPL commands.
 
 use std::path::PathBuf;
 
