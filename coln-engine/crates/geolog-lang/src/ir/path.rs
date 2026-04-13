@@ -40,6 +40,9 @@ impl Display for Path {
 /// skipped. An empty or whitespace-only string yields an empty path.
 ///
 /// Use [`Path::from`] on `&str` / [`String`], or [`str::parse`].
+///
+/// This function does not fail, as we do not really have a strict notion of what
+/// is allowed not allowed in the string form of the path anyway
 fn parse_path_from_str(s: &str) -> Path {
     Path(
         s.split('.')

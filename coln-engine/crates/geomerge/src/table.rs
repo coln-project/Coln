@@ -2,7 +2,10 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Write;
 
+use geolog_lang::ir::Path;
+
 use crate::ir;
+use crate::persist::{self, PersisError};
 use crate::{
     ir::{ColType, PrimType, Schema},
     ops::Op,
@@ -14,7 +17,7 @@ pub type TableOid = u64;
 /// It is managed by the database, read-only for the user
 pub type RowId = u64;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ValidationError {
     ColumnCount {
         expected: usize,
@@ -138,6 +141,22 @@ impl Table {
             row_ids: vec![],
             cols: vec![Vec::new(); n],
         }
+    }
+
+    pub fn from_bytes(schema: Schema, data: &[u8]) -> Result<Self, PersisError> {
+        let (hdr, row_ids, cols) = persist::decode_bytes(data, &schema)?;
+        let path = Path::from(hdr.path);
+        Ok(Table {
+            path,
+            schema,
+            next_rowid: hdr.next_rowid,
+            row_ids,
+            cols,
+        })
+    }
+
+    pub fn to_bytes(&self) -> Result<Vec<u8>, PersisError> {
+        persist::encode_table(&self)
     }
 
     pub fn schema(&self) -> &Schema {
@@ -361,6 +380,125 @@ mod tests {
         assert_eq!(tbl.cell_at(0, 1), Some(&CellValue::Str("x".to_string())));
         assert_eq!(tbl.row_id_at(1), None);
         assert_eq!(tbl.cell_at(0, 2), None);
+    }
+
+    #[test]
+    fn round_trip_empty_table() {
+        let schema = ir::Schema {
+            columns: vec![],
+            primary_key: None,
+        };
+        let tbl = Table::new(Path::from("empty"), schema.clone());
+        let bytes = tbl.to_bytes().unwrap();
+        let restored = Table::from_bytes(schema, &bytes).unwrap();
+
+        assert_eq!(restored.path().to_string(), "empty");
+        assert_eq!(restored.row_count(), 0);
+        assert_eq!(restored.next_rowid, 0);
+    }
+
+    #[test]
+    fn round_trip_single_int_column() {
+        let schema = ir::Schema {
+            columns: vec![ColType::PrimType {
+                prim: PrimType::PrimInt,
+            }],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("ints"), schema.clone());
+        tbl.append_row_validated(vec![CellValue::Int(10)]).unwrap();
+        tbl.append_row_validated(vec![CellValue::Int(20)]).unwrap();
+        tbl.append_row_validated(vec![CellValue::Int(30)]).unwrap();
+
+        let bytes = tbl.to_bytes().unwrap();
+        let restored = Table::from_bytes(schema, &bytes).unwrap();
+
+        assert_eq!(restored.row_count(), 3);
+        assert_eq!(restored.next_rowid, 3);
+        assert_eq!(restored.row_id_at(0), Some(0));
+        assert_eq!(restored.row_id_at(1), Some(1));
+        assert_eq!(restored.row_id_at(2), Some(2));
+        assert_eq!(restored.cell_at(0, 0), Some(&CellValue::Int(10)));
+        assert_eq!(restored.cell_at(1, 0), Some(&CellValue::Int(20)));
+        assert_eq!(restored.cell_at(2, 0), Some(&CellValue::Int(30)));
+    }
+
+    #[test]
+    fn round_trip_mixed_columns() {
+        let schema = ir::Schema {
+            columns: vec![
+                ColType::PrimType {
+                    prim: PrimType::PrimInt,
+                },
+                ColType::PrimType {
+                    prim: PrimType::PrimString,
+                },
+                ColType::EntityType {
+                    path: Path::from("G.E"),
+                },
+            ],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("mixed"), schema.clone());
+        tbl.append_row_validated(vec![
+            CellValue::Int(42),
+            CellValue::Str("hello".into()),
+            CellValue::Id(0),
+        ])
+        .unwrap();
+        tbl.append_row_validated(vec![
+            CellValue::Int(-1),
+            CellValue::Str("world".into()),
+            CellValue::Id(1),
+        ])
+        .unwrap();
+
+        let bytes = tbl.to_bytes().unwrap();
+        let restored = Table::from_bytes(schema, &bytes).unwrap();
+
+        assert_eq!(restored.path().to_string(), "mixed");
+        assert_eq!(restored.row_count(), 2);
+        assert_eq!(restored.next_rowid, 2);
+        assert_eq!(restored.row_id_at(0), Some(0));
+        assert_eq!(restored.row_id_at(1), Some(1));
+        assert_eq!(restored.cell_at(0, 0), Some(&CellValue::Int(42)));
+        assert_eq!(restored.cell_at(1, 0), Some(&CellValue::Int(-1)));
+        assert_eq!(
+            restored.cell_at(0, 1),
+            Some(&CellValue::Str("hello".into()))
+        );
+        assert_eq!(
+            restored.cell_at(1, 1),
+            Some(&CellValue::Str("world".into()))
+        );
+        assert_eq!(restored.cell_at(0, 2), Some(&CellValue::Id(0)));
+        assert_eq!(restored.cell_at(1, 2), Some(&CellValue::Id(1)));
+    }
+
+    #[test]
+    fn round_trip_preserves_dump() {
+        let schema = ir::Schema {
+            columns: vec![
+                ColType::PrimType {
+                    prim: PrimType::PrimInt,
+                },
+                ColType::PrimType {
+                    prim: PrimType::PrimString,
+                },
+            ],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("dump.check"), schema.clone());
+        tbl.append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".into())])
+            .unwrap();
+        tbl.append_row_validated(vec![CellValue::Int(8), CellValue::Str("y".into())])
+            .unwrap();
+
+        let original_dump = tbl.dump();
+        let bytes = tbl.to_bytes().unwrap();
+        let restored = Table::from_bytes(schema, &bytes).unwrap();
+
+        assert_eq!(restored.dump(), original_dump);
     }
 
     #[test]

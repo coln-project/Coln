@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use geolog_lang::ir::{ColType, PrimType};
+use geolog_lang::ir::{ColType, PrimType, Schema};
 use hexane::v1::Column;
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,7 @@ pub enum PersisError {
     IOError(io::Error),
     SchemaError(String),
     DataFormatError(String),
+    DecodeError(hexane::PackError),
     Other(String),
 }
 
@@ -24,6 +25,12 @@ impl From<postcard::Error> for PersisError {
 impl From<io::Error> for PersisError {
     fn from(value: io::Error) -> Self {
         Self::IOError(value)
+    }
+}
+
+impl From<hexane::PackError> for PersisError {
+    fn from(value: hexane::PackError) -> Self {
+        Self::DecodeError(value)
     }
 }
 
@@ -139,7 +146,7 @@ fn encode_table_bytes(header: &[u8], column_blobs: &[Vec<u8>]) -> Result<Vec<u8>
 /// Column order is: **row-id column**, then each schema column in order. Each `[bytes]` is
 /// exactly what [`Column::save`] produced for that column; use [`Column::load`] on that slice
 /// alone (hexane v1 does not split a concatenated payload without per-column lengths).
-pub fn encode_table(table: &Table) -> Result<Vec<u8>, PersisError> {
+pub(crate) fn encode_table(table: &Table) -> Result<Vec<u8>, PersisError> {
     let header = TblHeader {
         format_version: 0,
         next_rowid: table.next_rowid,
@@ -194,22 +201,59 @@ fn decode_header(data: &[u8]) -> Result<TblHeader, PersisError> {
     postcard::from_bytes(data).map_err(PersisError::from)
 }
 
-fn decode_columns(data: &[u8]) -> Result<Vec<Vec<u8>>, PersisError> {
-    if data.len() < 4 {
-        return Err(PersisError::DataFormatError(
-            "truncated: missing column count".into(),
-        ));
-    }
+fn decode_columns(
+    data: &[u8],
+    schema: &Schema,
+) -> Result<(Vec<RowId>, Vec<Vec<CellValue>>), PersisError> {
     let mut pos = 0usize;
     let n = read_u32(data, &mut pos, "column count")? as usize;
 
-    let mut cols = Vec::with_capacity(n);
-    for _ in 0..n {
-        let len_u64 = read_u64(data, &mut pos, "column blob length")?;
-        let len = usize::try_from(len_u64)
-            .map_err(|_| PersisError::Other("column blob length does not fit in usize".into()))?;
+    let expected = schema.columns.len() + 1; // row-id column + data columns
+    if n != expected {
+        return Err(PersisError::DataFormatError(format!(
+            "column count mismatch: file has {n}, schema expects {expected}"
+        )));
+    }
+
+    // First column is always row ids
+    let rowid_len = read_u64(data, &mut pos, "row-id column length")? as usize;
+    let rowid_blob = read_slice(data, &mut pos, rowid_len, "row-id column")?;
+    let row_ids: Vec<RowId> = Column::<RowId>::load(rowid_blob)?.iter().collect();
+
+    let mut cols: Vec<Vec<CellValue>> = Vec::with_capacity(schema.columns.len());
+    for (i, col_type) in schema.columns.iter().enumerate() {
+        let len = read_u64(data, &mut pos, "column blob length")? as usize;
         let blob = read_slice(data, &mut pos, len, "column blob")?;
-        cols.push(blob.to_vec());
+        match col_type {
+            ColType::EntityType { .. } => {
+                let restored = Column::<RowId>::load(blob)?
+                    .iter()
+                    .map(CellValue::Id)
+                    .collect();
+                cols.push(restored);
+            }
+            ColType::PrimType { prim } => match prim {
+                PrimType::PrimInt => {
+                    let restored = Column::<i64>::load(blob)?
+                        .iter()
+                        .map(CellValue::Int)
+                        .collect();
+                    cols.push(restored);
+                }
+                PrimType::PrimString => {
+                    let restored = Column::<String>::load(blob)?
+                        .iter()
+                        .map(|s| CellValue::Str(s.to_owned()))
+                        .collect();
+                    cols.push(restored);
+                }
+            },
+            ColType::Tuple { .. } => {
+                return Err(PersisError::SchemaError(format!(
+                    "column {i}: tuple columns not supported yet"
+                )));
+            }
+        }
     }
 
     if pos != data.len() {
@@ -219,12 +263,15 @@ fn decode_columns(data: &[u8]) -> Result<Vec<Vec<u8>>, PersisError> {
         )));
     }
 
-    Ok(cols)
+    Ok((row_ids, cols))
 }
 
-/// Decodes bytes produced by [`encode_table`]. Returns the postcard header and each column blob
-/// (row-id column first, then schema order) for use with [`Column::load`].
-pub fn decode_bytes(data: &[u8]) -> Result<(TblHeader, Vec<Vec<u8>>), PersisError> {
+/// Decodes bytes produced by [`encode_table`]. Returns the header, row ids, and decoded
+/// data columns (schema order).
+pub(crate) fn decode_bytes(
+    data: &[u8],
+    schema: &Schema,
+) -> Result<(TblHeader, Vec<RowId>, Vec<Vec<CellValue>>), PersisError> {
     if data.len() < MAGIC.len() {
         return Err(PersisError::Other("truncated: missing magic".into()));
     }
@@ -233,21 +280,19 @@ pub fn decode_bytes(data: &[u8]) -> Result<(TblHeader, Vec<Vec<u8>>), PersisErro
     }
 
     let mut pos = MAGIC.len();
-    let header_len_u32: u32 = read_u32(data, &mut pos, "header length")?;
-    let header_len = header_len_u32 as usize;
+    let header_len = read_u32(data, &mut pos, "header length")? as usize;
 
     let header_slice = read_slice(data, &mut pos, header_len, "header")?;
     let header = decode_header(header_slice)?;
 
-    let columns = decode_columns(&data[pos..])?;
-    Ok((header, columns))
+    let (row_ids, columns) = decode_columns(&data[pos..], &schema)?;
+    Ok((header, row_ids, columns))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ir::{Path, Schema};
-    use hexane::v1::Column;
 
     fn int_schema() -> Schema {
         Schema {
@@ -284,44 +329,43 @@ mod tests {
 
     #[test]
     fn round_trip_empty_table() {
-        let tbl = Table::new(Path::from("empty"), empty_schema());
+        let schema = empty_schema();
+        let tbl = Table::new(Path::from("empty"), schema.clone());
         let bytes = encode_table(&tbl).unwrap();
-        let (header, cols) = decode_bytes(&bytes).unwrap();
+        let (header, row_ids, cols) = decode_bytes(&bytes, &schema).unwrap();
 
         assert_eq!(header.format_version, 0);
         assert_eq!(header.next_rowid, 0);
         assert_eq!(header.path, "empty");
-        // row-id column only, no data columns
-        assert_eq!(cols.len(), 1);
-        let rowid_col = Column::<u64>::load(&cols[0]).unwrap();
-        assert_eq!(rowid_col.len(), 0);
+        assert!(row_ids.is_empty());
+        assert!(cols.is_empty());
     }
 
     #[test]
     fn round_trip_single_int_column() {
-        let mut tbl = Table::new(Path::from("ints"), int_schema());
+        let schema = int_schema();
+        let mut tbl = Table::new(Path::from("ints"), schema.clone());
         tbl.append_row_validated(vec![CellValue::Int(10)]).unwrap();
         tbl.append_row_validated(vec![CellValue::Int(20)]).unwrap();
         tbl.append_row_validated(vec![CellValue::Int(30)]).unwrap();
 
         let bytes = encode_table(&tbl).unwrap();
-        let (header, cols) = decode_bytes(&bytes).unwrap();
+        let (header, row_ids, cols) = decode_bytes(&bytes, &schema).unwrap();
 
         assert_eq!(header.next_rowid, 3);
         assert_eq!(header.path, "ints");
-        // 1 row-id column + 1 data column
-        assert_eq!(cols.len(), 2);
-
-        let rowid_col = Column::<u64>::load(&cols[0]).unwrap();
-        assert_eq!(rowid_col.to_vec(), vec![0u64, 1, 2]);
-
-        let int_col = Column::<i64>::load(&cols[1]).unwrap();
-        assert_eq!(int_col.to_vec(), vec![10i64, 20, 30]);
+        assert_eq!(row_ids, vec![0u64, 1, 2]);
+        assert_eq!(cols.len(), 1);
+        assert_eq!(
+            cols[0],
+            vec![CellValue::Int(10), CellValue::Int(20), CellValue::Int(30)]
+        );
     }
 
     #[test]
     fn round_trip_mixed_columns() {
-        let mut tbl = Table::new(Path::from("mixed"), mixed_schema());
+        let schema = mixed_schema();
+        let mut tbl = Table::new(Path::from("mixed"), schema.clone());
         tbl.append_row_validated(vec![
             CellValue::Int(42),
             CellValue::Str("hello".into()),
@@ -336,44 +380,43 @@ mod tests {
         .unwrap();
 
         let bytes = encode_table(&tbl).unwrap();
-        let (header, cols) = decode_bytes(&bytes).unwrap();
+        let (header, row_ids, cols) = decode_bytes(&bytes, &schema).unwrap();
 
         assert_eq!(header.next_rowid, 2);
-        // row-id + 3 data columns
-        assert_eq!(cols.len(), 4);
-
-        let rowid_col = Column::<u64>::load(&cols[0]).unwrap();
-        assert_eq!(rowid_col.to_vec(), vec![0u64, 1]);
-
-        let int_col = Column::<i64>::load(&cols[1]).unwrap();
-        assert_eq!(int_col.to_vec(), vec![42i64, -1]);
-
-        let str_col = Column::<String>::load(&cols[2]).unwrap();
-        assert_eq!(str_col.to_vec(), vec!["hello", "world"]);
-
-        let entity_col = Column::<u64>::load(&cols[3]).unwrap();
-        assert_eq!(entity_col.to_vec(), vec![0u64, 1]);
+        assert_eq!(row_ids, vec![0u64, 1]);
+        assert_eq!(cols.len(), 3);
+        assert_eq!(cols[0], vec![CellValue::Int(42), CellValue::Int(-1)]);
+        assert_eq!(
+            cols[1],
+            vec![
+                CellValue::Str("hello".into()),
+                CellValue::Str("world".into())
+            ]
+        );
+        assert_eq!(cols[2], vec![CellValue::Id(0), CellValue::Id(1)]);
     }
 
     #[test]
     fn decode_rejects_bad_magic() {
-        let result = decode_bytes(b"XXXX____");
+        let result = decode_bytes(b"XXXX____", &empty_schema());
         assert!(matches!(result, Err(PersisError::Other(_))));
     }
 
     #[test]
     fn decode_rejects_truncated_input() {
-        assert!(decode_bytes(b"GM").is_err());
-        assert!(decode_bytes(b"GMtb").is_err());
+        let s = empty_schema();
+        assert!(decode_bytes(b"GM", &s).is_err());
+        assert!(decode_bytes(b"GMtb", &s).is_err());
     }
 
     #[test]
     fn decode_rejects_trailing_bytes() {
-        let tbl = Table::new(Path::from("t"), empty_schema());
+        let schema = empty_schema();
+        let tbl = Table::new(Path::from("t"), schema.clone());
         let mut bytes = encode_table(&tbl).unwrap();
         bytes.extend_from_slice(b"extra");
         assert!(matches!(
-            decode_bytes(&bytes),
+            decode_bytes(&bytes, &schema),
             Err(PersisError::DataFormatError(_))
         ));
     }

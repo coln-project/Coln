@@ -23,7 +23,7 @@ pub struct Store {
 }
 
 /// Store integrity error
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum StoreIntError {
     Validation(ValidationError),
     Law(LawViolation),
