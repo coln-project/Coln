@@ -223,6 +223,9 @@ arg st = do
     T.Field -> do
       x <- curName st
       advanceClose st m $ Field x
+    T.Tag -> do
+      x <- curName st
+      advanceClose st m $ Tag x
     T.Int -> do
       i <- curInt st
       advanceClose st m $ Int i
