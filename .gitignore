@@ -339,6 +339,7 @@ _build/
 # nix result
 **/result
 **/.direnv
+.envrc
 
 # Geolog REPL history
 .history
