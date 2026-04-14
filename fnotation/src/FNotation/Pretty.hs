@@ -55,7 +55,7 @@ prt p = \case
      in par (looser p' p) (prt (LeftOf p') l <+> prt Bot n <+> prt (RightOf p') r)
   Block x hd stmts _ ->
     vsep $
-      [dpretty x <> maybe mempty prtTop hd]
+      [dpretty x <> maybe mempty ((" " <>) . prtTop) hd]
         ++ [indent 2 $ prtTop stmt | stmt <- stmts]
         ++ ["end"]
   Decl x n _ -> dpretty x <+> prtTop n
