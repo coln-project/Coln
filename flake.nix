@@ -55,4 +55,13 @@
           in
             project.devShells.default;
     });
+  nixConfig = {
+    # Binary Cache for haskell.nix  
+    trusted-public-keys = [
+      "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
+    ];
+    substituters = [
+      "https://cache.iog.io"
+    ];   
+  };
 }
