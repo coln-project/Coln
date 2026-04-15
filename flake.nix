@@ -16,6 +16,7 @@
         pkgs = import nixpkgs { inherit system; };
         extra-tools = pkgs: with (pkgs); [
           nodejs
+          ormolu
           tectonic
           typescript
         ];
@@ -28,7 +29,6 @@
             zlib
             zlib.dev
             pkg-config
-            ormolu
           ];
         };
         devShells.haskell-nix =
@@ -42,7 +42,6 @@
                   name = "geolog";
                   compiler-nix-name = "ghc9122";
                   shell.tools.cabal = "latest";
-                  shell.tools.ormolu = "latest";
                   shell.withHoogle = false;
                   shell.tools.haskell-language-server = "latest";
                   shell.nativeBuildInputs = extra-tools final;
