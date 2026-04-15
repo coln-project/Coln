@@ -16,6 +16,7 @@
         pkgs = import nixpkgs { inherit system; };
         extra-tools = pkgs: with (pkgs); [
           nodejs
+          tectonic
           typescript
         ];
       in {
