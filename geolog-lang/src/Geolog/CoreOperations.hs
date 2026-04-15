@@ -1,5 +1,6 @@
 module Geolog.CoreOperations where
 
+import Prelude hiding (init)
 import Control.Monad (forM_, unless)
 import Data.Kind (Type)
 import Diagnostician
@@ -20,6 +21,8 @@ class Core (el :: Energy -> Type) (ty :: Energy -> Type) | el -> ty, ty -> el wh
   universe :: Universe -> ty e
   builtinTy :: BuiltinTy -> ty e
   lit :: Literal -> el K
+  use :: el K -> el K
+  init :: ty K -> el K
 
 instance Core ElS TyS where
   app = App
@@ -29,6 +32,8 @@ instance Core ElS TyS where
   universe = U
   builtinTy = BuiltinTy
   lit = Lit
+  use = Use
+  init = Init
 
 appClo :: Clo (b e) -> ElV K -> b e
 appClo (Clo _ f) v = f v
@@ -80,6 +85,15 @@ instance Core ElV TyV where
 
   builtinTy = VBuiltinTy
   lit = VLit
+  
+  use (VPure v) = v
+  use (VNeu n) = case n.ty of
+                   VInductive a -> neu a n.head (SUse n.spine) Nothing
+                   _ -> panic "can only .use elements of inductive type"
+  use _ = panic "a value of inductive type should be a neutral or pure"
+
+  init a = neu (VInductive a) (VInit a) SId Nothing
+      
 
 behavesAs :: TyV K -> Maybe (TyV P)
 behavesAs (VU u) = Just (VU u)
@@ -87,6 +101,7 @@ behavesAs (VDecode n) = decode <$> n.behavesAs
 behavesAs (VPi pv a b) = Just (VPi pv a b)
 behavesAs (VEq _ _ _) = Nothing
 behavesAs (VBuiltinTy a) = Just $ VBuiltinTy a
+behavesAs (VInductive _) = Nothing
 
 expandRecord :: Head -> Spine -> [Name] -> TeleV K -> Fields (ElV K)
 expandRecord h sp xs te = Fields xs (go xs te)
@@ -106,7 +121,7 @@ neu a h sp be =
    in v
 
 local :: TyV K -> FId -> ElV K
-local a i = neu a (Local i) SId Nothing
+local a i = neu a (VLocal i) SId Nothing
 
 -- Evaluation
 --------------------------------------------------------------------------------
@@ -125,13 +140,16 @@ instance Eval (ElS e) (ElV e) where
     LocalVar i -> elemAt e i
     GlobalVar c -> case elemAt ?globalEnv c of
       KEntry _ v _ -> v
-      PEntry _ v a -> neu a (Global c) SId (Just v)
+      PEntry _ v a -> neu a (VGlobal c) SId (Just v)
     Code t -> code $ eval e t
     App t1 t2 -> eval e t1 `app` eval e t2
     Lam dom c -> VLam (eval e dom) (evalAbs e c)
     Proj t x -> eval e t `proj` x
     Cons fs -> VCons $ eval e <$> fs
     Lit l -> VLit l
+    Pure t -> VPure $ eval e t
+    Init a -> init $ eval e a
+    Use t -> use $ eval e t
 
 instance Eval (TeleS e) (TeleV e) where
   eval _ TSNil = TVNil
@@ -145,6 +163,7 @@ instance Eval (TyS e) (TyV e) where
     Record l xs te -> VRecord l xs (eval e te)
     Eq a t0 t1 -> VEq (eval e a) (eval e t0) (eval e t1)
     BuiltinTy t -> VBuiltinTy t
+    Inductive a -> VInductive $ eval e a
 
 -- Quoting
 --------------------------------------------------------------------------------
@@ -159,14 +178,16 @@ instance Quote FId BId where
 
 instance Quote Head (ElS K) where
   quote n = \case
-    Local i -> LocalVar (quote n i)
-    Global c -> GlobalVar c
+    VLocal i -> LocalVar (quote n i)
+    VGlobal c -> GlobalVar c
+    VInit a -> Init (quote n a)
 
 instance Quote Spine (ElS K -> ElS K) where
   quote n sp t = case sp of
     SId -> t
     SApp sp' t' -> App (quote n sp' t) (quote n t')
     SProj sp' x -> Proj (quote n sp' t) x
+    SUse sp' -> Use (quote n sp' t)
 
 quoteClo :: (Quote a b) => CtxLen -> TyV K -> Clo a -> Abs b
 quoteClo n a (Clo x f) = Abs x $ quote (n + 1) (f (local a (FId n)))
@@ -183,6 +204,7 @@ instance Quote (ElV e) (ElS e) where
     VLam dom c -> Lam (quote n dom) (quoteClo n dom c)
     VCons fs -> Cons (quote n <$> fs)
     VLit l -> Lit l
+    VPure v -> Pure (quote n v)
 
 instance Quote (TyV e) (TyS e) where
   quote n = \case
@@ -192,14 +214,15 @@ instance Quote (TyV e) (TyS e) where
     VRecord l xs te -> Record l xs (quote n te)
     VEq a v0 v1 -> Eq (quote n a) (quote n v0) (quote n v1)
     VBuiltinTy a -> BuiltinTy a
+    VInductive a -> Inductive (quote n a)
 
 -- Definitional equality
 --------------------------------------------------------------------------------
 
-type CtxShape = MeasuredBwd Name
+data CtxShape = CtxShape { len :: Int, names :: Bwd Name } 
 
 prtVal :: (Quote a b, DPrettyWithNames b) => CtxShape -> a -> DDoc
-prtVal c v = dprettyWithNames c.values $ quote c.length v
+prtVal c v = dprettyWithNames c.names $ quote c.len v
 
 -- When we do a definitional equality check, how should we report failure?
 -- We should report the two things that we were originally looking at (which is
@@ -234,6 +257,13 @@ throwUnequalSpines sp sp' e = Left $ UnequalSpines sp sp' e
 class DefEq a where
   defEq :: CtxShape -> a -> a -> DefEqM ()
 
+defEqClo :: (DefEq (a K)) => CtxShape -> TyV K -> Clo (a K) -> Clo (a K) -> DefEqM ()
+defEqClo cs a c0 c1 =
+  let cs' = CtxShape (cs.len + 1) (cs.names :> "x")
+      v = local a (FId cs.len)
+    in defEq cs' (appClo c0 v) (appClo c1 v)
+
+
 instance DefEq (TyV K) where
   defEq cs a a' = case (a, a') of
     (VU u, VU u') | u == u' -> pure ()
@@ -244,25 +274,27 @@ instance DefEq (TyV K) where
           Just $
             "different pi variants:" <+> pretty pv <+> "and" <+> pretty pv'
       defEq cs dom dom'
-      let v = local dom (FId cs.length)
-      defEq (cs ++> "x") (appClo cod v) (appClo cod' v)
+      defEqClo cs dom cod cod'
     (VBuiltinTy b, VBuiltinTy b') ->
       unless (b == b') $ throwUnequalTys cs a a' $ Just "unequal builtin types"
+    (VInductive b, VInductive b') -> defEq cs b b'
     _ -> throwUnequalTys cs a a' Nothing
 
 prtHead :: CtxShape -> Head -> DDoc
-prtHead cs (Local i) = prtVal cs i
-prtHead _ (Global x) = dpretty x
+prtHead cs (VLocal i) = prtVal cs i
+prtHead _ (VGlobal x) = dpretty x
+prtHead cs (VInit a) = "init" <+> prtVal cs a
+
+instance DefEq Head where
+  defEq cs h h' = case (h, h') of
+    (VLocal i, VLocal i') | i == i' -> pure ()
+    (VGlobal x, VGlobal x') | x == x' -> pure ()
+    (VInit a, VInit a') -> defEq cs a a'
+    _ -> Left (UnequalEls (prtHead cs h) (prtHead cs h') Nothing)
 
 instance DefEq Neutral where
   defEq cs n n' = do
-    unless (n.head == n'.head) $
-      throwUnequalEls cs (VNeu n) (VNeu n') $
-        Just $
-          "different heads for neutral:"
-            <+> prtHead cs n.head
-            <+> "and"
-            <+> prtHead cs n'.head
+    defEq cs n.head n'.head
     -- TODO: catch the UnequalSpines error and rethrow it as UnequalEls
     defEq cs n.spine n'.spine
 
@@ -278,6 +310,7 @@ instance DefEq Spine where
         throwUnequalSpines sq sq' $
           Just $
             "fields are not equal:" <+> dpretty x <+> "and" <+> dpretty x'
+    (SUse sq, SUse sq') -> defEq cs sq sq'
     _ -> throwUnequalSpines sp sp' Nothing
 
 canon :: ElV K -> ElV K
@@ -291,11 +324,10 @@ instance DefEq (ElV K) where
   defEq cs v v' = case (canon v, canon v') of
     (VNeu n, VNeu n') -> defEq cs n n'
     (VCode a, VCode a') -> defEq cs a a'
-    (VLam a c, VLam _ c') -> do
-      let w = local a (FId cs.length)
-      defEq (cs ++> "x") (appClo c w) (appClo c' w)
+    (VLam a c, VLam _ c') -> defEqClo cs a c c'
     (VCons (Fields _ vs), VCons (Fields _ vs')) ->
       forM_ (zip vs vs') (uncurry (defEq cs))
     (VLit l, VLit l') ->
       unless (l == l') $ throwUnequalEls cs v v' $ Just "unequal literals"
+    (VPure w, VPure w') -> defEq cs w w'
     _ -> throwUnequalEls cs v v' Nothing

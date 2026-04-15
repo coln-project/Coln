@@ -8,11 +8,12 @@ import Data.Vector qualified as V
 import Diagnostician
 import FNotation
 import Geolog.Core
-import Geolog.CoreOperations (prtVal)
+import Geolog.CoreOperations (prtVal, CtxShape (..))
 import Geolog.Diagnostics
 import Geolog.Elaborator (elabTop)
 import Geolog.Notation
 import Geolog.Pretty
+import Geolog.Common
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath (replaceExtension, takeBaseName)
@@ -34,13 +35,13 @@ prettyDecls ge = vsep $ go (globalEntries ge)
     go [] = []
     go ((x, PEntry t _ a) : ds) =
       [ "potential entry named" <+> dpretty x,
-        "type: " <+> prtVal mempty a,
+        "type: " <+> prtVal (CtxShape 0 BwdNil) a,
         "value: " <+> dprettyWithNames mempty t
       ]
         ++ go ds
     go ((x, KEntry t _ a) : ds) =
       [ "kinetic entry named" <+> dpretty x,
-        "type:" <+> prtVal mempty a,
+        "type:" <+> prtVal (CtxShape 0 BwdNil) a,
         "value:" <+> dprettyWithNames mempty t
       ]
         ++ go ds

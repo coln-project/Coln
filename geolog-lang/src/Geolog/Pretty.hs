@@ -44,12 +44,16 @@ instance Delab (ElS e) where
         field y t = N.Infix (N.Ident y ()) (N.Keyword ":" ()) (delab xs t)
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
+    Init a -> N.App (N.Keyword "init" ()) [delab xs a]
+    Pure t -> N.App (N.Keyword "pure" ()) [delab xs t]
+    Use t -> N.App (delab xs t) [N.Field "use" ()]
+
+bindingModeArr :: BindingMode -> Name
+bindingModeArr BInductive = "*->"
+bindingModeArr BConjunctive = "->"
 
 piVariantArr :: PiVariant -> Name
-piVariantArr = \case
-  PrimTheory -> "~>"
-  SetTheory -> "->"
-  TheoryTop -> "->"
+piVariantArr = bindingModeArr . bindingMode 
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
@@ -73,6 +77,7 @@ instance Delab (TyS e) where
         go _ _ _ = error "mismatching length for names and telescope"
     Eq _ t0 t1 -> N.Infix (delab xs t0) (N.Keyword "=" ()) (delab xs t1)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
+    Inductive a -> N.App (N.Keyword "Inductive" ()) [delab xs a]
 
 class DPrettyWithNames a where
   dprettyWithNames :: Names -> a -> DDoc

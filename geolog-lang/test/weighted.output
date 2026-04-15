@@ -15,7 +15,7 @@ SKeyword -> (46:48)
 AIdent V (49:50)
 SKeyword -> (51:53)
 AKeyword Int (54:57)
-SKeyword ~> (58:60)
+SIdent ~> (58:60)
 AKeyword Set (61:64)
 Nl (64:65)
 End end (65:68)
@@ -87,7 +87,7 @@ Decl theory (0:68)
             Keyword -> (51:53)
             Infix (54:64)
               Keyword Int (54:57)
-              Keyword ~> (58:60)
+              Ident ~> (58:60)
               Keyword Set (61:64)
 Decl theory (70:173)
   Infix (77:173)
@@ -137,20 +137,18 @@ Decl theory (70:173)
           Int 3 (168:169)
 
 -- elaborated
-potential entry named Q
-type:  (G : WeightedGraph) -> Theory
-value:  G => sig
-  x : G .V
-  y : G .V
-  z : G .V
-  e1 : G .E x y 1
-  e1 : G .E y z 3
-end
-potential entry named WeightedGraph
-type:  Theory
-value:  sig
-  V : Set
-  E : V -> V -> Int ~> Set
-end
+
 
 -- messages
+
+warning[W0101]: Defaulted precedence of ~> to the same as +
+3 |   E : V -> V -> Int ~> Set
+3 |                     ^^
+
+error[E0208]: unexpected notation for term in synthesizing position: Infix
+3 |   E : V -> V -> Int ~> Set
+3 |                 ^^^^^^^^^^
+
+error[E0201]: identifier WeightedGraph not in scope
+6 | theory Q (G : WeightedGraph) := sig
+6 |               ^^^^^^^^^^^^^
