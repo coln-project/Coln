@@ -42,6 +42,7 @@
                   name = "geolog";
                   compiler-nix-name = "ghc9122";
                   shell.tools.cabal = "latest";
+                  shell.tools.ormolu = "latest";
                   shell.withHoogle = false;
                   shell.tools.haskell-language-server = "latest";
                   shell.nativeBuildInputs = extra-tools final;
