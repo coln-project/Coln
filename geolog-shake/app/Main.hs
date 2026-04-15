@@ -125,4 +125,4 @@ actions = do
 main :: IO ()
 main = do
   setEnv "LANG" "en_US.UTF-8"
-  shakeArgs shakeOptions actions
+  shakeArgs shakeOptions{shakeColor = True} actions
