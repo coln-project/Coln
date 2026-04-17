@@ -69,6 +69,9 @@ actions = do
     putInfo ("Checking formatting")
     cmd_ "ormolu --mode check" hsFiles
 
+  phony "build" $ do
+    cmd_ "cabal build all"
+
   phony "test" $ do
     cmd_ (Cwd "geolog-lang") "cabal test"
     cmd_ (Cwd "geolog-lsp") "cabal test"
