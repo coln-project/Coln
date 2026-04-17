@@ -61,13 +61,7 @@ elaborate fp = do
     pure $
       render $
         vsep
-          [ "-- tokens"
-          , vsep $ dpretty <$> V.toList ts
-          , ""
-          , "-- notation"
-          , vsep $ dpretty <$> ns
-          , ""
-          , "-- elaborated"
+          [ "-- elaborated"
           , prettyDecls ge
           , ""
           , "-- messages"

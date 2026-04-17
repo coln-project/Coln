@@ -1,11 +1,19 @@
-theory BinaryCocone (p *: Set) (q *: Set) := sig
+theory Cocone (a *: Set) (b *: Set) := sig
   apex : Set
-  inl : p *-> apex
-  inr : q *-> apex
+  inl : a *-> apex
+  inr : b *-> apex
 end
 
-def Either/cocone (a *: Set) (b *: Set) : Inductive (BinaryCocone a b) := (
-  init (BinaryCocone a b)
+def Either/cocone (a *: Set) (b *: Set) : Inductive (Cocone a b) := (
+  init (Cocone a b)
 )
 
 def Either (a *: Set) (b *: Set) : Inductive Set := pure (Either/cocone a b .use .apex)
+
+theory Cone (a *: Set) (b *: Set) := sig
+  apex : Set
+  pi0 : apex -> a
+  pi1 : apex -> b
+end
+
+def Prod/cone (a : Set) (b : Set) : Inductive (Cone a b) := init (Cone a b)
