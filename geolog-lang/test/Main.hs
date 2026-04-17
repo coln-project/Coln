@@ -7,13 +7,13 @@ import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation
+import Geolog.Common
 import Geolog.Core
-import Geolog.CoreOperations (prtVal, CtxShape (..))
+import Geolog.CoreOperations (CtxShape (..), prtVal)
 import Geolog.Diagnostics
 import Geolog.Elaborator (elabTop)
 import Geolog.Notation
 import Geolog.Pretty
-import Geolog.Common
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath (replaceExtension, takeBaseName)

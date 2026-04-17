@@ -1,6 +1,5 @@
 module Geolog.CoreOperations where
 
-import Prelude hiding (init)
 import Control.Monad (forM_, unless)
 import Data.Kind (Type)
 import Diagnostician
@@ -9,6 +8,7 @@ import Geolog.Common
 import Geolog.Core
 import Geolog.Pretty
 import Prettyprinter
+import Prelude hiding (init)
 
 -- Core typeclass
 --------------------------------------------------------------------------------
@@ -85,15 +85,14 @@ instance Core ElV TyV where
 
   builtinTy = VBuiltinTy
   lit = VLit
-  
+
   use (VPure v) = v
   use (VNeu n) = case n.ty of
-                   VInductive a -> neu a n.head (SUse n.spine) Nothing
-                   _ -> panic "can only .use elements of inductive type"
+    VInductive a -> neu a n.head (SUse n.spine) Nothing
+    _ -> panic "can only .use elements of inductive type"
   use _ = panic "a value of inductive type should be a neutral or pure"
 
   init a = neu (VInductive a) (VInit a) SId Nothing
-      
 
 behavesAs :: TyV K -> Maybe (TyV P)
 behavesAs (VU u) = Just (VU u)
@@ -219,7 +218,7 @@ instance Quote (TyV e) (TyS e) where
 -- Definitional equality
 --------------------------------------------------------------------------------
 
-data CtxShape = CtxShape { len :: Int, names :: Bwd Name } 
+data CtxShape = CtxShape {len :: Int, names :: Bwd Name}
 
 prtVal :: (Quote a b, DPrettyWithNames b) => CtxShape -> a -> DDoc
 prtVal c v = dprettyWithNames c.names $ quote c.len v
@@ -261,8 +260,7 @@ defEqClo :: (DefEq (a K)) => CtxShape -> TyV K -> Clo (a K) -> Clo (a K) -> DefE
 defEqClo cs a c0 c1 =
   let cs' = CtxShape (cs.len + 1) (cs.names :> "x")
       v = local a (FId cs.len)
-    in defEq cs' (appClo c0 v) (appClo c1 v)
-
+   in defEq cs' (appClo c0 v) (appClo c1 v)
 
 instance DefEq (TyV K) where
   defEq cs a a' = case (a, a') of

@@ -210,7 +210,7 @@ instance LevelOf (TyV e) where
     VPi pv _ _ -> codOf pv
     VRecord l _ _ -> l
     VEq _ _ _ -> Set
-    VBuiltinTy _ -> Set 
+    VBuiltinTy _ -> Set
     VInductive a -> levelOf a
 
 data GlobalEntry

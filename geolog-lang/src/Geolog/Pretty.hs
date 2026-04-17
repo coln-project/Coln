@@ -53,7 +53,7 @@ bindingModeArr BInductive = "*->"
 bindingModeArr BConjunctive = "->"
 
 piVariantArr :: PiVariant -> Name
-piVariantArr = bindingModeArr . bindingMode 
+piVariantArr = bindingModeArr . bindingMode
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
