@@ -1,0 +1,24 @@
+-- elaborated
+potential entry named Cocone
+type:  (a : Set) *-> (b : Set) *-> Theory
+value:  a => b => sig
+  apex : Set
+  inl : a *-> apex
+  inr : b *-> apex
+end
+kinetic entry named Either
+type: (a : Set) *-> (b : Set) *-> Inductive Set
+value: a => b => pure (Either/cocone a b .use .apex)
+kinetic entry named Either/cocone
+type: (a : Set) *-> (b : Set) *-> Inductive (Cocone a b)
+value: a => b => init (Cocone a b)
+
+-- messages
+
+error[E0215]: variable a is bound inductively and thus cannot be used in a conjunctive context
+15 |   pi0 : apex -> a
+15 |                 ^
+
+error[E0201]: identifier Cone not in scope
+19 | def Prod/cone (a : Set) (b : Set) : Inductive (Cone a b) := init (Cone a b)
+19 |                                                ^^^^

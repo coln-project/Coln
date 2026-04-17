@@ -1,0 +1,20 @@
+-- elaborated
+potential entry named Lambda
+type:  Theory
+value:  sig
+  con : Set
+  subst : con -> con -> Set
+  mt : con
+  bind : con -> con
+  term : con -> Set
+  p : (G : con) -> subst (bind G) G
+  q : (G : con) -> term (bind G)
+  id : (G : con) -> subst G G
+  pair : (G : con) -> (H : con) -> subst G H -> term G -> subst G (bind H)
+  act : (G : con) -> (H : con) -> subst G H -> term H -> term G
+  app : (G : con) -> term G -> term G -> term G
+  lam : (G : con) -> term (bind G) -> term G
+  beta : (G : con) -> (t : term (bind G)) -> (a : term G) -> app G (lam G t) a = act G (bind G) (pair G G (id G) a) t
+end
+
+-- messages

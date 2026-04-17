@@ -13,7 +13,6 @@ data Level
   = Set
   | Theory
   | Top
-  | Prim
   deriving (Eq, Show)
 
 instance DPretty Level where
@@ -21,16 +20,11 @@ instance DPretty Level where
 
 instance PartialOrd Level where
   leq l1 l2 = case (l1, l2) of
-    (Set, Prim) -> False
     (Set, _) -> True
     (Theory, Set) -> False
-    (Theory, Prim) -> False
     (Theory, _) -> True
     (Top, Top) -> True
     (Top, _) -> False
-    (Prim, Top) -> True
-    (Prim, Prim) -> True
-    (Prim, _) -> False
 
 class LevelOf a where
   levelOf :: a -> Level
@@ -38,35 +32,33 @@ class LevelOf a where
 data Universe
   = SetU
   | TheoryU
-  | PrimU
   deriving (Eq, Show)
 
 decodesInto :: Universe -> Level
 decodesInto = \case
   SetU -> Set
   TheoryU -> Theory
-  PrimU -> Prim
 
 codesInto :: Universe -> Level
 codesInto = \case
   SetU -> Theory
   TheoryU -> Top
-  PrimU -> Top
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case
   Set -> Just SetU
   Theory -> Just TheoryU
-  Prim -> Just PrimU
   Top -> Nothing
+
+data BindingMode = BInductive | BConjunctive
+  deriving (Eq, Show)
 
 -- NOTE: we could potentially replace TheoryTop with TopTop, which would allow
 -- for higher-order stuff. Not sure whether this is semantically good though? Or
 -- whether this would mess with things we care about...
 data PiVariant
-  = SetTheory
-  | PrimTheory
-  | TheoryTop
+  = SetTheory BindingMode
+  | TheoryTop BindingMode
   deriving (Eq, Show)
 
 instance Pretty PiVariant where
@@ -74,15 +66,17 @@ instance Pretty PiVariant where
 
 instance LevelOf PiVariant where
   levelOf = \case
-    SetTheory -> Theory
-    PrimTheory -> Theory
-    TheoryTop -> Top
+    SetTheory _ -> Theory
+    TheoryTop _ -> Theory
 
-piVariant :: Level -> Level -> Maybe PiVariant
-piVariant dom cod
-  | leq dom Set && leq cod Theory = Just SetTheory
-  | leq dom Prim && leq cod Theory = Just PrimTheory
-  | leq dom Theory = Just TheoryTop
+bindingMode :: PiVariant -> BindingMode
+bindingMode (SetTheory bm) = bm
+bindingMode (TheoryTop bm) = bm
+
+piVariant :: Level -> Level -> BindingMode -> Maybe PiVariant
+piVariant dom cod bm
+  | leq dom Set && leq cod Theory = Just $ SetTheory bm
+  | leq dom Theory = Just $ TheoryTop bm
   | otherwise = Nothing
 
 class HasCodomain a b | a -> b where
@@ -90,9 +84,8 @@ class HasCodomain a b | a -> b where
 
 instance HasCodomain PiVariant Level where
   codOf = \case
-    SetTheory -> Theory
-    PrimTheory -> Theory
-    TheoryTop -> Top
+    SetTheory _ -> Theory
+    TheoryTop _ -> Top
 
 data Abs a = Abs Name a | AbsConst a
 
@@ -149,6 +142,9 @@ data ElS :: Energy -> Type where
   Cons :: Fields (ElS e) -> ElS e
   Proj :: ElS e -> Name -> ElS e
   Lit :: Literal -> ElS K
+  Init :: TyS K -> ElS K
+  Pure :: ElS K -> ElS K
+  Use :: ElS K -> ElS K
 
 data TeleS e = TSNil | TSCons (TyS e) (TeleS e)
 
@@ -159,6 +155,7 @@ data TyS :: Energy -> Type where
   Record :: Level -> [Name] -> TeleS K -> TyS P
   Eq :: TyS K -> ElS K -> ElS K -> TyS K
   BuiltinTy :: BuiltinTy -> TyS e
+  Inductive :: TyS K -> TyS K
 
 type Env = Bwd (ElV K)
 
@@ -168,11 +165,12 @@ data Spine
   = SId
   | SApp Spine (ElV K)
   | SProj Spine Name
+  | SUse Spine
 
 data Head
-  = Local FId
-  | Global Name
-  deriving (Eq)
+  = VLocal FId
+  | VGlobal Name
+  | VInit (TyV K)
 
 -- TODO: support lazy eta-expansion of potential pi-type neutrals
 -- by splitting `canon` into `behavior` and `eta`
@@ -190,6 +188,7 @@ data ElV :: Energy -> Type where
   VLam :: ~(TyV K) -> Clo (ElV e) -> ElV e
   VCons :: Fields (ElV e) -> ElV e
   VLit :: Literal -> ElV K
+  VPure :: ElV K -> ElV K
 
 data TeleV e = TVNil | TVCons (TyV e) (ElV K -> TeleV e)
 
@@ -200,6 +199,7 @@ data TyV :: Energy -> Type where
   VRecord :: Level -> [Name] -> TeleV K -> TyV P
   VEq :: TyV K -> ElV K -> ElV K -> TyV K
   VBuiltinTy :: BuiltinTy -> TyV e
+  VInductive :: TyV K -> TyV K
 
 instance LevelOf (TyV e) where
   levelOf = \case
@@ -210,7 +210,8 @@ instance LevelOf (TyV e) where
     VPi pv _ _ -> codOf pv
     VRecord l _ _ -> l
     VEq _ _ _ -> Set
-    VBuiltinTy _ -> Prim
+    VBuiltinTy _ -> Set
+    VInductive a -> levelOf a
 
 data GlobalEntry
   = KEntry (ElS K) (ElV K) (TyV K)
