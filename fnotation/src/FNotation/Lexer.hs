@@ -267,7 +267,7 @@ lex config reporter file = do
   pos <- newIORef 0
   prev <- newIORef 0
   iter <- newIORef $ TU.iter file.contents 0
-  out <- bufferWithCapacity (TU.lengthWord8 file.contents)
+  out <- bufferWithCapacity (TU.lengthWord8 file.contents + 1)
   let st = LexState pos prev iter out file reporter config
   run st
   bufferUnsafeFreeze st.out
