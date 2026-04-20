@@ -5,12 +5,11 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as BSB
 import Data.String (fromString)
-import Data.Text.IO qualified as T
 import Development.Shake
 import Development.Shake.FilePath
 import Djot
 import GHC.Stack (withFrozenCallStack)
-import System.Directory (createDirectoryIfMissing, getCurrentDirectory)
+import System.Directory (createDirectoryIfMissing)
 import System.Environment (setEnv)
 import System.Info qualified
 
