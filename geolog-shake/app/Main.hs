@@ -73,10 +73,7 @@ actions = do
     cmd_ "cabal build all"
 
   phony "test" $ do
-    cmd_ (Cwd "geolog-lang") "cabal test"
-    cmd_ (Cwd "geolog-lsp") "cabal test"
-    cmd_ (Cwd "fnotation") "cabal test"
-    cmd_ (Cwd "diagnostician") "cabal test"
+    cmd_ "cabal test all"
 
   phony "clean" $ do
     removeFilesAfter "_build" ["//*"]
