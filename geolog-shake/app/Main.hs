@@ -111,9 +111,11 @@ actions = do
 
   -- Build VSCode extension
   phony "vsce" $ do
-    cmd_ "cabal build geolog-lsp"
     let serverDir = "geolog-lsp/client/server" </> (System.Info.arch <> "-" <> System.Info.os)
-    liftIO $ createDirectoryIfMissing True serverDir
+    liftIO $ do
+      removeFiles "geolog-lsp/client" ["out", "server", "*.vsix"]
+      createDirectoryIfMissing True serverDir
+    cmd_ "cabal build geolog-lsp"
     StdoutTrim binary <- cmd "cabal list-bin geolog-lsp"
     copyFileChanged binary $ serverDir </> "geolog-lsp"
     cmd_ (Cwd "geolog-lsp/client") "npm install"
