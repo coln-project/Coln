@@ -1,0 +1,11 @@
+-- tokens
+Int 77 (0:2)
+Eof (2:2)
+
+-- notation
+Int 77 (0:2)
+
+-- pretty
+77
+
+-- messages

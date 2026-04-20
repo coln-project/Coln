@@ -1,10 +1,12 @@
 module Main (main) where
 
+import Control.Exception
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap, (>$<))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text.IO.Utf8 qualified as T
+import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
 import Diagnostician
@@ -84,26 +86,30 @@ parseToPretty fp = do
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
     let r = fileReporter h
-    tokens <- lex lexConfig (contramap LexerCode r) f
-    ns <- parse parseConfig (contramap ParserCode r) f tokens
-    hFlush h
-    hClose h
-    msgs <- T.readFile path
-    pure $
-      render $
-        vsep
-          [ "-- tokens"
-          , vsep $ dpretty <$> V.toList tokens
-          , ""
-          , "-- notation"
-          , vsep $ dpretty <$> ns
-          , ""
-          , "-- pretty"
-          , vsep $ dprettyWithPrecs parseConfig <$> ns
-          , ""
-          , "-- messages"
-          , pretty $ msgs
-          ]
+    try @SomeException (lex lexConfig (contramap LexerCode r) f) >>= \case
+      Left err -> pure $ TLE.encodeUtf8 $ "lex error:\n" <> TL.show err
+      Right tokens -> do
+        try @SomeException (parse parseConfig (contramap ParserCode r) f tokens) >>= \case
+          Left err -> pure $ TLE.encodeUtf8 $ "parse error:\n" <> TL.show err
+          Right ns -> do
+            hFlush h
+            hClose h
+            msgs <- T.readFile path
+            pure $
+              render $
+                vsep
+                  [ "-- tokens"
+                  , vsep $ dpretty <$> V.toList tokens
+                  , ""
+                  , "-- notation"
+                  , vsep $ dpretty <$> ns
+                  , ""
+                  , "-- pretty"
+                  , vsep $ dprettyWithPrecs parseConfig <$> ns
+                  , ""
+                  , "-- messages"
+                  , pretty $ msgs
+                  ]
 
 goldenTests :: IO TestTree
 goldenTests = do
