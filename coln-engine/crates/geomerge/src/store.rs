@@ -639,17 +639,17 @@ mod tests {
         let compiled_law = solver::compile::CompLaw {
             path: Path::from("T.total"),
             vars: vec![],
-            antecedent: vec![],
-            consequent: vec![],
+            antecedent: solver::compile::CompProp::And(vec![]),
+            consequent: solver::compile::CompProp::And(vec![]),
             tables: vec![Path::from("T")],
         };
         let violation = LawViolation {
             law: compiled_law,
-            atom: solver::compile::CompAtom {
+            cause: solver::validate::ViolationCause::MissingAtom(solver::compile::CompAtom {
                 table: Path::from("T"),
                 row_id: None,
                 values: vec![],
-            },
+            }),
             binding: vec![],
         };
         let law = StoreIntError::from(violation.clone());

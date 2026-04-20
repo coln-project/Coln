@@ -4,27 +4,44 @@ use tracing::debug;
 
 use crate::{
     solver::{
-        bind::{Binding, BoundValue, bind_law},
-        compile::{CompAtom, CompLaw, CompVal},
+        bind::{Binding, BoundValue, bind_law, eval_term},
+        compile::{CompAtom, CompEq, CompLaw, CompProp, CompVal},
         matcher::term_matches,
     },
     store::Store,
+    table::CellValue,
 };
+
+/// Why a law was violated at a given binding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ViolationCause {
+    /// A required consequent atom was not present in the store.
+    MissingAtom(CompAtom),
+    /// An equality in the consequent did not hold.
+    UnsatisfiedEq(CompEq),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LawViolation {
     pub law: CompLaw,
-    pub atom: CompAtom,
+    pub cause: ViolationCause,
     pub binding: Binding,
 }
 
 impl fmt::Display for LawViolation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "law {:?} violated: missing consequent atom in table {:?}",
-            self.law, self.atom.table
-        )
+        match &self.cause {
+            ViolationCause::MissingAtom(atom) => write!(
+                f,
+                "law {:?} violated: missing consequent atom in table {:?}",
+                self.law, atom.table
+            ),
+            ViolationCause::UnsatisfiedEq(eq) => write!(
+                f,
+                "law {:?} violated: equality {:?} = {:?} did not hold",
+                self.law, eq.left, eq.right
+            ),
+        }
     }
 }
 
@@ -63,20 +80,61 @@ pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) 
     false
 }
 
+/// Evaluate a consequent equality against the current binding.
+pub fn consequent_eq_holds(binding: &Binding, eq: &CompEq) -> bool {
+    let (Some(l), Some(r)) = (eval_term(binding, &eq.left), eval_term(binding, &eq.right)) else {
+        debug!(eq = ?eq, binding = ?binding, "eq term not bound");
+        return false;
+    };
+    match (&l, &r) {
+        // Row ids and entity cells refer to the same identity when equal.
+        (BoundValue::RId(a), BoundValue::Cell(CellValue::Id(b)))
+        | (BoundValue::Cell(CellValue::Id(a)), BoundValue::RId(b)) => a == b,
+        _ => l == r,
+    }
+}
+
+/// Check whether a consequent proposition holds under `binding`.
+///
+/// On failure, returns the first leaf (atom or equality) that failed so the
+/// caller can build a precise `LawViolation`.
+fn prop_holds(store: &Store, binding: &Binding, prop: &CompProp) -> Result<(), ViolationCause> {
+    match prop {
+        CompProp::Atom(atom) => {
+            if consequent_atom_holds(store, atom, binding) {
+                Ok(())
+            } else {
+                Err(ViolationCause::MissingAtom(atom.clone()))
+            }
+        }
+        CompProp::Eq(eq) => {
+            if consequent_eq_holds(binding, eq) {
+                Ok(())
+            } else {
+                Err(ViolationCause::UnsatisfiedEq(eq.clone()))
+            }
+        }
+        CompProp::And(children) => {
+            for child in children {
+                prop_holds(store, binding, child)?;
+            }
+            Ok(())
+        }
+    }
+}
+
 pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), LawViolation> {
     let bindings = bind_law(store, law);
     debug!(law = %law.path, bindings = ?bindings, "checking law with bindings");
 
     for binding in bindings {
-        for atom in &law.consequent {
-            if !consequent_atom_holds(store, atom, &binding) {
-                debug!(law = %law.path, table = ?atom.table, "law violation detected");
-                return Err(LawViolation {
-                    law: law.clone(),
-                    atom: atom.clone(),
-                    binding: binding,
-                });
-            }
+        if let Err(cause) = prop_holds(store, &binding, &law.consequent) {
+            debug!(law = %law.path, cause = ?cause, "law violation detected");
+            return Err(LawViolation {
+                law: law.clone(),
+                cause,
+                binding,
+            });
         }
     }
     debug!(law = %law.path, "law satisfied");
@@ -126,7 +184,10 @@ mod tests {
         let violation = check_law(&store, &compiled).expect_err("missing G0 row should violate");
 
         assert_eq!(violation.law.path, Path::from("G0.total"));
-        assert_eq!(violation.atom.table, g0_path);
+        match &violation.cause {
+            ViolationCause::MissingAtom(atom) => assert_eq!(atom.table, g0_path),
+            other => panic!("expected MissingAtom, got {:?}", other),
+        }
         assert!(violation.binding.is_empty());
     }
 
@@ -315,7 +376,10 @@ mod tests {
 
         let violation = check_law(&store, &compiled).expect_err("missing referenced rows");
         assert_eq!(violation.law.path, Path::from("Link.foreignKeys"));
-        assert_eq!(violation.atom.table, left);
+        match &violation.cause {
+            ViolationCause::MissingAtom(atom) => assert_eq!(atom.table, left),
+            other => panic!("expected MissingAtom, got {:?}", other),
+        }
         assert_eq!(
             violation.binding,
             vec![
@@ -337,5 +401,138 @@ mod tests {
             .expect("insert referenced rows");
 
         assert!(check_law(&store, &compiled).is_ok());
+    }
+
+    #[test]
+    fn consequent_equality_holds_when_bindings_match() {
+        let t = Path::from("T");
+        let mut store = Store::new();
+        store.insert_table(
+            t.clone(),
+            Table::new(
+                t.clone(),
+                Schema {
+                    columns: vec![
+                        ColType::PrimType {
+                            prim: PrimType::PrimInt,
+                        },
+                        ColType::PrimType {
+                            prim: PrimType::PrimInt,
+                        },
+                    ],
+                    primary_key: None,
+                },
+            ),
+        );
+        let table = store.table_at(&t).expect("T table");
+        let row = table.add(vec![CellValue::Int(5), CellValue::Int(5)]);
+        store.apply_batch(vec![row]).expect("insert row");
+
+        let law = ir::LawEntry {
+            path: Path::from("T.eq"),
+            law: ir::Law {
+                variables: vec![
+                    ColType::PrimType {
+                        prim: PrimType::PrimInt,
+                    },
+                    ColType::PrimType {
+                        prim: PrimType::PrimInt,
+                    },
+                ],
+                antecedent: ir::Prop::Atom {
+                    atom: ir::Atom {
+                        table: t.clone(),
+                        row_id: None,
+                        values: vec![
+                            ir::ValueEntry {
+                                column: 0,
+                                term: ir::Term::Var { index: 0 },
+                            },
+                            ir::ValueEntry {
+                                column: 1,
+                                term: ir::Term::Var { index: 1 },
+                            },
+                        ],
+                    },
+                },
+                consequent: ir::Prop::Eq {
+                    left: ir::Term::Var { index: 0 },
+                    right: ir::Term::Var { index: 1 },
+                },
+            },
+        };
+
+        let compiled = compile_law(&law).expect("compile law");
+        assert!(check_law(&store, &compiled).is_ok());
+    }
+
+    #[test]
+    fn consequent_equality_violation_surfaces_unsatisfied_eq() {
+        let t = Path::from("T");
+        let mut store = Store::new();
+        store.insert_table(
+            t.clone(),
+            Table::new(
+                t.clone(),
+                Schema {
+                    columns: vec![
+                        ColType::PrimType {
+                            prim: PrimType::PrimInt,
+                        },
+                        ColType::PrimType {
+                            prim: PrimType::PrimInt,
+                        },
+                    ],
+                    primary_key: None,
+                },
+            ),
+        );
+        let table = store.table_at(&t).expect("T table");
+        let row = table.add(vec![CellValue::Int(1), CellValue::Int(2)]);
+        store.apply_batch(vec![row]).expect("insert row");
+
+        let law = ir::LawEntry {
+            path: Path::from("T.eq"),
+            law: ir::Law {
+                variables: vec![
+                    ColType::PrimType {
+                        prim: PrimType::PrimInt,
+                    },
+                    ColType::PrimType {
+                        prim: PrimType::PrimInt,
+                    },
+                ],
+                antecedent: ir::Prop::Atom {
+                    atom: ir::Atom {
+                        table: t.clone(),
+                        row_id: None,
+                        values: vec![
+                            ir::ValueEntry {
+                                column: 0,
+                                term: ir::Term::Var { index: 0 },
+                            },
+                            ir::ValueEntry {
+                                column: 1,
+                                term: ir::Term::Var { index: 1 },
+                            },
+                        ],
+                    },
+                },
+                consequent: ir::Prop::Eq {
+                    left: ir::Term::Var { index: 0 },
+                    right: ir::Term::Var { index: 1 },
+                },
+            },
+        };
+
+        let compiled = compile_law(&law).expect("compile law");
+        let violation = check_law(&store, &compiled).expect_err("eq should fail");
+        match &violation.cause {
+            ViolationCause::UnsatisfiedEq(eq) => {
+                assert_eq!(eq.left, crate::solver::compile::CompTerm::Var(0));
+                assert_eq!(eq.right, crate::solver::compile::CompTerm::Var(1));
+            }
+            other => panic!("expected UnsatisfiedEq, got {:?}", other),
+        }
     }
 }
