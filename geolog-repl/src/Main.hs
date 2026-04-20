@@ -75,6 +75,8 @@ eval file = do
   ((), newDeclNames) <- runWriterT $ for_ ntns \ntn -> do
     ge <- get
     let ?globalEnv = ge
+    let scope = emptyScope
+        shape_ = shape scope
     case ntn of
       -- register declaration
       Decl name _ _ -> do
@@ -88,12 +90,12 @@ eval file = do
             PEntry _ v a -> p v a
             KEntry _ v a -> p v a
            where
-            p v a = liftIO $ putDoc $ prtVal mempty a <> line <> prtVal mempty v <> line
+            p v a = liftIO $ putDoc $ prtVal shape_ a <> line <> prtVal shape_ v <> line
       -- evaluate expression
       _ ->
         liftIO $
-          synK emptyCtx ntn
-            >>= \(v, t) -> putDoc $ prtVal mempty v.val <+> ":" <+> prtVal mempty t <> line
+          synK scope ntn
+            >>= \(v, t) -> putDoc $ prtVal shape_ v.val <+> ":" <+> prtVal shape_ t <> line
   when (not $ null newDeclNames) $ liftIO $ putStrLn $ show (length newDeclNames) <> " declarations added."
  where
   reporter translator = contramap translator $ Reporter{reportIO = putDoc . dpretty}
