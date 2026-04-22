@@ -16,19 +16,19 @@ import Test.QuickCheck
 {- | A newtype wrapper for generated FNotation source text that is suitable
 for feeding to the lexer. The generated text exercises every lexer code path:
 
-  * Alphanumeric identifiers (starting with letter or @_@, containing
-    letters, digits, @_@, @-@)
-  * Symbolic identifiers (sequences of @\< \> - + / * ~ : =@)
-  * Qualified names (@a\/b\/c@, alphanumeric segments separated by @\/@)
-  * Integer literals
-  * String literals (@\"...\"@)
-  * Field access (@.name@)
-  * Tag literals (@\'name@)
-  * Punctuation: @( ) [ ] { } , ;@
-  * Newlines
-  * Whitespace (spaces and tabs)
-  * Comments (@# ...@)
-  * Unexpected characters (to test error recovery)
+ * Alphanumeric identifiers (starting with letter or @_@, containing
+   letters, digits, @_@, @-@)
+ * Symbolic identifiers (sequences of @\< \> - + / * ~ : =@)
+ * Qualified names (@a\/b\/c@, alphanumeric segments separated by @\/@)
+ * Integer literals
+ * String literals (@\"...\"@)
+ * Field access (@.name@)
+ * Tag literals (@\'name@)
+ * Punctuation: @( ) [ ] { } , ;@
+ * Newlines
+ * Whitespace (spaces and tabs)
+ * Comments (@# ...@)
+ * Unexpected characters (to test error recovery)
 -}
 newtype FNSource = FNSource {getText :: Text}
   deriving (Show)
@@ -36,13 +36,11 @@ newtype FNSource = FNSource {getText :: Text}
 instance Arbitrary FNSource where
   arbitrary = sized \n -> FNSource . T.concat <$> genTokenList (max 1 n)
   shrink (FNSource t) =
-    let
-      ts = [deleteAt i t | i <- [0 .. T.length t - 1]]
-      deleteAt i s =
-        let (a, b) = T.splitAt i s
-         in a <> T.drop 1 b
-     in
-      FNSource <$> ts
+    let ts = [deleteAt i t | i <- [0 .. T.length t - 1]]
+        deleteAt i s =
+          let (a, b) = T.splitAt i s
+           in a <> T.drop 1 b
+     in FNSource <$> ts
 
 {- | Generate a list of textual token fragments that together form valid
 (or intentionally invalid) FNotation source.

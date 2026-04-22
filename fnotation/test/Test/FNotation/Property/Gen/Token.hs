@@ -3,21 +3,21 @@
 These generators produce 'V.Vector Token' values that satisfy the invariants
 expected by the parser ('FNotation.Parser.parse'):
 
-  1. Every token has the correct 'Kind'/'TokenValue' pairing:
+ 1. Every token has the correct 'Kind'/'TokenValue' pairing:
 
-       * 'AIdent', 'AKeyword', 'SIdent', 'SKeyword', 'Decl', 'Block', 'End',
-         'Field', 'Tag' carry a 'VName'.
-       * 'Int' carries a 'VInt'.
-       * 'String' carries a 'VString'.
-       * All punctuation and structural kinds ('LParen', 'RParen', 'LBrack',
-         'RBrack', 'LCurly', 'RCurly', 'Comma', 'Semicolon', 'Nl', 'Eof',
-         'Error') carry 'VEmpty'.
+      * 'AIdent', 'AKeyword', 'SIdent', 'SKeyword', 'Decl', 'Block', 'End',
+        'Field', 'Tag' carry a 'VName'.
+      * 'Int' carries a 'VInt'.
+      * 'String' carries a 'VString'.
+      * All punctuation and structural kinds ('LParen', 'RParen', 'LBrack',
+        'RBrack', 'LCurly', 'RCurly', 'Comma', 'Semicolon', 'Nl', 'Eof',
+        'Error') carry 'VEmpty'.
 
-  2. The stream is non-empty and always ends with an 'Eof' token (the parser's
-     @stmts@ loop terminates only on 'End' or 'Eof').
+ 2. The stream is non-empty and always ends with an 'Eof' token (the parser's
+    @stmts@ loop terminates only on 'End' or 'Eof').
 
-  3. Spans are synthetic but well-formed (non-negative, start <= end), assigned
-     sequentially so they don't overlap.
+ 3. Spans are synthetic but well-formed (non-negative, start <= end), assigned
+    sequentially so they don't overlap.
 -}
 module Test.FNotation.Property.Gen.Token (
   -- * Token stream wrapper
