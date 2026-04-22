@@ -47,6 +47,14 @@ test-suite fnotation-test
     type:               exitcode-stdio-1.0
     main-is:            Main.hs
     hs-source-dirs:     test
+    other-modules:
+        Test.FNotation.Golden
+        Test.FNotation.Common
+        Test.FNotation.Property.Gen.Source
+        Test.FNotation.Property.Gen.Token
+        Test.FNotation.Property.Lexing
+        Test.FNotation.Property.Parsing
+
     default-language:   GHC2024
     default-extensions:
         BlockArguments CPP TypeData DerivingVia FunctionalDependencies
@@ -55,7 +63,7 @@ test-suite fnotation-test
         TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
-    ghc-options:        -Wall -Wno-unused-imports
+    ghc-options:        -Wall
     build-depends:
         base ^>=4.21.0.0,
         bytestring,
@@ -64,8 +72,10 @@ test-suite fnotation-test
         filepath,
         fnotation,
         prettyprinter,
+        QuickCheck,
         tasty,
         tasty-golden,
+        tasty-quickcheck,
         temporary,
         text,
         vector
