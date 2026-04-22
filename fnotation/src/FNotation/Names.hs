@@ -2,6 +2,7 @@ module FNotation.Names where
 
 import Data.String (IsString, fromString)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Diagnostician
 import Prettyprinter
 
@@ -21,7 +22,7 @@ data Name = Name
   deriving (Eq, Ord)
 
 instance Show Name where
-  show x = mconcat ((<> "/") . show <$> x.init) <> show x.last
+  show x = mconcat ((<> "/") . T.unpack <$> x.init) <> T.unpack x.last
 
 instance DPretty Name where
   dpretty x = mconcat ((<> "/") . pretty <$> x.init) <> pretty x.last
