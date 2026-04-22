@@ -1,9 +1,9 @@
 module Test.FNotation.Property.Lexing where
 
-import Test.FNotation.Common
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation
+import Test.FNotation.Common
 import Test.FNotation.Property.Gen.Source
 import Test.Tasty
 import Test.Tasty.QuickCheck
@@ -11,7 +11,7 @@ import Prelude hiding (lex)
 
 -- | A reporter that silently discards all diagnostics.
 nullReporter :: Reporter LexerCode
-nullReporter = Reporter{reportIO = \_ -> pure ()}
+nullReporter = Reporter {reportIO = \_ -> pure ()}
 
 -- | Property: the lexer should not crash on any generated source text.
 lexerProperties :: TestTree

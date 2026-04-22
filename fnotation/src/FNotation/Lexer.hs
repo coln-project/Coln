@@ -245,9 +245,10 @@ string st = do
   emit st String (VString x)
 
 tryName :: LexState -> Kind -> DDoc -> IO ()
-tryName st k d = peek st >>= \case
-  c | nameSegStart c -> name st >>= emit st k . VName
-  _ -> report st ExpectedName $ "expected a name after" <+> d
+tryName st k d =
+  peek st >>= \case
+    c | nameSegStart c -> name st >>= emit st k . VName
+    _ -> report st ExpectedName $ "expected a name after" <+> d
 
 -- Top-level lexing interface
 --------------------------------------------------------------------------------

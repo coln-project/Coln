@@ -236,7 +236,7 @@ arg st = do
     k -> do
       reportUnexpected st k T.CExprStart
       advanceClose st m Error
-      
+
 args :: ParseState -> IO [Ntn]
 args st = do
   k <- cur st

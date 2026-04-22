@@ -1,6 +1,5 @@
 module Test.FNotation.Golden (goldenTests) where
 
-import Test.FNotation.Common
 import Control.Exception
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
@@ -17,6 +16,7 @@ import Prettyprinter.Render.Text
 import System.FilePath (replaceExtension, takeBaseName)
 import System.IO
 import System.IO.Temp (withSystemTempFile)
+import Test.FNotation.Common
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (findByExtension, goldenVsString)
 import Prelude hiding (lex)
@@ -30,8 +30,8 @@ data TestCode = LexerCode LexerCode | ParserCode ParserCode
 codeTable :: Map TestCode CodeMeta
 codeTable =
   mconcat
-    [ promoteCodeTable lexerCodeTable LexerCode 0
-    , promoteCodeTable parserCodeTable ParserCode 100
+    [ promoteCodeTable lexerCodeTable LexerCode 0,
+      promoteCodeTable parserCodeTable ParserCode 100
     ]
 
 instance Code TestCode where
@@ -57,17 +57,17 @@ parseToPretty fp = do
             pure $
               render $
                 vsep
-                  [ "-- tokens"
-                  , vsep $ dpretty <$> V.toList tokens
-                  , ""
-                  , "-- notation"
-                  , vsep $ dpretty <$> ns
-                  , ""
-                  , "-- pretty"
-                  , vsep $ dprettyWithPrecs parseConfig <$> ns
-                  , ""
-                  , "-- messages"
-                  , pretty $ msgs
+                  [ "-- tokens",
+                    vsep $ dpretty <$> V.toList tokens,
+                    "",
+                    "-- notation",
+                    vsep $ dpretty <$> ns,
+                    "",
+                    "-- pretty",
+                    vsep $ dprettyWithPrecs parseConfig <$> ns,
+                    "",
+                    "-- messages",
+                    pretty $ msgs
                   ]
 
 goldenTests :: IO TestTree
@@ -77,6 +77,6 @@ goldenTests = do
     testGroup
       "Golden tests"
       [ goldenVsString (takeBaseName ntnFile) outputFile (parseToPretty ntnFile)
-      | ntnFile <- ntnFiles
-      , let outputFile = replaceExtension ntnFile ".output"
+      | ntnFile <- ntnFiles,
+        let outputFile = replaceExtension ntnFile ".output"
       ]

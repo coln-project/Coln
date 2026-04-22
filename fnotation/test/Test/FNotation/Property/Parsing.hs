@@ -9,7 +9,7 @@ import Test.Tasty.QuickCheck
 
 -- | A reporter that silently discards all diagnostics.
 nullReporter :: Reporter ParserCode
-nullReporter = Reporter{reportIO = \_ -> pure ()}
+nullReporter = Reporter {reportIO = \_ -> pure ()}
 
 -- | Property: the parser should not crash on any generated token stream.
 parserProperties :: TestTree
