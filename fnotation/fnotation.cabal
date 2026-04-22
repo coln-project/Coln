@@ -48,6 +48,8 @@ test-suite fnotation-test
     main-is:            Main.hs
     other-modules:      Test.FNotation.Golden
                         Test.FNotation.Common
+                        Test.FNotation.Property.Gen.Source
+                        Test.FNotation.Property.Lexing
     hs-source-dirs:     test
     default-language:   GHC2024
     default-extensions:

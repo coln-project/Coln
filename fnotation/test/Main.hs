@@ -1,6 +1,7 @@
 module Main where
 
 import Test.FNotation.Golden (goldenTests)
+import Test.FNotation.Property.Lexing (lexerProperties)
 import Test.Tasty
 
 main :: IO ()
@@ -10,4 +11,7 @@ main = do
     testGroup
       "FNotation"
       [ golden
+      , testGroup
+          "Property Tests"
+          [lexerProperties]
       ]
