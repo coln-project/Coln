@@ -49,7 +49,9 @@ test-suite fnotation-test
     other-modules:      Test.FNotation.Golden
                         Test.FNotation.Common
                         Test.FNotation.Property.Gen.Source
+                        Test.FNotation.Property.Gen.Token
                         Test.FNotation.Property.Lexing
+                        Test.FNotation.Property.Parsing
     hs-source-dirs:     test
     default-language:   GHC2024
     default-extensions:
