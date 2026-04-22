@@ -141,6 +141,7 @@ dependencies = [
 [[package]]
 name = "hexane"
 version = "0.2.1"
+source = "git+https://github.com/automerge/automerge?branch=hexane_v1#9625cae96b6e3a0c5ce9660fb071ae1fba6f539a"
 dependencies = [
  "leb128",
  "thiserror",
