@@ -52,6 +52,7 @@ push b e = do
 data LexerCode
   = UnexpectedCharacter
   | UncontinuedQualifiedName
+  | ExpectedName
   deriving (Eq, Ord)
 
 lexerCodeTable :: Map LexerCode CodeMeta
@@ -189,6 +190,9 @@ nameSeg st =
     c | isSymbol c -> sliceWhile st isSymbol
     _ -> P.error "nameSeg should only be called if current character is a letter"
 
+nameSegStart :: Char -> Bool
+nameSegStart c = isAlphaNumStart c || isSymbol c
+
 nameFromHeadTail :: Text -> [Text] -> Name
 nameFromHeadTail head tail =
   let go s [] = ([], s)
@@ -202,7 +206,13 @@ name st = nameFromHeadTail <$> nameSeg st <*> tail
   where
     tail =
       peek st >>= \case
-        '/' -> advance st >> (:) <$> nameSeg st <*> tail
+        '/' -> do
+          advance st
+          peek st >>= \case
+            c | nameSegStart c -> (:) <$> nameSeg st <*> tail
+            _ -> do
+              report st UncontinuedQualifiedName "expected continuation of qualified name"
+              pure []
         _ -> pure []
 
 ident :: LexState -> IO ()
@@ -234,6 +244,12 @@ string st = do
   x <- slice st (Span (s + 1) (e - 1))
   emit st String (VString x)
 
+tryName :: LexState -> Kind -> DDoc -> IO ()
+tryName st k d =
+  peek st >>= \case
+    c | nameSegStart c -> name st >>= emit st k . VName
+    _ -> report st ExpectedName $ "expected a name after" <+> d
+
 -- Top-level lexing interface
 --------------------------------------------------------------------------------
 
@@ -254,8 +270,8 @@ run st =
     '\n' -> classify st Nl >> run st
     '#' -> comment st >> run st
     '\"' -> string st >> run st
-    '.' -> advance st >> (name st >>= emit st Field . VName) >> run st
-    '\'' -> advance st >> (name st >>= emit st Tag . VName) >> run st
+    '.' -> advance st >> tryName st Field "period" >> run st
+    '\'' -> advance st >> tryName st Tag "single quote" >> run st
     '\0' -> emit0 st Eof
     c | isDigit c -> (int st >>= emit st Int . VInt) >> run st
     c | isLetter c || c == '_' || isSymbol c -> ident st >> run st
