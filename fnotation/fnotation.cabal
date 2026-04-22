@@ -55,7 +55,7 @@ test-suite fnotation-test
         TypeFamilies TypeFamilyDependencies UnboxedSums UnboxedTuples
         UnicodeSyntax ViewPatterns
 
-    ghc-options:        -Wall -Wno-unused-imports
+    ghc-options:        -Wall
     build-depends:
         base ^>=4.21.0.0,
         bytestring,
