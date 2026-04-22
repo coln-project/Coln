@@ -233,8 +233,10 @@ arg st = do
       x <- curString st
       advanceClose st m $ String x
     T.Block -> block st
-    k -> error $ "should only call arg when the starting token is in argStarts, got: " ++ show k
-
+    k -> do
+      reportUnexpected st k T.CExprStart
+      advanceClose st m Error
+      
 args :: ParseState -> IO [Ntn]
 args st = do
   k <- cur st
