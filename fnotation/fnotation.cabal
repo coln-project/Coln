@@ -46,6 +46,8 @@ library
 test-suite fnotation-test
     type:               exitcode-stdio-1.0
     main-is:            Main.hs
+    other-modules:      Test.FNotation.Golden
+                        Test.FNotation.Common
     hs-source-dirs:     test
     default-language:   GHC2024
     default-extensions:
@@ -64,8 +66,10 @@ test-suite fnotation-test
         filepath,
         fnotation,
         prettyprinter,
+        QuickCheck,
         tasty,
         tasty-golden,
+        tasty-quickcheck,
         temporary,
         text,
         vector
