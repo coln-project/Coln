@@ -160,11 +160,11 @@ mod tests {
         store.add_table(Path::from("t2"), mixed_schema());
 
         let t1_oid = store.resolve_table(&Path::from("t1")).unwrap();
-        store
+        let op = store
             .table_mut(t1_oid)
             .unwrap()
-            .append_row_validated(vec![CellValue::Int(99)])
-            .unwrap();
+            .add(vec![CellValue::Int(99)]);
+        store.apply_batch(vec![op]).expect("apply batch successful");
 
         let bytes = encode_store(&store).unwrap();
         let restored = decode_store(&bytes).unwrap();

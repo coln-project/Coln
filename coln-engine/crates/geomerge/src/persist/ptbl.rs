@@ -227,8 +227,11 @@ mod tests {
     fn raw_round_trip_single_int_column() {
         let schema = int_schema();
         let mut tbl = Table::new(Path::from("ints"), schema.clone());
-        tbl.append_row_validated(vec![CellValue::Int(10)]).unwrap();
-        tbl.append_row_validated(vec![CellValue::Int(20)]).unwrap();
+        let op1 = tbl.add(vec![CellValue::Int(10)]);
+        tbl.apply_op_validated(op1).unwrap();
+        let op2 = tbl.add(vec![CellValue::Int(20)]);
+        tbl.apply_op_validated(op2).unwrap();
+
 
         let bytes = encode_table_raw(&tbl).unwrap();
         let (row_ids, cols) = decode_table_raw(&bytes, &schema).unwrap();
@@ -242,12 +245,12 @@ mod tests {
     fn raw_round_trip_mixed_columns() {
         let schema = mixed_schema();
         let mut tbl = Table::new(Path::from("mixed"), schema.clone());
-        tbl.append_row_validated(vec![
+        let op = tbl.add(vec![
             CellValue::Int(42),
             CellValue::Str("hello".into()),
             CellValue::Id(0),
-        ])
-        .unwrap();
+        ]);
+        tbl.apply_op_validated(op).unwrap();
 
         let bytes = encode_table_raw(&tbl).unwrap();
         let (row_ids, cols) = decode_table_raw(&bytes, &schema).unwrap();

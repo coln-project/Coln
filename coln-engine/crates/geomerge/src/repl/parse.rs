@@ -28,7 +28,7 @@ pub enum Command {
         table: String,
         rows: Vec<Vec<String>>,
     },
-    /// `begin batch;` … `commit;` with assignments using previous bindings in entity columns.
+    /// `begin transact;` … `commit;` with assignments using previous bindings in entity columns.
     Batch {
         assignments: Vec<BatchAssignment>,
     },
@@ -105,7 +105,7 @@ pub fn parse_meta_command(input: &str) -> Result<Command, String> {
 
 pub fn parse_statement(input: &str) -> Result<Command, String> {
     let input = input.trim();
-    if input.starts_with("begin batch") {
+    if input.starts_with("begin transact") {
         return parse_batch_block(input);
     }
 
@@ -172,19 +172,19 @@ pub fn parse_cell_value_batch(
     }
 }
 
-/// Parse `begin batch;` … `commit` (outer `;` already stripped by [`parse_command`]).
+/// Parse `begin transact;` … `commit` (outer `;` already stripped by [`parse_command`]).
 fn parse_batch_block(input: &str) -> Result<Command, String> {
     let input = input.trim();
-    let Some(rest) = input.strip_prefix("begin batch") else {
-        return Err("internal error: expected begin batch".to_string());
+    let Some(rest) = input.strip_prefix("begin transact") else {
+        return Err("internal error: expected begin transact".to_string());
     };
     let mut rest = rest.trim_start();
     let Some(after_kw) = rest.strip_prefix(';') else {
-        return Err("expected `begin batch;`".to_string());
+        return Err("expected `begin transact;`".to_string());
     };
     rest = after_kw.trim();
     let Some(inner) = rest.strip_suffix("commit") else {
-        return Err("batch block must end with `commit`".to_string());
+        return Err("transaction block must end with `commit`".to_string());
     };
     let inner = inner.trim().strip_suffix(';').unwrap_or(inner).trim();
     let assignments = parse_batch_assignments(inner)?;
@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn parses_batch_empty() {
         assert_eq!(
-            parse_command("begin batch; commit;").unwrap(),
+            parse_command("begin transact; commit;").unwrap(),
             Command::Batch {
                 assignments: vec![]
             }
@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn parses_batch_with_bindings() {
         let cmd =
-            parse_command("begin batch; g = add Graphs values (); x = add G0 values (g); commit;")
+            parse_command("begin transact; g = add Graphs values (); x = add G0 values (g); commit;")
                 .unwrap();
         assert_eq!(
             cmd,
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn rejects_batch_without_commit_keyword() {
-        let err = parse_command("begin batch; g = add T values (1);").unwrap_err();
-        assert!(err.contains("batch block must end with `commit`") || err.contains("commit"));
+        let err = parse_command("begin transact; g = add T values (1);").unwrap_err();
+        assert!(err.contains("transaction block must end with `commit`") || err.contains("commit"));
     }
 }

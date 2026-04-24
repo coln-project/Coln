@@ -132,7 +132,7 @@ fn test_add_data_and_law_enforce() {
 
     // One explicit column (Graphs); row id will be assigned by the db.
 
-    let r = add_basic_data_to_path(&mut store);
+    add_basic_data_to_path(&mut store).expect("add basic data");
 
     let ge = store.table_at(&Path::from("G.E")).expect("get table G.E");
     assert_eq!(ge.schema().columns.len(), 3);

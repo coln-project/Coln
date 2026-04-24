@@ -34,6 +34,10 @@ pub enum ValidationError {
     UnknownTable {
         path: ir::Path,
     },
+    TableMismatch {
+        expected: ir::Path,
+        actual: ir::Path,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -58,6 +62,12 @@ impl fmt::Display for ValidationError {
             }
             ValidationError::UnknownTable { path } => {
                 write!(f, "unknown table: {path:?}")
+            }
+            ValidationError::TableMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "table mismatch: expected: {expected:?}, actual: {actual:?}"
+                )
             }
         }
     }
@@ -255,12 +265,23 @@ impl Table {
         Ok(())
     }
 
-    /// Validates `values` ([`validate_new_row`]), then appends with the given [`RowId`].
-    pub fn append_row_validated(
-        &mut self,
-        values: Vec<CellValue>,
-        row_id: RowId,
-    ) -> Result<(), ValidationError> {
+    // TODO: Ok to leave this as is for now, ultimately we want to make each table
+    // behave as an opset, when we add deletions. But we can potentially include
+    // deletions as a separate table. For now this is the same as an opset, except
+    // we don't have a column saying operation = add
+    #[cfg(test)]
+    pub(crate) fn apply_op_validated(&mut self, op: Op) -> Result<(), ValidationError> {
+        let Op::Add {
+            row_id,
+            values,
+            table,
+        } = op;
+        if self.path != table {
+            return Err(ValidationError::TableMismatch {
+                expected: self.path.clone(),
+                actual: table,
+            });
+        }
         self.validate_new_row(&values)?;
         Ok(self.append_row(values, row_id))
     }
@@ -308,13 +329,15 @@ mod tests {
         assert!(tbl.cols.is_empty());
         assert_eq!(tbl.row_count(), 0);
 
-        let r0: RowId = 100;
-        tbl.append_row_validated(vec![], r0).expect("first row");
+        let op0 = tbl.add(vec![]);
+        let r0 = op0.id();
+        tbl.apply_op_validated(op0).expect("first row");
         assert_eq!(tbl.row_count(), 1);
         assert_eq!(tbl.row_id_at(0), Some(r0));
 
-        let r1: RowId = 101;
-        tbl.append_row_validated(vec![], r1).expect("second row");
+        let op1 = tbl.add(vec![]);
+        let r1 = op1.id();
+        tbl.apply_op_validated(op1).expect("second row");
         assert_eq!(tbl.row_count(), 2);
         assert_eq!(tbl.row_id_at(1), Some(r1));
     }
@@ -329,8 +352,8 @@ mod tests {
             primary_key: None,
         };
         let mut tbl = Table::new(Path::from("test.table"), gv_schema);
-        tbl.append_row_validated(vec![CellValue::Id(1)], 0)
-            .expect("row");
+        let op = tbl.add(vec![CellValue::Id(1)]);
+        tbl.apply_op_validated(op).expect("row");
         assert_eq!(tbl.row_count(), 1);
     }
 
@@ -345,8 +368,8 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
-        tbl.append_row_validated(vec![CellValue::Int(0)], 0)
-            .expect("first row");
+        let op = tbl.add(vec![CellValue::Int(0)]);
+        tbl.apply_op_validated(op).expect("first row");
         assert_eq!(tbl.row_count(), 1);
 
         let values1 = vec![CellValue::Int(1)];
@@ -370,12 +393,9 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("readable"), schema);
 
-        let row_id: RowId = 42;
-        tbl.append_row_validated(
-            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
-            row_id,
-        )
-        .expect("row");
+        let op = tbl.add(vec![CellValue::Int(7), CellValue::Str("x".to_string())]);
+        let row_id = op.id();
+        tbl.apply_op_validated(op).expect("row");
 
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
@@ -399,10 +419,10 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("debug.table"), schema);
 
-        tbl.append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())], 0)
-            .expect("first");
-        tbl.append_row_validated(vec![CellValue::Int(8), CellValue::Str("y".to_string())], 1)
-            .expect("second");
+        let op1 = tbl.add(vec![CellValue::Int(7), CellValue::Str("x".to_string())]);
+        tbl.apply_op_validated(op1).expect("first");
+        let op2 = tbl.add(vec![CellValue::Int(8), CellValue::Str("y".to_string())]);
+        tbl.apply_op_validated(op2).expect("second");
 
         assert_eq!(
             tbl.dump(),

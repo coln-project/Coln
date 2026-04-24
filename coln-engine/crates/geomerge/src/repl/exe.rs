@@ -185,7 +185,7 @@ pub fn add_rows(
 }
 
 /// Builds [`crate::ops::Op`]s with [`Table::add`], then commits with [`Store::apply_batch`].
-pub fn run_batch(store: &mut Store, assignments: &[BatchAssignment]) -> Result<String, ReplError> {
+pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Result<String, ReplError> {
     let mut bindings: HashMap<String, RowId> = HashMap::new();
     let mut parts = Vec::new();
     let mut ops = Vec::new();

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use geomerge::{
     ir::{FlatTheory, Path},
     repl::{
-        exe::run_batch,
+        exe::run_transact,
         parse::{Command, parse_command},
     },
     store::Store,
@@ -28,7 +28,7 @@ fn batch_block_matches_apply_batch_for_paths_fixture() {
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
     let cmd = parse_command(
-        "begin batch; gid1 = add Graphs values (); gid2 = add Graphs values (); \
+        "begin transact; gid1 = add Graphs values (); gid2 = add Graphs values (); \
          g0 = add G0 values (gid2); g1 = add G1 values (gid2); \
          v1 = add G.V values (gid1); v2 = add G.V values (gid1); \
          ge = add G.E values (gid1 v1 v2); commit;",
@@ -39,7 +39,7 @@ fn batch_block_matches_apply_batch_for_paths_fixture() {
         panic!("expected Command::Batch");
     };
 
-    let msg = run_batch(&mut store, &assignments).expect("run batch");
+    let msg = run_transact(&mut store, &assignments).expect("run batch");
     assert!(msg.contains("gid1=#"), "expected binding summary: {msg}");
 
     let ge = store.table_at(&Path::from("G.E")).expect("G.E");

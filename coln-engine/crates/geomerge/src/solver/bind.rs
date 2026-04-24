@@ -168,7 +168,7 @@ mod tests {
             ),
         );
 
-        let table = store.table_at(&path).expect("table T");
+        let table = store.table_at_mut(&path).expect("table T");
         let op0 = table.add(vec![CellValue::Int(1), CellValue::Int(2)]);
         let op1 = table.add(vec![CellValue::Int(2), CellValue::Int(3)]);
         let op2 = table.add(vec![CellValue::Int(9), CellValue::Int(4)]);
@@ -263,7 +263,7 @@ mod tests {
                 },
             ),
         );
-        let table = store.table_at(&path).expect("table T");
+        let table = store.table_at_mut(&path).expect("table T");
         let ops = values
             .iter()
             .map(|v| table.add(vec![CellValue::Int(*v)]))

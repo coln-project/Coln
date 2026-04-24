@@ -11,7 +11,7 @@ use crate::ir::Path;
 use crate::persist::pst::encode_store;
 use crate::repl::error::ReplError;
 use crate::repl::exe::{
-    LoadedState, add_rows, load_schema, load_store, render_schema_summary, run_batch,
+    LoadedState, add_rows, load_schema, load_store, render_schema_summary, run_transact,
 };
 use crate::repl::parse::Command;
 use crate::repl::parse::parse_command;
@@ -122,7 +122,7 @@ fn push_statement_line(pending: &mut Option<String>, line: &str) -> Option<Strin
     pending_line.push_str(line.trim());
 
     let buf = pending_line.trim_start();
-    if buf.starts_with("begin batch") {
+    if buf.starts_with("begin transact") {
         if pending_line.trim_end().ends_with("commit;") {
             return pending.take();
         }
@@ -214,7 +214,7 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
         }
         Command::Batch { assignments } => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
-            let message = run_batch(&mut loaded.store, &assignments)?;
+            let message = run_transact(&mut loaded.store, &assignments)?;
             Ok(Step::Continue(message))
         }
         Command::DumpTbl { name } => {
@@ -254,14 +254,14 @@ fn help_text() -> String {
         "  dump-table <table>;",
         "  dump-store;",
         "  persist <path>;",
-        "  begin batch; name = add <table> values (...); ... commit;",
+        "  begin transact; name = add <table> values (...); ... commit;",
         "",
         "Examples:",
         "  /help",
         "  load-schema tests/data/paths.json;",
         "  list-schema;",
         "  add T values (7 \"alice\"), (8 \"bob\");",
-        "  begin batch; g = add Graphs values (); e = add G0 values (g); commit;",
+        "  begin transact; g = add Graphs values (); e = add G0 values (g); commit;",
     ]
     .join("\n")
 }
@@ -433,14 +433,14 @@ mod tests {
     #[test]
     fn batch_buffer_waits_for_commit_semicolon() {
         let mut pending = None;
-        assert_eq!(push_statement_line(&mut pending, "begin batch;"), None);
+        assert_eq!(push_statement_line(&mut pending, "begin transact;"), None);
         assert_eq!(
             push_statement_line(&mut pending, "x = add T values (1);"),
             None
         );
         assert_eq!(
             push_statement_line(&mut pending, "commit;"),
-            Some("begin batch; x = add T values (1); commit;".to_string())
+            Some("begin transact; x = add T values (1); commit;".to_string())
         );
         assert_eq!(pending, None);
     }

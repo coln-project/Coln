@@ -424,7 +424,7 @@ mod tests {
                 },
             ),
         );
-        let table = store.table_at(&t).expect("T table");
+        let table = store.table_at_mut(&t).expect("T table");
         let row = table.add(vec![CellValue::Int(5), CellValue::Int(5)]);
         store.apply_batch(vec![row]).expect("insert row");
 
@@ -487,7 +487,7 @@ mod tests {
                 },
             ),
         );
-        let table = store.table_at(&t).expect("T table");
+        let table = store.table_at_mut(&t).expect("T table");
         let row = table.add(vec![CellValue::Int(1), CellValue::Int(2)]);
         store.apply_batch(vec![row]).expect("insert row");
 
