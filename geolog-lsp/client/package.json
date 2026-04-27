@@ -16,6 +16,11 @@
         "aliases": ["Geolog", "glog"]
       }
     ],
+    "configurationDefaults": {
+      "[geolog]": {
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
     "configuration": {
       "title": "Geolog LSP",
       "properties": {
