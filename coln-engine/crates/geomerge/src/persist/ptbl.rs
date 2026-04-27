@@ -3,7 +3,9 @@ use hexane::v1::Column;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
+use crate::commit::CommitHash;
 use crate::persist::error::PersisError;
+use crate::persist::hash_dict::{HashMapper, decode_row_id_column, encode_row_id_column};
 use crate::persist::utils::*;
 use crate::table::{CellValue, RowId, Table, TableOid};
 
@@ -11,7 +13,6 @@ use crate::table::{CellValue, RowId, Table, TableOid};
 pub(crate) struct TableEntry {
     pub(crate) path: String,
     pub(crate) oid: TableOid,
-    pub(crate) next_rowid: u64,
     pub(crate) schema: Schema,
 }
 
@@ -32,8 +33,11 @@ pub(crate) fn write_len_prefixed_data(buf: &mut Vec<u8>, data: &[u8]) -> Result<
 /// `[column_count:u32][repeat column_count × ([len:u64][column_bytes])]`
 ///
 /// Column order: row-id column, then each schema column. No magic or version.
-pub(crate) fn encode_table_raw(table: &Table) -> Result<Vec<u8>, PersisError> {
-    let column_blobs = encode_columns(table)?;
+pub(crate) fn encode_table_raw(
+    table: &Table,
+    hash_mapper: &HashMapper,
+) -> Result<Vec<u8>, PersisError> {
+    let column_blobs = encode_columns(table, hash_mapper)?;
     let mut buf = Vec::new();
 
     let n: u32 = column_blobs
@@ -54,6 +58,7 @@ pub(crate) fn encode_table_raw(table: &Table) -> Result<Vec<u8>, PersisError> {
 pub(crate) fn decode_table_raw(
     data: &[u8],
     schema: &Schema,
+    hashes: &[CommitHash],
 ) -> Result<(Vec<RowId>, Vec<Vec<CellValue>>), PersisError> {
     let mut pos = 0usize;
     let n = read_u32(data, &mut pos, "column count")? as usize;
@@ -67,7 +72,7 @@ pub(crate) fn decode_table_raw(
 
     let rowid_len = read_u64(data, &mut pos, "row-id column length")? as usize;
     let rowid_blob = read_slice(data, &mut pos, rowid_len, "row-id column")?;
-    let row_ids: Vec<RowId> = Column::<RowId>::load(rowid_blob)?.iter().collect();
+    let row_ids = decode_row_id_column(rowid_blob, hashes)?;
 
     let mut cols: Vec<Vec<CellValue>> = Vec::with_capacity(schema.columns.len());
     for (i, col_type) in schema.columns.iter().enumerate() {
@@ -76,8 +81,8 @@ pub(crate) fn decode_table_raw(
         match col_type {
             ColType::EntityType { .. } => {
                 cols.push(
-                    Column::<RowId>::load(blob)?
-                        .iter()
+                    decode_row_id_column(blob, hashes)?
+                        .into_iter()
                         .map(CellValue::Id)
                         .collect(),
                 );
@@ -120,14 +125,42 @@ pub(crate) fn decode_table_raw(
 
 // ── Column encoding ──────────────────────────────────
 
-fn encode_columns(table: &Table) -> Result<Vec<Vec<u8>>, PersisError> {
+pub(crate) fn collect_table_hashes(
+    table: &Table,
+    hash_mapper: &mut HashMapper,
+) -> Result<(), PersisError> {
+    for row_id in &table.row_ids {
+        hash_mapper.insert(row_id.commit);
+    }
+    for (i, col) in table.cols.iter().enumerate() {
+        if matches!(&table.schema().columns[i], ColType::EntityType { .. }) {
+            for cell in col {
+                match cell {
+                    CellValue::Id(id) => {
+                        hash_mapper.insert(id.commit);
+                    }
+                    _ => {
+                        return Err(PersisError::SchemaError(format!(
+                            "column {i}: expected entity id, got {:?}",
+                            cell
+                        )));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Encode table columns, using hexane's columnar encoding
+fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>>, PersisError> {
     let mut cols = Vec::new();
-    cols.push(Column::<RowId>::from_values(table.row_ids.clone()).save());
+    cols.push(encode_row_id_column(&table.row_ids, hash_mapper)?);
 
     for (i, col) in table.cols.iter().enumerate() {
         match &table.schema().columns[i] {
             ColType::EntityType { .. } => {
-                let ids: Vec<u64> = col
+                let ids: Vec<RowId> = col
                     .iter()
                     .map(|cell| match cell {
                         CellValue::Id(id) => Ok(*id),
@@ -137,7 +170,7 @@ fn encode_columns(table: &Table) -> Result<Vec<Vec<u8>>, PersisError> {
                         ))),
                     })
                     .collect::<Result<_, PersisError>>()?;
-                cols.push(Column::<RowId>::from_values(ids).save());
+                cols.push(encode_row_id_column(&ids, hash_mapper)?);
             }
             ColType::PrimType { prim } => match prim {
                 PrimType::PrimInt => {
@@ -177,7 +210,17 @@ fn encode_columns(table: &Table) -> Result<Vec<Vec<u8>>, PersisError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{Path, Schema};
+    use crate::{
+        commit::{CommitHash, HASH_SIZE},
+        ir::{Path, Schema},
+    };
+
+    fn test_row_id(commit: u8, counter: u32) -> RowId {
+        RowId {
+            commit: CommitHash([commit; HASH_SIZE]),
+            counter,
+        }
+    }
 
     fn int_schema() -> Schema {
         Schema {
@@ -212,12 +255,21 @@ mod tests {
         }
     }
 
+    fn encode_decode_table(
+        table: &Table,
+        schema: &Schema,
+    ) -> Result<(Vec<RowId>, Vec<Vec<CellValue>>), PersisError> {
+        let mut hash_mapper = HashMapper::new();
+        collect_table_hashes(table, &mut hash_mapper)?;
+        let bytes = encode_table_raw(table, &hash_mapper)?;
+        decode_table_raw(&bytes, schema, hash_mapper.hashes())
+    }
+
     #[test]
     fn raw_round_trip_empty_table() {
         let schema = empty_schema();
         let tbl = Table::new(Path::from("empty"), schema.clone());
-        let bytes = encode_table_raw(&tbl).unwrap();
-        let (row_ids, cols) = decode_table_raw(&bytes, &schema).unwrap();
+        let (row_ids, cols) = encode_decode_table(&tbl, &schema).unwrap();
 
         assert!(row_ids.is_empty());
         assert!(cols.is_empty());
@@ -227,16 +279,12 @@ mod tests {
     fn raw_round_trip_single_int_column() {
         let schema = int_schema();
         let mut tbl = Table::new(Path::from("ints"), schema.clone());
-        let op1 = tbl.add(vec![CellValue::Int(10)]);
-        tbl.apply_op_validated(op1).unwrap();
-        let op2 = tbl.add(vec![CellValue::Int(20)]);
-        tbl.apply_op_validated(op2).unwrap();
+        tbl.append_row(vec![CellValue::Int(10)], test_row_id(1, 0));
+        tbl.append_row(vec![CellValue::Int(20)], test_row_id(1, 1));
 
+        let (row_ids, cols) = encode_decode_table(&tbl, &schema).unwrap();
 
-        let bytes = encode_table_raw(&tbl).unwrap();
-        let (row_ids, cols) = decode_table_raw(&bytes, &schema).unwrap();
-
-        assert_eq!(row_ids, vec![0u64, 1]);
+        assert_eq!(row_ids, vec![test_row_id(1, 0), test_row_id(1, 1)]);
         assert_eq!(cols.len(), 1);
         assert_eq!(cols[0], vec![CellValue::Int(10), CellValue::Int(20)]);
     }
@@ -245,19 +293,21 @@ mod tests {
     fn raw_round_trip_mixed_columns() {
         let schema = mixed_schema();
         let mut tbl = Table::new(Path::from("mixed"), schema.clone());
-        let op = tbl.add(vec![
-            CellValue::Int(42),
-            CellValue::Str("hello".into()),
-            CellValue::Id(0),
-        ]);
-        tbl.apply_op_validated(op).unwrap();
+        let entity_id = test_row_id(7, 99);
+        tbl.append_row(
+            vec![
+                CellValue::Int(42),
+                CellValue::Str("hello".into()),
+                CellValue::Id(entity_id),
+            ],
+            test_row_id(1, 0),
+        );
 
-        let bytes = encode_table_raw(&tbl).unwrap();
-        let (row_ids, cols) = decode_table_raw(&bytes, &schema).unwrap();
+        let (row_ids, cols) = encode_decode_table(&tbl, &schema).unwrap();
 
-        assert_eq!(row_ids, vec![0u64]);
+        assert_eq!(row_ids, vec![test_row_id(1, 0)]);
         assert_eq!(cols[0], vec![CellValue::Int(42)]);
         assert_eq!(cols[1], vec![CellValue::Str("hello".into())]);
-        assert_eq!(cols[2], vec![CellValue::Id(0)]);
+        assert_eq!(cols[2], vec![CellValue::Id(entity_id)]);
     }
 }

@@ -2,18 +2,29 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Write;
 
+use crate::commit::CommitHash;
 use crate::ir;
+use crate::ir::{ColType, PrimType, Schema};
 use crate::persist::ptbl::TableEntry;
-use crate::{
-    ir::{ColType, PrimType, Schema},
-    ops::Op,
-};
 
 pub type TableOid = u64;
 
 /// The unique id that identifies each row in a table
 /// It is managed by the database, read-only for the user
-pub type RowId = u64;
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub struct RowId {
+    pub commit: CommitHash,
+    pub counter: u32,
+}
+
+impl fmt::Display for RowId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in &self.commit.0[..6] {
+            write!(f, "{byte:02x}")?;
+        }
+        write!(f, ":{}", self.counter)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ValidationError {
@@ -134,7 +145,6 @@ impl fmt::Display for CellValue {
 pub struct Table {
     path: ir::Path,
     schema: Schema,
-    pub(crate) next_rowid: u64,
     pub(crate) row_ids: Vec<RowId>,
     pub(crate) cols: Vec<Vec<CellValue>>,
 }
@@ -145,7 +155,6 @@ impl Table {
         Self {
             path,
             schema,
-            next_rowid: 0,
             row_ids: vec![],
             cols: vec![Vec::new(); n],
         }
@@ -159,7 +168,6 @@ impl Table {
         Self {
             path: ir::Path::from(entry.path.as_str()),
             schema: entry.schema.clone(),
-            next_rowid: entry.next_rowid,
             row_ids,
             cols,
         }
@@ -212,37 +220,24 @@ impl Table {
         out
     }
 
-    /// Checks that the values to be inserted matches the schema definition
-    pub fn validate(&self, values: &[CellValue]) -> Result<(), ValidationError> {
+    /// Checks that a row has the right number of values for this table. This is
+    /// a preliminary check that is done as soon as an operation is added. More
+    /// complex check is in validate_insert and deferred at commit time
+    pub fn validate_column_count(&self, got: usize) -> Result<(), ValidationError> {
         let expected = self.schema.columns.len();
-        if values.len() != expected {
-            return Err(ValidationError::ColumnCount {
-                expected,
-                got: values.len(),
-            });
-        }
-        for (i, (col_type, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
-            value.matches_schema(col_type, i)?;
+        if got != expected {
+            return Err(ValidationError::ColumnCount { expected, got });
         }
         Ok(())
     }
 
-    /// Values at primary-key columns for this row.
-    /// A primary key definition would occur in tables that do not end up in Query
-    /// An empty primary key means the table would have at most one row.
-    pub fn primary_key_values(&self, values: &[CellValue]) -> Option<Vec<CellValue>> {
-        self.schema.primary_key.as_ref().map(|pk| {
-            if pk.is_empty() {
-                Vec::new()
-            } else {
-                pk.iter().map(|&i| values[i as usize].clone()).collect()
-            }
-        })
-    }
+    /// Checks schema and primary-key constraints against rows already stored.
+    pub fn validate_insert(&self, values: &[CellValue]) -> Result<(), ValidationError> {
+        self.validate_column_count(values.len())?;
 
-    /// Schema and primary-key check against rows already stored.
-    pub fn validate_new_row(&self, values: &[CellValue]) -> Result<(), ValidationError> {
-        self.validate(values)?;
+        for (i, (col_type, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
+            value.matches_schema(col_type, i)?;
+        }
 
         if let Some(pk) = &self.schema.primary_key {
             if !pk.is_empty() {
@@ -265,25 +260,17 @@ impl Table {
         Ok(())
     }
 
-    // TODO: Ok to leave this as is for now, ultimately we want to make each table
-    // behave as an opset, when we add deletions. But we can potentially include
-    // deletions as a separate table. For now this is the same as an opset, except
-    // we don't have a column saying operation = add
-    #[cfg(test)]
-    pub(crate) fn apply_op_validated(&mut self, op: Op) -> Result<(), ValidationError> {
-        let Op::Add {
-            row_id,
-            values,
-            table,
-        } = op;
-        if self.path != table {
-            return Err(ValidationError::TableMismatch {
-                expected: self.path.clone(),
-                actual: table,
-            });
-        }
-        self.validate_new_row(&values)?;
-        Ok(self.append_row(values, row_id))
+    /// Values at primary-key columns for this row.
+    /// A primary key definition would occur in tables that do not end up in Query
+    /// An empty primary key means the table would have at most one row.
+    pub fn primary_key_values(&self, values: &[CellValue]) -> Option<Vec<CellValue>> {
+        self.schema.primary_key.as_ref().and_then(|pk| {
+            if pk.is_empty() {
+                Some(Vec::new())
+            } else {
+                Some(pk.iter().map(|&i| values[i as usize].clone()).collect())
+            }
+        })
     }
 
     /// Append a row to columnar storage and assign a new [`RowId`].
@@ -298,17 +285,6 @@ impl Table {
             self.cols[i].push(v);
         }
     }
-
-    /// Append one row after validation and primary-key uniqueness check.
-    pub fn add(&mut self, values: Vec<CellValue>) -> Op {
-        let row_id = self.next_rowid;
-        self.next_rowid += 1;
-        Op::Add {
-            row_id,
-            table: self.path.clone(),
-            values,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -316,6 +292,13 @@ mod tests {
 
     use super::*;
     use crate::ir::{self, Path};
+
+    fn test_row_id(counter: u32) -> RowId {
+        RowId {
+            commit: CommitHash([0; 32]),
+            counter,
+        }
+    }
 
     /// Tables with no data columns still allocate row ids on insert; `row_count` must reflect
     /// those rows (it cannot use column length when `cols` is empty).
@@ -329,32 +312,15 @@ mod tests {
         assert!(tbl.cols.is_empty());
         assert_eq!(tbl.row_count(), 0);
 
-        let op0 = tbl.add(vec![]);
-        let r0 = op0.id();
-        tbl.apply_op_validated(op0).expect("first row");
+        let r0 = test_row_id(0);
+        tbl.append_row(vec![], r0);
         assert_eq!(tbl.row_count(), 1);
         assert_eq!(tbl.row_id_at(0), Some(r0));
 
-        let op1 = tbl.add(vec![]);
-        let r1 = op1.id();
-        tbl.apply_op_validated(op1).expect("second row");
+        let r1 = test_row_id(1);
+        tbl.append_row(vec![], r1);
         assert_eq!(tbl.row_count(), 2);
         assert_eq!(tbl.row_id_at(1), Some(r1));
-    }
-
-    #[test]
-    fn test_table_add() {
-        let columns = vec![ColType::EntityType {
-            path: Path::from("G.E"),
-        }];
-        let gv_schema = ir::Schema {
-            columns,
-            primary_key: None,
-        };
-        let mut tbl = Table::new(Path::from("test.table"), gv_schema);
-        let op = tbl.add(vec![CellValue::Id(1)]);
-        tbl.apply_op_validated(op).expect("row");
-        assert_eq!(tbl.row_count(), 1);
     }
 
     /// `primary_key: Some([])` marks a singleton table (at most one row).
@@ -368,12 +334,11 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
-        let op = tbl.add(vec![CellValue::Int(0)]);
-        tbl.apply_op_validated(op).expect("first row");
+        tbl.append_row(vec![CellValue::Int(0)], test_row_id(0));
         assert_eq!(tbl.row_count(), 1);
 
         let values1 = vec![CellValue::Int(1)];
-        let err = tbl.validate_new_row(&values1).unwrap_err();
+        let err = tbl.validate_insert(&values1).unwrap_err();
         assert_eq!(err, ValidationError::DuplicatePrimaryKey);
         assert_eq!(tbl.row_count(), 1);
     }
@@ -393,9 +358,11 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("readable"), schema);
 
-        let op = tbl.add(vec![CellValue::Int(7), CellValue::Str("x".to_string())]);
-        let row_id = op.id();
-        tbl.apply_op_validated(op).expect("row");
+        let row_id = test_row_id(0);
+        tbl.append_row(
+            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
+            row_id,
+        );
 
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
@@ -419,17 +386,25 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("debug.table"), schema);
 
-        let op1 = tbl.add(vec![CellValue::Int(7), CellValue::Str("x".to_string())]);
-        tbl.apply_op_validated(op1).expect("first");
-        let op2 = tbl.add(vec![CellValue::Int(8), CellValue::Str("y".to_string())]);
-        tbl.apply_op_validated(op2).expect("second");
+        tbl.append_row(
+            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
+            test_row_id(0),
+        );
+        tbl.append_row(
+            vec![CellValue::Int(8), CellValue::Str("y".to_string())],
+            test_row_id(1),
+        );
 
         assert_eq!(
             tbl.dump(),
-            concat!(
-                "table debug.table (rows: 2, cols: 2)\n",
-                "[0] row_id=0 | c0=7 | c1=\"x\"\n",
-                "[1] row_id=1 | c0=8 | c1=\"y\"\n"
+            format!(
+                concat!(
+                    "table debug.table (rows: 2, cols: 2)\n",
+                    "[0] row_id={} | c0=7 | c1=\"x\"\n",
+                    "[1] row_id={} | c0=8 | c1=\"y\"\n",
+                ),
+                test_row_id(0),
+                test_row_id(1),
             )
         );
     }

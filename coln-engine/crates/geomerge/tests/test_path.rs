@@ -1,10 +1,11 @@
 use std::{path::PathBuf, sync::Once};
 
 use geomerge::{
+    commit::CommitHash,
     ir::{self, FlatTheory, Path},
     persist::pst,
     store::{Store, StoreIntError},
-    table::CellValue,
+    table::RowId,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -36,32 +37,21 @@ fn fixture_theory(name: &str) -> FlatTheory {
 }
 
 fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
-    let graphs = store
-        .table_at_mut(&Path::from("Graphs"))
-        .expect("Graph table");
+    let graphs = Path::from("Graphs");
+    let g0 = Path::from("G0");
+    let g1 = Path::from("G1");
+    let gv = Path::from("G.V");
+    let ge = Path::from("G.E");
 
-    let gid1 = graphs.add(vec![]);
-    let gid2 = graphs.add(vec![]);
-    let g0 = store.table_at_mut(&Path::from("G0")).expect("G0 table");
-    let g0_op = g0.add(vec![CellValue::Id(gid2.id())]);
-    let g1 = store.table_at_mut(&Path::from("G1")).expect("G1 table");
-    let g1_op = g1.add(vec![CellValue::Id(gid2.id())]);
-
-    let gv = store.table_at_mut(&Path::from("G.V")).expect("G.V table");
-    let v1 = gv.add(vec![CellValue::Id(gid1.id())]);
-    let v2 = gv.add(vec![CellValue::Id(gid1.id())]);
-
-    let ge = store.table_at_mut(&Path::from("G.E")).expect("G.E table");
-
-    let eop = ge.add(vec![
-        CellValue::Id(gid1.id()),
-        CellValue::Id(v1.id()),
-        CellValue::Id(v2.id()),
-    ]);
-
-    store
-        .apply_batch(vec![gid1, gid2, g0_op, g1_op, v1, v2, eop])
-        .expect("applied successfully");
+    let mut tx = store.transaction();
+    let gid1 = tx.add(&graphs, vec![])?;
+    let gid2 = tx.add(&graphs, vec![])?;
+    tx.add(&g0, vec![gid2.into()])?;
+    tx.add(&g1, vec![gid2.into()])?;
+    let v1 = tx.add(&gv, vec![gid1.into()])?;
+    let v2 = tx.add(&gv, vec![gid1.into()])?;
+    tx.add(&ge, vec![gid1.into(), v1.into(), v2.into()])?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -154,12 +144,11 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     assert_eq!(g0.row_count(), 0);
     assert_eq!(g1.row_count(), 0);
 
-    let op = store
-        .table_at_mut(&Path::from("Graphs"))
-        .expect("Graph table")
-        .add(vec![]);
-    let err = store.apply_batch(vec![op]).expect_err("missing g0 and g1");
-    assert!(matches!(*err, StoreIntError::Law(_)));
+    let mut tx = store.transaction();
+    tx.add(&Path::from("Graphs"), vec![])
+        .expect("add graph row");
+    let err = tx.commit().expect_err("missing g0 and g1");
+    assert!(matches!(err, StoreIntError::Law(_)));
 
     assert_eq!(
         store.table_at(&Path::from("Graphs")).unwrap().row_count(),
@@ -174,41 +163,30 @@ fn test_fk() {
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
-    let op0 = store
-        .table_at_mut(&Path::from("Graphs"))
-        .expect("Graph table")
-        .add(vec![]);
-    let gid = op0.id();
-    let g0_op = store
-        .table_at_mut(&Path::from("G0"))
-        .expect("G0")
-        .add(vec![CellValue::Id(0)]);
-    let g1_op = store
-        .table_at_mut(&Path::from("G1"))
-        .expect("G1")
-        .add(vec![CellValue::Id(0)]);
+    let graphs = Path::from("Graphs");
+    let gv = Path::from("G.V");
+    let ge = Path::from("G.E");
 
-    let op1 = store
-        .table_at_mut(&Path::from("G.V"))
-        .expect("G.V")
-        .add(vec![CellValue::Id(1)]);
+    add_basic_data_to_path(&mut store).expect("add valid baseline data");
+    let gid = store
+        .table_at(&graphs)
+        .expect("Graphs table")
+        .row_id_at(0)
+        .expect("graph row");
+    let vid = store
+        .table_at(&gv)
+        .expect("G.V table")
+        .row_id_at(0)
+        .expect("vertex row");
 
-    store.apply_batch(vec![op0, g0_op, g1_op]).unwrap();
-    let vid = op1.id();
-    store
-        .apply_batch(vec![op1])
-        .expect("inserting v1 successful");
-
-    let dummy_vid = u64::MAX;
-    let ope = store
-        .table_at_mut(&Path::from("G.E"))
-        .expect("G.E")
-        .add(vec![
-            CellValue::Id(gid),
-            CellValue::Id(vid),
-            CellValue::Id(dummy_vid),
-        ]);
-    let err = store.apply_batch(vec![ope]).expect_err("missing v2");
+    let dummy_vid = RowId {
+        commit: CommitHash([0xff; 32]),
+        counter: u32::MAX,
+    };
+    let mut tx = store.transaction();
+    tx.add(&ge, vec![gid.into(), vid.into(), dummy_vid.into()])
+        .expect("add edge");
+    let err = tx.commit().expect_err("missing v2");
 
     assert!(matches!(*err, StoreIntError::Law(_)));
 }

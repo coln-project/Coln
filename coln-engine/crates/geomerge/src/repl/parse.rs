@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use crate::{
+    commit::{CommitHash, HASH_SIZE},
     ir::{ColType, PrimType},
     repl::error::BatchCellParseError,
     table::{CellValue, RowId},
+    txn::ops::{TempRowId, TxnCellValue},
 };
 
 /// One `name = add <table> values (...);` step inside a batch block (exactly one row).
@@ -150,25 +152,29 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
 pub fn parse_cell_value_batch(
     col_type: &ColType,
     raw: &str,
-    bindings: &HashMap<String, RowId>,
-) -> Result<CellValue, BatchCellParseError> {
+    bindings: &HashMap<String, TempRowId>,
+) -> Result<TxnCellValue, BatchCellParseError> {
     match col_type {
         ColType::EntityType { .. } => {
             if raw.starts_with('#') {
-                parse_cell_value(col_type, raw).map_err(BatchCellParseError::InvalidValue)
+                parse_cell_value(col_type, raw)
+                    .map(Into::into)
+                    .map_err(BatchCellParseError::InvalidValue)
             } else if is_binding_ident(raw) {
                 let id = bindings
                     .get(raw)
                     .copied()
                     .ok_or_else(|| BatchCellParseError::UnknownBinding(raw.to_string()))?;
-                Ok(CellValue::Id(id))
+                Ok(TxnCellValue::from(id))
             } else {
                 Err(BatchCellParseError::InvalidValue(format!(
-                    "expected entity id like #12 or a binding name, got {raw}"
+                    "expected entity id like #<commit>:<counter> or a binding name, got {raw}"
                 )))
             }
         }
-        _ => parse_cell_value(col_type, raw).map_err(BatchCellParseError::InvalidValue),
+        _ => parse_cell_value(col_type, raw)
+            .map(Into::into)
+            .map_err(BatchCellParseError::InvalidValue),
     }
 }
 
@@ -366,14 +372,7 @@ fn split_add_row_tokens(row_src: &str) -> Vec<String> {
 
 pub fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, String> {
     match col_type {
-        ColType::EntityType { .. } => raw
-            .strip_prefix('#')
-            .ok_or_else(|| "expected entity id like #12".to_string())
-            .and_then(|rest| {
-                rest.parse::<u64>()
-                    .map(CellValue::Id)
-                    .map_err(|_| format!("invalid entity id: {raw}"))
-            }),
+        ColType::EntityType { .. } => parse_row_id(raw).map(CellValue::Id),
         ColType::PrimType { prim } => match prim {
             PrimType::PrimInt => raw
                 .parse::<i64>()
@@ -383,6 +382,28 @@ pub fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, Stri
         },
         ColType::Tuple { .. } => Err("tuple columns are not supported yet".to_string()),
     }
+}
+
+fn parse_row_id(raw: &str) -> Result<RowId, String> {
+    let rest = raw
+        .strip_prefix('#')
+        .ok_or_else(|| "expected entity id like #<commit>:<counter>".to_string())?;
+    let Some((hash_hex, counter_raw)) = rest.split_once(':') else {
+        return Err("expected entity id like #<commit>:<counter>".to_string());
+    };
+    let hash_bytes = hex::decode(hash_hex).map_err(|_| format!("invalid entity id: {raw}"))?;
+    if hash_bytes.len() != HASH_SIZE {
+        return Err(format!("invalid entity id: {raw}"));
+    }
+    let mut hash = [0; HASH_SIZE];
+    hash.copy_from_slice(&hash_bytes);
+    let counter = counter_raw
+        .parse::<u32>()
+        .map_err(|_| format!("invalid entity id: {raw}"))?;
+    Ok(RowId {
+        commit: CommitHash(hash),
+        counter,
+    })
 }
 
 #[cfg(test)]
@@ -464,9 +485,10 @@ mod tests {
 
     #[test]
     fn parses_batch_with_bindings() {
-        let cmd =
-            parse_command("begin transact; g = add Graphs values (); x = add G0 values (g); commit;")
-                .unwrap();
+        let cmd = parse_command(
+            "begin transact; g = add Graphs values (); x = add G0 values (g); commit;",
+        )
+        .unwrap();
         assert_eq!(
             cmd,
             Command::Batch {

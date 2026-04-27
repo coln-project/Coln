@@ -3,13 +3,15 @@ use std::error::Error;
 use std::fmt;
 use tracing::{debug, info};
 
+use crate::commit::CommitHash;
+use crate::commit::graph::CommitGraph;
 use crate::ir::{self, FlatTheory, LawEntry};
-use crate::ops::Op;
 use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
 use crate::solver::{self};
 use crate::table::{CellValue, Table, TableOid, ValidationError};
-use crate::transaction::OwnedTransaction;
+use crate::txn::Transaction;
+use crate::txn::ops::Op;
 
 // TODO this should not be cloneable for efficiency reasons. In the future we should
 // be able to teach the law validator to check the delta
@@ -22,6 +24,7 @@ pub struct Store {
     law_entries: Vec<ir::LawEntry>,
     /// Compiled law for this instance; table schemas live only on each [`Table`].
     laws: Vec<CompLaw>,
+    commits: CommitGraph,
 }
 
 /// Store integrity error
@@ -100,6 +103,7 @@ impl Store {
             tables: HashMap::new(),
             law_entries: vec![],
             laws: vec![],
+            commits: CommitGraph::new(),
         }
     }
 
@@ -109,6 +113,14 @@ impl Store {
 
     pub(crate) fn next_oid(&self) -> TableOid {
         self.next_oid
+    }
+
+    pub fn commits(&self) -> &CommitGraph {
+        &self.commits
+    }
+
+    pub(crate) fn record_commit(&mut self, hash: CommitHash, deps: Vec<CommitHash>) {
+        self.commits.add_commit(hash, deps);
     }
 
     pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
@@ -170,6 +182,7 @@ impl Store {
             tables: tables_map,
             law_entries,
             laws,
+            commits: CommitGraph::new(),
         })
     }
 
@@ -216,6 +229,7 @@ impl Store {
             tables: tables_map,
             law_entries: laws,
             laws: comp_laws,
+            commits: CommitGraph::new(),
         })
     }
 
@@ -241,7 +255,7 @@ impl Store {
     /// Validates the full batch against current store state (including PK clashes **within** the
     /// batch), then applies each op in order. On validation failure, the store is unchanged.
     /// Returns a vector of row_ids, in the same order as ops
-    pub fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), Box<StoreIntError>> {
+    pub(crate) fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), Box<StoreIntError>> {
         info!(op_count = ops.len(), "applying batch");
         self.validate_batch(&ops)?;
         let mut preview_store = self.clone();
@@ -263,28 +277,11 @@ impl Store {
         Ok(())
     }
 
-    pub fn into_transaction<F, O>(self, f: F) -> OwnedTransaction<F, O>
-    where
-        F: FnOnce(&mut Store) -> Result<O, Box<StoreIntError>>,
-    {
-        OwnedTransaction::new(self, f)
+    pub fn transaction(&mut self) -> Transaction<'_> {
+        Transaction::new(self)
     }
 
-    pub fn transact<F, O>(&mut self, f: F) -> Result<O, Box<StoreIntError>>
-    where
-        F: FnOnce(&mut Store) -> Result<O, Box<StoreIntError>>,
-    {
-        info!("start transaction");
-        let mut preview_store = self.clone();
-        let r = f(&mut preview_store)?;
-        // TODO add primary key check
-        preview_store.check_laws()?;
-        *self = preview_store;
-        info!("transaction successful");
-        Ok(r)
-    }
-
-    fn validate_batch(&self, ops: &[Op]) -> Result<(), Box<StoreIntError>> {
+    pub(crate) fn validate_batch(&self, ops: &[Op]) -> Result<(), StoreIntError> {
         debug!(op_count = ops.len(), "validating batch");
         let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
 
@@ -301,7 +298,7 @@ impl Store {
                 .ok_or_else(|| ValidationError::UnknownTable {
                     path: table.clone(),
                 })?;
-            t.validate_new_row(values)?;
+            t.validate_insert(values)?;
 
             // Check primary key conflicts within ops batch
             if let Some(key) = t.primary_key_values(values) {
@@ -482,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_batch_validates_then_applies() {
+    fn transaction_validates_then_applies() {
         let path = Path::from("T");
         let schema = Schema {
             columns: vec![ColType::PrimType {
@@ -492,11 +489,14 @@ mod tests {
         };
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
-        let tbl = store.table_at_mut(&path).expect("Table T present");
 
-        let op1 = tbl.add(vec![CellValue::Int(1)]);
-        let op2 = tbl.add(vec![CellValue::Int(2)]);
-        store.apply_batch(vec![op1, op2]).expect("batch");
+        let mut txn = store.transaction();
+        txn.add(&path, vec![CellValue::Int(1).into()])
+            .expect("first add");
+        txn.add(&path, vec![CellValue::Int(2).into()])
+            .expect("second add");
+
+        txn.commit().expect("commit");
 
         assert_eq!(store.table_at(&path).expect("T").row_count(), 2);
     }
@@ -504,7 +504,7 @@ mod tests {
     /// Covers the same rollback guarantee as the old `transact` test: if validation fails,
     /// no rows from the batch are committed (here the second op references an unregistered table).
     #[test]
-    fn apply_batch_unknown_table_leaves_store_unchanged() {
+    fn transaction_unknown_table_leaves_store_unchanged() {
         let path = Path::from("T");
         let schema = Schema {
             columns: vec![ColType::PrimType {
@@ -513,15 +513,15 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema.clone()));
+        store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
-        let t = store.table_at_mut(&path).expect("T");
-        let op1 = t.add(vec![CellValue::Int(1)]);
-
-        let mut missing_tbl = Table::new(Path::from("missing"), schema);
-        let op2 = missing_tbl.add(vec![CellValue::Int(2)]);
-
-        let err = store.apply_batch(vec![op1, op2]).unwrap_err();
+        let err = {
+            let mut txn = store.transaction();
+            txn.add(&path, vec![CellValue::Int(1).into()])
+                .expect("first add");
+            txn.add(&Path::from("missing"), vec![CellValue::Int(2).into()])
+                .unwrap_err()
+        };
 
         assert!(matches!(
             *err,
@@ -531,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_batch_duplicate_primary_key_within_batch() {
+    fn transaction_duplicate_primary_key_within_batch() {
         let path = Path::from("T");
         let schema = Schema {
             columns: vec![ColType::PrimType {
@@ -542,11 +542,12 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
-        let t = store.table_at_mut(&path).expect("T");
-        let op1 = t.add(vec![CellValue::Int(1)]);
-        let op2 = t.add(vec![CellValue::Int(1)]);
-
-        let err = store.apply_batch(vec![op1, op2]).unwrap_err();
+        let mut txn = store.transaction();
+        txn.add(&path, vec![CellValue::Int(1).into()])
+            .expect("first add");
+        txn.add(&path, vec![CellValue::Int(1).into()])
+            .expect("second add");
+        let err = txn.commit().unwrap_err();
 
         assert_eq!(
             *err,
@@ -556,7 +557,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_batch_single_insert_commits() {
+    fn transaction_single_insert_commits() {
         let path = Path::from("T");
         let schema = Schema {
             columns: vec![ColType::PrimType {
@@ -567,9 +568,10 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
-        let t = store.table_at_mut(&path).expect("T");
-        let op = t.add(vec![CellValue::Int(42)]);
-        store.apply_batch(vec![op]).expect("apply_batch");
+        let mut txn = store.transaction();
+        txn.add(&path, vec![CellValue::Int(42).into()])
+            .expect("add");
+        txn.commit().expect("commit");
 
         let t = store.table_at(&path).expect("T");
         assert_eq!(t.row_count(), 1);
@@ -577,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn transact_rolls_back_when_closure_returns_err() {
+    fn transaction_commit_updates_commit_graph_heads_and_deps() {
         let path = Path::from("T");
         let schema = Schema {
             columns: vec![ColType::PrimType {
@@ -588,35 +590,95 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
-        let err = store
-            .transact(|s| -> Result<(), Box<StoreIntError>> {
-                let oid = s.resolve_table(&path).expect("T");
-                let t = s.table_mut(oid).expect("T");
-                t.append_row_validated(vec![CellValue::Int(1)])?;
-                Err(Box::new(StoreIntError::Validation(
-                    ValidationError::UnknownTable {
-                        path: Path::from("never"),
-                    },
-                )))
-            })
-            .unwrap_err();
+        let mut tx = store.transaction();
+        tx.add(&path, vec![CellValue::Int(1).into()])
+            .expect("add first row");
+        let first = tx.commit().expect("first commit");
 
-        assert!(matches!(
-            *err,
-            StoreIntError::Validation(ValidationError::UnknownTable { .. })
-        ));
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
+        assert!(store.commits().contains(&first));
+        assert_eq!(store.commits().parents_of(&first), Some([].as_slice()));
+        assert_eq!(
+            store.commits().heads().copied().collect::<Vec<_>>(),
+            vec![first]
+        );
+
+        let mut tx = store.transaction();
+        tx.add(&path, vec![CellValue::Int(2).into()])
+            .expect("add second row");
+        let second = tx.commit().expect("second commit");
+
+        assert!(store.commits().contains(&second));
+        assert_eq!(
+            store.commits().parents_of(&second),
+            Some([first].as_slice())
+        );
+        assert_eq!(
+            store.commits().heads().copied().collect::<Vec<_>>(),
+            vec![second]
+        );
     }
 
     #[test]
-    fn transact_rolls_back_when_laws_fail() {
+    fn transaction_resolves_pending_row_references_with_commit_hash() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store.insert_table(
+            nodes.clone(),
+            Table::new(
+                nodes.clone(),
+                Schema {
+                    columns: vec![],
+                    primary_key: None,
+                },
+            ),
+        );
+        store.insert_table(
+            edges.clone(),
+            Table::new(
+                edges.clone(),
+                Schema {
+                    columns: vec![ColType::EntityType {
+                        path: nodes.clone(),
+                    }],
+                    primary_key: None,
+                },
+            ),
+        );
+
+        let mut tx = store.transaction();
+        let node_temp = tx.add(&nodes, vec![]).expect("add node");
+        tx.add(&edges, vec![node_temp.into()]).expect("add edge");
+        let commit = tx.commit().expect("commit");
+
+        let node_id = store
+            .table_at(&nodes)
+            .expect("Nodes")
+            .row_id_at(0)
+            .expect("node row id");
+        let edge = store.table_at(&edges).expect("Edges");
+        let edge_id = edge.row_id_at(0).expect("edge row id");
+
+        assert_eq!(node_id.commit, commit);
+        assert_eq!(node_id.counter, 0);
+        assert_eq!(edge_id.commit, commit);
+        assert_eq!(edge_id.counter, 1);
+        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+    }
+
+    #[test]
+    fn transaction_leaves_store_unchanged_when_laws_fail() {
         let theory = link_foreign_key_theory();
         let link = Path::from("Link");
         let mut store = Store::try_from_theory(theory).expect("theory");
 
-        let t = store.table_at_mut(&link).expect("Link");
-        let op = t.add(vec![CellValue::Int(10), CellValue::Int(20)]);
-        let err = store.apply_batch(vec![op]).unwrap_err();
+        let mut txn = store.transaction();
+        txn.add(
+            &link,
+            vec![CellValue::Int(10).into(), CellValue::Int(20).into()],
+        )
+        .expect("add");
+        let err = txn.commit().unwrap_err();
 
         assert!(matches!(*err, StoreIntError::Law(_)));
         assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);

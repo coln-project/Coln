@@ -4,15 +4,16 @@ use serde_json;
 use std::io::Write;
 
 use crate::persist::error::PersisError;
+use crate::persist::hash_dict::{HashMapper, read_hash_dict, write_hash_dict};
 use crate::persist::ptbl::{
-    TableEntry, decode_table_raw, encode_table_raw, write_len_prefixed_data,
+    TableEntry, collect_table_hashes, decode_table_raw, encode_table_raw, write_len_prefixed_data,
 };
 use crate::persist::utils::*;
 use crate::store::Store;
 use crate::table::{Table, TableOid};
 
 const MAGIC: &[u8; 4] = b"GMst";
-const FORMAT_VERSION: u32 = 0;
+const FORMAT_VERSION: u32 = 1;
 
 // ── Store header ────────────────────────────────────────────────────────────
 
@@ -29,22 +30,24 @@ struct StoreHeader {
 /// Store file layout (little-endian):
 ///
 /// `[MAGIC:4][version:u32][header_len:u32][StoreHeader postcard]`
+/// `[hash_count:u32][CommitHash × hash_count]`
 /// `[table_count × ([table_payload_len:u64][table_payload])]`
 ///
 /// Table payloads are raw column data.
-/// Schemas, paths, next_rowid, and oid mapping live in the `StoreHeader`.
+/// Schemas, paths, and oid mapping live in the `StoreHeader`.
 pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersisError> {
     let mut table_entries = Vec::new();
-    let mut table_payloads = Vec::new();
+    let mut tables_to_encode = Vec::new();
+    let mut hash_mapper = HashMapper::new();
 
     for (&oid, table) in store.tables() {
+        collect_table_hashes(table, &mut hash_mapper)?;
         table_entries.push(TableEntry {
             path: table.path().to_string(),
             oid,
-            next_rowid: table.next_rowid,
             schema: table.schema().clone(),
         });
-        table_payloads.push(encode_table_raw(table)?);
+        tables_to_encode.push(table);
     }
 
     let header = StoreHeader {
@@ -66,8 +69,11 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersisError> {
     buf.write_all(&h.to_le_bytes())?;
     buf.write_all(&header_bytes)?;
 
-    for payload in &table_payloads {
-        write_len_prefixed_data(&mut buf, payload)?;
+    write_hash_dict(&mut buf, &hash_mapper)?;
+
+    for table in tables_to_encode {
+        let payload = encode_table_raw(table, &hash_mapper)?;
+        write_len_prefixed_data(&mut buf, &payload)?;
     }
 
     Ok(buf)
@@ -96,12 +102,13 @@ pub fn decode_store(data: &[u8]) -> Result<Store, PersisError> {
     let header_len = read_u32(data, &mut pos, "store header length")? as usize;
     let header_slice = read_slice(data, &mut pos, header_len, "store header")?;
     let header: StoreHeader = serde_json::from_slice(header_slice)?;
+    let hashes = read_hash_dict(data, &mut pos)?;
 
     let mut tables = Vec::with_capacity(header.tables.len());
     for entry in &header.tables {
         let payload_len = read_u64(data, &mut pos, "table payload length")? as usize;
         let payload = read_slice(data, &mut pos, payload_len, "table payload")?;
-        let (row_ids, cols) = decode_table_raw(payload, &entry.schema)?;
+        let (row_ids, cols) = decode_table_raw(payload, &entry.schema, &hashes)?;
 
         let table = Table::new_from_persist(entry, row_ids, cols);
         tables.push((entry.oid, table));
@@ -159,12 +166,11 @@ mod tests {
         store.add_table(Path::from("t1"), int_schema());
         store.add_table(Path::from("t2"), mixed_schema());
 
-        let t1_oid = store.resolve_table(&Path::from("t1")).unwrap();
-        let op = store
-            .table_mut(t1_oid)
-            .unwrap()
-            .add(vec![CellValue::Int(99)]);
-        store.apply_batch(vec![op]).expect("apply batch successful");
+        let t1 = Path::from("t1");
+        let mut txn = store.transaction();
+        txn.add(&t1, vec![CellValue::Int(99).into()])
+            .expect("add row");
+        txn.commit().expect("commit");
 
         let bytes = encode_store(&store).unwrap();
         let restored = decode_store(&bytes).unwrap();

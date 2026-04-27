@@ -32,7 +32,7 @@ entire store with `dump-store;`.
 
 ```
 geomerge> load-schema tests/data/paths.json;
-begin batch;
+begin transact;
   g0 = add Graphs values ();
   g1 = add Graphs values ();
 
@@ -52,3 +52,26 @@ load-store paths.bin;
 
 To get a violation of the law, say (Hom.V.total), change the line `i1 = add G0 values (g1);`
 to `i1 = add G0 values (g0)` so that we do not have a morphism between G0 and G1.
+
+## Test Coverage
+
+This repo uses [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov)
+for Rust test coverage.
+
+Install it once:
+
+```sh
+cargo install cargo-llvm-cov
+```
+
+Generate an HTML coverage report:
+
+```sh
+./scripts/coverage.sh
+```
+
+The report is written to `coverage/html`. For CI-style output, run:
+
+```sh
+cargo llvm-cov --workspace --lcov --output-path lcov.info
+```

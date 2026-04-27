@@ -12,7 +12,8 @@ use crate::{
         parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
     },
     store::Store,
-    table::{CellValue, RowId},
+    table::{RowId, Table},
+    txn::ops::{TempRowId, TxnCellValue},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,26 +172,36 @@ pub fn add_rows(
         .resolve_table(&table_path)
         .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
 
-    let mut ops = Vec::new();
+    let table = store
+        .table(oid)
+        .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
+    let mut rows = Vec::new();
     for raw_values in raw_rows {
-        let t = store
-            .table_mut(oid)
-            .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
-        ops.push(build_add_op(t, raw_values)?);
+        rows.push(parse_txn_values(table, raw_values)?);
     }
 
-    let row_ids: Vec<RowId> = ops.iter().map(|op| op.id()).collect();
-    store.apply_batch(ops)?;
+    let mut tx = store.transaction();
+    let mut temp_ids = Vec::new();
+    for values in rows {
+        temp_ids.push(tx.add(&table_path, values)?);
+    }
+    let commit = tx.commit()?;
+    let row_ids = temp_ids
+        .into_iter()
+        .map(|temp_id| temp_id.resolve(commit))
+        .collect();
     Ok(row_ids)
 }
 
-/// Builds [`crate::ops::Op`]s with [`Table::add`], then commits with [`Store::apply_batch`].
-pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Result<String, ReplError> {
-    let mut bindings: HashMap<String, RowId> = HashMap::new();
-    let mut parts = Vec::new();
-    let mut ops = Vec::new();
+/// Parse and commit a batch transaction, allowing later rows to refer to earlier bindings.
+pub fn run_transact(
+    store: &mut Store,
+    assignments: &[BatchAssignment],
+) -> Result<String, ReplError> {
+    let mut bindings: HashMap<String, TempRowId> = HashMap::new();
+    let mut pending = Vec::new();
 
-    for a in assignments {
+    for (index, a) in assignments.iter().enumerate() {
         if bindings.contains_key(&a.name) {
             return Err(ReplError::DuplicateBinding(a.name.clone()));
         }
@@ -222,25 +233,26 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
             values.push(v);
         }
 
-        let oid = store
-            .resolve_table(&table_path)
-            .expect("table exists after table_at");
-        let t = store.table_mut(oid).expect("table exists");
-        let op = t.add(values);
-        bindings.insert(a.name.clone(), op.id());
-        parts.push(format!("{}=#{}", a.name, op.id()));
-        ops.push(op);
+        let temp_id = TempRowId::from(index as u32);
+        bindings.insert(a.name.clone(), temp_id);
+        pending.push((a.name.clone(), table_path, values, temp_id));
     }
 
+    let mut tx = store.transaction();
+    for (_, table_path, values, _) in pending.iter() {
+        tx.add(table_path, values.clone())?;
+    }
+    let commit = tx.commit()?;
+
+    let parts = pending
+        .into_iter()
+        .map(|(name, _, _, temp_id)| format!("{}=#{}", name, temp_id.resolve(commit)))
+        .collect::<Vec<_>>();
     let message = format!("committed batch: {}", parts.join(", "));
-    store.apply_batch(ops)?;
     Ok(message)
 }
 
-fn build_add_op(
-    table: &mut crate::table::Table,
-    raw_values: &[String],
-) -> Result<crate::ops::Op, ReplError> {
+fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellValue>, ReplError> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         return Err(ReplError::ColumnCountMismatch {
@@ -249,21 +261,21 @@ fn build_add_op(
         });
     }
 
-    let values = table
+    table
         .schema()
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, col_type)| -> Result<CellValue, ReplError> {
+        .map(|(idx, col_type)| -> Result<TxnCellValue, ReplError> {
             let raw = &raw_values[idx];
-            parse_cell_value(col_type, raw).map_err(|message| ReplError::BadValue {
-                column: idx,
-                message,
-            })
+            parse_cell_value(col_type, raw)
+                .map(Into::into)
+                .map_err(|message| ReplError::BadValue {
+                    column: idx,
+                    message,
+                })
         })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(table.add(values))
+        .collect()
 }
 
 #[cfg(test)]

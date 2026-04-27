@@ -357,7 +357,9 @@ mod tests {
             Step::Exit => panic!("unexpected exit"),
         };
 
-        assert_eq!(message, "inserted into T rows [#0, #1]");
+        assert!(message.starts_with("inserted into T rows [#"));
+        assert!(message.contains(":0, #"));
+        assert!(message.ends_with(":1]"));
         let loaded = session.loaded.as_ref().expect("loaded session");
         assert_eq!(
             loaded
@@ -401,7 +403,10 @@ mod tests {
         );
 
         let err = add_rows(&mut store, "Ref", &[vec!["7".to_string()]]).unwrap_err();
-        assert_eq!(err.to_string(), "column 0: expected entity id like #12");
+        assert_eq!(
+            err.to_string(),
+            "column 0: expected entity id like #<commit>:<counter>"
+        );
     }
 
     #[test]

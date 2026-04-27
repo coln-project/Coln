@@ -168,11 +168,23 @@ mod tests {
             ),
         );
 
-        let table = store.table_at_mut(&path).expect("table T");
-        let op0 = table.add(vec![CellValue::Int(1), CellValue::Int(2)]);
-        let op1 = table.add(vec![CellValue::Int(2), CellValue::Int(3)]);
-        let op2 = table.add(vec![CellValue::Int(9), CellValue::Int(4)]);
-        store.apply_batch(vec![op0, op1, op2]).expect("insert rows");
+        let mut txn = store.transaction();
+        txn.add(
+            &path,
+            vec![CellValue::Int(1).into(), CellValue::Int(2).into()],
+        )
+        .expect("insert row");
+        txn.add(
+            &path,
+            vec![CellValue::Int(2).into(), CellValue::Int(3).into()],
+        )
+        .expect("insert row");
+        txn.add(
+            &path,
+            vec![CellValue::Int(9).into(), CellValue::Int(4).into()],
+        )
+        .expect("insert row");
+        txn.commit().expect("commit rows");
 
         let law = ir::LawEntry {
             path: Path::from("T.chain"),
@@ -263,12 +275,12 @@ mod tests {
                 },
             ),
         );
-        let table = store.table_at_mut(&path).expect("table T");
-        let ops = values
-            .iter()
-            .map(|v| table.add(vec![CellValue::Int(*v)]))
-            .collect::<Vec<_>>();
-        store.apply_batch(ops).expect("insert rows");
+        let mut txn = store.transaction();
+        for value in values {
+            txn.add(&path, vec![CellValue::Int(*value).into()])
+                .expect("insert row");
+        }
+        txn.commit().expect("commit rows");
         (store, path)
     }
 
