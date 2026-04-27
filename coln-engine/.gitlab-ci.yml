@@ -1,0 +1,50 @@
+image: rust:latest
+
+stages:
+  - check
+  - test
+  - coverage
+
+variables:
+  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+  CARGO_TERM_COLOR: always
+
+cache:
+  key:
+    files:
+      - Cargo.lock
+  paths:
+    - .cargo/registry
+    - .cargo/git
+    - target
+
+fmt:
+  stage: check
+  script:
+    - rustup component add rustfmt
+    - cargo fmt --all -- --check
+
+clippy:
+  stage: check
+  script:
+    - rustup component add clippy
+    - cargo clippy --workspace --all-targets --locked -- -D warnings
+
+test:
+  stage: test
+  script:
+    - cargo test --workspace --locked
+
+coverage:
+  stage: coverage
+  script:
+    - cargo install cargo-llvm-cov
+    - cargo llvm-cov --workspace --locked --cobertura --output-path cobertura.xml
+  coverage: '/TOTAL.*?([0-9]+\.[0-9]+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: cobertura.xml
+    paths:
+      - cobertura.xml
