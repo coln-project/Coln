@@ -125,12 +125,6 @@ export function activate(context: vscode.ExtensionContext): void {
   client.start().then(
     () => {
       console.log("geolog-lsp client started");
-      // Ensure the editor uses semantic tokens from the LSP (otherwise no highlighting)
-      const cfg = vscode.workspace.getConfiguration("editor");
-      const current = cfg.get<string | boolean>("semanticHighlighting.enabled");
-      if (current !== true) {
-        cfg.update("semanticHighlighting.enabled", true, vscode.ConfigurationTarget.Workspace);
-      }
     },
     (err) => {
       client = undefined;
