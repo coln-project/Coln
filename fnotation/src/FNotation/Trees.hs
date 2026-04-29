@@ -80,7 +80,7 @@ head :: Ntn -> DDoc
 head (App _ _) = "App"
 head (Infix _ _ _) = "Infix"
 head (Block x _ _ _) = "Block" <+> dpretty x
-head (MDecl mods x _ _) = "Decl" <+> hsep (dpretty <$> mods) <+> dpretty x
+head (MDecl mods x _ _) = "Decl" <+> hsep (dpretty <$> mods ++ [x])
 head (Ident x _) = "Ident" <+> dpretty x
 head (Keyword x _) = "Keyword" <+> dpretty x
 head (Field x _) = "Field" <+> dpretty x

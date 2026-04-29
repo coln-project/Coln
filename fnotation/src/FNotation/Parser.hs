@@ -296,7 +296,7 @@ decl st = do
         pure $ MDecl (reverse mods) x n (Span p (endPos n))
       _ -> do
         s <- curSpan st
-        report st s ModifierWithoutModifyee "modifier with no declaration to modify"
+        report st s ModifierWithoutModifyee "expected a declaration after a declaration modifier"
         advanceClose st p Error
 
 stmt :: ParseState -> IO Ntn
