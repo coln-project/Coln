@@ -19,6 +19,7 @@
           fourmolu
           tectonic
           typescript
+          haskellPackages.cabal-gild
         ];
       in {
         devShells.default =
