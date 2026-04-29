@@ -38,7 +38,7 @@ Nl (113:114)
 Eof (114:114)
 
 -- notation
-Decl export inductive theory (0:113)
+MDecl export inductive theory (0:113)
   Infix (24:113)
     App (24:44)
       Ident Connected (24:33)
