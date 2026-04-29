@@ -1,66 +1,71 @@
-cabal-version:   3.4
-name:            geolog-lsp
-version:         0.1.0.0
-license:         BSD-3-Clause
-license-file:    LICENSE
-maintainer:      patrick.aldis@obsidian.systems
-author:          Patrick Aldis
+cabal-version: 3.4
+name: geolog-lsp
+version: 0.1.0.0
+license: BSD-3-Clause
+license-file: LICENSE
+maintainer: patrick.aldis@obsidian.systems
+author: Patrick Aldis
 description:
-    A Language Server Protocol implementation for the geolog language
+  A Language Server Protocol implementation for the geolog language
 
-category:        Language
-build-type:      Simple
+category: Language
+build-type: Simple
 extra-doc-files: CHANGELOG.md
 
 executable geolog-lsp
-    main-is:            Main.hs
-    hs-source-dirs:     src
-    other-modules:
-        Geolog.LSP
-        Geolog.LSP.DocChange
-        Geolog.LSP.TrivialHandlers
-        Geolog.LSP.Types
-        Geolog.LSP.Highlight
-        Geolog.LSP.Hover
-        Geolog.LSP.Diagnostics
-        Geolog.LSP.Buffer
-        Geolog.LSP.Utils
+  main-is: Main.hs
+  hs-source-dirs: src
+  other-modules:
+    Geolog.LSP
+    Geolog.LSP.Buffer
+    Geolog.LSP.Diagnostics
+    Geolog.LSP.DocChange
+    Geolog.LSP.Highlight
+    Geolog.LSP.Hover
+    Geolog.LSP.TrivialHandlers
+    Geolog.LSP.Types
+    Geolog.LSP.Utils
 
-    default-language:   GHC2021
-    default-extensions:
-        BlockArguments LambdaCase TypeFamilies NamedFieldPuns
-        DisambiguateRecordFields OverloadedStrings OverloadedRecordDot
-        NoFieldSelectors
+  default-language: GHC2021
+  default-extensions:
+    BlockArguments
+    DisambiguateRecordFields
+    LambdaCase
+    NamedFieldPuns
+    NoFieldSelectors
+    OverloadedRecordDot
+    OverloadedStrings
+    TypeFamilies
 
-    ghc-options:        -Wall
-    build-depends:
-        base,
-        containers,
-        text,
-        vector,
-        lsp,
-        stm,
-        megaparsec,
-        prettyprinter,
-        transformers,
-        mtl,
-        lens,
-        fnotation,
-        geolog-lang,
-        diagnostician,
-        exceptions
+  ghc-options: -Wall
+  build-depends:
+    base,
+    containers,
+    diagnostician,
+    exceptions,
+    fnotation,
+    geolog-lang,
+    lens,
+    lsp,
+    megaparsec,
+    mtl,
+    prettyprinter,
+    stm,
+    text,
+    transformers,
+    vector,
 
 test-suite geolog-lsp-test
-    type:               exitcode-stdio-1.0
-    main-is:            Main.hs
-    build-tool-depends: geolog-lsp:geolog-lsp
-    hs-source-dirs:     test
-    default-language:   GHC2021
-    ghc-options:        -Wall
-    build-depends:
-        base,
-        tasty,
-        tasty-hunit,
-        text,
-        process,
-        lsp-test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  build-tool-depends: geolog-lsp:geolog-lsp
+  hs-source-dirs: test
+  default-language: GHC2021
+  ghc-options: -Wall
+  build-depends:
+    base,
+    lsp-test,
+    process,
+    tasty,
+    tasty-hunit,
+    text,

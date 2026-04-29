@@ -1,24 +1,24 @@
-cabal-version:   3.4
-name:            geolog-shake
-version:         0.1.0.0
-license:         MPL-2.0
-license-file:    LICENSE
-maintainer:      root@owenlynch.org
-author:          Owen Lynch
-category:        Build system
-build-type:      Simple
+cabal-version: 3.4
+name: geolog-shake
+version: 0.1.0.0
+license: MPL-2.0
+license-file: LICENSE
+maintainer: root@owenlynch.org
+author: Owen Lynch
+category: Build system
+build-type: Simple
 extra-doc-files: CHANGELOG.md
 
 executable geolog-shake
-    main-is:          Main.hs
-    hs-source-dirs:   app
-    default-language: GHC2024
-    ghc-options:      -Wall
-    build-depends:
-        base ^>=4.21.0.0,
-        bytestring,
-        directory,
-        djot,
-        extra,
-        shake,
-        text
+  main-is: Main.hs
+  hs-source-dirs: app
+  default-language: GHC2024
+  ghc-options: -Wall
+  build-depends:
+    base ^>=4.21.0.0,
+    bytestring,
+    directory,
+    djot,
+    extra,
+    shake,
+    text,

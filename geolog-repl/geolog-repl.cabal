@@ -1,35 +1,40 @@
 cabal-version: 3.4
-name:          geolog-repl
-version:       0.1.0.0
-license:       BSD-3-Clause
-maintainer:    george.thomas@obsidian.systems
-author:        George Thomas
-description:   A REPL for Geolog
+name: geolog-repl
+version: 0.1.0.0
+license: BSD-3-Clause
+maintainer: george.thomas@obsidian.systems
+author: George Thomas
+description: A REPL for Geolog
 
 executable geolog-repl
-    main-is:            Main.hs
-    hs-source-dirs:     src
-    default-language:   GHC2024
-    default-extensions:
-        BlockArguments ImplicitParams NoFieldSelectors OrPatterns
-        OverloadedRecordDot OverloadedStrings ViewPatterns
+  main-is: Main.hs
+  hs-source-dirs: src
+  default-language: GHC2024
+  default-extensions:
+    BlockArguments
+    ImplicitParams
+    NoFieldSelectors
+    OrPatterns
+    OverloadedRecordDot
+    OverloadedStrings
+    ViewPatterns
 
-    ghc-options:        -Wall
-    build-depends:
-        base,
-        bytestring,
-        containers,
-        diagnostician,
-        directory,
-        filepath,
-        fnotation,
-        geolog-lang,
-        hashable,
-        haskeline,
-        mtl,
-        repline,
-        prettyprinter,
-        singletons,
-        text,
-        transformers,
-        vector
+  ghc-options: -Wall
+  build-depends:
+    base,
+    bytestring,
+    containers,
+    diagnostician,
+    directory,
+    filepath,
+    fnotation,
+    geolog-lang,
+    hashable,
+    haskeline,
+    mtl,
+    prettyprinter,
+    repline,
+    singletons,
+    text,
+    transformers,
+    vector,
