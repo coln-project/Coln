@@ -72,7 +72,7 @@ actions = do
     cmd_ "cabal build all"
 
   phony "test" $ do
-    cmd_ "cabal test all --enable-tests"
+    cmd_ "cabal test all"
 
   phony "clean" $ do
     removeFilesAfter "_build" ["//*"]
