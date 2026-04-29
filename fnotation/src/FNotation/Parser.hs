@@ -29,6 +29,7 @@ parserCodeTable =
     [ (UnexpectedToken, CodeMeta 0 SError Nothing)
     , (DefaultedPrec, CodeMeta 1 SWarning Nothing)
     , (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
+    , (ModifierWithoutModifyee, CodeMeta 3 SError Nothing)
     ]
 
 -- Parser monad
