@@ -17,6 +17,8 @@ lexConfig =
     , ("let", K.Decl)
     , ("open", K.Decl)
     , ("import", K.Decl)
+    , ("inductive", K.Modifier)
+    , ("export", K.Modifier)
     , ("end", K.End)
     , ("Type", K.AKeyword)
     , ("Int", K.AKeyword)

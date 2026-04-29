@@ -20,6 +20,7 @@ data ParserCode
   = UnexpectedToken
   | DefaultedPrec
   | IncompatiblePrecedences
+  | ModifierWithoutModifyee
   deriving (Eq, Ord)
 
 parserCodeTable :: Map ParserCode CodeMeta
@@ -28,6 +29,7 @@ parserCodeTable =
     [ (UnexpectedToken, CodeMeta 0 SError Nothing)
     , (DefaultedPrec, CodeMeta 1 SWarning Nothing)
     , (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
+    , (ModifierWithoutModifyee, CodeMeta 3 SError Nothing)
     ]
 
 -- Parser monad
@@ -275,16 +277,32 @@ expr st = arg st >>= go (Prec 0 AssocNon)
         go p (App lhs spine)
       _ -> pure lhs
 
+decl :: ParseState -> IO Ntn
+decl st = do
+  p <- openingPos st
+  go p []
+ where
+  go p mods =
+    cur st >>= \case
+      T.Modifier -> do
+        m <- curName st
+        advance st
+        go p (m : mods)
+      T.Decl -> do
+        x <- curName st
+        advance st
+        n <- expr st
+        expect st T.Nl
+        pure $ MDecl (reverse mods) x n (Span p (endPos n))
+      _ -> do
+        s <- curSpan st
+        report st s ModifierWithoutModifyee "expected a declaration after a declaration modifier"
+        advanceClose st p Error
+
 stmt :: ParseState -> IO Ntn
-stmt st = do
+stmt st =
   cur st >>= \case
-    T.Decl -> do
-      m <- openingPos st
-      x <- curName st
-      advance st
-      n <- expr st
-      expect st T.Nl
-      pure $ Decl x n (Span m (endPos n))
+    T.Modifier; T.Decl -> decl st
     _ -> expr st
 
 stmts :: ParseState -> IO [Ntn]
