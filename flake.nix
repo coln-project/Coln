@@ -16,7 +16,7 @@
         pkgs = import nixpkgs { inherit system; };
         tools = pkgs: with (pkgs); [
           nodejs
-          ormolu
+          fourmolu
           tectonic
           typescript
         ];

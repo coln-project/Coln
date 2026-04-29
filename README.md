@@ -15,7 +15,7 @@ The shakefile (`Shakefile.hs`) is (should be) "command central" for everything i
 Then you can run:
 
 - `./shake docs` builds the docs (which are deployed in ci to [geolog.sgai.uk](https://geolog.sgai.uk))
-- `./shake format` formats all of the Haskell files using ormolu (in ci, `./shake check` checks the formatting)
+- `./shake format` formats all of the Haskell files using fourmolu (in ci, `./shake check` checks the formatting)
 - `./shake check` runs tests and checks formatting
 
 ## Resources
