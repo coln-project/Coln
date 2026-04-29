@@ -61,7 +61,7 @@ actions = do
     cmd_ "fourmolu --mode inplace" hsFiles
     projects <- getProjects
     forM_ projects $ \p ->
-      cmd_ "cabal format" (p </> takeFileName p -<.> "cabal")
+      cmd_ "cabal-gild --io" (p </> takeFileName p -<.> "cabal")
 
   phony "check" $ do
     hsFiles <- getHsFiles
