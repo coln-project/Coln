@@ -14,16 +14,16 @@ import System.Environment (setEnv)
 import System.Info qualified
 
 ignoreTheseProjects :: [String]
-ignoreTheseProjects = ["toy-datalog", "felix-db"]
+ignoreTheseProjects = []
 
 getProjects :: Action [String]
 getProjects = do
-  cabalFiles <- getDirectoryFiles "" ["*/*.cabal"]
+  cabalFiles <- getDirectoryFiles "" ["*//*.cabal"]
   let allProjects = takeDirectory <$> cabalFiles
   pure $ filter (not . flip elem ignoreTheseProjects) allProjects
 
 projectPaths :: [String]
-projectPaths = ["src", "test", "app"]
+projectPaths = ["src", "test", "app", "src-bin"]
 
 getHsFiles :: Action [String]
 getHsFiles = do
@@ -58,15 +58,15 @@ actions = do
   phony "format" $ do
     hsFiles <- getHsFiles
     putInfo ("Formatting:" <> mconcat (("\n - " ++) <$> hsFiles))
-    cmd_ "ormolu --mode inplace" hsFiles
+    cmd_ "fourmolu --mode inplace" hsFiles
     projects <- getProjects
     forM_ projects $ \p ->
-      cmd_ "cabal format" (p </> p ++ ".cabal")
+      cmd_ "cabal format" (p </> takeFileName p -<.> "cabal")
 
   phony "check" $ do
     hsFiles <- getHsFiles
     putInfo ("Checking formatting")
-    cmd_ "ormolu --mode check" hsFiles
+    cmd_ "fourmolu --mode check" hsFiles
 
   phony "build" $ do
     cmd_ "cabal build all"
