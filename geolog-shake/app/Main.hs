@@ -18,7 +18,7 @@ ignoreTheseProjects = []
 
 getProjects :: Action [String]
 getProjects = do
-  cabalFiles <- getDirectoryFiles "" ["*//*.cabal"]
+  cabalFiles <- getDirectoryFiles "" ["*/*.cabal"]
   let allProjects = takeDirectory <$> cabalFiles
   pure $ filter (not . flip elem ignoreTheseProjects) allProjects
 

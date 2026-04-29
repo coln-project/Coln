@@ -24,7 +24,8 @@ data NtnGeneric a
   = App (NtnGeneric a) [NtnGeneric a]
   | Infix (NtnGeneric a) (NtnGeneric a) (NtnGeneric a)
   | Block Name (Maybe (NtnGeneric a)) [NtnGeneric a] a
-  | Decl Name (NtnGeneric a) a
+  | -- a declaration with modifiers
+    MDecl [Name] Name (NtnGeneric a) a
   | Tuple [NtnGeneric a] a
   | Ident Name a
   | Keyword Name a
@@ -34,6 +35,9 @@ data NtnGeneric a
   | String Text a
   | Error a
 
+pattern Decl :: Name -> NtnGeneric a -> a -> NtnGeneric a
+pattern Decl x n s = MDecl [] x n s
+
 type Ntn = NtnGeneric Span
 
 type Ntn0 = NtnGeneric ()
@@ -42,7 +46,7 @@ startPos :: Ntn -> Pos
 startPos (App f _) = startPos f
 startPos (Infix x _ _) = startPos x
 startPos (Block _ _ _ s) = s.start
-startPos (Decl _ _ s) = s.start
+startPos (MDecl _ _ _ s) = s.start
 startPos (Ident _ s) = s.start
 startPos (Keyword _ s) = s.start
 startPos (Field _ s) = s.start
@@ -56,7 +60,7 @@ endPos :: Ntn -> Pos
 endPos (App _ xs) = endPos (last xs)
 endPos (Infix _ _ y) = endPos y
 endPos (Block _ _ _ s) = s.end
-endPos (Decl _ _ s) = s.end
+endPos (MDecl _ _ _ s) = s.end
 endPos (Ident _ s) = s.end
 endPos (Keyword _ s) = s.end
 endPos (Field _ s) = s.end
@@ -76,7 +80,7 @@ head :: Ntn -> DDoc
 head (App _ _) = "App"
 head (Infix _ _ _) = "Infix"
 head (Block x _ _ _) = "Block" <+> dpretty x
-head (Decl x _ _) = "Decl" <+> dpretty x
+head (MDecl mods x _ _) = "Decl" <+> hsep (dpretty <$> mods) <+> dpretty x
 head (Ident x _) = "Ident" <+> dpretty x
 head (Keyword x _) = "Keyword" <+> dpretty x
 head (Field x _) = "Field" <+> dpretty x
@@ -90,7 +94,7 @@ children :: Ntn -> [Ntn]
 children (App f xs) = f : xs
 children (Infix x op y) = [x, op, y]
 children (Block _ mh xs _) = maybeToList mh ++ xs
-children (Decl _ x _) = [x]
+children (MDecl _ _ n _) = [n]
 children (Ident _ _) = []
 children (Keyword _ _) = []
 children (Field _ _) = []

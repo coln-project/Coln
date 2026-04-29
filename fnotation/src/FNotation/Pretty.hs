@@ -58,7 +58,7 @@ prt p = \case
       [dpretty x <> maybe mempty ((" " <>) . prtTop) hd]
         ++ [indent 2 $ prtTop stmt | stmt <- stmts]
         ++ ["end"]
-  Decl x n _ -> dpretty x <+> prtTop n
+  MDecl ms x n _ -> hsep (dpretty <$> (ms ++ [x])) <+> prtTop n
   Ident x _ -> dpretty x
   Keyword x _ -> dpretty x
   Field x _ -> "." <> dpretty x

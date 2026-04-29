@@ -15,4 +15,4 @@ import FNotation.Names
 import FNotation.Parser (ParserCode (..), parse, parserCodeTable)
 import FNotation.Pretty (dprettyWithPrecs)
 import FNotation.Tokens (Kind)
-import FNotation.Trees (Ntn, Ntn0, NtnGeneric (..), head, span)
+import FNotation.Trees (Ntn, Ntn0, NtnGeneric (..), head, span, pattern Decl)

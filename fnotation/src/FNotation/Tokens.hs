@@ -18,6 +18,7 @@ data Kind
   | -- | symbolic keyword
     SKeyword
   | Decl
+  | Modifier
   | Block
   | End
   | Tag
