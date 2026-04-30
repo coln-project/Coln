@@ -274,8 +274,8 @@ expr st = arg st >>= go (Prec 0 AssocNon)
             rhs <- arg st >>= go p'
             go p (Infix lhs n rhs)
       k | argStart k -> do
-        spine <- args st
-        go p (App lhs spine)
+        rhs <- arg st
+        go p (Juxt lhs rhs)
       _ -> pure lhs
 
 decl :: ParseState -> IO Ntn

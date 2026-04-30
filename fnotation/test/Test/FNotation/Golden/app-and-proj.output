@@ -14,13 +14,13 @@ Nl (17:18)
 Eof (18:18)
 
 -- notation
-App (1:16)
-  App (1:8)
+Juxt (1:16)
+  Juxt (1:8)
     Ident f (1:2)
-    App (4:8)
+    Juxt (4:8)
       Ident x (4:5)
       Field a (6:8)
-  App (12:16)
+  Juxt (12:16)
     Ident x (12:13)
     Field b (14:16)
 

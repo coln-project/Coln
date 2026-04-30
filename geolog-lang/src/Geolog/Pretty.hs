@@ -32,21 +32,21 @@ instance Delab (ElS e) where
     LocalVar i -> delab xs i
     GlobalVar x -> N.Ident x ()
     Code ty -> delab xs ty
-    App f t -> N.App (delab xs f) [delab xs t]
+    App f t -> N.Juxt (delab xs f) (delab xs t)
     Lam _ (Abs x t) ->
       N.Infix (N.Ident x ()) (N.Keyword "=>" ()) (delab (xs :> x) t)
     Lam _ (AbsConst t) ->
       N.Infix (N.Ident "_" ()) (N.Keyword "=>" ()) (delab xs t)
-    Proj t f -> N.App (delab xs t) [N.Field f ()]
+    Proj t f -> N.Juxt (delab xs t) (N.Field f ())
     Cons (Fields ys ts) ->
       N.Tuple [field y t | (y, t) <- zip ys ts] ()
      where
       field y t = N.Infix (N.Ident y ()) (N.Keyword ":" ()) (delab xs t)
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
-    Init a -> N.App (N.Keyword "init" ()) [delab xs a]
-    Pure t -> N.App (N.Keyword "pure" ()) [delab xs t]
-    Use t -> N.App (delab xs t) [N.Field "use" ()]
+    Init a -> N.Juxt (N.Keyword "init" ()) (delab xs a)
+    Pure t -> N.Juxt (N.Keyword "pure" ()) (delab xs t)
+    Use t -> N.Juxt (delab xs t) (N.Field "use" ())
 
 bindingModeArr :: BindingMode -> Name
 bindingModeArr BInductive = "*->"
@@ -77,7 +77,7 @@ instance Delab (TyS e) where
       go _ _ _ = error "mismatching length for names and telescope"
     Eq _ t0 t1 -> N.Infix (delab xs t0) (N.Keyword "=" ()) (delab xs t1)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
-    Inductive a -> N.App (N.Keyword "Inductive" ()) [delab xs a]
+    Inductive a -> N.Juxt (N.Keyword "Inductive" ()) (delab xs a)
 
 class DPrettyWithNames a where
   dprettyWithNames :: Names -> a -> DDoc

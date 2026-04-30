@@ -15,4 +15,4 @@ import FNotation.Lexer (LexerCode (..), lex, lexerCodeTable)
 import FNotation.Names
 import FNotation.Parser (ParserCode (..), parse, parserCodeTable)
 import FNotation.Pretty (dprettyWithConfigs)
-import FNotation.Trees (Ntn, Ntn0, NtnGeneric (..), head, span, pattern Decl)
+import FNotation.Trees (Ntn, Ntn0, NtnGeneric (..), head, span, pattern Decl, pattern Group)
