@@ -2,6 +2,7 @@ module FNotation.Pretty where
 
 import Diagnostician
 import FNotation.Config
+import FNotation.Kinds (Kind)
 import FNotation.Names
 import FNotation.Trees
 import Prettyprinter
@@ -29,7 +30,7 @@ tighter (Prec b a) (RightOf (Prec b' a'))
 looser :: Prec -> PrevPrec -> Bool
 looser p p' = not $ tighter p p'
 
-type ConfigArg = (?config :: ConfTable Prec)
+type ConfigArg = (?config :: ConfTable Prec, ?lconfig :: ConfTable Kind)
 
 prtTop :: (ConfigArg) => NtnGeneric a -> DDoc
 prtTop = prt Top
@@ -59,14 +60,15 @@ prt p = \case
         ++ [indent 2 $ prtTop stmt | stmt <- stmts]
         ++ ["end"]
   MDecl ms x n _ -> hsep (dpretty <$> (ms ++ [x])) <+> prtTop n
-  Ident x _ -> dpretty x
+  Ident x _ | Bot <- p -> dprettyOpWithKinds ?lconfig x
+  Ident x _ -> dprettyWithKinds ?lconfig x
   Keyword x _ -> dpretty x
-  Field x _ -> "." <> dpretty x
-  Tag x _ -> "'" <> dpretty x
+  Field x _ -> "." <> dprettyWithKinds ?lconfig x
+  Tag x _ -> "'" <> dprettyWithKinds ?lconfig x
   Int i _ -> pretty i
   String x _ -> "\"" <> pretty x <> "\""
   Tuple ns _ -> list $ prtTop <$> ns
   Error _ -> "<error>"
 
-dprettyWithPrecs :: ConfTable Prec -> NtnGeneric a -> DDoc
-dprettyWithPrecs config n = let ?config = config in prtTop n
+dprettyWithConfigs :: ConfTable Prec -> ConfTable Kind -> NtnGeneric a -> DDoc
+dprettyWithConfigs config lconfig n = let ?config = config; ?lconfig = lconfig in prtTop n

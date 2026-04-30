@@ -35,8 +35,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Diagnostician (Span (..))
+import FNotation.Kinds (Kind (..))
 import FNotation.Names (Name (..))
-import FNotation.Tokens (Kind (..), Token (..), TokenValue (..))
+import FNotation.Tokens (Token (..), TokenValue (..))
 import Test.QuickCheck
 
 --------------------------------------------------------------------------------

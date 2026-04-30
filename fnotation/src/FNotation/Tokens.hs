@@ -2,46 +2,12 @@ module FNotation.Tokens where
 
 import Data.Text (Text)
 import Diagnostician
+import FNotation.Kinds
 import FNotation.Names
 import Prettyprinter
 
--- Token kinds
---------------------------------------------------------------------------------
+-- * Tokens
 
-data Kind
-  = -- | alphanumerical identifier
-    AIdent
-  | -- | alphanumerical keyword
-    AKeyword
-  | -- | symbolic identifier
-    SIdent
-  | -- | symbolic keyword
-    SKeyword
-  | Decl
-  | Modifier
-  | Block
-  | End
-  | Tag
-  | Field
-  | Int
-  | String
-  | LParen
-  | RParen
-  | LBrack
-  | RBrack
-  | LCurly
-  | RCurly
-  | Comma
-  | Semicolon
-  | Nl
-  | Eof
-  | Error
-  deriving (Eq, Show)
-
-instance DPretty Kind where
-  dpretty k = pretty (show k)
-
--- Tokens
 --------------------------------------------------------------------------------
 
 data TokenValue = VEmpty | VName Name | VInt Int | VString Text
@@ -70,7 +36,8 @@ instance DPretty Token where
       VInt i -> " " <> pretty i
       VString i -> " " <> pretty i
 
--- Token classes (used for error messages)
+-- * Token classes (used for error messages)
+
 --------------------------------------------------------------------------------
 
 data Class

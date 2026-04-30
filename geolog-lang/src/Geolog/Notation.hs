@@ -1,7 +1,7 @@
 module Geolog.Notation where
 
 import FNotation
-import FNotation.Tokens as K
+import FNotation.Kinds as K
 
 lexConfig :: ConfTable Kind
 lexConfig =

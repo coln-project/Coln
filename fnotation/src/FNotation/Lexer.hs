@@ -11,6 +11,7 @@ import Data.Vector qualified as V
 import Data.Vector.Mutable qualified as VM
 import Diagnostician
 import FNotation.Config
+import FNotation.Kinds
 import FNotation.Names
 import FNotation.Tokens
 import Prettyprinter
@@ -56,6 +57,7 @@ data LexerCode
   | InvalidNamespace
   | KeywordInNamespace
   | InvalidKeyword
+  | EmptyNameComponent
   deriving (Eq, Ord)
 
 lexerCodeTable :: Map LexerCode CodeMeta
@@ -67,6 +69,7 @@ lexerCodeTable =
     , (InvalidNamespace, CodeMeta 3 SError Nothing)
     , (KeywordInNamespace, CodeMeta 4 SError Nothing)
     , (InvalidKeyword, CodeMeta 5 SError Nothing)
+    , (EmptyNameComponent, CodeMeta 6 SError Nothing)
     ]
 
 -- Lex monad
@@ -166,6 +169,10 @@ unexpectedChar st c = do
   advance st
   report st UnexpectedCharacter $ "Unexpected character" <+> "'" <> pretty c <> "'"
 
+emptyNameComponent :: LexState -> IO ()
+emptyNameComponent st = do
+  report st EmptyNameComponent $ "Empty name component"
+
 -- Lexemes
 --------------------------------------------------------------------------------
 
@@ -208,18 +215,14 @@ nameSeg st =
       if c' == '`'
         then advance st
         else unexpectedChar st c'
+      if T.null t
+        then emptyNameComponent st
+        else pure ()
       pure (AIdent, t)
     _ -> P.error "nameSeg should only be called if current character is a letter, symbol, or backtick"
 
 nameSegStart :: Char -> Bool
 nameSegStart c = isAlphaNumStart c || isSymbol c || c == '`'
-
-nameFromHeadTail :: Text -> [Text] -> Name
-nameFromHeadTail head tail =
-  let go s [] = ([], s)
-      go s (t : ts) = let (ts', t') = go t ts in (s : ts', t')
-      (init, last) = go head tail
-   in Name init last
 
 -- | Lex a name
 name :: LexState -> Maybe Kind -> IO ()
@@ -249,7 +252,7 @@ name st wanted = do
         [] -> emit st k (VName $ Name (reverse stack) t)
         _ -> do
           report st KeywordInNamespace "referred to keyword as a qualified name"
-          let k' = if isSymbol $ T.head t then SIdent else AIdent
+          let k' = if T.all isSymbol $ T.take 1 t then SIdent else AIdent
           emit st k' (VName $ Name (reverse stack) t)
     Just k' -> case k of
       AIdent -> emit st k' (VName $ Name (reverse stack) t)
@@ -313,6 +316,7 @@ run st =
     '.' -> advance st >> tryName st Field "period" >> run st
     '\'' -> advance st >> tryName st Tag "single quote" >> run st
     '\0' -> emit0 st Eof
+    '`' -> ident st >> run st
     c | isDigit c -> (int st >>= emit st Int . VInt) >> run st
     c | isLetter c || c == '_' || isSymbol c -> ident st >> run st
     c -> unexpectedChar st c >> run st

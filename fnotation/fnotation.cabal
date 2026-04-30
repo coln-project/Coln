@@ -16,6 +16,7 @@ library
   exposed-modules:
     FNotation
     FNotation.Config
+    FNotation.Kinds
     FNotation.Lexer
     FNotation.Names
     FNotation.Parser

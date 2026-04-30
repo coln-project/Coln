@@ -1,7 +1,7 @@
 module Test.FNotation.Common where
 
 import FNotation
-import FNotation.Tokens qualified as K
+import FNotation.Kinds qualified as K
 import Prelude hiding (lex)
 
 lexConfig :: ConfTable Kind

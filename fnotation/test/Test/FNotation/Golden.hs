@@ -64,7 +64,7 @@ parseToPretty fp = do
                   , vsep $ dpretty <$> ns
                   , ""
                   , "-- pretty"
-                  , vsep $ dprettyWithPrecs parseConfig <$> ns
+                  , vsep $ dprettyWithConfigs parseConfig lexConfig <$> ns
                   , ""
                   , "-- messages"
                   , pretty $ msgs
