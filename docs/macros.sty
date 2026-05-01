@@ -18,7 +18,9 @@
 \RequirePackage{cleveref}
 \RequirePackage{stmaryrd}
 \RequirePackage{tikz-cd}
+\RequirePackage{quiver}
 \RequirePackage{mathpartir}
+\RequirePackage{doi}
 
 \RequirePackage[final]{microtype}
 \RequirePackage{natbib}
@@ -67,8 +69,17 @@
 \NewDocumentCommand\sem{m}{\left\llbracket#1\right\rrbracket}
 \NewDocumentCommand\yields{}{\vdash}
 \NewDocumentCommand\tri{}{\triangleright}
-\NewDocumentCommand\jdg{m}{\;\mathrm{#1}}
+\NewDocumentCommand\jdg{m}{\;\mathsf{#1}}
+\NewDocumentCommand\jctx{}{\jdg{ctx}}
+\NewDocumentCommand\jtype{}{\jdg{type}}
 \NewDocumentCommand\subst{}{\setminus}
+\NewDocumentCommand\locks{}{\ms{locks}}
+\NewDocumentCommand\bindvia{m}{\mathrel{{:}^{#1}}}
+\NewDocumentCommand\llet{}{\ms{let}\:}
+\NewDocumentCommand\ccase{}{\ms{case}\:}
+\NewDocumentCommand\inn{}{\:\ms{in}\:}
+\NewDocumentCommand\oof{}{\:\ms{of}\:}
+\DeclareMathOperator\init{\ms{init}}
 
 \NewDocumentCommand\xto{m}{\xrightarrow{#1}}
 \NewDocumentCommand\To{}{\Rightarrow}

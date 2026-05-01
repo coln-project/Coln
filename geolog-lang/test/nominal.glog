@@ -1,7 +1,10 @@
-theory A := []
+theory A := sig
+end
 
-theory B := []
+theory B := sig
+end
 
-def a : A := []
+def a : A := struct
+end
 
 def b : B := a

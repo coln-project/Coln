@@ -1,4 +1,4 @@
-theory Magma := [
-  car : Query,
+theory Magma := sig
+  car : Set
   mul : (x : car) -> (y : car) -> car
-]
+end

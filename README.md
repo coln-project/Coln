@@ -31,4 +31,5 @@ When you add a new thing to the monorepo, try to update this list!
 - `felix-db` is a collection of experiments around datalog
 - `toy-datalog` is a toy datalog implementation
 - `toy-datalog-web` is a web interface for `toy-datalog`
+- `geolog-lsp` implements the language server protocol for geolog
 - `docs` contains djot files and tex files which are built in CI and deployed to [geolog.sgai.uk](https://geolog.sgai.uk).

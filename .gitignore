@@ -335,6 +335,10 @@ TSWLatexianTemp*
 
 _build/
 /cabal.project.local
-.envrc
-.direnv/
 
+# nix result
+**/result
+**/.direnv
+
+# Geolog REPL history
+.history

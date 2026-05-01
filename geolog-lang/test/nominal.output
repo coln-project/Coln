@@ -2,77 +2,82 @@
 Decl theory (0:6)
 AIdent A (7:8)
 SKeyword := (9:11)
-LBrack (12:13)
-RBrack (13:14)
-Nl (14:15)
+Block sig (12:15)
 Nl (15:16)
-Decl theory (16:22)
-AIdent B (23:24)
-SKeyword := (25:27)
-LBrack (28:29)
-RBrack (29:30)
-Nl (30:31)
-Nl (31:32)
-Decl def (32:35)
-AIdent a (36:37)
-SKeyword : (38:39)
-AIdent A (40:41)
-SKeyword := (42:44)
-LBrack (45:46)
-RBrack (46:47)
-Nl (47:48)
-Nl (48:49)
-Decl def (49:52)
-AIdent b (53:54)
-SKeyword : (55:56)
-AIdent B (57:58)
-SKeyword := (59:61)
-AIdent a (62:63)
-Nl (63:64)
-Eof (64:64)
+End end (16:19)
+Nl (19:20)
+Nl (20:21)
+Decl theory (21:27)
+AIdent B (28:29)
+SKeyword := (30:32)
+Block sig (33:36)
+Nl (36:37)
+End end (37:40)
+Nl (40:41)
+Nl (41:42)
+Decl def (42:45)
+AIdent a (46:47)
+SKeyword : (48:49)
+AIdent A (50:51)
+SKeyword := (52:54)
+Block struct (55:61)
+Nl (61:62)
+End end (62:65)
+Nl (65:66)
+Nl (66:67)
+Decl def (67:70)
+AIdent b (71:72)
+SKeyword : (73:74)
+AIdent B (75:76)
+SKeyword := (77:79)
+AIdent a (80:81)
+Nl (81:82)
+Eof (82:82)
 
 -- notation
-Decl theory (0:15)
-  Infix (7:15)
+Decl theory (0:19)
+  Infix (7:19)
     Ident A (7:8)
     Keyword := (9:11)
-    Tuple (12:15)
-Decl theory (16:31)
-  Infix (23:31)
-    Ident B (23:24)
-    Keyword := (25:27)
-    Tuple (28:31)
-Decl def (32:48)
-  Infix (36:48)
-    Infix (36:41)
-      Ident a (36:37)
-      Keyword : (38:39)
-      Ident A (40:41)
-    Keyword := (42:44)
-    Tuple (45:48)
-Decl def (49:63)
-  Infix (53:63)
-    Infix (53:58)
-      Ident b (53:54)
-      Keyword : (55:56)
-      Ident B (57:58)
-    Keyword := (59:61)
-    Ident a (62:63)
+    Block sig (12:19)
+Decl theory (21:40)
+  Infix (28:40)
+    Ident B (28:29)
+    Keyword := (30:32)
+    Block sig (33:40)
+Decl def (42:65)
+  Infix (46:65)
+    Infix (46:51)
+      Ident a (46:47)
+      Keyword : (48:49)
+      Ident A (50:51)
+    Keyword := (52:54)
+    Block struct (55:65)
+Decl def (67:81)
+  Infix (71:81)
+    Infix (71:76)
+      Ident b (71:72)
+      Keyword : (73:74)
+      Ident B (75:76)
+    Keyword := (77:79)
+    Ident a (80:81)
 
 -- elaborated
 potential entry named A
 type:  Theory
-value:  []
+value:  sig
+end
 potential entry named B
 type:  Theory
-value:  []
+value:  sig
+end
 kinetic entry named a
 type: A
 value: []
 
 -- messages
 
-error[E0300]: synthesized A while expecting B
-7 | def b : B := a
-7 |              ^
+error[E0200]: synthesized A while expecting B
+10 | def b : B := a
+10 |              ^
 mismatching elements B and A

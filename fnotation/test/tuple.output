@@ -1,0 +1,40 @@
+-- tokens
+LBrack (0:1)
+AIdent a (1:2)
+Comma (2:3)
+LBrack (4:5)
+AIdent b (5:6)
+Comma (6:7)
+RBrack (7:8)
+RBrack (8:9)
+Nl (9:10)
+Nl (10:11)
+LBrack (11:12)
+Nl (12:13)
+AIdent c (15:16)
+Comma (16:17)
+Nl (17:18)
+LBrack (20:21)
+AIdent d (21:22)
+Comma (22:23)
+RBrack (23:24)
+Nl (24:25)
+RBrack (25:26)
+Nl (26:27)
+Eof (27:27)
+
+-- notation
+Tuple (0:10)
+  Ident a (1:2)
+  Tuple (4:9)
+    Ident b (5:6)
+Tuple (11:27)
+  Ident c (15:16)
+  Tuple (20:26)
+    Ident d (21:22)
+
+-- pretty
+[a, [b]]
+[c, [d]]
+
+-- messages

@@ -1,8 +1,6 @@
 module Geolog.Common where
 
 import Control.Monad.IO.Class
-import Control.Monad.ST (RealWorld)
-import Control.Monad.State.Class
 import Data.Hashable
 import Data.Kind (Constraint)
 import Data.String (IsString, fromString)
@@ -13,9 +11,7 @@ import Data.Vector.Generic.Mutable qualified as VGM
 import Data.Vector.Hashtables (FrozenDictionary)
 import Data.Vector.Hashtables qualified as HT
 import Data.Vector.Strict qualified as V
-import Lens.Micro.Platform
 import Prettyprinter
-import Symbolize (Symbol, unintern)
 import System.IO.Unsafe (unsafePerformIO)
 
 #ifdef DEBUG
@@ -40,55 +36,6 @@ unimplemented = error "unimplemented"
 unwrap :: Maybe a -> a
 unwrap (Just x) = x
 unwrap Nothing = panic "should only unwrap a Just"
-
--- Names
---------------------------------------------------------------------------------
-
-newtype Name = Name Symbol
-  deriving (Eq, Ord, Hashable) via Symbol
-
-instance Show Name where
-  show (Name s) = unintern s
-
-instance IsString Name where
-  fromString s = Name (fromString s)
-
-instance Pretty Name where
-  pretty (Name s) = pretty (unintern s :: Text)
-
-data QName = QName [Name] Name
-  deriving (Eq, Ord, Show)
-
-qnameBase :: QName -> Name
-qnameBase (QName _ x) = x
-
-instance Pretty QName where
-  pretty (QName q x) = mconcat [pretty y <> "/" | y <- q] <> pretty x
-
-instance IsString QName where
-  fromString s = QName [] (fromString s)
-
--- Source code locations
---------------------------------------------------------------------------------
-
-type Pos = Int
-
-data Span = Span
-  { start :: Pos
-  , end :: Pos
-  }
-  deriving (Eq, Show)
-
-instance Pretty Span where
-  pretty (Span s e) = pretty s <> ":" <> pretty e
-
--- Doc annotations (for prettyprinting)
---------------------------------------------------------------------------------
-
--- TODO: make more annotations, use them
-data Ann = AText
-
-type ADoc = Doc Ann
 
 -- Container classes
 --------------------------------------------------------------------------------
@@ -136,9 +83,9 @@ instance ElemAt (Bwd a) BId a where
 
 instance ToList Bwd where
   toList xs = go xs []
-   where
-    go BwdNil l = l
-    go (xs' :> x) l = go xs' (x : l)
+    where
+      go BwdNil l = l
+      go (xs' :> x) l = go xs' (x : l)
 
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs
@@ -146,6 +93,20 @@ instance Semigroup (Bwd a) where
 
 instance Monoid (Bwd a) where
   mempty = BwdNil
+
+data MeasuredBwd a = MeasuredBwd
+  { values :: Bwd a,
+    length :: Int
+  }
+
+(++>) :: MeasuredBwd a -> a -> MeasuredBwd a
+(++>) (MeasuredBwd xs n) x = MeasuredBwd (xs :> x) (n + 1)
+
+instance Semigroup (MeasuredBwd a) where
+  xs <> ys = MeasuredBwd (xs.values <> ys.values) (xs.length + ys.length)
+
+instance Monoid (MeasuredBwd a) where
+  mempty = MeasuredBwd mempty 0
 
 infixr 5 :<
 
@@ -162,61 +123,12 @@ instance ElemAt (Fwd a) FId a where
 
 instance Reverse (Bwd a) (Fwd a) where
   rev = go FwdNil
-   where
-    go xs' BwdNil = xs'
-    go xs' (xs :> x) = go (x :< xs') xs
+    where
+      go xs' BwdNil = xs'
+      go xs' (xs :> x) = go (x :< xs') xs
 
 instance Reverse (Fwd a) (Bwd a) where
   rev = go BwdNil
-   where
-    go xs' FwdNil = xs'
-    go xs' (x :< xs) = go (xs' :> x) xs
-
--- Tables
---------------------------------------------------------------------------------
-
-newtype ConfTable v = ConfTable (FrozenDictionary V.Vector Name V.Vector v)
-
-instance Lookup (ConfTable v) Name v where
-  lookup (ConfTable d) x = case HT.findElem d x of
-    -1 -> Nothing
-    i -> Just (HT.fvalue d V.! i)
-
-instance FromList (ConfTable v) (Name, v) where
-  fromList l = unsafePerformIO do
-    d <- HT.fromList l
-    fd <- HT.unsafeFreeze d
-    pure $ ConfTable fd
-
--- Buffers
---------------------------------------------------------------------------------
-
-data Buffer v e = Buffer Int (v RealWorld e)
-
--- TODO: maybe we should refactor Lexer/Parser to use IORefs instead of StateT?
-push ::
-  (MonadState s m, MonadIO m, VGM.MVector v e) =>
-  Lens' s (Buffer v e) ->
-  e ->
-  m ()
-push bl x = do
-  Buffer l v <- use bl
-  let cap = VGM.length v
-  v' <-
-    if cap <= l
-      then liftIO $ VGM.unsafeGrow v cap
-      else pure v
-  liftIO $ VGM.unsafeWrite v' l x
-  bl .= Buffer (l + 1) v'
-
-bufferWithCapacity :: (VGM.MVector v e) => Int -> IO (Buffer v e)
-bufferWithCapacity c = Buffer 0 <$> VGM.unsafeNew c
-
-bufferUnsafeFreeze :: (VG.Vector v e) => Buffer (VG.Mutable v) e -> IO (v e)
-bufferUnsafeFreeze (Buffer l v) = VG.take l <$> VG.unsafeFreeze v
-
--- Text
---------------------------------------------------------------------------------
-
-sliceWord8 :: Int -> Int -> Text -> Text
-sliceWord8 s e t = TU.dropWord8 s $ TU.takeWord8 e t
+    where
+      go xs' FwdNil = xs'
+      go xs' (x :< xs) = go (xs' :> x) xs

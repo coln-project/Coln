@@ -1,89 +1,87 @@
 module Geolog.Pretty where
 
+import Data.String (fromString)
+import Data.Text qualified as T
+import Diagnostician
+import FNotation qualified as N
+import FNotation.Names
 import Geolog.Common
 import Geolog.Core
-import Geolog.Parser (Assoc (..), Prec (..), precLe)
-import Prettyprinter
-
--- Implicit arguments for pretty printing
---------------------------------------------------------------------------------
-
-type NamesArg = (?names :: Bwd QName)
-
-bindName :: (NamesArg) => QName -> ((NamesArg) => a) -> a
-bindName x f = let ?names = ?names :> x in f
-
-type PrecArg = (?prec :: Prec)
-
-type DoPretty a = (PrecArg) => (NamesArg) => a
+import Geolog.Notation
 
 -- Pretty printing
 --------------------------------------------------------------------------------
 
-class Prt a where
-  prt :: DoPretty (a -> Doc ann)
+type Names = Bwd Name
 
-prtPrec :: (Prt a) => (NamesArg) => Prec -> a -> Doc ann
-prtPrec p x = let ?prec = p in prt x
+class Delab a where
+  delab :: Names -> a -> N.Ntn0
 
-instance Prt BId where
-  prt (BId i) = go ?names i []
-   where
-    go (_ :> x) 0 prev = pretty x <> disamb
-     where
-      nx = length $ filter (== x) prev
-      disamb = if nx > 0 then "^" <> pretty nx else ""
-    go (xs :> x) n prev = go xs (n - 1) (x : prev)
-    go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList ?names)
+instance Delab BId where
+  delab xs (BId i) = go xs i []
+    where
+      go (_ :> x) 0 prev = N.Ident (x {last = x.last <> disamb}) ()
+        where
+          nx = length $ filter (== x) prev
+          disamb = if nx > 0 then "^" <> T.pack (show nx) else ""
+      go (xs' :> x) n prev = go xs' (n - 1) (x : prev)
+      go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
 
-precApp :: Prec
-precApp = Prec 100 AssocL
-
-precArg :: Prec
-precArg = Prec 101 AssocL
-
-precLam :: Prec
-precLam = Prec 20 AssocL
-
-precTop :: Prec
-precTop = Prec 0 AssocNon
-
-instance Prt (ElS e) where
-  prt = \case
-    Var i -> prt i
-    GlobalVar (Constant x) -> pretty x
-    Code ty -> prt ty
-    App f t -> par precApp $ (prtPrec precApp f) <+> (prtPrec precApp t)
+instance Delab (ElS e) where
+  delab xs = \case
+    LocalVar i -> delab xs i
+    GlobalVar x -> N.Ident x ()
+    Code ty -> delab xs ty
+    App f t -> N.App (delab xs f) [delab xs t]
     Lam _ (Abs x t) ->
-      par precLam (pretty x <+> "=>" <+> bindName x (prtPrec precLam t))
+      N.Infix (N.Ident x ()) (N.Keyword "=>" ()) (delab (xs :> x) t)
     Lam _ (AbsConst t) ->
-      par precLam ("_" <+> "=>" <+> prtPrec precLam t)
-    Proj t f -> par precApp $ (prtPrec precApp t) <+> "." <> pretty f
-    Cons (Fields xs ts) ->
-      list
-        ["." <> pretty x <+> "=" <+> prtPrec precTop t | (x, t) <- zip xs ts]
+      N.Infix (N.Ident "_" ()) (N.Keyword "=>" ()) (delab xs t)
+    Proj t f -> N.App (delab xs t) [N.Field f ()]
+    Cons (Fields ys ts) ->
+      N.Tuple [field y t | (y, t) <- zip ys ts] ()
+      where
+        field y t = N.Infix (N.Ident y ()) (N.Keyword ":" ()) (delab xs t)
+    Lit (LitInt i) -> N.Int i ()
+    Lit (LitString s) -> N.String s ()
 
-par :: (PrecArg) => Prec -> ((PrecArg) => Doc ann) -> Doc ann
-par p s
-  | precLe p ?prec == Just True = "(" <> let ?prec = precTop in s <> ")"
-  | True = s
+piVariantArr :: PiVariant -> Name
+piVariantArr = \case
+  PrimTheory -> "~>"
+  SetTheory -> "->"
+  TheoryTop -> "->"
 
-instance Prt (TyS e) where
-  prt = \case
-    U u -> pretty $ decodesInto u
-    Decode _ t -> prt t
-    Pi _ a (Abs x b) ->
-      let annot = "(" <> pretty x <+> ":" <+> prtTop a <> ")"
-       in par precLam (annot <+> "->" <+> bindName x (prtPrec precLam b))
-    Pi _ a (AbsConst b) ->
-      par precLam (prt a <+> "->" <+> prtPrec precLam b)
-    Record _ xs as -> list $ go (zip xs as) []
-     where
-      go :: DoPretty ([(QName, TyS e')] -> [Doc ann] -> [Doc ann])
-      go [] ds = reverse ds
-      go ((x, a) : rest) ds =
-        let d = pretty x <+> ":" <+> prtPrec precTop a
-         in bindName x $ go rest (d : ds)
+nbinding :: Name -> N.Ntn0 -> N.Ntn0
+nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 
-prtTop :: (NamesArg, Prt a) => a -> Doc ann
-prtTop x = let ?prec = precTop in prt x
+instance Delab (TyS e) where
+  delab xs = \case
+    U u -> N.Keyword (fromString $ show $ decodesInto u) ()
+    Decode t -> delab xs t
+    Pi pv a (Abs x b) ->
+      N.Infix
+        (nbinding x (delab xs a))
+        (N.Keyword (piVariantArr pv) ())
+        (delab (xs :> x) b)
+    Pi pv a (AbsConst b) ->
+      N.Infix (delab xs a) (N.Keyword (piVariantArr pv) ()) (delab xs b)
+    Record _ ys te -> N.Block "sig" Nothing (go xs ys te) ()
+      where
+        go _ [] TSNil = []
+        go xs' (y : ys') (TSCons a te') =
+          nbinding y (delab xs' a) : go (xs' :> y) ys' te'
+        go _ _ _ = error "mismatching length for names and telescope"
+    Eq _ t0 t1 -> N.Infix (delab xs t0) (N.Keyword "=" ()) (delab xs t1)
+    BuiltinTy a -> N.Keyword (fromString $ show a) ()
+
+class DPrettyWithNames a where
+  dprettyWithNames :: Names -> a -> DDoc
+
+instance DPrettyWithNames BId where
+  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
+
+instance DPrettyWithNames (ElS e) where
+  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
+
+instance DPrettyWithNames (TyS e) where
+  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
