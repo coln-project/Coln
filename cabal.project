@@ -8,3 +8,4 @@ packages:
   fnotation/fnotation.cabal
 jobs: $ncpus
 semaphore: true
+tests: True
