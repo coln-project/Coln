@@ -3,6 +3,7 @@ module Geolog.Elaborator where
 import Control.Exception
 import Control.Monad (unless)
 import Data.Kind (Type)
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Diagnostician
@@ -274,12 +275,10 @@ annot (N.Infix n1 (N.Keyword ":" _) n2) = pure (n1, n2)
 annot n = unexpectedNotation n "type annotation"
 
 unpackArgs :: (DiagnosticCtxArg) => Ntn -> IO (Name, [(Name, BindingMode, Ntn)])
-unpackArgs (N.App n ns) = do
+unpackArgs (N.Group (n :| ns)) = do
   x <- ident n
   args <- mapM argBinding ns
   pure (x, args)
-unpackArgs (N.Ident x _) = pure (x, [])
-unpackArgs n = unexpectedNotation n "application or identifier"
 
 setting :: (DiagnosticCtxArg) => Name -> Ntn -> IO Ntn
 setting x (N.Infix (N.Field x' sp) (N.Keyword "=" _) n')
@@ -381,28 +380,19 @@ syn SKinetic sc (N.Ident x s) = case findLocal sc x of
       v' = neu a (VGlobal x) SId (Just v)
     Nothing -> notInScope s x
 syn SPotential _ (N.Ident _ s) = unsupportedInPotentialMode s "variables"
-syn e c (N.App n []) = syn e c n
-syn SKinetic c (N.App n0 (n1 : ns)) = do
-  (g, a, elimNs) <- case n0 of
-    N.Keyword "init" _ -> do
-      ga <- typ (lock c) TheoryU n1
-      pure (init ga, VInductive ga.val, ns)
-    N.Keyword "pure" _ -> do
-      (g, a) <- synK (unlock c) n1
-      pure (G (Pure g.stx) (VPure g.val), VInductive a, ns)
-    N.Keyword "Inductive" _ -> do
-      ga <- typ (unlock c) TheoryU n1
-      pure (code $ G (Inductive ga.stx) (VInductive ga.val), VU TheoryU, ns)
-    _ -> do
-      (g, a) <- synK c n0
-      pure (g, a, n1 : ns)
-  go g a elimNs
- where
-  go g a [] = pure (g, a)
-  go g a (n' : ns') = do
-    (g', a') <- elim c g a n'
-    go g' a' ns'
-syn SPotential _ n@(N.App _ _) =
+syn SKinetic c (N.Juxt (N.Keyword "init" _) n1) = do
+  ga <- typ (lock c) TheoryU n1
+  pure (init ga, VInductive ga.val)
+syn SKinetic c (N.Juxt (N.Keyword "pure" _) n1) = do
+  (g, a) <- synK (unlock c) n1
+  pure (G (Pure g.stx) (VPure g.val), VInductive a)
+syn SKinetic c (N.Juxt (N.Keyword "Inductive" _) n1) = do
+  ga <- typ (unlock c) TheoryU n1
+  pure (code $ G (Inductive ga.stx) (VInductive ga.val), VU TheoryU)
+syn SKinetic c (N.Juxt n0 n1) = do
+  (g, a) <- synK c n0
+  elim c g a n1
+syn SPotential _ n@(N.Juxt _ _) =
   unsupportedInPotentialMode (N.span n) "application"
 syn SKinetic _ (N.Keyword "Set" _) =
   pure (code $ universe SetU, universe TheoryU)

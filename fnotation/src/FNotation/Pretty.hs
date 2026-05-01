@@ -44,9 +44,9 @@ par False d = d
 
 prt :: (ConfigArg) => PrevPrec -> NtnGeneric a -> DDoc
 prt p = \case
-  App n ns ->
+  Juxt n n' ->
     par (looser precApp p) $
-      prt (LeftOf precApp) n <+> hsep (prt (RightOf precApp) <$> ns)
+      prt (LeftOf precApp) n <+> prt (RightOf precApp) n'
   Infix l n r ->
     let mp' = case n of
           Ident x _ -> confTableLookup ?config x.last

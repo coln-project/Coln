@@ -1,5 +1,8 @@
+{-# LANGUAGE ViewPatterns #-}
+
 module FNotation.Trees where
 
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
 import Diagnostician
@@ -21,7 +24,7 @@ we have utility methods which take `Span -> Ntn`, and if the span is last, we
 can use currying to our advantage here.
 -}
 data NtnGeneric a
-  = App (NtnGeneric a) [NtnGeneric a]
+  = Juxt (NtnGeneric a) (NtnGeneric a)
   | Infix (NtnGeneric a) (NtnGeneric a) (NtnGeneric a)
   | Block Name (Maybe (NtnGeneric a)) [NtnGeneric a] a
   | -- a declaration with modifiers
@@ -38,12 +41,23 @@ data NtnGeneric a
 pattern Decl :: Name -> NtnGeneric a -> a -> NtnGeneric a
 pattern Decl x n s = MDecl [] x n s
 
+pattern Group :: NonEmpty (NtnGeneric a) -> NtnGeneric a
+pattern Group xs <- (getGroup [] -> xs)
+  where
+    Group (x :| xs) = foldl' (flip Juxt) x xs
+
+{-# COMPLETE Group #-}
+
+getGroup :: [NtnGeneric a] -> NtnGeneric a -> NonEmpty (NtnGeneric a)
+getGroup xs (Juxt f x) = getGroup (x : xs) f
+getGroup xs f = f :| xs
+
 type Ntn = NtnGeneric Span
 
 type Ntn0 = NtnGeneric ()
 
 startPos :: Ntn -> Pos
-startPos (App f _) = startPos f
+startPos (Juxt f _) = startPos f
 startPos (Infix x _ _) = startPos x
 startPos (Block _ _ _ s) = s.start
 startPos (MDecl _ _ _ s) = s.start
@@ -57,7 +71,7 @@ startPos (Tuple _ s) = s.start
 startPos (Error s) = s.start
 
 endPos :: Ntn -> Pos
-endPos (App _ xs) = endPos (last xs)
+endPos (Juxt _ x) = endPos x
 endPos (Infix _ _ y) = endPos y
 endPos (Block _ _ _ s) = s.end
 endPos (MDecl _ _ _ s) = s.end
@@ -77,7 +91,7 @@ span n = Span (startPos n) (endPos n)
 --------------------------------------------------------------------------------
 
 head :: Ntn -> DDoc
-head (App _ _) = "App"
+head (Juxt _ _) = "Juxt"
 head (Infix _ _ _) = "Infix"
 head (Block x _ _ _) = "Block" <+> dpretty x
 head (MDecl mods x _ _) = "MDecl" <+> hsep (dpretty <$> mods ++ [x])
@@ -91,7 +105,7 @@ head (Tuple _ _) = "Tuple"
 head (Error _) = "Error"
 
 children :: Ntn -> [Ntn]
-children (App f xs) = f : xs
+children (Juxt f x) = [f, x]
 children (Infix x op y) = [x, op, y]
 children (Block _ mh xs _) = maybeToList mh ++ xs
 children (MDecl _ _ n _) = [n]
