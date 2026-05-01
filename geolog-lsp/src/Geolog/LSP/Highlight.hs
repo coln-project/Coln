@@ -7,6 +7,7 @@ import Data.Map qualified as M
 import Data.Maybe (catMaybes)
 import Data.Vector qualified as V
 import Diagnostician
+import FNotation.Kinds
 import FNotation.Tokens
 import Geolog.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), GLogLspM, LSPState (..))
 import Geolog.LSP.Utils (currentBufferUri)

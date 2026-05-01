@@ -7,6 +7,7 @@ import Data.Text (Text)
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation.Config
+import FNotation.Kinds qualified as T
 import FNotation.Names
 import FNotation.Tokens qualified as T
 import FNotation.Trees

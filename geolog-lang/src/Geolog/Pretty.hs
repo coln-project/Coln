@@ -83,10 +83,10 @@ class DPrettyWithNames a where
   dprettyWithNames :: Names -> a -> DDoc
 
 instance DPrettyWithNames BId where
-  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
+  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ delab xs t
 
 instance DPrettyWithNames (ElS e) where
-  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
+  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ delab xs t
 
 instance DPrettyWithNames (TyS e) where
-  dprettyWithNames xs t = N.dprettyWithPrecs parseConfig $ delab xs t
+  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ delab xs t

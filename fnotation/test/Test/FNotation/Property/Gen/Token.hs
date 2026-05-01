@@ -30,12 +30,14 @@ module Test.FNotation.Property.Gen.Token (
 )
 where
 
+import Data.Char (chr)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as V
 import Diagnostician (Span (..))
+import FNotation.Kinds (Kind (..))
 import FNotation.Names (Name (..))
-import FNotation.Tokens (Kind (..), Token (..), TokenValue (..))
+import FNotation.Tokens (Token (..), TokenValue (..))
 import Test.QuickCheck
 
 --------------------------------------------------------------------------------
@@ -182,13 +184,18 @@ genLastSegment =
   frequency
     [ (4, genAlphaSegment)
     , (1, genSymSegment)
+    , (1, genLitSegment)
     ]
 
-{- | Qualifying segments are always alphanumeric (symbolic segments
+{- | Qualifying segments are never symbolic (symbolic segments
 greedily consume @/@).
 -}
 genQualSegment :: Gen Text
-genQualSegment = genAlphaSegment
+genQualSegment =
+  frequency
+    [ (4, genAlphaSegment)
+    , (1, genLitSegment)
+    ]
 
 {- | A short alphanumeric name segment: starts with a letter or @_@,
 followed by letters, digits, @_@, or @-@.
@@ -217,6 +224,26 @@ genAlphaNumChar =
     , (2, pure '_')
     , (1, pure '-')
     ]
+
+{- | A short literal name segment: starts with a backtick,
+followed by non-backtick characters and another backtick
+-}
+genLitSegment :: Gen Text
+genLitSegment = do
+  restLen <- chooseInt (0, 5)
+  rest <- vectorOf restLen genLitChar
+  pure $ T.pack ('`' : rest ++ ['`'])
+
+-- | Continuation character for literal segments.
+genLitChar :: Gen Char
+genLitChar =
+  fmap chr $
+    frequency
+      [ (15, fmap (\case c | c >= 96 -> c + 1 | otherwise -> c) $ chooseInt (32, 254))
+      , (5, chooseInt (256, 0xd7ff))
+      , (2, do plane <- chooseInt (1, 16); off <- chooseInt (0, 0xfffd); pure $ 0x10000 * plane + off)
+      , (1, chooseInt (0xe000, 0xfffd))
+      ]
 
 {- | A short symbolic name segment: a non-empty sequence of symbol characters
 (@\< \> - + \/ * ~ : =@).

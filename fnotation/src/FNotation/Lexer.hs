@@ -1,6 +1,6 @@
 module FNotation.Lexer where
 
-import Data.Char (isDigit, isLetter, ord)
+import Data.Char (isDigit, isLetter, isPrint, ord)
 import Data.IORef
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -11,6 +11,7 @@ import Data.Vector qualified as V
 import Data.Vector.Mutable qualified as VM
 import Diagnostician
 import FNotation.Config
+import FNotation.Kinds
 import FNotation.Names
 import FNotation.Tokens
 import Prettyprinter
@@ -53,6 +54,10 @@ data LexerCode
   = UnexpectedCharacter
   | UncontinuedQualifiedName
   | ExpectedName
+  | InvalidNamespace
+  | KeywordInNamespace
+  | InvalidKeyword
+  | EmptyNameComponent
   deriving (Eq, Ord)
 
 lexerCodeTable :: Map LexerCode CodeMeta
@@ -60,6 +65,11 @@ lexerCodeTable =
   Map.fromList
     [ (UnexpectedCharacter, CodeMeta 0 SError Nothing)
     , (UncontinuedQualifiedName, CodeMeta 1 SError Nothing)
+    , (ExpectedName, CodeMeta 2 SError Nothing)
+    , (InvalidNamespace, CodeMeta 3 SError Nothing)
+    , (KeywordInNamespace, CodeMeta 4 SError Nothing)
+    , (InvalidKeyword, CodeMeta 5 SError Nothing)
+    , (EmptyNameComponent, CodeMeta 6 SError Nothing)
     ]
 
 -- Lex monad
@@ -159,6 +169,10 @@ unexpectedChar st c = do
   advance st
   report st UnexpectedCharacter $ "Unexpected character" <+> "'" <> pretty c <> "'"
 
+emptyNameComponent :: LexState -> IO ()
+emptyNameComponent st = do
+  report st EmptyNameComponent $ "Empty name component"
+
 -- Lexemes
 --------------------------------------------------------------------------------
 
@@ -169,11 +183,11 @@ sliceWhile st f = do
   e <- readIORef st.pos
   slice st (Span s e)
 
-classifyName :: LexState -> Name -> Kind
-classifyName st x = case confTableLookup st.config x.last of
+classifyNameSeg :: LexState -> Text -> Kind
+classifyNameSeg st x = case confTableLookup st.config x of
   Just kind -> kind
   Nothing ->
-    if isAlphaNumStart (T.head x.last)
+    if isAlphaNumStart (T.head x)
       then AIdent
       else SIdent
 
@@ -183,42 +197,71 @@ isAlphaNumStart c
   | c == '_' = True
   | otherwise = False
 
-nameSeg :: LexState -> IO Text
+nameSeg :: LexState -> IO (Kind, Text)
 nameSeg st =
   peek st >>= \case
-    c | isAlphaNumStart c -> sliceWhile st isAlphaNum
-    c | isSymbol c -> sliceWhile st isSymbol
-    _ -> P.error "nameSeg should only be called if current character is a letter"
+    c | isAlphaNumStart c -> do
+      t <- sliceWhile st isAlphaNum
+      let k = classifyNameSeg st t
+      pure (k, t)
+    c | isSymbol c -> do
+      t <- sliceWhile st isSymbol
+      let k = classifyNameSeg st t
+      pure (k, t)
+    c | c == '`' -> do
+      advance st
+      t <- sliceWhile st (\c' -> c' /= '`' && isPrint c')
+      c' <- peek st
+      if c' == '`'
+        then advance st
+        else unexpectedChar st c'
+      if T.null t
+        then emptyNameComponent st
+        else pure ()
+      pure (AIdent, t)
+    _ -> P.error "nameSeg should only be called if current character is a letter, symbol, or backtick"
 
 nameSegStart :: Char -> Bool
-nameSegStart c = isAlphaNumStart c || isSymbol c
-
-nameFromHeadTail :: Text -> [Text] -> Name
-nameFromHeadTail head tail =
-  let go s [] = ([], s)
-      go s (t : ts) = let (ts', t') = go t ts in (s : ts', t')
-      (init, last) = go head tail
-   in Name init last
+nameSegStart c = isAlphaNumStart c || isSymbol c || c == '`'
 
 -- | Lex a name
-name :: LexState -> IO Name
-name st = nameFromHeadTail <$> nameSeg st <*> tail
+name :: LexState -> Maybe Kind -> IO ()
+name st wanted = do
+  (k, t) <- nameSeg st
+  go k t []
  where
-  tail =
+  go k t stack =
     peek st >>= \case
       '/' -> do
+        case k of
+          AIdent -> pure ()
+          _ -> report st InvalidNamespace "used keyword as namespace component"
         advance st
         peek st >>= \case
-          c | nameSegStart c -> (:) <$> nameSeg st <*> tail
+          c | nameSegStart c -> do
+            (k', t') <- nameSeg st
+            go k' t' (t : stack)
           _ -> do
             report st UncontinuedQualifiedName "expected continuation of qualified name"
-            pure []
-      _ -> pure []
+            emitName k t stack
+      _ -> emitName k t stack
+  emitName k t stack = case wanted of
+    Nothing -> case k of
+      AIdent; SIdent -> emit st k (VName $ Name (reverse stack) t)
+      _ -> case stack of
+        [] -> emit st k (VName $ Name (reverse stack) t)
+        _ -> do
+          report st KeywordInNamespace "referred to keyword as a qualified name"
+          let k' = if T.all isSymbol $ T.take 1 t then SIdent else AIdent
+          emit st k' (VName $ Name (reverse stack) t)
+    Just k' -> case k of
+      AIdent -> emit st k' (VName $ Name (reverse stack) t)
+      _ -> do
+        report st InvalidKeyword $ "used reserved word as a" <+> dpretty k'
+        emit st k' (VName $ Name (reverse stack) t)
 
 ident :: LexState -> IO ()
-ident st = do
-  x <- name st
-  emit st (classifyName st x) (VName x)
+ident st = name st Nothing
 
 int :: LexState -> IO Int
 int st = go 0
@@ -247,7 +290,7 @@ string st = do
 tryName :: LexState -> Kind -> DDoc -> IO ()
 tryName st k d =
   peek st >>= \case
-    c | nameSegStart c -> name st >>= emit st k . VName
+    c | nameSegStart c -> name st (Just k)
     _ -> report st ExpectedName $ "expected a name after" <+> d
 
 -- Top-level lexing interface
@@ -273,6 +316,7 @@ run st =
     '.' -> advance st >> tryName st Field "period" >> run st
     '\'' -> advance st >> tryName st Tag "single quote" >> run st
     '\0' -> emit0 st Eof
+    '`' -> ident st >> run st
     c | isDigit c -> (int st >>= emit st Int . VInt) >> run st
     c | isLetter c || c == '_' || isSymbol c -> ident st >> run st
     c -> unexpectedChar st c >> run st

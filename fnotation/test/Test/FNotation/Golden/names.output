@@ -1,0 +1,130 @@
+-- tokens
+Decl let (0:3)
+AIdent + (4:7)
+AIdent x (8:9)
+AIdent y (10:11)
+SKeyword := (12:14)
+AIdent plus (15:19)
+AIdent x (20:21)
+AIdent y (22:23)
+Nl (23:24)
+Decl let (24:27)
+AIdent +/comm (28:36)
+SKeyword := (37:39)
+AIdent plus/comm (40:49)
+Nl (49:50)
+Decl theory (50:56)
+AIdent errant/nonsense (57:74)
+SKeyword := (75:77)
+Block sig (78:81)
+Nl (81:82)
+AIdent this (84:90)
+SKeyword : (91:92)
+AIdent that (93:97)
+Nl (97:98)
+SIdent end/* (100:105)
+SKeyword : (106:107)
+Tag import/sig (108:119)
+Field <> (120:125)
+Nl (125:126)
+AIdent bean/outsider (128:141)
+SKeyword : (142:143)
+AIdent 😎 (144:150)
+Nl (150:151)
+AIdent think/different (153:168)
+SKeyword : (169:170)
+AIdent ^^^ (171:176)
+Nl (176:178)
+AIdent never (180:185)
+SKeyword : (186:187)
+AIdent /mind (188:195)
+Nl (195:196)
+End end (196:199)
+Nl (199:200)
+Eof (200:200)
+
+-- notation
+MDecl let (0:23)
+  Infix (4:23)
+    App (4:11)
+      Ident + (4:7)
+      Ident x (8:9)
+      Ident y (10:11)
+    Keyword := (12:14)
+    App (15:23)
+      Ident plus (15:19)
+      Ident x (20:21)
+      Ident y (22:23)
+MDecl let (24:49)
+  Infix (28:49)
+    Ident +/comm (28:36)
+    Keyword := (37:39)
+    Ident plus/comm (40:49)
+MDecl theory (50:199)
+  Infix (57:199)
+    Ident errant/nonsense (57:74)
+    Keyword := (75:77)
+    Block sig (78:199)
+      Infix (84:97)
+        Ident this (84:90)
+        Keyword : (91:92)
+        Ident that (93:97)
+      Infix (100:125)
+        Error (100:105)
+        Keyword : (106:107)
+        App (108:125)
+          Tag import/sig (108:119)
+          Field <> (120:125)
+      Infix (128:150)
+        Ident bean/outsider (128:141)
+        Keyword : (142:143)
+        Ident 😎 (144:150)
+      Infix (153:176)
+        Ident think/different (153:168)
+        Keyword : (169:170)
+        Ident ^^^ (171:176)
+      Infix (180:195)
+        Ident never (180:185)
+        Keyword : (186:187)
+        Ident /mind (188:195)
+
+-- pretty
+let `+` x y := plus x y
+let `+`/comm := plus/comm
+theory errant/nonsense := sig
+  this : that
+  <error> : '`import`/`sig` .`<>`
+  bean/outsider : `😎`
+  think/different : `^^^`
+  never : ``/mind
+end
+
+-- messages
+
+error[E0003]: used keyword as namespace component
+5 |   end/* : 'import/sig .`<>`
+5 |   ^^^
+
+error[E0003]: used keyword as namespace component
+5 |   end/* : 'import/sig .`<>`
+5 |           ^^^^^^^
+
+error[E0005]: used reserved word as a Tag
+5 |   end/* : 'import/sig .`<>`
+5 |           ^^^^^^^^^^^
+
+error[E0000]: Unexpected character '	'
+7 |   think/different : `^^^	\
+7 |                     ^^^^^
+
+error[E0000]: Unexpected character '\'
+7 |   think/different : `^^^	\
+7 |                          ^
+
+error[E0006]: Empty name component
+8 |   never : ``/mind
+8 |           ^^
+
+error[E0100]: Unexpected token kind SIdent, expected a token that can start an expression
+5 |   end/* : 'import/sig .`<>`
+5 |   ^^^^^
