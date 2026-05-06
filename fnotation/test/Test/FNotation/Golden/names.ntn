@@ -1,0 +1,9 @@
+let `+` x y := plus x y
+let `+`/comm := plus/comm
+theory `errant`/nonsense := sig
+  `this` : that
+  end/* : 'import/sig .`<>`
+  bean/outsider : `😎`
+  think/different : `^^^	\
+  never : ``/mind
+end

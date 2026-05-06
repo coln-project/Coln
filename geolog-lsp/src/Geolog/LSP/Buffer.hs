@@ -21,7 +21,7 @@ reportCrash :: (MonadIO m, MonadCatch m, MonadLsp LSPState m) => IO a -> T.Text 
 reportCrash m msg =
   catch
     (liftIO (m >>= evaluate . Just))
-    ( \e@SomeException {} -> do
+    ( \e@SomeException{} -> do
         sendNotification
           SMethod_WindowShowMessage
           ( ShowMessageParams MessageType_Error $
@@ -39,11 +39,11 @@ analyzeBuffer bufInfo = do
 
   let buf tokens notations elaborated =
         AnalyzedBuffer
-          { raw = bufInfo.file,
-            tokens,
-            notations,
-            elaborated,
-            diagnostics = []
+          { raw = bufInfo.file
+          , tokens
+          , notations
+          , elaborated
+          , diagnostics = []
           }
 
   analysis <- do
@@ -59,4 +59,4 @@ analyzeBuffer bufInfo = do
 
   diagnostics <- liftIO $ readIORef diagRef
 
-  pure $ analysis {diagnostics = diagnostics}
+  pure $ analysis{diagnostics = diagnostics}

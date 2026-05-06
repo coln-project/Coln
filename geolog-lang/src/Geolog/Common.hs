@@ -83,9 +83,9 @@ instance ElemAt (Bwd a) BId a where
 
 instance ToList Bwd where
   toList xs = go xs []
-    where
-      go BwdNil l = l
-      go (xs' :> x) l = go xs' (x : l)
+   where
+    go BwdNil l = l
+    go (xs' :> x) l = go xs' (x : l)
 
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs
@@ -93,20 +93,6 @@ instance Semigroup (Bwd a) where
 
 instance Monoid (Bwd a) where
   mempty = BwdNil
-
-data MeasuredBwd a = MeasuredBwd
-  { values :: Bwd a,
-    length :: Int
-  }
-
-(++>) :: MeasuredBwd a -> a -> MeasuredBwd a
-(++>) (MeasuredBwd xs n) x = MeasuredBwd (xs :> x) (n + 1)
-
-instance Semigroup (MeasuredBwd a) where
-  xs <> ys = MeasuredBwd (xs.values <> ys.values) (xs.length + ys.length)
-
-instance Monoid (MeasuredBwd a) where
-  mempty = MeasuredBwd mempty 0
 
 infixr 5 :<
 
@@ -123,12 +109,12 @@ instance ElemAt (Fwd a) FId a where
 
 instance Reverse (Bwd a) (Fwd a) where
   rev = go FwdNil
-    where
-      go xs' BwdNil = xs'
-      go xs' (xs :> x) = go (x :< xs') xs
+   where
+    go xs' BwdNil = xs'
+    go xs' (xs :> x) = go (x :< xs') xs
 
 instance Reverse (Fwd a) (Bwd a) where
   rev = go BwdNil
-    where
-      go xs' FwdNil = xs'
-      go xs' (x :< xs) = go (xs' :> x) xs
+   where
+    go xs' FwdNil = xs'
+    go xs' (x :< xs) = go (xs' :> x) xs

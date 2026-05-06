@@ -5,17 +5,16 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as BSB
 import Data.String (fromString)
-import Data.Text.IO qualified as T
 import Development.Shake
 import Development.Shake.FilePath
 import Djot
 import GHC.Stack (withFrozenCallStack)
-import System.Directory (createDirectoryIfMissing, getCurrentDirectory)
+import System.Directory (createDirectoryIfMissing)
 import System.Environment (setEnv)
 import System.Info qualified
 
 ignoreTheseProjects :: [String]
-ignoreTheseProjects = ["toy-datalog", "felix-db"]
+ignoreTheseProjects = []
 
 getProjects :: Action [String]
 getProjects = do
@@ -24,7 +23,7 @@ getProjects = do
   pure $ filter (not . flip elem ignoreTheseProjects) allProjects
 
 projectPaths :: [String]
-projectPaths = ["src", "test", "app"]
+projectPaths = ["src", "test", "app", "src-bin"]
 
 getHsFiles :: Action [String]
 getHsFiles = do
@@ -59,21 +58,21 @@ actions = do
   phony "format" $ do
     hsFiles <- getHsFiles
     putInfo ("Formatting:" <> mconcat (("\n - " ++) <$> hsFiles))
-    cmd_ "ormolu --mode inplace" hsFiles
+    cmd_ "fourmolu --mode inplace" hsFiles
     projects <- getProjects
     forM_ projects $ \p ->
-      cmd_ "cabal format" (p </> p ++ ".cabal")
+      cmd_ "cabal-gild --io" (p </> takeFileName p -<.> "cabal")
 
   phony "check" $ do
     hsFiles <- getHsFiles
     putInfo ("Checking formatting")
-    cmd_ "ormolu --mode check" hsFiles
+    cmd_ "fourmolu --mode check" hsFiles
+
+  phony "build" $ do
+    cmd_ "cabal build all"
 
   phony "test" $ do
-    cmd_ (Cwd "geolog-lang") "cabal test"
-    cmd_ (Cwd "geolog-lsp") "cabal test"
-    cmd_ (Cwd "fnotation") "cabal test"
-    cmd_ (Cwd "diagnostician") "cabal test"
+    cmd_ "cabal test all"
 
   phony "clean" $ do
     removeFilesAfter "_build" ["//*"]
@@ -112,9 +111,11 @@ actions = do
 
   -- Build VSCode extension
   phony "vsce" $ do
-    cmd_ "cabal build geolog-lsp"
     let serverDir = "geolog-lsp/client/server" </> (System.Info.arch <> "-" <> System.Info.os)
-    liftIO $ createDirectoryIfMissing True serverDir
+    liftIO $ do
+      removeFiles "geolog-lsp/client" ["out", "server", "*.vsix"]
+      createDirectoryIfMissing True serverDir
+    cmd_ "cabal build geolog-lsp"
     StdoutTrim binary <- cmd "cabal list-bin geolog-lsp"
     copyFileChanged binary $ serverDir </> "geolog-lsp"
     cmd_ (Cwd "geolog-lsp/client") "npm install"
@@ -125,4 +126,4 @@ actions = do
 main :: IO ()
 main = do
   setEnv "LANG" "en_US.UTF-8"
-  shakeArgs shakeOptions actions
+  shakeArgs shakeOptions{shakeColor = True} actions

@@ -7,8 +7,9 @@ import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation
+import Geolog.Common
 import Geolog.Core
-import Geolog.CoreOperations (prtVal)
+import Geolog.CoreOperations (CtxShape (..), prtVal)
 import Geolog.Diagnostics
 import Geolog.Elaborator (elabTop)
 import Geolog.Notation
@@ -30,20 +31,20 @@ render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 prettyDecls :: GlobalEnv -> DDoc
 prettyDecls ge = vsep $ go (globalEntries ge)
-  where
-    go [] = []
-    go ((x, PEntry t _ a) : ds) =
-      [ "potential entry named" <+> dpretty x,
-        "type: " <+> prtVal mempty a,
-        "value: " <+> dprettyWithNames mempty t
-      ]
-        ++ go ds
-    go ((x, KEntry t _ a) : ds) =
-      [ "kinetic entry named" <+> dpretty x,
-        "type:" <+> prtVal mempty a,
-        "value:" <+> dprettyWithNames mempty t
-      ]
-        ++ go ds
+ where
+  go [] = []
+  go ((x, PEntry t _ a) : ds) =
+    [ "potential entry named" <+> dpretty x
+    , "type: " <+> prtVal (CtxShape 0 BwdNil) a
+    , "value: " <+> dprettyWithNames mempty t
+    ]
+      ++ go ds
+  go ((x, KEntry t _ a) : ds) =
+    [ "kinetic entry named" <+> dpretty x
+    , "type:" <+> prtVal (CtxShape 0 BwdNil) a
+    , "value:" <+> dprettyWithNames mempty t
+    ]
+      ++ go ds
 
 elaborate :: FilePath -> IO LBS.ByteString
 elaborate fp = do
@@ -60,17 +61,11 @@ elaborate fp = do
     pure $
       render $
         vsep
-          [ "-- tokens",
-            vsep $ dpretty <$> V.toList ts,
-            "",
-            "-- notation",
-            vsep $ dpretty <$> ns,
-            "",
-            "-- elaborated",
-            prettyDecls ge,
-            "",
-            "-- messages",
-            pretty $ msgs
+          [ "-- elaborated"
+          , prettyDecls ge
+          , ""
+          , "-- messages"
+          , pretty $ msgs
           ]
 
 elaboratorTests :: IO TestTree
@@ -80,8 +75,8 @@ elaboratorTests = do
     testGroup
       "Elaborator golden tests"
       [ goldenVsString (takeBaseName glogFile) outputFile (elaborate glogFile)
-      | glogFile <- glogFiles,
-        let outputFile = replaceExtension glogFile ".output"
+      | glogFile <- glogFiles
+      , let outputFile = replaceExtension glogFile ".output"
       ]
 
 goldenTests :: IO TestTree

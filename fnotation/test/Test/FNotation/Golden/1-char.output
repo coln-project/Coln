@@ -1,0 +1,11 @@
+-- tokens
+Int 7 (0:1)
+Eof (1:1)
+
+-- notation
+Int 7 (0:1)
+
+-- pretty
+7
+
+-- messages

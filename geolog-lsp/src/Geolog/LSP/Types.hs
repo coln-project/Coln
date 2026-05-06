@@ -12,20 +12,20 @@ import Language.LSP.Protocol.Types qualified as J
 import Language.LSP.Server (LspM)
 
 data LSPBufferInfo = LSPBufferInfo
-  { uri :: J.Uri,
-    uriNormalised :: J.NormalizedUri,
-    file :: D.File
+  { uri :: J.Uri
+  , uriNormalised :: J.NormalizedUri
+  , file :: D.File
   }
 
 data AnalyzedBuffer = AnalyzedBuffer
-  { raw :: D.File,
-    tokens :: Maybe (Vector Token),
-    notations :: Maybe [Ntn],
-    elaborated :: Maybe GlobalEnv,
-    diagnostics :: [D.Diagnostic GeologCode]
+  { raw :: D.File
+  , tokens :: Maybe (Vector Token)
+  , notations :: Maybe [Ntn]
+  , elaborated :: Maybe GlobalEnv
+  , diagnostics :: [D.Diagnostic GeologCode]
   }
 
-type DLogLspM = LspM LSPState
+type GLogLspM = LspM LSPState
 
 type UriBundle a = Map J.NormalizedUri a
 

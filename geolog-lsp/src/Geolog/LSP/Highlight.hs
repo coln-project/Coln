@@ -7,14 +7,15 @@ import Data.Map qualified as M
 import Data.Maybe (catMaybes)
 import Data.Vector qualified as V
 import Diagnostician
+import FNotation.Kinds
 import FNotation.Tokens
-import Geolog.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), DLogLspM, LSPState (..))
+import Geolog.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), GLogLspM, LSPState (..))
 import Geolog.LSP.Utils (currentBufferUri)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server
 
-tokenHandler :: Handlers DLogLspM
+tokenHandler :: Handlers GLogLspM
 tokenHandler = requestHandler SMethod_TextDocumentSemanticTokensFull $ \req responder -> do
   LSPState parseRef <- getConfig
   p <- lift . readIORef $ parseRef
@@ -64,16 +65,16 @@ tokColour = \case
   Nl -> Nothing
   Eof -> Nothing
   Error -> Nothing
-  where
-    bcol = SemanticTokenTypes_Type
+ where
+  bcol = SemanticTokenTypes_Type
 
 tokenFromSpan :: File -> Span -> SemanticTokenTypes -> SemanticTokenAbsolute
-tokenFromSpan f (Span {start, end}) tokenType =
+tokenFromSpan f (Span{start, end}) tokenType =
   let (startLine, startCol) = srcOf f start
    in SemanticTokenAbsolute
-        { _line = fromIntegral startLine,
-          _startChar = fromIntegral startCol,
-          _length = fromIntegral $ end - start,
-          _tokenType = tokenType,
-          _tokenModifiers = []
+        { _line = fromIntegral startLine
+        , _startChar = fromIntegral startCol
+        , _length = fromIntegral $ end - start
+        , _tokenType = tokenType
+        , _tokenModifiers = []
         }

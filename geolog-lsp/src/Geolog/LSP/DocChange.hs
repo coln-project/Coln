@@ -16,30 +16,31 @@ import Language.LSP.Protocol.Types (Uri)
 import Language.LSP.Server (Handlers, MonadLsp, getConfig, notificationHandler)
 import Prelude hiding (lex)
 
-docOpenHandler :: Handlers DLogLspM
+docOpenHandler :: Handlers GLogLspM
 docOpenHandler = notificationHandler SMethod_TextDocumentDidOpen updateState
 
-docChangeHandler :: Handlers DLogLspM
+docChangeHandler :: Handlers GLogLspM
 docChangeHandler = notificationHandler SMethod_TextDocumentDidChange updateState
 
 updateState ::
-  ( MonadIO m,
-    MonadCatch m,
-    MonadLsp LSPState m,
-    HasParams s a1,
-    HasTextDocument a1 a2,
-    HasUri a2 Uri
+  ( MonadIO m
+  , MonadCatch m
+  , MonadLsp LSPState m
+  , HasParams s a1
+  , HasTextDocument a1 a2
+  , HasUri a2 Uri
   ) =>
-  s -> m ()
+  s ->
+  m ()
 updateState req = do
   (bufferText, bufferUriNormalised, bufferUri) <- (,currentBufferUri req,req ^. currentBufferUriUnNormalized) <$> currentBufferText req
 
   let bufferFile = newFile (show bufferUri) bufferText
       bufInfo =
         LSPBufferInfo
-          { uri = bufferUri,
-            uriNormalised = bufferUriNormalised,
-            file = bufferFile
+          { uri = bufferUri
+          , uriNormalised = bufferUriNormalised
+          , file = bufferFile
           }
 
   result <- analyzeBuffer bufInfo

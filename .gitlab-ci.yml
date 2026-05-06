@@ -17,6 +17,12 @@ tests:
   stage: build
   tags: [nix]
   script:
+    - nix develop -c ./shake build
+
+tests:
+  stage: build
+  tags: [nix]
+  script:
     - nix develop -c ./shake test
 
 vscode:

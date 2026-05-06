@@ -15,9 +15,9 @@ data GeologCode
 geologCodeTable :: Map GeologCode CodeMeta
 geologCodeTable =
   mconcat
-    [ promoteCodeTable lexerCodeTable LexerCode 0,
-      promoteCodeTable parserCodeTable ParserCode 100,
-      promoteCodeTable elaboratorCodeTable ElaboratorCode 200
+    [ promoteCodeTable lexerCodeTable LexerCode 0
+    , promoteCodeTable parserCodeTable ParserCode 100
+    , promoteCodeTable elaboratorCodeTable ElaboratorCode 200
     ]
 
 instance Code GeologCode where

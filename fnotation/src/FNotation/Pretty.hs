@@ -2,6 +2,7 @@ module FNotation.Pretty where
 
 import Diagnostician
 import FNotation.Config
+import FNotation.Kinds (Kind)
 import FNotation.Names
 import FNotation.Trees
 import Prettyprinter
@@ -29,7 +30,7 @@ tighter (Prec b a) (RightOf (Prec b' a'))
 looser :: Prec -> PrevPrec -> Bool
 looser p p' = not $ tighter p p'
 
-type ConfigArg = (?config :: ConfTable Prec)
+type ConfigArg = (?config :: ConfTable Prec, ?lconfig :: ConfTable Kind)
 
 prtTop :: (ConfigArg) => NtnGeneric a -> DDoc
 prtTop = prt Top
@@ -43,9 +44,9 @@ par False d = d
 
 prt :: (ConfigArg) => PrevPrec -> NtnGeneric a -> DDoc
 prt p = \case
-  App n ns ->
+  Juxt n n' ->
     par (looser precApp p) $
-      prt (LeftOf precApp) n <+> hsep (prt (RightOf precApp) <$> ns)
+      prt (LeftOf precApp) n <+> prt (RightOf precApp) n'
   Infix l n r ->
     let mp' = case n of
           Ident x _ -> confTableLookup ?config x.last
@@ -55,18 +56,19 @@ prt p = \case
      in par (looser p' p) (prt (LeftOf p') l <+> prt Bot n <+> prt (RightOf p') r)
   Block x hd stmts _ ->
     vsep $
-      [dpretty x <> maybe mempty prtTop hd]
+      [dpretty x <> maybe mempty ((" " <>) . prtTop) hd]
         ++ [indent 2 $ prtTop stmt | stmt <- stmts]
         ++ ["end"]
-  Decl x n _ -> dpretty x <+> prtTop n
-  Ident x _ -> dpretty x
+  MDecl ms x n _ -> hsep (dpretty <$> (ms ++ [x])) <+> prtTop n
+  Ident x _ | Bot <- p -> dprettyOpWithKinds ?lconfig x
+  Ident x _ -> dprettyWithKinds ?lconfig x
   Keyword x _ -> dpretty x
-  Field x _ -> "." <> dpretty x
-  Tag x _ -> "'" <> dpretty x
+  Field x _ -> "." <> dprettyWithKinds ?lconfig x
+  Tag x _ -> "'" <> dprettyWithKinds ?lconfig x
   Int i _ -> pretty i
   String x _ -> "\"" <> pretty x <> "\""
   Tuple ns _ -> list $ prtTop <$> ns
   Error _ -> "<error>"
 
-dprettyWithPrecs :: ConfTable Prec -> NtnGeneric a -> DDoc
-dprettyWithPrecs config n = let ?config = config in prtTop n
+dprettyWithConfigs :: ConfTable Prec -> ConfTable Kind -> NtnGeneric a -> DDoc
+dprettyWithConfigs config lconfig n = let ?config = config; ?lconfig = lconfig in prtTop n

@@ -1,0 +1,19 @@
+-- elaborated
+potential entry named AncestorRelation
+type:  (F : Family) *-> Theory
+value:  F => sig
+  is-ancestor : F .person *-> F .person *-> Set
+  parent-is-ancestor : (x : F .person) *-> (y : F .person) *-> F .is-parent x y *-> is-ancestor x y
+  parent-of-ancestor-is-ancestor : (x : F .person) *-> (y : F .person) *-> (z : F .person) *-> F .is-parent x y *-> is-ancestor y z -> is-ancestor x z
+end
+kinetic entry named AncestryFor
+type: (F : Family) *-> Inductive (AncestorRelation F)
+value: F => init (AncestorRelation F)
+potential entry named Family
+type:  Theory
+value:  sig
+  person : Set
+  is-parent : person -> person -> Set
+end
+
+-- messages

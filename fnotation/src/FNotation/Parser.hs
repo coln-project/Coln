@@ -7,6 +7,7 @@ import Data.Text (Text)
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation.Config
+import FNotation.Kinds qualified as T
 import FNotation.Names
 import FNotation.Tokens qualified as T
 import FNotation.Trees
@@ -20,27 +21,29 @@ data ParserCode
   = UnexpectedToken
   | DefaultedPrec
   | IncompatiblePrecedences
+  | ModifierWithoutModifyee
   deriving (Eq, Ord)
 
 parserCodeTable :: Map ParserCode CodeMeta
 parserCodeTable =
   Map.fromList
-    [ (UnexpectedToken, CodeMeta 0 SError Nothing),
-      (DefaultedPrec, CodeMeta 1 SWarning Nothing),
-      (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
+    [ (UnexpectedToken, CodeMeta 0 SError Nothing)
+    , (DefaultedPrec, CodeMeta 1 SWarning Nothing)
+    , (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
+    , (ModifierWithoutModifyee, CodeMeta 3 SError Nothing)
     ]
 
 -- Parser monad
 --------------------------------------------------------------------------------
 
 data ParseState = ParseState
-  { pos :: IORef Int,
-    gas :: IORef Int,
-    skipNewlines :: IORef Bool,
-    tokens :: V.Vector T.Token,
-    file :: File,
-    reporter :: Reporter ParserCode,
-    config :: ConfTable Prec
+  { pos :: IORef Int
+  , gas :: IORef Int
+  , skipNewlines :: IORef Bool
+  , tokens :: V.Vector T.Token
+  , file :: File
+  , reporter :: Reporter ParserCode
+  , config :: ConfTable Prec
   }
 
 -- Parsing utilities
@@ -166,14 +169,14 @@ advanceClose st s f = do
 argStarts :: V.Vector T.Kind
 argStarts =
   V.fromList
-    [ T.LParen,
-      T.LBrack,
-      T.AIdent,
-      T.AKeyword,
-      T.Field,
-      T.Tag,
-      T.Int,
-      T.Block
+    [ T.LParen
+    , T.LBrack
+    , T.AIdent
+    , T.AKeyword
+    , T.Field
+    , T.Tag
+    , T.Int
+    , T.Block
     ]
 
 argStart :: T.Kind -> Bool
@@ -223,6 +226,9 @@ arg st = do
     T.Field -> do
       x <- curName st
       advanceClose st m $ Field x
+    T.Tag -> do
+      x <- curName st
+      advanceClose st m $ Tag x
     T.Int -> do
       i <- curInt st
       advanceClose st m $ Int i
@@ -230,7 +236,9 @@ arg st = do
       x <- curString st
       advanceClose st m $ String x
     T.Block -> block st
-    k -> error $ "should only call arg when the starting token is in argStarts, got: " ++ show k
+    k -> do
+      reportUnexpected st k T.CExprStart
+      advanceClose st m Error
 
 args :: ParseState -> IO [Ntn]
 args st = do
@@ -241,59 +249,75 @@ args st = do
 
 expr :: ParseState -> IO Ntn
 expr st = arg st >>= go (Prec 0 AssocNon)
-  where
-    go p lhs = do
-      cur st >>= \case
-        k@(T.SIdent; T.SKeyword) -> do
-          s <- curSpan st
-          x <- curName st
-          let n = case k of
-                T.SIdent -> Ident x s
-                T.SKeyword -> Keyword x s
-          p' <- case confTableLookup st.config x.last of
-            Just p' -> pure p'
-            Nothing -> do
-              report st s DefaultedPrec $
-                "Defaulted precedence of" <+> dpretty x <+> "to the same as +"
-              pure $ Prec 50 AssocL
-          case precLe p p' of
-            Nothing -> do
-              report st s IncompatiblePrecedences "Incompatible precedences"
-              pure lhs
-            Just False -> pure lhs
-            Just True -> do
-              advance st
-              rhs <- arg st >>= go p'
-              go p (Infix lhs n rhs)
-        k | argStart k -> do
-          spine <- args st
-          go p (App lhs spine)
-        _ -> pure lhs
+ where
+  go p lhs = do
+    cur st >>= \case
+      k@(T.SIdent; T.SKeyword) -> do
+        s <- curSpan st
+        x <- curName st
+        let n = case k of
+              T.SIdent -> Ident x s
+              T.SKeyword -> Keyword x s
+        p' <- case confTableLookup st.config x.last of
+          Just p' -> pure p'
+          Nothing -> do
+            report st s DefaultedPrec $
+              "Defaulted precedence of" <+> dpretty x <+> "to the same as +"
+            pure $ Prec 50 AssocL
+        case precLe p p' of
+          Nothing -> do
+            report st s IncompatiblePrecedences "Incompatible precedences"
+            pure lhs
+          Just False -> pure lhs
+          Just True -> do
+            advance st
+            rhs <- arg st >>= go p'
+            go p (Infix lhs n rhs)
+      k | argStart k -> do
+        rhs <- arg st
+        go p (Juxt lhs rhs)
+      _ -> pure lhs
+
+decl :: ParseState -> IO Ntn
+decl st = do
+  p <- openingPos st
+  go p []
+ where
+  go p mods =
+    cur st >>= \case
+      T.Modifier -> do
+        m <- curName st
+        advance st
+        go p (m : mods)
+      T.Decl -> do
+        x <- curName st
+        advance st
+        n <- expr st
+        expect st T.Nl
+        pure $ MDecl (reverse mods) x n (Span p (endPos n))
+      _ -> do
+        s <- curSpan st
+        report st s ModifierWithoutModifyee "expected a declaration after a declaration modifier"
+        advanceClose st p Error
 
 stmt :: ParseState -> IO Ntn
-stmt st = do
+stmt st =
   cur st >>= \case
-    T.Decl -> do
-      m <- openingPos st
-      x <- curName st
-      advance st
-      n <- expr st
-      expect st T.Nl
-      pure $ Decl x n (Span m (endPos n))
+    T.Modifier; T.Decl -> decl st
     _ -> expr st
 
 stmts :: ParseState -> IO [Ntn]
 stmts st = go []
-  where
-    go ns =
-      cur st >>= \case
-        T.Nl -> do
-          advance st
-          go ns
-        k | k == T.End || k == T.Eof -> pure $ reverse ns
-        _ -> do
-          n <- stmt st
-          go $ n : ns
+ where
+  go ns =
+    cur st >>= \case
+      T.Nl -> do
+        advance st
+        go ns
+      k | k == T.End || k == T.Eof -> pure $ reverse ns
+      _ -> do
+        n <- stmt st
+        go $ n : ns
 
 block :: ParseState -> IO Ntn
 block st =

@@ -14,22 +14,28 @@
     flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        extra-tools = pkgs: with (pkgs); [
+        tools = pkgs: with (pkgs); [
           nodejs
+          fourmolu
+          tectonic
           typescript
+          haskellPackages.cabal-gild
         ];
       in {
-        devShells.default = pkgs.mkShell {
-          name = "geolog";
-          packages = with pkgs; extra-tools pkgs ++ [
-            haskell.compiler.ghc912
-            cabal-install
-            zlib
-            zlib.dev
-            pkg-config
-            ormolu
-          ];
-        };
+        devShells.default =
+          let
+            nixpkgs-haskell-tools = with pkgs; [
+              haskell.compiler.ghc912
+              cabal-install
+              zlib
+              zlib.dev
+              pkg-config
+            ];
+          in
+          pkgs.mkShell {
+            name = "geolog";
+            packages = tools pkgs ++ nixpkgs-haskell-tools;
+          };
         devShells.haskell-nix =
           let
             overlays = [
@@ -43,7 +49,7 @@
                   shell.tools.cabal = "latest";
                   shell.withHoogle = false;
                   shell.tools.haskell-language-server = "latest";
-                  shell.nativeBuildInputs = extra-tools final;
+                  shell.nativeBuildInputs = tools final;
                 };
               })
             ];
@@ -55,4 +61,13 @@
           in
             project.devShells.default;
     });
+  nixConfig = {
+    # Binary Cache for haskell.nix  
+    extra-trusted-public-keys = [
+      "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
+    ];
+    extra-substituters = [
+      "https://cache.iog.io"
+    ];   
+  };
 }

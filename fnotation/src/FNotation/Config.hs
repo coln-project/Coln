@@ -23,8 +23,8 @@ data Assoc = AssocL | AssocR | AssocNon
   deriving (Eq, Show)
 
 data Prec = Prec
-  { binding :: Int,
-    assoc :: Assoc
+  { binding :: Int
+  , assoc :: Assoc
   }
   deriving (Eq, Show)
 
