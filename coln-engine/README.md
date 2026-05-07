@@ -48,3 +48,6 @@ commit;
 persist paths.bin;
 load-store paths.bin;
 ```
+
+To get a violation of the law, say (Hom.V.total), change the line `i1 = add G0 values (g1);`
+to `i1 = add G0 values (g0)` so that we do not have a morphism between G0 and G1.
