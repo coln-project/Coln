@@ -15,7 +15,7 @@ Example of loading a schema and inserting several related rows. Type `/help`
 for the full command list (for example `load-schema`, `add`, `dump-table`,
 `dump-store`, and the batch form below).
 
-A **batch** is a single multi-line statement: `begin batch;` … `commit;`. Each
+A **batch** is a single multi-line statement: `begin transact;` … `commit;`. Each
 line inside is an `add` that may bind the new row id to a name (`name = add
 <table> values (...);`). These ids are assigned by the storage layer and can then
 be referred to later on. For example, `e1 = add G.E values (g0 v1 v2);` is
