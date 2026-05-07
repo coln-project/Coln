@@ -3,4 +3,4 @@ pub mod error;
 pub(crate) mod hash_dict;
 pub mod pst;
 pub mod ptbl;
-mod utils;
+pub(crate) mod utils;

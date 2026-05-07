@@ -10,6 +10,8 @@ use crate::persist::error::PersisError;
 use crate::persist::utils::*;
 use crate::table::RowId;
 
+/// A hash mapper builds up all the commit hashes seen in a particular commit
+/// so they can be stored in the commit for dictionary encoding
 #[derive(Debug, Default)]
 pub(crate) struct HashMapper {
     hashes: Vec<CommitHash>,
@@ -68,7 +70,10 @@ pub(crate) fn read_hash_dict(data: &[u8], pos: &mut usize) -> Result<Vec<CommitH
     Ok(hashes)
 }
 
-pub(crate) fn encode_row_id_column(
+
+/// The rowid column needs to be converted from (commit_hash, cnt) -> (index, cnt)
+/// And then encoded. This function handles this
+pub(crate) fn encode_rowid_column(
     row_ids: &[RowId],
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, PersisError> {

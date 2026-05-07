@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::commit::CommitHash;
 use crate::persist::error::PersisError;
-use crate::persist::hash_dict::{HashMapper, decode_row_id_column, encode_row_id_column};
+use crate::persist::hash_dict::{HashMapper, decode_row_id_column, encode_rowid_column};
 use crate::persist::utils::*;
 use crate::table::{CellValue, RowId, Table, TableOid};
 
@@ -155,7 +155,7 @@ pub(crate) fn collect_table_hashes(
 /// Encode table columns, using hexane's columnar encoding
 fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>>, PersisError> {
     let mut cols = Vec::new();
-    cols.push(encode_row_id_column(&table.row_ids, hash_mapper)?);
+    cols.push(encode_rowid_column(&table.row_ids, hash_mapper)?);
 
     for (i, col) in table.cols.iter().enumerate() {
         match &table.schema().columns[i] {
@@ -170,7 +170,7 @@ fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>
                         ))),
                     })
                     .collect::<Result<_, PersisError>>()?;
-                cols.push(encode_row_id_column(&ids, hash_mapper)?);
+                cols.push(encode_rowid_column(&ids, hash_mapper)?);
             }
             ColType::PrimType { prim } => match prim {
                 PrimType::PrimInt => {

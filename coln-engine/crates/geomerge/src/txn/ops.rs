@@ -24,6 +24,7 @@ impl From<u32> for TempRowId {
 }
 
 /// The temporary ops in flight for a transaction
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum PendingOp {
     Add {
         row_id: TempRowId,

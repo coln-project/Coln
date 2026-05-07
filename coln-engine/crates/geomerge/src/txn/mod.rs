@@ -76,7 +76,7 @@ mod tests {
     use crate::ir::{ColType, Path, PrimType, Schema};
     use crate::store::test_support::link_foreign_key_theory;
     use crate::store::{Store, StoreIntError};
-    use crate::table::{Table, ValidationError};
+    use crate::table::{CellValue, Table, ValidationError};
 
     #[test]
     fn owned_transaction_commits_and_returns_updated_store() {
@@ -138,5 +138,93 @@ mod tests {
         let (err, recovered) = tx.commit().unwrap_err();
         assert!(matches!(err, StoreIntError::Law(_)));
         assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
+    }
+
+    #[test]
+    fn transaction_resolves_pending_row_references_with_commit_hash() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store.insert_table(
+            nodes.clone(),
+            Table::new(
+                nodes.clone(),
+                Schema {
+                    columns: vec![],
+                    primary_key: None,
+                },
+            ),
+        );
+        store.insert_table(
+            edges.clone(),
+            Table::new(
+                edges.clone(),
+                Schema {
+                    columns: vec![ColType::EntityType {
+                        path: nodes.clone(),
+                    }],
+                    primary_key: None,
+                },
+            ),
+        );
+
+        let mut tx = store.transaction();
+        let node_temp = tx.add(&nodes, vec![]).expect("add node");
+        tx.add(&edges, vec![node_temp.into()]).expect("add edge");
+        let commit = tx.commit().expect("commit");
+
+        let node_id = store
+            .table_at(&nodes)
+            .expect("Nodes")
+            .row_id_at(0)
+            .expect("node row id");
+        let edge = store.table_at(&edges).expect("Edges");
+        let edge_id = edge.row_id_at(0).expect("edge row id");
+
+        assert_eq!(node_id.commit, commit);
+        assert_eq!(node_id.counter, 0);
+        assert_eq!(edge_id.commit, commit);
+        assert_eq!(edge_id.counter, 1);
+        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+    }
+
+    #[test]
+    fn transaction_commit_updates_commit_graph_heads_and_deps() {
+        let path = Path::from("T");
+        let schema = Schema {
+            columns: vec![ColType::PrimType {
+                prim: PrimType::PrimInt,
+            }],
+            primary_key: None,
+        };
+        let mut store = Store::new();
+        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+
+        let mut tx = store.transaction();
+        tx.add(&path, vec![CellValue::Int(1).into()])
+            .expect("add first row");
+        let first = tx.commit().expect("first commit");
+
+        assert!(store.commits().contains(&first));
+        assert_eq!(store.commits().parents_of(&first), Some([].as_slice()));
+        assert_eq!(
+            store.commits().heads().copied().collect::<Vec<_>>(),
+            vec![first]
+        );
+
+        let mut tx = store.transaction();
+        tx.add(&path, vec![CellValue::Int(2).into()])
+            .expect("add second row");
+        let second = tx.commit().expect("second commit");
+
+        assert!(store.commits().contains(&second));
+        assert_eq!(
+            store.commits().parents_of(&second),
+            Some([first].as_slice())
+        );
+        assert_eq!(
+            store.commits().heads().copied().collect::<Vec<_>>(),
+            vec![second]
+        );
     }
 }
