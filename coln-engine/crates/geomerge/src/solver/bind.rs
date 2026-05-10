@@ -91,10 +91,7 @@ fn apply_eq(binding: &Binding, eq: &CompEq) -> bool {
 
 /// Filter `bindings` by the antecedent equality `eq`.
 fn bind_eq(bindings: Vec<Binding>, eq: &CompEq) -> Vec<Binding> {
-    bindings
-        .into_iter()
-        .filter(|b| apply_eq(b, eq))
-        .collect()
+    bindings.into_iter().filter(|b| apply_eq(b, eq)).collect()
 }
 
 /// Extend `bindings` by joining with every row of `atom.table` that can match
