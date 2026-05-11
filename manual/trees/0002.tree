@@ -1,0 +1,126 @@
+\title{About the manual}
+\import{prelude}
+
+\subtree[0004]{
+  \title{Principles}
+
+  \p{The geolog manual is \em{authoratative}, \em{conceptual}, and \em{incomplete} reference document for engaged users and developers of geolog.}
+
+  \subtree[0005]{
+    \taxon{Principle}
+    \title{Authoratative}
+
+    \p{When the manual makes a definitive statement about the behavior of geolog, if the code deviates from the manual then the code is considered to have a bug.}
+  }
+
+  \subtree[0006]{
+    \taxon{Principle}
+    \title{Conceptual}
+
+    \p{The purpose of the manual is to produce \em{understanding}. The manual is not a specification, but rather a motivated reader should be able to reverse-engineer many of the concrete design decisions made in geolog from the principles laid out in this manual. Reading the manual should equip a user of geolog with sufficient knowledge so as to not need to guess at what any particular piece of code means; the conceptual understanding laid out in this manual should be sufficient to give an unambiguous semantics.}
+  }
+
+  \subtree[0007]{
+    \taxon{Principle}
+    \title{Incomplete}
+
+    \p{This manual (like geolog itself) is currently incomplete.}
+  }
+
+  \p{The geolog manual is \em{not} a tutorial. The geolog manual is \em{not} a place for original mathematical research. The geolog manual is \em{not} a development log.}
+}
+
+\subtree[0008]{
+  \title{Meta}
+
+  \p{The geolog manual is written in [[forester]]. Forester is a very flexible tool that can be used in many ways. In order for the manual to achieve its goals, it is necessary to put constraints on the use of forester.}
+
+  \subtree[0009]{
+    \taxon{Constraint}
+    \title{Address usage}
+
+    \p{We use a single address namespace without prefixes, similar to [[stacks-project]]. This means that creating new pages requires obtaining a “global lock” on the “next address” counter. Currently, Owen is holding this global lock; when more people are working on the manual we will coordinate around address allocation.}
+  }
+
+  \subtree[000A]{
+    \taxon{Constraint}
+    \title{Global linear ordering}
+
+    \p{The entire manual is meant to be kept in a single global hierarchy rooted at the [home page](0001).}
+  }
+
+  \subtree[000F]{
+    \taxon{Constraint}
+    \title{Glossary and index}
+
+    \p{The manual contains a combination [glossary and index](0003), which collects technical terms used throughout the manual.}
+  }
+
+  \subtree[000J]{
+    \taxon{Constraint}
+    \title{Lack of tree metadata}
+
+    \p{This manual is meant to be a single document with a single voice. Therefore, we do not put author metadata on individual trees, and all trees are considered to have been written by the geolog project. Moreover, we omit dates on non-reference trees; the manual as a whole should be considered as current, and out-of-date trees should be edited or deleted.}
+  }
+
+  \p{More generally, the geolog manual should be thought of as more of a [[hyperbook]] than a [[zettelkasten]].}
+}
+
+\subtree[000B]{
+  \title{Audience}
+
+  \p{There are a variety of intended audiences for this manual; a given reader may fall into several of the following categories.}
+
+  \subtree[000C]{
+    \taxon{Audience}
+    \title{The categorical logician}
+
+    \p{The \defcase{categorical logician} is a reader who is comfortable with modern approaches to the categorical semantics of type theory, such as:}
+
+    \ul{
+      \li{[[shulman-2016-categorical]]}
+      \li{[[kovacs-2022-type-theoretic]]}
+      \li{[[uemura-2021-abstract]]}
+    }
+
+    \p{The categorical logician also has a reasonable grasp of topos theory and 2-category theory.}
+  }
+
+  \subtree[000D]{
+    \taxon{Audience}
+    \title{The type theorist}
+
+    \p{The \defcase{type theorist} is a reader who is comfortable with traditional type theory rules given in Gentzen's tree notation and who might also have some experience with normalization by evaluation, but who is not yet familiar with the modern approaches of [[000C]].}
+  }
+
+  \subtree[000E]{
+    \taxon{Audience}
+    \title{The database engineer}
+
+    \p{The \defcase{database engineer} is a reader who does not necessarily know any type theory, but is familiar with [[sql]], [[datalog]], [[conjunctive-queries]], [[egglog]], and [[automerge]].}
+  }
+
+  \subtree[000H]{
+    \taxon{Audience}
+    \title{The developer}
+
+    \p{The \defcase{developer} is someone who is interested in contributing to geolog, or creating a geolog-like system.}
+  }
+
+  \subtree[000G]{
+    \taxon{Audience}
+    \title{The programmer-user}
+
+    \p{The \defcase{programmer-user} is a reader who intends to incorporate geolog into a larger application. The programmer-user should be familiar with the language that they intend to use geolog from (currently, this is only TypeScript), and should be willing to learn a new language. We say “programmer-user” to distinguish this audience from the user of an application that the “programmer-user” creates; this user needs not read this manual.}
+  }
+
+  \p{The [programmer-user](000G) who also falls into the earlier categories will benefit from a deeper understanding of geolog. However, geolog is also comprehensible in a self-contained way, just as one does not need to understand cartesian closed categories in order to use \code{lambda x: x + 1} in Python, and it is a goal of this manual to present a clear conceptual picture for the non-mathematical programmer-user.}
+
+  \p{At various points in the manual we clarify which audience a certain section is for; a reader not in that audience may safely skip that section.}
+}
+
+\subtree[000I]{
+  \title{Organization}
+
+  \p{}
+}

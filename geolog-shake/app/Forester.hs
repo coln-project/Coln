@@ -88,7 +88,7 @@ foresterApp refreshChan = serve (Proxy @API) (server refreshChan)
 
 buildForester :: IO ()
 buildForester = do
-  cmd_ (Cwd "manual") "manual/forester" "build"
+  cmd_ (Cwd "manual") "./forester" "build"
 
 continuouslyBuildForester :: RefreshChan -> IO ()
 continuouslyBuildForester refreshChan = do

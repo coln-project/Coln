@@ -183,45 +183,62 @@ footer h2 {
   display: inline;
 }
 
-@media only screen and (max-width: 1000px) {
-  body {
-    margin-top: 1em;
-    margin-left: .5em;
-    margin-right: .5em;
-    transition: ease all .2s;
-  }
-
-  #grid-wrapper>nav {
-    display: none;
-    transition: ease all .2s;
-  }
+html, body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  width: 100%;
 }
 
-@media only screen and (min-width: 1000px) {
-  body {
-    margin-top: 2em;
-    margin-left: 2em;
-    transition: ease all .2s;
-  }
+body {
+  transition: ease all .2s;
+  width: 100%;
+}
 
-  #grid-wrapper {
-    display: grid;
-    grid-template-columns: 90ex;
-  }
+#grid-wrapper {
+  margin-top: 1em;
+  display: flex;
+  flex-direction: row;
+  width: 100%;
 }
 
 body>header {
   margin-bottom: 0.5em;
 }
 
-#grid-wrapper>article {
+#grid-wrapper>.main {
+  scroll-margin-top: 2em;
+  height: 100vh;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+article {
   max-width: 90ex;
   margin-right: auto;
-  grid-column: 1;
 }
 
 #grid-wrapper>nav {
-  grid-column: 2;
+  padding-top: 1em;
+  max-width: 40ex;
+}
+
+#menu-toggle:checked ~ .block {
+  visibility: hidden;
+  width: 1em;
+}
+
+#menu-toggle {
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.hamburger {
+  height: 20px;
+  width: 20px;
+  background-color: #eee;
 }
 
 details>summary>header {

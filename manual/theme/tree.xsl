@@ -26,29 +26,24 @@
       </head>
       <body>
         <ninja-keys placeholder="Start typing a note title or ID"></ninja-keys>
-        <xsl:if test="not(/f:tree[@root = 'true'])">
-          <header class="header">
-            <nav class="nav">
-              <div class="logo">
-                <a href="{/f:tree/@base-url}index.html" title="Home">
-                  <xsl:text>« Home</xsl:text>
-                </a>
-              </div>
-            </nav>
-          </header>
-        </xsl:if>
         <div id="grid-wrapper">
-          <article>
-            <xsl:apply-templates select="f:tree" />
-          </article>
           <xsl:if test="f:tree/f:mainmatter/f:tree[not(@toc='false')] and not(/f:tree/f:frontmatter/f:meta[@name = 'toc']/.='false')">
+
             <nav id="toc">
+              <input type="checkbox" id="menu-toggle" />
+              <label for="menu-toggle" >
+                <img class="hamburger" src="/menu.svg" />
+              </label>
               <div class="block">
-                <h1>Table of Contents</h1>
                 <xsl:apply-templates select="f:tree/f:mainmatter" mode="toc" />
               </div>
             </nav>
           </xsl:if>
+          <div class="main">
+            <article>
+              <xsl:apply-templates select="f:tree" />
+            </article>
+          </div>
         </div>
       </body>
     </html>
@@ -64,7 +59,7 @@
     <xsl:variable name="tree-is-root" select="not(parent::*)" />
 
     <xsl:variable name="explicitly-unnumbered" select="boolean(ancestor-or-self::f:tree[@numbered='false' or @toc='false'])" />
-    <xsl:variable name="implicitly-unnumbered" select="count(../f:tree) = 1 and not(count(f:mainmatter/f:tree) > 1)" />
+    <xsl:variable name="implicitly-unnumbered" select="0 = 1" />
 
     <xsl:variable name="should-number" select="$number != '' or (not($in-backmatter) and not($tree-is-root) and not($explicitly-unnumbered)) and not($implicitly-unnumbered)" />
 

@@ -1,0 +1,5 @@
+\title{Prelude}
+
+\p{This file contains the definition of macros used throughout the geolog manual.}
+
+\def\defcase[x]{\strong{\x}}

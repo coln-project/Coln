@@ -1,0 +1,18 @@
+\title{Glossary and index}
+
+\p{This page collects technical terms used throughout the manual. Some of these terms refer to specific projects, some of them refer to more general concepts. Via the backlink system of [[Forester]], this also serves as an index; going to the page for any entry in the glossary gives the reader a list of sections in the manual that reference it.}
+
+\p{We have chosen to put projects in the glossary rather than as bibliographic items because of the nature of projects as ongoing and evolving rather than static, moreover in the software world the distinction between a concept and the flagship software which implements that concept can sometimes be blurry. Additionally, as this is a manual and not an academic document, the primary function of references is breadcrumbs-to-learn-more not attributions-of-credit; thus the link given is often Wikipedia or the nlab.}
+
+\execute\datalog{
+  \rel/in-glossary ?X -: {\rel/has-taxon ?X '{Project}}
+}
+
+\execute\datalog{
+  \rel/in-glossary ?X -: {\rel/has-taxon ?X '{Term}}
+}
+
+\query\datalog{
+  ?X -: {\rel/in-glossary ?X}
+}
+
