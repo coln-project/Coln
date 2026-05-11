@@ -10,7 +10,10 @@ use tracing_subscriber::EnvFilter;
 
 static PATHS_IR: &str = "paths.json";
 
+// For testing only
+#[allow(dead_code)]
 static INIT: Once = Once::new();
+#[allow(dead_code)]
 fn init_test_logging() {
     INIT.call_once(|| {
         tracing_subscriber::fmt()
