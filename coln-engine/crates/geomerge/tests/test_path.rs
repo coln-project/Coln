@@ -1,6 +1,4 @@
-use std::path::PathBuf;
-use std::sync::Once;
-use tracing_subscriber::EnvFilter;
+use std::{path::PathBuf, sync::Once};
 
 use geomerge::{
     ir::{self, FlatTheory, Path},
@@ -8,10 +6,14 @@ use geomerge::{
     store::{Store, StoreIntError},
     table::CellValue,
 };
+use tracing_subscriber::EnvFilter;
 
 static PATHS_IR: &str = "paths.json";
 
+// For testing only
+#[allow(dead_code)]
 static INIT: Once = Once::new();
+#[allow(dead_code)]
 fn init_test_logging() {
     INIT.call_once(|| {
         tracing_subscriber::fmt()
@@ -33,7 +35,7 @@ fn fixture_theory(name: &str) -> FlatTheory {
     serde_json::from_str(&json).expect("parse FlatTheory from JSON")
 }
 
-fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
+fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
     store.transact(|store| {
         let graphs = store
             .table_at_mut(&Path::from("Graphs"))
@@ -154,7 +156,7 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
 
     let op = graphs.add(vec![]);
     let err = store.apply_batch(vec![op]).expect_err("missing g0 and g1");
-    assert!(matches!(err, StoreIntError::Law(_)));
+    assert!(matches!(*err, StoreIntError::Law(_)));
 
     assert_eq!(
         store.table_at(&Path::from("Graphs")).unwrap().row_count(),
@@ -194,7 +196,7 @@ fn test_fk() {
     ]);
     let err = store.apply_batch(vec![ope]).expect_err("missing v2");
 
-    assert!(matches!(err, StoreIntError::Law(_)));
+    assert!(matches!(*err, StoreIntError::Law(_)));
 }
 
 #[test]

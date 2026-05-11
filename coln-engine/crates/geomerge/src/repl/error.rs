@@ -14,7 +14,7 @@ pub enum ReplError {
     BadValue { column: usize, message: String },
     Io(std::io::Error),
     Json(serde_json::Error),
-    Store(StoreIntError),
+    Store(Box<StoreIntError>),
     Persist(PersisError),
 }
 
@@ -60,6 +60,12 @@ impl From<serde_json::Error> for ReplError {
 
 impl From<StoreIntError> for ReplError {
     fn from(value: StoreIntError) -> Self {
+        Self::Store(Box::new(value))
+    }
+}
+
+impl From<Box<StoreIntError>> for ReplError {
+    fn from(value: Box<StoreIntError>) -> Self {
         Self::Store(value)
     }
 }
@@ -72,7 +78,7 @@ impl From<PersisError> for ReplError {
 
 impl From<ValidationError> for ReplError {
     fn from(value: ValidationError) -> Self {
-        Self::Store(value.into())
+        Self::Store(Box::new(value.into()))
     }
 }
 

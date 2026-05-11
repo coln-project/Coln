@@ -1,9 +1,10 @@
-image: rust:latest
+default:
+  tags:
+    - nix
 
 stages:
   - check
   - test
-  - coverage
 
 variables:
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
@@ -13,6 +14,7 @@ cache:
   key:
     files:
       - Cargo.lock
+      - flake.lock
   paths:
     - .cargo/registry
     - .cargo/git
@@ -21,30 +23,14 @@ cache:
 fmt:
   stage: check
   script:
-    - rustup component add rustfmt
-    - cargo fmt --all -- --check
+    - nix develop -c cargo fmt --all -- --check
 
 clippy:
   stage: check
   script:
-    - rustup component add clippy
-    - cargo clippy --workspace --all-targets --locked -- -D warnings
+    - nix develop -c cargo clippy --workspace --all-targets --locked -- -D warnings
 
 test:
   stage: test
   script:
-    - cargo test --workspace --locked
-
-coverage:
-  stage: coverage
-  script:
-    - cargo install cargo-llvm-cov
-    - cargo llvm-cov --workspace --locked --cobertura --output-path cobertura.xml
-  coverage: '/TOTAL.*?([0-9]+\.[0-9]+)%/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: cobertura.xml
-    paths:
-      - cobertura.xml
+    - nix develop -c cargo test --workspace --locked

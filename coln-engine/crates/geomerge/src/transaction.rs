@@ -4,7 +4,7 @@ use crate::store::{Store, StoreIntError};
 
 pub struct OwnedTransaction<F, O>
 where
-    F: FnOnce(&mut Store) -> Result<O, StoreIntError>,
+    F: FnOnce(&mut Store) -> Result<O, Box<StoreIntError>>,
 {
     store: Store,
     f: F,
@@ -12,13 +12,15 @@ where
 
 impl<F, O> OwnedTransaction<F, O>
 where
-    F: FnOnce(&mut Store) -> Result<O, StoreIntError>,
+    F: FnOnce(&mut Store) -> Result<O, Box<StoreIntError>>,
 {
     pub fn new(store: Store, f: F) -> Self {
         OwnedTransaction { store, f }
     }
 
-    pub fn commit(self) -> Result<(O, Store), (StoreIntError, Store)> {
+    // Err carries the pre-transaction `Store` for rollback; We need to return a Store here for the user
+    #[allow(clippy::result_large_err)]
+    pub fn commit(self) -> Result<(O, Store), (Box<StoreIntError>, Store)> {
         info!("start transaction");
         let mut preview_store = self.store.clone();
         let r = (self.f)(&mut preview_store).map_err(|err| (err, self.store.clone()))?;
@@ -78,18 +80,20 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
-        let tx = store.into_transaction(|s| -> Result<(), StoreIntError> {
+        let tx = store.into_transaction(|s| -> Result<(), Box<StoreIntError>> {
             let oid = s.resolve_table(&path).expect("T");
             let t = s.table_mut(oid).expect("T");
             t.append_row_validated(vec![CellValue::Int(1)])?;
-            Err(StoreIntError::Validation(ValidationError::UnknownTable {
-                path: Path::from("never"),
-            }))
+            Err(Box::new(StoreIntError::Validation(
+                ValidationError::UnknownTable {
+                    path: Path::from("never"),
+                },
+            )))
         });
 
         let (err, recovered) = tx.commit().unwrap_err();
         assert!(matches!(
-            err,
+            *err,
             StoreIntError::Validation(ValidationError::UnknownTable { .. })
         ));
         assert_eq!(recovered.table_at(&path).expect("T").row_count(), 0);
@@ -109,7 +113,7 @@ mod tests {
         });
 
         let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(err, StoreIntError::Law(_)));
+        assert!(matches!(*err, StoreIntError::Law(_)));
         assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
     }
 }

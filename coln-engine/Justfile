@@ -1,0 +1,19 @@
+# Task runner: https://github.com/casey/just
+# From repo root, with Rust on PATH (e.g. `nix develop`):
+#   just          # first recipe = `check` (fmt + clippy + test; matches CI)
+#   just fmt      # only formatting
+#   just coverage # llvm-cov + Cobertura (local only; not run in GitLab CI)
+
+check: fmt clippy test
+
+fmt:
+    cargo fmt --all -- --check
+
+clippy:
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+
+test:
+    cargo test --workspace --locked
+
+coverage:
+    cargo llvm-cov --workspace --locked --cobertura --output-path cobertura.xml

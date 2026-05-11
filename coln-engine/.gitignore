@@ -4,3 +4,9 @@
 # Added by cargo
 
 /target
+
+# Nix
+result
+
+# Local `just coverage` / cargo llvm-cov
+cobertura.xml
