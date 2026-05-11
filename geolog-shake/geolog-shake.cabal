@@ -11,14 +11,16 @@ extra-doc-files: CHANGELOG.md
 
 executable geolog-shake
   main-is: Main.hs
+  other-modules: Forester
   hs-source-dirs: app
   default-language: GHC2024
   ghc-options: -Wall
   build-depends:
-    base ^>=4.21.0.0,
-    bytestring,
-    directory,
-    djot,
-    extra,
-    shake,
-    text,
+                base ^>=4.21.0.0,
+                bytestring,
+                directory,
+                djot,
+                extra,
+                shake,
+                temporary >= 1.3,
+                text

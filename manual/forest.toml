@@ -1,0 +1,4 @@
+[forest]
+trees = ["trees" ]  # The directories in which your trees are stored
+assets = ["assets"] # The directories in which your assets are stored
+url = "https://www.my-great-forest.net/" # Replace this with your own domain or web storage. If you don't have one, you can use "http://localhost/"; the URL given here does not matter unless you plan to publish your forest.
