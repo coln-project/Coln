@@ -3,7 +3,7 @@
 \p{Geolog is a database with an expressive language for schemas, queries, and migrations. This document forms the manual for geolog.}
 
 \transclude{0002}
-
 \transclude{000K}
-
+\transclude{000L}
+\transclude{000M}
 \transclude{0003}
