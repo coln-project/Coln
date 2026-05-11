@@ -123,18 +123,18 @@ fn prop_holds(store: &Store, binding: &Binding, prop: &CompProp) -> Result<(), V
     }
 }
 
-pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), LawViolation> {
+pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), Box<LawViolation>> {
     let bindings = bind_law(store, law);
     debug!(law = %law.path, bindings = ?bindings, "checking law with bindings");
 
     for binding in bindings {
         if let Err(cause) = prop_holds(store, &binding, &law.consequent) {
             debug!(law = %law.path, cause = ?cause, "law violation detected");
-            return Err(LawViolation {
+            return Err(Box::new(LawViolation {
                 law: law.clone(),
                 cause,
                 binding,
-            });
+            }));
         }
     }
     debug!(law = %law.path, "law satisfied");

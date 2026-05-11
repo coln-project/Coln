@@ -151,7 +151,7 @@ fn compile_atom(atom: &Atom, var_count: usize) -> Result<CompAtom, CompileError>
     let row_id = atom
         .row_id
         .as_ref()
-        .map(|term| compile_term(&term, var_count))
+        .map(|term| compile_term(term, var_count))
         .transpose()?;
 
     let columns = atom
