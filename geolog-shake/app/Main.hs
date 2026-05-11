@@ -9,7 +9,7 @@ import Development.Shake
 import Development.Shake.FilePath
 import Djot
 import GHC.Stack (withFrozenCallStack)
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, setCurrentDirectory)
 import System.Environment (setEnv)
 import System.Info qualified
 import Forester (foresterActions)
@@ -129,4 +129,6 @@ actions = do
 main :: IO ()
 main = do
   setEnv "LANG" "en_US.UTF-8"
+  StdoutTrim top <- cmd "git rev-parse --show-toplevel"
+  setCurrentDirectory top
   shakeArgs shakeOptions{shakeColor = True} actions

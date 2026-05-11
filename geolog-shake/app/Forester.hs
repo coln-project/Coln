@@ -2,6 +2,17 @@ module Forester where
 
 import Development.Shake
 import Development.Shake.FilePath
+import Servant hiding (ServerSentEvents)
+import Servant.Types.SourceT
+import Data.String (fromString)
+import Servant.API.EventStream
+import Network.Wai.Handler.Warp
+import Data.Function ((&))
+import System.FSNotify qualified as FSN
+import Control.Monad (forever)
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async
+import Control.Concurrent.Chan
 
 foresterVersion :: String
 foresterVersion = "5.0-6e68237"
@@ -46,6 +57,61 @@ linkForester = do
     True -> pure ()
     False -> downloadForester
   cmd_ "ln" "-s" foresterExe "manual/forester"
+
+data Refresh = Refresh
+
+instance ToServerEvent Refresh where
+  toServerEvent Refresh = dataEvent $ fromString "refresh"
+
+type API =
+  "refresh" :> ServerSentEvents (SourceIO Refresh)
+  :<|> Raw
+
+type RefreshChan = Chan Refresh
+
+refreshServer :: Maybe RefreshChan -> Handler (SourceIO Refresh)
+refreshServer Nothing = pure $ source []
+refreshServer (Just refreshChan) = do
+  clientChan <- liftIO (dupChan refreshChan)
+  let refreshSteps = Effect $ do
+        r <- readChan clientChan
+        pure (Yield r refreshSteps)
+  pure $ fromStepT refreshSteps
+
+server :: Maybe RefreshChan -> Server API
+server refreshChan =
+  refreshServer refreshChan
+  :<|> serveDirectoryFileServer "manual/output/"
+
+foresterApp :: Maybe RefreshChan -> Application
+foresterApp refreshChan = serve (Proxy @API) (server refreshChan)
+
+buildForester :: IO ()
+buildForester = do
+  cmd_ (Cwd "manual") "manual/forester" "build"
+
+continuouslyBuildForester :: RefreshChan -> IO ()
+continuouslyBuildForester refreshChan = do
+  FSN.withManager $ \mgr -> do
+    _ <- FSN.watchDir
+      mgr
+      "manual/trees"
+      (const True)
+      (\case
+          FSN.CloseWrite _ _ _ -> pure ()
+          _ -> do
+            buildForester
+            writeChan refreshChan Refresh)
+    forever $ threadDelay 100000
+
+serveForester :: Maybe RefreshChan -> IO ()
+serveForester refreshChan = do
+  (port, sock) <- openFreePort
+  let beforeMainLoop = do
+        putStrLn $ "running on port " ++ show port
+        cmd_ "firefox" ("http://localhost:" ++ show port)
+  let settings = defaultSettings & setBeforeMainLoop beforeMainLoop
+  runSettingsSocket settings sock (foresterApp refreshChan)
     
 foresterActions :: Rules ()
 foresterActions = do
@@ -54,4 +120,11 @@ foresterActions = do
   phony "manual" $ do
     need ["manual/forester"]
 
-  
+  phony "serve-manual" $ do
+    liftIO $ serveForester Nothing
+
+  phony "dev-manual" $ liftIO $ do
+    refreshChan <- newChan
+    concurrently_
+      (continuouslyBuildForester refreshChan)
+      (serveForester $ Just refreshChan)
