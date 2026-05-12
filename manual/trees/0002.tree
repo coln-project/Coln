@@ -17,7 +17,7 @@
     \taxon{Principle}
     \title{Conceptual}
 
-    \p{The purpose of the manual is to produce \em{understanding}. The manual is not a specification, but rather a motivated reader should be able to reverse-engineer many of the concrete design decisions made in geolog from the principles laid out in this manual. Reading the manual should equip a user of geolog with sufficient knowledge so as to not need to guess at what any particular piece of code means; the conceptual understanding laid out in this manual should be sufficient to give an unambiguous semantics.}
+    \p{The purpose of the manual is to produce \em{understanding}. The manual is not a specification, but a motivated reader could probably fill in the full details of a specification from the understanding imparted in the manual. Most importantly, a user of geolog who has carefully read the manual should not need to guess at what any particular piece of code means; the conceptual understanding laid out in this manual should be sufficient to give an unambiguous human-comprehensible semantics.}
   }
 
   \subtree[0007]{
@@ -28,6 +28,8 @@
   }
 
   \p{The geolog manual is \em{not} a tutorial. The geolog manual is \em{not} a place for original mathematical research. The geolog manual is \em{not} a development log.}
+
+  \p{Moreover, the geolog manual is \em{not} an advertisement. The intended audience of this manual is a reader with patience and a good amount of time, who is motivated for reasons found elsewhere to learn about geolog. There may be sections where we outline the \em{rationale} for a design decision; these should not be interpreted as claims of the superiority of this design decision, merely as a record of the thought process that went into it.}
 }
 
 \subtree[0008]{
@@ -90,14 +92,14 @@
     \taxon{Audience}
     \title{The type theorist}
 
-    \p{The \defcase{type theorist} is a reader who is comfortable with traditional type theory rules given in Gentzen's tree notation and who might also have some experience with normalization by evaluation, but who is not yet familiar with the modern approaches of [[000C]].}
+    \p{The \defcase{type theorist} is a reader who is comfortable with traditional type theory rules given in Gentzen’s tree notation and who might also have some experience with normalization by evaluation, but who is not yet familiar with the modern approaches of [[000C]].}
   }
 
   \subtree[000E]{
     \taxon{Audience}
     \title{The database engineer}
 
-    \p{The \defcase{database engineer} is a reader who does not necessarily know any type theory, but is familiar with [[sql]], [[datalog]], [[conjunctive-queries]], [[egglog]], and [[automerge]].}
+    \p{The \defcase{database engineer} is a reader who does not necessarily know any type theory, but is familiar with [[sql]], [[datalog]], [[conjunctive-queries]], [[egglog]], [[automerge]], and perhaps some of the methods for incrementalizing queries like [[dbsp]].}
   }
 
   \subtree[000H]{

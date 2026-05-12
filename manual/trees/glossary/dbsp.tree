@@ -1,0 +1,4 @@
+\title{DBSP}
+\taxon{Term}
+
+\p{DBSP is a language for “describing computations over data streams.” It is defined in [[budiu-2022-dbsp]], and currently implemented in [[feldera]].}

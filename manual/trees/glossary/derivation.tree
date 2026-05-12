@@ -1,0 +1,8 @@
+\title{Derivation}
+\taxon{Term}
+
+\p{A derivation is a sequence of applications of rules in some type theory, starting from the empty premise and concluding in a judgment.}
+
+\p{See [Rule of inference](https://en.wikipedia.org/wiki/Rule_of_inference) on wikipedia for an introduction to this sort of thing. The only difference is that a derivation in type theory typically expresses that there is a term of a certain type rather than just expressing that a proposition is true.}
+
+\p{A principled approach to derivations may be found in [[shulman-2016-categorical]].}
