@@ -39,7 +39,7 @@ impl TxnInner {
         store: &Store,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+    ) -> Result<TempRowId, Box<StoreIntError>> {
         let t = store.table_at(table).ok_or(ValidationError::UnknownTable {
             path: table.clone(),
         })?;

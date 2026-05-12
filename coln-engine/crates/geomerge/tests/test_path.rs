@@ -36,7 +36,7 @@ fn fixture_theory(name: &str) -> FlatTheory {
     serde_json::from_str(&json).expect("parse FlatTheory from JSON")
 }
 
-fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
+fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
     let graphs = Path::from("Graphs");
     let g0 = Path::from("G0");
     let g1 = Path::from("G1");
@@ -148,7 +148,7 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     tx.add(&Path::from("Graphs"), vec![])
         .expect("add graph row");
     let err = tx.commit().expect_err("missing g0 and g1");
-    assert!(matches!(err, StoreIntError::Law(_)));
+    assert!(matches!(*err, StoreIntError::Law(_)));
 
     assert_eq!(
         store.table_at(&Path::from("Graphs")).unwrap().row_count(),

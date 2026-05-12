@@ -30,7 +30,7 @@ impl<'a> Transaction<'a> {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+    ) -> Result<TempRowId, Box<StoreIntError>> {
         self.inner.add(self.store, table, values)
     }
 
@@ -58,7 +58,7 @@ impl OwnedTransaction {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+    ) -> Result<TempRowId, Box<StoreIntError>> {
         self.inner.add(&self.store, table, values)
     }
 
@@ -114,13 +114,13 @@ mod tests {
             .add(&Path::from("missing"), vec![1_i64.into()])
             .unwrap_err();
         assert!(matches!(
-            err,
+            *err,
             StoreIntError::Validation(ValidationError::UnknownTable { .. })
         ));
 
         let err = tx.add(&path, vec![1_i64.into(), 2_i64.into()]).unwrap_err();
         assert!(matches!(
-            err,
+            *err,
             StoreIntError::Validation(ValidationError::ColumnCount { .. })
         ));
     }
@@ -136,7 +136,7 @@ mod tests {
             .expect("add");
 
         let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(err, StoreIntError::Law(_)));
+        assert!(matches!(*err, StoreIntError::Law(_)));
         assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
     }
 
