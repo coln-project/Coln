@@ -1,12 +1,73 @@
 .vscode/
+.idea/
+*.iml
 
+# Rust
+/target/
+.cargo-ok
+cobertura.xml
+tarpaulin-report.html
+*.proptest-regressions
 
-# Added by cargo
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env/
+env/
+.venv/
+venv/
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+MANIFEST
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.installed.cfg
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
 
-/target
+# Notebooks
+.ipynb_checkpoints
+
+# Temporary files
+*.swp
+*~
+*.bak
+*.tmp
+temp/
+tmp/
+
+# Local database files
+*.duckdb
+*.db
+*.wal
+*.sqlite
+
+# Misc
+.DS_Store
+.benchmarks
+.claude/
+.codex
+.agent/
 
 # Nix
 result
-
-# Local `just coverage` / cargo llvm-cov
-cobertura.xml

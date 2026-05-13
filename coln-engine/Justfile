@@ -1,19 +1,34 @@
 # Task runner: https://github.com/casey/just
 # From repo root, with Rust on PATH (e.g. `nix develop`):
-#   just          # first recipe = `check` (fmt + clippy + test; matches CI)
-#   just fmt      # only formatting
-#   just coverage # llvm-cov + Cobertura (local only; not run in GitLab CI)
+#   just              # list available recipes
+#   just check        # fmt-check + clippy + test
+#   just cargo-check  # type-check all workspace targets
+#   just coverage     # llvm-cov + Cobertura
 
-check: fmt clippy test
+default:
+    @just --list
 
 fmt:
-    cargo fmt --all -- --check
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --all --check
+
+cargo-check:
+    cargo check --workspace --all-targets
 
 clippy:
-    cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 test:
-    cargo test --workspace --locked
+    cargo test --workspace --all-targets
+
+check: fmt-check clippy test
+
+ci: check
 
 coverage:
-    cargo llvm-cov --workspace --locked --cobertura --output-path cobertura.xml
+    cargo llvm-cov --workspace --cobertura --output-path cobertura.xml
+
+run:
+    cargo run -p geomerge
