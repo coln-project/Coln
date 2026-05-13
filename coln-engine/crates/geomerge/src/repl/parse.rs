@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    commit::{CommitHash, HASH_SIZE},
+    commit::hash::{CommitHash, HASH_SIZE},
     ir::{ColType, PrimType},
     repl::error::BatchCellParseError,
     table::{CellValue, RowId},

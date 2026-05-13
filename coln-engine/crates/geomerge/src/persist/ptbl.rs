@@ -3,10 +3,10 @@ use hexane::v1::Column;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 
-use crate::commit::CommitHash;
-use crate::persist::error::PersisError;
-use crate::persist::hash_dict::{HashMapper, decode_row_id_column, encode_rowid_column};
-use crate::persist::utils::*;
+use crate::commit::error::PersistError;
+use crate::commit::hash::CommitHash;
+use crate::commit::hash_dict::{HashMapper, decode_row_id_column, encode_rowid_column};
+use crate::commit::utils::*;
 use crate::table::{CellValue, RowId, Table, TableOid};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -16,11 +16,11 @@ pub(crate) struct TableEntry {
     pub(crate) schema: Schema,
 }
 
-pub(crate) fn write_len_prefixed_data(buf: &mut Vec<u8>, data: &[u8]) -> Result<(), PersisError> {
+pub(crate) fn write_len_prefixed_data(buf: &mut Vec<u8>, data: &[u8]) -> Result<(), PersistError> {
     let len: u64 = data
         .len()
         .try_into()
-        .map_err(|_| PersisError::Other("blob too large".into()))?;
+        .map_err(|_| PersistError::Other("blob too large".into()))?;
     buf.write_all(&len.to_le_bytes())?;
     buf.write_all(data)?;
     Ok(())
@@ -36,14 +36,14 @@ pub(crate) fn write_len_prefixed_data(buf: &mut Vec<u8>, data: &[u8]) -> Result<
 pub(crate) fn encode_table_raw(
     table: &Table,
     hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, PersisError> {
+) -> Result<Vec<u8>, PersistError> {
     let column_blobs = encode_columns(table, hash_mapper)?;
     let mut buf = Vec::new();
 
     let n: u32 = column_blobs
         .len()
         .try_into()
-        .map_err(|_| PersisError::Other("too many columns".into()))?;
+        .map_err(|_| PersistError::Other("too many columns".into()))?;
     buf.write_all(&n.to_le_bytes())?;
 
     for blob in &column_blobs {
@@ -59,13 +59,13 @@ pub(crate) fn decode_table_raw(
     data: &[u8],
     schema: &Schema,
     hashes: &[CommitHash],
-) -> Result<(Vec<RowId>, Vec<Vec<CellValue>>), PersisError> {
+) -> Result<(Vec<RowId>, Vec<Vec<CellValue>>), PersistError> {
     let mut pos = 0usize;
     let n = read_u32(data, &mut pos, "column count")? as usize;
 
     let expected = schema.columns.len() + 1;
     if n != expected {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "column count mismatch: file has {n}, schema expects {expected}"
         )));
     }
@@ -106,7 +106,7 @@ pub(crate) fn decode_table_raw(
                 }
             },
             ColType::Tuple { .. } => {
-                return Err(PersisError::SchemaError(format!(
+                return Err(PersistError::SchemaError(format!(
                     "column {i}: tuple columns not supported yet"
                 )));
             }
@@ -114,7 +114,7 @@ pub(crate) fn decode_table_raw(
     }
 
     if pos != data.len() {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "trailing bytes after columns: {} bytes",
             data.len() - pos
         )));
@@ -128,7 +128,7 @@ pub(crate) fn decode_table_raw(
 pub(crate) fn collect_table_hashes(
     table: &Table,
     hash_mapper: &mut HashMapper,
-) -> Result<(), PersisError> {
+) -> Result<(), PersistError> {
     for row_id in &table.row_ids {
         hash_mapper.insert(row_id.commit);
     }
@@ -140,7 +140,7 @@ pub(crate) fn collect_table_hashes(
                         hash_mapper.insert(id.commit);
                     }
                     _ => {
-                        return Err(PersisError::SchemaError(format!(
+                        return Err(PersistError::SchemaError(format!(
                             "column {i}: expected entity id, got {:?}",
                             cell
                         )));
@@ -153,7 +153,7 @@ pub(crate) fn collect_table_hashes(
 }
 
 /// Encode table columns, using hexane's columnar encoding
-fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>>, PersisError> {
+fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>>, PersistError> {
     let mut cols = Vec::new();
     cols.push(encode_rowid_column(&table.row_ids, hash_mapper)?);
 
@@ -164,12 +164,12 @@ fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>
                     .iter()
                     .map(|cell| match cell {
                         CellValue::Id(id) => Ok(*id),
-                        _ => Err(PersisError::SchemaError(format!(
+                        _ => Err(PersistError::SchemaError(format!(
                             "column {i}: expected entity id, got {:?}",
                             cell
                         ))),
                     })
-                    .collect::<Result<_, PersisError>>()?;
+                    .collect::<Result<_, PersistError>>()?;
                 cols.push(encode_rowid_column(&ids, hash_mapper)?);
             }
             ColType::PrimType { prim } => match prim {
@@ -178,12 +178,12 @@ fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>
                         .iter()
                         .map(|cell| match cell {
                             CellValue::Int(v) => Ok(*v),
-                            _ => Err(PersisError::SchemaError(format!(
+                            _ => Err(PersistError::SchemaError(format!(
                                 "column {i}: expected int, got {:?}",
                                 cell
                             ))),
                         })
-                        .collect::<Result<_, PersisError>>()?;
+                        .collect::<Result<_, PersistError>>()?;
                     cols.push(Column::<i64>::from_values(ints).save());
                 }
                 PrimType::PrimString => {
@@ -191,12 +191,12 @@ fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>
                         .iter()
                         .map(|cell| match cell {
                             CellValue::Str(s) => Ok(s.clone()),
-                            _ => Err(PersisError::SchemaError(format!(
+                            _ => Err(PersistError::SchemaError(format!(
                                 "column {i}: expected string, got {:?}",
                                 cell
                             ))),
                         })
-                        .collect::<Result<_, PersisError>>()?;
+                        .collect::<Result<_, PersistError>>()?;
                     cols.push(Column::<String>::from_values(strings).save());
                 }
             },
@@ -211,7 +211,7 @@ fn encode_columns(table: &Table, hash_mapper: &HashMapper) -> Result<Vec<Vec<u8>
 mod tests {
     use super::*;
     use crate::{
-        commit::{CommitHash, HASH_SIZE},
+        commit::hash::{CommitHash, HASH_SIZE},
         ir::{Path, Schema},
     };
 
@@ -258,7 +258,7 @@ mod tests {
     fn encode_decode_table(
         table: &Table,
         schema: &Schema,
-    ) -> Result<(Vec<RowId>, Vec<Vec<CellValue>>), PersisError> {
+    ) -> Result<(Vec<RowId>, Vec<Vec<CellValue>>), PersistError> {
         let mut hash_mapper = HashMapper::new();
         collect_table_hashes(table, &mut hash_mapper)?;
         let bytes = encode_table_raw(table, &hash_mapper)?;

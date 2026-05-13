@@ -1,40 +1,21 @@
+pub mod chunk;
+pub mod error;
 pub mod graph;
+pub mod hash;
+pub(crate) mod hash_dict;
+pub(crate) mod utils;
+pub mod wire;
 
-use std::{borrow::Cow, fmt, io::Write};
+use std::borrow::Cow;
 
 use crate::{
-    ir::Path,
-    persist::chunk::{ChunkType, hash},
-    persist::error::PersisError,
-    persist::hash_dict::{HashMapper, read_hash_dict, write_hash_dict},
-    persist::utils::{read_slice, read_u32},
-    table::{CellValue, RowId},
-    txn::ops::{PendingOp, RowRef, TempRowId, TxnCellValue},
+    commit::chunk::{ChunkType, hash},
+    commit::error::PersistError,
+    commit::hash::CommitHash,
+    commit::hash_dict::HashMapper,
+    ir::{Path, Schema},
+    txn::ops::{PendingOp, RowRef, TxnCellValue},
 };
-
-/// The number of bytes in a commit hash.
-pub(crate) const HASH_SIZE: usize = 32;
-
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-pub struct CommitHash(pub [u8; HASH_SIZE]);
-
-impl CommitHash {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl AsRef<[u8]> for CommitHash {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl fmt::Display for CommitHash {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Header {
@@ -48,9 +29,6 @@ pub(crate) struct Header {
 /// metadata. Automerge keeps ops behind column metadata and a subslice for
 /// lazy iteration; we decode ops eagerly into `PendingOp` while the encoding
 /// is still row-wise.
-///
-/// TODO switch to columnar encoding at some point, currently this adds complexity
-/// as a single commit might have additions to multiple tables of different shapes.
 ///
 /// The hash is always `sha256(chunk_type:u8 || data_len:u64_le || bytes)`, so
 /// verifying a loaded commit is re-running [`crate::persist::chunk::hash`] on
@@ -73,23 +51,36 @@ impl Commit<'static> {
     /// Serialize `pending` ops into canonical bytes, hash them, and return a
     /// fully-formed `Commit`.  This is the single place where serialization and
     /// hashing happen — the hash is always a function of these exact bytes.
-    pub(crate) fn build(
+    pub(crate) fn build<'s, F>(
         deps: &[CommitHash],
+        // TODO remove this, or replace with author id
         nonce: [u8; 16], // to make each txn unique
         timestamp: i64,
         message: Option<&str>,
         pending: &[PendingOp],
-    ) -> Self {
+        schema_for: F,
+    ) -> Result<Self, PersistError>
+    where
+        F: Fn(&Path) -> Option<&'s Schema>,
+    {
         let mut hash_mapper = HashMapper::new();
         collect_op_hashes(pending, &mut hash_mapper);
         let other_hashes = hash_mapper.hashes().to_vec();
-        let data = Self::serialise(deps, nonce, timestamp, message, pending, &hash_mapper);
+        let data = wire::serialise(
+            deps,
+            nonce,
+            timestamp,
+            message,
+            pending,
+            &hash_mapper,
+            schema_for,
+        )?;
         let commit_hash = hash(ChunkType::Commit, &data);
         let header = Header {
             chunk_type: ChunkType::Commit,
             hash: commit_hash,
         };
-        Commit {
+        Ok(Commit {
             bytes: Cow::Owned(data),
             header,
             deps: deps.to_vec(),
@@ -97,169 +88,7 @@ impl Commit<'static> {
             message: message.map(|s| s.to_owned()),
             other_hashes,
             pending: pending.to_vec(),
-        }
-    }
-
-    /// Parse canonical payload bytes (the slice passed to [`crate::persist::chunk::hash`],
-    /// not including the chunk type or outer length prefix).
-    ///
-    /// Sets `header.hash` from [`crate::persist::chunk::hash`] applied to `ChunkType::Commit` and `data`.
-    /// When loading from storage, compare that to the hash in the outer chunk header.
-    pub fn deserialise(data: &[u8]) -> Result<Self, PersisError> {
-        let mut pos = 0usize;
-
-        let deps_count = read_u32(data, &mut pos, "deps count")? as usize;
-        let mut deps = Vec::with_capacity(deps_count);
-        for _ in 0..deps_count {
-            let bytes = read_slice(data, &mut pos, HASH_SIZE, "dep hash")?;
-            let mut h = [0u8; HASH_SIZE];
-            h.copy_from_slice(bytes);
-            deps.push(CommitHash(h));
-        }
-
-        read_slice(data, &mut pos, 16, "nonce")?;
-
-        let ts_bytes = read_slice(data, &mut pos, 8, "timestamp")?;
-        let timestamp = i64::from_le_bytes(ts_bytes.try_into().unwrap());
-
-        let msg_len = read_u32(data, &mut pos, "message length")? as usize;
-        let msg_bytes = read_slice(data, &mut pos, msg_len, "message")?;
-        let message = if msg_len == 0 {
-            None
-        } else {
-            Some(
-                std::str::from_utf8(msg_bytes)
-                    .map_err(|_| {
-                        PersisError::DataFormatError("commit message: invalid utf-8".into())
-                    })?
-                    .to_owned(),
-            )
-        };
-
-        let other_hashes = read_hash_dict(data, &mut pos)?;
-
-        let ops_count = read_u32(data, &mut pos, "ops count")? as usize;
-        let mut pending = Vec::with_capacity(ops_count);
-        for op_idx in 0..ops_count {
-            let path_len = read_u32(data, &mut pos, "table path length")? as usize;
-            let path_bytes = read_slice(data, &mut pos, path_len, "table path")?;
-            let table =
-                Path::from(std::str::from_utf8(path_bytes).map_err(|_| {
-                    PersisError::DataFormatError("table path: invalid utf-8".into())
-                })?);
-
-            let values_count = read_u32(data, &mut pos, "values count")? as usize;
-            let mut values = Vec::with_capacity(values_count);
-            for _ in 0..values_count {
-                values.push(decode_txn_cell_value(data, &mut pos, &other_hashes)?);
-            }
-
-            pending.push(PendingOp::Add {
-                row_id: TempRowId(op_idx as u32),
-                table,
-                values,
-            });
-        }
-
-        if pos != data.len() {
-            return Err(PersisError::DataFormatError(format!(
-                "trailing bytes after commit payload: {} bytes",
-                data.len() - pos
-            )));
-        }
-
-        let owned: Vec<u8> = data.to_vec();
-        let commit_hash = hash(ChunkType::Commit, &owned);
-        let header = Header {
-            chunk_type: ChunkType::Commit,
-            hash: commit_hash,
-        };
-
-        Ok(Commit {
-            bytes: Cow::Owned(owned),
-            header,
-            deps,
-            timestamp,
-            message,
-            other_hashes,
-            pending,
         })
-    }
-
-    // ── Canonical payload encoding ───────────────────────────────────────────
-    //
-    // Layout (all integers little-endian):
-    //
-    //   [deps_count: u32]
-    //   [CommitHash × deps_count]            (32 bytes each)
-    //   [nonce: 16 bytes]                    (random; part of payload only, not a Commit field)
-    //   [timestamp: i64]
-    //   [message_len: u32]                   (0 when None)
-    //   [message: utf-8 bytes]
-    //   [other_hash_count: u32]
-    //   [CommitHash × other_hash_count]      (32 bytes each)
-    //   [ops_count: u32]
-    //   for each Add op (counter is implicit from position):
-    //     [table_path_len: u32][table_path: utf-8]
-    //     [values_count: u32]
-    //     for each TxnCellValue:
-    //       [tag: u8] + value bytes (see encode_txn_cell_value)
-    //
-    // CellValue tags:
-    //   0 → Int(i64)      : 8 bytes le
-    //   1 → Str(String)   : u32 len + utf-8 bytes
-    //   2 → Id(RowId)     : u32 hash index + u32 counter le
-    //   3 → Id(TempRowId) : u32 counter le
-
-    // TODO switch to column encoding, currently this is row encoded
-    fn serialise(
-        deps: &[CommitHash],
-        nonce: [u8; 16],
-        timestamp: i64,
-        message: Option<&str>,
-        pending: &[PendingOp],
-        hash_mapper: &HashMapper,
-    ) -> Vec<u8> {
-        let mut buf: Vec<u8> = Vec::new();
-
-        buf.write_all(&(deps.len() as u32).to_le_bytes()).unwrap();
-        for dep in deps {
-            buf.write_all(dep.as_bytes()).unwrap();
-        }
-
-        buf.write_all(&nonce).unwrap();
-
-        buf.write_all(&timestamp.to_le_bytes()).unwrap();
-
-        let msg = message.unwrap_or("");
-        buf.write_all(&(msg.len() as u32).to_le_bytes()).unwrap();
-        buf.write_all(msg.as_bytes()).unwrap();
-
-        write_hash_dict(&mut buf, hash_mapper).expect("hash dictionary serializes");
-
-        buf.write_all(&(pending.len() as u32).to_le_bytes())
-            .unwrap();
-        for op in pending {
-            match op {
-                PendingOp::Add {
-                    row_id: _,
-                    table,
-                    values,
-                } => {
-                    // Counter is implicit from the op's position in the list.
-                    let path = table.to_string();
-                    buf.write_all(&(path.len() as u32).to_le_bytes()).unwrap();
-                    buf.write_all(path.as_bytes()).unwrap();
-
-                    buf.write_all(&(values.len() as u32).to_le_bytes()).unwrap();
-                    for value in values {
-                        encode_txn_cell_value(&mut buf, value, hash_mapper);
-                    }
-                }
-            }
-        }
-
-        buf
     }
 }
 
@@ -286,127 +115,112 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
     }
 }
 
-fn encode_txn_cell_value(buf: &mut Vec<u8>, value: &TxnCellValue, hash_mapper: &HashMapper) {
-    match value {
-        TxnCellValue::Id(RowRef::Existing(row_id)) => {
-            encode_cell_value(buf, &CellValue::Id(*row_id), hash_mapper)
-        }
-        TxnCellValue::Id(RowRef::Pending(temp_id)) => {
-            buf.push(3);
-            buf.write_all(&temp_id.0.to_le_bytes()).unwrap();
-        }
-        TxnCellValue::Int(value) => encode_cell_value(buf, &CellValue::Int(*value), hash_mapper),
-        TxnCellValue::Str(value) => {
-            encode_cell_value(buf, &CellValue::Str(value.clone()), hash_mapper)
-        }
-    }
-}
-
-fn encode_cell_value(buf: &mut Vec<u8>, value: &CellValue, hash_mapper: &HashMapper) {
-    match value {
-        CellValue::Int(i) => {
-            buf.push(0);
-            buf.write_all(&i.to_le_bytes()).unwrap();
-        }
-        CellValue::Str(s) => {
-            buf.push(1);
-            buf.write_all(&(s.len() as u32).to_le_bytes()).unwrap();
-            buf.write_all(s.as_bytes()).unwrap();
-        }
-        CellValue::Id(RowId { commit, counter }) => {
-            buf.push(2);
-            let hash_idx = hash_mapper
-                .index(*commit)
-                .expect("hash collected before encode");
-            buf.write_all(&hash_idx.to_le_bytes()).unwrap();
-            buf.write_all(&counter.to_le_bytes()).unwrap();
-        }
-    }
-}
-
-fn decode_txn_cell_value(
-    data: &[u8],
-    pos: &mut usize,
-    hashes: &[CommitHash],
-) -> Result<TxnCellValue, PersisError> {
-    let tag = read_slice(data, pos, 1, "txn cell tag")?[0];
-    match tag {
-        0 => {
-            let b = read_slice(data, pos, 8, "txn int")?;
-            Ok(TxnCellValue::Int(i64::from_le_bytes(b.try_into().unwrap())))
-        }
-        1 => {
-            let slen = read_u32(data, pos, "txn string length")? as usize;
-            let sbytes = read_slice(data, pos, slen, "txn string")?;
-            let s = std::str::from_utf8(sbytes)
-                .map_err(|_| PersisError::DataFormatError("txn string: invalid utf-8".into()))?;
-            Ok(TxnCellValue::Str(s.to_owned()))
-        }
-        2 => {
-            let hash_idx = read_u32(data, pos, "txn rowid hash index")? as usize;
-            let counter = read_u32(data, pos, "txn rowid counter")?;
-            let commit = hashes.get(hash_idx).copied().ok_or_else(|| {
-                PersisError::DataFormatError(format!(
-                    "txn row id: hash index {hash_idx} out of range (len {})",
-                    hashes.len()
-                ))
-            })?;
-            Ok(TxnCellValue::Id(RowRef::Existing(RowId {
-                commit,
-                counter,
-            })))
-        }
-        3 => {
-            let t = read_u32(data, pos, "txn temp row id")?;
-            Ok(TxnCellValue::Id(RowRef::Pending(TempRowId(t))))
-        }
-        other => Err(PersisError::DataFormatError(format!(
-            "unknown txn cell tag {other}"
-        ))),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::Path;
+    use crate::commit::hash::HASH_SIZE;
+    use crate::ir::{ColType, Path, PrimType};
     use crate::table::RowId;
     use crate::txn::ops::{RowRef, TempRowId};
+    use std::sync::LazyLock;
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])
+    }
+
+    fn int_schema() -> &'static Schema {
+        static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
+            columns: vec![ColType::PrimType {
+                prim: PrimType::PrimInt,
+            }],
+            primary_key: None,
+        });
+        &SCHEMA
+    }
+
+    fn entity_pair_schema() -> &'static Schema {
+        static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
+            columns: vec![
+                ColType::EntityType {
+                    path: Path::from("T.E"),
+                },
+                ColType::EntityType {
+                    path: Path::from("T.E"),
+                },
+            ],
+            primary_key: None,
+        });
+        &SCHEMA
+    }
+
+    fn mixed_schema() -> &'static Schema {
+        static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
+            columns: vec![
+                ColType::EntityType {
+                    path: Path::from("T.E"),
+                },
+                ColType::EntityType {
+                    path: Path::from("T.E"),
+                },
+                ColType::PrimType {
+                    prim: PrimType::PrimString,
+                },
+            ],
+            primary_key: None,
+        });
+        &SCHEMA
+    }
+
+    fn int_schema_for(path: &Path) -> Option<&'static Schema> {
+        (path == &Path::from("T")).then_some(int_schema())
+    }
+
+    fn payload_schema_for(path: &Path) -> Option<&'static Schema> {
+        if path == &Path::from("T") {
+            Some(int_schema())
+        } else if path == &Path::from("U.V") {
+            Some(mixed_schema())
+        } else {
+            None
+        }
+    }
+
+    fn entity_pair_schema_for(path: &Path) -> Option<&'static Schema> {
+        (path == &Path::from("T")).then_some(entity_pair_schema())
     }
 
     #[test]
     fn build_produces_stable_hash() {
         let deps = vec![zero_hash()];
         let pending: Vec<PendingOp> = vec![];
-        let a = Commit::build(&deps, [0u8; 16], 0, None, &pending);
-        let b = Commit::build(&deps, [0u8; 16], 0, None, &pending);
+        let a = Commit::build(&deps, [0u8; 16], 0, None, &pending, |_| None).expect("build a");
+        let b = Commit::build(&deps, [0u8; 16], 0, None, &pending, |_| None).expect("build b");
         assert_eq!(a.hash(), b.hash());
     }
 
     #[test]
     fn different_timestamps_produce_different_hashes() {
         let pending: Vec<PendingOp> = vec![];
-        let a = Commit::build(&[], [0u8; 16], 1, None, &pending);
-        let b = Commit::build(&[], [0u8; 16], 2, None, &pending);
+        let a = Commit::build(&[], [0u8; 16], 1, None, &pending, |_| None).expect("build a");
+        let b = Commit::build(&[], [0u8; 16], 2, None, &pending, |_| None).expect("build b");
         assert_ne!(a.hash(), b.hash());
     }
 
     #[test]
     fn different_messages_produce_different_hashes() {
         let pending: Vec<PendingOp> = vec![];
-        let a = Commit::build(&[], [0u8; 16], 0, Some("hello"), &pending);
-        let b = Commit::build(&[], [0u8; 16], 0, Some("world"), &pending);
+        let a =
+            Commit::build(&[], [0u8; 16], 0, Some("hello"), &pending, |_| None).expect("build a");
+        let b =
+            Commit::build(&[], [0u8; 16], 0, Some("world"), &pending, |_| None).expect("build b");
         assert_ne!(a.hash(), b.hash());
     }
 
     #[test]
     fn different_nonces_produce_different_hashes() {
         let pending: Vec<PendingOp> = vec![];
-        let a = Commit::build(&[], [0u8; 16], 0, None, &pending);
-        let b = Commit::build(&[], [1u8; 16], 0, None, &pending);
+        let a = Commit::build(&[], [0u8; 16], 0, None, &pending, |_| None).expect("build a");
+        let b = Commit::build(&[], [1u8; 16], 0, None, &pending, |_| None).expect("build b");
         assert_ne!(a.hash(), b.hash());
     }
 
@@ -417,14 +231,14 @@ mod tests {
             table: Path::from("T"),
             values: vec![42.into()],
         };
-        let a = Commit::build(&[], [0u8; 16], 0, None, &[op]);
+        let a = Commit::build(&[], [0u8; 16], 0, None, &[op], int_schema_for).expect("build a");
 
         let op2 = PendingOp::Add {
             row_id: TempRowId(0),
             table: Path::from("T"),
             values: vec![99.into()],
         };
-        let b = Commit::build(&[], [0u8; 16], 0, None, &[op2]);
+        let b = Commit::build(&[], [0u8; 16], 0, None, &[op2], int_schema_for).expect("build b");
 
         assert_ne!(a.hash(), b.hash());
     }
@@ -432,13 +246,14 @@ mod tests {
     #[test]
     fn hash_is_function_of_bytes() {
         let pending: Vec<PendingOp> = vec![];
-        let commit = Commit::build(&[], [0u8; 16], 0, None, &pending);
+        let commit =
+            Commit::build(&[], [0u8; 16], 0, None, &pending, |_| None).expect("build commit");
         let expected = hash(ChunkType::Commit, commit.payload());
         assert_eq!(commit.hash(), expected);
     }
 
     #[test]
-    fn payload_decode_round_trips_build() {
+    fn build_records_metadata_and_pending_ops() {
         let dep = zero_hash();
         let deps = vec![dep];
         let nonce = [5u8; 16];
@@ -461,8 +276,45 @@ mod tests {
             ],
         };
         let pending = vec![op0, op1];
-        let commit = Commit::build(&deps, nonce, 42, Some("hi"), &pending);
-        let got = Commit::deserialise(commit.payload()).expect("decode");
+        let commit = Commit::build(&deps, nonce, 42, Some("hi"), &pending, payload_schema_for)
+            .expect("build commit");
+
+        assert_eq!(commit.deps, deps);
+        assert_eq!(commit.timestamp, 42);
+        assert_eq!(commit.message.as_deref(), Some("hi"));
+        assert_eq!(commit.other_hashes, vec![dep]);
+        assert_eq!(commit.pending, pending);
+        assert!(!commit.payload().is_empty());
+    }
+
+    #[test]
+    fn payload_decode_round_trips_columnar_commit() {
+        let dep = zero_hash();
+        let deps = vec![dep];
+        let nonce = [5u8; 16];
+        let rid = RowId {
+            commit: dep,
+            counter: 7,
+        };
+        let op0 = PendingOp::Add {
+            row_id: TempRowId(0),
+            table: Path::from("T"),
+            values: vec![1i64.into()],
+        };
+        let op1 = PendingOp::Add {
+            row_id: TempRowId(1),
+            table: Path::from("U.V"),
+            values: vec![
+                TxnCellValue::Id(RowRef::Existing(rid)),
+                TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
+                TxnCellValue::Str("x".into()),
+            ],
+        };
+        let pending = vec![op0, op1];
+        let commit = Commit::build(&deps, nonce, 42, Some("hi"), &pending, payload_schema_for)
+            .expect("build commit");
+
+        let got = wire::deserialise(commit.payload(), payload_schema_for).expect("decode commit");
         assert_eq!(got, commit);
     }
 
@@ -487,7 +339,10 @@ mod tests {
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
             table: Path::from("T"),
-            values: vec![TxnCellValue::Id(RowRef::Existing(rid_a))],
+            values: vec![
+                TxnCellValue::Id(RowRef::Existing(rid_a)),
+                TxnCellValue::Id(RowRef::Existing(rid_a)),
+            ],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
@@ -497,7 +352,8 @@ mod tests {
                 TxnCellValue::Id(RowRef::Existing(rid_a_later)),
             ],
         };
-        let commit = Commit::build(&[], [0u8; 16], 0, None, &[op0, op1]);
+        let commit = Commit::build(&[], [0u8; 16], 0, None, &[op0, op1], entity_pair_schema_for)
+            .expect("build commit");
         assert_eq!(
             commit.other_hashes,
             vec![ha, hb],
@@ -509,7 +365,8 @@ mod tests {
             table: Path::from("T"),
             values: vec![42.into()],
         };
-        let no_row_refs = Commit::build(&[], [0u8; 16], 0, None, &[op_int]);
+        let no_row_refs =
+            Commit::build(&[], [0u8; 16], 0, None, &[op_int], int_schema_for).expect("build");
         assert!(
             no_row_refs.other_hashes.is_empty(),
             "no Existing row refs → empty hash dictionary"

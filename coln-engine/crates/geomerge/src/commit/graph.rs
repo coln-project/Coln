@@ -54,8 +54,9 @@ impl CommitGraph {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
-    use crate::commit::HASH_SIZE;
+    use crate::commit::hash::HASH_SIZE;
 
     fn h(n: u8) -> CommitHash {
         CommitHash([n; HASH_SIZE])

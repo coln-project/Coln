@@ -1,14 +1,14 @@
 // ── Reading helpers ─────────────────────────────────────────────────────────
 
-use crate::persist::error::PersisError;
+use crate::commit::error::PersistError;
 
 pub(crate) fn read_u32(
     data: &[u8],
     pos: &mut usize,
     ctx: &'static str,
-) -> Result<u32, PersisError> {
+) -> Result<u32, PersistError> {
     if data.len() < *pos + 4 {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "truncated while reading {ctx}"
         )));
     }
@@ -21,9 +21,9 @@ pub(crate) fn read_u64(
     data: &[u8],
     pos: &mut usize,
     ctx: &'static str,
-) -> Result<u64, PersisError> {
+) -> Result<u64, PersistError> {
     if data.len() < *pos + 8 {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "truncated while reading {ctx}"
         )));
     }
@@ -37,9 +37,9 @@ pub(crate) fn read_slice<'a>(
     pos: &mut usize,
     len: usize,
     ctx: &'static str,
-) -> Result<&'a [u8], PersisError> {
+) -> Result<&'a [u8], PersistError> {
     if data.len() < *pos + len {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "truncated while reading {ctx}"
         )));
     }

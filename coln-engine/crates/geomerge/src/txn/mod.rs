@@ -1,7 +1,7 @@
 use geolog_lang::ir;
 
 use crate::{
-    commit::CommitHash,
+    commit::hash::CommitHash,
     store::{Store, StoreIntError},
     txn::ops::{TempRowId, TxnCellValue},
 };

@@ -1,13 +1,12 @@
 // TODO add doc on what this module handles
 
+use hexane::v1::{Column, DeltaColumn};
 use std::collections::HashMap;
 use std::io::Write;
 
-use hexane::v1::{Column, DeltaColumn};
-
-use crate::commit::{CommitHash, HASH_SIZE};
-use crate::persist::error::PersisError;
-use crate::persist::utils::*;
+use crate::commit::error::PersistError;
+use crate::commit::hash::{CommitHash, HASH_SIZE};
+use crate::commit::utils::{read_slice, read_u32, read_u64};
 use crate::table::RowId;
 
 /// A hash mapper builds up all the commit hashes seen in a particular commit
@@ -45,12 +44,12 @@ impl HashMapper {
 pub(crate) fn write_hash_dict(
     buf: &mut Vec<u8>,
     hash_mapper: &HashMapper,
-) -> Result<(), PersisError> {
+) -> Result<(), PersistError> {
     let hash_count: u32 = hash_mapper
         .hashes()
         .len()
         .try_into()
-        .map_err(|_| PersisError::Other("too many hashes".into()))?;
+        .map_err(|_| PersistError::Other("too many hashes".into()))?;
     buf.write_all(&hash_count.to_le_bytes())?;
     for hash in hash_mapper.hashes() {
         buf.write_all(hash.as_bytes())?;
@@ -58,7 +57,10 @@ pub(crate) fn write_hash_dict(
     Ok(())
 }
 
-pub(crate) fn read_hash_dict(data: &[u8], pos: &mut usize) -> Result<Vec<CommitHash>, PersisError> {
+pub(crate) fn read_hash_dict(
+    data: &[u8],
+    pos: &mut usize,
+) -> Result<Vec<CommitHash>, PersistError> {
     let hash_count = read_u32(data, pos, "hash dictionary count")? as usize;
     let mut hashes = Vec::with_capacity(hash_count);
     for _ in 0..hash_count {
@@ -70,18 +72,17 @@ pub(crate) fn read_hash_dict(data: &[u8], pos: &mut usize) -> Result<Vec<CommitH
     Ok(hashes)
 }
 
-
 /// The rowid column needs to be converted from (commit_hash, cnt) -> (index, cnt)
 /// And then encoded. This function handles this
 pub(crate) fn encode_rowid_column(
     row_ids: &[RowId],
     hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, PersisError> {
+) -> Result<Vec<u8>, PersistError> {
     let mut hash_indices = Vec::with_capacity(row_ids.len());
     let mut counters = Vec::with_capacity(row_ids.len());
     for row_id in row_ids {
         let hash_index = hash_mapper.index(row_id.commit).ok_or_else(|| {
-            PersisError::SchemaError(format!(
+            PersistError::SchemaError(format!(
                 "missing commit hash in dictionary: {}",
                 row_id.commit
             ))
@@ -102,14 +103,14 @@ pub(crate) fn encode_rowid_column(
 pub(crate) fn decode_row_id_column(
     data: &[u8],
     hashes: &[CommitHash],
-) -> Result<Vec<RowId>, PersisError> {
+) -> Result<Vec<RowId>, PersistError> {
     let mut pos = 0usize;
     let hash_index_len = read_u64(data, &mut pos, "row-id hash-index column length")? as usize;
     let hash_index_blob = read_slice(data, &mut pos, hash_index_len, "row-id hash-index column")?;
     let counter_len = read_u64(data, &mut pos, "row-id counter column length")? as usize;
     let counter_blob = read_slice(data, &mut pos, counter_len, "row-id counter column")?;
     if pos != data.len() {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "trailing bytes after row-id column: {} bytes",
             data.len() - pos
         )));
@@ -118,7 +119,7 @@ pub(crate) fn decode_row_id_column(
     let hash_indices: Vec<u32> = Column::<u32>::load(hash_index_blob)?.iter().collect();
     let counters: Vec<u32> = DeltaColumn::<u32>::load(counter_blob)?.iter().collect();
     if hash_indices.len() != counters.len() {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "row-id subcolumn length mismatch: hash indexes {}, counters {}",
             hash_indices.len(),
             counters.len()
@@ -130,7 +131,7 @@ pub(crate) fn decode_row_id_column(
         .zip(counters)
         .map(|(hash_index, counter)| {
             let commit = hashes.get(hash_index as usize).copied().ok_or_else(|| {
-                PersisError::DataFormatError(format!(
+                PersistError::DataFormatError(format!(
                     "row-id hash index {hash_index} out of bounds"
                 ))
             })?;
@@ -139,11 +140,11 @@ pub(crate) fn decode_row_id_column(
         .collect()
 }
 
-fn write_len_prefixed_data(buf: &mut Vec<u8>, data: &[u8]) -> Result<(), PersisError> {
+fn write_len_prefixed_data(buf: &mut Vec<u8>, data: &[u8]) -> Result<(), PersistError> {
     let len: u64 = data
         .len()
         .try_into()
-        .map_err(|_| PersisError::Other("blob too large".into()))?;
+        .map_err(|_| PersistError::Other("blob too large".into()))?;
     buf.write_all(&len.to_le_bytes())?;
     buf.write_all(data)?;
     Ok(())

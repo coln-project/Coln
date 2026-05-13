@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::io::Write;
 
-use crate::persist::error::PersisError;
-use crate::persist::hash_dict::{HashMapper, read_hash_dict, write_hash_dict};
+use crate::commit::error::PersistError;
+use crate::commit::hash_dict::{HashMapper, read_hash_dict, write_hash_dict};
+use crate::commit::utils::*;
 use crate::persist::ptbl::{
     TableEntry, collect_table_hashes, decode_table_raw, encode_table_raw, write_len_prefixed_data,
 };
-use crate::persist::utils::*;
 use crate::store::Store;
 use crate::table::{Table, TableOid};
 
@@ -35,7 +35,7 @@ struct StoreHeader {
 ///
 /// Table payloads are raw column data.
 /// Schemas, paths, and oid mapping live in the `StoreHeader`.
-pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersisError> {
+pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersistError> {
     let mut table_entries = Vec::new();
     let mut tables_to_encode = Vec::new();
     let mut hash_mapper = HashMapper::new();
@@ -65,7 +65,7 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersisError> {
     let h: u32 = header_bytes
         .len()
         .try_into()
-        .map_err(|_| PersisError::Other("store header too big".into()))?;
+        .map_err(|_| PersistError::Other("store header too big".into()))?;
     buf.write_all(&h.to_le_bytes())?;
     buf.write_all(&header_bytes)?;
 
@@ -80,21 +80,21 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersisError> {
 }
 
 /// Decode a store from bytes produced by [`encode_store`].
-pub fn decode_store(data: &[u8]) -> Result<Store, PersisError> {
+pub fn decode_store(data: &[u8]) -> Result<Store, PersistError> {
     if data.len() < MAGIC.len() {
-        return Err(PersisError::DataFormatError(
+        return Err(PersistError::DataFormatError(
             "truncated: missing magic".into(),
         ));
     }
     if data[..MAGIC.len()] != *MAGIC {
-        return Err(PersisError::DataFormatError("bad magic".into()));
+        return Err(PersistError::DataFormatError("bad magic".into()));
     }
 
     let mut pos = MAGIC.len();
 
     let version = read_u32(data, &mut pos, "format version")?;
     if version != FORMAT_VERSION {
-        return Err(PersisError::DataFormatError(format!(
+        return Err(PersistError::DataFormatError(format!(
             "unsupported format version: {version}"
         )));
     }
@@ -115,7 +115,7 @@ pub fn decode_store(data: &[u8]) -> Result<Store, PersisError> {
     }
 
     Store::from_persisted(header.next_oid, tables, header.laws)
-        .map_err(|e| PersisError::Other(format!("law compile error: {e:?}")))
+        .map_err(|e| PersistError::Other(format!("law compile error: {e:?}")))
 }
 
 #[cfg(test)]
@@ -191,7 +191,7 @@ mod tests {
     fn store_decode_rejects_bad_magic() {
         assert!(matches!(
             decode_store(b"XXXX________"),
-            Err(PersisError::DataFormatError(_))
+            Err(PersistError::DataFormatError(_))
         ));
     }
 

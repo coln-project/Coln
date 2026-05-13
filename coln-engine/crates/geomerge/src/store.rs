@@ -3,8 +3,9 @@ use std::error::Error;
 use std::fmt;
 use tracing::{debug, info};
 
-use crate::commit::CommitHash;
+use crate::commit::error::PersistError;
 use crate::commit::graph::CommitGraph;
+use crate::commit::hash::CommitHash;
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
@@ -28,11 +29,12 @@ pub struct Store {
 }
 
 /// Store integrity error
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum StoreIntError {
     Validation(ValidationError),
     Law(Box<LawViolation>),
     Compile(CompileError),
+    Encode(PersistError),
 }
 
 impl fmt::Display for StoreIntError {
@@ -41,6 +43,7 @@ impl fmt::Display for StoreIntError {
             StoreIntError::Validation(err) => write!(f, "{err}"),
             StoreIntError::Law(err) => write!(f, "{err}"),
             StoreIntError::Compile(err) => write!(f, "{err:?}"),
+            StoreIntError::Encode(err) => write!(f, "{err:?}"),
         }
     }
 }
@@ -68,6 +71,12 @@ impl From<Box<LawViolation>> for StoreIntError {
 impl From<CompileError> for StoreIntError {
     fn from(value: CompileError) -> Self {
         Self::Compile(value)
+    }
+}
+
+impl From<PersistError> for Box<StoreIntError> {
+    fn from(value: PersistError) -> Self {
+        Box::new(StoreIntError::Encode(value))
     }
 }
 
@@ -549,10 +558,10 @@ mod tests {
             .expect("second add");
         let err = txn.commit().unwrap_err();
 
-        assert_eq!(
+        assert!(matches!(
             *err,
             StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
-        );
+        ));
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
     }
 
@@ -599,16 +608,16 @@ mod tests {
     #[test]
     fn apply_error_from_inner_errors() {
         let validation = StoreIntError::from(ValidationError::DuplicatePrimaryKey);
-        assert_eq!(
+        assert!(matches!(
             validation,
             StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
-        );
+        ));
 
         let compile = StoreIntError::from(CompileError::UnsupportedTerm);
-        assert_eq!(
+        assert!(matches!(
             compile,
             StoreIntError::Compile(CompileError::UnsupportedTerm)
-        );
+        ));
 
         let compiled_law = solver::compile::CompLaw {
             path: Path::from("T.total"),
@@ -626,7 +635,7 @@ mod tests {
             }),
             binding: vec![],
         };
-        let law = StoreIntError::from(violation.clone());
-        assert_eq!(law, StoreIntError::Law(Box::new(violation)));
+        let law = StoreIntError::from(violation);
+        assert!(matches!(law, StoreIntError::Law(_)));
     }
 }

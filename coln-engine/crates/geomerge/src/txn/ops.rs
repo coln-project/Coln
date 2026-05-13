@@ -1,9 +1,10 @@
 use crate::{
-    commit::CommitHash,
+    commit::hash::CommitHash,
     ir,
     table::{CellValue, RowId},
 };
 
+pub const OP_KIND_ADD: u32 = 0;
 // This is a temporary rowid only valid during a transaction. Not persisted, no hash
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct TempRowId(pub(crate) u32);

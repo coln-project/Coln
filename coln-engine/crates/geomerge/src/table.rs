@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Write;
 
-use crate::commit::CommitHash;
+use crate::commit::hash::CommitHash;
 use crate::ir;
 use crate::ir::{ColType, PrimType, Schema};
 use crate::persist::ptbl::TableEntry;

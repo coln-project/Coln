@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Once};
 
 use geomerge::{
-    commit::CommitHash,
+    commit::hash::CommitHash,
     ir::{self, FlatTheory, Path},
     persist::pst,
     store::{Store, StoreIntError},

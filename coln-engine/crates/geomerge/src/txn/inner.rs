@@ -2,7 +2,7 @@ use geolog_lang::ir;
 use tracing::info;
 
 use crate::{
-    commit::{Commit, CommitHash},
+    commit::{Commit, hash::CommitHash},
     store::{Store, StoreIntError},
     table::ValidationError,
     txn::{
@@ -61,7 +61,8 @@ impl TxnInner {
             *self.timestamp.as_ref(),
             self.message.as_deref(),
             &self.pending,
-        );
+            |path| store.table_at(path).map(|table| table.schema()),
+        )?;
         let h = cmt.hash();
         let ops = self
             .pending
