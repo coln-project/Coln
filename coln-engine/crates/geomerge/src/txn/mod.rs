@@ -199,6 +199,7 @@ mod tests {
         };
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        let root = store.commits().root_commit().expect("root commit").hash();
 
         let mut tx = store.transaction();
         tx.add(&path, vec![CellValue::Int(1).into()])
@@ -206,7 +207,7 @@ mod tests {
         let first = tx.commit().expect("first commit");
 
         assert!(store.commits().contains(&first));
-        assert_eq!(store.commits().parents_of(&first), Some([].as_slice()));
+        assert_eq!(store.commits().parents_of(&first), Some([root].as_slice()));
         assert_eq!(
             store.commits().heads().copied().collect::<Vec<_>>(),
             vec![first]

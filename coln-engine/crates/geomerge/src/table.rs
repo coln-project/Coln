@@ -5,7 +5,6 @@ use std::fmt::Write;
 use crate::commit::hash::CommitHash;
 use crate::ir;
 use crate::ir::{ColType, PrimType, Schema};
-use crate::persist::ptbl::TableEntry;
 
 pub type TableOid = u64;
 
@@ -157,19 +156,6 @@ impl Table {
             schema,
             row_ids: vec![],
             cols: vec![Vec::new(); n],
-        }
-    }
-
-    pub(crate) fn new_from_persist(
-        entry: &TableEntry,
-        row_ids: Vec<RowId>,
-        cols: Vec<Vec<CellValue>>,
-    ) -> Self {
-        Self {
-            path: ir::Path::from(entry.path.as_str()),
-            schema: entry.schema.clone(),
-            row_ids,
-            cols,
         }
     }
 

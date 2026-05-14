@@ -2,7 +2,7 @@ use geolog_lang::ir;
 use tracing::info;
 
 use crate::{
-    commit::{Commit, hash::CommitHash},
+    commit::{Commit, hash::CommitHash, wire::CommitData},
     store::{Store, StoreIntError},
     table::ValidationError,
     txn::{
@@ -55,22 +55,19 @@ impl TxnInner {
 
     pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, Box<StoreIntError>> {
         info!(op_count = self.pending.len(), "commit txn");
-        let cmt = Commit::build(
-            &self.deps,
-            self.nonce,
-            *self.timestamp.as_ref(),
-            self.message.as_deref(),
-            &self.pending,
+        let cmt = Commit::from_commit_data(
+            CommitData::new(
+                self.deps,
+                self.nonce,
+                *self.timestamp.as_ref(),
+                self.message,
+                self.pending,
+            ),
             |path| store.table_at(path).map(|table| table.schema()),
         )?;
         let h = cmt.hash();
-        let ops = self
-            .pending
-            .iter()
-            .map(|pending| pending.resolve(h))
-            .collect();
-        store.apply_batch(ops)?;
-        store.record_commit(h, self.deps);
+        store.apply_batch(cmt.resolved_ops())?;
+        store.record_commit(cmt);
         info!("applied batch");
         Ok(h)
         // 1. validate full batch (PK conflicts including intra-batch)

@@ -1,6 +1,10 @@
 use std::fmt;
 use std::io::{self};
 
+use crate::commit::chunk::ChunkType;
+
+// TODO PersistError needs a bit more variant to reduce the number of Other
+
 #[derive(Debug)]
 pub enum PersistError {
     HeaderError(String),
@@ -8,6 +12,7 @@ pub enum PersistError {
     SchemaError(String),
     DataFormatError(String),
     DecodeError(hexane::PackError),
+    ChunkMismatch { expected: ChunkType, got: ChunkType },
     Other(String),
 }
 
@@ -19,6 +24,10 @@ impl fmt::Display for PersistError {
             PersistError::SchemaError(msg) => write!(f, "schema error: {msg}"),
             PersistError::DataFormatError(msg) => write!(f, "data format error: {msg}"),
             PersistError::DecodeError(err) => write!(f, "decode error: {err:?}"),
+            PersistError::ChunkMismatch { expected, got } => write!(
+                f,
+                "chunk type mismatch, expecting: {expected:?}, got: {got:?}"
+            ),
             PersistError::Other(msg) => write!(f, "{msg}"),
         }
     }

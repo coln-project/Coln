@@ -7,8 +7,8 @@ use rustyline::validate::Validator;
 use rustyline::{Context, Editor, Helper};
 use tracing::{info, warn};
 
+use crate::commit::pst::encode_store;
 use crate::ir::Path;
-use crate::persist::pst::encode_store;
 use crate::repl::error::ReplError;
 use crate::repl::exe::{
     LoadedState, add_rows, load_schema, load_store, render_schema_summary, run_transact,

@@ -3,6 +3,7 @@
 #   just              # list available recipes
 #   just check        # fmt-check + clippy + test
 #   just cargo-check  # type-check all workspace targets
+#   just import
 #   just coverage     # llvm-cov + Cobertura
 
 default:
@@ -19,6 +20,9 @@ cargo-check:
 
 clippy:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+import:
+   cargo fix --workspace --all-targets --all-features --allow-dirty --allow-staged
 
 test:
     cargo test --workspace --all-targets

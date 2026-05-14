@@ -5,8 +5,8 @@ use std::{
 };
 
 use crate::{
+    commit::pst::decode_store,
     ir::{ColType, FlatTheory, PrimType},
-    persist::pst::decode_store,
     repl::{
         error::ReplError,
         parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},

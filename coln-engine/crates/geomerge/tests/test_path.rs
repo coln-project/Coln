@@ -2,8 +2,8 @@ use std::{path::PathBuf, sync::Once};
 
 use geomerge::{
     commit::hash::CommitHash,
+    commit::pst,
     ir::{self, FlatTheory, Path},
-    persist::pst,
     store::{Store, StoreIntError},
     table::RowId,
 };

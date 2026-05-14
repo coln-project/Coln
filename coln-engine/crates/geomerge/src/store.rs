@@ -3,9 +3,10 @@ use std::error::Error;
 use std::fmt;
 use tracing::{debug, info};
 
+use crate::commit::Commit;
 use crate::commit::error::PersistError;
 use crate::commit::graph::CommitGraph;
-use crate::commit::hash::CommitHash;
+use crate::commit::wire::metadata::{ROOT_FORMAT_VERSION, RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
@@ -106,13 +107,15 @@ impl From<Box<LawViolation>> for Box<StoreIntError> {
 
 impl Store {
     pub fn new() -> Self {
+        let commits = Self::root_commit_graph(0, &HashMap::new(), &[])
+            .expect("empty root commit should build");
         Self {
             next_oid: 0,
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
             law_entries: vec![],
             laws: vec![],
-            commits: CommitGraph::new(),
+            commits,
         }
     }
 
@@ -120,16 +123,16 @@ impl Store {
         self.tables.iter()
     }
 
-    pub(crate) fn next_oid(&self) -> TableOid {
-        self.next_oid
-    }
-
     pub fn commits(&self) -> &CommitGraph {
         &self.commits
     }
 
-    pub(crate) fn record_commit(&mut self, hash: CommitHash, deps: Vec<CommitHash>) {
-        self.commits.add_commit(hash, deps);
+    pub(crate) fn record_commit(&mut self, commit: Commit<'static>) {
+        self.commits.add_commit(commit);
+    }
+
+    pub(crate) fn replace_commit_graph(&mut self, commits: CommitGraph) {
+        self.commits = commits;
     }
 
     pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
@@ -152,14 +155,6 @@ impl Store {
         self.resolve_table(path).and_then(|oid| self.table_mut(oid))
     }
 
-    /// This will be test only, we won't allow adding tables from anything other
-    /// than the theory/schema
-    #[cfg(test)]
-    pub(crate) fn add_table(&mut self, path: ir::Path, schema: ir::Schema) -> TableOid {
-        let table = Table::new(path.clone(), schema);
-        self.insert_table(path, table)
-    }
-
     pub fn laws(&self) -> &[CompLaw] {
         &self.laws
     }
@@ -172,24 +167,21 @@ impl Store {
         &self.law_entries
     }
 
-    /// Reconstruct a store from persisted data, recompiling laws from their source entries.
-    pub(crate) fn from_persisted(
-        next_oid: TableOid,
-        tables: Vec<(TableOid, Table)>,
-        law_entries: Vec<ir::LawEntry>,
-    ) -> Result<Self, CompileError> {
+    pub(crate) fn from_root_commit_data(root: RootCommitData) -> Result<Self, CompileError> {
         let mut path_to_oid = HashMap::new();
         let mut tables_map = HashMap::new();
-        for (oid, table) in tables {
-            path_to_oid.insert(table.path().clone(), oid);
-            tables_map.insert(oid, table);
+        for entry in root.tables {
+            let path = ir::Path::from(entry.path.as_str());
+            path_to_oid.insert(path.clone(), entry.oid);
+            tables_map.insert(entry.oid, Table::new(path, entry.schema));
         }
-        let laws = Store::compile_laws(&law_entries)?;
+
+        let laws = Store::compile_laws(&root.laws)?;
         Ok(Self {
-            next_oid,
+            next_oid: root.next_oid,
             path_to_oid,
             tables: tables_map,
-            law_entries,
+            law_entries: root.laws,
             laws,
             commits: CommitGraph::new(),
         })
@@ -203,6 +195,33 @@ impl Store {
             .collect::<Result<Vec<_>, CompileError>>()?;
         debug!(compiled_law_count = comp.len(), "compiled laws");
         Ok(comp)
+    }
+
+    fn root_commit_graph(
+        next_oid: TableOid,
+        tables: &HashMap<TableOid, Table>,
+        law_entries: &[LawEntry],
+    ) -> Result<CommitGraph, PersistError> {
+        let mut table_entries = tables
+            .iter()
+            .map(|(&oid, table)| RootTableEntry {
+                path: table.path().to_string(),
+                oid,
+                schema: table.schema().clone(),
+            })
+            .collect::<Vec<_>>();
+        table_entries.sort_by_key(|entry| entry.oid);
+
+        let root = RootCommitData {
+            format_version: ROOT_FORMAT_VERSION,
+            next_oid,
+            tables: table_entries,
+            laws: law_entries.to_vec(),
+        };
+
+        let mut graph = CommitGraph::new();
+        graph.add_commit(Commit::from_root_data(&root)?);
+        Ok(graph)
     }
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.laws`
@@ -227,6 +246,7 @@ impl Store {
         }
 
         let comp_laws = Store::compile_laws(&laws)?;
+        let commits = Self::root_commit_graph(next_oid, &tables_map, &laws)?;
         info!(
             table_count = tables_map.len(),
             compiled_law_count = comp_laws.len(),
@@ -238,7 +258,7 @@ impl Store {
             tables: tables_map,
             law_entries: laws,
             laws: comp_laws,
-            commits: CommitGraph::new(),
+            commits,
         })
     }
 

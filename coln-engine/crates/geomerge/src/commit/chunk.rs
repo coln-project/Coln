@@ -4,15 +4,15 @@ use crate::commit::CommitHash;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ChunkType {
-    Store = 0,
-    Commit = 1,
+    Commit = 0,
+    Root = 1,
 }
 
 impl From<ChunkType> for u8 {
     fn from(ct: ChunkType) -> u8 {
         match ct {
-            ChunkType::Store => 0,
-            ChunkType::Commit => 1,
+            ChunkType::Commit => 0,
+            ChunkType::Root => 1,
         }
     }
 }

@@ -1,6 +1,10 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    error::Error,
+    fmt,
+};
 
-use crate::commit::CommitHash;
+use crate::commit::{Commit, CommitHash, chunk::ChunkType};
 
 /// A DAG of commits, tracking parent relationships and the current heads.
 ///
@@ -9,11 +13,30 @@ use crate::commit::CommitHash;
 /// the commit is recorded the heads are updated via [`CommitGraph::add_commit`].
 #[derive(Debug, Clone, Default)]
 pub struct CommitGraph {
-    /// Maps each known commit to its direct parent hashes (its deps).
-    parents: HashMap<CommitHash, Vec<CommitHash>>,
+    commits: HashMap<CommitHash, Commit<'static>>,
+    children: HashMap<CommitHash, BTreeSet<CommitHash>>,
     /// Commits that no other known commit depends on yet.
     heads: BTreeSet<CommitHash>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommitGraphError {
+    MissingRoot,
+    MultipleRoots,
+}
+
+impl fmt::Display for CommitGraphError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CommitGraphError::MissingRoot => write!(f, "commit graph has no root commit"),
+            CommitGraphError::MultipleRoots => {
+                write!(f, "commit graph has multiple root commits")
+            }
+        }
+    }
+}
+
+impl Error for CommitGraphError {}
 
 impl CommitGraph {
     pub fn new() -> Self {
@@ -28,27 +51,84 @@ impl CommitGraph {
 
     /// Returns `true` if `hash` has already been recorded.
     pub fn contains(&self, hash: &CommitHash) -> bool {
-        self.parents.contains_key(hash)
+        self.commits.contains_key(hash)
+    }
+
+    pub fn get(&self, hash: &CommitHash) -> Option<&Commit<'static>> {
+        self.commits.get(hash)
     }
 
     /// Direct parents (deps) of `hash`, or `None` if the commit is unknown.
     pub fn parents_of(&self, hash: &CommitHash) -> Option<&[CommitHash]> {
-        self.parents.get(hash).map(Vec::as_slice)
+        self.get(hash).map(|c| c.deps.as_slice())
     }
 
     /// Record a new commit.  Its `deps` are removed from heads (they are no
     /// longer tips) and `hash` is added as the new head.
     ///
     /// Inserting the same hash twice is a no-op.
-    pub fn add_commit(&mut self, hash: CommitHash, deps: Vec<CommitHash>) {
-        if self.parents.contains_key(&hash) {
+    pub fn add_commit(&mut self, commit: Commit<'static>) {
+        let hash = commit.hash();
+        if self.commits.contains_key(&hash) {
             return;
         }
-        for dep in &deps {
+
+        for dep in &commit.deps {
             self.heads.remove(dep);
+            self.children.entry(*dep).or_default().insert(hash);
         }
         self.heads.insert(hash);
-        self.parents.insert(hash, deps);
+        self.commits.insert(hash, commit);
+    }
+
+    pub fn iter_topological(&self) -> impl Iterator<Item = &Commit<'_>> {
+        let mut remaining_parents: HashMap<CommitHash, usize> = self
+            .commits
+            .iter()
+            .map(|(hash, commit)| (*hash, commit.deps.len()))
+            .collect();
+
+        let mut ready: BTreeSet<CommitHash> = remaining_parents
+            .iter()
+            .filter_map(|(hash, count)| (*count == 0).then_some(*hash))
+            .collect();
+
+        let mut ordered = Vec::with_capacity(self.commits.len());
+
+        while let Some(hash) = ready.pop_first() {
+            ordered.push(hash);
+
+            if let Some(children) = self.children.get(&hash) {
+                for child in children {
+                    let Some(count) = remaining_parents.get_mut(child) else {
+                        continue;
+                    };
+
+                    *count -= 1;
+                    if *count == 0 {
+                        ready.insert(*child);
+                    }
+                }
+            }
+        }
+
+        ordered
+            .into_iter()
+            .filter_map(|hash| self.commits.get(&hash))
+    }
+
+    pub fn root_commit(&self) -> Result<&Commit<'static>, CommitGraphError> {
+        let mut roots = self
+            .commits
+            .values()
+            .filter(|commit| commit.chunk_type() == ChunkType::Root);
+
+        let root = roots.next().ok_or(CommitGraphError::MissingRoot)?;
+        if roots.next().is_some() {
+            return Err(CommitGraphError::MultipleRoots);
+        }
+
+        Ok(root)
     }
 }
 
@@ -57,9 +137,28 @@ mod tests {
 
     use super::*;
     use crate::commit::hash::HASH_SIZE;
+    use crate::commit::wire::metadata::{ROOT_FORMAT_VERSION, RootCommitData};
 
     fn h(n: u8) -> CommitHash {
         CommitHash([n; HASH_SIZE])
+    }
+
+    fn c(n: u8, deps: Vec<CommitHash>) -> Commit<'static> {
+        Commit::from_commit_data(
+            crate::commit::wire::CommitData::new(deps, [n; 16], n as i64, None, vec![]),
+            |_| None,
+        )
+        .expect("build commit")
+    }
+
+    fn root(next_oid: u64) -> Commit<'static> {
+        Commit::from_root_data(&RootCommitData {
+            format_version: ROOT_FORMAT_VERSION,
+            next_oid,
+            tables: vec![],
+            laws: vec![],
+        })
+        .expect("build root commit")
     }
 
     #[test]
@@ -71,54 +170,91 @@ mod tests {
     #[test]
     fn first_commit_becomes_head() {
         let mut g = CommitGraph::new();
-        g.add_commit(h(1), vec![]);
-        assert_eq!(g.heads().collect::<Vec<_>>(), vec![&h(1)]);
+        let first = c(1, vec![]);
+        let first_hash = first.hash();
+        g.add_commit(first);
+        assert_eq!(g.heads().collect::<Vec<_>>(), vec![&first_hash]);
     }
 
     #[test]
     fn second_commit_replaces_first_as_head() {
         let mut g = CommitGraph::new();
-        g.add_commit(h(1), vec![]);
-        g.add_commit(h(2), vec![h(1)]);
-        assert_eq!(g.heads().collect::<Vec<_>>(), vec![&h(2)]);
+        let first = c(1, vec![]);
+        let first_hash = first.hash();
+        g.add_commit(first);
+
+        let second = c(2, vec![first_hash]);
+        let second_hash = second.hash();
+        g.add_commit(second);
+
+        assert_eq!(g.heads().collect::<Vec<_>>(), vec![&second_hash]);
     }
 
     #[test]
     fn two_divergent_commits_both_heads() {
         let mut g = CommitGraph::new();
-        g.add_commit(h(1), vec![]);
-        g.add_commit(h(2), vec![h(1)]);
-        g.add_commit(h(3), vec![h(1)]);
+        let first = c(1, vec![]);
+        let first_hash = first.hash();
+        g.add_commit(first);
+
+        let second = c(2, vec![first_hash]);
+        let second_hash = second.hash();
+        g.add_commit(second);
+
+        let third = c(3, vec![first_hash]);
+        let third_hash = third.hash();
+        g.add_commit(third);
+
         let heads: Vec<_> = g.heads().collect();
         assert_eq!(heads.len(), 2);
-        assert!(heads.contains(&&h(2)));
-        assert!(heads.contains(&&h(3)));
+        assert!(heads.contains(&&second_hash));
+        assert!(heads.contains(&&third_hash));
     }
 
     #[test]
     fn merge_commit_reconciles_two_heads() {
         let mut g = CommitGraph::new();
-        g.add_commit(h(1), vec![]);
-        g.add_commit(h(2), vec![h(1)]);
-        g.add_commit(h(3), vec![h(1)]);
-        g.add_commit(h(4), vec![h(2), h(3)]);
-        assert_eq!(g.heads().collect::<Vec<_>>(), vec![&h(4)]);
+        let first = c(1, vec![]);
+        let first_hash = first.hash();
+        g.add_commit(first);
+
+        let second = c(2, vec![first_hash]);
+        let second_hash = second.hash();
+        g.add_commit(second);
+
+        let third = c(3, vec![first_hash]);
+        let third_hash = third.hash();
+        g.add_commit(third);
+
+        let fourth = c(4, vec![second_hash, third_hash]);
+        let fourth_hash = fourth.hash();
+        g.add_commit(fourth);
+
+        assert_eq!(g.heads().collect::<Vec<_>>(), vec![&fourth_hash]);
     }
 
     #[test]
     fn duplicate_insert_is_noop() {
         let mut g = CommitGraph::new();
-        g.add_commit(h(1), vec![]);
-        g.add_commit(h(1), vec![]); // second insert ignored
+        let first = c(1, vec![]);
+        g.add_commit(first.clone());
+        g.add_commit(first); // second insert ignored
         assert_eq!(g.heads().count(), 1);
     }
 
     #[test]
     fn parents_of_known_commit() {
         let mut g = CommitGraph::new();
-        g.add_commit(h(1), vec![]);
-        g.add_commit(h(2), vec![h(1)]);
-        assert_eq!(g.parents_of(&h(2)), Some([h(1)].as_slice()));
+        let first = c(1, vec![]);
+        let first_hash = first.hash();
+        g.add_commit(first);
+
+        let second = c(2, vec![first_hash]);
+        let second_hash = second.hash();
+        g.add_commit(second);
+
+        let expected = vec![first_hash];
+        assert_eq!(g.parents_of(&second_hash), Some(expected.as_slice()));
     }
 
     #[test]
@@ -128,10 +264,81 @@ mod tests {
     }
 
     #[test]
+    fn iter_topological_returns_parents_before_children() {
+        let mut g = CommitGraph::new();
+        let first = c(1, vec![]);
+        let first_hash = first.hash();
+        g.add_commit(first);
+
+        let second = c(2, vec![first_hash]);
+        let second_hash = second.hash();
+        g.add_commit(second);
+
+        let third = c(3, vec![first_hash]);
+        let third_hash = third.hash();
+        g.add_commit(third);
+
+        let fourth = c(4, vec![second_hash, third_hash]);
+        let fourth_hash = fourth.hash();
+        g.add_commit(fourth);
+
+        let order: Vec<_> = g.iter_topological().map(Commit::hash).collect();
+
+        assert_eq!(order.len(), 4);
+        assert!(
+            order.iter().position(|hash| *hash == first_hash).unwrap()
+                < order.iter().position(|hash| *hash == second_hash).unwrap()
+        );
+        assert!(
+            order.iter().position(|hash| *hash == first_hash).unwrap()
+                < order.iter().position(|hash| *hash == third_hash).unwrap()
+        );
+        assert!(
+            order.iter().position(|hash| *hash == second_hash).unwrap()
+                < order.iter().position(|hash| *hash == fourth_hash).unwrap()
+        );
+        assert!(
+            order.iter().position(|hash| *hash == third_hash).unwrap()
+                < order.iter().position(|hash| *hash == fourth_hash).unwrap()
+        );
+    }
+
+    #[test]
+    fn root_commit_rejects_missing_root() {
+        let g = CommitGraph::new();
+        assert_eq!(g.root_commit().unwrap_err(), CommitGraphError::MissingRoot);
+    }
+
+    #[test]
+    fn root_commit_returns_single_root() {
+        let mut g = CommitGraph::new();
+        let root = root(0);
+        let root_hash = root.hash();
+        g.add_commit(root);
+
+        assert_eq!(g.root_commit().expect("root").hash(), root_hash);
+    }
+
+    #[test]
+    fn root_commit_rejects_multiple_roots() {
+        let mut g = CommitGraph::new();
+        g.add_commit(root(0));
+        g.add_commit(root(1));
+
+        assert_eq!(
+            g.root_commit().unwrap_err(),
+            CommitGraphError::MultipleRoots
+        );
+    }
+
+    #[test]
     fn contains_known_and_unknown() {
         let mut g = CommitGraph::new();
-        g.add_commit(h(1), vec![]);
-        assert!(g.contains(&h(1)));
+        let first = c(1, vec![]);
+        let first_hash = first.hash();
+        g.add_commit(first);
+
+        assert!(g.contains(&first_hash));
         assert!(!g.contains(&h(2)));
     }
 }
