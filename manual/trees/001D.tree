@@ -1,0 +1,31 @@
+\title{Sets as theories}
+\import{prelude}
+
+\p{A model \code{A : Set} may itself be used as a theory. A model of \code{A} is just an element of \code{A} (remember that a model of \code{Set} is a collection of things). For example, consider the following theory.}
+
+\pre{%
+\kw{theory} PopulatedSantaList := \kw{sig}
+  list : SantaList
+  john : list.nice
+  mary : list.naughty
+\kw{end}
+}
+
+\p{A model \code{m} of \code{PopulatedSantaList} consists of a model \code{m.list} of \code{SantaList}, along with specific elements \code{m.john} in \code{m.list.nice} and \code{m.mary} in \code{m.list.naughty}.}
+
+\p{In TypeScript, an element of a set comes along with a getter, and if it is read-write, also a setter. So if \code{m} is a TypeScript variable accessing a model of \code{PopulatedSantaList}, then we should have:} 
+
+\pre{assert(m.list.nice.has(m.john.get()))}
+
+\p{If \code{m} is \em{incomplete}, then \code{m.john.get()} might return \code{null}. This would be the case in a freshly-created model, as in}
+
+\pre{\kw{const} m = PopulatedSantaList.create()}
+
+\p{This can be remedied by using \code{.set()}, as in}
+
+\pre{%
+\kw{const} john = m.list.nice.add()
+m.john.set(john)
+}
+
+\p{Note that \code{m.john.set(x)} would throw an exception if \code{x} were not in \code{m.list.nice}.}

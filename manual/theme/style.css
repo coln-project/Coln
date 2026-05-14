@@ -223,6 +223,11 @@ article {
   max-width: 40ex;
 }
 
+#grid-wrapper>nav>.block {
+  height: 90vh;
+  overflow-y: auto;
+}
+
 #menu-toggle:checked ~ .block {
   visibility: hidden;
   width: 1em;
@@ -350,7 +355,7 @@ nav#toc li {
 }
 
 .block:hover {
-  background-color: rgba(0, 100, 255, 0.04);
+  /* background-color: rgba(0, 100, 255, 0.04); */
 }
 
 .block.highlighted {
@@ -638,4 +643,8 @@ ol li ol li ol {
 .info {
  background-color: #bbb;
  color: white;
+}
+
+.smallcaps {
+  font-variant-caps: small-caps;
 }

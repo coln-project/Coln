@@ -1,4 +1,5 @@
 \title{Geolog as a language}
+\import{prelude}
 
 \subtree[000N]{
   \title{Introduction}
@@ -22,7 +23,7 @@
   \subtree{
     \taxon{Example}
 
-    \p{In geolog there are set-level types, theory-level types, and top-level types. These all use the same syntax; operations which only work on set-level types will produce an error during [elaboration](000O). See [levels](000T) for more information about this topic.}
+    \p{In geolog there are set-level types, theory-level types, and top-level types. These all use the same syntax; operations which only work on set-level types will produce an error during [elaboration](000O). See [[000S]] for more information about this topic.}
   }
 
   \p{One downside of this approach is that the grammar of geolog is not a very meaningful way of getting a feel for the language; the grammar is almost trivial. What is important is understanding the [semantics](000S) of geolog and the process of [elaboration](000O).}
@@ -61,38 +62,6 @@
   }
 }
 
-\subtree[000R]{
-  \title{FNotation}
+\transclude{000R}
 
-  \p{Geolog follows the philosophy of [[krishnamurthi-2024-bicameral]] in using a fairly unstructured “lower house syntax” as the target of parsing (or as [Krishnamurthi](shriram-krishnamurthi) calls it, “reading”). We use the term “notation” as a shorthand for “lower house syntax” in order to reserve the word “syntax” for [trees that compactly refer to derivations](000Q). Unlike a traditional LISP, we do not use s-expressions, instead our notation is instead inspired by modern LISPs like [[julia]] and [[rhombus]]. We call it “fnotation” for no particular reason.}
-
-  \p{In this section, we describe fnotation.}
-
-  \subtree[000V]{
-    \title{Tokens}
-
-    \p{}
-  }
-
-  \subtree[000W]{
-    \title{Tokenization}
-
-    \p{}
-  }
-
-  \subtree[000X]{
-    \title{Notation trees}
-  }
-
-  \subtree[000Y]{
-    \title{Parsing}
-  }
-}
-
-\subtree[000S]{
-  \title{Semantics}
-
-  \subtree[000T]{
-    \title{Levels}
-  }
-}
+\transclude{000S}

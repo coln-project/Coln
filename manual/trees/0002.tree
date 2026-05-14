@@ -11,6 +11,8 @@
     \title{Authoratative}
 
     \p{When the manual makes a definitive statement about the behavior of geolog, if the code deviates from the manual then the code is considered to have a bug.}
+
+    \p{There may be points in the manual where as I am writing, I decide that the current behavior of geolog is inadequate. In these places, I will write down what I intend the behavior to be, and mark the sentence with \todo at the end.}
   }
 
   \subtree[0006]{

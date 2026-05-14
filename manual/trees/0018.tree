@@ -1,0 +1,4 @@
+\title{Error}
+\import{prelude}
+
+\p{When a certain token fails to lex for whatever reason, an error token kind is inserted and lexing continues.}

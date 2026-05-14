@@ -3,3 +3,12 @@
 \p{This file contains the definition of macros used throughout the geolog manual.}
 
 \def\defcase[x]{\strong{\x}}
+
+\def\table[head][body]{\<html:table>{\<html:thead>{\head}\<html:tbody>{\body}}}
+
+\def\row[cells]{\<html:tr>{\cells}}
+\def\cell[content]{\<html:td>{\content}}
+\def\hcell[content]{\<html:th>{\content}}
+
+\def\todo{\<html:sup>[class]{smallcaps}{todo}}
+\def\kw[x]{\strong{\x}}

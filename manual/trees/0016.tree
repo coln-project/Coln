@@ -1,0 +1,4 @@
+\title{Literals}
+\import{prelude}
+
+\p{F-notation has string literals with double quotes and integer literals with arabic numerals.}

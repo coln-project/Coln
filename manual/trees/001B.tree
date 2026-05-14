@@ -1,0 +1,49 @@
+\title{The theory of sets}
+\import{prelude}
+
+\p{\code{Set} is a theory, and models of \code{Set} are collections of things. This corresponds to a very simple kind of database by itself, but we can do many things from this foundation.}
+
+\p{We refer to models of \code{Set} as, unsurprisingly, “sets.”}
+
+\p{In TypeScript, models of \code{Set} store collections of \code{Value}s, where \code{Value} is defined in the following way}
+
+\pre{%
+\kw{const} RowId = {
+  from: DatabaseId,
+  index: number
+}
+
+\kw{const} Value =
+  { tag: "row_id", value: RowId } |
+  { tag: "tuple", value: Record<string, Value> } |
+  { tag: "int", value: number } |
+  { tag: "string", value: string }
+}
+
+\p{All elements in the collection should be of the same type (e.g. all row ids, all strings, etc.) but for simplicity all sets share the same untyped API involving \code{Value}s.}
+
+\p{A TypeScript value \code{m} that refers to a model of \code{Set} satisfies the following interface}
+
+\pre{%
+\kw{interface} ReadonlySet {
+  has(x: Value): boolean;
+  values(): Iterator<Value>;
+}
+}
+
+\p{If \code{m} has read-write permissions, then it will also satisfy the interface}
+
+\pre{%
+\kw{interface} ReadWriteSet \kw{extends} ReadonlySet {
+  add(): Value;
+}
+}
+
+\p{Intuitively, \code{add()} does not take parameters because it adds a \em{fresh} element to the set, an element not equal to any other previous element. This means that a set of integers can never be read-write because it is impossible to create a fresh integer. We will see later on that it is instead possible to store a \em{subset} of the set of all integers; this will look differently however.}
+
+\p{For a set with read-write permission, the following code should not throw an error.}
+
+\pre{%
+\kw{const} a = m.add()
+assert(m.has(a))
+}

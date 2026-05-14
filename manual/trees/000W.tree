@@ -1,0 +1,16 @@
+\title{Tokens}
+\import{prelude}
+
+\p{Lexing chops up a string into tagged chunks. F-notation has the following \em{token kinds}, which we break up into categories.}
+
+\transclude{0014}
+
+\transclude{0015}
+
+\transclude{0016}
+
+\transclude{0017}
+
+\transclude{0018}
+
+\transclude{0019}

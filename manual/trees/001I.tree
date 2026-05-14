@@ -1,0 +1,11 @@
+\title{Equality}
+\import{prelude}
+
+\pre{%
+\kw{def} next-triangle (m : StateMachine) : Set := \kw{tuple}
+  a b c : m.state
+  m.next a = b
+  m.next b = c
+  m.next c = a
+\kw{end}
+}

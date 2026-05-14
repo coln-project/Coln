@@ -1,0 +1,9 @@
+\title{F-notation}
+
+\p{Geolog follows the philosophy of [[krishnamurthi-2024-bicameral]] in using a fairly unstructured “lower house syntax” as the target of parsing (or as [Krishnamurthi](shriram-krishnamurthi) calls it, “reading”). We use the term “notation” as a shorthand for “lower house syntax” in order to reserve the word “syntax” for [trees that compactly refer to derivations](000Q). Unlike a traditional LISP, we do not use s-expressions. Our notation is instead inspired by modern LISPs like [[julia]] and [[rhombus]]. We call it “f-notation” for no particular reason.}
+
+\p{In this section, we describe f-notation.}
+
+\transclude{000W}
+
+\transclude{000Y}

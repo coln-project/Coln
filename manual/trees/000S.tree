@@ -1,0 +1,36 @@
+\title{Types and their elements}
+\import{prelude}
+
+\p{At its core, there are only two things in the geolog language: types and elements of those types. We write \code{a : A} to express that \code{a} is an element of the type \code{A}. In this section, we describe informally the various types in geolog and how they are functionally involved in the database.}
+
+\subtree[001F]{
+  \taxon{Slogan}
+  \title{Theories are schemas, models are instances}
+
+  \p{In geolog, we use the word \defcase{theory} to mean a type used as a database schema, and we say \defcase{model} to refer to an element of a theory, which you might also think of as a database instance on the schema described by that theory.}
+}
+
+\p{We now show how to build up progressively more complex theories via different type formers. In order to give an intuition for what each of these type formers means, we also describe how to interact with models of those theories via the TypeScript FFI (note: the TypeScript FFI is a work in progress at the moment).}
+
+\transclude{001B}
+\transclude{001C}
+\transclude{001D}
+\transclude{001E}
+\transclude{001G}
+
+\p{These five type formers ([[001B]], [[001C]], [[001D]], [[001E]] and [[001G]]) can be used to compositionally build up fairly complex combinatorial structures of sets, functions and relations. However, they are still limited when it comes to handling \em{data}, which often has, for instance, numbers and strings in it.}
+
+\p{We could simply put in \code{String} and \code{Int} in as “base sets”. However, this would permit functions \code{String -> String}, and we cannot store a function like that in a database. We could say that \code{String} was a theory and not a set, which would prevent it from being used in the domain of a function, but it is perfectly sensible to have the theory \code{String -> Prop} (which denotes a subset of the set of all strings), and making \code{String} a theory would prevent us from forming that.}
+
+\p{The solution to this problem requires building up a little more theory, so we do not address it right now, and instead continue on to give a full account of the “purely combinatorial” fragment of geolog.}
+
+\subtree[001A]{
+  \taxon{Slogan}
+  \title{Sets are queries, elements are results}
+
+  \p{One can query a database in geolog via for loops in javascript, but this is obviously not the most efficient or ergonomic way to do it. In fact, we already have the machinery to write down queries, it just requires a bit of rethinking what we have already learned. The idea is that giving a way to produce a set from a model of a theory is a query. The elements of that set are the results of the query.}
+}
+
+\transclude{001H}
+
+\transclude{001I}

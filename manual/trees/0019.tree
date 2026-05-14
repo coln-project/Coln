@@ -1,0 +1,6 @@
+\title{Whitespace}
+\import{prelude}
+
+\p{Whitespace is generally ignored, though newlines create \code{\verb>|\n>} tokens.}
+
+\p{Line comments starting with \code{#} are considered whitespace.}

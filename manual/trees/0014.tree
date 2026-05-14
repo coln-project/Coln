@@ -1,0 +1,46 @@
+\title{Names}
+\import{prelude}
+
+\p{A name is built up out of a sequence of \em{name segments} separated by slashes with no intervening spaces. Each name segment is comprised either of alphanumerical letters or of symbols. Hyphens may appear in symbolic name segments or alphanumerical name segments. Only the last name segment in a name may be symbolic. Examples: \code{Monoid/is-commutative}, \code{List/::}.}
+
+\p{The slashes are eventually intended to be used for namespacing in the style of [[yuujinchou]]; this is currently not supported however.}
+
+\p{The f-notation configuration assigns special token kinds to specific name segments.}
+
+\table{
+\row{\hcell{Kind} \hcell{Usage}}
+}{
+\row{\cell{\code{AIdent}} \cell{Alphanumerical identifier, used for variables}}
+\row{\cell{\code{AKeyword}} \cell{Alphanumerical keyword, used for reserved words that nonetheless parse normally}}
+\row{\cell{\code{SIdent}} \cell{Symbolic identifier, used for variables, defaults to infix application}}
+\row{\cell{\code{SKeyword}} \cell{Symbolic keyword, used for reserved infix keywords that nonetheless parse normally}}
+\row{\cell{\code{Decl}} \cell{Used to designate a top-level declaration}}
+\row{\cell{\code{Modifier}} \cell{Used to modify a top-level declaration}}
+\row{\cell{\code{Block}} \cell{Used to designate a block}}
+\row{\cell{\code{End}} \cell{Used to end a block}}
+}
+
+\p{In geolog, the special name segments and their corresponding kinds are as follows.}
+
+\table{
+\row{\hcell{Name} \hcell{Kind}}
+}{
+\row{\cell{\code{sig}} \cell{\code{Block}}}
+\row{\cell{\code{struct}} \cell{\code{Block}}}
+\row{\cell{\code{end}} \cell{\code{End}}}
+\row{\cell{\code{theory}} \cell{\code{Decl}}}
+\row{\cell{\code{def}} \cell{\code{Decl}}}
+\row{\cell{\code{Set}} \cell{\code{AKeyword}}}
+\row{\cell{\code{Prop}} \cell{\code{AKeyword}}}
+\row{\cell{\code{Int}} \cell{\code{AKeyword}}}
+\row{\cell{\code{String}} \cell{\code{AKeyword}}}
+\row{\cell{\code{:=}} \cell{\code{SKeyword}}}
+\row{\cell{\code{=}} \cell{\code{SKeyword}}}
+\row{\cell{\code{:}} \cell{\code{SKeyword}}}
+\row{\cell{\code{->}} \cell{\code{SKeyword}}}
+\row{\cell{\code{=>}} \cell{\code{SKeyword}}}
+}
+
+\p{Names with no segment found in the above list are classified as identifiers; it is invalid to have a multi-segment name that uses a reserved name segment.}
+
+\p{We use boldface for block tokens and decl tokens in code snippets as a very rudimentary form of syntax highlighting.}

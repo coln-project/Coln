@@ -93,15 +93,13 @@ buildForester = do
 continuouslyBuildForester :: RefreshChan -> IO ()
 continuouslyBuildForester refreshChan = do
   FSN.withManager $ \mgr -> do
-    _ <- FSN.watchDir
-      mgr
-      "manual/trees"
-      (const True)
-      (\case
+    let action = \case
           FSN.CloseWrite _ _ _ -> pure ()
           _ -> do
             buildForester
-            writeChan refreshChan Refresh)
+            writeChan refreshChan Refresh
+    _ <- FSN.watchTree mgr "manual/trees" (const True) action
+    _ <- FSN.watchTree mgr "manual/theme" (const True) action
     forever $ threadDelay 100000
 
 serveForester :: Maybe RefreshChan -> IO ()

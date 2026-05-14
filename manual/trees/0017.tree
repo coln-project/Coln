@@ -1,0 +1,5 @@
+\title{Punctuation}
+\import{prelude}
+
+\p{There is a token kind for each of \code{\verb>|(>}, \code{\verb>|)>}, \code{\verb>|[>}, \code{\verb>|]>}, \code{\verb>|{>}, \code{\verb>|}>}, \code{\verb>|,>}, \code{\verb>|;>}, \code{\verb>|\n>}, and end-of-file.}
+

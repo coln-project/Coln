@@ -1,0 +1,8 @@
+\title{Fields and tags}
+\import{prelude}
+
+\p{Putting \code{.} in front of a name turns it into a \defcase{field}, and putting \code{'} in front of a name turns it into a \defcase{tag}.}
+
+\p{Fields are intended for use in accessing a record. For instance \code{a .b} gets the \code{b} field from the record; \code{a.b} is also valid and parses the same.}
+
+\p{Tags are intended for use in creating elements of a sum type. For instance \code{'just 1} could be an element of the sum type \code{Maybe Int}. Currently geolog does not have either sum types or tags, however.}

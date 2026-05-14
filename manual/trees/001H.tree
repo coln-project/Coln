@@ -1,0 +1,32 @@
+\title{Record types as sets}
+\import{prelude}
+
+\p{Just like we have record types as the theory-level, we also have record types at the set-level.\todo}
+
+\pre{%
+\kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
+  a : m.person
+  b : m.person
+  c : m.person
+  a-b : m.jealous-of a b
+  b-c : m.jealous-of b c
+  c-a : m.jealous-of c a
+\kw{end}
+}
+
+\p{In TypeScript, \code{jealousy-triangle} is compiled to a function that takes in a model of \code{Drama} and returns a \code{ReadonlySet}.\todo The elements \code{v} of this \code{ReadonlySet} are \code{Value}s with the \code{"tuple"} tag, which have fields \code{a},\code{b},\code{c} that are elements of \code{m.person}, such that \code{m.jealous-of(v.value.a)(v.value.b).isTrue()}, and so on. The value \code{v} will also have \code{v.value.a_b}, but it will just be \code{null}, thought of as the unique element of the singleton set.}
+
+\p{Iterating through the elements of \code{jealousy_triangle(m)} will be faster than the naive approach of a triply-nested for-loop over \code{m.person} and then filtering out using \code{m.jealous-of}, because geolog can \em{plan} the query and take advantage of fast join algorithms on the \code{m.jealous-of} table.\todo}
+
+\p{This query can be written more compactly in the following way.\todo}
+
+\pre{%
+\kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
+  a b c : m.person
+  m.jealous-of a b
+  m.jealous-of b c
+  m.jealous-of c a
+\kw{end}
+}
+
+\p{We can omit the field names for propositions because we never need to refer to the witnesses of the propositions, we just need the propositions to be true.}

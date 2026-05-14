@@ -1,0 +1,22 @@
+\title{Record types as theories}
+\import{prelude}
+
+\p{Records types are a way of composing multiple theories into one theory. A record type has multiple \em{fields}, each of which is declared to be a model of another theory. For instance:}
+
+\pre{%
+\kw{theory} SantaList := \kw{sig}
+  naughty : Set
+  nice : Set
+\kw{end}
+}
+
+\p{\code{SantaList} is a very simple theory, the models of which consist of a pair of a collection of naughty things and a collection of nice things.}
+
+\p{More precisely, if we have a model \code{m} of \code{SantaList} in TypeScript, then \code{m.naughty} and \code{m.nice} are both models of \code{Set}. If \code{m} is readonly, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadonlySet}, and if \code{m} is read-write, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadWriteSet}. The following TypeScript code should run without errors if \code{m} is a read-write model of \code{SantaList}.}
+
+\pre{%
+\kw{const} alice = m.nice.add()
+\kw{const} bob = m.naughty.add()
+assert(m.nice.has(alice))
+assert(!m.nice.has(bob))
+}

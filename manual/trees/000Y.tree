@@ -1,0 +1,87 @@
+\title{Trees}
+\import{prelude}
+
+\p{From tokens, the tree structure of f-notation is fairly simple. We give the main syntactic constructs here.}
+
+\subtree[0013]{
+  \title{Statements and expressions}
+
+  \p{Most things in f-notation are \em{expressions}, including:}
+
+  \ul{
+    \li{[[000Z]]}
+    \li{[[0010]]}
+    \li{[[0011]]}
+  }
+
+  \p{The exception is [declarations](0012) which may only appear in [blocks](0012); a block contains \em{statements} which are either declarations or expressions. However, a block is an expression.}
+}
+
+\subtree[000Z]{
+  \title{Single-token trees}
+
+  \p{[Identifiers](0014), [keywords](0014), [literals](0016), [tags](0015), and [fields](0015) are all expressions.}
+}
+
+\subtree[0010]{
+  \title{Tuples}
+
+  \p{A \defcase{tuple} consists of an opening bracket followed by comma-separated [expressions](0013), followed by a closing bracket. For example: \code{[a,b,c]}.}
+}
+
+\subtree[0011]{
+  \title{Juxtaposition and infix application}
+
+  \p{\defcase{Juxtaposition} is two expressions next to each other, like \code{f x}. As \code{a.b} lexes as two tokens, \code{a} and \code{.b}, this is also a juxtaposition.}
+
+  \p{\defcase{Infix application} is two expressions with a symbolic identifier or keyword between them, like \code{a : Int}.}
+
+  \p{Juxtaposition binds tighter than infix application and left associates. Thus, \code{f x y} is \code{(f x) y} and \code{f x + y} is \code{(f x) + y}. The binding strength and associativity of infix application is determined by a custom precedence table.}
+
+  \p{The precedence table for geolog is as follows.}
+
+  \table{
+  \row{\hcell{Symbol} \hcell{Tightness} \hcell{Associativity}}
+  }{
+  \row{\cell{\code{:=}} \cell{10} \cell{non-associative}}
+  \row{\cell{\code{:}} \cell{20} \cell{non-associative}}
+  \row{\cell{\code{->}} \cell{30} \cell{right-associative}}
+  \row{\cell{\code{=>}} \cell{30} \cell{right-associative}}
+  \row{\cell{\code{=}} \cell{40} \cell{non-associative}}
+  \row{\cell{\code{+}} \cell{50} \cell{left-associative}}
+  \row{\cell{\code{-}} \cell{50} \cell{left-associative}}
+  \row{\cell{\code{*}} \cell{60} \cell{left-associative}}
+  }
+
+  \p{The \em{only} role of parentheses in f-notation is to clarify binding, so in particular parentheses are always idempotent. That is, \code{(e)} is always the same as \code{((e))} in every context.}
+}
+
+\subtree[0012]{
+  \title{Declarations and blocks}
+
+  \p{A \defcase{declaration} consists of a [declaration token](0014) followed by an expression. For example}
+  \pre{\kw{def} x : Int := 5}
+  \p{is a declaration, which could be parenthesized as}
+  \pre{\kw{def} ((x : Int) := 5)}
+  \p{A declaration may be \em{modified} as well by modification tokens, as in}
+  \pre{\kw{pub} \kw{def} x : Int := 5}
+  \p{These modifiers form part of the overall declaration.}
+
+  \p{A \defcase{block} consists of a [block token](0014) followed by either}
+  \ul{
+    \li{A newline, and then a sequence of newline-separated [statements](0013), closed by an end token.}
+    \li{An opening curly brace, and then a sequence of semicolon-separated [statements](0013), closed by a closing curly brace.\todo}
+  }
+  \p{An example of the first variant is}
+  \pre{\kw{sig}
+  x : Int
+  \kw{def} x-plus-1 := x + 1
+  y : is-odd x-plus-1
+\kw{end}}
+  \p{An example of the second variant is}
+  \pre{\kw{sig} { x : Int; \kw{def} x-plus-1 := x + 1; y : is-odd x-plus-1 }}
+
+  \p{Blocks may appear within expressions, but declarations may not; declarations may only appear within blocks.}
+
+  \p{The top level of a f-notation file is considered to be inside a block of the first variant, so it consists of a sequence of newline-separated statements.}
+}
