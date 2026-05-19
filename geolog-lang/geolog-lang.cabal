@@ -27,6 +27,7 @@ library
     BlockArguments
     CPP
     DerivingVia
+    DuplicateRecordFields
     FunctionalDependencies
     ImplicitParams
     MagicHash

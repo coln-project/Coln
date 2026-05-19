@@ -1,17 +1,48 @@
-module Geolog.Common where
+module Geolog.Common
+  ( module Diagnostician
+  , module FNotation
+  , module Data.Map
+  , module Data.Kind
+  , module Data.Vector.Strict
+  , module Data.Text
+  , module Prettyprinter
+  , panic
+  , unimplemented
+  , unwrap
+  , ElemAt (..)
+  , Lookup (..)
+  , Contains (..)
+  , FromList (..)
+  , ToList (..)
+  , PartialOrd (..)
+  , Reverse (..)
+  , Bwd (..)
+  , BId (..)
+  , Fwd (..)
+  , FId (..)
+  , Dict (..)
+  , KeyIndex (..)
+  , getKeyIndex
+  ) where
 
+import Prelude hiding (lookup)
 import Control.Monad.IO.Class
 import Data.Hashable
-import Data.Kind (Constraint)
+import Data.Kind (Type, Constraint)
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text.Unsafe qualified as TU
+import Data.Vector.Strict (Vector)
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Generic.Mutable qualified as VGM
 import Data.Vector.Hashtables (FrozenDictionary)
 import Data.Vector.Hashtables qualified as HT
 import Data.Vector.Strict qualified as V
-import Prettyprinter
+import Diagnostician
+import FNotation (Name)
+import Prettyprinter (Pretty (..))
 import System.IO.Unsafe (unsafePerformIO)
 
 #ifdef DEBUG
@@ -40,7 +71,7 @@ unwrap Nothing = panic "should only unwrap a Just"
 -- Container classes
 --------------------------------------------------------------------------------
 
-class ElemAt a i b | a -> i b where
+class ElemAt a i b | a i -> b where
   elemAt :: a -> i -> b
 
 class Lookup a i b | a -> i b where
@@ -49,8 +80,8 @@ class Lookup a i b | a -> i b where
 class Contains a i | a -> i where
   contains :: a -> i -> Bool
 
-class ToList t where
-  toList :: t a -> [a]
+class ToList a e | a -> e where
+  toList :: a -> [e]
 
 class FromList a e | a -> e where
   fromList :: [e] -> a
@@ -69,6 +100,7 @@ class Reverse a b | a -> b where
 
 infixl 5 :>
 
+-- TODO: write custom foldable instance which implements tail-recursive toList
 data Bwd a = BwdNil | Bwd a :> a
   deriving (Functor)
 
@@ -81,11 +113,11 @@ instance ElemAt (Bwd a) BId a where
   elemAt (_ :> x) (BId 0) = x
   elemAt (xs :> _) (BId i) = elemAt xs (BId (i - 1))
 
-instance ToList Bwd where
-  toList xs = go xs []
-   where
-    go BwdNil l = l
-    go (xs' :> x) l = go xs' (x : l)
+instance ToList (Bwd a) a where
+  toList bwd = go bwd []
+    where
+      go BwdNil list = list
+      go (bwd' :> x) list = go bwd' (x : list)
 
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs
@@ -118,3 +150,40 @@ instance Reverse (Fwd a) (Bwd a) where
    where
     go xs' FwdNil = xs'
     go xs' (x :< xs) = go (xs' :> x) xs
+
+data DictHead = DictHead
+  { byName :: Map Name Int
+  , keys :: Vector Name
+  }
+
+data Dict a = Dict
+  { head :: DictHead
+  , values :: Vector a
+  }
+
+instance Lookup (Dict a) Name a where
+  lookup d x = (d.values V.!) <$> Map.lookup x d.head.byName
+
+instance ElemAt (Dict a) Name a where
+  elemAt t x = unwrap $ lookup t x
+
+instance FromList (Dict a) (Name, a) where
+  fromList pairs = do
+    let keys = V.fromList $ fst <$> pairs
+    let values = V.fromList $ snd <$> pairs
+    let byName = Map.fromList $ zip (fst <$> pairs) [0..]
+    Dict (DictHead byName keys) values
+
+instance Functor Dict where
+  fmap f d = Dict d.head (fmap f d.values)
+
+instance ToList (Dict a) (Name, a) where
+  toList d = zip (V.toList d.head.keys) (V.toList d.values)
+
+newtype KeyIndex = KeyIndex { value :: Int }
+
+instance ElemAt (Dict a) KeyIndex a where
+  elemAt d (KeyIndex i) = d.values V.! i
+
+getKeyIndex :: Dict a -> Name -> KeyIndex
+getKeyIndex d x = KeyIndex $ d.head.byName Map.! x
