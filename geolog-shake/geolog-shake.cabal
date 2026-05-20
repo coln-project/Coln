@@ -14,20 +14,23 @@ executable geolog-shake
   other-modules: Forester
   hs-source-dirs: app
   default-language: GHC2024
-  ghc-options: -Wall -threaded
+  ghc-options:
+    -Wall
+    -threaded
+
   build-depends:
-                async,
-                base ^>=4.21.0.0,
-                bytestring,
-                directory,
-                djot,
-                extra,
-                fsnotify,
-                servant,
-                servant-server,
-                servant-event-stream,
-                shake,
-                temporary >= 1.3,
-                text,
-                warp,
-                websockets
+    async,
+    base ^>=4.21.0.0,
+    bytestring,
+    directory,
+    djot,
+    extra,
+    fsnotify,
+    servant,
+    servant-event-stream,
+    servant-server,
+    shake,
+    temporary >=1.3,
+    text,
+    warp,
+    websockets,

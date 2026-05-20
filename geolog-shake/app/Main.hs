@@ -8,11 +8,11 @@ import Data.String (fromString)
 import Development.Shake
 import Development.Shake.FilePath
 import Djot
+import Forester (foresterActions)
 import GHC.Stack (withFrozenCallStack)
 import System.Directory (createDirectoryIfMissing, setCurrentDirectory)
 import System.Environment (setEnv)
 import System.Info qualified
-import Forester (foresterActions)
 
 ignoreTheseProjects :: [String]
 ignoreTheseProjects = []
@@ -57,7 +57,7 @@ shakeError msg = withFrozenCallStack $ liftIO $ errorIO msg
 actions :: Rules ()
 actions = do
   foresterActions
-  
+
   phony "format" $ do
     hsFiles <- getHsFiles
     putInfo ("Formatting:" <> mconcat (("\n - " ++) <$> hsFiles))

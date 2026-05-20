@@ -1,18 +1,18 @@
 module Forester where
 
-import Development.Shake
-import Development.Shake.FilePath
-import Servant hiding (ServerSentEvents)
-import Servant.Types.SourceT
-import Data.String (fromString)
-import Servant.API.EventStream
-import Network.Wai.Handler.Warp
-import Data.Function ((&))
-import System.FSNotify qualified as FSN
-import Control.Monad (forever)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
 import Control.Concurrent.Chan
+import Control.Monad (forever)
+import Data.Function ((&))
+import Data.String (fromString)
+import Development.Shake
+import Development.Shake.FilePath
+import Network.Wai.Handler.Warp
+import Servant hiding (ServerSentEvents)
+import Servant.API.EventStream
+import Servant.Types.SourceT
+import System.FSNotify qualified as FSN
 
 foresterVersion :: String
 foresterVersion = "5.0-6e68237"
@@ -29,15 +29,15 @@ getSpec = do
 
 foresterUrl :: String -> String
 foresterUrl spec =
-  "http://forester-builds.s3-website.us-east-2.amazonaws.com/forester-" <>
-    spec <>
-    ".tar.gz"
+  "http://forester-builds.s3-website.us-east-2.amazonaws.com/forester-"
+    <> spec
+    <> ".tar.gz"
 
 getForesterDir :: Action String
 getForesterDir = do
   getEnv "HOME" >>= \case
     Just home ->
-     pure $ home </> ".forester" </> foresterVersion
+      pure $ home </> ".forester" </> foresterVersion
     Nothing -> error "HOME variable unset"
 
 downloadForester :: Action ()
@@ -65,7 +65,7 @@ instance ToServerEvent Refresh where
 
 type API =
   "refresh" :> ServerSentEvents (SourceIO Refresh)
-  :<|> Raw
+    :<|> Raw
 
 type RefreshChan = Chan Refresh
 
@@ -81,7 +81,7 @@ refreshServer (Just refreshChan) = do
 server :: Maybe RefreshChan -> Server API
 server refreshChan =
   refreshServer refreshChan
-  :<|> serveDirectoryFileServer "manual/output/"
+    :<|> serveDirectoryFileServer "manual/output/"
 
 foresterApp :: Maybe RefreshChan -> Application
 foresterApp refreshChan = serve (Proxy @API) (server refreshChan)
@@ -110,7 +110,7 @@ serveForester refreshChan = do
         cmd_ "firefox" ("http://localhost:" ++ show port)
   let settings = defaultSettings & setBeforeMainLoop beforeMainLoop
   runSettingsSocket settings sock (foresterApp refreshChan)
-    
+
 foresterActions :: Rules ()
 foresterActions = do
   "manual/forester" %> \_ -> linkForester
