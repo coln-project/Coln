@@ -1,0 +1,9 @@
+\title{The Empty Set}
+\taxon{Example}
+\import{prelude}
+
+\p{The empty set is the initial model of \code{Set}.}
+
+\pre{%
+\kw{ind} \kw{def} empty := \kw{init} Set
+}

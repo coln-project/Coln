@@ -1,0 +1,20 @@
+\title{Elements of function types as views}
+\import{prelude}
+
+\p{Just as we can produce elements of record types with \code{\kw{struct} ... \kw{end}}, we can produce elements of function types with lambda syntax \code{x => a}, just like anonymous functions in Javascript.}
+
+\p{As an example, we can produce the graph of a function, which is a binary relation on the domain and codomain.}
+
+\pre{%
+\kw{def} graph (X : Set) (Y : Set) (f : X -> Y) : X -> Y -> Prop :=
+  x => y => f x = y
+}
+
+\p{We can also now start making some non-trivial views of theories that involve function types. For instance, we could run a state-machine at double speed.}
+
+\pre{%
+\kw{def} double-time (m : StateMachine) : StateMachine := \kw{struct}
+  state := m.state
+  next := x => next (next x)
+\kw{end}
+}

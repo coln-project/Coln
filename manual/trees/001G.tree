@@ -16,15 +16,15 @@
 \p{While on its own \code{Prop} is boring, we can combine it with function types to make it more interesting. For instance, we can now rewrite \code{SantaLists} so that the same person may appear on lists in different years.}
 
 \pre{%
-\kw{theory} SantaList (person : Set) := \kw{sig}
-  nice : person -> Prop
+\kw{theory} SantaListOver (person : Set) := \kw{sig}
   naughty : person -> Prop
+  nice : person -> Prop
 \kw{end}
 
 \kw{theory} SantaLists := \kw{sig}
   year : Set
   children : Set
-  list : year -> SantaList children
+  list : year -> SantaListOver children
 \kw{end}
 }
 

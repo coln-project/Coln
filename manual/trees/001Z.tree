@@ -1,0 +1,15 @@
+\title{Lowering for jealousy-triangle}
+\import{prelude}
+
+\p{Recall from [[001H]] the query \code{jealousy-triangle} defined by}
+
+\pre{%
+\kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
+  a b c : m.person
+  m.jealous-of a b
+  m.jealous-of b c
+  m.jealous-of c a
+\kw{end}
+}
+
+\p{}

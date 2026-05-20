@@ -1,0 +1,30 @@
+\title{What is elaboration?}
+
+\p{Elaboration is the process of producing [syntax](000P) from [notation](000Q), reporting [diagnostics](000U) to the user when the user’s intent as expressed through notation is not compatible with the rules of the type theory.}
+
+\subtree[000P]{
+  \taxon{Definition}
+  \title{Syntax}
+
+  \p{Syntax is a data type in the geolog compiler, the elements of which are a compressed form for correct [derivations](derivation) in the geolog type theory.}
+
+  \p{The process of elaboration ensures that any syntax produced does in fact refer uniquely to some derivation.}
+}
+
+\subtree[000Q]{
+  \taxon{Definition}
+  \title{Notation}
+
+  \p{Notation is another data type in the geolog compiler. Notation is the first “tree-shaped” data type that is produced in the compilation pipeline, and is fairly permissive in terms of what is allowed.}
+
+  \p{See [fnotation](000R) for a description of the notation used in geolog.}
+}
+
+\subtree[000U]{
+  \taxon{Definition}
+  \title{Diagnostics}
+
+  \p{A diagnostic is a message from the compiler to the user intended to explain a failure on the compiler’s part to fully understand the user’s intent.}
+
+  \p{Sometimes, there is a reasonable guess that the compiler can make as to how to continue, in which case the diagnostic is a “warning”—a warning that perhaps the choice the compiler is making is not what the user intended. In other cases, the compiler cannot make a reasonable guess, and the diagnostic is an “error”.}
+}

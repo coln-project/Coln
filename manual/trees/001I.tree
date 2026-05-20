@@ -1,11 +1,31 @@
-\title{Equality}
+\title{Equality types as theories}
 \import{prelude}
 
+\p{Another way of creating interesting propositions is with \defcase{equality}. Given two elements \code{a0} and \code{a1} of a set \code{A}, there is a proposition \code{a0 = a1} which is true if and only if \code{a0} is equal to \code{a1}.}
+
+\p{We can use this to write down laws in our theories that involve equality. For instance, we can write down the theory of a two-way mapping (mathematically known as a \em{bijection}) in the following way}
+
 \pre{%
-\kw{def} next-triangle (m : StateMachine) : Set := \kw{tuple}
-  a b c : m.state
-  m.next a = b
-  m.next b = c
-  m.next c = a
+\kw{theory} TwoWayMapping (X : Set) (Y : Set) := \kw{sig}
+  fwd : X -> Y
+  bwd : Y -> X
+  bwd-fwd : (x : X) -> bwd (fwd x) = x
+  fwd-bwd : (y : Y) -> fwd (bwd x) = x
 \kw{end}
 }
+
+\p{Another example of equality usage is when we assert that a relation is a partial function, by saying that if \code{x} is related to both \code{y0} and \code{y1} then \code{y0} must be equal to \code{y1}.}
+
+\pre{%
+\kw{theory} IsPartialFunction (X : Set) (Y : Set) (R : X -> Y -> Prop) := 
+  (x : X) -> (y0 y1 : Y) -> R x y0 -> R x y1 -> y0 = y1
+}
+
+\p{Relatedly, we can take the graph of a function in the following way.}
+
+\pre{%
+\kw{def} Graph (X : Set) (Y : Set) (f : X -> Y) : X -> Y -> Prop :=
+  x => y => f x = y
+}
+
+\p{Equality is useful for constraints, but is especially useful for [queries](001A).}

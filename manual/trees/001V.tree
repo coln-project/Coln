@@ -1,0 +1,10 @@
+\taxon{Example}
+\title{Graph is in #{\Sigma\Pi} normal form.}
+\import{prelude}
+
+\pre{%
+\kw{theory} Graph := \kw{sig}
+  vertex : Set
+  edge : vertex -> vertex -> Set
+\kw{end}
+}

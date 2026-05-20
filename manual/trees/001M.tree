@@ -1,0 +1,12 @@
+\title{Summary of [[000S]]}
+\import{prelude}
+
+\p{In [[000S]] we learned:}
+
+\ul{
+  \li{How to use \code{\kw{theory}} and \code{\kw{def}}. These are the only two top-level declarations in geolog, so we have now learned all of the top-level declarations.}
+  \li{How to use \code{Set}, \code{Prop}, sets, record types, function types and equality types to build up theories.}
+  \li{How to produce some models of theories from other models.}
+}
+
+\p{In [[001N]], we will see how to produce more models of theories, which will in turn allow us to produce more theories. However, the basic structure introduced here will remain more or less the same.}

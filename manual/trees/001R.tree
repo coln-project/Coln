@@ -1,0 +1,29 @@
+\title{Transitive Closure}
+\taxon{Example}
+\import{prelude}
+
+\p{We can use initial models in order to take the transitive closure of a graph in the following way.}
+
+\pre{%
+\kw{theory} Drama := \kw{sig}
+  person : Set
+  jealous-of : person -> person -> Prop
+\kw{end}
+
+\kw{theory} TransitiveExtension (@ind m : Drama) := \kw{sig}
+  transitively-jealous-of : m.person -> m.person -> Prop
+  include : (x y : m.person) ->
+    m.jealous-of x y ->
+    transitively-jealous-of x y
+  transitive : (x y z : m.person) ->
+    transitively-jealous-of x y ->
+    transitively-jealous-of y z ->
+    transitively-jealous-of x z
+\kw{end}
+
+\kw{ind} \kw{def} TransitiveClosure (m : Drama) := \kw{init} (TransitiveExtension m)
+}
+
+\p{Given a model \code{m} of \code{Drama}, we can then access the transitive closure of \code{m.jealous-of} via \code{TransitiveClosure m .transitively-jealous-of}. The intuition here is that \code{\kw{init} (TransitiveExtension m)} give us the minimal binary relation that both extends \code{m.jealous-of} and also is transitive; this is precisely the transitive closure.}
+
+\p{We discuss why \code{@ind m} is necessary shortly.}

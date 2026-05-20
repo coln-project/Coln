@@ -1,0 +1,12 @@
+\taxon{Example}
+\title{Bag of graphs is not in #{\Sigma\Pi} normal form}
+\import{prelude}
+
+\pre{%
+\kw{theory} BagOfGraphs := \kw{sig}
+  graph-id : Set
+  graph-for : graph-id -> Graph
+\kw{end}
+}
+
+\p{Because \code{Graph} is a record type and it appears in the codomain of \code{graph-for}, \code{BagOfGraphs} is not in #{\Sigma\Pi} normal form.}

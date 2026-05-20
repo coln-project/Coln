@@ -1,0 +1,21 @@
+\taxon{Example}
+\title{Populated Santa List}
+\import{prelude}
+
+\p{Recall from [[001D]] the theory \code{PopulatedSantaList} given by}
+
+\pre{%
+\kw{theory} PopulatedSantaList := \kw{sig}
+  list : SantaList
+  john : list.nice
+  mary : list.naughty
+\kw{end}
+}
+
+\p{We can define \code{JohnAndMary} to be an initial model of \code{PopulatedSantaList} in the following way.\todo}
+
+\pre{%
+\kw{ind} \kw{def} JohnAndMary := \kw{init} PopulatedSantaList
+}
+
+\p{Now \code{JohnAndMary} is a model of \code{PopulatedSantaList} where \code{JohnAndMary.list.nice} is a set that only contains \code{JohnAndMary.john} and \code{JohnAndMary.list.naughty} is a set that only contains \code{JohnAndMary.mary}.}

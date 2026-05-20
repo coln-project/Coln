@@ -1,0 +1,28 @@
+\title{Inductive types}
+\import{prelude}
+
+\p{An interesting fact about [[000L]] the reader may have noticed is that the only model of \code{Set} that one can write down in the empty context is the singleton type \code{\kw{tuple} {}}.}
+
+\p{This is remedied by inductive types. In geolog, inductive types are produced by \em{initial models}. An initial model for a theory \code{T} is a model of \code{T} that makes zero decisions: the only elements in the sets in the model are the ones forced to exist by the laws of the theory.}
+
+\transclude{001O}
+
+\transclude{001Q}
+
+\transclude{001R}
+
+\p{While initial models are very powerful, they must be used carefully. First of all, not all theories have initial models.} 
+
+\transclude{001P}
+
+\p{Intuitively, we can not take an initial model if that would involve producing “out of nothing” elements of sets that are already defined. We can only introduce elements into sets that are in the process of being defined.}
+
+\p{This also means that if a theory has a function whose codomain is an inductively-defined set (a set defined as part of an initial model), there is no initial model for that theory.}
+
+\transclude{001S}
+
+\subtree{
+  \taxon{TODO}
+
+  \p{Give more examples of initial models, explain \code{@ind}, talk about how to use element of types in initial models.}
+}

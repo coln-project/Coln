@@ -1,0 +1,25 @@
+\title{Introduction}
+
+\p{A traditional database language (or indeed general-purpose language) has many syntactic classes used for different purposes.}
+
+\subtree{
+  \taxon{Example}
+
+  \p{[SQL](sql) has an exceedingly large grammar. For instance, a single SELECT statement has many possible clauses, each with their own syntax (see the [postgresql manual](https://www.postgresql.org/docs/current/queries.html)).}
+}
+
+\subtree{
+  \taxon{Example}
+
+  \p{Many languages have a different syntax for type parameters to a function than regular parameters. For instance, in Rust one uses \code{Vec<i32>} for applying the \code{Vec : Type -> Type} function to \code{i32} while normal function application looks like \code{plus(1, 2)}, in OCaml one uses \code{int list} while normal function application looks like \code{plus 1 2}.}
+}
+
+\p{Geolog differs from this, perhaps to an extreme degree, by only having essentially one syntactic class: the syntactic class of an element of a type. Even types themselves are in this syntactic class, because types are elements of [type universes](type-universe). What is achieved via syntactic differentiation in other languages is achieved instead by semantic restrictions in geolog.}
+
+\subtree{
+  \taxon{Example}
+
+  \p{In geolog there are set-level types, theory-level types, and top-level types. These all use the same syntax; operations which only work on set-level types will produce an error during [elaboration](000O). See [[000S]] for more information about this topic.}
+}
+
+\p{One downside of this approach is that the grammar of geolog is not a very meaningful way of getting a feel for the language; the grammar is almost trivial. What is important is understanding the [semantics](000S) of geolog and the process of [elaboration](000O).}

@@ -1,0 +1,28 @@
+\taxon{Example}
+\title{Bag of graphs in #{\Sigma\Pi} normal form}
+\import{prelude}
+
+\p{We can put \code{BagOfGraphs} in #{\Sigma\Pi} normal form and then convert back and forth between the normal and original representations in the following way.}
+
+\pre{%
+\kw{theory} BagOfGraphs/normal := \kw{sig}
+  graph-id : Set
+  graph-for/vertex : graph-id -> Set
+  graph-for/edge :
+    (i : graph-id) -> graph-for/vertex i -> graph-for/vertex i -> Set
+\kw{end}
+
+\kw{def} from-normal (m : BagOfGraphs/normal) : BagOfGraphs := \kw{struct}
+  graph-id := m.graph-id
+  graph-for := i => \kw{struct}
+    vertex := m.graph-for/vertex i
+    edge := v0 => v1 => m.graph-for/edge i v0 v1
+  \kw{end}
+\kw{end}
+
+\kw{def} to-normal (m : BagOfGraphs) : BagOfGraphs/normal := \kw{struct}
+  graph-id := m.graph-id
+  graph-for/vertex := i => m.graph-for i .vertex
+  graph-for/edge := i => v0 => v1 => m.graph-for i .edge v0 v1
+\kw{end}
+}

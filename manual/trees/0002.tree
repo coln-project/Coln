@@ -4,7 +4,7 @@
 \subtree[0004]{
   \title{Principles}
 
-  \p{The geolog manual is \em{authoratative}, \em{conceptual}, and \em{incomplete} reference document for engaged users and developers of geolog.}
+  \p{The geolog manual is an \em{authoratative}, \em{conceptual}, and \em{incomplete} reference document for engaged users and developers of geolog.}
 
   \subtree[0005]{
     \taxon{Principle}

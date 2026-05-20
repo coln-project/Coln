@@ -1,0 +1,27 @@
+\title{Distributing records over functions}
+
+\p{The key idea in translating a geolog theory into a usable database schema is that we can \em{distribute records over functions}. To understand this idea, first consider geolog theories of a special form.}
+
+\transclude{001U}
+
+\transclude{001V}
+
+\transclude{001W}
+
+\p{If a theory is in #{\Sigma\Pi} normal form, it is fairly straightforward to represent it as a collection of tables. Specifically, ignoring the type dependency for now, each function type is of the form \code{A1 -> A2 -> ... -> AN -> B}, where \code{A1,...,AN} are all sets, and \code{B} is either a set, \code{Set}, or \code{Prop}. Then}
+
+\ul{
+  \li{If \code{B} is a set, then we can represent this as a table with columns \code{A1,...,AN,B} and a primary key constraint on \code{A1,...,AN}.}
+  \li{If \code{B} is \code{Set}, then this is a table with columns \code{A1,...,AN} and no primary key constraint.}
+  \li{If \code{B} is \code{Prop}, then this is a table with columns \code{A1,...,AN} and a primary key constraint on \code{A1,...,AN}.}
+}
+
+\p{Thus, the first job to do when translating a geolog theory into a database schema is to put the geolog theory in #{\Sigma\Pi} normal form.}
+
+\transclude{001X}
+
+\p{In this way, although when writing down \code{BagOfGraphs} it appears as if we would store a separate graph database for each graph id, in fact all of the graphs are stored in the same pair of tables. In particular, allocating a new graph id does not imply allocating a whole new graph structure.}
+
+\p{There is a fairly straightforward algorithm to take a general theory to a theory in #{\Sigma\Pi}-normal form, producing the \code{from-normal} and \code{to-normal} migrations simultaneously, but describing it here would involve a conceptual framework around the [elaborator](000O) which would take a while to get off the ground. Thus, we ask the reader to take as given that we have access to such an algorithm, and we continue on assuming that we are working with theories in #{\Sigma\Pi}-normal form.}
+
+\p{One way of thinking about this algorithm is that it is a generalized version of the array-of-structs to struct-of-arrays transformation in, for instance, [Zig's MultiArrayList](https://ziglang.org/documentation/master/std/##std.MultiArrayList).}

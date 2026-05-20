@@ -1,0 +1,24 @@
+\title{Elements of record types as views}
+\import{prelude}
+
+\p{If a theory is given by a record type (using \code{\kw{sig} ... \kw{end}}), then we can produce a model of it using \code{\kw{struct} ... \kw{end}}, setting all of its fields. For example, we can reward the wrong children with the following code (using \code{SantaList} from [[001C]]).}
+
+\pre{%
+\kw{def} santa-mixup (m : SantaList) : SantaList := \kw{struct}
+  naughty := m.nice
+  nice := m.naughty
+\kw{end}
+}
+
+\p{When using \code{\kw{struct}}, one must give all the fields of the original record type in the same order as they were originally defined.}
+
+\p{With some slightly more complex code, we can produce a model of \code{SantaList} from a model of \code{SantaLists} and a choice of year.}
+
+\pre{%
+\kw{def} list-for (m : SantaLists) (y : m.year) : SantaList := \kw{struct}
+  naughty := \kw{tuple} { child : m.person; m.list y .naughty child }
+  nice := \kw{tuple} { child : m.person; m.list y .nice child }
+\kw{end}
+}
+
+\p{Intuitively, this assigns \code{naughty} to the set of children naughty in that year, and similarly with \code{nice}. The \code{\kw{tuple}} syntax is just as in [[001H]], using the curly-brace inline syntax. And \code{m.list y .naughty child} is just a sequence of function applications and field projection. Walking through the types, we have \code{m.list : m.person -> SantaListOver m.person}, so \code{m .list y : SantaListOver m.person} and then \code{m.list y .naughty : m.person -> Prop} and finally \code{m.list y .naughty child : Prop}.}

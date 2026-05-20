@@ -1,4 +1,4 @@
-\title{Types and their elements}
+\title{Basic types}
 \import{prelude}
 
 \p{At its core, there are only two things in the geolog language: types and elements of those types. We write \code{a : A} to express that \code{a} is an element of the type \code{A}. In this section, we describe informally the various types in geolog and how they are functionally involved in the database.}
@@ -17,8 +17,9 @@
 \transclude{001D}
 \transclude{001E}
 \transclude{001G}
+\transclude{001I}
 
-\p{These five type formers ([[001B]], [[001C]], [[001D]], [[001E]] and [[001G]]) can be used to compositionally build up fairly complex combinatorial structures of sets, functions and relations. However, they are still limited when it comes to handling \em{data}, which often has, for instance, numbers and strings in it.}
+\p{These six type formers ([[001B]], [[001C]], [[001D]], [[001E]], [[001G]] and [[001I]]) can be used to compositionally build up fairly complex combinatorial structures of sets, functions and relations. However, they are still limited when it comes to handling \em{data}, which often has, for instance, numbers and strings in it.}
 
 \p{We could simply put in \code{String} and \code{Int} in as “base sets”. However, this would permit functions \code{String -> String}, and we cannot store a function like that in a database. We could say that \code{String} was a theory and not a set, which would prevent it from being used in the domain of a function, but it is perfectly sensible to have the theory \code{String -> Prop} (which denotes a subset of the set of all strings), and making \code{String} a theory would prevent us from forming that.}
 
@@ -33,4 +34,10 @@
 
 \transclude{001H}
 
-\transclude{001I}
+\transclude{001J}
+
+\transclude{001K}
+
+\transclude{001L}
+
+\transclude{001M}

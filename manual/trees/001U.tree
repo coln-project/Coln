@@ -1,0 +1,4 @@
+\taxon{Definition}
+\title{#{\Sigma\Pi} normal form}
+
+\p{A theory is in #{\Sigma\Pi} normal form if a record type never appears in the codomain of a function type.}

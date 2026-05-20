@@ -1,0 +1,42 @@
+\title{A theory with no initial model}
+\taxon{Example}
+\import{prelude}
+
+\p{We can define \code{Or} in the following way.}
+
+\pre{%
+\kw{theory} Or/motive (@ind p0 : Prop) (@ind p1 : Prop) := \kw{sig}
+  implicand : Prop
+  impl0 : p0 -> implicand
+  impl1 : p1 -> implicand
+\kw{end}
+
+\kw{ind} \kw{def} Or (p0 : Prop) (p1 : Prop) : Prop :=
+  \kw{init} (Or/motive p0 p1) .implicand
+}
+
+\p{We call it \code{Or/motive} for reasons we will get into later; broadly speaking the motive is the theory one needs to provide a model of in order to \em{use} an element of \code{Or p0 p1}.}
+
+\p{Intuitively, \code{Or p0 p1} is the minimal proposition that is implied by both \code{p0} and \code{p1}. Then the following has no initial model.}
+
+\pre{%
+\kw{theory} HardChoice := \kw{sig}
+  likes-bananas : Prop
+  likes-apples : Prop
+  at-least-one : Or likes-bananas likes-apples
+\kw{end}
+}
+
+\p{Intuitively, \code{\kw{struct} { true; false; _ }} and \code{\kw{struct} { false; true; _ }} are both models of \code{HardChoice}, but neither one is “more minimal” than the other, and the only way to get something “more minimal” than both would be \code{\kw{struct} { false; false; _ }} but this is not a model of \code{HardChoice}.}
+
+\p{In fact, this theory would be \em{rejected} by the geolog type theory. In order to make geolog accept this theory, one must put \code{\kw{ind}} in front of \code{\kw{theory}}, as in}
+
+\pre{%
+\kw{ind} \kw{theory} HardChoice := \kw{sig}
+  likes-bananas : Prop
+  likes-apples : Prop
+  at-least-one : Or likes-bananas likes-apples
+\kw{end}
+}
+
+\p{Then this is a perfectly fine schema for a database, but we cannot take an initial model of an “inductive theory”. Sometimes we say “conjunctive theory” to refer to the normal theories, of which it is possible to take initial models.}

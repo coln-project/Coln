@@ -1,0 +1,5 @@
+\title{Lowering sets to types-with-predicates}
+
+\p{The next step after [[001T]] is to transform a set into pairs of a \em{base type} and \em{validity predicate}.}
+
+\transclude{001Z}

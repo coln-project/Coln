@@ -1,0 +1,13 @@
+\taxon{Slogan}
+\title{Views are top-level functions}
+\import{prelude}
+
+\p{In the [queries](001H), we saw several usages of the pattern}
+
+\pre{%
+\kw{def} query (m : T) : Set := ...
+}
+
+\p{\code{\kw{def}} is in fact a much more general construct; any theory can replace \code{Set} on the right, and we can take in multiple arguments.}
+
+\p{In general, this allows one to create a \em{view} of a model one theory, in the form of a model of another theory.}

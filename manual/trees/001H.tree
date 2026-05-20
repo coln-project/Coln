@@ -1,7 +1,7 @@
 \title{Record types as sets}
 \import{prelude}
 
-\p{Just like we have record types as the theory-level, we also have record types at the set-level.\todo}
+\p{Just like we have record types as the theory-level, we also have record types at the set-level. We can use this to define a set in the context of a model of a given theory; this is how to “natively query” an instance of a geolog theory.\todo}
 
 \pre{%
 \kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
@@ -30,3 +30,14 @@
 }
 
 \p{We can omit the field names for propositions because we never need to refer to the witnesses of the propositions, we just need the propositions to be true.}
+
+\p{As a variation on the same theme, we could look for length-3 cycles in a state machine with}
+
+\pre{%
+\kw{def} next-triangle (m : StateMachine) : Set := \kw{tuple}
+  a b c : m.state
+  m.next a = b
+  m.next b = c
+  m.next c = a
+\kw{end}
+}
