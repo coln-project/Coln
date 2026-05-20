@@ -14,6 +14,12 @@ library
   exposed-modules:
     Geolog.Common
     Geolog.Core
+    Geolog.Core.Conversion
+    Geolog.Core.Evaluation
+    Geolog.Core.Params
+    Geolog.Core.Readback
+    Geolog.Core.Syntax
+    Geolog.Core.Value
     Geolog.CoreOperations
     Geolog.Diagnostics
     Geolog.Elaborator

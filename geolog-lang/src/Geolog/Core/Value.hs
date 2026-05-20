@@ -85,6 +85,10 @@ data Neutral = Neutral
   , description :: ~(Maybe (El D))
   }
 
+unwrap :: Expansion -> Dict (El N)
+unwrap (IntoCons d) = d
+unwrap NotApplicable = panic "neutral of record type was never expanded"
+
 expandRecord :: RecordType -> Head -> Spine -> Maybe (El D) -> Dict (El N)
 expandRecord recordType head spine desc = do
   let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
@@ -128,6 +132,7 @@ data El :: Case -> Type where
   Code :: Ty c -> El c
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
+  Lit :: Literal -> El N
 
 app :: El c -> El N -> Evaluation El c
 app (Lam _ clo) arg = appClo clo arg

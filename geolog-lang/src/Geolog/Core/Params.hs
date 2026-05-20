@@ -2,7 +2,7 @@ module Geolog.Core.Params where
 
 import Geolog.Common
 
--- Level stuff (levels, universes, pi variants)
+-- Level stuff (levels, universes, function variants)
 --------------------------------------------------------------------------------
 
 data Level
@@ -102,3 +102,9 @@ instance Show BuiltinTy where
   show = \case
     BuiltinInt -> "Int"
     BuiltinString -> "String"
+
+-- Context shape
+--------------------------------------------------------------------------------
+
+data CtxShape = CtxShape {len :: Int, names :: Bwd Name}
+

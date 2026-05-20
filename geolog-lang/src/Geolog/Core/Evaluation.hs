@@ -41,6 +41,7 @@ instance Compile S.El V.El where
     S.Proj t x -> do
       let k = compile t
       \vs -> V.ebind (`V.proj` x) (k vs)
+    S.Lit l -> \_ -> V.Lit l
     S.Is t -> do
       let k = compile t
       \vs -> V.Become (k vs)
