@@ -124,6 +124,20 @@ data DecodedNeutral = DecodedNeutral
   , behavior :: ~TypeBehavior
   }
 
+data BareNeutral = BareNeutral
+  { head :: Head
+  , spine :: Spine
+  }
+
+class ToBare n where
+  toBare :: n -> BareNeutral
+
+instance ToBare Neutral where
+  toBare n = BareNeutral n.head n.spine
+
+instance ToBare DecodedNeutral where
+  toBare n = BareNeutral n.head n.spine
+
 -- Elements
 --------------------------------------------------------------------------------
 

@@ -9,12 +9,12 @@ import Prettyprinter ((<+>))
 import Geolog.Common
 import Geolog.Core.Params
 import Geolog.Core.Value qualified as V
-import Geolog.Core.Value qualified as N (Neutral(..))
-import Geolog.Core.Value qualified as DN (DecodedNeutral(..))
+import Geolog.Core.Value qualified as BN (BareNeutral(..))
 
 data DefEqCheckError
   = UnequalTys CtxShape (V.Ty N) (V.Ty N) (Maybe DDoc)
   | UnequalEls CtxShape (V.El N) (V.El N) (Maybe DDoc)
+  | UnequalNeus CtxShape V.BareNeutral V.BareNeutral (Maybe DDoc)
 
 type DefEqM a = Either DefEqCheckError a
 
@@ -25,6 +25,10 @@ throwUnequalTys cs a a' e =
 throwUnequalEls :: CtxShape -> V.El N -> V.El N -> Maybe DDoc -> DefEqM ()
 throwUnequalEls cs v v' e =
   Left (UnequalEls cs v v' e)
+
+throwUnequalNeus :: CtxShape -> V.BareNeutral -> V.BareNeutral -> Maybe DDoc -> DefEqM ()
+throwUnequalNeus cs v v' e =
+  Left (UnequalNeus cs v v' e)
 
 class DefEq a where
   defEq :: CtxShape -> a -> a -> DefEqM ()
@@ -41,53 +45,64 @@ defEqClo cs a c0 c1 = do
   let v = V.local (FId cs.len) a
   defEq cs' (V.appClo c0 v) (V.appClo c1 v)
 
--- XXX should the rest of these be nested cases instead of parallel cases?
---     more duplication but guards against forgetting to update.
-
--- XXX should universe subsumption be deep?  should we be doing substitutability not equality?
 instance DefEq (V.Ty N) where
-  defEq cs a a' = case (a, a') of
-    (V.U u, V.U u') | u == u' -> pure ()
-    (V.Decode n, V.Decode n') -> defEq cs n n'
-    (V.Function f, V.Function f') -> do
-      unless (f.variant == f'.variant) $
-        throwUnequalTys cs a a' $
-          Just $
-            "different function variants:" <+> pretty f.variant <+> "and" <+> pretty f'.variant
-      defEq cs f.dom f'.dom
-      defEqClo cs f.dom f.cod f'.cod
-    (V.BuiltinTy b, V.BuiltinTy b') ->
-      unless (b == b') $ throwUnequalTys cs a a' $ Just "unequal builtin types"
-    _ -> throwUnequalTys cs a a' Nothing
+  defEq cs a a' = case a of
+    V.U u -> case a' of
+      V.U u' | u == u' -> pure ()
+      _ -> throwUnequalTys cs a a' Nothing
+    V.Decode n -> case a' of
+      V.Decode n' -> defEq cs n n'
+      _ -> throwUnequalTys cs a a' Nothing
+    V.Function f -> case a' of
+      V.Function f' -> do
+        unless (f.variant == f'.variant) $
+          throwUnequalTys cs a a' $
+            Just $
+              "different function variants:" <+> pretty f.variant <+> "and" <+> pretty f'.variant
+        defEq cs f.dom f'.dom
+        defEqClo cs f.dom f.cod f'.cod
+      _ -> throwUnequalTys cs a a' Nothing
+    V.Eq et -> case a' of
+      V.Eq et' -> do
+        defEq cs et.at et'.at
+        defEq cs et.lhs et'.lhs
+        defEq cs et.rhs et'.rhs
+      _ -> throwUnequalTys cs a a' Nothing
+    V.BuiltinTy b -> case a' of
+      V.BuiltinTy b' ->
+        unless (b == b') $ throwUnequalTys cs a a' $ Just "unequal builtin types"
+      _ -> throwUnequalTys cs a a' Nothing
 
--- XXX recursive neutrals are not valid except for head, spine.  Pretty printing should only use these, but still kind of ...
---     To remedy this, maybe it would work to reapply the spine to the head, but that only works for globals ...
-instance DefEq V.Neutral where
-  defEq cs n n' = case (n.spine, n'.spine) of
-    (V.Id, V.Id) -> case (n.head, n'.head) of
-      (V.LocalVar i, V.LocalVar i') | i == i' -> pure ()
-      (V.GlobalVar x _, V.GlobalVar x' _) | x == x' -> pure ()
-      _ -> throwUnequalEls cs (V.Neu n) (V.Neu n') Nothing
-    (V.App sq v, V.App sq' v') -> do
-      defEq cs (n { N.spine = sq }) (n' { N.spine = sq' })
-      defEq cs v v'
-    (V.Proj sq x, V.Proj sq' x') -> do
-      defEq cs (n { N.spine = sq }) (n' { N.spine = sq' })
-      unless (x == x') $
-        throwUnequalEls cs (V.Neu n) (V.Neu n') Nothing
-    _ -> throwUnequalEls cs (V.Neu n) (V.Neu n') Nothing
+instance DefEq V.Head where
+  defEq cs h h' = case h of
+    V.LocalVar i -> case h' of
+      V.LocalVar i' | i == i' -> pure ()
+      _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing
+    V.GlobalVar x _ -> case h' of
+      V.GlobalVar x' _ | x == x' -> pure ()
+      _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing
 
-codeOfNeu :: V.DecodedNeutral -> V.Neutral
-codeOfNeu n = V.Neutral
-  { N.head = n.head
-  , N.spine = n.spine
-  , N.ty = V.U n.universe
-  , N.expansion = V.NotApplicable
-  , N.description = panic "tried to use description of reverse-engineered neutral"
-  }
+instance DefEq V.BareNeutral where
+  defEq cs n n' = case n.spine of
+    V.Id -> case n'.spine of
+      V.Id -> defEq cs n.head n'.head
+      _ -> throwUnequalNeus cs n n' Nothing
+    V.App sq v -> case n'.spine of
+      V.App sq' v' -> do
+        defEq cs (n { BN.spine = sq }) (n' { BN.spine = sq' })
+        defEq cs v v'
+      _ -> throwUnequalNeus cs n n' Nothing
+    V.Proj sq x -> case n'.spine of
+      V.Proj sq' x' -> do
+        defEq cs (n { BN.spine = sq }) (n' { BN.spine = sq' })
+        unless (x == x') $ throwUnequalNeus cs n n' Nothing
+      _ -> throwUnequalNeus cs n n' Nothing
 
 instance DefEq V.DecodedNeutral where
-  defEq cs n n' = defEq cs (codeOfNeu n) (codeOfNeu n')
+  defEq cs n n' = defEq cs (V.toBare n) (V.toBare n')
+
+instance DefEq V.Neutral where
+  defEq cs n n' = defEq cs (V.toBare n) (V.toBare n')
 
 canon :: V.El N -> V.El N
 canon v@(V.Neu n) = case V.behavior n.ty of
@@ -98,17 +113,20 @@ canon v@(V.Neu n) = case V.behavior n.ty of
 canon v = v
 
 instance DefEq (V.El N) where
-  defEq cs v v' = case (v, v') of
-    -- XXX is this safe with descriptive case/behavesAs?
-    -- probably isn't, but it's useful enough to be worth *making* safe.
-    -- (V.Neu n, V.Neu n') -> defEq cs n n' -- shortcut eta expansion
-    _ -> case (canon v, canon v') of
-      (V.Neu n, V.Neu n') -> defEq cs n n'
-      (V.Code a, V.Code a') -> defEq cs a a'
-      (V.Lam a c, V.Lam _ c') -> defEqClo cs a c c'
-      (V.Cons d, V.Cons d') ->
-        forM_ (Vec.zip d.values d'.values) (uncurry (defEq cs))
-      (V.Lit l, V.Lit l') ->
-        unless (l == l') $ throwUnequalEls cs v v' $ Just "unequal literals"
+  -- XXX shortcut try without eta-expansion first
+  defEq cs v v' = case canon v of
+    V.Neu n -> case canon v' of
+      V.Neu n' -> defEq cs n n'
       _ -> throwUnequalEls cs v v' Nothing
-
+    V.Code a -> case canon v' of
+      V.Code a' -> defEq cs a a'
+      _ -> throwUnequalEls cs v v' Nothing
+    V.Lam a c -> case canon v' of
+      V.Lam _ c' -> defEqClo cs a c c'
+      _ -> throwUnequalEls cs v v' Nothing
+    V.Cons d -> case canon v' of
+      V.Cons d' -> forM_ (Vec.zip d.values d'.values) (uncurry (defEq cs))
+      _ -> throwUnequalEls cs v v' Nothing
+    V.Lit l -> case canon v' of
+      V.Lit l' -> unless (l == l') $ throwUnequalEls cs v v' $ Just "unequal literals"
+      _ -> throwUnequalEls cs v v' Nothing
