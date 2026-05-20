@@ -96,7 +96,7 @@ actions = do
     need htmls
 
   phony "docs" $ do
-    need ["haddock", "tex", "djot"]
+    need ["haddock", "tex", "djot", "manual"]
 
   "_build/site/*.html" %> \out -> do
     putInfo ("Building " <> out)

@@ -117,11 +117,18 @@ foresterActions = do
 
   phony "manual" $ do
     need ["manual/forester"]
+    liftIO $ do
+      buildForester
+      cmd_ "mkdir -p" "_build/site/manual"
+      cmd_ "cp -r" "manual/output" "_build/site/manual"
 
   phony "serve-manual" $ do
-    liftIO $ serveForester Nothing
+    liftIO $ do
+      buildForester
+      serveForester Nothing
 
   phony "dev-manual" $ liftIO $ do
+    buildForester
     refreshChan <- newChan
     concurrently_
       (continuouslyBuildForester refreshChan)
