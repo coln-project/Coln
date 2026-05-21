@@ -120,7 +120,8 @@ foresterActions = do
     liftIO $ do
       buildForester
       cmd_ "mkdir -p" "_build/site"
-      cmd_ "cp -r" "manual/output" "_build/site/manual"
+      cmd_ "rm -rf" "_build/site/manual"
+      cmd_ "cp" "-r" "manual/output" "_build/site/manual"
 
   phony "serve-manual" $ do
     liftIO $ do
