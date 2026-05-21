@@ -12,7 +12,7 @@
 \kw{end}
 }
 
-\p{We can define \code{JohnAndMary} to be an initial model of \code{PopulatedSantaList} in the following way.\todo}
+\p{We can define \code{JohnAndMary} to be an initial model of \code{PopulatedSantaList} in the following way.\todo (Note that here the type of \code{JohnAndMary} is inferred to be \code{PopulatedSantaList}).}
 
 \pre{%
 \kw{ind} \kw{def} JohnAndMary := \kw{init} PopulatedSantaList

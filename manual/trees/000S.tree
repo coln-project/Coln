@@ -21,7 +21,7 @@
 
 \p{These six type formers ([[001B]], [[001C]], [[001D]], [[001E]], [[001G]] and [[001I]]) can be used to compositionally build up fairly complex combinatorial structures of sets, functions and relations. However, they are still limited when it comes to handling \em{data}, which often has, for instance, numbers and strings in it.}
 
-\p{We could simply put in \code{String} and \code{Int} in as “base sets”. However, this would permit functions \code{String -> String}, and we cannot store a function like that in a database. We could say that \code{String} was a theory and not a set, which would prevent it from being used in the domain of a function, but it is perfectly sensible to have the theory \code{String -> Prop} (which denotes a subset of the set of all strings), and making \code{String} a theory would prevent us from forming that.}
+\p{We could simply put in \code{String} and \code{Int} in as “base sets”. However, this would permit functions \code{String -> String}, and we cannot store a function like that in a database because the set of strings is infinite and the function must be total, so storing the value of the function at every string would take infinite storage. We could say that \code{String} was a theory and not a set, which would prevent it from being used in the domain of a function, but it is perfectly sensible to have the theory \code{String -> Prop} (which denotes a subset of the set of all strings), and making \code{String} a theory would prevent us from forming that.}
 
 \p{The solution to this problem requires building up a little more theory, so we do not address it right now, and instead continue on to give a full account of the “purely combinatorial” fragment of geolog.}
 
@@ -29,7 +29,7 @@
   \taxon{Slogan}
   \title{Sets are queries, elements are results}
 
-  \p{One can query a database in geolog via for loops in javascript, but this is obviously not the most efficient or ergonomic way to do it. In fact, we already have the machinery to write down queries, it just requires a bit of rethinking what we have already learned. The idea is that giving a way to produce a set from a model of a theory is a query. The elements of that set are the results of the query.}
+  \p{One can query a database in geolog via for-loops in TypeScript, but this is obviously not the most efficient or ergonomic way to do it. In fact, we already have the machinery to write down queries, it just requires a bit of rethinking what we have already learned. The idea is that giving a way to produce a set from a model of a theory is a query. The elements of that set are the results of the query.}
 }
 
 \transclude{001H}

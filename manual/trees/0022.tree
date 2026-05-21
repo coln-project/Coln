@@ -1,0 +1,5 @@
+\title{Table}
+\taxon{Definition}
+\import{prelude}
+
+\p{A \defcase{table} consists of a set of [row IDs](0023) and a collection of [columns](0024). A table may come along with [constraints](0025), and in particular [primary key constraints](0026)}

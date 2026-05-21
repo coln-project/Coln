@@ -1,0 +1,7 @@
+\title{Column}
+\taxon{Definition}
+\import{prelude}
+
+\p{A \defcase{column} is a sequence of values of some fixed data type, like \code{String}, \code{Bool}, \code{Int}, or \code{RowId}. Columns store one value for each row ID of the table they belong to, and they store these values in such a way so that it is efficient to access the corresponding value for each row ID. This could be achieved by storing the row IDs in sorted order, and storing the values in each column in the same order, so that a binary search over row IDs would produce the right index to access the column value at, but it is also possible that row IDs take the values #{0,\ldots,n-1}, and columns may be directly indexed by row ID; the choice of how precisely this achieved is not something that is relevant at this level of abstraction.}
+
+\p{As users do not interact with columns directly, we can identify the columns in a table by a simple sequential numbering #{0,\ldots,k-1}; we call the number assigned to a column in this fashion its \defcase{column index}.}

@@ -12,6 +12,11 @@
 
 \p{In order to give the programmer a mental model for how they can expect these commands to work, in this section of the manual we describe the translation from a theory in the [geolog language](000L) to a collection of tables.}
 
+\transclude{0021}
+
 \transclude{001T}
 
+\transclude{0020}
+
 \transclude{001Y}
+

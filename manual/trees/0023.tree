@@ -1,0 +1,7 @@
+\title{Row ID}
+\taxon{Definition}
+\import{prelude}
+
+\p{\defcase{Row IDs} are an opaque type to the user, kind of like pointers without pointer arithmetic. In particular, a row ID may be dereferenced to look up the corresponding row in the database, and row IDs may be stored in columns to link tables together, but the content of a row ID is not meant to be meaningful or even stable.}
+
+\p{This is becasue row IDs may exist in different formats in-memory, on disk, and over the network, and moreover may be subject to garbage-collection-like algorithms periodically in order to improve storage properties of the database.}

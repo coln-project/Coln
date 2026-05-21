@@ -1,0 +1,11 @@
+\title{Primary key constraint}
+\taxon{Definition}
+\import{prelude}
+
+\p{A \defcase{primary key constraint} is specified by a subset #{K \subseteq \{0,\ldots,k-1\}} of column indices. For each #{K}-indexed tuple of values, a table satisfying the primary key constraint may have at most one row with columns assigned as in that #{K}-tuple.}
+
+\p{This can be used in a variety of ways. If #{K = \{0,\ldots,k-1\}}, then the table is a proper \em{relation}. If #{K = \{0,\ldots,\ell-1\}}, then #{K} is a partial function from the first #{\ell} column values to the last #{k - \ell} column values.}
+
+\p{A table with no primary key constraint can be thought of as a bag.}
+
+\p{As a degenerate case, a table with no columns and a primary key constraint of #{\{\}} has either zero or one row IDs.}
