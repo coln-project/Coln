@@ -119,7 +119,7 @@ foresterActions = do
     need ["manual/forester"]
     liftIO $ do
       buildForester
-      cmd_ "mkdir -p" "_build/site/manual"
+      cmd_ "mkdir -p" "_build/site"
       cmd_ "cp -r" "manual/output" "_build/site/manual"
 
   phony "serve-manual" $ do
