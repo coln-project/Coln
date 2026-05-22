@@ -33,12 +33,12 @@ impl fmt::Display for LawViolation {
         match &self.cause {
             ViolationCause::MissingAtom(atom) => write!(
                 f,
-                "law {:?} violated: missing consequent atom in table {:?}",
+                "law {} violated: missing consequent atom in table {}",
                 self.law, atom.table
             ),
             ViolationCause::UnsatisfiedEq(eq) => write!(
                 f,
-                "law {:?} violated: equality {:?} = {:?} did not hold",
+                "law {} violated: equality {:?} = {:?} did not hold",
                 self.law, eq.left, eq.right
             ),
         }
