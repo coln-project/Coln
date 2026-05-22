@@ -17,6 +17,7 @@ library
     Geolog.Core.Conversion
     Geolog.Core.Evaluation
     Geolog.Core.Params
+    Geolog.Core.Print
     Geolog.Core.Readback
     Geolog.Core.Syntax
     Geolog.Core.Value
