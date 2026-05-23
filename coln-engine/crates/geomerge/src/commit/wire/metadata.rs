@@ -15,15 +15,14 @@ use crate::{
     table::TableOid,
 };
 
-pub(crate) const ROOT_FORMAT_VERSION: u32 = 1;
-
 /// Store metadata captured by the root commit.
 ///
 /// This is the commit-layer equivalent of the old store header: it describes
 /// the empty store that normal data commits replay into.
 #[derive(Debug, Clone)]
 pub(crate) struct RootCommitData {
-    pub(crate) format_version: u32,
+    // XX next_oid is stored here because we probably won't allow dynamic addition
+    // of new tables after the theory has been defined.
     pub(crate) next_oid: TableOid,
     pub(crate) tables: Vec<RootTableEntry>,
     pub(crate) laws: Vec<LawEntry>,
@@ -40,7 +39,6 @@ pub(crate) struct RootTableEntry {
 ///
 /// Layout, little-endian:
 ///
-/// `[root_format_version:u32]`
 /// `[next_oid:u64]`
 /// `[table_count:u32]`
 /// `repeat table_count: [path_len:u64][path_utf8][oid:u64][schema_len:u64][schema_bytes]`
@@ -48,7 +46,6 @@ pub(crate) struct RootTableEntry {
 /// `repeat law_count: [law_len:u64][law_bytes]`
 pub(crate) fn serialise_root(root: &RootCommitData) -> Result<Vec<u8>, PersistError> {
     let mut buf = Vec::new();
-    buf.write_all(&root.format_version.to_le_bytes())?;
     buf.write_all(&root.next_oid.to_le_bytes())?;
 
     let mut tables = root.tables.iter().collect::<Vec<_>>();
@@ -74,12 +71,6 @@ pub(crate) fn serialise_root(root: &RootCommitData) -> Result<Vec<u8>, PersistEr
 
 pub(crate) fn deserialise_root(data: &[u8]) -> Result<RootCommitData, PersistError> {
     let mut pos = 0usize;
-    let format_version = read_u32(data, &mut pos, "root format version")?;
-    if format_version != ROOT_FORMAT_VERSION {
-        return Err(PersistError::DataFormatError(format!(
-            "unsupported root format version: {format_version}"
-        )));
-    }
 
     let next_oid = read_u64(data, &mut pos, "root next oid")?;
 
@@ -114,7 +105,6 @@ pub(crate) fn deserialise_root(data: &[u8]) -> Result<RootCommitData, PersistErr
     }
 
     Ok(RootCommitData {
-        format_version,
         next_oid,
         tables,
         laws,
@@ -576,7 +566,6 @@ mod tests {
     #[test]
     fn root_payload_round_trips() {
         let root = RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid: 2,
             tables: vec![RootTableEntry {
                 path: "T".to_owned(),
@@ -589,7 +578,6 @@ mod tests {
         let bytes = serialise_root(&root).expect("encode root");
         let decoded = deserialise_root(&bytes).expect("decode root");
 
-        assert_eq!(decoded.format_version, ROOT_FORMAT_VERSION);
         assert_eq!(decoded.next_oid, 2);
         assert_eq!(decoded.tables.len(), 1);
         assert_eq!(decoded.tables[0].path, "T");
@@ -614,13 +602,11 @@ mod tests {
         };
 
         let left = RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid: 3,
             tables: vec![high.clone(), low.clone()],
             laws: vec![],
         };
         let right = RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid: 3,
             tables: vec![low, high],
             laws: vec![],
@@ -635,7 +621,6 @@ mod tests {
     #[test]
     fn root_payload_rejects_trailing_bytes() {
         let root = RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid: 0,
             tables: vec![],
             laws: vec![],

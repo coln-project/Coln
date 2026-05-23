@@ -176,7 +176,7 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 mod tests {
     use super::*;
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::metadata::{ROOT_FORMAT_VERSION, RootCommitData, RootTableEntry};
+    use crate::commit::wire::metadata::{RootCommitData, RootTableEntry};
     use crate::ir::{ColType, Path, PrimType};
     use crate::table::RowId;
     use crate::txn::ops::{RowRef, TempRowId};
@@ -269,7 +269,6 @@ mod tests {
     #[test]
     fn decode_root_preserves_payload_and_hash() {
         let root = RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid: 1,
             tables: vec![RootTableEntry {
                 path: "T".to_owned(),
@@ -422,7 +421,6 @@ mod tests {
     #[test]
     fn root_commit_wraps_and_decodes_root_payload() {
         let root = RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid: 1,
             tables: vec![RootTableEntry {
                 path: "T".to_owned(),
@@ -440,7 +438,6 @@ mod tests {
         assert_eq!(commit.hash(), hash(ChunkType::Root, commit.payload()));
 
         let decoded = commit.root_payload().expect("decode root payload");
-        assert_eq!(decoded.format_version, ROOT_FORMAT_VERSION);
         assert_eq!(decoded.next_oid, 1);
         assert_eq!(decoded.tables.len(), 1);
         assert_eq!(decoded.tables[0].path, "T");

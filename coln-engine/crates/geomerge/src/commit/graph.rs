@@ -137,7 +137,7 @@ mod tests {
 
     use super::*;
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::metadata::{ROOT_FORMAT_VERSION, RootCommitData};
+    use crate::commit::wire::metadata::RootCommitData;
 
     fn h(n: u8) -> CommitHash {
         CommitHash([n; HASH_SIZE])
@@ -153,7 +153,6 @@ mod tests {
 
     fn root(next_oid: u64) -> Commit<'static> {
         Commit::from_root_data(&RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid,
             tables: vec![],
             laws: vec![],

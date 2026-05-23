@@ -6,7 +6,7 @@ use tracing::{debug, info};
 use crate::commit::Commit;
 use crate::commit::error::PersistError;
 use crate::commit::graph::CommitGraph;
-use crate::commit::wire::metadata::{ROOT_FORMAT_VERSION, RootCommitData, RootTableEntry};
+use crate::commit::wire::metadata::{RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
@@ -213,7 +213,6 @@ impl Store {
         table_entries.sort_by_key(|entry| entry.oid);
 
         let root = RootCommitData {
-            format_version: ROOT_FORMAT_VERSION,
             next_oid,
             tables: table_entries,
             laws: law_entries.to_vec(),
