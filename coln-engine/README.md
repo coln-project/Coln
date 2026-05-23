@@ -15,7 +15,10 @@ Example of loading a schema and inserting several related rows. Type `/help`
 for the full command list (for example `load-schema`, `add`, `dump-table`,
 `dump-store`, and the batch form below).
 
-A **batch** is a single multi-line statement: `begin transact;` … `commit;`. Each
+
+## Transaction
+
+A **transaction** is a single multi-line statement: `begin transact;` … `commit;`. Each
 line inside is an `add` that may bind the new row id to a name (`name = add
 <table> values (...);`). These ids are assigned by the storage layer and can then
 be referred to later on. For example, `e1 = add G.E values (g0 v1 v2);` is
@@ -52,6 +55,33 @@ load-store paths.bin;
 
 To get a violation of the law, say (Hom.V.total), change the line `i1 = add G0 values (g1);`
 to `i1 = add G0 values (g0)` so that we do not have a morphism between G0 and G1.
+
+
+## Commits
+
+Commit (commit/mod.rs) is a central data structure to geomerge. It is conceptually
+analogous to git commits. Each transaction (as above) will be mapped to a commit
+which is internally stored as a node in the commit graph, which is a DAG. A commit
+consists of metadata such as the time it was created and any commit messages associated
+with it, along with its main body, which is the operations as defined in the transaction.
+
+Commits are currently mainly used in the (de)serialisation of the store. Here is
+a breakdown of what happens when the user asks to serialise the store to bytes
+(so it can be stored on disk)
+
+1. serialising some meta information like version in a header.
+2. serialising commits one by one in topological order, where the first (root) commit
+is a special commit that stores the schema and law information. This root commit
+is created automatically when we load the theory into a store.
+3. all subsequent commits are therefore the children (implicitly) of the
+root commit. Root commit (wire/metadata.rs) and normal commit (wire/data.rs)
+are serialised differently.
+    1. for root commit, we serialise schema and law, plus a bunch of other metadata
+    2. for normal commit, we serialise all the metadata including time, commit
+    messages, hashes, and commit body. The commit body itself is serialised by
+    grouping together all operations on the same table, and apply columnar 
+    compression using hexane
+
 
 ## Test Coverage
 

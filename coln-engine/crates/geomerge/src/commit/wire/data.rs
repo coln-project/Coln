@@ -162,8 +162,22 @@ where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
     let mut groups: Vec<(Path, Vec<PendingOp>)> = Vec::new();
-    // table_sequence[i] is the group index of the ith operation. This is used
-    // in decoding to determine from which op group to retrieve the next operation
+    /*  table_sequence[i] is the group index of the ith operation. It effectively
+        stores the original order the operations are in.
+        operation. For example, the following two set of operations will have
+        two different table_sequence.
+        add table1 xx
+        add table2 yy
+        add table1 zz
+        table_sequence = [0, 1, 0]
+
+        add table1 xx
+        add table1 zz
+        add table2 yy
+        table_sequence = [0, 0, 1]
+
+    */
+
     let mut table_sequence = Vec::with_capacity(pending.len());
     let mut op_kinds = Vec::with_capacity(pending.len());
 
