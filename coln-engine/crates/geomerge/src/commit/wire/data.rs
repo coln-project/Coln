@@ -864,7 +864,7 @@ mod tests {
             }],
             primary_key: None,
         };
-        let schemas = vec![
+        let schemas = [
             (table_a.clone(), schema_a.clone()),
             (table_b.clone(), schema_b.clone()),
         ];
@@ -958,7 +958,7 @@ mod tests {
             }],
             primary_key: None,
         };
-        let schemas = vec![
+        let schemas = [
             (table_a.clone(), schema_a.clone()),
             (table_b.clone(), schema_b.clone()),
         ];

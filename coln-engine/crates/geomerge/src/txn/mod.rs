@@ -62,6 +62,8 @@ impl OwnedTransaction {
         self.inner.add(&self.store, table, values)
     }
 
+    // We need to return Store to the user for roll back purposes, so the Err variant must be large
+    #[allow(clippy::result_large_err)]
     pub fn commit(mut self) -> Result<(CommitHash, Store), (Box<StoreIntError>, Store)> {
         match self.inner.commit(&mut self.store) {
             Ok(hash) => Ok((hash, self.store)),

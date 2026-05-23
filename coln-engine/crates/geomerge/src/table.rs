@@ -250,11 +250,11 @@ impl Table {
     /// A primary key definition would occur in tables that do not end up in Query
     /// An empty primary key means the table would have at most one row.
     pub fn primary_key_values(&self, values: &[CellValue]) -> Option<Vec<CellValue>> {
-        self.schema.primary_key.as_ref().and_then(|pk| {
+        self.schema.primary_key.as_ref().map(|pk| {
             if pk.is_empty() {
-                Some(Vec::new())
+                Vec::new()
             } else {
-                Some(pk.iter().map(|&i| values[i as usize].clone()).collect())
+                pk.iter().map(|&i| values[i as usize].clone()).collect()
             }
         })
     }

@@ -26,7 +26,7 @@ impl From<ChunkType> for u8 {
 pub(crate) fn hash(chunk_type: ChunkType, data: &[u8]) -> CommitHash {
     let mut hasher = Sha256::new();
     hasher.update([u8::from(chunk_type)]);
-    hasher.update(&(data.len() as u64).to_le_bytes());
+    hasher.update((data.len() as u64).to_le_bytes());
     hasher.update(data);
     CommitHash(hasher.finalize().into())
 }
