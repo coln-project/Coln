@@ -52,9 +52,9 @@ pub struct Commit<'a> {
 }
 
 impl Commit<'static> {
-    /// Creating the commit data structure from the deserialised root data
+    /// Creating the commit data structure from the deserialized root data
     pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, PersistError> {
-        let bytes = wire::serialise_root(root)?;
+        let bytes = wire::serialize_root(root)?;
         Ok(Self::from_root_bytes(bytes))
     }
 
@@ -68,7 +68,7 @@ impl Commit<'static> {
         let mut hash_mapper = HashMapper::new();
         collect_op_hashes(&data.pending, &mut hash_mapper);
         data.other_hashes = hash_mapper.hashes().to_vec();
-        let bytes = wire::serialise(&data, &hash_mapper, schema_for)?;
+        let bytes = wire::serialize(&data, &hash_mapper, schema_for)?;
         Ok(Self::from_commit_bytes(bytes, data))
     }
 
@@ -114,12 +114,12 @@ impl Commit<'static> {
     {
         match chunk_type {
             ChunkType::Root => {
-                // check we can serialise the bytes into a root payload
-                let _root = wire::deserialise_root(&bytes)?;
+                // check we can serialize the bytes into a root payload
+                let _root = wire::deserialize_root(&bytes)?;
                 Ok(Self::from_root_bytes(bytes))
             }
             ChunkType::Commit => {
-                let data = wire::deserialise(&bytes, schema_for)?;
+                let data = wire::deserialize(&bytes, schema_for)?;
                 Ok(Self::from_commit_bytes(bytes, data))
             }
         }
@@ -148,7 +148,7 @@ impl<'a> Commit<'a> {
             });
         }
 
-        Ok(wire::deserialise_root(self.payload())?)
+        wire::deserialize_root(self.payload())
     }
 
     pub(crate) fn resolved_ops(&self) -> Vec<Op> {
@@ -530,7 +530,7 @@ mod tests {
         .expect("build commit");
 
         let got =
-            wire::data::deserialise(commit.payload(), payload_schema_for).expect("decode commit");
+            wire::data::deserialize(commit.payload(), payload_schema_for).expect("decode commit");
         assert_eq!(got.deps, commit.deps);
         assert_eq!(got.timestamp, commit.timestamp);
         assert_eq!(got.message, commit.message);

@@ -63,7 +63,7 @@ impl CommitData {
 //   [CommitHash × other_hash_count]      (32 bytes each)
 //   [commit body]                        (operations, see encode_commit_body)
 //
-pub(crate) fn serialise<'s, F>(
+pub(crate) fn serialize<'s, F>(
     data: &CommitData,
     hash_mapper: &HashMapper,
     schema_for: F,
@@ -98,7 +98,7 @@ where
 /// Parse canonical payload bytes (the slice passed to [`crate::persist::chunk::hash`],
 /// not including the chunk type or outer length prefix).
 ///
-pub(crate) fn deserialise<'s, F>(data: &[u8], schema_for: F) -> Result<CommitData, PersistError>
+pub(crate) fn deserialize<'s, F>(data: &[u8], schema_for: F) -> Result<CommitData, PersistError>
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {

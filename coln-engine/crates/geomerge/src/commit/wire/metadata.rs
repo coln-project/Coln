@@ -44,7 +44,7 @@ pub(crate) struct RootTableEntry {
 /// `repeat table_count: [path_len:u64][path_utf8][oid:u64][schema_len:u64][schema_bytes]`
 /// `[law_count:u32]`
 /// `repeat law_count: [law_len:u64][law_bytes]`
-pub(crate) fn serialise_root(root: &RootCommitData) -> Result<Vec<u8>, PersistError> {
+pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, PersistError> {
     let mut buf = Vec::new();
     buf.write_all(&root.next_oid.to_le_bytes())?;
 
@@ -69,7 +69,7 @@ pub(crate) fn serialise_root(root: &RootCommitData) -> Result<Vec<u8>, PersistEr
     Ok(buf)
 }
 
-pub(crate) fn deserialise_root(data: &[u8]) -> Result<RootCommitData, PersistError> {
+pub(crate) fn deserialize_root(data: &[u8]) -> Result<RootCommitData, PersistError> {
     let mut pos = 0usize;
 
     let next_oid = read_u64(data, &mut pos, "root next oid")?;
@@ -575,8 +575,8 @@ mod tests {
             laws: vec![simple_law()],
         };
 
-        let bytes = serialise_root(&root).expect("encode root");
-        let decoded = deserialise_root(&bytes).expect("decode root");
+        let bytes = serialize_root(&root).expect("encode root");
+        let decoded = deserialize_root(&bytes).expect("decode root");
 
         assert_eq!(decoded.next_oid, 2);
         assert_eq!(decoded.tables.len(), 1);
@@ -613,8 +613,8 @@ mod tests {
         };
 
         assert_eq!(
-            serialise_root(&left).expect("encode left"),
-            serialise_root(&right).expect("encode right")
+            serialize_root(&left).expect("encode left"),
+            serialize_root(&right).expect("encode right")
         );
     }
 
@@ -626,11 +626,11 @@ mod tests {
             laws: vec![],
         };
 
-        let mut bytes = serialise_root(&root).expect("encode root");
+        let mut bytes = serialize_root(&root).expect("encode root");
         bytes.push(0);
 
         assert!(matches!(
-            deserialise_root(&bytes),
+            deserialize_root(&bytes),
             Err(PersistError::DataFormatError(_))
         ));
     }

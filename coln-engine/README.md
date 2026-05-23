@@ -66,7 +66,7 @@ consists of metadata such as the time it was created and any commit messages ass
 with it, along with its main body, which is the operations as defined in the transaction.
 
 Commits are currently mainly used in the (de)serialisation of the store. Here is
-a breakdown of what happens when the user asks to serialise the store to bytes
+a breakdown of what happens when the user asks to serialize the store to bytes
 (so it can be stored on disk)
 
 1. serialising some meta information like version in a header.
@@ -75,10 +75,10 @@ is a special commit that stores the schema and law information. This root commit
 is created automatically when we load the theory into a store.
 3. all subsequent commits are therefore the children (implicitly) of the
 root commit. Root commit (wire/metadata.rs) and normal commit (wire/data.rs)
-are serialised differently.
-    1. for root commit, we serialise schema and law, plus a bunch of other metadata
-    2. for normal commit, we serialise all the metadata including time, commit
-    messages, hashes, and commit body. The commit body itself is serialised by
+are serialized differently.
+    1. for root commit, we serialize schema and law, plus a bunch of other metadata
+    2. for normal commit, we serialize all the metadata including time, commit
+    messages, hashes, and commit body. The commit body itself is serialized by
     grouping together all operations on the same table, and apply columnar 
     compression using hexane
 
