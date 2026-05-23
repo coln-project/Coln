@@ -4,6 +4,7 @@
 #   just check        # fmt-check + clippy + test
 #   just cargo-check  # type-check all workspace targets
 #   just import
+#   just fix          # apply cargo fixes + format
 #   just coverage     # llvm-cov + Cobertura
 
 default:
@@ -23,6 +24,8 @@ clippy:
 
 import:
    cargo fix --workspace --all-targets --all-features --allow-dirty --allow-staged
+
+fix: import fmt
 
 test:
     cargo test --workspace --all-targets
