@@ -3,7 +3,7 @@ use tracing::info;
 
 use crate::{
     commit::{Commit, hash::CommitHash, wire::CommitData},
-    store::{Store, StoreIntError},
+    store::{Store, error::StoreIntError},
     table::ValidationError,
     txn::{
         ops::{PendingOp, TempRowId, TxnCellValue},

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
+
 use tracing::{debug, info};
 
 use crate::commit::Commit;
@@ -11,15 +10,18 @@ use crate::ir::{self, FlatTheory, LawEntry};
 use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
 use crate::solver::{self};
+use crate::store::error::StoreIntError;
 use crate::table::{CellValue, Table, TableOid, ValidationError};
 use crate::txn::Transaction;
 use crate::txn::ops::Op;
+
+pub mod error;
 
 // TODO this should not be cloneable for efficiency reasons. In the future we should
 // be able to teach the law validator to check the delta
 #[derive(Debug, Clone)]
 pub struct Store {
-    next_oid: TableOid,
+    pub(crate) next_oid: TableOid,
     path_to_oid: HashMap<ir::Path, TableOid>,
     tables: HashMap<TableOid, Table>,
     /// Source law entries retained for persistence. Compiled form lives in `laws`.
@@ -29,86 +31,10 @@ pub struct Store {
     commits: CommitGraph,
 }
 
-/// Store integrity error
-#[derive(Debug)]
-pub enum StoreIntError {
-    Validation(ValidationError),
-    Law(Box<LawViolation>),
-    Compile(CompileError),
-    Encode(PersistError),
-}
-
-impl fmt::Display for StoreIntError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            StoreIntError::Validation(err) => write!(f, "{err}"),
-            StoreIntError::Law(err) => write!(f, "{err}"),
-            StoreIntError::Compile(err) => write!(f, "{err:?}"),
-            StoreIntError::Encode(err) => write!(f, "{err:?}"),
-        }
-    }
-}
-
-impl Error for StoreIntError {}
-
-impl From<ValidationError> for StoreIntError {
-    fn from(value: ValidationError) -> Self {
-        Self::Validation(value)
-    }
-}
-
-impl From<LawViolation> for StoreIntError {
-    fn from(value: LawViolation) -> Self {
-        Self::Law(Box::new(value))
-    }
-}
-
-impl From<Box<LawViolation>> for StoreIntError {
-    fn from(value: Box<LawViolation>) -> Self {
-        Self::Law(value)
-    }
-}
-
-impl From<CompileError> for StoreIntError {
-    fn from(value: CompileError) -> Self {
-        Self::Compile(value)
-    }
-}
-
-impl From<PersistError> for Box<StoreIntError> {
-    fn from(value: PersistError) -> Self {
-        Box::new(StoreIntError::Encode(value))
-    }
-}
-
-impl From<ValidationError> for Box<StoreIntError> {
-    fn from(value: ValidationError) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
-impl From<CompileError> for Box<StoreIntError> {
-    fn from(value: CompileError) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
-impl From<LawViolation> for Box<StoreIntError> {
-    fn from(value: LawViolation) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
-impl From<Box<LawViolation>> for Box<StoreIntError> {
-    fn from(value: Box<LawViolation>) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
 impl Store {
     pub fn new() -> Self {
-        let commits = Self::root_commit_graph(0, &HashMap::new(), &[])
-            .expect("empty root commit should build");
+        let commits =
+            Self::root_commit_graph(&HashMap::new(), &[]).expect("empty root commit should build");
         Self {
             next_oid: 0,
             path_to_oid: HashMap::new(),
@@ -167,7 +93,10 @@ impl Store {
         &self.law_entries
     }
 
-    pub(crate) fn from_root_commit_data(root: RootCommitData) -> Result<Self, CompileError> {
+    pub(crate) fn from_root_commit_data(
+        next_oid: TableOid,
+        root: RootCommitData,
+    ) -> Result<Self, CompileError> {
         let mut path_to_oid = HashMap::new();
         let mut tables_map = HashMap::new();
         for entry in root.tables {
@@ -178,7 +107,7 @@ impl Store {
 
         let laws = Store::compile_laws(&root.laws)?;
         Ok(Self {
-            next_oid: root.next_oid,
+            next_oid,
             path_to_oid,
             tables: tables_map,
             law_entries: root.laws,
@@ -198,7 +127,6 @@ impl Store {
     }
 
     fn root_commit_graph(
-        next_oid: TableOid,
         tables: &HashMap<TableOid, Table>,
         law_entries: &[LawEntry],
     ) -> Result<CommitGraph, PersistError> {
@@ -213,7 +141,6 @@ impl Store {
         table_entries.sort_by_key(|entry| entry.oid);
 
         let root = RootCommitData {
-            next_oid,
             tables: table_entries,
             laws: law_entries.to_vec(),
         };
@@ -245,7 +172,7 @@ impl Store {
         }
 
         let comp_laws = Store::compile_laws(&laws)?;
-        let commits = Self::root_commit_graph(next_oid, &tables_map, &laws)?;
+        let commits = Self::root_commit_graph(&tables_map, &laws)?;
         info!(
             table_count = tables_map.len(),
             compiled_law_count = comp_laws.len(),

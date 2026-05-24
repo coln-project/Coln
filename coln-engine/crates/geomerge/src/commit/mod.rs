@@ -269,7 +269,6 @@ mod tests {
     #[test]
     fn decode_root_preserves_payload_and_hash() {
         let root = RootCommitData {
-            next_oid: 1,
             tables: vec![RootTableEntry {
                 path: "T".to_owned(),
                 oid: 0,
@@ -421,7 +420,6 @@ mod tests {
     #[test]
     fn root_commit_wraps_and_decodes_root_payload() {
         let root = RootCommitData {
-            next_oid: 1,
             tables: vec![RootTableEntry {
                 path: "T".to_owned(),
                 oid: 0,
@@ -438,7 +436,6 @@ mod tests {
         assert_eq!(commit.hash(), hash(ChunkType::Root, commit.payload()));
 
         let decoded = commit.root_payload().expect("decode root payload");
-        assert_eq!(decoded.next_oid, 1);
         assert_eq!(decoded.tables.len(), 1);
         assert_eq!(decoded.tables[0].path, "T");
         assert_eq!(decoded.tables[0].oid, 0);

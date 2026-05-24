@@ -21,9 +21,6 @@ use crate::{
 /// the empty store that normal data commits replay into.
 #[derive(Debug, Clone)]
 pub(crate) struct RootCommitData {
-    // XX next_oid is stored here because we probably won't allow dynamic addition
-    // of new tables after the theory has been defined.
-    pub(crate) next_oid: TableOid,
     pub(crate) tables: Vec<RootTableEntry>,
     pub(crate) laws: Vec<LawEntry>,
 }
@@ -39,14 +36,12 @@ pub(crate) struct RootTableEntry {
 ///
 /// Layout, little-endian:
 ///
-/// `[next_oid:u64]`
 /// `[table_count:u32]`
 /// `repeat table_count: [path_len:u64][path_utf8][oid:u64][schema_len:u64][schema_bytes]`
 /// `[law_count:u32]`
 /// `repeat law_count: [law_len:u64][law_bytes]`
 pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, PersistError> {
     let mut buf = Vec::new();
-    buf.write_all(&root.next_oid.to_le_bytes())?;
 
     let mut tables = root.tables.iter().collect::<Vec<_>>();
     tables.sort_by_key(|entry| entry.oid);
@@ -71,8 +66,6 @@ pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, PersistEr
 
 pub(crate) fn deserialize_root(data: &[u8]) -> Result<RootCommitData, PersistError> {
     let mut pos = 0usize;
-
-    let next_oid = read_u64(data, &mut pos, "root next oid")?;
 
     let table_count = read_u32(data, &mut pos, "root table count")? as usize;
     let mut tables = Vec::with_capacity(table_count);
@@ -104,11 +97,7 @@ pub(crate) fn deserialize_root(data: &[u8]) -> Result<RootCommitData, PersistErr
         )));
     }
 
-    Ok(RootCommitData {
-        next_oid,
-        tables,
-        laws,
-    })
+    Ok(RootCommitData { tables, laws })
 }
 
 fn write_count(buf: &mut Vec<u8>, count: usize, ctx: &'static str) -> Result<(), PersistError> {
@@ -566,7 +555,6 @@ mod tests {
     #[test]
     fn root_payload_round_trips() {
         let root = RootCommitData {
-            next_oid: 2,
             tables: vec![RootTableEntry {
                 path: "T".to_owned(),
                 oid: 1,
@@ -578,7 +566,6 @@ mod tests {
         let bytes = serialize_root(&root).expect("encode root");
         let decoded = deserialize_root(&bytes).expect("decode root");
 
-        assert_eq!(decoded.next_oid, 2);
         assert_eq!(decoded.tables.len(), 1);
         assert_eq!(decoded.tables[0].path, "T");
         assert_eq!(decoded.tables[0].oid, 1);
@@ -602,12 +589,10 @@ mod tests {
         };
 
         let left = RootCommitData {
-            next_oid: 3,
             tables: vec![high.clone(), low.clone()],
             laws: vec![],
         };
         let right = RootCommitData {
-            next_oid: 3,
             tables: vec![low, high],
             laws: vec![],
         };
@@ -621,7 +606,6 @@ mod tests {
     #[test]
     fn root_payload_rejects_trailing_bytes() {
         let root = RootCommitData {
-            next_oid: 0,
             tables: vec![],
             laws: vec![],
         };

@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::commit::error::PersistError;
-use crate::store::StoreIntError;
+use crate::store::error::StoreIntError;
 use crate::table::ValidationError;
 
 #[derive(Debug)]

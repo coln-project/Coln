@@ -2,7 +2,7 @@ use geolog_lang::ir;
 
 use crate::{
     commit::hash::CommitHash,
-    store::{Store, StoreIntError},
+    store::{Store, error::StoreIntError},
     txn::ops::{TempRowId, TxnCellValue},
 };
 
@@ -74,10 +74,9 @@ impl OwnedTransaction {
 
 #[cfg(test)]
 mod tests {
-    use super::OwnedTransaction;
+    use super::*;
     use crate::ir::{ColType, Path, PrimType, Schema};
     use crate::store::test_support::link_foreign_key_theory;
-    use crate::store::{Store, StoreIntError};
     use crate::table::{CellValue, Table, ValidationError};
 
     #[test]

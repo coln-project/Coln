@@ -137,7 +137,8 @@ mod tests {
 
     use super::*;
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::metadata::RootCommitData;
+    use crate::commit::wire::metadata::{RootCommitData, RootTableEntry};
+    use crate::ir::Schema;
 
     fn h(n: u8) -> CommitHash {
         CommitHash([n; HASH_SIZE])
@@ -151,10 +152,20 @@ mod tests {
         .expect("build commit")
     }
 
-    fn root(next_oid: u64) -> Commit<'static> {
+    fn root() -> Commit<'static> {
+        root_with_table(0)
+    }
+
+    fn root_with_table(oid: u64) -> Commit<'static> {
         Commit::from_root_data(&RootCommitData {
-            next_oid,
-            tables: vec![],
+            tables: vec![RootTableEntry {
+                path: format!("T{oid}"),
+                oid,
+                schema: Schema {
+                    columns: vec![],
+                    primary_key: None,
+                },
+            }],
             laws: vec![],
         })
         .expect("build root commit")
@@ -311,7 +322,7 @@ mod tests {
     #[test]
     fn root_commit_returns_single_root() {
         let mut g = CommitGraph::new();
-        let root = root(0);
+        let root = root();
         let root_hash = root.hash();
         g.add_commit(root);
 
@@ -321,8 +332,8 @@ mod tests {
     #[test]
     fn root_commit_rejects_multiple_roots() {
         let mut g = CommitGraph::new();
-        g.add_commit(root(0));
-        g.add_commit(root(1));
+        g.add_commit(root_with_table(0));
+        g.add_commit(root_with_table(1));
 
         assert_eq!(
             g.root_commit().unwrap_err(),

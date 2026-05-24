@@ -4,7 +4,7 @@ use geomerge::{
     commit::hash::CommitHash,
     commit::pst,
     ir::{self, FlatTheory, Path},
-    store::{Store, StoreIntError},
+    store::{Store, error::StoreIntError},
     table::RowId,
 };
 use tracing_subscriber::EnvFilter;

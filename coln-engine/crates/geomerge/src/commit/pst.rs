@@ -7,6 +7,7 @@ use crate::commit::error::PersistError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::utils::*;
 use crate::store::Store;
+use crate::table::TableOid;
 
 const MAGIC: &[u8; 4] = b"GMst";
 const FORMAT_VERSION: u32 = 2;
@@ -15,13 +16,14 @@ const FORMAT_VERSION: u32 = 2;
 
 /// Store file layout (little-endian):
 ///
-/// `[MAGIC:4][version:u32][chunk_count:u32]`
+/// `[MAGIC:4][version:u32][next_oid:u64][chunk_count:u32]`
 /// `[chunk_count × ([chunk_type:u8][payload_len:u64][payload])]`
 pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersistError> {
     let commits = store.commits().iter_topological().collect::<Vec<_>>();
     let mut buf: Vec<u8> = Vec::new();
     buf.write_all(MAGIC)?;
     buf.write_all(&FORMAT_VERSION.to_le_bytes())?;
+    buf.write_all(&store.next_oid.to_le_bytes())?;
 
     let chunk_count: u32 = commits
         .len()
@@ -38,6 +40,16 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersistError> {
 
 /// Decode a store from bytes produced by [`encode_store`].
 pub fn decode_store(data: &[u8]) -> Result<Store, PersistError> {
+    let encoded = read_store_envelope(data)?;
+    decode_store_chunks(encoded.next_oid, encoded.chunks)
+}
+
+struct EncodedStore {
+    next_oid: TableOid,
+    chunks: Vec<(ChunkType, Vec<u8>)>,
+}
+
+fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, PersistError> {
     if data.len() < MAGIC.len() {
         return Err(PersistError::DataFormatError(
             "truncated: missing magic".into(),
@@ -56,6 +68,8 @@ pub fn decode_store(data: &[u8]) -> Result<Store, PersistError> {
         )));
     }
 
+    let next_oid = read_u64(data, &mut pos, "next_oid")?;
+
     let chunk_count = read_u32(data, &mut pos, "chunk count")? as usize;
     let mut chunks = Vec::with_capacity(chunk_count);
     for _ in 0..chunk_count {
@@ -68,7 +82,7 @@ pub fn decode_store(data: &[u8]) -> Result<Store, PersistError> {
         )));
     }
 
-    decode_store_chunks(chunks)
+    Ok(EncodedStore { next_oid, chunks })
 }
 
 fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) -> Result<(), PersistError> {
@@ -90,7 +104,10 @@ fn read_commit_chunk(data: &[u8], pos: &mut usize) -> Result<(ChunkType, Vec<u8>
     Ok((chunk_type, payload))
 }
 
-fn decode_store_chunks(chunks: Vec<(ChunkType, Vec<u8>)>) -> Result<Store, PersistError> {
+fn decode_store_chunks(
+    next_oid: TableOid,
+    chunks: Vec<(ChunkType, Vec<u8>)>,
+) -> Result<Store, PersistError> {
     let roots = chunks
         .iter()
         .filter(|(chunk_type, _)| *chunk_type == ChunkType::Root)
@@ -108,7 +125,7 @@ fn decode_store_chunks(chunks: Vec<(ChunkType, Vec<u8>)>) -> Result<Store, Persi
 
     let root_commit = Commit::decode(ChunkType::Root, roots[0].1.clone(), |_| None)?;
     let root_payload = root_commit.root_payload()?;
-    let mut store = Store::from_root_commit_data(root_payload)
+    let mut store = Store::from_root_commit_data(next_oid, root_payload)
         .map_err(|err| PersistError::Other(format!("law compile error: {err:?}")))?;
 
     let mut graph = CommitGraph::new();
@@ -221,6 +238,7 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
         bytes.write_all(&FORMAT_VERSION.to_le_bytes()).unwrap();
+        bytes.write_all(&0_u64.to_le_bytes()).unwrap();
         bytes
             .write_all(&(chunks.len() as u32).to_le_bytes())
             .unwrap();
@@ -232,23 +250,12 @@ mod tests {
     }
 
     fn read_encoded_chunks(data: &[u8]) -> Vec<(u8, Vec<u8>)> {
-        assert_eq!(&data[..MAGIC.len()], MAGIC);
-        let mut pos = MAGIC.len();
-        assert_eq!(
-            read_u32(data, &mut pos, "format version").expect("version"),
-            FORMAT_VERSION
-        );
-        let chunk_count = read_u32(data, &mut pos, "chunk count").expect("chunk count") as usize;
-        let mut chunks = Vec::with_capacity(chunk_count);
-        for _ in 0..chunk_count {
-            let chunk_type = read_u8(data, &mut pos, "chunk type").expect("chunk type");
-            let payload = read_len_prefixed_bytes(data, &mut pos, "payload")
-                .expect("payload")
-                .to_vec();
-            chunks.push((chunk_type, payload));
-        }
-        assert_eq!(pos, data.len());
-        chunks
+        let encoded = read_store_envelope(data).expect("encoded store");
+        encoded
+            .chunks
+            .into_iter()
+            .map(|(chunk_type, payload)| (u8::from(chunk_type), payload))
+            .collect()
     }
 
     #[test]
@@ -309,6 +316,7 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
         bytes.write_all(&FORMAT_VERSION.to_le_bytes()).unwrap();
+        bytes.write_all(&0_u64.to_le_bytes()).unwrap();
         bytes.write_all(&1_u32.to_le_bytes()).unwrap();
         bytes.write_all(&[u8::from(ChunkType::Root)]).unwrap();
 
@@ -413,6 +421,7 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
         bytes.write_all(&FORMAT_VERSION.to_le_bytes()).unwrap();
+        bytes.write_all(&0_u64.to_le_bytes()).unwrap();
         bytes.write_all(&0_u32.to_le_bytes()).unwrap();
 
         assert!(matches!(
