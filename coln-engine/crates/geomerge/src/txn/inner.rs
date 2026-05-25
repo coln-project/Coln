@@ -66,8 +66,7 @@ impl TxnInner {
             |path| store.table_at(path).map(|table| table.schema()),
         )?;
         let h = cmt.hash();
-        store.apply_batch(cmt.resolved_ops())?;
-        store.record_commit(cmt);
+        store.apply_commit(cmt)?;
         info!("applied batch");
         Ok(h)
         // 1. validate full batch (PK conflicts including intra-batch)

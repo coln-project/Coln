@@ -1,12 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use crate::commit::Commit;
 use crate::commit::chunk::ChunkType;
 use crate::commit::error::PersistError;
-use crate::commit::graph::CommitGraph;
 use crate::commit::utils::*;
 use crate::store::Store;
+use crate::store::error::StoreIntError;
 use crate::table::TableOid;
 
 const MAGIC: &[u8; 4] = b"GMst";
@@ -39,7 +38,7 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersistError> {
 }
 
 /// Decode a store from bytes produced by [`encode_store`].
-pub fn decode_store(data: &[u8]) -> Result<Store, PersistError> {
+pub fn decode_store(data: &[u8]) -> Result<Store, Box<StoreIntError>> {
     let encoded = read_store_envelope(data)?;
     decode_store_chunks(encoded.next_oid, encoded.chunks)
 }
@@ -107,33 +106,26 @@ fn read_commit_chunk(data: &[u8], pos: &mut usize) -> Result<(ChunkType, Vec<u8>
 fn decode_store_chunks(
     next_oid: TableOid,
     chunks: Vec<(ChunkType, Vec<u8>)>,
-) -> Result<Store, PersistError> {
+) -> Result<Store, Box<StoreIntError>> {
     let roots = chunks
         .iter()
         .filter(|(chunk_type, _)| *chunk_type == ChunkType::Root)
         .collect::<Vec<_>>();
     if roots.is_empty() {
-        return Err(PersistError::DataFormatError(
-            "commit graph has no root commit".into(),
-        ));
+        return Err(PersistError::DataFormatError("commit graph has no root commit".into()).into());
     }
     if roots.len() > 1 {
-        return Err(PersistError::DataFormatError(
-            "commit graph has multiple root commits".into(),
-        ));
+        return Err(
+            PersistError::DataFormatError("commit graph has multiple root commits".into()).into(),
+        );
     }
 
     let root_commit = Commit::decode(ChunkType::Root, roots[0].1.clone(), |_| None)?;
     let root_payload = root_commit.root_payload()?;
-    let mut store = Store::from_root_commit_data(next_oid, root_payload)
-        .map_err(|err| PersistError::Other(format!("law compile error: {err:?}")))?;
+    let mut store = Store::from_root_commit_data(next_oid, root_payload)?;
+    store.record_in_commit_graph(root_commit);
 
-    let mut graph = CommitGraph::new();
-    let root_hash = root_commit.hash();
-    graph.add_commit(root_commit);
-
-    let mut pending = BTreeMap::new();
-    let mut known_hashes = BTreeSet::from([root_hash]);
+    let mut commits = Vec::new();
     for (chunk_type, payload) in chunks {
         if chunk_type == ChunkType::Root {
             continue;
@@ -142,66 +134,11 @@ fn decode_store_chunks(
         let commit = Commit::decode(chunk_type, payload, |path| {
             store.table_at(path).map(|table| table.schema())
         })?;
-        let hash = commit.hash();
-        if commit.deps.is_empty() {
-            return Err(PersistError::DataFormatError(format!(
-                "data commit {hash} has no dependencies"
-            )));
-        }
-        if let Some(existing) = pending.get(&hash) {
-            let existing: &Commit<'static> = existing;
-            if existing.chunk_type() != commit.chunk_type()
-                || existing.payload() != commit.payload()
-            {
-                return Err(PersistError::DataFormatError(format!(
-                    "duplicate commit hash with conflicting payload: {hash}"
-                )));
-            }
-            continue;
-        }
-        known_hashes.insert(hash);
-        pending.insert(hash, commit);
+        commits.push(commit);
     }
 
-    for commit in pending.values() {
-        for dep in &commit.deps {
-            if !known_hashes.contains(dep) {
-                return Err(PersistError::DataFormatError(format!(
-                    "commit {} depends on missing commit {dep}",
-                    commit.hash()
-                )));
-            }
-        }
-    }
+    store.apply_commits(commits)?;
 
-    while !pending.is_empty() {
-        let ready_hashes = pending
-            .iter()
-            .filter_map(|(hash, commit)| {
-                commit
-                    .deps
-                    .iter()
-                    .all(|dep| graph.contains(dep))
-                    .then_some(*hash)
-            })
-            .collect::<Vec<_>>();
-
-        if ready_hashes.is_empty() {
-            return Err(PersistError::DataFormatError(
-                "commit graph has cyclic or disconnected dependencies".into(),
-            ));
-        }
-
-        for hash in ready_hashes {
-            let commit = pending.remove(&hash).expect("ready commit exists");
-            store
-                .apply_batch(commit.resolved_ops())
-                .map_err(|err| PersistError::Other(format!("commit replay error: {err}")))?;
-            graph.add_commit(commit);
-        }
-    }
-
-    store.replace_commit_graph(graph);
     Ok(store)
 }
 
@@ -258,6 +195,28 @@ mod tests {
             .collect()
     }
 
+    fn is_data_format_error(result: Result<Store, Box<StoreIntError>>) -> bool {
+        matches!(
+            result,
+            Err(err)
+                if matches!(
+                    err.as_ref(),
+                    StoreIntError::Encode(PersistError::DataFormatError(_))
+                )
+        )
+    }
+
+    fn is_missing_dep_error(result: Result<Store, Box<StoreIntError>>) -> bool {
+        matches!(
+            result,
+            Err(err)
+                if matches!(
+                    err.as_ref(),
+                    StoreIntError::Commit(crate::store::error::CommitApplyError::MissingDep)
+                )
+        )
+    }
+
     #[test]
     fn encode_store_writes_root_commit_chunk() {
         let store = Store::new();
@@ -295,20 +254,14 @@ mod tests {
         bytes.write_all(MAGIC).unwrap();
         bytes.write_all(&999_u32.to_le_bytes()).unwrap();
 
-        assert!(matches!(
-            decode_store(&bytes),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_data_format_error(decode_store(&bytes)));
     }
 
     #[test]
     fn store_decode_rejects_unknown_chunk_type() {
         let bytes = store_bytes_from_chunks(&[(99, Vec::new())]);
 
-        assert!(matches!(
-            decode_store(&bytes),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_data_format_error(decode_store(&bytes)));
     }
 
     #[test]
@@ -320,10 +273,7 @@ mod tests {
         bytes.write_all(&1_u32.to_le_bytes()).unwrap();
         bytes.write_all(&[u8::from(ChunkType::Root)]).unwrap();
 
-        assert!(matches!(
-            decode_store(&bytes),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_data_format_error(decode_store(&bytes)));
     }
 
     #[test]
@@ -331,10 +281,7 @@ mod tests {
         let mut bytes = encode_store(&Store::new()).unwrap();
         bytes.push(0);
 
-        assert!(matches!(
-            decode_store(&bytes),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_data_format_error(decode_store(&bytes)));
     }
 
     #[test]
@@ -344,10 +291,7 @@ mod tests {
         let duplicated = vec![chunks[0].clone(), chunks[0].clone()];
         let bytes = store_bytes_from_chunks(&duplicated);
 
-        assert!(matches!(
-            decode_store(&bytes),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_data_format_error(decode_store(&bytes)));
     }
 
     #[test]
@@ -368,10 +312,7 @@ mod tests {
             (u8::from(ChunkType::Commit), commit.payload().to_vec()),
         ]);
 
-        assert!(matches!(
-            decode_store(&bytes),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_missing_dep_error(decode_store(&bytes)));
     }
 
     #[test]
@@ -424,18 +365,12 @@ mod tests {
         bytes.write_all(&0_u64.to_le_bytes()).unwrap();
         bytes.write_all(&0_u32.to_le_bytes()).unwrap();
 
-        assert!(matches!(
-            decode_store(&bytes),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_data_format_error(decode_store(&bytes)));
     }
 
     #[test]
     fn store_decode_rejects_bad_magic() {
-        assert!(matches!(
-            decode_store(b"XXXX________"),
-            Err(PersistError::DataFormatError(_))
-        ));
+        assert!(is_data_format_error(decode_store(b"XXXX________")));
     }
 
     #[test]

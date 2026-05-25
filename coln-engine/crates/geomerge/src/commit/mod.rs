@@ -42,6 +42,7 @@ pub struct Commit<'a> {
     /// Canonical payload bytes (everything after the chunk header).
     bytes: Cow<'a, [u8]>,
     pub(crate) header: Header,
+    /// parents of this commit
     pub deps: Vec<CommitHash>,
     pub timestamp: i64,
     pub message: Option<String>,
@@ -138,6 +139,10 @@ impl<'a> Commit<'a> {
 
     pub fn chunk_type(&self) -> ChunkType {
         self.header.chunk_type
+    }
+
+    pub fn is_root(&self) -> bool {
+        self.chunk_type() == ChunkType::Root
     }
 
     pub(crate) fn root_payload(&self) -> Result<RootCommitData, PersistError> {

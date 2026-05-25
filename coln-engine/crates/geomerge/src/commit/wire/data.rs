@@ -529,6 +529,7 @@ fn encode_txn_value_column(
                 }
                 Ok(Column::<i64>::from_values(ints).save())
             }
+            // TODO this is using RLE for strings, is this the right thing to do?
             PrimType::PrimString => {
                 let mut strings = Vec::with_capacity(values.len());
                 for value in values {

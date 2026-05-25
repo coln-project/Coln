@@ -81,7 +81,7 @@ impl CommitGraph {
         self.commits.insert(hash, commit);
     }
 
-    pub fn iter_topological(&self) -> impl Iterator<Item = &Commit<'_>> {
+    pub fn iter_topological(&self) -> impl Iterator<Item = &Commit<'static>> {
         let mut remaining_parents: HashMap<CommitHash, usize> = self
             .commits
             .iter()
