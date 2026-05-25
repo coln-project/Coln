@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Once};
+use std::{collections::BTreeSet, path::PathBuf, sync::Once};
 
 use geomerge::{
     commit::hash::CommitHash,
@@ -53,6 +53,20 @@ fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
     tx.add(&ge, vec![gid1.into(), v1.into(), v2.into()])?;
     tx.commit()?;
     Ok(())
+}
+
+fn add_vertex_to_first_graph(store: &mut Store) -> Result<CommitHash, Box<StoreIntError>> {
+    let graphs = Path::from("Graphs");
+    let gv = Path::from("G.V");
+    let graph = store
+        .table_at(&graphs)
+        .expect("Graphs table")
+        .row_id_at(0)
+        .expect("first graph row");
+
+    let mut tx = store.transaction();
+    tx.add(&gv, vec![graph.into()])?;
+    tx.commit()
 }
 
 #[test]
@@ -212,4 +226,42 @@ fn test_persist_roundtrip() {
     let st = pst::decode_store(&data).expect("decode store success");
 
     assert_eq!(content, st.dump());
+}
+
+#[test]
+fn test_divergent_commits_merge_between_stores() {
+    let theory = fixture_theory(PATHS_IR);
+    let mut base = Store::try_from_theory(theory).expect("valid theory");
+    add_basic_data_to_path(&mut base).expect("add shared baseline data");
+
+    let mut left = base.clone();
+    let mut right = base.clone();
+    let left_commit = add_vertex_to_first_graph(&mut left).expect("left branch commit");
+    let right_commit = add_vertex_to_first_graph(&mut right).expect("right branch commit");
+    let expected_heads = BTreeSet::from([left_commit, right_commit]);
+
+    let left_heads = left.merge(&right).expect("merge right into left");
+    assert_eq!(
+        left_heads.into_iter().collect::<BTreeSet<_>>(),
+        expected_heads
+    );
+
+    let right_heads = right.merge(&left).expect("merge left into right");
+    assert_eq!(
+        right_heads.into_iter().collect::<BTreeSet<_>>(),
+        expected_heads
+    );
+
+    let left_vertices = left.table_at(&Path::from("G.V")).expect("left G.V");
+    let right_vertices = right.table_at(&Path::from("G.V")).expect("right G.V");
+    assert_eq!(left_vertices.row_count(), 4);
+    assert_eq!(right_vertices.row_count(), 4);
+
+    let left_row_ids = (0..left_vertices.row_count())
+        .map(|row| left_vertices.row_id_at(row).expect("left row id"))
+        .collect::<BTreeSet<_>>();
+    let right_row_ids = (0..right_vertices.row_count())
+        .map(|row| right_vertices.row_id_at(row).expect("right row id"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(left_row_ids, right_row_ids);
 }

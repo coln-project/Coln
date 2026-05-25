@@ -169,9 +169,10 @@ impl Store {
 
     /// Validates and appends a batch to this store.
     ///
-    /// This mutates `self` before law checking, so callers that need atomicity must
-    /// call it on a preview clone and publish that clone only after success.
-    pub(crate) fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), Box<StoreIntError>> {
+    /// This is a low level API that mutates `self` before law checking, so
+    /// callers that need atomicity must call it on a preview clone and publish
+    /// that clone only after success.
+    fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), Box<StoreIntError>> {
         info!(op_count = ops.len(), "applying batch");
         self.validate_batch(&ops)?;
 
@@ -321,14 +322,38 @@ impl Store {
     }
 
     /// Get commits in `other` that are not in `self`
-    pub fn commits_added(&self, other: &Store) -> Vec<Commit<'static>> {
-        other.commits_after(&self.heads())
+    pub fn commits_added(&self, other: &Self) -> Vec<Commit<'static>> {
+        // a depth first search from the heads of others backwards until hashes
+        // are in self
+        let mut stack = other.heads();
+        let mut seen = HashSet::new();
+        let mut added = Vec::new();
+
+        while let Some(hash) = stack.pop() {
+            if !seen.insert(hash) || self.commits.contains(&hash) {
+                continue;
+            }
+
+            added.push(hash);
+            if let Some(commit) = other.commit_by_hash(&hash) {
+                stack.extend(commit.deps.iter());
+            }
+        }
+
+        added.reverse();
+        added
+            .into_iter()
+            .filter_map(|hash| other.commit_by_hash(&hash).cloned())
+            .collect()
     }
 
-    pub(crate) fn apply_commit_ready(
-        &mut self,
-        cmt: Commit<'static>,
-    ) -> Result<(), Box<StoreIntError>> {
+    pub fn merge(&mut self, other: &Self) -> Result<Vec<CommitHash>, Box<StoreIntError>> {
+        let commits = self.commits_added(other);
+        self.apply_commits(commits)?;
+        Ok(self.heads())
+    }
+
+    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), Box<StoreIntError>> {
         self.apply_batch(cmt.resolved_ops())?;
         self.record_in_commit_graph(cmt);
         Ok(())
