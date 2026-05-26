@@ -192,7 +192,7 @@ impl Store {
         Ok(())
     }
 
-    pub(crate) fn validate_batch(&self, ops: &[Op]) -> Result<(), StoreIntError> {
+    fn validate_batch(&self, ops: &[Op]) -> Result<(), StoreIntError> {
         debug!(op_count = ops.len(), "validating batch");
         let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
 
