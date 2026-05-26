@@ -30,7 +30,7 @@ instance Compile S.El V.El where
     S.App t0 t1 -> do
       let k0 = compile t0
       let k1 = compile t1
-      \vs -> V.ebind (`V.app` (k1 vs)) (k0 vs)
+      \vs -> V.app (k0 vs) (k1 vs)
     S.Lam dom abs -> do
       let k_dom = compile dom
       let k_clo = compileAbs abs
@@ -40,7 +40,7 @@ instance Compile S.El V.El where
       \vs -> V.epure $ V.Cons $ ($ vs) <$> k_fields
     S.Proj t x -> do
       let k = compile t
-      \vs -> V.ebind (`V.proj` x) (k vs)
+      \vs -> V.proj (k vs) x
     S.Lit l -> \_ -> V.Lit l
     S.Is t -> do
       let k = compile t
@@ -57,6 +57,13 @@ compileRecordType rt = do
   let k_fieldTypes = compile <$> rt.fieldTypes
   \vs -> V.RecordType rt.level vs k_fieldTypes
 
+compileEqualityType :: S.EqualityType S.El S.Ty -> V.Locals -> V.EqualityType
+compileEqualityType eq = do
+  let k_at = compile eq.at
+  let k_lhs = compile eq.lhs
+  let k_rhs = compile eq.rhs
+  \vs -> V.EqualityType (k_at vs) (k_lhs vs) (k_rhs vs)
+
 instance Compile S.Ty V.Ty where
   compile = \case
     S.U u -> \_ -> V.U u
@@ -65,5 +72,5 @@ instance Compile S.Ty V.Ty where
       \vs -> V.ebind V.decode (k vs)
     S.Function ft -> V.Function . compileFunctionType ft
     S.Record rt -> V.Describe . V.Record . compileRecordType rt
-      
-      
+    S.Eq eq -> V.Eq . compileEqualityType eq
+    S.BuiltinTy bt -> \_ -> V.BuiltinTy bt
