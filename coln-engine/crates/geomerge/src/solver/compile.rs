@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 use crate::ir::{self, Atom, LawEntry, Prop, Term};
 
@@ -197,6 +197,146 @@ fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError>
     }
 }
 
+impl fmt::Display for CompLaw {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} := forall", DisplayPath(&self.path))?;
+        for var in &self.vars {
+            write!(
+                f,
+                " ({} : {})",
+                var_name(var.index),
+                DisplayColType(&var.ty)
+            )?;
+        }
+        if self.vars.is_empty() {
+            write!(f, " ")?;
+        }
+        write!(f, " => {} |- {}", self.antecedent, self.consequent)
+    }
+}
+
+impl fmt::Display for CompProp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompProp::Atom(atom) => write!(f, "{atom}"),
+            CompProp::Eq(eq) => write!(f, "{eq}"),
+            CompProp::And(children) => {
+                for (idx, child) in children.iter().enumerate() {
+                    if idx > 0 {
+                        write!(f, " /\\ ")?;
+                    }
+                    write!(f, "{child}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl fmt::Display for CompAtom {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(row_id) = &self.row_id {
+            write!(f, "{row_id} @ ")?;
+        }
+        write!(f, "{} [", DisplayPath(&self.table))?;
+        for (idx, value) in self.values.iter().enumerate() {
+            if idx > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", value.term)?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl fmt::Display for CompEq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} = {}", self.left, self.right)
+    }
+}
+
+impl fmt::Display for CompTerm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompTerm::Var(index) => write!(f, "{}", var_name(*index)),
+            CompTerm::Lit(lit) => write!(f, "{}", DisplayLit(lit)),
+        }
+    }
+}
+
+struct DisplayLit<'a>(&'a ir::Lit);
+
+impl fmt::Display for DisplayLit<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            ir::Lit::Int { value } => write!(f, "{value}"),
+            ir::Lit::String { value } => write!(f, "{value:?}"),
+        }
+    }
+}
+
+struct DisplayColType<'a>(&'a ir::ColType);
+
+impl fmt::Display for DisplayColType<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            ir::ColType::EntityType { path } => write!(f, "{}", DisplayPath(path)),
+            ir::ColType::PrimType { prim } => write!(f, "{}", DisplayPrimType(*prim)),
+            ir::ColType::Tuple { fields } => {
+                write!(f, "{{")?;
+                for (idx, field) in fields.iter().enumerate() {
+                    if idx > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(
+                        f,
+                        "{} : {}",
+                        display_qname(&field.name),
+                        DisplayColType(&field.col_type)
+                    )?;
+                }
+                write!(f, "}}")
+            }
+        }
+    }
+}
+
+struct DisplayPrimType(ir::PrimType);
+
+impl fmt::Display for DisplayPrimType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            ir::PrimType::PrimInt => write!(f, "int"),
+            ir::PrimType::PrimString => write!(f, "string"),
+        }
+    }
+}
+
+struct DisplayPath<'a>(&'a ir::Path);
+
+impl fmt::Display for DisplayPath<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (idx, qname) in self.0.iter().enumerate() {
+            if idx > 0 {
+                write!(f, " .")?;
+            }
+            write!(f, "{}", display_qname(qname))?;
+        }
+        Ok(())
+    }
+}
+
+fn display_qname(qname: &ir::QName) -> String {
+    qname.join("/")
+}
+
+fn var_name(index: usize) -> String {
+    match index {
+        0..=25 => ((b'a' + index as u8) as char).to_string(),
+        _ => format!("v{index}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,6 +385,120 @@ mod tests {
             }
             other => panic!("expected atom antecedent, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn displays_compiled_law_like_lowered_output() {
+        let compiled = CompLaw {
+            path: Path::from("G.E.foreignKeys"),
+            vars: vec![
+                VarSpec {
+                    index: 0,
+                    ty: ColType::EntityType {
+                        path: Path::from("Graphs"),
+                    },
+                },
+                VarSpec {
+                    index: 1,
+                    ty: ColType::EntityType {
+                        path: Path::from("G.V"),
+                    },
+                },
+                VarSpec {
+                    index: 2,
+                    ty: ColType::EntityType {
+                        path: Path::from("G.V"),
+                    },
+                },
+            ],
+            antecedent: CompProp::Atom(CompAtom {
+                table: Path::from("G.E"),
+                row_id: None,
+                values: vec![
+                    CompVal {
+                        column_idx: 0,
+                        term: CompTerm::Var(0),
+                    },
+                    CompVal {
+                        column_idx: 1,
+                        term: CompTerm::Var(1),
+                    },
+                    CompVal {
+                        column_idx: 2,
+                        term: CompTerm::Var(2),
+                    },
+                ],
+            }),
+            consequent: CompProp::And(vec![
+                CompProp::Atom(CompAtom {
+                    table: Path::from("G.V"),
+                    row_id: Some(CompTerm::Var(1)),
+                    values: vec![CompVal {
+                        column_idx: 0,
+                        term: CompTerm::Var(0),
+                    }],
+                }),
+                CompProp::Atom(CompAtom {
+                    table: Path::from("G.V"),
+                    row_id: Some(CompTerm::Var(2)),
+                    values: vec![CompVal {
+                        column_idx: 0,
+                        term: CompTerm::Var(0),
+                    }],
+                }),
+            ]),
+            tables: vec![Path::from("G.E"), Path::from("G.V")],
+        };
+
+        assert_eq!(
+            compiled.to_string(),
+            "G .E .foreignKeys := forall (a : Graphs) (b : G .V) (c : G .V) => G .E [a, b, c] |- b @ G .V [a] /\\ c @ G .V [a]"
+        );
+    }
+
+    #[test]
+    fn displays_compiled_equality_consequent() {
+        let compiled = CompLaw {
+            path: Path::from("PathHom.empty"),
+            vars: vec![
+                VarSpec {
+                    index: 0,
+                    ty: ColType::EntityType {
+                        path: Path::from("Path0.t"),
+                    },
+                },
+                VarSpec {
+                    index: 1,
+                    ty: ColType::EntityType {
+                        path: Path::from("Path1.t"),
+                    },
+                },
+            ],
+            antecedent: CompProp::Atom(CompAtom {
+                table: Path::from("PathHom.t"),
+                row_id: None,
+                values: vec![
+                    CompVal {
+                        column_idx: 0,
+                        term: CompTerm::Var(0),
+                    },
+                    CompVal {
+                        column_idx: 1,
+                        term: CompTerm::Var(1),
+                    },
+                ],
+            }),
+            consequent: CompProp::Eq(CompEq {
+                left: CompTerm::Var(0),
+                right: CompTerm::Var(1),
+            }),
+            tables: vec![Path::from("PathHom.t")],
+        };
+
+        assert_eq!(
+            compiled.to_string(),
+            "PathHom .empty := forall (a : Path0 .t) (b : Path1 .t) => PathHom .t [a, b] |- a = b"
+        );
     }
 
     #[test]
