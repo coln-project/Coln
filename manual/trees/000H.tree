@@ -1,0 +1,5 @@
+\taxon{Audience}
+\title{The developer}
+\import{prelude}
+
+\p{The \defcase{developer} is someone who is interested in contributing to geolog, or creating a geolog-like system.}

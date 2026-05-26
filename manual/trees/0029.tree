@@ -1,0 +1,16 @@
+\title{The universal property of product}
+\taxon{Example}
+
+\p{In set theory, if #{A} and #{B} are sets then to produce an element of #{A \times B} it suffices to produce an element of #{A} and an element of #{B}, and vice-versa.}
+
+\p{In propositional logic, if #{P} and #{Q} are propositions then to produce a proof of #{P \wedge Q} it suffices to produce a proof of #{P} and a proof of #{Q}, and vice-versa.}
+
+\p{In a programming language with tuple types, if \code{a} and \code{b} are types then to produce an element of \code{(a,b)} it suffices to produce an element of \code{a} and an element of \code{b}, and vice-versa.}
+
+\p{In number theory, in order to show that #{k} is a divisor of the GCD (greatest common divisor) of #{m} and #{n}, it suffices show that #{k} is a divisor of #{m} and #{n}, and vice versa.}
+
+\p{Again in set theory, if #{U} and #{V} are subsets of a larger set #{X}, then to show that #{x} is an element of #{U \cap V} it suffices to show that #{x} is an element of #{U} and an element of #{V}, and vice-versa.}
+
+\p{In group theory, in order to produce a homomorphism from #{G} to the product group #{H_0 \times H_1}, it suffices to produce a homomorphism from #{G} to #{H_0} and from #{G} to #{H_1}, and vice-versa.}
+
+\p{This list could consider ad nauseum, but the reader should get the point by now; there's a pattern going on.}

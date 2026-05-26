@@ -1,0 +1,23 @@
+\title{Type theory as a language for anything}
+
+\p{(This is meant for [[000D]], [[000E]], [[000H]], [[000G]])}
+
+\p{A programmer with a passing familiarity with type theory may have formed some preconceptions about what a type is, and what it means to give an element of that type. For instance, in a language like Haskell or Rust, types are how we put structure on pieces of computer memory, so that we remember that the value at a certain address is a pointer or integer or floating point number. In a proof assistant, types are used as a foundation for mathematics; types play the role of the “sets” that informal mathematicians use.}
+
+\p{The truth is that types do not have any intrinsic meaning. Rather, type theory is a convenient tool for working with any collection of things which relate to each other in certain precise, well-structured ways.}
+
+\p{In particular, type theory is a tool for working with things defined by \em{universal properties}.}
+
+\transclude{0029}
+
+\p{The concept of a universal property is formalized in different ways, often using category theory, but we need not bother with formalization at this stage.}
+
+\p{The reader may have heard of “[the Curry-Howard correspondence](curry-howard)”, often informally referred to “propositions as types”. The Curry-Howard correspondence shows how various type formers and logical connectives correspond. With all due respect to Curry-Howard the name “correspondence” is somewhat of a misnomer because it assumes a false equivalence between the two things that are claimed to be in correspondence. In particular, propositional logic is a \em{mathematical domain} in which type theory may be applied to form a convenient syntax; it is by no means the only domain.}
+
+\p{The reason type theory may be usefully applied to propositional logic because all of the connectives of propositional logic (and, or, not, forall, exists, etc.) satisfy universal properties; this is the same as the reason why type theory may be applied to any other area.}
+
+\p{The way that type theory may be applied to a particular area is via the development of \em{a particular} type theory. Confusion between type theory as a subject and the concept of \em{a type theory} as a mathematical object is an unfortunate side effect of the nomenclature, because “ breaks with the convention that in group theory, we study groups, in field theory we study fields, or in category theory we study categories.} 
+
+\p{A particular type theory is merely a syntactic formalization of some collection of universal properties, consisting of a collection of \em{rules} by which we judge that a certain piece of syntax is \em{well-typed}. The beauty of universal properties is that each universal property is quite self-contained, so a type theory may be designed by systematically observing which universal properties the objects of interest support, and then adding the standard type-theoretic rules for those universal properties to one's type theory.}
+
+\p{And this is the method that we have followed in order to design the type theory for geolog: observe the universal properties that our domain of interest (relational databases) satisfy, and add rules corresponding to these universal properties. Fortunately, the result of this systematic development seems to produce a language which expresses many of the important database operations.}

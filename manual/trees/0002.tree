@@ -70,58 +70,7 @@
   \p{More generally, the geolog manual should be thought of as more of a [[hyperbook]] than a [[zettelkasten]].}
 }
 
-\subtree[000B]{
-  \title{Audience}
-
-  \p{There are a variety of intended audiences for this manual; a given reader may fall into several of the following categories.}
-
-  \subtree[000C]{
-    \taxon{Audience}
-    \title{The categorical logician}
-
-    \p{The \defcase{categorical logician} is a reader who is comfortable with modern approaches to the categorical semantics of type theory, such as:}
-
-    \ul{
-      \li{[[shulman-2016-categorical]]}
-      \li{[[kovacs-2022-type-theoretic]]}
-      \li{[[uemura-2021-abstract]]}
-    }
-
-    \p{The categorical logician also has a reasonable grasp of topos theory and 2-category theory.}
-  }
-
-  \subtree[000D]{
-    \taxon{Audience}
-    \title{The type theorist}
-
-    \p{The \defcase{type theorist} is a reader who is comfortable with traditional type theory rules given in Gentzen’s tree notation and who might also have some experience with normalization by evaluation, but who is not yet familiar with the modern approaches of [[000C]].}
-  }
-
-  \subtree[000E]{
-    \taxon{Audience}
-    \title{The database engineer}
-
-    \p{The \defcase{database engineer} is a reader who does not necessarily know any type theory, but is familiar with [[sql]], [[datalog]], [[conjunctive-queries]], [[egglog]], [[automerge]], and perhaps some of the methods for incrementalizing queries like [[dbsp]].}
-  }
-
-  \subtree[000H]{
-    \taxon{Audience}
-    \title{The developer}
-
-    \p{The \defcase{developer} is someone who is interested in contributing to geolog, or creating a geolog-like system.}
-  }
-
-  \subtree[000G]{
-    \taxon{Audience}
-    \title{The programmer-user}
-
-    \p{The \defcase{programmer-user} is a reader who intends to incorporate geolog into a larger application. The programmer-user should be familiar with the language that they intend to use geolog from (currently, this is only TypeScript), and should be willing to learn a new language. We say “programmer-user” to distinguish this audience from the user of an application that the “programmer-user” creates; this user needs not read this manual.}
-  }
-
-  \p{The [programmer-user](000G) who also falls into the earlier categories will benefit from a deeper understanding of geolog. However, geolog is also comprehensible in a self-contained way, just as one does not need to understand cartesian closed categories in order to use \code{lambda x: x + 1} in Python, and it is a goal of this manual to present a clear conceptual picture for the non-mathematical programmer-user.}
-
-  \p{At various points in the manual we clarify which audience a certain section is for; a reader not in that audience may safely skip that section.}
-}
+\transclude{000B}
 
 \subtree[000I]{
   \title{Organization}

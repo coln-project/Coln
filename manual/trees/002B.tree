@@ -1,0 +1,16 @@
+\title{A CwF for geometric theories}
+\import{prelude}
+
+\p{In this section, we give an overview of the basic setup for the type theory: a category with families (CwF).}
+
+\p{In [The Elephant](johnstone-2002-sketches), Johnstone makes the following definitions for “theory”; we will call this an elephant theory in order to distinguish it from other notions of theory we might consider.}
+
+\transclude{002C}
+
+\transclude{002E}
+
+\transclude{002F}
+
+\transclude{002D}
+
+\transclude{002G}

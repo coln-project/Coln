@@ -1,0 +1,15 @@
+\title{Geometric theory}
+\taxon{Definition}
+\import{prelude}
+
+\p{\defcase{Geometric theories} may be consicely defined as the elephant theories built up via a sequence of [product-inserter-equifier limits](pie-limit) starting from the object classifier.}
+
+\p{We expand this to give more intuition.}
+
+\p{If #{T} is a theory, a \defcase{simple functional extension} of #{T} is another theory #{T'} given as the \em{inserter} of two geometric constructs #{F,G \colon T \to \bb{O}}. Intuitively, #{T'} is the theory given by freely adding a new morphism between the “objects” #{F} and #{G}.}
+
+\p{If #{T} is a theory, a \defcase{simple equational extension} of #{T} is another theory #{T'} given as the \em{equifier} of two indexed natural transformations #{\alpha, \beta \colon F \Rightarrow G}, where #{F} and #{G} are geometric constructs. Intuitively, #{T'} is the theory given by adding a new equality between morphisms of “objects”.}
+
+\p{A \defcase{geometric theory} is a theory built up by a finite sequence #{T_0,\ldots,T_n} of simple functional extensions and simple equational extensions starting from #{T_0 = \bb{O}^m} for some finite #{m}.}
+
+\p{(See [Elephant](johnstone-2002-sketches) Definition 4.2.7, note that Johnstone gives a slightly different definition, using \em{simple geometric quotients} in place of simple equational extensions, which use inverters instead of equifiers. The name “simple equational extension” is not known to us to be previously used, but it follows the schema of “simple functional extension.”)}

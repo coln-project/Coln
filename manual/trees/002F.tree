@@ -1,0 +1,9 @@
+\title{Geometric construct}
+\taxon{Definition}
+\import{prelude}
+
+\p{If #{T} is a geometric theory, then a \defcase{geometric construct} is a #{\ms{BTop}/\mc{S}}-indexed functor #{F \colon T \to \bb{O}}.}
+
+\p{The idea is that #{F}, given a model #{M} of #{T} in an #{\mc{S}}-topos #{\mc{E}}, produces an object of #{\mc{E}}.}
+
+\p{(See [Elephant](johnstone-2002-sketches) Definition B4.2.5)}

@@ -12,3 +12,8 @@
 
 \def\todo{\<html:sup>[class]{smallcaps}{todo}}
 \def\kw[x]{\strong{\x}}
+
+\def\ms[t]{\mathsf{\t}}
+\def\mc[t]{\mathcal{\t}}
+\def\bb[t]{\mathbb{\t}}
+\def\op{^\mathrm{op}}

@@ -1,0 +1,13 @@
+\title{Audience}
+
+\p{There are a variety of intended audiences for this manual; a given reader may fall into several of the following categories.}
+
+\transclude{000C}
+\transclude{000D}
+\transclude{000E}
+\transclude{000H}
+\transclude{000G}
+
+\p{The [programmer-user](000G) who also falls into the earlier categories will benefit from a deeper understanding of geolog. However, geolog is also comprehensible in a self-contained way, just as one does not need to understand cartesian closed categories in order to use \code{lambda x: x + 1} in Python, and it is a goal of this manual to present a clear conceptual picture for the non-mathematical programmer-user.}
+
+\p{At various points in the manual we clarify which audience a certain section is for; a reader not in that audience may safely skip that section.}

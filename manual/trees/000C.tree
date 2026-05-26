@@ -1,0 +1,13 @@
+\taxon{Audience}
+\title{The categorical logician}
+\import{prelude}
+
+\p{The \defcase{categorical logician} is a reader who is comfortable with modern approaches to the categorical semantics of type theory, such as:}
+
+\ul{
+  \li{[[shulman-2016-categorical]]}
+  \li{[[kovacs-2022-type-theoretic]]}
+  \li{[[uemura-2021-abstract]]}
+}
+
+\p{The categorical logician also has a reasonable grasp of topos theory and 2-category theory.}

@@ -1,0 +1,5 @@
+\taxon{Audience}
+\title{The type theorist}
+\import{prelude}
+
+\p{The \defcase{type theorist} is a reader who is comfortable with traditional type theory rules given in Gentzen’s tree notation and who might also have some experience with normalization by evaluation, but who is not yet familiar with the modern approaches of [[000C]].}
