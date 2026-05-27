@@ -4,7 +4,7 @@ use std::{
     fmt,
 };
 
-use crate::commit::{Commit, CommitHash, chunk::ChunkType};
+use crate::commit::{Commit, CommitHash};
 
 /// A DAG of commits, tracking parent relationships and the current heads.
 ///
@@ -117,11 +117,9 @@ impl CommitGraph {
             .filter_map(|hash| self.commits.get(&hash))
     }
 
+    // Currently this is O(commits), but this function is not on a hot path yet
     pub fn root_commit(&self) -> Result<&Commit<'static>, CommitGraphError> {
-        let mut roots = self
-            .commits
-            .values()
-            .filter(|commit| commit.chunk_type() == ChunkType::Root);
+        let mut roots = self.commits.values().filter(|cmt| cmt.is_root());
 
         let root = roots.next().ok_or(CommitGraphError::MissingRoot)?;
         if roots.next().is_some() {
