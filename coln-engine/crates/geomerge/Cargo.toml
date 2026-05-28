@@ -7,6 +7,7 @@ edition = "2024"
 geolog-lang = { path = "../geolog-lang", features = ["serde"] }
 hex = "0.4.3"
 hexane = { git = "https://github.com/automerge/automerge", branch = "hexane_v1", package = "hexane" }
+leb128 = "0.2.6"
 postcard = { version = "1.1.3", features = ["alloc"] }
 rand = "0.10.1"
 rustyline = "18.0.0"

@@ -1,21 +1,22 @@
 use std::io::Write;
 
+use crate::commit::leb128 as commit_leb128;
 use crate::{
     commit::{
-        error::PersistError,
+        error::CodecError,
         hash::{CommitHash, HASH_SIZE},
         hash_dict::{HashMapper, read_hash_dict, write_hash_dict},
-        utils::{
-            read_i64, read_len_prefixed_bytes, read_slice, read_u32, write_len_prefixed_bytes,
-        },
+        utils::read_slice,
     },
     ir::{ColType, Path, PrimType, Schema},
     table::RowId,
     txn::ops::{OP_KIND_ADD, PendingOp, RowRef, TempRowId, TxnCellValue},
 };
+
 use hexane::v1::{Column, DeltaColumn};
 
 /// This encodes the hash index of all hashes referring to the current commit
+/// TODO make -1
 const LOCAL_COMMIT_HASH_INDEX: u32 = u32::MAX;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,40 +52,41 @@ impl CommitData {
 
 // ── Canonical payload encoding ───────────────────────────────────────────
 //
-// Layout (all integers little-endian):
+// Layout (scalar integers use LEB128):
 //
-//   [deps_count: u32]
+//   [deps_count]
 //   [CommitHash × deps_count]            (32 bytes each)
 //   [nonce: 16 bytes]                    (random; part of payload only, not a Commit field)
-//   [timestamp: i64]
-//   [message_len: u32]                   (0 when None)
+//   [timestamp]
+//   [message_len]                        (0 when None)
 //   [message: utf-8 bytes]
-//   [other_hash_count: u32]
+//   [other_hash_count]
 //   [CommitHash × other_hash_count]      (32 bytes each)
 //   [commit body]                        (operations, see encode_commit_body)
-//
+// TODO author id length prefixed byte string
+// TODO extra_bytes
 pub(crate) fn serialize<'s, F>(
     data: &CommitData,
+    // TODO hashmapper order
     hash_mapper: &HashMapper,
     schema_for: F,
-) -> Result<Vec<u8>, PersistError>
+) -> Result<Vec<u8>, CodecError>
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
     let mut buf: Vec<u8> = Vec::new();
 
-    buf.write_all(&(data.deps.len() as u32).to_le_bytes())
-        .unwrap();
+    commit_leb128::write_len(&mut buf, data.deps.len())?;
     for dep in &data.deps {
         buf.write_all(dep.as_bytes()).unwrap();
     }
 
     buf.write_all(&data.nonce).unwrap();
 
-    buf.write_all(&data.timestamp.to_le_bytes()).unwrap();
+    commit_leb128::write_i64(&mut buf, data.timestamp)?;
 
     let msg = data.message.as_deref().unwrap_or("");
-    buf.write_all(&(msg.len() as u32).to_le_bytes()).unwrap();
+    commit_leb128::write_len(&mut buf, msg.len())?;
     buf.write_all(msg.as_bytes()).unwrap();
 
     write_hash_dict(&mut buf, hash_mapper).expect("hash dictionary serializes");
@@ -98,13 +100,13 @@ where
 /// Parse canonical payload bytes (the slice passed to [`crate::persist::chunk::hash`],
 /// not including the chunk type or outer length prefix).
 ///
-pub(crate) fn deserialize<'s, F>(data: &[u8], schema_for: F) -> Result<CommitData, PersistError>
+pub(crate) fn deserialize<'s, F>(data: &[u8], schema_for: F) -> Result<CommitData, CodecError>
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
     let mut pos = 0usize;
 
-    let deps_count = read_u32(data, &mut pos, "deps count")? as usize;
+    let deps_count = commit_leb128::read_len(data, &mut pos, "deps count")? as usize;
     let mut deps = Vec::with_capacity(deps_count);
     for _ in 0..deps_count {
         let bytes = read_slice(data, &mut pos, HASH_SIZE, "dep hash")?;
@@ -117,16 +119,16 @@ where
     let mut nonce = [0u8; 16];
     nonce.copy_from_slice(nonce_bytes);
 
-    let timestamp = read_i64(data, &mut pos, "timestamp")?;
+    let timestamp = commit_leb128::read_i64(data, &mut pos, "timestamp")?;
 
-    let msg_len = read_u32(data, &mut pos, "message length")? as usize;
+    let msg_len = commit_leb128::read_len(data, &mut pos, "message length")? as usize;
     let msg_bytes = read_slice(data, &mut pos, msg_len, "message")?;
     let message = if msg_len == 0 {
         None
     } else {
         Some(
             std::str::from_utf8(msg_bytes)
-                .map_err(|_| PersistError::DataFormatError("commit message: invalid utf-8".into()))?
+                .map_err(|_| CodecError::DataFormatError("commit message: invalid utf-8".into()))?
                 .to_owned(),
         )
     };
@@ -148,32 +150,33 @@ where
 /// Encode the normal commit body after the shared commit metadata.
 ///
 /// Layout:
-/// `[op_count:u32]`
+/// `[op_count]`
 /// `[op_kind_column: len-prefixed hexane Column<u32>]`
 /// `[table_sequence_column: len-prefixed hexane Column<u32>]`
-/// `[group_count:u32]`
+/// `[group_count]`
 /// followed by one len-prefixed [`encode_op_group`] blob per first-seen table.
 fn encode_commit_body<'s, F>(
     pending: &[PendingOp],
     schema_for: F,
     hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, PersistError>
+) -> Result<Vec<u8>, CodecError>
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
+    // TODO grouping order should be determinstic
     let mut groups: Vec<(Path, Vec<PendingOp>)> = Vec::new();
     /*  table_sequence[i] is the group index of the ith operation. It effectively
         stores the original order the operations are in.
         operation. For example, the following two set of operations will have
         two different table_sequence.
         add table1 xx
-        add table2 yy
+        add table2 yy 12
         add table1 zz
         table_sequence = [0, 1, 0]
 
         add table1 xx
         add table1 zz
-        add table2 yy
+        add table2 yy 12
         table_sequence = [0, 0, 1]
 
     */
@@ -201,34 +204,31 @@ where
     }
 
     let mut buf = Vec::new();
+    // TODO check
     let op_count: u32 = pending
         .len()
         .try_into()
-        .map_err(|_| PersistError::Other("too many ops in commit body".into()))?;
-    buf.write_all(&op_count.to_le_bytes())?;
+        .map_err(|_| CodecError::Other("too many ops in commit body".into()))?;
+    commit_leb128::write_u32(&mut buf, op_count)?;
 
     let op_kind_col = Column::<u32>::from_values(op_kinds).save();
-    write_len_prefixed_bytes(&mut buf, &op_kind_col, "op kind column too large")?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &op_kind_col)?;
 
     let table_sequence_col = Column::<u32>::from_values(table_sequence).save();
-    write_len_prefixed_bytes(
-        &mut buf,
-        &table_sequence_col,
-        "table sequence column too large",
-    )?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &table_sequence_col)?;
 
     let group_count: u32 = groups
         .len()
         .try_into()
-        .map_err(|_| PersistError::Other("too many op groups in commit body".into()))?;
-    buf.write_all(&group_count.to_le_bytes())?;
+        .map_err(|_| CodecError::Other("too many op groups in commit body".into()))?;
+    commit_leb128::write_u32(&mut buf, group_count)?;
 
     for (table, ops) in &groups {
         let schema = schema_for(table).ok_or_else(|| {
-            PersistError::SchemaError(format!("missing schema for table {table:?}"))
+            CodecError::SchemaError(format!("missing schema for table {table:?}"))
         })?;
         let group_blob = encode_op_group(table, schema, ops, hash_mapper)?;
-        write_len_prefixed_bytes(&mut buf, &group_blob, "op group too large")?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &group_blob)?;
     }
 
     Ok(buf)
@@ -238,40 +238,41 @@ fn decode_commit_body<'s, F>(
     data: &[u8],
     hashes: &[CommitHash],
     schema_for: F,
-) -> Result<Vec<PendingOp>, PersistError>
+) -> Result<Vec<PendingOp>, CodecError>
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
     let mut pos = 0usize;
-    let op_count = read_u32(data, &mut pos, "op count")? as usize;
+    let op_count = commit_leb128::read_len(data, &mut pos, "op count")?;
 
-    let op_kind_blob = read_len_prefixed_bytes(data, &mut pos, "op kind column")?;
+    let op_kind_blob = commit_leb128::read_len_prefixed_bytes(data, &mut pos, "op kind column")?;
     let op_kinds: Vec<u32> = Column::<u32>::load(op_kind_blob)?.iter().collect();
     if op_kinds.len() != op_count {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "op kind column length mismatch: expected {op_count}, got {}",
             op_kinds.len()
         )));
     }
 
-    let table_sequence_blob = read_len_prefixed_bytes(data, &mut pos, "table sequence column")?;
+    let table_sequence_blob =
+        commit_leb128::read_len_prefixed_bytes(data, &mut pos, "table sequence column")?;
     let table_sequence: Vec<u32> = Column::<u32>::load(table_sequence_blob)?.iter().collect();
     if table_sequence.len() != op_count {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "table sequence column length mismatch: expected {op_count}, got {}",
             table_sequence.len()
         )));
     }
 
-    let group_count = read_u32(data, &mut pos, "op group count")? as usize;
+    let group_count = commit_leb128::read_len(data, &mut pos, "op group count")?;
     let mut groups = Vec::with_capacity(group_count);
     for _ in 0..group_count {
-        let group_blob = read_len_prefixed_bytes(data, &mut pos, "op group")?;
+        let group_blob = commit_leb128::read_len_prefixed_bytes(data, &mut pos, "op group")?;
         groups.push(decode_op_group(group_blob, hashes, &schema_for)?);
     }
 
     if pos != data.len() {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "trailing bytes after commit body: {} bytes",
             data.len() - pos
         )));
@@ -282,23 +283,21 @@ where
     for op_idx in 0..op_count {
         let op_kind = op_kinds[op_idx];
         if op_kind != OP_KIND_ADD {
-            return Err(PersistError::DataFormatError(format!(
+            return Err(CodecError::DataFormatError(format!(
                 "unknown op kind {op_kind}"
             )));
         }
 
         let group_idx = table_sequence[op_idx] as usize;
         let group = groups.get(group_idx).ok_or_else(|| {
-            PersistError::DataFormatError(format!(
+            CodecError::DataFormatError(format!(
                 "table sequence index {group_idx} out of bounds (group count {})",
                 groups.len()
             ))
         })?;
         let row_idx = group_offsets[group_idx];
         let values = group.rows.get(row_idx).cloned().ok_or_else(|| {
-            PersistError::DataFormatError(format!(
-                "op group {group_idx} exhausted at row {row_idx}"
-            ))
+            CodecError::DataFormatError(format!("op group {group_idx} exhausted at row {row_idx}"))
         })?;
         group_offsets[group_idx] += 1;
 
@@ -311,7 +310,7 @@ where
 
     for (group_idx, (offset, group)) in group_offsets.iter().zip(&groups).enumerate() {
         if *offset != group.rows.len() {
-            return Err(PersistError::DataFormatError(format!(
+            return Err(CodecError::DataFormatError(format!(
                 "op group {group_idx} has {} unused rows",
                 group.rows.len() - *offset
             )));
@@ -324,14 +323,14 @@ where
 /// Encode a same-table group of add operations as schema-shaped column blobs.
 ///
 /// Layout:
-/// `[table_path_len:u32][table_path: utf-8][row_count:u32][column_count:u32]`
+/// `[table_path_len][table_path: utf-8][row_count][column_count]`
 /// followed by one len-prefixed column blob per schema column.
 fn encode_op_group(
     table: &Path,
     schema: &Schema,
     ops: &[PendingOp],
     hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, PersistError> {
+) -> Result<Vec<u8>, CodecError> {
     let mut rows = Vec::with_capacity(ops.len());
     for op in ops {
         let PendingOp::Add {
@@ -340,12 +339,12 @@ fn encode_op_group(
             ..
         } = op;
         if op_table != table {
-            return Err(PersistError::SchemaError(format!(
+            return Err(CodecError::SchemaError(format!(
                 "op group table mismatch: expected {table:?}, got {op_table:?}"
             )));
         }
         if values.len() != schema.columns.len() {
-            return Err(PersistError::SchemaError(format!(
+            return Err(CodecError::SchemaError(format!(
                 "op group column count mismatch: expected {}, got {}",
                 schema.columns.len(),
                 values.len()
@@ -356,25 +355,12 @@ fn encode_op_group(
 
     let mut buf = Vec::new();
     let path = table.to_string();
-    let path_len: u32 = path
-        .len()
-        .try_into()
-        .map_err(|_| PersistError::Other("table path too long".into()))?;
-    buf.write_all(&path_len.to_le_bytes())?;
+    commit_leb128::write_len(&mut buf, path.len())?;
     buf.write_all(path.as_bytes())?;
 
-    let row_count: u32 = rows
-        .len()
-        .try_into()
-        .map_err(|_| PersistError::Other("too many rows in op group".into()))?;
-    buf.write_all(&row_count.to_le_bytes())?;
+    commit_leb128::write_len(&mut buf, rows.len())?;
 
-    let column_count: u32 = schema
-        .columns
-        .len()
-        .try_into()
-        .map_err(|_| PersistError::Other("too many columns in op group".into()))?;
-    buf.write_all(&column_count.to_le_bytes())?;
+    commit_leb128::write_len(&mut buf, schema.columns.len())?;
 
     for (column_index, col_type) in schema.columns.iter().enumerate() {
         let values = rows
@@ -382,7 +368,7 @@ fn encode_op_group(
             .map(|row| row[column_index].clone())
             .collect::<Vec<_>>();
         let blob = encode_txn_value_column(&values, col_type, hash_mapper)?;
-        write_len_prefixed_bytes(&mut buf, &blob, "op group value column too large")?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &blob)?;
     }
 
     Ok(buf)
@@ -397,25 +383,25 @@ fn decode_op_group<'s, F>(
     data: &[u8],
     hashes: &[CommitHash],
     schema_for: &F,
-) -> Result<DecodedOpGroup, PersistError>
+) -> Result<DecodedOpGroup, CodecError>
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
     let mut pos = 0usize;
 
-    let path_len = read_u32(data, &mut pos, "op group table path length")? as usize;
+    let path_len = commit_leb128::read_len(data, &mut pos, "op group table path length")?;
     let path_bytes = read_slice(data, &mut pos, path_len, "op group table path")?;
     let table =
         Path::from(std::str::from_utf8(path_bytes).map_err(|_| {
-            PersistError::DataFormatError("op group table path: invalid utf-8".into())
+            CodecError::DataFormatError("op group table path: invalid utf-8".into())
         })?);
 
-    let row_count = read_u32(data, &mut pos, "op group row count")? as usize;
-    let column_count = read_u32(data, &mut pos, "op group column count")? as usize;
+    let row_count = commit_leb128::read_len(data, &mut pos, "op group row count")?;
+    let column_count = commit_leb128::read_len(data, &mut pos, "op group column count")?;
     let schema = schema_for(&table)
-        .ok_or_else(|| PersistError::SchemaError(format!("missing schema for table {table:?}")))?;
+        .ok_or_else(|| CodecError::SchemaError(format!("missing schema for table {table:?}")))?;
     if column_count != schema.columns.len() {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "op group column count mismatch: encoded {column_count}, schema expects {}",
             schema.columns.len()
         )));
@@ -423,10 +409,11 @@ where
 
     let mut columns = Vec::with_capacity(column_count);
     for (column_index, col_type) in schema.columns.iter().enumerate() {
-        let column_blob = read_len_prefixed_bytes(data, &mut pos, "op group column")?;
+        let column_blob =
+            commit_leb128::read_len_prefixed_bytes(data, &mut pos, "op group column")?;
         let column = decode_txn_value_column(column_blob, col_type, hashes)?;
         if column.len() != row_count {
-            return Err(PersistError::DataFormatError(format!(
+            return Err(CodecError::DataFormatError(format!(
                 "op group column {column_index} length mismatch: expected {row_count}, got {}",
                 column.len()
             )));
@@ -435,7 +422,7 @@ where
     }
 
     if pos != data.len() {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "trailing bytes after op group: {} bytes",
             data.len() - pos
         )));
@@ -458,13 +445,13 @@ where
 fn encode_txn_row_ref_column(
     values: &[TxnCellValue],
     hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, PersistError> {
+) -> Result<Vec<u8>, CodecError> {
     let mut hash_indices = Vec::with_capacity(values.len());
     let mut counters = Vec::with_capacity(values.len());
 
     for value in values {
         let TxnCellValue::Id(row_ref) = value else {
-            return Err(PersistError::SchemaError(format!(
+            return Err(CodecError::SchemaError(format!(
                 "expected row reference, got {value:?}"
             )));
         };
@@ -472,12 +459,10 @@ fn encode_txn_row_ref_column(
         match row_ref {
             RowRef::Existing(RowId { commit, counter }) => {
                 let hash_index = hash_mapper.index(*commit).ok_or_else(|| {
-                    PersistError::SchemaError(format!(
-                        "missing commit hash in dictionary: {commit}"
-                    ))
+                    CodecError::SchemaError(format!("missing commit hash in dictionary: {commit}"))
                 })?;
                 if hash_index == LOCAL_COMMIT_HASH_INDEX {
-                    return Err(PersistError::Other(
+                    return Err(CodecError::Other(
                         "too many hashes for row reference column".into(),
                     ));
                 }
@@ -495,16 +480,8 @@ fn encode_txn_row_ref_column(
     let counter_col = DeltaColumn::<u32>::from_values(counters).save();
 
     let mut buf = Vec::new();
-    write_len_prefixed_bytes(
-        &mut buf,
-        &hash_index_col,
-        "txn row-ref hash-index column too large",
-    )?;
-    write_len_prefixed_bytes(
-        &mut buf,
-        &counter_col,
-        "txn row-ref counter column too large",
-    )?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &hash_index_col)?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &counter_col)?;
     Ok(buf)
 }
 
@@ -513,7 +490,7 @@ fn encode_txn_value_column(
     values: &[TxnCellValue],
     col_type: &ColType,
     hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, PersistError> {
+) -> Result<Vec<u8>, CodecError> {
     match col_type {
         ColType::EntityType { .. } => encode_txn_row_ref_column(values, hash_mapper),
         ColType::PrimType { prim } => match prim {
@@ -521,7 +498,7 @@ fn encode_txn_value_column(
                 let mut ints = Vec::with_capacity(values.len());
                 for value in values {
                     let TxnCellValue::Int(i) = value else {
-                        return Err(PersistError::SchemaError(format!(
+                        return Err(CodecError::SchemaError(format!(
                             "expected int, got {value:?}"
                         )));
                     };
@@ -534,7 +511,7 @@ fn encode_txn_value_column(
                 let mut strings = Vec::with_capacity(values.len());
                 for value in values {
                     let TxnCellValue::Str(s) = value else {
-                        return Err(PersistError::SchemaError(format!(
+                        return Err(CodecError::SchemaError(format!(
                             "expected string, got {value:?}"
                         )));
                     };
@@ -543,7 +520,7 @@ fn encode_txn_value_column(
                 Ok(Column::<String>::from_values(strings).save())
             }
         },
-        ColType::Tuple { .. } => Err(PersistError::SchemaError(
+        ColType::Tuple { .. } => Err(CodecError::SchemaError(
             "tuple columns are not supported yet".into(),
         )),
     }
@@ -554,7 +531,7 @@ fn decode_txn_value_column(
     data: &[u8],
     col_type: &ColType,
     hashes: &[CommitHash],
-) -> Result<Vec<TxnCellValue>, PersistError> {
+) -> Result<Vec<TxnCellValue>, CodecError> {
     match col_type {
         ColType::EntityType { .. } => decode_txn_row_ref_column(data, hashes),
         ColType::PrimType { prim } => match prim {
@@ -567,7 +544,7 @@ fn decode_txn_value_column(
                 .map(|s| TxnCellValue::Str(s.to_owned()))
                 .collect()),
         },
-        ColType::Tuple { .. } => Err(PersistError::SchemaError(
+        ColType::Tuple { .. } => Err(CodecError::SchemaError(
             "tuple columns are not supported yet".into(),
         )),
     }
@@ -576,12 +553,14 @@ fn decode_txn_value_column(
 fn decode_txn_row_ref_column(
     data: &[u8],
     hashes: &[CommitHash],
-) -> Result<Vec<TxnCellValue>, PersistError> {
+) -> Result<Vec<TxnCellValue>, CodecError> {
     let mut pos = 0usize;
-    let hash_index_blob = read_len_prefixed_bytes(data, &mut pos, "txn row-ref hash-index column")?;
-    let counter_blob = read_len_prefixed_bytes(data, &mut pos, "txn row-ref counter column")?;
+    let hash_index_blob =
+        commit_leb128::read_len_prefixed_bytes(data, &mut pos, "txn row-ref hash-index column")?;
+    let counter_blob =
+        commit_leb128::read_len_prefixed_bytes(data, &mut pos, "txn row-ref counter column")?;
     if pos != data.len() {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "trailing bytes after txn row-ref column: {} bytes",
             data.len() - pos
         )));
@@ -590,7 +569,7 @@ fn decode_txn_row_ref_column(
     let hash_indices: Vec<u32> = Column::<u32>::load(hash_index_blob)?.iter().collect();
     let counters: Vec<u32> = DeltaColumn::<u32>::load(counter_blob)?.iter().collect();
     if hash_indices.len() != counters.len() {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "txn row-ref subcolumn length mismatch: hash indexes {}, counters {}",
             hash_indices.len(),
             counters.len()
@@ -605,7 +584,7 @@ fn decode_txn_row_ref_column(
                 Ok(TxnCellValue::Id(RowRef::Pending(TempRowId(counter))))
             } else {
                 let commit = hashes.get(hash_index as usize).copied().ok_or_else(|| {
-                    PersistError::DataFormatError(format!(
+                    CodecError::DataFormatError(format!(
                         "txn row-ref hash index {hash_index} out of bounds"
                     ))
                 })?;
@@ -658,7 +637,7 @@ mod tests {
         let err = encode_txn_row_ref_column(&[TxnCellValue::Int(42)], &HashMapper::new())
             .expect_err("int is not a row ref");
 
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
     #[test]
@@ -670,7 +649,7 @@ mod tests {
         let err = encode_txn_row_ref_column(&[value], &HashMapper::new())
             .expect_err("existing hash must be in dictionary");
 
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
     #[test]
@@ -730,14 +709,14 @@ mod tests {
             &HashMapper::new(),
         )
         .expect_err("string in int column");
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
     #[test]
     fn txn_value_column_rejects_tuple_schema() {
         let col = ColType::Tuple { fields: vec![] };
         let err = encode_txn_value_column(&[], &col, &HashMapper::new()).expect_err("tuple");
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
     #[test]
@@ -785,14 +764,21 @@ mod tests {
 
         let encoded = encode_op_group(&table, &schema, &ops, &hash_mapper).expect("encode group");
         let mut pos = 0usize;
-        let path_len = read_u32(&encoded, &mut pos, "path length").unwrap() as usize;
+        let path_len = commit_leb128::read_len(&encoded, &mut pos, "path length").unwrap();
         let path_bytes = read_slice(&encoded, &mut pos, path_len, "path").unwrap();
         assert_eq!(std::str::from_utf8(path_bytes).unwrap(), "T");
-        assert_eq!(read_u32(&encoded, &mut pos, "row count").unwrap(), 2);
-        assert_eq!(read_u32(&encoded, &mut pos, "column count").unwrap(), 3);
+        assert_eq!(
+            commit_leb128::read_len(&encoded, &mut pos, "row count").unwrap(),
+            2
+        );
+        assert_eq!(
+            commit_leb128::read_len(&encoded, &mut pos, "column count").unwrap(),
+            3
+        );
 
         for (index, col_type) in schema.columns.iter().enumerate() {
-            let blob = read_len_prefixed_bytes(&encoded, &mut pos, "column blob").unwrap();
+            let blob =
+                commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "column blob").unwrap();
             let decoded =
                 decode_txn_value_column(blob, col_type, hash_mapper.hashes()).expect("decode col");
             match index {
@@ -827,7 +813,7 @@ mod tests {
         };
         let err = encode_op_group(&Path::from("T"), &schema, &[op], &HashMapper::new())
             .expect_err("table mismatch");
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
     #[test]
@@ -846,7 +832,7 @@ mod tests {
         };
         let err = encode_op_group(&table, &schema, &[op], &HashMapper::new())
             .expect_err("column count mismatch");
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
     #[test]
@@ -900,43 +886,55 @@ mod tests {
         .expect("encode commit body");
 
         let mut pos = 0usize;
-        assert_eq!(read_u32(&encoded, &mut pos, "op count").unwrap(), 3);
+        assert_eq!(
+            commit_leb128::read_len(&encoded, &mut pos, "op count").unwrap(),
+            3
+        );
 
-        let op_kind_blob = read_len_prefixed_bytes(&encoded, &mut pos, "op kind").unwrap();
+        let op_kind_blob =
+            commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "op kind").unwrap();
         let op_kinds: Vec<u32> = Column::<u32>::load(op_kind_blob).unwrap().iter().collect();
         assert_eq!(op_kinds, vec![OP_KIND_ADD, OP_KIND_ADD, OP_KIND_ADD]);
 
-        let sequence_blob = read_len_prefixed_bytes(&encoded, &mut pos, "sequence").unwrap();
+        let sequence_blob =
+            commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "sequence").unwrap();
         let table_sequence: Vec<u32> = Column::<u32>::load(sequence_blob).unwrap().iter().collect();
         assert_eq!(table_sequence, vec![0, 1, 0]);
 
-        assert_eq!(read_u32(&encoded, &mut pos, "group count").unwrap(), 2);
+        assert_eq!(
+            commit_leb128::read_len(&encoded, &mut pos, "group count").unwrap(),
+            2
+        );
 
-        let group_a = read_len_prefixed_bytes(&encoded, &mut pos, "group a").unwrap();
+        let group_a =
+            commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "group a").unwrap();
         let mut group_pos = 0usize;
-        let path_len = read_u32(group_a, &mut group_pos, "group a path length").unwrap() as usize;
+        let path_len =
+            commit_leb128::read_len(group_a, &mut group_pos, "group a path length").unwrap();
         let path = read_slice(group_a, &mut group_pos, path_len, "group a path").unwrap();
         assert_eq!(std::str::from_utf8(path).unwrap(), "A");
         assert_eq!(
-            read_u32(group_a, &mut group_pos, "group a rows").unwrap(),
+            commit_leb128::read_len(group_a, &mut group_pos, "group a rows").unwrap(),
             2
         );
         assert_eq!(
-            read_u32(group_a, &mut group_pos, "group a columns").unwrap(),
+            commit_leb128::read_len(group_a, &mut group_pos, "group a columns").unwrap(),
             1
         );
 
-        let group_b = read_len_prefixed_bytes(&encoded, &mut pos, "group b").unwrap();
+        let group_b =
+            commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "group b").unwrap();
         let mut group_pos = 0usize;
-        let path_len = read_u32(group_b, &mut group_pos, "group b path length").unwrap() as usize;
+        let path_len =
+            commit_leb128::read_len(group_b, &mut group_pos, "group b path length").unwrap();
         let path = read_slice(group_b, &mut group_pos, path_len, "group b path").unwrap();
         assert_eq!(std::str::from_utf8(path).unwrap(), "B");
         assert_eq!(
-            read_u32(group_b, &mut group_pos, "group b rows").unwrap(),
+            commit_leb128::read_len(group_b, &mut group_pos, "group b rows").unwrap(),
             1
         );
         assert_eq!(
-            read_u32(group_b, &mut group_pos, "group b columns").unwrap(),
+            commit_leb128::read_len(group_b, &mut group_pos, "group b columns").unwrap(),
             1
         );
 
@@ -1014,7 +1012,7 @@ mod tests {
         .expect("encode body");
 
         let err = decode_commit_body(&encoded, &[], |_| None).expect_err("missing schema");
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
     #[test]
@@ -1027,6 +1025,6 @@ mod tests {
 
         let err =
             encode_commit_body(&pending, |_| None, &HashMapper::new()).expect_err("missing schema");
-        assert!(matches!(err, PersistError::SchemaError(_)));
+        assert!(matches!(err, CodecError::SchemaError(_)));
     }
 }

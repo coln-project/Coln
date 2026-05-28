@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::commit::error::PersistError;
+use crate::commit::error::CodecError;
 use crate::solver::compile::CompileError;
 use crate::solver::validate::LawViolation;
 use crate::table::ValidationError;
@@ -12,7 +12,7 @@ pub enum StoreIntError {
     Validation(ValidationError),
     Law(Box<LawViolation>),
     Compile(CompileError),
-    Encode(PersistError),
+    Encode(CodecError),
     Commit(CommitApplyError),
 }
 
@@ -86,8 +86,8 @@ impl From<CommitApplyError> for StoreIntError {
     }
 }
 
-impl From<PersistError> for Box<StoreIntError> {
-    fn from(value: PersistError) -> Self {
+impl From<CodecError> for Box<StoreIntError> {
+    fn from(value: CodecError) -> Self {
         Box::new(StoreIntError::Encode(value))
     }
 }

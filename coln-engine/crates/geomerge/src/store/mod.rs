@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use tracing::{debug, info};
 
 use crate::commit::Commit;
-use crate::commit::error::PersistError;
+use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::metadata::{RootCommitData, RootTableEntry};
@@ -137,7 +137,7 @@ impl Store {
     fn root_commit_graph(
         tables: &HashMap<TableOid, Table>,
         law_entries: &[LawEntry],
-    ) -> Result<CommitGraph, PersistError> {
+    ) -> Result<CommitGraph, CodecError> {
         let mut table_entries = tables
             .iter()
             .map(|(&oid, table)| RootTableEntry {

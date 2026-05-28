@@ -6,7 +6,7 @@ use crate::commit::chunk::ChunkType;
 // TODO PersistError needs a bit more variant to reduce the number of Other
 
 #[derive(Debug)]
-pub enum PersistError {
+pub enum CodecError {
     HeaderError(String),
     IOError(io::Error),
     SchemaError(String),
@@ -16,38 +16,38 @@ pub enum PersistError {
     Other(String),
 }
 
-impl fmt::Display for PersistError {
+impl fmt::Display for CodecError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PersistError::HeaderError(msg) => write!(f, "header error: {msg}"),
-            PersistError::IOError(err) => write!(f, "io error: {err}"),
-            PersistError::SchemaError(msg) => write!(f, "schema error: {msg}"),
-            PersistError::DataFormatError(msg) => write!(f, "data format error: {msg}"),
-            PersistError::DecodeError(err) => write!(f, "decode error: {err:?}"),
-            PersistError::ChunkMismatch { expected, got } => write!(
+            CodecError::HeaderError(msg) => write!(f, "header error: {msg}"),
+            CodecError::IOError(err) => write!(f, "io error: {err}"),
+            CodecError::SchemaError(msg) => write!(f, "schema error: {msg}"),
+            CodecError::DataFormatError(msg) => write!(f, "data format error: {msg}"),
+            CodecError::DecodeError(err) => write!(f, "decode error: {err:?}"),
+            CodecError::ChunkMismatch { expected, got } => write!(
                 f,
                 "chunk type mismatch, expecting: {expected:?}, got: {got:?}"
             ),
-            PersistError::Other(msg) => write!(f, "{msg}"),
+            CodecError::Other(msg) => write!(f, "{msg}"),
         }
     }
 }
 
-impl std::error::Error for PersistError {}
+impl std::error::Error for CodecError {}
 
-impl From<serde_json::Error> for PersistError {
+impl From<serde_json::Error> for CodecError {
     fn from(value: serde_json::Error) -> Self {
         Self::HeaderError(value.to_string())
     }
 }
 
-impl From<io::Error> for PersistError {
+impl From<io::Error> for CodecError {
     fn from(value: io::Error) -> Self {
         Self::IOError(value)
     }
 }
 
-impl From<hexane::PackError> for PersistError {
+impl From<hexane::PackError> for CodecError {
     fn from(value: hexane::PackError) -> Self {
         Self::DecodeError(value)
     }

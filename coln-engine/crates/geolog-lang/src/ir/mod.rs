@@ -21,6 +21,11 @@ pub type FId = i64;
 pub enum PrimType {
     PrimInt,
     PrimString,
+    // TODO add floating point number primitives
+    // arbitrary precision integers (store as two cols)
+    // arbitrary precision rationals (fractions)
+    // IEEE 754 floats 16, 32, 64 bits
+    // bfloat
 }
 
 #[cfg(feature = "serde")]

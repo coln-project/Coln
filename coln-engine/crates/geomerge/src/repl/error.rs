@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::commit::error::PersistError;
+use crate::commit::error::CodecError;
 use crate::store::error::StoreIntError;
 use crate::table::ValidationError;
 
@@ -15,7 +15,7 @@ pub enum ReplError {
     Io(std::io::Error),
     Json(serde_json::Error),
     Store(Box<StoreIntError>),
-    Persist(PersistError),
+    Persist(CodecError),
 }
 
 /// Parse failure for a single cell inside a `begin batch` block (before column index is known).
@@ -70,8 +70,8 @@ impl From<Box<StoreIntError>> for ReplError {
     }
 }
 
-impl From<PersistError> for ReplError {
-    fn from(value: PersistError) -> Self {
+impl From<CodecError> for ReplError {
+    fn from(value: CodecError) -> Self {
         Self::Persist(value)
     }
 }

@@ -26,15 +26,21 @@ Root commits and normal commits use different payload formats:
 2. A normal commit payload, in `commit/wire/data.rs`, serializes commit metadata
    first, then serializes the commit body.
 
+Across commit payloads and the store envelope, scalar integer fields use strict
+LEB128 encoding through `commit/leb128.rs`. Decoders reject overlong encodings so
+each integer has a canonical byte representation. Tags remain single raw bytes,
+commit hashes remain fixed 32-byte values, and embedded `hexane` columns keep
+their own internal encoding.
+
 The normal commit metadata layout is:
 
 ```text
-[deps_count:u32]
+[deps_count]
 [CommitHash x deps_count]
 [nonce:16 bytes]
-[timestamp:i64]
-[message_len:u32][message:utf-8]
-[other_hash_count:u32][CommitHash x other_hash_count]
+[timestamp]
+[message_len][message:utf-8]
+[other_hash_count][CommitHash x other_hash_count]
 [commit body]
 ```
 
@@ -45,11 +51,11 @@ number of operations, a column of operation kinds, a column describing which tab
 group each operation belongs to, and then one encoded group per table:
 
 ```text
-[op_count:u32]
-[op_kind_column]
-[table_sequence_column]
-[group_count:u32]
-[op_group x group_count]
+[op_count]
+[op_kind_column_len][op_kind_column]
+[table_sequence_column_len][table_sequence_column]
+[group_count]
+[op_group_len][op_group] x group_count
 ```
 
 Operations for the same table are grouped together in first-seen table order. This
@@ -57,6 +63,11 @@ lets each table group encode rows in a schema-shaped, columnar form with hexane:
 one column blob per schema column. The `table_sequence_column` preserves the
 original transaction order, so decoding can interleave rows from the table groups
 back into the original operation sequence.
+
+Each operation group starts with `[table_path_len][table_path:utf-8][row_count]`
+and `[column_count]`, followed by one LEB128 length-prefixed `hexane` blob per
+schema column. Row-reference columns are encoded as two LEB128 length-prefixed
+`hexane` subcolumns: hash indexes and row counters.
 
 For example, suppose a transaction contains these operations:
 
@@ -92,6 +103,16 @@ When the whole store is serialized, `commit/pst.rs` writes a store envelope with
 the magic bytes, format version, next table id, and commit count. It then writes
 every commit chunk in commit graph topological order. That means parents are
 written before children, with the root commit first.
+
+The store envelope layout is:
+
+```text
+[magic:4 bytes]
+[format_version]
+[next_table_id]
+[chunk_count]
+[chunk_type:u8][payload_len][payload] x chunk_count
+```
 
 Loading reverses the process: decode the root, rebuild an empty store from its
 schemas and laws, decode the normal commits using those schemas, and apply the

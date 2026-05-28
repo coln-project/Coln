@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::io::Write;
 
-use crate::commit::error::PersistError;
+use crate::commit::error::CodecError;
 use crate::commit::hash::{CommitHash, HASH_SIZE};
-use crate::commit::utils::{read_slice, read_u32};
+use crate::commit::leb128 as commit_leb128;
+use crate::commit::utils::read_slice;
 
 /// A hash mapper builds up all the commit hashes seen in a particular commit
 /// so they can be stored in the commit for dictionary encoding
@@ -40,24 +41,21 @@ impl HashMapper {
 pub(crate) fn write_hash_dict(
     buf: &mut Vec<u8>,
     hash_mapper: &HashMapper,
-) -> Result<(), PersistError> {
+) -> Result<(), CodecError> {
     let hash_count: u32 = hash_mapper
         .hashes()
         .len()
         .try_into()
-        .map_err(|_| PersistError::Other("too many hashes".into()))?;
-    buf.write_all(&hash_count.to_le_bytes())?;
+        .map_err(|_| CodecError::Other("too many hashes".into()))?;
+    commit_leb128::write_u32(buf, hash_count)?;
     for hash in hash_mapper.hashes() {
         buf.write_all(hash.as_bytes())?;
     }
     Ok(())
 }
 
-pub(crate) fn read_hash_dict(
-    data: &[u8],
-    pos: &mut usize,
-) -> Result<Vec<CommitHash>, PersistError> {
-    let hash_count = read_u32(data, pos, "hash dictionary count")? as usize;
+pub(crate) fn read_hash_dict(data: &[u8], pos: &mut usize) -> Result<Vec<CommitHash>, CodecError> {
+    let hash_count = commit_leb128::read_u32(data, pos, "hash dictionary count")? as usize;
     let mut hashes = Vec::with_capacity(hash_count);
     for _ in 0..hash_count {
         let bytes = read_slice(data, pos, HASH_SIZE, "hash dictionary entry")?;

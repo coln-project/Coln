@@ -3,6 +3,7 @@ pub mod error;
 pub mod graph;
 pub mod hash;
 pub(crate) mod hash_dict;
+pub(crate) mod leb128;
 pub mod pst;
 pub(crate) mod utils;
 pub mod wire;
@@ -12,7 +13,7 @@ use std::borrow::Cow;
 use crate::{
     commit::{
         chunk::{ChunkType, hash},
-        error::PersistError,
+        error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
         wire::{CommitData, metadata::RootCommitData},
@@ -25,6 +26,7 @@ use crate::{
 pub(crate) struct Header {
     pub(crate) chunk_type: ChunkType,
     pub(crate) hash: CommitHash,
+    // TODO length checksum
 }
 
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
@@ -54,7 +56,7 @@ pub struct Commit<'a> {
 
 impl Commit<'static> {
     /// Creating the commit data structure from the deserialized root data
-    pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, PersistError> {
+    pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, CodecError> {
         let bytes = wire::serialize_root(root)?;
         Ok(Self::from_root_bytes(bytes))
     }
@@ -62,7 +64,7 @@ impl Commit<'static> {
     pub(crate) fn from_commit_data<'s, F>(
         mut data: CommitData,
         schema_for: F,
-    ) -> Result<Self, PersistError>
+    ) -> Result<Self, CodecError>
     where
         F: Fn(&Path) -> Option<&'s Schema>,
     {
@@ -109,7 +111,7 @@ impl Commit<'static> {
         chunk_type: ChunkType,
         bytes: Vec<u8>,
         schema_for: F,
-    ) -> Result<Self, PersistError>
+    ) -> Result<Self, CodecError>
     where
         F: Fn(&Path) -> Option<&'s Schema>,
     {
@@ -145,9 +147,9 @@ impl<'a> Commit<'a> {
         self.chunk_type() == ChunkType::Root
     }
 
-    pub(crate) fn root_payload(&self) -> Result<RootCommitData, PersistError> {
+    pub(crate) fn root_payload(&self) -> Result<RootCommitData, CodecError> {
         if self.chunk_type() != ChunkType::Root {
-            return Err(PersistError::ChunkMismatch {
+            return Err(CodecError::ChunkMismatch {
                 expected: ChunkType::Root,
                 got: self.chunk_type(),
             });
@@ -456,7 +458,7 @@ mod tests {
 
         assert!(matches!(
             commit.root_payload(),
-            Err(PersistError::ChunkMismatch {
+            Err(CodecError::ChunkMismatch {
                 expected: ChunkType::Root,
                 got: ChunkType::Commit,
             })

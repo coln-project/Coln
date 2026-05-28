@@ -79,9 +79,10 @@ are serialized differently.
     1. for root commit, we serialize schema and law, plus a bunch of other metadata
     2. for normal commit, we serialize all the metadata including time, commit
     messages, hashes, and commit body. The commit body itself is serialized by
-    grouping together all operations on the same table, and apply columnar 
-    compression using hexane
-
+    grouping together all operations on the same table, and applying columnar
+    compression using hexane. Scalar wire fields use canonical LEB128 encoding,
+    while fixed tags, hashes, raw bytes, and hexane column payloads keep their
+    own encodings.
 
 ## Test Coverage
 

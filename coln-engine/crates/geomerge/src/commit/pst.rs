@@ -2,8 +2,9 @@ use std::io::Write;
 
 use crate::commit::Commit;
 use crate::commit::chunk::ChunkType;
-use crate::commit::error::PersistError;
-use crate::commit::utils::*;
+use crate::commit::error::CodecError;
+use crate::commit::leb128 as commit_leb128;
+use crate::commit::utils::read_u8;
 use crate::store::Store;
 use crate::store::error::StoreIntError;
 use crate::table::TableOid;
@@ -13,22 +14,18 @@ const FORMAT_VERSION: u32 = 2;
 
 // ── Store-level encode/decode ───────────────────────────────────────────────
 
-/// Store file layout (little-endian):
+/// Store file layout, scalar integers use LEB128:
 ///
-/// `[MAGIC:4][version:u32][next_oid:u64][chunk_count:u32]`
-/// `[chunk_count × ([chunk_type:u8][payload_len:u64][payload])]`
-pub fn encode_store(store: &Store) -> Result<Vec<u8>, PersistError> {
+/// `[MAGIC:4][version][next_oid][chunk_count]`
+/// `[chunk_count × ([chunk_type:u8][payload_len][payload])]`
+pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
     let commits = store.commits().iter_topological().collect::<Vec<_>>();
     let mut buf: Vec<u8> = Vec::new();
     buf.write_all(MAGIC)?;
-    buf.write_all(&FORMAT_VERSION.to_le_bytes())?;
-    buf.write_all(&store.next_oid.to_le_bytes())?;
+    commit_leb128::write_u32(&mut buf, FORMAT_VERSION)?;
+    commit_leb128::write_u64(&mut buf, store.next_oid)?;
 
-    let chunk_count: u32 = commits
-        .len()
-        .try_into()
-        .map_err(|_| PersistError::Other("too many commits in store".into()))?;
-    buf.write_all(&chunk_count.to_le_bytes())?;
+    commit_leb128::write_len(&mut buf, commits.len())?;
 
     for commit in commits {
         write_commit_chunk(&mut buf, commit)?;
@@ -48,34 +45,34 @@ struct EncodedStore {
     chunks: Vec<(ChunkType, Vec<u8>)>,
 }
 
-fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, PersistError> {
+fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
     if data.len() < MAGIC.len() {
-        return Err(PersistError::DataFormatError(
+        return Err(CodecError::DataFormatError(
             "truncated: missing magic".into(),
         ));
     }
     if data[..MAGIC.len()] != *MAGIC {
-        return Err(PersistError::DataFormatError("bad magic".into()));
+        return Err(CodecError::DataFormatError("bad magic".into()));
     }
 
     let mut pos = MAGIC.len();
 
-    let version = read_u32(data, &mut pos, "format version")?;
+    let version = commit_leb128::read_u32(data, &mut pos, "format version")?;
     if version != FORMAT_VERSION {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "unsupported format version: {version}"
         )));
     }
 
-    let next_oid = read_u64(data, &mut pos, "next_oid")?;
+    let next_oid = commit_leb128::read_u64(data, &mut pos, "next_oid")?;
 
-    let chunk_count = read_u32(data, &mut pos, "chunk count")? as usize;
+    let chunk_count = commit_leb128::read_len(data, &mut pos, "chunk count")?;
     let mut chunks = Vec::with_capacity(chunk_count);
     for _ in 0..chunk_count {
         chunks.push(read_commit_chunk(data, &mut pos)?);
     }
     if pos != data.len() {
-        return Err(PersistError::DataFormatError(format!(
+        return Err(CodecError::DataFormatError(format!(
             "trailing bytes after store chunks: {} bytes",
             data.len() - pos
         )));
@@ -84,22 +81,22 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, PersistError> {
     Ok(EncodedStore { next_oid, chunks })
 }
 
-fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) -> Result<(), PersistError> {
+fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) -> Result<(), CodecError> {
     buf.write_all(&[u8::from(commit.chunk_type())])?;
-    write_len_prefixed_bytes(buf, commit.payload(), "commit payload too large")
+    commit_leb128::write_len_prefixed_bytes(buf, commit.payload())
 }
 
-fn read_commit_chunk(data: &[u8], pos: &mut usize) -> Result<(ChunkType, Vec<u8>), PersistError> {
+fn read_commit_chunk(data: &[u8], pos: &mut usize) -> Result<(ChunkType, Vec<u8>), CodecError> {
     let chunk_type = match read_u8(data, pos, "chunk type")? {
         0 => ChunkType::Commit,
         1 => ChunkType::Root,
         tag => {
-            return Err(PersistError::DataFormatError(format!(
+            return Err(CodecError::DataFormatError(format!(
                 "unknown chunk type {tag}"
             )));
         }
     };
-    let payload = read_len_prefixed_bytes(data, pos, "commit payload")?.to_vec();
+    let payload = commit_leb128::read_len_prefixed_bytes(data, pos, "commit payload")?.to_vec();
     Ok((chunk_type, payload))
 }
 
@@ -112,11 +109,11 @@ fn decode_store_chunks(
         .filter(|(chunk_type, _)| *chunk_type == ChunkType::Root)
         .collect::<Vec<_>>();
     if roots.is_empty() {
-        return Err(PersistError::DataFormatError("commit graph has no root commit".into()).into());
+        return Err(CodecError::DataFormatError("commit graph has no root commit".into()).into());
     }
     if roots.len() > 1 {
         return Err(
-            PersistError::DataFormatError("commit graph has multiple root commits".into()).into(),
+            CodecError::DataFormatError("commit graph has multiple root commits".into()).into(),
         );
     }
 
@@ -174,14 +171,12 @@ mod tests {
     fn store_bytes_from_chunks(chunks: &[(u8, Vec<u8>)]) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        bytes.write_all(&FORMAT_VERSION.to_le_bytes()).unwrap();
-        bytes.write_all(&0_u64.to_le_bytes()).unwrap();
-        bytes
-            .write_all(&(chunks.len() as u32).to_le_bytes())
-            .unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION).unwrap();
+        commit_leb128::write_u64(&mut bytes, 0).unwrap();
+        commit_leb128::write_len(&mut bytes, chunks.len()).unwrap();
         for (chunk_type, payload) in chunks {
             bytes.write_all(&[*chunk_type]).unwrap();
-            write_len_prefixed_bytes(&mut bytes, payload, "test payload").unwrap();
+            commit_leb128::write_len_prefixed_bytes(&mut bytes, payload).unwrap();
         }
         bytes
     }
@@ -201,7 +196,7 @@ mod tests {
             Err(err)
                 if matches!(
                     err.as_ref(),
-                    StoreIntError::Encode(PersistError::DataFormatError(_))
+                    StoreIntError::Encode(CodecError::DataFormatError(_))
                 )
         )
     }
@@ -252,7 +247,7 @@ mod tests {
     fn store_decode_rejects_unsupported_version() {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        bytes.write_all(&999_u32.to_le_bytes()).unwrap();
+        commit_leb128::write_u32(&mut bytes, 999).unwrap();
 
         assert!(is_data_format_error(decode_store(&bytes)));
     }
@@ -268,9 +263,9 @@ mod tests {
     fn store_decode_rejects_truncated_chunk_record() {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        bytes.write_all(&FORMAT_VERSION.to_le_bytes()).unwrap();
-        bytes.write_all(&0_u64.to_le_bytes()).unwrap();
-        bytes.write_all(&1_u32.to_le_bytes()).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION).unwrap();
+        commit_leb128::write_u64(&mut bytes, 0).unwrap();
+        commit_leb128::write_len(&mut bytes, 1).unwrap();
         bytes.write_all(&[u8::from(ChunkType::Root)]).unwrap();
 
         assert!(is_data_format_error(decode_store(&bytes)));
@@ -361,9 +356,9 @@ mod tests {
     fn store_decode_rejects_missing_root() {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        bytes.write_all(&FORMAT_VERSION.to_le_bytes()).unwrap();
-        bytes.write_all(&0_u64.to_le_bytes()).unwrap();
-        bytes.write_all(&0_u32.to_le_bytes()).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION).unwrap();
+        commit_leb128::write_u64(&mut bytes, 0).unwrap();
+        commit_leb128::write_len(&mut bytes, 0).unwrap();
 
         assert!(is_data_format_error(decode_store(&bytes)));
     }
