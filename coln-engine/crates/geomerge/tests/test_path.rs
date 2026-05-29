@@ -55,14 +55,17 @@ fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
     Ok(())
 }
 
-fn add_vertex_to_first_graph(store: &mut Store) -> Result<CommitHash, Box<StoreIntError>> {
+fn add_vertex_to_graph(
+    store: &mut Store,
+    graph_row: usize,
+) -> Result<CommitHash, Box<StoreIntError>> {
     let graphs = Path::from("Graphs");
     let gv = Path::from("G.V");
     let graph = store
         .table_at(&graphs)
         .expect("Graphs table")
-        .row_id_at(0)
-        .expect("first graph row");
+        .row_id_at(graph_row)
+        .expect("graph row");
 
     let mut tx = store.transaction();
     tx.add(&gv, vec![graph.into()])?;
@@ -286,10 +289,18 @@ fn test_divergent_commits_merge_between_stores() {
     let mut base = Store::try_from_theory(theory).expect("valid theory");
     add_basic_data_to_path(&mut base).expect("add shared baseline data");
 
+    // Add a second law-free graph so we can add vertices to different graphs to
+    // make two commits different
+    {
+        let mut tx = base.transaction();
+        tx.add(&Path::from("Graphs"), vec![]).expect("add a graph");
+        tx.commit().expect("commit second graph");
+    }
+
     let mut left = base.clone();
     let mut right = base.clone();
-    let left_commit = add_vertex_to_first_graph(&mut left).expect("left branch commit");
-    let right_commit = add_vertex_to_first_graph(&mut right).expect("right branch commit");
+    let left_commit = add_vertex_to_graph(&mut left, 0).expect("left branch commit");
+    let right_commit = add_vertex_to_graph(&mut right, 2).expect("right branch commit");
     let expected_heads = BTreeSet::from([left_commit, right_commit]);
 
     let left_heads = left.merge(&right).expect("merge right into left");

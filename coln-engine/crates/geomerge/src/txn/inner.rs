@@ -2,7 +2,7 @@ use geolog_lang::ir;
 use tracing::info;
 
 use crate::{
-    commit::{Commit, hash::CommitHash, wire::CommitData},
+    commit::{Commit, hash::CommitHash, wire::CommitData, wire::data::AUTHOR_SIZE},
     store::{Store, error::StoreIntError},
     table::ValidationError,
     txn::{
@@ -13,7 +13,7 @@ use crate::{
 
 pub(crate) struct TxnInner {
     deps: Vec<CommitHash>,
-    nonce: [u8; 16],
+    author: [u8; AUTHOR_SIZE],
     pending: Vec<PendingOp>,
     timestamp: Timestamp,
     message: Option<String>,
@@ -23,7 +23,8 @@ impl TxnInner {
     pub(crate) fn new(deps: Vec<CommitHash>) -> Self {
         Self {
             deps,
-            nonce: rand::random::<[u8; 16]>(),
+            // TODO author id is unused right now
+            author: [0u8; AUTHOR_SIZE],
             pending: Vec::new(),
             timestamp: Timestamp::now(),
             message: None,
@@ -58,7 +59,7 @@ impl TxnInner {
         let cmt = Commit::from_commit_data(
             CommitData::new(
                 self.deps,
-                self.nonce,
+                self.author,
                 *self.timestamp.as_ref(),
                 self.message,
                 self.pending,

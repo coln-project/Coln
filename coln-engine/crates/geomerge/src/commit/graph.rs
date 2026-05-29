@@ -144,7 +144,13 @@ mod tests {
 
     fn c(n: u8, deps: Vec<CommitHash>) -> Commit<'static> {
         Commit::from_commit_data(
-            crate::commit::wire::CommitData::new(deps, [n; 16], n as i64, None, vec![]),
+            crate::commit::wire::CommitData::new(
+                deps,
+                [n; crate::commit::wire::data::AUTHOR_SIZE],
+                n as i64,
+                None,
+                vec![],
+            ),
             |_| None,
         )
         .expect("build commit")

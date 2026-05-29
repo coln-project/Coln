@@ -145,6 +145,7 @@ mod tests {
     use crate::commit::chunk::ChunkType;
     use crate::commit::hash::{CommitHash, HASH_SIZE};
     use crate::commit::wire::CommitData;
+    use crate::commit::wire::data::AUTHOR_SIZE;
     use crate::ir::{FlatTheory, Path, Schema, TableEntry};
     use crate::table::CellValue;
     use geolog_lang::ir::{ColType, PrimType};
@@ -298,7 +299,7 @@ mod tests {
             .expect("root chunk");
         let missing = CommitHash([0xff; HASH_SIZE]);
         let commit = Commit::from_commit_data(
-            CommitData::new(vec![missing], [7; 16], 42, None, vec![]),
+            CommitData::new(vec![missing], [7; AUTHOR_SIZE], 42, None, vec![]),
             |_| None,
         )
         .expect("commit with missing dependency");

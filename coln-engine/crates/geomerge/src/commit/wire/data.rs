@@ -19,11 +19,14 @@ use crate::{
 /// This encodes the hash index of all hashes referring to the current commit
 const LOCAL_COMMIT_HASH_INDEX: i64 = -1;
 
+/// Length in bytes of an author identifier.
+pub(crate) const AUTHOR_SIZE: usize = 32;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommitData {
     pub(crate) deps: Vec<CommitHash>,
-    // TODO remove this, or replace with author id
-    pub(crate) nonce: [u8; 16], // to make each txn unique
+    /// Identifier of the commit author. Currently a placeholder of all zeros.
+    pub(crate) author: [u8; AUTHOR_SIZE],
     pub(crate) timestamp: i64,
     pub(crate) message: Option<String>,
     /// Commit hashes referenced by op ids, dictionary order on the wire.
@@ -34,14 +37,14 @@ pub(crate) struct CommitData {
 impl CommitData {
     pub(crate) fn new(
         deps: Vec<CommitHash>,
-        nonce: [u8; 16],
+        author: [u8; AUTHOR_SIZE],
         timestamp: i64,
         message: Option<String>,
         pending: Vec<PendingOp>,
     ) -> Self {
         Self {
             deps,
-            nonce,
+            author,
             timestamp,
             message,
             other_hashes: vec![],
@@ -56,14 +59,13 @@ impl CommitData {
 //
 //   [deps_count]
 //   [CommitHash × deps_count]            (32 bytes each)
-//   [nonce: 16 bytes]                    (random; part of payload only, not a Commit field)
+//   [author: 32 bytes]                   (author id; placeholder zeros for now)
 //   [timestamp]
 //   [message_len]                        (0 when None)
 //   [message: utf-8 bytes]
 //   [other_hash_count]
 //   [CommitHash × other_hash_count]      (32 bytes each)
 //   [commit body]                        (operations, see encode_commit_body)
-// TODO author id length prefixed byte string
 // TODO extra_bytes
 pub(crate) fn serialize<'s, F>(
     data: &CommitData,
@@ -81,7 +83,7 @@ where
         buf.write_all(dep.as_bytes()).unwrap();
     }
 
-    buf.write_all(&data.nonce).unwrap();
+    buf.write_all(&data.author).unwrap();
 
     commit_leb128::write_i64(&mut buf, data.timestamp)?;
 
@@ -358,9 +360,9 @@ where
         deps.push(CommitHash(h));
     }
 
-    let nonce_bytes = read_slice(data, &mut pos, 16, "nonce")?;
-    let mut nonce = [0u8; 16];
-    nonce.copy_from_slice(nonce_bytes);
+    let author_bytes = read_slice(data, &mut pos, AUTHOR_SIZE, "author")?;
+    let mut author = [0u8; AUTHOR_SIZE];
+    author.copy_from_slice(author_bytes);
 
     let timestamp = commit_leb128::read_i64(data, &mut pos, "timestamp")?;
 
@@ -382,7 +384,7 @@ where
 
     Ok(CommitData {
         deps,
-        nonce,
+        author,
         timestamp,
         message,
         other_hashes,

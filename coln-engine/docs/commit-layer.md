@@ -37,7 +37,7 @@ The normal commit metadata layout is:
 ```text
 [deps_count]
 [CommitHash x deps_count]
-[nonce:16 bytes]
+[author:32 bytes]
 [timestamp]
 [message_len][message:utf-8]
 [other_hash_count][CommitHash x other_hash_count]
