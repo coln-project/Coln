@@ -135,7 +135,7 @@ mod tests {
 
     use super::*;
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::metadata::{RootCommitData, RootTableEntry};
+    use crate::commit::wire::root::{RootCommitData, RootTableEntry};
     use crate::ir::Schema;
 
     fn h(n: u8) -> CommitHash {

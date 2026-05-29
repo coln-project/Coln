@@ -16,7 +16,7 @@ use crate::{
         error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
-        wire::{CommitData, metadata::RootCommitData},
+        wire::{CommitData, root::RootCommitData},
     },
     ir::{Path, Schema},
     txn::ops::{Op, PendingOp, RowRef, TxnCellValue},
@@ -183,7 +183,7 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 mod tests {
     use super::*;
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::metadata::{RootCommitData, RootTableEntry};
+    use crate::commit::wire::root::{RootCommitData, RootTableEntry};
     use crate::ir::{ColType, Path, PrimType};
     use crate::table::RowId;
     use crate::txn::ops::{RowRef, TempRowId};

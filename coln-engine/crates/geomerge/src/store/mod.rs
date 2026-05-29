@@ -6,7 +6,7 @@ use crate::commit::Commit;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
-use crate::commit::wire::metadata::{RootCommitData, RootTableEntry};
+use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatTheory, LawEntry};
 use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
