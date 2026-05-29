@@ -1,6 +1,8 @@
+use hexane::v1::{Column, DeltaColumn};
 use std::io::Write;
 
 use crate::commit::leb128 as commit_leb128;
+use crate::commit::wire::prim::{PrimValue, ValueMeta, ValueType};
 use crate::{
     commit::{
         error::CodecError,
@@ -12,8 +14,6 @@ use crate::{
     table::RowId,
     txn::ops::{OP_KIND_ADD, PendingOp, RowRef, TempRowId, TxnCellValue},
 };
-
-use hexane::v1::{Column, DeltaColumn};
 
 // TODO change this to i32 when we support it as a column type
 /// This encodes the hash index of all hashes referring to the current commit
@@ -97,56 +97,6 @@ where
     Ok(buf)
 }
 
-/// Parse canonical payload bytes (the slice passed to [`crate::persist::chunk::hash`],
-/// not including the chunk type or outer length prefix).
-///
-pub(crate) fn deserialize<'s, F>(data: &[u8], schema_for: F) -> Result<CommitData, CodecError>
-where
-    F: Fn(&Path) -> Option<&'s Schema>,
-{
-    let mut pos = 0usize;
-
-    let deps_count = commit_leb128::read_len(data, &mut pos, "deps count")? as usize;
-    let mut deps = Vec::with_capacity(deps_count);
-    for _ in 0..deps_count {
-        let bytes = read_slice(data, &mut pos, HASH_SIZE, "dep hash")?;
-        let mut h = [0u8; HASH_SIZE];
-        h.copy_from_slice(bytes);
-        deps.push(CommitHash(h));
-    }
-
-    let nonce_bytes = read_slice(data, &mut pos, 16, "nonce")?;
-    let mut nonce = [0u8; 16];
-    nonce.copy_from_slice(nonce_bytes);
-
-    let timestamp = commit_leb128::read_i64(data, &mut pos, "timestamp")?;
-
-    let msg_len = commit_leb128::read_len(data, &mut pos, "message length")? as usize;
-    let msg_bytes = read_slice(data, &mut pos, msg_len, "message")?;
-    let message = if msg_len == 0 {
-        None
-    } else {
-        Some(
-            std::str::from_utf8(msg_bytes)
-                .map_err(|_| CodecError::DataFormatError("commit message: invalid utf-8".into()))?
-                .to_owned(),
-        )
-    };
-
-    let other_hashes = read_hash_dict(data, &mut pos)?;
-
-    let pending = decode_commit_body(&data[pos..], &other_hashes, schema_for)?;
-
-    Ok(CommitData {
-        deps,
-        nonce,
-        timestamp,
-        message,
-        other_hashes,
-        pending,
-    })
-}
-
 /// Encode the normal commit body after the shared commit metadata.
 ///
 /// Layout:
@@ -204,7 +154,7 @@ where
     }
 
     let mut buf = Vec::new();
-    // TODO check
+    // TODO check necessaity
     let op_count: u32 = pending
         .len()
         .try_into()
@@ -223,6 +173,8 @@ where
         .map_err(|_| CodecError::Other("too many op groups in commit body".into()))?;
     commit_leb128::write_u32(&mut buf, group_count)?;
 
+    // TODO each group is encoded with its row and columns first, and then the column
+    // body. Automerge does the header + concatenated body approach
     for (table, ops) in &groups {
         let schema = schema_for(table).ok_or_else(|| {
             CodecError::SchemaError(format!("missing schema for table {table:?}"))
@@ -232,6 +184,210 @@ where
     }
 
     Ok(buf)
+}
+
+/// encode the row_ref column, which might be a pending id or a already resolved id
+fn encode_txn_row_ref_column(
+    values: &[TxnCellValue],
+    hash_mapper: &HashMapper,
+) -> Result<Vec<u8>, CodecError> {
+    let mut hash_indices: Vec<i64> = Vec::with_capacity(values.len());
+    let mut counters = Vec::with_capacity(values.len());
+
+    for value in values {
+        let TxnCellValue::Id(row_ref) = value else {
+            return Err(CodecError::SchemaError(format!(
+                "expected row reference, got {value:?}"
+            )));
+        };
+
+        match row_ref {
+            RowRef::Existing(RowId { commit, counter }) => {
+                let hash_index = hash_mapper.index(*commit).ok_or_else(|| {
+                    CodecError::SchemaError(format!("missing commit hash in dictionary: {commit}"))
+                })? as i64;
+                hash_indices.push(hash_index);
+                counters.push(*counter);
+            }
+            RowRef::Pending(temp_id) => {
+                hash_indices.push(LOCAL_COMMIT_HASH_INDEX);
+                counters.push(temp_id.0);
+            }
+        }
+    }
+
+    let hash_index_col = Column::<i64>::from_values(hash_indices).save();
+    let counter_col = DeltaColumn::<u32>::from_values(counters).save();
+
+    let mut buf = Vec::new();
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &hash_index_col)?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &counter_col)?;
+    Ok(buf)
+}
+
+fn encode_txn_prim_value_column(
+    values: &[TxnCellValue],
+    prim: &PrimType,
+) -> Result<Vec<u8>, CodecError> {
+    match prim {
+        PrimType::PrimInt => {
+            let mut meta: Vec<ValueMeta> = Vec::with_capacity(values.len());
+            let mut value_bytes = Vec::new();
+            for value in values {
+                let TxnCellValue::Int(i) = value else {
+                    return Err(CodecError::SchemaError(format!(
+                        "expected int, got {value:?}"
+                    )));
+                };
+                meta.push((&PrimValue::Int(*i)).into());
+                // canonical bytes; length here MUST equal ValueMeta::length()
+                leb128::write::signed(&mut value_bytes, *i)
+                    .map_err(|e| CodecError::DataFormatError(e.to_string()))?;
+            }
+            let meta_blob = Column::<ValueMeta>::from_values(meta).save();
+            let mut buf = Vec::new();
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob)?;
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes)?;
+            Ok(buf)
+        }
+        PrimType::PrimString => {
+            let mut meta: Vec<ValueMeta> = Vec::with_capacity(values.len());
+            let mut value_bytes = Vec::new();
+            for value in values {
+                let TxnCellValue::Str(s) = value else {
+                    return Err(CodecError::SchemaError(format!(
+                        "expected string, got {value:?}"
+                    )));
+                };
+                meta.push((&PrimValue::Str(s)).into());
+                // raw utf-8 bytes; length here MUST equal ValueMeta::length()
+                value_bytes.extend_from_slice(s.as_bytes());
+            }
+            let meta_blob = Column::<ValueMeta>::from_values(meta).save();
+            let mut buf = Vec::new();
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob)?;
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes)?;
+            Ok(buf)
+        }
+    }
+}
+
+/// Columnar encode for one schema column of transaction cell values.
+fn encode_txn_value_column(
+    values: &[TxnCellValue],
+    col_type: &ColType,
+    hash_mapper: &HashMapper,
+) -> Result<Vec<u8>, CodecError> {
+    match col_type {
+        ColType::EntityType { .. } => encode_txn_row_ref_column(values, hash_mapper),
+        ColType::PrimType { prim } => encode_txn_prim_value_column(values, prim),
+        ColType::Tuple { .. } => Err(CodecError::SchemaError(
+            "tuple columns are not supported yet".into(),
+        )),
+    }
+}
+
+/// Encode a same-table group of add operations as schema-shaped column blobs.
+///
+/// Layout:
+/// `[table_path_len][table_path: utf-8][row_count][column_count]`
+/// followed by one len-prefixed column blob per schema column.
+fn encode_op_group(
+    table: &Path,
+    schema: &Schema,
+    ops: &[PendingOp],
+    hash_mapper: &HashMapper,
+) -> Result<Vec<u8>, CodecError> {
+    let mut rows = Vec::with_capacity(ops.len());
+    for op in ops {
+        let PendingOp::Add {
+            table: op_table,
+            values,
+            ..
+        } = op;
+        if op_table != table {
+            return Err(CodecError::SchemaError(format!(
+                "op group table mismatch: expected {table:?}, got {op_table:?}"
+            )));
+        }
+        if values.len() != schema.columns.len() {
+            return Err(CodecError::SchemaError(format!(
+                "op group column count mismatch: expected {}, got {}",
+                schema.columns.len(),
+                values.len()
+            )));
+        }
+        rows.push(values);
+    }
+
+    let mut buf = Vec::new();
+    let path = table.to_string();
+    commit_leb128::write_len(&mut buf, path.len())?;
+    buf.write_all(path.as_bytes())?;
+
+    commit_leb128::write_len(&mut buf, rows.len())?;
+
+    commit_leb128::write_len(&mut buf, schema.columns.len())?;
+
+    for (column_index, col_type) in schema.columns.iter().enumerate() {
+        let values = rows
+            .iter()
+            .map(|row| row[column_index].clone())
+            .collect::<Vec<_>>();
+        let blob = encode_txn_value_column(&values, col_type, hash_mapper)?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &blob)?;
+    }
+
+    Ok(buf)
+}
+
+/// Parse canonical payload bytes (the slice passed to [`crate::persist::chunk::hash`],
+/// not including the chunk type or outer length prefix).
+pub(crate) fn deserialize<'s, F>(data: &[u8], schema_for: F) -> Result<CommitData, CodecError>
+where
+    F: Fn(&Path) -> Option<&'s Schema>,
+{
+    let mut pos = 0usize;
+
+    let deps_count = commit_leb128::read_len(data, &mut pos, "deps count")? as usize;
+    let mut deps = Vec::with_capacity(deps_count);
+    for _ in 0..deps_count {
+        let bytes = read_slice(data, &mut pos, HASH_SIZE, "dep hash")?;
+        let mut h = [0u8; HASH_SIZE];
+        h.copy_from_slice(bytes);
+        deps.push(CommitHash(h));
+    }
+
+    let nonce_bytes = read_slice(data, &mut pos, 16, "nonce")?;
+    let mut nonce = [0u8; 16];
+    nonce.copy_from_slice(nonce_bytes);
+
+    let timestamp = commit_leb128::read_i64(data, &mut pos, "timestamp")?;
+
+    let msg_len = commit_leb128::read_len(data, &mut pos, "message length")? as usize;
+    let msg_bytes = read_slice(data, &mut pos, msg_len, "message")?;
+    let message = if msg_len == 0 {
+        None
+    } else {
+        Some(
+            std::str::from_utf8(msg_bytes)
+                .map_err(|_| CodecError::DataFormatError("commit message: invalid utf-8".into()))?
+                .to_owned(),
+        )
+    };
+
+    let other_hashes = read_hash_dict(data, &mut pos)?;
+
+    let pending = decode_commit_body(&data[pos..], &other_hashes, schema_for)?;
+
+    Ok(CommitData {
+        deps,
+        nonce,
+        timestamp,
+        message,
+        other_hashes,
+        pending,
+    })
 }
 
 fn decode_commit_body<'s, F>(
@@ -320,60 +476,6 @@ where
     Ok(pending)
 }
 
-/// Encode a same-table group of add operations as schema-shaped column blobs.
-///
-/// Layout:
-/// `[table_path_len][table_path: utf-8][row_count][column_count]`
-/// followed by one len-prefixed column blob per schema column.
-fn encode_op_group(
-    table: &Path,
-    schema: &Schema,
-    ops: &[PendingOp],
-    hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, CodecError> {
-    let mut rows = Vec::with_capacity(ops.len());
-    for op in ops {
-        let PendingOp::Add {
-            table: op_table,
-            values,
-            ..
-        } = op;
-        if op_table != table {
-            return Err(CodecError::SchemaError(format!(
-                "op group table mismatch: expected {table:?}, got {op_table:?}"
-            )));
-        }
-        if values.len() != schema.columns.len() {
-            return Err(CodecError::SchemaError(format!(
-                "op group column count mismatch: expected {}, got {}",
-                schema.columns.len(),
-                values.len()
-            )));
-        }
-        rows.push(values);
-    }
-
-    let mut buf = Vec::new();
-    let path = table.to_string();
-    commit_leb128::write_len(&mut buf, path.len())?;
-    buf.write_all(path.as_bytes())?;
-
-    commit_leb128::write_len(&mut buf, rows.len())?;
-
-    commit_leb128::write_len(&mut buf, schema.columns.len())?;
-
-    for (column_index, col_type) in schema.columns.iter().enumerate() {
-        let values = rows
-            .iter()
-            .map(|row| row[column_index].clone())
-            .collect::<Vec<_>>();
-        let blob = encode_txn_value_column(&values, col_type, hash_mapper)?;
-        commit_leb128::write_len_prefixed_bytes(&mut buf, &blob)?;
-    }
-
-    Ok(buf)
-}
-
 struct DecodedOpGroup {
     table: Path,
     rows: Vec<Vec<TxnCellValue>>,
@@ -441,86 +543,6 @@ where
     Ok(DecodedOpGroup { table, rows })
 }
 
-/// encode the row_ref column, which might be a pending id or a already resolved id
-fn encode_txn_row_ref_column(
-    values: &[TxnCellValue],
-    hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, CodecError> {
-    let mut hash_indices: Vec<i64> = Vec::with_capacity(values.len());
-    let mut counters = Vec::with_capacity(values.len());
-
-    for value in values {
-        let TxnCellValue::Id(row_ref) = value else {
-            return Err(CodecError::SchemaError(format!(
-                "expected row reference, got {value:?}"
-            )));
-        };
-
-        match row_ref {
-            RowRef::Existing(RowId { commit, counter }) => {
-                let hash_index = hash_mapper.index(*commit).ok_or_else(|| {
-                    CodecError::SchemaError(format!("missing commit hash in dictionary: {commit}"))
-                })? as i64;
-                hash_indices.push(hash_index);
-                counters.push(*counter);
-            }
-            RowRef::Pending(temp_id) => {
-                hash_indices.push(LOCAL_COMMIT_HASH_INDEX);
-                counters.push(temp_id.0);
-            }
-        }
-    }
-
-    let hash_index_col = Column::<i64>::from_values(hash_indices).save();
-    let counter_col = DeltaColumn::<u32>::from_values(counters).save();
-
-    let mut buf = Vec::new();
-    commit_leb128::write_len_prefixed_bytes(&mut buf, &hash_index_col)?;
-    commit_leb128::write_len_prefixed_bytes(&mut buf, &counter_col)?;
-    Ok(buf)
-}
-
-/// Columnar encode for one schema column of transaction cell values.
-fn encode_txn_value_column(
-    values: &[TxnCellValue],
-    col_type: &ColType,
-    hash_mapper: &HashMapper,
-) -> Result<Vec<u8>, CodecError> {
-    match col_type {
-        ColType::EntityType { .. } => encode_txn_row_ref_column(values, hash_mapper),
-        ColType::PrimType { prim } => match prim {
-            PrimType::PrimInt => {
-                let mut ints = Vec::with_capacity(values.len());
-                for value in values {
-                    let TxnCellValue::Int(i) = value else {
-                        return Err(CodecError::SchemaError(format!(
-                            "expected int, got {value:?}"
-                        )));
-                    };
-                    ints.push(*i);
-                }
-                Ok(Column::<i64>::from_values(ints).save())
-            }
-            // TODO this is using RLE for strings, is this the right thing to do?
-            PrimType::PrimString => {
-                let mut strings = Vec::with_capacity(values.len());
-                for value in values {
-                    let TxnCellValue::Str(s) = value else {
-                        return Err(CodecError::SchemaError(format!(
-                            "expected string, got {value:?}"
-                        )));
-                    };
-                    strings.push(s.clone());
-                }
-                Ok(Column::<String>::from_values(strings).save())
-            }
-        },
-        ColType::Tuple { .. } => Err(CodecError::SchemaError(
-            "tuple columns are not supported yet".into(),
-        )),
-    }
-}
-
 /// Decode a column produced by [`encode_txn_value_column`].
 fn decode_txn_value_column(
     data: &[u8],
@@ -529,16 +551,7 @@ fn decode_txn_value_column(
 ) -> Result<Vec<TxnCellValue>, CodecError> {
     match col_type {
         ColType::EntityType { .. } => decode_txn_row_ref_column(data, hashes),
-        ColType::PrimType { prim } => match prim {
-            PrimType::PrimInt => Ok(Column::<i64>::load(data)?
-                .iter()
-                .map(TxnCellValue::Int)
-                .collect()),
-            PrimType::PrimString => Ok(Column::<String>::load(data)?
-                .iter()
-                .map(|s| TxnCellValue::Str(s.to_owned()))
-                .collect()),
-        },
+        ColType::PrimType { prim } => decode_txn_prim_value_column(data, prim),
         ColType::Tuple { .. } => Err(CodecError::SchemaError(
             "tuple columns are not supported yet".into(),
         )),
@@ -590,6 +603,84 @@ fn decode_txn_row_ref_column(
             }
         })
         .collect()
+}
+
+fn decode_txn_prim_value_column(
+    data: &[u8],
+    prim: &PrimType,
+) -> Result<Vec<TxnCellValue>, CodecError> {
+    let mut pos = 0usize;
+    let meta_blob =
+        commit_leb128::read_len_prefixed_bytes(data, &mut pos, "txn prim value meta column")?;
+    let value_blob =
+        commit_leb128::read_len_prefixed_bytes(data, &mut pos, "txn prim value column")?;
+    if pos != data.len() {
+        return Err(CodecError::DataFormatError(format!(
+            "trailing bytes after txn prim value column: {} bytes",
+            data.len() - pos
+        )));
+    }
+
+    let meta: Vec<ValueMeta> = Column::<ValueMeta>::load(meta_blob)?.iter().collect();
+    let mut values = Vec::with_capacity(meta.len());
+    let mut offset = 0usize;
+
+    for m in &meta {
+        let len = m.length();
+        let end = offset
+            .checked_add(len)
+            .filter(|e| *e <= value_blob.len())
+            .ok_or_else(|| {
+                CodecError::DataFormatError(format!(
+                    "value column overrun: offset {offset} + len {len} > {}",
+                    value_blob.len()
+                ))
+            })?;
+        let bytes = &value_blob[offset..end];
+
+        let ty = m.type_code();
+        if !ty.is_valid_for(prim) {
+            return Err(CodecError::SchemaError(format!(
+                "value type {ty:?} is not valid for column type {prim:?}"
+            )));
+        }
+
+        let value = match ty {
+            ValueType::Leb => {
+                let mut reader = bytes;
+                let i = leb128::read::signed(&mut reader)
+                    .map_err(|e| CodecError::DataFormatError(e.to_string()))?;
+                if !reader.is_empty() {
+                    return Err(CodecError::DataFormatError(
+                        "trailing bytes in leb value".into(),
+                    ));
+                }
+                TxnCellValue::Int(i)
+            }
+            ValueType::String => {
+                let s = std::str::from_utf8(bytes).map_err(|_| {
+                    CodecError::DataFormatError("value column: invalid utf-8".into())
+                })?;
+                TxnCellValue::Str(s.to_owned())
+            }
+            other => {
+                return Err(CodecError::DataFormatError(format!(
+                    "unsupported value type code {other:?}"
+                )));
+            }
+        };
+
+        values.push(value);
+        offset = end;
+    }
+    if offset != value_blob.len() {
+        return Err(CodecError::DataFormatError(format!(
+            "trailing bytes in value column: {} bytes",
+            value_blob.len() - offset
+        )));
+    }
+
+    Ok(values)
 }
 
 #[cfg(test)]
@@ -669,6 +760,68 @@ mod tests {
             encode_txn_value_column(&values, &col, &HashMapper::new()).expect("encode str col");
         let decoded = decode_txn_value_column(&encoded, &col, &[]).expect("decode str col");
         assert_eq!(decoded, values);
+    }
+
+    #[test]
+    fn txn_value_column_round_trips_int_boundaries() {
+        let col = ColType::PrimType {
+            prim: PrimType::PrimInt,
+        };
+        // Span every leb byte-length boundary, including the signed extremes,
+        // so the declared meta length must agree with the signed-leb encoding.
+        let values: Vec<TxnCellValue> = vec![
+            0i64.into(),
+            (-1i64).into(),
+            1i64.into(),
+            127i64.into(),
+            128i64.into(),
+            (-128i64).into(),
+            i64::MIN.into(),
+            i64::MAX.into(),
+        ];
+        let encoded =
+            encode_txn_value_column(&values, &col, &HashMapper::new()).expect("encode int col");
+        let decoded = decode_txn_value_column(&encoded, &col, &[]).expect("decode int col");
+        assert_eq!(decoded, values);
+    }
+
+    #[test]
+    fn txn_value_column_round_trips_empty_strings_and_empty_column() {
+        let col = ColType::PrimType {
+            prim: PrimType::PrimString,
+        };
+
+        // Zero-length values interleaved with non-empty ones: the value blob
+        // is shorter than the row count, so offsets must advance by zero.
+        let values: Vec<TxnCellValue> = vec!["".into(), "x".into(), "".into()];
+        let encoded =
+            encode_txn_value_column(&values, &col, &HashMapper::new()).expect("encode str col");
+        let decoded = decode_txn_value_column(&encoded, &col, &[]).expect("decode str col");
+        assert_eq!(decoded, values);
+
+        // Zero rows: empty meta and value blobs must round-trip to an empty column.
+        let empty: Vec<TxnCellValue> = vec![];
+        let encoded =
+            encode_txn_value_column(&empty, &col, &HashMapper::new()).expect("encode empty col");
+        let decoded = decode_txn_value_column(&encoded, &col, &[]).expect("decode empty col");
+        assert_eq!(decoded, empty);
+    }
+
+    #[test]
+    fn txn_value_column_decode_rejects_meta_length_overrun() {
+        let col = ColType::PrimType {
+            prim: PrimType::PrimInt,
+        };
+        // The meta claims a 5-byte value, but the value blob is empty.
+        let meta_blob =
+            Column::<ValueMeta>::from_values(vec![ValueMeta::new(ValueType::Leb, 5)]).save();
+        let value_blob: Vec<u8> = Vec::new();
+        let mut data = Vec::new();
+        commit_leb128::write_len_prefixed_bytes(&mut data, &meta_blob).unwrap();
+        commit_leb128::write_len_prefixed_bytes(&mut data, &value_blob).unwrap();
+
+        let err = decode_txn_value_column(&data, &col, &[]).expect_err("length overrun");
+        assert!(matches!(err, CodecError::DataFormatError(_)));
     }
 
     #[test]
