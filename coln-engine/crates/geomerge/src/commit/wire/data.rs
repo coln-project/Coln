@@ -15,9 +15,9 @@ use crate::{
 
 use hexane::v1::{Column, DeltaColumn};
 
+// TODO change this to i32 when we support it as a column type
 /// This encodes the hash index of all hashes referring to the current commit
-/// TODO make -1
-const LOCAL_COMMIT_HASH_INDEX: u32 = u32::MAX;
+const LOCAL_COMMIT_HASH_INDEX: i64 = -1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommitData {
@@ -446,7 +446,7 @@ fn encode_txn_row_ref_column(
     values: &[TxnCellValue],
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
-    let mut hash_indices = Vec::with_capacity(values.len());
+    let mut hash_indices: Vec<i64> = Vec::with_capacity(values.len());
     let mut counters = Vec::with_capacity(values.len());
 
     for value in values {
@@ -460,12 +460,7 @@ fn encode_txn_row_ref_column(
             RowRef::Existing(RowId { commit, counter }) => {
                 let hash_index = hash_mapper.index(*commit).ok_or_else(|| {
                     CodecError::SchemaError(format!("missing commit hash in dictionary: {commit}"))
-                })?;
-                if hash_index == LOCAL_COMMIT_HASH_INDEX {
-                    return Err(CodecError::Other(
-                        "too many hashes for row reference column".into(),
-                    ));
-                }
+                })? as i64;
                 hash_indices.push(hash_index);
                 counters.push(*counter);
             }
@@ -476,7 +471,7 @@ fn encode_txn_row_ref_column(
         }
     }
 
-    let hash_index_col = Column::<u32>::from_values(hash_indices).save();
+    let hash_index_col = Column::<i64>::from_values(hash_indices).save();
     let counter_col = DeltaColumn::<u32>::from_values(counters).save();
 
     let mut buf = Vec::new();
@@ -566,7 +561,7 @@ fn decode_txn_row_ref_column(
         )));
     }
 
-    let hash_indices: Vec<u32> = Column::<u32>::load(hash_index_blob)?.iter().collect();
+    let hash_indices: Vec<i64> = Column::<i64>::load(hash_index_blob)?.iter().collect();
     let counters: Vec<u32> = DeltaColumn::<u32>::load(counter_blob)?.iter().collect();
     if hash_indices.len() != counters.len() {
         return Err(CodecError::DataFormatError(format!(

@@ -26,6 +26,8 @@ impl<'a> Transaction<'a> {
         }
     }
 
+    // TODO this API is a bit awkward to use, clients have to call .into() all
+    // the time on their values
     pub fn add(
         &mut self,
         table: &ir::Path,
