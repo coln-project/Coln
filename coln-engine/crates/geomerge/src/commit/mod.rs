@@ -1,3 +1,4 @@
+pub mod author;
 pub mod chunk;
 pub mod error;
 pub mod graph;
@@ -12,11 +13,12 @@ use std::borrow::Cow;
 
 use crate::{
     commit::{
+        author::Author,
         chunk::{ChunkType, hash},
         error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
-        wire::{CommitData, data::AUTHOR_SIZE, root::RootCommitData},
+        wire::{CommitData, root::RootCommitData},
     },
     ir::{Path, Schema},
     txn::ops::{Op, PendingOp, RowRef, TxnCellValue},
@@ -36,7 +38,7 @@ pub(crate) struct Header {
 /// lazy iteration; we decode ops eagerly into `PendingOp` while the encoding
 /// is still row-wise.
 ///
-/// The hash is always `sha256(chunk_type:u8 || data_len:u64_le || bytes)`, so
+/// The hash is always `blake3(chunk_type:u8 || data_len:u64_le || bytes)`, so
 /// verifying a loaded commit is re-running [`crate::persist::chunk::hash`] on
 /// [`Commit::payload`] and comparing to [`Commit::hash`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,15 +46,15 @@ pub struct Commit<'a> {
     /// Canonical payload bytes (everything after the chunk header).
     bytes: Cow<'a, [u8]>,
     pub(crate) header: Header,
+    pub author: Author,
+    pub other_hashes: Vec<CommitHash>,
     /// parents of this commit
     pub deps: Vec<CommitHash>,
     /// Identifier of the commit author. Currently a placeholder of all zeros.
-    pub author: [u8; AUTHOR_SIZE],
     pub timestamp: i64,
     pub message: Option<String>,
     /// Commit hashes referenced by op ids, dictionary order on the wire.
     /// Does not the hash of this transaction, which would be stored in header
-    pub other_hashes: Vec<CommitHash>,
     pub(crate) pending: Vec<PendingOp>,
 }
 
@@ -86,7 +88,7 @@ impl Commit<'static> {
                 hash,
             },
             deps: vec![],
-            author: [0u8; AUTHOR_SIZE],
+            author: Author::foo(),
             timestamp: 0,
             message: None,
             other_hashes: vec![],
@@ -269,7 +271,7 @@ mod tests {
 
     fn data(
         deps: Vec<CommitHash>,
-        author: [u8; AUTHOR_SIZE],
+        author: Author,
         timestamp: i64,
         message: Option<&str>,
         pending: Vec<PendingOp>,
@@ -324,13 +326,7 @@ mod tests {
             },
         ];
         let original = Commit::from_commit_data(
-            data(
-                deps.clone(),
-                [5u8; AUTHOR_SIZE],
-                42,
-                Some("hi"),
-                pending.clone(),
-            ),
+            data(deps.clone(), Author::foo(), 42, Some("hi"), pending.clone()),
             payload_schema_for,
         )
         .expect("build commit");
@@ -357,13 +353,12 @@ mod tests {
         let deps = vec![zero_hash()];
         let pending: Vec<PendingOp> = vec![];
         let a = Commit::from_commit_data(
-            data(deps.clone(), [0u8; AUTHOR_SIZE], 0, None, pending.clone()),
+            data(deps.clone(), Author::foo(), 0, None, pending.clone()),
             |_| None,
         )
         .expect("build a");
-        let b =
-            Commit::from_commit_data(data(deps, [0u8; AUTHOR_SIZE], 0, None, pending), |_| None)
-                .expect("build b");
+        let b = Commit::from_commit_data(data(deps, Author::foo(), 0, None, pending), |_| None)
+            .expect("build b");
         assert_eq!(a.hash(), b.hash());
     }
 
@@ -371,13 +366,12 @@ mod tests {
     fn different_timestamps_produce_different_hashes() {
         let pending: Vec<PendingOp> = vec![];
         let a = Commit::from_commit_data(
-            data(vec![], [0u8; AUTHOR_SIZE], 1, None, pending.clone()),
+            data(vec![], Author::foo(), 1, None, pending.clone()),
             |_| None,
         )
         .expect("build a");
-        let b =
-            Commit::from_commit_data(data(vec![], [0u8; AUTHOR_SIZE], 2, None, pending), |_| None)
-                .expect("build b");
+        let b = Commit::from_commit_data(data(vec![], Author::foo(), 2, None, pending), |_| None)
+            .expect("build b");
         assert_ne!(a.hash(), b.hash());
     }
 
@@ -385,18 +379,12 @@ mod tests {
     fn different_messages_produce_different_hashes() {
         let pending: Vec<PendingOp> = vec![];
         let a = Commit::from_commit_data(
-            data(
-                vec![],
-                [0u8; AUTHOR_SIZE],
-                0,
-                Some("hello"),
-                pending.clone(),
-            ),
+            data(vec![], Author::foo(), 0, Some("hello"), pending.clone()),
             |_| None,
         )
         .expect("build a");
         let b = Commit::from_commit_data(
-            data(vec![], [0u8; AUTHOR_SIZE], 0, Some("world"), pending),
+            data(vec![], Author::foo(), 0, Some("world"), pending),
             |_| None,
         )
         .expect("build b");
@@ -407,13 +395,21 @@ mod tests {
     fn different_authors_produce_different_hashes() {
         let pending: Vec<PendingOp> = vec![];
         let a = Commit::from_commit_data(
-            data(vec![], [0u8; AUTHOR_SIZE], 0, None, pending.clone()),
+            data(
+                vec![],
+                Author::from(vec![0u8; 32]),
+                0,
+                None,
+                pending.clone(),
+            ),
             |_| None,
         )
         .expect("build a");
-        let b =
-            Commit::from_commit_data(data(vec![], [1u8; AUTHOR_SIZE], 0, None, pending), |_| None)
-                .expect("build b");
+        let b = Commit::from_commit_data(
+            data(vec![], Author::from(vec![1u8; 32]), 0, None, pending),
+            |_| None,
+        )
+        .expect("build b");
         assert_ne!(a.hash(), b.hash());
     }
 
@@ -425,7 +421,7 @@ mod tests {
             values: vec![42.into()],
         };
         let a = Commit::from_commit_data(
-            data(vec![], [0u8; AUTHOR_SIZE], 0, None, vec![op]),
+            data(vec![], Author::foo(), 0, None, vec![op]),
             int_schema_for,
         )
         .expect("build a");
@@ -436,7 +432,7 @@ mod tests {
             values: vec![99.into()],
         };
         let b = Commit::from_commit_data(
-            data(vec![], [0u8; AUTHOR_SIZE], 0, None, vec![op2]),
+            data(vec![], Author::foo(), 0, None, vec![op2]),
             int_schema_for,
         )
         .expect("build b");
@@ -448,7 +444,7 @@ mod tests {
     fn hash_is_function_of_bytes() {
         let pending: Vec<PendingOp> = vec![];
         let commit =
-            Commit::from_commit_data(data(vec![], [0u8; AUTHOR_SIZE], 0, None, pending), |_| None)
+            Commit::from_commit_data(data(vec![], Author::foo(), 0, None, pending), |_| None)
                 .expect("build commit");
         let expected = hash(ChunkType::Commit, commit.payload());
         assert_eq!(commit.hash(), expected);
@@ -484,7 +480,7 @@ mod tests {
     #[test]
     fn root_payload_rejects_data_commit() {
         let commit =
-            Commit::from_commit_data(data(vec![], [0u8; AUTHOR_SIZE], 0, None, vec![]), |_| None)
+            Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![]), |_| None)
                 .expect("build commit");
 
         assert!(matches!(
@@ -500,7 +496,7 @@ mod tests {
     fn build_records_metadata_and_pending_ops() {
         let dep = zero_hash();
         let deps = vec![dep];
-        let author = [5u8; AUTHOR_SIZE];
+        let author = Author::foo();
         let rid = RowId {
             commit: dep,
             counter: 7,
@@ -538,7 +534,7 @@ mod tests {
     fn payload_decode_round_trips_columnar_commit() {
         let dep = zero_hash();
         let deps = vec![dep];
-        let author = [5u8; AUTHOR_SIZE];
+        let author = Author::foo();
         let rid = RowId {
             commit: dep,
             counter: 7,
@@ -609,7 +605,7 @@ mod tests {
             ],
         };
         let commit = Commit::from_commit_data(
-            data(vec![], [0u8; AUTHOR_SIZE], 0, None, vec![op0, op1]),
+            data(vec![], Author::foo(), 0, None, vec![op0, op1]),
             entity_pair_schema_for,
         )
         .expect("build commit");
@@ -625,7 +621,7 @@ mod tests {
             values: vec![42.into()],
         };
         let no_row_refs = Commit::from_commit_data(
-            data(vec![], [0u8; AUTHOR_SIZE], 0, None, vec![op_int]),
+            data(vec![], Author::foo(), 0, None, vec![op_int]),
             int_schema_for,
         )
         .expect("build");

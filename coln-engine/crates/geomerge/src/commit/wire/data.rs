@@ -1,6 +1,7 @@
 use hexane::v1::{Column, DeltaColumn};
 use std::io::Write;
 
+use crate::commit::author::Author;
 use crate::commit::leb128 as commit_leb128;
 use crate::commit::wire::prim::{PrimValue, ValueMeta, ValueType};
 use crate::{
@@ -19,25 +20,24 @@ use crate::{
 /// This encodes the hash index of all hashes referring to the current commit
 const LOCAL_COMMIT_HASH_INDEX: i64 = -1;
 
-/// Length in bytes of an author identifier.
-pub(crate) const AUTHOR_SIZE: usize = 32;
-
+/// Data structure to be hashed, in the order as the fields are defined here.
+/// See also payload canocial payload encoding format.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommitData {
+    pub(crate) author: Author,
     pub(crate) deps: Vec<CommitHash>,
-    /// Identifier of the commit author. Currently a placeholder of all zeros.
-    pub(crate) author: [u8; AUTHOR_SIZE],
-    pub(crate) timestamp: i64,
-    pub(crate) message: Option<String>,
     /// Commit hashes referenced by op ids, dictionary order on the wire.
     pub(crate) other_hashes: Vec<CommitHash>,
+    /// Identifier of the commit author. Currently a placeholder of all zeros.
+    pub(crate) timestamp: i64,
+    pub(crate) message: Option<String>,
     pub(crate) pending: Vec<PendingOp>,
 }
 
 impl CommitData {
     pub(crate) fn new(
         deps: Vec<CommitHash>,
-        author: [u8; AUTHOR_SIZE],
+        author: Author,
         timestamp: i64,
         message: Option<String>,
         pending: Vec<PendingOp>,
@@ -57,14 +57,15 @@ impl CommitData {
 //
 // Layout (scalar integers use LEB128):
 //
+//   [author_len]
+//   [author: author_len bytes]                   (author id)
 //   [deps_count]
 //   [CommitHash × deps_count]            (32 bytes each)
-//   [author: 32 bytes]                   (author id; placeholder zeros for now)
+//   [other_hash_count]
+//   [CommitHash × other_hash_count]      (32 bytes each)
 //   [timestamp]
 //   [message_len]                        (0 when None)
 //   [message: utf-8 bytes]
-//   [other_hash_count]
-//   [CommitHash × other_hash_count]      (32 bytes each)
 //   [commit body]                        (operations, see encode_commit_body)
 // TODO extra_bytes
 pub(crate) fn serialize<'s, F>(
@@ -78,20 +79,19 @@ where
 {
     let mut buf: Vec<u8> = Vec::new();
 
+    commit_leb128::write_len(&mut buf, data.author.as_bytes().len())?;
+    buf.write_all(data.author.as_bytes()).unwrap();
     commit_leb128::write_len(&mut buf, data.deps.len())?;
     for dep in &data.deps {
         buf.write_all(dep.as_bytes()).unwrap();
     }
-
-    buf.write_all(&data.author).unwrap();
+    write_hash_dict(&mut buf, hash_mapper).expect("hash dictionary serializes");
 
     commit_leb128::write_i64(&mut buf, data.timestamp)?;
 
     let msg = data.message.as_deref().unwrap_or("");
     commit_leb128::write_len(&mut buf, msg.len())?;
     buf.write_all(msg.as_bytes()).unwrap();
-
-    write_hash_dict(&mut buf, hash_mapper).expect("hash dictionary serializes");
 
     let body = encode_commit_body(&data.pending, schema_for, hash_mapper)?;
     buf.write_all(&body).unwrap();
@@ -351,6 +351,10 @@ where
 {
     let mut pos = 0usize;
 
+    let author_len = commit_leb128::read_len(data, &mut pos, "author_len")?;
+    let author_bytes = read_slice(data, &mut pos, author_len, "author")?;
+    let author = author_bytes.into();
+
     let deps_count = commit_leb128::read_len(data, &mut pos, "deps count")?;
     let mut deps = Vec::with_capacity(deps_count);
     for _ in 0..deps_count {
@@ -360,9 +364,7 @@ where
         deps.push(CommitHash(h));
     }
 
-    let author_bytes = read_slice(data, &mut pos, AUTHOR_SIZE, "author")?;
-    let mut author = [0u8; AUTHOR_SIZE];
-    author.copy_from_slice(author_bytes);
+    let other_hashes = read_hash_dict(data, &mut pos)?;
 
     let timestamp = commit_leb128::read_i64(data, &mut pos, "timestamp")?;
 
@@ -378,16 +380,14 @@ where
         )
     };
 
-    let other_hashes = read_hash_dict(data, &mut pos)?;
-
     let pending = decode_commit_body(&data[pos..], &other_hashes, schema_for)?;
 
     Ok(CommitData {
-        deps,
         author,
+        deps,
+        other_hashes,
         timestamp,
         message,
-        other_hashes,
         pending,
     })
 }

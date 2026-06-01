@@ -2,7 +2,7 @@ use geolog_lang::ir;
 use tracing::info;
 
 use crate::{
-    commit::{Commit, hash::CommitHash, wire::CommitData, wire::data::AUTHOR_SIZE},
+    commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
     store::{Store, error::StoreIntError},
     table::ValidationError,
     txn::{
@@ -13,7 +13,7 @@ use crate::{
 
 pub(crate) struct TxnInner {
     deps: Vec<CommitHash>,
-    author: [u8; AUTHOR_SIZE],
+    author: Author,
     pending: Vec<PendingOp>,
     timestamp: Timestamp,
     message: Option<String>,
@@ -23,8 +23,7 @@ impl TxnInner {
     pub(crate) fn new(deps: Vec<CommitHash>) -> Self {
         Self {
             deps,
-            // TODO author id is unused right now
-            author: [0u8; AUTHOR_SIZE],
+            author: Author::foo(),
             pending: Vec::new(),
             timestamp: Timestamp::now(),
             message: None,
@@ -71,7 +70,7 @@ impl TxnInner {
         info!("applied batch");
         Ok(h)
         // 1. validate full batch (PK conflicts including intra-batch)
-        // 2. compute hash: sha256(deps || timestamp || message || canonical(ops))
+        // 2. compute hash: blake3(deps || timestamp || message || canonical(ops))
         // 3. resolve: TxnRowId(k) -> RowId { commit: hash, counter: k }
         //             CellValue::TxnId(k) -> CellValue::Id(RowId { commit: hash, counter: k })
         // 4. apply resolved Ops to tables via table.append_row

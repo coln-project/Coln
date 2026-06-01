@@ -134,6 +134,7 @@ impl CommitGraph {
 mod tests {
 
     use super::*;
+    use crate::commit::author::Author;
     use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::root::{RootCommitData, RootTableEntry};
     use crate::ir::Schema;
@@ -144,13 +145,7 @@ mod tests {
 
     fn c(n: u8, deps: Vec<CommitHash>) -> Commit<'static> {
         Commit::from_commit_data(
-            crate::commit::wire::CommitData::new(
-                deps,
-                [n; crate::commit::wire::data::AUTHOR_SIZE],
-                n as i64,
-                None,
-                vec![],
-            ),
+            crate::commit::wire::CommitData::new(deps, Author::foo(), n as i64, None, vec![]),
             |_| None,
         )
         .expect("build commit")
