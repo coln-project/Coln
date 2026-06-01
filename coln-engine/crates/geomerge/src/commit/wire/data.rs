@@ -351,7 +351,7 @@ where
 {
     let mut pos = 0usize;
 
-    let deps_count = commit_leb128::read_len(data, &mut pos, "deps count")? as usize;
+    let deps_count = commit_leb128::read_len(data, &mut pos, "deps count")?;
     let mut deps = Vec::with_capacity(deps_count);
     for _ in 0..deps_count {
         let bytes = read_slice(data, &mut pos, HASH_SIZE, "dep hash")?;
@@ -366,7 +366,7 @@ where
 
     let timestamp = commit_leb128::read_i64(data, &mut pos, "timestamp")?;
 
-    let msg_len = commit_leb128::read_len(data, &mut pos, "message length")? as usize;
+    let msg_len = commit_leb128::read_len(data, &mut pos, "message length")?;
     let msg_bytes = read_slice(data, &mut pos, msg_len, "message")?;
     let message = if msg_len == 0 {
         None

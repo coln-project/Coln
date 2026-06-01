@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::io::Write;
 
 use crate::commit::{error::CodecError, utils::read_slice};
