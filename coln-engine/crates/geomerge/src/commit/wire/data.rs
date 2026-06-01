@@ -32,6 +32,8 @@ pub(crate) struct CommitData {
     pub(crate) timestamp: i64,
     pub(crate) message: Option<String>,
     pub(crate) pending: Vec<PendingOp>,
+    /// Uninterpreted trailing bytes, reserved for forward compatibility
+    pub(crate) extra_bytes: Vec<u8>,
 }
 
 impl CommitData {
@@ -49,6 +51,7 @@ impl CommitData {
             message,
             other_hashes: vec![],
             pending,
+            extra_bytes: vec![],
         }
     }
 }
@@ -67,7 +70,8 @@ impl CommitData {
 //   [message_len]                        (0 when None)
 //   [message: utf-8 bytes]
 //   [commit body]                        (operations, see encode_commit_body)
-// TODO extra_bytes
+//   [extra_bytes]                        (trailing reserved bytes, see CommitData::extra_bytes)
+//
 pub(crate) fn serialize<'s, F>(
     data: &CommitData,
     // TODO hashmapper order
@@ -95,6 +99,8 @@ where
 
     let body = encode_commit_body(&data.pending, schema_for, hash_mapper)?;
     buf.write_all(&body).unwrap();
+
+    buf.write_all(&data.extra_bytes).unwrap();
 
     Ok(buf)
 }
@@ -274,6 +280,12 @@ fn encode_txn_prim_value_column(
     }
 }
 
+/*
+  NOTE encoding is hardcoded per `ColType` and must stay canonical/deterministic
+ (commit bytes are hashed for identity). Revisit a per-column encoding tag only
+ if a real workload shows an alternative encoding beats the tag overhead.
+*/
+
 /// Columnar encode for one schema column of transaction cell values.
 fn encode_txn_value_column(
     values: &[TxnCellValue],
@@ -380,7 +392,8 @@ where
         )
     };
 
-    let pending = decode_commit_body(&data[pos..], &other_hashes, schema_for)?;
+    let pending = decode_commit_body(data, &mut pos, &other_hashes, schema_for)?;
+    let extra_bytes = data[pos..].to_vec();
 
     Ok(CommitData {
         author,
@@ -389,21 +402,24 @@ where
         timestamp,
         message,
         pending,
+        extra_bytes,
     })
 }
 
+/// Decode the commit body, advancing `pos` past the bytes it consumes. Anything
+/// left after `pos` belongs to [`CommitData::extra_bytes`].
 fn decode_commit_body<'s, F>(
     data: &[u8],
+    pos: &mut usize,
     hashes: &[CommitHash],
     schema_for: F,
 ) -> Result<Vec<PendingOp>, CodecError>
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
-    let mut pos = 0usize;
-    let op_count = commit_leb128::read_len(data, &mut pos, "op count")?;
+    let op_count = commit_leb128::read_len(data, pos, "op count")?;
 
-    let op_kind_blob = commit_leb128::read_len_prefixed_bytes(data, &mut pos, "op kind column")?;
+    let op_kind_blob = commit_leb128::read_len_prefixed_bytes(data, pos, "op kind column")?;
     let op_kinds: Vec<u32> = Column::<u32>::load(op_kind_blob)?.iter().collect();
     if op_kinds.len() != op_count {
         return Err(CodecError::DataFormatError(format!(
@@ -413,7 +429,7 @@ where
     }
 
     let table_sequence_blob =
-        commit_leb128::read_len_prefixed_bytes(data, &mut pos, "table sequence column")?;
+        commit_leb128::read_len_prefixed_bytes(data, pos, "table sequence column")?;
     let table_sequence: Vec<u32> = Column::<u32>::load(table_sequence_blob)?.iter().collect();
     if table_sequence.len() != op_count {
         return Err(CodecError::DataFormatError(format!(
@@ -422,20 +438,16 @@ where
         )));
     }
 
-    let group_count = commit_leb128::read_len(data, &mut pos, "op group count")?;
+    let group_count = commit_leb128::read_len(data, pos, "op group count")?;
     let mut groups = Vec::with_capacity(group_count);
     for _ in 0..group_count {
-        let group_blob = commit_leb128::read_len_prefixed_bytes(data, &mut pos, "op group")?;
+        let group_blob = commit_leb128::read_len_prefixed_bytes(data, pos, "op group")?;
         groups.push(decode_op_group(group_blob, hashes, &schema_for)?);
     }
 
-    if pos != data.len() {
-        return Err(CodecError::DataFormatError(format!(
-            "trailing bytes after commit body: {} bytes",
-            data.len() - pos
-        )));
-    }
+    // The body ends at `pos`. Anything beyond it is `extra_bytes`.
 
+    // reconstruct the pending ops
     let mut group_offsets = vec![0usize; groups.len()];
     let mut pending = Vec::with_capacity(op_count);
     for op_idx in 0..op_count {
@@ -1137,9 +1149,11 @@ mod tests {
 
         let encoded =
             encode_commit_body(&pending, schema_for, &HashMapper::new()).expect("encode body");
-        let decoded = decode_commit_body(&encoded, &[], schema_for).expect("decode body");
+        let mut pos = 0usize;
+        let decoded = decode_commit_body(&encoded, &mut pos, &[], schema_for).expect("decode body");
 
         assert_eq!(decoded, pending);
+        assert_eq!(pos, encoded.len());
     }
 
     #[test]
@@ -1161,7 +1175,9 @@ mod tests {
         )
         .expect("encode body");
 
-        let err = decode_commit_body(&encoded, &[], |_| None).expect_err("missing schema");
+        let mut pos = 0usize;
+        let err =
+            decode_commit_body(&encoded, &mut pos, &[], |_| None).expect_err("missing schema");
         assert!(matches!(err, CodecError::SchemaError(_)));
     }
 
@@ -1176,5 +1192,30 @@ mod tests {
         let err =
             encode_commit_body(&pending, |_| None, &HashMapper::new()).expect_err("missing schema");
         assert!(matches!(err, CodecError::SchemaError(_)));
+    }
+
+    #[test]
+    fn serialize_round_trips_trailing_extra_bytes() {
+        let mut data = CommitData::new(vec![], Author::foo(), 7, Some("hi".to_owned()), vec![]);
+        data.extra_bytes = vec![0xde, 0xad, 0xbe, 0xef];
+
+        let bytes = serialize(&data, &HashMapper::new(), |_| None).expect("serialize");
+        let decoded = deserialize(&bytes, |_| None).expect("deserialize");
+
+        assert_eq!(decoded, data);
+        assert_eq!(decoded.extra_bytes, vec![0xde, 0xad, 0xbe, 0xef]);
+
+        // Re-serializing reproduces identical bytes, so the commit hash is stable
+        // even though the current version does not interpret the extra bytes.
+        let reencoded = serialize(&decoded, &HashMapper::new(), |_| None).expect("reserialize");
+        assert_eq!(reencoded, bytes);
+    }
+
+    #[test]
+    fn serialize_defaults_to_empty_extra_bytes() {
+        let data = CommitData::new(vec![], Author::foo(), 0, None, vec![]);
+        let bytes = serialize(&data, &HashMapper::new(), |_| None).expect("serialize");
+        let decoded = deserialize(&bytes, |_| None).expect("deserialize");
+        assert!(decoded.extra_bytes.is_empty());
     }
 }
