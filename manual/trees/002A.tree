@@ -1,4 +1,5 @@
 \title{A type theory for geometric theories}
+\import{prelude}
 
 \p{(This is meant for [[000C]])}
 
@@ -6,4 +7,20 @@
 
 \p{Following the principles of this manual, this is \em{not} a mathematical paper; there will be a more formal account of this type theory, but that is in progress. Rather, this is a conceptual account that makes reference to mathematics.}
 
-\transclude{002B}
+\p{In [The Elephant](johnstone-2002-sketches), Johnstone makes the following definitions for “theory”; we call this an \em{elephant theory} in order to distinguish it from other notions of theory we might consider.}
+
+\transclude{002C}
+
+\transclude{002E}
+
+\transclude{002F}
+
+\transclude{002D}
+
+\transclude{002G}
+
+\transclude{002I}
+
+\p{The remainder of this section is simply an investigation of what type formers are supported in #{\ms{ElTh}}.}
+
+\transclude{002J}

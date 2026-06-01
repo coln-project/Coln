@@ -4,6 +4,8 @@
 
 \p{For #{\mc{S}} a topos, an \defcase{elephant theory} over #{\mc{S}} is a (pseudo-)functor #{T \colon (\ms{BTop}/\mc{S})\op \to \ms{Cat},} where #{(\ms{BTop}/\mc{S})\op} is the 2-category of bounded geometric morphisms into #{\mc{S}} and #{\ms{Cat}} is the 2-category of large categories.}
 
+\p{A morphism of elephant theories is simply an indexed functor.}
+
 \p{We say that #{T} is \defcase{classified} by #{\ms{S}[T] \colon \ms{BTop}/\mc{S}} if #{T} is contravariantly represented by #{\mc{S}[T]}, that is #{T(\mc{E}) \cong \ms{BTop}/\mc{S}(\mc{E}, \mc{S}[T])}. We also call #{\ms{S}[T]} the \defcase{classifying topos} for #{T}.}
 
 \p{(See [Elephant](johnstone-2002-sketches) Definition B4.2.1)}
