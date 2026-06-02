@@ -219,6 +219,8 @@ impl Table {
 
     /// Checks schema and primary-key constraints against rows already stored.
     pub fn validate_insert(&self, values: &[CellValue]) -> Result<(), ValidationError> {
+        // duplicated as txn::add(), but this is cheap enough we can afford to
+        // do it here just in case.
         self.validate_column_count(values.len())?;
 
         for (i, (col_type, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
