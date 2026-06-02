@@ -42,19 +42,19 @@ pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, CodecErro
     let mut tables = root.tables.iter().collect::<Vec<_>>();
     tables.sort_by_key(|entry| entry.oid);
 
-    write_count(&mut buf, tables.len(), "too many root tables")?;
+    write_count(&mut buf, tables.len());
     for table in tables {
-        commit_leb128::write_len_prefixed_bytes(&mut buf, table.path.as_bytes())?;
-        commit_leb128::write_u64(&mut buf, table.oid)?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, table.path.as_bytes());
+        commit_leb128::write_u64(&mut buf, table.oid);
 
         let schema_bytes = encode_schema(&table.schema)?;
-        commit_leb128::write_len_prefixed_bytes(&mut buf, &schema_bytes)?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &schema_bytes);
     }
 
-    write_count(&mut buf, root.laws.len(), "too many root laws")?;
+    write_count(&mut buf, root.laws.len());
     for law in &root.laws {
         let law_bytes = encode_law_entry(law)?;
-        commit_leb128::write_len_prefixed_bytes(&mut buf, &law_bytes)?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &law_bytes);
     }
 
     Ok(buf)
@@ -97,13 +97,13 @@ pub(crate) fn deserialize_root(data: &[u8]) -> Result<RootCommitData, CodecError
     Ok(RootCommitData { tables, laws })
 }
 
-fn write_count(buf: &mut Vec<u8>, count: usize, _ctx: &'static str) -> Result<(), CodecError> {
+fn write_count(buf: &mut Vec<u8>, count: usize) {
     commit_leb128::write_len(buf, count)
 }
 
 fn encode_schema(schema: &Schema) -> Result<Vec<u8>, CodecError> {
     let mut buf = Vec::new();
-    write_count(&mut buf, schema.columns.len(), "too many schema columns")?;
+    write_count(&mut buf, schema.columns.len());
     for col_type in &schema.columns {
         write_col_type(&mut buf, col_type)?;
     }
@@ -111,9 +111,9 @@ fn encode_schema(schema: &Schema) -> Result<Vec<u8>, CodecError> {
     match &schema.primary_key {
         Some(primary_key) => {
             write_u8(&mut buf, 1)?;
-            write_count(&mut buf, primary_key.len(), "too many primary key columns")?;
+            write_count(&mut buf, primary_key.len());
             for column in primary_key {
-                commit_leb128::write_i64(&mut buf, *column)?;
+                commit_leb128::write_i64(&mut buf, *column);
             }
         }
         None => write_u8(&mut buf, 0)?,
@@ -174,7 +174,7 @@ fn decode_law_entry(data: &[u8]) -> Result<LawEntry, CodecError> {
 }
 
 fn write_law(buf: &mut Vec<u8>, law: &Law) -> Result<(), CodecError> {
-    write_count(buf, law.variables.len(), "too many law variables")?;
+    write_count(buf, law.variables.len());
     for variable in &law.variables {
         write_col_type(buf, variable)?;
     }
@@ -209,7 +209,7 @@ fn write_col_type(buf: &mut Vec<u8>, col_type: &ColType) -> Result<(), CodecErro
         }
         ColType::Tuple { fields } => {
             write_u8(buf, 2)?;
-            write_count(buf, fields.len(), "too many tuple fields")?;
+            write_count(buf, fields.len());
             for field in fields {
                 write_qname(buf, &field.name)?;
                 write_col_type(buf, &field.col_type)?;
@@ -275,7 +275,7 @@ fn write_prop(buf: &mut Vec<u8>, prop: &Prop) -> Result<(), CodecError> {
         }
         Prop::And { props } => {
             write_u8(buf, 2)?;
-            write_count(buf, props.len(), "too many and props")?;
+            write_count(buf, props.len());
             for prop in props {
                 write_prop(buf, prop)?;
             }
@@ -283,7 +283,7 @@ fn write_prop(buf: &mut Vec<u8>, prop: &Prop) -> Result<(), CodecError> {
         }
         Prop::Or { props } => {
             write_u8(buf, 3)?;
-            write_count(buf, props.len(), "too many or props")?;
+            write_count(buf, props.len());
             for prop in props {
                 write_prop(buf, prop)?;
             }
@@ -332,9 +332,9 @@ fn write_atom(buf: &mut Vec<u8>, atom: &Atom) -> Result<(), CodecError> {
         }
         None => write_u8(buf, 0)?,
     }
-    write_count(buf, atom.values.len(), "too many atom values")?;
+    write_count(buf, atom.values.len());
     for value in &atom.values {
-        commit_leb128::write_i64(buf, value.column)?;
+        commit_leb128::write_i64(buf, value.column);
         write_term(buf, &value.term)?;
     }
     Ok(())
@@ -374,7 +374,8 @@ fn write_term(buf: &mut Vec<u8>, term: &Term) -> Result<(), CodecError> {
         }
         Term::Var { index } => {
             write_u8(buf, 1)?;
-            commit_leb128::write_i64(buf, *index)
+            commit_leb128::write_i64(buf, *index);
+            Ok(())
         }
         Term::Proj { term, field } => {
             write_u8(buf, 2)?;
@@ -383,7 +384,7 @@ fn write_term(buf: &mut Vec<u8>, term: &Term) -> Result<(), CodecError> {
         }
         Term::Cons { fields } => {
             write_u8(buf, 3)?;
-            write_count(buf, fields.len(), "too many cons fields")?;
+            write_count(buf, fields.len());
             for field in fields {
                 write_qname(buf, &field.name)?;
                 write_term(buf, &field.term)?;
@@ -426,11 +427,13 @@ fn write_lit(buf: &mut Vec<u8>, lit: &Lit) -> Result<(), CodecError> {
     match lit {
         Lit::Int { value } => {
             write_u8(buf, 0)?;
-            commit_leb128::write_i64(buf, *value)
+            commit_leb128::write_i64(buf, *value);
+            Ok(())
         }
         Lit::String { value } => {
             write_u8(buf, 1)?;
-            commit_leb128::write_len_prefixed_bytes(buf, value.as_bytes())
+            commit_leb128::write_len_prefixed_bytes(buf, value.as_bytes());
+            Ok(())
         }
     }
 }
@@ -450,7 +453,7 @@ fn read_lit(data: &[u8], pos: &mut usize) -> Result<Lit, CodecError> {
 }
 
 fn write_path(buf: &mut Vec<u8>, path: &Path) -> Result<(), CodecError> {
-    write_count(buf, path.0.len(), "path too large")?;
+    write_count(buf, path.0.len());
     for qname in &path.0 {
         write_qname(buf, qname)?;
     }
@@ -467,9 +470,9 @@ fn read_path(data: &[u8], pos: &mut usize) -> Result<Path, CodecError> {
 }
 
 fn write_qname(buf: &mut Vec<u8>, qname: &QName) -> Result<(), CodecError> {
-    write_count(buf, qname.len(), "qname too large")?;
+    write_count(buf, qname.len());
     for part in qname {
-        commit_leb128::write_len_prefixed_bytes(buf, part.as_bytes())?;
+        commit_leb128::write_len_prefixed_bytes(buf, part.as_bytes());
     }
     Ok(())
 }

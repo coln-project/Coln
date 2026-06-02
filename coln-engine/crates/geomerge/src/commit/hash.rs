@@ -10,6 +10,10 @@ impl CommitHash {
     pub(crate) fn as_bytes(&self) -> &[u8] {
         &self.0
     }
+
+    pub(crate) fn checksum(&self) -> [u8; 4] {
+        [self.0[0], self.0[1], self.0[2], self.0[3]]
+    }
 }
 
 impl AsRef<[u8]> for CommitHash {

@@ -47,7 +47,7 @@ pub(crate) fn write_hash_dict(
         .len()
         .try_into()
         .map_err(|_| CodecError::Other("too many hashes".into()))?;
-    commit_leb128::write_u32(buf, hash_count)?;
+    commit_leb128::write_u32(buf, hash_count);
     for hash in hash_mapper.hashes() {
         buf.write_all(hash.as_bytes())?;
     }

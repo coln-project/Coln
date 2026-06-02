@@ -58,7 +58,16 @@ impl CommitData {
 
 // ── Canonical payload encoding ───────────────────────────────────────────
 //
-// Layout (scalar integers use LEB128):
+// A persisted or transmitted commit is framed as `header || payload`:
+//
+//   [MAGIC][checksum:4][chunk_type:1][data_len:leb]   (written by Header::write)
+//   [payload]                                         (produced here)
+//
+// The hash and checksum are computed over the payload alone, so the framing is
+// never part of the hash preimage. `serialize` and `deserialize` deal only with
+// the payload; the header is written and parsed by the chunk layer.
+//
+// The payload is laid out like so (scalar integers use LEB128):
 //
 //   [author_len]
 //   [author: author_len bytes]                   (author id)
@@ -83,18 +92,18 @@ where
 {
     let mut buf: Vec<u8> = Vec::new();
 
-    commit_leb128::write_len(&mut buf, data.author.as_bytes().len())?;
+    commit_leb128::write_len(&mut buf, data.author.as_bytes().len());
     buf.write_all(data.author.as_bytes()).unwrap();
-    commit_leb128::write_len(&mut buf, data.deps.len())?;
+    commit_leb128::write_len(&mut buf, data.deps.len());
     for dep in &data.deps {
         buf.write_all(dep.as_bytes()).unwrap();
     }
     write_hash_dict(&mut buf, hash_mapper).expect("hash dictionary serializes");
 
-    commit_leb128::write_i64(&mut buf, data.timestamp)?;
+    commit_leb128::write_i64(&mut buf, data.timestamp);
 
     let msg = data.message.as_deref().unwrap_or("");
-    commit_leb128::write_len(&mut buf, msg.len())?;
+    commit_leb128::write_len(&mut buf, msg.len());
     buf.write_all(msg.as_bytes()).unwrap();
 
     let body = encode_commit_body(&data.pending, schema_for, hash_mapper)?;
@@ -167,28 +176,28 @@ where
         .len()
         .try_into()
         .map_err(|_| CodecError::Other("too many ops in commit body".into()))?;
-    commit_leb128::write_u32(&mut buf, op_count)?;
+    commit_leb128::write_u32(&mut buf, op_count);
 
     let op_kind_col = Column::<u32>::from_values(op_kinds).save();
-    commit_leb128::write_len_prefixed_bytes(&mut buf, &op_kind_col)?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &op_kind_col);
 
     let table_sequence_col = Column::<u32>::from_values(table_sequence).save();
-    commit_leb128::write_len_prefixed_bytes(&mut buf, &table_sequence_col)?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &table_sequence_col);
 
     let group_count: u32 = groups
         .len()
         .try_into()
         .map_err(|_| CodecError::Other("too many op groups in commit body".into()))?;
-    commit_leb128::write_u32(&mut buf, group_count)?;
+    commit_leb128::write_u32(&mut buf, group_count);
 
-    // TODO each group is encoded with its row and columns first, and then the column
+    // NOTE each group is encoded with its row and columns first, and then the column
     // body. Automerge does the header + concatenated body approach
     for (table, ops) in &groups {
         let schema = schema_for(table).ok_or_else(|| {
             CodecError::SchemaError(format!("missing schema for table {table:?}"))
         })?;
         let group_blob = encode_op_group(table, schema, ops, hash_mapper)?;
-        commit_leb128::write_len_prefixed_bytes(&mut buf, &group_blob)?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &group_blob);
     }
 
     Ok(buf)
@@ -228,8 +237,8 @@ fn encode_txn_row_ref_column(
     let counter_col = DeltaColumn::<u32>::from_values(counters).save();
 
     let mut buf = Vec::new();
-    commit_leb128::write_len_prefixed_bytes(&mut buf, &hash_index_col)?;
-    commit_leb128::write_len_prefixed_bytes(&mut buf, &counter_col)?;
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &hash_index_col);
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &counter_col);
     Ok(buf)
 }
 
@@ -254,8 +263,8 @@ fn encode_txn_prim_value_column(
             }
             let meta_blob = Column::<ValueMeta>::from_values(meta).save();
             let mut buf = Vec::new();
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob)?;
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes)?;
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob);
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes);
             Ok(buf)
         }
         PrimType::PrimString => {
@@ -273,8 +282,8 @@ fn encode_txn_prim_value_column(
             }
             let meta_blob = Column::<ValueMeta>::from_values(meta).save();
             let mut buf = Vec::new();
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob)?;
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes)?;
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob);
+            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes);
             Ok(buf)
         }
     }
@@ -336,12 +345,12 @@ fn encode_op_group(
 
     let mut buf = Vec::new();
     let path = table.to_string();
-    commit_leb128::write_len(&mut buf, path.len())?;
+    commit_leb128::write_len(&mut buf, path.len());
     buf.write_all(path.as_bytes())?;
 
-    commit_leb128::write_len(&mut buf, rows.len())?;
+    commit_leb128::write_len(&mut buf, rows.len());
 
-    commit_leb128::write_len(&mut buf, schema.columns.len())?;
+    commit_leb128::write_len(&mut buf, schema.columns.len());
 
     for (column_index, col_type) in schema.columns.iter().enumerate() {
         let values = rows
@@ -349,7 +358,7 @@ fn encode_op_group(
             .map(|row| row[column_index].clone())
             .collect::<Vec<_>>();
         let blob = encode_txn_value_column(&values, col_type, hash_mapper)?;
-        commit_leb128::write_len_prefixed_bytes(&mut buf, &blob)?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &blob);
     }
 
     Ok(buf)
@@ -831,8 +840,8 @@ mod tests {
             Column::<ValueMeta>::from_values(vec![ValueMeta::new(ValueType::Leb, 5)]).save();
         let value_blob: Vec<u8> = Vec::new();
         let mut data = Vec::new();
-        commit_leb128::write_len_prefixed_bytes(&mut data, &meta_blob).unwrap();
-        commit_leb128::write_len_prefixed_bytes(&mut data, &value_blob).unwrap();
+        commit_leb128::write_len_prefixed_bytes(&mut data, &meta_blob);
+        commit_leb128::write_len_prefixed_bytes(&mut data, &value_blob);
 
         let err = decode_txn_value_column(&data, &col, &[]).expect_err("length overrun");
         assert!(matches!(err, CodecError::DataFormatError(_)));

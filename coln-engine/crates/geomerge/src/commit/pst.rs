@@ -1,14 +1,15 @@
 use std::io::Write;
 
 use crate::commit::Commit;
-use crate::commit::chunk::ChunkType;
+use crate::commit::chunk::{ChunkType, Header};
 use crate::commit::error::CodecError;
 use crate::commit::leb128 as commit_leb128;
-use crate::commit::utils::read_u8;
+use crate::commit::utils::read_slice;
 use crate::store::Store;
 use crate::store::error::StoreIntError;
 use crate::table::TableOid;
 
+/// The store magic bytes
 const MAGIC: &[u8; 4] = b"GMst";
 const FORMAT_VERSION: u32 = 2;
 
@@ -17,18 +18,18 @@ const FORMAT_VERSION: u32 = 2;
 /// Store file layout, scalar integers use LEB128:
 ///
 /// `[MAGIC:4][version][next_oid][chunk_count]`
-/// `[chunk_count × ([chunk_type:u8][payload_len][payload])]`
+/// `[chunk_count × [chunk_header || payload]]` (see [`Header::write`])
 pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
     let commits = store.commits().iter_topological().collect::<Vec<_>>();
     let mut buf: Vec<u8> = Vec::new();
     buf.write_all(MAGIC)?;
-    commit_leb128::write_u32(&mut buf, FORMAT_VERSION)?;
-    commit_leb128::write_u64(&mut buf, store.next_oid)?;
+    commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
+    commit_leb128::write_u64(&mut buf, store.next_oid);
 
-    commit_leb128::write_len(&mut buf, commits.len())?;
+    commit_leb128::write_len(&mut buf, commits.len());
 
     for commit in commits {
-        write_commit_chunk(&mut buf, commit)?;
+        write_commit_chunk(&mut buf, commit);
     }
 
     Ok(buf)
@@ -81,23 +82,17 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
     Ok(EncodedStore { next_oid, chunks })
 }
 
-fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) -> Result<(), CodecError> {
-    buf.write_all(&[u8::from(commit.chunk_type())])?;
-    commit_leb128::write_len_prefixed_bytes(buf, commit.payload())
+fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
+    commit.write_chunk(buf)
 }
 
+// TODO this probably needs to go somewhere else when we do network sync
+/// Returns the (chunk_type, payload) where payload is just the commit data
+/// excluding the header
 fn read_commit_chunk(data: &[u8], pos: &mut usize) -> Result<(ChunkType, Vec<u8>), CodecError> {
-    let chunk_type = match read_u8(data, pos, "chunk type")? {
-        0 => ChunkType::Commit,
-        1 => ChunkType::Root,
-        tag => {
-            return Err(CodecError::DataFormatError(format!(
-                "unknown chunk type {tag}"
-            )));
-        }
-    };
-    let payload = commit_leb128::read_len_prefixed_bytes(data, pos, "commit payload")?.to_vec();
-    Ok((chunk_type, payload))
+    let header = Header::parse(data, pos)?;
+    let payload = read_slice(data, pos, header.data_len, "commit payload")?.to_vec();
+    Ok((header.chunk_type, payload))
 }
 
 fn decode_store_chunks(
@@ -169,17 +164,24 @@ mod tests {
         }
     }
 
-    fn store_bytes_from_chunks(chunks: &[(u8, Vec<u8>)]) -> Vec<u8> {
+    fn store_envelope(framed_chunks: &[Vec<u8>]) -> Vec<u8> {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION).unwrap();
-        commit_leb128::write_u64(&mut bytes, 0).unwrap();
-        commit_leb128::write_len(&mut bytes, chunks.len()).unwrap();
-        for (chunk_type, payload) in chunks {
-            bytes.write_all(&[*chunk_type]).unwrap();
-            commit_leb128::write_len_prefixed_bytes(&mut bytes, payload).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
+        commit_leb128::write_u64(&mut bytes, 0);
+        commit_leb128::write_len(&mut bytes, framed_chunks.len());
+        for chunk in framed_chunks {
+            bytes.write_all(chunk).unwrap();
         }
         bytes
+    }
+
+    fn frame_chunk(chunk_type: ChunkType, payload: &[u8]) -> Vec<u8> {
+        let header = Header::new(chunk_type, payload);
+        let mut buf = Vec::new();
+        header.write(&mut buf);
+        buf.write_all(payload).unwrap();
+        buf
     }
 
     fn read_encoded_chunks(data: &[u8]) -> Vec<(u8, Vec<u8>)> {
@@ -200,6 +202,17 @@ mod tests {
                     StoreIntError::Encode(CodecError::DataFormatError(_))
                 )
         )
+    }
+
+    /// Offset of the first chunk header (the start of its magic) inside an
+    /// encoded store.
+    fn first_chunk_offset(bytes: &[u8]) -> usize {
+        let framed = frame_chunk(ChunkType::Root, &[]);
+        let chunk_magic = &framed[..MAGIC.len()];
+        bytes
+            .windows(chunk_magic.len())
+            .position(|window| window == chunk_magic)
+            .expect("encoded store contains a chunk magic")
     }
 
     fn is_missing_dep_error(result: Result<Store, Box<StoreIntError>>) -> bool {
@@ -248,14 +261,19 @@ mod tests {
     fn store_decode_rejects_unsupported_version() {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        commit_leb128::write_u32(&mut bytes, 999).unwrap();
+        commit_leb128::write_u32(&mut bytes, 999);
 
         assert!(is_data_format_error(decode_store(&bytes)));
     }
 
     #[test]
     fn store_decode_rejects_unknown_chunk_type() {
-        let bytes = store_bytes_from_chunks(&[(99, Vec::new())]);
+        let mut chunk = Vec::new();
+        chunk.write_all(MAGIC).unwrap();
+        chunk.extend_from_slice(&[0u8; 4]); // checksum placeholder
+        chunk.push(99); // unknown chunk type
+        commit_leb128::write_len(&mut chunk, 0);
+        let bytes = store_envelope(&[chunk]);
 
         assert!(is_data_format_error(decode_store(&bytes)));
     }
@@ -264,10 +282,10 @@ mod tests {
     fn store_decode_rejects_truncated_chunk_record() {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION).unwrap();
-        commit_leb128::write_u64(&mut bytes, 0).unwrap();
-        commit_leb128::write_len(&mut bytes, 1).unwrap();
-        bytes.write_all(&[u8::from(ChunkType::Root)]).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
+        commit_leb128::write_u64(&mut bytes, 0);
+        commit_leb128::write_len(&mut bytes, 1);
+        bytes.write_all(&[0x47]).unwrap(); // partial chunk: not even a full magic
 
         assert!(is_data_format_error(decode_store(&bytes)));
     }
@@ -281,11 +299,44 @@ mod tests {
     }
 
     #[test]
+    fn store_decode_rejects_flipped_checksum_byte() {
+        let bytes = encode_store(&Store::new()).expect("encode store");
+        assert!(decode_store(&bytes).is_ok(), "baseline store should decode");
+
+        let mut corrupted = bytes.clone();
+        // Skip the 4-byte chunk magic to land on the stored checksum.
+        let checksum_byte = first_chunk_offset(&corrupted) + MAGIC.len();
+        corrupted[checksum_byte] ^= 0xFF;
+
+        let err = decode_store(&corrupted).expect_err("checksum mismatch");
+        assert!(matches!(
+            err.as_ref(),
+            StoreIntError::Encode(CodecError::ChecksumMismatch)
+        ));
+    }
+
+    #[test]
+    fn store_decode_rejects_flipped_chunk_magic_byte() {
+        let bytes = encode_store(&Store::new()).expect("encode store");
+        assert!(decode_store(&bytes).is_ok(), "baseline store should decode");
+
+        let mut corrupted = bytes.clone();
+        let magic_byte = first_chunk_offset(&corrupted);
+        corrupted[magic_byte] ^= 0xFF;
+
+        assert!(is_data_format_error(decode_store(&corrupted)));
+    }
+
+    #[test]
     fn store_decode_rejects_multiple_roots() {
         let bytes = encode_store(&Store::new()).unwrap();
-        let chunks = read_encoded_chunks(&bytes);
-        let duplicated = vec![chunks[0].clone(), chunks[0].clone()];
-        let bytes = store_bytes_from_chunks(&duplicated);
+        let root_payload = read_encoded_chunks(&bytes)
+            .into_iter()
+            .next()
+            .expect("root chunk")
+            .1;
+        let framed = frame_chunk(ChunkType::Root, &root_payload);
+        let bytes = store_envelope(&[framed.clone(), framed]);
 
         assert!(is_data_format_error(decode_store(&bytes)));
     }
@@ -303,9 +354,9 @@ mod tests {
             |_| None,
         )
         .expect("commit with missing dependency");
-        let bytes = store_bytes_from_chunks(&[
-            root_chunk,
-            (u8::from(ChunkType::Commit), commit.payload().to_vec()),
+        let bytes = store_envelope(&[
+            frame_chunk(ChunkType::Root, &root_chunk.1),
+            frame_chunk(ChunkType::Commit, commit.payload()),
         ]);
 
         assert!(is_missing_dep_error(decode_store(&bytes)));
@@ -357,9 +408,9 @@ mod tests {
     fn store_decode_rejects_missing_root() {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
-        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION).unwrap();
-        commit_leb128::write_u64(&mut bytes, 0).unwrap();
-        commit_leb128::write_len(&mut bytes, 0).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
+        commit_leb128::write_u64(&mut bytes, 0);
+        commit_leb128::write_len(&mut bytes, 0);
 
         assert!(is_data_format_error(decode_store(&bytes)));
     }

@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use crate::{
     commit::{
         author::Author,
-        chunk::{ChunkType, hash},
+        chunk::{ChunkType, Header},
         error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
@@ -24,26 +24,23 @@ use crate::{
     txn::ops::{Op, PendingOp, RowRef, TxnCellValue},
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Header {
-    pub(crate) chunk_type: ChunkType,
-    pub(crate) hash: CommitHash,
-    // TODO length checksum
-}
-
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
 ///
-/// Same broad shape as Automerge’s `Change`: raw payload bytes plus decoded
+/// Same broad shape as Automerge’s `Change`: payload bytes plus decoded
 /// metadata. Automerge keeps ops behind column metadata and a subslice for
 /// lazy iteration; we decode ops eagerly into `PendingOp` while the encoding
 /// is still row-wise.
 ///
-/// The hash is always `blake3(chunk_type:u8 || data_len:u64_le || bytes)`, so
-/// verifying a loaded commit is re-running [`crate::persist::chunk::hash`] on
-/// [`Commit::payload`] and comparing to [`Commit::hash`].
+/// [`Commit::bytes`] holds the payload only; the chunk header is derived from
+/// [`Commit::header`] and prepended on demand when persisting or sending the
+/// commit (see [`Header::write`]). The hash is
+/// `blake3(chunk_type:u8 || data_len:u64_le || payload)`, computed over the
+/// payload, so verifying a loaded commit is re-running
+/// [`crate::commit::chunk::hash`] on [`Commit::payload`] and comparing to
+/// [`Commit::hash`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Commit<'a> {
-    /// Canonical payload bytes (everything after the chunk header).
+    /// Canonical payload bytes (the chunk body, without the header).
     bytes: Cow<'a, [u8]>,
     pub(crate) header: Header,
     pub author: Author,
@@ -55,7 +52,7 @@ pub struct Commit<'a> {
     pub message: Option<String>,
     /// Commit hashes referenced by op ids, dictionary order on the wire.
     /// Does not the hash of this transaction, which would be stored in header
-    pub(crate) pending: Vec<PendingOp>,
+    pub(crate) pending: Vec<PendingOp>, // NOTE consider dropping this once applied to save memory
 }
 
 impl Commit<'static> {
@@ -80,13 +77,10 @@ impl Commit<'static> {
     }
 
     fn from_root_bytes(bytes: Vec<u8>) -> Self {
-        let hash = hash(ChunkType::Root, &bytes);
+        let header = Header::new(ChunkType::Root, &bytes);
         Commit {
             bytes: Cow::Owned(bytes),
-            header: Header {
-                chunk_type: ChunkType::Root,
-                hash,
-            },
+            header,
             deps: vec![],
             author: Author::foo(),
             timestamp: 0,
@@ -97,13 +91,10 @@ impl Commit<'static> {
     }
 
     fn from_commit_bytes(bytes: Vec<u8>, data: CommitData) -> Self {
-        let commit_hash = hash(ChunkType::Commit, &bytes);
+        let header = Header::new(ChunkType::Commit, &bytes);
         Commit {
             bytes: Cow::Owned(bytes),
-            header: Header {
-                chunk_type: ChunkType::Commit,
-                hash: commit_hash,
-            },
+            header,
             deps: data.deps,
             author: data.author,
             timestamp: data.timestamp,
@@ -140,9 +131,21 @@ impl<'a> Commit<'a> {
         self.header.hash
     }
 
-    /// Canonical payload bytes (the same buffer that [`hash`](crate::persist::chunk::hash) is run on).
+    /// Canonical payload bytes: the slice that [`hash`](crate::commit::chunk::hash) is run on.
     pub fn payload(&self) -> &[u8] {
         self.bytes.as_ref()
+    }
+
+    /// Writes commit as `header || payload` into `out`
+    pub fn write_chunk(&self, out: &mut Vec<u8>) {
+        self.header.write(out);
+        out.extend_from_slice(&self.bytes);
+    }
+
+    pub fn encoded(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        self.write_chunk(&mut buf);
+        buf
     }
 
     pub fn chunk_type(&self) -> ChunkType {
@@ -188,6 +191,7 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commit::chunk::hash;
     use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::root::{RootCommitData, RootTableEntry};
     use crate::ir::{ColType, Path, PrimType};

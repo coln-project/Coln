@@ -1,29 +1,28 @@
-use std::io::Write;
-
 use crate::commit::{error::CodecError, utils::read_slice};
 
-pub(crate) fn write_u64(buf: &mut Vec<u8>, value: u64) -> Result<(), CodecError> {
-    ::leb128::write::unsigned(buf, value)?;
-    Ok(())
+// The write helpers append to an in-memory `Vec<u8>`, whose `io::Write` impl
+// never returns an error (allocation failure aborts rather than erroring), so
+// they are infallible and return `()`.
+
+pub(crate) fn write_u64(buf: &mut Vec<u8>, value: u64) {
+    ::leb128::write::unsigned(buf, value).expect("writing leb128 to a Vec is infallible");
 }
 
-pub(crate) fn write_u32(buf: &mut Vec<u8>, value: u32) -> Result<(), CodecError> {
-    write_u64(buf, u64::from(value))
+pub(crate) fn write_u32(buf: &mut Vec<u8>, value: u32) {
+    write_u64(buf, u64::from(value));
 }
 
-pub(crate) fn write_len(buf: &mut Vec<u8>, len: usize) -> Result<(), CodecError> {
-    write_u64(buf, len as u64)
+pub(crate) fn write_len(buf: &mut Vec<u8>, len: usize) {
+    write_u64(buf, len as u64);
 }
 
-pub(crate) fn write_i64(buf: &mut Vec<u8>, value: i64) -> Result<(), CodecError> {
-    ::leb128::write::signed(buf, value)?;
-    Ok(())
+pub(crate) fn write_i64(buf: &mut Vec<u8>, value: i64) {
+    ::leb128::write::signed(buf, value).expect("writing leb128 to a Vec is infallible");
 }
 
-pub(crate) fn write_len_prefixed_bytes(buf: &mut Vec<u8>, bytes: &[u8]) -> Result<(), CodecError> {
-    write_len(buf, bytes.len())?;
-    buf.write_all(bytes)?;
-    Ok(())
+pub(crate) fn write_len_prefixed_bytes(buf: &mut Vec<u8>, bytes: &[u8]) {
+    write_len(buf, bytes.len());
+    buf.extend_from_slice(bytes);
 }
 
 pub(crate) fn read_u64(data: &[u8], pos: &mut usize, ctx: &'static str) -> Result<u64, CodecError> {
@@ -134,7 +133,7 @@ mod tests {
     fn u64_round_trips() {
         for value in [0, 1, 127, 128, 16_383, u64::MAX] {
             let mut encoded = Vec::new();
-            write_u64(&mut encoded, value).expect("write uleb");
+            write_u64(&mut encoded, value);
 
             let mut pos = 0;
             let decoded = read_u64(&encoded, &mut pos, "value").expect("read uleb");
@@ -148,7 +147,7 @@ mod tests {
     fn i64_round_trips() {
         for value in [i64::MIN, -129, -128, -1, 0, 1, 127, 128, i64::MAX] {
             let mut encoded = Vec::new();
-            write_i64(&mut encoded, value).expect("write sleb");
+            write_i64(&mut encoded, value);
 
             let mut pos = 0;
             let decoded = read_i64(&encoded, &mut pos, "value").expect("read sleb");
@@ -201,7 +200,7 @@ mod tests {
     #[test]
     fn u32_rejects_too_large_value() {
         let mut encoded = Vec::new();
-        write_u64(&mut encoded, u64::from(u32::MAX) + 1).expect("write uleb");
+        write_u64(&mut encoded, u64::from(u32::MAX) + 1);
 
         let mut pos = 0;
         let err = read_u32(&encoded, &mut pos, "value").expect_err("too large");
@@ -212,7 +211,7 @@ mod tests {
     #[test]
     fn length_prefixed_bytes_round_trip() {
         let mut encoded = Vec::new();
-        write_len_prefixed_bytes(&mut encoded, b"abc").expect("write bytes");
+        write_len_prefixed_bytes(&mut encoded, b"abc");
 
         let mut pos = 0;
         let decoded = read_len_prefixed_bytes(&encoded, &mut pos, "bytes").expect("read bytes");

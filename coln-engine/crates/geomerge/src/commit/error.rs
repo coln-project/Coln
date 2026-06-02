@@ -11,6 +11,7 @@ pub enum CodecError {
     IOError(io::Error),
     SchemaError(String),
     DataFormatError(String),
+    ChecksumMismatch,
     DecodeError(hexane::PackError),
     ChunkMismatch { expected: ChunkType, got: ChunkType },
     Other(String),
@@ -23,6 +24,7 @@ impl fmt::Display for CodecError {
             CodecError::IOError(err) => write!(f, "io error: {err}"),
             CodecError::SchemaError(msg) => write!(f, "schema error: {msg}"),
             CodecError::DataFormatError(msg) => write!(f, "data format error: {msg}"),
+            CodecError::ChecksumMismatch => write!(f, "chunk checksum mismatch"),
             CodecError::DecodeError(err) => write!(f, "decode error: {err:?}"),
             CodecError::ChunkMismatch { expected, got } => write!(
                 f,

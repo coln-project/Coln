@@ -1,4 +1,12 @@
-use crate::commit::CommitHash;
+use crate::commit::{
+    CommitHash,
+    error::CodecError,
+    leb128 as commit_leb128,
+    utils::{read_slice, read_u8},
+};
+
+/// Chunk magic bytes
+const MAGIC: &[u8; 4] = b"GMcm";
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ChunkType {
@@ -27,4 +35,112 @@ pub(crate) fn hash(chunk_type: ChunkType, data: &[u8]) -> CommitHash {
     hasher.update(&(data.len() as u64).to_le_bytes());
     hasher.update(data);
     CommitHash(hasher.finalize().into())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CheckSum([u8; 4]);
+
+impl CheckSum {
+    pub(crate) fn bytes(&self) -> [u8; 4] {
+        self.0
+    }
+}
+
+impl From<[u8; 4]> for CheckSum {
+    fn from(raw: [u8; 4]) -> Self {
+        CheckSum(raw)
+    }
+}
+
+impl AsRef<[u8]> for CheckSum {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl From<CommitHash> for CheckSum {
+    fn from(h: CommitHash) -> Self {
+        let bytes = h.as_bytes();
+        [bytes[0], bytes[1], bytes[2], bytes[3]].into()
+    }
+}
+
+/// Chunk framing that precedes the canonical payload on disk and on the wire:
+/// `[MAGIC][checksum:4][chunk_type:1][data_len:uleb]`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Header {
+    pub(crate) chunk_type: ChunkType,
+    pub(crate) data_len: usize,
+    checksum: CheckSum,          // first four bytes of the hash
+    pub(crate) hash: CommitHash, // not serialized
+}
+
+impl Header {
+    /// Build the framing for `data`, deriving the hash and checksum from it.
+    pub(crate) fn new(chunk_type: ChunkType, data: &[u8]) -> Self {
+        let hash = hash(chunk_type, data);
+        Self {
+            chunk_type,
+            hash,
+            data_len: data.len(),
+            checksum: hash.checksum().into(),
+        }
+    }
+
+    /// Write the framing bytes that precede the payload.
+    pub(crate) fn write(&self, out: &mut Vec<u8>) {
+        out.extend_from_slice(MAGIC);
+        out.extend_from_slice(&self.checksum.bytes());
+        out.push(u8::from(self.chunk_type));
+        commit_leb128::write_u64(out, self.data_len as u64);
+    }
+
+    /// Parse a chunk header at `pos`, leaving `pos` at the start of the payload.
+    ///
+    /// Recomputes the payload hash and rejects the chunk when the stored checksum
+    /// does not match, so a corrupted payload is caught before it is decoded.
+    pub(crate) fn parse(data: &[u8], pos: &mut usize) -> Result<Self, CodecError> {
+        let magic = read_slice(data, pos, MAGIC.len(), "chunk magic")?;
+        if magic != MAGIC {
+            return Err(CodecError::DataFormatError("bad chunk magic".into()));
+        }
+
+        let checksum_bytes = read_slice(data, pos, 4, "chunk checksum")?;
+        let checksum: CheckSum = <[u8; 4]>::try_from(checksum_bytes)
+            .expect("read_slice returned four bytes")
+            .into();
+
+        let chunk_type = match read_u8(data, pos, "chunk type")? {
+            0 => ChunkType::Commit,
+            1 => ChunkType::Root,
+            tag => {
+                return Err(CodecError::DataFormatError(format!(
+                    "unknown chunk type {tag}"
+                )));
+            }
+        };
+
+        let data_len = commit_leb128::read_len(data, pos, "chunk data_len")?;
+        let end = pos
+            .checked_add(data_len)
+            .ok_or_else(|| CodecError::DataFormatError("chunk length overflow".into()))?;
+        let body = data
+            .get(*pos..end)
+            .ok_or_else(|| CodecError::DataFormatError("truncated chunk payload".into()))?;
+
+        let header = Self {
+            chunk_type,
+            hash: hash(chunk_type, body),
+            data_len,
+            checksum,
+        };
+        if !header.checksum_valid() {
+            return Err(CodecError::ChecksumMismatch);
+        }
+        Ok(header)
+    }
+
+    fn checksum_valid(&self) -> bool {
+        CheckSum(self.hash.checksum()) == self.checksum
+    }
 }
