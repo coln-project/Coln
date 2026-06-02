@@ -1,0 +1,942 @@
+-- tokens
+Decl theory (0:6)
+AIdent Graph (7:12)
+SKeyword := (13:15)
+Block sig (16:19)
+Nl (19:20)
+AIdent V (22:23)
+SKeyword : (24:25)
+AKeyword Query (26:31)
+Nl (31:32)
+AIdent E (34:35)
+SKeyword : (36:37)
+AIdent V (38:39)
+SKeyword -> (40:42)
+AIdent V (43:44)
+SKeyword -> (45:47)
+AKeyword Query (48:53)
+Nl (53:54)
+End end (54:57)
+Nl (57:58)
+Nl (58:59)
+Decl theory (59:65)
+AIdent Graph/hom (66:75)
+LParen (76:77)
+AIdent G0 (77:79)
+SKeyword : (80:81)
+AIdent Graph (82:87)
+RParen (87:88)
+LParen (89:90)
+AIdent G1 (90:92)
+SKeyword : (93:94)
+AIdent Graph (95:100)
+RParen (100:101)
+SKeyword := (102:104)
+Block sig (105:108)
+Nl (108:109)
+AIdent V (111:112)
+SKeyword : (113:114)
+AIdent G0 (115:117)
+Field V (117:119)
+SKeyword -> (120:122)
+AIdent G1 (123:125)
+Field V (125:127)
+Nl (127:128)
+AIdent E (130:131)
+SKeyword : (132:133)
+LParen (134:135)
+AIdent x (135:136)
+SKeyword : (137:138)
+AIdent G0 (139:141)
+Field V (141:143)
+RParen (143:144)
+SKeyword -> (145:147)
+LParen (148:149)
+AIdent y (149:150)
+SKeyword : (151:152)
+AIdent G0 (153:155)
+Field V (155:157)
+RParen (157:158)
+SKeyword -> (159:161)
+AIdent G0 (162:164)
+Field E (164:166)
+AIdent x (167:168)
+AIdent y (169:170)
+SKeyword -> (171:173)
+LParen (174:175)
+AIdent G1 (175:177)
+Field E (177:179)
+LParen (180:181)
+AIdent V (181:182)
+AIdent x (183:184)
+RParen (184:185)
+LParen (186:187)
+AIdent V (187:188)
+AIdent y (189:190)
+RParen (190:191)
+RParen (191:192)
+Nl (192:193)
+End end (193:196)
+Nl (196:197)
+Nl (197:198)
+Decl theory (198:204)
+AIdent Path (205:209)
+LParen (210:211)
+AIdent G (211:212)
+SKeyword : (213:214)
+AIdent Graph (215:220)
+RParen (220:221)
+SKeyword := (222:224)
+Block sig (225:228)
+Nl (228:229)
+AIdent t (231:232)
+SKeyword : (233:234)
+AIdent G (235:236)
+Field V (236:238)
+SKeyword -> (239:241)
+AIdent G (242:243)
+Field V (243:245)
+SKeyword -> (246:248)
+AKeyword Query (249:254)
+Nl (254:255)
+AIdent empty (257:262)
+SKeyword : (263:264)
+LParen (265:266)
+AIdent x (266:267)
+SKeyword : (268:269)
+AIdent G (270:271)
+Field V (271:273)
+RParen (273:274)
+SKeyword -> (275:277)
+AIdent t (278:279)
+AIdent x (280:281)
+AIdent x (282:283)
+Nl (283:284)
+AIdent cons (286:290)
+SKeyword : (291:292)
+LParen (293:294)
+Nl (294:295)
+LParen (299:300)
+AIdent x (300:301)
+SKeyword : (302:303)
+AIdent G (304:305)
+Field V (305:307)
+RParen (307:308)
+SKeyword -> (309:311)
+Nl (311:312)
+LParen (316:317)
+AIdent y (317:318)
+SKeyword : (319:320)
+AIdent G (321:322)
+Field V (322:324)
+RParen (324:325)
+SKeyword -> (326:328)
+Nl (328:329)
+LParen (333:334)
+AIdent z (334:335)
+SKeyword : (336:337)
+AIdent G (338:339)
+Field V (339:341)
+RParen (341:342)
+SKeyword -> (343:345)
+Nl (345:346)
+AIdent G (350:351)
+Field E (351:353)
+AIdent x (354:355)
+AIdent y (356:357)
+SKeyword -> (358:360)
+Nl (360:361)
+AIdent t (365:366)
+AIdent y (367:368)
+AIdent z (369:370)
+SKeyword -> (371:373)
+Nl (373:374)
+AIdent t (378:379)
+AIdent x (380:381)
+AIdent z (382:383)
+Nl (383:384)
+RParen (386:387)
+Nl (387:388)
+End end (388:391)
+Nl (391:392)
+Nl (392:393)
+Decl theory (393:399)
+AIdent Path/hom (400:408)
+LParen (409:410)
+AIdent G (410:411)
+SKeyword : (412:413)
+AIdent Graph (414:419)
+RParen (419:420)
+LParen (421:422)
+AIdent P0 (422:424)
+SKeyword : (425:426)
+AIdent Path (427:431)
+AIdent G (432:433)
+RParen (433:434)
+LParen (435:436)
+AIdent P1 (436:438)
+SKeyword : (439:440)
+AIdent Path (441:445)
+AIdent G (446:447)
+RParen (447:448)
+SKeyword := (449:451)
+Block sig (452:455)
+Nl (455:456)
+AIdent t (458:459)
+SKeyword : (460:461)
+LParen (462:463)
+AIdent x (463:464)
+SKeyword : (465:466)
+AIdent G (467:468)
+Field V (468:470)
+RParen (470:471)
+SKeyword -> (472:474)
+LParen (475:476)
+AIdent y (476:477)
+SKeyword : (478:479)
+AIdent G (480:481)
+Field V (481:483)
+RParen (483:484)
+SKeyword -> (485:487)
+AIdent P0 (488:490)
+Field t (490:492)
+AIdent x (493:494)
+AIdent y (495:496)
+SKeyword -> (497:499)
+AIdent P1 (500:502)
+Field t (502:504)
+AIdent x (505:506)
+AIdent y (507:508)
+Nl (508:509)
+AIdent empty (511:516)
+SKeyword : (517:518)
+LParen (519:520)
+AIdent x (520:521)
+SKeyword : (522:523)
+AIdent G (524:525)
+Field V (525:527)
+RParen (527:528)
+SKeyword -> (529:531)
+AIdent t (532:533)
+AIdent x (534:535)
+AIdent x (536:537)
+LParen (538:539)
+AIdent P0 (539:541)
+Field empty (541:547)
+AIdent x (548:549)
+RParen (549:550)
+SKeyword = (551:552)
+AIdent P1 (553:555)
+Field empty (555:561)
+AIdent x (562:563)
+Nl (563:564)
+AIdent cons (566:570)
+SKeyword : (571:572)
+LParen (573:574)
+Nl (574:575)
+LParen (579:580)
+AIdent x (580:581)
+SKeyword : (582:583)
+AIdent G (584:585)
+Field V (585:587)
+RParen (587:588)
+SKeyword -> (589:591)
+Nl (591:592)
+LParen (596:597)
+AIdent y (597:598)
+SKeyword : (599:600)
+AIdent G (601:602)
+Field V (602:604)
+RParen (604:605)
+SKeyword -> (606:608)
+Nl (608:609)
+LParen (613:614)
+AIdent z (614:615)
+SKeyword : (616:617)
+AIdent G (618:619)
+Field V (619:621)
+RParen (621:622)
+SKeyword -> (623:625)
+Nl (625:626)
+LParen (630:631)
+AIdent e (631:632)
+SKeyword : (633:634)
+AIdent G (635:636)
+Field E (636:638)
+AIdent x (639:640)
+AIdent y (641:642)
+RParen (642:643)
+SKeyword -> (644:646)
+Nl (646:647)
+LParen (651:652)
+AIdent p0 (652:654)
+SKeyword : (655:656)
+AIdent P0 (657:659)
+Field t (659:661)
+AIdent y (662:663)
+AIdent z (664:665)
+RParen (665:666)
+SKeyword -> (667:669)
+Nl (669:670)
+AIdent t (674:675)
+AIdent x (676:677)
+AIdent z (678:679)
+LParen (680:681)
+AIdent P0 (681:683)
+Field cons (683:688)
+AIdent x (689:690)
+AIdent y (691:692)
+AIdent z (693:694)
+AIdent e (695:696)
+AIdent p0 (697:699)
+RParen (699:700)
+SKeyword = (701:702)
+AIdent P1 (703:705)
+Field cons (705:710)
+AIdent x (711:712)
+AIdent y (713:714)
+AIdent z (715:716)
+AIdent e (717:718)
+LParen (719:720)
+AIdent t (720:721)
+AIdent y (722:723)
+AIdent z (724:725)
+AIdent p0 (726:728)
+RParen (728:729)
+Nl (729:730)
+RParen (732:733)
+Nl (733:734)
+End end (734:737)
+Nl (737:738)
+Nl (738:739)
+Decl theory (739:745)
+AIdent Main (746:750)
+SKeyword := (751:753)
+Block sig (754:757)
+Nl (757:758)
+AIdent Graphs (760:766)
+SKeyword : (767:768)
+AKeyword Query (769:774)
+Nl (774:775)
+AIdent G (777:778)
+SKeyword : (779:780)
+AIdent Graphs (781:787)
+SKeyword -> (788:790)
+AIdent Graph (791:796)
+Nl (796:797)
+AIdent G0 (799:801)
+SKeyword : (802:803)
+AIdent Graphs (804:810)
+Nl (810:811)
+AIdent G1 (813:815)
+SKeyword : (816:817)
+AIdent Graphs (818:824)
+Nl (824:825)
+AIdent Hom (827:830)
+SKeyword : (831:832)
+AIdent Graph/hom (833:842)
+LParen (843:844)
+AIdent G (844:845)
+AIdent G0 (846:848)
+RParen (848:849)
+LParen (850:851)
+AIdent G (851:852)
+AIdent G1 (853:855)
+RParen (855:856)
+Nl (856:857)
+AIdent Path0 (859:864)
+SKeyword : (865:866)
+AIdent Path (867:871)
+LParen (872:873)
+AIdent G (873:874)
+AIdent G0 (875:877)
+RParen (877:878)
+Nl (878:879)
+AIdent Path1 (881:886)
+SKeyword : (887:888)
+AIdent Path (889:893)
+LParen (894:895)
+AIdent G (895:896)
+AIdent G0 (897:899)
+RParen (899:900)
+Nl (900:901)
+AIdent PathHom (903:910)
+SKeyword : (911:912)
+AIdent Path/hom (913:921)
+LParen (922:923)
+AIdent G (923:924)
+AIdent G0 (925:927)
+RParen (927:928)
+AIdent Path0 (929:934)
+AIdent Path1 (935:940)
+Nl (940:941)
+End end (941:944)
+Nl (944:945)
+Eof (945:945)
+
+-- notation
+Decl theory (0:57)
+  Infix (7:57)
+    Ident Graph (7:12)
+    Keyword := (13:15)
+    Block sig (16:57)
+      Infix (22:31)
+        Ident V (22:23)
+        Keyword : (24:25)
+        Keyword Query (26:31)
+      Infix (34:53)
+        Ident E (34:35)
+        Keyword : (36:37)
+        Infix (38:53)
+          Ident V (38:39)
+          Keyword -> (40:42)
+          Infix (43:53)
+            Ident V (43:44)
+            Keyword -> (45:47)
+            Keyword Query (48:53)
+Decl theory (59:196)
+  Infix (66:196)
+    App (66:100)
+      Ident Graph/hom (66:75)
+      Infix (77:87)
+        Ident G0 (77:79)
+        Keyword : (80:81)
+        Ident Graph (82:87)
+      Infix (90:100)
+        Ident G1 (90:92)
+        Keyword : (93:94)
+        Ident Graph (95:100)
+    Keyword := (102:104)
+    Block sig (105:196)
+      Infix (111:127)
+        Ident V (111:112)
+        Keyword : (113:114)
+        Infix (115:127)
+          App (115:119)
+            Ident G0 (115:117)
+            Field V (117:119)
+          Keyword -> (120:122)
+          App (123:127)
+            Ident G1 (123:125)
+            Field V (125:127)
+      Infix (130:190)
+        Ident E (130:131)
+        Keyword : (132:133)
+        Infix (135:190)
+          Infix (135:143)
+            Ident x (135:136)
+            Keyword : (137:138)
+            App (139:143)
+              Ident G0 (139:141)
+              Field V (141:143)
+          Keyword -> (145:147)
+          Infix (149:190)
+            Infix (149:157)
+              Ident y (149:150)
+              Keyword : (151:152)
+              App (153:157)
+                Ident G0 (153:155)
+                Field V (155:157)
+            Keyword -> (159:161)
+            Infix (162:190)
+              App (162:170)
+                Ident G0 (162:164)
+                Field E (164:166)
+                Ident x (167:168)
+                Ident y (169:170)
+              Keyword -> (171:173)
+              App (175:190)
+                Ident G1 (175:177)
+                Field E (177:179)
+                App (181:184)
+                  Ident V (181:182)
+                  Ident x (183:184)
+                App (187:190)
+                  Ident V (187:188)
+                  Ident y (189:190)
+Decl theory (198:391)
+  Infix (205:391)
+    App (205:220)
+      Ident Path (205:209)
+      Infix (211:220)
+        Ident G (211:212)
+        Keyword : (213:214)
+        Ident Graph (215:220)
+    Keyword := (222:224)
+    Block sig (225:391)
+      Infix (231:254)
+        Ident t (231:232)
+        Keyword : (233:234)
+        Infix (235:254)
+          App (235:238)
+            Ident G (235:236)
+            Field V (236:238)
+          Keyword -> (239:241)
+          Infix (242:254)
+            App (242:245)
+              Ident G (242:243)
+              Field V (243:245)
+            Keyword -> (246:248)
+            Keyword Query (249:254)
+      Infix (257:283)
+        Ident empty (257:262)
+        Keyword : (263:264)
+        Infix (266:283)
+          Infix (266:273)
+            Ident x (266:267)
+            Keyword : (268:269)
+            App (270:273)
+              Ident G (270:271)
+              Field V (271:273)
+          Keyword -> (275:277)
+          App (278:283)
+            Ident t (278:279)
+            Ident x (280:281)
+            Ident x (282:283)
+      Infix (286:383)
+        Ident cons (286:290)
+        Keyword : (291:292)
+        Infix (300:383)
+          Infix (300:307)
+            Ident x (300:301)
+            Keyword : (302:303)
+            App (304:307)
+              Ident G (304:305)
+              Field V (305:307)
+          Keyword -> (309:311)
+          Infix (317:383)
+            Infix (317:324)
+              Ident y (317:318)
+              Keyword : (319:320)
+              App (321:324)
+                Ident G (321:322)
+                Field V (322:324)
+            Keyword -> (326:328)
+            Infix (334:383)
+              Infix (334:341)
+                Ident z (334:335)
+                Keyword : (336:337)
+                App (338:341)
+                  Ident G (338:339)
+                  Field V (339:341)
+              Keyword -> (343:345)
+              Infix (350:383)
+                App (350:357)
+                  Ident G (350:351)
+                  Field E (351:353)
+                  Ident x (354:355)
+                  Ident y (356:357)
+                Keyword -> (358:360)
+                Infix (365:383)
+                  App (365:370)
+                    Ident t (365:366)
+                    Ident y (367:368)
+                    Ident z (369:370)
+                  Keyword -> (371:373)
+                  App (378:383)
+                    Ident t (378:379)
+                    Ident x (380:381)
+                    Ident z (382:383)
+Decl theory (393:737)
+  Infix (400:737)
+    App (400:447)
+      Ident Path/hom (400:408)
+      Infix (410:419)
+        Ident G (410:411)
+        Keyword : (412:413)
+        Ident Graph (414:419)
+      Infix (422:433)
+        Ident P0 (422:424)
+        Keyword : (425:426)
+        App (427:433)
+          Ident Path (427:431)
+          Ident G (432:433)
+      Infix (436:447)
+        Ident P1 (436:438)
+        Keyword : (439:440)
+        App (441:447)
+          Ident Path (441:445)
+          Ident G (446:447)
+    Keyword := (449:451)
+    Block sig (452:737)
+      Infix (458:508)
+        Ident t (458:459)
+        Keyword : (460:461)
+        Infix (463:508)
+          Infix (463:470)
+            Ident x (463:464)
+            Keyword : (465:466)
+            App (467:470)
+              Ident G (467:468)
+              Field V (468:470)
+          Keyword -> (472:474)
+          Infix (476:508)
+            Infix (476:483)
+              Ident y (476:477)
+              Keyword : (478:479)
+              App (480:483)
+                Ident G (480:481)
+                Field V (481:483)
+            Keyword -> (485:487)
+            Infix (488:508)
+              App (488:496)
+                Ident P0 (488:490)
+                Field t (490:492)
+                Ident x (493:494)
+                Ident y (495:496)
+              Keyword -> (497:499)
+              App (500:508)
+                Ident P1 (500:502)
+                Field t (502:504)
+                Ident x (505:506)
+                Ident y (507:508)
+      Infix (511:563)
+        Ident empty (511:516)
+        Keyword : (517:518)
+        Infix (520:563)
+          Infix (520:527)
+            Ident x (520:521)
+            Keyword : (522:523)
+            App (524:527)
+              Ident G (524:525)
+              Field V (525:527)
+          Keyword -> (529:531)
+          Infix (532:563)
+            App (532:549)
+              Ident t (532:533)
+              Ident x (534:535)
+              Ident x (536:537)
+              App (539:549)
+                Ident P0 (539:541)
+                Field empty (541:547)
+                Ident x (548:549)
+            Keyword = (551:552)
+            App (553:563)
+              Ident P1 (553:555)
+              Field empty (555:561)
+              Ident x (562:563)
+      Infix (566:728)
+        Ident cons (566:570)
+        Keyword : (571:572)
+        Infix (580:728)
+          Infix (580:587)
+            Ident x (580:581)
+            Keyword : (582:583)
+            App (584:587)
+              Ident G (584:585)
+              Field V (585:587)
+          Keyword -> (589:591)
+          Infix (597:728)
+            Infix (597:604)
+              Ident y (597:598)
+              Keyword : (599:600)
+              App (601:604)
+                Ident G (601:602)
+                Field V (602:604)
+            Keyword -> (606:608)
+            Infix (614:728)
+              Infix (614:621)
+                Ident z (614:615)
+                Keyword : (616:617)
+                App (618:621)
+                  Ident G (618:619)
+                  Field V (619:621)
+              Keyword -> (623:625)
+              Infix (631:728)
+                Infix (631:642)
+                  Ident e (631:632)
+                  Keyword : (633:634)
+                  App (635:642)
+                    Ident G (635:636)
+                    Field E (636:638)
+                    Ident x (639:640)
+                    Ident y (641:642)
+                Keyword -> (644:646)
+                Infix (652:728)
+                  Infix (652:665)
+                    Ident p0 (652:654)
+                    Keyword : (655:656)
+                    App (657:665)
+                      Ident P0 (657:659)
+                      Field t (659:661)
+                      Ident y (662:663)
+                      Ident z (664:665)
+                  Keyword -> (667:669)
+                  Infix (674:728)
+                    App (674:699)
+                      Ident t (674:675)
+                      Ident x (676:677)
+                      Ident z (678:679)
+                      App (681:699)
+                        Ident P0 (681:683)
+                        Field cons (683:688)
+                        Ident x (689:690)
+                        Ident y (691:692)
+                        Ident z (693:694)
+                        Ident e (695:696)
+                        Ident p0 (697:699)
+                    Keyword = (701:702)
+                    App (703:728)
+                      Ident P1 (703:705)
+                      Field cons (705:710)
+                      Ident x (711:712)
+                      Ident y (713:714)
+                      Ident z (715:716)
+                      Ident e (717:718)
+                      App (720:728)
+                        Ident t (720:721)
+                        Ident y (722:723)
+                        Ident z (724:725)
+                        Ident p0 (726:728)
+Decl theory (739:944)
+  Infix (746:944)
+    Ident Main (746:750)
+    Keyword := (751:753)
+    Block sig (754:944)
+      Infix (760:774)
+        Ident Graphs (760:766)
+        Keyword : (767:768)
+        Keyword Query (769:774)
+      Infix (777:796)
+        Ident G (777:778)
+        Keyword : (779:780)
+        Infix (781:796)
+          Ident Graphs (781:787)
+          Keyword -> (788:790)
+          Ident Graph (791:796)
+      Infix (799:810)
+        Ident G0 (799:801)
+        Keyword : (802:803)
+        Ident Graphs (804:810)
+      Infix (813:824)
+        Ident G1 (813:815)
+        Keyword : (816:817)
+        Ident Graphs (818:824)
+      Infix (827:855)
+        Ident Hom (827:830)
+        Keyword : (831:832)
+        App (833:855)
+          Ident Graph/hom (833:842)
+          App (844:848)
+            Ident G (844:845)
+            Ident G0 (846:848)
+          App (851:855)
+            Ident G (851:852)
+            Ident G1 (853:855)
+      Infix (859:877)
+        Ident Path0 (859:864)
+        Keyword : (865:866)
+        App (867:877)
+          Ident Path (867:871)
+          App (873:877)
+            Ident G (873:874)
+            Ident G0 (875:877)
+      Infix (881:899)
+        Ident Path1 (881:886)
+        Keyword : (887:888)
+        App (889:899)
+          Ident Path (889:893)
+          App (895:899)
+            Ident G (895:896)
+            Ident G0 (897:899)
+      Infix (903:940)
+        Ident PathHom (903:910)
+        Keyword : (911:912)
+        App (913:940)
+          Ident Path/hom (913:921)
+          App (923:927)
+            Ident G (923:924)
+            Ident G0 (925:927)
+          Ident Path0 (929:934)
+          Ident Path1 (935:940)
+
+-- elaborated
+potential entry named Graph
+type:  Theory
+value:  sig
+  V : Query
+  E : V -> V -> Query
+end
+potential entry named Main
+type:  Theory
+value:  sig
+  Graphs : Query
+  G : Graphs -> Graph
+  G0 : Graphs
+  G1 : Graphs
+  Hom : Graph/hom (G G0) (G G1)
+  Path0 : Path (G G0)
+  Path1 : Path (G G0)
+  PathHom : Path/hom (G G0) Path0 Path1
+end
+potential entry named Path
+type:  (G : Graph) -> Theory
+value:  G => sig
+  t : G .V -> G .V -> Query
+  empty : (x : G .V) -> t x x
+  cons : (x : G .V) -> (y : G .V) -> (z : G .V) -> G .E x y -> t y z -> t x z
+end
+potential entry named Graph/hom
+type:  (G0 : Graph) -> (G1 : Graph) -> Theory
+value:  G0 => G1 => sig
+  V : G0 .V -> G1 .V
+  E : (x : G0 .V) -> (y : G0 .V) -> G0 .E x y -> G1 .E (V x) (V y)
+end
+potential entry named Path/hom
+type:  (G : Graph) -> (P0 : Path G) -> (P1 : Path G) -> Theory
+value:  G => P0 => P1 => sig
+  t : (x : G .V) -> (y : G .V) -> P0 .t x y -> P1 .t x y
+  empty : (x : G .V) -> t x x (P0 .empty x) = P1 .empty x
+  cons : (x : G .V) -> (y : G .V) -> (z : G .V) -> (e : G .E x y) -> (p0 : P0 .t y z) -> t x z (P0 .cons x y z e p0) = P1 .cons x y z e (t y z p0)
+end
+
+-- lowered
+schema
+  G .E := table
+    Graphs
+    G .V
+    G .V
+  end
+  G .E .foreignKeys := forall (a : Graphs) (b : G .V) (c : G .V) => G .E [ a
+  , b
+  , c ] |- b @ G .V [a] /\ c @ G .V [a]
+  G .V := table
+    Graphs
+  end
+  G0 := table
+    Graphs
+    primary key []
+  end
+  G0 .total := forall  => T |- G0 []
+  G1 := table
+    Graphs
+    primary key []
+  end
+  G1 .total := forall  => T |- G1 []
+  Graphs := table
+  end
+  Hom .E := table
+    G .V
+    G .V
+    G .E
+    G .E
+    primary key [0, 1, 2]
+  end
+  Hom .E .foreignKeys := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Graphs) (f : G .E) (g : Graphs) (h : G .V) (i : G .V) (j : G .E) => Hom .E [ b
+  , d
+  , f
+  , j ] /\ G0 [a] /\ G0 [c] /\ G0 [e] /\ G1 [g] /\ Hom .V [b, h] /\ Hom .V [ d
+  , i ] |- b @ G .V [a] /\ d @ G .V [c] /\ f @ G .E [e, b, d] /\ j @ G .E [ g
+  , h
+  , i ]
+  Hom .E .total := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Graphs) (f : G .E) => G0 [ a ] /\ b @ G .V [ a ] /\ G0 [ c ] /\ d @ G .V [ c ] /\ G0 [ e ] /\ f @ G .E [ e
+  , b
+  , d ] |- Hom .E [b, d, f]
+  Hom .V := table
+    G .V
+    G .V
+    primary key [0]
+  end
+  Hom .V .foreignKeys := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) => Hom .V [ b
+  , d ] /\ G0 [a] /\ G1 [c] |- b @ G .V [a] /\ d @ G .V [c]
+  Hom .V .total := forall (a : Graphs) (b : G .V) => G0 [ a ] /\ b @ G .V [ a ] |- Hom .V [ b ]
+  Path0 .cons := table
+    G .V
+    G .V
+    G .V
+    G .E
+    Path0 .t
+    Path0 .t
+    primary key [0, 1, 2, 3, 4]
+  end
+  Path0 .cons .foreignKeys := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Graphs) (f : G .V) (g : Graphs) (h : G .E) (i : Path0 .t) (j : Path0 .t) => Path0 .cons [ b
+  , d
+  , f
+  , h
+  , i
+  , j ] /\ G0 [ a ] /\ G0 [ c ] /\ G0 [ e ] /\ G0 [ g ] |- b @ G .V [ a ] /\ d @ G .V [ c ] /\ f @ G .V [ e ] /\ h @ G .E [ g
+  , b
+  , d ] /\ i @ Path0 .t [d, f] /\ j @ Path0 .t [b, f]
+  Path0 .cons .total := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Graphs) (f : G .V) (g : Graphs) (h : G .E) (i : Path0 .t) => G0 [ a ] /\ b @ G .V [ a ] /\ G0 [ c ] /\ d @ G .V [ c ] /\ G0 [ e ] /\ f @ G .V [ e ] /\ G0 [ g ] /\ h @ G .E [ g
+  , b
+  , d ] /\ i @ Path0 .t [d, f] |- Path0 .cons [b, d, f, h, i]
+  Path0 .empty := table
+    G .V
+    Path0 .t
+    primary key [0]
+  end
+  Path0 .empty .foreignKeys := forall (a : Graphs) (b : G .V) (c : Path0 .t) => Path0 .empty [ b
+  , c ] /\ G0 [a] |- b @ G .V [a] /\ c @ Path0 .t [b, b]
+  Path0 .empty .total := forall (a : Graphs) (b : G .V) => G0 [ a ] /\ b @ G .V [ a ] |- Path0 .empty [ b ]
+  Path0 .t := table
+    G .V
+    G .V
+  end
+  Path0 .t .foreignKeys := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) => Path0 .t [ b
+  , d ] /\ G0 [a] /\ G0 [c] |- b @ G .V [a] /\ d @ G .V [c]
+  Path1 .cons := table
+    G .V
+    G .V
+    G .V
+    G .E
+    Path1 .t
+    Path1 .t
+    primary key [0, 1, 2, 3, 4]
+  end
+  Path1 .cons .foreignKeys := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Graphs) (f : G .V) (g : Graphs) (h : G .E) (i : Path1 .t) (j : Path1 .t) => Path1 .cons [ b
+  , d
+  , f
+  , h
+  , i
+  , j ] /\ G0 [ a ] /\ G0 [ c ] /\ G0 [ e ] /\ G0 [ g ] |- b @ G .V [ a ] /\ d @ G .V [ c ] /\ f @ G .V [ e ] /\ h @ G .E [ g
+  , b
+  , d ] /\ i @ Path1 .t [d, f] /\ j @ Path1 .t [b, f]
+  Path1 .cons .total := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Graphs) (f : G .V) (g : Graphs) (h : G .E) (i : Path1 .t) => G0 [ a ] /\ b @ G .V [ a ] /\ G0 [ c ] /\ d @ G .V [ c ] /\ G0 [ e ] /\ f @ G .V [ e ] /\ G0 [ g ] /\ h @ G .E [ g
+  , b
+  , d ] /\ i @ Path1 .t [d, f] |- Path1 .cons [b, d, f, h, i]
+  Path1 .empty := table
+    G .V
+    Path1 .t
+    primary key [0]
+  end
+  Path1 .empty .foreignKeys := forall (a : Graphs) (b : G .V) (c : Path1 .t) => Path1 .empty [ b
+  , c ] /\ G0 [a] |- b @ G .V [a] /\ c @ Path1 .t [b, b]
+  Path1 .empty .total := forall (a : Graphs) (b : G .V) => G0 [ a ] /\ b @ G .V [ a ] |- Path1 .empty [ b ]
+  Path1 .t := table
+    G .V
+    G .V
+  end
+  Path1 .t .foreignKeys := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) => Path1 .t [ b
+  , d ] /\ G0 [a] /\ G0 [c] |- b @ G .V [a] /\ d @ G .V [c]
+  PathHom .cons := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Graphs) (f : G .V) (g : Graphs) (h : G .E) (i : Path0 .t) (j : Path0 .t) (k : Path1 .t) (l : Path1 .t) (m : Path1 .t) => G0 [ a ] /\ b @ G .V [ a ] /\ G0 [ c ] /\ d @ G .V [ c ] /\ G0 [ e ] /\ f @ G .V [ e ] /\ G0 [ g ] /\ h @ G .E [ g
+  , b
+  , d ] /\ i @ Path0 .t [d, f] /\ Path0 .cons [ b
+  , d
+  , f
+  , h
+  , i
+  , j ] /\ PathHom .t [b, f, j, k] /\ PathHom .t [d, f, i, l] /\ Path1 .cons [ b
+  , d
+  , f
+  , h
+  , l
+  , m ] |- k = m
+  PathHom .empty := forall (a : Graphs) (b : G .V) (c : Path0 .t) (d : Path1 .t) (e : Path1 .t) => G0 [ a ] /\ b @ G .V [ a ] /\ Path0 .empty [ b
+  , c ] /\ PathHom .t [b, b, c, d] /\ Path1 .empty [b, e] |- d = e
+  PathHom .t := table
+    G .V
+    G .V
+    Path0 .t
+    Path1 .t
+    primary key [0, 1, 2]
+  end
+  PathHom .t .foreignKeys := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Path0 .t) (f : Path1 .t) => PathHom .t [ b
+  , d
+  , e
+  , f ] /\ G0 [a] /\ G0 [c] |- b @ G .V [a] /\ d @ G .V [c] /\ e @ Path0 .t [ b
+  , d ] /\ f @ Path1 .t [b, d]
+  PathHom .t .total := forall (a : Graphs) (b : G .V) (c : Graphs) (d : G .V) (e : Path0 .t) => G0 [ a ] /\ b @ G .V [ a ] /\ G0 [ c ] /\ d @ G .V [ c ] /\ e @ Path0 .t [ b
+  , d ] |- PathHom .t [b, d, e]
+end
+
+-- messages

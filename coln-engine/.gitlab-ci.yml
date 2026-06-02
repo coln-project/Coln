@@ -1,0 +1,36 @@
+default:
+  tags:
+    - nix
+
+stages:
+  - check
+  - test
+
+variables:
+  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
+  CARGO_TERM_COLOR: always
+
+cache:
+  key:
+    files:
+      - Cargo.lock
+      - flake.lock
+  paths:
+    - .cargo/registry
+    - .cargo/git
+    - target
+
+fmt:
+  stage: check
+  script:
+    - nix develop -c cargo fmt --all -- --check
+
+clippy:
+  stage: check
+  script:
+    - nix develop -c cargo clippy --workspace --all-targets --locked -- -D warnings
+
+test:
+  stage: test
+  script:
+    - nix develop -c cargo test --workspace --locked

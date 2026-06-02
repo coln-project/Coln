@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/geolog-lang","crates/geomerge"]
+resolver = "3"
