@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 
 use crate::{
+    commit::hash::{CommitHash, HASH_SIZE},
     ir::{ColType, PrimType},
-    repl::error::TransactCellParseError,
+    repl::error::BatchCellParseError,
     table::{CellValue, RowId},
+    txn::ops::{TempRowId, TxnCellValue},
 };
 
-/// One `name = add <table> values (...);` step inside a transaction block (exactly one row).
+/// One `name = add <table> values (...);` step inside a batch block (exactly one row).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransactAssignment {
+pub struct BatchAssignment {
     pub name: String,
     pub table: String,
     pub row: Vec<String>,
@@ -29,8 +31,8 @@ pub enum Command {
         rows: Vec<Vec<String>>,
     },
     /// `begin transact;` … `commit;` with assignments using previous bindings in entity columns.
-    Transact {
-        assignments: Vec<TransactAssignment>,
+    Batch {
+        assignments: Vec<BatchAssignment>,
     },
     DumpTbl {
         name: String,
@@ -106,7 +108,7 @@ pub fn parse_meta_command(input: &str) -> Result<Command, String> {
 pub fn parse_statement(input: &str) -> Result<Command, String> {
     let input = input.trim();
     if input.starts_with("begin transact") {
-        return parse_transact_block(input);
+        return parse_batch_block(input);
     }
 
     let parts = shlex::split(input).ok_or_else(|| "could not parse input".to_string())?;
@@ -146,34 +148,38 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
     }
 }
 
-/// Resolve one cell for a transactional insert: entity columns accept `#id` or a prior binding name.
-pub fn parse_cell_value_transact(
+/// Resolve one cell for a batch insert: entity columns accept `#id` or a prior binding name.
+pub fn parse_cell_value_batch(
     col_type: &ColType,
     raw: &str,
-    bindings: &HashMap<String, RowId>,
-) -> Result<CellValue, TransactCellParseError> {
+    bindings: &HashMap<String, TempRowId>,
+) -> Result<TxnCellValue, BatchCellParseError> {
     match col_type {
         ColType::EntityType { .. } => {
             if raw.starts_with('#') {
-                parse_cell_value(col_type, raw).map_err(TransactCellParseError::InvalidValue)
+                parse_cell_value(col_type, raw)
+                    .map(Into::into)
+                    .map_err(BatchCellParseError::InvalidValue)
             } else if is_binding_ident(raw) {
                 let id = bindings
                     .get(raw)
                     .copied()
-                    .ok_or_else(|| TransactCellParseError::UnknownBinding(raw.to_string()))?;
-                Ok(CellValue::Id(id))
+                    .ok_or_else(|| BatchCellParseError::UnknownBinding(raw.to_string()))?;
+                Ok(TxnCellValue::from(id))
             } else {
-                Err(TransactCellParseError::InvalidValue(format!(
-                    "expected entity id like #12 or a binding name, got {raw}"
+                Err(BatchCellParseError::InvalidValue(format!(
+                    "expected entity id like #<commit>:<counter> or a binding name, got {raw}"
                 )))
             }
         }
-        _ => parse_cell_value(col_type, raw).map_err(TransactCellParseError::InvalidValue),
+        _ => parse_cell_value(col_type, raw)
+            .map(Into::into)
+            .map_err(BatchCellParseError::InvalidValue),
     }
 }
 
 /// Parse `begin transact;` … `commit` (outer `;` already stripped by [`parse_command`]).
-fn parse_transact_block(input: &str) -> Result<Command, String> {
+fn parse_batch_block(input: &str) -> Result<Command, String> {
     let input = input.trim();
     let Some(rest) = input.strip_prefix("begin transact") else {
         return Err("internal error: expected begin transact".to_string());
@@ -187,8 +193,8 @@ fn parse_transact_block(input: &str) -> Result<Command, String> {
         return Err("transaction block must end with `commit`".to_string());
     };
     let inner = inner.trim().strip_suffix(';').unwrap_or(inner).trim();
-    let assignments = parse_transact_assignments(inner)?;
-    Ok(Command::Transact { assignments })
+    let assignments = parse_batch_assignments(inner)?;
+    Ok(Command::Batch { assignments })
 }
 
 pub fn is_binding_ident(s: &str) -> bool {
@@ -227,18 +233,18 @@ fn split_semicolon_statements(s: &str) -> Vec<String> {
     out
 }
 
-fn parse_transact_assignments(inner: &str) -> Result<Vec<TransactAssignment>, String> {
+fn parse_batch_assignments(inner: &str) -> Result<Vec<BatchAssignment>, String> {
     let mut v = Vec::new();
     for stmt in split_semicolon_statements(inner) {
-        v.push(parse_transact_assignment(&stmt)?);
+        v.push(parse_batch_assignment(&stmt)?);
     }
     Ok(v)
 }
 
-fn parse_transact_assignment(line: &str) -> Result<TransactAssignment, String> {
+fn parse_batch_assignment(line: &str) -> Result<BatchAssignment, String> {
     let line = line.trim();
     if line.is_empty() {
-        return Err("empty statement inside transaction block".to_string());
+        return Err("empty statement inside batch block".to_string());
     }
     let Some((name, rhs)) = line.split_once(" = add ") else {
         return Err(format!(
@@ -262,12 +268,12 @@ fn parse_transact_assignment(line: &str) -> Result<TransactAssignment, String> {
     let rows = parse_add_rows(rows_src.trim())?;
     if rows.len() != 1 {
         return Err(
-            "each transaction assignment must insert exactly one row (one `values (...)` group)"
+            "each batch assignment must insert exactly one row (one `values (...)` group)"
                 .to_string(),
         );
     }
     let row = rows.into_iter().next().expect("one row");
-    Ok(TransactAssignment {
+    Ok(BatchAssignment {
         name: name.to_string(),
         table: table.to_string(),
         row,
@@ -366,14 +372,7 @@ fn split_add_row_tokens(row_src: &str) -> Vec<String> {
 
 pub fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, String> {
     match col_type {
-        ColType::EntityType { .. } => raw
-            .strip_prefix('#')
-            .ok_or_else(|| "expected entity id like #12".to_string())
-            .and_then(|rest| {
-                rest.parse::<u64>()
-                    .map(CellValue::Id)
-                    .map_err(|_| format!("invalid entity id: {raw}"))
-            }),
+        ColType::EntityType { .. } => parse_row_id(raw).map(CellValue::Id),
         ColType::PrimType { prim } => match prim {
             PrimType::PrimInt => raw
                 .parse::<i64>()
@@ -383,6 +382,28 @@ pub fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, Stri
         },
         ColType::Tuple { .. } => Err("tuple columns are not supported yet".to_string()),
     }
+}
+
+fn parse_row_id(raw: &str) -> Result<RowId, String> {
+    let rest = raw
+        .strip_prefix('#')
+        .ok_or_else(|| "expected entity id like #<commit>:<counter>".to_string())?;
+    let Some((hash_hex, counter_raw)) = rest.split_once(':') else {
+        return Err("expected entity id like #<commit>:<counter>".to_string());
+    };
+    let hash_bytes = hex::decode(hash_hex).map_err(|_| format!("invalid entity id: {raw}"))?;
+    if hash_bytes.len() != HASH_SIZE {
+        return Err(format!("invalid entity id: {raw}"));
+    }
+    let mut hash = [0; HASH_SIZE];
+    hash.copy_from_slice(&hash_bytes);
+    let counter = counter_raw
+        .parse::<u32>()
+        .map_err(|_| format!("invalid entity id: {raw}"))?;
+    Ok(RowId {
+        commit: CommitHash(hash),
+        counter,
+    })
 }
 
 #[cfg(test)]
@@ -453,31 +474,31 @@ mod tests {
     }
 
     #[test]
-    fn parses_transact_empty() {
+    fn parses_batch_empty() {
         assert_eq!(
             parse_command("begin transact; commit;").unwrap(),
-            Command::Transact {
+            Command::Batch {
                 assignments: vec![]
             }
         );
     }
 
     #[test]
-    fn parses_transact_with_bindings() {
+    fn parses_batch_with_bindings() {
         let cmd = parse_command(
             "begin transact; g = add Graphs values (); x = add G0 values (g); commit;",
         )
         .unwrap();
         assert_eq!(
             cmd,
-            Command::Transact {
+            Command::Batch {
                 assignments: vec![
-                    TransactAssignment {
+                    BatchAssignment {
                         name: "g".to_string(),
                         table: "Graphs".to_string(),
                         row: vec![],
                     },
-                    TransactAssignment {
+                    BatchAssignment {
                         name: "x".to_string(),
                         table: "G0".to_string(),
                         row: vec!["g".to_string()],
@@ -488,7 +509,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_transact_without_commit_keyword() {
+    fn rejects_batch_without_commit_keyword() {
         let err = parse_command("begin transact; g = add T values (1);").unwrap_err();
         assert!(err.contains("transaction block must end with `commit`") || err.contains("commit"));
     }

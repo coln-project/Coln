@@ -1,4 +1,5 @@
 //! Integration tests for REPL commands.
+//! Integration tests for `begin batch` … `commit` REPL semantics.
 
 use std::path::PathBuf;
 
@@ -22,7 +23,7 @@ fn fixture_theory(name: &str) -> FlatTheory {
 }
 
 #[test]
-fn transact_block_matches_manual_transact_for_paths_fixture() {
+fn batch_block_matches_apply_batch_for_paths_fixture() {
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
@@ -32,13 +33,13 @@ fn transact_block_matches_manual_transact_for_paths_fixture() {
          v1 = add G.V values (gid1); v2 = add G.V values (gid1); \
          ge = add G.E values (gid1 v1 v2); commit;",
     )
-    .expect("parse transact");
+    .expect("parse batch");
 
-    let Command::Transact { assignments } = cmd else {
-        panic!("expected Command::Transact");
+    let Command::Batch { assignments } = cmd else {
+        panic!("expected Command::Batch");
     };
 
-    let msg = run_transact(&mut store, &assignments).expect("run transact");
+    let msg = run_transact(&mut store, &assignments).expect("run batch");
     assert!(msg.contains("gid1=#"), "expected binding summary: {msg}");
 
     let ge = store.table_at(&Path::from("G.E")).expect("G.E");

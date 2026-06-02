@@ -1,7 +1,7 @@
 use std::fmt;
 
-use crate::persist::error::PersisError;
-use crate::store::StoreIntError;
+use crate::commit::error::CodecError;
+use crate::store::error::StoreIntError;
 use crate::table::ValidationError;
 
 #[derive(Debug)]
@@ -15,12 +15,12 @@ pub enum ReplError {
     Io(std::io::Error),
     Json(serde_json::Error),
     Store(Box<StoreIntError>),
-    Persist(PersisError),
+    Persist(CodecError),
 }
 
-/// Parse failure for a single cell inside a `begin transact` block (before column index is known).
+/// Parse failure for a single cell inside a `begin batch` block (before column index is known).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransactCellParseError {
+pub enum BatchCellParseError {
     UnknownBinding(String),
     InvalidValue(String),
 }
@@ -70,8 +70,8 @@ impl From<Box<StoreIntError>> for ReplError {
     }
 }
 
-impl From<PersisError> for ReplError {
-    fn from(value: PersisError) -> Self {
+impl From<CodecError> for ReplError {
+    fn from(value: CodecError) -> Self {
         Self::Persist(value)
     }
 }
@@ -82,11 +82,11 @@ impl From<ValidationError> for ReplError {
     }
 }
 
-impl From<TransactCellParseError> for ReplError {
-    fn from(value: TransactCellParseError) -> Self {
+impl From<BatchCellParseError> for ReplError {
+    fn from(value: BatchCellParseError) -> Self {
         match value {
-            TransactCellParseError::UnknownBinding(name) => Self::UnknownBinding(name),
-            TransactCellParseError::InvalidValue(message) => Self::BadValue { column: 0, message },
+            BatchCellParseError::UnknownBinding(name) => Self::UnknownBinding(name),
+            BatchCellParseError::InvalidValue(message) => Self::BadValue { column: 0, message },
         }
     }
 }

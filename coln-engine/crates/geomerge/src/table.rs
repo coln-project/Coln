@@ -2,18 +2,28 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::Write;
 
+use crate::commit::hash::CommitHash;
 use crate::ir;
-use crate::persist::ptbl::TableEntry;
-use crate::{
-    ir::{ColType, PrimType, Schema},
-    ops::Op,
-};
+use crate::ir::{ColType, PrimType, Schema};
 
 pub type TableOid = u64;
 
 /// The unique id that identifies each row in a table
 /// It is managed by the database, read-only for the user
-pub type RowId = u64;
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub struct RowId {
+    pub commit: CommitHash,
+    pub counter: u32,
+}
+
+impl fmt::Display for RowId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in &self.commit.0[..6] {
+            write!(f, "{byte:02x}")?;
+        }
+        write!(f, ":{}", self.counter)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ValidationError {
@@ -33,6 +43,10 @@ pub enum ValidationError {
     /// No table registered for this path (e.g. batch apply).
     UnknownTable {
         path: ir::Path,
+    },
+    TableMismatch {
+        expected: ir::Path,
+        actual: ir::Path,
     },
 }
 
@@ -58,6 +72,12 @@ impl fmt::Display for ValidationError {
             }
             ValidationError::UnknownTable { path } => {
                 write!(f, "unknown table: {path:?}")
+            }
+            ValidationError::TableMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "table mismatch: expected: {expected:?}, actual: {actual:?}"
+                )
             }
         }
     }
@@ -124,7 +144,6 @@ impl fmt::Display for CellValue {
 pub struct Table {
     path: ir::Path,
     schema: Schema,
-    pub(crate) next_rowid: u64,
     pub(crate) row_ids: Vec<RowId>,
     pub(crate) cols: Vec<Vec<CellValue>>,
 }
@@ -135,23 +154,8 @@ impl Table {
         Self {
             path,
             schema,
-            next_rowid: 0,
             row_ids: vec![],
             cols: vec![Vec::new(); n],
-        }
-    }
-
-    pub(crate) fn new_from_persist(
-        entry: &TableEntry,
-        row_ids: Vec<RowId>,
-        cols: Vec<Vec<CellValue>>,
-    ) -> Self {
-        Self {
-            path: ir::Path::from(entry.path.as_str()),
-            schema: entry.schema.clone(),
-            next_rowid: entry.next_rowid,
-            row_ids,
-            cols,
         }
     }
 
@@ -202,37 +206,24 @@ impl Table {
         out
     }
 
-    /// Checks that the values to be inserted matches the schema definition
-    pub fn validate(&self, values: &[CellValue]) -> Result<(), ValidationError> {
+    /// Checks that a row has the right number of values for this table. This is
+    /// a preliminary check that is done as soon as an operation is added. More
+    /// complex check is in validate_insert and deferred at commit time
+    pub fn validate_column_count(&self, got: usize) -> Result<(), ValidationError> {
         let expected = self.schema.columns.len();
-        if values.len() != expected {
-            return Err(ValidationError::ColumnCount {
-                expected,
-                got: values.len(),
-            });
-        }
-        for (i, (col_type, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
-            value.matches_schema(col_type, i)?;
+        if got != expected {
+            return Err(ValidationError::ColumnCount { expected, got });
         }
         Ok(())
     }
 
-    /// Values at primary-key columns for this row.
-    /// A primary key definition would occur in tables that do not end up in Query
-    /// An empty primary key means the table would have at most one row.
-    pub fn primary_key_values(&self, values: &[CellValue]) -> Option<Vec<CellValue>> {
-        self.schema.primary_key.as_ref().map(|pk| {
-            if pk.is_empty() {
-                Vec::new()
-            } else {
-                pk.iter().map(|&i| values[i as usize].clone()).collect()
-            }
-        })
-    }
+    /// Checks schema and primary-key constraints against rows already stored.
+    pub fn validate_insert(&self, values: &[CellValue]) -> Result<(), ValidationError> {
+        self.validate_column_count(values.len())?;
 
-    /// Schema and primary-key check against rows already stored.
-    pub fn validate_new_row(&self, values: &[CellValue]) -> Result<(), ValidationError> {
-        self.validate(values)?;
+        for (i, (col_type, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
+            value.matches_schema(col_type, i)?;
+        }
 
         if let Some(pk) = &self.schema.primary_key {
             if !pk.is_empty() {
@@ -255,36 +246,29 @@ impl Table {
         Ok(())
     }
 
-    /// Validates `values` ([`validate_new_row`]), then appends and returns the new [`RowId`].
-    pub fn append_row_validated(
-        &mut self,
-        values: Vec<CellValue>,
-    ) -> Result<RowId, ValidationError> {
-        self.validate_new_row(&values)?;
-        Ok(self.append_row(values))
+    /// Values at primary-key columns for this row.
+    /// A primary key definition would occur in tables that do not end up in Query
+    /// An empty primary key means the table would have at most one row.
+    pub fn primary_key_values(&self, values: &[CellValue]) -> Option<Vec<CellValue>> {
+        self.schema.primary_key.as_ref().map(|pk| {
+            if pk.is_empty() {
+                Vec::new()
+            } else {
+                pk.iter().map(|&i| values[i as usize].clone()).collect()
+            }
+        })
     }
 
     /// Append a row to columnar storage and assign a new [`RowId`].
     ///
     /// Does **not** validate. Used internally when the caller has already checked the row
     /// (e.g. batch validation); otherwise use [`try_append_row`].
-    pub(crate) fn append_row(&mut self, values: Vec<CellValue>) -> RowId {
+    pub(crate) fn append_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
-        let row_id = self.next_rowid;
         self.row_ids.push(row_id);
-        self.next_rowid += 1;
         for (i, v) in values.into_iter().enumerate() {
             self.cols[i].push(v);
-        }
-        row_id
-    }
-
-    /// Append one row after validation and primary-key uniqueness check.
-    pub fn add(&self, values: Vec<CellValue>) -> Op {
-        Op::Add {
-            table: self.path.clone(),
-            values,
         }
     }
 }
@@ -294,6 +278,13 @@ mod tests {
 
     use super::*;
     use crate::ir::{self, Path};
+
+    fn test_row_id(counter: u32) -> RowId {
+        RowId {
+            commit: CommitHash([0; 32]),
+            counter,
+        }
+    }
 
     /// Tables with no data columns still allocate row ids on insert; `row_count` must reflect
     /// those rows (it cannot use column length when `cols` is empty).
@@ -307,28 +298,15 @@ mod tests {
         assert!(tbl.cols.is_empty());
         assert_eq!(tbl.row_count(), 0);
 
-        let r0 = tbl.append_row_validated(vec![]).expect("first row");
+        let r0 = test_row_id(0);
+        tbl.append_row(vec![], r0);
         assert_eq!(tbl.row_count(), 1);
         assert_eq!(tbl.row_id_at(0), Some(r0));
 
-        let r1 = tbl.append_row_validated(vec![]).expect("second row");
+        let r1 = test_row_id(1);
+        tbl.append_row(vec![], r1);
         assert_eq!(tbl.row_count(), 2);
         assert_eq!(tbl.row_id_at(1), Some(r1));
-    }
-
-    #[test]
-    fn test_table_add() {
-        let columns = vec![ColType::EntityType {
-            path: Path::from("G.E"),
-        }];
-        let gv_schema = ir::Schema {
-            columns,
-            primary_key: None,
-        };
-        let mut tbl = Table::new(Path::from("test.table"), gv_schema);
-        tbl.append_row_validated(vec![CellValue::Id(1)])
-            .expect("row");
-        assert_eq!(tbl.row_count(), 1);
     }
 
     /// `primary_key: Some([])` marks a singleton table (at most one row).
@@ -342,12 +320,11 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
-        tbl.append_row_validated(vec![CellValue::Int(0)])
-            .expect("first row");
+        tbl.append_row(vec![CellValue::Int(0)], test_row_id(0));
         assert_eq!(tbl.row_count(), 1);
 
         let values1 = vec![CellValue::Int(1)];
-        let err = tbl.validate_new_row(&values1).unwrap_err();
+        let err = tbl.validate_insert(&values1).unwrap_err();
         assert_eq!(err, ValidationError::DuplicatePrimaryKey);
         assert_eq!(tbl.row_count(), 1);
     }
@@ -367,9 +344,11 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("readable"), schema);
 
-        let row_id = tbl
-            .append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())])
-            .expect("row");
+        let row_id = test_row_id(0);
+        tbl.append_row(
+            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
+            row_id,
+        );
 
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
@@ -393,17 +372,25 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("debug.table"), schema);
 
-        tbl.append_row_validated(vec![CellValue::Int(7), CellValue::Str("x".to_string())])
-            .expect("first");
-        tbl.append_row_validated(vec![CellValue::Int(8), CellValue::Str("y".to_string())])
-            .expect("second");
+        tbl.append_row(
+            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
+            test_row_id(0),
+        );
+        tbl.append_row(
+            vec![CellValue::Int(8), CellValue::Str("y".to_string())],
+            test_row_id(1),
+        );
 
         assert_eq!(
             tbl.dump(),
-            concat!(
-                "table debug.table (rows: 2, cols: 2)\n",
-                "[0] row_id=0 | c0=7 | c1=\"x\"\n",
-                "[1] row_id=1 | c0=8 | c1=\"y\"\n"
+            format!(
+                concat!(
+                    "table debug.table (rows: 2, cols: 2)\n",
+                    "[0] row_id={} | c0=7 | c1=\"x\"\n",
+                    "[1] row_id={} | c0=8 | c1=\"y\"\n",
+                ),
+                test_row_id(0),
+                test_row_id(1),
             )
         );
     }

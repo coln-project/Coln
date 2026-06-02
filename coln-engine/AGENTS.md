@@ -10,22 +10,21 @@ Priorities, in order:
 
 1. Correct storage, validation, and transaction semantics.
 2. Clear boundaries between IR, store, solver, persistence, and REPL code.
-3. Accurate persistence and reload behavior.
+3. Accurate persistence and reload behaviour.
 4. Performance and scalability.
 5. Clear, maintainable, idiomatic Rust code.
 
 ## Core Rules
 
-- Use English for code, comments, docs, and tests.
 - Keep mutable state inside well-defined structs; avoid global mutable state.
 - Prefer small, focused changes over broad refactoring.
-- Add comments only when they clarify non-obvious behavior.
+- Add comments only when they clarify non-obvious behaviour.
 - Follow Rust idioms: use `Result` for errors, iterators where they improve clarity, and precise ownership.
-- Do not describe unimplemented database, query, concurrency, or merge features as implemented.
+- This is a research prototype, so do not worry about backwards compatibility issues, prioritise cleaner design & implementation.
 
 Quick examples:
 
-- Good: add a validation edge-case test in the module that owns the behavior.
+- Good: add a validation edge-case test in the module that owns the behaviour.
 - Good: extend a REPL command by updating parsing, execution, and tests together.
 - Good: keep persisted schema data and compiled law data clearly separated.
 - Bad: mix REPL parsing, store mutation, and validation logic in one helper.
@@ -52,29 +51,27 @@ Quick examples:
     - `src/table.rs`: column storage, row ids, cell values, and table validation.
     - `src/store.rs`: table registry, theory loading, law compilation, batch
       application, and whole-store law checks.
-    - `src/ops.rs`: store mutation operations.
-    - `src/transaction.rs`: owned transaction wrapper.
     - `src/solver/`: law compilation, matching, binding, and validation.
-    - `src/persist/`: store and table persistence.
+    - `src/commit/`: logic dealing with commits and graphs
+      - `src/commit/wire`: the core encoding/decoding logic
     - `src/repl/`: REPL parsing, execution, summaries, and errors.
-    - `examples/`: example Geolog inputs.
+    - `src/txn`: Logic dealing with transactions, this includes user-facing transaction API.
+    - `examples/`: example Geolog theory files.
     - `tests/`: crate-level integration tests and fixture data.
 
 ## Architecture Constraints
 
 - Treat `geolog-lang` as the source of shared IR definitions. Do not duplicate IR shape in `geomerge` unless conversion boundaries require it.
-- `Store` owns table registration, table lookup, compiled laws, and persisted law source entries.
-- `Table` owns columnar row storage and schema-level validation for inserted values.
+- `Store` owns table registration, table lookup, compiled laws, and a commit graph which is the columnar encoded operations.
+- `Table` is the materialised view of what each table should contain, after playing the commits. It also has schema-level validation for inserted values.
 - Store mutation should flow through explicit operations such as `Op` and transaction helpers.
-- Law compilation and validation logic belongs under `solver`, not in REPL or persistence modules.
+- Law compilation and validation logic belongs under `solver`.
 - REPL code should stay presentation-oriented: parse commands, call store APIs, and format results.
-- Tuple columns are currently rejected by table validation. Do not document them as supported insert values until behavior changes.
 - Public docs and interfaces should reflect the implemented state of the repository accurately.
 
 ## Rust Conventions
 
 - Target stable Rust with edition 2024, as configured by `rust-toolchain.toml` and crate manifests.
-- Use `#[derive(...)]` for common traits where appropriate.
 - Prefer `&str` over `String` in function parameters when ownership is not needed.
 - Use `impl Trait` for return types when the concrete type is an implementation detail.
 - Keep error types meaningful and implement `Display` when users can see the error.
@@ -84,9 +81,7 @@ Quick examples:
 
 Run these checks for any non-trivial change:
 
-1. `cargo test --workspace --all-targets`
-2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-3. `cargo fmt --all --check`
+`just check`
 
 For performance-sensitive changes:
 
@@ -180,7 +175,7 @@ Use this review format:
 
 - Keep commits scoped to one logical change.
 - PR descriptions should include:
-    1. Behavioral change summary.
+    1. Behavioural change summary.
     2. Tests added or updated.
     3. Performance impact, if applicable.
     4. API changes, if any.

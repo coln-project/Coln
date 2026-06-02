@@ -7,8 +7,8 @@ use rustyline::validate::Validator;
 use rustyline::{Context, Editor, Helper};
 use tracing::{info, warn};
 
+use crate::commit::pst::encode_store;
 use crate::ir::Path;
-use crate::persist::pst::encode_store;
 use crate::repl::error::ReplError;
 use crate::repl::exe::{
     LoadedState, add_rows, load_schema, load_store, render_schema_summary, run_transact,
@@ -212,7 +212,7 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
                 "inserted into {table} rows [{row_ids}]"
             )))
         }
-        Command::Transact { assignments } => {
+        Command::Batch { assignments } => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let message = run_transact(&mut loaded.store, &assignments)?;
             Ok(Step::Continue(message))
@@ -357,7 +357,9 @@ mod tests {
             Step::Exit => panic!("unexpected exit"),
         };
 
-        assert_eq!(message, "inserted into T rows [#0, #1]");
+        assert!(message.starts_with("inserted into T rows [#"));
+        assert!(message.contains(":0, #"));
+        assert!(message.ends_with(":1]"));
         let loaded = session.loaded.as_ref().expect("loaded session");
         assert_eq!(
             loaded
@@ -401,7 +403,10 @@ mod tests {
         );
 
         let err = add_rows(&mut store, "Ref", &[vec!["7".to_string()]]).unwrap_err();
-        assert_eq!(err.to_string(), "column 0: expected entity id like #12");
+        assert_eq!(
+            err.to_string(),
+            "column 0: expected entity id like #<commit>:<counter>"
+        );
     }
 
     #[test]
@@ -431,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn transact_buffer_waits_for_commit_semicolon() {
+    fn batch_buffer_waits_for_commit_semicolon() {
         let mut pending = None;
         assert_eq!(push_statement_line(&mut pending, "begin transact;"), None);
         assert_eq!(

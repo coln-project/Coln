@@ -221,13 +221,12 @@ mod tests {
             ),
         );
 
-        let src = store.table_at(&source).expect("Src table");
-        let dst = store.table_at(&target).expect("Dst table");
-        let src_row = src.add(vec![CellValue::Int(7)]);
-        let dst_row = dst.add(vec![CellValue::Int(7)]);
-        store
-            .apply_batch(vec![src_row, dst_row])
-            .expect("insert matching rows");
+        let mut txn = store.transaction();
+        txn.add(&source, vec![CellValue::Int(7).into()])
+            .expect("insert source row");
+        txn.add(&target, vec![CellValue::Int(7).into()])
+            .expect("insert target row");
+        txn.commit().expect("commit matching rows");
 
         let law = ir::LawEntry {
             path: Path::from("Copy.total"),
@@ -366,13 +365,13 @@ mod tests {
 
         let compiled = compile_law(&law).expect("compile law");
 
-        let only_link = store
-            .table_at(&link)
-            .expect("Link table")
-            .add(vec![CellValue::Int(10), CellValue::Int(20)]);
-        store
-            .apply_batch(vec![only_link])
-            .expect("insert referencing row");
+        let mut txn = store.transaction();
+        txn.add(
+            &link,
+            vec![CellValue::Int(10).into(), CellValue::Int(20).into()],
+        )
+        .expect("insert referencing row");
+        txn.commit().expect("commit referencing row");
 
         let violation = check_law(&store, &compiled).expect_err("missing referenced rows");
         assert_eq!(violation.law.path, Path::from("Link.foreignKeys"));
@@ -388,17 +387,12 @@ mod tests {
             ]
         );
 
-        let left_row = store
-            .table_at(&Path::from("Left"))
-            .expect("Left table")
-            .add(vec![CellValue::Int(10)]);
-        let right_row = store
-            .table_at(&Path::from("Right"))
-            .expect("Right table")
-            .add(vec![CellValue::Int(20)]);
-        store
-            .apply_batch(vec![left_row, right_row])
-            .expect("insert referenced rows");
+        let mut txn = store.transaction();
+        txn.add(&left, vec![CellValue::Int(10).into()])
+            .expect("insert left row");
+        txn.add(&right, vec![CellValue::Int(20).into()])
+            .expect("insert right row");
+        txn.commit().expect("commit referenced rows");
 
         assert!(check_law(&store, &compiled).is_ok());
     }
@@ -424,9 +418,10 @@ mod tests {
                 },
             ),
         );
-        let table = store.table_at(&t).expect("T table");
-        let row = table.add(vec![CellValue::Int(5), CellValue::Int(5)]);
-        store.apply_batch(vec![row]).expect("insert row");
+        let mut txn = store.transaction();
+        txn.add(&t, vec![CellValue::Int(5).into(), CellValue::Int(5).into()])
+            .expect("insert row");
+        txn.commit().expect("commit row");
 
         let law = ir::LawEntry {
             path: Path::from("T.eq"),
@@ -487,9 +482,10 @@ mod tests {
                 },
             ),
         );
-        let table = store.table_at(&t).expect("T table");
-        let row = table.add(vec![CellValue::Int(1), CellValue::Int(2)]);
-        store.apply_batch(vec![row]).expect("insert row");
+        let mut txn = store.transaction();
+        txn.add(&t, vec![CellValue::Int(1).into(), CellValue::Int(2).into()])
+            .expect("insert row");
+        txn.commit().expect("commit row");
 
         let law = ir::LawEntry {
             path: Path::from("T.eq"),

@@ -5,14 +5,15 @@ use std::{
 };
 
 use crate::{
+    commit::pst::decode_store,
     ir::{ColType, FlatTheory, PrimType},
-    persist::pst::decode_store,
     repl::{
         error::ReplError,
-        parse::{TransactAssignment, parse_cell_value, parse_cell_value_transact},
+        parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
     },
     store::Store,
-    table::{CellValue, RowId},
+    table::{RowId, Table},
+    txn::ops::{TempRowId, TxnCellValue},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,41 +166,42 @@ pub fn add_rows(
     store: &mut Store,
     table_name: &str,
     raw_rows: &[Vec<String>],
-) -> Result<Vec<u64>, ReplError> {
+) -> Result<Vec<RowId>, ReplError> {
     let table_path = crate::ir::Path::from(table_name);
-    let table = store
-        .table_at(&table_path)
+    let oid = store
+        .resolve_table(&table_path)
         .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
 
-    let ops = raw_rows
-        .iter()
-        .map(|raw_values| build_add_op(table, raw_values))
-        .collect::<Result<Vec<_>, _>>()?;
+    let table = store
+        .table(oid)
+        .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
+    let mut rows = Vec::new();
+    for raw_values in raw_rows {
+        rows.push(parse_txn_values(table, raw_values)?);
+    }
 
-    store.apply_batch(ops).map_err(Into::into)
+    let mut tx = store.transaction();
+    let mut temp_ids = Vec::new();
+    for values in rows {
+        temp_ids.push(tx.add(&table_path, values)?);
+    }
+    let commit = tx.commit()?;
+    let row_ids = temp_ids
+        .into_iter()
+        .map(|temp_id| temp_id.resolve(commit))
+        .collect();
+    Ok(row_ids)
 }
 
-/// Sequential inserts on a preview store, then [`Store::check_laws`]. Mirrors [`Store::transact`]
-/// but surfaces [`ReplError`] from validation.
+/// Parse and commit a batch transaction, allowing later rows to refer to earlier bindings.
 pub fn run_transact(
     store: &mut Store,
-    assignments: &[TransactAssignment],
+    assignments: &[BatchAssignment],
 ) -> Result<String, ReplError> {
-    let mut preview = store.clone();
-    let message = transact_body(&mut preview, assignments)?;
-    preview.check_laws().map_err(ReplError::from)?;
-    *store = preview;
-    Ok(message)
-}
+    let mut bindings: HashMap<String, TempRowId> = HashMap::new();
+    let mut pending = Vec::new();
 
-fn transact_body(
-    store: &mut Store,
-    assignments: &[TransactAssignment],
-) -> Result<String, ReplError> {
-    let mut bindings: HashMap<String, RowId> = HashMap::new();
-    let mut parts = Vec::new();
-
-    for a in assignments {
+    for (index, a) in assignments.iter().enumerate() {
         if bindings.contains_key(&a.name) {
             return Err(ReplError::DuplicateBinding(a.name.clone()));
         }
@@ -218,7 +220,7 @@ fn transact_body(
 
         let mut values = Vec::with_capacity(expected);
         for (idx, col_type) in table.schema().columns.iter().enumerate() {
-            let v = parse_cell_value_transact(col_type, &a.row[idx], &bindings).map_err(|e| {
+            let v = parse_cell_value_batch(col_type, &a.row[idx], &bindings).map_err(|e| {
                 let err: ReplError = e.into();
                 match err {
                     ReplError::BadValue { message, .. } => ReplError::BadValue {
@@ -231,22 +233,26 @@ fn transact_body(
             values.push(v);
         }
 
-        let oid = store
-            .resolve_table(&table_path)
-            .expect("table exists after table_at");
-        let t = store.table_mut(oid).expect("table exists");
-        let row_id = t.append_row_validated(values)?;
-        bindings.insert(a.name.clone(), row_id);
-        parts.push(format!("{}=#{}", a.name, row_id));
+        let temp_id = TempRowId::from(index as u32);
+        bindings.insert(a.name.clone(), temp_id);
+        pending.push((a.name.clone(), table_path, values, temp_id));
     }
 
-    Ok(format!("committed transaction: {}", parts.join(", ")))
+    let mut tx = store.transaction();
+    for (_, table_path, values, _) in pending.iter() {
+        tx.add(table_path, values.clone())?;
+    }
+    let commit = tx.commit()?;
+
+    let parts = pending
+        .into_iter()
+        .map(|(name, _, _, temp_id)| format!("{}=#{}", name, temp_id.resolve(commit)))
+        .collect::<Vec<_>>();
+    let message = format!("committed batch: {}", parts.join(", "));
+    Ok(message)
 }
 
-fn build_add_op(
-    table: &crate::table::Table,
-    raw_values: &[String],
-) -> Result<crate::ops::Op, ReplError> {
+fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellValue>, ReplError> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         return Err(ReplError::ColumnCountMismatch {
@@ -255,21 +261,21 @@ fn build_add_op(
         });
     }
 
-    let values = table
+    table
         .schema()
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, col_type)| -> Result<CellValue, ReplError> {
+        .map(|(idx, col_type)| -> Result<TxnCellValue, ReplError> {
             let raw = &raw_values[idx];
-            parse_cell_value(col_type, raw).map_err(|message| ReplError::BadValue {
-                column: idx,
-                message,
-            })
+            parse_cell_value(col_type, raw)
+                .map(Into::into)
+                .map_err(|message| ReplError::BadValue {
+                    column: idx,
+                    message,
+                })
         })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(table.add(values))
+        .collect()
 }
 
 #[cfg(test)]

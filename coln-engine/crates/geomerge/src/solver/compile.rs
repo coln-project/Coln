@@ -27,7 +27,6 @@ pub struct CompLaw {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VarSpec {
     pub index: usize,
-    // TODO consider not using ir
     pub ty: ir::ColType,
 }
 
