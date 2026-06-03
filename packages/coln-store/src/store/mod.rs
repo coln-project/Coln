@@ -384,9 +384,7 @@ impl Store {
 
             if let Some(existing) = pending.get(&hash) {
                 let existing: &Commit<'static> = existing;
-                if existing.chunk_type() != commit.chunk_type()
-                    || existing.payload() != commit.payload()
-                {
+                if *existing != commit {
                     return Err(CommitApplyError::ConflictPayload.into());
                 }
                 continue;

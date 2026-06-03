@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use crate::{
     commit::{
         author::Author,
-        chunk::{ChunkType, Header},
+        chunk::{Chunk, ChunkType, Header},
         error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
@@ -31,9 +31,9 @@ use crate::{
 /// lazy iteration; we decode ops eagerly into `PendingOp` while the encoding
 /// is still row-wise.
 ///
-/// [`Commit::bytes`] holds the payload only; the chunk header is derived from
-/// [`Commit::header`] and prepended on demand when persisting or sending the
-/// commit (see [`Header::write`]). The hash is
+/// [`Commit::bytes`] holds the payload only. [`Commit::header`] retains the
+/// parsed or derived chunk header, and [`Chunk`] owns framed byte encoding.
+/// The hash is
 /// `blake3(chunk_type:u8 || data_len:u64_le || payload)`, computed over the
 /// payload, so verifying a loaded commit is re-running
 /// [`crate::commit::chunk::hash`] on [`Commit::payload`] and comparing to
@@ -78,6 +78,10 @@ impl Commit<'static> {
 
     fn from_root_bytes(bytes: Vec<u8>) -> Self {
         let header = Header::new(ChunkType::Root, &bytes);
+        Self::from_root_payload(header, bytes)
+    }
+
+    fn from_root_payload(header: Header, bytes: Vec<u8>) -> Self {
         Commit {
             bytes: Cow::Owned(bytes),
             header,
@@ -92,6 +96,10 @@ impl Commit<'static> {
 
     fn from_commit_bytes(bytes: Vec<u8>, data: CommitData) -> Self {
         let header = Header::new(ChunkType::Commit, &bytes);
+        Self::from_commit_payload(header, bytes, data)
+    }
+
+    fn from_commit_payload(header: Header, bytes: Vec<u8>, data: CommitData) -> Self {
         Commit {
             bytes: Cow::Owned(bytes),
             header,
@@ -104,23 +112,31 @@ impl Commit<'static> {
         }
     }
 
-    pub(crate) fn decode<'s, F>(
-        chunk_type: ChunkType,
+    pub(crate) fn from_chunk<'s, F>(chunk: Chunk, schema_for: F) -> Result<Self, CodecError>
+    where
+        F: Fn(&Path) -> Option<&'s Schema>,
+    {
+        let (header, bytes) = chunk.into_parts();
+        Self::decode_payload_with_header(header, bytes, schema_for)
+    }
+
+    fn decode_payload_with_header<'s, F>(
+        header: Header,
         bytes: Vec<u8>,
         schema_for: F,
     ) -> Result<Self, CodecError>
     where
         F: Fn(&Path) -> Option<&'s Schema>,
     {
-        match chunk_type {
+        match header.chunk_type {
             ChunkType::Root => {
                 // check we can serialize the bytes into a root payload
                 let _root = wire::deserialize_root(&bytes)?;
-                Ok(Self::from_root_bytes(bytes))
+                Ok(Self::from_root_payload(header, bytes))
             }
             ChunkType::Commit => {
                 let data = wire::deserialize(&bytes, schema_for)?;
-                Ok(Self::from_commit_bytes(bytes, data))
+                Ok(Self::from_commit_payload(header, bytes, data))
             }
         }
     }
@@ -136,19 +152,7 @@ impl<'a> Commit<'a> {
         self.bytes.as_ref()
     }
 
-    /// Writes commit as `header || payload` into `out`
-    pub fn write_chunk(&self, out: &mut Vec<u8>) {
-        self.header.write(out);
-        out.extend_from_slice(&self.bytes);
-    }
-
-    pub fn encoded(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        self.write_chunk(&mut buf);
-        buf
-    }
-
-    pub fn chunk_type(&self) -> ChunkType {
+    fn chunk_type(&self) -> ChunkType {
         self.header.chunk_type
     }
 
@@ -191,7 +195,7 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commit::chunk::hash;
+    use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::root::{RootCommitData, RootTableEntry};
     use crate::ir::{ColType, Path, PrimType};
@@ -295,8 +299,9 @@ mod tests {
         };
         let original = Commit::from_root_data(&root).expect("build root");
 
-        let decoded = Commit::decode(ChunkType::Root, original.payload().to_vec(), |_| None)
-            .expect("decode root");
+        let bytes = Chunk::from(&original).encoded();
+        let chunk = Chunk::decode(&bytes).expect("decode root chunk");
+        let decoded = Commit::from_chunk(chunk, |_| None).expect("decode root");
 
         assert_eq!(decoded.chunk_type(), ChunkType::Root);
         assert_eq!(decoded.hash(), original.hash());
@@ -335,12 +340,9 @@ mod tests {
         )
         .expect("build commit");
 
-        let decoded = Commit::decode(
-            ChunkType::Commit,
-            original.payload().to_vec(),
-            payload_schema_for,
-        )
-        .expect("decode commit");
+        let bytes = Chunk::from(&original).encoded();
+        let chunk = Chunk::decode(&bytes).expect("decode commit chunk");
+        let decoded = Commit::from_chunk(chunk, payload_schema_for).expect("decode commit");
 
         assert_eq!(decoded.chunk_type(), ChunkType::Commit);
         assert_eq!(decoded.hash(), original.hash());

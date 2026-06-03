@@ -1,5 +1,5 @@
 use crate::commit::{
-    CommitHash,
+    Commit, CommitHash,
     error::CodecError,
     leb128 as commit_leb128,
     utils::{read_slice, read_u8},
@@ -20,6 +20,79 @@ impl From<ChunkType> for u8 {
             ChunkType::Commit => 0,
             ChunkType::Root => 1,
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Chunk {
+    Commit { header: Header, payload: Vec<u8> },
+    Root { header: Header, payload: Vec<u8> },
+}
+
+impl Chunk {
+    pub(crate) fn read_at(data: &[u8], pos: &mut usize) -> Result<Self, CodecError> {
+        let header = Header::parse(data, pos)?;
+        let payload = read_slice(data, pos, header.data_len, "chunk payload")?.to_vec();
+        Ok(Self::from_parts(header, payload))
+    }
+
+    // Intended for network sync, where the transport hands us one framed chunk.
+    pub fn decode(data: &[u8]) -> Result<Self, CodecError> {
+        let mut pos = 0;
+        let chunk = Self::read_at(data, &mut pos)?;
+        if pos != data.len() {
+            return Err(CodecError::DataFormatError(format!(
+                "trailing bytes after chunk: {} bytes",
+                data.len() - pos
+            )));
+        }
+        Ok(chunk)
+    }
+
+    pub(crate) fn chunk_type(&self) -> ChunkType {
+        match self {
+            Chunk::Commit { header, .. } | Chunk::Root { header, .. } => header.chunk_type,
+        }
+    }
+
+    /// Writes this chunk as `header || payload` into `out`.
+    /// Convenience function for store serialization
+    pub(crate) fn write(&self, out: &mut Vec<u8>) {
+        match self {
+            Chunk::Commit { header, payload } | Chunk::Root { header, payload } => {
+                header.write(out);
+                out.extend_from_slice(payload);
+            }
+        }
+    }
+
+    // Intended for network sync, where the transport wants one framed chunk.
+    pub fn encoded(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        self.write(&mut buf);
+        buf
+    }
+
+    pub(crate) fn into_parts(self) -> (Header, Vec<u8>) {
+        match self {
+            Chunk::Commit { header, payload } | Chunk::Root { header, payload } => {
+                (header, payload)
+            }
+        }
+    }
+
+    fn from_parts(header: Header, payload: Vec<u8>) -> Self {
+        debug_assert_eq!(header.data_len, payload.len());
+        match header.chunk_type {
+            ChunkType::Commit => Chunk::Commit { header, payload },
+            ChunkType::Root => Chunk::Root { header, payload },
+        }
+    }
+}
+
+impl From<&Commit<'_>> for Chunk {
+    fn from(commit: &Commit<'_>) -> Self {
+        Self::from_parts(commit.header.clone(), commit.payload().to_vec())
     }
 }
 
@@ -68,7 +141,7 @@ impl From<CommitHash> for CheckSum {
 /// Chunk framing that precedes the canonical payload on disk and on the wire:
 /// `[MAGIC][checksum:4][chunk_type:1][data_len:uleb]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Header {
+pub struct Header {
     pub(crate) chunk_type: ChunkType,
     pub(crate) data_len: usize,
     checksum: CheckSum,          // first four bytes of the hash

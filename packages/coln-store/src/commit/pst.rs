@@ -1,10 +1,9 @@
 use std::io::Write;
 
 use crate::commit::Commit;
-use crate::commit::chunk::{ChunkType, Header};
+use crate::commit::chunk::{Chunk, ChunkType};
 use crate::commit::error::CodecError;
 use crate::commit::leb128 as commit_leb128;
-use crate::commit::utils::read_slice;
 use crate::store::Store;
 use crate::store::error::StoreIntError;
 use crate::table::TableOid;
@@ -43,7 +42,7 @@ pub fn decode_store(data: &[u8]) -> Result<Store, Box<StoreIntError>> {
 
 struct EncodedStore {
     next_oid: TableOid,
-    chunks: Vec<(ChunkType, Vec<u8>)>,
+    chunks: Vec<Chunk>,
 }
 
 fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
@@ -70,7 +69,7 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
     let chunk_count = commit_leb128::read_len(data, &mut pos, "chunk count")?;
     let mut chunks = Vec::with_capacity(chunk_count);
     for _ in 0..chunk_count {
-        chunks.push(read_commit_chunk(data, &mut pos)?);
+        chunks.push(Chunk::read_at(data, &mut pos)?);
     }
     if pos != data.len() {
         return Err(CodecError::DataFormatError(format!(
@@ -83,25 +82,16 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
 }
 
 fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
-    commit.write_chunk(buf)
-}
-
-// TODO this probably needs to go somewhere else when we do network sync
-/// Returns the (chunk_type, payload) where payload is just the commit data
-/// excluding the header
-fn read_commit_chunk(data: &[u8], pos: &mut usize) -> Result<(ChunkType, Vec<u8>), CodecError> {
-    let header = Header::parse(data, pos)?;
-    let payload = read_slice(data, pos, header.data_len, "commit payload")?.to_vec();
-    Ok((header.chunk_type, payload))
+    Chunk::from(commit).write(buf)
 }
 
 fn decode_store_chunks(
     next_oid: TableOid,
-    chunks: Vec<(ChunkType, Vec<u8>)>,
+    chunks: Vec<Chunk>,
 ) -> Result<Store, Box<StoreIntError>> {
     let roots = chunks
         .iter()
-        .filter(|(chunk_type, _)| *chunk_type == ChunkType::Root)
+        .filter(|chunk| chunk.chunk_type() == ChunkType::Root)
         .collect::<Vec<_>>();
     if roots.is_empty() {
         return Err(CodecError::DataFormatError("commit graph has no root commit".into()).into());
@@ -112,18 +102,18 @@ fn decode_store_chunks(
         );
     }
 
-    let root_commit = Commit::decode(ChunkType::Root, roots[0].1.clone(), |_| None)?;
+    let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
     let root_payload = root_commit.root_payload()?;
     let mut store = Store::from_root_commit_data(next_oid, root_payload)?;
     store.record_in_commit_graph(root_commit);
 
     let mut commits = Vec::new();
-    for (chunk_type, payload) in chunks {
-        if chunk_type == ChunkType::Root {
+    for chunk in chunks {
+        if chunk.chunk_type() == ChunkType::Root {
             continue;
         }
 
-        let commit = Commit::decode(chunk_type, payload, |path| {
+        let commit = Commit::from_chunk(chunk, |path| {
             store.table_at(path).map(|table| table.schema())
         })?;
         commits.push(commit);
@@ -138,7 +128,7 @@ fn decode_store_chunks(
 mod tests {
     use super::*;
     use crate::commit::author::Author;
-    use crate::commit::chunk::ChunkType;
+    use crate::commit::chunk::{ChunkType, Header};
     use crate::commit::hash::{CommitHash, HASH_SIZE};
     use crate::commit::wire::CommitData;
     use crate::ir::{FlatTheory, Path, Schema, TableEntry};
@@ -189,7 +179,11 @@ mod tests {
         encoded
             .chunks
             .into_iter()
-            .map(|(chunk_type, payload)| (u8::from(chunk_type), payload))
+            .map(|chunk| {
+                let chunk_type = chunk.chunk_type();
+                let (_, payload) = chunk.into_parts();
+                (u8::from(chunk_type), payload)
+            })
             .collect()
     }
 
