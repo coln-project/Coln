@@ -83,7 +83,6 @@ impl CommitData {
 //
 pub(crate) fn serialize<'s, F>(
     data: &CommitData,
-    // TODO hashmapper order
     hash_mapper: &HashMapper,
     schema_for: F,
 ) -> Result<Vec<u8>, CodecError>
@@ -117,7 +116,6 @@ where
 /// Encode the normal commit body after the shared commit metadata.
 ///
 /// Layout:
-/// `[op_count]`
 /// `[op_kind_column: len-prefixed hexane Column<u32>]`
 /// `[table_sequence_column: len-prefixed hexane Column<u32>]`
 /// `[group_count]`
@@ -130,7 +128,7 @@ fn encode_commit_body<'s, F>(
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
-    // TODO grouping order should be determinstic
+    // Grouping order entirely determined by the pending_op order
     let mut groups: Vec<(Path, Vec<PendingOp>)> = Vec::new();
     /*  table_sequence[i] is the group index of the ith operation. It effectively
         stores the original order the operations are in.
@@ -171,12 +169,6 @@ where
     }
 
     let mut buf = Vec::new();
-    // TODO check necessaity
-    let op_count: u32 = pending
-        .len()
-        .try_into()
-        .map_err(|_| CodecError::Other("too many ops in commit body".into()))?;
-    commit_leb128::write_u32(&mut buf, op_count);
 
     let op_kind_col = Column::<u32>::from_values(op_kinds).save();
     commit_leb128::write_len_prefixed_bytes(&mut buf, &op_kind_col);
@@ -187,7 +179,7 @@ where
     let group_count: u32 = groups
         .len()
         .try_into()
-        .map_err(|_| CodecError::Other("too many op groups in commit body".into()))?;
+        .map_err(|_| CodecError::Other("too many op groups than u32::MAX".into()))?;
     commit_leb128::write_u32(&mut buf, group_count);
 
     // NOTE each group is encoded with its row and columns first, and then the column
@@ -402,6 +394,8 @@ where
     };
 
     let pending = decode_commit_body(data, &mut pos, &other_hashes, schema_for)?;
+
+    // The body ends at `pos`. Anything beyond it is `extra_bytes`.
     let extra_bytes = data[pos..].to_vec();
 
     Ok(CommitData {
@@ -426,23 +420,16 @@ fn decode_commit_body<'s, F>(
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
-    let op_count = commit_leb128::read_len(data, pos, "op count")?;
-
     let op_kind_blob = commit_leb128::read_len_prefixed_bytes(data, pos, "op kind column")?;
     let op_kinds: Vec<u32> = Column::<u32>::load(op_kind_blob)?.iter().collect();
-    if op_kinds.len() != op_count {
-        return Err(CodecError::DataFormatError(format!(
-            "op kind column length mismatch: expected {op_count}, got {}",
-            op_kinds.len()
-        )));
-    }
 
     let table_sequence_blob =
         commit_leb128::read_len_prefixed_bytes(data, pos, "table sequence column")?;
     let table_sequence: Vec<u32> = Column::<u32>::load(table_sequence_blob)?.iter().collect();
-    if table_sequence.len() != op_count {
+    if table_sequence.len() != op_kinds.len() {
         return Err(CodecError::DataFormatError(format!(
-            "table sequence column length mismatch: expected {op_count}, got {}",
+            "table sequence and op_kinds length mismatch: op_kind {}, table_seq {}",
+            op_kinds.len(),
             table_sequence.len()
         )));
     }
@@ -454,12 +441,10 @@ where
         groups.push(decode_op_group(group_blob, hashes, &schema_for)?);
     }
 
-    // The body ends at `pos`. Anything beyond it is `extra_bytes`.
-
     // reconstruct the pending ops
     let mut group_offsets = vec![0usize; groups.len()];
-    let mut pending = Vec::with_capacity(op_count);
-    for op_idx in 0..op_count {
+    let mut pending = Vec::with_capacity(op_kinds.len());
+    for op_idx in 0..op_kinds.len() {
         let op_kind = op_kinds[op_idx];
         if op_kind != OP_KIND_ADD {
             return Err(CodecError::DataFormatError(format!(
@@ -553,6 +538,7 @@ where
         )));
     }
 
+    // Transposing the columns into rows
     let mut rows = Vec::with_capacity(row_count);
     for row_index in 0..row_count {
         rows.push(
@@ -1057,10 +1043,6 @@ mod tests {
         .expect("encode commit body");
 
         let mut pos = 0usize;
-        assert_eq!(
-            commit_leb128::read_len(&encoded, &mut pos, "op count").unwrap(),
-            3
-        );
 
         let op_kind_blob =
             commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "op kind").unwrap();

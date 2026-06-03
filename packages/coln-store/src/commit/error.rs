@@ -3,8 +3,6 @@ use std::io::{self};
 
 use crate::commit::chunk::ChunkType;
 
-// TODO CodecError needs a bit more variant to reduce the number of Other
-
 #[derive(Debug)]
 pub enum CodecError {
     HeaderError(String),

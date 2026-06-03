@@ -38,6 +38,9 @@ impl HashMapper {
     }
 }
 
+// Write all the hashes stored in the hash_mapper. The order of these hashes are
+// determined by the pending_op order, which is deterministic for a commit.
+// Therefore the wire format of hash_mapper is also deterministic
 pub(crate) fn write_hash_dict(
     buf: &mut Vec<u8>,
     hash_mapper: &HashMapper,
@@ -46,7 +49,7 @@ pub(crate) fn write_hash_dict(
         .hashes()
         .len()
         .try_into()
-        .map_err(|_| CodecError::Other("too many hashes".into()))?;
+        .map_err(|_| CodecError::Other("too many hashes than u32::MAX".into()))?;
     commit_leb128::write_u32(buf, hash_count);
     for hash in hash_mapper.hashes() {
         buf.write_all(hash.as_bytes())?;
