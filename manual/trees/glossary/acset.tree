@@ -1,0 +1,9 @@
+\title{ACSet}
+\taxon{Term}
+
+\p{ACSet stands for “attributed C-set” and is pronounced with the Hungarian “cs” which is the English “ch.”}
+
+\ul{
+  \li{Paper: [[patterson-2022-categorical]]}
+  \li{Implementation: [[acsets-jl]]}
+}

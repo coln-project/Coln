@@ -1,0 +1,11 @@
+\title{Tables}
+
+\p{Models of geolog theories are stored as collections of \em{tables}. For the reader experienced with traditional relational databases, tables should be fairly familiar, but we will go through them explicitly in order to establish our own conventions.}
+
+\transclude{0022}
+\transclude{0023}
+\transclude{0024}
+\transclude{0026}
+\transclude{0025}
+
+\transclude{0027}

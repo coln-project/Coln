@@ -15,6 +15,6 @@
 \pre{%
 \kw{def} double-time (m : StateMachine) : StateMachine := \kw{struct}
   state := m.state
-  next := x => next (next x)
+  next := x => m.next (m.next x)
 \kw{end}
 }

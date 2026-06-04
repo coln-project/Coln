@@ -1,0 +1,7 @@
+\title{Object classifier}
+\taxon{Example}
+\import{prelude}
+
+\p{The \defcase{object classifier} #{\bb{O}} is the elephant theory defined by the forgetful functor #{(\ms{BTop}/\mc{S})\op \to \ms{Cat}} which sends a bounded topos over #{\mc{S}} to its underlying category of objects.}
+
+\p{(See [Elephant](johnstone-2002-sketches) Example B4.2.4(a))}

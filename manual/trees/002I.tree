@@ -1,0 +1,15 @@
+\taxon{Definition}
+\title{A category with families structure on elephant theories}
+\import{prelude}
+
+\p{Let #{\ms{ElTh}} be the category of elephant theories. Then let #{\ms{Ty} \colon \ms{ElTh}\op \to \ms{SET}} be the large presheaf which sends an elephant theory #{\Gamma} to the set of strict 2-functors #{A \colon (\groth \Gamma)\op \to \ms{Cat}}.}
+
+\p{Intuitively, #{\ms{Ty}(\Gamma)} is “elephant theories relative to #{\Gamma}.” This is because #{\groth \Gamma} is the category of topoi equipped with a model of #{\Gamma}; if #{\Gamma} were a geometric theory then #{\groth \Gamma} would be equivalent to #{\ms{BTop}/\mc{S}[\Gamma]}.}
+
+\p{Then define #{\ms{Tm} \colon (\groth \ms{Ty})\op \to \ms{Set}} by letting #{\ms{Tm}(\Gamma, A)} be the set of \em{sections} of #{A}. A section #{a} is a natural assignment of #{a(\mc{E}, M) \colon A(\mc{E}, M)} for #{(\mc{E},M) \in \groth \Gamma}.}
+
+\p{Context extension is given in the following way. Suppose that #{\Gamma \colon (\ms{BTop}/\mc{S})\op \to \ms{Cat}} is a context and #{A \colon \ms{Ty}(\Gamma)}. Then #{\Gamma \ext A \colon (\ms{BTop}/\mc{S})\op \to \ms{Cat}} is defined by #{(\Gamma \ext A)(\mc{E}) = (M \colon \Gamma(\mc{E})) \times A(\mc{E},M)}.}
+
+\p{Then finally we have weakening and the variable rule given by the first and second projections out of #{\Gamma \ext A}.}
+
+\p{Note that even though topoi and elephant theories are non-trivially 2-categorical, #{(\ms{ElTh},\ms{Ty},\ms{Tm})} forms nevertheless a strict (albeit quite large) category with families.}

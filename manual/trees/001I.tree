@@ -21,11 +21,4 @@
   (x : X) -> (y0 y1 : Y) -> R x y0 -> R x y1 -> y0 = y1
 }
 
-\p{Relatedly, we can take the graph of a function in the following way.}
-
-\pre{%
-\kw{def} Graph (X : Set) (Y : Set) (f : X -> Y) : X -> Y -> Prop :=
-  x => y => f x = y
-}
-
 \p{Equality is useful for constraints, but is especially useful for [queries](001A).}

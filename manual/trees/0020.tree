@@ -1,0 +1,72 @@
+\title{Theories as interfaces}
+
+\p{Each top-level theory \code{T} in geolog produces TypeScript declarations that look like the following.}
+
+\pre{%
+namespace T {
+  interface Readonly {
+    ...
+  }
+
+  interface ReadWrite {
+    ...
+  }
+
+  function create(): ReadWrite {
+    ...
+  }
+}
+}
+
+\p{So, for instance, \code{Graph} produces}
+
+\pre{%
+namespace Graph {
+  interface Readonly {
+    vertex: ReadonlySet;
+    edge: (v0: Value) => (v1: Value) => ReadonlySet;
+  }
+
+  interface ReadWrite extends Readonly {
+    vertex: ReadWriteSet;
+    edge: (v0: Value) => (v1: Value) => ReadWriteSet;
+  }
+
+  function create(): ReadWrite {
+    ...
+  }
+}
+}
+
+\p{The implementation of \code{T.ReadWrite} that \code{T.create} produces is based on the translation of \code{T} to #{\Sigma\Pi} normal form as in [[001T]]. However, crucially, this is not the only implementation of \code{T.ReadWrite}.}
+
+\p{For example, \code{BagOfGraphs} produces}
+
+\pre{%
+namespace BagOfGraphs {
+  interface Readonly {
+    graph_id: ReadonlySet;
+    graph_for: (i : Value) => Graph.Readonly;
+  }
+
+  interface ReadWrite extends Readonly {
+    graph_id: ReadWriteSet;
+    graph_for: (i : Value) => Graph.ReadWrite;
+  }
+
+  function create(): ReadWrite {
+    ...
+  }
+}
+}
+
+\p{In the following code snippet, \code{g0} and \code{g1} both implement \code{Graph.ReadWrite}, but in different ways.}
+
+\pre{%
+const g0 = Graph.create()
+const bog = BagOfGraphs.create()
+const g1_id = bog.graph_id.add()
+const g1 = bog.graph_for(g1_id)
+}
+
+\p{Specifically, \code{g0} has its own vertex and edge tables, but \code{g1} merely “forwards” into the vertex and edge tables for \em{all} of the graphs in \code{bog}, (recall \code{BagOfGraphs/normal} from [[001X]]).}

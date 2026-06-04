@@ -1,0 +1,5 @@
+\taxon{Audience}
+\title{The database engineer}
+\import{prelude}
+
+\p{The \defcase{database engineer} is a reader who does not necessarily know any type theory, but is familiar with [[sql]], [[datalog]], [[conjunctive-queries]], [[egglog]], [[automerge]], and perhaps some of the methods for incrementalizing queries like [[dbsp]].}
