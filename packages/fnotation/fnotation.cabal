@@ -9,7 +9,6 @@ description:
 
 category: Language
 build-type: Simple
-extra-doc-files: CHANGELOG.md
 
 library
   exposed-modules:

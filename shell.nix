@@ -2,7 +2,7 @@
 
 let
   coln = import ./. { inherit system; };
-  inherit (coln) pkgs coln-do;
+  inherit (coln) pkgs;
 in
 pkgs.mkShell {
   name = "coln";
@@ -18,6 +18,6 @@ pkgs.mkShell {
     zlib
     zlib.dev
     pkg-config
-    coln-do
+    cabal2nix
   ];
 }

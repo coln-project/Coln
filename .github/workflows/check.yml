@@ -16,23 +16,12 @@ jobs:
       - name: Set up Cachix ♻️
         uses: cachix/cachix-action@v17
         with:
-          name: 1lab
+          name: coln
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - name: Build coln-do 🧰
+      - name: Build (and test) packages
         run: |
-          nix-shell . --run true
-          hash=$(nix-build -A coln-do --no-out-link)
-          hash=${hash#/nix/store/} hash=${hash%%-*}
-          echo "shake_version=$hash" >> "$GITHUB_ENV"
-
-      - name: Test
-        run: |
-          nix-shell --run "$build_command"
-
-        env:
-          NIX_BUILD_SHELL: bash
-          build_command: |
-            coln-do test
+          nix-build -A diagnostician
+          nix-build -A fnotation
           
 

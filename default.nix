@@ -2,15 +2,13 @@
 
 let
   pkgs = import ./nix/nixpkgs.nix { inherit system; };
-  inherit (pkgs) lib;
-
-  coln-do = pkgs.callPackage ./nix/coln-do.nix { };
+  inherit (pkgs) lib colnHaskellPackages;
 in
-{
-  inherit pkgs lib coln-do;
-}
-# pkgs.stdenv.mkDerivation rec {
-#   name = "coln";
+rec {
+  inherit pkgs lib;
 
-#   buildInputs = [ coln-do ];
-# }
+  diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician {};
+  fnotation = colnHaskellPackages.callPackage ./packages/fnotation {
+    inherit diagnostician;
+  };
+}
