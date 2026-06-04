@@ -19,9 +19,8 @@ jobs:
           name: coln
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - name: Build (and test) packages
+      - name: Run checks
         run: |
-          nix-build -A diagnostician
-          nix-build -A fnotation
+          nix-build -A checks
           
 

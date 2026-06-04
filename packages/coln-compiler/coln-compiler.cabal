@@ -4,7 +4,7 @@ version: 0.1.0.0
 license: (Apache-2.0 OR MIT)
 maintainer: root@owenlynch.org
 author: Owen Lynch
-description: The coln language
+description: Elaborator and compiler for Coln
 category: Language
 build-type: Simple
 
@@ -82,8 +82,6 @@ library
     fnotation,
     hashable,
     prettyprinter,
-    singletons,
-    singletons-th,
     text,
     vector,
     vector-hashtables,

@@ -11,4 +11,16 @@ rec {
   fnotation = colnHaskellPackages.callPackage ./packages/fnotation {
     inherit diagnostician;
   };
+  coln-compiler = colnHaskellPackages.callPackage ./packages/coln-compiler {
+    inherit diagnostician fnotation;
+  };
+
+  checks = pkgs.stdenv.mkDerivation {
+    name = "checks";
+    buildInputs = [
+      diagnostician
+      fnotation
+      coln-compiler
+    ];
+  };
 }
