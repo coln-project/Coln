@@ -1,0 +1,41 @@
+# Task runner: https://github.com/casey/just
+# From repo root, with Rust on PATH (e.g. `nix develop`):
+#   just              # list available recipes
+#   just check        # fmt-check + clippy + test
+#   just cargo-check  # type-check all workspace targets
+#   just import
+#   just fix          # apply cargo fixes + format
+#   just coverage     # llvm-cov + Cobertura
+
+default:
+    @just --list
+
+fmt:
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --all --check
+
+cargo-check:
+    cargo check --workspace --all-targets
+
+clippy:
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+import:
+   cargo fix --workspace --all-targets --all-features --allow-dirty --allow-staged
+
+fix: import fmt
+
+test:
+    cargo test --workspace --all-targets
+
+check: fmt-check clippy test
+
+ci: check
+
+coverage:
+    cargo llvm-cov --workspace --cobertura --output-path cobertura.xml
+
+run:
+    cargo run -p geomerge
