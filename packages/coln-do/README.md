@@ -2,13 +2,17 @@
 
 This is the one-stop shop for *all* automation within the coln project. This means that we should not have random bash scripts!
 
-And yes, that means even for the automation over Rust, that should *still* go in `coln-auto`. You can write Shake (Make as a Haskell DSL) rules even if you don't know any Haskell, following the [Shake manual](https://shakebuild.com/manual).
+And yes, that means even for the automation over Rust, that should *still* go in `coln-do`. You can write Shake (Make as a Haskell DSL) rules even if you don't know any Haskell, following the [Shake manual](https://shakebuild.com/manual).
 
 It is not a bug that contributors who are only writing in Rust also have to install GHC and learn a little Haskell; it is a feature!
 
 ## How to run
 
-`cabal run coln-auto -- TARGET`
+The following command will place the `coln-do` binary in `bin/cdo`. Then if you have [direnv](https://direnv.net/) installed, this will put `cdo` in your path.
+
+`cabal run coln-do -- install-self`
+
+Then you can run various targets with `cdo TARGET`.
 
 ## Targets
 

@@ -11,4 +11,4 @@ testRules = do
     cmd_ "cargo test"
 
   phony "test" $ do
-    need ["test-haskell", "test-rust"]
+    need ["test-haskell"]

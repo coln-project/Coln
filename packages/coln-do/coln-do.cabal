@@ -7,7 +7,7 @@ author: Owen Lynch
 category: Build system
 build-type: Simple
 
-executable coln-auto
+executable coln-do
   main-is: Main.hs
   other-modules:
     ColnDo.Build
