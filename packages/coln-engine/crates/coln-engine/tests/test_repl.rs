@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use geomerge::{
+use coln_engine::{
     ir::{FlatTheory, Path},
     repl::{
         exe::run_transact,

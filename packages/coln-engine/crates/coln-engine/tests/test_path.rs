@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, path::PathBuf, sync::Once};
 
-use geomerge::{
+use coln_engine::{
     commit::hash::CommitHash,
     commit::pst,
     ir::{self, FlatTheory, Path},
@@ -20,7 +20,7 @@ fn init_test_logging() {
         tracing_subscriber::fmt()
             .with_env_filter(
                 EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| EnvFilter::new("geomerge=debug")),
+                    .unwrap_or_else(|_| EnvFilter::new("coln_engine=debug")),
             )
             .with_test_writer()
             .init();

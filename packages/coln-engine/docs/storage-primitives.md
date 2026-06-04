@@ -1,6 +1,6 @@
-# Storage primitives for Geomerge
+# Storage Primitives for Coln Engine
 
-This doc intends to define the storage primitives exposed by geomerge, the storage
+This doc intends to define the storage primitives exposed by Coln Engine, the storage
 engine for geolog. Geolog itself can be viewed as a complex database with rich
 language and features. So far it is roughly divided into three main parts[^1]:
 the type theory/programming language, the storage backend, and the execution engine.
@@ -12,9 +12,9 @@ The main motivation follows from the design of Owen's Typescript
 the main public API for other people to use Geolog, and therefore I intend to
 co-design the storage primitives around this FFI interface. Although right now
 the queries are simple, such as checking if x exists by its rowid, such that they
-can be done in geomerge. In the future complex law checking might require
+can be done in Coln Engine. In the future complex law checking might require
 coordination between the storage and execution engine. Motivated by this, we
-shall layout the primitives/public APIs that geomerge should expose. The main
+shall layout the primitives/public APIs that Coln Engine should expose. The main
 purposes of this doc are therefore:
 
 1. Document what primitives would be exposed by the storage engine. whilst the
@@ -24,11 +24,11 @@ where it is lacking;
 2. Invite discussions around the design of such APIs. while we do want to have a
 clear boundary, this is by no means final, and should evolve as other parts of
 geolog evolves;
-3. Add some thoughts on how we could integrate the geomerge primitives with the
+3. Add some thoughts on how we could integrate the Coln Engine primitives with the
 TS bindings.
 
 This document will mainly focus on the query-related interface, i.e. CRUD. The
-version control aspect of geomerge is not covered here (but will be covered in
+version control aspect of Coln Engine is not covered here (but will be covered in
 the future!).
 
 ## Primitives
@@ -42,11 +42,11 @@ We can base our primitives roughly on the boring but well-established CRUD model
 - Create: creating a database is currently only possible with a given geolog theory.
 See `Store::try_from_theory`. A geolog theory is like a SQL schema, but with
 richer type system support. Such a theory therefore requires the compilation
-from a compiler before it can be used by geomerge. Supporting creating tables
+from a compiler before it can be used by Coln Engine. Supporting creating tables
 directly might introduce complex schema violations that is not easily checkable
-by geomerge.
+by Coln Engine.
 
-- Read: There will be two main read endpoints (unimplemented!), as refelected 
+- Read: There will be two main read endpoints (unimplemented!), as refelected
 by the Typescript binding
 
 ```rust
@@ -59,7 +59,7 @@ second one is a member query as indexed by the row_id. Note this `row_by_id` is
 only intended to support the most straightforward lookup right now, i.e. a table
 storing edb. Although I have not thought about this in detail, but it is not
 intended for derived tables that might involve the execution engine, unless the
-results happens to be cached in geomerge.
+results happens to be cached in Coln Engine.
 
 - Update:
 
@@ -84,7 +84,7 @@ in `test_path.rs`
 This is currently the only API to modify the database, and a "dirty" write API
 is not planned to be supported, for several reasons:
 
-1. Geomerge is a versioned storage engine, which means users can identify a version
+1. Coln Engine is a versioned storage engine, which means users can identify a version
 by its hash, merging different versions across agents or network, etc. A
 transaction maps cleanly to an individual commit. The alternative
 would be to introduce implicit transactions if we were to support "dirty" writes
@@ -103,7 +103,6 @@ And to quote from the geolog manual
 > Thus, validity is only checked at certain points; we discuss validity more in a later section
 
 I think that the transaction commit point should be the validity checking point[^2].
-
 
 - Delete:
 
@@ -136,12 +135,12 @@ interface ReadWriteSet extends ReadonlySet {
 
 For more complex tables with more than one column, the TS code looks like the
 following. I guess with more columns, we would have something like `m.next(a)(b)(c).set(d)`.
-This can be turned into geomerge's add API as something like `txn.add(m, [a, b, c, d])`,
+This can be turned into Coln Engine's add API as something like `txn.add(m, [a, b, c, d])`,
 although there is quite a bit of code generation work/compiler work to be done,
 which is probably where the majority of the work for the FFI binding to work,
 but the mapping should not be too complicated.
 
-```
+```text
 theory StateMachine := sig
   state : Set
   next : state -> state

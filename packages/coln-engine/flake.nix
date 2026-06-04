@@ -1,5 +1,5 @@
 {
-  description = "geomerge Rust workspace";
+  description = "coln-engine Rust workspace";
 
   inputs = {
     # Workspace uses edition 2024 (needs rustc/cargo >= 1.85). nixos-24.11 tops out around 1.82.
@@ -16,7 +16,7 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          name = "geomerge";
+          name = "coln-engine";
           packages = with pkgs; [
             rustc
             cargo

@@ -4,7 +4,7 @@ This file provides guidance to coding agents collaborating on this repository.
 
 ## Mission
 
-Geomerge is an experimental Rust workspace for a storage layer used by the Geolog database engine.
+Coln Engine is an experimental Rust workspace for a storage layer used by the Geolog database engine.
 
 Priorities, in order:
 
@@ -45,7 +45,7 @@ Quick examples:
 - `crates/coln-lang-rs/`: Geolog IR crate.
   - `src/ir/mod.rs`: schema, table, law, proposition, term, and literal IR types.
   - `src/ir/path.rs`: path parsing, display, and conversion helpers.
-- `crates/geomerge/`: store engine crate and binary.
+- `crates/coln-engine/`: store engine crate and binary.
   - `src/lib.rs`: crate exports.
   - `src/main.rs`: REPL entry point.
   - `src/table.rs`: column storage, row ids, cell values, and table validation.
@@ -61,7 +61,7 @@ Quick examples:
 
 ## Architecture Constraints
 
-- Treat `coln-lang-rs` as the source of shared IR definitions. Do not duplicate IR shape in `geomerge` unless conversion boundaries require it.
+- Treat `coln-lang-rs` as the source of shared IR definitions. Do not duplicate IR shape in `coln-engine` unless conversion boundaries require it.
 - `Store` owns table registration, table lookup, compiled laws, and a commit graph which is the columnar encoded operations.
 - `Table` is the materialised view of what each table should contain, after playing the commits. It also has schema-level validation for inserted values.
 - Store mutation should flow through explicit operations such as `Op` and transaction helpers.
@@ -92,7 +92,7 @@ For performance-sensitive changes:
 
 Use this sequence for your first change:
 
-1. Read `crates/geomerge/src/lib.rs`, `crates/coln-lang-rs/src/lib.rs`, and the relevant module files.
+1. Read `crates/coln-engine/src/lib.rs`, `crates/coln-lang-rs/src/lib.rs`, and the relevant module files.
 2. Implement the smallest possible code change.
 3. Add or update tests that fail before and pass after.
 4. Run `cargo test --workspace --all-targets`.
@@ -112,9 +112,9 @@ Example scopes that are good first tasks:
 
 - No semantics-changing logic update is complete without tests.
 - Unit tests go in `#[cfg(test)] mod tests` within each module when the behavior is local to that module.
-- Integration tests for `geomerge` go in `crates/geomerge/tests/`.
-- Fixture data for those tests goes in `crates/geomerge/tests/data/`.
-- Runnable examples belong in `crates/geomerge/examples/` when they clarify supported behavior.
+- Integration tests for `coln-engine` go in `crates/coln-engine/tests/`.
+- Fixture data for those tests goes in `crates/coln-engine/tests/data/`.
+- Runnable examples belong in `crates/coln-engine/examples/` when they clarify supported behavior.
 - Do not merge code that breaks existing tests.
 
 Minimal unit-test checklist for store-related behavior:
@@ -130,7 +130,7 @@ Before coding:
 
 1. Impact on storage semantics, law validation, persistence, or REPL behavior.
 2. Affected tests and fixture data.
-3. API stability for exported `geomerge` and `coln-lang-rs` types.
+3. API stability for exported `coln-engine` and `coln-lang-rs` types.
 4. Documentation accuracy for implemented features.
 
 Before submitting:
@@ -168,7 +168,7 @@ Use this review format:
 - If repository conventions contradict this file, follow existing code and update this file when appropriate.
 - When uncertain about correctness, add or extend tests first, then optimize.
 - Keep REPL presentation logic separate from store, solver, and persistence behavior.
-- Keep user-facing naming consistent with the repository name: `geomerge`.
+- Keep user-facing naming consistent with the repository name: `coln-engine`.
 - If you change supported REPL commands or persisted formats, update `README.md` and relevant examples in the same change.
 
 ## Commit and PR Hygiene
