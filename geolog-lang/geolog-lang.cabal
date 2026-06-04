@@ -14,11 +14,31 @@ library
   exposed-modules:
     Geolog.Common
     Geolog.Core
+    Geolog.Core.Conversion
+    Geolog.Core.Evaluation
+    Geolog.Core.Memoed
+    Geolog.Core.Params
+    Geolog.Core.Print
+    Geolog.Core.Readback
+    Geolog.Core.Syntax
+    Geolog.Core.Value
     Geolog.CoreOperations
     Geolog.Diagnostics
     Geolog.Elaborator
+    Geolog.Elaborator.Diagnostics
+    Geolog.Elaborator.Environment
+    Geolog.Elaborator.Judgment
+    Geolog.Elaborator.Parse
+    Geolog.Elaborator.Parse.Environment
+    Geolog.Elaborator.Rules.Builtin
+    Geolog.Elaborator.Rules.Equality
+    Geolog.Elaborator.Rules.Function
+    Geolog.Elaborator.Rules.Record
+    Geolog.Elaborator.Rules.Universe
+    Geolog.Elaborator.Rules.Variable
     Geolog.Notation
     Geolog.Pretty
+    Geolog.Report
     Geolog.Unification
 
   hs-source-dirs: src
@@ -27,6 +47,7 @@ library
     BlockArguments
     CPP
     DerivingVia
+    DuplicateRecordFields
     FunctionalDependencies
     ImplicitParams
     MagicHash
