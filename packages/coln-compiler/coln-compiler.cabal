@@ -1,10 +1,10 @@
 cabal-version: 3.4
-name: geolog-lang
+name: coln-compiler
 version: 0.1.0.0
 license: (Apache-2.0 OR MIT)
 maintainer: root@owenlynch.org
 author: Owen Lynch
-description: The geolog language
+description: The coln language
 category: Language
 build-type: Simple
 
@@ -88,7 +88,7 @@ library
     vector,
     vector-hashtables,
 
-test-suite geolog-lang-test
+test-suite coln-compiler-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
   hs-source-dirs: test
@@ -127,7 +127,7 @@ test-suite geolog-lang-test
     diagnostician,
     filepath,
     fnotation,
-    geolog-lang,
+    coln-compiler,
     prettyprinter,
     tasty,
     tasty-golden,

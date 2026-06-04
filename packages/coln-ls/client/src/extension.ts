@@ -15,7 +15,7 @@ function serverBinaryExists(serverPath: string): boolean {
   }
 }
 
-const SERVER_PATH_SETTING = "geolog-lsp.server.path";
+const SERVER_PATH_SETTING = "coln-ls.server.path";
 
 /** VS Code platform name for bundled server, e.g. x86_64-linux, aarch64-darwin, x86_64-mingw32.
  * Attempts to match build system names, which come from Haskell's `System.Info` module. */
@@ -41,7 +41,7 @@ function getServerPlatform(): string {
   return `${arch}-${platform}`;
 }
 
-/** Resolve path to geolog-lsp binary: config, then bundled server, then workspace, then extension dir. */
+/** Resolve path to coln-ls binary: config, then bundled server, then workspace, then extension dir. */
 function findServerPath(context: vscode.ExtensionContext): string | null {
   const candidates: string[] = [];
 
@@ -53,14 +53,14 @@ function findServerPath(context: vscode.ExtensionContext): string | null {
     candidates.push(path.isAbsolute(configPath) ? configPath : path.join(context.extensionPath, configPath));
   }
   // Bundled server (when extension is installed from .vsix)
-  candidates.push(path.join(context.extensionPath, "server", getServerPlatform(), "geolog-lsp"));
+  candidates.push(path.join(context.extensionPath, "server", getServerPlatform(), "coln-ls"));
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    candidates.push(path.join(folder.uri.fsPath, "target", "debug", "geolog-lsp"));
+    candidates.push(path.join(folder.uri.fsPath, "target", "debug", "coln-ls"));
   }
-  // When extension runs from geolog-lsp/client, server is at repo root
+  // When extension runs from coln-ls/client, server is at repo root
   const extRoot = path.join(context.extensionPath, "..");
-  candidates.push(path.join(extRoot, "target", "debug", "geolog-lsp"));
+  candidates.push(path.join(extRoot, "target", "debug", "coln-ls"));
 
   for (const p of candidates) {
     if (serverBinaryExists(p)) return p;
@@ -74,9 +74,9 @@ export function activate(context: vscode.ExtensionContext): void {
   if (!serverPath) {
     const extRoot = path.join(context.extensionPath, "..");
     const tried = [
-      path.join(context.extensionPath, "server", getServerPlatform(), "geolog-lsp"),
-      ...(vscode.workspace.workspaceFolders ?? []).map((f: vscode.WorkspaceFolder) => path.join(f.uri.fsPath, "target", "debug", "geolog-lsp")),
-      path.join(extRoot, "target", "debug", "geolog-lsp"),
+      path.join(context.extensionPath, "server", getServerPlatform(), "coln-ls"),
+      ...(vscode.workspace.workspaceFolders ?? []).map((f: vscode.WorkspaceFolder) => path.join(f.uri.fsPath, "target", "debug", "coln-ls")),
+      path.join(extRoot, "target", "debug", "coln-ls"),
     ];
     vscode.window.showErrorMessage(
       `Coln LSP: server binary not found. Tried: ${tried.join("; ")}.`
@@ -101,7 +101,7 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       });
 
-      child.stderr?.on("data", (chunk: Buffer | string) => console.error("[geolog-lsp]", chunk.toString()));
+      child.stderr?.on("data", (chunk: Buffer | string) => console.error("[coln-ls]", chunk.toString()));
 
       // Defer resolve so same-tick exit/error is rejected first
       setImmediate(() => {
@@ -114,17 +114,17 @@ export function activate(context: vscode.ExtensionContext): void {
     });
 
   client = new LanguageClient(
-    "geolog-lsp",
+    "coln-ls",
     "Coln Language Server",
     serverOptions,
     {
-      documentSelector: [{ scheme: "file", language: "geolog" }],
+      documentSelector: [{ scheme: "file", language: "coln" }],
     }
   );
 
   client.start().then(
     () => {
-      console.log("geolog-lsp client started");
+      console.log("coln-ls client started");
     },
     (err) => {
       client = undefined;

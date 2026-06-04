@@ -12,8 +12,8 @@ data ColnCode
   | ElaboratorCode ElaboratorCode
   deriving (Eq, Ord)
 
-geologCodeTable :: Map ColnCode CodeMeta
-geologCodeTable =
+colnCodeTable :: Map ColnCode CodeMeta
+colnCodeTable =
   mconcat
     [ promoteCodeTable lexerCodeTable LexerCode 0
     , promoteCodeTable parserCodeTable ParserCode 100
@@ -21,6 +21,6 @@ geologCodeTable =
     ]
 
 instance Code ColnCode where
-  codeMeta c = case Map.lookup c geologCodeTable of
+  codeMeta c = case Map.lookup c colnCodeTable of
     Just m -> m
     Nothing -> error "unregistered code"

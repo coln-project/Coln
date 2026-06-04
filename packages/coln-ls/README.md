@@ -1,16 +1,16 @@
-# `geolog-lsp`
-A Language Server Protocol implementation for the geolog-language.
+# `coln-ls`
+A Language Server Protocol implementation for the coln language.
 
 ## Installing the vscode Extension
 Currently the extension is not published to the vscode marketplace. In order to install the extension you will need to manually install the `.vsix` by selecting "Install from VSIX" on the extensions pane, then selecting the extension package. This can be retrieved as an artefact from any passing `vscode` pipeline. Alternatively if you wish to build the extension from source you can run the following from the project root:
 ```sh
 ./shake vsce
 ```
-And select the package produced in `geolog-lsp/client`
+And select the package produced in `coln-ls/client`
 
 ## Capabilities
 Currently the server supports the following:
-- *Syntax Highlighting* : Using `geolog-lang`'s parser
+- *Syntax Highlighting* : Using `coln-compiler`'s parser
 - *Diagnostics* : Using `diagnostician`
 
 And the following are yet to be implemented:

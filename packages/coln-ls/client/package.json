@@ -1,33 +1,33 @@
 {
-  "name": "geolog-lsp-client",
+  "name": "coln-ls-client",
   "displayName": "Coln LSP Client",
   "description": "VS Code/Cursor client for the Coln language server",
   "version": "0.1.0",
-  "publisher": "geolog-developers",
+  "publisher": "coln-developers",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages"],
-  "activationEvents": ["onLanguage:geolog"],
+  "activationEvents": ["onLanguage:coln"],
   "main": "out/extension.js",
   "contributes": {
     "languages": [
       {
-        "id": "geolog",
-        "extensions": [".glog", ".geolog"],
-        "aliases": ["Coln", "glog"]
+        "id": "coln",
+        "extensions": [".coln"],
+        "aliases": ["Coln"]
       }
     ],
     "configurationDefaults": {
-      "[geolog]": {
+      "[coln]": {
         "editor.semanticHighlighting.enabled": true
       }
     },
     "configuration": {
       "title": "Coln LSP",
       "properties": {
-        "geolog-lsp.server.path": {
+        "coln-ls.server.path": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to the geolog-lsp server binary, or path relative to the extension. Leave empty to auto-detect from workspace or extension folder."
+          "description": "Absolute path to the coln-ls server binary, or path relative to the extension. Leave empty to auto-detect from workspace or extension folder."
         }
       }
     }

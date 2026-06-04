@@ -34,7 +34,7 @@ main =
     evalRepl banner runCmd opts (Just cmdPrefix) (Just multiCmd) completer start finish
  where
   banner = \case
-    SingleLine -> pure "geolog> "
+    SingleLine -> pure "coln> "
     MultiLine -> pure "| "
   runCmd = dontCrash . eval . newFile "<interactive>" . (<> "\n") . T.pack
   opts =

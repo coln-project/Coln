@@ -1,17 +1,17 @@
 cabal-version: 3.4
-name: geolog-lsp
+name: coln-ls
 version: 0.1.0.0
 license: (Apache-2.0 OR MIT)
 maintainer: patrick.aldis@obsidian.systems
 author: Patrick Aldis
 description:
-  A Language Server Protocol implementation for the geolog language
+  A Language Server Protocol implementation for the coln language
 
 category: Language
 build-type: Simple
 extra-doc-files: CHANGELOG.md
 
-executable geolog-lsp
+executable coln-ls
   main-is: Main.hs
   hs-source-dirs: src
   other-modules:
@@ -43,7 +43,7 @@ executable geolog-lsp
     diagnostician,
     exceptions,
     fnotation,
-    geolog-lang,
+    coln-compiler,
     lens,
     lsp,
     megaparsec,
@@ -54,10 +54,10 @@ executable geolog-lsp
     transformers,
     vector,
 
-test-suite geolog-lsp-test
+test-suite coln-ls-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
-  build-tool-depends: geolog-lsp:geolog-lsp
+  build-tool-depends: coln-ls:coln-ls
   hs-source-dirs: test
   default-language: GHC2021
   ghc-options: -Wall
