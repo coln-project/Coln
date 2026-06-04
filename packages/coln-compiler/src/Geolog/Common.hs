@@ -1,4 +1,4 @@
-module Geolog.Common
+module Coln.Common
   ( module Diagnostician
   , module FNotation
   , module Data.Map

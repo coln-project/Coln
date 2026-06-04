@@ -1,4 +1,4 @@
-module Geolog.Core.Conversion where
+module Coln.Core.Conversion where
 
 import Control.Applicative ((<|>))
 import Control.Monad (forM_, unless)
@@ -6,10 +6,10 @@ import Data.Maybe (fromMaybe)
 import Data.Vector.Strict qualified as Vec
 import Prettyprinter ((<+>))
 
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Value qualified as V
-import Geolog.Core.Value qualified as BN (BareNeutral(..))
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Value qualified as V
+import Coln.Core.Value qualified as BN (BareNeutral(..))
 
 data DefEqCheckError
   = UnequalTys CtxShape (V.Ty N) (V.Ty N) (Maybe DDoc)

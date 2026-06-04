@@ -1,4 +1,4 @@
-module Geolog.LSP.Highlight where
+module Coln.LSP.Highlight where
 
 import Control.Monad.Trans
 import Data.Either (fromRight)
@@ -9,8 +9,8 @@ import Data.Vector qualified as V
 import Diagnostician
 import FNotation.Kinds
 import FNotation.Tokens
-import Geolog.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), GLogLspM, LSPState (..))
-import Geolog.LSP.Utils (currentBufferUri)
+import Coln.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), GLogLspM, LSPState (..))
+import Coln.LSP.Utils (currentBufferUri)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server

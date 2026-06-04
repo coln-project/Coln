@@ -1,1 +1,1 @@
-module Geolog.Elaborator.Rules.Universe where
+module Coln.Elaborator.Rules.Universe where

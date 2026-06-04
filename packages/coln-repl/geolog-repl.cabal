@@ -4,7 +4,7 @@ version: 0.1.0.0
 license: (Apache-2.0 OR MIT)
 maintainer: george.thomas@obsidian.systems
 author: George Thomas
-description: A REPL for Geolog
+description: A REPL for Coln
 
 executable geolog-repl
   main-is: Main.hs

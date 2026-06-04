@@ -14,12 +14,12 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Diagnostician
 import FNotation
-import Geolog.Common
-import Geolog.Core
-import Geolog.CoreOperations hiding (eval)
-import Geolog.Diagnostics
-import Geolog.Elaborator
-import Geolog.Notation
+import Coln.Common
+import Coln.Core
+import Coln.CoreOperations hiding (eval)
+import Coln.Diagnostics
+import Coln.Elaborator
+import Coln.Notation
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.Console.Repline
@@ -65,7 +65,7 @@ main =
       ]
    where
     cmdStrings = map (cmdPrefix :) $ map fst opts <> [multiCmd]
-  start = liftIO $ putStrLn "Welcome to the Geolog REPL!"
+  start = liftIO $ putStrLn "Welcome to the Coln REPL!"
   finish = liftIO (putStrLn "Goodbye!") >> pure Exit
 
 eval :: File -> Repl ()

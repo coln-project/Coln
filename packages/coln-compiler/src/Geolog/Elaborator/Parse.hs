@@ -1,24 +1,24 @@
-module Geolog.Elaborator.Parse where
+module Coln.Elaborator.Parse where
 
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import FNotation (Ntn)
 import FNotation qualified as N
 
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Syntax qualified as S
-import Geolog.Elaborator.Diagnostics
-import Geolog.Elaborator.Environment
-import Geolog.Elaborator.Rules.Builtin qualified as Builtin
-import Geolog.Elaborator.Rules.Equality qualified as Equality
-import Geolog.Elaborator.Rules.Function qualified as Function
-import Geolog.Elaborator.Rules.Record qualified as Record
-import Geolog.Elaborator.Rules.Universe qualified as Universe
-import Geolog.Elaborator.Rules.Variable qualified as Variable
-import Geolog.Report
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Syntax qualified as S
+import Coln.Elaborator.Diagnostics
+import Coln.Elaborator.Environment
+import Coln.Elaborator.Rules.Builtin qualified as Builtin
+import Coln.Elaborator.Rules.Equality qualified as Equality
+import Coln.Elaborator.Rules.Function qualified as Function
+import Coln.Elaborator.Rules.Record qualified as Record
+import Coln.Elaborator.Rules.Universe qualified as Universe
+import Coln.Elaborator.Rules.Variable qualified as Variable
+import Coln.Report
 
-type ParseEnv = DiagnosticEnv GeologCode
+type ParseEnv = DiagnosticEnv ColnCode
 
 top :: ParseEnv -> [Ntn] -> IO S.Globals
 top e = foldlM (decl' e) emptyGlobals

@@ -1,11 +1,11 @@
-module Geolog.Core.Syntax where
+module Coln.Core.Syntax where
 
 import Data.Kind (Type)
 import Data.Map qualified as Map
 
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Value qualified as V
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Value qualified as V
 
 -- Abstractions
 --------------------------------------------------------------------------------

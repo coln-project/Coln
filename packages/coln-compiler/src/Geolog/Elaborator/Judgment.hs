@@ -1,18 +1,18 @@
 {-# LANGUAGE TypeAbstractions #-}
-module Geolog.Elaborator.Judgment where
+module Coln.Elaborator.Judgment where
 
 import Data.Coerce (coerce)
 import Data.Functor.Compose (Compose(Compose))
 
-import Geolog.Common
-import Geolog.Core.Conversion (defEq)
-import Geolog.Core.Memoed qualified as M
-import Geolog.Core.Params
-import Geolog.Core.Print (prtIn, shape)
-import Geolog.Core.Value qualified as V
-import Geolog.Elaborator.Diagnostics
-import Geolog.Elaborator.Environment
-import Geolog.Report
+import Coln.Common
+import Coln.Core.Conversion (defEq)
+import Coln.Core.Memoed qualified as M
+import Coln.Core.Params
+import Coln.Core.Print (prtIn, shape)
+import Coln.Core.Value qualified as V
+import Coln.Elaborator.Diagnostics
+import Coln.Elaborator.Environment
+import Coln.Report
 
 import Prettyprinter ((<+>))
 

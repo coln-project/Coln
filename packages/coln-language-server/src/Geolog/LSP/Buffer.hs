@@ -1,4 +1,4 @@
-module Geolog.LSP.Buffer (analyzeBuffer) where
+module Coln.LSP.Buffer (analyzeBuffer) where
 
 import Control.Exception (SomeException (..), evaluate)
 import Control.Monad.Catch (MonadCatch, catch)
@@ -8,10 +8,10 @@ import Data.IORef (newIORef, readIORef)
 import Data.Text qualified as T
 import Diagnostician qualified as D
 import FNotation
-import Geolog.Diagnostics (GeologCode (..))
-import Geolog.Elaborator (elabTop)
-import Geolog.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
-import Geolog.Notation (lexConfig, parseConfig)
+import Coln.Diagnostics (ColnCode (..))
+import Coln.Elaborator (elabTop)
+import Coln.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
+import Coln.Notation (lexConfig, parseConfig)
 import Language.LSP.Protocol.Message (SMethod (..))
 import Language.LSP.Protocol.Types (MessageType (..), ShowMessageParams (..))
 import Language.LSP.Server (MonadLsp, sendNotification)
@@ -34,7 +34,7 @@ reportCrash m msg =
 analyzeBuffer :: (MonadIO m, MonadCatch m, MonadLsp LSPState m) => LSPBufferInfo -> m AnalyzedBuffer
 analyzeBuffer bufInfo = do
   (r, diagRef) <- liftIO $ do
-    diagRef <- newIORef ([] @(D.Diagnostic GeologCode))
+    diagRef <- newIORef ([] @(D.Diagnostic ColnCode))
     pure (D.pureReporter diagRef, diagRef)
 
   let buf tokens notations elaborated =

@@ -1,12 +1,12 @@
-module Geolog.Core.Evaluation where
+module Coln.Core.Evaluation where
 
 import Prelude hiding (abs)
 import Data.Vector.Strict qualified as Vector
 
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Syntax qualified as S
-import Geolog.Core.Value qualified as V
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
 
 class Compile (a :: Case -> Type) (b :: Case -> Type) | a -> b where
   compile :: (V.HasEvaluation c) => a c -> V.Locals -> V.Evaluation b c

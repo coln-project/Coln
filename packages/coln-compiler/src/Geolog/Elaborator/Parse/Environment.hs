@@ -1,1 +1,1 @@
-module Geolog.Elaborator.Parse.Environment where
+module Coln.Elaborator.Parse.Environment where

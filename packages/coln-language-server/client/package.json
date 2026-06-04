@@ -1,7 +1,7 @@
 {
   "name": "geolog-lsp-client",
-  "displayName": "Geolog LSP Client",
-  "description": "VS Code/Cursor client for the Geolog language server",
+  "displayName": "Coln LSP Client",
+  "description": "VS Code/Cursor client for the Coln language server",
   "version": "0.1.0",
   "publisher": "geolog-developers",
   "engines": { "vscode": "^1.85.0" },
@@ -13,7 +13,7 @@
       {
         "id": "geolog",
         "extensions": [".glog", ".geolog"],
-        "aliases": ["Geolog", "glog"]
+        "aliases": ["Coln", "glog"]
       }
     ],
     "configurationDefaults": {
@@ -22,7 +22,7 @@
       }
     },
     "configuration": {
-      "title": "Geolog LSP",
+      "title": "Coln LSP",
       "properties": {
         "geolog-lsp.server.path": {
           "type": "string",

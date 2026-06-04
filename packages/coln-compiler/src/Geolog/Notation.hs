@@ -1,4 +1,4 @@
-module Geolog.Notation where
+module Coln.Notation where
 
 import FNotation
 import FNotation.Kinds as K

@@ -1,1 +1,1 @@
-module Geolog.Elaborator.Rules.Builtin where
+module Coln.Elaborator.Rules.Builtin where

@@ -1,15 +1,15 @@
-module Geolog.Elaborator.Rules.Function where
+module Coln.Elaborator.Rules.Function where
 
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Value qualified as V
-import Geolog.Core.Syntax qualified as S
-import Geolog.Core.Memoed
-import Geolog.Core.Evaluation
-import Geolog.Elaborator.Diagnostics
-import Geolog.Elaborator.Environment
-import Geolog.Elaborator.Judgment
-import Geolog.Report
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Value qualified as V
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Memoed
+import Coln.Core.Evaluation
+import Coln.Elaborator.Diagnostics
+import Coln.Elaborator.Environment
+import Coln.Elaborator.Judgment
+import Coln.Report
 
 data Binder = Anonymous (Judgment N) | Named Name (Judgment N)
 

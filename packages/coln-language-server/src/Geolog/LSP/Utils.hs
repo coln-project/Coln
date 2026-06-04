@@ -1,4 +1,4 @@
-module Geolog.LSP.Utils where
+module Coln.LSP.Utils where
 
 import Control.Lens
 import Data.Maybe

@@ -1,13 +1,13 @@
-module Geolog.Pretty where
+module Coln.Pretty where
 
 import Data.String (fromString)
 import Data.Text qualified as T
 import Diagnostician
 import FNotation qualified as N
 import FNotation.Names
-import Geolog.Common
-import Geolog.Core
-import Geolog.Notation
+import Coln.Common
+import Coln.Core
+import Coln.Notation
 
 -- Pretty printing
 --------------------------------------------------------------------------------

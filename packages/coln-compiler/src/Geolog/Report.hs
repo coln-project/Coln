@@ -1,4 +1,4 @@
-module Geolog.Report where
+module Coln.Report where
 
 import Control.Exception (Exception, throwIO)
 import Data.Functor.Contravariant (Contravariant(contramap))

@@ -7,13 +7,13 @@ import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Vector qualified as V
 import Diagnostician
 import FNotation
-import Geolog.Common
-import Geolog.Core
-import Geolog.CoreOperations (CtxShape (..), prtVal)
-import Geolog.Diagnostics
-import Geolog.Elaborator (elabTop)
-import Geolog.Notation
-import Geolog.Pretty
+import Coln.Common
+import Coln.Core
+import Coln.CoreOperations (CtxShape (..), prtVal)
+import Coln.Diagnostics
+import Coln.Elaborator (elabTop)
+import Coln.Notation
+import Coln.Pretty
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath (replaceExtension, takeBaseName)

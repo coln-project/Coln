@@ -1,10 +1,10 @@
-module Geolog.LSP (serverDefinition) where
+module Coln.LSP (serverDefinition) where
 
 import Control.Monad.IO.Class
-import Geolog.LSP.DocChange (docChangeHandler, docOpenHandler)
-import Geolog.LSP.Highlight (tokenHandler)
-import Geolog.LSP.TrivialHandlers (cancelRequestHandler, didCloseHandler, initHandler, workspaceChangeConfigurationHandler)
-import Geolog.LSP.Types (GLogLspM, LSPState)
+import Coln.LSP.DocChange (docChangeHandler, docOpenHandler)
+import Coln.LSP.Highlight (tokenHandler)
+import Coln.LSP.TrivialHandlers (cancelRequestHandler, didCloseHandler, initHandler, workspaceChangeConfigurationHandler)
+import Coln.LSP.Types (GLogLspM, LSPState)
 import Language.LSP.Protocol.Types (TextDocumentSyncKind (..), TextDocumentSyncOptions (..))
 import Language.LSP.Server
 

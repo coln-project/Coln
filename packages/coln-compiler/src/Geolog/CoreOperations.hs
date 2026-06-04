@@ -1,12 +1,12 @@
-module Geolog.CoreOperations where
+module Coln.CoreOperations where
 
 import Control.Monad (forM_, unless)
 import Data.Kind (Type)
 import Diagnostician
 import FNotation (Name)
-import Geolog.Common
-import Geolog.Core
-import Geolog.Pretty
+import Coln.Common
+import Coln.Core
+import Coln.Pretty
 import Prettyprinter
 import Prelude hiding (init)
 

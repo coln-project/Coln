@@ -1,15 +1,15 @@
-module Geolog.Core.Print where
+module Coln.Core.Print where
 
 import Data.String (fromString)
 import Data.Text qualified as T
 import Diagnostician
 import FNotation qualified as N
 import FNotation.Names
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Syntax
-import Geolog.Core.Readback
-import Geolog.Notation
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Syntax
+import Coln.Core.Readback
+import Coln.Notation
 
 -- Pretty printing
 --------------------------------------------------------------------------------

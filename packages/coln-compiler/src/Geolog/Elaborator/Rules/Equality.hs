@@ -1,1 +1,1 @@
-module Geolog.Elaborator.Rules.Equality where
+module Coln.Elaborator.Rules.Equality where

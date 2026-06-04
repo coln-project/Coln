@@ -1,16 +1,16 @@
-module Geolog.Elaborator.Environment where
+module Coln.Elaborator.Environment where
 
 import Control.Exception (Exception, throw, evaluate)
 import Data.Vector.Strict qualified as Vector
 
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Print (HasShape(shape))
-import Geolog.Core.Syntax qualified as S
-import Geolog.Core.Value qualified as V
-import Geolog.Core.Value qualified as BN (BareNeutral(..))
-import Geolog.Elaborator.Diagnostics
-import Geolog.Report
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Print (HasShape(shape))
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
+import Coln.Core.Value qualified as BN (BareNeutral(..))
+import Coln.Elaborator.Diagnostics
+import Coln.Report
 
 -- * Scope
 

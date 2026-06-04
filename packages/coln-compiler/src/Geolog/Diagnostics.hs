@@ -1,18 +1,18 @@
-module Geolog.Diagnostics where
+module Coln.Diagnostics where
 
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Diagnostician
 import FNotation
-import Geolog.Elaborator (ElaboratorCode, elaboratorCodeTable)
+import Coln.Elaborator (ElaboratorCode, elaboratorCodeTable)
 
-data GeologCode
+data ColnCode
   = LexerCode LexerCode
   | ParserCode ParserCode
   | ElaboratorCode ElaboratorCode
   deriving (Eq, Ord)
 
-geologCodeTable :: Map GeologCode CodeMeta
+geologCodeTable :: Map ColnCode CodeMeta
 geologCodeTable =
   mconcat
     [ promoteCodeTable lexerCodeTable LexerCode 0
@@ -20,7 +20,7 @@ geologCodeTable =
     , promoteCodeTable elaboratorCodeTable ElaboratorCode 200
     ]
 
-instance Code GeologCode where
+instance Code ColnCode where
   codeMeta c = case Map.lookup c geologCodeTable of
     Just m -> m
     Nothing -> error "unregistered code"

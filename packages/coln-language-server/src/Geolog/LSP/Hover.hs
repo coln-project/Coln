@@ -1,6 +1,6 @@
-module Geolog.LSP.Hover where
+module Coln.LSP.Hover where
 
-import Geolog.LSP.Types (GLogLspM)
+import Coln.LSP.Types (GLogLspM)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server

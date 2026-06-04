@@ -1,6 +1,6 @@
-module Geolog.Core.Params where
+module Coln.Core.Params where
 
-import Geolog.Common
+import Coln.Common
 
 -- Level stuff (levels, universes, function variants)
 --------------------------------------------------------------------------------

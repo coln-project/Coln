@@ -1,4 +1,4 @@
-module Geolog.Elaborator where
+module Coln.Elaborator where
 
 import Control.Exception
 import Control.Monad (unless)
@@ -9,10 +9,10 @@ import Data.Map qualified as Map
 import Diagnostician
 import FNotation (Name, Ntn)
 import FNotation qualified as N
-import Geolog.Common
-import Geolog.Core
-import Geolog.CoreOperations
-import Geolog.Pretty
+import Coln.Common
+import Coln.Core
+import Coln.CoreOperations
+import Coln.Pretty
 import Prettyprinter
 import Prelude hiding (head, init, lookup)
 

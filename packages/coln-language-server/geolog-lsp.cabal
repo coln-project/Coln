@@ -15,15 +15,15 @@ executable geolog-lsp
   main-is: Main.hs
   hs-source-dirs: src
   other-modules:
-    Geolog.LSP
-    Geolog.LSP.Buffer
-    Geolog.LSP.Diagnostics
-    Geolog.LSP.DocChange
-    Geolog.LSP.Highlight
-    Geolog.LSP.Hover
-    Geolog.LSP.TrivialHandlers
-    Geolog.LSP.Types
-    Geolog.LSP.Utils
+    Coln.LSP
+    Coln.LSP.Buffer
+    Coln.LSP.Diagnostics
+    Coln.LSP.DocChange
+    Coln.LSP.Highlight
+    Coln.LSP.Hover
+    Coln.LSP.TrivialHandlers
+    Coln.LSP.Types
+    Coln.LSP.Utils
 
   default-language: GHC2021
   default-extensions:

@@ -79,7 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
       path.join(extRoot, "target", "debug", "geolog-lsp"),
     ];
     vscode.window.showErrorMessage(
-      `Geolog LSP: server binary not found. Tried: ${tried.join("; ")}.`
+      `Coln LSP: server binary not found. Tried: ${tried.join("; ")}.`
     );
     return;
   }
@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   client = new LanguageClient(
     "geolog-lsp",
-    "Geolog Language Server",
+    "Coln Language Server",
     serverOptions,
     {
       documentSelector: [{ scheme: "file", language: "geolog" }],
@@ -129,7 +129,7 @@ export function activate(context: vscode.ExtensionContext): void {
     (err) => {
       client = undefined;
       vscode.window.showErrorMessage(
-        `Geolog LSP failed to start: ${err.message}.`
+        `Coln LSP failed to start: ${err.message}.`
       );
     }
   );

@@ -1,10 +1,10 @@
-module Geolog.Elaborator.Diagnostics where
+module Coln.Elaborator.Diagnostics where
 
 import Data.Map qualified as Map
 import Diagnostician
 
-import Geolog.Common
-import Geolog.Report
+import Coln.Common
+import Coln.Report
 
 data ReparseCode
   = NotInScope

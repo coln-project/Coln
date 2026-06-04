@@ -1,8 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 
-module Geolog.LSP.TrivialHandlers where
+module Coln.LSP.TrivialHandlers where
 
-import Geolog.LSP.Types (GLogLspM)
+import Coln.LSP.Types (GLogLspM)
 import Language.LSP.Protocol.Message
 import Language.LSP.Server
 

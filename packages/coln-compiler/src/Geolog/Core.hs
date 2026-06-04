@@ -1,4 +1,4 @@
-module Geolog.Core where
+module Coln.Core where
 
 import Data.Kind (Type)
 import Data.Map.Strict (Map)
@@ -6,7 +6,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Diagnostician
 import FNotation (Name)
-import Geolog.Common
+import Coln.Common
 import Prettyprinter
 
 data Level

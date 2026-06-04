@@ -1,12 +1,12 @@
-module Geolog.Core.Readback where
+module Coln.Core.Readback where
 
 import Prelude hiding (abs)
 import Data.Vector.Strict qualified as Vector
 
-import Geolog.Common
-import Geolog.Core.Params
-import Geolog.Core.Syntax qualified as S
-import Geolog.Core.Value qualified as V
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
 
 type CtxLen = Int
 

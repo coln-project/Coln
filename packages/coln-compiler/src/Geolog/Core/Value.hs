@@ -1,9 +1,9 @@
-module Geolog.Core.Value where
+module Coln.Core.Value where
 
 import Data.Vector.Strict qualified as Vector
 
-import Geolog.Common
-import Geolog.Core.Params
+import Coln.Common
+import Coln.Core.Params
 
 -- Locals
 --------------------------------------------------------------------------------

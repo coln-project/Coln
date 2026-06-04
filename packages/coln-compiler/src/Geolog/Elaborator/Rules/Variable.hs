@@ -1,1 +1,1 @@
-module Geolog.Elaborator.Rules.Variable where
+module Coln.Elaborator.Rules.Variable where

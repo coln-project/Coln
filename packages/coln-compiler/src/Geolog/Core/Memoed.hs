@@ -1,14 +1,14 @@
 {-# LANGUAGE TypeAbstractions #-}
-module Geolog.Core.Memoed where
+module Coln.Core.Memoed where
 
 import Data.Coerce (coerce)
 
-import Geolog.Common
-import Geolog.Core.Evaluation
-import Geolog.Core.Params
-import Geolog.Core.Readback (readb)
-import Geolog.Core.Syntax qualified as S
-import Geolog.Core.Value qualified as V
+import Coln.Common
+import Coln.Core.Evaluation
+import Coln.Core.Params
+import Coln.Core.Readback (readb)
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
 
 data Memoed stx val c = M
   { stx :: stx c
