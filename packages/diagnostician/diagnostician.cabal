@@ -1,14 +1,12 @@
 cabal-version: 3.4
 name: diagnostician
 version: 0.1.1.0
-license: MPL-2.0
-license-file: LICENSE
+license: (Apache-2.0 OR MIT)
 maintainer: root@owenlynch.org
 author: Owen Lynch
 description: A minimal, opinionated library for compiler error messages
 category: Language
 build-type: Simple
-extra-doc-files: CHANGELOG.md
 
 library
   exposed-modules: Diagnostician

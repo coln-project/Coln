@@ -1,134 +1,29 @@
 module Main where
 
-import Control.Exception.Extra
-import Control.Monad (forM_)
-import Data.ByteString qualified as BS
-import Data.ByteString.Builder qualified as BSB
-import Data.String (fromString)
-import Development.Shake
-import Development.Shake.FilePath
-import Djot
-import Forester (foresterActions)
-import GHC.Stack (withFrozenCallStack)
-import System.Directory (createDirectoryIfMissing, setCurrentDirectory)
+import ColnDo.Build
+import ColnDo.Common
+import ColnDo.Format
+import ColnDo.Manual
+import ColnDo.Self
+import ColnDo.Site
+import ColnDo.Test
+
+import System.Directory (setCurrentDirectory)
 import System.Environment (setEnv)
-import System.Info qualified
 
-ignoreTheseProjects :: [String]
-ignoreTheseProjects = []
-
-getProjects :: Action [String]
-getProjects = do
-  cabalFiles <- getDirectoryFiles "" ["*/*.cabal"]
-  let allProjects = takeDirectory <$> cabalFiles
-  pure $ filter (not . flip elem ignoreTheseProjects) allProjects
-
-projectPaths :: [String]
-projectPaths = ["src", "test", "app", "src-bin"]
-
-getHsFiles :: Action [String]
-getHsFiles = do
-  hsProjects <- getProjects
-  let paths = [proj ++ "/" ++ path ++ "//*.hs" | proj <- hsProjects, path <- projectPaths]
-  getDirectoryFiles "" paths
-
-htmlPreamble :: BSB.Builder
-htmlPreamble =
-  fromString
-    ( "<!doctype html>"
-        <> "<html><head><meta charset=\"UTF-8\"/></head><body>"
-    )
-
-htmlPostamble :: BSB.Builder
-htmlPostamble = fromString "</body></html>"
-
-buildDjot :: FilePath -> FilePath -> IO ()
-buildDjot srcPath outPath = do
-  src <- BS.readFile srcPath
-  case parseDoc (ParseOptions NoSourcePos) src of
-    Left msg -> print ("Error while parsing " <> srcPath <> ":\n" <> msg)
-    Right d -> do
-      let b = renderHtml (RenderOptions False) d
-      BSB.writeFile outPath (htmlPreamble <> b <> htmlPostamble)
-
-shakeError :: String -> Action ()
-shakeError msg = withFrozenCallStack $ liftIO $ errorIO msg
-
-actions :: Rules ()
-actions = do
-  foresterActions
-
-  phony "format" $ do
-    hsFiles <- getHsFiles
-    putInfo ("Formatting:" <> mconcat (("\n - " ++) <$> hsFiles))
-    cmd_ "fourmolu --mode inplace" hsFiles
-    projects <- getProjects
-    forM_ projects $ \p ->
-      cmd_ "cabal-gild --io" (p </> takeFileName p -<.> "cabal")
-
-  phony "check" $ do
-    hsFiles <- getHsFiles
-    putInfo ("Checking formatting")
-    cmd_ "fourmolu --mode check" hsFiles
-
-  phony "build" $ do
-    cmd_ "cabal build all"
-
-  phony "test" $ do
-    cmd_ "cabal test all"
-
-  phony "clean" $ do
-    removeFilesAfter "_build" ["//*"]
-
-  phony "haddock" $ do
-    -- for some reason, prettyprinter doesn't build documentation
-    -- TODO: just ignore prettyprinter
-    cmd_ "cabal haddock geolog-lang --disable-documentation --haddock-output-dir=_build/site/haddock"
-
-  phony "tex" $ do
-    texs <- getDirectoryFiles "docs" ["*.tex"]
-    let pdfs = ["_build/site" </> tex -<.> "pdf" | tex <- texs]
-    need pdfs
-
-  phony "djot" $ do
-    djs <- getDirectoryFiles "docs" ["*.dj"]
-    let htmls = ["_build/site" </> dj -<.> "html" | dj <- djs]
-    need htmls
-
-  phony "docs" $ do
-    need ["haddock", "tex", "djot", "manual"]
-
-  "_build/site/*.html" %> \out -> do
-    putInfo ("Building " <> out)
-    let dj = "docs" </> (takeFileName out -<.> "dj")
-    need [dj]
-    liftIO $ buildDjot dj out
-
-  "_build/site/*.pdf" %> \out -> do
-    putInfo ("Building " <> out)
-    support <- getDirectoryFiles "" ["docs/*.sty", "docs/*.bib"]
-    let tex = "docs" </> (takeFileName out -<.> "tex")
-    need [tex]
-    cmd_ "tectonic -o _build/site" [tex]
-    needed support
-
-  -- Build VSCode extension
-  phony "vsce" $ do
-    let serverDir = "geolog-lsp/client/server" </> (System.Info.arch <> "-" <> System.Info.os)
-    liftIO $ do
-      removeFiles "geolog-lsp/client" ["out", "server", "*.vsix"]
-      createDirectoryIfMissing True serverDir
-    cmd_ "cabal build geolog-lsp"
-    StdoutTrim binary <- cmd "cabal list-bin geolog-lsp"
-    copyFileChanged binary $ serverDir </> "geolog-lsp"
-    cmd_ (Cwd "geolog-lsp/client") "npm install"
-    cmd_ (Cwd "geolog-lsp/client") "npm run compile"
-    cmd_ (Cwd "geolog-lsp/client") "npm prune --production"
-    cmd_ (Cwd "geolog-lsp/client") "npx --yes @vscode/vsce package --allow-missing-repository"
+allRules :: Rules ()
+allRules = do
+  buildRules
+  formatRules
+  manualRules
+  selfRules
+  siteRules
+  testRules
 
 main :: IO ()
 main = do
   setEnv "LANG" "en_US.UTF-8"
   StdoutTrim top <- cmd "git rev-parse --show-toplevel"
+  -- Make sure that we are running from the root of the repository
   setCurrentDirectory top
-  shakeArgs shakeOptions{shakeColor = True} actions
+  shakeArgs shakeOptions{shakeColor = True} allRules

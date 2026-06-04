@@ -33,7 +33,7 @@
             ];
           in
           pkgs.mkShell {
-            name = "geolog";
+            name = "Coln";
             packages = tools pkgs ++ nixpkgs-haskell-tools;
           };
         devShells.haskell-nix =
@@ -44,7 +44,7 @@
                 hixProject = final.haskell-nix.hix.project {
                   src = ./.;
                   evalSystem = "x86_64-linux";
-                  name = "geolog";
+                  name = "Coln";
                   compiler-nix-name = "ghc9122";
                   shell.tools.cabal = "latest";
                   shell.withHoogle = false;

@@ -1,8 +1,7 @@
 cabal-version: 3.4
 name: geolog-lsp
 version: 0.1.0.0
-license: BSD-3-Clause
-license-file: LICENSE
+license: (Apache-2.0 OR MIT)
 maintainer: patrick.aldis@obsidian.systems
 author: Patrick Aldis
 description:

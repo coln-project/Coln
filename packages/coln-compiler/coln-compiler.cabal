@@ -1,14 +1,12 @@
 cabal-version: 3.4
 name: geolog-lang
 version: 0.1.0.0
-license: BSD-3-Clause
-license-file: LICENSE
+license: (Apache-2.0 OR MIT)
 maintainer: root@owenlynch.org
 author: Owen Lynch
 description: The geolog language
 category: Language
 build-type: Simple
-extra-doc-files: CHANGELOG.md
 
 library
   exposed-modules:
