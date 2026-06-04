@@ -1,15 +1,16 @@
 # Coln Engine
 
-Coln Engine is envisioned to be the storage layer of the Geolog database engine.
+Coln Engine is envisioned to be the storage and execution engine for Coln.
 Roughly it ought to support:
 
 1. Efficient storage and query of data
 2. Native version control
 3. Concurrency at scale
 4. Conflict resolution where appropriate
+5. Execution support for Coln theories
 
-This repo as is now is only a store engine that allows you to give it a compiled
-geolog theory, load it, and then add data to its tables.
+This repo as is now is mainly a store engine that allows you to give it a compiled
+Coln theory, load it, and then add data to its tables.
 
 Example of loading a schema and inserting several related rows. Type `/help`
 for the full command list (for example `load-schema`, `add`, `dump-table`,

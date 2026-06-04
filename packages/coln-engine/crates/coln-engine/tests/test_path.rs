@@ -92,18 +92,18 @@ fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, Box<St
 }
 
 #[test]
-fn test_read_path_geolog() {
+fn test_read_path_coln() {
     let theory = fixture_theory(PATHS_IR);
 
     assert_eq!(
         theory.tables.len(),
         10,
-        "expected table count from geolog paths.json"
+        "expected table count from coln paths.json"
     );
     assert_eq!(
         theory.laws.len(),
         12,
-        "expected law count from geolog paths.json"
+        "expected law count from coln paths.json"
     );
 
     let g_edge = theory

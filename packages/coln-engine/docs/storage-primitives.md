@@ -1,15 +1,15 @@
 # Storage Primitives for Coln Engine
 
-This doc intends to define the storage primitives exposed by Coln Engine, the storage
-engine for geolog. Geolog itself can be viewed as a complex database with rich
-language and features. So far it is roughly divided into three main parts[^1]:
-the type theory/programming language, the storage backend, and the execution engine.
+This doc defines the storage primitives exposed by the storage side of Coln Engine.
+Coln Engine is intended to contain both the storage backend and the execution
+engine for Coln. Coln itself can be viewed as a complex database with rich
+language and features.
 
 ## Motivation
 
 The main motivation follows from the design of Owen's Typescript
-[FFI](https://manual.geolog.sgai.uk/000S/index.xml) for geolog, which intends to
-the main public API for other people to use Geolog, and therefore I intend to
+[FFI](https://manual.geolog.sgai.uk/000S/index.xml) for Coln, which intends to
+the main public API for other people to use Coln, and therefore I intend to
 co-design the storage primitives around this FFI interface. Although right now
 the queries are simple, such as checking if x exists by its rowid, such that they
 can be done in Coln Engine. In the future complex law checking might require
@@ -19,11 +19,11 @@ purposes of this doc are therefore:
 
 1. Document what primitives would be exposed by the storage engine. whilst the
 storage's API might be quite low-level and not directly used by end-user, it
-gives the geolog team members a taste of what it (would) look like and point out
+gives the Coln team members a taste of what it (would) look like and point out
 where it is lacking;
 2. Invite discussions around the design of such APIs. while we do want to have a
 clear boundary, this is by no means final, and should evolve as other parts of
-geolog evolves;
+Coln evolves;
 3. Add some thoughts on how we could integrate the Coln Engine primitives with the
 TS bindings.
 
@@ -39,8 +39,8 @@ format as well.
 
 We can base our primitives roughly on the boring but well-established CRUD model.
 
-- Create: creating a database is currently only possible with a given geolog theory.
-See `Store::try_from_theory`. A geolog theory is like a SQL schema, but with
+- Create: creating a database is currently only possible with a given Coln theory.
+See `Store::try_from_theory`. A Coln theory is like a SQL schema, but with
 richer type system support. Such a theory therefore requires the compilation
 from a compiler before it can be used by Coln Engine. Supporting creating tables
 directly might introduce complex schema violations that is not easily checkable
@@ -63,7 +63,7 @@ results happens to be cached in Coln Engine.
 
 - Update:
 
-Updates to a geolog database will be done through transactions. The transaction
+Updates to a Coln database will be done through transactions. The transaction
 API looks like this
 
 ```rust
@@ -73,7 +73,7 @@ Transaction::commit() -> Result<CommitHash, StoreError>
 ```
 
 A transaction is performed on a store, which is a collection of tables as defined
-by a geolog theory. Once obtained a Transaction object, a user can then call `add`
+by a Coln theory. Once obtained a Transaction object, a user can then call `add`
 on it to add values into a particular table.  A user can perform any number of
 adds to a store as wish, and then call `Transaction::commit()` to commit a transaction,
 where checks against the database schema is performed. For example, the values
@@ -84,7 +84,7 @@ in `test_path.rs`
 This is currently the only API to modify the database, and a "dirty" write API
 is not planned to be supported, for several reasons:
 
-1. Coln Engine is a versioned storage engine, which means users can identify a version
+1. Coln Engine includes a versioned storage engine, which means users can identify a version
 by its hash, merging different versions across agents or network, etc. A
 transaction maps cleanly to an individual commit. The alternative
 would be to introduce implicit transactions if we were to support "dirty" writes
@@ -92,17 +92,17 @@ outside of a transaction context;
 2. The transaction commit point acts as a natural point for store integrity checking.
 Although currently `Transaction::add()` does some preliminary check of value arity
 for ergonomic reasons, the majority of the check still happens at commit time.
-This means that law checking, as done by the geolog execution engine is triggered
+This means that law checking, as done by the Coln execution engine is triggered
 at the end of each commit, and temporary law violation is necessarily
 allowed when the commit is not finished yet. The law checking will
 probably be implemented as a hook/call into the execution engine at
 commit time. This feature is not implemented yet, and will be when we
-come to integrate the storage engine with the execution backend.
+come to integrate the storage engine with the execution components.
 
-And to quote from the geolog manual
+And to quote from the Coln manual
 > Thus, validity is only checked at certain points; we discuss validity more in a later section
 
-I think that the transaction commit point should be the validity checking point[^2].
+I think that the transaction commit point should be the validity checking point[^1].
 
 - Delete:
 
@@ -172,11 +172,8 @@ Typescript binding, for the two reasons listed above (we have `OwnedTransaction`
 for this purpose).  Automerge has Autocommit which manages the transaction for
 the user, and we could have something similar for convenience purposes, but should
 still keep the raw transactional API so that the user will think more carefully
-about how they want to interact with a geolog database instance.
+about how they want to interact with a Coln database instance.
 
-[^1]: There are other components as well such as the lsp, which are not mentioned
-here because they are not relevant for our discussion, but by no means unimportant.
-
-[^2]: There will be more complexity when we come to annotate whether a law is
+[^1]: There will be more complexity when we come to annotate whether a law is
 chased, monitored, or something else. But that should not affect when we do the
 law checking.

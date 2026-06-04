@@ -4,12 +4,12 @@ This file provides guidance to coding agents collaborating on this repository.
 
 ## Mission
 
-Coln Engine is an experimental Rust workspace for a storage layer used by the Geolog database engine.
+Coln Engine is an experimental Rust workspace for the storage and execution engine.
 
 Priorities, in order:
 
 1. Correct storage, validation, and transaction semantics.
-2. Clear boundaries between IR, store, solver, persistence, and REPL code.
+2. Clear boundaries between IR, store, solver, execution, persistence, and REPL code.
 3. Accurate persistence and reload behaviour.
 4. Performance and scalability.
 5. Clear, maintainable, idiomatic Rust code.
@@ -42,10 +42,10 @@ Quick examples:
 ## Repository Layout
 
 - `Cargo.toml`: workspace definition.
-- `crates/coln-lang-rs/`: Geolog IR crate.
+- `crates/coln-lang-rs/`: Coln IR crate.
   - `src/ir/mod.rs`: schema, table, law, proposition, term, and literal IR types.
   - `src/ir/path.rs`: path parsing, display, and conversion helpers.
-- `crates/coln-engine/`: store engine crate and binary.
+- `crates/coln-engine/`: engine crate and binary.
   - `src/lib.rs`: crate exports.
   - `src/main.rs`: REPL entry point.
   - `src/table.rs`: column storage, row ids, cell values, and table validation.
@@ -56,7 +56,7 @@ Quick examples:
     - `src/commit/wire`: the core encoding/decoding logic
   - `src/repl/`: REPL parsing, execution, summaries, and errors.
   - `src/txn`: Logic dealing with transactions, this includes user-facing transaction API.
-  - `examples/`: example Geolog theory files.
+  - `examples/`: example Coln theory files.
   - `tests/`: crate-level integration tests and fixture data.
 
 ## Architecture Constraints
