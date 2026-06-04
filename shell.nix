@@ -2,22 +2,23 @@
 
 let
   coln = import ./. { inherit system; };
-  inherit (coln) pkgs;
+  inherit (coln) pkgs forester;
 in
 pkgs.mkShell {
   name = "coln";
 
   buildInputs = with pkgs; [
-    nodejs
+    cabal-install
+    cabal2nix
+    forester
     fourmolu
+    haskell.compiler.ghc912
+    haskellPackages.cabal-gild
+    nodejs
+    pkg-config
     tectonic
     typescript
-    haskellPackages.cabal-gild
-    haskell.compiler.ghc912
-    cabal-install
     zlib
     zlib.dev
-    pkg-config
-    cabal2nix
   ];
 }

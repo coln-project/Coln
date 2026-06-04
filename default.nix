@@ -7,6 +7,8 @@ in
 rec {
   inherit pkgs lib;
 
+  forester = pkgs.callPackage ./nix/forester.nix {};
+
   diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician {};
   fnotation = colnHaskellPackages.callPackage ./packages/fnotation {
     inherit diagnostician;
