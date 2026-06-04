@@ -1,0 +1,38 @@
+on: [push, pull_request]
+
+name: Check
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ⬇️
+        uses: actions/checkout@v6
+
+      - name: Install Nix ❄️
+        uses: cachix/install-nix-action@v31
+
+      - name: Set up Cachix ♻️
+        uses: cachix/cachix-action@v17
+        with:
+          name: 1lab
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build coln-do 🧰
+        run: |
+          nix-shell . --run true
+          hash=$(nix-build -A coln-do --no-out-link)
+          hash=${hash#/nix/store/} hash=${hash%%-*}
+          echo "shake_version=$hash" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: |
+          nix-shell --run "$build_command"
+
+        env:
+          NIX_BUILD_SHELL: bash
+          build_command: |
+            coln-do test
+          
+
