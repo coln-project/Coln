@@ -25,8 +25,20 @@ library
     Geolog.CoreOperations
     Geolog.Diagnostics
     Geolog.Elaborator
+    Geolog.Elaborator.Diagnostics
+    Geolog.Elaborator.Environment
+    Geolog.Elaborator.Judgment
+    Geolog.Elaborator.Parse
+    Geolog.Elaborator.Parse.Environment
+    Geolog.Elaborator.Rules.Builtin
+    Geolog.Elaborator.Rules.Equality
+    Geolog.Elaborator.Rules.Function
+    Geolog.Elaborator.Rules.Record
+    Geolog.Elaborator.Rules.Universe
+    Geolog.Elaborator.Rules.Variable
     Geolog.Notation
     Geolog.Pretty
+    Geolog.Report
     Geolog.Unification
 
   hs-source-dirs: src

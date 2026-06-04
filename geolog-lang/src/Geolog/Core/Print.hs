@@ -8,6 +8,7 @@ import FNotation.Names
 import Geolog.Common
 import Geolog.Core.Params
 import Geolog.Core.Syntax
+import Geolog.Core.Readback
 import Geolog.Notation
 
 -- Pretty printing
@@ -85,3 +86,14 @@ instance DPrettyWithNames (El e) where
 
 instance DPrettyWithNames (Ty e) where
   dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
+
+class HasShape a where
+  shape :: a -> CtxShape
+
+instance HasShape CtxShape where
+  shape = id
+
+prtIn :: (HasShape c, Readback a b, DPrettyWithNames b) => c -> a -> DDoc
+prtIn c v = do
+  let cs = shape c
+  dprettyWithNames cs.names $ readb cs.len v

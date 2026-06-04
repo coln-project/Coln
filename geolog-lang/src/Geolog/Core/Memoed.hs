@@ -6,6 +6,7 @@ import Data.Coerce (coerce)
 import Geolog.Common
 import Geolog.Core.Evaluation
 import Geolog.Core.Params
+import Geolog.Core.Readback (readb)
 import Geolog.Core.Syntax qualified as S
 import Geolog.Core.Value qualified as V
 
@@ -65,3 +66,5 @@ instance Core El Ty where
     (V.Eq $ V.EqualityType eq.at.val eq.lhs.val eq.rhs.val)
   builtinTy bt = M (S.BuiltinTy bt) (V.BuiltinTy bt)
 
+fromVTy :: (V.HasEvaluation c) => Int -> V.Ty c -> Ty c
+fromVTy n v = M (readb n v) (V.epure v)
