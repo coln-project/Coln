@@ -1,3 +1,18 @@
-[workspace]
-members = ["crates/geolog-lang","crates/geomerge"]
-resolver = "3"
+[package]
+name = "coln-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+blake3 = "1.8.5"
+coln-lang-rs = { path = "../coln-lang-rs", features = ["serde"] }
+hex = "0.4.3"
+hexane = { git = "https://github.com/automerge/automerge", branch = "hexane_v1", package = "hexane" }
+leb128 = "0.2.6"
+postcard = { version = "1.1.3", features = ["alloc"] }
+rustyline = "18.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.149"
+shlex = "2.0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

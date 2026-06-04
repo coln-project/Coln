@@ -1,26 +1,26 @@
-# Geomerge
+# Coln Engine
 
-Geomerge is envisioned to be the storage layer of the Geolog database engine.
+Coln Engine is envisioned to be the storage and execution engine for Coln.
 Roughly it ought to support:
 
 1. Efficient storage and query of data
 2. Native version control
 3. Concurrency at scale
 4. Conflict resolution where appropriate
+5. Execution support for Coln theories
 
-This repo as is now is only a store engine that allows you to give it a compiled
-geolog theory, load it, and then add data to its tables.
+This repo as is now is mainly a store engine that allows you to give it a compiled
+Coln theory, load it, and then add data to its tables.
 
 Example of loading a schema and inserting several related rows. Type `/help`
 for the full command list (for example `load-schema`, `add`, `dump-table`,
 `dump-store`, and the batch form below).
 
-
 ## Transaction
 
 A **transaction** is a single multi-line statement: `begin transact;` … `commit;`. Each
 line inside is an `add` that may bind the new row id to a name (`name = add
-<table> values (...);`). These ids are assigned by the storage layer and can then
+TABLE values (...);`). These ids are assigned by the storage layer and can then
 be referred to later on. For example, `e1 = add G.E values (g0 v1 v2);` is
 referring to `v1` and `v2` as vertex ids previously inserted.
 The whole batch is submitted when you end it with `commit;`.
@@ -33,8 +33,8 @@ After `commit`, inspect what landed with `dump-table <table>;` — for example
 `dump-table Graphs;`, `dump-table G.V;`, or `dump-table G.E;` — or print the
 entire store with `dump-store;`.
 
-```
-geomerge> load-schema tests/data/paths.json;
+```text
+coln-engine> load-schema tests/data/paths.json;
 begin transact;
   g0 = add Graphs values ();
   g1 = add Graphs values ();
@@ -56,10 +56,9 @@ load-store paths.bin;
 To get a violation of the law, say (Hom.V.total), change the line `i1 = add G0 values (g1);`
 to `i1 = add G0 values (g0)` so that we do not have a morphism between G0 and G1.
 
-
 ## Commits
 
-Commit (commit/mod.rs) is a central data structure to geomerge. It is conceptually
+Commit (commit/mod.rs) is a central data structure to Coln Engine. It is conceptually
 analogous to git commits. Each transaction (as above) will be mapped to a commit
 which is internally stored as a node in the commit graph, which is a DAG. A commit
 consists of metadata such as the time it was created and any commit messages associated

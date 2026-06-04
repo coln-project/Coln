@@ -9,7 +9,7 @@ use crate::{
     solver::compile::{CompAtom, CompEq, CompLaw, CompProp, CompTerm},
 };
 
-/// Convert a compiled Geolog law into an experimental Datalog constraint program.
+/// Convert a compiled Coln law into an experimental Datalog constraint program.
 ///
 /// The generated program is intended as a comparison target for Datalog-based
 /// law checking. It does not replace the current solver. Table predicates use

@@ -1,4 +1,4 @@
-use geolog_lang::ir;
+use coln_lang_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,

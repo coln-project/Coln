@@ -56,14 +56,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = Session::default();
     let mut pending_statement: Option<String> = None;
 
-    println!("geomerge repl");
+    println!("coln-engine repl");
     println!("Type /help for commands.");
 
     loop {
         let prompt = if pending_statement.is_some() {
             "....> "
         } else {
-            "geomerge> "
+            "coln-engine> "
         };
         let line = match editor.readline(prompt) {
             Ok(line) => line,

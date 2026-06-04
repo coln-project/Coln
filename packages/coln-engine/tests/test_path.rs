@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, path::PathBuf, sync::Once};
 
-use geomerge::{
+use coln_engine::{
     commit::hash::CommitHash,
     commit::pst,
     ir::{self, FlatTheory, Path},
@@ -20,7 +20,7 @@ fn init_test_logging() {
         tracing_subscriber::fmt()
             .with_env_filter(
                 EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| EnvFilter::new("geomerge=debug")),
+                    .unwrap_or_else(|_| EnvFilter::new("coln_engine=debug")),
             )
             .with_test_writer()
             .init();
@@ -92,18 +92,18 @@ fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, Box<St
 }
 
 #[test]
-fn test_read_path_geolog() {
+fn test_read_path_coln() {
     let theory = fixture_theory(PATHS_IR);
 
     assert_eq!(
         theory.tables.len(),
         10,
-        "expected table count from geolog paths.json"
+        "expected table count from coln paths.json"
     );
     assert_eq!(
         theory.laws.len(),
         12,
-        "expected law count from geolog paths.json"
+        "expected law count from coln paths.json"
     );
 
     let g_edge = theory

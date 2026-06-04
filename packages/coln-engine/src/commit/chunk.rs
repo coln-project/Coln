@@ -28,7 +28,7 @@ impl From<ChunkType> for u8 {
 /// hash = blake3(chunk_type:u8 || data_len:u64_le || data)
 ///
 /// This mirrors the preimage automerge builds in storage/chunk.rs, adapted for
-/// geomerge chunk types, but hashes it with BLAKE3 rather than SHA-256.
+/// Coln Engine chunk types, but hashes it with BLAKE3 rather than SHA-256.
 pub(crate) fn hash(chunk_type: ChunkType, data: &[u8]) -> CommitHash {
     let mut hasher = blake3::Hasher::new();
     hasher.update(&[u8::from(chunk_type)]);
