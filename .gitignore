@@ -25,6 +25,8 @@
 .pdf
 
 ## IDEA setup
+.vscode/
+.cursor/
 .idea/
 **/*.iml
 
@@ -345,3 +347,6 @@ _build/
 .history
 manual/forester
 /bin/
+
+## Rust
+/target/
