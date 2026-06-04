@@ -143,7 +143,7 @@ mod tests {
     use crate::commit::wire::CommitData;
     use crate::ir::{FlatTheory, Path, Schema, TableEntry};
     use crate::table::CellValue;
-    use geolog_lang::ir::{ColType, PrimType};
+    use coln_lang_rs::ir::{ColType, PrimType};
 
     fn int_schema() -> Schema {
         Schema {

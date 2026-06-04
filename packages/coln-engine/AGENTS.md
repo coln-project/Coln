@@ -42,26 +42,26 @@ Quick examples:
 ## Repository Layout
 
 - `Cargo.toml`: workspace definition.
-- `crates/geolog-lang/`: Geolog IR crate.
-    - `src/ir/mod.rs`: schema, table, law, proposition, term, and literal IR types.
-    - `src/ir/path.rs`: path parsing, display, and conversion helpers.
+- `crates/coln-lang-rs/`: Geolog IR crate.
+  - `src/ir/mod.rs`: schema, table, law, proposition, term, and literal IR types.
+  - `src/ir/path.rs`: path parsing, display, and conversion helpers.
 - `crates/geomerge/`: store engine crate and binary.
-    - `src/lib.rs`: crate exports.
-    - `src/main.rs`: REPL entry point.
-    - `src/table.rs`: column storage, row ids, cell values, and table validation.
-    - `src/store.rs`: table registry, theory loading, law compilation, batch
-      application, and whole-store law checks.
-    - `src/solver/`: law compilation, matching, binding, and validation.
-    - `src/commit/`: logic dealing with commits and graphs
-      - `src/commit/wire`: the core encoding/decoding logic
-    - `src/repl/`: REPL parsing, execution, summaries, and errors.
-    - `src/txn`: Logic dealing with transactions, this includes user-facing transaction API.
-    - `examples/`: example Geolog theory files.
-    - `tests/`: crate-level integration tests and fixture data.
+  - `src/lib.rs`: crate exports.
+  - `src/main.rs`: REPL entry point.
+  - `src/table.rs`: column storage, row ids, cell values, and table validation.
+  - `src/store.rs`: table registry, theory loading, law compilation, batch
+    application, and whole-store law checks.
+  - `src/solver/`: law compilation, matching, binding, and validation.
+  - `src/commit/`: logic dealing with commits and graphs
+    - `src/commit/wire`: the core encoding/decoding logic
+  - `src/repl/`: REPL parsing, execution, summaries, and errors.
+  - `src/txn`: Logic dealing with transactions, this includes user-facing transaction API.
+  - `examples/`: example Geolog theory files.
+  - `tests/`: crate-level integration tests and fixture data.
 
 ## Architecture Constraints
 
-- Treat `geolog-lang` as the source of shared IR definitions. Do not duplicate IR shape in `geomerge` unless conversion boundaries require it.
+- Treat `coln-lang-rs` as the source of shared IR definitions. Do not duplicate IR shape in `geomerge` unless conversion boundaries require it.
 - `Store` owns table registration, table lookup, compiled laws, and a commit graph which is the columnar encoded operations.
 - `Table` is the materialised view of what each table should contain, after playing the commits. It also has schema-level validation for inserted values.
 - Store mutation should flow through explicit operations such as `Op` and transaction helpers.
@@ -92,7 +92,7 @@ For performance-sensitive changes:
 
 Use this sequence for your first change:
 
-1. Read `crates/geomerge/src/lib.rs`, `crates/geolog-lang/src/lib.rs`, and the relevant module files.
+1. Read `crates/geomerge/src/lib.rs`, `crates/coln-lang-rs/src/lib.rs`, and the relevant module files.
 2. Implement the smallest possible code change.
 3. Add or update tests that fail before and pass after.
 4. Run `cargo test --workspace --all-targets`.
@@ -102,7 +102,7 @@ Use this sequence for your first change:
 
 Example scopes that are good first tasks:
 
-- A parser or path edge-case test in `geolog-lang`.
+- A parser or path edge-case test in `coln-lang-rs`.
 - A validation edge-case test in `Table` or `Store`.
 - A focused REPL parsing or execution fix.
 - A persistence round-trip test for supported store state.
@@ -130,7 +130,7 @@ Before coding:
 
 1. Impact on storage semantics, law validation, persistence, or REPL behavior.
 2. Affected tests and fixture data.
-3. API stability for exported `geomerge` and `geolog-lang` types.
+3. API stability for exported `geomerge` and `coln-lang-rs` types.
 4. Documentation accuracy for implemented features.
 
 Before submitting:

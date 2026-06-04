@@ -1,4 +1,4 @@
-use geolog_lang::ir::PrimType;
+use coln_lang_rs::ir::PrimType;
 use hexane::{PackError, lebsize};
 
 /// follows ir::PrimType, but contains an actual value

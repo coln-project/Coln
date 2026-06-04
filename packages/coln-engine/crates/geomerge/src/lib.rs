@@ -1,4 +1,4 @@
-pub use geolog_lang::ir;
+pub use coln_lang_rs::ir;
 pub mod commit;
 pub mod repl;
 pub mod solver;

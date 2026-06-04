@@ -1,3 +1,3 @@
 [workspace]
-members = ["crates/geolog-lang","crates/geomerge"]
+members = ["crates/coln-lang-rs", "crates/geomerge"]
 resolver = "3"
