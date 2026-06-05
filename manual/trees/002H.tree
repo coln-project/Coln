@@ -1,30 +1,30 @@
-\title{What and why is geolog?}
+\title{What and why is Coln?}
 \import{prelude}
 
-\p{Geolog is a \em{tool} for \em{logical reasoning}.}
+\p{Coln is a \em{tool} for \em{logical reasoning}.}
 
 \ul{
-  \li{\defcase{Tool} means that geolog performs routines that answers questions.}
+  \li{\defcase{Tool} means that Coln performs routines that answers questions.}
   \li{\defcase{Logical} means that these routines have well-defined mathematical semantics.}
   \li{\defcase{Reasoning} means that the routines are meant to \em{check} and \em{produce} proofs (the questions: “is this proof valid?” and “is there a proof of X?”).}
 }
 
-\p{Geolog is similar to both existing proof assistants and existing databases.}
+\p{Coln is similar to both existing proof assistants and existing databases.}
 
-\p{One way of looking at geolog is that it is the result of cutting out everything from a dependent type theory that can't fit in a database, and then seeing if database technology (query planning, efficient data structures) can speed up the process of proof search for the problems which are still expressible.}
+\p{One way of looking at Coln is that it is the result of cutting out everything from a dependent type theory that can't fit in a database, and then seeing if database technology (query planning, efficient data structures) can speed up the process of proof search for the problems which are still expressible.}
 
-\p{Another way of looking at geolog is that it is a dependently typed approach to databases, derived by first finding a denotational semantics for database languages and then using standard techniques to distill an internal language for that denotational semantics.}
+\p{Another way of looking at Coln is that it is a dependently typed approach to databases, derived by first finding a denotational semantics for database languages and then using standard techniques to distill an internal language for that denotational semantics.}
 
-\p{A third way of looking at geolog is that it is a module system for [[egglog]]/[[eqlog]]-style reasoning, similar to [[modulog]] but using an approach to module systems more inspired by [[pterodactyl]] and [Logical Relations as Types](sterling-2021-logical) rather than [[leroy-2000-modular]].}
+\p{A third way of looking at Coln is that it is a module system for [[egglog]]/[[eqlog]]-style reasoning, similar to [[modulog]] but using an approach to module systems more inspired by [[pterodactyl]] and [Logical Relations as Types](sterling-2021-logical) rather than [[leroy-2000-modular]].}
 
-\p{A fourth way of looking at geolog is that it is an attempt to realize the vision of [[steve-vickers]] for databases, which started with [[vickers-1992-geometric]] but has continued on through, for instance, [[vickers-2019-sketches]].}
+\p{A fourth way of looking at Coln is that it is an attempt to realize the vision of [[steve-vickers]] for databases, which started with [[vickers-1992-geometric]] but has continued on through, for instance, [[vickers-2019-sketches]].}
 
-\p{A fifth way of looking at geolog is that it is a proof assistant with first-class support for [quotient inductive inductive types](altenkirch-2018-quotient), in the sense of having [quotient inductive inductive signatures](kovacs-2022-typetheoretic) as a first-class concept, and then allowing the formation of the initial models for these signatures and induction over those initial models.}
+\p{A fifth way of looking at Coln is that it is a proof assistant with first-class support for [quotient inductive inductive types](altenkirch-2018-quotient), in the sense of having [quotient inductive inductive signatures](kovacs-2022-typetheoretic) as a first-class concept, and then allowing the formation of the initial models for these signatures and induction over those initial models.}
 
-\p{A sixth way of looking at geolog is that it is [[automerge]] for [acsets](acset).}
+\p{A sixth way of looking at Coln is that it is [[automerge]] for [acsets](acset).}
 
-\p{The design of geolog embodies a thesis around a deficiency in current proof assistants: in non-well-structured domains (for instance, verification of machine code), it is hard to keep track of the vast quantity of tiny, trivial lemmas needed to prove some property. Mathematics as done by humans is often elegant, beautiful, and \em{conceptually compressible}, in that a proof involves a conceptual simplification of the problem domain and often naturally breaks up into theorems, definitions, lemmas that can be given fairly meaningful names and organized hierarchically.}
+\p{The design of Coln embodies a thesis around a deficiency in current proof assistants: in non-well-structured domains (for instance, verification of machine code), it is hard to keep track of the vast quantity of tiny, trivial lemmas needed to prove some property. Mathematics as done by humans is often elegant, beautiful, and \em{conceptually compressible}, in that a proof involves a conceptual simplification of the problem domain and often naturally breaks up into theorems, definitions, lemmas that can be given fairly meaningful names and organized hierarchically.}
 
 \p{However, the mathematics involved in a proof in a non-well-structured domain does not have this property, and if we want a systematic approach to organizing the lemmas then we should use a database that we can query in flexible ways, rather than relying on a naming convention.}
 
-\p{But there are many roads to and from geolog; the core ideas are very elementary in a certain sense and we expect to be surprised by where geolog ends up being applicable or not applicable.}
+\p{But there are many roads to and from Coln; the core ideas are very elementary in a certain sense and we expect to be surprised by where Coln ends up being applicable or not applicable.}

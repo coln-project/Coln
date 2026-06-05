@@ -1,6 +1,6 @@
 \title{Distributing records over functions}
 
-\p{The key idea in translating a geolog theory into a usable database schema is that we can \em{distribute records over functions}. To understand this idea, first consider geolog theories of a special form.}
+\p{The key idea in translating a Coln theory into a usable database schema is that we can \em{distribute records over functions}. To understand this idea, first consider Coln theories of a special form.}
 
 \transclude{001U}
 
@@ -16,7 +16,7 @@
   \li{If \code{B} is \code{Prop}, then this is a table with columns \code{A1,...,AN} and a primary key constraint on \code{A1,...,AN}.}
 }
 
-\p{Thus, the first job to do when translating a geolog theory into a database schema is to put the geolog theory in #{\Sigma\Pi} normal form.}
+\p{Thus, the first job to do when translating a Coln theory into a database schema is to put the Coln theory in #{\Sigma\Pi} normal form.}
 
 \transclude{001X}
 

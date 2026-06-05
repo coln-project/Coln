@@ -6,7 +6,7 @@
   \taxon{Definition}
   \title{Syntax}
 
-  \p{Syntax is a data type in the geolog compiler, the elements of which are a compressed form for correct [derivations](derivation) in the geolog type theory.}
+  \p{Syntax is a data type in the Coln compiler, the elements of which are a compressed form for correct [derivations](derivation) in the Coln type theory.}
 
   \p{The process of elaboration ensures that any syntax produced does in fact refer uniquely to some derivation.}
 }
@@ -15,9 +15,9 @@
   \taxon{Definition}
   \title{Notation}
 
-  \p{Notation is another data type in the geolog compiler. Notation is the first “tree-shaped” data type that is produced in the compilation pipeline, and is fairly permissive in terms of what is allowed.}
+  \p{Notation is another data type in the Coln compiler. Notation is the first “tree-shaped” data type that is produced in the compilation pipeline, and is fairly permissive in terms of what is allowed.}
 
-  \p{See [fnotation](000R) for a description of the notation used in geolog.}
+  \p{See [fnotation](000R) for a description of the notation used in Coln.}
 }
 
 \subtree[000U]{

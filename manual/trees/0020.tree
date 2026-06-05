@@ -1,6 +1,6 @@
 \title{Theories as interfaces}
 
-\p{Each top-level theory \code{T} in geolog produces TypeScript declarations that look like the following.}
+\p{Each top-level theory \code{T} in Coln produces TypeScript declarations that look like the following.}
 
 \pre{%
 namespace T {

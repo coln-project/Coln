@@ -1,6 +1,6 @@
-\title{Geolog manual}
+\title{Coln manual}
 
-\p{Geolog is a database with an expressive language for schemas, queries, and migrations. This document forms the manual for geolog.}
+\p{Coln is a database with an expressive language for schemas, queries, and migrations. This document forms the manual for Coln.}
 
 \transclude{002H}
 \transclude{0002}

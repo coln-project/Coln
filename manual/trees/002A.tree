@@ -3,7 +3,7 @@
 
 \p{(This is meant for [[000C]])}
 
-\p{The ultimate intended semantics for geolog is in arithmetic theories, which are the analogue of geometric theories for [arithmetic universes](arithmetic-universes). However, geometric theories and topoi are both better-studied than arithmetic universes and are additionally closely related, so we give an exposition of the basic type theory in terms of geometric theories. Note that by topos we mean Grothendieck topos, not elementary topos, so in particular all topoi have natural numbers objects.}
+\p{The ultimate intended semantics for Coln is in arithmetic theories, which are the analogue of geometric theories for [arithmetic universes](arithmetic-universes). However, geometric theories and topoi are both better-studied than arithmetic universes and are additionally closely related, so we give an exposition of the basic type theory in terms of geometric theories. Note that by topos we mean Grothendieck topos, not elementary topos, so in particular all topoi have natural numbers objects.}
 
 \p{Following the principles of this manual, this is \em{not} a mathematical paper; there will be a more formal account of this type theory, but that is in progress. Rather, this is a conceptual account that makes reference to mathematics.}
 

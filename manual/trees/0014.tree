@@ -20,7 +20,7 @@
 \row{\cell{\code{End}} \cell{Used to end a block}}
 }
 
-\p{In geolog, the special name segments and their corresponding kinds are as follows.}
+\p{In Coln, the special name segments and their corresponding kinds are as follows.}
 
 \table{
 \row{\hcell{Name} \hcell{Kind}}

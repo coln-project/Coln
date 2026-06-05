@@ -29,7 +29,7 @@
 
 \p{Intuitively, \code{\kw{struct} { true; false; _ }} and \code{\kw{struct} { false; true; _ }} are both models of \code{HardChoice}, but neither one is “more minimal” than the other, and the only way to get something “more minimal” than both would be \code{\kw{struct} { false; false; _ }} but this is not a model of \code{HardChoice}.}
 
-\p{In fact, this theory would be \em{rejected} by the geolog type theory. In order to make geolog accept this theory, one must put \code{\kw{ind}} in front of \code{\kw{theory}}, as in}
+\p{In fact, this theory would be \em{rejected} by the Coln type theory. In order to make Coln accept this theory, one must put \code{\kw{ind}} in front of \code{\kw{theory}}, as in}
 
 \pre{%
 \kw{ind} \kw{theory} HardChoice := \kw{sig}

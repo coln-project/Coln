@@ -38,7 +38,7 @@
 
   \p{Juxtaposition binds tighter than infix application and left associates. Thus, \code{f x y} is \code{(f x) y} and \code{f x + y} is \code{(f x) + y}. The binding strength and associativity of infix application is determined by a custom precedence table.}
 
-  \p{The precedence table for geolog is as follows.}
+  \p{The precedence table for Coln is as follows.}
 
   \table{
   \row{\hcell{Symbol} \hcell{Tightness} \hcell{Associativity}}

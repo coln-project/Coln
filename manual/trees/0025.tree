@@ -2,4 +2,4 @@
 \taxon{Definition}
 \import{prelude}
 
-\p{Tables also have associated \defcase{constraints}. We discuss these in greater detail once we talk about how geolog theories are lowered to a collection of tables; essentially the constraints are what enforces the type dependencies between the different arguments to a function.}
+\p{Tables also have associated \defcase{constraints}. We discuss these in greater detail once we talk about how Coln theories are lowered to a collection of tables; essentially the constraints are what enforces the type dependencies between the different arguments to a function.}

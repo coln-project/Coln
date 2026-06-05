@@ -3,7 +3,7 @@
 
 \p{An interesting fact about [[000L]] the reader may have noticed is that the only model of \code{Set} that one can write down in the empty context is the singleton type \code{\kw{tuple} {}}.}
 
-\p{This is remedied by inductive types. In geolog, inductive types are produced by \em{initial models}. An initial model for a theory \code{T} is a model of \code{T} that makes zero decisions: the only elements in the sets in the model are the ones forced to exist by the laws of the theory.}
+\p{This is remedied by inductive types. In Coln, inductive types are produced by \em{initial models}. An initial model for a theory \code{T} is a model of \code{T} that makes zero decisions: the only elements in the sets in the model are the ones forced to exist by the laws of the theory.}
 
 \transclude{001O}
 

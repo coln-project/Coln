@@ -4,40 +4,40 @@
 \subtree[0004]{
   \title{Principles}
 
-  \p{The geolog manual is an \em{authoratative}, \em{conceptual}, and \em{incomplete} reference document for engaged users and developers of geolog.}
+  \p{The Coln manual is an \em{authoratative}, \em{conceptual}, and \em{incomplete} reference document for engaged users and developers of Coln.}
 
   \subtree[0005]{
     \taxon{Principle}
     \title{Authoratative}
 
-    \p{When the manual makes a definitive statement about the behavior of geolog, if the code deviates from the manual then the code is considered to have a bug.}
+    \p{When the manual makes a definitive statement about the behavior of Coln, if the code deviates from the manual then the code is considered to have a bug.}
 
-    \p{There may be points in the manual where as I am writing, I decide that the current behavior of geolog is inadequate. In these places, I will write down what I intend the behavior to be, and mark the sentence with \todo at the end.}
+    \p{There may be points in the manual where as I am writing, I decide that the current behavior of Coln is inadequate. In these places, I will write down what I intend the behavior to be, and mark the sentence with \todo at the end.}
   }
 
   \subtree[0006]{
     \taxon{Principle}
     \title{Conceptual}
 
-    \p{The purpose of the manual is to produce \em{understanding}. The manual is not a specification, but a motivated reader could probably fill in the full details of a specification from the understanding imparted in the manual. Most importantly, a user of geolog who has carefully read the manual should not need to guess at what any particular piece of code means; the conceptual understanding laid out in this manual should be sufficient to give an unambiguous human-comprehensible semantics.}
+    \p{The purpose of the manual is to produce \em{understanding}. The manual is not a specification, but a motivated reader could probably fill in the full details of a specification from the understanding imparted in the manual. Most importantly, a user of Coln who has carefully read the manual should not need to guess at what any particular piece of code means; the conceptual understanding laid out in this manual should be sufficient to give an unambiguous human-comprehensible semantics.}
   }
 
   \subtree[0007]{
     \taxon{Principle}
     \title{Incomplete}
 
-    \p{This manual (like geolog itself) is currently incomplete.}
+    \p{This manual (like Coln itself) is currently incomplete.}
   }
 
-  \p{The geolog manual is \em{not} a tutorial. The geolog manual is \em{not} a place for original mathematical research. The geolog manual is \em{not} a development log.}
+  \p{The Coln manual is \em{not} a tutorial. The Coln manual is \em{not} a place for original mathematical research. The Coln manual is \em{not} a development log.}
 
-  \p{Moreover, the geolog manual is \em{not} an advertisement. The intended audience of this manual is a reader with patience and a good amount of time, who is motivated for reasons found elsewhere to learn about geolog. There may be sections where we outline the \em{rationale} for a design decision; these should not be interpreted as claims of the superiority of this design decision, merely as a record of the thought process that went into it.}
+  \p{Moreover, the Coln manual is \em{not} an advertisement. The intended audience of this manual is a reader with patience and a good amount of time, who is motivated for reasons found elsewhere to learn about Coln. There may be sections where we outline the \em{rationale} for a design decision; these should not be interpreted as claims of the superiority of this design decision, merely as a record of the thought process that went into it.}
 }
 
 \subtree[0008]{
   \title{Meta}
 
-  \p{The geolog manual is written in [[forester]]. Forester is a very flexible tool that can be used in many ways. In order for the manual to achieve its goals, it is necessary to put constraints on the use of forester.}
+  \p{The Coln manual is written in [[forester]]. Forester is a very flexible tool that can be used in many ways. In order for the manual to achieve its goals, it is necessary to put constraints on the use of forester.}
 
   \subtree[0009]{
     \taxon{Constraint}
@@ -64,10 +64,10 @@
     \taxon{Constraint}
     \title{Lack of tree metadata}
 
-    \p{This manual is meant to be a single document with a single voice. Therefore, we do not put author metadata on individual trees, and all trees are considered to have been written by the geolog project. Moreover, we omit dates on non-reference trees; the manual as a whole should be considered as current, and out-of-date trees should be edited or deleted.}
+    \p{This manual is meant to be a single document with a single voice. Therefore, we do not put author metadata on individual trees, and all trees are considered to have been written by the Coln project. Moreover, we omit dates on non-reference trees; the manual as a whole should be considered as current, and out-of-date trees should be edited or deleted.}
   }
 
-  \p{More generally, the geolog manual should be thought of as more of a [[hyperbook]] than a [[zettelkasten]].}
+  \p{More generally, the Coln manual should be thought of as more of a [[hyperbook]] than a [[zettelkasten]].}
 }
 
 \transclude{000B}

@@ -1,16 +1,16 @@
-\title{Geolog as a database}
+\title{Coln as a database}
 
-\p{Geolog can work as a little proof assistant which is restricted to positive types, but the real point of this restriction is to enable a translation to the database world.}
+\p{Coln can work as a little proof assistant which is restricted to positive types, but the real point of this restriction is to enable a translation to the database world.}
 
 \p{One could look at this in two ways, depending on whether you think of the language or the database as “primary.”}
 
-\p{In one sense, because the database engine can be used to reason about models defined purely in geolog, the database engine is essentially a souped-up tactic (in the sense of Rocq or Lean) for enumerating the elements of types.}
+\p{In one sense, because the database engine can be used to reason about models defined purely in Coln, the database engine is essentially a souped-up tactic (in the sense of Rocq or Lean) for enumerating the elements of types.}
 
-\p{But not all models of geolog theories need to be defined in geolog itself. As we have seen, the automatically-produced TypeScript functions can be used to initialize and populate a model in an imperative style. For instance, when using geolog to do an egglog-style analysis of a C-like language, one would first write a parser and type checker in a normal programming language, and then issue mutations via the API to create a model that represented the IR of the program. Then geolog queries could be run against that IR to resolve questions about the behavior of the program.}
+\p{But not all models of Coln theories need to be defined in Coln itself. As we have seen, the automatically-produced TypeScript functions can be used to initialize and populate a model in an imperative style. For instance, when using Coln to do an egglog-style analysis of a C-like language, one would first write a parser and type checker in a normal programming language, and then issue mutations via the API to create a model that represented the IR of the program. Then Coln queries could be run against that IR to resolve questions about the behavior of the program.}
 
-\p{Thus, geolog is not a typical proof assistant; geolog is a tool that is meant to be integrated into a larger program that is not written in geolog.}
+\p{Thus, Coln is not a typical proof assistant; Coln is a tool that is meant to be integrated into a larger program that is not written in Coln.}
 
-\p{In order to give the programmer a mental model for how they can expect these commands to work, in this section of the manual we describe the translation from a theory in the [geolog language](000L) to a collection of tables.}
+\p{In order to give the programmer a mental model for how they can expect these commands to work, in this section of the manual we describe the translation from a theory in the [Coln language](000L) to a collection of tables.}
 
 \transclude{0021}
 

@@ -2,4 +2,4 @@
 \title{The programmer-user}
 \import{prelude}
 
-\p{The \defcase{programmer-user} is a reader who intends to incorporate geolog into a larger application. The programmer-user should be familiar with the language that they intend to use geolog from (currently, this is only TypeScript), and should be willing to learn a new language. We say “programmer-user” to distinguish this audience from the user of an application that the “programmer-user” creates; this user needs not read this manual.}
+\p{The \defcase{programmer-user} is a reader who intends to incorporate Coln into a larger application. The programmer-user should be familiar with the language that they intend to use Coln from (currently, this is only TypeScript), and should be willing to learn a new language. We say “programmer-user” to distinguish this audience from the user of an application that the “programmer-user” creates; this user needs not read this manual.}

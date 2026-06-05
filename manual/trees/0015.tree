@@ -5,4 +5,4 @@
 
 \p{Fields are intended for use in accessing a record. For instance \code{a .b} gets the \code{b} field from the record; \code{a.b} is also valid and parses the same.}
 
-\p{Tags are intended for use in creating elements of a sum type. For instance \code{'just 1} could be an element of the sum type \code{Maybe Int}. Currently geolog does not have either sum types or tags, however.}
+\p{Tags are intended for use in creating elements of a sum type. For instance \code{'just 1} could be an element of the sum type \code{Maybe Int}. Currently Coln does not have either sum types or tags, however.}
