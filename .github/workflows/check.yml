@@ -6,6 +6,10 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        check_name: ["rust-tests", "haskell-tests"]
+
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
@@ -21,7 +25,7 @@ jobs:
 
       - name: Run checks
         run: |
-          RUN_CHECKS=$(nix-build -A run-checks --no-out-link)
+          RUN_CHECKS=$(nix-build -A ${{ matrix.check_name }} --no-out-link)
           $RUN_CHECKS
           
 
