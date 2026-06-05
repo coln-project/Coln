@@ -22,7 +22,7 @@ rec {
     buildInputs = [
       diagnostician
       fnotation
-      coln-compiler
+      # coln-compiler
     ];
   };
 }
