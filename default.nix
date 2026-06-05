@@ -17,12 +17,8 @@ rec {
     inherit diagnostician fnotation;
   };
 
-  checks = pkgs.stdenv.mkDerivation {
-    name = "checks";
-    buildInputs = [
-      diagnostician
-      fnotation
-      # coln-compiler
-    ];
-  };
+  run-checks = pkgs.writeScript "run-checks" ''
+    echo "built diagnostician: ${diagnostician}"
+    echo "built fnotation: ${fnotation}"
+  '';
 }

@@ -21,6 +21,7 @@ jobs:
 
       - name: Run checks
         run: |
-          nix-build -A checks
+          RUN_CHECKS=$(nix-build -A run-checks --no-out-link)
+          $RUN_CHECKS
           
 
