@@ -16,9 +16,14 @@ rec {
   coln-compiler = colnHaskellPackages.callPackage ./packages/coln-compiler {
     inherit diagnostician fnotation;
   };
+  coln-manual-dev = colnHaskellPackages.callPackage ./packages/coln-manual-dev {};
 
-  run-checks = pkgs.writeScript "run-checks" ''
+  haskell-tests = pkgs.writeScript "haskell-tests" ''
     echo "built diagnostician: ${diagnostician}"
     echo "built fnotation: ${fnotation}"
+  '';
+
+  rust-tests = pkgs.writeScript "rust-tests" ''
+    ${pkgs.cargo}/bin/cargo test
   '';
 }

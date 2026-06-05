@@ -2,7 +2,7 @@
 
 let
   coln = import ./. { inherit system; };
-  inherit (coln) pkgs forester;
+  inherit (coln) pkgs forester coln-manual-dev;
 in
 pkgs.mkShell {
   name = "coln";
@@ -10,6 +10,7 @@ pkgs.mkShell {
   buildInputs = with pkgs; [
     cabal-install
     cabal2nix
+    coln-manual-dev
     forester
     fourmolu
     haskell.compiler.ghc912

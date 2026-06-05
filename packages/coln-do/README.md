@@ -1,10 +1,6 @@
 # Coln Automation
 
-This is the one-stop shop for *all* automation within the coln project. This means that we should not have random bash scripts!
-
-And yes, that means even for the automation over Rust, that should *still* go in `coln-do`. You can write Shake (Make as a Haskell DSL) rules even if you don't know any Haskell, following the [Shake manual](https://shakebuild.com/manual).
-
-It is not a bug that contributors who are only writing in Rust also have to install GHC and learn a little Haskell; it is a feature!
+At one point, the idea was to have all automation for the coln project go through this. However, it is much faster in CI to have dependencies cached through nix, and thus in order to avoid duplication we are going to do automation through nix instead.
 
 ## How to run
 
