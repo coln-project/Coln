@@ -4,12 +4,12 @@ This file provides guidance to coding agents collaborating on this repository.
 
 ## Mission
 
-Coln Engine is an experimental Rust workspace for the storage and execution engine.
+Coln Store is an experimental Rust workspace for the storage engine.
 
 Priorities, in order:
 
 1. Correct storage, validation, and transaction semantics.
-2. Clear boundaries between IR, store, solver, execution, persistence, and REPL code.
+2. Clear boundaries between IR, store, solver, persistence, and REPL code.
 3. Accurate persistence and reload behaviour.
 4. Performance and scalability.
 5. Clear, maintainable, idiomatic Rust code.
@@ -42,10 +42,10 @@ Quick examples:
 ## Repository Layout
 
 - `Cargo.toml`: workspace definition.
-- `crates/coln-lang-rs/`: Coln IR crate.
+- `packages/coln-lang-rs/`: Coln IR crate.
   - `src/ir/mod.rs`: schema, table, law, proposition, term, and literal IR types.
   - `src/ir/path.rs`: path parsing, display, and conversion helpers.
-- `crates/coln-engine/`: engine crate and binary.
+- `packages/coln-store/`: storage crate and binary.
   - `src/lib.rs`: crate exports.
   - `src/main.rs`: REPL entry point.
   - `src/table.rs`: column storage, row ids, cell values, and table validation.
@@ -61,7 +61,7 @@ Quick examples:
 
 ## Architecture Constraints
 
-- Treat `coln-lang-rs` as the source of shared IR definitions. Do not duplicate IR shape in `coln-engine` unless conversion boundaries require it.
+- Treat `coln-lang-rs` as the source of shared IR definitions. Do not duplicate IR shape in `coln-store` unless conversion boundaries require it.
 - `Store` owns table registration, table lookup, compiled laws, and a commit graph which is the columnar encoded operations.
 - `Table` is the materialised view of what each table should contain, after playing the commits. It also has schema-level validation for inserted values.
 - Store mutation should flow through explicit operations such as `Op` and transaction helpers.
@@ -92,7 +92,7 @@ For performance-sensitive changes:
 
 Use this sequence for your first change:
 
-1. Read `crates/coln-engine/src/lib.rs`, `crates/coln-lang-rs/src/lib.rs`, and the relevant module files.
+1. Read `packages/coln-store/src/lib.rs`, `packages/coln-lang-rs/src/lib.rs`, and the relevant module files.
 2. Implement the smallest possible code change.
 3. Add or update tests that fail before and pass after.
 4. Run `cargo test --workspace --all-targets`.
@@ -112,9 +112,9 @@ Example scopes that are good first tasks:
 
 - No semantics-changing logic update is complete without tests.
 - Unit tests go in `#[cfg(test)] mod tests` within each module when the behavior is local to that module.
-- Integration tests for `coln-engine` go in `crates/coln-engine/tests/`.
-- Fixture data for those tests goes in `crates/coln-engine/tests/data/`.
-- Runnable examples belong in `crates/coln-engine/examples/` when they clarify supported behavior.
+- Integration tests for `coln-store` go in `packages/coln-store/tests/`.
+- Fixture data for those tests goes in `packages/coln-store/tests/data/`.
+- Runnable examples belong in `packages/coln-store/examples/` when they clarify supported behavior.
 - Do not merge code that breaks existing tests.
 
 Minimal unit-test checklist for store-related behavior:
@@ -130,7 +130,7 @@ Before coding:
 
 1. Impact on storage semantics, law validation, persistence, or REPL behavior.
 2. Affected tests and fixture data.
-3. API stability for exported `coln-engine` and `coln-lang-rs` types.
+3. API stability for exported `coln-store` and `coln-lang-rs` types.
 4. Documentation accuracy for implemented features.
 
 Before submitting:
@@ -168,7 +168,7 @@ Use this review format:
 - If repository conventions contradict this file, follow existing code and update this file when appropriate.
 - When uncertain about correctness, add or extend tests first, then optimize.
 - Keep REPL presentation logic separate from store, solver, and persistence behavior.
-- Keep user-facing naming consistent with the repository name: `coln-engine`.
+- Keep user-facing naming consistent with the repository name: `coln-store`.
 - If you change supported REPL commands or persisted formats, update `README.md` and relevant examples in the same change.
 
 ## Commit and PR Hygiene

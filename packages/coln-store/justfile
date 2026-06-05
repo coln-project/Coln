@@ -38,4 +38,4 @@ coverage:
     cargo llvm-cov --workspace --cobertura --output-path cobertura.xml
 
 run:
-    cargo run -p coln-engine
+    cargo run -p coln-store

@@ -1,7 +1,7 @@
 # Commit Layer
 
 This note explains the current commit layer implementation. It is intended for
-contributors working on `crates/coln-engine/src/commit`, not for external users of
+contributors working on `packages/coln-store/src/commit`, not for external users of
 the REPL or store API.
 
 ## Commit Graph

@@ -1,16 +1,14 @@
-# Coln Engine
+# Coln Store
 
-Coln Engine is envisioned to be the storage and execution engine for Coln.
-Roughly it ought to support:
+Coln Store is the storage engine for Coln. Roughly it ought to support:
 
 1. Efficient storage and query of data
 2. Native version control
 3. Concurrency at scale
 4. Conflict resolution where appropriate
-5. Execution support for Coln theories
 
-This repo as is now is mainly a store engine that allows you to give it a compiled
-Coln theory, load it, and then add data to its tables.
+This repo lets you give the store a compiled Coln theory, load it, and then add
+data to its tables.
 
 Example of loading a schema and inserting several related rows. Type `/help`
 for the full command list (for example `load-schema`, `add`, `dump-table`,
@@ -29,12 +27,12 @@ The snippet below loads the `paths` theory, creates two graphs (`g0`, `g1`),
 records `g1` as the designated graph for the `G0` and `G1` indices, adds two
 vertices on `g0`, and adds one edge between them on `g0`.
 
-After `commit`, inspect what landed with `dump-table <table>;` — for example
-`dump-table Graphs;`, `dump-table G.V;`, or `dump-table G.E;` — or print the
+After `commit`, inspect what landed with `dump-table <table>;`. For example,
+`dump-table Graphs;`, `dump-table G.V;`, or `dump-table G.E;`, or print the
 entire store with `dump-store;`.
 
 ```text
-coln-engine> load-schema tests/data/paths.json;
+coln-store> load-schema tests/data/paths.json;
 begin transact;
   g0 = add Graphs values ();
   g1 = add Graphs values ();
@@ -58,7 +56,7 @@ to `i1 = add G0 values (g0)` so that we do not have a morphism between G0 and G1
 
 ## Commits
 
-Commit (commit/mod.rs) is a central data structure to Coln Engine. It is conceptually
+Commit (`commit/mod.rs`) is a central data structure to Coln Store. It is conceptually
 analogous to git commits. Each transaction (as above) will be mapped to a commit
 which is internally stored as a node in the commit graph, which is a DAG. A commit
 consists of metadata such as the time it was created and any commit messages associated
