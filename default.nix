@@ -22,8 +22,4 @@ rec {
     echo "built diagnostician: ${diagnostician}"
     echo "built fnotation: ${fnotation}"
   '';
-
-  rust-tests = pkgs.writeScript "rust-tests" ''
-    ${pkgs.cargo}/bin/cargo test
-  '';
 }

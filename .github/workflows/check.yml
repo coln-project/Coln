@@ -3,12 +3,20 @@ on: [push, pull_request]
 name: Check
 
 jobs:
-  check:
+  rust-tests:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ⬇️
+        uses: actions/checkout@v6
 
-    strategy:
-      matrix:
-        check_name: ["rust-tests", "haskell-tests"]
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Run tests
+        run: cargo test
+
+  haskell-tests:
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout ⬇️
@@ -25,7 +33,7 @@ jobs:
 
       - name: Run checks
         run: |
-          RUN_CHECKS=$(nix-build -A ${{ matrix.check_name }} --no-out-link)
+          RUN_CHECKS=$(nix-build -A haskell-tests --no-out-link)
           $RUN_CHECKS
           
 
