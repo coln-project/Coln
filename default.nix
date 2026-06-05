@@ -22,4 +22,18 @@ rec {
     echo "built diagnostician: ${diagnostician}"
     echo "built fnotation: ${fnotation}"
   '';
+
+  manual = pkgs.stdenv.mkDerivation {
+    name = "coln-manual";
+
+    src = ./manual;
+
+    buildPhase = ''
+      ${forester}/bin/forester build
+    '';
+
+    installPhase = ''
+      cp -r output $out
+    '';
+  };
 }
