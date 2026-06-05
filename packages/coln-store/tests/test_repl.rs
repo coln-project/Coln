@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use coln_engine::{
+use coln_store::{
     ir::{FlatTheory, Path},
     repl::{
         exe::run_transact,

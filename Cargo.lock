@@ -99,7 +99,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "coln-engine"
+name = "coln-lang-rs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "coln-store"
 version = "0.1.0"
 dependencies = [
  "blake3",
@@ -114,14 +122,6 @@ dependencies = [
  "shlex",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "coln-lang-rs"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]
