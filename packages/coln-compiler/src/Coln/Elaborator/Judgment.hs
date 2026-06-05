@@ -24,12 +24,19 @@ data Judgment c where
 useIs :: (V.HasEvaluation c, Functor f) => (ElabEnv N -> f (M.El N)) -> ElabEnv c -> f (M.El c)
 useIs @c f e = fmap change $ f e { target = TargetAnonymous }
   where
-    change = case (V.scase @c) of
+    change = case V.scase @c of
       SNominative -> id
       SDescriptive -> M.is
 
 elimSyn :: (V.HasEvaluation c) => Span -> (ElabEnv N -> IO (V.Ty N, M.El N)) -> Judgment c
 elimSyn sp = Syn sp . coerce . useIs . (coerce `asTypeOf` (Compose .))
+
+descSyn :: (V.HasEvaluation c) => DDoc -> Span -> (ElabEnv D -> IO (V.Ty N, M.El D)) -> Judgment c
+descSyn @c nd sp f = Syn sp $ case V.scase @c of
+  SNominative -> \e -> do
+    let msg = "cannot use an unnamed" <+> nd
+    failWith e.diagEnv sp RequiresName msg
+  SDescriptive -> f
 
 typ :: Judgment N -> ElabEnv N -> IO (M.Ty N)
 typ (Typ _ f) e = f e
@@ -46,7 +53,7 @@ typ (Chk _ _ f) e = do
 
 syn :: (V.HasEvaluation c) => DDoc -> Judgment c -> ElabEnv c -> IO (V.Ty N, M.El c)
 syn @c _ (Typ sp f) e = do
-  raw <- f e
+  raw <- f (e { target = TargetAnonymous })
   case universeFor (levelOf raw) of
     Nothing -> do
       let msg = "type" <+> prtIn e raw <+> "too large to fit in a universe"
@@ -55,7 +62,7 @@ syn @c _ (Typ sp f) e = do
       SNominative -> pure $ (V.U u, M.code raw)
       SDescriptive -> pure $ (V.U u, M.is $ M.code raw)
 syn _ (Syn _ f) e = f e
-syn use (Chk nd sp f) e = do
+syn use (Chk nd sp _) e = do
   let msg = "Type annotation required when using a" <+> nd <+> "as" <+> use
   failWith e.diagEnv sp AnnotationRequired msg
 
@@ -80,6 +87,6 @@ chk (Syn sp f) e ty = do
     Right _ -> pure el
     Left err -> do
       let msg = "expected type" <+> prtIn e.scope ty <> ", but got type" <+> prtIn e.scope ty'
-      let note = Just $ pretty err
+      let note = Just $ dpretty err
       failWithNote e.diagEnv sp TypeMismatch msg note
 chk (Chk _ _ f) e ty = f e ty

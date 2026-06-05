@@ -78,4 +78,3 @@ addGlobalEntry n e (Globals es o) = Globals (Map.insert n e es) (o :> n)
 
 instance Lookup Globals Name GlobalEntry where
   lookup gs x = Map.lookup x gs.entries
-

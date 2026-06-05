@@ -8,6 +8,7 @@ import Prettyprinter ((<+>))
 
 import Coln.Common
 import Coln.Core.Params
+import Coln.Core.Print (prtIn)
 import Coln.Core.Value qualified as V
 import Coln.Core.Value qualified as BN (BareNeutral(..))
 
@@ -29,6 +30,11 @@ throwUnequalEls cs v v' e =
 throwUnequalNeus :: CtxShape -> V.BareNeutral -> V.BareNeutral -> Maybe DDoc -> DefEqM ()
 throwUnequalNeus cs v v' e =
   Left (UnequalNeus cs v v' e)
+
+instance DPretty DefEqCheckError where
+  dpretty (UnequalTys cs a a' reason) = "types" <+> prtIn cs a <+> "and" <+> prtIn cs a' <+> "are not equal" <+> maybe "" ("because" <+>) reason
+  dpretty (UnequalEls cs a a' reason) = "values" <+> prtIn cs a <+> "and" <+> prtIn cs a' <+> "are not equal" <+> maybe "" ("because" <+>) reason
+  dpretty (UnequalNeus cs a a' reason) = prtIn cs a <+> "and" <+> prtIn cs a' <+> "are not equal" <+> maybe "" ("because" <+>) reason
 
 class DefEq a where
   defEq :: CtxShape -> a -> a -> DefEqM ()

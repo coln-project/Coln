@@ -24,6 +24,9 @@ instance Readback V.Spine (S.El N -> S.El N) where
     V.App sp v -> \t -> S.App (readb n sp t) (readb n v)
     V.Proj sp x -> \t -> S.Proj (readb n sp t) x
 
+instance Readback V.BareNeutral (S.El N) where
+  readb n ne = readb n ne.spine $ readb n ne.head
+
 instance Readback (V.Description V.El) (S.El D) where
   readb n = \case
     V.Describe v -> readb n v
