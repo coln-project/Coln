@@ -14,5 +14,5 @@ import Coln.Elaborator.Diagnostics
 import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
 
-formation :: Span -> Universe -> Judgment c
-formation sp u = Typ sp \_ -> pure $ univ u
+formation :: Universe -> Typ N
+formation u = Typ \_ -> pure $ univ u

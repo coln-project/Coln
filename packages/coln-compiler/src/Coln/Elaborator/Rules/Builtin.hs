@@ -6,11 +6,11 @@ import Coln.Core.Memoed
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Judgment
 
-formation :: Span -> BuiltinTy -> Judgment c
-formation sp bt = Typ sp $ \_ -> do
+formation :: BuiltinTy -> Typ N
+formation bt = Typ $ \_ -> do
   pure $ builtinTy bt
 
-intro :: (V.HasEvaluation c) => Span -> Literal -> Judgment c
-intro sp l = elimSyn sp $ \_ -> case l of
+intro :: Literal -> Syn N
+intro l = Syn $ \_ -> case l of
   LitInt _ -> pure (V.BuiltinTy BuiltinInt, lit l)
   LitString _ -> pure (V.BuiltinTy BuiltinString, lit l)

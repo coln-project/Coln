@@ -34,6 +34,7 @@ class Core el ty | el -> ty, ty -> el where
   record :: V.Locals -> S.RecordType ty -> ty D
   equality :: S.EqualityType el ty -> ty N
   builtinTy :: BuiltinTy -> ty N
+  isTy :: ty N -> ty D
 
 instance Core El Ty where
   localVar i v = M (S.LocalVar i) v
@@ -65,6 +66,7 @@ instance Core El Ty where
     (S.Eq $ S.EqualityType eq.at.stx eq.lhs.stx eq.rhs.stx)
     (V.Eq $ V.EqualityType eq.at.val eq.lhs.val eq.rhs.val)
   builtinTy bt = M (S.BuiltinTy bt) (V.BuiltinTy bt)
+  isTy a = M (S.IsTy a.stx) (V.Become a.val)
 
 fromVTy :: (V.HasEvaluation c) => Int -> V.Ty c -> Ty c
 fromVTy n v = M (readb n v) (V.epure v)

@@ -9,7 +9,7 @@ import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Syntax
 import Coln.Core.Readback
-import Coln.Notation
+import Coln.Frontend.Notation
 
 -- Pretty printing
 --------------------------------------------------------------------------------
@@ -74,6 +74,7 @@ instance ToNotation (Ty e) where
       (N.Keyword "=" ())
       (toNotation xs eq.rhs)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
+    IsTy a -> toNotation xs a
 
 class DPrettyWithNames a where
   dprettyWithNames :: Names -> a -> DDoc

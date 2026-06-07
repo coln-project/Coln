@@ -15,10 +15,10 @@ import Coln.Report
 
 import Prettyprinter ((<+>))
 
-formation :: Span -> Judgment N -> Judgment N -> Judgment c
-formation sp lhs rhs = Typ sp $ \e -> do
-  (lty, elhs) <- syn "equated value" lhs e
-  (rty, erhs) <- syn "equated value" rhs e
+formation :: Span -> Syn N -> Syn N -> Typ N
+formation sp lhs rhs = Typ \e -> do
+  (lty, elhs) <- lhs.elab e
+  (rty, erhs) <- rhs.elab e
   case defEq (shape e) lty rty of
     Left err -> do
       let msg = "types" <+> prtIn e lty <+> "and" <+> prtIn e rty <+> "of compared terms differ"

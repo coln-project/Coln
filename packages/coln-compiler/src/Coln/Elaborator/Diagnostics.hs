@@ -7,21 +7,6 @@ import FNotation (LexerCode, ParserCode, lexerCodeTable, parserCodeTable)
 import Coln.Common
 import Coln.Report
 
-data ReparseCode
-  = UnexpectedNotation
-  | UnexpectedTuple
-  | UnexpectedLambda
-  | UnexpectedField
-  deriving (Eq, Ord)
-
-reparseCodeTable :: Map ReparseCode CodeMeta
-reparseCodeTable = Map.fromList
-  [ (UnexpectedNotation, CodeMeta 0 SError Nothing)
-  , (UnexpectedTuple, CodeMeta 1 SError Nothing)
-  , (UnexpectedLambda, CodeMeta 2 SError Nothing)
-  , (UnexpectedField, CodeMeta 3 SError Nothing)
-  ]
-
 data ElaboratorCode
   = TypeMismatch
   | RequiresName
@@ -58,23 +43,3 @@ elaboratorCodeTable = Map.fromList
   , (MismatchedRecordField, CodeMeta 13 SError Nothing)
   , (VariableNotInScope, CodeMeta 14 SError Nothing)
   ]
-
-data ColnCode
-  = LexerCode LexerCode
-  | ParserCode ParserCode
-  | ReparseCode ReparseCode
-  | ElaboratorCode ElaboratorCode
-  deriving (Eq, Ord)
-
-colnCodeTable :: Map ColnCode CodeMeta
-colnCodeTable = mconcat
-  [ promoteCodeTable lexerCodeTable LexerCode 0
-  , promoteCodeTable parserCodeTable ParserCode 100
-  , promoteCodeTable reparseCodeTable ReparseCode 200
-  , promoteCodeTable elaboratorCodeTable ElaboratorCode 300
-  ]
-
-instance Code ColnCode where
-  codeMeta c = case Map.lookup c colnCodeTable of
-    Just m -> m
-    Nothing -> error "unregistered code"

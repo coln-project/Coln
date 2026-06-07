@@ -14,8 +14,8 @@ import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
 import Coln.Report
 
-find :: (V.HasEvaluation c) => Span -> Name -> Judgment c
-find sp x = elimSyn sp $ \e ->
+find :: Span -> Name -> Syn N
+find sp x = Syn \e ->
   case lookup e.scope x of
     Just (i, v, ty) -> pure (ty, localVar i v)
     Nothing -> case lookup e.globals x of

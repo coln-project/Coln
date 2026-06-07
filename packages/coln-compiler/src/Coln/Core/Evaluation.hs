@@ -74,3 +74,6 @@ instance Compile S.Ty V.Ty where
     S.Record rt -> V.Describe . V.Record . compileRecordType rt
     S.Eq eq -> V.Eq . compileEqualityType eq
     S.BuiltinTy bt -> \_ -> V.BuiltinTy bt
+    S.IsTy a -> do
+      let k = compile a
+      \vs -> V.Become (k vs)

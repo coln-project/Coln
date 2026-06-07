@@ -18,38 +18,35 @@ import Coln.Report
 
 data FieldDeclaration = FieldDeclaration
   { name :: Name
-  , typ :: Judgment N
+  , typ :: Typ N
   }
 
-formation :: (V.HasEvaluation c) => Span -> [FieldDeclaration] -> Judgment c
-formation sp fieldTyps = descSyn "record type" sp $ \e -> do
+formation :: [FieldDeclaration] -> Typ D
+formation fieldTyps = Typ $ \e -> do
   let go _ [] = pure (Set, [])
-      go e' ((FieldDeclaration x ty_j):rest) = do
-        ty <- typ ty_j e'
+      go e' ((FieldDeclaration x typ):rest) = do
+        ty <- typ.elab e'
         (l, fieldTys) <- go (e' { scope = bind x ty.val e'.scope }) rest
         pure (maxLevel l (levelOf ty), (x, ty) : fieldTys)
   (l, fields) <- go (e { target = TargetAnonymous }) fieldTyps
   let rt = S.RecordType l (fromList fields)
-  let u = case universeFor l of
-        Nothing -> panic "record field too large"
-        Just u' -> u'
-  pure (V.U $ u, code $ record e.scope.locals rt)
+  pure $ record e.scope.locals rt
 
 data FieldSetting c = FieldSetting
   { name :: Name
-  , setting :: Judgment c
+  , body :: Chk c
   , span :: Span
   }
 
-intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Judgment c
-intro @c sp fieldSettings = Chk "record expression" sp $ \e a -> do
+intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Chk c
+intro @c sp fieldSettings = Chk \e a -> do
   let go :: V.Locals -> [(FieldSetting c, (Name, V.Locals -> V.Ty N))] -> IO [(Name, El c)]
       go _ [] = pure []
       go vs ((fs, (x, fieldTyC)):rest)
         | fs.name == x = do
             let fieldTy = fieldTyC vs
             let target' = projTarget e.target x
-            m <- chk fs.setting (e { target = target' }) fieldTy
+            m <- fs.body.elab (e { target = target' }) fieldTy
             let v = reflectTarget target' fieldTy m.val
             fields <- go (V.LSnoc vs v) rest
             pure ((x,m):fields)
@@ -69,9 +66,9 @@ intro @c sp fieldSettings = Chk "record expression" sp $ \e a -> do
       let msg = "tried to check a record expression at a non-record type"
       failWith e.diagEnv sp CheckRecordAtNonRecordType msg
 
-elim :: (V.HasEvaluation c) => Span -> Judgment N -> Name -> Judgment c
-elim sp projectee x = elimSyn sp $ \e -> do
-  (ty, eprojectee) <- syn "head of a field projection" projectee e
+elim :: Span -> Syn N -> Name -> Syn N
+elim sp projectee x = Syn \e -> do
+  (ty, eprojectee) <- projectee.elab e
   case V.behavior ty of
     V.LikeRecord rt -> do
       unless (contains rt.fieldTypes x) $ do

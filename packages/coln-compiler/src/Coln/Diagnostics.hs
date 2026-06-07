@@ -4,11 +4,13 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Diagnostician
 import FNotation
-import Coln.Elaborator (ElaboratorCode, elaboratorCodeTable)
+import Coln.Elaborator.Diagnostics
+import Coln.Frontend.Diagnostics
 
 data ColnCode
   = LexerCode LexerCode
   | ParserCode ParserCode
+  | FrontendCode FrontendCode
   | ElaboratorCode ElaboratorCode
   deriving (Eq, Ord)
 
@@ -17,7 +19,8 @@ colnCodeTable =
   mconcat
     [ promoteCodeTable lexerCodeTable LexerCode 0
     , promoteCodeTable parserCodeTable ParserCode 100
-    , promoteCodeTable elaboratorCodeTable ElaboratorCode 200
+    , promoteCodeTable frontendCodeTable FrontendCode 200
+    , promoteCodeTable elaboratorCodeTable ElaboratorCode 300
     ]
 
 instance Code ColnCode where

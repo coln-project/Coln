@@ -49,6 +49,7 @@ data Ty :: Case -> Type where
   Record :: RecordType Ty -> Ty D
   Eq :: EqualityType El Ty -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
+  IsTy :: Ty N -> Ty D
 
 data TypeBehavior
   = LikeU Universe

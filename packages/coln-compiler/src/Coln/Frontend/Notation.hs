@@ -1,4 +1,4 @@
-module Coln.Notation where
+module Coln.Frontend.Notation where
 
 import FNotation
 import FNotation.Kinds as K
