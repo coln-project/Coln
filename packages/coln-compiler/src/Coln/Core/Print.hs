@@ -43,7 +43,7 @@ instance ToNotation (El e) where
     Cons d ->
       N.Tuple [field y t | (y, t) <- toList d] ()
      where
-      field y t = N.Infix (N.Ident y ()) (N.Keyword ":" ()) (toNotation xs t)
+      field y t = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
@@ -76,6 +76,14 @@ instance ToNotation (Ty e) where
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
     IsTy a -> toNotation xs a
 
+instance ToNotation TypeBehavior where
+  toNotation xs = \case
+    LikeU u -> toNotation xs (U u)
+    LikeFunction ft -> toNotation xs (Function ft)
+    LikeRecord rt -> toNotation xs (Record rt)
+    LikeBuiltinTy bt -> toNotation xs (BuiltinTy bt)
+    NoRules -> N.Keyword "NoRules" ()
+
 class DPrettyWithNames a where
   dprettyWithNames :: Names -> a -> DDoc
 
@@ -86,6 +94,9 @@ instance DPrettyWithNames (El e) where
   dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
 
 instance DPrettyWithNames (Ty e) where
+  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
+  
+instance DPrettyWithNames TypeBehavior where
   dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
 
 class HasShape a where

@@ -1,11 +1,12 @@
-module Coln.Elaborator.Diagnostics where
+module Coln.Elaborator.Diagnostics
+  ( ElaboratorCode (..)
+  , elaboratorCodeTable
+  ) where
 
 import Data.Map qualified as Map
 import Diagnostician
-import FNotation (LexerCode, ParserCode, lexerCodeTable, parserCodeTable)
 
 import Coln.Common
-import Coln.Report
 
 data ElaboratorCode
   = TypeMismatch
@@ -23,6 +24,7 @@ data ElaboratorCode
   | CheckRecordAtNonRecordType
   | MismatchedRecordField
   | VariableNotInScope
+  | DebugMisc
   deriving (Eq, Ord)
 
 elaboratorCodeTable :: Map ElaboratorCode CodeMeta
@@ -42,4 +44,5 @@ elaboratorCodeTable = Map.fromList
   , (CheckRecordAtNonRecordType, CodeMeta 12 SError Nothing)
   , (MismatchedRecordField, CodeMeta 13 SError Nothing)
   , (VariableNotInScope, CodeMeta 14 SError Nothing)
+  , (DebugMisc, CodeMeta 15 SDebug Nothing)
   ]

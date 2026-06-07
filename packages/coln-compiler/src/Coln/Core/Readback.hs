@@ -86,3 +86,11 @@ instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
     V.Record r -> S.Record $ readb n r
     V.Eq eq -> S.Eq $ readb n eq
     V.BuiltinTy b -> S.BuiltinTy b
+
+instance Readback V.TypeBehavior S.TypeBehavior where
+  readb n = \case
+    V.LikeU u -> S.LikeU u
+    V.LikeRecord rt -> S.LikeRecord $ readb n rt
+    V.LikeFunction ft -> S.LikeFunction $ readb n ft
+    V.LikeBuiltinTy bt -> S.LikeBuiltinTy bt
+    V.NoRules -> S.NoRules

@@ -14,12 +14,12 @@ import Coln.Core.Evaluation
 import Coln.Elaborator.Diagnostics
 import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
+import Coln.Elaborator.Debug
 import Coln.Report
 
-data FieldDeclaration = FieldDeclaration
-  { name :: Name
-  , typ :: Typ N
-  }
+data FieldDeclaration
+  = FieldDeclaration { name :: Name , typ :: Typ N }
+  | FieldDeclarationDebug DebugCommand
 
 formation :: [FieldDeclaration] -> Typ D
 formation fieldTyps = Typ $ \e -> do
@@ -28,6 +28,9 @@ formation fieldTyps = Typ $ \e -> do
         ty <- typ.elab e'
         (l, fieldTys) <- go (e' { scope = bind x ty.val e'.scope }) rest
         pure (maxLevel l (levelOf ty), (x, ty) : fieldTys)
+      go e' ((FieldDeclarationDebug ds):rest) = do
+        runDebug e' ds
+        go e' rest
   (l, fields) <- go (e { target = TargetAnonymous }) fieldTyps
   let rt = S.RecordType l (fromList fields)
   pure $ record e.scope.locals rt

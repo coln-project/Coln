@@ -1,19 +1,19 @@
 -- elaborated
-potential entry named A
+global entry named A
 type:  Theory
 value:  sig
 end
-potential entry named B
+global entry named B
 type:  Theory
 value:  sig
 end
-kinetic entry named a
-type: A
-value: []
+global entry named a
+type:  A
+value:  []
 
 -- messages
 
-error[E0200]: synthesized A while expecting B
+error[E0300]: expected type B, but got type A
 10 | def b : B := a
 10 |              ^
-mismatching elements B and A
+B and A are not equal 

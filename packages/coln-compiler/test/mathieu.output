@@ -55,7 +55,7 @@ error[E0102]: Incompatible precedences
 48 |   ax/act_mul : (q : Quad) -> (r : Quad) -> p : Point -> act (mul q r) p = act q (act r p)
 48 |                                              ^
 
-error[E0208]: unexpected notation for term in synthesizing position: Infix
+error[E0200]: unexpected notation for expression: Infix
 29 |     (a = b) \/ (b = c) \/ (a = c) \/ (a = d) \/ (b = d) \/ (c = d) \/ (
 29 |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 30 |       (q0 (make_quad a b c d) = a) /\ 

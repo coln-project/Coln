@@ -11,6 +11,7 @@ data FrontendCode
   | UnexpectedLambda
   | UnexpectedField
   | UnexpectedDescriptive
+  | UnknownCommand
   deriving (Eq, Ord)
 
 frontendCodeTable :: Map FrontendCode CodeMeta
@@ -20,5 +21,6 @@ frontendCodeTable = Map.fromList
   , (UnexpectedLambda, CodeMeta 2 SError Nothing)
   , (UnexpectedField, CodeMeta 3 SError Nothing)
   , (UnexpectedDescriptive, CodeMeta 4 SError Nothing)
+  , (UnknownCommand, CodeMeta 5 SError Nothing)
   ]
 

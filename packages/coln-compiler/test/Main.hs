@@ -4,16 +4,16 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
-import Data.Vector qualified as V
 import Diagnostician
 import FNotation
 import Coln.Common
-import Coln.Core
-import Coln.CoreOperations (CtxShape (..), prtVal)
+import Coln.Core.Params
+import Coln.Core.Syntax
+import Coln.Core.Print
 import Coln.Diagnostics
-import Coln.Elaborator (elabTop)
-import Coln.Notation
-import Coln.Pretty
+import Coln.Report
+import Coln.Frontend.Driver
+import Coln.Frontend.Notation
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath (replaceExtension, takeBaseName)
@@ -29,20 +29,14 @@ main = defaultMain =<< goldenTests
 render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
-prettyDecls :: GlobalEnv -> DDoc
-prettyDecls ge = vsep $ go (globalEntries ge)
+prettyDecls :: Globals -> DDoc
+prettyDecls ge = vsep $ go (toList ge)
  where
   go [] = []
-  go ((x, PEntry t _ a) : ds) =
-    [ "potential entry named" <+> dpretty x
-    , "type: " <+> prtVal (CtxShape 0 BwdNil) a
+  go ((x, GlobalEntry t _ a) : ds) =
+    [ "global entry named" <+> dpretty x
+    , "type: " <+> prtIn (CtxShape 0 BwdNil) a
     , "value: " <+> dprettyWithNames mempty t
-    ]
-      ++ go ds
-  go ((x, KEntry t _ a) : ds) =
-    [ "kinetic entry named" <+> dpretty x
-    , "type:" <+> prtVal (CtxShape 0 BwdNil) a
-    , "value:" <+> dprettyWithNames mempty t
     ]
       ++ go ds
 
@@ -54,7 +48,7 @@ elaborate fp = do
     let r = fileReporter h
     ts <- lex lexConfig (contramap LexerCode r) f
     ns <- parse parseConfig (contramap ParserCode r) f ts
-    ge <- elabTop (contramap ElaboratorCode r) f ns
+    ge <- top (DiagnosticEnv r f) ns
     hFlush h
     hClose h
     msgs <- T.readFile path

@@ -51,7 +51,7 @@ intoTyp sp (FromSyn s) = Typ $ \e -> do
   case V.behavior ty of
     V.LikeU _ -> pure $ M.decode el
     _ -> do
-      let msg = "tried to use an ordinary value as a type"
+      let msg = "tried to use a value of type" <+> prtIn e ty <+> "as a type"
       failWith e.diagEnv sp TypeMismatch msg
 intoTyp _ (FromChk _ c) = Typ $ \e -> do
   el <- c.elab e $ V.U TheoryU

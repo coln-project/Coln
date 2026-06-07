@@ -1,6 +1,7 @@
 {-# LANGUAGE TypeAbstractions #-}
 module Coln.Frontend.Driver where
 
+import Control.Exception (try)
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -13,7 +14,7 @@ import Coln.Core.Memoed qualified as M
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Diagnostics
-import Coln.Elaborator.Diagnostics
+import Coln.Elaborator.Debug
 import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
 import Coln.Elaborator.Rules.Builtin qualified as Builtin
@@ -34,12 +35,13 @@ top e = foldlM (decl' e) S.emptyGlobals
 
 decl' :: ParseEnv -> S.Globals -> Ntn -> IO S.Globals
 decl' e g n = do
-  (name, entry) <- decl e g n
-  pure $ S.addGlobalEntry name entry g
+  try (decl e g n) >>= \case
+    Right (name, entry) -> pure $ S.addGlobalEntry name entry g
+    Left (_ :: FailException) -> pure g
 
 decl :: ParseEnv -> S.Globals -> Ntn -> IO (Name, S.GlobalEntry)
--- decl e g (N.Decl "theory" n sp) = idef e g (V.U TheoryU) n
--- decl e g (N.Decl "set" n sp) = idef e g (V.U SetU) n
+decl e g (N.Decl "theory" n _) = idef e g (M.univ TheoryU) n
+decl e g (N.Decl "set" n _) = idef e g (M.univ SetU) n
 decl e g (N.Decl "def" n _) = def e g n
 decl e _ n = unexpectedNotation e n "top-level declaration"
 
@@ -51,9 +53,23 @@ annot :: ParseEnv -> Ntn -> IO (Ntn, Ntn)
 annot _ (N.Infix n0 (N.Keyword ":" _) n1) = pure (n0, n1)
 annot e n = unexpectedNotation e n "type-annotated expression, e.g. `<pattern> : <type>`"
 
+debugCommand :: ParseEnv -> Span -> Name -> Ntn -> IO DebugCommand
+debugCommand e _ "showtype" n = do
+  s <- syn e "argument to showtype" n
+  pure $ ShowType (N.span n) s
+debugCommand e _ "showtypeb" n = do
+  s <- syn e "argument to showtype" n
+  pure $ ShowTypeBehavior (N.span n) s
+debugCommand e _ "expand" n = do
+  s <- syn e "argument to expand" n
+  pure $ Expand (N.span n) s
+debugCommand e sp x _ = unknownCommand e sp x
+
 fieldDecl :: ParseEnv -> Ntn -> IO Record.FieldDeclaration
-fieldDecl e (N.Infix (N.Ident x _) (N.Keyword ":" _) n) = 
-  Record.FieldDeclaration x <$> (typ e n)
+fieldDecl e (N.Infix (N.Ident x _) (N.Keyword ":" _) n) =
+  Record.FieldDeclaration x <$> typ e n
+fieldDecl e (N.Decl c n sp) =
+  Record.FieldDeclarationDebug <$> debugCommand e sp c n
 fieldDecl e n = unexpectedNotation e n "field declaration of the form `<fieldname> : <type>`"
 
 fieldSetting :: (V.HasEvaluation c) => ParseEnv -> Ntn -> IO (Record.FieldSetting c)
@@ -106,7 +122,7 @@ idef e g ret_ty n = do
   pure (name, entry)
 
 withArgs :: (V.HasEvaluation c) => ParseEnv -> [(Span, Name, Ntn)] -> (Typ N, Chk c) -> IO (Typ N, Chk c)
-withArgs e args init = foldlM go init args
+withArgs e args base = foldlM go base (reverse args)
   where
     go :: (V.HasEvaluation c) => (Typ N, Chk c) -> (Span, Name, Ntn) -> IO (Typ N, Chk c)
     go (t, c) (sp, name, n) = do
@@ -190,3 +206,8 @@ unexpectedNotation :: ParseEnv -> Ntn -> DDoc -> IO a
 unexpectedNotation e n c = do
   let msg = "unexpected notation for" <+> c <> ":" <+> N.head n
   failWith e (N.span n) (FrontendCode UnexpectedNotation) msg
+
+unknownCommand :: ParseEnv -> Span -> Name -> IO a
+unknownCommand e sp x = do
+  let msg = "unknown command:" <+> dpretty x
+  failWith e sp (FrontendCode UnknownCommand) msg

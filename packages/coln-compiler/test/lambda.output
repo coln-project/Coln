@@ -1,5 +1,5 @@
 -- elaborated
-potential entry named Lambda
+global entry named Lambda
 type:  Theory
 value:  sig
   con : Set

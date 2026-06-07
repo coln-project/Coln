@@ -1,5 +1,5 @@
 theory Monoid := sig
-  car : Type
+  car : Set
   unit : car
   mul : car -> car -> car
 

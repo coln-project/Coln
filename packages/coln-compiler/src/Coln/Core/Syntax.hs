@@ -1,6 +1,5 @@
 module Coln.Core.Syntax where
 
-import Data.Kind (Type)
 import Data.Map qualified as Map
 
 import Coln.Common
@@ -79,3 +78,6 @@ addGlobalEntry n e (Globals es o) = Globals (Map.insert n e es) (o :> n)
 
 instance Lookup Globals Name GlobalEntry where
   lookup gs x = Map.lookup x gs.entries
+
+instance ToList Globals (Name, GlobalEntry) where
+  toList ge = [(x, ge.entries Map.! x) | x <- toList ge.order]
