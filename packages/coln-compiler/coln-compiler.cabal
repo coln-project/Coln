@@ -17,6 +17,7 @@ library
     Coln.Core.Params
     Coln.Core.Print
     Coln.Core.Readback
+    Coln.Core.Realm
     Coln.Core.Syntax
     Coln.Core.Value
     Coln.Diagnostics
@@ -30,9 +31,9 @@ library
     Coln.Elaborator.Rules.Record
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
-    Coln.Frontend.Notation
-    Coln.Frontend.Driver
     Coln.Frontend.Diagnostics
+    Coln.Frontend.Driver
+    Coln.Frontend.Notation
     Coln.Report
 
   hs-source-dirs: src

@@ -4,6 +4,7 @@ import Data.Map qualified as Map
 
 import Coln.Common
 import Coln.Core.Params
+import Coln.Core.Realm
 import Coln.Core.Value qualified as V
 
 -- Abstractions
@@ -23,6 +24,7 @@ data El :: Case -> Type where
   Proj :: El N -> Name -> El N
   Lit :: Literal -> El N
   Is :: El N -> El D
+  Lookup :: TableName -> [El N] -> El N
 
 data FunctionType ty = FunctionType
   { variant :: FunctionVariant
@@ -49,6 +51,7 @@ data Ty :: Case -> Type where
   Eq :: EqualityType El Ty -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
   IsTy :: Ty N -> Ty D
+  EltOf :: TableName -> [El N] -> Ty N
 
 data TypeBehavior
   = LikeU Universe

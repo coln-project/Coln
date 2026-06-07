@@ -1,7 +1,6 @@
 module Coln.Core.Evaluation where
 
 import Prelude hiding (abs)
-import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
 import Coln.Core.Params
@@ -45,6 +44,9 @@ instance Compile S.El V.El where
     S.Is t -> do
       let k = compile t
       \vs -> V.Become (k vs)
+    S.Lookup x ts -> do
+      let k = compile <$> ts
+      \vs -> V.Lookup x $ ($ vs) <$> k
 
 compileFunctionType :: S.FunctionType S.Ty -> V.Locals -> V.FunctionType
 compileFunctionType ft = do
@@ -77,3 +79,6 @@ instance Compile S.Ty V.Ty where
     S.IsTy a -> do
       let k = compile a
       \vs -> V.Become (k vs)
+    S.EltOf x ts -> do
+      let k = compile <$> ts
+      \vs -> V.EltOf x $ ($ vs) <$> k

@@ -48,6 +48,7 @@ instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
       SNominative -> readb n <$> d
       SDescriptive -> readb n <$> d
     V.Lit l -> S.Lit l
+    V.Lookup x vs -> S.Lookup x (readb n <$> vs)
 
 instance Readback V.FunctionType (S.FunctionType S.Ty) where
   readb n f = S.FunctionType
@@ -86,6 +87,7 @@ instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
     V.Record r -> S.Record $ readb n r
     V.Eq eq -> S.Eq $ readb n eq
     V.BuiltinTy b -> S.BuiltinTy b
+    V.EltOf x vs -> S.EltOf x (readb n <$> vs)
 
 instance Readback V.TypeBehavior S.TypeBehavior where
   readb n = \case

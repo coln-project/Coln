@@ -103,7 +103,7 @@ infixl 5 :>
 
 -- TODO: write custom foldable instance which implements tail-recursive toList
 data Bwd a = BwdNil | Bwd a :> a
-  deriving (Functor)
+  deriving (Functor, Eq)
 
 newtype BId = BId Int
   deriving (Eq, Num, Show)

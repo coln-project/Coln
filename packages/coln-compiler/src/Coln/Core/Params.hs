@@ -117,4 +117,3 @@ instance Show BuiltinTy where
 --------------------------------------------------------------------------------
 
 data CtxShape = CtxShape {len :: Int, names :: Bwd Name}
-

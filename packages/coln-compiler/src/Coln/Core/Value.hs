@@ -4,6 +4,7 @@ import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
 import Coln.Core.Params
+import Coln.Core.Realm
 
 class DebugVal a where
   debugVal :: a -> String
@@ -150,6 +151,7 @@ data El :: Case -> Type where
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
   Lit :: Literal -> El N
+  Lookup :: TableName -> [El N] -> El N
 
 app :: El c -> El N -> Evaluation El c
 app (Lam _ clo) arg = appClo clo arg
@@ -202,6 +204,7 @@ data Ty :: Case -> Type where
   Record :: RecordType -> Ty D
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
+  EltOf :: TableName -> [El N] -> Ty N
 
 instance DebugVal (Ty c) where
   debugVal = \case
@@ -211,6 +214,7 @@ instance DebugVal (Ty c) where
     Record _ -> "Record"
     Eq _ -> "Eq"
     BuiltinTy _ -> "BuiltinTy"
+    EltOf _ _ -> "EltOf"
 
 instance LevelOf (Ty c) where
   levelOf = \case
@@ -220,6 +224,7 @@ instance LevelOf (Ty c) where
     Record rt -> rt.level
     Eq ety -> levelOf ety.at
     BuiltinTy _ -> Set
+    EltOf _ _ -> Set
 
 behavior :: Ty c -> TypeBehavior
 behavior = \case
@@ -229,6 +234,7 @@ behavior = \case
   Record rt -> LikeRecord rt
   Eq _ -> NoRules
   BuiltinTy bty -> LikeBuiltinTy bty
+  EltOf _ _ -> NoRules
 
 decode :: (HasEvaluation c) => El c -> Evaluation Ty c
 decode (Code a) = epure a

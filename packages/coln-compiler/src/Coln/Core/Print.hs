@@ -1,5 +1,6 @@
 module Coln.Core.Print where
 
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.String (fromString)
 import Data.Text qualified as T
 import Diagnostician
@@ -7,6 +8,7 @@ import FNotation qualified as N
 import FNotation.Names
 import Coln.Common
 import Coln.Core.Params
+import Coln.Core.Realm
 import Coln.Core.Syntax
 import Coln.Core.Readback
 import Coln.Frontend.Notation
@@ -29,6 +31,9 @@ instance ToNotation BId where
     go (xs' :> x) n prev = go xs' (n - 1) (x : prev)
     go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
 
+instance ToNotation TableName where
+  toNotation _ x = N.Group (N.Ident x.realm () :| [N.Ident s () | s <- toList x.path])
+
 instance ToNotation (El e) where
   toNotation xs = \case
     LocalVar i -> toNotation xs i
@@ -47,6 +52,7 @@ instance ToNotation (El e) where
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
+    Lookup x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
@@ -75,6 +81,7 @@ instance ToNotation (Ty e) where
       (toNotation xs eq.rhs)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
     IsTy a -> toNotation xs a
+    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
 
 instance ToNotation TypeBehavior where
   toNotation xs = \case

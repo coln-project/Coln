@@ -1,7 +1,7 @@
 module Coln.Core.Conversion where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM_, unless)
+import Control.Monad (forM_, unless, zipWithM)
 import Data.Maybe (fromMaybe)
 import Data.Vector.Strict qualified as Vec
 import Prettyprinter ((<+>))
@@ -78,6 +78,13 @@ instance DefEq (V.Ty N) where
       V.BuiltinTy b' ->
         unless (b == b') $ throwUnequalTys cs a a' $ Just "unequal builtin types"
       _ -> throwUnequalTys cs a a' Nothing
+    V.EltOf x vs -> case a' of
+      V.EltOf x' vs' -> do
+        unless (x == x') $ throwUnequalTys cs a a' $ Just "unequal table names"
+        _ <- zipWithM (defEq cs) vs vs'
+        pure ()
+      _ -> throwUnequalTys cs a a' Nothing
+    
 
 instance DefEq V.Head where
   defEq cs h h' = case h of
@@ -136,3 +143,11 @@ instance DefEq (V.El N) where
     V.Lit l -> case canon v' of
       V.Lit l' -> unless (l == l') $ throwUnequalEls cs v v' $ Just "unequal literals"
       _ -> throwUnequalEls cs v v' Nothing
+    V.Lookup x vs -> case canon v' of
+      V.Lookup x' vs' -> do
+        unless (x == x') $ throwUnequalEls cs v v' $ Just "unequal table names"
+        _ <- zipWithM (defEq cs) vs vs'
+        pure ()
+      _ -> throwUnequalEls cs v v' Nothing
+        
+        
