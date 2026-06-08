@@ -328,7 +328,7 @@ block st =
       advance st
       h <-
         cur st >>= \case
-          k | argStart k -> Just <$> arg st
+          k | argStart k -> Just <$> expr st
           _ -> pure Nothing
       ns <- stmts st
       advanceClose st m $ Block x h ns

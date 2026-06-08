@@ -120,6 +120,12 @@ instance ToList (Bwd a) a where
       go BwdNil list = list
       go (bwd' :> x) list = go bwd' (x : list)
 
+instance FromList (Bwd a) a where
+  fromList xs = go xs BwdNil
+    where
+      go [] bwd = bwd
+      go (x : xs') bwd = go xs' (bwd :> x)
+
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs
   xs <> (ys :> y) = (xs <> ys) :> y

@@ -53,7 +53,7 @@ layout p sc a
   | levelOf a == Theory = case V.behavior a of
       V.LikeFunction ft -> do
         let x = argName sc.usedNames ft.cod
-        let (v, sc') = bind sc x a
+        let (v, sc') = bind sc x ft.dom
         let (gt, m) = layout p sc' (V.appClo ft.cod v)
         let m' = M.lam sc.locals (M.fromVTy sc.len ft.dom) (S.Abs x m)
         (gt, m')
@@ -77,3 +77,6 @@ layout p sc a
       let v = V.Lookup (TableName sc.realm p) (toList sc.bound)
       (gt, M.fromVEl sc.len v)
   | otherwise = panic "tried to layout a toplevel type"
+
+layoutTop :: RealmId -> V.Ty N -> (GenTrie, M.El N)
+layoutTop x = layout BwdNil (emptyScope x)

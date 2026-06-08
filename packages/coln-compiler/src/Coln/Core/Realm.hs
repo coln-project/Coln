@@ -12,3 +12,6 @@ data Generator
 data GenTrie
   = Leaf Generator
   | Node (Dict GenTrie)
+
+data Realm = Realm
+  { generators :: GenTrie }

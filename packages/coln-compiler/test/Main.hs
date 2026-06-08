@@ -4,11 +4,13 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
+import Data.Map.Ordered qualified as OMap
 import Diagnostician
 import FNotation
 import Coln.Common
+import Coln.Core.Globals
+import Coln.Core.Realm
 import Coln.Core.Params
-import Coln.Core.Syntax
 import Coln.Core.Print
 import Coln.Diagnostics
 import Coln.Report
@@ -29,16 +31,23 @@ main = defaultMain =<< goldenTests
 render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
+prettyEntry :: (Name, GlobalEntry) -> DDoc
+prettyEntry (x, (GlobalEntry t _ a)) = vsep
+  [ "global entry named" <+> dpretty x
+  , "type:" <+> prtIn (CtxShape 0 BwdNil) a
+  , "value:" <+> dprettyWithNames mempty t
+  ]
+
+prettyRealm :: (Name, Realm) -> DDoc
+prettyRealm (x, r) = vsep
+  [ "realm named" <+> dpretty x
+  , "generators:" <+> dpretty r
+  ]
+
 prettyDecls :: Globals -> DDoc
-prettyDecls ge = vsep $ go (toList ge)
- where
-  go [] = []
-  go ((x, GlobalEntry t _ a) : ds) =
-    [ "global entry named" <+> dpretty x
-    , "type:" <+> prtIn (CtxShape 0 BwdNil) a
-    , "value:" <+> dprettyWithNames mempty t
-    ]
-      ++ go ds
+prettyDecls ge = vsep $
+  (prettyEntry <$> OMap.toAscList ge.entries) ++
+  (prettyRealm <$> OMap.toAscList ge.realms)
 
 elaborate :: FilePath -> IO LBS.ByteString
 elaborate fp = do

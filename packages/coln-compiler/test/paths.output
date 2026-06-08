@@ -5,18 +5,18 @@ value: sig
   V : Set
   E : V -> V -> Set
 end
-global entry named Graph/hom
-type: (G0 : Graph) -> (G1 : Graph) -> Theory
-value: G0 => G1 => sig
-  V : G0 .V -> G1 .V
-  E : (x : G0 .V) -> (y : G0 .V) -> G0 .E x y -> G1 .E (V x) (V y)
-end
 global entry named Path
 type: (G : Graph) -> Theory
 value: G => sig
   t : G .V -> G .V -> Set
   empty : (x : G .V) -> t x x
   cons : (x : G .V) -> (y : G .V) -> (z : G .V) -> (e : G .E x y) -> t y z -> t x z
+end
+global entry named Graph/hom
+type: (G0 : Graph) -> (G1 : Graph) -> Theory
+value: G0 => G1 => sig
+  V : G0 .V -> G1 .V
+  E : (x : G0 .V) -> (y : G0 .V) -> G0 .E x y -> G1 .E (V x) (V y)
 end
 global entry named Path/hom
 type: (G : Graph) -> (P0 : Path G) -> (P1 : Path G) -> Theory

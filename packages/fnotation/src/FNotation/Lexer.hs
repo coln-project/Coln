@@ -156,6 +156,7 @@ isSymbol = \case
   '~' -> True
   ':' -> True
   '=' -> True
+  '@' -> True
   _ -> False
 
 report :: LexState -> LexerCode -> DDoc -> IO ()

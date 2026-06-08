@@ -4,6 +4,7 @@ import Control.Exception (Exception, throw, evaluate)
 import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
+import Coln.Core.Globals
 import Coln.Core.Params
 import Coln.Core.Print (HasShape(shape))
 import Coln.Core.Syntax qualified as S
@@ -84,14 +85,14 @@ reflectTarget (TargetNamed n) t v = V.reflect n.head n.spine t (Just v)
 data ElabEnv c = ElabEnv
   { target :: Target c
   , scope :: Scope
-  , globals :: S.Globals
+  , globals :: Globals
   , diagEnv :: DiagnosticEnv ElaboratorCode
   }
 
 instance HasShape (ElabEnv c) where
   shape e = shape e.scope
 
-emptyElabEnvFor :: DiagnosticEnv ElaboratorCode -> S.Globals -> Name -> V.Ty N -> ElabEnv D
+emptyElabEnvFor :: DiagnosticEnv ElaboratorCode -> Globals -> Name -> V.Ty N -> ElabEnv D
 emptyElabEnvFor diagEnv globals x ty = do
   let v = V.reflect (V.GlobalVar x v) V.Id ty Nothing
   ElabEnv
@@ -101,7 +102,7 @@ emptyElabEnvFor diagEnv globals x ty = do
     , diagEnv = diagEnv
     }
 
-emptyElabEnv :: DiagnosticEnv ElaboratorCode -> S.Globals -> ElabEnv N
+emptyElabEnv :: DiagnosticEnv ElaboratorCode -> Globals -> ElabEnv N
 emptyElabEnv diagEnv globals = ElabEnv
   { target = TargetAnonymous
   , scope = emptyScope

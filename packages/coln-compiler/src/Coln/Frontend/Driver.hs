@@ -9,8 +9,11 @@ import FNotation (Ntn)
 import FNotation qualified as N
 
 import Coln.Common
-import Coln.Core.Params
+import Coln.Core.Globals
+import Coln.Core.Layout
 import Coln.Core.Memoed qualified as M
+import Coln.Core.Params
+import Coln.Core.Realm
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Diagnostics
@@ -30,18 +33,25 @@ import Prettyprinter ((<+>))
 
 type ParseEnv = DiagnosticEnv ColnCode
 
-top :: ParseEnv -> [Ntn] -> IO S.Globals
-top e = foldlM (decl' e) S.emptyGlobals
+top :: ParseEnv -> [Ntn] -> IO Globals
+top e = foldlM (decl' e) emptyGlobals
 
-decl' :: ParseEnv -> S.Globals -> Ntn -> IO S.Globals
+decl' :: ParseEnv -> Globals -> Ntn -> IO Globals
 decl' e g n = do
   try (decl e g n) >>= \case
-    Right (name, entry) -> pure $ S.addGlobalEntry name entry g
+    Right g' -> pure g'
     Left (_ :: FailException) -> pure g
 
-decl :: ParseEnv -> S.Globals -> Ntn -> IO (Name, S.GlobalEntry)
-decl e g (N.Decl "theory" n _) = idef e g (M.univ TheoryU) n
-decl e g (N.Decl "def" n _) = def e g n
+decl :: ParseEnv -> Globals -> Ntn -> IO Globals
+decl e g (N.Decl "theory" n _) = do
+  (x, ge) <- idef e g (M.univ TheoryU) n
+  pure $ addGlobalEntry x ge g
+decl e g (N.Decl "def" n _) = do
+  (x, ge) <- def e g n
+  pure $ addGlobalEntry x ge g
+decl e g (N.Block "realm" (Just head) body _) = do
+  (x, r) <- realm e g head body
+  pure $ addRealm x r g
 decl e _ n = unexpectedNotation e n "top-level declaration"
 
 definition :: ParseEnv -> Ntn -> IO (Ntn, Ntn)
@@ -92,7 +102,7 @@ unpackArgs e (N.Group (xN :| argsN)) = do
   args <- mapM (argBinding e) argsN
   pure (x, args)
 
-def :: ParseEnv -> S.Globals -> Ntn -> IO (Name, S.GlobalEntry)
+def :: ParseEnv -> Globals -> Ntn -> IO (Name, GlobalEntry)
 def e g n = do
   (head_n, body_n) <- definition e n
   (pat_n, ty_n) <- annot e head_n
@@ -107,7 +117,7 @@ def e g n = do
   let entry = M.mkGlobal name ty.val term
   pure (name, entry)
 
-idef :: ParseEnv -> S.Globals -> M.Ty N -> Ntn -> IO (Name, S.GlobalEntry)
+idef :: ParseEnv -> Globals -> M.Ty N -> Ntn -> IO (Name, GlobalEntry)
 idef e g ret_ty n = do
   (pat_n, body_n) <- definition e n
   (name, args) <- unpackArgs e pat_n
@@ -119,6 +129,18 @@ idef e g ret_ty n = do
   term <- term_j.elab elabE ty.val
   let entry = M.mkGlobal name ty.val term
   pure (name, entry)
+
+realmHead :: ParseEnv -> Ntn -> IO (Name, Ntn)
+realmHead _ (N.Infix (N.Ident x _) (N.Keyword "@" _) n) = pure (x, n)
+realmHead e n = unexpectedNotation e n "realm head"
+
+realm :: ParseEnv -> Globals -> Ntn -> [Ntn] -> IO (Name, Realm)
+realm e g head _defs = do
+  (x, theory_n) <- realmHead e head
+  theory_typ <- typ e theory_n
+  theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g)
+  let (gt, _) = layoutTop x theory.val
+  pure (x, Realm gt)
 
 withArgs :: (V.HasEvaluation c) => ParseEnv -> [(Span, Name, Ntn)] -> (Typ N, Chk c) -> IO (Typ N, Chk c)
 withArgs e args base = foldrM go base args
