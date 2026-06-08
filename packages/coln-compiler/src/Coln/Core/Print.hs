@@ -8,7 +8,6 @@ import FNotation qualified as N
 import FNotation.Names
 import Coln.Common
 import Coln.Core.Params
-import Coln.Core.Realm
 import Coln.Core.Syntax
 import Coln.Core.Readback
 import Coln.Frontend.Notation

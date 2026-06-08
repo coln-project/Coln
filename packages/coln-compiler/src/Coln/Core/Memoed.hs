@@ -70,6 +70,9 @@ instance Core El Ty where
 
 fromVTy :: (V.HasEvaluation c) => Int -> V.Ty c -> Ty c
 fromVTy n v = M (readb n v) (V.epure v)
+  
+fromVEl :: (V.HasEvaluation c) => Int -> V.El c -> El c
+fromVEl n v = M (readb n v) (V.epure v)
 
 instance (V.HasEvaluation c) => LevelOf (Ty c) where
   levelOf ty = case V.scase @c of

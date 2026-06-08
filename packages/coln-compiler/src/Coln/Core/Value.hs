@@ -4,7 +4,6 @@ import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
 import Coln.Core.Params
-import Coln.Core.Realm
 
 class DebugVal a where
   debugVal :: a -> String

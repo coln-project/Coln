@@ -1,9 +1,14 @@
 module Coln.Core.Realm where
 
 import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Syntax qualified as S
 
-type RealmId = Name
-type Path = Bwd Name
+data Generator
+  = Rel [Name] [S.Ty N]
+  | Fun [Name] [S.Ty N] (S.Ty N)
 
-data TableName = TableName { realm :: RealmId, path :: Path }
-  deriving (Eq)
+-- Generator trie
+data GenTrie
+  = Leaf Generator
+  | Node (Dict GenTrie)
