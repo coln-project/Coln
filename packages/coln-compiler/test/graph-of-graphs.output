@@ -1,19 +1,19 @@
 -- elaborated
 global entry named Graph
-type:  Theory
-value:  sig
+type: Theory
+value: sig
   V : Set
   E : V -> V -> Set
 end
 global entry named Graph/hom
-type:  (G0 : Graph) -> (G1 : Graph) -> Theory
-value:  G0 => G1 => sig
+type: (G0 : Graph) -> (G1 : Graph) -> Theory
+value: G0 => G1 => sig
   V : G0 .V -> G1 .V
   E : (v0 : G0 .V) -> (v1 : G0 .V) -> G0 .E v0 v1 -> G1 .E (V v0) (V v1)
 end
 global entry named GraphOfGraphs
-type:  Theory
-value:  sig
+type: Theory
+value: sig
   base : Graph
   fiber : base .V -> Graph
   action : (v0 : base .V) -> (v1 : base .V) -> base .E v0 v1 -> Graph/hom (fiber v0) (fiber v1)

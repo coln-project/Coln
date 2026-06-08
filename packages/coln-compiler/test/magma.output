@@ -1,7 +1,7 @@
 -- elaborated
 global entry named Magma
-type:  Theory
-value:  sig
+type: Theory
+value: sig
   car : Set
   mul : (x : car) -> (y : car) -> car
 end

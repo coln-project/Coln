@@ -35,8 +35,8 @@ prettyDecls ge = vsep $ go (toList ge)
   go [] = []
   go ((x, GlobalEntry t _ a) : ds) =
     [ "global entry named" <+> dpretty x
-    , "type: " <+> prtIn (CtxShape 0 BwdNil) a
-    , "value: " <+> dprettyWithNames mempty t
+    , "type:" <+> prtIn (CtxShape 0 BwdNil) a
+    , "value:" <+> dprettyWithNames mempty t
     ]
       ++ go ds
 

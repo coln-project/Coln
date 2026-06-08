@@ -1,7 +1,7 @@
 -- elaborated
 global entry named ModularLattice
-type:  Theory
-value:  sig
+type: Theory
+value: sig
   Element : Set
   meet : Element -> Element -> Element
   meet/associative : (a : Element) -> (b : Element) -> (c : Element) -> meet (meet a b) c = meet a (meet b c)

@@ -1,7 +1,7 @@
 -- elaborated
 global entry named IdempotentSemigroup
-type:  Theory
-value:  sig
+type: Theory
+value: sig
   Element : Set
   mul : (x : Element) -> (y : Element) -> Element
   mul/idempotent : (x : Element) -> mul x x = x

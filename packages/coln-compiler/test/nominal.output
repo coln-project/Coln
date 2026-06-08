@@ -1,15 +1,15 @@
 -- elaborated
 global entry named A
-type:  Theory
-value:  sig
+type: Theory
+value: sig
 end
 global entry named B
-type:  Theory
-value:  sig
+type: Theory
+value: sig
 end
 global entry named a
-type:  A
-value:  []
+type: A
+value: []
 
 -- messages
 

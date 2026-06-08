@@ -1,7 +1,7 @@
 -- elaborated
 global entry named Lambda
-type:  Theory
-value:  sig
+type: Theory
+value: sig
   con : Set
   subst : con -> con -> Set
   mt : con
