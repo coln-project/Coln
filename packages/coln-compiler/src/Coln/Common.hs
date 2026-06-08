@@ -22,6 +22,7 @@ module Coln.Common
   , FId (..)
   , Dict (..)
   , KeyIndex (..)
+  , dictLength
   , getKeyIndex
   ) where
 
@@ -161,6 +162,9 @@ data Dict a = Dict
   , values :: Vector a
   }
 
+dictLength :: Dict a -> Int
+dictLength d = V.length d.values
+
 instance Lookup (Dict a) Name a where
   lookup d x = (d.values V.!) <$> Map.lookup x d.head.byName
 
@@ -184,6 +188,9 @@ newtype KeyIndex = KeyIndex { value :: Int }
 
 instance ElemAt (Dict a) KeyIndex a where
   elemAt d (KeyIndex i) = d.values V.! i
+
+instance Contains (Dict a) Name where
+  contains d x = Map.member x d.head.byName
 
 getKeyIndex :: Dict a -> Name -> KeyIndex
 getKeyIndex d x = KeyIndex $ d.head.byName Map.! x

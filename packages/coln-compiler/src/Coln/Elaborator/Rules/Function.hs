@@ -11,20 +11,30 @@ import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
 import Coln.Report
 
-data Binder = Anonymous (Judgment N) | Named Name (Judgment N)
+variantFor :: Ty N -> Ty N -> Span -> ElabEnv c -> IO FunctionVariant
+variantFor dom cod sp e = case (levelOf dom, levelOf cod) of
+  ((Set, Set); (Set, Theory)) -> pure SetTheory
+  ((Set, Top); (Theory, _)) -> pure TheoryTop
+  (Top, _) -> do
+    let msg = "higher-order theories are not supported"
+    failWith e.diagEnv sp FunctionDomainTooLarge msg
 
-formation :: Binder -> Judgment N -> Judgment c
-formation (Anonymous dom) cod = Typ $ \e -> do
-  edom <- typ dom e
-  ecod <- typ cod e
-  pure $ function e.scope.locals edom (S.AbsConst ecod)
-formation (Named x dom) cod = nTyp $ \e -> do
-  edom <- typ dom e
-  ecod <- typ cod $ e { scope = bind x edom.val e.scope }
-  pure $ function e.scope.locals edom (S.Abs x ecod)
+data Binder = Anonymous (Typ N) | Named Name (Typ N)
 
-intro :: (V.HasEvaluation c) => Span -> Name -> Judgment c -> Judgment c
-intro sp x body = Chk $ \e a ->
+formation :: Span -> Binder -> Typ N -> Typ N
+formation sp (Anonymous dom) cod = Typ \e -> do
+  edom <- dom.elab e
+  ecod <- cod.elab e
+  v <- variantFor edom ecod sp e
+  pure $ function e.scope.locals v edom (S.AbsConst ecod)
+formation sp (Named x dom) cod = Typ \e -> do
+  edom <- dom.elab e
+  ecod <- cod.elab $ e { scope = bind x edom.val e.scope }
+  v <- variantFor edom ecod sp e
+  pure $ function e.scope.locals v edom (S.Abs x ecod)
+
+intro :: (V.HasEvaluation c) => Span -> Name -> Chk c -> Chk c
+intro sp x body = Chk \e a ->
   case V.behavior a of
     V.LikeFunction ft -> do
       ebody <- withBound x ft.dom e.scope $ \v scope' ->
@@ -36,13 +46,13 @@ intro sp x body = Chk $ \e a ->
       let msg = "tried to check a lambda expression at a non-function type"
       failWith e.diagEnv sp CheckLambdaAtNonFunctionType msg
 
-elim :: (V.HasEvaluation c) => Span -> Judgment N -> Judgment N -> Judgment c
-elim sp callee arg = elimSyn $ \e -> do
-  (ecallee, a) <- syn callee e
-  case V.behavior a of
+elim :: Span -> Syn N -> Chk N -> Syn N
+elim sp callee arg = Syn $ \e -> do
+  (ty, ecallee) <- callee.elab e
+  case V.behavior ty of
     V.LikeFunction ft -> do
-      earg <- chk arg e ft.dom
-      pure (app ecallee earg, V.appClo ft.cod earg.val)
+      earg <- arg.elab e ft.dom
+      pure (V.appClo ft.cod earg.val, app ecallee earg)
     _ -> do
       let msg = "tried to apply a value that was not of a function type"
       failWith e.diagEnv sp ApplicationOfNonFunction msg

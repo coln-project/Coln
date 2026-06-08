@@ -24,6 +24,9 @@ instance Readback V.Spine (S.El N -> S.El N) where
     V.App sp v -> \t -> S.App (readb n sp t) (readb n v)
     V.Proj sp x -> \t -> S.Proj (readb n sp t) x
 
+instance Readback V.BareNeutral (S.El N) where
+  readb n ne = readb n ne.spine $ readb n ne.head
+
 instance Readback (V.Description V.El) (S.El D) where
   readb n = \case
     V.Describe v -> readb n v
@@ -83,3 +86,11 @@ instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
     V.Record r -> S.Record $ readb n r
     V.Eq eq -> S.Eq $ readb n eq
     V.BuiltinTy b -> S.BuiltinTy b
+
+instance Readback V.TypeBehavior S.TypeBehavior where
+  readb n = \case
+    V.LikeU u -> S.LikeU u
+    V.LikeRecord rt -> S.LikeRecord $ readb n rt
+    V.LikeFunction ft -> S.LikeFunction $ readb n ft
+    V.LikeBuiltinTy bt -> S.LikeBuiltinTy bt
+    V.NoRules -> S.NoRules

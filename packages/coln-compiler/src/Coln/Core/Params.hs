@@ -22,6 +22,11 @@ instance PartialOrd Level where
     (Top, Top) -> True
     (Top, _) -> False
 
+maxLevel :: Level -> Level -> Level
+maxLevel l1 l2
+  | leq l1 l2 = l2
+  | otherwise = l1
+
 class LevelOf a where
   levelOf :: a -> Level
   
@@ -39,6 +44,11 @@ codesInto :: Universe -> Level
 codesInto = \case
   SetU -> Theory
   TheoryU -> Top
+
+instance Pretty Universe where
+  pretty = \case
+    SetU -> "Set"
+    TheoryU -> "Theory"
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case

@@ -90,3 +90,22 @@ data ElabEnv c = ElabEnv
 
 instance HasShape (ElabEnv c) where
   shape e = shape e.scope
+
+emptyElabEnvFor :: DiagnosticEnv ElaboratorCode -> S.Globals -> Name -> V.Ty N -> ElabEnv D
+emptyElabEnvFor diagEnv globals x ty = do
+  let v = V.reflect (V.GlobalVar x v) V.Id ty Nothing
+  ElabEnv
+    { target = (TargetNamed (V.BareNeutral (V.GlobalVar x v) V.Id))
+    , scope = emptyScope
+    , globals = globals
+    , diagEnv = diagEnv
+    }
+
+emptyElabEnv :: DiagnosticEnv ElaboratorCode -> S.Globals -> ElabEnv N
+emptyElabEnv diagEnv globals = ElabEnv
+  { target = TargetAnonymous
+  , scope = emptyScope
+  , globals = globals
+  , diagEnv = diagEnv
+  }
+    

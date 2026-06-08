@@ -21,6 +21,7 @@ rec {
   haskell-tests = pkgs.writeScript "haskell-tests" ''
     echo "built diagnostician: ${diagnostician}"
     echo "built fnotation: ${fnotation}"
+    echo "built coln-compiler: ${coln-compiler}"
   '';
 
   manual = pkgs.stdenv.mkDerivation {

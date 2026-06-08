@@ -1,19 +1,17 @@
 -- elaborated
-potential entry named AncestorRelation
-type:  (F : Family) *-> Theory
-value:  F => sig
-  is-ancestor : F .person *-> F .person *-> Set
-  parent-is-ancestor : (x : F .person) *-> (y : F .person) *-> F .is-parent x y *-> is-ancestor x y
-  parent-of-ancestor-is-ancestor : (x : F .person) *-> (y : F .person) *-> (z : F .person) *-> F .is-parent x y *-> is-ancestor y z -> is-ancestor x z
-end
-kinetic entry named AncestryFor
-type: (F : Family) *-> Inductive (AncestorRelation F)
-value: F => init (AncestorRelation F)
-potential entry named Family
-type:  Theory
-value:  sig
+global entry named Family
+type: Theory
+value: sig
   person : Set
   is-parent : person -> person -> Set
 end
 
 -- messages
+
+error[E0200]: unexpected notation for argument binding of the form `<name> : <type>`: Infix
+6 | theory AncestorRelation (F *: Family) := sig
+6 |                          ^^^^^^^^^^^
+
+error[E0200]: unexpected notation for argument binding of the form `<name> : <type>`: Infix
+12 | def AncestryFor (F *: Family) : Inductive (AncestorRelation F) := init (AncestorRelation F)
+12 |                  ^^^^^^^^^^^

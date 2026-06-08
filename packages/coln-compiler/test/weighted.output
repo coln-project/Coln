@@ -7,10 +7,10 @@ warning[W0101]: Defaulted precedence of ~> to the same as +
 3 |   E : V -> V -> Int ~> Set
 3 |                     ^^
 
-error[E0208]: unexpected notation for term in synthesizing position: Infix
+error[E0200]: unexpected notation for expression: Infix
 3 |   E : V -> V -> Int ~> Set
 3 |                 ^^^^^^^^^^
 
-error[E0201]: identifier WeightedGraph not in scope
+error[E0314]: no such variable WeightedGraph in scope
 6 | theory Q (G : WeightedGraph) := sig
 6 |               ^^^^^^^^^^^^^

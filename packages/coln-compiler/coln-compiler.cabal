@@ -11,7 +11,6 @@ build-type: Simple
 library
   exposed-modules:
     Coln.Common
-    Coln.Core
     Coln.Core.Conversion
     Coln.Core.Evaluation
     Coln.Core.Memoed
@@ -20,24 +19,21 @@ library
     Coln.Core.Readback
     Coln.Core.Syntax
     Coln.Core.Value
-    Coln.CoreOperations
     Coln.Diagnostics
-    Coln.Elaborator
+    Coln.Elaborator.Debug
     Coln.Elaborator.Diagnostics
     Coln.Elaborator.Environment
     Coln.Elaborator.Judgment
-    Coln.Elaborator.Parse
-    Coln.Elaborator.Parse.Environment
     Coln.Elaborator.Rules.Builtin
     Coln.Elaborator.Rules.Equality
     Coln.Elaborator.Rules.Function
     Coln.Elaborator.Rules.Record
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
-    Coln.Notation
-    Coln.Pretty
+    Coln.Frontend.Notation
+    Coln.Frontend.Driver
+    Coln.Frontend.Diagnostics
     Coln.Report
-    Coln.Unification
 
   hs-source-dirs: src
   default-language: GHC2024

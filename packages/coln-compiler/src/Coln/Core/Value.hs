@@ -5,6 +5,9 @@ import Data.Vector.Strict qualified as Vector
 import Coln.Common
 import Coln.Core.Params
 
+class DebugVal a where
+  debugVal :: a -> String
+
 -- Locals
 --------------------------------------------------------------------------------
 
@@ -16,7 +19,7 @@ instance ElemAt Locals BId (El N) where
     | i == 0 = v
     | otherwise = elemAt e (i - 1)
   elemAt (LSnocChunk e vs) (BId i)
-    | i < Vector.length vs = vs Vector.! i
+    | i < Vector.length vs = vs Vector.! (Vector.length vs - i - 1)
     | otherwise = elemAt e (BId (i - Vector.length vs))
 
 -- Evaluations
@@ -200,6 +203,15 @@ data Ty :: Case -> Type where
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
 
+instance DebugVal (Ty c) where
+  debugVal = \case
+    U _ -> "U"
+    Decode _ -> "Decode"
+    Function _ -> "Function"
+    Record _ -> "Record"
+    Eq _ -> "Eq"
+    BuiltinTy _ -> "BuiltinTy"
+
 instance LevelOf (Ty c) where
   levelOf = \case
     U u -> codesInto u
@@ -221,15 +233,14 @@ behavior = \case
 decode :: (HasEvaluation c) => El c -> Evaluation Ty c
 decode (Code a) = epure a
 decode (Neu n) = do
-  let u = case n.ty of
-        U u' -> u'
-        _ -> panic "ill-typed decoding"
+  let u = case behavior n.ty of
+        LikeU u' -> u'
+        b -> panic $ "decoding a neutral of non-universe type: " ++ debugVal b
   let k desc = Decode (DecodedNeutral n.head n.spine u desc)
   case decode <$> n.description of
     Just (Describe desc) -> k (behavior desc)
     Just (Become ty) -> ty
     Nothing -> k NoRules
-    
 decode _ = panic "ill-typed decoding"
 
 -- Type behavior
@@ -242,11 +253,19 @@ data TypeBehavior
   | LikeBuiltinTy BuiltinTy
   | NoRules
 
+instance DebugVal TypeBehavior where
+  debugVal = \case
+    LikeU _ -> "LikeU"
+    LikeFunction _ -> "LikeFunction"
+    LikeRecord _ -> "LikeRecord"
+    LikeBuiltinTy _ -> "LikeBuiltinTy"
+    NoRules -> "NoRules"
+
 appTy :: Ty N -> El N -> Ty N
 appTy (behavior -> LikeFunction ft) arg = appClo ft.cod arg
-appTy _ _ = panic "ill-typed application"
+appTy a _ = panic $ "ill-typed computation of type for application: " ++ debugVal a
 
 projTy :: Ty N -> El N -> Name -> Ty N
 projTy (behavior -> LikeRecord rt) v x =
   typeForProjection rt x (coerceToFields v)
-projTy _ _ _ = panic "ill-typed projection"
+projTy _ _ _ = panic "ill-typed computation of type for projection"

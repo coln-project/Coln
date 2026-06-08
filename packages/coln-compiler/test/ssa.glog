@@ -41,7 +41,7 @@ theory Operation (opInfo : OpInfo) (val : Set) (outputs : Set) := sig
   opOutputs : Iso outputs (opInfo.outputArity opType)
 end
 
-set PrecedingOutput (X : Set) (rel : X -> X -> Set) (x : X) (outputs : X -> Set) := sig
+def PrecedingOutput (X : Set) (rel : X -> X -> Set) (x : X) (outputs : X -> Set) : Set := sig
   y : X
   isPreceding : rel y x
   output : outputs y

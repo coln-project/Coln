@@ -6,7 +6,7 @@ import Data.Coerce (coerce)
 import Coln.Common
 import Coln.Core.Evaluation
 import Coln.Core.Params
-import Coln.Core.Readback (readb)
+import Coln.Core.Readback (Readback(readb))
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 
@@ -19,7 +19,7 @@ type El = Memoed S.El V.El
 type Ty = Memoed S.Ty V.Ty
 
 class Core el ty | el -> ty, ty -> el where
-  localVar :: V.Locals -> BId -> el N
+  localVar :: BId -> V.El N -> el N
   globalVar :: Name -> V.El N -> el N
   code :: (V.HasEvaluation c) => ty c -> el c
   app :: el N -> el N -> el N
@@ -34,9 +34,10 @@ class Core el ty | el -> ty, ty -> el where
   record :: V.Locals -> S.RecordType ty -> ty D
   equality :: S.EqualityType el ty -> ty N
   builtinTy :: BuiltinTy -> ty N
+  isTy :: ty N -> ty D
 
 instance Core El Ty where
-  localVar vs i = M (S.LocalVar i) (elemAt vs i)
+  localVar i v = M (S.LocalVar i) v
   globalVar x v = M (S.GlobalVar x v) v
   code t = M (S.Code t.stx) (V.emap V.Code t.val)
   app f x = M (S.App f.stx x.stx) (V.app f.val x.val)
@@ -65,6 +66,22 @@ instance Core El Ty where
     (S.Eq $ S.EqualityType eq.at.stx eq.lhs.stx eq.rhs.stx)
     (V.Eq $ V.EqualityType eq.at.val eq.lhs.val eq.rhs.val)
   builtinTy bt = M (S.BuiltinTy bt) (V.BuiltinTy bt)
+  isTy a = M (S.IsTy a.stx) (V.Become a.val)
 
 fromVTy :: (V.HasEvaluation c) => Int -> V.Ty c -> Ty c
 fromVTy n v = M (readb n v) (V.epure v)
+
+instance (V.HasEvaluation c) => LevelOf (Ty c) where
+  levelOf ty = case V.scase @c of
+    SNominative -> levelOf ty.val
+    SDescriptive -> case ty.val of
+      V.Describe ty' -> levelOf ty'
+      V.Become ty' -> levelOf ty'
+
+instance Readback (Memoed a b c) (a c) where
+  readb _ m = m.stx
+
+mkGlobal :: Name -> V.Ty N -> El D -> S.GlobalEntry
+mkGlobal n ty x = do
+  let neu = V.reflect (V.GlobalVar n neu) V.Id ty (Just x.val)
+  S.GlobalEntry x.stx neu ty

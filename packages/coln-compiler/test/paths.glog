@@ -15,7 +15,7 @@ theory Path (G : Graph) := sig
     (x : G.V) ->
     (y : G.V) ->
     (z : G.V) ->
-    G.E x y ->
+    (e : G.E x y) ->
     t y z ->
     t x z
   )

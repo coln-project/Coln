@@ -1,4 +1,4 @@
-module Coln.Notation where
+module Coln.Frontend.Notation where
 
 import FNotation
 import FNotation.Kinds as K
@@ -10,10 +10,12 @@ lexConfig =
     , ("struct", K.Block)
     , ("theory", K.Decl)
     , ("def", K.Decl)
-    , ("set", K.Decl)
     , ("let", K.Decl)
     , ("open", K.Decl)
     , ("import", K.Decl)
+    , ("showtypeb", K.Decl)
+    , ("showtype", K.Decl)
+    , ("expand", K.Decl)
     , ("end", K.End)
     , ("Set", K.AKeyword)
     , ("Prop", K.AKeyword)
