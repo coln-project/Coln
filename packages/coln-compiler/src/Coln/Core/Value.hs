@@ -235,7 +235,7 @@ decode (Code a) = epure a
 decode (Neu n) = do
   let u = case behavior n.ty of
         LikeU u' -> u'
-        b -> panic $ "decoding a neutral of non-universe type: " ++ behaviorDesc b
+        b -> panic $ "decoding a neutral of non-universe type: " ++ debugVal b
   let k desc = Decode (DecodedNeutral n.head n.spine u desc)
   case decode <$> n.description of
     Just (Describe desc) -> k (behavior desc)
@@ -253,13 +253,13 @@ data TypeBehavior
   | LikeBuiltinTy BuiltinTy
   | NoRules
 
-behaviorDesc :: TypeBehavior -> String
-behaviorDesc = \case
-  LikeU _ -> "LikeU"
-  LikeFunction _ -> "LikeFunction"
-  LikeRecord _ -> "LikeRecord"
-  LikeBuiltinTy _ -> "LikeBuiltinTy"
-  NoRules -> "NoRules"
+instance DebugVal TypeBehavior where
+  debugVal = \case
+    LikeU _ -> "LikeU"
+    LikeFunction _ -> "LikeFunction"
+    LikeRecord _ -> "LikeRecord"
+    LikeBuiltinTy _ -> "LikeBuiltinTy"
+    NoRules -> "NoRules"
 
 appTy :: Ty N -> El N -> Ty N
 appTy (behavior -> LikeFunction ft) arg = appClo ft.cod arg
