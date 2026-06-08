@@ -3,6 +3,9 @@ theory Graph := sig
   E : V -> V -> Set
 end
 
+realm Graph @ Graph
+end
+
 theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
   V : G0.V -> G1.V
   E : (v0 : G0.V) -> (v1 : G0.V) -> G0.E v0 v1 -> G1.E (V v0) (V v1)
@@ -12,4 +15,7 @@ theory GraphOfGraphs := sig
   base : Graph
   fiber : base.V -> Graph
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
+end
+
+realm GraphOfGraphs @ GraphOfGraphs
 end

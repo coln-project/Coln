@@ -18,5 +18,39 @@ value: sig
   fiber : base .V -> Graph
   action : (v0 : base .V) -> (v1 : base .V) -> base .E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
+realm named Graph
+generators: node
+  V = rel []
+  E = rel [a : Graph .V [], b : Graph .V []]
+end
+realm named GraphOfGraphs
+generators: node
+  base = node
+    V = rel []
+    E = rel [a : GraphOfGraphs .base .V [], b : GraphOfGraphs .base .V []]
+  end
+  fiber = node
+    V = rel [a : GraphOfGraphs .base .V []]
+    E = rel [ a : GraphOfGraphs .base .V []
+    , b : GraphOfGraphs .fiber .V [a]
+    , c : GraphOfGraphs .fiber .V [a] ]
+  end
+  action = node
+    V = (fun [ v0 : GraphOfGraphs .base .V []
+    , v1 : GraphOfGraphs .base .V []
+    , a : GraphOfGraphs .base .E [v0, v1]
+    , b : GraphOfGraphs .fiber .V [v0] ] -> GraphOfGraphs .fiber .V [v1])
+    E = (fun [ v0 : GraphOfGraphs .base .V []
+    , v1 : GraphOfGraphs .base .V []
+    , a : GraphOfGraphs .base .E [v0, v1]
+    , v0 : GraphOfGraphs .fiber .V [v0]
+    , v1 : GraphOfGraphs .fiber .V [`v0^1`]
+    , b : GraphOfGraphs .fiber .E [ `v0^1`
+    , v0
+    , v1 ] ] -> GraphOfGraphs .fiber .E [ `v1^1`
+    , GraphOfGraphs .action .V [`v0^1`, `v1^1`, a, v0]
+    , GraphOfGraphs .action .V [`v0^1`, `v1^1`, a, v1] ])
+  end
+end
 
 -- messages

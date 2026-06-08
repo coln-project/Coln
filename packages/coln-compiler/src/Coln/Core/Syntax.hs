@@ -1,6 +1,8 @@
 module Coln.Core.Syntax where
 
 import Data.Map qualified as Map
+import Data.Map.Ordered qualified as OMap
+import Data.Map.Ordered (OMap)
 
 import Coln.Common
 import Coln.Core.Params
@@ -23,6 +25,7 @@ data El :: Case -> Type where
   Proj :: El N -> Name -> El N
   Lit :: Literal -> El N
   Is :: El N -> El D
+  Lookup :: TableName -> [El N] -> El N
 
 data FunctionType ty = FunctionType
   { variant :: FunctionVariant
@@ -49,6 +52,7 @@ data Ty :: Case -> Type where
   Eq :: EqualityType El Ty -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
   IsTy :: Ty N -> Ty D
+  EltOf :: TableName -> [El N] -> Ty N
 
 data TypeBehavior
   = LikeU Universe
@@ -56,28 +60,3 @@ data TypeBehavior
   | LikeRecord (RecordType Ty)
   | LikeBuiltinTy BuiltinTy
   | NoRules
-
--- * Globals
-
-data GlobalEntry = GlobalEntry
-  { syn :: El D
-  , val :: V.El N
-  , ty :: V.Ty N
-  }
-
-data Globals = Globals
-  { entries :: Map Name GlobalEntry
-  , order :: Bwd Name
-  }
-
-emptyGlobals :: Globals
-emptyGlobals = Globals Map.empty BwdNil
-
-addGlobalEntry :: Name -> GlobalEntry -> Globals -> Globals
-addGlobalEntry n e (Globals es o) = Globals (Map.insert n e es) (o :> n)
-
-instance Lookup Globals Name GlobalEntry where
-  lookup gs x = Map.lookup x gs.entries
-
-instance ToList Globals (Name, GlobalEntry) where
-  toList ge = [(x, ge.entries Map.! x) | x <- toList ge.order]

@@ -118,3 +118,11 @@ instance Show BuiltinTy where
 
 data CtxShape = CtxShape {len :: Int, names :: Bwd Name}
 
+-- Realms
+--------------------------------------------------------------------------------
+
+type RealmId = Name
+type Path = Bwd Name
+
+data TableName = TableName { realm :: RealmId, path :: Path }
+  deriving (Eq)

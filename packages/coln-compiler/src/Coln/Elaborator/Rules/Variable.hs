@@ -4,6 +4,7 @@ import Prelude hiding (lookup)
 import Prettyprinter
 
 import Coln.Common
+import Coln.Core.Globals
 import Coln.Core.Params
 import Coln.Core.Value qualified as V
 import Coln.Core.Syntax qualified as S

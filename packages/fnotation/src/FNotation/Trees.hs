@@ -44,7 +44,7 @@ pattern Decl x n s = MDecl [] x n s
 pattern Group :: NonEmpty (NtnGeneric a) -> NtnGeneric a
 pattern Group xs <- (getGroup [] -> xs)
   where
-    Group (x :| xs) = foldl' (flip Juxt) x xs
+    Group (x :| xs) = foldl' Juxt x xs
 
 {-# COMPLETE Group #-}
 

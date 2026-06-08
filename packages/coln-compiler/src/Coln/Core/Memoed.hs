@@ -5,6 +5,7 @@ import Data.Coerce (coerce)
 
 import Coln.Common
 import Coln.Core.Evaluation
+import Coln.Core.Globals
 import Coln.Core.Params
 import Coln.Core.Readback (Readback(readb))
 import Coln.Core.Syntax qualified as S
@@ -70,6 +71,9 @@ instance Core El Ty where
 
 fromVTy :: (V.HasEvaluation c) => Int -> V.Ty c -> Ty c
 fromVTy n v = M (readb n v) (V.epure v)
+  
+fromVEl :: (V.HasEvaluation c) => Int -> V.El c -> El c
+fromVEl n v = M (readb n v) (V.epure v)
 
 instance (V.HasEvaluation c) => LevelOf (Ty c) where
   levelOf ty = case V.scase @c of
@@ -81,7 +85,7 @@ instance (V.HasEvaluation c) => LevelOf (Ty c) where
 instance Readback (Memoed a b c) (a c) where
   readb _ m = m.stx
 
-mkGlobal :: Name -> V.Ty N -> El D -> S.GlobalEntry
+mkGlobal :: Name -> V.Ty N -> El D -> GlobalEntry
 mkGlobal n ty x = do
   let neu = V.reflect (V.GlobalVar n neu) V.Id ty (Just x.val)
-  S.GlobalEntry x.stx neu ty
+  GlobalEntry x.stx neu ty

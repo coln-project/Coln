@@ -9,6 +9,7 @@ lexConfig =
     [ ("sig", K.Block)
     , ("struct", K.Block)
     , ("theory", K.Decl)
+    , ("realm", K.Block)
     , ("def", K.Decl)
     , ("let", K.Decl)
     , ("open", K.Decl)
@@ -31,12 +32,14 @@ lexConfig =
     , ("->", K.SKeyword)
     , ("*->", K.SKeyword)
     , ("=>", K.SKeyword)
+    , ("@", K.SKeyword)
     ]
 
 parseConfig :: ConfTable Prec
 parseConfig =
   confTableFromList
-    [ (":=", Prec 10 AssocNon)
+    [ ("@", Prec 10 AssocNon)
+    , (":=", Prec 10 AssocNon)
     , (":", Prec 20 AssocNon)
     , ("*:", Prec 20 AssocNon)
     , ("->", Prec 30 AssocR)

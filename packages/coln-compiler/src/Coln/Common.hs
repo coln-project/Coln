@@ -103,7 +103,7 @@ infixl 5 :>
 
 -- TODO: write custom foldable instance which implements tail-recursive toList
 data Bwd a = BwdNil | Bwd a :> a
-  deriving (Functor)
+  deriving (Functor, Eq)
 
 newtype BId = BId Int
   deriving (Eq, Num, Show)
@@ -119,6 +119,12 @@ instance ToList (Bwd a) a where
     where
       go BwdNil list = list
       go (bwd' :> x) list = go bwd' (x : list)
+
+instance FromList (Bwd a) a where
+  fromList xs = go xs BwdNil
+    where
+      go [] bwd = bwd
+      go (x : xs') bwd = go xs' (bwd :> x)
 
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs

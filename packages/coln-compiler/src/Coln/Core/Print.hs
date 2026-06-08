@@ -1,11 +1,14 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Coln.Core.Print where
 
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.String (fromString)
 import Data.Text qualified as T
 import Diagnostician
 import FNotation qualified as N
 import FNotation.Names
 import Coln.Common
+import Coln.Core.Realm
 import Coln.Core.Params
 import Coln.Core.Syntax
 import Coln.Core.Readback
@@ -19,6 +22,9 @@ type Names = Bwd Name
 class ToNotation a where
   toNotation :: Names -> a -> N.Ntn0
 
+class ToNotationTop a where
+  toNotationTop :: a -> N.Ntn0
+
 instance ToNotation BId where
   toNotation xs (BId i) = go xs i []
    where
@@ -28,6 +34,9 @@ instance ToNotation BId where
       disamb = if nx > 0 then "^" <> T.pack (show nx) else ""
     go (xs' :> x) n prev = go xs' (n - 1) (x : prev)
     go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
+
+instance ToNotation TableName where
+  toNotation _ x = N.Group (N.Ident x.realm () :| [N.Field s () | s <- toList x.path])
 
 instance ToNotation (El e) where
   toNotation xs = \case
@@ -47,6 +56,7 @@ instance ToNotation (El e) where
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
+    Lookup x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
@@ -75,6 +85,7 @@ instance ToNotation (Ty e) where
       (toNotation xs eq.rhs)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
     IsTy a -> toNotation xs a
+    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
 
 instance ToNotation TypeBehavior where
   toNotation xs = \case
@@ -83,6 +94,38 @@ instance ToNotation TypeBehavior where
     LikeRecord rt -> toNotation xs (Record rt)
     LikeBuiltinTy bt -> toNotation xs (BuiltinTy bt)
     NoRules -> N.Keyword "NoRules" ()
+
+toNotationTele :: [Name] -> [Ty N] -> [N.Ntn0]
+toNotationTele xs tys = go xs BwdNil tys
+  where
+    go _ _ [] = []
+    go (x:xs') names (a:tys') = do
+      let bnd = (N.Infix (N.Ident x ()) (N.Keyword ":" ()) (toNotation names a))
+      bnd : go xs' (names :> x) tys'
+    go _ _ _ = panic "mismatched lengths"
+
+instance ToNotationTop Generator where
+  toNotationTop (Rel xs tys) =
+    N.Juxt (N.Keyword "rel" ()) (N.Tuple (toNotationTele xs tys) ())
+  toNotationTop (Fun xs tys ret) =
+    N.Infix
+      (N.Juxt (N.Keyword "fun" ()) (N.Tuple (toNotationTele xs tys) ()))
+      (N.Keyword "->" ())
+      (toNotation (fromList xs) ret)
+
+instance ToNotationTop GenTrie where
+  toNotationTop (Leaf g) = toNotationTop g
+  toNotationTop (Node d) = N.Block
+    "node"
+    Nothing
+    [ N.Infix (N.Ident x ()) (N.Keyword "=" ()) (toNotationTop t) | (x, t) <- toList d ]
+    ()
+
+instance ToNotationTop Realm where
+  toNotationTop r = toNotationTop r.generators
+
+-- DPrettyWithNames
+--------------------------------------------------------------------------------
 
 class DPrettyWithNames a where
   dprettyWithNames :: Names -> a -> DDoc
@@ -98,6 +141,9 @@ instance DPrettyWithNames (Ty e) where
   
 instance DPrettyWithNames TypeBehavior where
   dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
+
+instance DPretty Realm where
+  dpretty r = N.dprettyWithConfigs parseConfig lexConfig $ toNotationTop r
 
 class HasShape a where
   shape :: a -> CtxShape

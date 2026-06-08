@@ -13,10 +13,13 @@ library
     Coln.Common
     Coln.Core.Conversion
     Coln.Core.Evaluation
+    Coln.Core.Globals
+    Coln.Core.Layout
     Coln.Core.Memoed
     Coln.Core.Params
     Coln.Core.Print
     Coln.Core.Readback
+    Coln.Core.Realm
     Coln.Core.Syntax
     Coln.Core.Value
     Coln.Diagnostics
@@ -30,9 +33,9 @@ library
     Coln.Elaborator.Rules.Record
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
-    Coln.Frontend.Notation
-    Coln.Frontend.Driver
     Coln.Frontend.Diagnostics
+    Coln.Frontend.Driver
+    Coln.Frontend.Notation
     Coln.Report
 
   hs-source-dirs: src
@@ -67,20 +70,22 @@ library
     -Wno-unused-imports
     -Wno-unused-top-binds
     -Wno-name-shadowing
+    -Wno-x-partial
 
   build-depends:
-    base,
-    bytestring,
-    containers,
-    diagnostician,
-    directory,
-    filepath,
-    fnotation,
-    hashable,
-    prettyprinter,
-    text,
-    vector,
-    vector-hashtables,
+                base,
+                bytestring,
+                containers,
+                diagnostician,
+                directory,
+                filepath,
+                fnotation,
+                hashable,
+                ordered-containers,
+                prettyprinter,
+                text,
+                vector,
+                vector-hashtables
 
 test-suite coln-compiler-test
   type: exitcode-stdio-1.0
@@ -122,6 +127,7 @@ test-suite coln-compiler-test
     filepath,
     fnotation,
     coln-compiler,
+    ordered-containers,
     prettyprinter,
     tasty,
     tasty-golden,
