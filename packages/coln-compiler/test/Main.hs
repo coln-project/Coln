@@ -46,8 +46,8 @@ prettyRealm (x, r) = vsep
 
 prettyDecls :: Globals -> DDoc
 prettyDecls ge = vsep $
-  (prettyEntry <$> OMap.toAscList ge.entries) ++
-  (prettyRealm <$> OMap.toAscList ge.realms)
+  (prettyEntry <$> OMap.assocs ge.entries) ++
+  (prettyRealm <$> OMap.assocs ge.realms)
 
 elaborate :: FilePath -> IO LBS.ByteString
 elaborate fp = do

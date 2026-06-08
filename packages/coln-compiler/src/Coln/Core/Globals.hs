@@ -24,13 +24,13 @@ emptyGlobals :: Globals
 emptyGlobals = Globals OMap.empty OMap.empty
 
 addGlobalEntry :: Name -> GlobalEntry -> Globals -> Globals
-addGlobalEntry n e g = g { entries = g.entries OMap.|> (n, e) }
+addGlobalEntry n e g = g { entries = g.entries OMap.>| (n, e) }
 
 addRealm :: Name -> Realm -> Globals -> Globals
-addRealm n r g = g { realms = g.realms OMap.|> (n, r) }
+addRealm n r g = g { realms = g.realms OMap.>| (n, r) }
 
 instance Lookup Globals Name GlobalEntry where
   lookup gs x = OMap.lookup x gs.entries
 
 instance ToList Globals (Name, GlobalEntry) where
-  toList ge = OMap.toAscList ge.entries
+  toList ge = OMap.assocs ge.entries
