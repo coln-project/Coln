@@ -121,10 +121,10 @@ idef e g ret_ty n = do
   pure (name, entry)
 
 withArgs :: (V.HasEvaluation c) => ParseEnv -> [(Span, Name, Ntn)] -> (Typ N, Chk c) -> IO (Typ N, Chk c)
-withArgs e args base = foldlM go base (reverse args)
+withArgs e args base = foldrM go base args
   where
-    go :: (V.HasEvaluation c) => (Typ N, Chk c) -> (Span, Name, Ntn) -> IO (Typ N, Chk c)
-    go (t, c) (sp, name, n) = do
+    go :: (V.HasEvaluation c) => (Span, Name, Ntn) -> (Typ N, Chk c) -> IO (Typ N, Chk c)
+    go (sp, name, n) (t, c) = do
       argtyp <- typ e n
       pure $ 
         ( Function.formation sp (Function.Named name argtyp) t
