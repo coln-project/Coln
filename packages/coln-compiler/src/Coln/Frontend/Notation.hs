@@ -10,7 +10,6 @@ lexConfig =
     , ("struct", K.Block)
     , ("theory", K.Decl)
     , ("def", K.Decl)
-    , ("set", K.Decl)
     , ("let", K.Decl)
     , ("open", K.Decl)
     , ("import", K.Decl)

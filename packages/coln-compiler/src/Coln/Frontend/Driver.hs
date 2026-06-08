@@ -41,7 +41,6 @@ decl' e g n = do
 
 decl :: ParseEnv -> S.Globals -> Ntn -> IO (Name, S.GlobalEntry)
 decl e g (N.Decl "theory" n _) = idef e g (M.univ TheoryU) n
-decl e g (N.Decl "set" n _) = idef e g (M.univ SetU) n
 decl e g (N.Decl "def" n _) = def e g n
 decl e _ n = unexpectedNotation e n "top-level declaration"
 
