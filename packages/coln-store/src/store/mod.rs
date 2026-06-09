@@ -13,7 +13,7 @@ use crate::solver::compile::{CompLaw, CompileError};
 use crate::solver::validate::LawViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreIntError};
-use crate::table::{CellValue, Table, TableOid, ValidationError};
+use crate::table::{CellValue, RowId, RowView, Table, TableOid, ValidationError};
 use crate::txn::Transaction;
 use crate::txn::ops::Op;
 
@@ -92,6 +92,19 @@ impl Store {
 
     pub(crate) fn law_entries(&self) -> &[ir::LawEntry] {
         &self.law_entries
+    }
+
+    pub fn scan_table(&self, table: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
+        self.table_at(table)
+            .map(|table| (0..table.row_count()).filter_map(|row_idx| table.row_at(row_idx)))
+    }
+
+    pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
+        self.table_at(table).and_then(|table| {
+            (0..table.row_count())
+                .filter_map(|row_idx| table.row_at(row_idx))
+                .find(|row| row.row_id == row_id)
+        })
     }
 
     /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
@@ -777,6 +790,52 @@ mod tests {
         let t = store.table_at(&path).expect("T");
         assert_eq!(t.row_count(), 1);
         assert_eq!(t.cell_at(0, 0), Some(&CellValue::Int(42)));
+    }
+
+    #[test]
+    fn scan_table_returns_rows_for_known_table() {
+        let path = Path::from("T");
+        let mut store = single_int_store();
+
+        assert_eq!(
+            store
+                .scan_table(&path)
+                .expect("known table")
+                .collect::<Vec<_>>(),
+            vec![]
+        );
+        assert!(store.scan_table(&Path::from("missing")).is_none());
+
+        let commit = commit_int(&mut store, 42);
+
+        assert_eq!(
+            store
+                .scan_table(&path)
+                .expect("known table")
+                .collect::<Vec<_>>(),
+            vec![RowView {
+                row_id: RowId { commit, counter: 0 },
+                values: vec![CellValue::Int(42)],
+            }]
+        );
+    }
+
+    #[test]
+    fn row_by_id_finds_committed_row() {
+        let path = Path::from("T");
+        let mut store = single_int_store();
+        let commit = commit_int(&mut store, 42);
+        let row_id = RowId { commit, counter: 0 };
+
+        assert_eq!(
+            store.row_by_id(&path, row_id),
+            Some(RowView {
+                row_id,
+                values: vec![CellValue::Int(42)],
+            })
+        );
+        assert_eq!(store.row_by_id(&path, RowId { commit, counter: 1 }), None);
+        assert_eq!(store.row_by_id(&Path::from("missing"), row_id), None);
     }
 
     #[test]

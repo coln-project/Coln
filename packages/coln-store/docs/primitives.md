@@ -45,20 +45,27 @@ from a compiler before it can be used by Coln Store. Supporting creating tables
 directly might introduce complex schema violations that is not easily checkable
 by Coln Store.
 
-- Read: There will be two main read endpoints (unimplemented!), as refelected
-by the Typescript binding
+- Read: There will be two main read endpoints, as reflected by the TypeScript
+binding
 
 ```rust
-Store::scan_table(table_path) -> Result<impl Iterator<Item = RowView>, ReadError>
-Store::row_by_id(path, row_id: RowId) -> Result<Option<RowView>, ReadError>
+struct RowView {
+    row_id: RowId,
+    values: Vec<CellValue>,
+}
+
+Store::scan_table(table_path) -> Option<impl Iterator<Item = RowView>>
+Store::row_by_id(table_path, row_id: RowId) -> Option<RowView>
 ```
 
-The first one `scan` gives an iterator to the underlying table values and the
-second one is a member query as indexed by the row_id. Note this `row_by_id` is
-only intended to support the most straightforward lookup right now, i.e. a table
-storing edb. Although I have not thought about this in detail, but it is not
-intended for derived tables that might involve the execution engine, unless the
-results happens to be cached in Coln Store.
+The first one `scan` gives an iterator to the underlying table rows. A known
+empty table returns `Some` with an empty iterator, while an unknown table returns
+`None`. The second one is a member query scoped to a table path and indexed by
+the row_id. Note this `row_by_id` is only intended to support the most
+straightforward lookup right now, i.e. a table storing edb. Although I have not
+thought about this in detail, it is not intended for derived tables that might
+involve the execution engine, unless the results happen to be cached in Coln
+Store.
 
 - Update:
 
