@@ -139,6 +139,13 @@ impl fmt::Display for CellValue {
     }
 }
 
+/// Public facing row value
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowView {
+    pub row_id: RowId,
+    pub values: Vec<CellValue>,
+}
+
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
 #[derive(Debug, Clone)]
 pub struct Table {
@@ -180,6 +187,15 @@ impl Table {
     /// Cell at `(row_idx, col_idx)` in columnar storage.
     pub fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<&CellValue> {
         self.cols.get(col_idx).and_then(|col| col.get(row_idx))
+    }
+
+    pub(crate) fn row_at(&self, row_idx: usize) -> Option<RowView> {
+        let row_id = self.row_id_at(row_idx)?;
+        let values = (0..self.schema.columns.len())
+            .map(|col_idx| self.cell_at(row_idx, col_idx).cloned())
+            .collect::<Option<Vec<_>>>()?;
+
+        Some(RowView { row_id, values })
     }
 
     /// Dump table contents row by row for debugging.
@@ -352,9 +368,17 @@ mod tests {
             row_id,
         );
 
+        assert_eq!(
+            tbl.row_at(0),
+            Some(RowView {
+                row_id,
+                values: vec![CellValue::Int(7), CellValue::Str("x".to_string())],
+            })
+        );
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
         assert_eq!(tbl.cell_at(0, 1), Some(&CellValue::Str("x".to_string())));
+        assert_eq!(tbl.row_at(1), None);
         assert_eq!(tbl.row_id_at(1), None);
         assert_eq!(tbl.cell_at(0, 2), None);
     }
