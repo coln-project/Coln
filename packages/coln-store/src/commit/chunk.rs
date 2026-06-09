@@ -96,6 +96,13 @@ impl From<&Commit<'_>> for Chunk {
     }
 }
 
+impl From<Commit<'_>> for Chunk {
+    fn from(commit: Commit<'_>) -> Self {
+        let Commit { header, bytes, .. } = commit;
+        Self::from_parts(header, bytes.into_owned())
+    }
+}
+
 /// Compute the content hash for a chunk.
 ///
 /// hash = blake3(chunk_type:u8 || data_len:u64_le || data)

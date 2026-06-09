@@ -152,6 +152,11 @@ impl<'a> Commit<'a> {
         self.bytes.as_ref()
     }
 
+    /// Consumes the commit and returns its payload as bytes
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes.into_owned()
+    }
+
     fn chunk_type(&self) -> ChunkType {
         self.header.chunk_type
     }

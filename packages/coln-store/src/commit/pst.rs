@@ -113,9 +113,7 @@ fn decode_store_chunks(
             continue;
         }
 
-        let commit = Commit::from_chunk(chunk, |path| {
-            store.table_at(path).map(|table| table.schema())
-        })?;
+        let commit = Commit::from_chunk(chunk, |path| store.schema_for(path))?;
         commits.push(commit);
     }
 
