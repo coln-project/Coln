@@ -25,6 +25,7 @@ module Coln.Common
   , dictLength
   , getKeyIndex
   , withHead
+  , Trie (..)
   ) where
 
 import Prelude hiding (lookup)
@@ -204,3 +205,11 @@ getKeyIndex d x = KeyIndex $ d.head.byName Map.! x
 
 withHead :: Dict a -> [b] -> Dict b
 withHead d xs = Dict d.head (V.fromList xs)
+
+-- Name-based Tries
+--------------------------------------------------------------------------------
+
+-- Generator trie
+data Trie a
+  = Leaf a
+  | Node (Dict (Trie a))
