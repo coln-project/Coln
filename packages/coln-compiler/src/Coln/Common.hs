@@ -24,6 +24,7 @@ module Coln.Common
   , KeyIndex (..)
   , dictLength
   , getKeyIndex
+  , withHead
   ) where
 
 import Prelude hiding (lookup)
@@ -200,3 +201,6 @@ instance Contains (Dict a) Name where
 
 getKeyIndex :: Dict a -> Name -> KeyIndex
 getKeyIndex d x = KeyIndex $ d.head.byName Map.! x
+
+withHead :: Dict a -> [b] -> Dict b
+withHead d xs = Dict d.head (V.fromList xs)
