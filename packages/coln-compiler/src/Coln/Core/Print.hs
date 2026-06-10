@@ -113,7 +113,7 @@ instance ToNotationTop Generator where
       (N.Keyword "->" ())
       (toNotation (fromList xs) ret)
 
-instance ToNotationTop GenTrie where
+instance (ToNotationTop a) => ToNotationTop (Trie a) where
   toNotationTop (Leaf g) = toNotationTop g
   toNotationTop (Node d) = N.Block
     "node"
