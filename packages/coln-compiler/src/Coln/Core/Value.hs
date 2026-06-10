@@ -124,7 +124,7 @@ data DecodedNeutral = DecodedNeutral
   { head :: Head
   , spine :: Spine
   , universe :: Universe
-  , behavior :: ~TypeBehavior
+  , description :: ~(Maybe (Ty D))
   }
 
 data BareNeutral = BareNeutral
@@ -228,7 +228,9 @@ instance LevelOf (Ty c) where
 behavior :: Ty c -> TypeBehavior
 behavior = \case
   U u -> LikeU u
-  Decode n -> n.behavior
+  Decode n -> case n.description of
+    Just (Record rt) -> LikeRecord rt
+    Nothing -> NoRules
   Function ft -> LikeFunction ft
   Record rt -> LikeRecord rt
   Eq _ -> NoRules
@@ -243,9 +245,9 @@ decode (Neu n) = do
         b -> panic $ "decoding a neutral of non-universe type: " ++ debugVal b
   let k desc = Decode (DecodedNeutral n.head n.spine u desc)
   case decode <$> n.description of
-    Just (Describe desc) -> k (behavior desc)
+    Just (Describe desc) -> k (Just desc)
     Just (Become ty) -> ty
-    Nothing -> k NoRules
+    Nothing -> k Nothing
 decode _ = panic "ill-typed decoding"
 
 -- Type behavior
