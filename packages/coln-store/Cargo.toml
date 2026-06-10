@@ -10,12 +10,13 @@ hex = "0.4.3"
 hexane = { git = "https://github.com/automerge/automerge", branch = "hexane_v1", package = "hexane" }
 leb128 = "0.2.6"
 postcard = { version = "1.1.3", features = ["alloc"] }
-rustyline = "18.0.0"
+rustyline = {version = "18.0.0", optional = true}
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.149"
 shlex = "2.0.1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], optional = true}
+
 
 [dev-dependencies]
 future_form = "0.3.1"
@@ -24,3 +25,13 @@ subduction_core = { git = "https://github.com/inkandswitch/subduction", features
 subduction_crypto = { git = "https://github.com/inkandswitch/subduction", features = ["std"] }
 subduction_websocket = { git = "https://github.com/inkandswitch/subduction", features = ["tokio_client", "tokio_server"] }
 tokio = { version = "1.52.3", features = ["macros", "net", "rt", "rt-multi-thread", "time"] }
+
+[features]
+default = ["native"]
+native = ["dep:rustyline", "dep:tracing-subscriber"]
+wasm = []
+
+[[bin]]
+name = "coln-store"
+path = "src/main.rs"
+required-features = ["native"]

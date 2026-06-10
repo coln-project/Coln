@@ -90,7 +90,7 @@ impl Store {
         self.tables.len()
     }
 
-    pub(crate) fn law_entries(&self) -> &[ir::LawEntry] {
+    pub fn law_entries(&self) -> &[ir::LawEntry] {
         &self.law_entries
     }
 
