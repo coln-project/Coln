@@ -1,0 +1,9 @@
+theory Graph := sig
+  vertex : Set
+  edge : vertex -> vertex -> Set
+end
+
+theory GraphOfGraphs := sig
+  graphs : Set
+  graph : graphs -> Graph
+end
