@@ -1,3 +1,7 @@
 [workspace]
-members = ["packages/coln-lang-rs", "packages/coln-store"]
+members = [
+  "packages/coln-store-wasm",
+  "packages/coln-lang-rs",
+  "packages/coln-store",
+]
 resolver = "3"
