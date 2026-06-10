@@ -48,7 +48,7 @@ bind sc x a =
       sc' = Scope (sc.len + 1) (sc.names :> x) (sc.ctx :> readb sc.len a) (sc.bound :> v) (V.LSnoc sc.locals v) (Set.insert x sc.usedNames) sc.realm
    in (v, sc')
 
-layout :: Path -> Scope -> V.Ty N -> (GenTrie, M.El N)
+layout :: Path -> Scope -> V.Ty N -> (Trie Generator, M.El N)
 layout p sc a
   | levelOf a == Theory = case V.behavior a of
       V.LikeFunction ft -> do
@@ -78,5 +78,5 @@ layout p sc a
       (gt, M.fromVEl sc.len v)
   | otherwise = panic "tried to layout a toplevel type"
 
-layoutTop :: RealmId -> V.Ty N -> (GenTrie, M.El N)
+layoutTop :: RealmId -> V.Ty N -> (Trie Generator, M.El N)
 layoutTop x = layout BwdNil (emptyScope x)
