@@ -16,6 +16,10 @@ impl TempRowId {
             counter: self.0,
         }
     }
+
+    pub fn counter(self) -> u32 {
+        self.0
+    }
 }
 
 impl From<u32> for TempRowId {
