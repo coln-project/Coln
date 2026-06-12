@@ -28,7 +28,7 @@ Quick examples:
 - Good: extend a REPL command by updating parsing, execution, and tests together.
 - Good: keep persisted schema data and compiled law data clearly separated.
 - Bad: mix REPL parsing, store mutation, and validation logic in one helper.
-- Bad: add global configuration that changes unrelated store behavior.
+- Bad: add global configuration that changes unrelated store behaviour.
 
 ## Writing Style
 
@@ -41,27 +41,27 @@ Quick examples:
 
 ## Repository Layout
 
-- `Cargo.toml`: workspace definition.
-- `packages/coln-lang-rs/`: Coln IR crate.
-  - `src/ir/mod.rs`: schema, table, law, proposition, term, and literal IR types.
-  - `src/ir/path.rs`: path parsing, display, and conversion helpers.
-- `packages/coln-store/`: storage crate and binary.
+- `Cargo.toml`: crate manifest.
+- `./`: storage crate and binary.
   - `src/lib.rs`: crate exports.
   - `src/main.rs`: REPL entry point.
   - `src/table.rs`: column storage, row ids, cell values, and table validation.
-  - `src/store.rs`: table registry, theory loading, law compilation, batch
-    application, and whole-store law checks.
+  - `src/store/`: table registry, theory loading, law compilation, commit
+    application, whole-store law checks, and store error types.
   - `src/solver/`: law compilation, matching, binding, and validation.
-  - `src/commit/`: logic dealing with commits and graphs
-    - `src/commit/wire`: the core encoding/decoding logic
+  - `src/commit/`: commit payloads, chunk framing, commit graph state, hashes,
+    authorship metadata, prefix search trees, and encoding helpers.
+    - `src/commit/wire/`: commit and root payload encoding and decoding.
   - `src/repl/`: REPL parsing, execution, summaries, and errors.
-  - `src/txn`: Logic dealing with transactions, this includes user-facing transaction API.
+  - `src/txn/`: transaction state, operation types, timestamps, and the
+    user-facing transaction API.
   - `examples/`: example Coln theory files.
   - `tests/`: crate-level integration tests and fixture data.
+  - `docs/`: contains some design docs for coln-store.
 
 ## Architecture Constraints
 
-- Treat `coln-lang-rs` as the source of shared IR definitions. Do not duplicate IR shape in `coln-store` unless conversion boundaries require it.
+- The `../coln-lang-rs`  contains the source of shared IR definitions. Do not duplicate IR shape in `coln-store` unless conversion boundaries require it.
 - `Store` owns table registration, table lookup, compiled laws, and a commit graph which is the columnar encoded operations.
 - `Table` is the materialised view of what each table should contain, after playing the commits. It also has schema-level validation for inserted values.
 - Store mutation should flow through explicit operations such as `Op` and transaction helpers.
@@ -92,7 +92,7 @@ For performance-sensitive changes:
 
 Use this sequence for your first change:
 
-1. Read `packages/coln-store/src/lib.rs`, `packages/coln-lang-rs/src/lib.rs`, and the relevant module files.
+1. Read `src/lib.rs`, and the relevant module files.
 2. Implement the smallest possible code change.
 3. Add or update tests that fail before and pass after.
 4. Run `cargo test --workspace --all-targets`.
@@ -112,9 +112,9 @@ Example scopes that are good first tasks:
 
 - No semantics-changing logic update is complete without tests.
 - Unit tests go in `#[cfg(test)] mod tests` within each module when the behavior is local to that module.
-- Integration tests for `coln-store` go in `packages/coln-store/tests/`.
-- Fixture data for those tests goes in `packages/coln-store/tests/data/`.
-- Runnable examples belong in `packages/coln-store/examples/` when they clarify supported behavior.
+- Integration tests for `coln-store` go in `tests/`.
+- Fixture data for those tests goes in `tests/data/`.
+- Runnable examples belong in `examples/` when they clarify supported behavior.
 - Do not merge code that breaks existing tests.
 
 Minimal unit-test checklist for store-related behavior:

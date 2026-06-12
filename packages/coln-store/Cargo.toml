@@ -16,3 +16,11 @@ serde_json = "1.0.149"
 shlex = "2.0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+future_form = "0.3.1"
+sedimentree_core = { git = "https://github.com/inkandswitch/subduction", features = ["std"] }
+subduction_core = { git = "https://github.com/inkandswitch/subduction", features = ["std", "test_utils"] }
+subduction_crypto = { git = "https://github.com/inkandswitch/subduction", features = ["std"] }
+subduction_websocket = { git = "https://github.com/inkandswitch/subduction", features = ["tokio_client", "tokio_server"] }
+tokio = { version = "1.52.3", features = ["macros", "net", "rt", "rt-multi-thread", "time"] }

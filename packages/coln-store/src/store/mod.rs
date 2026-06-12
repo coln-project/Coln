@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use tracing::{debug, info};
 
 use crate::commit::Commit;
+use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
@@ -299,6 +300,10 @@ impl Store {
         self.commits.get(hash)
     }
 
+    pub(crate) fn schema_for(&self, path: &ir::Path) -> Option<&ir::Schema> {
+        self.table_at(path).map(|table| table.schema())
+    }
+
     /// return commits that are not ancestors of the heads
     pub fn commits_after(&self, have_heads: &[CommitHash]) -> Vec<Commit<'static>> {
         let mut seen = HashSet::new();
@@ -384,9 +389,7 @@ impl Store {
 
             if let Some(existing) = pending.get(&hash) {
                 let existing: &Commit<'static> = existing;
-                if existing.chunk_type() != commit.chunk_type()
-                    || existing.payload() != commit.payload()
-                {
+                if *existing != commit {
                     return Err(CommitApplyError::ConflictPayload.into());
                 }
                 continue;
@@ -454,6 +457,50 @@ impl Store {
 
         *self = preview;
         Ok(())
+    }
+}
+
+/// For consumption by subduction
+pub struct CommitChunk {
+    pub hash: CommitHash,
+    pub parents: Vec<CommitHash>,
+    pub bytes: Vec<u8>,
+}
+
+impl Store {
+    // for interfacing with subduction
+    // TODO add fragments API
+
+    pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
+        self.commits_after(have_heads)
+            .into_iter()
+            .map(|commit| {
+                let head = commit.hash();
+                let parents = commit.deps.clone();
+                let bytes = Chunk::from(commit).encoded();
+                CommitChunk {
+                    hash: head,
+                    parents,
+                    bytes,
+                }
+            })
+            .collect()
+    }
+
+    /// Apply the bytes received by interpreting them as chunks, for syncing purposes
+    pub fn apply_chunk_bytes(
+        &mut self,
+        chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Result<(), Box<StoreIntError>> {
+        let commits = chunk_bytes
+            .into_iter()
+            .map(|bytes| Chunk::decode(&bytes))
+            .map(|chunk| {
+                chunk.and_then(|chunk| Commit::from_chunk(chunk, |path| self.schema_for(path)))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        self.apply_commits(commits)
     }
 }
 

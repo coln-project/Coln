@@ -3,7 +3,7 @@ use std::io::Write;
 
 use crate::commit::author::Author;
 use crate::commit::leb128 as commit_leb128;
-use crate::commit::wire::prim::{PrimValue, ValueMeta, ValueType};
+use crate::commit::wire::prim::{ValueMeta, decode_prim_value, encode_prim_value};
 use crate::{
     commit::{
         error::CodecError,
@@ -83,7 +83,6 @@ impl CommitData {
 //
 pub(crate) fn serialize<'s, F>(
     data: &CommitData,
-    // TODO hashmapper order
     hash_mapper: &HashMapper,
     schema_for: F,
 ) -> Result<Vec<u8>, CodecError>
@@ -117,7 +116,6 @@ where
 /// Encode the normal commit body after the shared commit metadata.
 ///
 /// Layout:
-/// `[op_count]`
 /// `[op_kind_column: len-prefixed hexane Column<u32>]`
 /// `[table_sequence_column: len-prefixed hexane Column<u32>]`
 /// `[group_count]`
@@ -130,7 +128,7 @@ fn encode_commit_body<'s, F>(
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
-    // TODO grouping order should be determinstic
+    // Grouping order entirely determined by the pending_op order
     let mut groups: Vec<(Path, Vec<PendingOp>)> = Vec::new();
     /*  table_sequence[i] is the group index of the ith operation. It effectively
         stores the original order the operations are in.
@@ -171,12 +169,6 @@ where
     }
 
     let mut buf = Vec::new();
-    // TODO check necessaity
-    let op_count: u32 = pending
-        .len()
-        .try_into()
-        .map_err(|_| CodecError::Other("too many ops in commit body".into()))?;
-    commit_leb128::write_u32(&mut buf, op_count);
 
     let op_kind_col = Column::<u32>::from_values(op_kinds).save();
     commit_leb128::write_len_prefixed_bytes(&mut buf, &op_kind_col);
@@ -187,7 +179,7 @@ where
     let group_count: u32 = groups
         .len()
         .try_into()
-        .map_err(|_| CodecError::Other("too many op groups in commit body".into()))?;
+        .map_err(|_| CodecError::Other("too many op groups than u32::MAX".into()))?;
     commit_leb128::write_u32(&mut buf, group_count);
 
     // NOTE each group is encoded with its row and columns first, and then the column
@@ -246,47 +238,17 @@ fn encode_txn_prim_value_column(
     values: &[TxnCellValue],
     prim: &PrimType,
 ) -> Result<Vec<u8>, CodecError> {
-    match prim {
-        PrimType::PrimInt => {
-            let mut meta: Vec<ValueMeta> = Vec::with_capacity(values.len());
-            let mut value_bytes = Vec::new();
-            for value in values {
-                let TxnCellValue::Int(i) = value else {
-                    return Err(CodecError::SchemaError(format!(
-                        "expected int, got {value:?}"
-                    )));
-                };
-                meta.push((&PrimValue::Int(*i)).into());
-                // canonical bytes; length here MUST equal ValueMeta::length()
-                leb128::write::signed(&mut value_bytes, *i)
-                    .map_err(|e| CodecError::DataFormatError(e.to_string()))?;
-            }
-            let meta_blob = Column::<ValueMeta>::from_values(meta).save();
-            let mut buf = Vec::new();
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob);
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes);
-            Ok(buf)
-        }
-        PrimType::PrimString => {
-            let mut meta: Vec<ValueMeta> = Vec::with_capacity(values.len());
-            let mut value_bytes = Vec::new();
-            for value in values {
-                let TxnCellValue::Str(s) = value else {
-                    return Err(CodecError::SchemaError(format!(
-                        "expected string, got {value:?}"
-                    )));
-                };
-                meta.push((&PrimValue::Str(s)).into());
-                // raw utf-8 bytes; length here MUST equal ValueMeta::length()
-                value_bytes.extend_from_slice(s.as_bytes());
-            }
-            let meta_blob = Column::<ValueMeta>::from_values(meta).save();
-            let mut buf = Vec::new();
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob);
-            commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes);
-            Ok(buf)
-        }
+    let mut value_bytes = Vec::new();
+    let mut buf = Vec::new();
+    let mut meta: Vec<ValueMeta> = Vec::with_capacity(values.len());
+    for value in values {
+        let meta_value = encode_prim_value(value, prim, &mut value_bytes)?;
+        meta.push(meta_value);
     }
+    let meta_blob = Column::<ValueMeta>::from_values(meta).save();
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &meta_blob);
+    commit_leb128::write_len_prefixed_bytes(&mut buf, &value_bytes);
+    Ok(buf)
 }
 
 /*
@@ -402,6 +364,8 @@ where
     };
 
     let pending = decode_commit_body(data, &mut pos, &other_hashes, schema_for)?;
+
+    // The body ends at `pos`. Anything beyond it is `extra_bytes`.
     let extra_bytes = data[pos..].to_vec();
 
     Ok(CommitData {
@@ -426,23 +390,16 @@ fn decode_commit_body<'s, F>(
 where
     F: Fn(&Path) -> Option<&'s Schema>,
 {
-    let op_count = commit_leb128::read_len(data, pos, "op count")?;
-
     let op_kind_blob = commit_leb128::read_len_prefixed_bytes(data, pos, "op kind column")?;
     let op_kinds: Vec<u32> = Column::<u32>::load(op_kind_blob)?.iter().collect();
-    if op_kinds.len() != op_count {
-        return Err(CodecError::DataFormatError(format!(
-            "op kind column length mismatch: expected {op_count}, got {}",
-            op_kinds.len()
-        )));
-    }
 
     let table_sequence_blob =
         commit_leb128::read_len_prefixed_bytes(data, pos, "table sequence column")?;
     let table_sequence: Vec<u32> = Column::<u32>::load(table_sequence_blob)?.iter().collect();
-    if table_sequence.len() != op_count {
+    if table_sequence.len() != op_kinds.len() {
         return Err(CodecError::DataFormatError(format!(
-            "table sequence column length mismatch: expected {op_count}, got {}",
+            "table sequence and op_kinds length mismatch: op_kind {}, table_seq {}",
+            op_kinds.len(),
             table_sequence.len()
         )));
     }
@@ -454,12 +411,10 @@ where
         groups.push(decode_op_group(group_blob, hashes, &schema_for)?);
     }
 
-    // The body ends at `pos`. Anything beyond it is `extra_bytes`.
-
     // reconstruct the pending ops
     let mut group_offsets = vec![0usize; groups.len()];
-    let mut pending = Vec::with_capacity(op_count);
-    for op_idx in 0..op_count {
+    let mut pending = Vec::with_capacity(op_kinds.len());
+    for op_idx in 0..op_kinds.len() {
         let op_kind = op_kinds[op_idx];
         if op_kind != OP_KIND_ADD {
             return Err(CodecError::DataFormatError(format!(
@@ -553,6 +508,7 @@ where
         )));
     }
 
+    // Transposing the columns into rows
     let mut rows = Vec::with_capacity(row_count);
     for row_index in 0..row_count {
         rows.push(
@@ -661,38 +617,7 @@ fn decode_txn_prim_value_column(
             })?;
         let bytes = &value_blob[offset..end];
 
-        let ty = m.type_code();
-        if !ty.is_valid_for(prim) {
-            return Err(CodecError::SchemaError(format!(
-                "value type {ty:?} is not valid for column type {prim:?}"
-            )));
-        }
-
-        let value = match ty {
-            ValueType::Leb => {
-                let mut reader = bytes;
-                let i = leb128::read::signed(&mut reader)
-                    .map_err(|e| CodecError::DataFormatError(e.to_string()))?;
-                if !reader.is_empty() {
-                    return Err(CodecError::DataFormatError(
-                        "trailing bytes in leb value".into(),
-                    ));
-                }
-                TxnCellValue::Int(i)
-            }
-            ValueType::String => {
-                let s = std::str::from_utf8(bytes).map_err(|_| {
-                    CodecError::DataFormatError("value column: invalid utf-8".into())
-                })?;
-                TxnCellValue::Str(s.to_owned())
-            }
-            other => {
-                return Err(CodecError::DataFormatError(format!(
-                    "unsupported value type code {other:?}"
-                )));
-            }
-        };
-
+        let value = decode_prim_value(*m, prim, bytes)?;
         values.push(value);
         offset = end;
     }
@@ -710,6 +635,7 @@ fn decode_txn_prim_value_column(
 mod tests {
     use super::*;
     use crate::commit::hash::HASH_SIZE;
+    use crate::commit::wire::prim::ValueType;
     use crate::ir::{ColType, Path, PrimType};
     use crate::table::RowId;
     use crate::txn::ops::{RowRef, TempRowId};
@@ -1057,10 +983,6 @@ mod tests {
         .expect("encode commit body");
 
         let mut pos = 0usize;
-        assert_eq!(
-            commit_leb128::read_len(&encoded, &mut pos, "op count").unwrap(),
-            3
-        );
 
         let op_kind_blob =
             commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "op kind").unwrap();
