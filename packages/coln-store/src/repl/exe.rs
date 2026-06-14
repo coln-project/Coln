@@ -183,7 +183,7 @@ pub fn add_rows(
     let mut tx = store.transaction();
     let mut temp_ids = Vec::new();
     for values in rows {
-        temp_ids.push(tx.add(&table_path, values)?);
+        temp_ids.push(tx.add_internal(&table_path, values)?);
     }
     let commit = tx.commit()?;
     let row_ids = temp_ids
@@ -240,7 +240,7 @@ pub fn run_transact(
 
     let mut tx = store.transaction();
     for (_, table_path, values, _) in pending.iter() {
-        tx.add(table_path, values.clone())?;
+        tx.add_internal(table_path, values.clone())?;
     }
     let commit = tx.commit()?;
 

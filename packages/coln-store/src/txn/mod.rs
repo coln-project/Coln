@@ -3,7 +3,7 @@ use coln_lang_rs::ir;
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreIntError},
-    txn::ops::{TempRowId, TxnCellValue},
+    txn::ops::{RowHandle, TempRowId, TxnCellValue, TxnValue},
 };
 
 mod inner;
@@ -31,9 +31,18 @@ impl<'a> Transaction<'a> {
     pub fn add(
         &mut self,
         table: &ir::Path,
+        values: Vec<TxnValue>,
+    ) -> Result<RowHandle, Box<StoreIntError>> {
+        self.inner.add(self.store, table, values)
+    }
+
+    // Used by the REPL only
+    pub(crate) fn add_internal(
+        &mut self,
+        table: &ir::Path,
         values: Vec<TxnCellValue>,
     ) -> Result<TempRowId, Box<StoreIntError>> {
-        self.inner.add(self.store, table, values)
+        self.inner.add_internal(self.store, table, values)
     }
 
     pub fn commit(self) -> Result<CommitHash, Box<StoreIntError>> {
@@ -59,8 +68,8 @@ impl OwnedTransaction {
     pub fn add(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, Box<StoreIntError>> {
+        values: Vec<TxnValue>,
+    ) -> Result<RowHandle, Box<StoreIntError>> {
         self.inner.add(&self.store, table, values)
     }
 
@@ -189,6 +198,104 @@ mod tests {
         assert_eq!(edge_id.commit, commit);
         assert_eq!(edge_id.counter, 1);
         assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+    }
+
+    #[test]
+    fn committed_row_handle_can_be_used_in_later_transaction() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store.insert_table(
+            nodes.clone(),
+            Table::new(
+                nodes.clone(),
+                Schema {
+                    columns: vec![],
+                    primary_key: None,
+                },
+            ),
+        );
+        store.insert_table(
+            edges.clone(),
+            Table::new(
+                edges.clone(),
+                Schema {
+                    columns: vec![ColType::EntityType {
+                        path: nodes.clone(),
+                    }],
+                    primary_key: None,
+                },
+            ),
+        );
+
+        let mut tx = store.transaction();
+        let node = tx.add(&nodes, vec![]).expect("add node");
+        let first_commit = tx.commit().expect("commit node");
+
+        let node_id = node.row_id().expect("node handle finalized");
+        assert_eq!(node_id.commit, first_commit);
+
+        let mut tx = store.transaction();
+        tx.add(&edges, vec![node.into()]).expect("add edge");
+        tx.commit().expect("commit edge");
+
+        let edge = store.table_at(&edges).expect("Edges");
+        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+    }
+
+    #[test]
+    fn failed_transaction_invalidates_returned_row_handles() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store.insert_table(
+            nodes.clone(),
+            Table::new(
+                nodes.clone(),
+                Schema {
+                    columns: vec![],
+                    primary_key: Some(vec![]),
+                },
+            ),
+        );
+        store.insert_table(
+            edges.clone(),
+            Table::new(
+                edges.clone(),
+                Schema {
+                    columns: vec![ColType::EntityType {
+                        path: nodes.clone(),
+                    }],
+                    primary_key: None,
+                },
+            ),
+        );
+
+        let mut tx = store.transaction();
+        let node = tx.add(&nodes, vec![]).expect("add first node");
+        tx.add(&nodes, vec![]).expect("add duplicate singleton row");
+        let err = tx
+            .commit()
+            .expect_err("duplicate singleton row should fail");
+        assert!(matches!(
+            *err,
+            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+        ));
+
+        let err = node.row_id().expect_err("failed commit invalidates handle");
+        assert!(matches!(
+            *err,
+            StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
+
+        let mut tx = store.transaction();
+        let err = tx
+            .add(&edges, vec![node.into()])
+            .expect_err("invalid handle cannot be reused");
+        assert!(matches!(
+            *err,
+            StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
     }
 
     #[test]

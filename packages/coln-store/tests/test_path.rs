@@ -46,12 +46,13 @@ fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
     let mut tx = store.transaction();
     let gid1 = tx.add(&graphs, vec![])?;
     let gid2 = tx.add(&graphs, vec![])?;
-    tx.add(&g0, vec![gid2.into()])?;
-    tx.add(&g1, vec![gid2.into()])?;
-    let v1 = tx.add(&gv, vec![gid1.into()])?;
-    let v2 = tx.add(&gv, vec![gid1.into()])?;
+    tx.add(&g0, vec![gid2.clone().into()])?;
+    tx.add(&g1, vec![gid2.clone().into()])?;
+    let v1 = tx.add(&gv, vec![gid1.clone().into()])?;
+    let v2 = tx.add(&gv, vec![gid1.clone().into()])?;
     tx.add(&ge, vec![gid1.into(), v1.into(), v2.into()])?;
     tx.commit()?;
+
     Ok(())
 }
 

@@ -14,8 +14,8 @@ use crate::solver::validate::LawViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreIntError};
 use crate::table::{CellValue, RowId, RowView, Table, TableOid, ValidationError};
-use crate::txn::Transaction;
 use crate::txn::ops::Op;
+use crate::txn::{OwnedTransaction, Transaction};
 
 pub mod error;
 
@@ -240,6 +240,11 @@ impl Store {
     pub fn transaction(&mut self) -> Transaction<'_> {
         Transaction::new(self)
     }
+
+    pub fn into_transaction(self) -> OwnedTransaction {
+        OwnedTransaction::new(self)
+    }
+
     /// Builds an empty column store per `theory.tables` and keeps only `theory.laws`
     /// (schemas are stored on each [`Table`]).
     pub fn try_from_theory(theory: FlatTheory) -> Result<Self, Box<StoreIntError>> {
