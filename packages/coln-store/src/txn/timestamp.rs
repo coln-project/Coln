@@ -9,6 +9,14 @@ impl AsRef<i64> for Timestamp {
 }
 
 impl Timestamp {
+    // TODO make this a commit option like automerge does
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn now() -> Self {
+        Self(js_sys::Date::now() as i64)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn now() -> Self {
         use std::time::{SystemTime, UNIX_EPOCH};
         let ms = SystemTime::now()

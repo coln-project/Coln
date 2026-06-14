@@ -220,7 +220,7 @@ fn encode_txn_row_ref_column(
             }
             RowRef::Pending(temp_id) => {
                 hash_indices.push(LOCAL_COMMIT_HASH_INDEX);
-                counters.push(temp_id.0);
+                counters.push(temp_id.counter());
             }
         }
     }

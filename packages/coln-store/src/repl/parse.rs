@@ -149,7 +149,7 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
 }
 
 /// Resolve one cell for a batch insert: entity columns accept `#id` or a prior binding name.
-pub fn parse_cell_value_batch(
+pub(crate) fn parse_cell_value_batch(
     col_type: &ColType,
     raw: &str,
     bindings: &HashMap<String, TempRowId>,
