@@ -5,6 +5,7 @@ use std::fmt::Write;
 use crate::commit::hash::CommitHash;
 use crate::ir;
 use crate::ir::{ColType, PrimType, Schema};
+use crate::txn::ops::TxnId;
 
 pub type TableOid = u64;
 
@@ -48,6 +49,13 @@ pub enum ValidationError {
         expected: ir::Path,
         actual: ir::Path,
     },
+    TxnIdMismatch {
+        current: TxnId,
+        got: TxnId,
+    },
+    InvalidRowHandle {
+        reason: String,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -78,6 +86,15 @@ impl fmt::Display for ValidationError {
                     f,
                     "table mismatch: expected: {expected:?}, actual: {actual:?}"
                 )
+            }
+            ValidationError::TxnIdMismatch { current, got } => {
+                write!(
+                    f,
+                    "row handle belongs to a different transaction: current {current:?}, got {got:?}"
+                )
+            }
+            ValidationError::InvalidRowHandle { reason } => {
+                write!(f, "invalid row handle: {reason}")
             }
         }
     }
