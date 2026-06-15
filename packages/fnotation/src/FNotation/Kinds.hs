@@ -18,6 +18,8 @@ data Kind
   | End
   | Tag
   | Field
+  | -- | No-space field, like the `x` in `f.x`
+    FieldImmediate
   | Int
   | String
   | LParen

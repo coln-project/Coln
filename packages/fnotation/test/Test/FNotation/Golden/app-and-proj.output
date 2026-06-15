@@ -25,6 +25,6 @@ Juxt (1:16)
     Field b (14:16)
 
 -- pretty
-f (x .a) (x .b)
+f x.a x.b
 
 -- messages

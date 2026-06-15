@@ -17,14 +17,14 @@ LParen (66:67)
 AIdent v0 (67:69)
 SKeyword : (70:71)
 AIdent G (72:73)
-Field V (73:75)
+FieldImmediate V (73:75)
 RParen (75:76)
 SKeyword -> (77:79)
 LParen (80:81)
 AIdent v1 (81:83)
 SKeyword : (84:85)
 AIdent G (86:87)
-Field V (87:89)
+FieldImmediate V (87:89)
 RParen (89:90)
 SKeyword -> (91:93)
 AIdent Path (94:98)
@@ -79,7 +79,7 @@ MDecl export inductive theory (0:113)
 
 -- pretty
 export inductive theory Connected (G : Graph) := sig
-  path-for : (v0 : G .V) -> (v1 : G .V) -> Path G .t v0 v1
+  path-for : (v0 : G.V) -> (v1 : G.V) -> Path G .t v0 v1
 end
 
 -- messages

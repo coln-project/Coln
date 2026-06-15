@@ -1,5 +1,7 @@
 module FNotation.Pretty where
 
+import Data.Maybe (fromMaybe)
+
 import Diagnostician
 import FNotation.Config
 import FNotation.Kinds (Kind)
@@ -32,6 +34,13 @@ looser p p' = not $ tighter p p'
 
 type ConfigArg = (?config :: ConfTable Prec, ?lconfig :: ConfTable Kind)
 
+tryImmediate :: (ConfigArg) => NtnGeneric a -> Maybe DDoc
+tryImmediate (Ident x _) = return $ dprettyWithKinds ?lconfig x
+tryImmediate (Juxt n (Field x _)) = do
+  i <- tryImmediate n
+  return $ i <> "." <> dprettyWithKinds ?lconfig x
+tryImmediate _ = Nothing
+
 prtTop :: (ConfigArg) => NtnGeneric a -> DDoc
 prtTop = prt Top
 
@@ -44,15 +53,16 @@ par False d = d
 
 prt :: (ConfigArg) => PrevPrec -> NtnGeneric a -> DDoc
 prt p = \case
-  Juxt n n' ->
-    par (looser precApp p) $
-      prt (LeftOf precApp) n <+> prt (RightOf precApp) n'
+  Juxt n n' -> fromMaybe
+    (par (looser precApp p) $
+      prt (LeftOf precApp) n <+> prt (RightOf precApp) n')
+    (tryImmediate (Juxt n n'))
   Infix l n r ->
     let mp' = case n of
           Ident x _ -> confTableLookup ?config x.last
           Keyword x _ -> confTableLookup ?config x.last
           _ -> Nothing
-        p' = maybe (Prec 50 AssocL) id mp'
+        p' = fromMaybe (Prec 50 AssocL) mp'
      in par (looser p' p) (prt (LeftOf p') l <+> prt Bot n <+> prt (RightOf p') r)
   Block x hd stmts _ ->
     vsep $
