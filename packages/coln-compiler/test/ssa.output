@@ -39,9 +39,9 @@ end
 global entry named Operation
 type: (opInfo : OpInfo) -> (val : Set) -> (outputs : Set) -> Theory
 value: opInfo => val => outputs => sig
-  opType : opInfo .OpType
-  opInputs : opInfo .inputArity opType -> val
-  opOutputs : Iso outputs (opInfo .outputArity opType)
+  opType : opInfo.OpType
+  opInputs : opInfo.inputArity opType -> val
+  opOutputs : Iso outputs (opInfo.outputArity opType)
 end
 global entry named PrecedingOutput
 type: (X : Set) -> (rel : X -> X -> Set) -> (x : X) -> (outputs : X -> Set) -> Set
@@ -54,8 +54,8 @@ global entry named Block
 type: (opInfo : OpInfo) -> Theory
 value: opInfo => sig
   ops : LinearOrder
-  outputs : ops .car -> Set
-  payload : (x : ops .car) -> Operation opInfo (PrecedingOutput (ops .car) (ops .follows) x outputs) (outputs x)
+  outputs : ops.car -> Set
+  payload : (x : ops.car) -> Operation opInfo (PrecedingOutput ops.car ops.follows x outputs) (outputs x)
   args : LinearOrder
 end
 global entry named SSA

@@ -8,48 +8,48 @@ end
 global entry named Graph/hom
 type: (G0 : Graph) -> (G1 : Graph) -> Theory
 value: G0 => G1 => sig
-  V : G0 .V -> G1 .V
-  E : (v0 : G0 .V) -> (v1 : G0 .V) -> G0 .E v0 v1 -> G1 .E (V v0) (V v1)
+  V : G0.V -> G1.V
+  E : (v0 : G0.V) -> (v1 : G0.V) -> G0.E v0 v1 -> G1.E (V v0) (V v1)
 end
 global entry named GraphOfGraphs
 type: Theory
 value: sig
   base : Graph
-  fiber : base .V -> Graph
-  action : (v0 : base .V) -> (v1 : base .V) -> base .E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
+  fiber : base.V -> Graph
+  action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
 realm named Graph
 generators: node
   V = rel []
-  E = rel [a : Graph .V [], b : Graph .V []]
+  E = rel [a : Graph.V [], b : Graph.V []]
 end
 realm named GraphOfGraphs
 generators: node
   base = node
     V = rel []
-    E = rel [a : GraphOfGraphs .base .V [], b : GraphOfGraphs .base .V []]
+    E = rel [a : GraphOfGraphs.base.V [], b : GraphOfGraphs.base.V []]
   end
   fiber = node
-    V = rel [a : GraphOfGraphs .base .V []]
-    E = rel [ a : GraphOfGraphs .base .V []
-    , b : GraphOfGraphs .fiber .V [a]
-    , c : GraphOfGraphs .fiber .V [a] ]
+    V = rel [a : GraphOfGraphs.base.V []]
+    E = rel [ a : GraphOfGraphs.base.V []
+    , b : GraphOfGraphs.fiber.V [a]
+    , c : GraphOfGraphs.fiber.V [a] ]
   end
   action = node
-    V = (fun [ v0 : GraphOfGraphs .base .V []
-    , v1 : GraphOfGraphs .base .V []
-    , a : GraphOfGraphs .base .E [v0, v1]
-    , b : GraphOfGraphs .fiber .V [v0] ] -> GraphOfGraphs .fiber .V [v1])
-    E = (fun [ v0 : GraphOfGraphs .base .V []
-    , v1 : GraphOfGraphs .base .V []
-    , a : GraphOfGraphs .base .E [v0, v1]
-    , v0 : GraphOfGraphs .fiber .V [v0]
-    , v1 : GraphOfGraphs .fiber .V [`v0^1`]
-    , b : GraphOfGraphs .fiber .E [ `v0^1`
+    V = (fun [ v0 : GraphOfGraphs.base.V []
+    , v1 : GraphOfGraphs.base.V []
+    , a : GraphOfGraphs.base.E [v0, v1]
+    , b : GraphOfGraphs.fiber.V [v0] ] -> GraphOfGraphs.fiber.V [v1])
+    E = (fun [ v0 : GraphOfGraphs.base.V []
+    , v1 : GraphOfGraphs.base.V []
+    , a : GraphOfGraphs.base.E [v0, v1]
+    , v0 : GraphOfGraphs.fiber.V [v0]
+    , v1 : GraphOfGraphs.fiber.V [`v0^1`]
+    , b : GraphOfGraphs.fiber.E [ `v0^1`
     , v0
-    , v1 ] ] -> GraphOfGraphs .fiber .E [ `v1^1`
-    , GraphOfGraphs .action .V [`v0^1`, `v1^1`, a, v0]
-    , GraphOfGraphs .action .V [`v0^1`, `v1^1`, a, v1] ])
+    , v1 ] ] -> GraphOfGraphs.fiber.E [ `v1^1`
+    , GraphOfGraphs.action.V [`v0^1`, `v1^1`, a, v0]
+    , GraphOfGraphs.action.V [`v0^1`, `v1^1`, a, v1] ])
   end
 end
 

@@ -201,8 +201,8 @@ tupleElems st =
       reportUnexpected st k T.CExprStart
       pure []
 
-arg :: ParseState -> IO Ntn
-arg st = do
+argBase :: ParseState -> IO Ntn
+argBase st = do
   m <- openingPos st
   cur st >>= \case
     T.LParen -> do
@@ -223,7 +223,7 @@ arg st = do
     T.AKeyword -> do
       x <- curName st
       advanceClose st m $ Keyword x
-    T.Field -> do
+    T.Field;T.FieldImmediate -> do
       x <- curName st
       advanceClose st m $ Field x
     T.Tag -> do
@@ -239,6 +239,21 @@ arg st = do
     k -> do
       reportUnexpected st k T.CExprStart
       advanceClose st m Error
+
+-- `.x.y.z -> [x, y, z]`
+argProjs :: ParseState -> IO [Ntn]
+argProjs st = cur st >>= \case
+  k@T.FieldImmediate -> do
+    field <- argBase st
+    rest <- argProjs st
+    return (field : rest)
+  _ -> pure []
+
+arg :: ParseState -> IO Ntn
+arg st = do
+  head <- argBase st
+  spine <- argProjs st
+  pure $ foldr (flip Juxt) head (reverse spine)
 
 args :: ParseState -> IO [Ntn]
 args st = do

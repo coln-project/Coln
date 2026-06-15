@@ -1,0 +1,15 @@
+let t := f x.a
+let t := f x.a.b.c
+let t := f x .a.b.c
+let t := f x.a .b.c
+let t := f x.a.b .c
+let t := f (x .a)
+let t := f x.a y.b
+let t := f x.a.b.c
+let t := f (x .a) (y .b)
+let t := f x .a y .b
+let t := f x.a/b
+let t := f x/y.a
+let t := f x/y.a/b.c/d
+let t := f ((x/y.a/b).c/d)
+let t := f x/y.a/b .c/d

@@ -298,29 +298,29 @@ tryName st k d =
 --------------------------------------------------------------------------------
 
 -- | Lex all the tokens
-run :: LexState -> IO ()
-run st =
+run :: LexState -> Bool -> IO ()
+run st ws =
   peek st >>= \case
-    '\t' -> skip st >> run st
-    ' ' -> skip st >> run st
-    '(' -> classify st LParen >> run st
-    ')' -> classify st RParen >> run st
-    '[' -> classify st LBrack >> run st
-    ']' -> classify st RBrack >> run st
-    '{' -> classify st LCurly >> run st
-    '}' -> classify st RCurly >> run st
-    ',' -> classify st Comma >> run st
-    ';' -> classify st Semicolon >> run st
-    '\n' -> classify st Nl >> run st
-    '#' -> comment st >> run st
-    '\"' -> string st >> run st
-    '.' -> advance st >> tryName st Field "period" >> run st
-    '\'' -> advance st >> tryName st Tag "single quote" >> run st
+    '\t' -> skip st >> run st True
+    ' ' -> skip st >> run st True
+    '(' -> classify st LParen >> run st False
+    ')' -> classify st RParen >> run st False
+    '[' -> classify st LBrack >> run st False
+    ']' -> classify st RBrack >> run st False
+    '{' -> classify st LCurly >> run st False
+    '}' -> classify st RCurly >> run st False
+    ',' -> classify st Comma >> run st False
+    ';' -> classify st Semicolon >> run st False
+    '\n' -> classify st Nl >> run st False
+    '#' -> comment st >> run st False
+    '\"' -> string st >> run st False
+    '.' -> advance st >> tryName st (if ws then Field else FieldImmediate) "period" >> run st False
+    '\'' -> advance st >> tryName st Tag "single quote" >> run st False
     '\0' -> emit0 st Eof
-    '`' -> ident st >> run st
-    c | isDigit c -> (int st >>= emit st Int . VInt) >> run st
-    c | isLetter c || c == '_' || isSymbol c -> ident st >> run st
-    c -> unexpectedChar st c >> run st
+    '`' -> ident st >> run st False
+    c | isDigit c -> (int st >>= emit st Int . VInt) >> run st False
+    c | isLetter c || c == '_' || isSymbol c -> ident st >> run st False
+    c -> unexpectedChar st c >> run st False
 
 -- | Run the lexer, return a vector of tokens ready for parsing.
 lex :: ConfTable Kind -> Reporter LexerCode -> File -> IO (V.Vector Token)
@@ -330,5 +330,5 @@ lex config reporter file = do
   iter <- newIORef $ TU.iter file.contents 0
   out <- bufferWithCapacity (TU.lengthWord8 file.contents + 1)
   let st = LexState pos prev iter out file reporter config
-  run st
+  run st False
   bufferUnsafeFreeze st.out
