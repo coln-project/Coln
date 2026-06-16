@@ -4,6 +4,11 @@ theory Graph := sig
 end
 
 realm Graph @ Graph
+  def free-edge : Set := sig
+    v0 : self.V
+    v1 : self.V
+    f : self.E v0 v1
+  end
 end
 
 theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
