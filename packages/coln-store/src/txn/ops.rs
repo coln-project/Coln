@@ -97,13 +97,13 @@ pub enum TxnValue {
 
 impl TxnValue {
     pub(crate) fn to_txn_cell_value(
-        self,
+        &self,
         current_tx: TxnId,
     ) -> Result<TxnCellValue, Box<StoreIntError>> {
         match self {
             TxnValue::Id(handle) => handle.to_txn_cell_value(current_tx),
-            TxnValue::Int(value) => Ok(TxnCellValue::Int(value)),
-            TxnValue::Str(value) => Ok(TxnCellValue::Str(value)),
+            TxnValue::Int(value) => Ok(TxnCellValue::Int(*value)),
+            TxnValue::Str(value) => Ok(TxnCellValue::Str(value.clone())),
         }
     }
 }
