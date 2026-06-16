@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "packages/coln-store-wasm",
+  "packages/coln-js-runtime",
   "packages/coln-lang-rs",
   "packages/coln-store",
 ]

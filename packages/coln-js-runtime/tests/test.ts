@@ -1,8 +1,9 @@
-import { StoreHandle } from "../../../coln-store-wasm/pkg/coln_store_wasm.js";
+import { StoreHandle } from "../src/index.ts";
 import { Graph, GraphOfGraphs } from "./graph.ts";
 import flatTheory from "./graph.json" with { type: "json" };
-import { StoreTxnCtx } from "./runtime/store.ts";
-import { valueEqual } from "./runtime/row.ts";
+import { StoreTxnCtx, valueEqual } from "../src/index.ts"
+import { WorkSpace } from "../src/workspace.ts";
+import { ColnStoreAdapter } from "../src/store.ts";
 
 function assert(b: boolean, label = "assertion failed") {
   if (!b) {
@@ -43,10 +44,10 @@ function graph_tests() {
 function graph_of_graph_tests() {
   const flatTheoryJson = JSON.stringify(flatTheory);
 
-  const repo = new Repo();
-  const handle = repo.create(GraphOfGraphs);
+  const ws = new WorkSpace(new WorkSpace(  new ColnStoreAdapter()));
+  const store = ws.create(GraphOfGraphs);
 
-  const [v0, v1, g0_id] = handle.change(gg => {
+  const [v0, v1, g0_id] = store.change(gg => {
     const g0_id = gg.graphs.add();
     const g0 = gg.graph(g0_id);
     var v0 = g0.vertex.add();

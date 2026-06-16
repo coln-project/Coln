@@ -3,8 +3,11 @@ use coln_lang_rs::ir;
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreIntError},
-    txn::ops::{RowHandle, TempRowId, TxnCellValue, TxnValue},
+    txn::ops::{RowHandle, TxnValue},
 };
+
+#[cfg(feature = "native")]
+use crate::txn::ops::{TempRowId, TxnCellValue};
 
 mod inner;
 pub mod ops;
@@ -37,6 +40,7 @@ impl<'a> Transaction<'a> {
     }
 
     // Used by the REPL only
+    #[cfg(feature = "native")]
     pub(crate) fn add_internal(
         &mut self,
         table: &ir::Path,
