@@ -1,4 +1,4 @@
-import * as runtime from '../src/index.ts';
+import * as runtime from "../src/index.ts";
 
 export namespace Graph {
   export interface Readonly {
@@ -18,8 +18,8 @@ export namespace Graph {
     edge: (x: runtime.Value) => (x: runtime.Value) => runtime.ReadWriteSet;
 
     constructor(ctx: runtime.StoreTxnCtx) {
-      this._table_vertex = (new runtime.RelTable(["vertex"], ctx));
-      this._table_edge = (new runtime.RelTable(["edge"], ctx));
+      this._table_vertex = new runtime.RelTable(["vertex"], ctx);
+      this._table_edge = new runtime.RelTable(["edge"], ctx);
       this.vertex = this._table_vertex.apply_to([]);
       this.edge = (a: runtime.Value) => {
         return (b: runtime.Value) => {
@@ -30,7 +30,7 @@ export namespace Graph {
   }
 
   export function open(ctx: runtime.StoreTxnCtx): ReadWrite {
-    return (new Database(ctx));
+    return new Database(ctx);
   }
 }
 
@@ -53,9 +53,15 @@ export namespace GraphOfGraphs {
     graph: (x: runtime.Value) => Graph.ReadWrite;
 
     constructor(ctx: runtime.StoreTxnCtx) {
-      this._table_graphs = (new runtime.RelTable(["gog", "graphs"], ctx));
-      this._table_graph$vertex = (new runtime.RelTable(["gog", "graph", "vertex"], ctx));
-      this._table_graph$edge = (new runtime.RelTable(["gog", "graph", "edge"], ctx));
+      this._table_graphs = new runtime.RelTable(["gog", "graphs"], ctx);
+      this._table_graph$vertex = new runtime.RelTable(
+        ["gog", "graph", "vertex"],
+        ctx,
+      );
+      this._table_graph$edge = new runtime.RelTable(
+        ["gog", "graph", "edge"],
+        ctx,
+      );
       this.graphs = this._table_graphs.apply_to([]);
       this.graph = (a: runtime.Value) => {
         return {
@@ -64,11 +70,13 @@ export namespace GraphOfGraphs {
             return (c: runtime.Value) => {
               return this._table_graph$edge.apply_to([a, b, c]);
             };
-          }
+          },
         };
       };
     }
   }
 
-  export function open(ctx: runtime.StoreTxnCtx): ReadWrite { return (new Database(ctx)); }
+  export function open(ctx: runtime.StoreTxnCtx): ReadWrite {
+    return new Database(ctx);
+  }
 }

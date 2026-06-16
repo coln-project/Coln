@@ -1,14 +1,11 @@
-import type { AnyValue, RowView, Value } from "./row";
-import { toTxnValue, valueEqual } from "./row";
+import { Value, RowView, tryValueRowId } from "./value";
+import { toTxnValue, valueEqual } from "./value";
 import { StorageCtx } from "./store";
 
 export type Tuple = Value[];
 
 export namespace Tuple {
-  export function equal(
-    t0: readonly AnyValue[],
-    t1: readonly AnyValue[],
-  ): boolean {
+  export function equal(t0: readonly Value[], t1: readonly Value[]): boolean {
     if (t0.length == t1.length) {
       for (var i = 0; i < t0.length; i++) {
         if (!valueEqual(t0[i], t1[i])) {
@@ -59,9 +56,9 @@ export class AppliedRelTable<W> implements ReadWriteSet {
   }
 
   has(x: Value): boolean {
-    if (x.tag !== "row_id") return false;
+    if (x.tag !== "row_id" && x.tag !== "row_handle") return false;
 
-    const rowId = x.value.tryRowId();
+    const rowId = tryValueRowId(x);
     if (rowId === undefined) return false;
 
     const row = this.relation.ctx.rowById(this.relation.storePath(), rowId);
@@ -81,6 +78,6 @@ export class AppliedRelTable<W> implements ReadWriteSet {
       this.params.map(toTxnValue),
     );
 
-    return { tag: "row_id", value: handle };
+    return { tag: "row_handle", value: handle };
   }
 }

@@ -7,9 +7,13 @@ use coln_store::{
 use serde::{Deserialize, Serialize};
 use std::array::TryFromSliceError;
 use tsify::Tsify;
+use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::{RowHandle, error::BoundaryError};
+use crate::{
+    RowHandle,
+    error::{BoundaryError, js_error},
+};
 
 #[wasm_bindgen]
 pub struct TxnValue {
@@ -34,6 +38,14 @@ impl TxnValue {
         Self {
             inner: StoreTxnValue::from(handle.handle.clone()),
         }
+    }
+
+    #[wasm_bindgen(js_name = rowId)]
+    pub fn row_id(row_id: RowId) -> Result<TxnValue, JsValue> {
+        let row_id = StoreRowId::try_from(row_id).map_err(js_error)?;
+        Ok(Self {
+            inner: StoreTxnValue::from(row_id),
+        })
     }
 }
 
