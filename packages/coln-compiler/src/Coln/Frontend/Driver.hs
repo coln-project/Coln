@@ -7,6 +7,7 @@ import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
 import FNotation (Ntn)
 import FNotation qualified as N
+import Diagnostician
 
 import Coln.Common
 import Coln.Core.Globals
@@ -16,6 +17,7 @@ import Coln.Core.Params
 import Coln.Core.Realm
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
+import Coln.Core.Readback
 import Coln.Diagnostics
 import Coln.Elaborator.Debug
 import Coln.Elaborator.Environment
@@ -27,6 +29,7 @@ import Coln.Elaborator.Rules.Record qualified as Record
 import Coln.Elaborator.Rules.Universe qualified as Universe
 import Coln.Elaborator.Rules.Variable qualified as Variable
 import Coln.Frontend.Diagnostics
+import Coln.Frontend.Notation
 import Coln.Report
 
 import Prettyprinter ((<+>))
@@ -35,6 +38,12 @@ type ParseEnv = DiagnosticEnv ColnCode
 
 top :: ParseEnv -> [Ntn] -> IO Globals
 top e = foldlM (decl' e) emptyGlobals
+
+topFromText :: Reporter ColnCode -> File -> IO Globals
+topFromText r f = do
+  ts <- N.lex lexConfig (contramap LexerCode r) f
+  ns <- N.parse parseConfig (contramap ParserCode r) f ts
+  top (DiagnosticEnv r f) ns
 
 decl' :: ParseEnv -> Globals -> Ntn -> IO Globals
 decl' e g n = do
@@ -82,7 +91,7 @@ fieldDecl e (N.Decl c n sp) =
 fieldDecl e n = unexpectedNotation e n "field declaration of the form `<fieldname> : <type>`"
 
 fieldSetting :: (V.HasEvaluation c) => ParseEnv -> Ntn -> IO (Record.FieldSetting c)
-fieldSetting e (N.Infix (N.Ident x sp) (N.Keyword ":=" _) body) = 
+fieldSetting e (N.Infix (N.Ident x sp) (N.Keyword ":=" _) body) =
   Record.FieldSetting x <$> chk e body <*> pure sp
 fieldSetting e n = unexpectedNotation e n "field setting of the form `<fieldname> := <expr>`"
 
@@ -139,8 +148,9 @@ realm e g head _defs = do
   (x, theory_n) <- realmHead e head
   theory_typ <- typ e theory_n
   theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g)
-  let (gt, _) = layoutTop x theory.val
-  pure (x, Realm gt)
+  let (gt, rootv) = layoutTop x theory.val
+  let root = readb 0 rootv
+  pure (x, Realm gt root)
 
 withArgs :: (V.HasEvaluation c) => ParseEnv -> [(Span, Name, Ntn)] -> (Typ N, Chk c) -> IO (Typ N, Chk c)
 withArgs e args base = foldrM go base args
@@ -148,7 +158,7 @@ withArgs e args base = foldrM go base args
     go :: (V.HasEvaluation c) => (Span, Name, Ntn) -> (Typ N, Chk c) -> IO (Typ N, Chk c)
     go (sp, name, n) (t, c) = do
       argtyp <- typ e n
-      pure $ 
+      pure $
         ( Function.formation sp (Function.Named name argtyp) t
         , Function.intro sp name c
         )
@@ -216,7 +226,7 @@ elim :: ParseEnv -> Syn N -> Ntn -> IO (Syn N)
 elim e j = \case
   N.Field x s -> pure $ Record.elim s j x
   arg -> Function.elim (N.span arg) j <$> chk e arg
-  
+
 binder :: ParseEnv -> Ntn -> IO Function.Binder
 binder e = \case
   N.Infix name (N.Keyword ":" _) arg ->

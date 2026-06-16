@@ -9,4 +9,6 @@ data Generator
   | Fun [Name] [S.Ty N] (S.Ty N)
 
 data Realm = Realm
-  { generators :: Trie Generator }
+  { generators :: Trie Generator
+  , root :: S.El N
+  }

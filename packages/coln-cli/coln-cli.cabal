@@ -1,0 +1,52 @@
+cabal-version:      3.4
+name:               coln-cli
+version:            0.1.0.0
+license:            (Apache-2.0 OR MIT)
+author:             Owen Lynch
+maintainer:         root@owenlynch.org
+category:           Distribution
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall
+
+executable coln
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:
+      Coln.CLI.Check
+      Coln.CLI.Common
+      Coln.CLI.GenerateTS
+      Coln.CLI.Options
+    build-depends:
+      base ^>=4.21.1.0,
+      coln-compiler,
+      diagnostician,
+      fnotation,
+      optparse-applicative,
+      text
+    default-extensions:
+      BlockArguments
+      CPP
+      DerivingVia
+      DuplicateRecordFields
+      FunctionalDependencies
+      ImplicitParams
+      MagicHash
+      NoFieldSelectors
+      OrPatterns
+      OverloadedRecordDot
+      OverloadedStrings
+      PatternSynonyms
+      QualifiedDo
+      StrictData
+      TemplateHaskell
+      TypeData
+      TypeFamilies
+      TypeFamilyDependencies
+      UnboxedSums
+      UnboxedTuples
+      UnicodeSyntax
+      ViewPatterns
+    hs-source-dirs:   app
+    default-language: GHC2024

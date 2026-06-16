@@ -44,7 +44,7 @@ import Data.Vector.Hashtables (FrozenDictionary)
 import Data.Vector.Hashtables qualified as HT
 import Data.Vector.Strict qualified as V
 import Diagnostician
-import FNotation (Name)
+import FNotation (Name(..))
 import Prettyprinter (Pretty (..))
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -213,3 +213,4 @@ withHead d xs = Dict d.head (V.fromList xs)
 data Trie a
   = Leaf a
   | Node (Dict (Trie a))
+  deriving (Functor)
