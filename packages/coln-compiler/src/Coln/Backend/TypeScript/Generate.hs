@@ -51,12 +51,24 @@ genInterface access = \case
     TS.Interface name extends (map doField (toList rt.fieldTypes))
    where
     doField (x, a) = TS.Binding (mangle x) (genTy access a)
-  _ -> error "not yet supported"
+
+-- mentioned :: S.Ty c -> 
 
 genTop :: V.Ty N -> V.Evaluation V.El D -> TS.Module
-genTop a v = go 0 a v
+genTop a ev = go 0 a ev
   where
-    go i (V.U Theory) v' =
+    go n (V.U Theory) ev' = case v' of
+      V.Become v -> do
+        let a = readb n (V.decode v)
+        let readonly = TS.TypeDef "Readonly" (genTy Readonly a)
+        let readwrite = TS.TypeDef "ReadWrite" (genTy ReadWrite a)
+        TS.Module [] [TS.DTypeDef readonly, TS.DTypeDef readwrite]
+      V.Describe v -> do
+        let a = readb n (V.decode v)
+        let readonly = TS.TypeDef "Readonly" (genInterface Readonly a)
+        let readwrite = TS.TypeDef "ReadWrite" (genInterface ReadWrite a)
+        TS.Module [] [TS.DInterface readonly, TS.DInterface readwrite]
+
 
 generate :: Globals -> FilePath -> IO ()
 generate ge fp = do
