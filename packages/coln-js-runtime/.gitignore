@@ -1,0 +1,4 @@
+## node stuff
+**node_modules/
+**dist/
+.wasm-bodge/

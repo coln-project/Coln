@@ -1,4 +1,4 @@
-import * as runtime from './runtime';
+import * as runtime from '../src/index.ts';
 
 export namespace Graph {
   export interface Readonly {
