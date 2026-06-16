@@ -17,8 +17,8 @@ outputDir = strOption
   )
 
 data GenerateTSOptions = GenerateTSOptions
-  { outputDir :: String
-  , inputFile :: String
+  { inputFile :: String
+  , outputDir :: String
   }
 
 generateTSOptions :: Parser GenerateTSOptions
