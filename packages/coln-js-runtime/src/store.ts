@@ -1,9 +1,11 @@
 import {
   CommitResult,
+  RowHandle,
   RowId,
   RowView,
   StoreHandle,
   TransactionHandle,
+  TxnValue,
 } from "#wasm-bodge/bindings";
 import { Schema, SchemaProvider } from "./schema";
 
@@ -26,6 +28,8 @@ export interface StorageCtx<W> {
   change<T>(db: W, cb: (db: W) => T): T;
   rowById(path: string, row_id: RowId): RowView | undefined;
   scanTable(path: string): RowView[];
+
+  add(path: string, values: TxnValue[]): RowHandle;
 }
 
 // A store is parameterised by W, which is the ReadWrite interface of a particular
@@ -65,5 +69,13 @@ export class ColnStore<W> implements StorageCtx<W> {
 
   scanTable(path: string): RowView[] {
     return this.scanTable(path);
+  }
+
+  add(path: string, values: TxnValue[]): RowHandle {
+    if (!this.tx) {
+      throw new Error("no active transaction");
+    }
+
+    return this.tx.add(path, values);
   }
 }

@@ -1,6 +1,6 @@
 import type { AnyValue, RowView, Value } from "./row";
 import { toTxnValue, valueEqual } from "./row";
-import { StoreTxnCtx } from "./store";
+import { StorageCtx } from "./store";
 
 export type Tuple = Value[];
 
@@ -31,16 +31,16 @@ export interface ReadWriteSet extends ReadonlySet {
   add(): Value;
 }
 
-export class RelTable {
+export class RelTable<W> {
   path: string[];
-  ctx: StoreTxnCtx;
+  ctx: StorageCtx<W>;
 
-  constructor(path: string[], ctx: StoreTxnCtx) {
+  constructor(path: string[], ctx: StorageCtx<W>) {
     this.path = path;
     this.ctx = ctx;
   }
 
-  apply_to(params: Value[]): AppliedRelTable {
+  apply_to(params: Value[]): AppliedRelTable<W> {
     return new AppliedRelTable(this, params);
   }
 
@@ -49,11 +49,11 @@ export class RelTable {
   }
 }
 
-export class AppliedRelTable implements ReadWriteSet {
-  relation: RelTable;
+export class AppliedRelTable<W> implements ReadWriteSet {
+  relation: RelTable<W>;
   params: Value[];
 
-  constructor(relation: RelTable, params: Value[]) {
+  constructor(relation: RelTable<W>, params: Value[]) {
     this.relation = relation;
     this.params = params;
   }
@@ -64,26 +64,19 @@ export class AppliedRelTable implements ReadWriteSet {
     const rowId = x.value.tryRowId();
     if (rowId === undefined) return false;
 
-    const row = this.relation.ctx.store.rowById(
-      this.relation.storePath(),
-      rowId,
-    );
+    const row = this.relation.ctx.rowById(this.relation.storePath(), rowId);
 
     return row !== undefined && Tuple.equal(row.values, this.params);
   }
 
   values(): Iterator<RowView> {
-    const rows = this.relation.ctx.store.scanTable(this.relation.storePath());
+    const rows = this.relation.ctx.scanTable(this.relation.storePath());
 
     return rows.filter((row) => Tuple.equal(row.values, this.params)).values();
   }
 
   add(): Value {
-    if (!this.relation.ctx.tx) {
-      throw new Error("no active transaction");
-    }
-
-    const handle = this.relation.ctx.tx.add(
+    const handle = this.relation.ctx.add(
       this.relation.storePath(),
       this.params.map(toTxnValue),
     );
