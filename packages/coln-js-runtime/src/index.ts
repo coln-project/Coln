@@ -1,6 +1,6 @@
-export type { RowId, RowView, CellValue, Value, AnyValue } from "./row";
+export type { RowId, RowView, CellValue, Value } from "./value";
 
-export { RowHandle, TxnValue, toTxnValue, valueEqual } from "./row";
+export { RowHandle, TxnValue, toTxnValue, valueEqual } from "./value";
 
 export type { StoreHandle, TransactionHandle, CommitResult } from "./store";
 

@@ -8,6 +8,7 @@ import {
   TxnValue,
 } from "#wasm-bodge/bindings";
 import { Schema, SchemaProvider } from "./schema";
+import { Value } from "./value";
 
 export type { CommitResult, StoreHandle, TransactionHandle };
 
@@ -25,7 +26,7 @@ export interface StorageCtx<W> {
   begin(): void;
   commit(): string;
 
-  change<T>(db: W, cb: (db: W) => T): T;
+  change(db: W, cb: (db: W) => Value[]): Value[];
   rowById(path: string, row_id: RowId): RowView | undefined;
   scanTable(path: string): RowView[];
 
@@ -55,12 +56,21 @@ export class ColnStore<W> implements StorageCtx<W> {
     return result.commit;
   }
 
-  change<T>(db: W, cb: (db: W) => T): T {
+  change(db: W, cb: (db: W) => Value[]): Value[] {
     this.begin();
     const res = cb(db);
 
     this.commit();
-    return res;
+    return res.map((v) => {
+      if (v.tag !== "row_handle") {
+        return v;
+      } else {
+        return {
+          tag: "row_id",
+          value: v.value.rowId(),
+        } as Value;
+      }
+    });
   }
 
   rowById(path: string, row_id: RowId): RowView | undefined {
@@ -68,7 +78,7 @@ export class ColnStore<W> implements StorageCtx<W> {
   }
 
   scanTable(path: string): RowView[] {
-    return this.scanTable(path);
+    return this.store.scanTable(path);
   }
 
   add(path: string, values: TxnValue[]): RowHandle {
