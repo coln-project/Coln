@@ -10,6 +10,10 @@ build-type: Simple
 
 library
   exposed-modules:
+    Coln.Backend.Lower
+    Coln.Backend.TypeScript.Assemble
+    Coln.Backend.TypeScript.AST
+    Coln.Backend.TypeScript.Generate
     Coln.Common
     Coln.Core.Conversion
     Coln.Core.Evaluation

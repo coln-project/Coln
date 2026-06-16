@@ -15,6 +15,7 @@ pkgs.mkShell {
     fourmolu
     haskell.compiler.ghc912
     haskellPackages.cabal-gild
+    haskellPackages.ghcid
     nodejs
     pkg-config
     tectonic

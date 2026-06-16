@@ -6,6 +6,7 @@ import Coln.Core.Evaluation
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Core.Realm qualified as C
+import Coln.Backend.IR qualified as I
 
 data Shape
   = RowId TableName
@@ -22,8 +23,9 @@ data Term
 
 data Pred
   = EltOf Term TableName [Term]
-  | And [Pred]
+  | And (Dict Pred)
   | Equal Term Term
+  | PTrue
 
 type CtxLen = Int
 
@@ -71,12 +73,11 @@ separate n = \case
             let t = separate n a v'
             (t.shape, t.pred) : go (V.LSnoc vs v') rest
       let (shapes, props) = unzip $ go rt.capture (toList rt.fieldTypes)
-      Ty (Tuple (withHead rt.fieldTypes shapes)) (And props)
-      where
+      Ty (Tuple (withHead rt.fieldTypes shapes)) (And (withHead rt.fieldTypes props))
     Nothing -> panic "lowering neutral type"
   V.Function _ -> panic "lowering non-set-level type: Function"
   V.Eq et -> \_ -> Ty Unit (Equal (lower n et.lhs) (lower n et.rhs))
-  V.BuiltinTy t -> \_ -> Ty (BuiltinTy t) (And [])
+  V.BuiltinTy t -> \_ -> Ty (BuiltinTy t) PTrue
   V.EltOf x ts -> \v -> Ty (RowId x) (EltOf (lower n v) x (lower n <$> ts))
 
 data Generator
@@ -84,7 +85,7 @@ data Generator
   | Fun [Name] [Ty] Ty
 
 lowerAtFresh :: CtxLen -> V.Ty N -> Ty
-lowerAtFresh n a = separate n a (V.local (FId n) a)
+lowerAtFresh n a = separate (n + 1) a (V.local (FId n) a)
 
 lowerTele :: [S.Ty N] -> ([Ty], V.Locals)
 lowerTele = go V.LNil 0
@@ -103,3 +104,14 @@ lowerGen (C.Fun xs ts t) = do
 lowerGen (C.Rel xs ts) = do
   let (ts', _) = lowerTele ts
   Rel xs ts'
+
+class Disaggregate a b | a -> b where
+  disaggregate :: CtxLen -> Bwd Name -> Bwd Term -> a -> Bwd b -> Bwd
+
+disaggregateTele :: [Name] -> [Ty] -> ([ColName, Rule], Bwd Name, Bwd Term)
+disaggregateTele = go Bwd_Nil Bwd_Nil 0 []
+  where
+    go xs' vs _ rs [] [] = (toList rs, xs', vs)
+    go xs' vs n rs (x:xs) (t:ts) = do
+      let a = disaggregate n a
+disaggregateGen (Fun xs ts t)
