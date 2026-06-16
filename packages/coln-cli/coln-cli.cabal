@@ -19,7 +19,7 @@ executable coln
       Coln.CLI.GenerateTS
       Coln.CLI.Options
     build-depends:
-      base ^>=4.21.1.0,
+      base ^>=4.21.0.0,
       coln-compiler,
       diagnostician,
       fnotation,
