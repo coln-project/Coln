@@ -113,6 +113,14 @@ instance Assemble Function where
       <> maybe mempty (\ty -> ":" <+> asm ty) f.ret
       <+> asm f.body
 
+instance Assemble TypeDef where
+  asm td =
+    "type"
+      <+> asm td.name
+      <+> "="
+      <+> asm td.body
+      <> ";"
+
 instance (Assemble a) => Assemble (AccessControlled a) where
   asm (Exported a) = "export" <+> asm a
   asm (Private a) = asm a
@@ -122,6 +130,7 @@ instance Assemble Declaration where
     DFunction f -> asm f
     DClass c -> asm c
     DInterface i -> asm i
+    DTypeDef td -> asm td
 
 instance Assemble Module where
   asm m =

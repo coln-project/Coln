@@ -105,13 +105,13 @@ lowerGen (C.Rel xs ts) = do
   let (ts', _) = lowerTele ts
   Rel xs ts'
 
-class Disaggregate a b | a -> b where
-  disaggregate :: CtxLen -> Bwd Name -> Bwd Term -> a -> Bwd b -> Bwd
+-- class Disaggregate a b | a -> b where
+--   disaggregate :: CtxLen -> Bwd Name -> Bwd Term -> a -> Bwd b -> Bwd
 
-disaggregateTele :: [Name] -> [Ty] -> ([ColName, Rule], Bwd Name, Bwd Term)
-disaggregateTele = go Bwd_Nil Bwd_Nil 0 []
-  where
-    go xs' vs _ rs [] [] = (toList rs, xs', vs)
-    go xs' vs n rs (x:xs) (t:ts) = do
-      let a = disaggregate n a
-disaggregateGen (Fun xs ts t)
+-- disaggregateTele :: [Name] -> [Ty] -> ([ColName, Rule], Bwd Name, Bwd Term)
+-- disaggregateTele = go Bwd_Nil Bwd_Nil 0 []
+--   where
+--     go xs' vs _ rs [] [] = (toList rs, xs', vs)
+--     go xs' vs n rs (x:xs) (t:ts) = do
+--       let a = disaggregate n a
+-- disaggregateGen (Fun xs ts t)

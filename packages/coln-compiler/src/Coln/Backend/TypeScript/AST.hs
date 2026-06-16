@@ -2,14 +2,20 @@ module Coln.Backend.TypeScript.AST where
 
 import Data.String (IsString (..))
 import Data.Text (Text)
+import Data.Text.Lazy qualified as TL
 import Diagnostician (DDoc, DPretty (..))
 import Coln.Common
 import Coln.Core.Params
+import Prettyprinter
+import Prettyprinter.Render.Text
 
 newtype Id = Id DDoc
 
 instance IsString Id where
   fromString = Id . fromString
+
+idToString :: Id -> String
+idToString (Id x) = TL.unpack $ renderLazy $ layoutPretty defaultLayoutOptions x
 
 data QId = QId [Id] Id
 
