@@ -90,7 +90,7 @@ data Function = Function
 
 data TypeDef = TypeDef
   { name :: Id
-  , type :: Ty
+  , body :: Ty
   }
 
 data AccessControlled a
