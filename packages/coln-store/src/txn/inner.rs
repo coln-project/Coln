@@ -81,6 +81,7 @@ impl TxnInner {
     }
 
     // Used by the REPL only
+    #[cfg(feature = "native")]
     pub(crate) fn add_internal(
         &mut self,
         store: &Store,

@@ -1,0 +1,311 @@
+use coln_store::{
+    commit::hash::CommitHash as StoreCommitHash,
+    store::CommitChunk as StoreCommitChunk,
+    table::{CellValue as StoreCellValue, RowId as StoreRowId, RowView as StoreRowView},
+    txn::ops::TxnValue as StoreTxnValue,
+};
+use serde::{Deserialize, Serialize};
+use std::array::TryFromSliceError;
+use tsify::Tsify;
+use wasm_bindgen::prelude::wasm_bindgen;
+
+use crate::{RowHandle, error::BoundaryError};
+
+#[wasm_bindgen]
+pub struct TxnValue {
+    pub(crate) inner: StoreTxnValue,
+}
+
+#[wasm_bindgen]
+impl TxnValue {
+    pub fn int(value: i64) -> Self {
+        Self {
+            inner: StoreTxnValue::from(value),
+        }
+    }
+
+    pub fn string(value: String) -> Self {
+        Self {
+            inner: StoreTxnValue::from(value),
+        }
+    }
+
+    pub fn row(handle: &RowHandle) -> Self {
+        Self {
+            inner: StoreTxnValue::from(handle.handle.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitChunk {
+    pub hash: CommitHash,
+    pub parents: Vec<CommitHash>,
+    pub bytes: Vec<u8>,
+}
+
+impl From<StoreCommitChunk> for CommitChunk {
+    fn from(value: StoreCommitChunk) -> Self {
+        Self {
+            hash: value.hash.into(),
+            parents: value.parents.into_iter().map(CommitHash::from).collect(),
+            bytes: value.bytes,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+#[serde(transparent)]
+pub struct CommitHash {
+    value: String,
+}
+
+impl From<StoreCommitHash> for CommitHash {
+    fn from(value: StoreCommitHash) -> Self {
+        Self {
+            value: value.to_string(),
+        }
+    }
+}
+
+impl TryFrom<CommitHash> for StoreCommitHash {
+    type Error = BoundaryError;
+
+    fn try_from(value: CommitHash) -> Result<Self, Self::Error> {
+        Ok(StoreCommitHash(decode_commit_hash(&value.value)?))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+#[serde(rename_all = "camelCase")]
+pub struct RowId {
+    pub commit: CommitHash,
+    pub counter: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[serde(tag = "tag", content = "value", rename_all = "lowercase")]
+pub enum CellValue {
+    #[serde(rename = "row_id")]
+    Id(RowId),
+    Int(i64),
+    String(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+#[serde(rename_all = "camelCase")]
+pub struct RowView {
+    pub row_id: RowId,
+    pub values: Vec<CellValue>,
+}
+
+impl From<StoreRowId> for RowId {
+    fn from(value: StoreRowId) -> Self {
+        Self {
+            commit: value.commit.into(),
+            counter: value.counter,
+        }
+    }
+}
+
+impl TryFrom<RowId> for StoreRowId {
+    type Error = BoundaryError;
+
+    fn try_from(value: RowId) -> Result<Self, Self::Error> {
+        Ok(Self {
+            commit: StoreCommitHash::try_from(value.commit)?,
+            counter: value.counter,
+        })
+    }
+}
+
+impl From<StoreCellValue> for CellValue {
+    fn from(value: StoreCellValue) -> Self {
+        match value {
+            StoreCellValue::Id(row_id) => Self::Id(row_id.into()),
+            StoreCellValue::Int(value) => Self::Int(value),
+            StoreCellValue::Str(value) => Self::String(value),
+        }
+    }
+}
+
+impl TryFrom<CellValue> for StoreTxnValue {
+    type Error = BoundaryError;
+
+    fn try_from(value: CellValue) -> Result<Self, Self::Error> {
+        match value {
+            CellValue::Id(row_id) => Ok(StoreTxnValue::from(StoreRowId::try_from(row_id)?)),
+            CellValue::Int(value) => Ok(StoreTxnValue::from(value)),
+            CellValue::String(value) => Ok(StoreTxnValue::from(value)),
+        }
+    }
+}
+
+impl From<StoreRowView> for RowView {
+    fn from(value: StoreRowView) -> Self {
+        Self {
+            row_id: value.row_id.into(),
+            values: value.values.into_iter().map(CellValue::from).collect(),
+        }
+    }
+}
+
+fn decode_commit_hash(value: &str) -> Result<[u8; 32], BoundaryError> {
+    let bytes = hex::decode(value)
+        .map_err(|err| BoundaryError::new(format!("invalid commit hash {value:?}: {err}")))?;
+
+    bytes
+        .as_slice()
+        .try_into()
+        .map_err(|err: TryFromSliceError| {
+            BoundaryError::new(format!(
+                "invalid commit hash length: expected 32 bytes, got {}; {err}",
+                bytes.len()
+            ))
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn hash(byte: u8) -> StoreCommitHash {
+        StoreCommitHash([byte; 32])
+    }
+
+    #[test]
+    fn commit_hash_serializes_as_hex_string() {
+        let dto = CommitHash::from(hash(0xab));
+        let value = serde_json::to_value(&dto).expect("serialize commit hash");
+
+        assert_eq!(
+            value,
+            json!("abababababababababababababababababababababababababababababababab")
+        );
+    }
+
+    #[test]
+    fn commit_hash_round_trips_to_store_hash() {
+        let store_hash = hash(0x42);
+        let dto = CommitHash::from(store_hash);
+        let decoded = StoreCommitHash::try_from(dto).expect("decode commit hash");
+
+        assert_eq!(decoded, store_hash);
+    }
+
+    #[test]
+    fn commit_hash_rejects_invalid_hex_length() {
+        let dto = CommitHash {
+            value: "abcd".to_string(),
+        };
+        let err = StoreCommitHash::try_from(dto).expect_err("reject short commit hash");
+
+        assert!(err.to_string().contains("invalid commit hash length"));
+    }
+
+    #[test]
+    fn row_id_serializes_with_camel_case_fields() {
+        let row_id = RowId {
+            commit: CommitHash::from(hash(0x01)),
+            counter: 7,
+        };
+        let value = serde_json::to_value(&row_id).expect("serialize row id");
+
+        assert_eq!(
+            value,
+            json!({
+                "commit": "0101010101010101010101010101010101010101010101010101010101010101",
+                "counter": 7
+            })
+        );
+    }
+
+    #[test]
+    fn row_id_round_trips_to_store_row_id() {
+        let store_row_id = StoreRowId {
+            commit: hash(0x11),
+            counter: 3,
+        };
+        let dto = RowId::from(store_row_id);
+        let decoded = StoreRowId::try_from(dto).expect("decode row id");
+
+        assert_eq!(decoded, store_row_id);
+    }
+
+    #[test]
+    fn cell_value_uses_tagged_json_shape() {
+        let value = CellValue::Id(RowId {
+            commit: CommitHash::from(hash(0x22)),
+            counter: 9,
+        });
+        let json_value = serde_json::to_value(&value).expect("serialize cell value");
+
+        assert_eq!(
+            json_value,
+            json!({
+                "tag": "row_id",
+                "value": {
+                    "commit": "2222222222222222222222222222222222222222222222222222222222222222",
+                    "counter": 9
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn cell_value_converts_to_store_txn_values() {
+        match StoreTxnValue::try_from(CellValue::Int(12)).expect("int txn value") {
+            StoreTxnValue::Int(value) => assert_eq!(value, 12),
+            _ => panic!("expected int txn value"),
+        }
+
+        match StoreTxnValue::try_from(CellValue::String("alice".to_string()))
+            .expect("string txn value")
+        {
+            StoreTxnValue::Str(value) => assert_eq!(value, "alice"),
+            _ => panic!("expected string txn value"),
+        }
+
+        let row_id = RowId {
+            commit: CommitHash::from(hash(0x33)),
+            counter: 1,
+        };
+        match StoreTxnValue::try_from(CellValue::Id(row_id)).expect("row id txn value") {
+            StoreTxnValue::Id(handle) => {
+                let row_id = handle.row_id().expect("existing row handle");
+                assert_eq!(row_id.commit, hash(0x33));
+                assert_eq!(row_id.counter, 1);
+            }
+            _ => panic!("expected id txn value"),
+        }
+    }
+
+    #[test]
+    fn commit_chunk_converts_from_store_chunk() {
+        let store_chunk = StoreCommitChunk {
+            hash: hash(0x44),
+            parents: vec![hash(0x55), hash(0x66)],
+            bytes: vec![1, 2, 3],
+        };
+        let dto = CommitChunk::from(store_chunk);
+        let value = serde_json::to_value(&dto).expect("serialize commit chunk");
+
+        assert_eq!(
+            value,
+            json!({
+                "hash": "4444444444444444444444444444444444444444444444444444444444444444",
+                "parents": [
+                    "5555555555555555555555555555555555555555555555555555555555555555",
+                    "6666666666666666666666666666666666666666666666666666666666666666"
+                ],
+                "bytes": [1, 2, 3]
+            })
+        );
+    }
+}
