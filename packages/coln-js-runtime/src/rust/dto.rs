@@ -1,53 +1,16 @@
+use serde::{Deserialize, Serialize};
+use std::array::TryFromSliceError;
+use tsify::Tsify;
+use wasm_bindgen::prelude::wasm_bindgen;
+
 use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::CommitChunk as StoreCommitChunk,
     table::{CellValue as StoreCellValue, RowId as StoreRowId, RowView as StoreRowView},
     txn::ops::TxnValue as StoreTxnValue,
 };
-use serde::{Deserialize, Serialize};
-use std::array::TryFromSliceError;
-use tsify::Tsify;
-use wasm_bindgen::JsValue;
-use wasm_bindgen::prelude::wasm_bindgen;
 
-use crate::{
-    RowHandle,
-    error::{BoundaryError, js_error},
-};
-
-#[wasm_bindgen]
-pub struct TxnValue {
-    pub(crate) inner: StoreTxnValue,
-}
-
-#[wasm_bindgen]
-impl TxnValue {
-    pub fn int(value: i64) -> Self {
-        Self {
-            inner: StoreTxnValue::from(value),
-        }
-    }
-
-    pub fn string(value: String) -> Self {
-        Self {
-            inner: StoreTxnValue::from(value),
-        }
-    }
-
-    pub fn row(handle: &RowHandle) -> Self {
-        Self {
-            inner: StoreTxnValue::from(handle.handle.clone()),
-        }
-    }
-
-    #[wasm_bindgen(js_name = rowId)]
-    pub fn row_id(row_id: RowId) -> Result<TxnValue, JsValue> {
-        let row_id = StoreRowId::try_from(row_id).map_err(js_error)?;
-        Ok(Self {
-            inner: StoreTxnValue::from(row_id),
-        })
-    }
-}
+use crate::error::BoundaryError;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]

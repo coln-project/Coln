@@ -1,6 +1,6 @@
+import { StoreHandle } from "./store";
 import { Value, RowView, tryValueRowId } from "./value";
-import { toTxnValue, valueEqual } from "./value";
-import { StorageCtx } from "./store";
+import { toTxnValue, valueEqual } from "./value"
 
 export type Tuple = Value[];
 
@@ -30,11 +30,11 @@ export interface ReadWriteSet extends ReadonlySet {
 
 export class RelTable<W> {
   path: string[];
-  ctx: StorageCtx<W>;
+  storeHandle: StoreHandle<W>;
 
-  constructor(path: string[], ctx: StorageCtx<W>) {
+  constructor(path: string[], handle: StoreHandle<W>) {
     this.path = path;
-    this.ctx = ctx;
+    this.storeHandle = handle;
   }
 
   apply_to(params: Value[]): AppliedRelTable<W> {
@@ -61,19 +61,21 @@ export class AppliedRelTable<W> implements ReadWriteSet {
     const rowId = tryValueRowId(x);
     if (rowId === undefined) return false;
 
-    const row = this.relation.ctx.rowById(this.relation.storePath(), rowId);
+    const row = this.relation.storeHandle
+      .store()
+      .rowById(this.relation.storePath(), rowId);
 
     return row !== undefined && Tuple.equal(row.values, this.params);
   }
 
   values(): Iterator<RowView> {
-    const rows = this.relation.ctx.scanTable(this.relation.storePath());
+    const rows = this.relation.storeHandle.store().scanTable(this.relation.storePath());
 
     return rows.filter((row) => Tuple.equal(row.values, this.params)).values();
   }
 
   add(): Value {
-    const handle = this.relation.ctx.add(
+    const handle = this.relation.storeHandle.add(
       this.relation.storePath(),
       this.params.map(toTxnValue),
     );

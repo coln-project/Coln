@@ -3,12 +3,49 @@ use coln_store::{
     ir,
     store::Store,
     table::RowId as StoreRowId,
+    txn::ops::TxnValue as StoreTxnValue,
     txn::{OwnedTransaction, ops::RowHandle as StoreRowHandle},
 };
-use wasm_bindgen::prelude::*;
 
-use crate::dto::{CommitChunk, CommitHash, RowId, RowView, TxnValue};
+use crate::dto::{CommitChunk, CommitHash, RowId, RowView};
 use crate::error::{js_error, set_panic_hook};
+
+use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::wasm_bindgen;
+
+#[wasm_bindgen]
+pub struct TxnValue {
+    pub(crate) inner: StoreTxnValue,
+}
+
+#[wasm_bindgen]
+impl TxnValue {
+    pub fn int(value: i64) -> Self {
+        Self {
+            inner: StoreTxnValue::from(value),
+        }
+    }
+
+    pub fn string(value: String) -> Self {
+        Self {
+            inner: StoreTxnValue::from(value),
+        }
+    }
+
+    pub fn row(handle: &RowHandle) -> Self {
+        Self {
+            inner: StoreTxnValue::from(handle.handle.clone()),
+        }
+    }
+
+    #[wasm_bindgen(js_name = rowId)]
+    pub fn row_id(row_id: RowId) -> Result<TxnValue, JsValue> {
+        let row_id = StoreRowId::try_from(row_id).map_err(js_error)?;
+        Ok(Self {
+            inner: StoreTxnValue::from(row_id),
+        })
+    }
+}
 
 #[wasm_bindgen]
 pub struct StoreHandle {

@@ -1,6 +1,5 @@
 import { SchemaProvider } from "./schema";
-import { StorageAdapter, StorageCtx } from "./store";
-
+import { StorageAdapter, StoreHandle } from "./store";
 
 export class WorkSpace {
   adapter: StorageAdapter;
@@ -9,7 +8,7 @@ export class WorkSpace {
     this.adapter = storage;
   }
 
-  create<T>(provider: SchemaProvider<T>): StorageCtx<T> {
+  create<T>(provider: SchemaProvider<T>): StoreHandle<T> {
     return this.adapter.create(provider);
   }
 }
