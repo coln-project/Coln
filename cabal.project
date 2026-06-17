@@ -9,3 +9,10 @@ constraints:
   -- https://github.com/haskell/lsp/issues/641
   lsp >= 2.8.0.0,
   lsp-types >= 2.4,
+
+if impl(ghc >= 9.14)
+  allow-newer:
+    -- https://github.com/dmwit/ordered-containers/pull/36
+    ordered-containers:containers,
+    -- https://github.com/georgefst/prettyprinter-lucid/issues/7
+    prettyprinter-lucid:base,

@@ -37,7 +37,7 @@ library
 
   ghc-options: -Wall
   build-depends:
-    base ^>=4.21.0.0,
+    base ^>=4.21.0.0 || ^>=4.22,
     containers,
     prettyprinter,
     text,
@@ -73,6 +73,6 @@ test-suite diagnostician-test
 
   ghc-options: -Wall
   build-depends:
-    base ^>=4.21.0.0,
+    base ^>=4.21.0.0 || ^>=4.22,
     containers,
     diagnostician,

@@ -22,7 +22,7 @@ executable coln-do
   default-language: GHC2024
   ghc-options: -Wall
   build-depends:
-    base ^>=4.21.0.0,
+    base ^>=4.21.0.0 || ^>=4.22,
     bytestring,
     directory,
     djot,

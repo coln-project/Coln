@@ -23,7 +23,7 @@ library
 
   build-depends:
     ansi-terminal,
-    base ^>=4.21.0.0,
+    base ^>=4.21.0.0 || ^>=4.22,
     diagnostician,
     prettyprinter,
     prettyprinter-ansi-terminal,
