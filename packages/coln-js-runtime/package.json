@@ -11,7 +11,7 @@
   },
   "wasm-bodge": {
     "wrapper": {
-      "entry": "./src/index.ts"
+      "entry": "./src/ts/index.ts"
     }
   },
   "devDependencies": {
