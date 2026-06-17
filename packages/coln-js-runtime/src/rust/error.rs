@@ -1,5 +1,4 @@
 use std::fmt;
-
 use wasm_bindgen::JsValue;
 
 pub(crate) fn set_panic_hook() {
