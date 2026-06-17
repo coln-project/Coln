@@ -1,11 +1,7 @@
-export type { RowId, RowView, CellValue, Value } from "./value";
+export type { RowId, RowView, CellValue, Value } from "./value.ts";
 
-export { RowHandle, TxnValue, toTxnValue, valueEqual } from "./value";
+export { RowHandle, TxnValue, toTxnValue, valueEqual } from "./value.ts";
 
-export type { StoreHandle, TransactionHandle, CommitResult } from "./store";
+export * as set from "./set.ts";
 
-export { StorageCtx } from "./store";
-
-export type { ReadonlySet, ReadWriteSet, Tuple } from "./runtime";
-
-export { RelTable, AppliedRelTable } from "./runtime";
+export * as row_id_set from "./row_id_set.ts"

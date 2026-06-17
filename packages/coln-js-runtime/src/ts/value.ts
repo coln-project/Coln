@@ -65,3 +65,18 @@ export function valueEqual(v0: Value, v1: Value): boolean {
 function rowIdEqual(v0: RowId, v1: RowId): boolean {
   return v0.commit === v1.commit && v0.counter === v1.counter;
 }
+
+export type Tuple = Value[];
+
+export function tupleEqual(t0: readonly Value[], t1: readonly Value[]): boolean {
+  if (t0.length == t1.length) {
+    for (var i = 0; i < t0.length; i++) {
+      if (!valueEqual(t0[i], t1[i])) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
