@@ -23,7 +23,7 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build manual
-        run: nix-build -A manual
+        run: nix build .#manual
 
       - name: Deploy manual
         uses: peaceiris/actions-gh-pages@v4
