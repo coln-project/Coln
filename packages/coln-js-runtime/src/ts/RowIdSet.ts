@@ -1,9 +1,9 @@
-import * as set from "./set.ts"
+import * as ColnSet from "./ColnSet.ts"
 import { Value, tryValueRowId, Tuple, tupleEqual } from "./value.ts"
 import { StoreHandle, RowView, TransactionHandle } from "#wasm-bodge/bindings"
 import { toTxnValue } from "..";
 
-export class View implements set.View {
+export class View implements ColnSet.View {
   store: StoreHandle;
   path: string;
   params: Tuple;
@@ -32,7 +32,7 @@ export class View implements set.View {
   }
 }
 
-export class Transaction extends View implements set.Transaction {
+export class Transaction extends View implements ColnSet.Transaction {
   transaction: TransactionHandle;
 
   constructor(store_handle: StoreHandle, path: string, params: Tuple, transaction: TransactionHandle) {
