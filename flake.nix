@@ -65,6 +65,7 @@
             forester
             fourmolu
             haskell.compiler.ghc912
+            haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
             nodejs
             pkg-config
