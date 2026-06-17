@@ -1,5 +1,17 @@
 packages:
-  packages/*/*.cabal
+  packages/diagnostician
+  packages/diagnostician-terminal
+  packages/diagnostician-html
+  packages/fnotation
+  packages/coln-compiler
+if !os(wasi)
+  packages:
+    packages/coln-manual-dev
+    packages/coln-do
+    packages/coln-repl
+    packages/coln-ls
+    packages/coln-cli
+
 jobs: $ncpus
 semaphore: true
 tests: True

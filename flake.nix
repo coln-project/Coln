@@ -3,6 +3,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
+    ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
   };
   outputs =
     inputs@{
@@ -156,6 +157,7 @@
         };
 
         inherit (packages) forester coln-manual-dev;
+        haskell-wasm = inputs.ghc-wasm-meta.packages.${system}.default;
       in
       {
         inherit packages;
@@ -177,6 +179,7 @@
             forester
             fourmolu
             esbuild
+            haskell-wasm
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
