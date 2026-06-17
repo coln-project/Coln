@@ -1,9 +1,9 @@
-import { StoreHandle } from "../src/index.ts";
+import { StoreHandle } from "../src/ts/index.ts";
 import { Graph, GraphOfGraphs } from "./graph.ts";
 import flatTheory from "./graph.json" with { type: "json" };
-import { StoreTxnCtx, valueEqual } from "../src/index.ts"
-import { WorkSpace } from "../src/workspace.ts";
-import { ColnStoreAdapter } from "../src/store.ts";
+import { StoreTxnCtx, valueEqual } from "../src/ts/index.ts";
+import { WorkSpace } from "../src/ts/workspace.ts";
+import { ColnStoreAdapter } from "../src/ts/store.ts";
 
 function assert(b: boolean, label = "assertion failed") {
   if (!b) {
@@ -44,10 +44,10 @@ function graph_tests() {
 function graph_of_graph_tests() {
   const flatTheoryJson = JSON.stringify(flatTheory);
 
-  const ws = new WorkSpace(new WorkSpace(  new ColnStoreAdapter()));
+  const ws = new WorkSpace(new WorkSpace(new ColnStoreAdapter()));
   const store = ws.create(GraphOfGraphs);
 
-  const [v0, v1, g0_id] = store.change(gg => {
+  const [v0, v1, g0_id] = store.change((gg) => {
     const g0_id = gg.graphs.add();
     const g0 = gg.graph(g0_id);
     var v0 = g0.vertex.add();
@@ -60,7 +60,6 @@ function graph_of_graph_tests() {
 
     return [v0, v1, g0_id];
   });
-
 
   assert(g0.vertex.has(v0), "g0 vertex has v0");
   assert(g0.edge(v0)(v0).has(e0), "g0 edge has e0");
