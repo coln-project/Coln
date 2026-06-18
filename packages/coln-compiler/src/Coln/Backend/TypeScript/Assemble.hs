@@ -142,10 +142,15 @@ instance Assemble Declaration where
     DInterface i -> asm i
     DTypeDef td -> asm td
 
+instance Assemble Import where
+  asm = \case
+    ImportQualified x from ->
+      "import * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+
 instance Assemble Module where
   asm m =
     vsep
-      [ vsep $ pretty <$> m.imports
+      [ vsep $ asm <$> m.imports
       , ""
       , vsep $ punctuate line $ asm <$> m.declarations
       ]

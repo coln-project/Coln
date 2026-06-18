@@ -11,10 +11,13 @@ import Coln.Common
 import Coln.Core.Params
 import Coln.Backend.TypeScript.Params
 
-newtype Id = Id DDoc
+newtype Id = Id { content :: DDoc }
 
 instance IsString Id where
   fromString = Id . fromString
+
+instance DPretty Id where
+  dpretty x = x.content
 
 idToString :: Id -> String
 idToString (Id x) = TL.unpack $ renderLazy $ layoutPretty defaultLayoutOptions x
@@ -116,7 +119,10 @@ data Declaration
   | DInterface Interface
   | DTypeDef TypeDef
 
+data Import
+  = ImportQualified Id DDoc
+
 data Module = Module
-  { imports :: [Text]
+  { imports :: [Import]
   , declarations :: [AccessControlled Declaration]
   }
