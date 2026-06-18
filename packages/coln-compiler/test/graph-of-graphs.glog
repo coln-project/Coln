@@ -3,7 +3,7 @@ theory Graph := sig
   E : V -> V -> Set
 end
 
-realm Graph @ Graph
+realm GraphRealm @ Graph
   def free-edge : Set := sig
     v0 : self.V
     v1 : self.V
@@ -22,5 +22,5 @@ theory GraphOfGraphs := sig
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
 
-realm GraphOfGraphs @ GraphOfGraphs
+realm GraphOfGraphsRealm @ GraphOfGraphs
 end

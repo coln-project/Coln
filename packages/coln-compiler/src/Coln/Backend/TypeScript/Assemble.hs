@@ -88,8 +88,8 @@ instance Assemble Class where
   asm c =
     "class"
       <+> asm c.name
-      <+> "implements"
-      <+> asm c.implements
+      <> maybe mempty (\e -> " extends" <+> asm e) c.extends
+      <> maybe mempty (\i -> " implements" <+> asm i) c.implements
       <+> blocked
         ( punctuate
             line
