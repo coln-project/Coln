@@ -14,7 +14,7 @@ tupled =
   group
     . enclose ("(" <> line') (line' <> ")")
     . vsep
-    . punctuate ", "
+    . punctuate ","
     . map (\d -> flatAlt (indent 2 d) d)
 
 blocked :: [Doc a] -> Doc a

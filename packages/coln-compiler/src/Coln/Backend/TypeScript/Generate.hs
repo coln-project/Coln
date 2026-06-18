@@ -124,8 +124,56 @@ genEntryModule a ev = go 0 a ev
       go (n + 1) (V.appClo ft.cod v) (V.ebind (flip V.app v ) ev')
     go _ _ _ = Nothing
 
-genEl :: Access -> Bwd TS.Id -> V.El N -> TS.El
-genEl _ _ _ = TS.Object []
+data TSCtxShape = TSCtxShape
+  { len :: CtxLen
+  , names :: Bwd TS.Id
+  }
+
+emptyTSCtxShape :: TSCtxShape
+emptyTSCtxShape = TSCtxShape 0 BwdNil
+
+bind :: TSCtxShape -> TS.Id -> TSCtxShape
+bind cs x = TSCtxShape { len = cs.len + 1, names = cs.names :> x }
+
+genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
+genTyVal access cs = \case
+  V.EltOf x vs -> do
+    let tuple = TS.List $ genEl access cs <$> vs
+    let transactionArg = case access of
+          View -> []
+          Transaction -> [TS.Var "transaction"]
+    let args = [TS.Var "store", TS.String (dpretty x), tuple] ++ transactionArg
+    TS.New (TS.Const (TS.runtime (RowIdSet access))) args
+  _ -> panic "type not yet supported"
+
+genHead :: TSCtxShape -> V.Head -> TS.El
+genHead cs = \case
+  V.LocalVar (FId i) -> TS.Var $ elemAt cs.names (BId (cs.len - i - 1))
+  V.GlobalVar _ _ -> panic "global var neutral not yet supported"
+
+genSp :: TSCtxShape -> V.Spine -> TS.El -> TS.El
+genSp _cs = \case
+  V.Id -> \t -> t
+  _ -> panic "unsupported spine operation"
+
+argName :: TSCtxShape -> V.Clo f c -> TS.Id
+argName _ (V.Clo x _ _) = mangle x
+argName _ (V.CloConst _) = panic "no provided name"
+
+genEl :: Access -> TSCtxShape -> V.El N -> TS.El
+genEl access cs = \case
+  V.Neu n -> genSp cs n.spine $ genHead cs n.head
+  V.Code a -> genTyVal access cs a
+  V.Lam dom clo -> do
+    let v = V.local (FId cs.len) dom
+    let x = argName cs clo
+    TS.Lam
+      (TS.Binding x (TS.runtime Value))
+      (TS.Block [] (Just (genEl access (bind cs x) (V.appClo clo v))))
+  V.Cons fields -> TS.Object $ for (toList fields) $ \(x, v) ->
+    (mangle x, genEl access cs v)
+  V.Lit _ -> panic "unsupported lit"
+  V.Lookup _ _ -> panic "unsupported lookup"
 
 genRealmConstructor :: Access -> Realm -> TS.Constructor
 genRealmConstructor access r = do
@@ -138,7 +186,7 @@ genRealmConstructor access r = do
           , TS.Binding "transaction" (TS.runtime TransactionHandle)
           ]
   let body = TS.Block
-        [TS.Assign (TS.QId ["this"] "root") (genEl access BwdNil r.root)]
+        [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSCtxShape r.root)]
         Nothing
   TS.Constructor args body
 
