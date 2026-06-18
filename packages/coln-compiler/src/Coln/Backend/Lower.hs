@@ -364,3 +364,16 @@ disaggregateGen fs tn (Fun xs ts t) fr = do
     , I.rules = Map.insert tn { path = tn.path :> "foreignKey" } foreignKey
         $ Map.insert tn { path = tn.path :> "total" } totality fr.rules
     }
+
+lowerRealm :: Name -> C.Realm -> I.FlatRealm
+lowerRealm realmName r = go Map.empty I.emptyFlatRealm (toList r.generators)
+  where
+    go _ fr [] = fr
+    go fs fr ((xs, g):rest) = do
+      let tn = TableName realmName xs
+      let lg = lowerGen g
+      let fr' = disaggregateGen fs tn lg fr
+      let fs' = case lg of
+            Fun _ _ t -> Map.insert tn t.shape fs
+            _ -> fs
+      go fs' fr' rest

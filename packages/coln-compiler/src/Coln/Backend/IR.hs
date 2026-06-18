@@ -8,6 +8,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import GHC.Generics
+import Data.Map qualified as Map
 
 -- XXX Lit/BultinTy should probably be moved up in the hierarchy
 import Coln.Common
@@ -77,6 +78,7 @@ data FlatRealm = FlatRealm
   { entities :: Map TableName Entity
   , rules :: Map TableName Rule
   }
+<<<<<<< HEAD
   deriving (Show, Eq, Generic)
 
 aeOptions :: AE.Options
@@ -166,3 +168,8 @@ instance AE.ToJSON Rule where
 instance AE.ToJSON FlatRealm where
   toJSON = panic "aesons behaving badly"
   toEncoding fr = AE.pairs $ AE.pair "entities" (pathMapEncoding AE.toEncoding fr.entities) <> AE.pair "rules" (pathMapEncoding AE.toEncoding fr.rules)
+=======
+
+emptyFlatRealm :: FlatRealm
+emptyFlatRealm = FlatRealm Map.empty Map.empty
+>>>>>>> 2b0bb92 (wrote function to create FlatRealm)
