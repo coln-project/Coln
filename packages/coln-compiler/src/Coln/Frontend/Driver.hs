@@ -194,7 +194,7 @@ expr e n = case n of
     s <- syn e "target of elimination" n0
     fromSynN <$> elim e s n1
   N.Keyword "Set" _ -> pure $ fromTypN $ Universe.formation SetU
-  N.Keyword "Prop" _ -> pure $ fromTypN $ Universe.formation SetU
+  N.Keyword "Prop" _ -> pure $ fromTypN $ Universe.formation PropU
   N.Keyword "Int" _ -> pure $ fromTypN $ Builtin.formation BuiltinInt
   N.Keyword "String" _ -> pure $ fromTypN $ Builtin.formation BuiltinString
   N.Infix arg n@(N.Keyword "->" _) body ->

@@ -12,22 +12,46 @@ import Prettyprinter
 -- Level stuff (levels, universes, function variants)
 --------------------------------------------------------------------------------
 
-data Level
+data Sort
   = Set
   | Theory
   | Top
   deriving (Eq, Show)
 
-instance DPretty Level where
+instance DPretty Sort where
   dpretty = pretty . show
 
-instance PartialOrd Level where
+instance PartialOrd Sort where
   leq l1 l2 = case (l1, l2) of
     (Set, _) -> True
     (Theory, Set) -> False
     (Theory, _) -> True
     (Top, Top) -> True
     (Top, _) -> False
+
+maxSort :: Sort -> Sort -> Sort
+maxSort l1 l2
+  | leq l1 l2 = l2
+  | otherwise = l1
+
+data HLevel
+  = HProp
+  | HSet
+  deriving (Eq, Show)
+
+instance PartialOrd HLevel where
+  leq l1 l2 = case (l1, l2) of
+    (HProp, _) -> True
+    (HSet, HProp) -> False
+    (HSet, _) -> True
+
+data Level = Level {
+  sort :: Sort,
+  hlevel :: HLevel }
+  deriving (Eq, Show)
+
+instance PartialOrd Level where
+  leq (Level s1 h1) (Level s2 h2) = s1 `leq` s2 && h1 `leq` h2
 
 maxLevel :: Level -> Level -> Level
 maxLevel l1 l2
@@ -38,33 +62,44 @@ class LevelOf a where
   levelOf :: a -> Level
 
 data Universe
-  = SetU
+  = PropU
+  | SetU
   | TheoryU
+  | PropTheoryU -- TODO: better name?
   deriving (Eq, Show)
 
 decodesInto :: Universe -> Level
 decodesInto = \case
-  SetU -> Set
-  TheoryU -> Theory
+  PropU -> Level Set HProp
+  SetU -> Level Set HSet
+  PropTheoryU -> Level Theory HProp
+  TheoryU -> Level Theory HSet
 
 codesInto :: Universe -> Level
 codesInto = \case
-  SetU -> Theory
-  TheoryU -> Top
+  PropU -> Level Theory HSet
+  SetU -> Level Theory HSet
+  TheoryU -> Level Top HSet
+  PropTheoryU -> Level Top HSet
 
 instance Pretty Universe where
   pretty = \case
+    PropU -> "Prop"
     SetU -> "Set"
     TheoryU -> "Theory"
+    PropTheoryU -> "PropTheory"
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case
-  Set -> Just SetU
-  Theory -> Just TheoryU
-  Top -> Nothing
+  Level Set HProp -> Just PropU
+  Level Set HSet -> Just SetU
+  Level Theory HProp -> Just PropTheoryU
+  Level Theory HSet -> Just TheoryU
+  Level Top _ -> Nothing
 
 data FunctionVariant
-  = SetTheory
+  = SetPropTheory -- TODO: better name?
+  | SetTheory
   | TheoryTop
   deriving (Eq, Show)
 
@@ -73,14 +108,16 @@ instance Pretty FunctionVariant where
 
 instance LevelOf FunctionVariant where
   levelOf = \case
-    SetTheory -> Theory
-    TheoryTop -> Top
+    SetPropTheory -> Level Theory HProp
+    SetTheory -> Level Theory HSet
+    TheoryTop -> Level Top HSet
 
 class HasCodomain a b | a -> b where
   codOf :: a -> b
 
-instance HasCodomain FunctionVariant Level where
+instance HasCodomain FunctionVariant Sort where
   codOf = \case
+    SetPropTheory -> Theory
     SetTheory -> Theory
     TheoryTop -> Top
 

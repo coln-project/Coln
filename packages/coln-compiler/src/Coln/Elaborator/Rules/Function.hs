@@ -17,9 +17,13 @@ import Coln.Report
 
 variantFor :: Ty N -> Ty N -> Span -> ElabEnv c -> IO FunctionVariant
 variantFor dom cod sp e = case (levelOf dom, levelOf cod) of
-  ((Set, Set); (Set, Theory)) -> pure SetTheory
-  ((Set, Top); (Theory, _)) -> pure TheoryTop
-  (Top, _) -> do
+  (Level Set _, Level Set HProp) -> pure SetPropTheory
+  (Level Set _, Level Theory HProp) -> pure SetPropTheory
+  (Level Set _, Level Set HSet) -> pure SetTheory
+  (Level Set _, Level Theory HSet) -> pure SetTheory
+  (Level Set _, Level Top _) -> pure TheoryTop
+  (Level Theory _, Level _ _) -> pure TheoryTop
+  (Level Top _, _) -> do
     let msg = "higher-order theories are not supported"
     failWith e.diagEnv sp FunctionDomainTooLarge msg
 

@@ -226,8 +226,8 @@ instance LevelOf (Ty c) where
     Function ft -> levelOf ft.variant
     Record rt -> rt.level
     Eq ety -> levelOf ety.at
-    BuiltinTy _ -> Set
-    EltOf _ _ -> Set
+    BuiltinTy _ -> Level Set HSet -- Only Int/String so far
+    EltOf _ _ -> Level Set HSet -- TODO
 
 behavior :: Ty c -> TypeBehavior
 behavior = \case

@@ -1,0 +1,19 @@
+theory Family := sig
+  person : Set
+  is-parent : person -> person -> Prop
+
+  happy : Prop
+
+  showtype happy
+  showtype is-parent
+  showtype happy -> person
+  showtype person -> happy
+end
+
+theory Q (F : Family) := sig
+  son : F.person
+  father : F.person
+
+  showtype F.is-parent
+  showtype F.is-parent father son
+end

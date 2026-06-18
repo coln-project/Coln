@@ -1,0 +1,40 @@
+-- elaborated
+global entry named Family
+type: Theory
+value: sig
+  person : Set
+  is-parent : person -> person -> Prop
+  happy : Prop
+end
+global entry named Q
+type: (F : Family) -> Theory
+value: F => sig
+  son : F.person
+  father : F.person
+end
+
+-- messages
+
+debug[D0315]: value happy has type Prop
+7 |   showtype happy
+7 |            ^^^^^
+
+debug[D0315]: value is-parent has type person -> person -> Prop
+8 |   showtype is-parent
+8 |            ^^^^^^^^^
+
+debug[D0315]: value happy -> person has type Theory
+9 |   showtype happy -> person
+9 |            ^^^^^^^^^^^^^^^
+
+debug[D0315]: value person -> happy has type PropTheory
+10 |   showtype person -> happy
+10 |            ^^^^^^^^^^^^^^^
+
+debug[D0315]: value F.is-parent has type F.person -> F.person -> Prop
+17 |   showtype F.is-parent
+17 |            ^^^^^^^^^^^
+
+debug[D0315]: value F.is-parent father son has type Prop
+18 |   showtype F.is-parent father son
+18 |            ^^^^^^^^^^^^^^^^^^^^^^

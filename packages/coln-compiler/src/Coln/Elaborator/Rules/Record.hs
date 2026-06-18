@@ -27,8 +27,8 @@ data FieldDeclaration
 
 formation :: [FieldDeclaration] -> Typ D
 formation fieldTyps = Typ $ \e -> do
-  let go _ [] = pure (Set, [])
-      go e' ((FieldDeclaration x typ) : rest) = do
+  let go _ [] = pure (Level Set HProp, [])
+      go e' ((FieldDeclaration x typ):rest) = do
         ty <- typ.elab e'
         (l, fieldTys) <- go (e'{scope = bind x ty.val e'.scope}) rest
         pure (maxLevel l (levelOf ty), (x, ty) : fieldTys)
