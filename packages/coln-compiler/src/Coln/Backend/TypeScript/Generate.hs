@@ -2,6 +2,7 @@ module Coln.Backend.TypeScript.Generate where
 
 import Control.Monad.State
 import Control.Monad (forM_)
+import Data.Foldable (foldlM)
 import Data.Map.Ordered qualified as OMap
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -109,8 +110,8 @@ class TrackGlobals a where
 genTypeDef :: Access -> CtxLen -> V.Ty N -> TS.TypeDef
 genTypeDef access n a = TS.TypeDef (fromShow access) (genTy access n a)
 
-genEntryModule :: V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
-genEntryModule a ev = go 0 a ev
+genEntryModule :: [TS.Import] -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
+genEntryModule imports a ev = go 0 a ev
   where
     go :: CtxLen -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
     go n (V.U TheoryU) ev' = do
@@ -118,7 +119,7 @@ genEntryModule a ev = go 0 a ev
             case V.ebind V.decode ev' of
               V.Become a -> TS.DTypeDef $ genTypeDef access n a
               V.Describe a -> TS.DInterface $ genInterface access n a 
-      Just $ TS.Module [] (TS.Exported <$> definitions)
+      Just $ TS.Module imports (TS.Exported <$> definitions)
     go n (V.Function ft) ev' = do
       let v = V.local (FId n) ft.dom
       go (n + 1) (V.appClo ft.cod v) (V.ebind (flip V.app v ) ev')
@@ -204,26 +205,36 @@ genRealmClass access r = TS.Class
   [TS.Binding "root" (genTy access 0 r.rootType)]
   (genRealmConstructor access r)
 
-genRealmModule :: Realm -> TS.Module
-genRealmModule r = do
+genRealmModule :: [TS.Import] -> Realm -> TS.Module
+genRealmModule imports r = do
   let classes = for accessLevels $ \access -> TS.DClass $ genRealmClass access r
-  TS.Module [] (TS.Exported <$> classes)
+  TS.Module imports (TS.Exported <$> classes)
 
 render :: DDoc -> TL.Text
 render = renderLazy . layoutPretty defaultLayoutOptions
 
 writeModule :: FilePath -> Name -> TS.Module -> IO ()
 writeModule outdir x mod = do
-  let fn = outdir </> (TS.idToString (mangle x) <> ".ts")
+  let fn = outdir </> TS.idToString (mangle x) <> ".ts"
   let content = render $ asm mod
   TLIO.writeFile fn content
 
+runtimeImport :: TS.Import
+runtimeImport = TS.ImportQualified "runtime" "@coln-project/runtime"
+
+forAccM :: (Monad m) => [b] -> a -> (a -> b -> m a) -> m a
+forAccM bs init f = foldlM f init bs
+
 generate :: Globals -> FilePath -> IO ()
 generate ge outdir = do
-  forM_ (OMap.assocs ge.entries) $ \(x, e) -> do
+  typeImports <- forAccM (OMap.assocs ge.entries) BwdNil $ \imports (x, e) -> do
     let ev = eval V.LNil e.syn
-    let mod = genEntryModule e.ty ev
-    maybe (pure ()) (writeModule outdir x) mod
+    case genEntryModule (runtimeImport : toList imports) e.ty ev of
+      Just mod -> do
+        writeModule outdir x mod
+        pure (imports :> TS.ImportQualified (mangle x) ("./" <> dpretty x <> ".ts"))
+      Nothing -> pure imports
+  let imports = runtimeImport : toList typeImports
   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
-    let mod = genRealmModule r
+    let mod = genRealmModule imports r
     writeModule outdir x mod
