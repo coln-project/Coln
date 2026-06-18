@@ -8,7 +8,7 @@ import Coln.Core.Realm (Realm)
 import Coln.Diagnostics
 import Coln.Elaborator.Environment (emptyElabEnv)
 import Coln.Elaborator.Judgment (Syn (..))
-import Coln.Frontend.Driver (def, syn)
+import Coln.Frontend.Driver (decl', syn)
 import Coln.Frontend.Notation
 import Coln.Report (DiagnosticEnv (DiagnosticEnv))
 import Control.Monad
@@ -46,7 +46,7 @@ main =
     map
       (second \f s -> dontCrash $ f $ strip s)
       [ ("source", \fp -> eval . newFile fp =<< liftIO (T.readFile fp))
-      , ("list", const $ liftIO . putDoc . prettyDecls =<< get)
+      , ("list", const $ liftIO . putDoc . (<+> "\n") . prettyDecls =<< get)
       ]
    where
     strip = dropWhileEnd isSpace . dropWhile isSpace
@@ -55,7 +55,7 @@ main =
   completer =
     Prefix
       ( wordCompleter \s -> do
-          names :: [Name] <- gets $ fmap fst . OMap.assocs . (.entries)
+          names <- gets $ fmap fst . OMap.assocs . (.entries)
           let nameStrings = map (\n -> mconcat ((<> "/") . T.unpack <$> n.init) <> T.unpack n.last) names
           pure $ filter (s `isPrefixOf`) $ cmdStrings <> nameStrings
       )
@@ -74,25 +74,20 @@ eval file = do
     ge <- get
     let
       diagEnv = envFor id
-      elabEnv = emptyElabEnv (envFor ElaboratorCode) ge
     case ntn of
       -- register declaration
       Decl name _ _ -> do
-        put =<< liftIO do
-          (n, entry) <- def diagEnv ge ntn
-          pure $ addGlobalEntry n entry ge
+        put =<< liftIO (decl' diagEnv ge ntn)
         tell [name]
-      -- look up name
-      Ident name _ -> lift do
-        gets (flip lookup name) >>= \case
-          Nothing -> liftIO $ putStrLn $ "Not in scope: " <> show name
-          Just r -> liftIO . putDoc . prettyEntry $ (name, r)
+      -- ignore realms
+      Block "realm" _ _ _ -> pure ()
       -- evaluate expression
       _ ->
         liftIO do
+          let elabEnv = emptyElabEnv (envFor ElaboratorCode) ge
           ntnSyn <- (syn @N) diagEnv "" ntn
           (t, m) <- ntnSyn.elab elabEnv
-          putDoc $ prtIn elabEnv m <+> ":" <+> prtIn elabEnv t
+          putDoc $ prtIn elabEnv m <+> ":" <+> prtIn elabEnv t <+> "\n"
 
   when (not $ null newDeclNames) $ liftIO $ putStrLn $ show (length newDeclNames) <> " declarations added."
  where
