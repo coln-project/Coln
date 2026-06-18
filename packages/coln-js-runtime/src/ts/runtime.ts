@@ -1,6 +1,5 @@
 import { StoreHandle } from "./store";
-import { Value, RowView, tryValueRowId } from "./value";
-import { toTxnValue, valueEqual } from "./value"
+import { Value, RowView, valueEqual, getRowRef } from "#wasm-bodge/bindings";
 
 export type Tuple = Value[];
 
@@ -56,30 +55,30 @@ export class AppliedRelTable<W> implements ReadWriteSet {
   }
 
   has(x: Value): boolean {
-    if (x.tag !== "row_id" && x.tag !== "row_handle") return false;
-
-    const rowId = tryValueRowId(x);
-    if (rowId === undefined) return false;
+    const rowRef = getRowRef(x);
+    if (rowRef === undefined) return false;
 
     const row = this.relation.storeHandle
       .store()
-      .rowById(this.relation.storePath(), rowId);
+      .rowById(this.relation.storePath(), rowRef);
 
     return row !== undefined && Tuple.equal(row.values, this.params);
   }
 
   values(): Iterator<RowView> {
-    const rows = this.relation.storeHandle.store().scanTable(this.relation.storePath());
+    const rows = this.relation.storeHandle
+      .store()
+      .scanTable(this.relation.storePath());
 
     return rows.filter((row) => Tuple.equal(row.values, this.params)).values();
   }
 
   add(): Value {
-    const handle = this.relation.storeHandle.add(
+    const val = this.relation.storeHandle.add(
       this.relation.storePath(),
-      this.params.map(toTxnValue),
+      this.params,
     );
 
-    return { tag: "row_handle", value: handle };
+    return val;
   }
 }
