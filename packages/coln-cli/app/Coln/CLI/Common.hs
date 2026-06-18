@@ -2,7 +2,6 @@ module Coln.CLI.Common where
 
 import Control.Exception
 import Diagnostician
-import FNotation
 import System.IO (stdout)
 
 import Coln.Frontend.Driver

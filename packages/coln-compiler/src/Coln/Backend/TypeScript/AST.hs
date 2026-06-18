@@ -4,10 +4,12 @@ import Data.String (IsString (..))
 import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
 import Diagnostician (DDoc, DPretty (..))
-import Coln.Common
-import Coln.Core.Params
 import Prettyprinter
 import Prettyprinter.Render.Text
+
+import Coln.Common
+import Coln.Core.Params
+import Coln.Backend.TypeScript.Params
 
 newtype Id = Id DDoc
 
@@ -19,20 +21,16 @@ idToString (Id x) = TL.unpack $ renderLazy $ layoutPretty defaultLayoutOptions x
 
 data QId = QId [Id] Id
 
-data RuntimeConst
-  = Value
-  | RelTable
-  | FunTable
-  | ReadonlySet
-  | ReadWriteSet
-  | IdGenerator
-  deriving (Show)
+instance IsString QId where
+  fromString = QId [] . fromString
 
 class Runtime a where
   runtime :: RuntimeConst -> a
 
 instance Runtime QId where
-  runtime c = QId ["runtime"] (Id $ pretty $ show c)
+  runtime = \case
+    Value -> QId ["runtime"] "Value"
+    ColnSet access -> QId ["runtime", "ColnSet"] (fromString (show access))
 
 instance Runtime Ty where
   runtime = TyConst . runtime
@@ -76,7 +74,8 @@ data Block = Block {statements :: [Statement], return :: Maybe El}
 
 data Class = Class
   { name :: Id
-  , implements :: Id
+  , implements :: Maybe QId
+  , extends :: Maybe QId
   , fields :: [Binding]
   , constructor :: Block
   }

@@ -2,8 +2,10 @@ module Coln.Backend.TypeScript.Generate where
 
 import Control.Monad.State
 import Control.Monad (forM_)
+import Data.Map.Ordered qualified as OMap
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.String (IsString(..))
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.IO qualified as TLIO
 import Data.Text.Lazy.Encoding qualified as TLE
@@ -13,8 +15,10 @@ import System.FilePath
 
 import Coln.Backend.TypeScript.AST qualified as TS
 import Coln.Backend.TypeScript.Assemble (asm)
+import Coln.Backend.TypeScript.Params
 import Coln.Common
 import Coln.Core.Params
+import Coln.Core.Realm
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Core.Globals
@@ -32,38 +36,27 @@ import Coln.Core.Evaluation
 mangle :: Name -> TS.Id
 mangle x = TS.Id $ mconcat [pretty s <> "_slash_" | s <- x.init] <> pretty x.last
 
-data Access
-  = Readonly
-  | ReadWrite
-
 tyFromHead :: Access -> V.Head -> TS.Ty
-tyFromHead access (V.GlobalVar x _) = case access of
-  Readonly -> TS.TyConst (TS.QId [mangle x] "Readonly")
-  ReadWrite -> TS.TyConst (TS.QId [mangle x] "ReadWrite")
-tyFromHead _ (V.LocalVar _) = TS.runtime TS.Value
+tyFromHead access (V.GlobalVar x _) =
+  TS.TyConst (TS.QId [mangle x] (fromString (show access)))
+tyFromHead _ (V.LocalVar _) = TS.runtime Value
 
 genTy :: Access -> CtxLen -> V.Ty N -> TS.Ty
 genTy access n = \case
-  V.U SetU -> case access of
-    Readonly -> TS.runtime TS.ReadonlySet
-    ReadWrite -> TS.runtime TS.ReadWriteSet
+  V.U SetU -> TS.runtime (ColnSet access)
   V.Function ft -> do
     let v = V.local (FId n) ft.dom
-    TS.Fun (TS.Binding (TS.Id "x") (TS.runtime TS.Value)) (genTy access (n + 1) (V.appClo ft.cod v))
-  V.EltOf _ _ -> TS.runtime TS.Value
+    TS.Fun (TS.Binding (TS.Id "x") (TS.runtime Value)) (genTy access (n + 1) (V.appClo ft.cod v))
+  V.EltOf _ _ -> TS.runtime Value
   V.Decode n -> tyFromHead access n.head
   _ -> error "not yet supported"
 
 genInterface :: Access -> CtxLen -> V.Ty D -> TS.Interface
 genInterface access n = \case
   V.Record rt -> do
-    let name = case access of
-          Readonly -> TS.Id "Readonly"
-          ReadWrite -> TS.Id "ReadWrite"
-    let extends = case access of
-          Readonly -> Nothing
-          ReadWrite -> Just $ TS.Id "Readonly"
-    TS.Interface name extends (go n rt.capture (toList rt.fieldTypes))
+    let name = fromString $ show access
+    let extendsName = fromString . show <$> extends access
+    TS.Interface name extendsName (go n rt.capture (toList rt.fieldTypes))
    where
     go _ _ [] = []
     go n' vs ((x, f):rest) = do
@@ -113,32 +106,53 @@ class TrackGlobals a where
 --     S.IsTy a -> trackGlobals a
 --     S.EltOf _ _ -> pure ()
 
-genTop :: V.Ty N -> V.Evaluation V.El D -> TS.Module
-genTop a ev = go 0 a ev
+genTypeDef :: Access -> CtxLen -> V.Ty N -> TS.TypeDef
+genTypeDef access n a = TS.TypeDef (fromShow access) (genTy access n a)
+
+genEntryModule :: V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
+genEntryModule a ev = go 0 a ev
   where
-    go :: CtxLen -> V.Ty N -> V.Evaluation V.El D -> TS.Module
-    go n (V.U TheoryU) ev' = case V.ebind V.decode ev' of
-      V.Become a -> do
-        let readonly = TS.TypeDef "Readonly" (genTy Readonly n a)
-        let readwrite = TS.TypeDef "ReadWrite" (genTy ReadWrite n a)
-        TS.Module [] $ TS.Exported <$> [TS.DTypeDef readonly, TS.DTypeDef readwrite]
-      V.Describe a -> do
-        let readonly = genInterface Readonly n a
-        let readwrite = genInterface ReadWrite n a
-        TS.Module [] $ TS.Exported <$> [TS.DInterface readonly, TS.DInterface readwrite]
+    go :: CtxLen -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
+    go n (V.U TheoryU) ev' = do
+      let definitions = for accessLevels $ \access ->
+            case V.ebind V.decode ev' of
+              V.Become a -> TS.DTypeDef $ genTypeDef access n a
+              V.Describe a -> TS.DInterface $ genInterface access n a 
+      Just $ TS.Module [] (TS.Exported <$> definitions)
     go n (V.Function ft) ev' = do
       let v = V.local (FId n) ft.dom
       go (n + 1) (V.appClo ft.cod v) (V.ebind (flip V.app v ) ev')
+    go _ _ _ = Nothing
+
+genRealmClass :: Access -> Realm -> TS.Class
+genRealmClass access _r = TS.Class
+  (fromShow access)
+  Nothing
+  (fromShow <$> extends access)
+  []
+  (TS.Block [] Nothing)
+
+genRealmModule :: Realm -> TS.Module
+genRealmModule r = do
+  let classes = for accessLevels $ \access ->
+        TS.DClass $ genRealmClass access r
+  TS.Module [] (TS.Exported <$> classes)
 
 render :: DDoc -> TL.Text
 render = renderLazy . layoutPretty defaultLayoutOptions
 
+writeModule :: FilePath -> Name -> TS.Module -> IO ()
+writeModule outdir x mod = do
+  let fn = outdir </> (TS.idToString (mangle x) <> ".ts")
+  let content = render $ asm mod
+  TLIO.writeFile fn content
+
 generate :: Globals -> FilePath -> IO ()
 generate ge outdir = do
-  forM_ (toList ge) $ \(x, e) -> do
+  forM_ (OMap.assocs ge.entries) $ \(x, e) -> do
     let ev = eval V.LNil e.syn
-    let mod = genTop e.ty ev
-    let fn = outdir </> (TS.idToString (mangle x) <> ".ts")
-    let content = render $ asm mod
-    putStrLn fn
-    TLIO.writeFile fn content
+    let mod = genEntryModule e.ty ev
+    maybe (pure ()) (writeModule outdir x) mod
+  forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
+    let mod = genRealmModule r
+    writeModule outdir x mod

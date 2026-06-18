@@ -26,6 +26,8 @@ module Coln.Common
   , getKeyIndex
   , withHead
   , Trie (..)
+  , fromShow
+  , for
   ) where
 
 import Prelude hiding (lookup)
@@ -214,3 +216,12 @@ data Trie a
   = Leaf a
   | Node (Dict (Trie a))
   deriving (Functor)
+
+-- Misc
+--------------------------------------------------------------------------------
+
+fromShow :: (Show a, IsString b) => a -> b
+fromShow = fromString . show
+
+for :: [a] -> (a -> b) -> [b]
+for = flip map
