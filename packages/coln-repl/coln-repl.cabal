@@ -32,6 +32,7 @@ executable coln-repl
     hashable,
     haskeline,
     mtl,
+    ordered-containers,
     prettyprinter,
     repline,
     singletons,
