@@ -1,7 +1,7 @@
 { mkDerivation, base, bytestring, coln-compiler, containers
 , diagnostician, directory, filepath, fnotation, hashable
-, haskeline, lib, mtl, prettyprinter, repline, singletons, text
-, transformers, vector
+, haskeline, lib, mtl, ordered-containers, prettyprinter, repline
+, singletons, text, transformers, vector
 }:
 mkDerivation {
   pname = "coln-repl";
@@ -11,8 +11,8 @@ mkDerivation {
   isExecutable = true;
   executableHaskellDepends = [
     base bytestring coln-compiler containers diagnostician directory
-    filepath fnotation hashable haskeline mtl prettyprinter repline
-    singletons text transformers vector
+    filepath fnotation hashable haskeline mtl ordered-containers
+    prettyprinter repline singletons text transformers vector
   ];
   license = "(Apache-2.0 OR MIT)";
   mainProgram = "coln-repl";
