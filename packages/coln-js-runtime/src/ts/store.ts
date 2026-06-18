@@ -1,16 +1,12 @@
 import {
-  CommitResult,
-  RowHandle,
-  RowId,
+  RowRef,
   RowView,
   StoreHandle as WasmStoreHandle,
   TransactionHandle as WasmTransactionHandle,
-  TxnValue,
+  Value,
 } from "#wasm-bodge/bindings";
 import { Schema, SchemaProvider } from "./schema";
-import { Value } from "./value";
 
-export type { CommitResult };
 
 export interface StorageAdapter {
   create<W>(provider: SchemaProvider<W>): StoreHandle<W>;
@@ -27,13 +23,13 @@ export interface StoreHandle<W> {
   commit(): string;
 
   change(db: W, cb: (db: W) => Value[]): Value[];
-  add(path: string, values: TxnValue[]): RowHandle;
+  add(path: string, values: Value[]): Value;
 
   store(): StoreView;
 }
 
 export interface StoreView {
-  rowById(path: string, row_id: RowId): RowView | undefined;
+  rowById(path: string, row_id: RowRef): RowView | undefined;
   scanTable(path: string): RowView[];
 }
 
@@ -69,19 +65,10 @@ export class ColnStoreHandle<W> implements StoreHandle<W> {
     const res = cb(db);
 
     this.commit();
-    return res.map((v) => {
-      if (v.tag !== "row_handle") {
-        return v;
-      } else {
-        return {
-          tag: "row_id",
-          value: v.value.rowId(),
-        } as Value;
-      }
-    });
+    return res;
   }
 
-  add(path: string, values: TxnValue[]): RowHandle {
+  add(path: string, values: Value[]): Value {
     if (!this.tx) {
       throw new Error("no active transaction");
     }
@@ -97,7 +84,7 @@ export class ColnStoreView implements StoreView {
     this.wasmStore = wasmStore;
   }
 
-  rowById(path: string, row_id: RowId): RowView | undefined {
+  rowById(path: string, row_id: RowRef): RowView | undefined {
     return this.wasmStore.rowById(path, row_id);
   }
 

@@ -16,8 +16,28 @@ impl TxnId {
     pub fn new(n: u64) -> Self {
         TxnId(n)
     }
+
+    pub(crate) fn as_u64(&self) -> u64 {
+        self.0
+    }
 }
 
+impl From<u64> for TxnId {
+    fn from(value: u64) -> Self {
+        TxnId::new(value)
+    }
+}
+
+#[derive(Clone, Debug)]
+enum RowHandleState {
+    Pending { tx_id: TxnId, counter: u32 },
+    Existing(RowId),
+    Invalid(String),
+}
+
+/// A RowHandle abstracts away the difference between a pending id and an existing
+/// rowid. It is a reference counted handle that can be shared and will be automatically
+/// converted from a temp rowid to a rowid on successful commit.
 #[derive(Clone, Debug)]
 pub struct RowHandle {
     // ? Arc
@@ -34,6 +54,18 @@ impl RowHandle {
             .into()),
             RowHandleState::Invalid(reason) => Err(ValidationError::InvalidRowHandle {
                 reason: reason.clone(),
+            }
+            .into()),
+        }
+    }
+
+    /// For FFI authors only
+    #[doc(hidden)]
+    pub fn pending_ids(&self) -> Result<(u64, u32), Box<StoreIntError>> {
+        match *self.state.borrow() {
+            RowHandleState::Pending { tx_id, counter } => Ok((tx_id.as_u64(), counter)),
+            _ => Err(ValidationError::InvalidRowHandle {
+                reason: "not txn id on existing ids or invalid handles".to_string(),
             }
             .into()),
         }
@@ -69,23 +101,18 @@ impl RowHandle {
     pub(crate) fn invalidate(&self, reason: &str) {
         *self.state.borrow_mut() = RowHandleState::Invalid(reason.into());
     }
-}
 
-impl RowHandle {
-    pub(crate) fn pending(tx_id: TxnId, value: TempRowId) -> Self {
-        let state = Rc::new(RefCell::new(RowHandleState::Pending {
-            tx_id,
-            counter: value.0,
-        }));
+    #[doc(hidden)]
+    pub fn from_pending(tx_id: TxnId, counter: u32) -> Self {
+        let state = Rc::new(RefCell::new(RowHandleState::Pending { tx_id, counter }));
         RowHandle { state }
     }
-}
 
-#[derive(Clone, Debug)]
-enum RowHandleState {
-    Pending { tx_id: TxnId, counter: u32 },
-    Existing(RowId),
-    Invalid(String),
+    #[doc(hidden)]
+    pub fn from_existing(row_id: RowId) -> Self {
+        let state = Rc::new(RefCell::new(RowHandleState::Existing(row_id)));
+        RowHandle { state }
+    }
 }
 
 #[derive(Clone)]
@@ -152,7 +179,10 @@ impl From<CellValue> for TxnValue {
     }
 }
 
-// This is a temporary rowid only valid during a transaction. Not persisted, no hash
+/// This is a temporary rowid only valid during a transaction. Not persisted, no hash.
+/// It does not keep a txn id around because that is only valid during a transaction.
+/// The in memory representation is always just a TempRowId because the hash for
+/// the rowids in the same transaction will just be the same.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TempRowId(pub(crate) u32);
 
@@ -201,6 +231,8 @@ impl PendingOp {
     }
 }
 
+/// A RowRef is either an existing rowid, or a pending id that belongs to a
+/// a particular transaction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum RowRef {
     Existing(RowId),

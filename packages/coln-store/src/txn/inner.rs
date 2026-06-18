@@ -75,7 +75,7 @@ impl TxnInner {
             .map(|v| v.to_txn_cell_value(self.tx_id))
             .collect::<Result<Vec<TxnCellValue>, _>>()?;
         let temp_id = self.add_cell_values(store, table, txn_values)?;
-        let handle = RowHandle::pending(self.tx_id, temp_id);
+        let handle = RowHandle::from_pending(self.tx_id, temp_id.0);
         self.pending_handles.push(handle.clone());
         Ok(handle)
     }

@@ -1,7 +1,6 @@
-export type { RowId, RowView, CellValue, Value } from "./value";
-export { RowHandle, TxnValue, toTxnValue, valueEqual } from "./value";
+export type { RowRef, RowView, Value, CommitResult } from "#wasm-bodge/bindings";
+export { valueEqual } from "#wasm-bodge/bindings";
 
-export type { CommitResult } from "./store";
 export { StoreHandle } from "./store";
 
 export type { ReadonlySet, ReadWriteSet, Tuple } from "./runtime";
