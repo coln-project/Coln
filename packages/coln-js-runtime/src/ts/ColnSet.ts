@@ -1,5 +1,4 @@
-import { Value } from "./value.ts"
-import { RowView  } from "#wasm-bodge/bindings";
+import { Value, RowView  } from "#wasm-bodge/bindings";
 
 export interface View {
   has(x: Value): boolean;

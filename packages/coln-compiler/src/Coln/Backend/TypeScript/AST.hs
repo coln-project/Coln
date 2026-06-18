@@ -31,6 +31,8 @@ instance Runtime QId where
   runtime = \case
     ColnSet access -> QId ["runtime", "ColnSet"] (fromShow access)
     RowIdSet access -> QId ["runtime", "RowIdSet"] (fromShow access)
+    ColnRef access -> QId ["runtime", "ColnRef"] (fromShow access)
+    TableCellRef access -> QId ["runtime", "TableCellRef"] (fromShow access)
     x -> QId ["runtime"] (fromShow x)
 
 instance Runtime Ty where

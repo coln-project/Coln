@@ -17,6 +17,8 @@ data RuntimeConst
   = Value
   | ColnSet Access
   | RowIdSet Access
+  | ColnRef Access
+  | TableCellRef Access
   | StoreHandle
   | TransactionHandle
   deriving (Show)
