@@ -124,18 +124,35 @@ genEntryModule a ev = go 0 a ev
       go (n + 1) (V.appClo ft.cod v) (V.ebind (flip V.app v ) ev')
     go _ _ _ = Nothing
 
+genEl :: Access -> Bwd TS.Id -> V.El N -> TS.El
+genEl _ _ _ = TS.Object []
+
+genRealmConstructor :: Access -> Realm -> TS.Constructor
+genRealmConstructor access r = do
+  let args = case access of
+        View ->
+          [ TS.Binding "store" (TS.runtime StoreHandle)
+          ]
+        Transaction ->
+          [ TS.Binding "store" (TS.runtime StoreHandle)
+          , TS.Binding "transaction" (TS.runtime TransactionHandle)
+          ]
+  let body = TS.Block
+        [TS.Assign (TS.QId ["this"] "root") (genEl access BwdNil r.root)]
+        Nothing
+  TS.Constructor args body
+
 genRealmClass :: Access -> Realm -> TS.Class
-genRealmClass access _r = TS.Class
+genRealmClass access r = TS.Class
   (fromShow access)
   Nothing
   (fromShow <$> extends access)
-  []
-  (TS.Block [] Nothing)
+  [TS.Binding "root" (genTy access 0 r.rootType)]
+  (genRealmConstructor access r)
 
 genRealmModule :: Realm -> TS.Module
 genRealmModule r = do
-  let classes = for accessLevels $ \access ->
-        TS.DClass $ genRealmClass access r
+  let classes = for accessLevels $ \access -> TS.DClass $ genRealmClass access r
   TS.Module [] (TS.Exported <$> classes)
 
 render :: DDoc -> TL.Text

@@ -148,9 +148,8 @@ realm e g head _defs = do
   (x, theory_n) <- realmHead e head
   theory_typ <- typ e theory_n
   theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g)
-  let (gt, rootv) = layoutTop x theory.val
-  let root = readb 0 rootv
-  pure (x, Realm gt root)
+  let (gt, root) = layoutTop x theory.val
+  pure (x, Realm gt root.val theory.val)
 
 withArgs :: (V.HasEvaluation c) => ParseEnv -> [(Span, Name, Ntn)] -> (Typ N, Chk c) -> IO (Typ N, Chk c)
 withArgs e args base = foldrM go base args

@@ -3,6 +3,7 @@ module Coln.Core.Realm where
 import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
 
 data Generator
   = Rel [Name] [S.Ty N]
@@ -10,5 +11,6 @@ data Generator
 
 data Realm = Realm
   { generators :: Trie Generator
-  , root :: S.El N
+  , root :: V.El N
+  , rootType :: V.Ty N
   }

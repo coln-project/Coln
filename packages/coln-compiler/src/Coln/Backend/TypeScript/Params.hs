@@ -16,4 +16,6 @@ extends = \case
 data RuntimeConst
   = Value
   | ColnSet Access
+  | StoreHandle
+  | TransactionHandle
   deriving (Show)
