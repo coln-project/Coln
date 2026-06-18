@@ -7,7 +7,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "wasm-bodge build"
+    "build": "wasm-bodge build",
+    "test": "tsx --test tests/test_id_resolution.ts"
   },
   "wasm-bodge": {
     "wrapper": {
@@ -15,6 +16,7 @@
     }
   },
   "devDependencies": {
+    "@types/node": "^25.9.3",
     "typescript": "^5.0.0"
   },
   "main": "./dist/wrapper/cjs/node.cjs",
