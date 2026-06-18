@@ -1,6 +1,6 @@
-import * as ColnSet from "./ColnSet.ts"
+import * as ColnSet from "./ColnSet"
 import { Value, StoreHandle, RowView, TransactionHandle, getRowRef } from "#wasm-bodge/bindings"
-import { Tuple, tupleEqual } from "./tuple.ts"
+import { Tuple, tupleEqual } from "./tuple"
 
 export class View implements ColnSet.View {
   store: StoreHandle;

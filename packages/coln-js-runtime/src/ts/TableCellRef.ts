@@ -1,5 +1,5 @@
 import { Value, StoreHandle, TransactionHandle } from "#wasm-bodge/bindings";
-import { Tuple, tupleEqual } from "./tuple.ts"
+import { Tuple, tupleEqual } from "./tuple"
 import * as ColnRef from "./ColnRef";
 
 // This assumes that the function arguments are the first n-1 elements of the
