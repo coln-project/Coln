@@ -30,6 +30,7 @@ class Runtime a where
 instance Runtime QId where
   runtime = \case
     ColnSet access -> QId ["runtime", "ColnSet"] (fromShow access)
+    RowIdSet access -> QId ["runtime", "RowIdSet"] (fromShow access)
     x -> QId ["runtime"] (fromShow x)
 
 instance Runtime Ty where
