@@ -97,7 +97,7 @@ data SCase :: Case -> Type where
 data Literal
   = LitInt Int
   | LitString Text
-  deriving (Eq)
+  deriving (Show, Eq)
 
 instance Pretty Literal where
   pretty = \case
@@ -126,7 +126,7 @@ type RealmId = Name
 type Path = Bwd Name
 
 data TableName = TableName { realm :: RealmId, path :: Path }
-  deriving (Eq)
+  deriving (Show, Eq, Ord)
 
 instance DPretty TableName where
   dpretty tn = concatWith (surround dot) (dpretty <$> toList tn.path)

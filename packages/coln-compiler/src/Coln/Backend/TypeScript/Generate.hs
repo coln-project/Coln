@@ -3,6 +3,7 @@ module Coln.Backend.TypeScript.Generate where
 import Control.Monad.State
 import Control.Monad (forM_)
 import Data.Foldable (foldlM)
+import Data.Foldable qualified as F
 import Data.Map.Ordered qualified as OMap
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -139,7 +140,7 @@ bind cs x = TSCtxShape { len = cs.len + 1, names = cs.names :> x }
 genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
 genTyVal access cs = \case
   V.EltOf x vs -> do
-    let params = TS.List $ genEl access cs <$> vs
+    let params = TS.List $ genEl access cs <$> F.toList vs
     let transactionArg = case access of
           View -> []
           Transaction -> [TS.Var "transaction"]
@@ -175,7 +176,7 @@ genEl access cs = \case
     (mangle x, genEl access cs v)
   V.Lit l -> TS.Lit l
   V.Lookup tn vs -> do
-    let params = TS.List $ genEl access cs <$> vs
+    let params = TS.List $ genEl access cs <$> F.toList vs
     let transactionArg = case access of
           View -> []
           Transaction -> [TS.Var "transaction"]

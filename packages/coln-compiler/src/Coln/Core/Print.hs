@@ -56,7 +56,9 @@ instance ToNotation (El e) where
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
-    Lookup x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
+    Lookup x ts -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
+     where
+      field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
@@ -85,7 +87,9 @@ instance ToNotation (Ty e) where
       (toNotation xs eq.rhs)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
     IsTy a -> toNotation xs a
-    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
+    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
+     where
+      field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 
 instance ToNotation TypeBehavior where
   toNotation xs = \case

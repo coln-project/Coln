@@ -28,17 +28,23 @@ module Coln.Common
   , Trie (..)
   , fromShow
   , for
+  , HasNames (..)
+  , freshNameFor
+  , freshNamesFor
   ) where
 
 import Prelude hiding (lookup)
 import Control.Monad.IO.Class
+import Data.Foldable qualified as F
 import Data.Hashable
 import Data.Kind (Type, Constraint)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text.Unsafe qualified as TU
+import Data.Traversable hiding (for)
 import Data.Vector.Strict (Vector)
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Generic.Mutable qualified as VGM
@@ -107,7 +113,7 @@ infixl 5 :>
 
 -- TODO: write custom foldable instance which implements tail-recursive toList
 data Bwd a = BwdNil | Bwd a :> a
-  deriving (Functor, Eq)
+  deriving (Functor, Show, Eq, Ord)
 
 newtype BId = BId Int
   deriving (Eq, Num, Show)
@@ -142,7 +148,7 @@ infixr 5 :<
 data Fwd a = FwdNil | a :< Fwd a
 
 newtype FId = FId Int
-  deriving (Eq)
+  deriving (Show, Eq)
 
 instance ElemAt (Fwd a) FId a where
   elemAt FwdNil _ =
@@ -191,6 +197,15 @@ instance FromList (Dict a) (Name, a) where
 instance Functor Dict where
   fmap f d = Dict d.head (fmap f d.values)
 
+instance Foldable Dict where
+  foldMap f d = foldMap f d.values
+  foldr f s d = foldr f s d.values
+  foldl' f s d = foldl' f s d.values
+  toList d = V.toList d.values
+
+instance Traversable Dict where
+  traverse f d = fmap (\x -> d { values = x }) $ traverse f d.values
+
 instance ToList (Dict a) (Name, a) where
   toList d = zip (V.toList d.head.keys) (V.toList d.values)
 
@@ -215,7 +230,35 @@ withHead d xs = Dict d.head (V.fromList xs)
 data Trie a
   = Leaf a
   | Node (Dict (Trie a))
-  deriving (Functor)
+  deriving (Functor, Foldable, Traversable)
+
+-- Fresh Variable Names
+--------------------------------------------------------------------------------
+
+-- XXX should really be a string so we statically know there are always fresh
+alphaStrings :: [String]
+alphaStrings = [xs [x] | xs <- map (++) $ "" : alphaStrings, x <- ['a'..'z']]
+
+alphaNames :: [Name]
+alphaNames = map fromString alphaStrings
+
+class HasNames a where
+  namesIn :: a -> Set.Set Name
+
+instance HasNames DictHead where
+  namesIn h = Map.keysSet h.byName
+
+instance HasNames (Dict a) where
+  namesIn h = namesIn h.head
+
+instance HasNames [Name] where
+  namesIn xs = Set.fromList xs
+
+freshNamesFor :: (HasNames a) => a -> [Name]
+freshNamesFor a = flip filter alphaNames $ flip Set.notMember $ namesIn a
+
+freshNameFor :: (HasNames a) => a -> Name
+freshNameFor = head . freshNamesFor
 
 -- Misc
 --------------------------------------------------------------------------------

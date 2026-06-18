@@ -150,7 +150,7 @@ data El :: Case -> Type where
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
   Lit :: Literal -> El N
-  Lookup :: TableName -> [El N] -> El N
+  Lookup :: TableName -> Dict (El N) -> El N
 
 app :: El c -> El N -> Evaluation El c
 app (Lam _ clo) arg = appClo clo arg
@@ -203,7 +203,7 @@ data Ty :: Case -> Type where
   Record :: RecordType -> Ty D
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
-  EltOf :: TableName -> [El N] -> Ty N
+  EltOf :: TableName -> Dict (El N) -> Ty N
 
 instance DebugVal (Ty c) where
   debugVal = \case

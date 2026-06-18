@@ -68,13 +68,13 @@ layout p sc a
         (Node $ Dict rt.fieldTypes.head (Vector.fromList gts), m)
       V.LikeU SetU -> do
         let gt = Leaf (Rel (toList sc.names) (toList sc.ctx))
-        let a = V.EltOf (TableName sc.realm p) (toList sc.bound)
+        let a = V.EltOf (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
         (gt, M.code (M.fromVTy sc.len a))
       V.NoRules -> panic "cannot layout type with no rules"
       V.LikeBuiltinTy _; V.LikeU _ -> panic "non-theory type"
   | levelOf a == Set = do
       let gt = Leaf (Fun (toList sc.names) (toList sc.ctx) (readb sc.len a))
-      let v = V.Lookup (TableName sc.realm p) (toList sc.bound)
+      let v = V.Lookup (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
       (gt, M.fromVEl sc.len v)
   | otherwise = panic "tried to layout a toplevel type"
 
