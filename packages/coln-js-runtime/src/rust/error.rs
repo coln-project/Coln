@@ -1,10 +1,6 @@
 use std::fmt;
 use wasm_bindgen::JsValue;
 
-pub(crate) fn set_panic_hook() {
-    console_error_panic_hook::set_once();
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundaryError {
     message: String,
