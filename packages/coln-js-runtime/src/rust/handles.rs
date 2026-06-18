@@ -64,7 +64,7 @@ impl TransactionHandle {
                 // at this point the rowhandles would have been resolved to rowids already
                 for (handle, value) in &self.pending_handles {
                     let row_id = handle.row_id().map_err(js_error)?;
-                    resolve_value_id(&value, row_id.into())?;
+                    resolve_value_id(value, row_id.into())?;
                 }
 
                 Ok(CommitResult {
