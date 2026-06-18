@@ -23,6 +23,7 @@
         packages = rec {
           forester = pkgs.callPackage ./nix/forester.nix {};
 
+          coln-do = colnHaskellPackages.callPackage ./packages/coln-do {};
           diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician {};
           fnotation = colnHaskellPackages.callPackage ./packages/fnotation {
             inherit diagnostician;
@@ -30,12 +31,20 @@
           coln-compiler = colnHaskellPackages.callPackage ./packages/coln-compiler {
             inherit diagnostician fnotation;
           };
+          coln-repl = colnHaskellPackages.callPackage ./packages/coln-repl {
+            inherit coln-compiler diagnostician fnotation;
+          };
+          coln-ls = colnHaskellPackages.callPackage ./packages/coln-ls {
+            inherit coln-compiler diagnostician fnotation;
+          };
           coln-manual-dev = colnHaskellPackages.callPackage ./packages/coln-manual-dev {};
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''
             echo "built diagnostician: ${diagnostician}"
             echo "built fnotation: ${fnotation}"
             echo "built coln-compiler: ${coln-compiler}"
+            echo "built coln-repl: ${coln-repl}"
+            echo "built coln-ls: ${coln-ls}"
           '';
 
           manual = pkgs.stdenv.mkDerivation {

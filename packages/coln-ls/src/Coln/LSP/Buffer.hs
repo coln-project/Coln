@@ -1,5 +1,10 @@
 module Coln.LSP.Buffer (analyzeBuffer) where
 
+import Coln.Diagnostics (ColnCode (..))
+import Coln.Frontend.Driver (top)
+import Coln.Frontend.Notation (lexConfig, parseConfig)
+import Coln.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
+import Coln.Report (DiagnosticEnv (DiagnosticEnv))
 import Control.Exception (SomeException (..), evaluate)
 import Control.Monad.Catch (MonadCatch, catch)
 import Control.Monad.Trans
@@ -8,10 +13,6 @@ import Data.IORef (newIORef, readIORef)
 import Data.Text qualified as T
 import Diagnostician qualified as D
 import FNotation
-import Coln.Diagnostics (ColnCode (..))
-import Coln.Elaborator (elabTop)
-import Coln.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
-import Coln.Notation (lexConfig, parseConfig)
 import Language.LSP.Protocol.Message (SMethod (..))
 import Language.LSP.Protocol.Types (MessageType (..), ShowMessageParams (..))
 import Language.LSP.Server (MonadLsp, sendNotification)
@@ -53,7 +54,7 @@ analyzeBuffer bufInfo = do
         reportCrash (FNotation.parse parseConfig (contramap ParserCode r) bufInfo.file tokens) "Parsing Error: " >>= \case
           Nothing -> pure $ buf (Just tokens) Nothing Nothing
           Just notations ->
-            reportCrash (elabTop (contramap ElaboratorCode r) bufInfo.file notations) "Elaboration Error: " >>= \case
+            reportCrash (top (DiagnosticEnv r bufInfo.file) notations) "Elaboration Error: " >>= \case
               Nothing -> pure $ buf (Just tokens) (Just notations) Nothing
               Just elaborated -> pure $ buf (Just tokens) (Just notations) (Just elaborated)
 

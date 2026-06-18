@@ -1,13 +1,13 @@
 module Coln.LSP.Types where
 
+import Coln.Core.Globals (Globals)
+import Coln.Diagnostics (ColnCode)
 import Data.IORef
 import Data.Map (Map)
 import Data.Vector
 import Diagnostician qualified as D
 import FNotation.Tokens (Token)
 import FNotation.Trees (Ntn)
-import Coln.Core (GlobalEnv)
-import Coln.Diagnostics (ColnCode)
 import Language.LSP.Protocol.Types qualified as J
 import Language.LSP.Server (LspM)
 
@@ -21,7 +21,7 @@ data AnalyzedBuffer = AnalyzedBuffer
   { raw :: D.File
   , tokens :: Maybe (Vector Token)
   , notations :: Maybe [Ntn]
-  , elaborated :: Maybe GlobalEnv
+  , elaborated :: Maybe Globals
   , diagnostics :: [D.Diagnostic ColnCode]
   }
 
