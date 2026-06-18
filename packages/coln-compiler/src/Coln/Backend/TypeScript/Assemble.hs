@@ -18,11 +18,17 @@ tupled =
     . map (\d -> flatAlt (indent 2 d) d)
 
 blocked :: [Doc a] -> Doc a
-blocked =
-  group
-    . enclose ("{" <> line) (line <> "}")
-    . vsep
-    . map (\d -> flatAlt (indent 2 d) d)
+blocked [] = "{}"
+blocked ds =
+  group $
+    enclose ("{" <> line) (line <> "}") $
+    vsep [flatAlt (indent 2 d) d | d <- ds]
+
+hardBlocked :: [Doc a] -> Doc a
+hardBlocked [] = "{" <> hardline <> "}"
+hardBlocked ds =
+  enclose ("{" <> hardline) (hardline <> "}") $
+  vsep [indent 2 d | d <- ds]
 
 class Assemble a where
   asm :: a -> DDoc
@@ -32,7 +38,6 @@ instance Assemble Id where
 
 instance Assemble QId where
   asm (QId xs y) = mconcat [asm x <> "." | x <- xs] <> asm y
-
 
 instance Assemble Ty where
   asm (Fun bnd ret) = parens (asm bnd) <+> "=>" <+> asm ret
@@ -65,7 +70,6 @@ instance Assemble El where
   asm (Object fields) =
     blocked $ punctuate "," [asm x <> ":" <+> asm t | (x, t) <- fields]
 
-
 instance Assemble Statement where
   asm (Let x t) = "const" <+> asm x <+> "=" <+> asm t <> ";"
   asm (Assign x t) = asm x <+> "=" <+> asm t <> ";"
@@ -82,7 +86,7 @@ instance Assemble Block where
     let ret = case b.return of
           Just t -> ["return" <+> asm t <> ";"]
           Nothing -> []
-     in blocked $ (asm <$> b.statements) ++ ret
+     in hardBlocked $ (asm <$> b.statements) ++ ret
 
 instance Assemble Class where
   asm c =
@@ -90,22 +94,28 @@ instance Assemble Class where
       <+> asm c.name
       <> maybe mempty (\e -> " extends" <+> asm e) c.extends
       <> maybe mempty (\i -> " implements" <+> asm i) c.implements
-      <+> blocked
+      <+> hardBlocked
         ( punctuate
             line
             [ vsep [asm f <> ";" | f <- c.fields]
-            , "constructor()" <+> asm c.constructor
+            , asm c.constructor
             ]
         )
+
+instance Assemble Constructor where
+  asm c =
+    "constructor"
+    <> tupled (asm <$> c.args)
+    <+> asm c.body
 
 instance Assemble Interface where
   asm i =
     "interface"
       <+> asm i.name
       <+> maybe mempty (\e -> "extends" <+> asm e <> " ") i.extends
-      <> blocked [asm f <> ";" | f <- i.fields]
+      <> hardBlocked [asm f <> ";" | f <- i.fields]
 
-instance Assemble Function where
+instance Assemble FunctionDef where
   asm f =
     "function"
       <+> asm f.name
@@ -127,7 +137,7 @@ instance (Assemble a) => Assemble (AccessControlled a) where
 
 instance Assemble Declaration where
   asm = \case
-    DFunction f -> asm f
+    DFunctionDef f -> asm f
     DClass c -> asm c
     DInterface i -> asm i
     DTypeDef td -> asm td

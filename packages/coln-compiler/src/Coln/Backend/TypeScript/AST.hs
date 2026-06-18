@@ -29,8 +29,8 @@ class Runtime a where
 
 instance Runtime QId where
   runtime = \case
-    Value -> QId ["runtime"] "Value"
-    ColnSet access -> QId ["runtime", "ColnSet"] (fromString (show access))
+    ColnSet access -> QId ["runtime", "ColnSet"] (fromShow access)
+    x -> QId ["runtime"] (fromShow x)
 
 instance Runtime Ty where
   runtime = TyConst . runtime
@@ -77,7 +77,12 @@ data Class = Class
   , implements :: Maybe QId
   , extends :: Maybe QId
   , fields :: [Binding]
-  , constructor :: Block
+  , constructor :: Constructor
+  }
+
+data Constructor = Constructor
+  { args :: [Binding]
+  , body :: Block
   }
 
 data Interface = Interface
@@ -86,7 +91,7 @@ data Interface = Interface
   , fields :: [Binding]
   }
 
-data Function = Function
+data FunctionDef = FunctionDef
   { name :: Id
   , args :: [Binding]
   , ret :: Maybe Ty
@@ -103,7 +108,7 @@ data AccessControlled a
   | Private a
 
 data Declaration
-  = DFunction Function
+  = DFunctionDef FunctionDef
   | DClass Class
   | DInterface Interface
   | DTypeDef TypeDef
