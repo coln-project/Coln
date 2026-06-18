@@ -39,7 +39,7 @@ mangle x = TS.Id $ mconcat [pretty s <> "_slash_" | s <- x.init] <> pretty x.las
 tyFromHead :: Access -> V.Head -> TS.Ty
 tyFromHead access (V.GlobalVar x _) =
   TS.TyConst (TS.QId [mangle x] (fromString (show access)))
-tyFromHead _ (V.LocalVar _) = TS.runtime Value
+tyFromHead access (V.LocalVar _) = TS.runtime $ ColnRef access
 
 genTy :: Access -> CtxLen -> V.Ty N -> TS.Ty
 genTy access n = \case
@@ -47,7 +47,7 @@ genTy access n = \case
   V.Function ft -> do
     let v = V.local (FId n) ft.dom
     TS.Fun (TS.Binding (TS.Id "x") (TS.runtime Value)) (genTy access (n + 1) (V.appClo ft.cod v))
-  V.EltOf _ _ -> TS.runtime Value
+  V.EltOf _ _ -> TS.runtime $ ColnRef access
   V.Decode n -> tyFromHead access n.head
   _ -> error "not yet supported"
 
@@ -138,13 +138,13 @@ bind cs x = TSCtxShape { len = cs.len + 1, names = cs.names :> x }
 genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
 genTyVal access cs = \case
   V.EltOf x vs -> do
-    let tuple = TS.List $ genEl access cs <$> vs
+    let params = TS.List $ genEl access cs <$> vs
     let transactionArg = case access of
           View -> []
           Transaction -> [TS.Var "transaction"]
-    let args = [TS.Var "store", TS.String (dpretty x), tuple] ++ transactionArg
+    let args = [TS.Var "store", TS.String (dpretty x), params] ++ transactionArg
     TS.New (TS.Const (TS.runtime (RowIdSet access))) args
-  _ -> panic "type not yet supported"
+  _ -> panic "composite not yet supported"
 
 genHead :: TSCtxShape -> V.Head -> TS.El
 genHead cs = \case
@@ -158,7 +158,7 @@ genSp _cs = \case
 
 argName :: TSCtxShape -> V.Clo f c -> TS.Id
 argName _ (V.Clo x _ _) = mangle x
-argName _ (V.CloConst _) = panic "no provided name"
+argName _ (V.CloConst _) = panic "closures from the layout process should have argument names"
 
 genEl :: Access -> TSCtxShape -> V.El N -> TS.El
 genEl access cs = \case
@@ -172,8 +172,14 @@ genEl access cs = \case
       (TS.Block [] (Just (genEl access (bind cs x) (V.appClo clo v))))
   V.Cons fields -> TS.Object $ for (toList fields) $ \(x, v) ->
     (mangle x, genEl access cs v)
-  V.Lit _ -> panic "unsupported lit"
-  V.Lookup _ _ -> panic "unsupported lookup"
+  V.Lit l -> TS.Lit l
+  V.Lookup tn vs -> do
+    let params = TS.List $ genEl access cs <$> vs
+    let transactionArg = case access of
+          View -> []
+          Transaction -> [TS.Var "transaction"]
+    let args = [TS.Var "store", TS.String (dpretty tn), params] ++ transactionArg
+    TS.New (TS.Const (TS.runtime (TableCellRef access))) args
 
 genRealmConstructor :: Access -> Realm -> TS.Constructor
 genRealmConstructor access r = do

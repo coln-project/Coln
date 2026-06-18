@@ -1,7 +1,6 @@
 import * as ColnSet from "./ColnSet.ts"
-import { Value, tryValueRowId, Tuple, tupleEqual } from "./value.ts"
-import { StoreHandle, RowView, TransactionHandle } from "#wasm-bodge/bindings"
-import { toTxnValue } from "..";
+import { Value, StoreHandle, RowView, TransactionHandle, getRowRef } from "#wasm-bodge/bindings"
+import { Tuple, tupleEqual } from "./tuple.ts"
 
 export class View implements ColnSet.View {
   store: StoreHandle;
@@ -15,12 +14,10 @@ export class View implements ColnSet.View {
   }
 
   has(x: Value): boolean {
-    if (x.tag !== "row_id" && x.tag !== "row_handle") return false;
+    const rowRef = getRowRef(x)
+    if (rowRef == undefined) return false;
 
-    const rowId = tryValueRowId(x);
-    if (rowId === undefined) return false;
-
-    const row = this.store.rowById(this.path, rowId);
+    const row = this.store.rowById(this.path, rowRef);
 
     return row !== undefined && tupleEqual(row.values, this.params);
   }
@@ -41,9 +38,6 @@ export class Transaction extends View implements ColnSet.Transaction {
   }
   
   add(): Value {
-    return {
-      tag: "row_handle",
-      value: this.transaction.add(this.path, this.params.map(toTxnValue))
-    };
+    return this.transaction.add(this.path, this.params);
   }
 }
