@@ -1,14 +1,21 @@
 # Coln
 
-Migration from internal geolog repo is in progress; not everything works again yet.
+Coln is a data-oriented proof assistant. We have a [work-in-progress manual](https://coln-project.github.io). The software is also heavily pre-alpha.
 
-## Building
+## Quick Start
 
-## TypeScript Generation
+If you have nix, you can either download this repository and run `nix run .` from the repository root, or not even download the repository and run `nix run github:coln-project/Coln`.
 
-To generate TypeScript definitions from a Coln theory file (work in progress), run:
+If you don't have nix, you can install `cabal` and possibly some native dependencies (at least `zlib`), and then run `cabal run coln-cli`.
 
-```
-cabal run coln-cli -- generate-ts COLN_FILE -o OUTPUT_DIR
-```
+This will allow you to:
 
+- Type check coln files: `coln check theories.coln`
+- Generate TypeScript definitions from coln files: `coln generate-ts theories.coln -o OUT_DIR`
+- Generate JSON IR (used by the storage engine): `coln generate-ir theories.coln -o OUT_DIR`
+- Run a repl: `coln repl`
+- Run a language server: `coln language-server`
+
+## Demo
+
+(fill in when we have a demo)
