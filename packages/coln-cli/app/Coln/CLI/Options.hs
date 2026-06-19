@@ -47,6 +47,7 @@ options = hsubparser
  <> command "generate-ir" (info (GenerateIR <$> generateIROptions) (progDesc "generate IR in JSON for Coln definitions"))
  <> command "check" (info (Check <$> checkOptions) (progDesc "check Coln definitions"))
  <> command "repl" (info (pure Repl) (progDesc "run the coln REPL"))
+ <> command "language-server" (info (pure LanguageServer) (progDesc "run the coln language server"))
   )
 
 optionsInfo :: ParserInfo Options
