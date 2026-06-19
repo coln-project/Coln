@@ -38,6 +38,9 @@
             inherit coln-compiler diagnostician fnotation;
           };
           coln-manual-dev = colnHaskellPackages.callPackage ./packages/coln-manual-dev {};
+          coln-cli = colnHaskellPackages.callPackage ./packages/coln-cli {
+            inherit coln-compiler coln-repl coln-ls diagnostician fnotation;
+          };
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''
             echo "built diagnostician: ${diagnostician}"
@@ -45,6 +48,7 @@
             echo "built coln-compiler: ${coln-compiler}"
             echo "built coln-repl: ${coln-repl}"
             echo "built coln-ls: ${coln-ls}"
+            echo "built coln-cli: ${coln-cli}"
           '';
 
           manual = pkgs.stdenv.mkDerivation {
