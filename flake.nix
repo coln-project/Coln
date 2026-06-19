@@ -64,6 +64,8 @@
               cp -r output $out
             '';
           };
+
+          default = coln-cli;
         };
 
         inherit (packages) forester coln-manual-dev;
