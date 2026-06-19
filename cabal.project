@@ -3,3 +3,9 @@ packages:
 jobs: $ncpus
 semaphore: true
 tests: True
+
+constraints:
+  -- Cabal otherwise sometimes picks bad build plans due to faulty metadata in older versions of these libs:
+  -- https://github.com/haskell/lsp/issues/641
+  lsp >= 2.8.0.0,
+  lsp-types >= 2.4,
