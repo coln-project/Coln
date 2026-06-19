@@ -27,6 +27,8 @@ module Coln.Common
   , withHead
   , Trie (..)
   , HasNames (..)
+  , alphaStrings
+  , alphaNames
   , freshNameFor
   , freshNamesFor
   , mangleToDoc
@@ -248,7 +250,7 @@ instance ToList (Trie a) (Bwd Name, a) where
 -- Fresh Variable Names
 --------------------------------------------------------------------------------
 
--- XXX should really be a string so we statically know there are always fresh
+-- XXX should really be a stream so we statically know there are always fresh
 alphaStrings :: [String]
 alphaStrings = [xs [x] | xs <- map (++) $ "" : alphaStrings, x <- ['a'..'z']]
 
