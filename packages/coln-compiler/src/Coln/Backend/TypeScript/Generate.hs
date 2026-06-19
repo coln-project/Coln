@@ -131,6 +131,9 @@ emptyTSCtxShape = TSCtxShape 0 BwdNil
 bind :: TSCtxShape -> TS.Id -> TSCtxShape
 bind cs x = TSCtxShape{len = cs.len + 1, names = cs.names :> x}
 
+tableNameDoc :: TableName -> DDoc
+tableNameDoc tn = concatWith (surround dot) (dpretty <$> (tn.realm : toList tn.path))
+
 genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
 genTyVal access cs = \case
   V.EltOf x vs -> do
@@ -138,7 +141,7 @@ genTyVal access cs = \case
     let transactionArg = case access of
           View -> []
           Transaction -> [TS.Var "transaction"]
-    let args = [TS.Var "store", TS.String (dpretty x), params] ++ transactionArg
+    let args = [TS.Var "store", TS.String (tableNameDoc x), params] ++ transactionArg
     TS.New (TS.Const (TS.runtime (RowIdSet access))) args
   _ -> panic "composite not yet supported"
 
@@ -174,7 +177,7 @@ genEl access cs = \case
     let transactionArg = case access of
           View -> []
           Transaction -> [TS.Var "transaction"]
-    let args = [TS.Var "store", TS.String (dpretty tn), params] ++ transactionArg
+    let args = [TS.Var "store", TS.String (tableNameDoc tn), params] ++ transactionArg
     TS.New (TS.Const (TS.runtime (TableCellRef access))) args
 
 genRealmConstructor :: Access -> Realm -> TS.Constructor
@@ -237,6 +240,6 @@ generate ge outdir = do
   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
     let flat = lowerRealm x r
     flip AE.encodeFile flat $ outdir </> mangleToString x <> ".json"
-    let schemaImport = TS.ImportSpecific "schema" $ "./" <> mangleToDoc x <> ".json"
+    let schemaImport = TS.ImportSpecificExported "schema" $ "./" <> mangleToDoc x <> ".json"
     let mod = genRealmModule (schemaImport : imports) r
     writeModule outdir x mod

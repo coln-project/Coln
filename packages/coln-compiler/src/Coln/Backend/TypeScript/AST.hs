@@ -122,6 +122,7 @@ data Declaration
 data Import
   = ImportQualified Id DDoc
   | ImportSpecific Id DDoc
+  | ImportSpecificExported Id DDoc
 
 data Module = Module
   { imports :: [Import]

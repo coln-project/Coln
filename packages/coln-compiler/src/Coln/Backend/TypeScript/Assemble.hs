@@ -149,6 +149,11 @@ instance Assemble Import where
       "import * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
     ImportSpecific x from ->
       "import" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+    ImportSpecificExported x from ->
+      vsep
+        [ "import" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+        , "export" <+> braces (asm x) <> ";"
+        ]
 
 instance Assemble Module where
   asm m =
