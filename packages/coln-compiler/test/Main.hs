@@ -73,13 +73,13 @@ elaborate fp = do
 
 elaboratorTests :: IO TestTree
 elaboratorTests = do
-  glogFiles <- findByExtension [".glog"] "."
+  colnFiles <- findByExtension [".coln"] "."
   return $
     testGroup
       "Elaborator golden tests"
-      [ goldenVsString (takeBaseName glogFile) outputFile (elaborate glogFile)
-      | glogFile <- glogFiles
-      , let outputFile = replaceExtension glogFile ".output"
+      [ goldenVsString (takeBaseName colnFile) outputFile (elaborate colnFile)
+      | colnFile <- colnFiles
+      , let outputFile = replaceExtension colnFile ".output"
       ]
 
 goldenTests :: IO TestTree
