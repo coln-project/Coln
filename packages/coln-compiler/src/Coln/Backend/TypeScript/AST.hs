@@ -7,11 +7,11 @@ import Diagnostician (DDoc, DPretty (..))
 import Prettyprinter
 import Prettyprinter.Render.Text
 
+import Coln.Backend.TypeScript.Params
 import Coln.Common
 import Coln.Core.Params
-import Coln.Backend.TypeScript.Params
 
-newtype Id = Id { content :: DDoc }
+newtype Id = Id {content :: DDoc}
 
 instance IsString Id where
   fromString = Id . fromString
@@ -74,7 +74,6 @@ data Statement
   | Assign QId El
   | Expr El
   | Cond (El, Block) [(El, Block)] (Maybe Block)
-
 
 data Block = Block {statements :: [Statement], return :: Maybe El}
 

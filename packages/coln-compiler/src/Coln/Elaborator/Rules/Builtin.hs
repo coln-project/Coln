@@ -1,8 +1,8 @@
 module Coln.Elaborator.Rules.Builtin where
 
 import Coln.Common
-import Coln.Core.Params
 import Coln.Core.Memoed
+import Coln.Core.Params
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Judgment
 

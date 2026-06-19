@@ -1,8 +1,9 @@
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.Elaborator.Judgment where
 
 import Data.Coerce (coerce)
-import Data.Functor.Compose (Compose(Compose))
+import Data.Functor.Compose (Compose (Compose))
 
 import Coln.Common
 import Coln.Core.Conversion (defEq)
@@ -16,11 +17,11 @@ import Coln.Report
 
 import Prettyprinter ((<+>))
 
-newtype Typ c = Typ { elab :: ElabEnv c -> IO (M.Ty c) }
+newtype Typ c = Typ {elab :: ElabEnv c -> IO (M.Ty c)}
 
-newtype Syn c = Syn { elab :: ElabEnv c -> IO (V.Ty N, M.El c) }
+newtype Syn c = Syn {elab :: ElabEnv c -> IO (V.Ty N, M.El c)}
 
-newtype Chk c = Chk { elab :: ElabEnv c -> V.Ty N -> IO (M.El c)  }
+newtype Chk c = Chk {elab :: ElabEnv c -> V.Ty N -> IO (M.El c)}
 
 data Judgment c where
   FromTyp :: Typ c -> Judgment c
@@ -28,11 +29,11 @@ data Judgment c where
   FromChk :: DDoc -> Chk c -> Judgment c
 
 useIs :: (V.HasEvaluation c, Functor f) => (ElabEnv N -> f (M.El N)) -> ElabEnv c -> f (M.El c)
-useIs @c f e = fmap change $ f e { target = TargetAnonymous }
-  where
-    change = case V.scase @c of
-      SNominative -> id
-      SDescriptive -> M.is
+useIs @c f e = fmap change $ f e{target = TargetAnonymous}
+ where
+  change = case V.scase @c of
+    SNominative -> id
+    SDescriptive -> M.is
 
 -- elimSyn :: (V.HasEvaluation c) => Span -> (ElabEnv N -> IO (V.Ty N, M.El N)) -> Judgment c
 -- elimSyn sp = Syn sp . coerce . useIs . (coerce `asTypeOf` (Compose .))
@@ -64,7 +65,7 @@ intoSyn _ sp (FromTyp t) = Syn $ \e -> do
     Nothing -> do
       let msg = "type" <+> prtIn e raw <+> "too large to fit in a universe"
       failWith e.diagEnv sp TypeTooLarge msg
-    Just u -> pure (V.U u, M.code raw) 
+    Just u -> pure (V.U u, M.code raw)
 intoSyn _ _ (FromSyn s) = s
 intoSyn use sp (FromChk nd _) = Syn $ \e -> do
   let msg = "Type annotation required when using a" <+> nd <+> "as" <+> use
@@ -95,7 +96,6 @@ intoChk _ (FromChk _ c) = c
 
 annotate :: Typ N -> Chk c -> Syn c
 annotate t c = Syn \e -> do
-  a <- t.elab (e {target = TargetAnonymous})
+  a <- t.elab (e{target = TargetAnonymous})
   m <- c.elab e a.val
   pure (a.val, m)
-  

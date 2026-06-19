@@ -1,5 +1,7 @@
 module Coln.LSP.Highlight where
 
+import Coln.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), GLogLspM, LSPState (..))
+import Coln.LSP.Utils (currentBufferUri)
 import Control.Monad.Trans
 import Data.Either (fromRight)
 import Data.IORef (readIORef)
@@ -9,8 +11,6 @@ import Data.Vector qualified as V
 import Diagnostician
 import FNotation.Kinds
 import FNotation.Tokens
-import Coln.LSP.Types (AnalyzedBuffer (AnalyzedBuffer), GLogLspM, LSPState (..))
-import Coln.LSP.Utils (currentBufferUri)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server

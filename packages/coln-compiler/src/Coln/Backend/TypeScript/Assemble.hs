@@ -5,9 +5,9 @@ import Data.Text (Text)
 import Diagnostician (DDoc, DPretty (..))
 import Prettyprinter hiding (tupled)
 
+import Coln.Backend.TypeScript.AST
 import Coln.Common
 import Coln.Core.Params
-import Coln.Backend.TypeScript.AST
 
 tupled :: [Doc a] -> Doc a
 tupled =
@@ -22,13 +22,13 @@ blocked [] = "{}"
 blocked ds =
   group $
     enclose ("{" <> line) (line <> "}") $
-    vsep [flatAlt (indent 2 d) d | d <- ds]
+      vsep [flatAlt (indent 2 d) d | d <- ds]
 
 hardBlocked :: [Doc a] -> Doc a
 hardBlocked [] = "{" <> hardline <> "}"
 hardBlocked ds =
   enclose ("{" <> hardline) (hardline <> "}") $
-  vsep [indent 2 d | d <- ds]
+    vsep [indent 2 d | d <- ds]
 
 class Assemble a where
   asm :: a -> DDoc
@@ -105,8 +105,8 @@ instance Assemble Class where
 instance Assemble Constructor where
   asm c =
     "constructor"
-    <> tupled (asm <$> c.args)
-    <+> asm c.body
+      <> tupled (asm <$> c.args)
+      <+> asm c.body
 
 instance Assemble Interface where
   asm i =

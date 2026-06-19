@@ -1,14 +1,15 @@
 {-# LANGUAGE DeriveGeneric #-}
+
 module Coln.Backend.IR where
 
 import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
+import Data.Map qualified as Map
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import GHC.Generics
-import Data.Map qualified as Map
 
 -- XXX Lit/BultinTy should probably be moved up in the hierarchy
 import Coln.Common
@@ -39,8 +40,8 @@ data EntityVariant
 
 data Entity = Entity
   { entityVariant :: EntityVariant
-  -- , columns :: Trie ColType
-  , columns :: [(ColName, ColType)]
+  , -- , columns :: Trie ColType
+    columns :: [(ColName, ColType)]
   , primaryKey :: Maybe (Set.Set ColName)
   }
   deriving (Show, Eq, Generic)
@@ -81,10 +82,11 @@ data FlatRealm = FlatRealm
   deriving (Show, Eq, Generic)
 
 aeOptions :: AE.Options
-aeOptions = AE.defaultOptions
-  { AE.allNullaryToStringTag = False
-  , AE.constructorTagModifier = \x -> fmap toLower (take 1 x) ++ (drop 1 x)
-  }
+aeOptions =
+  AE.defaultOptions
+    { AE.allNullaryToStringTag = False
+    , AE.constructorTagModifier = \x -> fmap toLower (take 1 x) ++ (drop 1 x)
+    }
 
 class PathLike a where
   namesOf :: a -> [Name]
@@ -99,7 +101,7 @@ instance PathLike Path where namesOf = toList
 instance PathLike TableName where namesOf tn = tn.realm : namesOf tn.path
 
 pathMapEncoding :: (PathLike k) => (a -> AE.Encoding) -> Map k a -> AE.Encoding
-pathMapEncoding f = AE.list (\(k,v) -> AE.pairs $ AE.pair "path" (encPath k) <> AE.pair "value" (f v)) . Map.toAscList
+pathMapEncoding f = AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (encPath k) <> AE.pair "value" (f v)) . Map.toAscList
 
 taggedEncoding :: Text -> AE.Series -> AE.Encoding
 taggedEncoding t v = AE.pairs $ AE.pair "tag" (AE.toEncoding t) <> v
@@ -108,13 +110,13 @@ instance AE.ToJSON ColType where
   toJSON = panic "aesons behaving badly"
   toEncoding = \case
     RowId e -> taggedEncoding "rowId" $ AE.pair "path" $ encPath e
-    BuiltinTy bt -> taggedEncoding "builtin" $ AE.pair "type" $ AE.genericToEncoding aeOptions { AE.allNullaryToStringTag = True } bt
+    BuiltinTy bt -> taggedEncoding "builtin" $ AE.pair "type" $ AE.genericToEncoding aeOptions{AE.allNullaryToStringTag = True} bt
 
 instance AE.ToJSON Materialization where
-  toEncoding = AE.genericToEncoding aeOptions { AE.allNullaryToStringTag = True }
+  toEncoding = AE.genericToEncoding aeOptions{AE.allNullaryToStringTag = True}
 
 instance AE.ToJSON IndexMethod where
-  toEncoding = AE.genericToEncoding aeOptions { AE.allNullaryToStringTag = True }
+  toEncoding = AE.genericToEncoding aeOptions{AE.allNullaryToStringTag = True}
 
 instance AE.ToJSON EntityVariant where
   toJSON = panic "aesons behaving badly"
@@ -125,11 +127,13 @@ instance AE.ToJSON EntityVariant where
 
 instance AE.ToJSON Entity where
   toJSON = panic "aesons behaving badly"
-  toEncoding e = AE.pairs $ mconcat
-    [ AE.pair "entityVariant" $ AE.toEncoding e.entityVariant
-    , AE.pair "columns" $ AE.list (\(k,v) -> AE.pairs $ AE.pair "path" (encPath k) <> AE.pair "type" (AE.toEncoding v)) e.columns
-    , AE.pair "primaryKey" $ fromMaybe AE.null_ $ fmap (AE.list encPath) $ fmap Set.toAscList e.primaryKey
-    ]
+  toEncoding e =
+    AE.pairs $
+      mconcat
+        [ AE.pair "entityVariant" $ AE.toEncoding e.entityVariant
+        , AE.pair "columns" $ AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (encPath k) <> AE.pair "type" (AE.toEncoding v)) e.columns
+        , AE.pair "primaryKey" $ fromMaybe AE.null_ $ fmap (AE.list encPath) $ fmap Set.toAscList e.primaryKey
+        ]
 
 instance AE.ToJSON Term where
   toJSON = panic "aesons behaving badly"
@@ -140,11 +144,13 @@ instance AE.ToJSON Term where
 
 instance AE.ToJSON Atom where
   toJSON = panic "aesons behaving badly"
-  toEncoding a = AE.pairs $ mconcat
-    [ AE.pair "entity" $ encPath a.entity
-    , AE.pair "rowId" $ AE.toEncoding a.rowId
-    , AE.pair "values" $ AE.list (\(k,v) -> AE.pairs $ AE.pair "column" (AE.toEncoding k) <> AE.pair "term" (AE.toEncoding v)) $ Map.toAscList a.values
-    ]
+  toEncoding a =
+    AE.pairs $
+      mconcat
+        [ AE.pair "entity" $ encPath a.entity
+        , AE.pair "rowId" $ AE.toEncoding a.rowId
+        , AE.pair "values" $ AE.list (\(k, v) -> AE.pairs $ AE.pair "column" (AE.toEncoding k) <> AE.pair "term" (AE.toEncoding v)) $ Map.toAscList a.values
+        ]
 
 instance AE.ToJSON Prop where
   toEncoding = \case
@@ -152,17 +158,19 @@ instance AE.ToJSON Prop where
     PEq l r -> taggedEncoding "eq" $ AE.pair "left" (AE.toEncoding l) <> AE.pair "right" (AE.toEncoding r)
 
 instance AE.ToJSON RuleVariant where
-  toEncoding = AE.genericToEncoding aeOptions { AE.allNullaryToStringTag = True }
+  toEncoding = AE.genericToEncoding aeOptions{AE.allNullaryToStringTag = True}
 
 instance AE.ToJSON Rule where
   toJSON = panic "aesons behaving badly"
-  toEncoding r = AE.pairs $ mconcat
-    [ AE.pair "ruleVariant" $ AE.toEncoding r.ruleVariant
-    , AE.pair "varNames" $ AE.list encPath $ toList r.varNames
-    , AE.pair "varTypes" $ AE.list AE.toEncoding $ toList r.varTypes
-    , AE.pair "antecedents" $ AE.toEncoding r.antecedents
-    , AE.pair "consequents" $ AE.toEncoding r.consequents
-    ]
+  toEncoding r =
+    AE.pairs $
+      mconcat
+        [ AE.pair "ruleVariant" $ AE.toEncoding r.ruleVariant
+        , AE.pair "varNames" $ AE.list encPath $ toList r.varNames
+        , AE.pair "varTypes" $ AE.list AE.toEncoding $ toList r.varTypes
+        , AE.pair "antecedents" $ AE.toEncoding r.antecedents
+        , AE.pair "consequents" $ AE.toEncoding r.consequents
+        ]
 
 instance AE.ToJSON FlatRealm where
   toJSON = panic "aesons behaving badly"

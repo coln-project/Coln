@@ -1,47 +1,46 @@
-module Coln.Common
-  ( module Diagnostician
-  , module FNotation
-  , module Data.Map
-  , module Data.Kind
-  , module Data.Vector.Strict
-  , module Data.Text
-  , module Prettyprinter
-  , panic
-  , unimplemented
-  , unwrap
-  , ElemAt (..)
-  , Lookup (..)
-  , Contains (..)
-  , FromList (..)
-  , ToList (..)
-  , PartialOrd (..)
-  , Reverse (..)
-  , Bwd (..)
-  , BId (..)
-  , Fwd (..)
-  , FId (..)
-  , Dict (..)
-  , KeyIndex (..)
-  , dictLength
-  , getKeyIndex
-  , withHead
-  , Trie (..)
-  , HasNames (..)
-  , alphaStrings
-  , alphaNames
-  , freshNameFor
-  , freshNamesFor
-  , mangleToDoc
-  , mangleToString
-  , fromShow
-  , for
-  ) where
+module Coln.Common (
+  module Diagnostician,
+  module FNotation,
+  module Data.Map,
+  module Data.Kind,
+  module Data.Vector.Strict,
+  module Data.Text,
+  module Prettyprinter,
+  panic,
+  unimplemented,
+  unwrap,
+  ElemAt (..),
+  Lookup (..),
+  Contains (..),
+  FromList (..),
+  ToList (..),
+  PartialOrd (..),
+  Reverse (..),
+  Bwd (..),
+  BId (..),
+  Fwd (..),
+  FId (..),
+  Dict (..),
+  KeyIndex (..),
+  dictLength,
+  getKeyIndex,
+  withHead,
+  Trie (..),
+  HasNames (..),
+  alphaStrings,
+  alphaNames,
+  freshNameFor,
+  freshNamesFor,
+  mangleToDoc,
+  mangleToString,
+  fromShow,
+  for,
+) where
 
-import Prelude hiding (lookup)
 import Control.Monad.IO.Class
 import Data.Foldable qualified as F
 import Data.Hashable
-import Data.Kind (Type, Constraint)
+import Data.Kind (Constraint, Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
@@ -49,17 +48,18 @@ import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Text.Unsafe qualified as TU
 import Data.Traversable hiding (for)
-import Data.Vector.Strict (Vector)
 import Data.Vector.Generic qualified as VG
 import Data.Vector.Generic.Mutable qualified as VGM
 import Data.Vector.Hashtables (FrozenDictionary)
 import Data.Vector.Hashtables qualified as HT
+import Data.Vector.Strict (Vector)
 import Data.Vector.Strict qualified as V
 import Diagnostician
-import FNotation (Name(..))
-import Prettyprinter (Pretty (..), layoutPretty, defaultLayoutOptions)
+import FNotation (Name (..))
+import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty)
 import Prettyprinter.Render.String
 import System.IO.Unsafe (unsafePerformIO)
+import Prelude hiding (lookup)
 
 #ifdef DEBUG
 import GHC.Stack
@@ -131,15 +131,15 @@ instance ElemAt (Bwd a) BId a where
 
 instance ToList (Bwd a) a where
   toList bwd = go bwd []
-    where
-      go BwdNil list = list
-      go (bwd' :> x) list = go bwd' (x : list)
+   where
+    go BwdNil list = list
+    go (bwd' :> x) list = go bwd' (x : list)
 
 instance FromList (Bwd a) a where
   fromList xs = go xs BwdNil
-    where
-      go [] bwd = bwd
-      go (x : xs') bwd = go xs' (bwd :> x)
+   where
+    go [] bwd = bwd
+    go (x : xs') bwd = go xs' (bwd :> x)
 
 instance Semigroup (Bwd a) where
   xs <> BwdNil = xs
@@ -183,7 +183,7 @@ data Dict a = Dict
   , values :: Vector a
   }
 
-instance Show a => Show (Dict a) where
+instance (Show a) => Show (Dict a) where
   show d = "Dict " ++ show (toList d)
 
 dictLength :: Dict a -> Int
@@ -199,7 +199,7 @@ instance FromList (Dict a) (Name, a) where
   fromList pairs = do
     let keys = V.fromList $ fst <$> pairs
     let values = V.fromList $ snd <$> pairs
-    let byName = Map.fromList $ zip (fst <$> pairs) [0..]
+    let byName = Map.fromList $ zip (fst <$> pairs) [0 ..]
     Dict (DictHead byName keys) values
 
 instance Functor Dict where
@@ -212,12 +212,12 @@ instance Foldable Dict where
   toList d = V.toList d.values
 
 instance Traversable Dict where
-  traverse f d = fmap (\x -> d { values = x }) $ traverse f d.values
+  traverse f d = fmap (\x -> d{values = x}) $ traverse f d.values
 
 instance ToList (Dict a) (Name, a) where
   toList d = zip (V.toList d.head.keys) (V.toList d.values)
 
-newtype KeyIndex = KeyIndex { value :: Int }
+newtype KeyIndex = KeyIndex {value :: Int}
 
 instance ElemAt (Dict a) KeyIndex a where
   elemAt d (KeyIndex i) = d.values V.! i
@@ -242,17 +242,17 @@ data Trie a
 
 instance ToList (Trie a) (Bwd Name, a) where
   toList = go BwdNil
-    where
-      go prefix = \case
-        Leaf x -> [(prefix, x)]
-        Node ts -> concat $ [go (prefix :> x) t | (x, t) <- toList ts]
+   where
+    go prefix = \case
+      Leaf x -> [(prefix, x)]
+      Node ts -> concat $ [go (prefix :> x) t | (x, t) <- toList ts]
 
 -- Fresh Variable Names
 --------------------------------------------------------------------------------
 
 -- XXX should really be a stream so we statically know there are always fresh
 alphaStrings :: [String]
-alphaStrings = [xs [x] | xs <- map (++) $ "" : alphaStrings, x <- ['a'..'z']]
+alphaStrings = [xs [x] | xs <- map (++) $ "" : alphaStrings, x <- ['a' .. 'z']]
 
 alphaNames :: [Name]
 alphaNames = map fromString alphaStrings

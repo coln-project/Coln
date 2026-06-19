@@ -1,17 +1,17 @@
 module Coln.Core.Layout where
 
-import Data.String (fromString)
-import Data.Set qualified as Set
 import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.String (fromString)
 import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
+import Coln.Core.Memoed qualified as M
 import Coln.Core.Params
 import Coln.Core.Readback
-import Coln.Core.Value qualified as V
-import Coln.Core.Syntax qualified as S
-import Coln.Core.Memoed qualified as M
 import Coln.Core.Realm
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
 
 -- Layout is the process of creating a realm from a theory, along with the
 -- universal model of that theory in the realm.
@@ -21,7 +21,7 @@ freshenBy (Name qual last) s = Name (qual ++ [last]) (fromString s)
 
 argName :: Set Name -> V.Clo a c -> Name
 argName s (V.Clo x _ _) =
-  head $ filter (\x -> not $ Set.member x s) (x:(freshenBy x <$> alphaStrings))
+  head $ filter (\x -> not $ Set.member x s) (x : (freshenBy x <$> alphaStrings))
 argName s (V.CloConst _) = head $ filter (\x -> not $ Set.member x s) alphaNames
 
 data Scope = Scope
@@ -54,7 +54,7 @@ layout p sc a
         (gt, m')
       V.LikeRecord rt -> do
         let go _ [] = ([], [])
-            go l ((x, a):rest) = do
+            go l ((x, a) : rest) = do
               let (gt, m) = layout (p :> x) sc (a l)
               let (gts, ms) = go (V.LSnoc l m.val) rest
               (gt : gts, m : ms)

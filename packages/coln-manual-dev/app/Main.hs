@@ -1,10 +1,10 @@
 module Main where
 
-import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
 import Control.Concurrent.Chan
 import Control.Monad (forever)
+import Control.Monad.IO.Class (liftIO)
 import Data.Function ((&))
 import Data.String (fromString)
 import Network.Wai.Handler.Warp

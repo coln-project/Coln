@@ -8,10 +8,10 @@ import ColnDo.Self
 import ColnDo.Site
 import ColnDo.Test
 
-import System.Directory (setCurrentDirectory)
-import System.Environment (lookupEnv, setEnv)
 import Control.Monad (when)
 import Data.Maybe (isNothing)
+import System.Directory (setCurrentDirectory)
+import System.Environment (lookupEnv, setEnv)
 
 allRules :: Rules ()
 allRules = do

@@ -1,17 +1,17 @@
 module Coln.Backend.TypeScript.Generate where
 
-import Control.Monad.State
 import Control.Monad (forM_)
+import Control.Monad.State
 import Data.Aeson qualified as AE
 import Data.Foldable (foldlM)
 import Data.Foldable qualified as F
 import Data.Map.Ordered qualified as OMap
 import Data.Set (Set)
 import Data.Set qualified as Set
-import Data.String (IsString(..))
+import Data.String (IsString (..))
 import Data.Text.Lazy qualified as TL
-import Data.Text.Lazy.IO qualified as TLIO
 import Data.Text.Lazy.Encoding qualified as TLE
+import Data.Text.Lazy.IO qualified as TLIO
 import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath
@@ -21,13 +21,13 @@ import Coln.Backend.TypeScript.AST qualified as TS
 import Coln.Backend.TypeScript.Assemble (asm)
 import Coln.Backend.TypeScript.Params
 import Coln.Common
+import Coln.Core.Evaluation
+import Coln.Core.Globals
 import Coln.Core.Params
+import Coln.Core.Readback
 import Coln.Core.Realm
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
-import Coln.Core.Globals
-import Coln.Core.Readback
-import Coln.Core.Evaluation
 
 mangle :: Name -> TS.Id
 mangle = TS.Id . mangleToDoc
@@ -55,7 +55,7 @@ genInterface access n = \case
     TS.Interface name extendsName (go n rt.capture (toList rt.fieldTypes))
    where
     go _ _ [] = []
-    go n' vs ((x, f):rest) = do
+    go n' vs ((x, f) : rest) = do
       let a = f vs
       let v = V.local (FId n') a
       let bnd = TS.Binding (mangle x) (genTy access n' a)
@@ -86,7 +86,7 @@ class TrackGlobals a where
 --     S.Lit _ -> pure ()
 --     S.Is t -> trackGlobals t
 --     S.Lookup _ _ -> pure ()
-  
+
 -- instance TrackGlobals (S.Ty c) where
 --   trackGlobals = \case
 --     S.U _ -> pure ()
@@ -107,18 +107,18 @@ genTypeDef access n a = TS.TypeDef (fromShow access) (genTy access n a)
 
 genEntryModule :: [TS.Import] -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
 genEntryModule imports a ev = go 0 a ev
-  where
-    go :: CtxLen -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
-    go n (V.U TheoryU) ev' = do
-      let definitions = for accessLevels $ \access ->
-            case V.ebind V.decode ev' of
-              V.Become a -> TS.DTypeDef $ genTypeDef access n a
-              V.Describe a -> TS.DInterface $ genInterface access n a 
-      Just $ TS.Module imports (TS.Exported <$> definitions)
-    go n (V.Function ft) ev' = do
-      let v = V.local (FId n) ft.dom
-      go (n + 1) (V.appClo ft.cod v) (V.ebind (flip V.app v ) ev')
-    go _ _ _ = Nothing
+ where
+  go :: CtxLen -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
+  go n (V.U TheoryU) ev' = do
+    let definitions = for accessLevels $ \access ->
+          case V.ebind V.decode ev' of
+            V.Become a -> TS.DTypeDef $ genTypeDef access n a
+            V.Describe a -> TS.DInterface $ genInterface access n a
+    Just $ TS.Module imports (TS.Exported <$> definitions)
+  go n (V.Function ft) ev' = do
+    let v = V.local (FId n) ft.dom
+    go (n + 1) (V.appClo ft.cod v) (V.ebind (flip V.app v) ev')
+  go _ _ _ = Nothing
 
 data TSCtxShape = TSCtxShape
   { len :: CtxLen
@@ -129,7 +129,7 @@ emptyTSCtxShape :: TSCtxShape
 emptyTSCtxShape = TSCtxShape 0 BwdNil
 
 bind :: TSCtxShape -> TS.Id -> TSCtxShape
-bind cs x = TSCtxShape { len = cs.len + 1, names = cs.names :> x }
+bind cs x = TSCtxShape{len = cs.len + 1, names = cs.names :> x}
 
 genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
 genTyVal access cs = \case
@@ -187,18 +187,20 @@ genRealmConstructor access r = do
           [ TS.Binding "store" (TS.runtime StoreHandle)
           , TS.Binding "transaction" (TS.runtime TransactionHandle)
           ]
-  let body = TS.Block
-        [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSCtxShape r.root)]
-        Nothing
+  let body =
+        TS.Block
+          [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSCtxShape r.root)]
+          Nothing
   TS.Constructor args body
 
 genRealmClass :: Access -> Realm -> TS.Class
-genRealmClass access r = TS.Class
-  (fromShow access)
-  Nothing
-  (fromShow <$> extends access)
-  [TS.Binding "root" (genTy access 0 r.rootType)]
-  (genRealmConstructor access r)
+genRealmClass access r =
+  TS.Class
+    (fromShow access)
+    Nothing
+    (fromShow <$> extends access)
+    [TS.Binding "root" (genTy access 0 r.rootType)]
+    (genRealmConstructor access r)
 
 genRealmModule :: [TS.Import] -> Realm -> TS.Module
 genRealmModule imports r = do
