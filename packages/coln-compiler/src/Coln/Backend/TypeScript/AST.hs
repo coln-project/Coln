@@ -57,6 +57,7 @@ data El
   = Var Id
   | Const QId
   | MethodCall El Id [El]
+  | Call El [El]
   | Lam Binding Block
   | Lit Literal
   | New El [El]

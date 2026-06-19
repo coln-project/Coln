@@ -55,6 +55,7 @@ instance Assemble El where
   asm (Const x) = asm x
   asm (MethodCall t x args) =
     asm t <> "." <> asm x <> tupled (asm <$> args)
+  asm (Call t args) = asm t <> tupled (asm <$> args)
   asm (Lam bnd block) =
     parens (asm bnd) <+> "=>" <+> asm block
   asm (Lit (LitInt i)) = pretty i
