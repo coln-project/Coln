@@ -16,18 +16,13 @@ import Coln.Core.Realm
 -- Layout is the process of creating a realm from a theory, along with the
 -- universal model of that theory in the realm.
 
-namesOfLen :: Int -> [String]
-namesOfLen 0 = [""]
-namesOfLen n = [c : cs | c <- ['a' .. 'z'], cs <- namesOfLen (n - 1)]
-
-names :: [Name]
-names = fromString <$> go 1
-  where
-    go n = namesOfLen n ++ go (n + 1)
+freshenBy :: Name -> String -> Name
+freshenBy (Name qual last) s = Name (qual ++ [last]) (fromString s)
 
 argName :: Set Name -> V.Clo a c -> Name
-argName _ (V.Clo x _ _) = x
-argName s (V.CloConst _) = head $ filter (\x -> not $ Set.member x s) names
+argName s (V.Clo x _ _) =
+  head $ filter (\x -> not $ Set.member x s) (x:(freshenBy x <$> alphaStrings))
+argName s (V.CloConst _) = head $ filter (\x -> not $ Set.member x s) alphaNames
 
 data Scope = Scope
   { len :: CtxLen
