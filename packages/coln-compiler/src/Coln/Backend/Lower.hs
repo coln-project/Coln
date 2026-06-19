@@ -3,11 +3,13 @@ module Coln.Backend.Lower where
 import Prelude hiding (lookup)
 import Control.Arrow (first, second)
 import Control.Monad (forM_)
+import Data.Aeson qualified as AE
 import Data.Foldable qualified as F
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Traversable (mapAccumL)
 import Data.Map.Ordered qualified as OMap
+import System.FilePath ((</>))
 
 import Coln.Common
 import Coln.Core.Params
@@ -385,5 +387,7 @@ writeIRFor :: Globals -> FilePath -> IO ()
 writeIRFor ge fp = do
   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
     let fr = lowerRealm x r
+    let fn = fp </> mangleToString x <> ".json"
     pure ()
+    -- AE.encodeFile fn fr
     
