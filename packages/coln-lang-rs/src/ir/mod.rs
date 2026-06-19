@@ -1,8 +1,6 @@
 pub mod path;
 
-#[cfg(feature = "serde")]
 use serde::de::Error as DeError;
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // A QName is a vec of string, potentially separated by a forward slash /
@@ -10,17 +8,17 @@ pub type QName = Vec<String>;
 
 // For example a G.V would become [["G"], ["V"]], this is at a higher level than
 // QName because V would be a query inside a theory G
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Path(pub Vec<QName>);
 
+type ColName = Path;
 pub type FId = i64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PrimType {
-    PrimInt,
-    PrimString,
+pub enum BuiltinTy {
+    BuiltinInt,
+    BuiltinStr,
     // TODO add floating point number primitives
     // arbitrary precision integers (store as two cols)
     // arbitrary precision rationals (fractions)
@@ -28,138 +26,152 @@ pub enum PrimType {
     // bfloat
 }
 
-#[cfg(feature = "serde")]
-impl Serialize for PrimType {
+impl Serialize for BuiltinTy {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match self {
-            PrimType::PrimInt => serializer.serialize_str("int"),
-            PrimType::PrimString => serializer.serialize_str("string"),
+            BuiltinTy::BuiltinInt => serializer.serialize_str("int"),
+            BuiltinTy::BuiltinStr => serializer.serialize_str("string"),
         }
     }
 }
 
-#[cfg(feature = "serde")]
-impl<'de> Deserialize<'de> for PrimType {
+impl<'de> Deserialize<'de> for BuiltinTy {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
         match s.as_str() {
-            "int" => Ok(PrimType::PrimInt),
-            "string" => Ok(PrimType::PrimString),
+            "int" => Ok(BuiltinTy::BuiltinInt),
+            "string" => Ok(BuiltinTy::BuiltinStr),
             _ => Err(DeError::unknown_variant(&s, &["int", "string"])),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct TupleField {
-    pub name: QName,
-    pub col_type: Box<ColType>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "tag", rename_all = "camelCase"))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "tag", rename_all = "camelCase")]
 pub enum ColType {
-    EntityType { path: Path },
-    PrimType { prim: PrimType },
-    Tuple { fields: Vec<TupleField> },
+    RowId { path: Path },
+    BuiltinTy { builtin_ty: BuiltinTy },
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct Schema {
-    pub columns: Vec<ColType>,
-    pub primary_key: Option<Vec<i64>>,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "tag", rename_all = "camelCase")]
+pub enum Materialization {
+    Recomputed,
+    Memoized,
+    Materialized,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "tag", rename_all = "lowercase"))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum IndexMethod {
+    BTree,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "tag", rename_all = "camelCase")]
+pub enum EntityVariant {
+    Table,
+    View(Materialization),
+    Index {
+        method: IndexMethod,
+        columns: Vec<ColName>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnEntry {
+    pub path: ColName,
+    #[serde(rename = "type")]
+    pub col_type: ColType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Entity {
+    pub entity_variant: EntityVariant,
+    pub columns: Vec<ColumnEntry>,
+    pub primary_key: Option<Vec<ColName>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Lit {
-    #[cfg_attr(feature = "serde", serde(rename = "int"))]
+    #[serde(rename = "int")]
     Int { value: i64 },
-    #[cfg_attr(feature = "serde", serde(rename = "string"))]
+    #[serde(rename = "string")]
     String { value: String },
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-pub struct ConsField {
-    pub name: QName,
-    pub term: Box<Term>,
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "tag", rename_all = "lowercase"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Term {
     Lit { lit: Lit },
     Var { index: FId },
-    Proj { term: Box<Term>, field: QName },
-    Cons { fields: Vec<ConsField> },
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValueEntry {
     pub column: i64,
     pub term: Term,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Atom {
-    pub table: Path,
+    pub entity: Path,
     pub row_id: Option<Term>,
     pub values: Vec<ValueEntry>,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "tag", rename_all = "lowercase"))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Prop {
     Atom { atom: Atom },
     Eq { left: Term, right: Term },
-    And { props: Vec<Prop> },
-    Or { props: Vec<Prop> },
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Law {
-    pub variables: Vec<ColType>,
-    pub antecedent: Prop,
-    pub consequent: Prop,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RuleVariant {
+    Chased,
+    Enforced,
+    Monitored,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Rule {
+    pub rule_variant: RuleVariant,
+    pub var_names: Vec<ColName>,
+    pub var_types: Vec<ColType>,
+    pub antecedents: Vec<Prop>,
+    pub consequents: Vec<Prop>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableEntry {
     pub path: Path,
-    pub table: Schema,
+    #[serde(rename = "value")]
+    pub entity: Entity,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct LawEntry {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuleEntry {
     pub path: Path,
-    pub law: Law,
+    #[serde(rename="value")]
+    pub rule: Rule,
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FlatTheory {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlatRealm {
+    #[serde(rename = "entities")]
     pub tables: Vec<TableEntry>,
-    pub laws: Vec<LawEntry>,
+    pub rules: Vec<RuleEntry>,
 }
