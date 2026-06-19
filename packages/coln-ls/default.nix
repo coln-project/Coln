@@ -7,9 +7,7 @@ mkDerivation {
   pname = "coln-ls";
   version = "0.1.0.0";
   src = ./.;
-  isLibrary = false;
-  isExecutable = true;
-  executableHaskellDepends = [
+  libraryHaskellDepends = [
     base coln-compiler containers diagnostician exceptions fnotation
     lens lsp megaparsec mtl prettyprinter stm text transformers vector
   ];
@@ -17,5 +15,4 @@ mkDerivation {
     base lsp-test process tasty tasty-hunit text
   ];
   license = "(Apache-2.0 OR MIT)";
-  mainProgram = "coln-ls";
 }
