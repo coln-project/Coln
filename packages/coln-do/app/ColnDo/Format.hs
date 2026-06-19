@@ -22,3 +22,8 @@ formatRules = do
 
   phony "format" $ do
     need ["format-haskell", "format-cabal", "format-rust"]
+
+  phony "check-format-haskell" $ do
+    hsFiles <- getHsFiles
+    putInfo "Checking formatting"
+    cmd_ "fourmolu --mode check --indentation 2" hsFiles
