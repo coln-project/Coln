@@ -17,4 +17,4 @@ run Repl = runRepl
 run LanguageServer = startServer
 
 main :: IO ()
-main = execParser optionsInfo >>= run
+main = customExecParser (prefs showHelpOnEmpty) optionsInfo >>= run
