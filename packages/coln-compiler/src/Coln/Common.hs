@@ -181,6 +181,9 @@ data Dict a = Dict
   , values :: Vector a
   }
 
+instance Show a => Show (Dict a) where
+  show d = "Dict " ++ show (toList d)
+
 dictLength :: Dict a -> Int
 dictLength d = V.length d.values
 

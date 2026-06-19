@@ -25,6 +25,7 @@ data Shape
   | BuiltinTy BuiltinTy
   | Tuple (Dict Shape)
   | Unit
+  deriving (Show)
 
 data Term
   = Var BId
@@ -32,12 +33,14 @@ data Term
   | Cons (Dict Term)
   | Proj Term Name
   | Lit Literal
+  deriving (Show)
 
 data Pred
   = EltOf Term TableName (Dict Term)
   | And (Dict Pred)
   | Equal Term Term
   | PTrue
+  deriving (Show)
 
 type CtxLen = Int
 
@@ -71,6 +74,7 @@ data Ty = Ty
   { shape :: Shape
   , pred :: Pred
   }
+  deriving (Show)
 
 separate :: CtxLen -> V.Ty N -> V.El N -> Ty
 separate n = \case
@@ -107,7 +111,7 @@ lowerTele = go V.LNil 0
       let a = eval vs t
       let v = V.local (FId n) a
       let (ts', vs') = go (V.LSnoc vs v) (n + 1) ts
-      (separate n a v : ts', vs')
+      (separate (n + 1) a v : ts', vs')
 
 lowerGen :: C.Generator -> Generator
 lowerGen (C.Fun xs ts t) = do
@@ -388,6 +392,5 @@ writeIRFor ge fp = do
   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
     let fr = lowerRealm x r
     let fn = fp </> mangleToString x <> ".json"
-    pure ()
-    -- AE.encodeFile fn fr
+    AE.encodeFile fn fr
     

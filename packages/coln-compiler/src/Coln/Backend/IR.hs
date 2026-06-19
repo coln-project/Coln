@@ -78,7 +78,6 @@ data FlatRealm = FlatRealm
   { entities :: Map TableName Entity
   , rules :: Map TableName Rule
   }
-<<<<<<< HEAD
   deriving (Show, Eq, Generic)
 
 aeOptions :: AE.Options
@@ -168,8 +167,6 @@ instance AE.ToJSON Rule where
 instance AE.ToJSON FlatRealm where
   toJSON = panic "aesons behaving badly"
   toEncoding fr = AE.pairs $ AE.pair "entities" (pathMapEncoding AE.toEncoding fr.entities) <> AE.pair "rules" (pathMapEncoding AE.toEncoding fr.rules)
-=======
 
 emptyFlatRealm :: FlatRealm
 emptyFlatRealm = FlatRealm Map.empty Map.empty
->>>>>>> 2b0bb92 (wrote function to create FlatRealm)
