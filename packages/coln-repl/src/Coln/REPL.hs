@@ -1,4 +1,4 @@
-module Main (main) where
+module Coln.REPL (runRepl) where
 
 import Coln.Common
 import Coln.Core.Globals
@@ -33,8 +33,8 @@ import Prelude hiding (lex, lookup)
 
 type Repl = HaskelineT (StateT Globals IO)
 
-main :: IO ()
-main =
+runRepl :: IO ()
+runRepl =
   flip evalStateT emptyGlobals $
     evalRepl banner runCmd opts (Just cmdPrefix) (Just multiCmd) completer start finish
  where
