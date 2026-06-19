@@ -92,9 +92,10 @@ pub struct ColumnEntry {
     pub col_type: ColType,
 }
 
+// This is really Entity on the Haskell IR side, but I feel schema matches it better
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Entity {
+pub struct Schema {
     pub entity_variant: EntityVariant,
     pub columns: Vec<ColumnEntry>,
     pub primary_key: Option<Vec<ColName>>,
@@ -159,13 +160,13 @@ pub struct Rule {
 pub struct TableEntry {
     pub path: Path,
     #[serde(rename = "value")]
-    pub entity: Entity,
+    pub table: Schema,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleEntry {
     pub path: Path,
-    #[serde(rename="value")]
+    #[serde(rename = "value")]
     pub rule: Rule,
 }
 
