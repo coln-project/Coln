@@ -60,9 +60,7 @@ instance PartialOrd Level where
   leq (Level s1 h1) (Level s2 h2) = s1 `leq` s2 && h1 `leq` h2
 
 maxLevel :: Level -> Level -> Level
-maxLevel l1 l2
-  | leq l1 l2 = l2
-  | otherwise = l1
+maxLevel l1 l2 = Level (maxMLevel l1.mlevel l2.mlevel) (max l1.hlevel l2.hlevel)
 
 class LevelOf a where
   levelOf :: a -> Level

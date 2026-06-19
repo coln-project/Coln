@@ -45,3 +45,8 @@ theory P := sig
   showtype u = u
   showlevel u = u
 end
+
+def LevelJoinRecordIsNotSet (A : Set) (P : Prop) : Set := sig
+  f : A -> P
+  a : A
+end

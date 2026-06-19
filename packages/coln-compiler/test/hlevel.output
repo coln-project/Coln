@@ -87,3 +87,16 @@ debug[D0315]: value u = u has type Prop
 debug[D0315]: type u = u has level Level {mlevel = Set, hlevel = HUnit}
 46 |   showlevel u = u
 46 |             ^^^^^
+
+error[E0307]: type sig
+  f : A -> P
+  a : A
+end too large for universe Set
+49 | def LevelJoinRecordIsNotSet (A : Set) (P : Prop) : Set := sig
+49 |                                                           ^^^
+50 |   f : A -> P
+50 | ^^^^^^^^^^^^
+51 |   a : A
+51 | ^^^^^^^
+52 | end
+52 | ^^^
