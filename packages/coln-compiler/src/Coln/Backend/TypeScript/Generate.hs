@@ -36,7 +36,7 @@ import Coln.Core.Evaluation
 --   that realm in terms of 
 
 mangle :: Name -> TS.Id
-mangle x = TS.Id $ mconcat [pretty s <> "_slash_" | s <- x.init] <> pretty x.last
+mangle = TS.Id . mangleToDoc
 
 tyFromHead :: Access -> V.Head -> TS.Ty
 tyFromHead access (V.GlobalVar x _) =

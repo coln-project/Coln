@@ -2,14 +2,19 @@ module Coln.Backend.Lower where
 
 import Prelude hiding (lookup)
 import Control.Arrow (first, second)
+import Control.Monad (forM_)
+import Data.Aeson qualified as AE
 import Data.Foldable qualified as F
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Traversable (mapAccumL)
+import Data.Map.Ordered qualified as OMap
+import System.FilePath ((</>))
 
 import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Evaluation
+import Coln.Core.Globals
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Core.Realm qualified as C
@@ -20,6 +25,7 @@ data Shape
   | BuiltinTy BuiltinTy
   | Tuple (Dict Shape)
   | Unit
+  deriving (Show)
 
 data Term
   = Var BId
@@ -27,12 +33,14 @@ data Term
   | Cons (Dict Term)
   | Proj Term Name
   | Lit Literal
+  deriving (Show)
 
 data Pred
   = EltOf Term TableName (Dict Term)
   | And (Dict Pred)
   | Equal Term Term
   | PTrue
+  deriving (Show)
 
 type CtxLen = Int
 
@@ -66,6 +74,7 @@ data Ty = Ty
   { shape :: Shape
   , pred :: Pred
   }
+  deriving (Show)
 
 separate :: CtxLen -> V.Ty N -> V.El N -> Ty
 separate n = \case
@@ -102,7 +111,7 @@ lowerTele = go V.LNil 0
       let a = eval vs t
       let v = V.local (FId n) a
       let (ts', vs') = go (V.LSnoc vs v) (n + 1) ts
-      (separate n a v : ts', vs')
+      (separate (n + 1) a v : ts', vs')
 
 lowerGen :: C.Generator -> Generator
 lowerGen (C.Fun xs ts t) = do
@@ -364,3 +373,24 @@ disaggregateGen fs tn (Fun xs ts t) fr = do
     , I.rules = Map.insert tn { path = tn.path :> "foreignKey" } foreignKey
         $ Map.insert tn { path = tn.path :> "total" } totality fr.rules
     }
+
+lowerRealm :: Name -> C.Realm -> I.FlatRealm
+lowerRealm realmName r = go Map.empty I.emptyFlatRealm (toList r.generators)
+  where
+    go _ fr [] = fr
+    go fs fr ((xs, g):rest) = do
+      let tn = TableName realmName xs
+      let lg = lowerGen g
+      let fr' = disaggregateGen fs tn lg fr
+      let fs' = case lg of
+            Fun _ _ t -> Map.insert tn t.shape fs
+            _ -> fs
+      go fs' fr' rest
+
+writeIRFor :: Globals -> FilePath -> IO ()
+writeIRFor ge fp = do
+  forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
+    let fr = lowerRealm x r
+    let fn = fp </> mangleToString x <> ".json"
+    AE.encodeFile fn fr
+    

@@ -16,6 +16,7 @@ executable coln
     other-modules:
       Coln.CLI.Check
       Coln.CLI.Common
+      Coln.CLI.GenerateIR
       Coln.CLI.GenerateTS
       Coln.CLI.Options
     build-depends:

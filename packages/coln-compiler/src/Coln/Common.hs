@@ -26,11 +26,13 @@ module Coln.Common
   , getKeyIndex
   , withHead
   , Trie (..)
-  , fromShow
-  , for
   , HasNames (..)
   , freshNameFor
   , freshNamesFor
+  , mangleToDoc
+  , mangleToString
+  , fromShow
+  , for
   ) where
 
 import Prelude hiding (lookup)
@@ -53,7 +55,8 @@ import Data.Vector.Hashtables qualified as HT
 import Data.Vector.Strict qualified as V
 import Diagnostician
 import FNotation (Name(..))
-import Prettyprinter (Pretty (..))
+import Prettyprinter (Pretty (..), layoutPretty, defaultLayoutOptions)
+import Prettyprinter.Render.String
 import System.IO.Unsafe (unsafePerformIO)
 
 #ifdef DEBUG
@@ -178,6 +181,9 @@ data Dict a = Dict
   , values :: Vector a
   }
 
+instance Show a => Show (Dict a) where
+  show d = "Dict " ++ show (toList d)
+
 dictLength :: Dict a -> Int
 dictLength d = V.length d.values
 
@@ -232,6 +238,13 @@ data Trie a
   | Node (Dict (Trie a))
   deriving (Functor, Foldable, Traversable)
 
+instance ToList (Trie a) (Bwd Name, a) where
+  toList = go BwdNil
+    where
+      go prefix = \case
+        Leaf x -> [(prefix, x)]
+        Node ts -> concat $ [go (prefix :> x) t | (x, t) <- toList ts]
+
 -- Fresh Variable Names
 --------------------------------------------------------------------------------
 
@@ -268,3 +281,9 @@ fromShow = fromString . show
 
 for :: [a] -> (a -> b) -> [b]
 for = flip map
+
+mangleToDoc :: Name -> DDoc
+mangleToDoc x = mconcat [pretty s <> "_slash_" | s <- x.init] <> pretty x.last
+
+mangleToString :: Name -> String
+mangleToString = renderString . layoutPretty defaultLayoutOptions . mangleToDoc
