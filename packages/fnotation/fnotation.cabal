@@ -3,7 +3,7 @@ name: fnotation
 version: 0.1.1.0
 license: (Apache-2.0 OR MIT)
 maintainer: root@owenlynch.org
-author: Owen Lynch
+author: Coln contributors
 description:
   A lower house syntax for programming language experimentation.
 
