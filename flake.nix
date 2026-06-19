@@ -193,6 +193,7 @@
             openssl
             pkg-config
             reuse
+            simple-http-server
             tectonic
             typescript
             zlib

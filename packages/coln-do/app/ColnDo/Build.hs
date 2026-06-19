@@ -28,6 +28,25 @@ buildRules = do
   phony "build-haskell" $ do
     cmd_ "cabal build all"
 
+  let wasmBuildDir = "_build/wasm"
+      wasmDistDir = wasmBuildDir </> "dist"
+      wasmBin = wasmDistDir </> "coln.wasm"
+      jsffi = wasmDistDir </> "ghc_wasm_jsffi.js"
+  liftIO $ createDirectoryIfMissing True wasmDistDir
+  wasmBin %> \_ -> do
+    alwaysRerun
+    cmd_ "wasm32-wasi-cabal build coln-wasm"
+    StdoutTrim bin <- cmd "wasm32-wasi-cabal list-bin coln-wasm"
+    copyFileChanged bin wasmBin
+  jsffi %> \_ -> do
+    need [wasmBin]
+    StdoutTrim libdir <- cmd "wasm32-wasi-ghc --print-libdir"
+    cmd_ (libdir </> "post-link.mjs") "--input" wasmBin "--output" jsffi
+  phony "serve-example-frontend" $ do
+    need [wasmBin, jsffi]
+    copyFileChanged "packages/coln-wasm/example.html" (wasmBuildDir </> "index.html")
+    runAfter $ cmd_ "simple-http-server --nocache --index --open" wasmBuildDir
+
   phony "build-rust" $ do
     cmd_ "cargo build"
 

@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Coln</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 50em;
+        margin: 2em auto;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.25em;
+        margin-top: 1em;
+      }
+      textarea {
+        padding: 0.5em;
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+      }
+      button {
+        font-size: 1em;
+        padding: 0.3em 1em;
+        margin-top: 0.5em;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      body[data-compiling] {
+        & .output {
+          opacity: 0.5;
+        }
+      }
+      .output {
+        border: solid 1px #ccc;
+        background: #f4f4f4;
+        &:empty {
+          min-height: 2.5em;
+        }
+        & > pre {
+          padding: 1em;
+          border: none;
+          border-bottom: solid 1px #ccc;
+          &:last-child {
+            border-bottom: none;
+          }
+        }
+      }
+      #json {
+        padding: 1em;
+      }
+      .diag-debug {
+        --diag-colour: #8250df;
+      }
+      .diag-info {
+        --diag-colour: #0969da;
+      }
+      .diag-warning {
+        --diag-colour: #c2a000;
+      }
+      .diag-error {
+        --diag-colour: #cf222e;
+      }
+      *[class^="ann-"] {
+        color: var(--diag-colour);
+        font-weight: bold;
+      }
+      #form {
+        margin-bottom: 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Coln</h1>
+    <form id="form">
+      <label for="input">Source:</label>
+      <textarea id="input" spellcheck="false" rows="6">
+theory Graph := sig
+  V : Set
+  E : V -> V -> Set
+end
+
+realm GraphRealm @ Graph
+end</textarea
+      >
+      <button id="run" disabled>Loading WASM&#x2026;</button>
+    </form>
+    <label>Diagnostics:</label>
+    <div class="output" id="diagnostics"></div>
+    <label>IR:</label>
+    <div class="output" id="pretty"></div>
+    <label>JSON:</label>
+    <pre class="output" id="json"></pre>
+
+    <script type="module">
+      import {
+        WASI,
+        OpenFile,
+        File,
+        ConsoleStdout,
+      } from "https://cdn.jsdelivr.net/npm/@bjorn3/browser_wasi_shim@0.3.0/dist/index.js";
+      import ghc_wasm_jsffi from "./dist/ghc_wasm_jsffi.js";
+
+      const inputEl = document.getElementById("input");
+      const btnEl = document.getElementById("run");
+      const diagsEl = document.getElementById("diagnostics");
+      const prettyEl = document.getElementById("pretty");
+      const jsonEl = document.getElementById("json");
+
+      const wasi = new WASI(
+        [],
+        [],
+        [
+          new OpenFile(new File([])),
+          ConsoleStdout.lineBuffered(console.log),
+          ConsoleStdout.lineBuffered(console.error),
+        ],
+      );
+
+      const exports = {};
+      const { instance } = await WebAssembly.instantiateStreaming(
+        fetch("dist/coln.wasm"),
+        {
+          wasi_snapshot_preview1: wasi.wasiImport,
+          ghc_wasm_jsffi: ghc_wasm_jsffi(exports),
+        },
+      );
+      Object.assign(exports, instance.exports);
+      const compileResultRegistry = new FinalizationRegistry(
+        exports.freeCompileResult,
+      );
+      class CompileResult {
+        #ptr;
+        constructor(ptr) {
+          this.#ptr = ptr;
+          compileResultRegistry.register(this, ptr);
+        }
+        get diagnostics() {
+          return exports.getDiagnostics(true, this.#ptr);
+        }
+        get prettyIr() {
+          return exports.prettyIr(this.#ptr);
+        }
+        get irToJson() {
+          return exports.irToJson(this.#ptr);
+        }
+      }
+      const compile = async (src) =>
+        new CompileResult(await exports.compile(src));
+
+      wasi.initialize(instance);
+      btnEl.textContent = "Compile";
+      btnEl.disabled = false;
+
+      async function run() {
+        document.body.dataset.compiling = "";
+        const result = await compile(inputEl.value);
+        prettyEl.replaceChildren(
+          ...(await result.prettyIr).map((chunk) => {
+            const pre = document.createElement("pre");
+            pre.innerHTML = chunk;
+            return pre;
+          }),
+        );
+        diagsEl.replaceChildren(
+          ...(await result.diagnostics).map((chunk) => {
+            const pre = document.createElement("pre");
+            pre.innerHTML = chunk;
+            return pre;
+          }),
+        );
+        jsonEl.textContent = await result.irToJson;
+        delete document.body.dataset.compiling;
+      }
+
+      document.getElementById("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        run();
+      });
+    </script>
+  </body>
+</html>
