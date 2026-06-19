@@ -2,14 +2,17 @@ module Coln.Backend.Lower where
 
 import Prelude hiding (lookup)
 import Control.Arrow (first, second)
+import Control.Monad (forM_)
 import Data.Foldable qualified as F
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Traversable (mapAccumL)
+import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Evaluation
+import Coln.Core.Globals
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Core.Realm qualified as C
@@ -377,3 +380,10 @@ lowerRealm realmName r = go Map.empty I.emptyFlatRealm (toList r.generators)
             Fun _ _ t -> Map.insert tn t.shape fs
             _ -> fs
       go fs' fr' rest
+
+writeIRFor :: Globals -> FilePath -> IO ()
+writeIRFor ge fp = do
+  forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
+    let fr = lowerRealm x r
+    pure ()
+    

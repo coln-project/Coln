@@ -24,6 +24,14 @@ data GenerateTSOptions = GenerateTSOptions
 generateTSOptions :: Parser GenerateTSOptions
 generateTSOptions = GenerateTSOptions <$> inputFile <*> outputDir
 
+data GenerateIROptions = GenerateIROptions
+  { inputFile :: String
+  , outputDir :: String
+  }
+
+generateIROptions :: Parser GenerateIROptions
+generateIROptions = GenerateIROptions <$> inputFile <*> outputDir
+
 data CheckOptions = CheckOptions
   { inputFile :: String
   }
@@ -31,11 +39,12 @@ data CheckOptions = CheckOptions
 checkOptions :: Parser CheckOptions
 checkOptions = CheckOptions <$> inputFile
 
-data Options = GenerateTS GenerateTSOptions | Check CheckOptions
+data Options = GenerateTS GenerateTSOptions | GenerateIR GenerateIROptions | Check CheckOptions
 
 options :: Parser Options
 options = hsubparser
   ( command "generate-ts" (info (GenerateTS <$> generateTSOptions) (progDesc "generate typescript interface for Coln definitions"))
+ <> command "generate-ir" (info (GenerateIR <$> generateIROptions) (progDesc "generate IR in JSON for Coln definitions"))
  <> command "check" (info (Check <$> checkOptions) (progDesc "check Coln definitions"))
   )
 
