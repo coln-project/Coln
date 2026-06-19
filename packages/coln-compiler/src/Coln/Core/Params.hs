@@ -35,20 +35,21 @@ maxMLevel l1 l2
   | otherwise = l1
 
 data HLevel
-  = HProp
+  = HUnit
+  | HProp
   | HSet
-  deriving (Eq, Show)
+  | HTop
+  deriving (Eq, Show, Ord)
 
 instance PartialOrd HLevel where
-  leq l1 l2 = case (l1, l2) of
-    (HProp, _) -> True
-    (HSet, HProp) -> False
-    (HSet, _) -> True
+  leq l1 l2 = l1 <= l2
 
 equalityHLevelOf :: HLevel -> HLevel
 equalityHLevelOf = \case
-  HProp -> HProp
+  HUnit -> HUnit
+  HProp -> HUnit
   HSet -> HProp
+  HTop -> HTop
 
 data Level = Level {
   mlevel :: MLevel,
@@ -96,11 +97,11 @@ instance Pretty Universe where
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case
-  Level Set HProp -> Just PropU
+  Level Set (HUnit; HProp) -> Just PropU
   Level Set HSet -> Just SetU
-  Level Theory HProp -> Just PropTheoryU
+  Level Theory (HUnit; HProp) -> Just PropTheoryU
   Level Theory HSet -> Just TheoryU
-  Level Top _ -> Nothing
+  Level _ _ -> Nothing
 
 data FunctionVariant
   = SetPropTheory -- TODO: better name?

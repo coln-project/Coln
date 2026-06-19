@@ -16,6 +16,29 @@ theory Q (F : Family) := sig
 
   showtype F.is-parent
   showtype F.is-parent father son
+end
 
-  showtype son = father
+# Family analogies getting a bit risky
+theory HP := sig
+  person : Set
+
+  voldemort : person
+  tomriddle : person
+
+  showtype voldemort = tomriddle
+
+  reveal : voldemort = tomriddle
+
+  showtype reveal
+  showtype (reveal = reveal)
+end
+
+def Unit : Prop := sig
+end
+
+theory P := sig
+  showtype Unit
+
+  u : Unit
+  showtype u = u
 end

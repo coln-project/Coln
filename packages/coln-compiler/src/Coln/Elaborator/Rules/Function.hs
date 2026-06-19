@@ -17,10 +17,8 @@ import Coln.Report
 
 variantFor :: Ty N -> Ty N -> Span -> ElabEnv c -> IO FunctionVariant
 variantFor dom cod sp e = case (levelOf dom, levelOf cod) of
-  (Level Set _, Level Set HProp) -> pure SetPropTheory
-  (Level Set _, Level Theory HProp) -> pure SetPropTheory
-  (Level Set _, Level Set HSet) -> pure SetTheory
-  (Level Set _, Level Theory HSet) -> pure SetTheory
+  (Level Set _, Level (Set; Theory) (HUnit; HProp)) -> pure SetPropTheory
+  (Level Set _, Level (Set; Theory) (HSet; HTop)) -> pure SetTheory
   (Level Set _, Level Top _) -> pure TheoryTop
   (Level Theory _, Level _ _) -> pure TheoryTop
   (Level Top _, _) -> do
