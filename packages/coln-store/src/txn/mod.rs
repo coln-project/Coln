@@ -90,19 +90,38 @@ impl OwnedTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{ColType, Path, PrimType, Schema};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::store::test_support::link_foreign_key_theory;
     use crate::table::{CellValue, Table, ValidationError};
+
+    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
+        Schema {
+            entity_variant: EntityVariant::Table,
+            columns,
+            primary_key,
+        }
+    }
+
+    fn int_col(name: &str) -> ColumnEntry {
+        ColumnEntry {
+            path: Path::from(name),
+            col_type: ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt,
+            },
+        }
+    }
+
+    fn row_id_col(name: &str, path: Path) -> ColumnEntry {
+        ColumnEntry {
+            path: Path::from(name),
+            col_type: ColType::RowId { path },
+        }
+    }
 
     #[test]
     fn owned_transaction_commits_and_returns_updated_store() {
         let path = Path::from("T");
-        let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
-            }],
-            primary_key: None,
-        };
+        let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
@@ -116,12 +135,7 @@ mod tests {
     #[test]
     fn owned_transaction_add_validates_table_and_column_count() {
         let path = Path::from("T");
-        let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
-            }],
-            primary_key: None,
-        };
+        let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
@@ -163,24 +177,13 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(
             nodes.clone(),
-            Table::new(
-                nodes.clone(),
-                Schema {
-                    columns: vec![],
-                    primary_key: None,
-                },
-            ),
+            Table::new(nodes.clone(), table_schema(vec![], None)),
         );
         store.insert_table(
             edges.clone(),
             Table::new(
                 edges.clone(),
-                Schema {
-                    columns: vec![ColType::EntityType {
-                        path: nodes.clone(),
-                    }],
-                    primary_key: None,
-                },
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
             ),
         );
 
@@ -211,24 +214,13 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(
             nodes.clone(),
-            Table::new(
-                nodes.clone(),
-                Schema {
-                    columns: vec![],
-                    primary_key: None,
-                },
-            ),
+            Table::new(nodes.clone(), table_schema(vec![], None)),
         );
         store.insert_table(
             edges.clone(),
             Table::new(
                 edges.clone(),
-                Schema {
-                    columns: vec![ColType::EntityType {
-                        path: nodes.clone(),
-                    }],
-                    primary_key: None,
-                },
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
             ),
         );
 
@@ -254,24 +246,13 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(
             nodes.clone(),
-            Table::new(
-                nodes.clone(),
-                Schema {
-                    columns: vec![],
-                    primary_key: Some(vec![]),
-                },
-            ),
+            Table::new(nodes.clone(), table_schema(vec![], Some(vec![]))),
         );
         store.insert_table(
             edges.clone(),
             Table::new(
                 edges.clone(),
-                Schema {
-                    columns: vec![ColType::EntityType {
-                        path: nodes.clone(),
-                    }],
-                    primary_key: None,
-                },
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
             ),
         );
 
@@ -305,12 +286,7 @@ mod tests {
     #[test]
     fn transaction_commit_updates_commit_graph_heads_and_deps() {
         let path = Path::from("T");
-        let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
-            }],
-            primary_key: None,
-        };
+        let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
         let root = store.commits().root_commit().expect("root commit").hash();

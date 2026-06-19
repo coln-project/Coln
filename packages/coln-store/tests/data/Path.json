@@ -1,0 +1,9022 @@
+{
+  "entities": [
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G0"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": []
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G1"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": []
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Graphs"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G"
+        ],
+        [
+          "E"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "c"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G"
+        ],
+        [
+          "V"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Hom"
+        ],
+        [
+          "E"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "y"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Hom"
+        ],
+        [
+          "V"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "a"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "cons"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "y"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "z"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "c"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "empty"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "x"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "t"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "cons"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "y"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "z"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "c"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "empty"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "x"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "t"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "cons"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "y"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "z"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "e"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "p0"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "e"
+            ]
+          ],
+          [
+            [
+              "p0"
+            ]
+          ],
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "empty"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "x"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "t"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "x"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "y"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ]
+        ]
+      }
+    }
+  ],
+  "rules": [
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G0"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G0"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [],
+        "varTypes": [],
+        "antecedents": [],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G1"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G1"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G1"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [],
+        "varTypes": [],
+        "antecedents": [],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G1"
+                ]
+              ],
+              "rowId": null,
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Graphs"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [],
+        "varTypes": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ],
+              "rowId": null,
+              "values": []
+            }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G"
+        ],
+        [
+          "E"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "c"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "G"
+        ],
+        [
+          "V"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Graphs"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Hom"
+        ],
+        [
+          "E"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ],
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "b"
+            ],
+            [
+              "c"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Hom"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G1"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Hom"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Hom"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 9
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 9
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Hom"
+        ],
+        [
+          "E"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Hom"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Hom"
+        ],
+        [
+          "V"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Hom"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G1"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Hom"
+        ],
+        [
+          "V"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Hom"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "cons"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "c"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "z"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                },
+                {
+                  "column": 5,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 9
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 9
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 4
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 5
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "cons"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "z"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 4
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "empty"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "empty"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path0"
+        ],
+        [
+          "t"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "cons"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "c"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "z"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                },
+                {
+                  "column": 5,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 9
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 9
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 4
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 5
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "cons"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "z"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 4
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "empty"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "empty"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "Path1"
+        ],
+        [
+          "t"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "cons"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ],
+          [
+            [
+              "e"
+            ]
+          ],
+          [
+            [
+              "p0"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "z"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "e"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "lhs"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "lhs"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "rhs"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "rhs"
+            ],
+            [
+              "b"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                },
+                {
+                  "column": 5,
+                  "term": {
+                    "tag": "var",
+                    "index": 10
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 10
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 9
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 12
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 12
+                  }
+                },
+                {
+                  "column": 5,
+                  "term": {
+                    "tag": "var",
+                    "index": 11
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 4
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "eq",
+            "left": {
+              "tag": "var",
+              "index": 9
+            },
+            "right": {
+              "tag": "var",
+              "index": 11
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "cons"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "z"
+            ]
+          ],
+          [
+            [
+              "e"
+            ]
+          ],
+          [
+            [
+              "p0"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "z"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "e"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "E"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 6
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 7
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 8
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 4
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "cons"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 4,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "empty"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "lhs"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "lhs"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "a"
+            ],
+            [
+              "rhs"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "eq",
+            "left": {
+              "tag": "var",
+              "index": 2
+            },
+            "right": {
+              "tag": "var",
+              "index": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "empty"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "empty"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "t"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path1"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                },
+                {
+                  "column": 3,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 5
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path1"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 3
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "Path"
+        ],
+        [
+          "PathHom"
+        ],
+        [
+          "t"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "x"
+            ]
+          ],
+          [
+            [
+              "y"
+            ]
+          ],
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "x"
+            ],
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "y"
+            ],
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "G"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Path0"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "Path"
+              ],
+              [
+                "Graphs"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G0"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 3
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "G"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 4
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "Path0"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "Path"
+                ],
+                [
+                  "PathHom"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

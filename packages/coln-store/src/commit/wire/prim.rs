@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use coln_lang_rs::ir::PrimType;
+use coln_lang_rs::ir::BuiltinTy;
 use hexane::{PackError, lebsize};
 
 use crate::{commit::error::CodecError, txn::ops::TxnCellValue};
@@ -77,15 +77,15 @@ impl ValueType {
     /// logical (schema) type is `prim`. The schema is the contract: it bounds
     /// which representations may appear, while the per-value type code records
     /// which one was actually used.
-    pub(crate) fn is_valid_for(self, prim: &PrimType) -> bool {
+    pub(crate) fn is_valid_for(self, prim: &BuiltinTy) -> bool {
         match prim {
-            PrimType::PrimInt => {
+            BuiltinTy::BuiltinInt => {
                 matches!(
                     self,
                     ValueType::Uleb | ValueType::Leb | ValueType::BigInt | ValueType::BigUint
                 )
             }
-            PrimType::PrimString => matches!(self, ValueType::String),
+            BuiltinTy::BuiltinStr => matches!(self, ValueType::String),
         }
     }
 }
@@ -139,11 +139,11 @@ impl hexane::v1::PrefixValue for ValueMeta {
 
 pub(crate) fn encode_prim_value(
     value: &TxnCellValue,
-    prim: &PrimType,
+    prim: &BuiltinTy,
     out: &mut Vec<u8>,
 ) -> Result<ValueMeta, CodecError> {
     match prim {
-        PrimType::PrimInt => {
+        BuiltinTy::BuiltinInt => {
             let TxnCellValue::Int(i) = value else {
                 return Err(CodecError::SchemaError(format!(
                     "expected int, got {value:?}"
@@ -155,7 +155,7 @@ pub(crate) fn encode_prim_value(
 
             Ok(ValueMeta::new(ValueType::Leb, lebsize(*i) as usize))
         }
-        PrimType::PrimString => {
+        BuiltinTy::BuiltinStr => {
             let TxnCellValue::Str(s) = value else {
                 return Err(CodecError::SchemaError(format!(
                     "expected string, got {value:?}"
@@ -171,7 +171,7 @@ pub(crate) fn encode_prim_value(
 
 pub(crate) fn decode_prim_value(
     meta: ValueMeta,
-    prim: &PrimType,
+    prim: &BuiltinTy,
     bytes: &[u8],
 ) -> Result<TxnCellValue, CodecError> {
     let ty = meta.type_code();

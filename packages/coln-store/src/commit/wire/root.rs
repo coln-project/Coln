@@ -5,8 +5,8 @@ use crate::{
         utils::{read_u8, write_u8},
     },
     ir::{
-        Atom, ColType, ConsField, Law, LawEntry, Lit, Path, PrimType, Prop, QName, Schema, Term,
-        TupleField, ValueEntry,
+        Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, IndexMethod, Lit, Materialization,
+        Path, Prop, QName, Rule, RuleEntry, RuleVariant, Schema, Term, ValueEntry,
     },
     table::TableOid,
 };
@@ -18,7 +18,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(crate) struct RootCommitData {
     pub(crate) tables: Vec<RootTableEntry>,
-    pub(crate) laws: Vec<LawEntry>,
+    pub(crate) laws: Vec<RuleEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,8 +34,8 @@ pub(crate) struct RootTableEntry {
 ///
 /// `[table_count]`
 /// `repeat table_count: [path_len][path_utf8][oid][schema_len][schema_bytes]`
-/// `[law_count]`
-/// `repeat law_count: [law_len][law_bytes]`
+/// `[rule_count]`
+/// `repeat rule_count: [rule_len][rule_bytes]`
 pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, CodecError> {
     let mut buf = Vec::new();
 
@@ -52,9 +52,9 @@ pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, CodecErro
     }
 
     write_count(&mut buf, root.laws.len());
-    for law in &root.laws {
-        let law_bytes = encode_law_entry(law)?;
-        commit_leb128::write_len_prefixed_bytes(&mut buf, &law_bytes);
+    for rule in &root.laws {
+        let rule_bytes = encode_rule_entry(rule)?;
+        commit_leb128::write_len_prefixed_bytes(&mut buf, &rule_bytes);
     }
 
     Ok(buf)
@@ -80,11 +80,11 @@ pub(crate) fn deserialize_root(data: &[u8]) -> Result<RootCommitData, CodecError
         tables.push(RootTableEntry { path, oid, schema });
     }
 
-    let law_count = commit_leb128::read_len(data, &mut pos, "root law count")?;
-    let mut laws = Vec::with_capacity(law_count);
-    for _ in 0..law_count {
-        let law_bytes = commit_leb128::read_len_prefixed_bytes(data, &mut pos, "root law")?;
-        laws.push(decode_law_entry(law_bytes)?);
+    let rule_count = commit_leb128::read_len(data, &mut pos, "root rule count")?;
+    let mut laws = Vec::with_capacity(rule_count);
+    for _ in 0..rule_count {
+        let rule_bytes = commit_leb128::read_len_prefixed_bytes(data, &mut pos, "root rule")?;
+        laws.push(decode_rule_entry(rule_bytes)?);
     }
 
     if pos != data.len() {
@@ -103,9 +103,10 @@ fn write_count(buf: &mut Vec<u8>, count: usize) {
 
 fn encode_schema(schema: &Schema) -> Result<Vec<u8>, CodecError> {
     let mut buf = Vec::new();
+    write_entity_variant(&mut buf, &schema.entity_variant)?;
     write_count(&mut buf, schema.columns.len());
-    for col_type in &schema.columns {
-        write_col_type(&mut buf, col_type)?;
+    for column in &schema.columns {
+        write_column_entry(&mut buf, column)?;
     }
 
     match &schema.primary_key {
@@ -113,7 +114,7 @@ fn encode_schema(schema: &Schema) -> Result<Vec<u8>, CodecError> {
             write_u8(&mut buf, 1)?;
             write_count(&mut buf, primary_key.len());
             for column in primary_key {
-                commit_leb128::write_i64(&mut buf, *column);
+                write_path(&mut buf, column)?;
             }
         }
         None => write_u8(&mut buf, 0)?,
@@ -124,25 +125,22 @@ fn encode_schema(schema: &Schema) -> Result<Vec<u8>, CodecError> {
 
 fn decode_schema(data: &[u8]) -> Result<Schema, CodecError> {
     let mut pos = 0usize;
+    let entity_variant = read_entity_variant(data, &mut pos)?;
     let column_count = commit_leb128::read_len(data, &mut pos, "schema column count")?;
     let mut columns = Vec::with_capacity(column_count);
     for _ in 0..column_count {
-        columns.push(read_col_type(data, &mut pos)?);
+        columns.push(read_column_entry(data, &mut pos)?);
     }
 
     let primary_key = match read_u8(data, &mut pos, "schema primary key tag")? {
         0 => None,
         1 => {
             let key_count = commit_leb128::read_len(data, &mut pos, "schema primary key count")?;
-            let mut columns = Vec::with_capacity(key_count);
+            let mut key_columns = Vec::with_capacity(key_count);
             for _ in 0..key_count {
-                columns.push(commit_leb128::read_i64(
-                    data,
-                    &mut pos,
-                    "schema primary key column",
-                )?);
+                key_columns.push(read_path(data, &mut pos)?);
             }
-            Some(columns)
+            Some(key_columns)
         }
         tag => {
             return Err(CodecError::DataFormatError(format!(
@@ -153,111 +151,233 @@ fn decode_schema(data: &[u8]) -> Result<Schema, CodecError> {
 
     reject_trailing(data, pos, "schema")?;
     Ok(Schema {
+        entity_variant,
         columns,
         primary_key,
     })
 }
 
-fn encode_law_entry(entry: &LawEntry) -> Result<Vec<u8>, CodecError> {
-    let mut buf = Vec::new();
-    write_path(&mut buf, &entry.path)?;
-    write_law(&mut buf, &entry.law)?;
-    Ok(buf)
+fn write_column_entry(buf: &mut Vec<u8>, column: &ColumnEntry) -> Result<(), CodecError> {
+    write_path(buf, &column.path)?;
+    write_col_type(buf, &column.col_type)
 }
 
-fn decode_law_entry(data: &[u8]) -> Result<LawEntry, CodecError> {
-    let mut pos = 0usize;
-    let path = read_path(data, &mut pos)?;
-    let law = read_law(data, &mut pos)?;
-    reject_trailing(data, pos, "law entry")?;
-    Ok(LawEntry { path, law })
+fn read_column_entry(data: &[u8], pos: &mut usize) -> Result<ColumnEntry, CodecError> {
+    let path = read_path(data, pos)?;
+    let col_type = read_col_type(data, pos)?;
+    Ok(ColumnEntry { path, col_type })
 }
 
-fn write_law(buf: &mut Vec<u8>, law: &Law) -> Result<(), CodecError> {
-    write_count(buf, law.variables.len());
-    for variable in &law.variables {
-        write_col_type(buf, variable)?;
-    }
-    write_prop(buf, &law.antecedent)?;
-    write_prop(buf, &law.consequent)
-}
-
-fn read_law(data: &[u8], pos: &mut usize) -> Result<Law, CodecError> {
-    let variable_count = commit_leb128::read_len(data, pos, "law variable count")?;
-    let mut variables = Vec::with_capacity(variable_count);
-    for _ in 0..variable_count {
-        variables.push(read_col_type(data, pos)?);
-    }
-    let antecedent = read_prop(data, pos)?;
-    let consequent = read_prop(data, pos)?;
-    Ok(Law {
-        variables,
-        antecedent,
-        consequent,
-    })
-}
-
-fn write_col_type(buf: &mut Vec<u8>, col_type: &ColType) -> Result<(), CodecError> {
-    match col_type {
-        ColType::EntityType { path } => {
-            write_u8(buf, 0)?;
-            write_path(buf, path)
-        }
-        ColType::PrimType { prim } => {
+fn write_entity_variant(buf: &mut Vec<u8>, variant: &EntityVariant) -> Result<(), CodecError> {
+    match variant {
+        EntityVariant::Table => write_u8(buf, 0),
+        EntityVariant::View(materialization) => {
             write_u8(buf, 1)?;
-            write_prim_type(buf, *prim)
+            write_materialization(buf, materialization)
         }
-        ColType::Tuple { fields } => {
+        EntityVariant::Index { method, columns } => {
             write_u8(buf, 2)?;
-            write_count(buf, fields.len());
-            for field in fields {
-                write_qname(buf, &field.name)?;
-                write_col_type(buf, &field.col_type)?;
+            write_index_method(buf, method)?;
+            write_count(buf, columns.len());
+            for column in columns {
+                write_path(buf, column)?;
             }
             Ok(())
         }
     }
 }
 
+fn read_entity_variant(data: &[u8], pos: &mut usize) -> Result<EntityVariant, CodecError> {
+    match read_u8(data, pos, "entity variant tag")? {
+        0 => Ok(EntityVariant::Table),
+        1 => Ok(EntityVariant::View(read_materialization(data, pos)?)),
+        2 => {
+            let method = read_index_method(data, pos)?;
+            let column_count = commit_leb128::read_len(data, pos, "index column count")?;
+            let mut columns = Vec::with_capacity(column_count);
+            for _ in 0..column_count {
+                columns.push(read_path(data, pos)?);
+            }
+            Ok(EntityVariant::Index { method, columns })
+        }
+        tag => Err(CodecError::DataFormatError(format!(
+            "unknown entity variant tag {tag}"
+        ))),
+    }
+}
+
+fn write_materialization(
+    buf: &mut Vec<u8>,
+    materialization: &Materialization,
+) -> Result<(), CodecError> {
+    let tag = match materialization {
+        Materialization::Recomputed => 0,
+        Materialization::Memoized => 1,
+        Materialization::Materialized => 2,
+    };
+    write_u8(buf, tag)
+}
+
+fn read_materialization(data: &[u8], pos: &mut usize) -> Result<Materialization, CodecError> {
+    match read_u8(data, pos, "materialization tag")? {
+        0 => Ok(Materialization::Recomputed),
+        1 => Ok(Materialization::Memoized),
+        2 => Ok(Materialization::Materialized),
+        tag => Err(CodecError::DataFormatError(format!(
+            "unknown materialization tag {tag}"
+        ))),
+    }
+}
+
+fn write_index_method(buf: &mut Vec<u8>, method: &IndexMethod) -> Result<(), CodecError> {
+    let tag = match method {
+        IndexMethod::BTree => 0,
+    };
+    write_u8(buf, tag)
+}
+
+fn read_index_method(data: &[u8], pos: &mut usize) -> Result<IndexMethod, CodecError> {
+    match read_u8(data, pos, "index method tag")? {
+        0 => Ok(IndexMethod::BTree),
+        tag => Err(CodecError::DataFormatError(format!(
+            "unknown index method tag {tag}"
+        ))),
+    }
+}
+
+fn encode_rule_entry(entry: &RuleEntry) -> Result<Vec<u8>, CodecError> {
+    let mut buf = Vec::new();
+    write_path(&mut buf, &entry.path)?;
+    write_rule(&mut buf, &entry.rule)?;
+    Ok(buf)
+}
+
+fn decode_rule_entry(data: &[u8]) -> Result<RuleEntry, CodecError> {
+    let mut pos = 0usize;
+    let path = read_path(data, &mut pos)?;
+    let rule = read_rule(data, &mut pos)?;
+    reject_trailing(data, pos, "rule entry")?;
+    Ok(RuleEntry { path, rule })
+}
+
+fn write_rule(buf: &mut Vec<u8>, rule: &Rule) -> Result<(), CodecError> {
+    write_rule_variant(buf, &rule.rule_variant)?;
+    write_count(buf, rule.var_names.len());
+    for name in &rule.var_names {
+        write_path(buf, name)?;
+    }
+    write_count(buf, rule.var_types.len());
+    for ty in &rule.var_types {
+        write_col_type(buf, ty)?;
+    }
+    write_count(buf, rule.antecedents.len());
+    for prop in &rule.antecedents {
+        write_prop(buf, prop)?;
+    }
+    write_count(buf, rule.consequents.len());
+    for prop in &rule.consequents {
+        write_prop(buf, prop)?;
+    }
+    Ok(())
+}
+
+fn read_rule(data: &[u8], pos: &mut usize) -> Result<Rule, CodecError> {
+    let rule_variant = read_rule_variant(data, pos)?;
+
+    let name_count = commit_leb128::read_len(data, pos, "rule var name count")?;
+    let mut var_names = Vec::with_capacity(name_count);
+    for _ in 0..name_count {
+        var_names.push(read_path(data, pos)?);
+    }
+
+    let type_count = commit_leb128::read_len(data, pos, "rule var type count")?;
+    let mut var_types = Vec::with_capacity(type_count);
+    for _ in 0..type_count {
+        var_types.push(read_col_type(data, pos)?);
+    }
+
+    let antecedent_count = commit_leb128::read_len(data, pos, "rule antecedent count")?;
+    let mut antecedents = Vec::with_capacity(antecedent_count);
+    for _ in 0..antecedent_count {
+        antecedents.push(read_prop(data, pos)?);
+    }
+
+    let consequent_count = commit_leb128::read_len(data, pos, "rule consequent count")?;
+    let mut consequents = Vec::with_capacity(consequent_count);
+    for _ in 0..consequent_count {
+        consequents.push(read_prop(data, pos)?);
+    }
+
+    Ok(Rule {
+        rule_variant,
+        var_names,
+        var_types,
+        antecedents,
+        consequents,
+    })
+}
+
+fn write_rule_variant(buf: &mut Vec<u8>, variant: &RuleVariant) -> Result<(), CodecError> {
+    let tag = match variant {
+        RuleVariant::Chased => 0,
+        RuleVariant::Enforced => 1,
+        RuleVariant::Monitored => 2,
+    };
+    write_u8(buf, tag)
+}
+
+fn read_rule_variant(data: &[u8], pos: &mut usize) -> Result<RuleVariant, CodecError> {
+    match read_u8(data, pos, "rule variant tag")? {
+        0 => Ok(RuleVariant::Chased),
+        1 => Ok(RuleVariant::Enforced),
+        2 => Ok(RuleVariant::Monitored),
+        tag => Err(CodecError::DataFormatError(format!(
+            "unknown rule variant tag {tag}"
+        ))),
+    }
+}
+
+fn write_col_type(buf: &mut Vec<u8>, col_type: &ColType) -> Result<(), CodecError> {
+    match col_type {
+        ColType::RowId { path } => {
+            write_u8(buf, 0)?;
+            write_path(buf, path)
+        }
+        ColType::BuiltinTy { builtin_ty } => {
+            write_u8(buf, 1)?;
+            write_builtin_ty(buf, *builtin_ty)
+        }
+    }
+}
+
 fn read_col_type(data: &[u8], pos: &mut usize) -> Result<ColType, CodecError> {
     match read_u8(data, pos, "column type tag")? {
-        0 => Ok(ColType::EntityType {
+        0 => Ok(ColType::RowId {
             path: read_path(data, pos)?,
         }),
-        1 => Ok(ColType::PrimType {
-            prim: read_prim_type(data, pos)?,
+        1 => Ok(ColType::BuiltinTy {
+            builtin_ty: read_builtin_ty(data, pos)?,
         }),
-        2 => {
-            let field_count = commit_leb128::read_len(data, pos, "tuple field count")?;
-            let mut fields = Vec::with_capacity(field_count);
-            for _ in 0..field_count {
-                fields.push(TupleField {
-                    name: read_qname(data, pos)?,
-                    col_type: Box::new(read_col_type(data, pos)?),
-                });
-            }
-            Ok(ColType::Tuple { fields })
-        }
         tag => Err(CodecError::DataFormatError(format!(
             "unknown column type tag {tag}"
         ))),
     }
 }
 
-fn write_prim_type(buf: &mut Vec<u8>, prim: PrimType) -> Result<(), CodecError> {
-    let tag = match prim {
-        PrimType::PrimInt => 0,
-        PrimType::PrimString => 1,
+fn write_builtin_ty(buf: &mut Vec<u8>, builtin_ty: BuiltinTy) -> Result<(), CodecError> {
+    let tag = match builtin_ty {
+        BuiltinTy::BuiltinInt => 0,
+        BuiltinTy::BuiltinStr => 1,
     };
     write_u8(buf, tag)
 }
 
-fn read_prim_type(data: &[u8], pos: &mut usize) -> Result<PrimType, CodecError> {
-    match read_u8(data, pos, "primitive type tag")? {
-        0 => Ok(PrimType::PrimInt),
-        1 => Ok(PrimType::PrimString),
+fn read_builtin_ty(data: &[u8], pos: &mut usize) -> Result<BuiltinTy, CodecError> {
+    match read_u8(data, pos, "builtin type tag")? {
+        0 => Ok(BuiltinTy::BuiltinInt),
+        1 => Ok(BuiltinTy::BuiltinStr),
         tag => Err(CodecError::DataFormatError(format!(
-            "unknown primitive type tag {tag}"
+            "unknown builtin type tag {tag}"
         ))),
     }
 }
@@ -273,22 +393,6 @@ fn write_prop(buf: &mut Vec<u8>, prop: &Prop) -> Result<(), CodecError> {
             write_term(buf, left)?;
             write_term(buf, right)
         }
-        Prop::And { props } => {
-            write_u8(buf, 2)?;
-            write_count(buf, props.len());
-            for prop in props {
-                write_prop(buf, prop)?;
-            }
-            Ok(())
-        }
-        Prop::Or { props } => {
-            write_u8(buf, 3)?;
-            write_count(buf, props.len());
-            for prop in props {
-                write_prop(buf, prop)?;
-            }
-            Ok(())
-        }
     }
 }
 
@@ -301,22 +405,6 @@ fn read_prop(data: &[u8], pos: &mut usize) -> Result<Prop, CodecError> {
             left: read_term(data, pos)?,
             right: read_term(data, pos)?,
         }),
-        2 => {
-            let prop_count = commit_leb128::read_len(data, pos, "and prop count")?;
-            let mut props = Vec::with_capacity(prop_count);
-            for _ in 0..prop_count {
-                props.push(read_prop(data, pos)?);
-            }
-            Ok(Prop::And { props })
-        }
-        3 => {
-            let prop_count = commit_leb128::read_len(data, pos, "or prop count")?;
-            let mut props = Vec::with_capacity(prop_count);
-            for _ in 0..prop_count {
-                props.push(read_prop(data, pos)?);
-            }
-            Ok(Prop::Or { props })
-        }
         tag => Err(CodecError::DataFormatError(format!(
             "unknown prop tag {tag}"
         ))),
@@ -324,7 +412,7 @@ fn read_prop(data: &[u8], pos: &mut usize) -> Result<Prop, CodecError> {
 }
 
 fn write_atom(buf: &mut Vec<u8>, atom: &Atom) -> Result<(), CodecError> {
-    write_path(buf, &atom.table)?;
+    write_path(buf, &atom.entity)?;
     match &atom.row_id {
         Some(term) => {
             write_u8(buf, 1)?;
@@ -341,7 +429,7 @@ fn write_atom(buf: &mut Vec<u8>, atom: &Atom) -> Result<(), CodecError> {
 }
 
 fn read_atom(data: &[u8], pos: &mut usize) -> Result<Atom, CodecError> {
-    let table = read_path(data, pos)?;
+    let entity = read_path(data, pos)?;
     let row_id = match read_u8(data, pos, "atom row id tag")? {
         0 => None,
         1 => Some(read_term(data, pos)?),
@@ -360,7 +448,7 @@ fn read_atom(data: &[u8], pos: &mut usize) -> Result<Atom, CodecError> {
         });
     }
     Ok(Atom {
-        table,
+        entity,
         row_id,
         values,
     })
@@ -377,20 +465,6 @@ fn write_term(buf: &mut Vec<u8>, term: &Term) -> Result<(), CodecError> {
             commit_leb128::write_i64(buf, *index);
             Ok(())
         }
-        Term::Proj { term, field } => {
-            write_u8(buf, 2)?;
-            write_term(buf, term)?;
-            write_qname(buf, field)
-        }
-        Term::Cons { fields } => {
-            write_u8(buf, 3)?;
-            write_count(buf, fields.len());
-            for field in fields {
-                write_qname(buf, &field.name)?;
-                write_term(buf, &field.term)?;
-            }
-            Ok(())
-        }
     }
 }
 
@@ -402,21 +476,6 @@ fn read_term(data: &[u8], pos: &mut usize) -> Result<Term, CodecError> {
         1 => Ok(Term::Var {
             index: commit_leb128::read_i64(data, pos, "term var index")?,
         }),
-        2 => Ok(Term::Proj {
-            term: Box::new(read_term(data, pos)?),
-            field: read_qname(data, pos)?,
-        }),
-        3 => {
-            let field_count = commit_leb128::read_len(data, pos, "cons field count")?;
-            let mut fields = Vec::with_capacity(field_count);
-            for _ in 0..field_count {
-                fields.push(ConsField {
-                    name: read_qname(data, pos)?,
-                    term: Box::new(read_term(data, pos)?),
-                });
-            }
-            Ok(Term::Cons { fields })
-        }
         tag => Err(CodecError::DataFormatError(format!(
             "unknown term tag {tag}"
         ))),
@@ -510,44 +569,54 @@ mod tests {
 
     fn int_schema() -> Schema {
         Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
-            primary_key: Some(vec![0]),
+            primary_key: Some(vec![Path::from("c0")]),
         }
     }
 
     fn string_schema() -> Schema {
         Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimString,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinStr,
+                },
             }],
             primary_key: None,
         }
     }
 
-    fn simple_law() -> LawEntry {
+    fn simple_rule() -> RuleEntry {
         let table = Path::from("T");
-        LawEntry {
+        RuleEntry {
             path: Path::from("T.non_negative"),
-            law: Law {
-                variables: vec![ColType::PrimType {
-                    prim: PrimType::PrimInt,
+            rule: Rule {
+                rule_variant: RuleVariant::Enforced,
+                var_names: vec![Path::from("x")],
+                var_types: vec![ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
                 }],
-                antecedent: Prop::Atom {
+                antecedents: vec![Prop::Atom {
                     atom: Atom {
-                        table: table.clone(),
+                        entity: table.clone(),
                         row_id: None,
                         values: vec![ValueEntry {
                             column: 0,
                             term: Term::Var { index: 0 },
                         }],
                     },
-                },
-                consequent: Prop::Eq {
+                }],
+                consequents: vec![Prop::Eq {
                     left: Term::Var { index: 0 },
                     right: Term::Var { index: 0 },
-                },
+                }],
             },
         }
     }
@@ -560,7 +629,7 @@ mod tests {
                 oid: 1,
                 schema: int_schema(),
             }],
-            laws: vec![simple_law()],
+            laws: vec![simple_rule()],
         };
 
         let bytes = serialize_root(&root).expect("encode root");
@@ -570,7 +639,10 @@ mod tests {
         assert_eq!(decoded.tables[0].path, "T");
         assert_eq!(decoded.tables[0].oid, 1);
         assert_eq!(decoded.tables[0].schema.columns, int_schema().columns);
-        assert_eq!(decoded.tables[0].schema.primary_key, Some(vec![0]));
+        assert_eq!(
+            decoded.tables[0].schema.primary_key,
+            Some(vec![Path::from("c0")])
+        );
         assert_eq!(decoded.laws.len(), 1);
         assert_eq!(decoded.laws[0].path, Path::from("T.non_negative"));
     }

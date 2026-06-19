@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     commit::pst::decode_store,
-    ir::{ColType, FlatTheory, PrimType},
+    ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
     repl::{
         error::ReplError,
         parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
@@ -36,7 +36,7 @@ pub struct TableSummary {
 pub enum PrimaryKeySummary {
     None,
     Singleton,
-    Columns(Vec<i64>),
+    Columns(Vec<crate::ir::Path>),
 }
 
 pub struct LoadedState {
@@ -60,13 +60,16 @@ fn format_primary_key(primary_key: &PrimaryKeySummary) -> String {
 
 fn format_col_type(col_type: &ColType) -> String {
     match col_type {
-        ColType::EntityType { path } => format!("entity({path})"),
-        ColType::PrimType { prim } => match prim {
-            PrimType::PrimInt => "int".to_string(),
-            PrimType::PrimString => "string".to_string(),
+        ColType::RowId { path } => format!("entity({path})"),
+        ColType::BuiltinTy { builtin_ty } => match builtin_ty {
+            BuiltinTy::BuiltinInt => "int".to_string(),
+            BuiltinTy::BuiltinStr => "string".to_string(),
         },
-        ColType::Tuple { fields } => format!("tuple({} fields)", fields.len()),
     }
+}
+
+fn format_column(column: &ColumnEntry) -> String {
+    format!("{}: {}", column.path, format_col_type(&column.col_type))
 }
 
 impl SchemaSummary {
@@ -81,11 +84,11 @@ impl SchemaSummary {
                     Some(columns) if columns.is_empty() => PrimaryKeySummary::Singleton,
                     Some(columns) => PrimaryKeySummary::Columns(columns.clone()),
                 },
-                columns: table.schema().columns.iter().map(format_col_type).collect(),
+                columns: table.schema().columns.iter().map(format_column).collect(),
             })
             .collect();
         tables.sort_by(|a, b| a.path.cmp(&b.path));
-        let law_count = store.law_entries().len();
+        let law_count = store.rule_entries().len();
         let table_count = tables.len();
         Self {
             source,
@@ -95,7 +98,7 @@ impl SchemaSummary {
         }
     }
 
-    fn from_theory(source: PathBuf, theory: &FlatTheory) -> Self {
+    fn from_theory(source: PathBuf, theory: &FlatRealm) -> Self {
         let tables = theory
             .tables
             .iter()
@@ -107,14 +110,14 @@ impl SchemaSummary {
                     Some(columns) if columns.is_empty() => PrimaryKeySummary::Singleton,
                     Some(columns) => PrimaryKeySummary::Columns(columns.clone()),
                 },
-                columns: entry.table.columns.iter().map(format_col_type).collect(),
+                columns: entry.table.columns.iter().map(format_column).collect(),
             })
             .collect();
 
         Self {
             source,
             table_count: theory.tables.len(),
-            law_count: theory.laws.len(),
+            law_count: theory.rules.len(),
             tables,
         }
     }
@@ -129,7 +132,7 @@ pub fn load_store(path: &Path) -> Result<LoadedState, ReplError> {
 
 pub fn load_schema(path: &Path) -> Result<LoadedState, ReplError> {
     let input = fs::read_to_string(path)?;
-    let theory: FlatTheory = serde_json::from_str(&input)?;
+    let theory: FlatRealm = serde_json::from_str(&input)?;
     let summary = SchemaSummary::from_theory(path.to_path_buf(), &theory);
     let store = Store::try_from_theory(theory)?;
     Ok(LoadedState {
@@ -219,17 +222,18 @@ pub fn run_transact(
         }
 
         let mut values = Vec::with_capacity(expected);
-        for (idx, col_type) in table.schema().columns.iter().enumerate() {
-            let v = parse_cell_value_batch(col_type, &a.row[idx], &bindings).map_err(|e| {
-                let err: ReplError = e.into();
-                match err {
-                    ReplError::BadValue { message, .. } => ReplError::BadValue {
-                        column: idx,
-                        message,
-                    },
-                    other => other,
-                }
-            })?;
+        for (idx, column) in table.schema().columns.iter().enumerate() {
+            let v =
+                parse_cell_value_batch(&column.col_type, &a.row[idx], &bindings).map_err(|e| {
+                    let err: ReplError = e.into();
+                    match err {
+                        ReplError::BadValue { message, .. } => ReplError::BadValue {
+                            column: idx,
+                            message,
+                        },
+                        other => other,
+                    }
+                })?;
             values.push(v);
         }
 
@@ -266,9 +270,9 @@ fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellV
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, col_type)| -> Result<TxnCellValue, ReplError> {
+        .map(|(idx, column)| -> Result<TxnCellValue, ReplError> {
             let raw = &raw_values[idx];
-            parse_cell_value(col_type, raw)
+            parse_cell_value(&column.col_type, raw)
                 .map(Into::into)
                 .map_err(|message| ReplError::BadValue {
                     column: idx,
@@ -282,6 +286,8 @@ fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellV
 mod tests {
     use super::*;
 
+    static PATHS_IR: &str = "Path.json";
+
     #[test]
     fn lists_no_schema_message() {
         assert_eq!(render_schema_summary(None), "no schema loaded");
@@ -289,10 +295,10 @@ mod tests {
 
     #[test]
     fn loads_schema_summary_from_fixture() {
-        let loaded = load_schema(Path::new("tests/data/paths.json")).expect("load schema");
-        assert_eq!(loaded.store.table_count(), 10);
-        assert_eq!(loaded.schema.table_count, 10);
-        assert_eq!(loaded.schema.law_count, 12);
-        assert_eq!(loaded.schema.tables[0].path, "G.E");
+        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        assert_eq!(loaded.store.table_count(), 16);
+        assert_eq!(loaded.schema.table_count, 16);
+        assert_eq!(loaded.schema.law_count, 27);
+        assert_eq!(loaded.schema.tables[0].path, "Path.G0");
     }
 }

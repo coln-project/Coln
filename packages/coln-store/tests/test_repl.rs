@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use coln_store::{
-    ir::{FlatTheory, Path},
+    ir::{FlatRealm, Path},
     repl::{
         exe::run_transact,
         parse::{Command, parse_command},
@@ -12,14 +12,14 @@ use coln_store::{
     store::Store,
 };
 
-static PATHS_IR: &str = "paths.json";
+static PATHS_IR: &str = "Path.json";
 
-fn fixture_theory(name: &str) -> FlatTheory {
+fn fixture_theory(name: &str) -> FlatRealm {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data")
         .join(name);
     let json = std::fs::read_to_string(p).expect("read theory json");
-    serde_json::from_str(&json).expect("parse FlatTheory")
+    serde_json::from_str(&json).expect("parse FlatRealm")
 }
 
 #[test]
@@ -28,10 +28,10 @@ fn batch_block_matches_apply_batch_for_paths_fixture() {
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
     let cmd = parse_command(
-        "begin transact; gid1 = add Graphs values (); gid2 = add Graphs values (); \
-         g0 = add G0 values (gid2); g1 = add G1 values (gid2); \
-         v1 = add G.V values (gid1); v2 = add G.V values (gid1); \
-         ge = add G.E values (gid1 v1 v2); commit;",
+        "begin transact; gid1 = add Path.Graphs values (); gid2 = add Path.Graphs values (); \
+         g0 = add Path.G0 values (gid2); g1 = add Path.G1 values (gid2); \
+         v1 = add Path.G.V values (gid1); v2 = add Path.G.V values (gid1); \
+         ge = add Path.G.E values (gid1 v1 v2); commit;",
     )
     .expect("parse batch");
 
@@ -42,6 +42,6 @@ fn batch_block_matches_apply_batch_for_paths_fixture() {
     let msg = run_transact(&mut store, &assignments).expect("run batch");
     assert!(msg.contains("gid1=#"), "expected binding summary: {msg}");
 
-    let ge = store.table_at(&Path::from("G.E")).expect("G.E");
+    let ge = store.table_at(&Path::from("Path.G.E")).expect("Path.G.E");
     assert_eq!(ge.row_count(), 1);
 }

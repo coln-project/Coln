@@ -5,14 +5,14 @@ use tracing::debug;
 use crate::{
     solver::{
         bind::{Binding, BoundValue, bind_law, eval_term},
-        compile::{CompAtom, CompEq, CompLaw, CompProp, CompVal},
+        compile::{CompAtom, CompEq, CompProp, CompRule, CompVal},
         matcher::term_matches,
     },
     store::Store,
     table::CellValue,
 };
 
-/// Why a law was violated at a given binding.
+/// Why a rule was violated at a given binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ViolationCause {
     /// A required consequent atom was not present in the store.
@@ -22,30 +22,30 @@ pub enum ViolationCause {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LawViolation {
-    pub law: CompLaw,
+pub struct RuleViolation {
+    pub law: CompRule,
     pub cause: ViolationCause,
     pub binding: Binding,
 }
 
-impl fmt::Display for LawViolation {
+impl fmt::Display for RuleViolation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.cause {
             ViolationCause::MissingAtom(atom) => write!(
                 f,
-                "law {} violated: missing consequent atom in table {}",
+                "rule {} violated: missing consequent atom in table {}",
                 self.law, atom.table
             ),
             ViolationCause::UnsatisfiedEq(eq) => write!(
                 f,
-                "law {} violated: equality {:?} = {:?} did not hold",
+                "rule {} violated: equality {:?} = {:?} did not hold",
                 self.law, eq.left, eq.right
             ),
         }
     }
 }
 
-impl Error for LawViolation {}
+impl Error for RuleViolation {}
 
 // TODO: completely ignoring efficiency for now
 pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) -> bool {
@@ -97,7 +97,7 @@ pub fn consequent_eq_holds(binding: &Binding, eq: &CompEq) -> bool {
 /// Check whether a consequent proposition holds under `binding`.
 ///
 /// On failure, returns the first leaf (atom or equality) that failed so the
-/// caller can build a precise `LawViolation`.
+/// caller can build a precise `RuleViolation`.
 fn prop_holds(store: &Store, binding: &Binding, prop: &CompProp) -> Result<(), ViolationCause> {
     match prop {
         CompProp::Atom(atom) => {
@@ -123,14 +123,14 @@ fn prop_holds(store: &Store, binding: &Binding, prop: &CompProp) -> Result<(), V
     }
 }
 
-pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), Box<LawViolation>> {
+pub fn check_law(store: &Store, law: &CompRule) -> Result<(), Box<RuleViolation>> {
     let bindings = bind_law(store, law);
     debug!(law = %law.path, bindings = ?bindings, "checking law with bindings");
 
     for binding in bindings {
         if let Err(cause) = prop_holds(store, &binding, &law.consequent) {
             debug!(law = %law.path, cause = ?cause, "law violation detected");
-            return Err(Box::new(LawViolation {
+            return Err(Box::new(RuleViolation {
                 law: law.clone(),
                 cause,
                 binding,
@@ -145,10 +145,54 @@ pub fn check_law(store: &Store, law: &CompLaw) -> Result<(), Box<LawViolation>> 
 mod tests {
     use super::*;
     use crate::{
-        ir::{self, ColType, Path, PrimType, Schema},
+        ir::{
+            self, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Rule, RuleEntry,
+            RuleVariant, Schema,
+        },
         solver::compile::compile_law,
         table::{CellValue, Table},
     };
+
+    fn int_ty() -> ColType {
+        ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
+        }
+    }
+
+    fn int_col(name: &str) -> ColumnEntry {
+        ColumnEntry {
+            path: Path::from(name),
+            col_type: int_ty(),
+        }
+    }
+
+    fn int_schema(columns: &[&str]) -> Schema {
+        Schema {
+            entity_variant: EntityVariant::Table,
+            columns: columns.iter().map(|name| int_col(name)).collect(),
+            primary_key: None,
+        }
+    }
+
+    fn enforced_rule(
+        path: &str,
+        var_types: Vec<ColType>,
+        antecedents: Vec<ir::Prop>,
+        consequents: Vec<ir::Prop>,
+    ) -> RuleEntry {
+        RuleEntry {
+            path: Path::from(path),
+            rule: Rule {
+                rule_variant: RuleVariant::Enforced,
+                var_names: (0..var_types.len())
+                    .map(|index| Path::from(format!("v{index}")))
+                    .collect(),
+                var_types,
+                antecedents,
+                consequents,
+            },
+        }
+    }
 
     #[test]
     fn true_antecedent_still_checks_consequent() {
@@ -156,29 +200,21 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(
             g0_path.clone(),
-            Table::new(
-                g0_path.clone(),
-                Schema {
-                    columns: vec![],
-                    primary_key: None,
-                },
-            ),
+            Table::new(g0_path.clone(), int_schema(&[])),
         );
 
-        let law = ir::LawEntry {
-            path: Path::from("G0.total"),
-            law: ir::Law {
-                variables: vec![],
-                antecedent: ir::Prop::And { props: vec![] },
-                consequent: ir::Prop::Atom {
-                    atom: ir::Atom {
-                        table: g0_path.clone(),
-                        row_id: None,
-                        values: vec![],
-                    },
+        let law = enforced_rule(
+            "G0.total",
+            vec![],
+            vec![],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: g0_path.clone(),
+                    row_id: None,
+                    values: vec![],
                 },
-            },
-        };
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         let violation = check_law(&store, &compiled).expect_err("missing G0 row should violate");
@@ -198,27 +234,11 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(
             source.clone(),
-            Table::new(
-                source.clone(),
-                Schema {
-                    columns: vec![ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    }],
-                    primary_key: None,
-                },
-            ),
+            Table::new(source.clone(), int_schema(&["c0"])),
         );
         store.insert_table(
             target.clone(),
-            Table::new(
-                target.clone(),
-                Schema {
-                    columns: vec![ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    }],
-                    primary_key: None,
-                },
-            ),
+            Table::new(target.clone(), int_schema(&["c0"])),
         );
 
         let mut txn = store.transaction();
@@ -228,34 +248,30 @@ mod tests {
             .expect("insert target row");
         txn.commit().expect("commit matching rows");
 
-        let law = ir::LawEntry {
-            path: Path::from("Copy.total"),
-            law: ir::Law {
-                variables: vec![ColType::PrimType {
-                    prim: PrimType::PrimInt,
-                }],
-                antecedent: ir::Prop::Atom {
-                    atom: ir::Atom {
-                        table: source,
-                        row_id: None,
-                        values: vec![ir::ValueEntry {
-                            column: 0,
-                            term: ir::Term::Var { index: 0 },
-                        }],
-                    },
+        let law = enforced_rule(
+            "Copy.total",
+            vec![int_ty()],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: source,
+                    row_id: None,
+                    values: vec![ir::ValueEntry {
+                        column: 0,
+                        term: ir::Term::Var { index: 0 },
+                    }],
                 },
-                consequent: ir::Prop::Atom {
-                    atom: ir::Atom {
-                        table: target,
-                        row_id: None,
-                        values: vec![ir::ValueEntry {
-                            column: 0,
-                            term: ir::Term::Var { index: 0 },
-                        }],
-                    },
+            }],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: target,
+                    row_id: None,
+                    values: vec![ir::ValueEntry {
+                        column: 0,
+                        term: ir::Term::Var { index: 0 },
+                    }],
                 },
-            },
-        };
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         assert!(check_law(&store, &compiled).is_ok());
@@ -267,101 +283,58 @@ mod tests {
         let right = Path::from("Right");
         let link = Path::from("Link");
         let mut store = Store::new();
-        store.insert_table(
-            left.clone(),
-            Table::new(
-                left.clone(),
-                Schema {
-                    columns: vec![ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    }],
-                    primary_key: None,
-                },
-            ),
-        );
+        store.insert_table(left.clone(), Table::new(left.clone(), int_schema(&["c0"])));
         store.insert_table(
             right.clone(),
-            Table::new(
-                right.clone(),
-                Schema {
-                    columns: vec![ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    }],
-                    primary_key: None,
-                },
-            ),
+            Table::new(right.clone(), int_schema(&["c0"])),
         );
         store.insert_table(
             link.clone(),
-            Table::new(
-                link.clone(),
-                Schema {
-                    columns: vec![
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                    ],
-                    primary_key: None,
-                },
-            ),
+            Table::new(link.clone(), int_schema(&["c0", "c1"])),
         );
 
-        let law = ir::LawEntry {
-            path: Path::from("Link.foreignKeys"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: ir::Prop::Atom {
-                    atom: ir::Atom {
-                        table: link.clone(),
-                        row_id: None,
-                        values: vec![
-                            ir::ValueEntry {
-                                column: 0,
-                                term: ir::Term::Var { index: 0 },
-                            },
-                            ir::ValueEntry {
-                                column: 1,
-                                term: ir::Term::Var { index: 1 },
-                            },
-                        ],
-                    },
-                },
-                consequent: ir::Prop::And {
-                    props: vec![
-                        ir::Prop::Atom {
-                            atom: ir::Atom {
-                                table: left.clone(),
-                                row_id: None,
-                                values: vec![ir::ValueEntry {
-                                    column: 0,
-                                    term: ir::Term::Var { index: 0 },
-                                }],
-                            },
+        let law = enforced_rule(
+            "Link.foreignKeys",
+            vec![int_ty(), int_ty()],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: link.clone(),
+                    row_id: None,
+                    values: vec![
+                        ir::ValueEntry {
+                            column: 0,
+                            term: ir::Term::Var { index: 0 },
                         },
-                        ir::Prop::Atom {
-                            atom: ir::Atom {
-                                table: right.clone(),
-                                row_id: None,
-                                values: vec![ir::ValueEntry {
-                                    column: 0,
-                                    term: ir::Term::Var { index: 1 },
-                                }],
-                            },
+                        ir::ValueEntry {
+                            column: 1,
+                            term: ir::Term::Var { index: 1 },
                         },
                     ],
                 },
-            },
-        };
+            }],
+            vec![
+                ir::Prop::Atom {
+                    atom: ir::Atom {
+                        entity: left.clone(),
+                        row_id: None,
+                        values: vec![ir::ValueEntry {
+                            column: 0,
+                            term: ir::Term::Var { index: 0 },
+                        }],
+                    },
+                },
+                ir::Prop::Atom {
+                    atom: ir::Atom {
+                        entity: right.clone(),
+                        row_id: None,
+                        values: vec![ir::ValueEntry {
+                            column: 0,
+                            term: ir::Term::Var { index: 1 },
+                        }],
+                    },
+                },
+            ],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
 
@@ -401,61 +374,36 @@ mod tests {
     fn consequent_equality_holds_when_bindings_match() {
         let t = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(
-            t.clone(),
-            Table::new(
-                t.clone(),
-                Schema {
-                    columns: vec![
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                    ],
-                    primary_key: None,
-                },
-            ),
-        );
+        store.insert_table(t.clone(), Table::new(t.clone(), int_schema(&["c0", "c1"])));
         let mut txn = store.transaction();
         txn.add(&t, vec![CellValue::Int(5).into(), CellValue::Int(5).into()])
             .expect("insert row");
         txn.commit().expect("commit row");
 
-        let law = ir::LawEntry {
-            path: Path::from("T.eq"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: ir::Prop::Atom {
-                    atom: ir::Atom {
-                        table: t.clone(),
-                        row_id: None,
-                        values: vec![
-                            ir::ValueEntry {
-                                column: 0,
-                                term: ir::Term::Var { index: 0 },
-                            },
-                            ir::ValueEntry {
-                                column: 1,
-                                term: ir::Term::Var { index: 1 },
-                            },
-                        ],
-                    },
+        let law = enforced_rule(
+            "T.eq",
+            vec![int_ty(), int_ty()],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: t.clone(),
+                    row_id: None,
+                    values: vec![
+                        ir::ValueEntry {
+                            column: 0,
+                            term: ir::Term::Var { index: 0 },
+                        },
+                        ir::ValueEntry {
+                            column: 1,
+                            term: ir::Term::Var { index: 1 },
+                        },
+                    ],
                 },
-                consequent: ir::Prop::Eq {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Var { index: 1 },
-                },
-            },
-        };
+            }],
+            vec![ir::Prop::Eq {
+                left: ir::Term::Var { index: 0 },
+                right: ir::Term::Var { index: 1 },
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         assert!(check_law(&store, &compiled).is_ok());
@@ -465,61 +413,36 @@ mod tests {
     fn consequent_equality_violation_surfaces_unsatisfied_eq() {
         let t = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(
-            t.clone(),
-            Table::new(
-                t.clone(),
-                Schema {
-                    columns: vec![
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                    ],
-                    primary_key: None,
-                },
-            ),
-        );
+        store.insert_table(t.clone(), Table::new(t.clone(), int_schema(&["c0", "c1"])));
         let mut txn = store.transaction();
         txn.add(&t, vec![CellValue::Int(1).into(), CellValue::Int(2).into()])
             .expect("insert row");
         txn.commit().expect("commit row");
 
-        let law = ir::LawEntry {
-            path: Path::from("T.eq"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: ir::Prop::Atom {
-                    atom: ir::Atom {
-                        table: t.clone(),
-                        row_id: None,
-                        values: vec![
-                            ir::ValueEntry {
-                                column: 0,
-                                term: ir::Term::Var { index: 0 },
-                            },
-                            ir::ValueEntry {
-                                column: 1,
-                                term: ir::Term::Var { index: 1 },
-                            },
-                        ],
-                    },
+        let law = enforced_rule(
+            "T.eq",
+            vec![int_ty(), int_ty()],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: t.clone(),
+                    row_id: None,
+                    values: vec![
+                        ir::ValueEntry {
+                            column: 0,
+                            term: ir::Term::Var { index: 0 },
+                        },
+                        ir::ValueEntry {
+                            column: 1,
+                            term: ir::Term::Var { index: 1 },
+                        },
+                    ],
                 },
-                consequent: ir::Prop::Eq {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Var { index: 1 },
-                },
-            },
-        };
+            }],
+            vec![ir::Prop::Eq {
+                left: ir::Term::Var { index: 0 },
+                right: ir::Term::Var { index: 1 },
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         let violation = check_law(&store, &compiled).expect_err("eq should fail");

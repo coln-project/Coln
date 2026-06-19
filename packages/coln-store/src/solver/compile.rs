@@ -1,8 +1,8 @@
 use std::{collections::HashSet, fmt};
 
-use crate::ir::{self, Atom, LawEntry, Prop, Term};
+use crate::ir::{self, Atom, Prop, RuleEntry, Term};
 
-/// Errors raised while lowering an `ir::Law` into the restricted solver form.
+/// Errors raised while lowering an `ir::Rule` into the restricted solver form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompileError {
     UnsupportedProp(String),
@@ -11,12 +11,12 @@ pub enum CompileError {
     InvalidColumnIndex { column: i64 },
 }
 
-/// A law lowered into a small execution-oriented form.
+/// A rule lowered into a small execution-oriented law form.
 ///
-/// Both sides are geometric formulas represented as `CompProp`.
-/// FIXME: Currently only supports conjunction and equality in consequent
+/// The IR stores antecedents and consequents as vectors of propositions; each
+/// vector is interpreted as a conjunction here.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompLaw {
+pub struct CompRule {
     pub path: ir::Path,
     pub vars: Vec<VarSpec>,
     pub antecedent: CompProp,
@@ -70,17 +70,17 @@ pub enum CompTerm {
     Lit(ir::Lit),
 }
 
-/// Lower one parsed law into the restricted solver representation.
+/// Lower one parsed rule into the restricted solver representation.
 ///
 /// This performs three main tasks:
 /// - keeps table references in their source-level `ir::Path` form
 /// - validates variable and column indices
 /// - rejects IR forms not yet supported by the solver
-pub fn compile_law(law_entry: &LawEntry) -> Result<CompLaw, CompileError> {
-    let path = law_entry.path.clone();
-    let vars = law_entry
-        .law
-        .variables
+pub fn compile_law(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
+    let path = rule_entry.path.clone();
+    let vars = rule_entry
+        .rule
+        .var_types
         .clone()
         .into_iter()
         .enumerate()
@@ -88,15 +88,15 @@ pub fn compile_law(law_entry: &LawEntry) -> Result<CompLaw, CompileError> {
         .collect::<Vec<_>>();
 
     let var_count = vars.len();
-    let antecedent = compile_prop(&law_entry.law.antecedent, var_count)?;
-    let consequent = compile_prop(&law_entry.law.consequent, var_count)?;
+    let antecedent = compile_props(&rule_entry.rule.antecedents, var_count)?;
+    let consequent = compile_props(&rule_entry.rule.consequents, var_count)?;
 
     let mut seen = HashSet::new();
     let mut tables = Vec::new();
     collect_atom_tables(&antecedent, &mut seen, &mut tables);
     collect_atom_tables(&consequent, &mut seen, &mut tables);
 
-    Ok(CompLaw {
+    Ok(CompRule {
         path,
         vars,
         antecedent,
@@ -123,11 +123,16 @@ fn collect_atom_tables(prop: &CompProp, seen: &mut HashSet<ir::Path>, tables: &m
     }
 }
 
-/// Compile a geometric formula into a structured `CompProp`.
-///
-/// Both the antecedent and consequent sides accept
-/// the same variants today (`Atom`, `Eq`, `And`); side-specific runtime
-/// semantics live in `bind.rs` (antecedent) and `validate.rs` (consequent).
+/// Compile a vector of IR propositions as an implicit conjunction.
+fn compile_props(props: &[Prop], var_count: usize) -> Result<CompProp, CompileError> {
+    let children = props
+        .iter()
+        .map(|prop| compile_prop(prop, var_count))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(CompProp::And(children))
+}
+
+/// Compile one IR proposition into a structured `CompProp`.
 fn compile_prop(prop: &Prop, var_count: usize) -> Result<CompProp, CompileError> {
     match prop {
         Prop::Atom { atom } => Ok(CompProp::Atom(compile_atom(atom, var_count)?)),
@@ -135,14 +140,6 @@ fn compile_prop(prop: &Prop, var_count: usize) -> Result<CompProp, CompileError>
             left: compile_term(left, var_count)?,
             right: compile_term(right, var_count)?,
         })),
-        Prop::And { props } => {
-            let children = props
-                .iter()
-                .map(|p| compile_prop(p, var_count))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(CompProp::And(children))
-        }
-        _ => Err(CompileError::UnsupportedProp(format!("{:?}", prop))),
     }
 }
 
@@ -170,7 +167,7 @@ fn compile_atom(atom: &Atom, var_count: usize) -> Result<CompAtom, CompileError>
         .collect::<Result<Vec<_>, CompileError>>()?;
 
     Ok(CompAtom {
-        table: atom.table.clone(),
+        table: atom.entity.clone(),
         row_id,
         values: columns,
     })
@@ -192,11 +189,10 @@ fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError>
             Ok(CompTerm::Var(index))
         }
         Term::Lit { lit } => Ok(CompTerm::Lit(lit.clone())),
-        Term::Proj { .. } | Term::Cons { .. } => Err(CompileError::UnsupportedTerm),
     }
 }
 
-impl fmt::Display for CompLaw {
+impl fmt::Display for CompRule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} := forall", DisplayPath(&self.path))?;
         for var in &self.vars {
@@ -279,34 +275,19 @@ struct DisplayColType<'a>(&'a ir::ColType);
 impl fmt::Display for DisplayColType<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
-            ir::ColType::EntityType { path } => write!(f, "{}", DisplayPath(path)),
-            ir::ColType::PrimType { prim } => write!(f, "{}", DisplayPrimType(*prim)),
-            ir::ColType::Tuple { fields } => {
-                write!(f, "{{")?;
-                for (idx, field) in fields.iter().enumerate() {
-                    if idx > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(
-                        f,
-                        "{} : {}",
-                        display_qname(&field.name),
-                        DisplayColType(&field.col_type)
-                    )?;
-                }
-                write!(f, "}}")
-            }
+            ir::ColType::RowId { path } => write!(f, "{}", DisplayPath(path)),
+            ir::ColType::BuiltinTy { builtin_ty } => write!(f, "{}", DisplayBuiltinTy(*builtin_ty)),
         }
     }
 }
 
-struct DisplayPrimType(ir::PrimType);
+struct DisplayBuiltinTy(ir::BuiltinTy);
 
-impl fmt::Display for DisplayPrimType {
+impl fmt::Display for DisplayBuiltinTy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0 {
-            ir::PrimType::PrimInt => write!(f, "int"),
-            ir::PrimType::PrimString => write!(f, "string"),
+            ir::BuiltinTy::BuiltinInt => write!(f, "int"),
+            ir::BuiltinTy::BuiltinStr => write!(f, "string"),
         }
     }
 }
@@ -339,45 +320,76 @@ fn var_name(index: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{ColType, Path, PrimType};
+    use crate::ir::{BuiltinTy, ColType, Path, Rule, RuleEntry, RuleVariant};
+
+    fn int_ty() -> ColType {
+        ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
+        }
+    }
+
+    fn row_id_ty(path: &str) -> ColType {
+        ColType::RowId {
+            path: Path::from(path),
+        }
+    }
+
+    fn enforced_rule(
+        path: &str,
+        var_types: Vec<ColType>,
+        antecedents: Vec<Prop>,
+        consequents: Vec<Prop>,
+    ) -> RuleEntry {
+        RuleEntry {
+            path: Path::from(path),
+            rule: Rule {
+                rule_variant: RuleVariant::Enforced,
+                var_names: (0..var_types.len())
+                    .map(|index| Path::from(format!("v{index}")))
+                    .collect(),
+                var_types,
+                antecedents,
+                consequents,
+            },
+        }
+    }
 
     #[test]
     fn compiles_single_atom_law() {
-        let law = LawEntry {
-            path: Path::from("T.total"),
-            law: ir::Law {
-                variables: vec![ColType::PrimType {
-                    prim: PrimType::PrimInt,
-                }],
-                antecedent: Prop::Atom {
-                    atom: Atom {
-                        table: Path::from("T"),
-                        row_id: None,
-                        values: vec![ir::ValueEntry {
-                            column: 0,
-                            term: Term::Var { index: 0 },
-                        }],
-                    },
+        let law = enforced_rule(
+            "T.total",
+            vec![int_ty()],
+            vec![Prop::Atom {
+                atom: Atom {
+                    entity: Path::from("T"),
+                    row_id: None,
+                    values: vec![ir::ValueEntry {
+                        column: 0,
+                        term: Term::Var { index: 0 },
+                    }],
                 },
-                consequent: Prop::Atom {
-                    atom: Atom {
-                        table: Path::from("T"),
-                        row_id: None,
-                        values: vec![ir::ValueEntry {
-                            column: 0,
-                            term: Term::Var { index: 0 },
-                        }],
-                    },
+            }],
+            vec![Prop::Atom {
+                atom: Atom {
+                    entity: Path::from("T"),
+                    row_id: None,
+                    values: vec![ir::ValueEntry {
+                        column: 0,
+                        term: Term::Var { index: 0 },
+                    }],
                 },
-            },
-        };
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
-        assert!(matches!(compiled.antecedent, CompProp::Atom(_)));
-        assert!(matches!(compiled.consequent, CompProp::Atom(_)));
+        assert!(matches!(compiled.antecedent, CompProp::And(_)));
+        assert!(matches!(compiled.consequent, CompProp::And(_)));
         assert_eq!(compiled.tables.len(), 1);
         match &compiled.antecedent {
-            CompProp::Atom(atom) => {
+            CompProp::And(children) if matches!(children.as_slice(), [CompProp::Atom(_)]) => {
+                let CompProp::Atom(atom) = &children[0] else {
+                    unreachable!()
+                };
                 assert_eq!(atom.table, Path::from("T"));
                 assert_eq!(atom.values[0].column_idx, 0);
                 assert_eq!(atom.values[0].term, CompTerm::Var(0));
@@ -388,26 +400,20 @@ mod tests {
 
     #[test]
     fn displays_compiled_law_like_lowered_output() {
-        let compiled = CompLaw {
+        let compiled = CompRule {
             path: Path::from("G.E.foreignKeys"),
             vars: vec![
                 VarSpec {
                     index: 0,
-                    ty: ColType::EntityType {
-                        path: Path::from("Graphs"),
-                    },
+                    ty: row_id_ty("Graphs"),
                 },
                 VarSpec {
                     index: 1,
-                    ty: ColType::EntityType {
-                        path: Path::from("G.V"),
-                    },
+                    ty: row_id_ty("G.V"),
                 },
                 VarSpec {
                     index: 2,
-                    ty: ColType::EntityType {
-                        path: Path::from("G.V"),
-                    },
+                    ty: row_id_ty("G.V"),
                 },
             ],
             antecedent: CompProp::Atom(CompAtom {
@@ -457,20 +463,16 @@ mod tests {
 
     #[test]
     fn displays_compiled_equality_consequent() {
-        let compiled = CompLaw {
+        let compiled = CompRule {
             path: Path::from("PathHom.empty"),
             vars: vec![
                 VarSpec {
                     index: 0,
-                    ty: ColType::EntityType {
-                        path: Path::from("Path0.t"),
-                    },
+                    ty: row_id_ty("Path0.t"),
                 },
                 VarSpec {
                     index: 1,
-                    ty: ColType::EntityType {
-                        path: Path::from("Path1.t"),
-                    },
+                    ty: row_id_ty("Path1.t"),
                 },
             ],
             antecedent: CompProp::Atom(CompAtom {
@@ -502,75 +504,63 @@ mod tests {
 
     #[test]
     fn compiles_eq_in_antecedent() {
-        let law = LawEntry {
-            path: Path::from("T.eq_antecedent"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: Prop::Eq {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
+        let law = enforced_rule(
+            "T.eq_antecedent",
+            vec![int_ty(), int_ty()],
+            vec![Prop::Eq {
+                left: Term::Var { index: 0 },
+                right: Term::Var { index: 1 },
+            }],
+            vec![Prop::Atom {
+                atom: Atom {
+                    entity: Path::from("T"),
+                    row_id: None,
+                    values: vec![],
                 },
-                consequent: Prop::Atom {
-                    atom: Atom {
-                        table: Path::from("T"),
-                        row_id: None,
-                        values: vec![],
-                    },
-                },
-            },
-        };
+            }],
+        );
         let compiled = compile_law(&law).expect("compile law");
-        assert!(matches!(compiled.antecedent, CompProp::Eq(_)));
+        assert!(matches!(
+            compiled.antecedent,
+            CompProp::And(ref children) if matches!(children.as_slice(), [CompProp::Eq(_)])
+        ));
     }
 
     #[test]
     fn compiles_consequent_equality() {
-        let law = LawEntry {
-            path: Path::from("T.eq"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: Prop::Atom {
-                    atom: Atom {
-                        table: Path::from("T"),
-                        row_id: None,
-                        values: vec![
-                            ir::ValueEntry {
-                                column: 0,
-                                term: Term::Var { index: 0 },
-                            },
-                            ir::ValueEntry {
-                                column: 1,
-                                term: Term::Var { index: 1 },
-                            },
-                        ],
-                    },
+        let law = enforced_rule(
+            "T.eq",
+            vec![int_ty(), int_ty()],
+            vec![Prop::Atom {
+                atom: Atom {
+                    entity: Path::from("T"),
+                    row_id: None,
+                    values: vec![
+                        ir::ValueEntry {
+                            column: 0,
+                            term: Term::Var { index: 0 },
+                        },
+                        ir::ValueEntry {
+                            column: 1,
+                            term: Term::Var { index: 1 },
+                        },
+                    ],
                 },
-                consequent: Prop::Eq {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
-                },
-            },
-        };
+            }],
+            vec![Prop::Eq {
+                left: Term::Var { index: 0 },
+                right: Term::Var { index: 1 },
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         match compiled.consequent {
-            CompProp::Eq(CompEq { left, right }) => {
-                assert_eq!(left, CompTerm::Var(0));
-                assert_eq!(right, CompTerm::Var(1));
+            CompProp::And(children) if matches!(children.as_slice(), [CompProp::Eq(_)]) => {
+                let CompProp::Eq(CompEq { left, right }) = &children[0] else {
+                    unreachable!()
+                };
+                assert_eq!(*left, CompTerm::Var(0));
+                assert_eq!(*right, CompTerm::Var(1));
             }
             other => panic!("expected CompProp::Eq, got {:?}", other),
         }
@@ -581,53 +571,42 @@ mod tests {
     #[test]
     fn compiles_conjunction_of_atoms_and_eq() {
         let t = Path::from("T");
-        let law = LawEntry {
-            path: Path::from("T.mixed"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: Prop::Atom {
-                    atom: Atom {
-                        table: t.clone(),
-                        row_id: None,
-                        values: vec![
-                            ir::ValueEntry {
-                                column: 0,
-                                term: Term::Var { index: 0 },
-                            },
-                            ir::ValueEntry {
-                                column: 1,
-                                term: Term::Var { index: 1 },
-                            },
-                        ],
-                    },
-                },
-                consequent: Prop::And {
-                    props: vec![
-                        Prop::Atom {
-                            atom: Atom {
-                                table: t.clone(),
-                                row_id: None,
-                                values: vec![ir::ValueEntry {
-                                    column: 0,
-                                    term: Term::Var { index: 0 },
-                                }],
-                            },
+        let law = enforced_rule(
+            "T.mixed",
+            vec![int_ty(), int_ty()],
+            vec![Prop::Atom {
+                atom: Atom {
+                    entity: t.clone(),
+                    row_id: None,
+                    values: vec![
+                        ir::ValueEntry {
+                            column: 0,
+                            term: Term::Var { index: 0 },
                         },
-                        Prop::Eq {
-                            left: Term::Var { index: 0 },
-                            right: Term::Var { index: 1 },
+                        ir::ValueEntry {
+                            column: 1,
+                            term: Term::Var { index: 1 },
                         },
                     ],
                 },
-            },
-        };
+            }],
+            vec![
+                Prop::Atom {
+                    atom: Atom {
+                        entity: t.clone(),
+                        row_id: None,
+                        values: vec![ir::ValueEntry {
+                            column: 0,
+                            term: Term::Var { index: 0 },
+                        }],
+                    },
+                },
+                Prop::Eq {
+                    left: Term::Var { index: 0 },
+                    right: Term::Var { index: 1 },
+                },
+            ],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         match &compiled.consequent {
@@ -638,35 +617,5 @@ mod tests {
             }
             other => panic!("expected CompProp::And, got {:?}", other),
         }
-    }
-
-    #[test]
-    fn rejects_proj_terms() {
-        let law = LawEntry {
-            path: Path::from("bad"),
-            law: ir::Law {
-                variables: vec![ColType::Tuple { fields: vec![] }],
-                antecedent: Prop::Atom {
-                    atom: Atom {
-                        table: Path::from("T"),
-                        row_id: Some(Term::Proj {
-                            term: Box::new(Term::Var { index: 0 }),
-                            field: vec!["x".to_string()],
-                        }),
-                        values: vec![],
-                    },
-                },
-                consequent: Prop::Atom {
-                    atom: Atom {
-                        table: Path::from("T"),
-                        row_id: None,
-                        values: vec![],
-                    },
-                },
-            },
-        };
-
-        let err = compile_law(&law).unwrap_err();
-        assert_eq!(err, CompileError::UnsupportedTerm);
     }
 }

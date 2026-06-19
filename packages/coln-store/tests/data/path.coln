@@ -1,6 +1,6 @@
 theory Graph := sig
-  V : Query
-  E : V -> V -> Query
+  V : Set
+  E : V -> V -> Set
 end
 
 theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
@@ -9,7 +9,7 @@ theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
 end
 
 theory Path (G : Graph) := sig
-  t : G.V -> G.V -> Query
+  t : G.V -> G.V -> Set
   empty : (x : G.V) -> t x x
   cons : (
     (x : G.V) ->
@@ -35,7 +35,7 @@ theory Path/hom (G : Graph) (P0 : Path G) (P1 : Path G) := sig
 end
 
 theory Main := sig
-  Graphs : Query
+  Graphs : Set
   G : Graphs -> Graph
   G0 : Graphs
   G1 : Graphs
@@ -43,4 +43,8 @@ theory Main := sig
   Path0 : Path (G G0)
   Path1 : Path (G G0)
   PathHom : Path/hom (G G0) Path0 Path1
+end
+
+realm Path @ Main
+
 end
