@@ -36,42 +36,54 @@ debug[D0315]: value happy has type Prop
 7 |   showtype happy
 7 |            ^^^^^
 
+debug[D0315]: type happy has level Level {mlevel = Set, hlevel = HProp}
+8 |   showlevel happy
+8 |             ^^^^^
+
 debug[D0315]: value is-parent has type person -> person -> Prop
-8 |   showtype is-parent
-8 |            ^^^^^^^^^
+9 |   showtype is-parent
+9 |            ^^^^^^^^^
 
 debug[D0315]: value happy -> person has type Theory
-9 |   showtype happy -> person
-9 |            ^^^^^^^^^^^^^^^
-
-debug[D0315]: value person -> happy has type PropTheory
-10 |   showtype person -> happy
+10 |   showtype happy -> person
 10 |            ^^^^^^^^^^^^^^^
 
+debug[D0315]: value person -> happy has type PropTheory
+11 |   showtype person -> happy
+11 |            ^^^^^^^^^^^^^^^
+
 debug[D0315]: value F.is-parent has type F.person -> F.person -> Prop
-17 |   showtype F.is-parent
-17 |            ^^^^^^^^^^^
+18 |   showtype F.is-parent
+18 |            ^^^^^^^^^^^
 
 debug[D0315]: value F.is-parent father son has type Prop
-18 |   showtype F.is-parent father son
-18 |            ^^^^^^^^^^^^^^^^^^^^^^
+19 |   showtype F.is-parent father son
+19 |            ^^^^^^^^^^^^^^^^^^^^^^
 
-debug[D0315]: value voldemort = tomriddle has type Prop
-28 |   showtype voldemort = tomriddle
-28 |            ^^^^^^^^^^^^^^^^^^^^^
+debug[D0315]: type voldemort = tomriddle has level Level {mlevel = Set, hlevel = HProp}
+29 |   showlevel voldemort = tomriddle
+29 |             ^^^^^^^^^^^^^^^^^^^^^
 
 debug[D0315]: value reveal has type voldemort = tomriddle
-32 |   showtype reveal
-32 |            ^^^^^^
+33 |   showtype reveal
+33 |            ^^^^^^
 
-debug[D0315]: value reveal = reveal has type Prop
-33 |   showtype (reveal = reveal)
-33 |             ^^^^^^^^^^^^^^^
+debug[D0315]: type reveal = reveal has level Level {mlevel = Set, hlevel = HUnit}
+34 |   showlevel (reveal = reveal)
+34 |              ^^^^^^^^^^^^^^^
 
 debug[D0315]: value Unit has type Prop
-40 |   showtype Unit
-40 |            ^^^^
+41 |   showtype Unit
+41 |            ^^^^
+
+debug[D0315]: type Unit has level Level {mlevel = Set, hlevel = HProp}
+42 |   showlevel Unit
+42 |             ^^^^
 
 debug[D0315]: value u = u has type Prop
-43 |   showtype u = u
-43 |            ^^^^^
+45 |   showtype u = u
+45 |            ^^^^^
+
+debug[D0315]: type u = u has level Level {mlevel = Set, hlevel = HUnit}
+46 |   showlevel u = u
+46 |             ^^^^^

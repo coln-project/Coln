@@ -20,6 +20,7 @@ lexConfig =
     , ("import", K.Decl)
     , ("showtypeb", K.Decl)
     , ("showtype", K.Decl)
+    , ("showlevel", K.Decl)
     , ("expand", K.Decl)
     , ("end", K.End)
     , ("Set", K.AKeyword)

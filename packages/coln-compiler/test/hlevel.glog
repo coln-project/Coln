@@ -5,6 +5,7 @@ theory Family := sig
   happy : Prop
 
   showtype happy
+  showlevel happy
   showtype is-parent
   showtype happy -> person
   showtype person -> happy
@@ -25,12 +26,12 @@ theory HP := sig
   voldemort : person
   tomriddle : person
 
-  showtype voldemort = tomriddle
+  showlevel voldemort = tomriddle
 
   reveal : voldemort = tomriddle
 
   showtype reveal
-  showtype (reveal = reveal)
+  showlevel (reveal = reveal)
 end
 
 def Unit : Prop := sig
@@ -38,7 +39,9 @@ end
 
 theory P := sig
   showtype Unit
+  showlevel Unit
 
   u : Unit
   showtype u = u
+  showlevel u = u
 end

@@ -22,6 +22,7 @@ import Coln.Report
 data DebugCommand
   = ShowType Span (Syn N)
   | ShowTypeBehavior Span (Syn N)
+  | ShowLevel Span (Typ N)
   | Expand Span (Syn N)
 
 runDebug :: ElabEnv N -> DebugCommand -> IO ()
@@ -31,6 +32,9 @@ runDebug e (ShowType sp s) = do
 runDebug e (ShowTypeBehavior sp s) = do
   (a, m) <- s.elab e
   report e.diagEnv sp DebugMisc ("value" <+> prtIn e m.val <+> "has type" <+> prtIn e a <+> "with behavior" <+> prtIn e (V.behavior a))
+runDebug e (ShowLevel sp s) = do
+  ty <- s.elab e
+  report e.diagEnv sp DebugMisc ("type" <+> prtIn e ty <+> "has level" <+> (pretty $ show $ levelOf ty))
 runDebug e (Expand sp s) = do
   (_, m) <- s.elab e
   report e.diagEnv sp DebugMisc ("expands to:" <+> prtIn e (canon m.val))

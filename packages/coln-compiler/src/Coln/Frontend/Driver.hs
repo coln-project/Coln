@@ -80,8 +80,11 @@ debugCommand e _ "showtype" n = do
   s <- syn e "argument to showtype" n
   pure $ ShowType (N.span n) s
 debugCommand e _ "showtypeb" n = do
-  s <- syn e "argument to showtype" n
+  s <- syn e "argument to showtypeb" n
   pure $ ShowTypeBehavior (N.span n) s
+debugCommand e _ "showlevel" n = do
+  ty <- typ e n
+  pure $ ShowLevel (N.span n) ty
 debugCommand e _ "expand" n = do
   s <- syn e "argument to expand" n
   pure $ Expand (N.span n) s
