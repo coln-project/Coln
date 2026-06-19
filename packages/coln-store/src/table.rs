@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::Write;
 
 use crate::commit::hash::CommitHash;
 use crate::ir;
-use crate::ir::{ColType, PrimType, Schema};
+use crate::ir::{BuiltinTy, ColType, Schema};
 use crate::txn::ops::TxnId;
 
 pub type TableOid = u64;
@@ -40,6 +41,9 @@ pub enum ValidationError {
     UnsupportedTuple {
         column: usize,
     },
+    InvalidPrimaryKeyName {
+        name: ColName,
+    },
     DuplicatePrimaryKey,
     /// No table registered for this path (e.g. batch apply).
     UnknownTable {
@@ -74,6 +78,9 @@ impl fmt::Display for ValidationError {
             ),
             ValidationError::UnsupportedTuple { column } => {
                 write!(f, "tuple columns are not supported yet (column {column})")
+            }
+            ValidationError::InvalidPrimaryKeyName { name } => {
+                write!(f, "primary key references unknown column: {name}")
             }
             ValidationError::DuplicatePrimaryKey => {
                 write!(f, "duplicate primary key")
@@ -121,7 +128,7 @@ impl CellValue {
 
     fn matches_schema(&self, col_type: &ColType, column: usize) -> Result<(), ValidationError> {
         match col_type {
-            ColType::EntityType { .. } => match self {
+            ColType::RowId { .. } => match self {
                 CellValue::Id(_) => Ok(()),
                 _ => Err(ValidationError::TypeMismatch {
                     column,
@@ -129,19 +136,18 @@ impl CellValue {
                     got: self.kind(),
                 }),
             },
-            ColType::PrimType { prim } => match (prim, self) {
-                (PrimType::PrimInt, CellValue::Int(_)) => Ok(()),
-                (PrimType::PrimString, CellValue::Str(_)) => Ok(()),
+            ColType::BuiltinTy { builtin_ty } => match (builtin_ty, self) {
+                (BuiltinTy::BuiltinInt, CellValue::Int(_)) => Ok(()),
+                (BuiltinTy::BuiltinStr, CellValue::Str(_)) => Ok(()),
                 _ => Err(ValidationError::TypeMismatch {
                     column,
-                    expected: match prim {
-                        PrimType::PrimInt => "int",
-                        PrimType::PrimString => "string",
+                    expected: match *builtin_ty {
+                        BuiltinTy::BuiltinInt => "int",
+                        BuiltinTy::BuiltinStr => "string",
                     },
                     got: self.kind(),
                 }),
             },
-            ColType::Tuple { .. } => Err(ValidationError::UnsupportedTuple { column }),
         }
     }
 }
@@ -163,11 +169,14 @@ pub struct RowView {
     pub values: Vec<CellValue>,
 }
 
+type ColName = ir::Path;
+
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
 #[derive(Debug, Clone)]
 pub struct Table {
     path: ir::Path,
     schema: Schema,
+    col_index: HashMap<ColName, usize>,
     pub(crate) row_ids: Vec<RowId>,
     pub(crate) cols: Vec<Vec<CellValue>>,
 }
@@ -175,8 +184,15 @@ pub struct Table {
 impl Table {
     pub fn new(path: ir::Path, schema: Schema) -> Self {
         let n = schema.columns.len();
+        let col_index = schema
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, column)| (column.path.clone(), i))
+            .collect();
         Self {
             path,
+            col_index,
             schema,
             row_ids: vec![],
             cols: vec![Vec::new(); n],
@@ -189,6 +205,10 @@ impl Table {
 
     pub fn path(&self) -> &ir::Path {
         &self.path
+    }
+
+    fn column_index(&self, name: &ir::Path) -> Option<usize> {
+        self.col_index.get(name).copied()
     }
 
     pub fn row_count(&self) -> usize {
@@ -256,18 +276,27 @@ impl Table {
         // do it here just in case.
         self.validate_column_count(values.len())?;
 
-        for (i, (col_type, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
-            value.matches_schema(col_type, i)?;
+        for (i, (col_entry, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
+            value.matches_schema(&col_entry.col_type, i)?;
         }
 
         if let Some(pk) = &self.schema.primary_key {
             if !pk.is_empty() {
                 let n = self.row_count();
+                let pk_indexes = pk
+                    .iter()
+                    .map(|col_name| {
+                        self.column_index(col_name).ok_or_else(|| {
+                            ValidationError::InvalidPrimaryKeyName {
+                                name: col_name.clone(),
+                            }
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
                 for row in 0..n {
-                    let same = pk.iter().all(|&col_idx| {
-                        let ci = col_idx as usize;
-                        self.cols[ci][row] == values[ci]
-                    });
+                    let same = pk_indexes
+                        .iter()
+                        .all(|&ci| self.cols[ci][row] == values[ci]);
                     if same {
                         return Err(ValidationError::DuplicatePrimaryKey);
                     }
@@ -285,11 +314,16 @@ impl Table {
     /// A primary key definition would occur in tables that do not end up in Query
     /// An empty primary key means the table would have at most one row.
     pub fn primary_key_values(&self, values: &[CellValue]) -> Option<Vec<CellValue>> {
-        self.schema.primary_key.as_ref().map(|pk| {
+        self.schema.primary_key.as_ref().and_then(|pk| {
             if pk.is_empty() {
-                Vec::new()
+                Some(Vec::new())
             } else {
-                pk.iter().map(|&i| values[i as usize].clone()).collect()
+                pk.iter()
+                    .map(|name| {
+                        let i = self.column_index(name)?;
+                        Some(values[i].clone())
+                    })
+                    .collect()
             }
         })
     }
@@ -326,6 +360,7 @@ mod tests {
     #[test]
     fn row_count_matches_inserts_when_schema_has_no_columns() {
         let schema = ir::Schema {
+            entity_variant: ir::EntityVariant::Table,
             columns: vec![],
             primary_key: None,
         };
@@ -348,8 +383,12 @@ mod tests {
     #[test]
     fn empty_primary_key_rejects_second_row() {
         let schema = ir::Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: ir::EntityVariant::Table,
+            columns: vec![ir::ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: Some(vec![]),
         };
@@ -367,12 +406,19 @@ mod tests {
     #[test]
     fn row_read_helpers_return_row_id_and_cells() {
         let schema = ir::Schema {
+            entity_variant: ir::EntityVariant::Table,
             columns: vec![
-                ColType::PrimType {
-                    prim: PrimType::PrimInt,
+                ir::ColumnEntry {
+                    path: Path::from("c0"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
                 },
-                ColType::PrimType {
-                    prim: PrimType::PrimString,
+                ir::ColumnEntry {
+                    path: Path::from("c1"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinStr,
+                    },
                 },
             ],
             primary_key: None,
@@ -403,12 +449,19 @@ mod tests {
     #[test]
     fn debug_dumps_rows() {
         let schema = ir::Schema {
+            entity_variant: ir::EntityVariant::Table,
             columns: vec![
-                ColType::PrimType {
-                    prim: PrimType::PrimInt,
+                ir::ColumnEntry {
+                    path: Path::from("c0"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
                 },
-                ColType::PrimType {
-                    prim: PrimType::PrimString,
+                ir::ColumnEntry {
+                    path: Path::from("c1"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinStr,
+                    },
                 },
             ],
             primary_key: None,

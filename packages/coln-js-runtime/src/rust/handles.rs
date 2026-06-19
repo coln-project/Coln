@@ -102,7 +102,7 @@ pub struct CommitResult {
 impl StoreHandle {
     #[wasm_bindgen(js_name = fromTheory)]
     pub fn from_theory(flat_theory_json: String) -> Result<StoreHandle, JsValue> {
-        let theory = serde_json::from_str::<ir::FlatTheory>(&flat_theory_json)
+        let theory = serde_json::from_str::<ir::FlatRealm>(&flat_theory_json)
             .map_err(|err| js_error(format!("invalid flat theory JSON: {err}")))?;
         let store = Store::try_from_theory(theory).map_err(js_error)?;
 

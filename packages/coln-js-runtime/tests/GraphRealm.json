@@ -1,0 +1,235 @@
+{
+  "entities": [
+    {
+      "path": [
+        [
+          "GraphRealm"
+        ],
+        [
+          "E"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "GraphRealm"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "GraphRealm"
+                ],
+                [
+                  "V"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "GraphRealm"
+        ],
+        [
+          "V"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [],
+        "primaryKey": null
+      }
+    }
+  ],
+  "rules": [
+    {
+      "path": [
+        [
+          "GraphRealm"
+        ],
+        [
+          "E"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "GraphRealm"
+              ],
+              [
+                "V"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "GraphRealm"
+              ],
+              [
+                "V"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "GraphRealm"
+                ],
+                [
+                  "E"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "GraphRealm"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "GraphRealm"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "GraphRealm"
+        ],
+        [
+          "V"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [],
+        "varTypes": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "GraphRealm"
+                ],
+                [
+                  "V"
+                ]
+              ],
+              "rowId": null,
+              "values": []
+            }
+          }
+        ],
+        "consequents": []
+      }
+    }
+  ]
+}

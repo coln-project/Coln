@@ -1,0 +1,20 @@
+# Task runner: https://github.com/casey/just
+# From packages/coln-js-runtime:
+#   just              # list recipes
+#   just test         # rust + npm tests
+
+default:
+    @just --list
+
+test-rust:
+    cargo test --all-targets
+
+build:
+    npm run build
+
+test-npm: build
+    npm test
+
+test: test-rust test-npm
+
+check: test

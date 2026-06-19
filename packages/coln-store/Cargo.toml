@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 blake3 = "1.8.5"
-coln-lang-rs = { path = "../coln-lang-rs", features = ["serde"] }
+coln-lang-rs = { path = "../coln-lang-rs" }
 hex = "0.4.3"
 hexane = { git = "https://github.com/automerge/automerge", branch = "hexane_v1", package = "hexane" }
 js-sys = { version = "0.3.83", optional = true }

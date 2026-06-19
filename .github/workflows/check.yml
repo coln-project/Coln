@@ -47,6 +47,55 @@ jobs:
       - name: Run tests
         run: cargo test
 
+  coln-js-runtime-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ⬇️
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-cli
+        run: |
+          VERSION="0.2.123"
+          curl -sSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$VERSION/wasm-bindgen-$VERSION-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo mv "wasm-bindgen-$VERSION-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/
+          wasm-bindgen --version
+
+      - name: Install wasm-opt
+        run: |
+          VERSION="version_124"
+          curl -sSL "https://github.com/WebAssembly/binaryen/releases/download/$VERSION/binaryen-$VERSION-x86_64-linux.tar.gz" | tar xz
+          sudo mv "binaryen-$VERSION/bin/wasm-opt" /usr/local/bin/
+          wasm-opt --version
+
+      - name: Install wasm-bodge
+        run: cargo install wasm-bodge --locked
+
+      - name: Install just
+        uses: extractions/setup-just@v3
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/coln-js-runtime/package-lock.json
+
+      - name: Install npm tooling
+        run: npm install -g esbuild tsx
+
+      - name: Install npm dependencies
+        working-directory: packages/coln-js-runtime
+        run: npm ci
+
+      - name: Run checks
+        working-directory: packages/coln-js-runtime
+        run: just check
+
   haskell-tests:
     runs-on: ubuntu-latest
 

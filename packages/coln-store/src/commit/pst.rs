@@ -129,26 +129,30 @@ mod tests {
     use crate::commit::chunk::{ChunkType, Header};
     use crate::commit::hash::{CommitHash, HASH_SIZE};
     use crate::commit::wire::CommitData;
-    use crate::ir::{FlatTheory, Path, Schema, TableEntry};
+    use crate::ir::{FlatRealm, Path, Schema, TableEntry};
     use crate::table::CellValue;
-    use coln_lang_rs::ir::{ColType, PrimType};
+    use coln_lang_rs::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant};
 
     fn int_schema() -> Schema {
         Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         }
     }
 
-    fn int_theory() -> FlatTheory {
-        FlatTheory {
+    fn int_theory() -> FlatRealm {
+        FlatRealm {
             tables: vec![TableEntry {
                 path: Path::from("T"),
                 table: int_schema(),
             }],
-            laws: vec![],
+            rules: vec![],
         }
     }
 

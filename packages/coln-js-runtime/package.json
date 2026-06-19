@@ -1,5 +1,5 @@
 {
-  "name": "@coln-project/coln-js-runtime",
+  "name": "@coln-project/runtime",
   "version": "0.1.0",
   "private": true,
   "type": "module",

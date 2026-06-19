@@ -3,13 +3,13 @@ use std::{collections::BTreeSet, path::PathBuf, sync::Once};
 use coln_store::{
     commit::hash::CommitHash,
     commit::pst,
-    ir::{self, FlatTheory, Path},
+    ir::{self, FlatRealm, Path},
     store::{Store, error::StoreIntError},
     table::{CellValue, RowId},
 };
 use tracing_subscriber::EnvFilter;
 
-static PATHS_IR: &str = "paths.json";
+static PATHS_IR: &str = "Path.json";
 
 // For testing only
 #[allow(dead_code)]
@@ -27,21 +27,21 @@ fn init_test_logging() {
     });
 }
 
-fn fixture_theory(name: &str) -> FlatTheory {
+fn fixture_theory(name: &str) -> FlatRealm {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data")
         .join(name);
 
     let json = std::fs::read_to_string(p).expect("read tests/data/paths.json");
-    serde_json::from_str(&json).expect("parse FlatTheory from JSON")
+    serde_json::from_str(&json).expect("parse FlatRealm from JSON")
 }
 
 fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
-    let graphs = Path::from("Graphs");
-    let g0 = Path::from("G0");
-    let g1 = Path::from("G1");
-    let gv = Path::from("G.V");
-    let ge = Path::from("G.E");
+    let graphs = Path::from("Path.Graphs");
+    let g0 = Path::from("Path.G0");
+    let g1 = Path::from("Path.G1");
+    let gv = Path::from("Path.G.V");
+    let ge = Path::from("Path.G.E");
 
     let mut tx = store.transaction();
     let gid1 = tx.add(&graphs, vec![])?;
@@ -60,11 +60,11 @@ fn add_vertex_to_graph(
     store: &mut Store,
     graph_row: usize,
 ) -> Result<CommitHash, Box<StoreIntError>> {
-    let graphs = Path::from("Graphs");
-    let gv = Path::from("G.V");
+    let graphs = Path::from("Path.Graphs");
+    let gv = Path::from("Path.G.V");
     let graph = store
         .table_at(&graphs)
-        .expect("Graphs table")
+        .expect("Path.Graphs table")
         .row_id_at(graph_row)
         .expect("graph row");
 
@@ -74,16 +74,16 @@ fn add_vertex_to_graph(
 }
 
 fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, Box<StoreIntError>> {
-    let graphs = Path::from("Graphs");
-    let gv = Path::from("G.V");
-    let ge = Path::from("G.E");
+    let graphs = Path::from("Path.Graphs");
+    let gv = Path::from("Path.G.V");
+    let ge = Path::from("Path.G.E");
 
-    let tv = store.table_at(&gv).expect("G.V table");
+    let tv = store.table_at(&gv).expect("Path.G.V table");
     let v1 = tv.row_id_at(0).expect("vertex 1");
     let v2 = tv.row_id_at(1).expect("vertex 2");
     let graph = store
         .table_at(&graphs)
-        .expect("Graphs table")
+        .expect("Path.Graphs table")
         .row_id_at(0)
         .expect("first graph row");
 
@@ -98,19 +98,19 @@ fn test_read_path_coln() {
 
     assert_eq!(
         theory.tables.len(),
-        10,
+        16,
         "expected table count from coln paths.json"
     );
     assert_eq!(
-        theory.laws.len(),
-        12,
+        theory.rules.len(),
+        27,
         "expected law count from coln paths.json"
     );
 
     let g_edge = theory
         .tables
         .iter()
-        .find(|t| t.path == Path::from("G.E"))
+        .find(|t| t.path == Path::from("Path.G.E"))
         .expect("G,E table");
     assert_eq!(g_edge.table.columns.len(), 3);
     assert_eq!(g_edge.table.primary_key, None);
@@ -118,50 +118,52 @@ fn test_read_path_coln() {
     let graphs = theory
         .tables
         .iter()
-        .find(|t| t.path == Path::from("Graphs"))
-        .expect("Graphs table");
+        .find(|t| t.path == Path::from("Path.Graphs"))
+        .expect("Path.Graphs table");
     assert!(graphs.table.columns.is_empty());
 
     let hom_e_fk = theory
-        .laws
+        .rules
         .iter()
-        .find(|e| e.path == Path::from("Hom.E.foreignKeys"))
-        .expect("Hom E foreignKeys law path");
+        .find(|e| e.path == Path::from("Path.Hom.E.foreignKey"))
+        .expect("Path.Hom.E.foreignKey law path");
     assert!(
-        !hom_e_fk.law.variables.is_empty(),
+        !hom_e_fk.rule.var_names.is_empty(),
         "Hom,E foreignKeys law should bind variables"
     );
 }
 
 #[test]
-fn test_compile_path_laws() {
+fn test_compile_path_rules() {
     let theory = fixture_theory(PATHS_IR);
-    let expected_law_count = theory.laws.len();
+    let expected_law_count = theory.rules.len();
     let store = Store::try_from_theory(theory).expect("valid theory");
 
-    assert!(expected_law_count > 0, "fixture should contain laws");
-    assert_eq!(store.laws().len(), expected_law_count);
+    assert!(expected_law_count > 0, "fixture should contain rules");
+    assert_eq!(store.rules().len(), expected_law_count);
 }
 
 #[test]
 // Builds a minimal valid graph dataset from the fixture, including the witness
-// rows required by the fixture's totality laws before inserting vertices/edges.
+// rows required by the fixture's totality rules before inserting vertices/edges.
 fn test_add_data_and_law_enforce() {
     let theory = fixture_theory(PATHS_IR);
     let n_tables = theory.tables.len();
-    let n_laws = theory.laws.len();
+    let n_rules = theory.rules.len();
 
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
     assert_eq!(store.table_count(), n_tables);
-    assert_eq!(store.laws().len(), n_laws);
-    assert!(store.resolve_table(&Path::from("Graphs")).is_some());
+    assert_eq!(store.rules().len(), n_rules);
+    assert!(store.resolve_table(&Path::from("Path.Graphs")).is_some());
 
     // One explicit column (Graphs); row id will be assigned by the db.
 
     add_basic_data_to_path(&mut store).expect("add basic data");
 
-    let ge = store.table_at(&Path::from("G.E")).expect("get table G.E");
+    let ge = store
+        .table_at(&Path::from("Path.G.E"))
+        .expect("get table Path.G.E");
     assert_eq!(ge.schema().columns.len(), 3);
     assert_eq!(ge.row_count(), 1);
 }
@@ -174,18 +176,22 @@ fn test_add_edge_referencing_vertices_from_previous_commit() {
     add_basic_data_to_path(&mut store).expect("add basic data");
 
     let graph = store
-        .table_at(&Path::from("Graphs"))
-        .expect("Graphs table")
+        .table_at(&Path::from("Path.Graphs"))
+        .expect("Path.Graphs table")
         .row_id_at(0)
         .expect("first graph row");
-    let vertices = store.table_at(&Path::from("G.V")).expect("G.V table");
+    let vertices = store
+        .table_at(&Path::from("Path.G.V"))
+        .expect("Path.G.V table");
     let v1 = vertices.row_id_at(0).expect("first vertex row");
     let v2 = vertices.row_id_at(1).expect("second vertex row");
 
     let edge_commit =
         add_extra_edge_to_first_graph(&mut store).expect("add edge in later transaction");
 
-    let edges = store.table_at(&Path::from("G.E")).expect("G.E table");
+    let edges = store
+        .table_at(&Path::from("Path.G.E"))
+        .expect("Path.G.E table");
     assert_eq!(edges.row_count(), 2);
     assert_eq!(
         edges.row_id_at(1).expect("second edge row"),
@@ -206,26 +212,41 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
-    let graphs = store.table_at(&Path::from("Graphs")).expect("Graph table");
-    let g0 = store.table_at(&Path::from("G0")).expect("G0 table");
-    let g1 = store.table_at(&Path::from("G1")).expect("G1 table");
+    let graphs = store
+        .table_at(&Path::from("Path.Graphs"))
+        .expect("Path.Graphs table");
+    let g0 = store
+        .table_at(&Path::from("Path.G0"))
+        .expect("Path.G0 table");
+    let g1 = store
+        .table_at(&Path::from("Path.G1"))
+        .expect("Path.G1 table");
 
     assert_eq!(graphs.row_count(), 0);
     assert_eq!(g0.row_count(), 0);
     assert_eq!(g1.row_count(), 0);
 
     let mut tx = store.transaction();
-    tx.add(&Path::from("Graphs"), vec![])
+    tx.add(&Path::from("Path.Graphs"), vec![])
         .expect("add graph row");
     let err = tx.commit().expect_err("missing g0 and g1");
     assert!(matches!(*err, StoreIntError::Law(_)));
 
     assert_eq!(
-        store.table_at(&Path::from("Graphs")).unwrap().row_count(),
+        store
+            .table_at(&Path::from("Path.Graphs"))
+            .unwrap()
+            .row_count(),
         0
     );
-    assert_eq!(store.table_at(&Path::from("G0")).unwrap().row_count(), 0);
-    assert_eq!(store.table_at(&Path::from("G1")).unwrap().row_count(), 0);
+    assert_eq!(
+        store.table_at(&Path::from("Path.G0")).unwrap().row_count(),
+        0
+    );
+    assert_eq!(
+        store.table_at(&Path::from("Path.G1")).unwrap().row_count(),
+        0
+    );
 }
 
 #[test]
@@ -233,19 +254,19 @@ fn test_fk() {
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
-    let graphs = Path::from("Graphs");
-    let gv = Path::from("G.V");
-    let ge = Path::from("G.E");
+    let graphs = Path::from("Path.Graphs");
+    let gv = Path::from("Path.G.V");
+    let ge = Path::from("Path.G.E");
 
     add_basic_data_to_path(&mut store).expect("add valid baseline data");
     let gid = store
         .table_at(&graphs)
-        .expect("Graphs table")
+        .expect("Path.Graphs table")
         .row_id_at(0)
         .expect("graph row");
     let vid = store
         .table_at(&gv)
-        .expect("G.V table")
+        .expect("Path.G.V table")
         .row_id_at(0)
         .expect("vertex row");
 
@@ -271,8 +292,8 @@ fn test_persist_roundtrip() {
     assert!(r.is_ok());
     assert!(
         store
-            .table_at(&ir::Path::from("G.V"))
-            .expect("table G.V")
+            .table_at(&ir::Path::from("Path.G.V"))
+            .expect("table Path.G.V")
             .row_count()
             > 0
     );
@@ -294,7 +315,8 @@ fn test_divergent_commits_merge_between_stores() {
     // make two commits different
     {
         let mut tx = base.transaction();
-        tx.add(&Path::from("Graphs"), vec![]).expect("add a graph");
+        tx.add(&Path::from("Path.Graphs"), vec![])
+            .expect("add a graph");
         tx.commit().expect("commit second graph");
     }
 
@@ -316,8 +338,12 @@ fn test_divergent_commits_merge_between_stores() {
         expected_heads
     );
 
-    let left_vertices = left.table_at(&Path::from("G.V")).expect("left G.V");
-    let right_vertices = right.table_at(&Path::from("G.V")).expect("right G.V");
+    let left_vertices = left
+        .table_at(&Path::from("Path.G.V"))
+        .expect("left Path.G.V");
+    let right_vertices = right
+        .table_at(&Path::from("Path.G.V"))
+        .expect("right Path.G.V");
     assert_eq!(left_vertices.row_count(), 4);
     assert_eq!(right_vertices.row_count(), 4);
 

@@ -8,9 +8,9 @@ use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::root::{RootCommitData, RootTableEntry};
-use crate::ir::{self, FlatTheory, LawEntry};
-use crate::solver::compile::{CompLaw, CompileError};
-use crate::solver::validate::LawViolation;
+use crate::ir::{self, FlatRealm, RuleEntry};
+use crate::solver::compile::{CompRule, CompileError};
+use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreIntError};
 use crate::table::{CellValue, RowId, RowView, Table, TableOid, ValidationError};
@@ -26,10 +26,10 @@ pub struct Store {
     pub(crate) next_oid: TableOid,
     path_to_oid: HashMap<ir::Path, TableOid>,
     tables: HashMap<TableOid, Table>,
-    /// Source law entries retained for persistence. Compiled form lives in `laws`.
-    law_entries: Vec<ir::LawEntry>,
-    /// Compiled law for this instance; table schemas live only on each [`Table`].
-    laws: Vec<CompLaw>,
+    /// Source rule entries retained for persistence. Compiled form lives in `rules`.
+    rule_entries: Vec<ir::RuleEntry>,
+    /// Compiled rule for this instance; table schemas live only on each [`Table`].
+    rules: Vec<CompRule>,
     commits: CommitGraph,
 }
 
@@ -42,8 +42,8 @@ impl Store {
             next_oid: 0,
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
-            law_entries: vec![],
-            laws: vec![],
+            rule_entries: vec![],
+            rules: vec![],
             commits,
         }
     }
@@ -82,16 +82,16 @@ impl Store {
         self.resolve_table(path).and_then(|oid| self.table_mut(oid))
     }
 
-    pub fn laws(&self) -> &[CompLaw] {
-        &self.laws
+    pub fn rules(&self) -> &[CompRule] {
+        &self.rules
     }
 
     pub fn table_count(&self) -> usize {
         self.tables.len()
     }
 
-    pub fn law_entries(&self) -> &[ir::LawEntry] {
-        &self.law_entries
+    pub fn rule_entries(&self) -> &[ir::RuleEntry] {
+        &self.rule_entries
     }
 
     pub fn scan_table(&self, table: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
@@ -137,20 +137,20 @@ impl Store {
             tables_map.insert(entry.oid, Table::new(path, entry.schema));
         }
 
-        let laws = Store::compile_laws(&root.laws)?;
+        let rules = Store::compile_rules(&root.laws)?;
         Ok(Self {
             next_oid,
             path_to_oid,
             tables: tables_map,
-            law_entries: root.laws,
-            laws,
+            rule_entries: root.laws,
+            rules,
             commits: CommitGraph::new(),
         })
     }
 
     fn root_commit_graph(
         tables: &HashMap<TableOid, Table>,
-        law_entries: &[LawEntry],
+        rule_entries: &[RuleEntry],
     ) -> Result<CommitGraph, CodecError> {
         let mut table_entries = tables
             .iter()
@@ -164,7 +164,7 @@ impl Store {
 
         let root = RootCommitData {
             tables: table_entries,
-            laws: law_entries.to_vec(),
+            laws: rule_entries.to_vec(),
         };
 
         let mut graph = CommitGraph::new();
@@ -245,13 +245,13 @@ impl Store {
         OwnedTransaction::new(self)
     }
 
-    /// Builds an empty column store per `theory.tables` and keeps only `theory.laws`
+    /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
-    pub fn try_from_theory(theory: FlatTheory) -> Result<Self, Box<StoreIntError>> {
-        let FlatTheory { tables, laws } = theory;
+    pub fn try_from_theory(theory: FlatRealm) -> Result<Self, Box<StoreIntError>> {
+        let FlatRealm { tables, rules } = theory;
         info!(
             table_count = tables.len(),
-            law_count = laws.len(),
+            rule_count = rules.len(),
             "building store from theory"
         );
 
@@ -266,43 +266,43 @@ impl Store {
             tables_map.insert(oid, Table::new(entry.path, entry.table));
         }
 
-        let comp_laws = Store::compile_laws(&laws)?;
-        let commits = Self::root_commit_graph(&tables_map, &laws)?;
+        let comp_rules = Store::compile_rules(&rules)?;
+        let commits = Self::root_commit_graph(&tables_map, &rules)?;
         info!(
             table_count = tables_map.len(),
-            compiled_law_count = comp_laws.len(),
+            compiled_rule_count = comp_rules.len(),
             "store initialized"
         );
         Ok(Self {
             next_oid,
             path_to_oid,
             tables: tables_map,
-            law_entries: laws,
-            laws: comp_laws,
+            rule_entries: rules,
+            rules: comp_rules,
             commits,
         })
     }
 }
 
 impl Store {
-    // Dealing with laws
-    fn compile_laws(laws: &[LawEntry]) -> Result<Vec<CompLaw>, CompileError> {
-        debug!(law_count = laws.len(), "compiling laws");
-        let comp = laws
+    // Dealing with rules
+    fn compile_rules(rules: &[RuleEntry]) -> Result<Vec<CompRule>, CompileError> {
+        debug!(rule_count = rules.len(), "compiling rules");
+        let comp = rules
             .iter()
             .map(solver::compile::compile_law)
             .collect::<Result<Vec<_>, CompileError>>()?;
-        debug!(compiled_law_count = comp.len(), "compiled laws");
+        debug!(compiled_rule_count = comp.len(), "compiled rules");
         Ok(comp)
     }
 
     pub fn check_laws(&self) -> Result<(), Box<StoreIntError>> {
-        debug!(law_count = self.laws.len(), "checking laws");
-        self.laws()
+        debug!(rule_count = self.rules.len(), "checking rules");
+        self.rules()
             .iter()
             .map(|law_entry| solver::validate::check_law(self, law_entry))
-            .collect::<Result<Vec<_>, Box<LawViolation>>>()?;
-        debug!(law_count = self.laws.len(), "all laws satisfied");
+            .collect::<Result<Vec<_>, Box<RuleViolation>>>()?;
+        debug!(rule_count = self.rules.len(), "all rules satisfied");
         Ok(())
     }
 }
@@ -532,55 +532,58 @@ impl Default for Store {
 #[cfg(test)]
 pub(crate) mod test_support {
     use crate::ir::{
-        Atom, ColType, FlatTheory, Law, LawEntry, Path, PrimType, Prop, Schema, TableEntry, Term,
-        ValueEntry,
+        Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Prop, Rule,
+        RuleEntry, RuleVariant, Schema, TableEntry, Term, ValueEntry,
     };
 
-    pub fn link_foreign_key_theory() -> FlatTheory {
+    fn int_col_type() -> ColType {
+        ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
+        }
+    }
+
+    fn int_entity(col_names: &[&str]) -> Schema {
+        Schema {
+            entity_variant: EntityVariant::Table,
+            columns: col_names
+                .iter()
+                .map(|name| ColumnEntry {
+                    path: Path::from(*name),
+                    col_type: int_col_type(),
+                })
+                .collect(),
+            primary_key: None,
+        }
+    }
+
+    pub fn link_foreign_key_theory() -> FlatRealm {
         let left = Path::from("Left");
         let right = Path::from("Right");
         let link = Path::from("Link");
-        let int_col = || ColType::PrimType {
-            prim: PrimType::PrimInt,
-        };
-        FlatTheory {
+        FlatRealm {
             tables: vec![
                 TableEntry {
                     path: left.clone(),
-                    table: Schema {
-                        columns: vec![int_col()],
-                        primary_key: None,
-                    },
+                    table: int_entity(&["x"]),
                 },
                 TableEntry {
                     path: right.clone(),
-                    table: Schema {
-                        columns: vec![int_col()],
-                        primary_key: None,
-                    },
+                    table: int_entity(&["x"]),
                 },
                 TableEntry {
                     path: link.clone(),
-                    table: Schema {
-                        columns: vec![int_col(), int_col()],
-                        primary_key: None,
-                    },
+                    table: int_entity(&["a", "b"]),
                 },
             ],
-            laws: vec![LawEntry {
+            rules: vec![RuleEntry {
                 path: Path::from("Link.foreignKeys"),
-                law: Law {
-                    variables: vec![
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                    ],
-                    antecedent: Prop::Atom {
+                rule: Rule {
+                    rule_variant: RuleVariant::Enforced,
+                    var_names: vec![Path::from("a"), Path::from("b")],
+                    var_types: vec![int_col_type(), int_col_type()],
+                    antecedents: vec![Prop::Atom {
                         atom: Atom {
-                            table: link.clone(),
+                            entity: link.clone(),
                             row_id: None,
                             values: vec![
                                 ValueEntry {
@@ -593,31 +596,29 @@ pub(crate) mod test_support {
                                 },
                             ],
                         },
-                    },
-                    consequent: Prop::And {
-                        props: vec![
-                            Prop::Atom {
-                                atom: Atom {
-                                    table: left.clone(),
-                                    row_id: None,
-                                    values: vec![ValueEntry {
-                                        column: 0,
-                                        term: Term::Var { index: 0 },
-                                    }],
-                                },
+                    }],
+                    consequents: vec![
+                        Prop::Atom {
+                            atom: Atom {
+                                entity: left.clone(),
+                                row_id: None,
+                                values: vec![ValueEntry {
+                                    column: 0,
+                                    term: Term::Var { index: 0 },
+                                }],
                             },
-                            Prop::Atom {
-                                atom: Atom {
-                                    table: right.clone(),
-                                    row_id: None,
-                                    values: vec![ValueEntry {
-                                        column: 0,
-                                        term: Term::Var { index: 1 },
-                                    }],
-                                },
+                        },
+                        Prop::Atom {
+                            atom: Atom {
+                                entity: right.clone(),
+                                row_id: None,
+                                values: vec![ValueEntry {
+                                    column: 0,
+                                    term: Term::Var { index: 1 },
+                                }],
                             },
-                        ],
-                    },
+                        },
+                    ],
                 },
             }],
         }
@@ -629,13 +630,17 @@ mod tests {
 
     use super::test_support::link_foreign_key_theory;
     use super::*;
-    use crate::ir::{ColType, Path, PrimType, Schema};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
 
     fn single_int_store() -> Store {
         let path = Path::from("T");
         let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
@@ -655,7 +660,11 @@ mod tests {
     fn test_store_create_table() {
         let path = Path::from("table1");
         let schema = Schema {
-            columns: vec![ColType::EntityType { path: path.clone() }],
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::RowId { path: path.clone() },
+            }],
             primary_key: None,
         };
         let table = Table::new(path.clone(), schema);
@@ -670,8 +679,12 @@ mod tests {
 
         // Second registration gets the next oid.
         let schema2 = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
@@ -686,7 +699,11 @@ mod tests {
     fn test_store_resolve_table_oid() {
         let path = Path::from("G.E");
         let schema = Schema {
-            columns: vec![ColType::EntityType { path: path.clone() }],
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::RowId { path: path.clone() },
+            }],
             primary_key: None,
         };
 
@@ -701,8 +718,12 @@ mod tests {
     fn transaction_validates_then_applies() {
         let path = Path::from("T");
         let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
@@ -726,8 +747,12 @@ mod tests {
     fn transaction_unknown_table_leaves_store_unchanged() {
         let path = Path::from("T");
         let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
@@ -753,10 +778,14 @@ mod tests {
     fn transaction_duplicate_primary_key_within_batch() {
         let path = Path::from("T");
         let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
-            primary_key: Some(vec![0]),
+            primary_key: Some(vec![Path::from("c0")]),
         };
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
@@ -779,8 +808,12 @@ mod tests {
     fn transaction_single_insert_commits() {
         let path = Path::from("T");
         let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
@@ -1001,15 +1034,15 @@ mod tests {
             StoreIntError::Compile(CompileError::UnsupportedTerm)
         ));
 
-        let compiled_law = solver::compile::CompLaw {
+        let compiled_rule = solver::compile::CompRule {
             path: Path::from("T.total"),
             vars: vec![],
             antecedent: solver::compile::CompProp::And(vec![]),
             consequent: solver::compile::CompProp::And(vec![]),
             tables: vec![Path::from("T")],
         };
-        let violation = LawViolation {
-            law: compiled_law,
+        let violation = RuleViolation {
+            law: compiled_rule,
             cause: solver::validate::ViolationCause::MissingAtom(solver::compile::CompAtom {
                 table: Path::from("T"),
                 row_id: None,

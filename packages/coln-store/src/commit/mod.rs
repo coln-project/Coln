@@ -203,7 +203,7 @@ mod tests {
     use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::root::{RootCommitData, RootTableEntry};
-    use crate::ir::{ColType, Path, PrimType};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path};
     use crate::table::RowId;
     use crate::txn::ops::{RowRef, TempRowId};
     use std::sync::LazyLock;
@@ -214,8 +214,12 @@ mod tests {
 
     fn int_schema() -> &'static Schema {
         static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         });
@@ -224,12 +228,19 @@ mod tests {
 
     fn entity_pair_schema() -> &'static Schema {
         static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
+            entity_variant: EntityVariant::Table,
             columns: vec![
-                ColType::EntityType {
-                    path: Path::from("T.E"),
+                ColumnEntry {
+                    path: Path::from("c0"),
+                    col_type: ColType::RowId {
+                        path: Path::from("T.E"),
+                    },
                 },
-                ColType::EntityType {
-                    path: Path::from("T.E"),
+                ColumnEntry {
+                    path: Path::from("c1"),
+                    col_type: ColType::RowId {
+                        path: Path::from("T.E"),
+                    },
                 },
             ],
             primary_key: None,
@@ -239,15 +250,25 @@ mod tests {
 
     fn mixed_schema() -> &'static Schema {
         static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
+            entity_variant: EntityVariant::Table,
             columns: vec![
-                ColType::EntityType {
-                    path: Path::from("T.E"),
+                ColumnEntry {
+                    path: Path::from("c0"),
+                    col_type: ColType::RowId {
+                        path: Path::from("T.E"),
+                    },
                 },
-                ColType::EntityType {
-                    path: Path::from("T.E"),
+                ColumnEntry {
+                    path: Path::from("c1"),
+                    col_type: ColType::RowId {
+                        path: Path::from("T.E"),
+                    },
                 },
-                ColType::PrimType {
-                    prim: PrimType::PrimString,
+                ColumnEntry {
+                    path: Path::from("c2"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinStr,
+                    },
                 },
             ],
             primary_key: None,
@@ -275,10 +296,14 @@ mod tests {
 
     fn owned_int_schema() -> Schema {
         Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
-            primary_key: Some(vec![0]),
+            primary_key: Some(vec![Path::from("c0")]),
         }
     }
 
@@ -484,7 +509,10 @@ mod tests {
         assert_eq!(decoded.tables[0].path, "T");
         assert_eq!(decoded.tables[0].oid, 0);
         assert_eq!(decoded.tables[0].schema.columns, owned_int_schema().columns);
-        assert_eq!(decoded.tables[0].schema.primary_key, Some(vec![0]));
+        assert_eq!(
+            decoded.tables[0].schema.primary_key,
+            Some(vec![Path::from("c0")])
+        );
         assert!(decoded.laws.is_empty());
     }
 
