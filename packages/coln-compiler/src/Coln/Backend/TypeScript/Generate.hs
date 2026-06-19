@@ -233,7 +233,7 @@ generate ge outdir = do
     case genEntryModule (runtimeImport : toList imports) e.ty ev of
       Just mod -> do
         writeModule outdir x mod
-        pure (imports :> TS.ImportQualified (mangle x) ("./" <> dpretty x <> ".ts"))
+        pure (imports :> TS.ImportQualified (mangle x) ("./" <> mangleToDoc x <> ".ts"))
       Nothing -> pure imports
   let imports = runtimeImport : toList typeImports
   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
