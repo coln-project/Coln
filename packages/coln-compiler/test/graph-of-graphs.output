@@ -43,19 +43,16 @@ generators: node
     E = (fun [ v0 : GraphOfGraphsRealm.base.V []
     , v1 : GraphOfGraphsRealm.base.V []
     , a : GraphOfGraphsRealm.base.E [a := v0, b := v1]
-    , v0 : GraphOfGraphsRealm.fiber.V [a := v0]
-    , v1 : GraphOfGraphsRealm.fiber.V [a := `v0^1`]
-    , b : GraphOfGraphsRealm.fiber.E [ a := `v0^1`
-    , b := v0
-    , c := v1 ] ] -> GraphOfGraphsRealm.fiber.E [ a := `v1^1`
-    , b := GraphOfGraphsRealm.action.V [ v0 := `v0^1`
-    , v1 := `v1^1`
+    , v0/a : GraphOfGraphsRealm.fiber.V [a := v0]
+    , v1/a : GraphOfGraphsRealm.fiber.V [a := v0]
+    , b : GraphOfGraphsRealm.fiber.E [ a := v0
+    , b := v0/a
+    , c := v1/a ] ] -> GraphOfGraphsRealm.fiber.E [ a := v1
+    , b := GraphOfGraphsRealm.action.V [v0 := v0, v1 := v1, a := a, b := v0/a]
+    , c := GraphOfGraphsRealm.action.V [ v0 := v0
+    , v1 := v1
     , a := a
-    , b := v0 ]
-    , c := GraphOfGraphsRealm.action.V [ v0 := `v0^1`
-    , v1 := `v1^1`
-    , a := a
-    , b := v1 ] ])
+    , b := v1/a ] ])
   end
 end
 
