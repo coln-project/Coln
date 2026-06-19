@@ -225,7 +225,7 @@ instance LevelOf (Ty c) where
     Decode n -> decodesInto n.universe
     Function ft -> levelOf ft.variant
     Record rt -> rt.level
-    Eq ety -> levelOf ety.at
+    Eq ety -> Level (levelOf ety.at).mlevel (equalityHLevelOf (levelOf ety.at).hlevel)
     BuiltinTy _ -> Level Set HSet -- Only Int/String so far
     EltOf _ _ -> Level Set HSet -- TODO
 

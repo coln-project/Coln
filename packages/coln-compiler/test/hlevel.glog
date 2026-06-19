@@ -16,4 +16,6 @@ theory Q (F : Family) := sig
 
   showtype F.is-parent
   showtype F.is-parent father son
+
+  showtype son = father
 end

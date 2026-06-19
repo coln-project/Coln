@@ -45,6 +45,11 @@ instance PartialOrd HLevel where
     (HSet, HProp) -> False
     (HSet, _) -> True
 
+equalityHLevelOf :: HLevel -> HLevel
+equalityHLevelOf = \case
+  HProp -> HProp
+  HSet -> HProp
+
 data Level = Level {
   mlevel :: MLevel,
   hlevel :: HLevel }

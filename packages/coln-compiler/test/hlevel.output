@@ -38,3 +38,7 @@ debug[D0315]: value F.is-parent has type F.person -> F.person -> Prop
 debug[D0315]: value F.is-parent father son has type Prop
 18 |   showtype F.is-parent father son
 18 |            ^^^^^^^^^^^^^^^^^^^^^^
+
+debug[D0315]: value son = father has type Prop
+20 |   showtype son = father
+20 |            ^^^^^^^^^^^^
