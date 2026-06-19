@@ -2,6 +2,7 @@ module Coln.Backend.TypeScript.Generate where
 
 import Control.Monad.State
 import Control.Monad (forM_)
+import Data.Aeson qualified as AE
 import Data.Foldable (foldlM)
 import Data.Foldable qualified as F
 import Data.Map.Ordered qualified as OMap
@@ -15,6 +16,7 @@ import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath
 
+import Coln.Backend.Lower (lowerRealm)
 import Coln.Backend.TypeScript.AST qualified as TS
 import Coln.Backend.TypeScript.Assemble (asm)
 import Coln.Backend.TypeScript.Params
@@ -26,14 +28,6 @@ import Coln.Core.Value qualified as V
 import Coln.Core.Globals
 import Coln.Core.Readback
 import Coln.Core.Evaluation
-
--- * DONE Create a file per theory which declares the interface to a
---   model of that theory.
---
--- * TODO Produce appropriate imports for each file
---
--- * TODO Create a file per realm which implements the universal model of
---   that realm in terms of 
 
 mangle :: Name -> TS.Id
 mangle = TS.Id . mangleToDoc
@@ -237,5 +231,8 @@ generate ge outdir = do
       Nothing -> pure imports
   let imports = runtimeImport : toList typeImports
   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
-    let mod = genRealmModule imports r
+    let flat = lowerRealm x r
+    flip AE.encodeFile flat $ outdir </> mangleToString x <> ".json"
+    let schemaImport = TS.ImportSpecific "schema" $ "./" <> mangleToDoc x <> ".json"
+    let mod = genRealmModule (schemaImport : imports) r
     writeModule outdir x mod

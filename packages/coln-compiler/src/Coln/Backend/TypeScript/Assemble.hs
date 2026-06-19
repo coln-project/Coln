@@ -146,6 +146,8 @@ instance Assemble Import where
   asm = \case
     ImportQualified x from ->
       "import * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+    ImportSpecific x from ->
+      "import" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
 
 instance Assemble Module where
   asm m =
