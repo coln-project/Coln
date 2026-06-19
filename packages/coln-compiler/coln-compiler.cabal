@@ -79,6 +79,7 @@ library
     -Wno-x-partial
 
   build-depends:
+                aeson,
                 base,
                 bytestring,
                 containers,

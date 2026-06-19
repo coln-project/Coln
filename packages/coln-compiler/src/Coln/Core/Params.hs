@@ -1,6 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
 module Coln.Core.Params where
 
 import Coln.Common
+import GHC.Generics (Generic)
 import Prettyprinter
 
 -- Level stuff (levels, universes, function variants)
@@ -107,7 +109,7 @@ instance Pretty Literal where
 data BuiltinTy
   = BuiltinInt
   | BuiltinString
-  deriving (Eq)
+  deriving (Eq, Generic)
 
 instance Show BuiltinTy where
   show = \case
