@@ -39,13 +39,15 @@ data CheckOptions = CheckOptions
 checkOptions :: Parser CheckOptions
 checkOptions = CheckOptions <$> inputFile
 
-data Options = GenerateTS GenerateTSOptions | GenerateIR GenerateIROptions | Check CheckOptions
+data Options = GenerateTS GenerateTSOptions | GenerateIR GenerateIROptions | Check CheckOptions | Repl | LanguageServer
 
 options :: Parser Options
 options = hsubparser
   ( command "generate-ts" (info (GenerateTS <$> generateTSOptions) (progDesc "generate typescript interface for Coln definitions"))
  <> command "generate-ir" (info (GenerateIR <$> generateIROptions) (progDesc "generate IR in JSON for Coln definitions"))
  <> command "check" (info (Check <$> checkOptions) (progDesc "check Coln definitions"))
+ <> command "repl" (info (pure Repl) (progDesc "run the coln REPL"))
+ <> command "language-server" (info (pure LanguageServer) (progDesc "run the coln language server"))
   )
 
 optionsInfo :: ParserInfo Options

@@ -1,10 +1,12 @@
-module Coln.LSP (serverDefinition) where
+module Coln.LSP (startServer) where
 
-import Control.Monad.IO.Class
 import Coln.LSP.DocChange (docChangeHandler, docOpenHandler)
 import Coln.LSP.Highlight (tokenHandler)
 import Coln.LSP.TrivialHandlers (cancelRequestHandler, didCloseHandler, initHandler, workspaceChangeConfigurationHandler)
-import Coln.LSP.Types (GLogLspM, LSPState)
+import Coln.LSP.Types (GLogLspM, LSPState (..))
+import Control.Monad.IO.Class
+import Data.Functor (void)
+import Data.IORef
 import Language.LSP.Protocol.Types (TextDocumentSyncKind (..), TextDocumentSyncOptions (..))
 import Language.LSP.Server
 
@@ -19,6 +21,17 @@ handlers =
     , docOpenHandler
     , tokenHandler
     ]
+
+startServer :: IO ()
+startServer =
+  do
+    ref <- newIORef mempty
+    void
+      . runServer
+      $ serverDefinition
+        LSPState
+          { parseState = ref
+          }
 
 serverDefinition :: LSPState -> ServerDefinition LSPState
 serverDefinition context =
