@@ -101,27 +101,35 @@ universeFor = \case
   Level Theory HSet -> Just TheoryU
   Level _ _ -> Nothing
 
-data FunctionVariant
-  = SetPropTheory -- TODO: better name?
-  | SetTheory
+data FunctionVariantMLevel
+  = SetTheory
   | TheoryTop
+  deriving (Eq, Show)
+
+functionMLevelFor :: MLevel -> MLevel -> Maybe FunctionVariantMLevel
+functionMLevelFor v1 v2 = case (v1, v2) of
+  (Set, (Set; Theory)) -> pure SetTheory
+  (Set, Top) -> pure TheoryTop
+  (Theory, _) -> pure TheoryTop
+  (Top, _) -> Nothing
+
+data FunctionVariant = FunctionVariant { mlevel :: FunctionVariantMLevel, hlevel :: HLevel }
   deriving (Eq, Show)
 
 instance Pretty FunctionVariant where
   pretty = pretty . show
 
 instance LevelOf FunctionVariant where
-  levelOf = \case
-    SetPropTheory -> Level Theory HProp
-    SetTheory -> Level Theory HSet
-    TheoryTop -> Level Top HSet
+  levelOf v = Level mlevel v.hlevel
+    where mlevel = case v.mlevel of
+                     SetTheory -> Theory
+                     TheoryTop -> Top
 
 class HasCodomain a b | a -> b where
   codOf :: a -> b
 
 instance HasCodomain FunctionVariant MLevel where
-  codOf = \case
-    SetPropTheory -> Theory
+  codOf v = case v.mlevel of
     SetTheory -> Theory
     TheoryTop -> Top
 
