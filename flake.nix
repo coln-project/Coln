@@ -91,4 +91,8 @@
           ];
         };
       });
+  nixConfig = {
+    extra-substituters = [ "https://coln.cachix.org" ];
+    extra-trusted-public-keys = [ "coln.cachix.org-1:xplHZrvUVve3NSquwwW5QRl6MYbDBHx3rw3Np69kjw4=" ];
+  };
 }
