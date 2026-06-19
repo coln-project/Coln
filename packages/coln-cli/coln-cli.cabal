@@ -19,9 +19,11 @@ executable coln
       Coln.CLI.GenerateIR
       Coln.CLI.GenerateTS
       Coln.CLI.Options
+      Coln.CLI.REPL
     build-depends:
       base ^>=4.21.0.0,
       coln-compiler,
+      coln-repl,
       diagnostician,
       fnotation,
       optparse-applicative,
