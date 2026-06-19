@@ -1,31 +1,32 @@
-cabal-version:      3.4
-name:               coln-manual-dev
-version:            0.1.0.0
-license:            (Apache-2.0 OR MIT)
-author:             Coln contributors
-maintainer:         root@owenlynch.org
-category:           Development
-build-type:         Simple
+cabal-version: 3.4
+name: coln-manual-dev
+version: 0.1.0.0
+license: (Apache-2.0 OR MIT)
+author: Coln contributors
+maintainer: root@owenlynch.org
+category: Development
+build-type: Simple
 
 common warnings
-    ghc-options: -Wall
+  ghc-options: -Wall
 
 executable coln-manual-dev
-    import:           warnings
-    main-is:          Main.hs
-    build-depends:
-        async,
-        base ^>=4.21.0.0,
-        bytestring,
-        directory,
-        extra,
-        fsnotify,
-        process,
-        servant,
-        servant-event-stream,
-        servant-server,
-        temporary >=1.3,
-        text,
-        warp,
-    hs-source-dirs:   app
-    default-language: GHC2024
+  import: warnings
+  main-is: Main.hs
+  build-depends:
+    async,
+    base ^>=4.21.0.0,
+    bytestring,
+    directory,
+    extra,
+    fsnotify,
+    process,
+    servant,
+    servant-event-stream,
+    servant-server,
+    temporary >=1.3,
+    text,
+    warp,
+
+  hs-source-dirs: app
+  default-language: GHC2024

@@ -10,6 +10,7 @@ library
   hs-source-dirs: src
   exposed-modules:
     Coln.REPL
+
   default-language: GHC2024
   default-extensions:
     BlockArguments
@@ -24,12 +25,12 @@ library
   build-depends:
     base,
     bytestring,
+    coln-compiler,
     containers,
     diagnostician,
     directory,
     filepath,
     fnotation,
-    coln-compiler,
     hashable,
     haskeline,
     mtl,
