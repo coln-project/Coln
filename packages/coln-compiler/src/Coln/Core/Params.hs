@@ -12,16 +12,16 @@ import Prettyprinter
 -- Level stuff (levels, universes, function variants)
 --------------------------------------------------------------------------------
 
-data Sort
+data MLevel
   = Set
   | Theory
   | Top
   deriving (Eq, Show)
 
-instance DPretty Sort where
+instance DPretty MLevel where
   dpretty = pretty . show
 
-instance PartialOrd Sort where
+instance PartialOrd MLevel where
   leq l1 l2 = case (l1, l2) of
     (Set, _) -> True
     (Theory, Set) -> False
@@ -29,8 +29,8 @@ instance PartialOrd Sort where
     (Top, Top) -> True
     (Top, _) -> False
 
-maxSort :: Sort -> Sort -> Sort
-maxSort l1 l2
+maxMLevel :: MLevel -> MLevel -> MLevel
+maxMLevel l1 l2
   | leq l1 l2 = l2
   | otherwise = l1
 
@@ -46,7 +46,7 @@ instance PartialOrd HLevel where
     (HSet, _) -> True
 
 data Level = Level {
-  sort :: Sort,
+  mlevel :: MLevel,
   hlevel :: HLevel }
   deriving (Eq, Show)
 
@@ -115,7 +115,7 @@ instance LevelOf FunctionVariant where
 class HasCodomain a b | a -> b where
   codOf :: a -> b
 
-instance HasCodomain FunctionVariant Sort where
+instance HasCodomain FunctionVariant MLevel where
   codOf = \case
     SetPropTheory -> Theory
     SetTheory -> Theory
