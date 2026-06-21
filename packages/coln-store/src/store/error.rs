@@ -90,38 +90,8 @@ impl From<CommitApplyError> for StoreIntError {
     }
 }
 
-impl From<CodecError> for Box<StoreIntError> {
+impl From<CodecError> for StoreIntError {
     fn from(value: CodecError) -> Self {
-        Box::new(StoreIntError::Encode(value))
-    }
-}
-
-impl From<CommitApplyError> for Box<StoreIntError> {
-    fn from(value: CommitApplyError) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
-impl From<ValidationError> for Box<StoreIntError> {
-    fn from(value: ValidationError) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
-impl From<CompileError> for Box<StoreIntError> {
-    fn from(value: CompileError) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
-impl From<RuleViolation> for Box<StoreIntError> {
-    fn from(value: RuleViolation) -> Self {
-        Box::new(StoreIntError::from(value))
-    }
-}
-
-impl From<Box<RuleViolation>> for Box<StoreIntError> {
-    fn from(value: Box<RuleViolation>) -> Self {
-        Box::new(StoreIntError::from(value))
+        StoreIntError::Encode(value)
     }
 }

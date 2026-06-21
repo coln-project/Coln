@@ -54,7 +54,7 @@ impl TxnInner {
         store: &Store,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, Box<StoreIntError>> {
+    ) -> Result<TempRowId, StoreIntError> {
         let t = store.table_at(table).ok_or(ValidationError::UnknownTable {
             path: table.clone(),
         })?;
@@ -73,7 +73,7 @@ impl TxnInner {
         store: &Store,
         table: &ir::Path,
         values: Vec<TxnValue>,
-    ) -> Result<RowHandle, Box<StoreIntError>> {
+    ) -> Result<RowHandle, StoreIntError> {
         let txn_values = values
             .into_iter()
             .map(|v| v.to_txn_cell_value(self.tx_id))
@@ -91,7 +91,7 @@ impl TxnInner {
         store: &Store,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, Box<StoreIntError>> {
+    ) -> Result<TempRowId, StoreIntError> {
         self.add_cell_values(store, table, values)
     }
 
@@ -107,7 +107,7 @@ impl TxnInner {
             .for_each(|handle| handle.finalize(h));
     }
 
-    pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, Box<StoreIntError>> {
+    pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreIntError> {
         info!(op_count = self.pending.len(), "commit txn");
         let TxnInner {
             deps,
