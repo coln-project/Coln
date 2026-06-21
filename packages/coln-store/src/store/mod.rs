@@ -1054,7 +1054,7 @@ mod tests {
             }),
             binding: vec![],
         };
-        let law = StoreIntError::from(violation);
+        let law = StoreIntError::from(Box::new(violation));
         assert!(matches!(law, StoreIntError::Law(_)));
     }
 }

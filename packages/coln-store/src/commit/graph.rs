@@ -2,11 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::{
-    collections::{BTreeSet, HashMap},
-    error::Error,
-    fmt,
-};
+use std::collections::{BTreeSet, HashMap};
 
 use crate::commit::{Commit, CommitHash};
 
@@ -23,24 +19,13 @@ pub struct CommitGraph {
     heads: BTreeSet<CommitHash>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum CommitGraphError {
+    #[error("commit graph has no root commit")]
     MissingRoot,
+    #[error("commit graph has multiple root commits")]
     MultipleRoots,
 }
-
-impl fmt::Display for CommitGraphError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CommitGraphError::MissingRoot => write!(f, "commit graph has no root commit"),
-            CommitGraphError::MultipleRoots => {
-                write!(f, "commit graph has multiple root commits")
-            }
-        }
-    }
-}
-
-impl Error for CommitGraphError {}
 
 impl CommitGraph {
     pub fn new() -> Self {

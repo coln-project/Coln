@@ -7,11 +7,15 @@ use std::{collections::HashSet, fmt};
 use crate::ir::{self, Atom, Prop, RuleEntry, Term};
 
 /// Errors raised while lowering an `ir::Rule` into the restricted solver form.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CompileError {
+    #[error("unsupported prop {0}")]
     UnsupportedProp(String),
+    #[error("unsupported term")]
     UnsupportedTerm,
+    #[error("invalid var index: {index} var_count {var_count}")]
     InvalidVarIndex { index: i64, var_count: usize },
+    #[error("invalid column index {column}")]
     InvalidColumnIndex { column: i64 },
 }
 

@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt;
 use std::fmt::Write;
 
@@ -31,87 +30,35 @@ impl fmt::Display for RowId {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ValidationError {
-    ColumnCount {
-        expected: usize,
-        got: usize,
-    },
+    #[error("column count mismatch: expected {expected}, got {got}")]
+    ColumnCount { expected: usize, got: usize },
+    #[error("type mismatch at column {column}: expected {expected}, got {got}")]
     TypeMismatch {
         column: usize,
         expected: &'static str,
         got: &'static str,
     },
-    UnsupportedTuple {
-        column: usize,
-    },
-    InvalidPrimaryKeyName {
-        name: ColName,
-    },
+    #[error("tuple columns are not supported yet (column {column})")]
+    UnsupportedTuple { column: usize },
+    #[error("primary key references unknown column: {name}")]
+    InvalidPrimaryKeyName { name: ColName },
+    #[error("duplicate primary key")]
     DuplicatePrimaryKey,
     /// No table registered for this path (e.g. batch apply).
-    UnknownTable {
-        path: ir::Path,
-    },
+    #[error("unknown table: {path:?}")]
+    UnknownTable { path: ir::Path },
+    #[error("table mismatch: expected: {expected:?}, actual: {actual:?}")]
     TableMismatch {
         expected: ir::Path,
         actual: ir::Path,
     },
-    TxnIdMismatch {
-        current: TxnId,
-        got: TxnId,
-    },
-    InvalidRowHandle {
-        reason: String,
-    },
+    #[error("row handle belongs to a different transaction: current {current:?}, got {got:?}")]
+    TxnIdMismatch { current: TxnId, got: TxnId },
+    #[error("invalid row handle: {reason}")]
+    InvalidRowHandle { reason: String },
 }
-
-impl fmt::Display for ValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ValidationError::ColumnCount { expected, got } => {
-                write!(f, "column count mismatch: expected {expected}, got {got}")
-            }
-            ValidationError::TypeMismatch {
-                column,
-                expected,
-                got,
-            } => write!(
-                f,
-                "type mismatch at column {column}: expected {expected}, got {got}"
-            ),
-            ValidationError::UnsupportedTuple { column } => {
-                write!(f, "tuple columns are not supported yet (column {column})")
-            }
-            ValidationError::InvalidPrimaryKeyName { name } => {
-                write!(f, "primary key references unknown column: {name}")
-            }
-            ValidationError::DuplicatePrimaryKey => {
-                write!(f, "duplicate primary key")
-            }
-            ValidationError::UnknownTable { path } => {
-                write!(f, "unknown table: {path:?}")
-            }
-            ValidationError::TableMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "table mismatch: expected: {expected:?}, actual: {actual:?}"
-                )
-            }
-            ValidationError::TxnIdMismatch { current, got } => {
-                write!(
-                    f,
-                    "row handle belongs to a different transaction: current {current:?}, got {got:?}"
-                )
-            }
-            ValidationError::InvalidRowHandle { reason } => {
-                write!(f, "invalid row handle: {reason}")
-            }
-        }
-    }
-}
-
-impl Error for ValidationError {}
 
 /// One cell in columnar storage: entity id, or primitive.
 #[derive(Debug, Clone, PartialEq, Eq)]
