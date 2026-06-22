@@ -17,7 +17,7 @@ That's what most of the code here does.
 
 The demo source schema is:
 
-- `graph.glog`
+- `graph.coln`
 
 The generated FFI/IR artifacts live in:
 
@@ -57,7 +57,7 @@ pnpm build
 
 The build script runs:
 
-1. `./compile.sh` to regenerate `src/generated/*` from `graph.glog`
+1. `./compile.sh` to regenerate `src/generated/*` from `graph.coln`
 2. `tsc --noEmit`
 3. `vite build`
 
