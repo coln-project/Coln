@@ -1,7 +1,7 @@
 module Coln.Core.Readback where
 
-import Prelude hiding (abs)
 import Data.Vector.Strict qualified as Vector
+import Prelude hiding (abs)
 
 import Coln.Common
 import Coln.Core.Params
@@ -51,33 +51,38 @@ instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
     V.Lookup x vs -> S.Lookup x (readb n <$> vs)
 
 instance Readback V.FunctionType (S.FunctionType S.Ty) where
-  readb n f = S.FunctionType
-    { S.variant = f.variant
-    , S.dom = readb n f.dom
-    , S.cod = readbClo n f.dom f.cod
-    }
+  readb n f =
+    S.FunctionType
+      { S.variant = f.variant
+      , S.dom = readb n f.dom
+      , S.cod = readbClo n f.dom f.cod
+      }
 
 instance Readback V.RecordType (S.RecordType S.Ty) where
-  readb n r = S.RecordType
-    { S.level = r.level
-    , S.fieldTypes = Dict
-      { head = r.fieldTypes.head
-      , values = Vector.fromList $ go n r.capture r.fieldTypes.values
+  readb n r =
+    S.RecordType
+      { S.level = r.level
+      , S.fieldTypes =
+          Dict
+            { head = r.fieldTypes.head
+            , values = Vector.fromList $ go n r.capture r.fieldTypes.values
+            }
       }
-    }
-    where
-      go i ls fs = if Vector.null fs
+   where
+    go i ls fs =
+      if Vector.null fs
         then []
         else do
           let ty = Vector.head fs ls
           readb i ty : go (i + 1) (V.LSnoc ls $ V.local (FId i) ty) (Vector.tail fs)
 
 instance Readback V.EqualityType (S.EqualityType S.El S.Ty) where
-  readb n eq = S.EqualityType
-    { S.at = readb n eq.at
-    , S.lhs = readb n eq.lhs
-    , S.rhs = readb n eq.rhs
-    }
+  readb n eq =
+    S.EqualityType
+      { S.at = readb n eq.at
+      , S.lhs = readb n eq.lhs
+      , S.rhs = readb n eq.rhs
+      }
 
 instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
   readb n = \case

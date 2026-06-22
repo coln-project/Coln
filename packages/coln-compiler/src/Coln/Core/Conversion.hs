@@ -10,8 +10,8 @@ import Prettyprinter ((<+>))
 import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Print (prtIn)
+import Coln.Core.Value qualified as BN (BareNeutral (..))
 import Coln.Core.Value qualified as V
-import Coln.Core.Value qualified as BN (BareNeutral(..))
 
 data DefEqCheckError
   = UnequalTys CtxShape (V.Ty N) (V.Ty N) (Maybe DDoc)
@@ -85,7 +85,6 @@ instance DefEq (V.Ty N) where
         _ <- zipWithM (defEq cs) (F.toList vs) (F.toList vs')
         pure ()
       _ -> throwUnequalTys cs a a' Nothing
-    
 
 instance DefEq V.Head where
   defEq cs h h' = case h of
@@ -103,12 +102,12 @@ instance DefEq V.BareNeutral where
       _ -> throwUnequalNeus cs n n' Nothing
     V.App sq v -> case n'.spine of
       V.App sq' v' -> do
-        defEq cs (n { BN.spine = sq }) (n' { BN.spine = sq' })
+        defEq cs (n{BN.spine = sq}) (n'{BN.spine = sq'})
         defEq cs v v'
       _ -> throwUnequalNeus cs n n' Nothing
     V.Proj sq x -> case n'.spine of
       V.Proj sq' x' -> do
-        defEq cs (n { BN.spine = sq }) (n' { BN.spine = sq' })
+        defEq cs (n{BN.spine = sq}) (n'{BN.spine = sq'})
         unless (x == x') $ throwUnequalNeus cs n n' Nothing
       _ -> throwUnequalNeus cs n n' Nothing
 
@@ -150,5 +149,3 @@ instance DefEq (V.El N) where
         _ <- zipWithM (defEq cs) (F.toList vs) (F.toList vs') -- XXX check heads?
         pure ()
       _ -> throwUnequalEls cs v v' Nothing
-        
-        

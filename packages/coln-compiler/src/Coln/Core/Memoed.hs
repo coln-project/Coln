@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.Core.Memoed where
 
 import Data.Coerce (coerce)
@@ -7,7 +8,7 @@ import Coln.Common
 import Coln.Core.Evaluation
 import Coln.Core.Globals
 import Coln.Core.Params
-import Coln.Core.Readback (Readback(readb))
+import Coln.Core.Readback (Readback (readb))
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 
@@ -42,36 +43,42 @@ instance Core El Ty where
   globalVar x v = M (S.GlobalVar x v) v
   code t = M (S.Code t.stx) (V.emap V.Code t.val)
   app f x = M (S.App f.stx x.stx) (V.app f.val x.val)
-  lam vs dom (S.Abs x body) = M
-    (S.Lam dom.stx (S.Abs x body.stx))
-    (V.epure $ V.Lam dom.val (V.Clo x vs (compile body.stx)))
-  lam _ dom (S.AbsConst body) = M
-    (S.Lam dom.stx (S.AbsConst body.stx))
-    (V.epure $ V.Lam dom.val (V.CloConst body.val))
+  lam vs dom (S.Abs x body) =
+    M
+      (S.Lam dom.stx (S.Abs x body.stx))
+      (V.epure $ V.Lam dom.val (V.Clo x vs (compile body.stx)))
+  lam _ dom (S.AbsConst body) =
+    M
+      (S.Lam dom.stx (S.AbsConst body.stx))
+      (V.epure $ V.Lam dom.val (V.CloConst body.val))
   cons d = M (S.Cons $ (.stx) <$> d) (V.epure $ V.Cons $ (.val) <$> d)
   proj x f = M (S.Proj x.stx f) (V.proj x.val f)
   lit l = M (S.Lit l) (V.Lit l)
   is x = M (S.Is x.stx) (V.Become x.val)
   univ u = M (S.U u) (V.U u)
   decode x = M (S.Decode x.stx) (V.decode x.val)
-  function vs fv dom (S.Abs x body) = M
-    (S.Function $ S.FunctionType fv dom.stx (S.Abs x body.stx))
-    (V.Function $ V.FunctionType fv dom.val (V.Clo x vs (compile body.stx)))
-  function _ fv dom (S.AbsConst body) = M
-    (S.Function $ S.FunctionType fv dom.stx (S.AbsConst body.stx))
-    (V.Function $ V.FunctionType fv dom.val (V.CloConst body.val))
-  record vs rt = M
-    (S.Record $ S.RecordType rt.level $ (.stx) <$> rt.fieldTypes)
-    (V.epure $ V.Record $ V.RecordType rt.level vs $ compile . (.stx) <$> rt.fieldTypes)
-  equality eq = M
-    (S.Eq $ S.EqualityType eq.at.stx eq.lhs.stx eq.rhs.stx)
-    (V.Eq $ V.EqualityType eq.at.val eq.lhs.val eq.rhs.val)
+  function vs fv dom (S.Abs x body) =
+    M
+      (S.Function $ S.FunctionType fv dom.stx (S.Abs x body.stx))
+      (V.Function $ V.FunctionType fv dom.val (V.Clo x vs (compile body.stx)))
+  function _ fv dom (S.AbsConst body) =
+    M
+      (S.Function $ S.FunctionType fv dom.stx (S.AbsConst body.stx))
+      (V.Function $ V.FunctionType fv dom.val (V.CloConst body.val))
+  record vs rt =
+    M
+      (S.Record $ S.RecordType rt.level $ (.stx) <$> rt.fieldTypes)
+      (V.epure $ V.Record $ V.RecordType rt.level vs $ compile . (.stx) <$> rt.fieldTypes)
+  equality eq =
+    M
+      (S.Eq $ S.EqualityType eq.at.stx eq.lhs.stx eq.rhs.stx)
+      (V.Eq $ V.EqualityType eq.at.val eq.lhs.val eq.rhs.val)
   builtinTy bt = M (S.BuiltinTy bt) (V.BuiltinTy bt)
   isTy a = M (S.IsTy a.stx) (V.Become a.val)
 
 fromVTy :: (V.HasEvaluation c) => Int -> V.Ty c -> Ty c
 fromVTy n v = M (readb n v) (V.epure v)
-  
+
 fromVEl :: (V.HasEvaluation c) => Int -> V.El c -> El c
 fromVEl n v = M (readb n v) (V.epure v)
 

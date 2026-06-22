@@ -1,11 +1,11 @@
 module Coln.Diagnostics where
 
+import Coln.Elaborator.Diagnostics
+import Coln.Frontend.Diagnostics
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Diagnostician
 import FNotation
-import Coln.Elaborator.Diagnostics
-import Coln.Frontend.Diagnostics
 
 data ColnCode
   = LexerCode LexerCode

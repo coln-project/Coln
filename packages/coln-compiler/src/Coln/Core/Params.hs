@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+
 module Coln.Core.Params where
 
 import Coln.Common
@@ -32,7 +33,7 @@ maxLevel l1 l2
 
 class LevelOf a where
   levelOf :: a -> Level
-  
+
 data Universe
   = SetU
   | TheoryU
@@ -94,7 +95,7 @@ data SCase :: Case -> Type where
   SDescriptive :: SCase Descriptive
 
 -- Literals
--------------------------------------------------------------------------------- 
+--------------------------------------------------------------------------------
 
 data Literal
   = LitInt Int
@@ -127,7 +128,7 @@ data CtxShape = CtxShape {len :: Int, names :: Bwd Name}
 type RealmId = Name
 type Path = Bwd Name
 
-data TableName = TableName { realm :: RealmId, path :: Path }
+data TableName = TableName {realm :: RealmId, path :: Path}
   deriving (Show, Eq, Ord)
 
 instance DPretty TableName where

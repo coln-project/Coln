@@ -1,15 +1,15 @@
 module Coln.LSP.DocChange (docChangeHandler, docOpenHandler) where
 
+import Coln.LSP.Buffer
+import Coln.LSP.Diagnostics (publishDiagnostics)
+import Coln.LSP.Types
+import Coln.LSP.Utils (currentBufferText, currentBufferUri, currentBufferUriUnNormalized)
 import Control.Lens ((^.))
 import Control.Monad.Catch (MonadCatch)
 import Control.Monad.Trans
 import Data.IORef (modifyIORef')
 import Data.Map qualified as M
 import Diagnostician (newFile)
-import Coln.LSP.Buffer
-import Coln.LSP.Diagnostics (publishDiagnostics)
-import Coln.LSP.Types
-import Coln.LSP.Utils (currentBufferText, currentBufferUri, currentBufferUriUnNormalized)
 import Language.LSP.Protocol.Lens (HasParams, HasTextDocument, HasUri)
 import Language.LSP.Protocol.Message (SMethod (..))
 import Language.LSP.Protocol.Types (Uri)

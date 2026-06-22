@@ -1,8 +1,8 @@
 module Coln.Core.Syntax where
 
 import Data.Map qualified as Map
-import Data.Map.Ordered qualified as OMap
 import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
 import Coln.Core.Params

@@ -9,22 +9,35 @@
       nixpkgs,
       ...
     }:
-    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
+    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (
+      system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ 
+          overlays = [
             (import ./nix/haskell-packages.nix)
           ];
         };
-        
+
         inherit (pkgs) colnHaskellPackages;
 
-        packages = rec {
-          forester = pkgs.callPackage ./nix/forester.nix {};
+        packages = let
+          nuShellCheck = inputs: f: pkgs.stdenv.mkDerivation {
+          name = "nuShellCheck";
+          src = ./.;
+          nativeBuildInputs = [pkgs.nushell] ++ inputs;
+          buildPhase = ''
+            nu ${f}
+          '';
+          installPhase = ''
+            touch $out
+          '';
+        };
+        in rec {
+          forester = pkgs.callPackage ./nix/forester.nix { };
 
-          coln-do = colnHaskellPackages.callPackage ./packages/coln-do {};
-          diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician {};
+          coln-do = colnHaskellPackages.callPackage ./packages/coln-do { };
+          diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician { };
           fnotation = colnHaskellPackages.callPackage ./packages/fnotation {
             inherit diagnostician;
           };
@@ -51,6 +64,9 @@
             echo "built coln-cli: ${coln-cli}"
           '';
 
+          format-hs = nuShellCheck [pkgs.fourmolu] ./nix/checks/format-hs.nu;
+          format-cabal = nuShellCheck [pkgs.haskellPackages.cabal-gild] ./nix/checks/format-cabal.nu;
+
           manual = pkgs.stdenv.mkDerivation {
             name = "coln-manual";
 
@@ -69,7 +85,8 @@
         };
 
         inherit (packages) forester coln-manual-dev;
-      in {
+      in
+      {
         inherit packages;
         devShells.default = pkgs.mkShell {
           name = "coln";

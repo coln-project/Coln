@@ -1,8 +1,8 @@
 module Coln.CLI.GenerateIR where
 
+import Coln.Backend.Lower
 import Coln.CLI.Common
 import Coln.CLI.Options
-import Coln.Backend.Lower
 
 generateIR :: GenerateIROptions -> IO ()
 generateIR opts = do

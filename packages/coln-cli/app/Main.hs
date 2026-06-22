@@ -3,8 +3,8 @@ module Main (main) where
 import Options.Applicative
 
 import Coln.CLI.Check
-import Coln.CLI.GenerateTS
 import Coln.CLI.GenerateIR
+import Coln.CLI.GenerateTS
 import Coln.CLI.LanguageServer
 import Coln.CLI.Options
 import Coln.CLI.REPL

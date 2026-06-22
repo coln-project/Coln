@@ -1,24 +1,24 @@
 module Coln.Backend.Lower where
 
-import Prelude hiding (lookup)
 import Control.Arrow (first, second)
 import Control.Monad (forM_)
 import Data.Aeson qualified as AE
 import Data.Foldable qualified as F
+import Data.Map.Ordered qualified as OMap
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Traversable (mapAccumL)
-import Data.Map.Ordered qualified as OMap
 import System.FilePath ((</>))
+import Prelude hiding (lookup)
 
+import Coln.Backend.IR qualified as I
 import Coln.Common
-import Coln.Core.Params
 import Coln.Core.Evaluation
 import Coln.Core.Globals
+import Coln.Core.Params
+import Coln.Core.Realm qualified as C
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
-import Coln.Core.Realm qualified as C
-import Coln.Backend.IR qualified as I
 
 data Shape
   = RowId TableName
@@ -83,7 +83,7 @@ separate n = \case
     Just (V.Record rt) -> \v -> do
       let go :: V.Locals -> [(Name, V.Locals -> V.Ty N)] -> [(Shape, Pred)]
           go _ [] = []
-          go vs ((x, f):rest) = do
+          go vs ((x, f) : rest) = do
             let a = f vs
             let v' = V.proj v x
             let t = separate n a v'
@@ -105,13 +105,13 @@ lowerAtFresh n a = separate (n + 1) a (V.local (FId n) a)
 
 lowerTele :: [S.Ty N] -> ([Ty], V.Locals)
 lowerTele = go V.LNil 0
-  where
-    go vs _ [] = ([], vs)
-    go vs n (t:ts) = do
-      let a = eval vs t
-      let v = V.local (FId n) a
-      let (ts', vs') = go (V.LSnoc vs v) (n + 1) ts
-      (separate (n + 1) a v : ts', vs')
+ where
+  go vs _ [] = ([], vs)
+  go vs n (t : ts) = do
+    let a = eval vs t
+    let v = V.local (FId n) a
+    let (ts', vs') = go (V.LSnoc vs v) (n + 1) ts
+    (separate (n + 1) a v : ts', vs')
 
 lowerGen :: C.Generator -> Generator
 lowerGen (C.Fun xs ts t) = do
@@ -158,7 +158,7 @@ data PredState = PredState
 
 steal :: Bwd a -> CtxLen -> Bwd a -> Bwd a
 steal base 0 _ = base
-steal base n (xs :> x) = steal base (n-1) xs :> x
+steal base n (xs :> x) = steal base (n - 1) xs :> x
 steal _ _ _ = panic "not enough local variables"
 
 renumberTerm :: (Int -> Int) -> I.Term -> I.Term
@@ -166,13 +166,16 @@ renumberTerm f (I.Var (FId i)) = I.Var . FId $ f i
 renumberTerm _ x = x
 
 renumberProp :: (Int -> Int) -> I.Prop -> I.Prop
-renumberProp f (I.PAtom atom) = I.PAtom $ atom
-  { I.rowId = fmap (renumberTerm f) atom.rowId
-  , I.values = fmap (renumberTerm f) atom.values
-  }
-renumberProp f (I.PEq lhs rhs) = I.PEq
-  (renumberTerm f lhs)
-  (renumberTerm f rhs)
+renumberProp f (I.PAtom atom) =
+  I.PAtom $
+    atom
+      { I.rowId = fmap (renumberTerm f) atom.rowId
+      , I.values = fmap (renumberTerm f) atom.values
+      }
+renumberProp f (I.PEq lhs rhs) =
+  I.PEq
+    (renumberTerm f lhs)
+    (renumberTerm f rhs)
 
 -- the global variables of the second must be a prefix of the global variables
 -- of the first
@@ -182,24 +185,26 @@ mergeFrag base add = do
   let addc = add.ruleCtx
   let renum n = if n >= addc.totalLen - addc.localLen then n - addc.totalLen + addc.localLen + basec.totalLen else n
   RuleFragment
-    { ruleCtx = LocalCtx
-      { localLen = basec.localLen + addc.localLen
-      , totalLen = basec.totalLen + addc.localLen
-      , localNames = steal basec.localNames addc.localLen addc.localNames
-      , localTys = steal basec.localTys addc.localLen addc.localTys
-      , conditions = basec.conditions <> fmap (renumberProp renum) addc.conditions
-      }
+    { ruleCtx =
+        LocalCtx
+          { localLen = basec.localLen + addc.localLen
+          , totalLen = basec.totalLen + addc.localLen
+          , localNames = steal basec.localNames addc.localLen addc.localNames
+          , localTys = steal basec.localTys addc.localLen addc.localTys
+          , conditions = basec.conditions <> fmap (renumberProp renum) addc.conditions
+          }
     , heads = base.heads ++ fmap (second $ renumberProp renum) add.heads
     }
 
 pushNew :: DisaggState -> (I.ColName, I.ColType) -> (DisaggState, EnvTerm)
 pushNew ds (cn, ct) = do
   let et = Leaf $ I.Var $ FId $ ds.newLen
-  let ds' = ds
-        { newLen = ds.newLen + 1
-        , newNames = ds.newNames :> cn
-        , newTys = ds.newTys :> ct
-        }
+  let ds' =
+        ds
+          { newLen = ds.newLen + 1
+          , newNames = ds.newNames :> cn
+          , newTys = ds.newTys :> ct
+          }
   (ds', et)
 
 pushShape :: DisaggState -> (I.ColName, Shape) -> (DisaggState, EnvTerm)
@@ -210,30 +215,33 @@ pushShape ds = uncurry $ \x -> \case
   Unit -> (ds, noTerms)
 
 pushOld :: DisaggState -> (Name, Ty, EnvTerm) -> DisaggState
-pushOld ds (x, ty, et) = ds { oldLen = ds.oldLen + 1, oldNames = ds.oldNames :> x, oldTys = ds.oldTys :> ty, oldEnv = ds.oldEnv :> et }
+pushOld ds (x, ty, et) = ds{oldLen = ds.oldLen + 1, oldNames = ds.oldNames :> x, oldTys = ds.oldTys :> ty, oldEnv = ds.oldEnv :> et}
 
 openPred :: DisaggState -> PredState
-openPred ds = PredState ds $ LocalCtx
-  { localLen = 0
-  , totalLen = ds.newLen
-  , localNames = ds.newNames
-  , localTys = ds.newTys
-  , conditions = BwdNil
-  }
+openPred ds =
+  PredState ds $
+    LocalCtx
+      { localLen = 0
+      , totalLen = ds.newLen
+      , localNames = ds.newNames
+      , localTys = ds.newTys
+      , conditions = BwdNil
+      }
 
 pushFrag :: PredState -> I.ColName -> [I.Prop] -> DisaggState
-pushFrag ps x h = ps.parent { frags = ps.parent.frags :> RuleFragment ps.localCtx (fmap(\y -> (x,y)) h) }
+pushFrag ps x h = ps.parent{frags = ps.parent.frags :> RuleFragment ps.localCtx (fmap (\y -> (x, y)) h)}
 
 pushLocal :: PredState -> (I.ColName, I.ColType) -> (PredState, EnvTerm)
 pushLocal ps (cn, ct) = do
   let et = Leaf $ I.Var $ FId $ ps.localCtx.totalLen
-  let ctx' = ps.localCtx
-        { localLen = ps.localCtx.localLen + 1
-        , totalLen = ps.localCtx.totalLen + 1
-        , localNames = ps.localCtx.localNames :> cn
-        , localTys = ps.localCtx.localTys :> ct
-        }
-  (ps { localCtx = ctx' }, et)
+  let ctx' =
+        ps.localCtx
+          { localLen = ps.localCtx.localLen + 1
+          , totalLen = ps.localCtx.totalLen + 1
+          , localNames = ps.localCtx.localNames :> cn
+          , localTys = ps.localCtx.localTys :> ct
+          }
+  (ps{localCtx = ctx'}, et)
 
 pushVars :: PredState -> (I.ColName, Shape) -> (PredState, EnvTerm)
 pushVars ps = uncurry $ \x -> \case
@@ -248,12 +256,12 @@ pushTerm' ps = uncurry $ \x -> \case
   Lookup tn d -> case Map.lookup tn ps.parent.funShapes of
     Nothing -> panic "unknown function"
     Just s -> do
-      let (ps', ts) = pushVars ps (x,s)
+      let (ps', ts) = pushVars ps (x, s)
       let ps'' = pushCond ps' x tn d ts
       (ps'', ts)
   Cons d -> second (Node . withHead d) . mapAccumL pushTerm' ps . fmap (first (x :>)) $ toList d
   Proj y f -> do
-    let (ps', ts) = pushTerm' ps (x,y)
+    let (ps', ts) = pushTerm' ps (x, y)
     case ts of
       Leaf _ -> panic "projection of non-record value"
       Node d -> case lookup d f of
@@ -267,18 +275,18 @@ pushTerm ps a = second F.toList $ pushTerm' ps a
 pushCond :: PredState -> I.ColName -> TableName -> Dict Term -> Trie I.Term -> PredState
 pushCond ps x tn d ts' = do
   let (ps', ts) = mapAccumL pushTerm ps . fmap (first (x :>)) $ toList d
-  let c = I.PAtom . I.Atom tn Nothing . Map.fromAscList . zip [0..] $ foldr (++) (F.toList ts') ts
-  ps' { localCtx = ps'.localCtx { conditions = ps'.localCtx.conditions :> c } }
+  let c = I.PAtom . I.Atom tn Nothing . Map.fromAscList . zip [0 ..] $ foldr (++) (F.toList ts') ts
+  ps'{localCtx = ps'.localCtx{conditions = ps'.localCtx.conditions :> c}}
 
 -- XXX actual state monad?
 pushPred :: DisaggState -> (I.ColName, Pred) -> DisaggState
 pushPred ds = uncurry $ \x -> \case
   EltOf t n ts -> do
     let ps1 = openPred ds
-    let (ps2, elts) = pushTerm' ps1 (x,t)
+    let (ps2, elts) = pushTerm' ps1 (x, t)
     let elt = case elts of Leaf x -> x; _ -> panic "EltOf lhs was not an entity"
     let (ps3, fields) = mapAccumL pushTerm ps2 . fmap (first (x :>)) $ toList ts
-    let fields' = Map.fromList . zip [0..] $ concat fields
+    let fields' = Map.fromList . zip [0 ..] $ concat fields
     pushFrag ps3 x [I.PAtom $ I.Atom n (Just elt) fields']
   And d -> foldl' pushPred ds . fmap (first (x :>)) $ toList d
   Equal lhs rhs -> do
@@ -296,96 +304,105 @@ pushTy ds (x, ty) = do
 
 disaggregateTele :: Map TableName Shape -> [Name] -> [Ty] -> DisaggState
 disaggregateTele fs xs tys = do
-  let ds = DisaggState
-        { funShapes = fs
-        , oldLen = 0
-        , oldNames = BwdNil
-        , oldTys = BwdNil
-        , oldEnv = BwdNil
-        , newLen = 0
-        , newNames = BwdNil
-        , newTys = BwdNil
-        , frags = BwdNil
-        }
+  let ds =
+        DisaggState
+          { funShapes = fs
+          , oldLen = 0
+          , oldNames = BwdNil
+          , oldTys = BwdNil
+          , oldEnv = BwdNil
+          , newLen = 0
+          , newNames = BwdNil
+          , newTys = BwdNil
+          , frags = BwdNil
+          }
   foldl' pushTy ds $ zip xs tys
 
 mergeFrags :: DisaggState -> RuleFragment
 mergeFrags ds = do
-  let base = RuleFragment
-        { ruleCtx = LocalCtx
-          { localLen = 0
-          , totalLen = ds.newLen
-          , localNames = ds.newNames
-          , localTys = ds.newTys
-          , conditions = BwdNil
+  let base =
+        RuleFragment
+          { ruleCtx =
+              LocalCtx
+                { localLen = 0
+                , totalLen = ds.newLen
+                , localNames = ds.newNames
+                , localTys = ds.newTys
+                , conditions = BwdNil
+                }
+          , heads = []
           }
-        , heads = []
-    }
   foldl' mergeFrag base $ toList ds.frags
 
 disaggregateGen :: Map TableName Shape -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
 disaggregateGen fs tn (Rel xs ts) fr = do
   let ds = disaggregateTele fs xs ts
   let rf = mergeFrags ds
-  let foreignKey = I.Rule
-        { I.ruleVariant = I.Enforced
-        , I.varNames = rf.ruleCtx.localNames
-        , I.varTypes = rf.ruleCtx.localTys
-        , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0..ds.newLen - 1]) : toList rf.ruleCtx.conditions
-        , I.consequents = fmap snd rf.heads
-        }
-  let table = I.Entity
-        { I.entityVariant = I.Table
-        , I.columns = zip (toList ds.newNames) (toList ds.newTys)
-        , primaryKey = Nothing
-        }
+  let foreignKey =
+        I.Rule
+          { I.ruleVariant = I.Enforced
+          , I.varNames = rf.ruleCtx.localNames
+          , I.varTypes = rf.ruleCtx.localTys
+          , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds.newLen - 1]) : toList rf.ruleCtx.conditions
+          , I.consequents = fmap snd rf.heads
+          }
+  let table =
+        I.Entity
+          { I.entityVariant = I.Table
+          , I.columns = zip (toList ds.newNames) (toList ds.newTys)
+          , primaryKey = Nothing
+          }
   fr
     { I.entities = Map.insert tn table fr.entities
-    , I.rules = Map.insert tn { path = tn.path :> "foreignKey" } foreignKey fr.rules
+    , I.rules = Map.insert tn{path = tn.path :> "foreignKey"} foreignKey fr.rules
     }
 disaggregateGen fs tn (Fun xs ts t) fr = do
   let ds = disaggregateTele fs xs ts
   let rf = mergeFrags ds
-  let totality = I.Rule
-        { I.ruleVariant = I.Monitored -- XXX do Enforced when appropriate
-        , I.varNames = rf.ruleCtx.localNames
-        , I.varTypes = rf.ruleCtx.localTys
-        , I.antecedents = toList rf.ruleCtx.conditions ++ fmap snd rf.heads
-        , I.consequents = [I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0..ds.newLen - 1]]
-        }
+  let totality =
+        I.Rule
+          { I.ruleVariant = I.Monitored -- XXX do Enforced when appropriate
+          , I.varNames = rf.ruleCtx.localNames
+          , I.varTypes = rf.ruleCtx.localTys
+          , I.antecedents = toList rf.ruleCtx.conditions ++ fmap snd rf.heads
+          , I.consequents = [I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds.newLen - 1]]
+          }
   let x = freshNameFor xs
-  let ds' = pushTy ds (x,t)
+  let ds' = pushTy ds (x, t)
   let rf' = mergeFrags ds'
-  let foreignKey = I.Rule
-        { I.ruleVariant = I.Enforced
-        , I.varNames = rf'.ruleCtx.localNames
-        , I.varTypes = rf'.ruleCtx.localTys
-        , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0..ds'.newLen - 1]) : toList rf'.ruleCtx.conditions
-        , I.consequents = fmap snd rf'.heads
-        }
-  let table = I.Entity
-        { I.entityVariant = I.Table
-        , I.columns = zip (toList ds'.newNames) (toList ds'.newTys)
-        , I.primaryKey = Just . Set.fromList $ toList ds.newNames
-        }
+  let foreignKey =
+        I.Rule
+          { I.ruleVariant = I.Enforced
+          , I.varNames = rf'.ruleCtx.localNames
+          , I.varTypes = rf'.ruleCtx.localTys
+          , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds'.newLen - 1]) : toList rf'.ruleCtx.conditions
+          , I.consequents = fmap snd rf'.heads
+          }
+  let table =
+        I.Entity
+          { I.entityVariant = I.Table
+          , I.columns = zip (toList ds'.newNames) (toList ds'.newTys)
+          , I.primaryKey = Just . Set.fromList $ toList ds.newNames
+          }
   fr
     { I.entities = Map.insert tn table fr.entities
-    , I.rules = Map.insert tn { path = tn.path :> "foreignKey" } foreignKey
-        $ Map.insert tn { path = tn.path :> "total" } totality fr.rules
+    , I.rules =
+        Map.insert tn{path = tn.path :> "foreignKey"} foreignKey $
+          Map.insert tn{path = tn.path :> "total"} totality fr.rules
     }
 
 lowerRealm :: Name -> C.Realm -> I.FlatRealm
 lowerRealm realmName r = go Map.empty I.emptyFlatRealm (toList r.generators)
-  where
-    go _ fr [] = fr
-    go fs fr ((xs, g):rest) = do
-      let tn = TableName realmName xs
-      let lg = lowerGen g
-      let fr' = disaggregateGen fs tn lg fr
-      let fs' = case lg of
-            Fun _ _ t -> Map.insert tn t.shape fs
-            _ -> fs
-      go fs' fr' rest
+ where
+  go _ fr [] = fr
+  go fs fr ((xs, g) : rest) = do
+    let tn = TableName realmName xs
+    let lg = lowerGen g
+    let fr' = disaggregateGen fs tn lg fr
+    let fs' = case lg of
+          Fun _ _ t -> Map.insert tn t.shape fs
+          _ -> fs
+    go fs' fr' rest
 
 writeIRFor :: Globals -> FilePath -> IO ()
 writeIRFor ge fp = do
@@ -393,4 +410,3 @@ writeIRFor ge fp = do
     let fr = lowerRealm x r
     let fn = fp </> mangleToString x <> ".json"
     AE.encodeFile fn fr
-    

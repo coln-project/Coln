@@ -53,10 +53,12 @@ par False d = d
 
 prt :: (ConfigArg) => PrevPrec -> NtnGeneric a -> DDoc
 prt p = \case
-  Juxt n n' -> fromMaybe
-    (par (looser precApp p) $
-      prt (LeftOf precApp) n <+> prt (RightOf precApp) n')
-    (tryImmediate (Juxt n n'))
+  Juxt n n' ->
+    fromMaybe
+      ( par (looser precApp p) $
+          prt (LeftOf precApp) n <+> prt (RightOf precApp) n'
+      )
+      (tryImmediate (Juxt n n'))
   Infix l n r ->
     let mp' = case n of
           Ident x _ -> confTableLookup ?config x.last

@@ -1,8 +1,8 @@
 module Coln.CLI.GenerateTS where
 
+import Coln.Backend.TypeScript.Generate
 import Coln.CLI.Common
 import Coln.CLI.Options
-import Coln.Backend.TypeScript.Generate
 
 generateTS :: GenerateTSOptions -> IO ()
 generateTS opts = do

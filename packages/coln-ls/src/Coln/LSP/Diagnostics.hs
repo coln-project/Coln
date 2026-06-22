@@ -1,10 +1,10 @@
 module Coln.LSP.Diagnostics (publishDiagnostics) where
 
+import Coln.LSP.Types (LSPBufferInfo (..), LSPState)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Maybe (maybeToList)
 import Data.Text qualified as T
 import Diagnostician qualified as D
-import Coln.LSP.Types (LSPBufferInfo (..), LSPState)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server hiding (publishDiagnostics)

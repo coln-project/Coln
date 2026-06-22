@@ -1,23 +1,24 @@
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.Frontend.Driver where
 
 import Control.Exception (try)
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
+import Diagnostician
 import FNotation (Ntn)
 import FNotation qualified as N
-import Diagnostician
 
 import Coln.Common
 import Coln.Core.Globals
 import Coln.Core.Layout
 import Coln.Core.Memoed qualified as M
 import Coln.Core.Params
+import Coln.Core.Readback
 import Coln.Core.Realm
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
-import Coln.Core.Readback
 import Coln.Diagnostics
 import Coln.Elaborator.Debug
 import Coln.Elaborator.Environment
@@ -153,27 +154,27 @@ realm e g head _defs = do
 
 withArgs :: (V.HasEvaluation c) => ParseEnv -> [(Span, Name, Ntn)] -> (Typ N, Chk c) -> IO (Typ N, Chk c)
 withArgs e args base = foldrM go base args
-  where
-    go :: (V.HasEvaluation c) => (Span, Name, Ntn) -> (Typ N, Chk c) -> IO (Typ N, Chk c)
-    go (sp, name, n) (t, c) = do
-      argtyp <- typ e n
-      pure $
-        ( Function.formation sp (Function.Named name argtyp) t
-        , Function.intro sp name c
-        )
+ where
+  go :: (V.HasEvaluation c) => (Span, Name, Ntn) -> (Typ N, Chk c) -> IO (Typ N, Chk c)
+  go (sp, name, n) (t, c) = do
+    argtyp <- typ e n
+    pure $
+      ( Function.formation sp (Function.Named name argtyp) t
+      , Function.intro sp name c
+      )
 
 fromSynN :: (V.HasEvaluation c) => Syn N -> Judgment c
 fromSynN @c s = case V.scase @c of
   SNominative -> FromSyn s
   SDescriptive -> FromSyn $ Syn \e -> do
-    (a, m) <- s.elab (e { target = TargetAnonymous })
+    (a, m) <- s.elab (e{target = TargetAnonymous})
     pure (a, M.is m)
 
 fromTypN :: (V.HasEvaluation c) => Typ N -> Judgment c
 fromTypN @c t = case V.scase @c of
   SNominative -> FromTyp t
   SDescriptive -> FromTyp $ Typ \e -> do
-    m <- t.elab (e { target = TargetAnonymous })
+    m <- t.elab (e{target = TargetAnonymous})
     pure $ M.isTy m
 
 fromTypD :: (V.HasEvaluation c) => ParseEnv -> Span -> Typ D -> IO (Judgment c)
@@ -196,13 +197,14 @@ expr e n = case n of
   N.Infix arg n@(N.Keyword "->" _) body ->
     fromTypN <$> (Function.formation (N.span n) <$> binder e arg <*> typ e body)
   N.Infix arg n@(N.Keyword "=>" _) body ->
-    FromChk "lambda expression" <$>
-      (Function.intro (N.span n) <$> ident e arg <*> chk e body)
+    FromChk "lambda expression"
+      <$> (Function.intro (N.span n) <$> ident e arg <*> chk e body)
   n@(N.Infix lhs (N.Keyword "=" _) rhs) ->
-    fromTypN <$>
-      (Equality.formation (N.span n) <$>
-       syn e "term in equality" lhs <*>
-       syn e "term in equality" rhs)
+    fromTypN
+      <$> ( Equality.formation (N.span n)
+              <$> syn e "term in equality" lhs
+              <*> syn e "term in equality" rhs
+          )
   N.Block "sig" Nothing ns _ -> do
     t <- Record.formation <$> traverse (fieldDecl e) ns
     fromTypD e (N.span n) t

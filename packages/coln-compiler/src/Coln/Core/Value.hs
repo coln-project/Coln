@@ -35,8 +35,8 @@ data Description :: (Case -> Type) -> Type where
 
 class HasEvaluation (c :: Case) where
   epure :: a c -> Evaluation a c
-  emap :: (forall c'. HasEvaluation c' => a c' -> b c') -> Evaluation a c -> Evaluation b c
-  ebind :: (forall c'. HasEvaluation c' => a c' -> Evaluation b c') -> Evaluation a c -> Evaluation b c
+  emap :: (forall c'. (HasEvaluation c') => a c' -> b c') -> Evaluation a c -> Evaluation b c
+  ebind :: (forall c'. (HasEvaluation c') => a c' -> Evaluation b c') -> Evaluation a c -> Evaluation b c
   scase :: SCase c
 
 instance HasEvaluation N where
@@ -96,7 +96,7 @@ expandRecord :: RecordType -> Head -> Spine -> Maybe (El D) -> Dict (El N)
 expandRecord recordType head spine desc = do
   let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
       go _ [] = []
-      go vs ((x, ty):rest) = do
+      go vs ((x, ty) : rest) = do
         let v = reflect head (Proj spine x) (ty vs) ((`proj` x) <$> desc)
         v : go (LSnoc vs v) rest
   let tele = recordType.fieldTypes

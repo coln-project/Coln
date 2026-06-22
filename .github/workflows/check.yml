@@ -112,9 +112,13 @@ jobs:
           name: coln
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - name: Run checks
+      - name: Formatting (.hs)
+        run: nix build .#format-hs
+
+      - name: Formatting (.cabal)
+        run: nix build .#format-cabal
+
+      - name: Haskell Tests
         run: |
           RUN_CHECKS=$(nix build .#haskell-tests --no-link --print-out-paths)
           $RUN_CHECKS
-          
-

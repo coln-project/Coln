@@ -1,15 +1,15 @@
 module Coln.Elaborator.Rules.Variable where
 
-import Prelude hiding (lookup)
 import Prettyprinter
+import Prelude hiding (lookup)
 
 import Coln.Common
-import Coln.Core.Globals
-import Coln.Core.Params
-import Coln.Core.Value qualified as V
-import Coln.Core.Syntax qualified as S
-import Coln.Core.Memoed
 import Coln.Core.Evaluation
+import Coln.Core.Globals
+import Coln.Core.Memoed
+import Coln.Core.Params
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
 import Coln.Elaborator.Diagnostics
 import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
