@@ -147,7 +147,7 @@ impl TxnInner {
         // 3. resolve: TxnRowId(k) -> RowId { commit: hash, counter: k }
         //             CellValue::TxnId(k) -> CellValue::Id(RowId { commit: hash, counter: k })
         // 4. apply resolved Ops to tables via table.append_row
-        // 5. check_laws
+        // 5. check_rules
         // 6. push CommitMeta into store.commit_graph, advance heads
         // 7. return hash
     }

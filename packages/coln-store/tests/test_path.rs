@@ -231,7 +231,7 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     tx.add(&Path::from("Path.Graphs"), vec![])
         .expect("add graph row");
     let err = tx.commit().expect_err("missing g0 and g1");
-    assert!(matches!(err, StoreIntError::Law(_)));
+    assert!(matches!(err, StoreIntError::Rule(_)));
 
     assert_eq!(
         store
@@ -280,7 +280,7 @@ fn test_fk() {
         .expect("add edge");
     let err = tx.commit().expect_err("missing v2");
 
-    assert!(matches!(err, StoreIntError::Law(_)));
+    assert!(matches!(err, StoreIntError::Rule(_)));
 }
 
 #[test]
@@ -312,7 +312,7 @@ fn test_divergent_commits_merge_between_stores() {
     let mut base = Store::try_from_theory(theory).expect("valid theory");
     add_basic_data_to_path(&mut base).expect("add shared baseline data");
 
-    // Add a second law-free graph so we can add vertices to different graphs to
+    // Add a second rule-free graph so we can add vertices to different graphs to
     // make two commits different
     {
         let mut tx = base.transaction();

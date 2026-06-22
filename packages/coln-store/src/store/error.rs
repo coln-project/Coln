@@ -13,7 +13,7 @@ pub enum StoreIntError {
     #[error(transparent)]
     Validation(#[from] ValidationError),
     #[error(transparent)]
-    Law(#[from] Box<RuleViolation>),
+    Rule(#[from] Box<RuleViolation>),
     #[error(transparent)]
     Compile(#[from] CompileError),
     #[error(transparent)]

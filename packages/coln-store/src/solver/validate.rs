@@ -8,7 +8,7 @@ use tracing::debug;
 
 use crate::{
     solver::{
-        bind::{Binding, BoundValue, bind_law, eval_term},
+        bind::{Binding, BoundValue, bind_rule, eval_term},
         compile::{CompAtom, CompEq, CompProp, CompRule, CompVal},
         matcher::term_matches,
     },
@@ -25,9 +25,9 @@ pub enum ViolationCause {
     UnsatisfiedEq(CompEq),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct RuleViolation {
-    pub law: CompRule,
+    pub rule: CompRule,
     pub cause: ViolationCause,
     pub binding: Binding,
 }
@@ -38,12 +38,12 @@ impl fmt::Display for RuleViolation {
             ViolationCause::MissingAtom(atom) => write!(
                 f,
                 "rule {} violated: missing consequent atom in table {}",
-                self.law, atom.table
+                self.rule, atom.table
             ),
             ViolationCause::UnsatisfiedEq(eq) => write!(
                 f,
                 "rule {} violated: equality {:?} = {:?} did not hold",
-                self.law, eq.left, eq.right
+                self.rule, eq.left, eq.right
             ),
         }
     }
@@ -127,21 +127,21 @@ fn prop_holds(store: &Store, binding: &Binding, prop: &CompProp) -> Result<(), V
     }
 }
 
-pub fn check_law(store: &Store, law: &CompRule) -> Result<(), Box<RuleViolation>> {
-    let bindings = bind_law(store, law);
-    debug!(law = %law.path, bindings = ?bindings, "checking law with bindings");
+pub fn check_rule(store: &Store, rule: &CompRule) -> Result<(), Box<RuleViolation>> {
+    let bindings = bind_rule(store, rule);
+    debug!(rule = %rule.path, bindings = ?bindings, "checking rule with bindings");
 
     for binding in bindings {
-        if let Err(cause) = prop_holds(store, &binding, &law.consequent) {
-            debug!(law = %law.path, cause = ?cause, "law violation detected");
+        if let Err(cause) = prop_holds(store, &binding, &rule.consequent) {
+            debug!(rule = %rule.path, cause = ?cause, "rule violation detected");
             return Err(Box::new(RuleViolation {
-                law: law.clone(),
+                rule: rule.clone(),
                 cause,
                 binding,
             }));
         }
     }
-    debug!(law = %law.path, "law satisfied");
+    debug!(rule = %rule.path, "rule satisfied");
     Ok(())
 }
 
@@ -153,7 +153,7 @@ mod tests {
             self, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Rule, RuleEntry,
             RuleVariant, Schema,
         },
-        solver::compile::compile_law,
+        solver::compile::compile_rule,
         table::{CellValue, Table},
     };
 
@@ -207,7 +207,7 @@ mod tests {
             Table::new(g0_path.clone(), int_schema(&[])),
         );
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "G0.total",
             vec![],
             vec![],
@@ -220,10 +220,10 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
-        let violation = check_law(&store, &compiled).expect_err("missing G0 row should violate");
+        let compiled = compile_rule(&rule).expect("compile rule");
+        let violation = check_rule(&store, &compiled).expect_err("missing G0 row should violate");
 
-        assert_eq!(violation.law.path, Path::from("G0.total"));
+        assert_eq!(violation.rule.path, Path::from("G0.total"));
         match &violation.cause {
             ViolationCause::MissingAtom(atom) => assert_eq!(atom.table, g0_path),
             other => panic!("expected MissingAtom, got {:?}", other),
@@ -252,7 +252,7 @@ mod tests {
             .expect("insert target row");
         txn.commit().expect("commit matching rows");
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "Copy.total",
             vec![int_ty()],
             vec![ir::Prop::Atom {
@@ -277,12 +277,12 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
-        assert!(check_law(&store, &compiled).is_ok());
+        let compiled = compile_rule(&rule).expect("compile rule");
+        assert!(check_rule(&store, &compiled).is_ok());
     }
 
     #[test]
-    fn foreign_key_law_fails_when_only_referencing_row_exists() {
+    fn foreign_key_rule_fails_when_only_referencing_row_exists() {
         let left = Path::from("Left");
         let right = Path::from("Right");
         let link = Path::from("Link");
@@ -297,7 +297,7 @@ mod tests {
             Table::new(link.clone(), int_schema(&["c0", "c1"])),
         );
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "Link.foreignKeys",
             vec![int_ty(), int_ty()],
             vec![ir::Prop::Atom {
@@ -340,7 +340,7 @@ mod tests {
             ],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
+        let compiled = compile_rule(&rule).expect("compile rule");
 
         let mut txn = store.transaction();
         txn.add(
@@ -350,8 +350,8 @@ mod tests {
         .expect("insert referencing row");
         txn.commit().expect("commit referencing row");
 
-        let violation = check_law(&store, &compiled).expect_err("missing referenced rows");
-        assert_eq!(violation.law.path, Path::from("Link.foreignKeys"));
+        let violation = check_rule(&store, &compiled).expect_err("missing referenced rows");
+        assert_eq!(violation.rule.path, Path::from("Link.foreignKeys"));
         match &violation.cause {
             ViolationCause::MissingAtom(atom) => assert_eq!(atom.table, left),
             other => panic!("expected MissingAtom, got {:?}", other),
@@ -371,7 +371,7 @@ mod tests {
             .expect("insert right row");
         txn.commit().expect("commit referenced rows");
 
-        assert!(check_law(&store, &compiled).is_ok());
+        assert!(check_rule(&store, &compiled).is_ok());
     }
 
     #[test]
@@ -384,7 +384,7 @@ mod tests {
             .expect("insert row");
         txn.commit().expect("commit row");
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.eq",
             vec![int_ty(), int_ty()],
             vec![ir::Prop::Atom {
@@ -409,8 +409,8 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
-        assert!(check_law(&store, &compiled).is_ok());
+        let compiled = compile_rule(&rule).expect("compile rule");
+        assert!(check_rule(&store, &compiled).is_ok());
     }
 
     #[test]
@@ -423,7 +423,7 @@ mod tests {
             .expect("insert row");
         txn.commit().expect("commit row");
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.eq",
             vec![int_ty(), int_ty()],
             vec![ir::Prop::Atom {
@@ -448,8 +448,8 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
-        let violation = check_law(&store, &compiled).expect_err("eq should fail");
+        let compiled = compile_rule(&rule).expect("compile rule");
+        let violation = check_rule(&store, &compiled).expect_err("eq should fail");
         match &violation.cause {
             ViolationCause::UnsatisfiedEq(eq) => {
                 assert_eq!(eq.left, crate::solver::compile::CompTerm::Var(0));

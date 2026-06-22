@@ -170,7 +170,7 @@ mod tests {
             .expect("add");
 
         let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(err, StoreIntError::Law(_)));
+        assert!(matches!(err, StoreIntError::Rule(_)));
         assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
     }
 

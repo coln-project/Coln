@@ -24,7 +24,7 @@ use crate::txn::{OwnedTransaction, Transaction};
 pub mod error;
 
 // TODO this should not be cloneable for efficiency reasons. In the future we should
-// be able to teach the law validator to check the delta
+// be able to teach the rule validator to check the delta
 #[derive(Debug, Clone)]
 pub struct Store {
     pub(crate) next_oid: TableOid,
@@ -187,7 +187,7 @@ impl Store {
 
     /// Validates and appends a batch to this store.
     ///
-    /// This is a low level API that mutates `self` before law checking, so
+    /// This is a low level API that mutates `self` before rule checking, so
     /// callers that need atomicity must call it on a preview clone and publish
     /// that clone only after success.
     fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
@@ -206,7 +206,7 @@ impl Store {
             t.append_row(values.clone(), *row_id);
         }
 
-        self.check_laws()?;
+        self.check_rules()?;
         Ok(())
     }
 
@@ -294,17 +294,17 @@ impl Store {
         debug!(rule_count = rules.len(), "compiling rules");
         let comp = rules
             .iter()
-            .map(solver::compile::compile_law)
+            .map(solver::compile::compile_rule)
             .collect::<Result<Vec<_>, CompileError>>()?;
         debug!(compiled_rule_count = comp.len(), "compiled rules");
         Ok(comp)
     }
 
-    pub fn check_laws(&self) -> Result<(), StoreIntError> {
+    pub fn check_rules(&self) -> Result<(), StoreIntError> {
         debug!(rule_count = self.rules.len(), "checking rules");
         self.rules()
             .iter()
-            .map(|law_entry| solver::validate::check_law(self, law_entry))
+            .map(|rule| solver::validate::check_rule(self, rule))
             .collect::<Result<Vec<_>, Box<RuleViolation>>>()?;
         debug!(rule_count = self.rules.len(), "all rules satisfied");
         Ok(())
@@ -634,7 +634,7 @@ mod tests {
 
     use super::test_support::link_foreign_key_theory;
     use super::*;
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema};
 
     fn single_int_store() -> Store {
         let path = Path::from("T");
@@ -1007,7 +1007,7 @@ mod tests {
     }
 
     #[test]
-    fn transaction_leaves_store_unchanged_when_laws_fail() {
+    fn transaction_leaves_store_unchanged_when_rules_fail() {
         let theory = link_foreign_key_theory();
         let link = Path::from("Link");
         let mut store = Store::try_from_theory(theory).expect("theory");
@@ -1020,7 +1020,7 @@ mod tests {
         .expect("add");
         let err = txn.commit().unwrap_err();
 
-        assert!(matches!(err, StoreIntError::Law(_)));
+        assert!(matches!(err, StoreIntError::Rule(_)));
         assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
     }
 
@@ -1040,13 +1040,14 @@ mod tests {
 
         let compiled_rule = solver::compile::CompRule {
             path: Path::from("T.total"),
+            rule_variant: RuleVariant::Enforced,
             vars: vec![],
             antecedent: solver::compile::CompProp::And(vec![]),
             consequent: solver::compile::CompProp::And(vec![]),
             tables: vec![Path::from("T")],
         };
         let violation = RuleViolation {
-            law: compiled_rule,
+            rule: compiled_rule,
             cause: solver::validate::ViolationCause::MissingAtom(solver::compile::CompAtom {
                 table: Path::from("T"),
                 row_id: None,
@@ -1054,7 +1055,7 @@ mod tests {
             }),
             binding: vec![],
         };
-        let law = StoreIntError::from(Box::new(violation));
-        assert!(matches!(law, StoreIntError::Law(_)));
+        let rule = StoreIntError::from(Box::new(violation));
+        assert!(matches!(rule, StoreIntError::Rule(_)));
     }
 }
