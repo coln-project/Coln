@@ -55,7 +55,7 @@
       "import": "./dist/wrapper/esm/slim.js",
       "require": "./dist/wrapper/cjs/slim.cjs"
     },
-    "./wasm": "./dist/coln-js-runtime.wasm",
+    "./wasm": "./dist/runtime.wasm",
     "./wasm-base64": {
       "import": "./dist/esm/wasm-base64.js",
       "require": "./dist/cjs/wasm-base64.cjs"
