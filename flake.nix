@@ -172,12 +172,14 @@
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
+            just
             nodejs
             pnpm
             packages.wasm-bodge
             rustToolchain
             packages.wasm-bindgen-cli
             binaryen
+            openssl
             pkg-config
             tectonic
             typescript

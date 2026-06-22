@@ -2,24 +2,20 @@
 # From repo root:
 #   just              # list available recipes
 #   just check           # run all package checks
-#   just store-check  # fmt-check + clippy + test for coln-store
-#   just store-test   # run coln-store tests
-#   just store-fix    # apply cargo fixes + format for coln-store
-#   just js-runtime-check  # rust + npm tests for coln-js-runtime
 
 default:
     @just --list
 
-check: store-check js-runtime-check
+check-haskell: (check "coln-compiler") (check "coln-cli") (check "coln-repl") (check "coln-ls") (check "fnotation") (check "diagnostician")
 
-store-check:
-    just -f packages/coln-store/justfile check
+check-rust: (check "coln-store")
 
-store-test:
-    just -f packages/coln-store/justfile test
+check-typescript: (check "coln-js-runtime")
 
-store-fix:
-    just -f packages/coln-store/justfile fix
+check-all: check-haskell check-rust check-typescript
 
-js-runtime-check:
-    just -f packages/coln-js-runtime/justfile check
+check package:
+    just -f packages/{{package}}/justfile check
+
+fix package:
+    just -f packages/{{package}}/justfile fix
