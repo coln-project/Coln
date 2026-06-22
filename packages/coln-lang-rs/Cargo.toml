@@ -2,6 +2,13 @@
 name = "coln-lang-rs"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "The Rust definitions of the Coln language IR."
+repository = "https://github.com/coln-project/Coln"
+readme = "README.md"
+
+
+exclude = ["/.gitignore"]
 
 [lib]
 
