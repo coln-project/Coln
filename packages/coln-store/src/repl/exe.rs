@@ -157,16 +157,50 @@ pub fn render_schema_summary(schema: Option<&SchemaSummary>) -> String {
     ];
 
     for table in &schema.tables {
-        lines.push(format!(
-            "- {} | cols={} | pk={} | [{}]",
-            table.path,
-            table.column_count,
-            format_primary_key(&table.primary_key),
-            table.columns.join(", ")
-        ));
+        lines.push(String::new());
+        lines.push(render_table_schema_summary(table));
     }
 
     lines.join("\n")
+}
+
+fn render_table_schema_summary(table: &TableSummary) -> String {
+    let mut lines = vec![
+        format!("table: {}", table.path),
+        format!("columns: {}", table.column_count),
+        format!("primary key: {}", format_primary_key(&table.primary_key)),
+    ];
+    lines.extend(table.columns.iter().map(|column| format!("- {column}")));
+
+    lines.join("\n")
+}
+
+pub fn render_table_schema(
+    schema: Option<&SchemaSummary>,
+    table_name: &str,
+) -> Result<String, ReplError> {
+    let schema = schema.ok_or(ReplError::NoSchemaLoaded)?;
+    let table = schema
+        .tables
+        .iter()
+        .find(|table| table.path == table_name)
+        .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
+
+    Ok(render_table_schema_summary(table))
+}
+
+pub fn render_rules(store: Option<&Store>) -> Result<String, ReplError> {
+    let store = store.ok_or(ReplError::NoSchemaLoaded)?;
+    if store.rules().is_empty() {
+        return Ok("no rules".to_string());
+    }
+
+    Ok(store
+        .rules()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n"))
 }
 
 pub fn add_rows(
@@ -298,11 +332,42 @@ mod tests {
     }
 
     #[test]
+    fn renders_all_table_schemas() {
+        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let rendered = render_schema_summary(Some(&loaded.schema));
+        assert!(rendered.contains("source: tests/data/Path.json"));
+        assert!(rendered.contains("table: Path.G.V"));
+        assert!(rendered.contains("- a: entity(Path.Graphs)"));
+        assert!(rendered.contains("table: Path.G.E"));
+        assert!(rendered.contains("- b: entity(Path.G.V)"));
+    }
+
+    #[test]
     fn loads_schema_summary_from_fixture() {
         let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
         assert_eq!(loaded.store.table_count(), 16);
         assert_eq!(loaded.schema.table_count, 16);
         assert_eq!(loaded.schema.law_count, 27);
         assert_eq!(loaded.schema.tables[0].path, "Path.G0");
+    }
+
+    #[test]
+    fn renders_single_table_schema() {
+        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let rendered =
+            render_table_schema(Some(&loaded.schema), "Path.G.V").expect("render table schema");
+        assert!(rendered.contains("table: Path.G.V"));
+        assert!(rendered.contains("primary key:"));
+        assert!(rendered.contains("- a: entity(Path.Graphs)"));
+    }
+
+    #[test]
+    fn renders_rules_one_per_line() {
+        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let rendered = render_rules(Some(&loaded.store)).expect("render rules");
+        let lines = rendered.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), loaded.store.rules().len());
+        assert!(lines[0].contains(" := forall"));
+        assert!(lines[0].contains(" |- "));
     }
 }
