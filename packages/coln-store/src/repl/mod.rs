@@ -15,7 +15,8 @@ use crate::commit::pst::encode_store;
 use crate::ir::Path;
 use crate::repl::error::ReplError;
 use crate::repl::exe::{
-    LoadedState, add_rows, load_schema, load_store, render_schema_summary, run_transact,
+    LoadedState, add_rows, load_schema, load_store, render_rules, render_schema_summary,
+    render_table_schema, run_transact,
 };
 use crate::repl::parse::Command;
 use crate::repl::parse::parse_command;
@@ -25,17 +26,8 @@ pub mod exe;
 pub mod parse;
 
 const COMMANDS: &[&str] = &[
-    "/help",
-    "/exit",
-    "/quit",
-    "load-schema",
-    "load-store",
-    "list-schema",
-    "dump-table",
-    "dump-store",
-    "persist",
-    "add",
-    "begin",
+    ".help", ".exit", ".quit", ".load", ".open", ".save", ".tables", ".rules", ".schema", ".dump",
+    "add", "begin",
 ];
 #[derive(Default)]
 struct Session {
@@ -51,7 +43,7 @@ enum Step {
 struct CommandHelper;
 
 fn is_statement_start(input: &str) -> bool {
-    !input.trim_start().starts_with('/')
+    !input.trim_start().starts_with('.')
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -61,7 +53,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut pending_statement: Option<String> = None;
 
     println!("coln-store repl");
-    println!("Type /help for commands.");
+    println!("Type .help for commands.");
 
     loop {
         let prompt = if pending_statement.is_some() {
@@ -76,7 +68,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     pending_statement = None;
                     println!("cancelled pending statement");
                 } else {
-                    println!("Use `/exit` to quit.");
+                    println!("Use `.exit` to quit.");
                 }
                 continue;
             }
@@ -167,7 +159,7 @@ impl Completer for CommandHelper {
 fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
     match command {
         Command::Help => Ok(Step::Continue(help_text())),
-        Command::LoadSchema { path } => {
+        Command::Load { path } => {
             let loaded = load_schema(std::path::Path::new(&path))?;
             info!(
                 source = %loaded.schema.source.display(),
@@ -184,7 +176,7 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
             session.loaded = Some(loaded);
             Ok(Step::Continue(message))
         }
-        Command::LoadStore { path } => {
+        Command::Open { path } => {
             let loaded = load_store(std::path::Path::new(&path))?;
             info!(
                 source = %loaded.schema.source.display(),
@@ -201,9 +193,18 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
             session.loaded = Some(loaded);
             Ok(Step::Continue(message))
         }
-        Command::ListSchema => Ok(Step::Continue(render_schema_summary(
-            session.loaded.as_ref().map(|loaded| &loaded.schema),
-        ))),
+        Command::Schema { table } => {
+            let schema = session.loaded.as_ref().map(|loaded| &loaded.schema);
+            let message = match table {
+                Some(table) => render_table_schema(schema, &table)?,
+                None => render_schema_summary(schema),
+            };
+            Ok(Step::Continue(message))
+        }
+        Command::Rules => {
+            let store = session.loaded.as_ref().map(|loaded| &loaded.store);
+            Ok(Step::Continue(render_rules(store)?))
+        }
         Command::Add { table, rows } => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let row_ids = add_rows(&mut loaded.store, &table, &rows)?;
@@ -221,25 +222,25 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
             let message = run_transact(&mut loaded.store, &assignments)?;
             Ok(Step::Continue(message))
         }
-        Command::DumpTbl { name } => {
+        Command::Dump { table } => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let tbl = loaded
                 .store
-                .table_at(&Path::from(name.clone()))
-                .ok_or(ReplError::UnknownTable(name))?;
+                .table_at(&Path::from(table.clone()))
+                .ok_or(ReplError::UnknownTable(table))?;
             let message = tbl.dump();
             Ok(Step::Continue(message))
         }
-        Command::DumpStore => {
+        Command::Tables => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let message = loaded.store.dump();
             Ok(Step::Continue(message))
         }
-        Command::Persist { path } => {
+        Command::Save { path } => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let bytes = encode_store(&loaded.store)?;
             std::fs::write(&path, &bytes)?;
-            Ok(Step::Continue(format!("persisted store to {path}")))
+            Ok(Step::Continue(format!("saved store to {path}")))
         }
         Command::Exit => Ok(Step::Exit),
     }
@@ -248,22 +249,25 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
 fn help_text() -> String {
     [
         "Commands:",
-        "  /help",
-        "  /exit",
-        "  /quit",
-        "  load-schema <path>;",
-        "  load-store <path>;",
-        "  list-schema;",
+        "  .help",
+        "  .exit",
+        "  .quit",
+        "  .load <schema-json-path>",
+        "  .open <store-path>",
+        "  .save <store-path>",
+        "  .tables",
+        "  .rules",
+        "  .schema [table]",
+        "  .dump <table>",
         "  add <table> values (...), (...);",
-        "  dump-table <table>;",
-        "  dump-store;",
-        "  persist <path>;",
         "  begin transact; name = add <table> values (...); ... commit;",
         "",
         "Examples:",
-        "  /help",
-        "  load-schema tests/data/paths.json;",
-        "  list-schema;",
+        "  .help",
+        "  .load tests/data/paths.json",
+        "  .schema",
+        "  .rules",
+        "  .dump T",
         "  add T values (7 \"alice\"), (8 \"bob\");",
         "  begin transact; g = add Graphs values (); e = add G0 values (g); commit;",
     ]
@@ -426,15 +430,15 @@ mod tests {
 
     #[test]
     fn completes_command_prefix() {
-        let (start, matches) = complete_command("/q", 2);
+        let (start, matches) = complete_command(".q", 2);
         assert_eq!(start, 0);
         assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].replacement, "/quit");
+        assert_eq!(matches[0].replacement, ".quit");
     }
 
     #[test]
     fn does_not_complete_after_first_argument() {
-        let (_, matches) = complete_command("load-schema te", "load-schema te".len());
+        let (_, matches) = complete_command(".load te", ".load te".len());
         assert!(matches.is_empty());
     }
 
@@ -466,8 +470,8 @@ mod tests {
     }
 
     #[test]
-    fn slash_command_is_not_statement_start() {
-        assert!(!is_statement_start("/help"));
+    fn meta_command_is_not_statement_start() {
+        assert!(!is_statement_start(".help"));
         assert!(is_statement_start("add T 7"));
     }
 }

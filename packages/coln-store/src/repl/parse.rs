@@ -23,13 +23,17 @@ pub struct BatchAssignment {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Help,
-    LoadSchema {
+    Load {
         path: String,
     },
-    LoadStore {
+    Open {
         path: String,
     },
-    ListSchema,
+    Schema {
+        table: Option<String>,
+    },
+    Tables,
+    Rules,
     Add {
         table: String,
         rows: Vec<Vec<String>>,
@@ -38,11 +42,10 @@ pub enum Command {
     Batch {
         assignments: Vec<BatchAssignment>,
     },
-    DumpTbl {
-        name: String,
+    Dump {
+        table: String,
     },
-    DumpStore,
-    Persist {
+    Save {
         path: String,
     },
     Exit,
@@ -71,7 +74,7 @@ pub fn parse_add_statement(input: &str) -> Result<Command, String> {
 
 pub fn parse_command(input: &str) -> Result<Command, String> {
     let input = input.trim();
-    if input.starts_with('/') {
+    if input.starts_with('.') {
         parse_meta_command(input)
     } else {
         let Some(input) = input.strip_suffix(';') else {
@@ -89,22 +92,61 @@ pub fn parse_meta_command(input: &str) -> Result<Command, String> {
     };
 
     match command.as_str() {
-        "/help" => {
+        ".help" => {
             if parts.len() == 1 {
                 Ok(Command::Help)
             } else {
-                Err("usage: /help".to_string())
+                Err("usage: .help".to_string())
             }
         }
-        "/exit" | "/quit" => {
+        ".exit" | ".quit" => {
             if parts.len() == 1 {
                 Ok(Command::Exit)
             } else {
                 Err(format!("usage: {command}"))
             }
         }
+        ".load" => match parts.as_slice() {
+            [_, path] => Ok(Command::Load { path: path.clone() }),
+            _ => Err("usage: .load <schema-json-path>".to_string()),
+        },
+        ".open" => match parts.as_slice() {
+            [_, path] => Ok(Command::Open { path: path.clone() }),
+            _ => Err("usage: .open <store-path>".to_string()),
+        },
+        ".save" => match parts.as_slice() {
+            [_, path] => Ok(Command::Save { path: path.clone() }),
+            _ => Err("usage: .save <store-path>".to_string()),
+        },
+        ".tables" => {
+            if parts.len() == 1 {
+                Ok(Command::Tables)
+            } else {
+                Err("usage: .tables".to_string())
+            }
+        }
+        ".rules" => {
+            if parts.len() == 1 {
+                Ok(Command::Rules)
+            } else {
+                Err("usage: .rules".to_string())
+            }
+        }
+        ".schema" => match parts.as_slice() {
+            [_] => Ok(Command::Schema { table: None }),
+            [_, table] => Ok(Command::Schema {
+                table: Some(table.clone()),
+            }),
+            _ => Err("usage: .schema [table]".to_string()),
+        },
+        ".dump" => match parts.as_slice() {
+            [_, table] => Ok(Command::Dump {
+                table: table.clone(),
+            }),
+            _ => Err("usage: .dump <table>".to_string()),
+        },
         _ => Err(format!(
-            "unknown meta command: {command}. Type `/help` for commands."
+            "unknown meta command: {command}. Type `.help` for commands."
         )),
     }
 }
@@ -121,33 +163,9 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
     };
 
     match command.as_str() {
-        "load-schema" => match parts.as_slice() {
-            [_, path] => Ok(Command::LoadSchema { path: path.clone() }),
-            _ => Err("usage: load-schema <path>;".to_string()),
-        },
-        "load-store" => match parts.as_slice() {
-            [_, path] => Ok(Command::LoadStore { path: path.clone() }),
-            _ => Err("usage: load-store <path>;".to_string()),
-        },
-        "list-schema" => {
-            if parts.len() == 1 {
-                Ok(Command::ListSchema)
-            } else {
-                Err("usage: list-schema;".to_string())
-            }
-        }
         "add" => parse_add_statement(input),
-        "dump-table" => match parts.as_slice() {
-            [_, name] => Ok(Command::DumpTbl { name: name.clone() }),
-            _ => Err("usage: dump-table <table>;".to_string()),
-        },
-        "dump-store" => Ok(Command::DumpStore),
-        "persist" => match parts.as_slice() {
-            [_, path] => Ok(Command::Persist { path: path.clone() }),
-            _ => Err("usage: persist <path>;".to_string()),
-        },
         _ => Err(format!(
-            "unknown statement: {command}. Statements must end with `;`, or use `/help` for meta commands."
+            "unknown statement: {command}. Statements must end with `;`, or use `.help` for meta commands."
         )),
     }
 }
@@ -416,7 +434,7 @@ mod tests {
 
     #[test]
     fn parses_help() {
-        assert_eq!(parse_command("/help").unwrap(), Command::Help);
+        assert_eq!(parse_command(".help").unwrap(), Command::Help);
     }
 
     #[test]
@@ -425,10 +443,10 @@ mod tests {
     }
 
     #[test]
-    fn parses_load_schema_with_quotes() {
+    fn parses_load_with_quotes() {
         assert_eq!(
-            parse_command("load-schema \"tests/data/paths.json\";").unwrap(),
-            Command::LoadSchema {
+            parse_command(".load \"tests/data/paths.json\"").unwrap(),
+            Command::Load {
                 path: "tests/data/paths.json".to_string()
             }
         );
@@ -473,7 +491,37 @@ mod tests {
 
     #[test]
     fn parses_quit_without_semicolon() {
-        assert_eq!(parse_command("/quit").unwrap(), Command::Exit);
+        assert_eq!(parse_command(".quit").unwrap(), Command::Exit);
+    }
+
+    #[test]
+    fn parses_meta_commands_without_semicolons() {
+        assert_eq!(
+            parse_command(".open paths.bin").unwrap(),
+            Command::Open {
+                path: "paths.bin".to_string()
+            }
+        );
+        assert_eq!(
+            parse_command(".save paths.bin").unwrap(),
+            Command::Save {
+                path: "paths.bin".to_string()
+            }
+        );
+        assert_eq!(parse_command(".tables").unwrap(), Command::Tables);
+        assert_eq!(parse_command(".rules").unwrap(), Command::Rules);
+        assert_eq!(
+            parse_command(".schema Path.G.V").unwrap(),
+            Command::Schema {
+                table: Some("Path.G.V".to_string())
+            }
+        );
+        assert_eq!(
+            parse_command(".dump Path.G.V").unwrap(),
+            Command::Dump {
+                table: "Path.G.V".to_string()
+            }
+        );
     }
 
     #[test]

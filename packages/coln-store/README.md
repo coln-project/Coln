@@ -10,9 +10,9 @@ Coln Store is the storage engine for Coln. Roughly it ought to support:
 This repo lets you give the store a compiled Coln theory, load it, and then add
 data to its tables.
 
-Example of loading a schema and inserting several related rows. Type `/help`
-for the full command list (for example `load-schema`, `add`, `dump-table`,
-`dump-store`, and the batch form below).
+Example of loading a schema and inserting several related rows. Type `.help`
+for the full command list (for example `.load`, `.schema`, `.rules`,
+`.dump`, `.tables`, `.open`, `.save`, `add`, and the batch form below).
 
 ## Transaction
 
@@ -27,12 +27,12 @@ The snippet below loads the `paths` theory, creates two graphs (`g0`, `g1`),
 records `g1` as the designated graph for the `Path.G0` and `Path.G1` indices,
 adds two vertices on `g0`, and adds one edge between them on `g0`.
 
-After `commit`, inspect what landed with `dump-table <table>;`. For example,
-`dump-table Path.Graphs;`, `dump-table Path.G.V;`, or `dump-table Path.G.E;`,
-or print the entire store with `dump-store;`.
+After `commit`, inspect what landed with `.dump <table>`. For example,
+`.dump Path.Graphs`, `.dump Path.G.V`, or `.dump Path.G.E`, print every
+table with `.tables`, or print all compiled rules with `.rules`.
 
 ```text
-coln-store> load-schema tests/data/Path.json;
+coln-store> .load tests/data/Path.json
 begin transact;
   g0 = add Path.Graphs values ();
   g1 = add Path.Graphs values ();
@@ -47,8 +47,24 @@ begin transact;
 
 commit;
 
-persist paths.bin;
-load-store paths.bin;
+.save paths.bin
+.open paths.bin
+
+.load tests/data/ExprRealm.json
+begin transact;
+    t0 = add ExprRealm.exprs.t values ();
+    t1 = add ExprRealm.exprs.t values ();
+    t2 = add ExprRealm.exprs.t values ();
+    va = add ExprRealm.v0 values ();
+    vb = add ExprRealm.v0 values ();
+
+    ta = add ExprRealm.exprs.vars values (va t0);
+    tb = add ExprRealm.exprs.vars values (vb t1);
+
+    apb = add ExprRealm.exprs.plus values (t0 t1 t2);
+
+commit;
+
 ```
 
 To get a violation of the law, say (`Path.Hom.V.total`), change the line
