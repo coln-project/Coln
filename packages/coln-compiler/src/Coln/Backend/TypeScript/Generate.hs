@@ -193,9 +193,10 @@ genRealmConstructor access r = do
   let superCall = case extends access of
         Just _ -> [TS.Expr (TS.Call (TS.Var "super") [TS.Var "store"])]
         Nothing -> []
-  let body = TS.Block
-        (superCall ++ [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSCtxShape r.root)])
-        Nothing
+  let body =
+        TS.Block
+          (superCall ++ [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSCtxShape r.root)])
+          Nothing
   TS.Constructor args body
 
 genRealmClass :: Access -> Realm -> TS.Class
