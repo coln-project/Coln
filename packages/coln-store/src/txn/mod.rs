@@ -39,7 +39,7 @@ impl<'a> Transaction<'a> {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnValue>,
-    ) -> Result<RowHandle, Box<StoreIntError>> {
+    ) -> Result<RowHandle, StoreIntError> {
         self.inner.add(self.store, table, values)
     }
 
@@ -49,11 +49,11 @@ impl<'a> Transaction<'a> {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, Box<StoreIntError>> {
+    ) -> Result<TempRowId, StoreIntError> {
         self.inner.add_internal(self.store, table, values)
     }
 
-    pub fn commit(self) -> Result<CommitHash, Box<StoreIntError>> {
+    pub fn commit(self) -> Result<CommitHash, StoreIntError> {
         self.inner.commit(self.store)
     }
     // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreIntError> { ... }
@@ -77,13 +77,13 @@ impl OwnedTransaction {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnValue>,
-    ) -> Result<RowHandle, Box<StoreIntError>> {
+    ) -> Result<RowHandle, StoreIntError> {
         self.inner.add(&self.store, table, values)
     }
 
     // We need to return Store to the user for roll back purposes, so the Err variant must be large
     #[allow(clippy::result_large_err)]
-    pub fn commit(mut self) -> Result<(CommitHash, Store), (Box<StoreIntError>, Store)> {
+    pub fn commit(mut self) -> Result<(CommitHash, Store), (StoreIntError, Store)> {
         match self.inner.commit(&mut self.store) {
             Ok(hash) => Ok((hash, self.store)),
             Err(err) => Err((err, self.store)),
@@ -148,13 +148,13 @@ mod tests {
             .add(&Path::from("missing"), vec![1_i64.into()])
             .unwrap_err();
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Validation(ValidationError::UnknownTable { .. })
         ));
 
         let err = tx.add(&path, vec![1_i64.into(), 2_i64.into()]).unwrap_err();
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Validation(ValidationError::ColumnCount { .. })
         ));
     }
@@ -170,7 +170,7 @@ mod tests {
             .expect("add");
 
         let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(*err, StoreIntError::Law(_)));
+        assert!(matches!(err, StoreIntError::Law(_)));
         assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
     }
 
@@ -267,13 +267,13 @@ mod tests {
             .commit()
             .expect_err("duplicate singleton row should fail");
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
         ));
 
         let err = node.row_id().expect_err("failed commit invalidates handle");
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
         ));
 
@@ -282,7 +282,7 @@ mod tests {
             .add(&edges, vec![node.into()])
             .expect_err("invalid handle cannot be reused");
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
         ));
     }

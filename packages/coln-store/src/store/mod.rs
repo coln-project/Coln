@@ -190,7 +190,7 @@ impl Store {
     /// This is a low level API that mutates `self` before law checking, so
     /// callers that need atomicity must call it on a preview clone and publish
     /// that clone only after success.
-    fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), Box<StoreIntError>> {
+    fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
         info!(op_count = ops.len(), "applying batch");
         self.validate_batch(&ops)?;
 
@@ -251,7 +251,7 @@ impl Store {
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
-    pub fn try_from_theory(theory: FlatRealm) -> Result<Self, Box<StoreIntError>> {
+    pub fn try_from_theory(theory: FlatRealm) -> Result<Self, StoreIntError> {
         let FlatRealm { tables, rules } = theory;
         info!(
             table_count = tables.len(),
@@ -300,7 +300,7 @@ impl Store {
         Ok(comp)
     }
 
-    pub fn check_laws(&self) -> Result<(), Box<StoreIntError>> {
+    pub fn check_laws(&self) -> Result<(), StoreIntError> {
         debug!(rule_count = self.rules.len(), "checking rules");
         self.rules()
             .iter()
@@ -374,26 +374,26 @@ impl Store {
             .collect()
     }
 
-    pub fn merge(&mut self, other: &Self) -> Result<Vec<CommitHash>, Box<StoreIntError>> {
+    pub fn merge(&mut self, other: &Self) -> Result<Vec<CommitHash>, StoreIntError> {
         let commits = self.commits_added(other);
         self.apply_commits(commits)?;
         Ok(self.heads())
     }
 
-    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), Box<StoreIntError>> {
+    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), StoreIntError> {
         self.apply_batch(cmt.resolved_ops())?;
         self.record_in_commit_graph(cmt);
         Ok(())
     }
 
-    pub fn apply_commit(&mut self, commit: Commit<'static>) -> Result<(), Box<StoreIntError>> {
+    pub fn apply_commit(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
         self.apply_commits([commit])
     }
 
     pub fn apply_commits(
         &mut self,
         commits: impl IntoIterator<Item = Commit<'static>>,
-    ) -> Result<(), Box<StoreIntError>> {
+    ) -> Result<(), StoreIntError> {
         let mut pending = HashMap::new();
 
         for commit in commits {
@@ -513,7 +513,7 @@ impl Store {
     pub fn apply_chunk_bytes(
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<(), Box<StoreIntError>> {
+    ) -> Result<(), StoreIntError> {
         let commits = chunk_bytes
             .into_iter()
             .map(|bytes| Chunk::decode(&bytes))
@@ -772,7 +772,7 @@ mod tests {
         };
 
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Validation(ValidationError::UnknownTable { .. })
         ));
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
@@ -802,7 +802,7 @@ mod tests {
         let err = txn.commit().unwrap_err();
 
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
         ));
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
@@ -994,7 +994,7 @@ mod tests {
         let err = target.apply_commits([second_commit]).unwrap_err();
 
         assert!(matches!(
-            *err,
+            err,
             StoreIntError::Commit(CommitApplyError::MissingDep)
         ));
         assert_eq!(
@@ -1020,7 +1020,7 @@ mod tests {
         .expect("add");
         let err = txn.commit().unwrap_err();
 
-        assert!(matches!(*err, StoreIntError::Law(_)));
+        assert!(matches!(err, StoreIntError::Law(_)));
         assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
     }
 
@@ -1054,7 +1054,7 @@ mod tests {
             }),
             binding: vec![],
         };
-        let law = StoreIntError::from(violation);
+        let law = StoreIntError::from(Box::new(violation));
         assert!(matches!(law, StoreIntError::Law(_)));
     }
 }

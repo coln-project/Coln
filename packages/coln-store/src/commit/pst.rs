@@ -39,7 +39,7 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
 }
 
 /// Decode a store from bytes produced by [`encode_store`].
-pub fn decode_store(data: &[u8]) -> Result<Store, Box<StoreIntError>> {
+pub fn decode_store(data: &[u8]) -> Result<Store, StoreIntError> {
     let encoded = read_store_envelope(data)?;
     decode_store_chunks(encoded.next_oid, encoded.chunks)
 }
@@ -89,10 +89,7 @@ fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
     Chunk::from(commit).write(buf)
 }
 
-fn decode_store_chunks(
-    next_oid: TableOid,
-    chunks: Vec<Chunk>,
-) -> Result<Store, Box<StoreIntError>> {
+fn decode_store_chunks(next_oid: TableOid, chunks: Vec<Chunk>) -> Result<Store, StoreIntError> {
     let roots = chunks
         .iter()
         .filter(|chunk| chunk.chunk_type() == ChunkType::Root)
@@ -193,12 +190,12 @@ mod tests {
             .collect()
     }
 
-    fn is_data_format_error(result: Result<Store, Box<StoreIntError>>) -> bool {
+    fn is_data_format_error(result: Result<Store, StoreIntError>) -> bool {
         matches!(
             result,
             Err(err)
                 if matches!(
-                    err.as_ref(),
+                    &err,
                     StoreIntError::Encode(CodecError::DataFormatError(_))
                 )
         )
@@ -215,12 +212,12 @@ mod tests {
             .expect("encoded store contains a chunk magic")
     }
 
-    fn is_missing_dep_error(result: Result<Store, Box<StoreIntError>>) -> bool {
+    fn is_missing_dep_error(result: Result<Store, StoreIntError>) -> bool {
         matches!(
             result,
             Err(err)
                 if matches!(
-                    err.as_ref(),
+                    &err,
                     StoreIntError::Commit(crate::store::error::CommitApplyError::MissingDep)
                 )
         )
@@ -310,7 +307,7 @@ mod tests {
 
         let err = decode_store(&corrupted).expect_err("checksum mismatch");
         assert!(matches!(
-            err.as_ref(),
+            err,
             StoreIntError::Encode(CodecError::ChecksumMismatch)
         ));
     }

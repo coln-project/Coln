@@ -49,7 +49,7 @@ pub struct RowHandle {
 }
 
 impl RowHandle {
-    pub fn row_id(&self) -> Result<RowId, Box<StoreIntError>> {
+    pub fn row_id(&self) -> Result<RowId, StoreIntError> {
         match &*self.state.borrow() {
             RowHandleState::Existing(row_id) => Ok(*row_id),
             RowHandleState::Pending { .. } => Err(ValidationError::InvalidRowHandle {
@@ -65,7 +65,7 @@ impl RowHandle {
 
     /// For FFI authors only
     #[doc(hidden)]
-    pub fn pending_ids(&self) -> Result<(u64, u32), Box<StoreIntError>> {
+    pub fn pending_ids(&self) -> Result<(u64, u32), StoreIntError> {
         match *self.state.borrow() {
             RowHandleState::Pending { tx_id, counter } => Ok((tx_id.as_u64(), counter)),
             _ => Err(ValidationError::InvalidRowHandle {
@@ -78,7 +78,7 @@ impl RowHandle {
     pub(crate) fn to_txn_cell_value(
         &self,
         current_tx: TxnId,
-    ) -> Result<TxnCellValue, Box<StoreIntError>> {
+    ) -> Result<TxnCellValue, StoreIntError> {
         match &*self.state.borrow() {
             RowHandleState::Existing(row_id) => Ok(TxnCellValue::Id(RowRef::Existing(*row_id))),
             RowHandleState::Pending { tx_id, counter } if *tx_id == current_tx => {
@@ -130,7 +130,7 @@ impl TxnValue {
     pub(crate) fn to_txn_cell_value(
         &self,
         current_tx: TxnId,
-    ) -> Result<TxnCellValue, Box<StoreIntError>> {
+    ) -> Result<TxnCellValue, StoreIntError> {
         match self {
             TxnValue::Id(handle) => handle.to_txn_cell_value(current_tx),
             TxnValue::Int(value) => Ok(TxnCellValue::Int(*value)),

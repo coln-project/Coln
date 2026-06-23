@@ -40,7 +40,7 @@ fn fixture_theory(name: &str) -> FlatRealm {
     serde_json::from_str(&json).expect("parse FlatRealm from JSON")
 }
 
-fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
+fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
     let graphs = Path::from("Path.Graphs");
     let g0 = Path::from("Path.G0");
     let g1 = Path::from("Path.G1");
@@ -60,10 +60,7 @@ fn add_basic_data_to_path(store: &mut Store) -> Result<(), Box<StoreIntError>> {
     Ok(())
 }
 
-fn add_vertex_to_graph(
-    store: &mut Store,
-    graph_row: usize,
-) -> Result<CommitHash, Box<StoreIntError>> {
+fn add_vertex_to_graph(store: &mut Store, graph_row: usize) -> Result<CommitHash, StoreIntError> {
     let graphs = Path::from("Path.Graphs");
     let gv = Path::from("Path.G.V");
     let graph = store
@@ -77,7 +74,7 @@ fn add_vertex_to_graph(
     tx.commit()
 }
 
-fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, Box<StoreIntError>> {
+fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, StoreIntError> {
     let graphs = Path::from("Path.Graphs");
     let gv = Path::from("Path.G.V");
     let ge = Path::from("Path.G.E");
@@ -234,7 +231,7 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     tx.add(&Path::from("Path.Graphs"), vec![])
         .expect("add graph row");
     let err = tx.commit().expect_err("missing g0 and g1");
-    assert!(matches!(*err, StoreIntError::Law(_)));
+    assert!(matches!(err, StoreIntError::Law(_)));
 
     assert_eq!(
         store
@@ -283,7 +280,7 @@ fn test_fk() {
         .expect("add edge");
     let err = tx.commit().expect_err("missing v2");
 
-    assert!(matches!(*err, StoreIntError::Law(_)));
+    assert!(matches!(err, StoreIntError::Law(_)));
 }
 
 #[test]
