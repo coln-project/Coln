@@ -1,0 +1,29 @@
+cabal-version: 3.4
+name: diagnostician-html
+version: 0.1.0.0
+license: (Apache-2.0 OR MIT)
+maintainer: root@owenlynch.org
+author: Coln contributors
+description: Lucid HTML rendering backend for Diagnostician
+category: Language
+
+library
+  exposed-modules: Diagnostician.HTML
+  hs-source-dirs: src
+  default-language: GHC2024
+  default-extensions:
+    DuplicateRecordFields
+    NoFieldSelectors
+    OverloadedRecordDot
+    OverloadedStrings
+
+  ghc-options:
+    -Wall
+
+  build-depends:
+    base ^>=4.21.0.0,
+    diagnostician,
+    lucid,
+    prettyprinter,
+    prettyprinter-lucid,
+    text,
