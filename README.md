@@ -1,6 +1,6 @@
 # Coln
 
-Coln is a data-oriented proof assistant. We have a [work-in-progress manual](https://coln-project.github.io). The software is also heavily pre-alpha.
+Coln is a data-oriented proof assistant. We have a [work-in-progress manual](https://coln-project.github.io) and a [black triangle demo](https://coln-web-demo.netlify.app) (see [The Black Triangle](https://robinrendle.com/notes/the-black-triangle/) for an explanation of what a black triangle demo is). The software is also heavily pre-alpha.
 
 ## Quick Start
 
