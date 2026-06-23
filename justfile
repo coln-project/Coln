@@ -13,7 +13,7 @@ check-rust: (check "coln-store")
 check-typescript: (check "coln-js-runtime")
 
 check-licences:
-    reuse lint
+    git ls-files -z '*.[hrt]s' | xargs -0 reuse lint-file
 
 check-all: check-haskell check-rust check-typescript
 
