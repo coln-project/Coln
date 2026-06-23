@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use std::path::PathBuf;
 
 use coln_lang_rs::ir::FlatRealm;

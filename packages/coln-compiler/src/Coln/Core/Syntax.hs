@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Core.Syntax where
 
 import Data.Map qualified as Map

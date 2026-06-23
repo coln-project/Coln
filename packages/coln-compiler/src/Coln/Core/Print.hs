@@ -1,3 +1,6 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Coln.Core.Print where

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Integration tests for REPL commands.
 //! Integration tests for `begin batch` … `commit` REPL semantics.
 

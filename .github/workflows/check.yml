@@ -6,6 +6,21 @@ on:
 name: Check
 
 jobs:
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ⬇️
+        uses: actions/checkout@v6
+
+      - name: Install Nix ❄️
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-26.05
+
+      - name: Check licenses
+        run: |
+          nix-env -i just reuse -f '<nixpkgs>'
+          just check-licenses
   rust-fmt:
     runs-on: ubuntu-latest
     steps:

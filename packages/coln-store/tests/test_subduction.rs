@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
 use coln_store::{

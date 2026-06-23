@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use coln_lang_rs::ir;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::info;

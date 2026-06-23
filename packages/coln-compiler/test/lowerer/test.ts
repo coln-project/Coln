@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import { StoreHandle } from "../../../coln-store-wasm/pkg/coln_store_wasm.js";
 import { Graph, GraphOfGraphs } from "./graph.ts";
 import flatTheory from "./graph.json" with { type: "json" };

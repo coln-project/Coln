@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.LSP.DocChange (docChangeHandler, docOpenHandler) where
 
 import Coln.LSP.Buffer
