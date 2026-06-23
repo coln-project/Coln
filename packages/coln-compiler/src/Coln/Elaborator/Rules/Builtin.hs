@@ -1,8 +1,12 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Elaborator.Rules.Builtin where
 
 import Coln.Common
-import Coln.Core.Params
 import Coln.Core.Memoed
+import Coln.Core.Params
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Judgment
 

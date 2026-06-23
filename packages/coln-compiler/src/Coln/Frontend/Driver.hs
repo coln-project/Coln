@@ -1,10 +1,15 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.Frontend.Driver where
 
 import Control.Exception (try)
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
+import Diagnostician
 import FNotation (Ntn)
 import FNotation qualified as N
 
@@ -13,6 +18,7 @@ import Coln.Core.Globals
 import Coln.Core.Layout
 import Coln.Core.Memoed qualified as M
 import Coln.Core.Params
+import Coln.Core.Readback
 import Coln.Core.Realm
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
@@ -27,6 +33,7 @@ import Coln.Elaborator.Rules.Record qualified as Record
 import Coln.Elaborator.Rules.Universe qualified as Universe
 import Coln.Elaborator.Rules.Variable qualified as Variable
 import Coln.Frontend.Diagnostics
+import Coln.Frontend.Notation
 import Coln.Report
 
 import Prettyprinter ((<+>))
@@ -35,6 +42,12 @@ type ParseEnv = DiagnosticEnv ColnCode
 
 top :: ParseEnv -> [Ntn] -> IO Globals
 top e = foldlM (decl' e) emptyGlobals
+
+topFromText :: Reporter ColnCode -> File -> IO Globals
+topFromText r f = do
+  ts <- N.lex lexConfig (contramap LexerCode r) f
+  ns <- N.parse parseConfig (contramap ParserCode r) f ts
+  top (DiagnosticEnv r f) ns
 
 decl' :: ParseEnv -> Globals -> Ntn -> IO Globals
 decl' e g n = do
@@ -82,7 +95,7 @@ fieldDecl e (N.Decl c n sp) =
 fieldDecl e n = unexpectedNotation e n "field declaration of the form `<fieldname> : <type>`"
 
 fieldSetting :: (V.HasEvaluation c) => ParseEnv -> Ntn -> IO (Record.FieldSetting c)
-fieldSetting e (N.Infix (N.Ident x sp) (N.Keyword ":=" _) body) = 
+fieldSetting e (N.Infix (N.Ident x sp) (N.Keyword ":=" _) body) =
   Record.FieldSetting x <$> chk e body <*> pure sp
 fieldSetting e n = unexpectedNotation e n "field setting of the form `<fieldname> := <expr>`"
 
@@ -139,32 +152,32 @@ realm e g head _defs = do
   (x, theory_n) <- realmHead e head
   theory_typ <- typ e theory_n
   theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g)
-  let (gt, _) = layoutTop x theory.val
-  pure (x, Realm gt)
+  let (gt, root) = layoutTop x theory.val
+  pure (x, Realm gt root.val theory.val)
 
 withArgs :: (V.HasEvaluation c) => ParseEnv -> [(Span, Name, Ntn)] -> (Typ N, Chk c) -> IO (Typ N, Chk c)
 withArgs e args base = foldrM go base args
-  where
-    go :: (V.HasEvaluation c) => (Span, Name, Ntn) -> (Typ N, Chk c) -> IO (Typ N, Chk c)
-    go (sp, name, n) (t, c) = do
-      argtyp <- typ e n
-      pure $ 
-        ( Function.formation sp (Function.Named name argtyp) t
-        , Function.intro sp name c
-        )
+ where
+  go :: (V.HasEvaluation c) => (Span, Name, Ntn) -> (Typ N, Chk c) -> IO (Typ N, Chk c)
+  go (sp, name, n) (t, c) = do
+    argtyp <- typ e n
+    pure $
+      ( Function.formation sp (Function.Named name argtyp) t
+      , Function.intro sp name c
+      )
 
 fromSynN :: (V.HasEvaluation c) => Syn N -> Judgment c
 fromSynN @c s = case V.scase @c of
   SNominative -> FromSyn s
   SDescriptive -> FromSyn $ Syn \e -> do
-    (a, m) <- s.elab (e { target = TargetAnonymous })
+    (a, m) <- s.elab (e{target = TargetAnonymous})
     pure (a, M.is m)
 
 fromTypN :: (V.HasEvaluation c) => Typ N -> Judgment c
 fromTypN @c t = case V.scase @c of
   SNominative -> FromTyp t
   SDescriptive -> FromTyp $ Typ \e -> do
-    m <- t.elab (e { target = TargetAnonymous })
+    m <- t.elab (e{target = TargetAnonymous})
     pure $ M.isTy m
 
 fromTypD :: (V.HasEvaluation c) => ParseEnv -> Span -> Typ D -> IO (Judgment c)
@@ -187,13 +200,14 @@ expr e n = case n of
   N.Infix arg n@(N.Keyword "->" _) body ->
     fromTypN <$> (Function.formation (N.span n) <$> binder e arg <*> typ e body)
   N.Infix arg n@(N.Keyword "=>" _) body ->
-    FromChk "lambda expression" <$>
-      (Function.intro (N.span n) <$> ident e arg <*> chk e body)
+    FromChk "lambda expression"
+      <$> (Function.intro (N.span n) <$> ident e arg <*> chk e body)
   n@(N.Infix lhs (N.Keyword "=" _) rhs) ->
-    fromTypN <$>
-      (Equality.formation (N.span n) <$>
-       syn e "term in equality" lhs <*>
-       syn e "term in equality" rhs)
+    fromTypN
+      <$> ( Equality.formation (N.span n)
+              <$> syn e "term in equality" lhs
+              <*> syn e "term in equality" rhs
+          )
   N.Block "sig" Nothing ns _ -> do
     t <- Record.formation <$> traverse (fieldDecl e) ns
     fromTypD e (N.span n) t
@@ -216,7 +230,7 @@ elim :: ParseEnv -> Syn N -> Ntn -> IO (Syn N)
 elim e j = \case
   N.Field x s -> pure $ Record.elim s j x
   arg -> Function.elim (N.span arg) j <$> chk e arg
-  
+
 binder :: ParseEnv -> Ntn -> IO Function.Binder
 binder e = \case
   N.Infix name (N.Keyword ":" _) arg ->

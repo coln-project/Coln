@@ -1,9 +1,13 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use tracing::debug;
 
 use crate::{
     ir,
     solver::{
-        compile::{CompAtom, CompEq, CompLaw, CompProp, CompTerm, CompVal},
+        compile::{CompAtom, CompEq, CompProp, CompRule, CompTerm, CompVal},
         matcher::term_matches,
     },
     store::Store,
@@ -131,7 +135,7 @@ fn bind_prop(store: &Store, bindings: Vec<Binding>, prop: &CompProp) -> Vec<Bind
     }
 }
 
-pub fn bind_law(store: &Store, law: &CompLaw) -> Vec<Binding> {
+pub fn bind_law(store: &Store, law: &CompRule) -> Vec<Binding> {
     debug!(law_name = %law.path, law=?law, "binding vars for law");
     let initial = vec![vec![None; law.vars.len()]];
     bind_prop(store, initial, &law.antecedent)
@@ -141,10 +145,54 @@ pub fn bind_law(store: &Store, law: &CompLaw) -> Vec<Binding> {
 mod tests {
     use super::*;
     use crate::{
-        ir::{self, ColType, Path, PrimType, Schema},
+        ir::{
+            self, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Rule, RuleEntry,
+            RuleVariant, Schema,
+        },
         solver::compile::compile_law,
         table::CellValue,
     };
+
+    fn int_ty() -> ColType {
+        ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
+        }
+    }
+
+    fn int_col(name: &str) -> ColumnEntry {
+        ColumnEntry {
+            path: Path::from(name),
+            col_type: int_ty(),
+        }
+    }
+
+    fn int_schema(columns: &[&str]) -> Schema {
+        Schema {
+            entity_variant: EntityVariant::Table,
+            columns: columns.iter().map(|name| int_col(name)).collect(),
+            primary_key: None,
+        }
+    }
+
+    fn enforced_rule(
+        path: &str,
+        var_types: Vec<ColType>,
+        antecedents: Vec<ir::Prop>,
+        consequents: Vec<ir::Prop>,
+    ) -> RuleEntry {
+        RuleEntry {
+            path: Path::from(path),
+            rule: Rule {
+                rule_variant: RuleVariant::Enforced,
+                var_names: (0..var_types.len())
+                    .map(|index| Path::from(format!("v{index}")))
+                    .collect(),
+                var_types,
+                antecedents,
+                consequents,
+            },
+        }
+    }
 
     #[test]
     fn bind_law_joins_antecedent_atoms() {
@@ -152,20 +200,7 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(
             path.clone(),
-            Table::new(
-                path.clone(),
-                Schema {
-                    columns: vec![
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                        ColType::PrimType {
-                            prim: PrimType::PrimInt,
-                        },
-                    ],
-                    primary_key: None,
-                },
-            ),
+            Table::new(path.clone(), int_schema(&["c0", "c1"])),
         );
 
         let mut txn = store.transaction();
@@ -186,68 +221,54 @@ mod tests {
         .expect("insert row");
         txn.commit().expect("commit rows");
 
-        let law = ir::LawEntry {
-            path: Path::from("T.chain"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: ir::Prop::And {
-                    props: vec![
-                        ir::Prop::Atom {
-                            atom: ir::Atom {
-                                table: path.clone(),
-                                row_id: None,
-                                values: vec![
-                                    ir::ValueEntry {
-                                        column: 0,
-                                        term: ir::Term::Var { index: 0 },
-                                    },
-                                    ir::ValueEntry {
-                                        column: 1,
-                                        term: ir::Term::Var { index: 1 },
-                                    },
-                                ],
-                            },
-                        },
-                        ir::Prop::Atom {
-                            atom: ir::Atom {
-                                table: path.clone(),
-                                row_id: None,
-                                values: vec![
-                                    ir::ValueEntry {
-                                        column: 0,
-                                        term: ir::Term::Var { index: 1 },
-                                    },
-                                    ir::ValueEntry {
-                                        column: 1,
-                                        term: ir::Term::Var { index: 2 },
-                                    },
-                                ],
-                            },
-                        },
-                    ],
-                },
-                consequent: ir::Prop::Atom {
+        let law = enforced_rule(
+            "T.chain",
+            vec![int_ty(), int_ty(), int_ty()],
+            vec![
+                ir::Prop::Atom {
                     atom: ir::Atom {
-                        table: path.clone(),
+                        entity: path.clone(),
                         row_id: None,
-                        values: vec![ir::ValueEntry {
-                            column: 0,
-                            term: ir::Term::Var { index: 0 },
-                        }],
+                        values: vec![
+                            ir::ValueEntry {
+                                column: 0,
+                                term: ir::Term::Var { index: 0 },
+                            },
+                            ir::ValueEntry {
+                                column: 1,
+                                term: ir::Term::Var { index: 1 },
+                            },
+                        ],
                     },
                 },
-            },
-        };
+                ir::Prop::Atom {
+                    atom: ir::Atom {
+                        entity: path.clone(),
+                        row_id: None,
+                        values: vec![
+                            ir::ValueEntry {
+                                column: 0,
+                                term: ir::Term::Var { index: 1 },
+                            },
+                            ir::ValueEntry {
+                                column: 1,
+                                term: ir::Term::Var { index: 2 },
+                            },
+                        ],
+                    },
+                },
+            ],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: path.clone(),
+                    row_id: None,
+                    values: vec![ir::ValueEntry {
+                        column: 0,
+                        term: ir::Term::Var { index: 0 },
+                    }],
+                },
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         let bindings = bind_law(&store, &compiled);
@@ -263,18 +284,7 @@ mod tests {
     fn store_with_int_column(values: &[i64]) -> (Store, Path) {
         let path = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(
-            path.clone(),
-            Table::new(
-                path.clone(),
-                Schema {
-                    columns: vec![ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    }],
-                    primary_key: None,
-                },
-            ),
-        );
+        store.insert_table(path.clone(), Table::new(path.clone(), int_schema(&["c0"])));
         let mut txn = store.transaction();
         for value in values {
             txn.add(&path, vec![CellValue::Int(*value).into()])
@@ -288,48 +298,13 @@ mod tests {
     fn eq_in_antecedent_filters_to_matching_rows() {
         let (store, path) = store_with_int_column(&[1, 2, 3]);
 
-        let law = ir::LawEntry {
-            path: Path::from("T.eq_filter"),
-            law: ir::Law {
-                variables: vec![
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                    ColType::PrimType {
-                        prim: PrimType::PrimInt,
-                    },
-                ],
-                antecedent: ir::Prop::And {
-                    props: vec![
-                        ir::Prop::Atom {
-                            atom: ir::Atom {
-                                table: path.clone(),
-                                row_id: None,
-                                values: vec![ir::ValueEntry {
-                                    column: 0,
-                                    term: ir::Term::Var { index: 0 },
-                                }],
-                            },
-                        },
-                        ir::Prop::Atom {
-                            atom: ir::Atom {
-                                table: path.clone(),
-                                row_id: None,
-                                values: vec![ir::ValueEntry {
-                                    column: 0,
-                                    term: ir::Term::Var { index: 1 },
-                                }],
-                            },
-                        },
-                        ir::Prop::Eq {
-                            left: ir::Term::Var { index: 0 },
-                            right: ir::Term::Var { index: 1 },
-                        },
-                    ],
-                },
-                consequent: ir::Prop::Atom {
+        let law = enforced_rule(
+            "T.eq_filter",
+            vec![int_ty(), int_ty()],
+            vec![
+                ir::Prop::Atom {
                     atom: ir::Atom {
-                        table: path.clone(),
+                        entity: path.clone(),
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
@@ -337,8 +312,32 @@ mod tests {
                         }],
                     },
                 },
-            },
-        };
+                ir::Prop::Atom {
+                    atom: ir::Atom {
+                        entity: path.clone(),
+                        row_id: None,
+                        values: vec![ir::ValueEntry {
+                            column: 0,
+                            term: ir::Term::Var { index: 1 },
+                        }],
+                    },
+                },
+                ir::Prop::Eq {
+                    left: ir::Term::Var { index: 0 },
+                    right: ir::Term::Var { index: 1 },
+                },
+            ],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: path.clone(),
+                    row_id: None,
+                    values: vec![ir::ValueEntry {
+                        column: 0,
+                        term: ir::Term::Var { index: 0 },
+                    }],
+                },
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         let bindings = bind_law(&store, &compiled);
@@ -353,35 +352,13 @@ mod tests {
     fn eq_with_literal_in_antecedent_pins_var_to_value() {
         let (store, path) = store_with_int_column(&[1, 2, 3]);
 
-        let law = ir::LawEntry {
-            path: Path::from("T.eq_literal"),
-            law: ir::Law {
-                variables: vec![ColType::PrimType {
-                    prim: PrimType::PrimInt,
-                }],
-                antecedent: ir::Prop::And {
-                    props: vec![
-                        ir::Prop::Atom {
-                            atom: ir::Atom {
-                                table: path.clone(),
-                                row_id: None,
-                                values: vec![ir::ValueEntry {
-                                    column: 0,
-                                    term: ir::Term::Var { index: 0 },
-                                }],
-                            },
-                        },
-                        ir::Prop::Eq {
-                            left: ir::Term::Var { index: 0 },
-                            right: ir::Term::Lit {
-                                lit: ir::Lit::Int { value: 2 },
-                            },
-                        },
-                    ],
-                },
-                consequent: ir::Prop::Atom {
+        let law = enforced_rule(
+            "T.eq_literal",
+            vec![int_ty()],
+            vec![
+                ir::Prop::Atom {
                     atom: ir::Atom {
-                        table: path.clone(),
+                        entity: path.clone(),
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
@@ -389,8 +366,24 @@ mod tests {
                         }],
                     },
                 },
-            },
-        };
+                ir::Prop::Eq {
+                    left: ir::Term::Var { index: 0 },
+                    right: ir::Term::Lit {
+                        lit: ir::Lit::Int { value: 2 },
+                    },
+                },
+            ],
+            vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: path.clone(),
+                    row_id: None,
+                    values: vec![ir::ValueEntry {
+                        column: 0,
+                        term: ir::Term::Var { index: 0 },
+                    }],
+                },
+            }],
+        );
 
         let compiled = compile_law(&law).expect("compile law");
         let bindings = bind_law(&store, &compiled);

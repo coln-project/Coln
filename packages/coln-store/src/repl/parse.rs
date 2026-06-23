@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use std::collections::HashMap;
 
 use crate::{
     commit::hash::{CommitHash, HASH_SIZE},
-    ir::{ColType, PrimType},
+    ir::{BuiltinTy, ColType},
     repl::error::BatchCellParseError,
     table::{CellValue, RowId},
     txn::ops::{TempRowId, TxnCellValue},
@@ -149,13 +153,13 @@ pub fn parse_statement(input: &str) -> Result<Command, String> {
 }
 
 /// Resolve one cell for a batch insert: entity columns accept `#id` or a prior binding name.
-pub fn parse_cell_value_batch(
+pub(crate) fn parse_cell_value_batch(
     col_type: &ColType,
     raw: &str,
     bindings: &HashMap<String, TempRowId>,
 ) -> Result<TxnCellValue, BatchCellParseError> {
     match col_type {
-        ColType::EntityType { .. } => {
+        ColType::RowId { .. } => {
             if raw.starts_with('#') {
                 parse_cell_value(col_type, raw)
                     .map(Into::into)
@@ -372,15 +376,14 @@ fn split_add_row_tokens(row_src: &str) -> Vec<String> {
 
 pub fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, String> {
     match col_type {
-        ColType::EntityType { .. } => parse_row_id(raw).map(CellValue::Id),
-        ColType::PrimType { prim } => match prim {
-            PrimType::PrimInt => raw
+        ColType::RowId { .. } => parse_row_id(raw).map(CellValue::Id),
+        ColType::BuiltinTy { builtin_ty } => match builtin_ty {
+            BuiltinTy::BuiltinInt => raw
                 .parse::<i64>()
                 .map(CellValue::Int)
                 .map_err(|_| format!("invalid int: {raw}")),
-            PrimType::PrimString => Ok(CellValue::Str(raw.to_string())),
+            BuiltinTy::BuiltinStr => Ok(CellValue::Str(raw.to_string())),
         },
-        ColType::Tuple { .. } => Err("tuple columns are not supported yet".to_string()),
     }
 }
 

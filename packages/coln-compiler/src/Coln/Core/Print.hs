@@ -1,18 +1,22 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# OPTIONS_GHC -Wno-orphans #-}
+
 module Coln.Core.Print where
 
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Readback
+import Coln.Core.Realm
+import Coln.Core.Syntax
+import Coln.Frontend.Notation
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.String (fromString)
 import Data.Text qualified as T
 import Diagnostician
 import FNotation qualified as N
 import FNotation.Names
-import Coln.Common
-import Coln.Core.Realm
-import Coln.Core.Params
-import Coln.Core.Syntax
-import Coln.Core.Readback
-import Coln.Frontend.Notation
 
 -- Pretty printing
 --------------------------------------------------------------------------------
@@ -56,7 +60,9 @@ instance ToNotation (El e) where
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
-    Lookup x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
+    Lookup x ts -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
+     where
+      field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
@@ -65,27 +71,32 @@ instance ToNotation (Ty e) where
   toNotation xs = \case
     U u -> N.Keyword (fromString $ show $ decodesInto u) ()
     Decode t -> toNotation xs t
-    Function f -> case f.cod of 
-      Abs x b -> N.Infix
-        (nbinding x (toNotation xs f.dom))
-        (N.Keyword "->" ())
-        (toNotation (xs :> x) b)
-      AbsConst b -> N.Infix
-        (toNotation xs f.dom)
-        (N.Keyword "->" ())
-        (toNotation xs b)
+    Function f -> case f.cod of
+      Abs x b ->
+        N.Infix
+          (nbinding x (toNotation xs f.dom))
+          (N.Keyword "->" ())
+          (toNotation (xs :> x) b)
+      AbsConst b ->
+        N.Infix
+          (toNotation xs f.dom)
+          (N.Keyword "->" ())
+          (toNotation xs b)
     Record r -> N.Block "sig" Nothing (go xs $ toList r.fieldTypes) ()
      where
       go _ [] = []
       go xs' ((y, a) : pairs') =
         nbinding y (toNotation xs' a) : go (xs' :> y) pairs'
-    Eq eq -> N.Infix
-      (toNotation xs eq.lhs)
-      (N.Keyword "=" ())
-      (toNotation xs eq.rhs)
+    Eq eq ->
+      N.Infix
+        (toNotation xs eq.lhs)
+        (N.Keyword "=" ())
+        (toNotation xs eq.rhs)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
     IsTy a -> toNotation xs a
-    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (toNotation xs <$> ts) ())
+    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
+     where
+      field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 
 instance ToNotation TypeBehavior where
   toNotation xs = \case
@@ -97,12 +108,12 @@ instance ToNotation TypeBehavior where
 
 toNotationTele :: [Name] -> [Ty N] -> [N.Ntn0]
 toNotationTele xs tys = go xs BwdNil tys
-  where
-    go _ _ [] = []
-    go (x:xs') names (a:tys') = do
-      let bnd = (N.Infix (N.Ident x ()) (N.Keyword ":" ()) (toNotation names a))
-      bnd : go xs' (names :> x) tys'
-    go _ _ _ = panic "mismatched lengths"
+ where
+  go _ _ [] = []
+  go (x : xs') names (a : tys') = do
+    let bnd = (N.Infix (N.Ident x ()) (N.Keyword ":" ()) (toNotation names a))
+    bnd : go xs' (names :> x) tys'
+  go _ _ _ = panic "mismatched lengths"
 
 instance ToNotationTop Generator where
   toNotationTop (Rel xs tys) =
@@ -113,13 +124,14 @@ instance ToNotationTop Generator where
       (N.Keyword "->" ())
       (toNotation (fromList xs) ret)
 
-instance ToNotationTop GenTrie where
+instance (ToNotationTop a) => ToNotationTop (Trie a) where
   toNotationTop (Leaf g) = toNotationTop g
-  toNotationTop (Node d) = N.Block
-    "node"
-    Nothing
-    [ N.Infix (N.Ident x ()) (N.Keyword "=" ()) (toNotationTop t) | (x, t) <- toList d ]
-    ()
+  toNotationTop (Node d) =
+    N.Block
+      "node"
+      Nothing
+      [N.Infix (N.Ident x ()) (N.Keyword "=" ()) (toNotationTop t) | (x, t) <- toList d]
+      ()
 
 instance ToNotationTop Realm where
   toNotationTop r = toNotationTop r.generators
@@ -138,7 +150,7 @@ instance DPrettyWithNames (El e) where
 
 instance DPrettyWithNames (Ty e) where
   dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
-  
+
 instance DPrettyWithNames TypeBehavior where
   dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
 

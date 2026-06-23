@@ -1,37 +1,41 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.Elaborator.Rules.Record where
 
 import Control.Monad (unless)
 import Prettyprinter
 
 import Coln.Common
-import Coln.Core.Params
-import Coln.Core.Value qualified as V
-import Coln.Core.Syntax qualified as S
-import Coln.Core.Memoed
-import Coln.Core.Print
 import Coln.Core.Evaluation
+import Coln.Core.Memoed
+import Coln.Core.Params
+import Coln.Core.Print
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
+import Coln.Elaborator.Debug
 import Coln.Elaborator.Diagnostics
 import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
-import Coln.Elaborator.Debug
 import Coln.Report
 
 data FieldDeclaration
-  = FieldDeclaration { name :: Name , typ :: Typ N }
+  = FieldDeclaration {name :: Name, typ :: Typ N}
   | FieldDeclarationDebug DebugCommand
 
 formation :: [FieldDeclaration] -> Typ D
 formation fieldTyps = Typ $ \e -> do
   let go _ [] = pure (Set, [])
-      go e' ((FieldDeclaration x typ):rest) = do
+      go e' ((FieldDeclaration x typ) : rest) = do
         ty <- typ.elab e'
-        (l, fieldTys) <- go (e' { scope = bind x ty.val e'.scope }) rest
+        (l, fieldTys) <- go (e'{scope = bind x ty.val e'.scope}) rest
         pure (maxLevel l (levelOf ty), (x, ty) : fieldTys)
-      go e' ((FieldDeclarationDebug ds):rest) = do
+      go e' ((FieldDeclarationDebug ds) : rest) = do
         runDebug e' ds
         go e' rest
-  (l, fields) <- go (e { target = TargetAnonymous }) fieldTyps
+  (l, fields) <- go (e{target = TargetAnonymous}) fieldTyps
   let rt = S.RecordType l (fromList fields)
   pure $ record e.scope.locals rt
 
@@ -45,14 +49,14 @@ intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Chk c
 intro @c sp fieldSettings = Chk \e a -> do
   let go :: V.Locals -> [(FieldSetting c, (Name, V.Locals -> V.Ty N))] -> IO [(Name, El c)]
       go _ [] = pure []
-      go vs ((fs, (x, fieldTyC)):rest)
+      go vs ((fs, (x, fieldTyC)) : rest)
         | fs.name == x = do
             let fieldTy = fieldTyC vs
             let target' = projTarget e.target x
-            m <- fs.body.elab (e { target = target' }) fieldTy
+            m <- fs.body.elab (e{target = target'}) fieldTy
             let v = reflectTarget target' fieldTy m.val
             fields <- go (V.LSnoc vs v) rest
-            pure ((x,m):fields)
+            pure ((x, m) : fields)
         | otherwise = do
             let msg = "expected record field" <+> dpretty x <+> "got: " <+> dpretty fs.name
             failWith e.diagEnv fs.span MismatchedRecordField msg

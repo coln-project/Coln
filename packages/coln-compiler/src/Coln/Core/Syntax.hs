@@ -1,8 +1,12 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Core.Syntax where
 
 import Data.Map qualified as Map
-import Data.Map.Ordered qualified as OMap
 import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
 import Coln.Core.Params
@@ -25,7 +29,7 @@ data El :: Case -> Type where
   Proj :: El N -> Name -> El N
   Lit :: Literal -> El N
   Is :: El N -> El D
-  Lookup :: TableName -> [El N] -> El N
+  Lookup :: TableName -> Dict (El N) -> El N
 
 data FunctionType ty = FunctionType
   { variant :: FunctionVariant
@@ -52,7 +56,7 @@ data Ty :: Case -> Type where
   Eq :: EqualityType El Ty -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
   IsTy :: Ty N -> Ty D
-  EltOf :: TableName -> [El N] -> Ty N
+  EltOf :: TableName -> Dict (El N) -> Ty N
 
 data TypeBehavior
   = LikeU Universe

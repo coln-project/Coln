@@ -1,0 +1,173 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+use std::{
+    convert::Infallible,
+    fmt::{self, Display},
+    ops::Deref,
+    str::FromStr,
+};
+
+use super::{Path, QName};
+
+impl Deref for Path {
+    type Target = Vec<QName>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, qname) in self.0.iter().enumerate() {
+            if i > 0 {
+                write!(f, ".")?;
+            }
+
+            for (j, part) in qname.iter().enumerate() {
+                if j > 0 {
+                    write!(f, "/")?;
+                }
+                write!(f, "{part}")?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Dotted textual form: each `.` separates one [`QName`]; within each dot segment, `/`
+/// separates parts of that [`QName`] (e.g. `"G.V"` → `[["G"], ["V"]]`, `"G.A/B"` →
+/// `[["G"], ["A", "B"]]`). Dot segments and `/` parts are trimmed; empty pieces are
+/// skipped. An empty or whitespace-only string yields an empty path.
+///
+/// Use [`Path::from`] on `&str` / [`String`], or [`str::parse`].
+///
+/// This function does not fail, as we do not really have a strict notion of what
+/// is allowed not allowed in the string form of the path anyway
+fn parse_path_from_str(s: &str) -> Path {
+    Path(
+        s.split('.')
+            .map(str::trim)
+            .filter(|seg| !seg.is_empty())
+            .filter_map(|seg| {
+                let q = qname_from_slash_segment(seg);
+                (!q.is_empty()).then_some(q)
+            })
+            .collect(),
+    )
+}
+
+impl From<&str> for Path {
+    fn from(s: &str) -> Self {
+        parse_path_from_str(s)
+    }
+}
+
+impl From<String> for Path {
+    fn from(s: String) -> Self {
+        Self::from(s.as_str())
+    }
+}
+
+impl FromStr for Path {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(parse_path_from_str(s))
+    }
+}
+
+fn qname_from_slash_segment(seg: &str) -> QName {
+    seg.split('/')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| part.to_string())
+        .collect()
+}
+
+#[cfg(test)]
+mod path_parse_tests {
+    use super::*;
+
+    #[test]
+    fn g_dot_v() {
+        assert_eq!(
+            Path::from("G.V"),
+            Path(vec![vec!["G".to_string()], vec!["V".to_string()]])
+        );
+    }
+
+    #[test]
+    fn triple_segment() {
+        assert_eq!(
+            Path::from("Hom.E.foreignKeys"),
+            Path(vec![
+                vec!["Hom".to_string()],
+                vec!["E".to_string()],
+                vec!["foreignKeys".to_string()],
+            ])
+        );
+    }
+
+    #[test]
+    fn dot_separated_path_slash_separated_qname() {
+        assert_eq!(
+            Path::from("G.A/B"),
+            Path(vec![
+                vec!["G".to_string()],
+                vec!["A".to_string(), "B".to_string()]
+            ])
+        );
+    }
+
+    #[test]
+    fn slash_only_in_one_segment() {
+        assert_eq!(
+            Path::from("Hom.E/D.foreignKeys"),
+            Path(vec![
+                vec!["Hom".to_string()],
+                vec!["E".to_string(), "D".to_string()],
+                vec!["foreignKeys".to_string()],
+            ])
+        );
+    }
+
+    #[test]
+    fn qname_with_slashes_no_dots() {
+        assert_eq!(
+            Path::from("A/B/C"),
+            Path(vec![vec![
+                "A".to_string(),
+                "B".to_string(),
+                "C".to_string()
+            ]])
+        );
+    }
+
+    #[test]
+    fn from_string() {
+        assert_eq!(Path::from("G.V".to_string()), Path::from("G.V"));
+    }
+
+    #[test]
+    fn from_str_parse() {
+        let p: Path = "G.V".parse().unwrap();
+        assert_eq!(p, Path::from("G.V"));
+    }
+
+    #[test]
+    fn display_round_trips_normalized_path() {
+        assert_eq!(
+            Path::from(" Hom . E / D . foreignKeys ").to_string(),
+            "Hom.E/D.foreignKeys"
+        );
+    }
+
+    #[test]
+    fn display_empty_path() {
+        assert_eq!(Path(vec![]).to_string(), "");
+    }
+}

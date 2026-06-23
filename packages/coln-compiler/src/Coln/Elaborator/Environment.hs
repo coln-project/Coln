@@ -1,15 +1,19 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Elaborator.Environment where
 
-import Control.Exception (Exception, throw, evaluate)
+import Control.Exception (Exception, evaluate, throw)
 import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
 import Coln.Core.Globals
 import Coln.Core.Params
-import Coln.Core.Print (HasShape(shape))
+import Coln.Core.Print (HasShape (shape))
 import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as BN (BareNeutral (..))
 import Coln.Core.Value qualified as V
-import Coln.Core.Value qualified as BN (BareNeutral(..))
 import Coln.Elaborator.Diagnostics
 import Coln.Report
 
@@ -35,11 +39,12 @@ bind x a c = do
   let_ x v a c
 
 let_ :: Name -> V.El N -> V.Ty N -> Scope -> Scope
-let_ x v a c = Scope
-  (c.len + 1)
-  (c.names :> x)
-  (V.LSnoc c.locals v)
-  (c.ctx :> a)
+let_ x v a c =
+  Scope
+    (c.len + 1)
+    (c.names :> x)
+    (V.LSnoc c.locals v)
+    (c.ctx :> a)
 
 withBound :: Name -> V.Ty N -> Scope -> (V.El N -> Scope -> a) -> a
 withBound x a c body = do
@@ -49,7 +54,7 @@ withBound x a c body = do
 
 instance Lookup Scope Name (BId, V.El N, V.Ty N) where
   lookup sc x = go sc.len sc.len sc.names sc.locals sc.ctx 0
-    where
+   where
     go 0 0 BwdNil V.LNil BwdNil _ = Nothing
     go 0 0 BwdNil (V.LSnocChunk vs chunk) BwdNil i
       | Vector.length chunk == 0 = go 0 0 BwdNil vs BwdNil i
@@ -70,11 +75,11 @@ data Target :: Case -> Type where
 
 projTarget :: Target c -> Name -> Target c
 projTarget TargetAnonymous _ = TargetAnonymous
-projTarget (TargetNamed n) x = TargetNamed n { BN.spine = V.Proj n.spine x }
+projTarget (TargetNamed n) x = TargetNamed n{BN.spine = V.Proj n.spine x}
 
 appTarget :: Target c -> V.El N -> Target c
 appTarget TargetAnonymous _ = TargetAnonymous
-appTarget (TargetNamed n) x = TargetNamed n { BN.spine = V.App n.spine x }
+appTarget (TargetNamed n) x = TargetNamed n{BN.spine = V.App n.spine x}
 
 reflectTarget :: Target c -> V.Ty N -> V.Evaluation V.El c -> V.El N
 reflectTarget TargetAnonymous _ v = v
@@ -103,10 +108,10 @@ emptyElabEnvFor diagEnv globals x ty = do
     }
 
 emptyElabEnv :: DiagnosticEnv ElaboratorCode -> Globals -> ElabEnv N
-emptyElabEnv diagEnv globals = ElabEnv
-  { target = TargetAnonymous
-  , scope = emptyScope
-  , globals = globals
-  , diagEnv = diagEnv
-  }
-    
+emptyElabEnv diagEnv globals =
+  ElabEnv
+    { target = TargetAnonymous
+    , scope = emptyScope
+    , globals = globals
+    , diagEnv = diagEnv
+    }

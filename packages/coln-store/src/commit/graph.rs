@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use std::{
     collections::{BTreeSet, HashMap},
     error::Error,
@@ -133,6 +137,8 @@ impl CommitGraph {
 #[cfg(test)]
 mod tests {
 
+    use coln_flir_rs::ir::EntityVariant;
+
     use super::*;
     use crate::commit::author::Author;
     use crate::commit::hash::HASH_SIZE;
@@ -161,6 +167,7 @@ mod tests {
                 path: format!("T{oid}"),
                 oid,
                 schema: Schema {
+                    entity_variant: EntityVariant::Table,
                     columns: vec![],
                     primary_key: None,
                 },

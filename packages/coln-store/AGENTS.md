@@ -61,7 +61,7 @@ Quick examples:
 
 ## Architecture Constraints
 
-- The `../coln-lang-rs`  contains the source of shared IR definitions. Do not duplicate IR shape in `coln-store` unless conversion boundaries require it.
+- The `../coln-flir-rs`  contains the source of shared IR definitions. Do not duplicate IR shape in `coln-store` unless conversion boundaries require it.
 - `Store` owns table registration, table lookup, compiled laws, and a commit graph which is the columnar encoded operations.
 - `Table` is the materialised view of what each table should contain, after playing the commits. It also has schema-level validation for inserted values.
 - Store mutation should flow through explicit operations such as `Op` and transaction helpers.
@@ -102,7 +102,7 @@ Use this sequence for your first change:
 
 Example scopes that are good first tasks:
 
-- A parser or path edge-case test in `coln-lang-rs`.
+- A parser or path edge-case test in `coln-flir-rs`.
 - A validation edge-case test in `Table` or `Store`.
 - A focused REPL parsing or execution fix.
 - A persistence round-trip test for supported store state.
@@ -130,7 +130,7 @@ Before coding:
 
 1. Impact on storage semantics, law validation, persistence, or REPL behavior.
 2. Affected tests and fixture data.
-3. API stability for exported `coln-store` and `coln-lang-rs` types.
+3. API stability for exported `coln-store` and `coln-flir-rs` types.
 4. Documentation accuracy for implemented features.
 
 Before submitting:

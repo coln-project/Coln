@@ -1,7 +1,12 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Core.Conversion where
 
 import Control.Applicative ((<|>))
 import Control.Monad (forM_, unless, zipWithM)
+import Data.Foldable qualified as F
 import Data.Maybe (fromMaybe)
 import Data.Vector.Strict qualified as Vec
 import Prettyprinter ((<+>))
@@ -9,8 +14,8 @@ import Prettyprinter ((<+>))
 import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Print (prtIn)
+import Coln.Core.Value qualified as BN (BareNeutral (..))
 import Coln.Core.Value qualified as V
-import Coln.Core.Value qualified as BN (BareNeutral(..))
 
 data DefEqCheckError
   = UnequalTys CtxShape (V.Ty N) (V.Ty N) (Maybe DDoc)
@@ -81,10 +86,9 @@ instance DefEq (V.Ty N) where
     V.EltOf x vs -> case a' of
       V.EltOf x' vs' -> do
         unless (x == x') $ throwUnequalTys cs a a' $ Just "unequal table names"
-        _ <- zipWithM (defEq cs) vs vs'
+        _ <- zipWithM (defEq cs) (F.toList vs) (F.toList vs')
         pure ()
       _ -> throwUnequalTys cs a a' Nothing
-    
 
 instance DefEq V.Head where
   defEq cs h h' = case h of
@@ -102,12 +106,12 @@ instance DefEq V.BareNeutral where
       _ -> throwUnequalNeus cs n n' Nothing
     V.App sq v -> case n'.spine of
       V.App sq' v' -> do
-        defEq cs (n { BN.spine = sq }) (n' { BN.spine = sq' })
+        defEq cs (n{BN.spine = sq}) (n'{BN.spine = sq'})
         defEq cs v v'
       _ -> throwUnequalNeus cs n n' Nothing
     V.Proj sq x -> case n'.spine of
       V.Proj sq' x' -> do
-        defEq cs (n { BN.spine = sq }) (n' { BN.spine = sq' })
+        defEq cs (n{BN.spine = sq}) (n'{BN.spine = sq'})
         unless (x == x') $ throwUnequalNeus cs n n' Nothing
       _ -> throwUnequalNeus cs n n' Nothing
 
@@ -146,8 +150,6 @@ instance DefEq (V.El N) where
     V.Lookup x vs -> case canon v' of
       V.Lookup x' vs' -> do
         unless (x == x') $ throwUnequalEls cs v v' $ Just "unequal table names"
-        _ <- zipWithM (defEq cs) vs vs'
+        _ <- zipWithM (defEq cs) (F.toList vs) (F.toList vs') -- XXX check heads?
         pure ()
       _ -> throwUnequalEls cs v v' Nothing
-        
-        

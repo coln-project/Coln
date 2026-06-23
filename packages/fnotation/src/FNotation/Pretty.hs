@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module FNotation.Pretty where
 
 import Data.Maybe (fromMaybe)
@@ -53,10 +57,12 @@ par False d = d
 
 prt :: (ConfigArg) => PrevPrec -> NtnGeneric a -> DDoc
 prt p = \case
-  Juxt n n' -> fromMaybe
-    (par (looser precApp p) $
-      prt (LeftOf precApp) n <+> prt (RightOf precApp) n')
-    (tryImmediate (Juxt n n'))
+  Juxt n n' ->
+    fromMaybe
+      ( par (looser precApp p) $
+          prt (LeftOf precApp) n <+> prt (RightOf precApp) n'
+      )
+      (tryImmediate (Juxt n n'))
   Infix l n r ->
     let mp' = case n of
           Ident x _ -> confTableLookup ?config x.last

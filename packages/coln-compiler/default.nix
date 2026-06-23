@@ -1,15 +1,15 @@
-{ mkDerivation, base, bytestring, containers, diagnostician
-, directory, filepath, fnotation, hashable, lib, ordered-containers
-, prettyprinter, tasty, tasty-golden, temporary, text, vector
-, vector-hashtables
+{ mkDerivation, aeson, base, bytestring, containers, diagnostician
+, directory, filepath, fnotation, hashable, lib, mtl
+, ordered-containers, prettyprinter, tasty, tasty-golden, temporary
+, text, vector, vector-hashtables
 }:
 mkDerivation {
   pname = "coln-compiler";
   version = "0.1.0.0";
   src = ./.;
   libraryHaskellDepends = [
-    base bytestring containers diagnostician directory filepath
-    fnotation hashable ordered-containers prettyprinter text vector
+    aeson base bytestring containers diagnostician directory filepath
+    fnotation hashable mtl ordered-containers prettyprinter text vector
     vector-hashtables
   ];
   testHaskellDepends = [

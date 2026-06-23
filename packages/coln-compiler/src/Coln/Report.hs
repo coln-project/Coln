@@ -1,7 +1,11 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Report where
 
 import Control.Exception (Exception, throwIO)
-import Data.Functor.Contravariant (Contravariant(contramap))
+import Data.Functor.Contravariant (Contravariant (contramap))
 import Diagnostician
 
 data DiagnosticEnv c = DiagnosticEnv
@@ -10,7 +14,7 @@ data DiagnosticEnv c = DiagnosticEnv
   }
 
 instance Contravariant DiagnosticEnv where
-  contramap f d = d { reporter = contramap f d.reporter }
+  contramap f d = d{reporter = contramap f d.reporter}
 
 reportNote :: DiagnosticEnv c -> Span -> c -> DDoc -> Maybe DDoc -> IO ()
 reportNote dc s c m n = do

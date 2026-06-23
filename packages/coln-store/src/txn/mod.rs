@@ -1,10 +1,17 @@
-use coln_lang_rs::ir;
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreIntError},
-    txn::ops::{TempRowId, TxnCellValue},
+    txn::ops::{RowHandle, TxnValue},
 };
+
+#[cfg(feature = "native")]
+use crate::txn::ops::{TempRowId, TxnCellValue};
 
 mod inner;
 pub mod ops;
@@ -31,9 +38,19 @@ impl<'a> Transaction<'a> {
     pub fn add(
         &mut self,
         table: &ir::Path,
+        values: Vec<TxnValue>,
+    ) -> Result<RowHandle, Box<StoreIntError>> {
+        self.inner.add(self.store, table, values)
+    }
+
+    // Used by the REPL only
+    #[cfg(feature = "native")]
+    pub(crate) fn add_internal(
+        &mut self,
+        table: &ir::Path,
         values: Vec<TxnCellValue>,
     ) -> Result<TempRowId, Box<StoreIntError>> {
-        self.inner.add(self.store, table, values)
+        self.inner.add_internal(self.store, table, values)
     }
 
     pub fn commit(self) -> Result<CommitHash, Box<StoreIntError>> {
@@ -59,8 +76,8 @@ impl OwnedTransaction {
     pub fn add(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, Box<StoreIntError>> {
+        values: Vec<TxnValue>,
+    ) -> Result<RowHandle, Box<StoreIntError>> {
         self.inner.add(&self.store, table, values)
     }
 
@@ -77,19 +94,38 @@ impl OwnedTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{ColType, Path, PrimType, Schema};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::store::test_support::link_foreign_key_theory;
     use crate::table::{CellValue, Table, ValidationError};
+
+    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
+        Schema {
+            entity_variant: EntityVariant::Table,
+            columns,
+            primary_key,
+        }
+    }
+
+    fn int_col(name: &str) -> ColumnEntry {
+        ColumnEntry {
+            path: Path::from(name),
+            col_type: ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt,
+            },
+        }
+    }
+
+    fn row_id_col(name: &str, path: Path) -> ColumnEntry {
+        ColumnEntry {
+            path: Path::from(name),
+            col_type: ColType::RowId { path },
+        }
+    }
 
     #[test]
     fn owned_transaction_commits_and_returns_updated_store() {
         let path = Path::from("T");
-        let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
-            }],
-            primary_key: None,
-        };
+        let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
@@ -103,12 +139,7 @@ mod tests {
     #[test]
     fn owned_transaction_add_validates_table_and_column_count() {
         let path = Path::from("T");
-        let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
-            }],
-            primary_key: None,
-        };
+        let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
 
@@ -150,24 +181,13 @@ mod tests {
         let mut store = Store::new();
         store.insert_table(
             nodes.clone(),
-            Table::new(
-                nodes.clone(),
-                Schema {
-                    columns: vec![],
-                    primary_key: None,
-                },
-            ),
+            Table::new(nodes.clone(), table_schema(vec![], None)),
         );
         store.insert_table(
             edges.clone(),
             Table::new(
                 edges.clone(),
-                Schema {
-                    columns: vec![ColType::EntityType {
-                        path: nodes.clone(),
-                    }],
-                    primary_key: None,
-                },
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
             ),
         );
 
@@ -192,14 +212,85 @@ mod tests {
     }
 
     #[test]
+    fn committed_row_handle_can_be_used_in_later_transaction() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store.insert_table(
+            nodes.clone(),
+            Table::new(nodes.clone(), table_schema(vec![], None)),
+        );
+        store.insert_table(
+            edges.clone(),
+            Table::new(
+                edges.clone(),
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
+            ),
+        );
+
+        let mut tx = store.transaction();
+        let node = tx.add(&nodes, vec![]).expect("add node");
+        let first_commit = tx.commit().expect("commit node");
+
+        let node_id = node.row_id().expect("node handle finalized");
+        assert_eq!(node_id.commit, first_commit);
+
+        let mut tx = store.transaction();
+        tx.add(&edges, vec![node.into()]).expect("add edge");
+        tx.commit().expect("commit edge");
+
+        let edge = store.table_at(&edges).expect("Edges");
+        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+    }
+
+    #[test]
+    fn failed_transaction_invalidates_returned_row_handles() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store.insert_table(
+            nodes.clone(),
+            Table::new(nodes.clone(), table_schema(vec![], Some(vec![]))),
+        );
+        store.insert_table(
+            edges.clone(),
+            Table::new(
+                edges.clone(),
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
+            ),
+        );
+
+        let mut tx = store.transaction();
+        let node = tx.add(&nodes, vec![]).expect("add first node");
+        tx.add(&nodes, vec![]).expect("add duplicate singleton row");
+        let err = tx
+            .commit()
+            .expect_err("duplicate singleton row should fail");
+        assert!(matches!(
+            *err,
+            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+        ));
+
+        let err = node.row_id().expect_err("failed commit invalidates handle");
+        assert!(matches!(
+            *err,
+            StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
+
+        let mut tx = store.transaction();
+        let err = tx
+            .add(&edges, vec![node.into()])
+            .expect_err("invalid handle cannot be reused");
+        assert!(matches!(
+            *err,
+            StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
+    }
+
+    #[test]
     fn transaction_commit_updates_commit_graph_heads_and_deps() {
         let path = Path::from("T");
-        let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
-            }],
-            primary_key: None,
-        };
+        let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
         store.insert_table(path.clone(), Table::new(path.clone(), schema));
         let root = store.commits().root_commit().expect("root commit").hash();

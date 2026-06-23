@@ -1,0 +1,21 @@
+theory Graph := sig
+  V : Set
+  E : V -> V -> Prop
+end
+
+theory Reachability/motive (G : Graph) := sig
+  t : G.V -> G.V -> Prop
+  empty : (x : G.V) -> t x x
+  cons : (
+    (x : G.V) ->
+    (y : G.V) ->
+    (z : G.V) ->
+    (e : G.E x y) ->
+    t y z ->
+    t x z
+  )
+end
+
+realm Graph @ Graph
+  ind def reachability : Reachability/motive self := init (Reachability/motive self)
+end

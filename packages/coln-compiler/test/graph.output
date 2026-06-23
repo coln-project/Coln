@@ -1,0 +1,14 @@
+-- elaborated
+global entry named Graph
+type: Theory
+value: sig
+  V : Set
+  E : V -> V -> Set
+end
+realm named GraphRealm
+generators: node
+  V = rel []
+  E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
+end
+
+-- messages

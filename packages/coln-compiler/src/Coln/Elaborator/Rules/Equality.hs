@@ -1,13 +1,17 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Elaborator.Rules.Equality where
 
 import Coln.Common
 import Coln.Core.Conversion
-import Coln.Core.Params
-import Coln.Core.Value qualified as V
-import Coln.Core.Syntax qualified as S
-import Coln.Core.Memoed
-import Coln.Core.Print
 import Coln.Core.Evaluation
+import Coln.Core.Memoed
+import Coln.Core.Params
+import Coln.Core.Print
+import Coln.Core.Syntax qualified as S
+import Coln.Core.Value qualified as V
 import Coln.Elaborator.Diagnostics
 import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment

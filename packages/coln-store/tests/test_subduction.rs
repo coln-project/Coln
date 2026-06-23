@@ -1,11 +1,13 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
-use coln_store::{
-    commit::hash::CommitHash,
-    ir::{ColType, FlatTheory, Path, PrimType, Schema, TableEntry},
-    store::Store,
-    table::CellValue,
+use coln_flir_rs::ir::{
+    BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
+use coln_store::{commit::hash::CommitHash, store::Store, table::CellValue};
 use future_form::Sendable;
 use sedimentree_core::{
     blob::{Blob, verified::VerifiedBlobMeta},
@@ -32,18 +34,22 @@ use subduction_websocket::{
     },
 };
 
-fn int_theory() -> FlatTheory {
-    FlatTheory {
+fn int_theory() -> FlatRealm {
+    FlatRealm {
         tables: vec![TableEntry {
             path: Path::from("T"),
             table: Schema {
-                columns: vec![ColType::PrimType {
-                    prim: PrimType::PrimInt,
+                entity_variant: EntityVariant::Table,
+                columns: vec![ColumnEntry {
+                    path: Path::from("int_col"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
                 }],
                 primary_key: None,
             },
         }],
-        laws: vec![],
+        rules: vec![],
     }
 }
 

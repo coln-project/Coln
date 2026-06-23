@@ -1,6 +1,13 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+{-# LANGUAGE DeriveGeneric #-}
+
 module Coln.Core.Params where
 
 import Coln.Common
+import GHC.Generics (Generic)
+import Prettyprinter
 
 -- Level stuff (levels, universes, function variants)
 --------------------------------------------------------------------------------
@@ -29,7 +36,7 @@ maxLevel l1 l2
 
 class LevelOf a where
   levelOf :: a -> Level
-  
+
 data Universe
   = SetU
   | TheoryU
@@ -91,12 +98,12 @@ data SCase :: Case -> Type where
   SDescriptive :: SCase Descriptive
 
 -- Literals
--------------------------------------------------------------------------------- 
+--------------------------------------------------------------------------------
 
 data Literal
   = LitInt Int
   | LitString Text
-  deriving (Eq)
+  deriving (Show, Eq)
 
 instance Pretty Literal where
   pretty = \case
@@ -106,7 +113,7 @@ instance Pretty Literal where
 data BuiltinTy
   = BuiltinInt
   | BuiltinString
-  deriving (Eq)
+  deriving (Eq, Generic)
 
 instance Show BuiltinTy where
   show = \case
@@ -124,5 +131,8 @@ data CtxShape = CtxShape {len :: Int, names :: Bwd Name}
 type RealmId = Name
 type Path = Bwd Name
 
-data TableName = TableName { realm :: RealmId, path :: Path }
-  deriving (Eq)
+data TableName = TableName {realm :: RealmId, path :: Path}
+  deriving (Show, Eq, Ord)
+
+instance DPretty TableName where
+  dpretty tn = concatWith (surround dot) (dpretty <$> toList tn.path)

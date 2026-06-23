@@ -1,7 +1,11 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Core.Globals where
 
-import Data.Map.Ordered qualified as OMap
 import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
 import Coln.Core.Params
@@ -24,10 +28,10 @@ emptyGlobals :: Globals
 emptyGlobals = Globals OMap.empty OMap.empty
 
 addGlobalEntry :: Name -> GlobalEntry -> Globals -> Globals
-addGlobalEntry n e g = g { entries = g.entries OMap.>| (n, e) }
+addGlobalEntry n e g = g{entries = g.entries OMap.>| (n, e)}
 
 addRealm :: Name -> Realm -> Globals -> Globals
-addRealm n r g = g { realms = g.realms OMap.>| (n, r) }
+addRealm n r g = g{realms = g.realms OMap.>| (n, r)}
 
 instance Lookup Globals Name GlobalEntry where
   lookup gs x = OMap.lookup x gs.entries

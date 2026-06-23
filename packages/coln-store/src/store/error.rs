@@ -1,16 +1,20 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use std::error::Error;
 use std::fmt;
 
 use crate::commit::error::CodecError;
 use crate::solver::compile::CompileError;
-use crate::solver::validate::LawViolation;
+use crate::solver::validate::RuleViolation;
 use crate::table::ValidationError;
 
 /// Store integrity error
 #[derive(Debug)]
 pub enum StoreIntError {
     Validation(ValidationError),
-    Law(Box<LawViolation>),
+    Law(Box<RuleViolation>),
     Compile(CompileError),
     Encode(CodecError),
     Commit(CommitApplyError),
@@ -62,14 +66,14 @@ impl From<ValidationError> for StoreIntError {
     }
 }
 
-impl From<LawViolation> for StoreIntError {
-    fn from(value: LawViolation) -> Self {
+impl From<RuleViolation> for StoreIntError {
+    fn from(value: RuleViolation) -> Self {
         Self::Law(Box::new(value))
     }
 }
 
-impl From<Box<LawViolation>> for StoreIntError {
-    fn from(value: Box<LawViolation>) -> Self {
+impl From<Box<RuleViolation>> for StoreIntError {
+    fn from(value: Box<RuleViolation>) -> Self {
         Self::Law(value)
     }
 }
@@ -110,14 +114,14 @@ impl From<CompileError> for Box<StoreIntError> {
     }
 }
 
-impl From<LawViolation> for Box<StoreIntError> {
-    fn from(value: LawViolation) -> Self {
+impl From<RuleViolation> for Box<StoreIntError> {
+    fn from(value: RuleViolation) -> Self {
         Box::new(StoreIntError::from(value))
     }
 }
 
-impl From<Box<LawViolation>> for Box<StoreIntError> {
-    fn from(value: Box<LawViolation>) -> Self {
+impl From<Box<RuleViolation>> for Box<StoreIntError> {
+    fn from(value: Box<RuleViolation>) -> Self {
         Box::new(StoreIntError::from(value))
     }
 }

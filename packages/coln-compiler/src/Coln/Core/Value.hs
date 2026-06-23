@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Core.Value where
 
 import Data.Vector.Strict qualified as Vector
@@ -35,8 +39,8 @@ data Description :: (Case -> Type) -> Type where
 
 class HasEvaluation (c :: Case) where
   epure :: a c -> Evaluation a c
-  emap :: (forall c'. HasEvaluation c' => a c' -> b c') -> Evaluation a c -> Evaluation b c
-  ebind :: (forall c'. HasEvaluation c' => a c' -> Evaluation b c') -> Evaluation a c -> Evaluation b c
+  emap :: (forall c'. (HasEvaluation c') => a c' -> b c') -> Evaluation a c -> Evaluation b c
+  ebind :: (forall c'. (HasEvaluation c') => a c' -> Evaluation b c') -> Evaluation a c -> Evaluation b c
   scase :: SCase c
 
 instance HasEvaluation N where
@@ -96,7 +100,7 @@ expandRecord :: RecordType -> Head -> Spine -> Maybe (El D) -> Dict (El N)
 expandRecord recordType head spine desc = do
   let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
       go _ [] = []
-      go vs ((x, ty):rest) = do
+      go vs ((x, ty) : rest) = do
         let v = reflect head (Proj spine x) (ty vs) ((`proj` x) <$> desc)
         v : go (LSnoc vs v) rest
   let tele = recordType.fieldTypes
@@ -124,7 +128,7 @@ data DecodedNeutral = DecodedNeutral
   { head :: Head
   , spine :: Spine
   , universe :: Universe
-  , behavior :: ~TypeBehavior
+  , description :: ~(Maybe (Ty D))
   }
 
 data BareNeutral = BareNeutral
@@ -150,7 +154,7 @@ data El :: Case -> Type where
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
   Lit :: Literal -> El N
-  Lookup :: TableName -> [El N] -> El N
+  Lookup :: TableName -> Dict (El N) -> El N
 
 app :: El c -> El N -> Evaluation El c
 app (Lam _ clo) arg = appClo clo arg
@@ -203,7 +207,7 @@ data Ty :: Case -> Type where
   Record :: RecordType -> Ty D
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
-  EltOf :: TableName -> [El N] -> Ty N
+  EltOf :: TableName -> Dict (El N) -> Ty N
 
 instance DebugVal (Ty c) where
   debugVal = \case
@@ -228,7 +232,9 @@ instance LevelOf (Ty c) where
 behavior :: Ty c -> TypeBehavior
 behavior = \case
   U u -> LikeU u
-  Decode n -> n.behavior
+  Decode n -> case n.description of
+    Just (Record rt) -> LikeRecord rt
+    Nothing -> NoRules
   Function ft -> LikeFunction ft
   Record rt -> LikeRecord rt
   Eq _ -> NoRules
@@ -243,9 +249,9 @@ decode (Neu n) = do
         b -> panic $ "decoding a neutral of non-universe type: " ++ debugVal b
   let k desc = Decode (DecodedNeutral n.head n.spine u desc)
   case decode <$> n.description of
-    Just (Describe desc) -> k (behavior desc)
+    Just (Describe desc) -> k (Just desc)
     Just (Become ty) -> ty
-    Nothing -> k NoRules
+    Nothing -> k Nothing
 decode _ = panic "ill-typed decoding"
 
 -- Type behavior

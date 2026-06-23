@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use hexane::v1::{Column, DeltaColumn};
 use std::io::Write;
 
@@ -11,7 +15,7 @@ use crate::{
         hash_dict::{HashMapper, read_hash_dict, write_hash_dict},
         utils::read_slice,
     },
-    ir::{ColType, Path, PrimType, Schema},
+    ir::{BuiltinTy, ColType, Path, Schema},
     table::RowId,
     txn::ops::{OP_KIND_ADD, PendingOp, RowRef, TempRowId, TxnCellValue},
 };
@@ -21,7 +25,7 @@ use crate::{
 const LOCAL_COMMIT_HASH_INDEX: i64 = -1;
 
 /// Data structure to be hashed, in the order as the fields are defined here.
-/// See also payload canocial payload encoding format.
+/// See also payload canonical payload encoding format.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CommitData {
     pub(crate) author: Author,
@@ -220,7 +224,7 @@ fn encode_txn_row_ref_column(
             }
             RowRef::Pending(temp_id) => {
                 hash_indices.push(LOCAL_COMMIT_HASH_INDEX);
-                counters.push(temp_id.0);
+                counters.push(temp_id.counter());
             }
         }
     }
@@ -236,7 +240,7 @@ fn encode_txn_row_ref_column(
 
 fn encode_txn_prim_value_column(
     values: &[TxnCellValue],
-    prim: &PrimType,
+    prim: &BuiltinTy,
 ) -> Result<Vec<u8>, CodecError> {
     let mut value_bytes = Vec::new();
     let mut buf = Vec::new();
@@ -264,11 +268,8 @@ fn encode_txn_value_column(
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
     match col_type {
-        ColType::EntityType { .. } => encode_txn_row_ref_column(values, hash_mapper),
-        ColType::PrimType { prim } => encode_txn_prim_value_column(values, prim),
-        ColType::Tuple { .. } => Err(CodecError::SchemaError(
-            "tuple columns are not supported yet".into(),
-        )),
+        ColType::RowId { .. } => encode_txn_row_ref_column(values, hash_mapper),
+        ColType::BuiltinTy { builtin_ty } => encode_txn_prim_value_column(values, builtin_ty),
     }
 }
 
@@ -314,12 +315,12 @@ fn encode_op_group(
 
     commit_leb128::write_len(&mut buf, schema.columns.len());
 
-    for (column_index, col_type) in schema.columns.iter().enumerate() {
+    for (column_index, col_entry) in schema.columns.iter().enumerate() {
         let values = rows
             .iter()
             .map(|row| row[column_index].clone())
             .collect::<Vec<_>>();
-        let blob = encode_txn_value_column(&values, col_type, hash_mapper)?;
+        let blob = encode_txn_value_column(&values, &col_entry.col_type, hash_mapper)?;
         commit_leb128::write_len_prefixed_bytes(&mut buf, &blob);
     }
 
@@ -488,10 +489,10 @@ where
     }
 
     let mut columns = Vec::with_capacity(column_count);
-    for (column_index, col_type) in schema.columns.iter().enumerate() {
+    for (column_index, col_entry) in schema.columns.iter().enumerate() {
         let column_blob =
             commit_leb128::read_len_prefixed_bytes(data, &mut pos, "op group column")?;
-        let column = decode_txn_value_column(column_blob, col_type, hashes)?;
+        let column = decode_txn_value_column(column_blob, &col_entry.col_type, hashes)?;
         if column.len() != row_count {
             return Err(CodecError::DataFormatError(format!(
                 "op group column {column_index} length mismatch: expected {row_count}, got {}",
@@ -529,11 +530,8 @@ fn decode_txn_value_column(
     hashes: &[CommitHash],
 ) -> Result<Vec<TxnCellValue>, CodecError> {
     match col_type {
-        ColType::EntityType { .. } => decode_txn_row_ref_column(data, hashes),
-        ColType::PrimType { prim } => decode_txn_prim_value_column(data, prim),
-        ColType::Tuple { .. } => Err(CodecError::SchemaError(
-            "tuple columns are not supported yet".into(),
-        )),
+        ColType::RowId { .. } => decode_txn_row_ref_column(data, hashes),
+        ColType::BuiltinTy { builtin_ty } => decode_txn_prim_value_column(data, builtin_ty),
     }
 }
 
@@ -586,7 +584,7 @@ fn decode_txn_row_ref_column(
 
 fn decode_txn_prim_value_column(
     data: &[u8],
-    prim: &PrimType,
+    prim: &BuiltinTy,
 ) -> Result<Vec<TxnCellValue>, CodecError> {
     let mut pos = 0usize;
     let meta_blob =
@@ -636,7 +634,7 @@ mod tests {
     use super::*;
     use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::prim::ValueType;
-    use crate::ir::{ColType, Path, PrimType};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::RowId;
     use crate::txn::ops::{RowRef, TempRowId};
 
@@ -689,8 +687,8 @@ mod tests {
 
     #[test]
     fn txn_value_column_round_trips_int() {
-        let col = ColType::PrimType {
-            prim: PrimType::PrimInt,
+        let col = ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
         };
         let values = vec![1i64.into(), 2i64.into(), (-3i64).into()];
         let encoded =
@@ -701,8 +699,8 @@ mod tests {
 
     #[test]
     fn txn_value_column_round_trips_string() {
-        let col = ColType::PrimType {
-            prim: PrimType::PrimString,
+        let col = ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinStr,
         };
         let values = vec!["a".into(), "bc".into()];
         let encoded =
@@ -713,8 +711,8 @@ mod tests {
 
     #[test]
     fn txn_value_column_round_trips_int_boundaries() {
-        let col = ColType::PrimType {
-            prim: PrimType::PrimInt,
+        let col = ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
         };
         // Span every leb byte-length boundary, including the signed extremes,
         // so the declared meta length must agree with the signed-leb encoding.
@@ -736,8 +734,8 @@ mod tests {
 
     #[test]
     fn txn_value_column_round_trips_empty_strings_and_empty_column() {
-        let col = ColType::PrimType {
-            prim: PrimType::PrimString,
+        let col = ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinStr,
         };
 
         // Zero-length values interleaved with non-empty ones: the value blob
@@ -758,8 +756,8 @@ mod tests {
 
     #[test]
     fn txn_value_column_decode_rejects_meta_length_overrun() {
-        let col = ColType::PrimType {
-            prim: PrimType::PrimInt,
+        let col = ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
         };
         // The meta claims a 5-byte value, but the value blob is empty.
         let meta_blob =
@@ -778,7 +776,7 @@ mod tests {
         let ha = CommitHash([1u8; HASH_SIZE]);
         let mut hash_mapper = HashMapper::new();
         hash_mapper.insert(ha);
-        let col = ColType::EntityType {
+        let col = ColType::RowId {
             path: Path::from("T.E"),
         };
         let values = vec![
@@ -797,8 +795,8 @@ mod tests {
 
     #[test]
     fn txn_value_column_rejects_type_mismatch_for_int_column() {
-        let col = ColType::PrimType {
-            prim: PrimType::PrimInt,
+        let col = ColType::BuiltinTy {
+            builtin_ty: BuiltinTy::BuiltinInt,
         };
         let err = encode_txn_value_column(
             &[TxnCellValue::Str("nope".into())],
@@ -810,25 +808,28 @@ mod tests {
     }
 
     #[test]
-    fn txn_value_column_rejects_tuple_schema() {
-        let col = ColType::Tuple { fields: vec![] };
-        let err = encode_txn_value_column(&[], &col, &HashMapper::new()).expect_err("tuple");
-        assert!(matches!(err, CodecError::SchemaError(_)));
-    }
-
-    #[test]
     fn op_group_encodes_schema_columns() {
         let table = Path::from("T");
         let entity = Path::from("T.E");
         let schema = Schema {
+            entity_variant: EntityVariant::Table,
             columns: vec![
-                ColType::PrimType {
-                    prim: PrimType::PrimInt,
+                ColumnEntry {
+                    path: Path::from("c0"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
                 },
-                ColType::PrimType {
-                    prim: PrimType::PrimString,
+                ColumnEntry {
+                    path: Path::from("c1"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinStr,
+                    },
                 },
-                ColType::EntityType { path: entity },
+                ColumnEntry {
+                    path: Path::from("c2"),
+                    col_type: ColType::RowId { path: entity },
+                },
             ],
             primary_key: None,
         };
@@ -873,11 +874,11 @@ mod tests {
             3
         );
 
-        for (index, col_type) in schema.columns.iter().enumerate() {
+        for (index, col_entry) in schema.columns.iter().enumerate() {
             let blob =
                 commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "column blob").unwrap();
-            let decoded =
-                decode_txn_value_column(blob, col_type, hash_mapper.hashes()).expect("decode col");
+            let decoded = decode_txn_value_column(blob, &col_entry.col_type, hash_mapper.hashes())
+                .expect("decode col");
             match index {
                 0 => assert_eq!(decoded, vec![1i64.into(), 2i64.into()]),
                 1 => assert_eq!(decoded, vec!["a".into(), "b".into()]),
@@ -900,6 +901,7 @@ mod tests {
     #[test]
     fn op_group_rejects_table_mismatch() {
         let schema = Schema {
+            entity_variant: EntityVariant::Table,
             columns: vec![],
             primary_key: None,
         };
@@ -917,8 +919,12 @@ mod tests {
     fn op_group_rejects_column_count_mismatch() {
         let table = Path::from("T");
         let schema = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
@@ -937,14 +943,22 @@ mod tests {
         let table_a = Path::from("A");
         let table_b = Path::from("B");
         let schema_a = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
         let schema_b = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimString,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinStr,
+                },
             }],
             primary_key: None,
         };
@@ -1039,14 +1053,22 @@ mod tests {
         let table_a = Path::from("A");
         let table_b = Path::from("B");
         let schema_a = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimInt,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
             }],
             primary_key: None,
         };
         let schema_b = Schema {
-            columns: vec![ColType::PrimType {
-                prim: PrimType::PrimString,
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinStr,
+                },
             }],
             primary_key: None,
         };
@@ -1091,6 +1113,7 @@ mod tests {
     fn commit_body_decode_rejects_missing_schema() {
         let table = Path::from("T");
         let schema = Schema {
+            entity_variant: EntityVariant::Table,
             columns: vec![],
             primary_key: None,
         };

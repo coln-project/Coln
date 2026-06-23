@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module ColnDo.Format where
 
 import ColnDo.Common
@@ -22,3 +26,8 @@ formatRules = do
 
   phony "format" $ do
     need ["format-haskell", "format-cabal", "format-rust"]
+
+  phony "check-format-haskell" $ do
+    hsFiles <- getHsFiles
+    putInfo "Checking formatting"
+    cmd_ "fourmolu --mode check --indentation 2" hsFiles

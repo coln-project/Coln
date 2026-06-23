@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use rustyline::completion::{Completer, Pair};
 use rustyline::error::ReadlineError;
 use rustyline::highlight::Highlighter;
@@ -289,7 +293,7 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::{
-        ir::{ColType, PrimType},
+        ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant},
         repl::{
             exe::{PrimaryKeySummary, SchemaSummary, TableSummary},
             parse::Command,
@@ -305,12 +309,19 @@ mod tests {
 
         let path = IrPath::from("T");
         let schema = Schema {
+            entity_variant: EntityVariant::Table,
             columns: vec![
-                ColType::PrimType {
-                    prim: PrimType::PrimInt,
+                ColumnEntry {
+                    path: IrPath::from("c0"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
                 },
-                ColType::PrimType {
-                    prim: PrimType::PrimString,
+                ColumnEntry {
+                    path: IrPath::from("c1"),
+                    col_type: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinStr,
+                    },
                 },
             ],
             primary_key: None,
@@ -329,7 +340,7 @@ mod tests {
                     path: "T".to_string(),
                     column_count: 2,
                     primary_key: PrimaryKeySummary::None,
-                    columns: vec!["int".to_string(), "string".to_string()],
+                    columns: vec!["c0: int".to_string(), "c1: string".to_string()],
                 }],
             },
         }
@@ -394,8 +405,12 @@ mod tests {
             crate::table::Table::new(
                 path,
                 crate::ir::Schema {
-                    columns: vec![ColType::EntityType {
-                        path: "T".parse().unwrap(),
+                    entity_variant: EntityVariant::Table,
+                    columns: vec![ColumnEntry {
+                        path: "ref".parse().unwrap(),
+                        col_type: ColType::RowId {
+                            path: "T".parse().unwrap(),
+                        },
                     }],
                     primary_key: None,
                 },

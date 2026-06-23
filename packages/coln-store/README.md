@@ -19,31 +19,31 @@ for the full command list (for example `load-schema`, `add`, `dump-table`,
 A **transaction** is a single multi-line statement: `begin transact;` … `commit;`. Each
 line inside is an `add` that may bind the new row id to a name (`name = add
 TABLE values (...);`). These ids are assigned by the storage layer and can then
-be referred to later on. For example, `e1 = add G.E values (g0 v1 v2);` is
-referring to `v1` and `v2` as vertex ids previously inserted.
+be referred to later on. For example, `e1 = add Path.G.E values (g0 v1 v2);`
+is referring to `v1` and `v2` as vertex ids previously inserted.
 The whole batch is submitted when you end it with `commit;`.
 
 The snippet below loads the `paths` theory, creates two graphs (`g0`, `g1`),
-records `g1` as the designated graph for the `G0` and `G1` indices, adds two
-vertices on `g0`, and adds one edge between them on `g0`.
+records `g1` as the designated graph for the `Path.G0` and `Path.G1` indices,
+adds two vertices on `g0`, and adds one edge between them on `g0`.
 
 After `commit`, inspect what landed with `dump-table <table>;`. For example,
-`dump-table Graphs;`, `dump-table G.V;`, or `dump-table G.E;`, or print the
-entire store with `dump-store;`.
+`dump-table Path.Graphs;`, `dump-table Path.G.V;`, or `dump-table Path.G.E;`,
+or print the entire store with `dump-store;`.
 
 ```text
-coln-store> load-schema tests/data/paths.json;
+coln-store> load-schema tests/data/Path.json;
 begin transact;
-  g0 = add Graphs values ();
-  g1 = add Graphs values ();
+  g0 = add Path.Graphs values ();
+  g1 = add Path.Graphs values ();
 
-  i1 = add G0 values (g1);
-  i2 = add G1 values (g1);
+  i1 = add Path.G0 values (g1);
+  i2 = add Path.G1 values (g1);
 
-  v1 = add G.V values (g0);
-  v2 = add G.V values (g0);
+  v1 = add Path.G.V values (g0);
+  v2 = add Path.G.V values (g0);
 
-  e1 = add G.E values (g0 v1 v2);
+  e1 = add Path.G.E values (g0 v1 v2);
 
 commit;
 
@@ -51,8 +51,9 @@ persist paths.bin;
 load-store paths.bin;
 ```
 
-To get a violation of the law, say (Hom.V.total), change the line `i1 = add G0 values (g1);`
-to `i1 = add G0 values (g0)` so that we do not have a morphism between G0 and G1.
+To get a violation of the law, say (`Path.Hom.V.total`), change the line
+`i1 = add Path.G0 values (g1);` to `i1 = add Path.G0 values (g0)` so that we
+do not have a morphism between `Path.G0` and `Path.G1`.
 
 ## Commits
 

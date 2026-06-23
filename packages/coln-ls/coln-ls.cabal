@@ -9,13 +9,13 @@ description:
 
 category: Language
 build-type: Simple
-extra-doc-files: CHANGELOG.md
 
-executable coln-ls
-  main-is: Main.hs
+library
   hs-source-dirs: src
-  other-modules:
+  exposed-modules:
     Coln.LSP
+
+  other-modules:
     Coln.LSP.Buffer
     Coln.LSP.Diagnostics
     Coln.LSP.DocChange
@@ -39,11 +39,11 @@ executable coln-ls
   ghc-options: -Wall
   build-depends:
     base,
+    coln-compiler,
     containers,
     diagnostician,
     exceptions,
     fnotation,
-    coln-compiler,
     lens,
     lsp,
     megaparsec,
@@ -57,12 +57,12 @@ executable coln-ls
 test-suite coln-ls-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
-  build-tool-depends: coln-ls:coln-ls
   hs-source-dirs: test
   default-language: GHC2021
   ghc-options: -Wall
   build-depends:
     base,
+    coln-ls,
     lsp-test,
     process,
     tasty,

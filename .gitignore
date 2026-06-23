@@ -350,3 +350,6 @@ manual/forester
 
 ## Rust
 /target/
+
+## Node package manager caches
+/.pnpm-store/

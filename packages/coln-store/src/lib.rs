@@ -1,5 +1,10 @@
-pub use coln_lang_rs::ir;
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+pub use coln_flir_rs::ir;
 pub mod commit;
+#[cfg(feature = "native")]
 pub mod repl;
 pub mod solver;
 pub mod store;

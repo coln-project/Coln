@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module FNotation.Parser where
 
 import Data.IORef
@@ -223,7 +227,7 @@ argBase st = do
     T.AKeyword -> do
       x <- curName st
       advanceClose st m $ Keyword x
-    T.Field;T.FieldImmediate -> do
+    T.Field; T.FieldImmediate -> do
       x <- curName st
       advanceClose st m $ Field x
     T.Tag -> do
@@ -242,12 +246,13 @@ argBase st = do
 
 -- `.x.y.z -> [x, y, z]`
 argProjs :: ParseState -> IO [Ntn]
-argProjs st = cur st >>= \case
-  k@T.FieldImmediate -> do
-    field <- argBase st
-    rest <- argProjs st
-    return (field : rest)
-  _ -> pure []
+argProjs st =
+  cur st >>= \case
+    k@T.FieldImmediate -> do
+      field <- argBase st
+      rest <- argProjs st
+      return (field : rest)
+    _ -> pure []
 
 arg :: ParseState -> IO Ntn
 arg st = do

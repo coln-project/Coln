@@ -6,9 +6,11 @@ maintainer: george.thomas@obsidian.systems
 author: George Thomas
 description: A REPL for Coln
 
-executable coln-repl
-  main-is: Main.hs
+library
   hs-source-dirs: src
+  exposed-modules:
+    Coln.REPL
+
   default-language: GHC2024
   default-extensions:
     BlockArguments
@@ -23,12 +25,12 @@ executable coln-repl
   build-depends:
     base,
     bytestring,
+    coln-compiler,
     containers,
     diagnostician,
     directory,
     filepath,
     fnotation,
-    coln-compiler,
     hashable,
     haskeline,
     mtl,
