@@ -28,6 +28,7 @@ import Data.List hiding (lookup)
 import Data.Map.Ordered qualified as OMap
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
+import Diagnostician.Terminal (terminalReporter)
 import FNotation
 import Prettyprinter
 import Prettyprinter.Render.Text
@@ -97,7 +98,7 @@ eval file = do
  where
   envFor :: (Code a') => (a -> a') -> DiagnosticEnv a
   envFor f = DiagnosticEnv (reporter f) file
-  reporter translator = contramap translator $ Reporter{reportIO = putDoc . dpretty}
+  reporter translator = contramap translator $ terminalReporter stdout
 
 prettyEntry :: (Name, GlobalEntry) -> DDoc
 prettyEntry (x, GlobalEntry t _ a) =

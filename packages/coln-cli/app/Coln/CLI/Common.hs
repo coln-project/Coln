@@ -6,6 +6,7 @@ module Coln.CLI.Common where
 
 import Control.Exception
 import Diagnostician
+import Diagnostician.Terminal
 import System.IO (stdout)
 
 import Coln.Core.Globals
@@ -34,6 +35,6 @@ loadFile fp =
 
 compile :: FilePath -> T.Text -> IO Globals
 compile fp contents = do
-  let reporter = fileReporter stdout
+  let reporter = terminalReporter stdout
   let f = newFile fp contents
   topFromText reporter f

@@ -44,6 +44,12 @@
 
           coln-do = colnHaskellPackages.callPackage ./packages/coln-do { };
           diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician { };
+          diagnostician-terminal = colnHaskellPackages.callPackage ./packages/diagnostician-terminal {
+            inherit diagnostician;
+          };
+          diagnostician-html = colnHaskellPackages.callPackage ./packages/diagnostician-html {
+            inherit diagnostician;
+          };
           fnotation = colnHaskellPackages.callPackage ./packages/fnotation {
             inherit diagnostician;
           };
@@ -51,18 +57,20 @@
             inherit diagnostician fnotation;
           };
           coln-repl = colnHaskellPackages.callPackage ./packages/coln-repl {
-            inherit coln-compiler diagnostician fnotation;
+            inherit coln-compiler diagnostician diagnostician-terminal fnotation;
           };
           coln-ls = colnHaskellPackages.callPackage ./packages/coln-ls {
             inherit coln-compiler diagnostician fnotation;
           };
           coln-manual-dev = colnHaskellPackages.callPackage ./packages/coln-manual-dev {};
           coln-cli = colnHaskellPackages.callPackage ./packages/coln-cli {
-            inherit coln-compiler coln-repl coln-ls diagnostician fnotation;
+            inherit coln-compiler coln-repl coln-ls diagnostician diagnostician-terminal fnotation;
           };
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''
             echo "built diagnostician: ${diagnostician}"
+            echo "built diagnostician-terminal: ${diagnostician-terminal}"
+            echo "built diagnostician-html: ${diagnostician-html}"
             echo "built fnotation: ${fnotation}"
             echo "built coln-compiler: ${coln-compiler}"
             echo "built coln-repl: ${coln-repl}"

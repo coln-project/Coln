@@ -20,8 +20,11 @@ import System.IO (Handle)
 -- Pretty printer annotations
 --------------------------------------------------------------------------------
 
--- TODO: more annotations for colors
-data DiagnosticAnn = DPlain
+data DiagnosticAnn
+  = DSeverity
+  | DCode
+  | DBar
+  | DSpan
 
 -- Diagnostician doc
 type DDoc = Doc DiagnosticAnn
@@ -121,7 +124,7 @@ linePretty :: Int -> LineNum -> Span -> T.Text -> Span -> DDoc
 linePretty numWidth l (Span ls le) t (Span s e) =
   vsep
     [ gutter <+> pretty t
-    , gutter <+> repeated ns ' ' <> repeated nc '^'
+    , gutter <+> repeated ns ' ' <> annotate DSpan (repeated nc '^')
     ]
  where
   s' = max ls s
@@ -129,7 +132,7 @@ linePretty numWidth l (Span ls le) t (Span s e) =
   ns = T.length $ sliceWord8 0 (s' - ls) t
   nc = max 1 $ T.length $ sliceWord8 (s' - ls) (e' - ls) t
   ln = fill numWidth $ pretty $ l + 1
-  gutter = ln <+> "|"
+  gutter = ln <+> annotate DBar "|"
 
 numDigits :: Int -> Int
 numDigits n = go (abs n)
@@ -201,7 +204,7 @@ padWithZerosTo :: Int -> Int -> Doc ann
 padWithZerosTo w i = repeated (w - numDigits i) '0' <> pretty i
 
 prtCode :: (Code a) => a -> DDoc
-prtCode c = s <> "[" <> sl <> padWithZerosTo 4 m.number <> "]"
+prtCode c = annotate DSeverity s <> "[" <> annotate DCode (sl <> padWithZerosTo 4 m.number) <> "]"
  where
   m = codeMeta c
   (s, sl) = case m.severity of

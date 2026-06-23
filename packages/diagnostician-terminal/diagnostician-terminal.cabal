@@ -1,0 +1,30 @@
+cabal-version: 3.4
+name: diagnostician-terminal
+version: 0.1.1.0
+license: (Apache-2.0 OR MIT)
+maintainer: root@owenlynch.org
+author: Coln contributors
+description: ANSI terminal rendering backend for Diagnostician
+category: Language
+
+library
+  exposed-modules: Diagnostician.Terminal
+  hs-source-dirs: src
+  default-language: GHC2024
+  default-extensions:
+    DuplicateRecordFields
+    NoFieldSelectors
+    OrPatterns
+    OverloadedRecordDot
+    OverloadedStrings
+
+  ghc-options:
+    -Wall
+
+  build-depends:
+    ansi-terminal,
+    base ^>=4.21.0.0,
+    diagnostician,
+    prettyprinter,
+    prettyprinter-ansi-terminal,
+    text,
