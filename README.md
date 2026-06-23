@@ -15,7 +15,3 @@ This will allow you to:
 - Generate JSON IR (used by the storage engine): `coln generate-ir theories.coln -o OUT_DIR`
 - Run a repl: `coln repl`
 - Run a language server: `coln language-server`
-
-## Demo
-
-(fill in when we have a demo)
