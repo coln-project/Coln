@@ -44,6 +44,9 @@
 
           coln-do = colnHaskellPackages.callPackage ./packages/coln-do { };
           diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician { };
+          diagnostician-terminal = colnHaskellPackages.callPackage ./packages/diagnostician-terminal {
+            inherit diagnostician;
+          };
           fnotation = colnHaskellPackages.callPackage ./packages/fnotation {
             inherit diagnostician;
           };
@@ -63,6 +66,7 @@
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''
             echo "built diagnostician: ${diagnostician}"
+            echo "built diagnostician-terminal: ${diagnostician-terminal}"
             echo "built fnotation: ${fnotation}"
             echo "built coln-compiler: ${coln-compiler}"
             echo "built coln-repl: ${coln-repl}"
