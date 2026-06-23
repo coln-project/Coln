@@ -18,7 +18,7 @@ jobs:
           nix_path: nixpkgs=channel:nixos-26.05
 
       - name: Check licenses
-        run:
+        run: |
           nix-env -i just reuse -f '<nixpkgs>'
           just check-licenses
   rust-fmt:
