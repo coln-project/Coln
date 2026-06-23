@@ -1,0 +1,30 @@
+{
+  "name": "coln-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "server": "node server.mjs",
+    "compile": "bash ./compile.sh",
+    "build": "pnpm run compile && tsc --noEmit && vite build",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@automerge/automerge-repo": "file:./vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz",
+    "@automerge/automerge-subduction": "0.16.0",
+    "@coln-project/coln-js-runtime": "link:../../packages/coln-js-runtime",
+    "@coln-project/runtime": "link:../../packages/coln-js-runtime",
+    "@vitejs/plugin-react": "^6.0.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vite-plugin-wasm": "^3.6.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3"
+  }
+}

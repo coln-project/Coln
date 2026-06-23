@@ -57,6 +57,7 @@ data El
   = Var Id
   | Const QId
   | MethodCall El Id [El]
+  | Call El [El]
   | Lam Binding Block
   | Lit Literal
   | New El [El]
@@ -121,6 +122,7 @@ data Declaration
 data Import
   = ImportQualified Id DDoc
   | ImportSpecific Id DDoc
+  | ImportSpecificExported Id DDoc
 
 data Module = Module
   { imports :: [Import]

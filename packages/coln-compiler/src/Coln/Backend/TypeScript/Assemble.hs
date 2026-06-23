@@ -55,6 +55,7 @@ instance Assemble El where
   asm (Const x) = asm x
   asm (MethodCall t x args) =
     asm t <> "." <> asm x <> tupled (asm <$> args)
+  asm (Call t args) = asm t <> tupled (asm <$> args)
   asm (Lam bnd block) =
     parens (asm bnd) <+> "=>" <+> asm block
   asm (Lit (LitInt i)) = pretty i
@@ -148,6 +149,11 @@ instance Assemble Import where
       "import * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
     ImportSpecific x from ->
       "import" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+    ImportSpecificExported x from ->
+      vsep
+        [ "import" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+        , "export" <+> braces (asm x) <> ";"
+        ]
 
 instance Assemble Module where
   asm m =
