@@ -17,7 +17,7 @@ jobs:
 
       - name: Check licenses
         run:
-          nix-env -iA nixpkgs.just nixpkgs.reuse
+          nix-env -i just reuse
           just check-licenses
   rust-fmt:
     runs-on: ubuntu-latest
