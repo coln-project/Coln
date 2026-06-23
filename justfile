@@ -12,6 +12,9 @@ check-rust: (check "coln-store")
 
 check-typescript: (check "coln-js-runtime")
 
+check-licences:
+    reuse lint
+
 check-all: check-haskell check-rust check-typescript
 
 check package:
@@ -19,3 +22,7 @@ check package:
 
 fix package:
     just -f packages/{{package}}/justfile fix
+
+fix-licenses:
+    git ls-files -z '*.[hrt]s' | xargs -0 reuse annotate -c "Coln contributors" -l Apache-2.0
+

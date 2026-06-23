@@ -181,6 +181,7 @@
             binaryen
             openssl
             pkg-config
+            reuse
             tectonic
             typescript
             zlib
