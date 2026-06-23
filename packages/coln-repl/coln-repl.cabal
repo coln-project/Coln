@@ -28,6 +28,7 @@ library
     coln-compiler,
     containers,
     diagnostician,
+    diagnostician-terminal,
     directory,
     filepath,
     fnotation,

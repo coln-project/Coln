@@ -54,14 +54,14 @@
             inherit diagnostician fnotation;
           };
           coln-repl = colnHaskellPackages.callPackage ./packages/coln-repl {
-            inherit coln-compiler diagnostician fnotation;
+            inherit coln-compiler diagnostician diagnostician-terminal fnotation;
           };
           coln-ls = colnHaskellPackages.callPackage ./packages/coln-ls {
             inherit coln-compiler diagnostician fnotation;
           };
           coln-manual-dev = colnHaskellPackages.callPackage ./packages/coln-manual-dev {};
           coln-cli = colnHaskellPackages.callPackage ./packages/coln-cli {
-            inherit coln-compiler coln-repl coln-ls diagnostician fnotation;
+            inherit coln-compiler coln-repl coln-ls diagnostician diagnostician-terminal fnotation;
           };
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''

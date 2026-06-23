@@ -28,6 +28,7 @@ executable coln
     coln-ls,
     coln-repl,
     diagnostician,
+    diagnostician-terminal,
     fnotation,
     optparse-applicative,
     text,
