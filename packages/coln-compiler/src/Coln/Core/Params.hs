@@ -51,9 +51,10 @@ equalityHLevelOf = \case
   HSet -> HProp
   HTop -> HTop
 
-data Level = Level {
-  mlevel :: MLevel,
-  hlevel :: HLevel }
+data Level = Level
+  { mlevel :: MLevel
+  , hlevel :: HLevel
+  }
   deriving (Eq, Show)
 
 instance PartialOrd Level where
@@ -113,7 +114,7 @@ functionMLevelFor v1 v2 = case (v1, v2) of
   (Theory, _) -> pure TheoryTop
   (Top, _) -> Nothing
 
-data FunctionVariant = FunctionVariant { mlevel :: FunctionVariantMLevel, hlevel :: HLevel }
+data FunctionVariant = FunctionVariant {mlevel :: FunctionVariantMLevel, hlevel :: HLevel}
   deriving (Eq, Show)
 
 instance Pretty FunctionVariant where
@@ -121,9 +122,10 @@ instance Pretty FunctionVariant where
 
 instance LevelOf FunctionVariant where
   levelOf v = Level mlevel v.hlevel
-    where mlevel = case v.mlevel of
-                     SetTheory -> Theory
-                     TheoryTop -> Top
+   where
+    mlevel = case v.mlevel of
+      SetTheory -> Theory
+      TheoryTop -> Top
 
 class HasCodomain a b | a -> b where
   codOf :: a -> b
