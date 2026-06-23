@@ -135,7 +135,7 @@ mod tests {
     use crate::commit::wire::CommitData;
     use crate::ir::{FlatRealm, Path, Schema, TableEntry};
     use crate::table::CellValue;
-    use coln_lang_rs::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant};
+    use coln_flir_rs::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant};
 
     fn int_schema() -> Schema {
         Schema {

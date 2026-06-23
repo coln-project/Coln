@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "packages/coln-js-runtime",
-  "packages/coln-lang-rs",
+  "packages/coln-flir-rs",
   "packages/coln-store",
 ]
 resolver = "3"

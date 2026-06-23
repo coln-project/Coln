@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_lang_rs::ir;
+use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
