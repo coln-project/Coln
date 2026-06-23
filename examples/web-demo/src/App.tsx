@@ -123,8 +123,7 @@ export function App({ handle }: Props) {
       <header>
         <h1>Coln + automerge-repo</h1>
         <p>
-          Open this URL in another tab, then edit from either side. The relay is
-          expected at <code>ws://localhost:3030</code>.
+          Open this URL in another tab, then edit from either side.
         </p>
         <input data-testid="doc-url" className="url" readOnly value={handle.url} onFocus={e => e.currentTarget.select()} />
       </header>
