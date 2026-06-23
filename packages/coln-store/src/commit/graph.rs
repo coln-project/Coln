@@ -137,7 +137,7 @@ impl CommitGraph {
 #[cfg(test)]
 mod tests {
 
-    use coln_lang_rs::ir::EntityVariant;
+    use coln_flir_rs::ir::EntityVariant;
 
     use super::*;
     use crate::commit::author::Author;

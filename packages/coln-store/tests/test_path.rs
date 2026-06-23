@@ -4,10 +4,10 @@
 
 use std::{collections::BTreeSet, path::PathBuf, sync::Once};
 
+use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_store::{
     commit::hash::CommitHash,
     commit::pst,
-    ir::{self, FlatRealm, Path},
     store::{Store, error::StoreIntError},
     table::{CellValue, RowId},
 };

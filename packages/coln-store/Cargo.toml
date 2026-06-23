@@ -19,7 +19,7 @@ exclude = [
 
 [dependencies]
 blake3 = "1.8.5"
-coln-lang-rs = { path = "../coln-lang-rs" }
+coln-flir-rs = { path = "../coln-flir-rs" }
 hex = "0.4.3"
 hexane = { git = "https://github.com/automerge/automerge", branch = "hexane_v1", package = "hexane" }
 js-sys = { version = "0.3.83", optional = true }

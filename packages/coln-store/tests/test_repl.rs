@@ -7,8 +7,8 @@
 
 use std::path::PathBuf;
 
+use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::{
-    ir::{FlatRealm, Path},
     repl::{
         exe::run_transact,
         parse::{Command, parse_command},

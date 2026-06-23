@@ -204,9 +204,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "coln-flir-rs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "coln-js-runtime"
 version = "0.1.0"
 dependencies = [
+ "coln-flir-rs",
  "coln-store",
  "console_error_panic_hook",
  "hex",
@@ -219,19 +228,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "coln-lang-rs"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "coln-store"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "coln-lang-rs",
+ "coln-flir-rs",
  "future_form",
  "hex",
  "hexane",

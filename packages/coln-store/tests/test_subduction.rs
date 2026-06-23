@@ -4,12 +4,10 @@
 
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
-use coln_store::{
-    commit::hash::CommitHash,
-    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry},
-    store::Store,
-    table::CellValue,
+use coln_flir_rs::ir::{
+    BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
+use coln_store::{commit::hash::CommitHash, store::Store, table::CellValue};
 use future_form::Sendable;
 use sedimentree_core::{
     blob::{Blob, verified::VerifiedBlobMeta},

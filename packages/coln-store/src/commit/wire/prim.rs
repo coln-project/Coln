@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use coln_lang_rs::ir::BuiltinTy;
+use coln_flir_rs::ir::BuiltinTy;
 use hexane::{PackError, lebsize};
 
 use crate::{commit::error::CodecError, txn::ops::TxnCellValue};

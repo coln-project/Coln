@@ -4,7 +4,7 @@
 
 mod common;
 
-use coln_lang_rs::ir::Path;
+use coln_flir_rs::ir::Path;
 
 // TODO add more theory json files
 const THEORY_FIXTURES: &[&str] = &["Graph.json"];

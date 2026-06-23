@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use coln_lang_rs::ir::FlatRealm;
+use coln_flir_rs::ir::FlatRealm;
 
 pub fn load_theory(name: &str) -> FlatRealm {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
