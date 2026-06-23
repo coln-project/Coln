@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 {- | QuickCheck generators for FNotation token streams.
 
 These generators produce 'V.Vector Token' values that satisfy the invariants

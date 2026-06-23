@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 -- | QuickCheck generators for FNotation source text.
 module Test.FNotation.Property.Gen.Source (
   -- * Source text generator

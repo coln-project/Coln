@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import { expect, test, type Page } from "@playwright/test"
 
 test("a tab opened after edits loads the coln graph", async ({ browser }) => {

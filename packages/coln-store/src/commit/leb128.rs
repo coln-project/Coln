@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use crate::commit::{error::CodecError, utils::read_slice};
 
 // The write helpers append to an in-memory `Vec<u8>`, whose `io::Write` impl

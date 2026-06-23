@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import { StoreHandle } from "../src/ts/index.ts";
 import { Graph, GraphOfGraphs } from "./graph.ts";
 import flatTheory from "./graph.json" with { type: "json" };
