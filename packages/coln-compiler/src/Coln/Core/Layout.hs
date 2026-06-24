@@ -65,7 +65,8 @@ layout p sc a
         let (gts, ms) = go rt.capture (toList rt.fieldTypes)
         let m = M.cons (Dict rt.fieldTypes.head (Vector.fromList ms))
         (Node $ Dict rt.fieldTypes.head (Vector.fromList gts), m)
-      V.LikeU SetU -> do
+      V.LikeU (SetU; PropU) -> do
+        -- TODO: layout Prop correctly
         let gt = Leaf (Rel (toList sc.names) (toList sc.ctx))
         let a = V.EltOf (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
         (gt, M.code (M.fromVTy sc.len a))

@@ -3,12 +3,12 @@ global entry named Graph
 type: Theory
 value: sig
   V : Set
-  E : V -> V -> Set
+  E : V -> V -> Prop
 end
 global entry named Reachability/motive
 type: (G : Graph) -> Theory
 value: G => sig
-  t : G.V -> G.V -> Set
+  t : G.V -> G.V -> Prop
   empty : (x : G.V) -> t x x
   cons : (x : G.V) -> (y : G.V) -> (z : G.V) -> (e : G.E x y) -> t y z -> t x z
 end
