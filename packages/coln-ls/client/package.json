@@ -2,6 +2,7 @@
   "name": "coln-ls-client",
   "displayName": "Coln LSP Client",
   "description": "VS Code/Cursor client for the Coln language server",
+  "author": "Coln contributors",
   "version": "0.1.0",
   "publisher": "coln-developers",
   "engines": { "vscode": "^1.85.0" },

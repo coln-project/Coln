@@ -2,6 +2,7 @@
   "name": "@coln-project/runtime",
   "version": "0.1.0",
   "private": true,
+  "author": "Coln contributors",
   "type": "module",
   "license": "(MIT OR Apache-2.0)",
   "files": [
