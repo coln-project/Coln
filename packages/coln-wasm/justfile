@@ -1,0 +1,14 @@
+build_dir := "../../_build/wasm"
+dist_dir := build_dir / "dist"
+
+build:
+    #!/usr/bin/env bash
+    mkdir -p {{ dist_dir }}
+    wasm32-wasi-cabal build coln-wasm
+    cp "$(wasm32-wasi-cabal list-bin coln-wasm)" {{ dist_dir }}/coln.wasm
+    libdir="$(wasm32-wasi-ghc --print-libdir)"
+    "$libdir/post-link.mjs" --input {{ dist_dir }}/coln.wasm --output {{ dist_dir }}/ghc_wasm_jsffi.js
+
+serve-example port="8000": build
+    cp example.html {{ build_dir }}/index.html
+    simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
