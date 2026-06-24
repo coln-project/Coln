@@ -5,95 +5,133 @@
     <title>Coln</title>
     <style>
       body {
-        font-family: sans-serif;
-        max-width: 50em;
+        --hue: 220;
+        --sat: 32%;
+        --main-bg: hsl(var(--hue), var(--sat), 16%);
+        --input-bg: hsl(var(--hue), var(--sat), 8%);
+        --alt-bg: hsl(var(--hue), var(--sat), 13%);
+        --border: hsl(var(--hue), var(--sat), 30%);
+        --accent: hsl(var(--hue), var(--sat), 75%);
+        --text-hue: 39;
+        --text-sat: 70%;
+        --text: hsl(var(--text-hue), var(--text-sat), 88%);
+        --debug: hsl(290, var(--text-sat), 55%);
+        --info: hsl(215, var(--text-sat), 55%);
+        --warning: hsl(45, var(--text-sat), 55%);
+        --error: hsl(355, var(--text-sat), 55%);
+        font-family: Helvetica, Arial, sans-serif;
+        background: var(--main-bg);
+        color: var(--text);
+        max-width: 60em;
         margin: 2em auto;
+        > * {
+          margin: 0 1em;
+        }
       }
-      label {
-        display: block;
-        margin-bottom: 0.25em;
-        margin-top: 1em;
+      textarea,
+      pre {
+        padding: 0.8em 1em;
+      }
+      textarea,
+      select {
+        color: inherit;
+        &:focus {
+          border-color: var(--accent);
+          outline: none;
+        }
       }
       textarea {
-        padding: 0.5em;
-        width: 100%;
-        box-sizing: border-box;
+        background: var(--input-bg);
         resize: vertical;
-      }
-      button {
-        font-size: 1em;
-        padding: 0.3em 1em;
-        margin-top: 0.5em;
+        border: solid 1px var(--border);
       }
       pre {
         margin: 0;
         white-space: pre-wrap;
+      }
+      select {
+        background: var(--input-bg);
+        border: solid 1px var(--border);
+        padding: 0.5em 1em;
       }
       body[data-compiling] {
         & .output {
           opacity: 0.5;
         }
       }
-      .output {
-        border: solid 1px #ccc;
-        background: #f4f4f4;
-        &:empty {
-          min-height: 2.5em;
+      .main {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-rows: auto auto repeat(3, minmax(2.5em, auto));
+        gap: 1em 1em;
+        > h2 {
+          text-align: right;
         }
-        & > pre {
-          padding: 1em;
-          border: none;
-          border-bottom: solid 1px #ccc;
-          &:last-child {
-            border-bottom: none;
-          }
+        > * {
+          margin: 0;
+        }
+      }
+      .header {
+        grid-column: 1 / -1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1em;
+        > h1 {
+          padding-left: 3em;
+          margin: 0;
+        }
+      }
+      #input,
+      #examples,
+      .output {
+        border-radius: 0.3em;
+      }
+      .output {
+        border: solid 1px var(--border);
+        background: var(--alt-bg);
+        > div:not(:last-child) {
+          border-bottom: solid 1px var(--border);
         }
       }
       #json {
         padding: 1em;
       }
       .diag-debug {
-        --diag-colour: #8250df;
+        --diag-colour: var(--debug);
       }
       .diag-info {
-        --diag-colour: #0969da;
+        --diag-colour: var(--info);
       }
       .diag-warning {
-        --diag-colour: #c2a000;
+        --diag-colour: var(--warning);
       }
       .diag-error {
-        --diag-colour: #cf222e;
+        --diag-colour: var(--error);
       }
-      *[class^="ann-"] {
+      [class^="ann-"] {
         color: var(--diag-colour);
         font-weight: bold;
-      }
-      #form {
-        margin-bottom: 1em;
       }
     </style>
   </head>
   <body>
-    <h1>Coln</h1>
-    <form id="form">
-      <label for="input">Source:</label>
-      <textarea id="input" spellcheck="false" rows="6">
-theory Graph := sig
-  V : Set
-  E : V -> V -> Set
-end
-
-realm GraphRealm @ Graph
-end</textarea
-      >
-      <button id="run" disabled>Loading WASM&#x2026;</button>
-    </form>
-    <label>Diagnostics:</label>
-    <div class="output" id="diagnostics"></div>
-    <label>IR:</label>
-    <div class="output" id="pretty"></div>
-    <label>JSON:</label>
-    <pre class="output" id="json"></pre>
+    <div class="main">
+      <div class="header">
+        <h1>Coln</h1>
+        <select id="examples">
+          <option value="">—</option>
+        </select>
+      </div>
+      <h2>Source</h2>
+      <textarea id="input" spellcheck="false" rows="15"></textarea>
+      <h2>Diagnostics</h2>
+      <div class="output" id="diagnostics"></div>
+      <h2>IR</h2>
+      <div class="output" id="pretty"></div>
+      <h2>JSON</h2>
+      <pre class="output" id="json"></pre>
+    </div>
 
     <script type="module">
       import {
@@ -105,10 +143,32 @@ end</textarea
       import ghc_wasm_jsffi from "./dist/ghc_wasm_jsffi.js";
 
       const inputEl = document.getElementById("input");
-      const btnEl = document.getElementById("run");
       const diagsEl = document.getElementById("diagnostics");
       const prettyEl = document.getElementById("pretty");
       const jsonEl = document.getElementById("json");
+      const examplesEl = document.getElementById("examples");
+      const exampleFiles = await fetch("examples/index.json").then((r) =>
+        r.json(),
+      );
+      for (const name of exampleFiles) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name.split(".")[0];
+        examplesEl.appendChild(opt);
+      }
+      examplesEl.addEventListener("change", async () => {
+        if (!examplesEl.value) {
+          inputEl.value = "";
+          diagsEl.replaceChildren();
+          prettyEl.replaceChildren();
+          jsonEl.textContent = "";
+        } else {
+          inputEl.value = await fetch("examples/" + examplesEl.value).then(
+            (r) => r.text(),
+          );
+          run();
+        }
+      });
 
       const wasi = new WASI(
         [],
@@ -152,8 +212,6 @@ end</textarea
         new CompileResult(await exports.compile(src));
 
       wasi.initialize(instance);
-      btnEl.textContent = "Compile";
-      btnEl.disabled = false;
 
       async function run() {
         document.body.dataset.compiling = "";
@@ -167,7 +225,7 @@ end</textarea
         );
         diagsEl.replaceChildren(
           ...(await result.diagnostics).map((chunk) => {
-            const pre = document.createElement("pre");
+            const pre = document.createElement("div");
             pre.innerHTML = chunk;
             return pre;
           }),
@@ -176,10 +234,13 @@ end</textarea
         delete document.body.dataset.compiling;
       }
 
-      document.getElementById("form").addEventListener("submit", (e) => {
-        e.preventDefault();
-        run();
+      let debounceTimer;
+      inputEl.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(run, 50);
       });
+
+      run();
     </script>
   </body>
 </html>

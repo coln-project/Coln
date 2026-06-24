@@ -10,5 +10,10 @@ build:
     "$libdir/post-link.mjs" --input {{ dist_dir }}/coln.wasm --output {{ dist_dir }}/ghc_wasm_jsffi.js
 
 serve-example port="8000": build
+    #!/usr/bin/env bash
     cp example.html {{ build_dir }}/index.html
+    examples_dir="{{ build_dir }}/examples"
+    mkdir -p "$examples_dir"
+    cp ../../packages/coln-compiler/test/*.coln "$examples_dir/"
+    ls -1 "$examples_dir"/*.coln | xargs -n1 basename | jq -nR '[inputs]' > "$examples_dir/index.json"
     simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
