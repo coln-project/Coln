@@ -1,7 +1,5 @@
 \title{Coln manual}
 
-\p{Coln is a database with an expressive language for schemas, queries, and migrations. This document forms the manual for Coln.}
-
 \transclude{002H}
 \transclude{0002}
 \transclude{000K}
