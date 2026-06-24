@@ -1,0 +1,5 @@
+\title{Simple equational extension}
+\import{prelude}
+\taxon{Definition}
+
+\p{If #{T} is a theory, a \defcase{simple equational extension} of #{T} is another theory #{T'} given as the \em{equifier} of two indexed natural transformations #{\alpha, \beta \colon F \Rightarrow G}, where #{F} and #{G} are geometric constructs. Intuitively, #{T'} is the theory given by adding a new equality between morphisms of “objects”.}
