@@ -183,6 +183,7 @@
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
+            jq
             just
             nodejs
             pnpm
