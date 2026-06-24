@@ -5,6 +5,7 @@
 module ColnDo.Build where
 
 import ColnDo.Common
+import Data.Maybe
 import System.Directory (createDirectoryIfMissing)
 import System.Info qualified
 
@@ -44,8 +45,9 @@ buildRules = do
     cmd_ (libdir </> "post-link.mjs") "--input" wasmBin "--output" jsffi
   phony "serve-example-frontend" $ do
     need [wasmBin, jsffi]
+    port <- fromMaybe "8000" <$> getEnv "PORT"
     copyFileChanged "packages/coln-wasm/example.html" (wasmBuildDir </> "index.html")
-    runAfter $ cmd_ "simple-http-server --nocache --index --open" wasmBuildDir
+    runAfter $ cmd_ "simple-http-server --nocache --index --open" "--port" port wasmBuildDir
 
   phony "build-rust" $ do
     cmd_ "cargo build"
