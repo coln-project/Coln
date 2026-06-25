@@ -12,10 +12,15 @@ value: G => sig
   empty : (x : G.V) -> t x x
   cons : (x : G.V) -> (y : G.V) -> (z : G.V) -> (e : G.E x y) -> t y z -> t x z
 end
-realm named Graph
-generators: node
-  V = rel []
-  E = rel [a : Graph.V [], b : Graph.V []]
-end
 
 -- messages
+
+error[E0104]: expected a newline, end, or eof after a statement
+20 |   ind def reachability : Reachability/motive self := init (Reachability/motive self)
+20 |       ^^^
+
+error[E0200]: unexpected notation for top-level declaration: Infix
+19 | realm Graph @ Graph
+19 | ^^^^^^^^^^^^^^^^^^^
+20 |   ind def reachability : Reachability/motive self := init (Reachability/motive self)
+20 | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
