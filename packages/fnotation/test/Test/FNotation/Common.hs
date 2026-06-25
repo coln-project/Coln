@@ -4,12 +4,12 @@
 
 module Test.FNotation.Common where
 
-import FNotation
-import FNotation.Kinds qualified as K
-import Prelude hiding (lex)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Diagnostician
+import FNotation
+import FNotation.Kinds qualified as K
+import Prelude hiding (lex)
 
 lexConfig :: ConfTable Kind
 lexConfig =

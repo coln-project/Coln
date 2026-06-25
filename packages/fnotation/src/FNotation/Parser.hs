@@ -16,7 +16,7 @@ import FNotation.Names
 import FNotation.Tokens qualified as T
 import FNotation.Trees hiding (head)
 import Prettyprinter
-import Prelude hiding (lookup, head)
+import Prelude hiding (head, lookup)
 
 -- Parser diagnostics
 --------------------------------------------------------------------------------

@@ -1,14 +1,18 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Test.FNotation.Spot where
 
-import Prelude hiding (lex)
-import FNotation
-import Diagnostician
-import Data.Text (Text)
-import Test.FNotation.Common
-import Data.IORef
 import Data.Functor.Contravariant
+import Data.IORef
+import Data.Text (Text)
+import Diagnostician
+import FNotation
+import Test.FNotation.Common
 import Test.Tasty
 import Test.Tasty.HUnit
+import Prelude hiding (lex)
 
 parseErrorFree :: Text -> IO Bool
 parseErrorFree src = do
@@ -21,8 +25,9 @@ parseErrorFree src = do
   pure $ null errs
 
 spotTests :: TestTree
-spotTests = testGroup
-  "Spot checks"
-  [ testCase "Statement without newline" $ do
-      parseErrorFree "def x := 2" @? "failed to parse statement without newline"
-  ]
+spotTests =
+  testGroup
+    "Spot checks"
+    [ testCase "Statement without newline" $ do
+        parseErrorFree "def x := 2" @? "failed to parse statement without newline"
+    ]
