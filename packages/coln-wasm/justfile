@@ -3,6 +3,7 @@ dist_dir := build_dir / "dist"
 
 build:
     #!/usr/bin/env bash
+    set -euxo pipefail
     mkdir -p {{ dist_dir }}
     wasm32-wasi-cabal build coln-wasm
     cp "$(wasm32-wasi-cabal list-bin coln-wasm)" {{ dist_dir }}/coln.wasm
@@ -11,6 +12,7 @@ build:
 
 serve-example port="8000": build
     #!/usr/bin/env bash
+    set -euxo pipefail
     cp example.html {{ build_dir }}/index.html
     examples_dir="{{ build_dir }}/examples"
     mkdir -p "$examples_dir"
