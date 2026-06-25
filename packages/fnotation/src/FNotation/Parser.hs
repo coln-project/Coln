@@ -14,9 +14,9 @@ import FNotation.Config
 import FNotation.Kinds qualified as T
 import FNotation.Names
 import FNotation.Tokens qualified as T
-import FNotation.Trees
+import FNotation.Trees hiding (head)
 import Prettyprinter
-import Prelude hiding (lookup)
+import Prelude hiding (lookup, head)
 
 -- Parser diagnostics
 --------------------------------------------------------------------------------
@@ -26,6 +26,7 @@ data ParserCode
   | DefaultedPrec
   | IncompatiblePrecedences
   | ModifierWithoutModifyee
+  | StatementWithoutNewline
   deriving (Eq, Ord)
 
 parserCodeTable :: Map ParserCode CodeMeta
@@ -35,6 +36,7 @@ parserCodeTable =
     , (DefaultedPrec, CodeMeta 1 SWarning Nothing)
     , (IncompatiblePrecedences, CodeMeta 2 SError Nothing)
     , (ModifierWithoutModifyee, CodeMeta 3 SError Nothing)
+    , (StatementWithoutNewline, CodeMeta 4 SError Nothing)
     ]
 
 -- Parser monad
@@ -248,7 +250,7 @@ argBase st = do
 argProjs :: ParseState -> IO [Ntn]
 argProjs st =
   cur st >>= \case
-    k@T.FieldImmediate -> do
+    T.FieldImmediate -> do
       field <- argBase st
       rest <- argProjs st
       return (field : rest)
@@ -313,7 +315,6 @@ decl st = do
         x <- curName st
         advance st
         n <- expr st
-        expect st T.Nl
         pure $ MDecl (reverse mods) x n (Span p (endPos n))
       _ -> do
         s <- curSpan st
@@ -327,17 +328,23 @@ stmt st =
     _ -> expr st
 
 stmts :: ParseState -> IO [Ntn]
-stmts st = go []
+stmts st = go True []
  where
-  go ns =
+  -- following = we have seen at least one newline
+  go following ns =
     cur st >>= \case
       T.Nl -> do
         advance st
-        go ns
+        go True ns
       k | k == T.End || k == T.Eof -> pure $ reverse ns
-      _ -> do
-        n <- stmt st
-        go $ n : ns
+      _ -> case following of
+        False -> do
+          s <- curSpan st
+          report st s StatementWithoutNewline "expected a newline, end, or eof after a statement"
+          pure $ reverse ns
+        True -> do
+          n <- stmt st
+          go False $ n : ns
 
 block :: ParseState -> IO Ntn
 block st =
