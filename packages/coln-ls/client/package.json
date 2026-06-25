@@ -2,12 +2,14 @@
   "name": "coln-ls-client",
   "displayName": "Coln LSP Client",
   "description": "VS Code/Cursor client for the Coln language server",
+  "author": "Coln contributors",
   "version": "0.1.0",
   "publisher": "coln-developers",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Programming Languages"],
   "activationEvents": ["onLanguage:coln"],
   "main": "out/extension.js",
+  "license": "(Apache-2.0 OR MIT)",
   "contributes": {
     "languages": [
       {
@@ -33,7 +35,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run copy-license && npm run compile",
+    "copy-license": "cp -r ../../../LICENSES LICENSES",
     "compile": "tsc -p .",
     "watch": "tsc -w -p ."
   },

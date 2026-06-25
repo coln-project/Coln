@@ -2,11 +2,15 @@
   "name": "@coln-project/runtime",
   "version": "0.1.0",
   "private": true,
+  "author": "Coln contributors",
   "type": "module",
+  "license": "(Apache-2.0 OR MIT)",
   "files": [
-    "dist"
+    "dist",
+    "LICENSES"
   ],
   "scripts": {
+    "copy-license": "cp -r ../../LICENSES LICENSES",
     "build": "wasm-bodge build",
     "test": "tsx --test tests/test_id_resolution.ts"
   },
