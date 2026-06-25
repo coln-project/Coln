@@ -4,6 +4,9 @@
 
 module Test.FNotation.Common where
 
+import Data.Map (Map)
+import Data.Map qualified as Map
+import Diagnostician
 import FNotation
 import FNotation.Kinds qualified as K
 import Prelude hiding (lex)
@@ -47,3 +50,18 @@ parseConfig =
     , ("*", Prec 60 AssocL)
     , ("/", Prec 60 AssocL)
     ]
+
+data TestCode = LexerCode LexerCode | ParserCode ParserCode
+  deriving (Eq, Ord)
+
+codeTable :: Map TestCode CodeMeta
+codeTable =
+  mconcat
+    [ promoteCodeTable lexerCodeTable LexerCode 0
+    , promoteCodeTable parserCodeTable ParserCode 100
+    ]
+
+instance Code TestCode where
+  codeMeta c = case Map.lookup c codeTable of
+    Just m -> m
+    Nothing -> error "unregistered code"

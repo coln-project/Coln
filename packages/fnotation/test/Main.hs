@@ -7,6 +7,7 @@ module Main where
 import Test.FNotation.Golden (goldenTests)
 import Test.FNotation.Property.Lexing (lexerProperties)
 import Test.FNotation.Property.Parsing (parserProperties)
+import Test.FNotation.Spot (spotTests)
 import Test.Tasty
 
 main :: IO ()
@@ -21,4 +22,5 @@ main = do
           [ lexerProperties
           , parserProperties
           ]
+      , spotTests
       ]

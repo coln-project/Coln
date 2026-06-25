@@ -28,21 +28,6 @@ import Prelude hiding (lex)
 render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
-data TestCode = LexerCode LexerCode | ParserCode ParserCode
-  deriving (Eq, Ord)
-
-codeTable :: Map TestCode CodeMeta
-codeTable =
-  mconcat
-    [ promoteCodeTable lexerCodeTable LexerCode 0
-    , promoteCodeTable parserCodeTable ParserCode 100
-    ]
-
-instance Code TestCode where
-  codeMeta c = case Map.lookup c codeTable of
-    Just m -> m
-    Nothing -> error "unregistered code"
-
 parseToPretty :: FilePath -> IO LBS.ByteString
 parseToPretty fp = do
   src <- T.readFile fp

@@ -68,6 +68,7 @@ test-suite fnotation-test
     Test.FNotation.Property.Gen.Token
     Test.FNotation.Property.Lexing
     Test.FNotation.Property.Parsing
+    Test.FNotation.Spot
 
   default-language: GHC2024
   default-extensions:
@@ -103,6 +104,7 @@ test-suite fnotation-test
     prettyprinter,
     tasty,
     tasty-golden,
+    tasty-hunit,
     tasty-quickcheck,
     temporary,
     text,
