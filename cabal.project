@@ -13,7 +13,7 @@ if !os(wasi)
     packages/coln-cli
 else
   packages:
-    packages/coln-wasm
+    packages/coln-compiler-wasm
 
 jobs: $ncpus
 semaphore: true

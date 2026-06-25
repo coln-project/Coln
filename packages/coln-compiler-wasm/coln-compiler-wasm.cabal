@@ -1,8 +1,8 @@
 cabal-version: 3.4
-name: coln-wasm
+name: coln-compiler-wasm
 version: 0.1
 
-executable coln-wasm
+executable coln-compiler-wasm
   main-is: Lib.hs
   hs-source-dirs: .
   default-language: GHC2024
