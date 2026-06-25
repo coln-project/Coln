@@ -1,0 +1,5 @@
+\title{Simple functional extension}
+\taxon{Definition}
+\import{prelude}
+
+\p{If #{T} is a theory, a \defcase{simple functional extension} of #{T} is another theory #{T'} given as the \em{inserter} of two geometric constructs #{F,G \colon T \to \bb{O}}. Intuitively, #{T'} is the theory given by freely adding a new morphism between the “objects” #{F} and #{G}.}

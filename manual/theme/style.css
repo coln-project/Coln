@@ -85,10 +85,15 @@ h6 {
   margin-bottom: 0;
 }
 
-h5,
-h6,
 p {
   margin-top: 0;
+  margin-bottom: 0;
+}
+
+section.block > details {
+  > :not(:first-child)+* {
+    margin-top: 1rem;
+  }
 }
 
 h1,
@@ -263,6 +268,12 @@ section .block[data-taxon] details>summary>header>h1 {
   font-size: 12pt;
 }
 
+section .block[data-taxon] {
+    border-left-style: solid;
+    border-width: 2px;
+    border-radius: 0px;
+}
+
 span.taxon {
   color: #444;
   font-weight: bolder;
@@ -298,7 +309,8 @@ section.block>details {
 
 
 section.block>details[open] {
-  margin-bottom: 1em;
+    /* border-right: 1px; */
+  margin-bottom: 0;
 }
 
 
