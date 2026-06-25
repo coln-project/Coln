@@ -8,7 +8,9 @@ theory Family := sig
   showlevel happy
   showtype is-parent
   showtype happy -> person
+  showlevel happy -> person
   showtype person -> happy
+  showlevel person -> happy
 end
 
 theory Q (F : Family) := sig

@@ -94,7 +94,7 @@ universeFor :: Level -> Maybe Universe
 universeFor = \case
   Level Set (HUnit; HProp) -> Just PropU
   Level Set HSet -> Just SetU
-  Level Theory HSet -> Just TheoryU
+  Level Theory (HSet; HProp) -> Just TheoryU
   Level _ _ -> Nothing
 
 data FunctionVariantMLevel
