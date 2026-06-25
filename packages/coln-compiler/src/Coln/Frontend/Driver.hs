@@ -80,8 +80,11 @@ debugCommand e _ "showtype" n = do
   s <- syn e "argument to showtype" n
   pure $ ShowType (N.span n) s
 debugCommand e _ "showtypeb" n = do
-  s <- syn e "argument to showtype" n
+  s <- syn e "argument to showtypeb" n
   pure $ ShowTypeBehavior (N.span n) s
+debugCommand e _ "showlevel" n = do
+  ty <- typ e n
+  pure $ ShowLevel (N.span n) ty
 debugCommand e _ "expand" n = do
   s <- syn e "argument to expand" n
   pure $ Expand (N.span n) s
@@ -194,7 +197,7 @@ expr e n = case n of
     s <- syn e "target of elimination" n0
     fromSynN <$> elim e s n1
   N.Keyword "Set" _ -> pure $ fromTypN $ Universe.formation SetU
-  N.Keyword "Prop" _ -> pure $ fromTypN $ Universe.formation SetU
+  N.Keyword "Prop" _ -> pure $ fromTypN $ Universe.formation PropU
   N.Keyword "Int" _ -> pure $ fromTypN $ Builtin.formation BuiltinInt
   N.Keyword "String" _ -> pure $ fromTypN $ Builtin.formation BuiltinString
   N.Infix arg n@(N.Keyword "->" _) body ->

@@ -69,7 +69,7 @@ nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 
 instance ToNotation (Ty e) where
   toNotation xs = \case
-    U u -> N.Keyword (fromString $ show $ decodesInto u) ()
+    U u -> N.Keyword (fromString $ show $ pretty u) ()
     Decode t -> toNotation xs t
     Function f -> case f.cod of
       Abs x b ->

@@ -3,7 +3,7 @@ global entry named Family
 type: Theory
 value: sig
   person : Set
-  is-parent : person -> person -> Set
+  is-parent : person -> person -> Prop
 end
 
 -- messages

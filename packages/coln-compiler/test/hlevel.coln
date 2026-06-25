@@ -1,0 +1,54 @@
+theory Family := sig
+  person : Set
+  is-parent : person -> person -> Prop
+
+  happy : Prop
+
+  showtype happy
+  showlevel happy
+  showtype is-parent
+  showtype happy -> person
+  showlevel happy -> person
+  showtype person -> happy
+  showlevel person -> happy
+end
+
+theory Q (F : Family) := sig
+  son : F.person
+  father : F.person
+
+  showtype F.is-parent
+  showtype F.is-parent father son
+end
+
+# Family analogies getting a bit risky
+theory HP := sig
+  person : Set
+
+  voldemort : person
+  tomriddle : person
+
+  showlevel voldemort = tomriddle
+
+  reveal : voldemort = tomriddle
+
+  showtype reveal
+  showlevel (reveal = reveal)
+end
+
+def Unit : Prop := sig
+end
+
+theory P := sig
+  showtype Unit
+  showlevel Unit
+
+  u : Unit
+  showtype u = u
+  showlevel u = u
+end
+
+def LevelJoinRecordIsNotSet (A : Set) (P : Prop) : Set := sig
+  f : A -> P
+  a : A
+end

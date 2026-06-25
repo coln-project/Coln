@@ -49,7 +49,7 @@ bind sc x a =
 
 layout :: Path -> Scope -> V.Ty N -> (Trie Generator, M.El N)
 layout p sc a
-  | levelOf a == Theory = case V.behavior a of
+  | (levelOf a).mlevel == Theory = case V.behavior a of
       V.LikeFunction ft -> do
         let x = argName sc.usedNames ft.cod
         let (v, sc') = bind sc x ft.dom
@@ -65,13 +65,14 @@ layout p sc a
         let (gts, ms) = go rt.capture (toList rt.fieldTypes)
         let m = M.cons (Dict rt.fieldTypes.head (Vector.fromList ms))
         (Node $ Dict rt.fieldTypes.head (Vector.fromList gts), m)
-      V.LikeU SetU -> do
+      V.LikeU (SetU; PropU) -> do
+        -- TODO: layout Prop correctly
         let gt = Leaf (Rel (toList sc.names) (toList sc.ctx))
         let a = V.EltOf (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
         (gt, M.code (M.fromVTy sc.len a))
       V.NoRules -> panic "cannot layout type with no rules"
       V.LikeBuiltinTy _; V.LikeU _ -> panic "non-theory type"
-  | levelOf a == Set = do
+  | (levelOf a).mlevel == Set = do
       let gt = Leaf (Fun (toList sc.names) (toList sc.ctx) (readb sc.len a))
       let v = V.Lookup (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
       (gt, M.fromVEl sc.len v)

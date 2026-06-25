@@ -16,12 +16,12 @@ import Coln.Elaborator.Judgment
 import Coln.Report
 
 variantFor :: Ty N -> Ty N -> Span -> ElabEnv c -> IO FunctionVariant
-variantFor dom cod sp e = case (levelOf dom, levelOf cod) of
-  ((Set, Set); (Set, Theory)) -> pure SetTheory
-  ((Set, Top); (Theory, _)) -> pure TheoryTop
-  (Top, _) -> do
-    let msg = "higher-order theories are not supported"
-    failWith e.diagEnv sp FunctionDomainTooLarge msg
+variantFor dom cod sp e =
+  case functionMLevelFor (levelOf dom).mlevel (levelOf cod).mlevel of
+    Just l -> pure (FunctionVariant l (levelOf cod).hlevel)
+    Nothing -> do
+      let msg = "higher-order theories are not supported"
+      failWith e.diagEnv sp FunctionDomainTooLarge msg
 
 data Binder = Anonymous (Typ N) | Named Name (Typ N)
 

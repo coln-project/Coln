@@ -28,7 +28,7 @@ formation sp lhs rhs = Typ \e -> do
       let msg = "types" <+> prtIn e lty <+> "and" <+> prtIn e rty <+> "of compared terms differ"
       let note = Just $ dpretty err
       failWithNote e.diagEnv sp TypeMismatch msg note
-    Right _ -> case levelOf lty of
+    Right _ -> case (levelOf lty).mlevel of
       Set -> pure $ equality $ S.EqualityType (fromVTy e.scope.len lty) elhs erhs
       _ -> do
         let msg = "equality requires data types, but" <+> prtIn e lty <+> "is a schema-level type"

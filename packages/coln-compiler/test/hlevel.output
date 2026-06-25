@@ -1,0 +1,110 @@
+-- elaborated
+global entry named Family
+type: Theory
+value: sig
+  person : Set
+  is-parent : person -> person -> Prop
+  happy : Prop
+end
+global entry named Q
+type: (F : Family) -> Theory
+value: F => sig
+  son : F.person
+  father : F.person
+end
+global entry named HP
+type: Theory
+value: sig
+  person : Set
+  voldemort : person
+  tomriddle : person
+  reveal : voldemort = tomriddle
+end
+global entry named Unit
+type: Prop
+value: sig
+end
+global entry named P
+type: Theory
+value: sig
+  u : Unit
+end
+
+-- messages
+
+debug[D0315]: value happy has type Prop
+7 |   showtype happy
+7 |            ^^^^^
+
+debug[D0315]: type happy has level Level {mlevel = Set, hlevel = HProp}
+8 |   showlevel happy
+8 |             ^^^^^
+
+debug[D0315]: value is-parent has type person -> person -> Prop
+9 |   showtype is-parent
+9 |            ^^^^^^^^^
+
+debug[D0315]: value happy -> person has type Theory
+10 |   showtype happy -> person
+10 |            ^^^^^^^^^^^^^^^
+
+debug[D0315]: type happy -> person has level Level {mlevel = Theory, hlevel = HSet}
+11 |   showlevel happy -> person
+11 |             ^^^^^^^^^^^^^^^
+
+debug[D0315]: value person -> happy has type Theory
+12 |   showtype person -> happy
+12 |            ^^^^^^^^^^^^^^^
+
+debug[D0315]: type person -> happy has level Level {mlevel = Theory, hlevel = HProp}
+13 |   showlevel person -> happy
+13 |             ^^^^^^^^^^^^^^^
+
+debug[D0315]: value F.is-parent has type F.person -> F.person -> Prop
+20 |   showtype F.is-parent
+20 |            ^^^^^^^^^^^
+
+debug[D0315]: value F.is-parent father son has type Prop
+21 |   showtype F.is-parent father son
+21 |            ^^^^^^^^^^^^^^^^^^^^^^
+
+debug[D0315]: type voldemort = tomriddle has level Level {mlevel = Set, hlevel = HProp}
+31 |   showlevel voldemort = tomriddle
+31 |             ^^^^^^^^^^^^^^^^^^^^^
+
+debug[D0315]: value reveal has type voldemort = tomriddle
+35 |   showtype reveal
+35 |            ^^^^^^
+
+debug[D0315]: type reveal = reveal has level Level {mlevel = Set, hlevel = HUnit}
+36 |   showlevel (reveal = reveal)
+36 |              ^^^^^^^^^^^^^^^
+
+debug[D0315]: value Unit has type Prop
+43 |   showtype Unit
+43 |            ^^^^
+
+debug[D0315]: type Unit has level Level {mlevel = Set, hlevel = HProp}
+44 |   showlevel Unit
+44 |             ^^^^
+
+debug[D0315]: value u = u has type Prop
+47 |   showtype u = u
+47 |            ^^^^^
+
+debug[D0315]: type u = u has level Level {mlevel = Set, hlevel = HUnit}
+48 |   showlevel u = u
+48 |             ^^^^^
+
+error[E0307]: type sig
+  f : A -> P
+  a : A
+end too large for universe Set
+51 | def LevelJoinRecordIsNotSet (A : Set) (P : Prop) : Set := sig
+51 |                                                           ^^^
+52 |   f : A -> P
+52 | ^^^^^^^^^^^^
+53 |   a : A
+53 | ^^^^^^^
+54 | end
+54 | ^^^
