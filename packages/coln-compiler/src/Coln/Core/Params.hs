@@ -70,14 +70,12 @@ data Universe
   = PropU
   | SetU
   | TheoryU
-  | PropTheoryU -- TODO: better name?
   deriving (Eq, Show)
 
 decodesInto :: Universe -> Level
 decodesInto = \case
   PropU -> Level Set HProp
   SetU -> Level Set HSet
-  PropTheoryU -> Level Theory HProp
   TheoryU -> Level Theory HSet
 
 codesInto :: Universe -> Level
@@ -85,20 +83,17 @@ codesInto = \case
   PropU -> Level Theory HSet
   SetU -> Level Theory HSet
   TheoryU -> Level Top HSet
-  PropTheoryU -> Level Top HSet
 
 instance Pretty Universe where
   pretty = \case
     PropU -> "Prop"
     SetU -> "Set"
     TheoryU -> "Theory"
-    PropTheoryU -> "PropTheory"
 
 universeFor :: Level -> Maybe Universe
 universeFor = \case
   Level Set (HUnit; HProp) -> Just PropU
   Level Set HSet -> Just SetU
-  Level Theory (HUnit; HProp) -> Just PropTheoryU
   Level Theory HSet -> Just TheoryU
   Level _ _ -> Nothing
 
