@@ -4,9 +4,10 @@
 
 use std::io::Write;
 
-use coln_flir_rs::ir::BuiltinTy;
+use coln_flir_rs::ir::{self, BuiltinTy};
 use hexane::{PackError, lebsize};
 
+use crate::commit::leb128 as commit_leb128;
 use crate::{commit::error::CodecError, txn::ops::TxnCellValue};
 
 /// Number of low bits reserved for the [`ValueType`] code in a [`ValueMeta`].
@@ -141,6 +142,8 @@ impl hexane::v1::PrefixValue for ValueMeta {
     }
 }
 
+/// Writes to the buffer `out` the encoded data, and returns the corresponding
+/// `ValueMeta` representation
 pub(crate) fn encode_prim_value(
     value: &TxnCellValue,
     prim: &BuiltinTy,
@@ -206,6 +209,37 @@ pub(crate) fn decode_prim_value(
             "unsupported value type code {other:?}"
         ))),
     }
+}
+
+pub(crate) fn encode_path(path: &ir::Path) -> Vec<u8> {
+    let mut out = Vec::new();
+    commit_leb128::write_len(&mut out, path.0.len());
+    for qname in &path.0 {
+        commit_leb128::write_len(&mut out, qname.len());
+        for part in qname {
+            commit_leb128::write_len_prefixed_bytes(&mut out, part.as_bytes());
+        }
+    }
+    out
+}
+
+pub(crate) fn decode_path(data: &[u8], pos: &mut usize) -> Result<ir::Path, CodecError> {
+    let qname_count = commit_leb128::read_len(data, pos, "path name count")?;
+    let mut path = Vec::with_capacity(qname_count);
+
+    for _ in 0..qname_count {
+        let part_count = commit_leb128::read_len(data, pos, "part count")?;
+        let mut qname = Vec::with_capacity(part_count);
+        for _ in 0..part_count {
+            let part_bytes = commit_leb128::read_len_prefixed_bytes(data, pos, "qname part")?;
+            let part = std::str::from_utf8(part_bytes)
+                .map_err(|_| CodecError::DataFormatError("path part invalid utf-8".into()))?;
+            qname.push(part.to_owned())
+        }
+        path.push(qname);
+    }
+
+    Ok(ir::Path(path))
 }
 
 #[allow(dead_code)]

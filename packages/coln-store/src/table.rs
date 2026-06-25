@@ -15,7 +15,7 @@ pub type TableOid = u64;
 
 /// The unique id that identifies each row in a table
 /// It is managed by the database, read-only for the user
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
 pub struct RowId {
     pub commit: CommitHash,
     pub counter: u32,
@@ -37,8 +37,8 @@ pub enum ValidationError {
     #[error("type mismatch at column {column}: expected {expected}, got {got}")]
     TypeMismatch {
         column: usize,
-        expected: &'static str,
-        got: &'static str,
+        expected: CellKind,
+        got: CellKind,
     },
     #[error("tuple columns are not supported yet (column {column})")]
     UnsupportedTuple { column: usize },
@@ -68,37 +68,59 @@ pub enum CellValue {
     Str(String),
 }
 
-impl CellValue {
-    pub fn kind(&self) -> &'static str {
-        match self {
-            CellValue::Id(_) => "id",
-            CellValue::Int(_) => "int",
-            CellValue::Str(_) => "string",
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum CellKind {
+    RowId,
+    Int,
+    Str,
+}
+
+impl From<&ColType> for CellKind {
+    fn from(col_type: &ColType) -> Self {
+        match col_type {
+            ColType::RowId { .. } => CellKind::RowId,
+            ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt,
+            } => CellKind::Int,
+            ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinStr,
+            } => CellKind::Str,
         }
     }
+}
 
+impl From<&CellValue> for CellKind {
+    fn from(value: &CellValue) -> Self {
+        match value {
+            CellValue::Id(_) => CellKind::RowId,
+            CellValue::Int(_) => CellKind::Int,
+            CellValue::Str(_) => CellKind::Str,
+        }
+    }
+}
+
+impl fmt::Display for CellKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            CellKind::RowId => "entity id",
+            CellKind::Int => "int",
+            CellKind::Str => "string",
+        })
+    }
+}
+
+impl CellValue {
     fn matches_schema(&self, col_type: &ColType, column: usize) -> Result<(), ValidationError> {
-        match col_type {
-            ColType::RowId { .. } => match self {
-                CellValue::Id(_) => Ok(()),
-                _ => Err(ValidationError::TypeMismatch {
-                    column,
-                    expected: "entity id",
-                    got: self.kind(),
-                }),
-            },
-            ColType::BuiltinTy { builtin_ty } => match (builtin_ty, self) {
-                (BuiltinTy::BuiltinInt, CellValue::Int(_)) => Ok(()),
-                (BuiltinTy::BuiltinStr, CellValue::Str(_)) => Ok(()),
-                _ => Err(ValidationError::TypeMismatch {
-                    column,
-                    expected: match *builtin_ty {
-                        BuiltinTy::BuiltinInt => "int",
-                        BuiltinTy::BuiltinStr => "string",
-                    },
-                    got: self.kind(),
-                }),
-            },
+        let expected = CellKind::from(col_type);
+        let got = CellKind::from(self);
+        if expected == got {
+            Ok(())
+        } else {
+            Err(ValidationError::TypeMismatch {
+                column,
+                expected,
+                got,
+            })
         }
     }
 }
@@ -128,6 +150,7 @@ pub struct Table {
     path: ir::Path,
     schema: Schema,
     col_index: HashMap<ColName, usize>,
+    hashcons: bool,
     pub(crate) row_ids: Vec<RowId>,
     pub(crate) cols: Vec<Vec<CellValue>>,
 }
@@ -145,6 +168,7 @@ impl Table {
             path,
             col_index,
             schema,
+            hashcons: false,
             row_ids: vec![],
             cols: vec![Vec::new(); n],
         }
@@ -156,6 +180,15 @@ impl Table {
 
     pub fn path(&self) -> &ir::Path {
         &self.path
+    }
+
+    pub(crate) fn hashcons(&self) -> bool {
+        self.hashcons
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_hashcons_for_test(&mut self, hashcons: bool) {
+        self.hashcons = hashcons;
     }
 
     fn column_index(&self, name: &ir::Path) -> Option<usize> {
