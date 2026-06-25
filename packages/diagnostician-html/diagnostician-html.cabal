@@ -21,7 +21,7 @@ library
     -Wall
 
   build-depends:
-    base ^>=4.21.0.0,
+    base ^>=4.21.0.0 || ^>=4.22,
     diagnostician,
     lucid,
     prettyprinter,

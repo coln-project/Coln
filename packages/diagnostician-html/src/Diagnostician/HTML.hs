@@ -9,7 +9,7 @@ module Diagnostician.HTML (
 import Data.Text (Text)
 import Diagnostician
 import Lucid (Html, class_, div_, span_)
-import Prettyprinter (defaultLayoutOptions, layoutPretty)
+import Prettyprinter (LayoutOptions (LayoutOptions, layoutPageWidth), PageWidth (Unbounded), layoutPretty)
 import Prettyprinter.Lucid (renderHtml)
 import Prettyprinter.Render.Util.SimpleDocTree (treeForm)
 
@@ -21,7 +21,7 @@ diagnosticToHtml d =
     . renderHtml
     . treeForm
     . fmap (span_ . pure @[] . class_ . ("ann-" <>) . annClassSuffix)
-    . layoutPretty defaultLayoutOptions
+    . layoutPretty LayoutOptions{layoutPageWidth = Unbounded}
     $ dpretty d
 
 severityClassSuffix :: Severity -> Text
