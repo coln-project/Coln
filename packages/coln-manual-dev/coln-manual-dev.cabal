@@ -15,7 +15,7 @@ executable coln-manual-dev
   main-is: Main.hs
   build-depends:
     async,
-    base ^>=4.21.0.0 || ^>=4.22,
+    base ^>=4.21.0.0,
     bytestring,
     directory,
     extra,

@@ -23,7 +23,7 @@ executable coln
     Coln.CLI.REPL
 
   build-depends:
-    base ^>=4.21.0.0 || ^>=4.22,
+    base ^>=4.21.0.0,
     coln-compiler,
     coln-ls,
     coln-repl,
