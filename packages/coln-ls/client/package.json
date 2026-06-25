@@ -9,7 +9,7 @@
   "categories": ["Programming Languages"],
   "activationEvents": ["onLanguage:coln"],
   "main": "out/extension.js",
-  "license": "(MIT OR Apache-2.0)",
+  "license": "(Apache-2.0 OR MIT)",
   "contributes": {
     "languages": [
       {
@@ -35,8 +35,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run copy-licensese && npm run compile",
-    "copy-license": "cp ../../../LICENSES/MIT.txt LICENSE-MIT && cp ../../../LICENSES/Apache-2.0.txt LICENSE-APACHE",
+    "vscode:prepublish": "npm run copy-license && npm run compile",
+    "copy-license": "cp -r ../../../LICENSES LICENSES",
     "compile": "tsc -p .",
     "watch": "tsc -w -p ."
   },
