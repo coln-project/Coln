@@ -7,21 +7,9 @@
 
 \p{Following the principles of this manual, this is \em{not} a mathematical paper; there will be a more formal account of this type theory, but that is in progress. Rather, this is a conceptual account that makes reference to mathematics.}
 
-\p{In [The Elephant](johnstone-2002-sketches), Johnstone makes the following definitions for “theory”; we call this an \em{elephant theory} in order to distinguish it from other notions of theory we might consider.}
+\transclude{002M}
 
-\transclude{002C}
-
-\transclude{002E}
-
-\transclude{002F}
-
-\transclude{002K}
-
-\transclude{002L}
-
-\transclude{002D}
-
-\transclude{002G}
+\transclude{002N}
 
 \transclude{002I}
 
