@@ -35,6 +35,7 @@ pub struct Store {
     /// Compiled rule for this instance; table schemas live only on each [`Table`].
     rules: Vec<CompRule>,
     commits: CommitGraph,
+    
 }
 
 impl Store {

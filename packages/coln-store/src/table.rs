@@ -61,7 +61,7 @@ pub enum ValidationError {
 }
 
 /// One cell in columnar storage: entity id, or primitive.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CellValue {
     Id(RowId),
     Int(i64),

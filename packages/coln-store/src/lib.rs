@@ -4,10 +4,10 @@
 
 use coln_flir_rs::ir;
 pub mod commit;
+mod roweq;
 #[cfg(feature = "native")]
 pub mod repl;
 pub mod solver;
 pub mod store;
 pub mod table;
 pub mod txn;
-mod hashdag;

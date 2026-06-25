@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::commit::leb128 as commit_leb128;
 use crate::commit::wire::prim;
+use crate::roweq::ObservedOutcome;
 use crate::table::CellValue;
 use crate::table::RowId;
 use crate::table::Table;
@@ -77,13 +78,6 @@ impl ContentHasher {
     fn finish(self) -> ContentHash {
         ContentHash::from_hasher(self.inner)
     }
-}
-
-#[derive(Debug)]
-pub(crate) enum ObservedOutcome {
-    Inserted(RowId),
-    KeptOld(RowId),
-    Swap { old: RowId, new: RowId },
 }
 
 pub(crate) struct Index {
