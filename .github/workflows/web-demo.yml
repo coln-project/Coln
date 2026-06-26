@@ -52,6 +52,8 @@ jobs:
 
       - name: Build web demo
         run: nix run --accept-flake-config .#web-demo -- "$GITHUB_WORKSPACE"
+        env:
+          VITE_BASE: /demo/
 
       - name: Build web compiler
         run: nix develop --accept-flake-config --command just packages/coln-compiler-wasm/build-example
