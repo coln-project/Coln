@@ -246,12 +246,15 @@ toNotationTerm cs (Var i) = toNotationTop (elemAt (rev cs) i) -- TODO: Why does 
 
 toNotationAtom :: Map TableName [ColName] -> Bwd ColName -> Atom -> N.Ntn0
 toNotationAtom columnNames cs a = do
-  let row = case a.rowId of
-        Nothing -> toNotationTop a.entity
-        Just r -> N.Infix (toNotationTop a.entity) (N.Keyword "@" ()) (toNotationTerm cs r)
+  let entity = toNotationTop a.entity
   let cols = columnNames Map.! a.entity
   let field (i, t) = N.Infix (toNotationColName (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
-  N.Juxt row $ N.Tuple (field <$> Map.toAscList a.values) ()
+  let body = case Map.toAscList a.values of
+        [] -> entity
+        vs -> N.Juxt entity $ N.Tuple (field <$> vs) ()
+  case a.rowId of
+    Nothing -> body
+    Just r -> N.Infix (toNotationTerm cs r) (N.Keyword "∈" ()) body
 
 toNotationProp :: Map TableName [ColName] -> Bwd ColName -> Prop -> N.Ntn0
 toNotationProp ts cs = \case
@@ -294,7 +297,7 @@ irLexConfig =
     , (":=", K.SKeyword)
     , ("=", K.SKeyword)
     , (":", K.SKeyword)
-    , ("@", K.SKeyword)
+    , ("∈", K.SKeyword)
     , ("->", K.SKeyword)
     , ("↦", K.SKeyword)
     ]
@@ -306,7 +309,7 @@ irParseConfig =
     , (":", Prec 20 AssocNon)
     , ("->", Prec 30 AssocR)
     , ("=", Prec 40 AssocNon)
-    , ("@", Prec 50 AssocNon)
+    , ("∈", Prec 45 AssocNon)
     , ("↦", Prec 60 AssocNon)
     ]
 
