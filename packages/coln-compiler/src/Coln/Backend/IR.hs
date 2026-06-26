@@ -8,7 +8,7 @@ module Coln.Backend.IR where
 import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
-import Data.List (intercalate)
+import Data.List (foldl', intercalate)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -261,14 +261,19 @@ toNotationProp ts cs = \case
   PAtom a -> toNotationAtom ts cs a
   PEq a b -> N.Infix (toNotationTerm cs a) (N.Keyword "=" ()) (toNotationTerm cs b)
 
+toNotationConjunction :: [N.Ntn0] -> N.Ntn0
+toNotationConjunction [] = N.Keyword "⊤" ()
+toNotationConjunction [p] = p
+toNotationConjunction (p : ps) = N.Infix p (N.Keyword "∧" ()) (toNotationConjunction ps)
+
 toNotationRule :: Map TableName [ColName] -> (TableName, Rule) -> N.Ntn0
 toNotationRule columNames (tn, r) = do
   let keyword = ruleVariantDeclKeyword r.ruleVariant
-  let ctx = N.Juxt (N.Keyword "∀" ()) (N.Tuple (fmap toNotationTop (toList r.varNames)) ())
-  let ante = N.Tuple (fmap (toNotationProp columNames r.varNames) r.antecedents) ()
-  let cons = N.Tuple (fmap (toNotationProp columNames r.varNames) r.consequents) ()
-  let seq = N.Infix ante (N.Keyword "->" ()) cons
-  N.Decl keyword (N.Infix (toNotationTop tn) (N.Keyword ":=" ()) (N.Juxt ctx seq)) ()
+  let head = foldl' N.Juxt (toNotationTop tn) (fmap toNotationTop (toList r.varNames))
+  let ante = toNotationConjunction $ fmap (toNotationProp columNames r.varNames) r.antecedents
+  let cons = toNotationConjunction $ fmap (toNotationProp columNames r.varNames) r.consequents
+  let seq = N.Infix ante (N.Keyword "⊢" ()) cons
+  N.Decl keyword (N.Infix head (N.Keyword ":=" ()) seq) ()
 
 instance ToNotationTop FlatRealm where
   toNotationTop (FlatRealm es rs) = do
@@ -292,14 +297,14 @@ irLexConfig =
     , ("monitored", K.Decl)
     , ("end", K.End)
 
-    , ("_", K.SIdent)
-
     , (":=", K.SKeyword)
     , ("=", K.SKeyword)
     , (":", K.SKeyword)
     , ("∈", K.SKeyword)
-    , ("->", K.SKeyword)
+    , ("∧", K.SKeyword)
+    , ("⊢", K.SKeyword)
     , ("↦", K.SKeyword)
+    , ("⊤", K.SKeyword)
     ]
 
 irParseConfig :: N.ConfTable N.Prec
@@ -307,7 +312,8 @@ irParseConfig =
   confTableFromList
     [ (":=", Prec 10 AssocNon)
     , (":", Prec 20 AssocNon)
-    , ("->", Prec 30 AssocR)
+    , ("⊢", Prec 30 AssocNon)
+    , ("∧", Prec 35 AssocR)
     , ("=", Prec 40 AssocNon)
     , ("∈", Prec 45 AssocNon)
     , ("↦", Prec 60 AssocNon)
