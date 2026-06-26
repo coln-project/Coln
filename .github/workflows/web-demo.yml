@@ -53,6 +53,9 @@ jobs:
       - name: Build web demo
         run: nix run --accept-flake-config .#web-demo -- "$GITHUB_WORKSPACE"
 
+      - name: Update wasm cabal package index
+        run: nix develop --accept-flake-config --command wasm32-wasi-cabal update
+
       - name: Build web compiler
         run: nix develop --accept-flake-config --command just packages/coln-compiler-wasm/build-example
 
