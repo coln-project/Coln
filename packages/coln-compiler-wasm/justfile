@@ -10,7 +10,7 @@ build:
     libdir="$(wasm32-wasi-ghc --print-libdir)"
     "$libdir/post-link.mjs" --input {{ dist_dir }}/coln.wasm --output {{ dist_dir }}/ghc_wasm_jsffi.js
 
-serve-example port="8000": build
+build-example: build
     #!/usr/bin/env bash
     set -euxo pipefail
     cp example.html {{ build_dir }}/index.html
@@ -18,4 +18,6 @@ serve-example port="8000": build
     mkdir -p "$examples_dir"
     cp ../../packages/coln-compiler/test/golden/*.coln "$examples_dir/"
     ls -1 "$examples_dir"/*.coln | xargs -n1 basename | jq -nR '[inputs]' > "$examples_dir/index.json"
+
+serve-example port="8000": build-example
     simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
