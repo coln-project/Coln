@@ -216,7 +216,7 @@ instance ToNotationTop Path where
 
 -- TODO: is this the right order?
 instance ToNotationTop TableName where
-  toNotationTop tn = foldr (\p n -> N.Juxt n (N.Field p ())) (N.Ident tn.realm ()) tn.path
+  toNotationTop tn = foldr (\p n -> N.Juxt n (N.Field p ())) (N.Ident "ℜ" ()) tn.path
 
 instance ToNotationTop ColType where
   toNotationTop = \case
