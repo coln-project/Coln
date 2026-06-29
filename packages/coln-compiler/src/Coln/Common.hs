@@ -120,7 +120,6 @@ class Reverse a b | a -> b where
 
 infixl 5 :>
 
--- TODO: write custom foldable instance which implements tail-recursive toList
 data Bwd a = BwdNil | Bwd a :> a
   deriving (Functor, Show, Eq, Ord)
 
@@ -138,6 +137,12 @@ instance ToList (Bwd a) a where
    where
     go BwdNil list = list
     go (bwd' :> x) list = go bwd' (x : list)
+
+instance Foldable Bwd where
+  foldr f z bwd = go z bwd
+   where
+    go acc BwdNil = acc
+    go acc (bwd' :> x) = go (f x acc) bwd'
 
 instance FromList (Bwd a) a where
   fromList xs = go xs BwdNil

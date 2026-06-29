@@ -12,6 +12,7 @@ import Coln.Core.Realm
 import Coln.Diagnostics
 import Coln.Frontend.Driver
 import Coln.Frontend.Notation
+import Coln.Backend.Lower
 import Coln.Report
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
@@ -48,6 +49,7 @@ prettyRealm (x, r) =
   vsep
     [ "realm named" <+> dpretty x
     , "generators:" <+> dpretty r
+    , "lowered:" <+> dpretty (lowerRealm x r)
     ]
 
 prettyDecls :: Globals -> DDoc

@@ -8,15 +8,19 @@ module Coln.Backend.IR where
 import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
+import Data.List (intercalate)
 import Data.Map qualified as Map
-import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
+import Data.String (fromString)
 import GHC.Generics
 
 -- XXX Lit/BultinTy should probably be moved up in the hierarchy
 import Coln.Common
 import Coln.Core.Params
+import Coln.Core.Print
+import FNotation as N
+import FNotation.Kinds as K
 
 type ColName = Path
 
@@ -58,7 +62,7 @@ data Atom = Atom
   { entity :: TableName
   , rowId :: Maybe Term
   , values :: Map Int Term
-  }
+ }
   deriving (Show, Eq, Generic)
 
 data Prop
@@ -83,6 +87,12 @@ data FlatRealm = FlatRealm
   , rules :: Map TableName Rule
   }
   deriving (Show, Eq, Generic)
+
+emptyFlatRealm :: FlatRealm
+emptyFlatRealm = FlatRealm Map.empty Map.empty
+
+-- JSON
+--------------------------------------------------------------------------------
 
 aeOptions :: AE.Options
 aeOptions =
@@ -179,5 +189,126 @@ instance AE.ToJSON FlatRealm where
   toJSON = panic "aesons behaving badly"
   toEncoding fr = AE.pairs $ AE.pair "entities" (pathMapEncoding AE.toEncoding fr.entities) <> AE.pair "rules" (pathMapEncoding AE.toEncoding fr.rules)
 
-emptyFlatRealm :: FlatRealm
-emptyFlatRealm = FlatRealm Map.empty Map.empty
+-- Pretty-printer
+--------------------------------------------------------------------------------
+
+entityVariantDeclKeyword :: EntityVariant -> Name
+entityVariantDeclKeyword e = Name [] $ fromString $ case e of
+  Table -> "table"
+  View _ -> "view" -- TODO
+  Index _ _ -> "index" -- TODO
+
+ruleVariantDeclKeyword :: RuleVariant -> Name
+ruleVariantDeclKeyword e = Name [] $ fromString $ case e of
+  Chased -> "chased"
+  Enforced -> "enforced"
+  Monitored -> "monitored"
+
+toNotationColName :: ColName -> N.Ntn0
+toNotationColName BwdNil = N.Tuple [] () -- Shouldn't happen
+toNotationColName (BwdNil :> x) = N.Field x ()
+toNotationColName (p :> x) = N.Juxt (toNotationColName p) (N.Field x ())
+
+instance ToNotationTop Path where
+  toNotationTop BwdNil = N.Tuple [] () -- Shouldn't happen
+  toNotationTop (BwdNil :> x) = N.Ident x ()
+  toNotationTop (p :> x) = N.Juxt (toNotationTop p) (N.Field x ())
+
+-- TODO: is this the right order?
+instance ToNotationTop TableName where
+  toNotationTop tn = foldr (\p n -> N.Juxt n (N.Field p ())) (N.Ident tn.realm ()) tn.path
+
+instance ToNotationTop ColType where
+  toNotationTop = \case
+    RowId e -> toNotationTop e
+    BuiltinTy bt -> N.Keyword (fromString $ show bt) ()
+
+instance ToNotationTop (ColName, ColType) where
+  toNotationTop (n, t) = N.Infix (toNotationColName n) (N.Keyword ":" ()) (toNotationTop t)
+
+instance ToNotationTop (TableName, Entity) where
+  toNotationTop (tn, e) = do
+    let keyword = entityVariantDeclKeyword e.entityVariant
+    let cols = N.Tuple (map toNotationTop e.columns) ()
+    let colsWKey = case e.primaryKey of
+          Nothing -> cols
+          Just primaryKey -> N.Infix cols (N.Keyword "primarykey" ()) (N.Tuple (map toNotationColName $ Set.toList primaryKey) ())
+    N.Decl keyword (N.Infix (toNotationTop tn) (N.Keyword ":=" ()) colsWKey) ()
+
+instance ToNotationTop Literal where
+  toNotationTop = \case
+    LitInt i -> N.Int i ()
+    LitString t -> N.String t ()
+
+toNotationTerm :: Bwd ColName -> Term -> N.Ntn0
+toNotationTerm _ (Lit l) = toNotationTop l
+toNotationTerm cs (Var i) = toNotationTop (elemAt (rev cs) i) -- TODO: Why does Rule use Bwd and FId together?
+
+toNotationAtom :: Map TableName [ColName] -> Bwd ColName -> Atom -> N.Ntn0
+toNotationAtom columnNames cs a = do
+  let row = case a.rowId of
+        Nothing -> toNotationTop a.entity
+        Just r -> N.Infix (toNotationTop a.entity) (N.Keyword "@" ()) (toNotationTerm cs r)
+  let cols = columnNames Map.! a.entity
+  let field (i, t) = N.Infix (toNotationColName (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
+  N.Juxt row $ N.Tuple (field <$> Map.toAscList a.values) ()
+
+toNotationProp :: Map TableName [ColName] -> Bwd ColName -> Prop -> N.Ntn0
+toNotationProp ts cs = \case
+  PAtom a -> toNotationAtom ts cs a
+  PEq a b -> N.Infix (toNotationTerm cs a) (N.Keyword "=" ()) (toNotationTerm cs b)
+
+toNotationRule :: Map TableName [ColName] -> (TableName, Rule) -> N.Ntn0
+toNotationRule columNames (tn, r) = do
+  let keyword = ruleVariantDeclKeyword r.ruleVariant
+  let ctx = N.Juxt (N.Keyword "∀" ()) (N.Tuple (fmap toNotationTop (toList r.varNames)) ())
+  let ante = N.Tuple (fmap (toNotationProp columNames r.varNames) r.antecedents) ()
+  let cons = N.Tuple (fmap (toNotationProp columNames r.varNames) r.consequents) ()
+  let seq = N.Infix ante (N.Keyword "->" ()) cons
+  N.Decl keyword (N.Infix (toNotationTop tn) (N.Keyword ":=" ()) (N.Juxt ctx seq)) ()
+
+instance ToNotationTop FlatRealm where
+  toNotationTop (FlatRealm es rs) = do
+    let nes = N.Block "entities" Nothing (fmap toNotationTop (Map.toList es)) ()
+    let columnNames = Map.map (fmap fst . (.columns)) es
+    let nrs = N.Block "rules" Nothing (fmap (toNotationRule columnNames) (Map.toList rs)) ()
+    N.Block "flatrealm" Nothing [nes, nrs] ()
+
+irLexConfig :: N.ConfTable Kind
+irLexConfig =
+  confTableFromList
+    [ ("flatrealm", K.Block)
+    , ("entities", K.Block)
+    , ("rules", K.Block)
+
+    , ("table", K.Decl)
+    , ("view", K.Decl)
+    , ("index", K.Decl)
+    , ("chased", K.Decl)
+    , ("enforced", K.Decl)
+    , ("monitored", K.Decl)
+    , ("end", K.End)
+
+    , ("_", K.SIdent)
+
+    , (":=", K.SKeyword)
+    , ("=", K.SKeyword)
+    , (":", K.SKeyword)
+    , ("@", K.SKeyword)
+    , ("->", K.SKeyword)
+    , ("↦", K.SKeyword)
+    ]
+
+irParseConfig :: N.ConfTable N.Prec
+irParseConfig =
+  confTableFromList
+    [ (":=", Prec 10 AssocNon)
+    , (":", Prec 20 AssocNon)
+    , ("->", Prec 30 AssocR)
+    , ("=", Prec 40 AssocNon)
+    , ("@", Prec 50 AssocNon)
+    , ("↦", Prec 60 AssocNon)
+    ]
+
+instance DPretty FlatRealm where
+  dpretty r = N.dprettyWithConfigs irParseConfig irLexConfig $ toNotationTop r
