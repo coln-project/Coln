@@ -12,15 +12,15 @@ generators: node
 end
 lowered: flatrealm
   entities
-    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
     table ℜ.V := []
+    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
   end
   rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
     enforced ℜ.E.foreignKey a b := ℜ.E [
       .a ↦ a,
       .b ↦ b
     ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
   end
 end
 

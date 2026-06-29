@@ -25,15 +25,15 @@ generators: node
 end
 lowered: flatrealm
   entities
-    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
     table ℜ.V := []
+    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
   end
   rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
     enforced ℜ.E.foreignKey a b := ℜ.E [
       .a ↦ a,
       .b ↦ b
     ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
   end
 end
 realm named GraphOfGraphsRealm
@@ -73,6 +73,17 @@ generators: node
 end
 lowered: flatrealm
   entities
+    table ℜ.base.V := []
+    table ℜ.base.E := [.a : ℜ.base.V, .b : ℜ.base.V]
+    table ℜ.fiber.V := [.a : ℜ.base.V]
+    table ℜ.fiber.E := [.a : ℜ.base.V, .b : ℜ.fiber.V, .c : ℜ.fiber.V]
+    table ℜ.action.V := [
+      .v0 : ℜ.base.V,
+      .v1 : ℜ.base.V,
+      .a : ℜ.base.E,
+      .b : ℜ.fiber.V,
+      .c : ℜ.fiber.V
+    ] primarykey [.a, .b, .v0, .v1]
     table ℜ.action.E := [
       .v0 : ℜ.base.V,
       .v1 : ℜ.base.V,
@@ -82,19 +93,38 @@ lowered: flatrealm
       .b : ℜ.fiber.E,
       .c : ℜ.fiber.E
     ] primarykey [.a, .b, .v0, .v1, .v0/a, .v1/a]
-    table ℜ.action.V := [
-      .v0 : ℜ.base.V,
-      .v1 : ℜ.base.V,
-      .a : ℜ.base.E,
-      .b : ℜ.fiber.V,
-      .c : ℜ.fiber.V
-    ] primarykey [.a, .b, .v0, .v1]
-    table ℜ.base.E := [.a : ℜ.base.V, .b : ℜ.base.V]
-    table ℜ.base.V := []
-    table ℜ.fiber.E := [.a : ℜ.base.V, .b : ℜ.fiber.V, .c : ℜ.fiber.V]
-    table ℜ.fiber.V := [.a : ℜ.base.V]
   end
   rules
+    enforced ℜ.base.V.foreignKey := ℜ.base.V [] ⊢ ⊤
+    enforced ℜ.base.E.foreignKey a b := ℜ.base.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.base.V []
+    enforced ℜ.fiber.V.foreignKey a := ℜ.fiber.V [.a ↦ a] ⊢ a ∈ ℜ.base.V []
+    enforced ℜ.fiber.E.foreignKey a b c := ℜ.fiber.E [
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.fiber.V [.a ↦ a] ∧ c ∈ ℜ.fiber.V [.a ↦ a]
+    enforced ℜ.action.V.foreignKey v0 v1 a b c := ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
+      .a ↦ v0,
+      .b ↦ v1
+    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ∧ c ∈ ℜ.fiber.V [.a ↦ v1]
+    monitored ℜ.action.V.total v0 v1 a b := v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
+      .a ↦ v0,
+      .b ↦ v1
+    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ⊢ ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ b
+    ]
     enforced ℜ.action.E.foreignKey v0 v1 a v0/a v1/a b c c.b c.c := ℜ.action.E [
       .v0 ↦ v0,
       .v1 ↦ v1,
@@ -138,36 +168,6 @@ lowered: flatrealm
       .v1/a ↦ v1/a,
       .b ↦ b
     ]
-    enforced ℜ.action.V.foreignKey v0 v1 a b c := ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
-      .a ↦ v0,
-      .b ↦ v1
-    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ∧ c ∈ ℜ.fiber.V [.a ↦ v1]
-    monitored ℜ.action.V.total v0 v1 a b := v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
-      .a ↦ v0,
-      .b ↦ v1
-    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ⊢ ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ b
-    ]
-    enforced ℜ.base.E.foreignKey a b := ℜ.base.E [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.base.V []
-    enforced ℜ.base.V.foreignKey := ℜ.base.V [] ⊢ ⊤
-    enforced ℜ.fiber.E.foreignKey a b c := ℜ.fiber.E [
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.fiber.V [.a ↦ a] ∧ c ∈ ℜ.fiber.V [.a ↦ a]
-    enforced ℜ.fiber.V.foreignKey a := ℜ.fiber.V [.a ↦ a] ⊢ a ∈ ℜ.base.V []
   end
 end
 

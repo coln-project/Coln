@@ -8,8 +8,8 @@ import Control.Arrow (first, second)
 import Control.Monad (forM_)
 import Data.Aeson qualified as AE
 import Data.Foldable qualified as F
+import Data.Map.Ordered (OMap, (>|), (|<))
 import Data.Map.Ordered qualified as OMap
-import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Traversable (mapAccumL)
 import System.FilePath ((</>))
@@ -144,7 +144,7 @@ data RuleFragment = RuleFragment
   }
 
 data DisaggState = DisaggState
-  { funShapes :: Map TableName Shape
+  { funShapes :: OMap TableName Shape
   , oldLen :: CtxLen
   , oldNames :: Bwd Name
   , oldTys :: Bwd Ty
@@ -257,7 +257,7 @@ pushVars ps = uncurry $ \x -> \case
 pushTerm' :: PredState -> (I.ColName, Term) -> (PredState, Trie I.Term)
 pushTerm' ps = uncurry $ \x -> \case
   Var b -> (ps, elemAt ps.parent.oldEnv b)
-  Lookup tn d -> case Map.lookup tn ps.parent.funShapes of
+  Lookup tn d -> case OMap.lookup tn ps.parent.funShapes of
     Nothing -> panic "unknown function"
     Just s -> do
       let (ps', ts) = pushVars ps (x, s)
@@ -279,7 +279,7 @@ pushTerm ps a = second F.toList $ pushTerm' ps a
 pushCond :: PredState -> I.ColName -> TableName -> Dict Term -> Trie I.Term -> PredState
 pushCond ps x tn d ts' = do
   let (ps', ts) = mapAccumL pushTerm ps . fmap (first (x :>)) $ toList d
-  let c = I.PAtom . I.Atom tn Nothing . Map.fromAscList . zip [0 ..] $ foldr (++) (F.toList ts') ts
+  let c = I.PAtom . I.Atom tn Nothing . OMap.fromList . zip [0 ..] $ foldr (++) (F.toList ts') ts
   ps'{localCtx = ps'.localCtx{conditions = ps'.localCtx.conditions :> c}}
 
 -- XXX actual state monad?
@@ -290,7 +290,7 @@ pushPred ds = uncurry $ \x -> \case
     let (ps2, elts) = pushTerm' ps1 (x, t)
     let elt = case elts of Leaf x -> x; _ -> panic "EltOf lhs was not an entity"
     let (ps3, fields) = mapAccumL pushTerm ps2 . fmap (first (x :>)) $ toList ts
-    let fields' = Map.fromList . zip [0 ..] $ concat fields
+    let fields' = OMap.fromList . zip [0 ..] $ concat fields
     pushFrag ps3 x [I.PAtom $ I.Atom n (Just elt) fields']
   And d -> foldl' pushPred ds . fmap (first (x :>)) $ toList d
   Equal lhs rhs -> do
@@ -306,7 +306,7 @@ pushTy ds (x, ty) = do
   let ds'' = pushOld ds' (x, ty, et)
   pushPred ds'' (BwdNil :> x, ty.pred)
 
-disaggregateTele :: Map TableName Shape -> [Name] -> [Ty] -> DisaggState
+disaggregateTele :: OMap TableName Shape -> [Name] -> [Ty] -> DisaggState
 disaggregateTele fs xs tys = do
   let ds =
         DisaggState
@@ -338,7 +338,7 @@ mergeFrags ds = do
           }
   foldl' mergeFrag base $ toList ds.frags
 
-disaggregateGen :: Map TableName Shape -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
+disaggregateGen :: OMap TableName Shape -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
 disaggregateGen fs tn (Rel xs ts) fr = do
   let ds = disaggregateTele fs xs ts
   let rf = mergeFrags ds
@@ -347,7 +347,7 @@ disaggregateGen fs tn (Rel xs ts) fr = do
           { I.ruleVariant = I.Enforced
           , I.varNames = rf.ruleCtx.localNames
           , I.varTypes = rf.ruleCtx.localTys
-          , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds.newLen - 1]) : toList rf.ruleCtx.conditions
+          , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ OMap.fromList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds.newLen - 1]) : toList rf.ruleCtx.conditions
           , I.consequents = fmap snd rf.heads
           }
   let table =
@@ -357,8 +357,8 @@ disaggregateGen fs tn (Rel xs ts) fr = do
           , primaryKey = Nothing
           }
   fr
-    { I.entities = Map.insert tn table fr.entities
-    , I.rules = Map.insert tn{path = tn.path :> "foreignKey"} foreignKey fr.rules
+    { I.entities = fr.entities >| (tn, table)
+    , I.rules = fr.rules >| (tn{path = tn.path :> "foreignKey"}, foreignKey)
     }
 disaggregateGen fs tn (Fun xs ts t) fr = do
   let ds = disaggregateTele fs xs ts
@@ -369,7 +369,7 @@ disaggregateGen fs tn (Fun xs ts t) fr = do
           , I.varNames = rf.ruleCtx.localNames
           , I.varTypes = rf.ruleCtx.localTys
           , I.antecedents = toList rf.ruleCtx.conditions ++ fmap snd rf.heads
-          , I.consequents = [I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds.newLen - 1]]
+          , I.consequents = [I.PAtom $ I.Atom tn Nothing $ OMap.fromList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds.newLen - 1]]
           }
   let x = freshNameFor xs
   let ds' = pushTy ds (x, t)
@@ -379,7 +379,7 @@ disaggregateGen fs tn (Fun xs ts t) fr = do
           { I.ruleVariant = I.Enforced
           , I.varNames = rf'.ruleCtx.localNames
           , I.varTypes = rf'.ruleCtx.localTys
-          , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ Map.fromAscList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds'.newLen - 1]) : toList rf'.ruleCtx.conditions
+          , I.antecedents = (I.PAtom $ I.Atom tn Nothing $ OMap.fromList $ map (\n -> (n, I.Var $ FId n)) [0 .. ds'.newLen - 1]) : toList rf'.ruleCtx.conditions
           , I.consequents = fmap snd rf'.heads
           }
   let table =
@@ -389,14 +389,12 @@ disaggregateGen fs tn (Fun xs ts t) fr = do
           , I.primaryKey = Just . Set.fromList $ toList ds.newNames
           }
   fr
-    { I.entities = Map.insert tn table fr.entities
-    , I.rules =
-        Map.insert tn{path = tn.path :> "foreignKey"} foreignKey $
-          Map.insert tn{path = tn.path :> "total"} totality fr.rules
+    { I.entities = fr.entities >| (tn, table)
+    , I.rules = fr.rules >| (tn{path = tn.path :> "foreignKey"}, foreignKey) >| (tn{path = tn.path :> "total"}, totality)
     }
 
 lowerRealm :: Name -> C.Realm -> I.FlatRealm
-lowerRealm realmName r = go Map.empty I.emptyFlatRealm (toList r.generators)
+lowerRealm realmName r = go OMap.empty I.emptyFlatRealm (toList r.generators)
  where
   go _ fr [] = fr
   go fs fr ((xs, g) : rest) = do
@@ -404,7 +402,7 @@ lowerRealm realmName r = go Map.empty I.emptyFlatRealm (toList r.generators)
     let lg = lowerGen g
     let fr' = disaggregateGen fs tn lg fr
     let fs' = case lg of
-          Fun _ _ t -> Map.insert tn t.shape fs
+          Fun _ _ t -> fs >| (tn, t.shape)
           _ -> fs
     go fs' fr' rest
 
