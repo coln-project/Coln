@@ -12,13 +12,12 @@ generators: node
 end
 lowered: flatrealm
   entities
-    table GraphRealm.E := [.a : GraphRealm.V, .b : GraphRealm.V]
-    table GraphRealm.V := []
+    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
+    table ℜ.V := []
   end
   rules
-    enforced GraphRealm.foreignKey.E := ∀ [a, b] ([ GraphRealm.E [ .a ↦ a
-    , .b ↦ b ] ] -> [(GraphRealm.V @ a) [], (GraphRealm.V @ b) []])
-    enforced GraphRealm.foreignKey.V := ∀ [] ([GraphRealm.V []] -> [])
+    enforced ℜ.foreignKey.E a b := ℜ.E [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V ∧ b ∈ ℜ.V
+    enforced ℜ.foreignKey.V := ℜ.V ⊢ ⊤
   end
 end
 

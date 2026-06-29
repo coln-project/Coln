@@ -25,13 +25,12 @@ generators: node
 end
 lowered: flatrealm
   entities
-    table GraphRealm.E := [.a : GraphRealm.V, .b : GraphRealm.V]
-    table GraphRealm.V := []
+    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
+    table ℜ.V := []
   end
   rules
-    enforced GraphRealm.foreignKey.E := ∀ [a, b] ([ GraphRealm.E [ .a ↦ a
-    , .b ↦ b ] ] -> [(GraphRealm.V @ a) [], (GraphRealm.V @ b) []])
-    enforced GraphRealm.foreignKey.V := ∀ [] ([GraphRealm.V []] -> [])
+    enforced ℜ.foreignKey.E a b := ℜ.E [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V ∧ b ∈ ℜ.V
+    enforced ℜ.foreignKey.V := ℜ.V ⊢ ⊤
   end
 end
 realm named GraphOfGraphsRealm
@@ -68,117 +67,69 @@ generators: node
 end
 lowered: flatrealm
   entities
-    table GraphOfGraphsRealm.E.action := [ .v0 : GraphOfGraphsRealm.V.base
-    , .v1 : GraphOfGraphsRealm.V.base
-    , .a : GraphOfGraphsRealm.E.base
-    , .v0/a : GraphOfGraphsRealm.V.fiber
-    , .v1/a : GraphOfGraphsRealm.V.fiber
-    , .b : GraphOfGraphsRealm.E.fiber
-    , .c : GraphOfGraphsRealm.E.fiber ] primarykey [ .a
-    , .b
-    , .v0
-    , .v1
-    , .v0/a
-    , .v1/a ]
-    table GraphOfGraphsRealm.V.action := [ .v0 : GraphOfGraphsRealm.V.base
-    , .v1 : GraphOfGraphsRealm.V.base
-    , .a : GraphOfGraphsRealm.E.base
-    , .b : GraphOfGraphsRealm.V.fiber
-    , .c : GraphOfGraphsRealm.V.fiber ] primarykey [.a, .b, .v0, .v1]
-    table GraphOfGraphsRealm.E.base := [ .a : GraphOfGraphsRealm.V.base
-    , .b : GraphOfGraphsRealm.V.base ]
-    table GraphOfGraphsRealm.V.base := []
-    table GraphOfGraphsRealm.E.fiber := [ .a : GraphOfGraphsRealm.V.base
-    , .b : GraphOfGraphsRealm.V.fiber
-    , .c : GraphOfGraphsRealm.V.fiber ]
-    table GraphOfGraphsRealm.V.fiber := [.a : GraphOfGraphsRealm.V.base]
+    table ℜ.E.action := [ .v0 : ℜ.V.base
+    , .v1 : ℜ.V.base
+    , .a : ℜ.E.base
+    , .v0/a : ℜ.V.fiber
+    , .v1/a : ℜ.V.fiber
+    , .b : ℜ.E.fiber
+    , .c : ℜ.E.fiber ] primarykey [.a, .b, .v0, .v1, .v0/a, .v1/a]
+    table ℜ.V.action := [ .v0 : ℜ.V.base
+    , .v1 : ℜ.V.base
+    , .a : ℜ.E.base
+    , .b : ℜ.V.fiber
+    , .c : ℜ.V.fiber ] primarykey [.a, .b, .v0, .v1]
+    table ℜ.E.base := [.a : ℜ.V.base, .b : ℜ.V.base]
+    table ℜ.V.base := []
+    table ℜ.E.fiber := [.a : ℜ.V.base, .b : ℜ.V.fiber, .c : ℜ.V.fiber]
+    table ℜ.V.fiber := [.a : ℜ.V.base]
   end
   rules
-    enforced GraphOfGraphsRealm.foreignKey.E.action := ∀ [ v0
-    , v1
-    , a
-    , v0/a
-    , v1/a
-    , b
-    , c
-    , c.b
-    , c.c ] ([ GraphOfGraphsRealm.E.action [ .v0 ↦ v0
+    enforced ℜ.foreignKey.E.action v0 v1 a v0/a v1/a b c c.b c.c := ℜ.E.action [ .v0 ↦ v0
     , .v1 ↦ v1
     , .a ↦ a
     , .v0/a ↦ v0/a
     , .v1/a ↦ v1/a
     , .b ↦ b
-    , .c ↦ c ]
-    , GraphOfGraphsRealm.V.action [ .v0 ↦ v0
+    , .c ↦ c ] ∧ ℜ.V.action [ .v0 ↦ v0
     , .v1 ↦ v1
     , .a ↦ a
     , .b ↦ v0/a
-    , .c ↦ c.b ]
-    , GraphOfGraphsRealm.V.action [ .v0 ↦ v0
+    , .c ↦ c.b ] ∧ ℜ.V.action [ .v0 ↦ v0
     , .v1 ↦ v1
     , .a ↦ a
     , .b ↦ v1/a
-    , .c ↦ c.c ] ] -> [ (GraphOfGraphsRealm.V.base @ v0) []
-    , (GraphOfGraphsRealm.V.base @ v1) []
-    , (GraphOfGraphsRealm.E.base @ a) [.a ↦ v0, .b ↦ v1]
-    , (GraphOfGraphsRealm.V.fiber @ v0/a) [.a ↦ v0]
-    , (GraphOfGraphsRealm.V.fiber @ v1/a) [.a ↦ v0]
-    , (GraphOfGraphsRealm.E.fiber @ b) [.a ↦ v0, .b ↦ v0/a, .c ↦ v1/a]
-    , (GraphOfGraphsRealm.E.fiber @ c) [.a ↦ v1, .b ↦ c.b, .c ↦ c.c] ])
-    monitored GraphOfGraphsRealm.total.E.action := ∀ [ v0
-    , v1
-    , a
-    , v0/a
-    , v1/a
-    , b ] ([ (GraphOfGraphsRealm.V.base @ v0) []
-    , (GraphOfGraphsRealm.V.base @ v1) []
-    , (GraphOfGraphsRealm.E.base @ a) [.a ↦ v0, .b ↦ v1]
-    , (GraphOfGraphsRealm.V.fiber @ v0/a) [.a ↦ v0]
-    , (GraphOfGraphsRealm.V.fiber @ v1/a) [.a ↦ v0]
-    , (GraphOfGraphsRealm.E.fiber @ b) [ .a ↦ v0
+    , .c ↦ c.c ] ⊢ v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    , .b ↦ v1 ] ∧ v0/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ v1/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ b ∈ ℜ.E.fiber [ .a ↦ v0
     , .b ↦ v0/a
-    , .c ↦ v1/a ] ] -> [ GraphOfGraphsRealm.E.action [ .v0 ↦ v0
+    , .c ↦ v1/a ] ∧ c ∈ ℜ.E.fiber [.a ↦ v1, .b ↦ c.b, .c ↦ c.c]
+    monitored ℜ.total.E.action v0 v1 a v0/a v1/a b := v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    , .b ↦ v1 ] ∧ v0/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ v1/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ b ∈ ℜ.E.fiber [ .a ↦ v0
+    , .b ↦ v0/a
+    , .c ↦ v1/a ] ⊢ ℜ.E.action [ .v0 ↦ v0
     , .v1 ↦ v1
     , .a ↦ a
     , .v0/a ↦ v0/a
     , .v1/a ↦ v1/a
-    , .b ↦ b ] ])
-    enforced GraphOfGraphsRealm.foreignKey.V.action := ∀ [ v0
-    , v1
-    , a
-    , b
-    , c ] ([ GraphOfGraphsRealm.V.action [ .v0 ↦ v0
+    , .b ↦ b ]
+    enforced ℜ.foreignKey.V.action v0 v1 a b c := ℜ.V.action [ .v0 ↦ v0
     , .v1 ↦ v1
     , .a ↦ a
     , .b ↦ b
-    , .c ↦ c ] ] -> [ (GraphOfGraphsRealm.V.base @ v0) []
-    , (GraphOfGraphsRealm.V.base @ v1) []
-    , (GraphOfGraphsRealm.E.base @ a) [.a ↦ v0, .b ↦ v1]
-    , (GraphOfGraphsRealm.V.fiber @ b) [.a ↦ v0]
-    , (GraphOfGraphsRealm.V.fiber @ c) [.a ↦ v1] ])
-    monitored GraphOfGraphsRealm.total.V.action := ∀ [ v0
-    , v1
-    , a
-    , b ] ([ (GraphOfGraphsRealm.V.base @ v0) []
-    , (GraphOfGraphsRealm.V.base @ v1) []
-    , (GraphOfGraphsRealm.E.base @ a) [.a ↦ v0, .b ↦ v1]
-    , (GraphOfGraphsRealm.V.fiber @ b) [ .a ↦ v0 ] ] -> [ GraphOfGraphsRealm.V.action [ .v0 ↦ v0
+    , .c ↦ c ] ⊢ v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    , .b ↦ v1 ] ∧ b ∈ ℜ.V.fiber [.a ↦ v0] ∧ c ∈ ℜ.V.fiber [.a ↦ v1]
+    monitored ℜ.total.V.action v0 v1 a b := v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    , .b ↦ v1 ] ∧ b ∈ ℜ.V.fiber [.a ↦ v0] ⊢ ℜ.V.action [ .v0 ↦ v0
     , .v1 ↦ v1
     , .a ↦ a
-    , .b ↦ b ] ])
-    enforced GraphOfGraphsRealm.foreignKey.E.base := ∀ [ a
-    , b ] ([ GraphOfGraphsRealm.E.base [ .a ↦ a
-    , .b ↦ b ] ] -> [ (GraphOfGraphsRealm.V.base @ a) []
-    , (GraphOfGraphsRealm.V.base @ b) [] ])
-    enforced GraphOfGraphsRealm.foreignKey.V.base := ∀ [  ] ([ GraphOfGraphsRealm.V.base [  ] ] -> [  ])
-    enforced GraphOfGraphsRealm.foreignKey.E.fiber := ∀ [ a
-    , b
-    , c ] ([ GraphOfGraphsRealm.E.fiber [ .a ↦ a
+    , .b ↦ b ]
+    enforced ℜ.foreignKey.E.base a b := ℜ.E.base [ .a ↦ a
+    , .b ↦ b ] ⊢ a ∈ ℜ.V.base ∧ b ∈ ℜ.V.base
+    enforced ℜ.foreignKey.V.base := ℜ.V.base ⊢ ⊤
+    enforced ℜ.foreignKey.E.fiber a b c := ℜ.E.fiber [ .a ↦ a
     , .b ↦ b
-    , .c ↦ c ] ] -> [ (GraphOfGraphsRealm.V.base @ a) []
-    , (GraphOfGraphsRealm.V.fiber @ b) [.a ↦ a]
-    , (GraphOfGraphsRealm.V.fiber @ c) [.a ↦ a] ])
-    enforced GraphOfGraphsRealm.foreignKey.V.fiber := ∀ [ a ] ([ GraphOfGraphsRealm.V.fiber [ .a ↦ a ] ] -> [ (GraphOfGraphsRealm.V.base @ a) [  ] ])
+    , .c ↦ c ] ⊢ a ∈ ℜ.V.base ∧ b ∈ ℜ.V.fiber [.a ↦ a] ∧ c ∈ ℜ.V.fiber [.a ↦ a]
+    enforced ℜ.foreignKey.V.fiber a := ℜ.V.fiber [.a ↦ a] ⊢ a ∈ ℜ.V.base
   end
 end
 
