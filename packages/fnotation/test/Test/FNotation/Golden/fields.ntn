@@ -1,15 +1,34 @@
-let t := f x.a
-let t := f x.a.b.c
-let t := f x .a.b.c
-let t := f x.a .b.c
-let t := f x.a.b .c
-let t := f (x .a)
-let t := f x.a y.b
-let t := f x.a.b.c
-let t := f (x .a) (y .b)
-let t := f x .a y .b
-let t := f x.a/b
-let t := f x/y.a
-let t := f x/y.a/b.c/d
-let t := f ((x/y.a/b).c/d)
-let t := f x/y.a/b .c/d
+f x.a
+f x.a.b.c
+f x .a.b.c
+f x.a .b.c
+f x.a.b .c
+f (x .a)
+f x.a y.b
+f x.a.b.c
+f (x .a) (y .b)
+f x .a y .b
+f x.a/b
+f x/y.a
+f x/y.a/b.c/d
+f ((x/y.a/b).c/d)
+f x/y.a/b .c/d
+
+.a
+.a.b
+(.a)
+(.a).b
+f (.a) x
+f (.a) .b x
+f (.a).b x
+[.a]
+[.a].b
+f [.a] x
+f [.a] .b x
+f [.a].b x
+[x, .a]
+[x, .a].b
+x
+.a
+# comment
+.a
