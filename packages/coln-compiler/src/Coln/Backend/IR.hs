@@ -249,9 +249,7 @@ toNotationAtom columnNames cs a = do
   let entity = toNotationTop a.entity
   let cols = columnNames Map.! a.entity
   let field (i, t) = N.Infix (toNotationColName (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
-  let body = case Map.toAscList a.values of
-        [] -> entity
-        vs -> N.Juxt entity $ N.Tuple (field <$> vs) ()
+  let body = N.Juxt entity $ N.Tuple (field <$> Map.toAscList a.values) ()
   case a.rowId of
     Nothing -> body
     Just r -> N.Infix (toNotationTerm cs r) (N.Keyword "∈" ()) body

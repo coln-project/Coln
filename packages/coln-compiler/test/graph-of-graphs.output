@@ -29,8 +29,9 @@ lowered: flatrealm
     table ℜ.V := []
   end
   rules
-    enforced ℜ.foreignKey.E a b := ℜ.E [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V ∧ b ∈ ℜ.V
-    enforced ℜ.foreignKey.V := ℜ.V ⊢ ⊤
+    enforced ℜ.foreignKey.E a b := ℜ.E [ .a ↦ a
+    , .b ↦ b ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
+    enforced ℜ.foreignKey.V := ℜ.V [] ⊢ ⊤
   end
 end
 realm named GraphOfGraphsRealm
@@ -99,11 +100,11 @@ lowered: flatrealm
     , .v1 ↦ v1
     , .a ↦ a
     , .b ↦ v1/a
-    , .c ↦ c.c ] ⊢ v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    , .c ↦ c.c ] ⊢ v0 ∈ ℜ.V.base [] ∧ v1 ∈ ℜ.V.base [] ∧ a ∈ ℜ.E.base [ .a ↦ v0
     , .b ↦ v1 ] ∧ v0/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ v1/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ b ∈ ℜ.E.fiber [ .a ↦ v0
     , .b ↦ v0/a
     , .c ↦ v1/a ] ∧ c ∈ ℜ.E.fiber [.a ↦ v1, .b ↦ c.b, .c ↦ c.c]
-    monitored ℜ.total.E.action v0 v1 a v0/a v1/a b := v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    monitored ℜ.total.E.action v0 v1 a v0/a v1/a b := v0 ∈ ℜ.V.base [  ] ∧ v1 ∈ ℜ.V.base [  ] ∧ a ∈ ℜ.E.base [ .a ↦ v0
     , .b ↦ v1 ] ∧ v0/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ v1/a ∈ ℜ.V.fiber [ .a ↦ v0 ] ∧ b ∈ ℜ.E.fiber [ .a ↦ v0
     , .b ↦ v0/a
     , .c ↦ v1/a ] ⊢ ℜ.E.action [ .v0 ↦ v0
@@ -116,20 +117,20 @@ lowered: flatrealm
     , .v1 ↦ v1
     , .a ↦ a
     , .b ↦ b
-    , .c ↦ c ] ⊢ v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    , .c ↦ c ] ⊢ v0 ∈ ℜ.V.base [] ∧ v1 ∈ ℜ.V.base [] ∧ a ∈ ℜ.E.base [ .a ↦ v0
     , .b ↦ v1 ] ∧ b ∈ ℜ.V.fiber [.a ↦ v0] ∧ c ∈ ℜ.V.fiber [.a ↦ v1]
-    monitored ℜ.total.V.action v0 v1 a b := v0 ∈ ℜ.V.base ∧ v1 ∈ ℜ.V.base ∧ a ∈ ℜ.E.base [ .a ↦ v0
+    monitored ℜ.total.V.action v0 v1 a b := v0 ∈ ℜ.V.base [  ] ∧ v1 ∈ ℜ.V.base [  ] ∧ a ∈ ℜ.E.base [ .a ↦ v0
     , .b ↦ v1 ] ∧ b ∈ ℜ.V.fiber [.a ↦ v0] ⊢ ℜ.V.action [ .v0 ↦ v0
     , .v1 ↦ v1
     , .a ↦ a
     , .b ↦ b ]
     enforced ℜ.foreignKey.E.base a b := ℜ.E.base [ .a ↦ a
-    , .b ↦ b ] ⊢ a ∈ ℜ.V.base ∧ b ∈ ℜ.V.base
-    enforced ℜ.foreignKey.V.base := ℜ.V.base ⊢ ⊤
+    , .b ↦ b ] ⊢ a ∈ ℜ.V.base [] ∧ b ∈ ℜ.V.base []
+    enforced ℜ.foreignKey.V.base := ℜ.V.base [] ⊢ ⊤
     enforced ℜ.foreignKey.E.fiber a b c := ℜ.E.fiber [ .a ↦ a
     , .b ↦ b
-    , .c ↦ c ] ⊢ a ∈ ℜ.V.base ∧ b ∈ ℜ.V.fiber [.a ↦ a] ∧ c ∈ ℜ.V.fiber [.a ↦ a]
-    enforced ℜ.foreignKey.V.fiber a := ℜ.V.fiber [.a ↦ a] ⊢ a ∈ ℜ.V.base
+    , .c ↦ c ] ⊢ a ∈ ℜ.V.base [  ] ∧ b ∈ ℜ.V.fiber [ .a ↦ a ] ∧ c ∈ ℜ.V.fiber [ .a ↦ a ]
+    enforced ℜ.foreignKey.V.fiber a := ℜ.V.fiber [.a ↦ a] ⊢ a ∈ ℜ.V.base []
   end
 end
 

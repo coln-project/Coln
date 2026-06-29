@@ -16,8 +16,9 @@ lowered: flatrealm
     table ℜ.V := []
   end
   rules
-    enforced ℜ.foreignKey.E a b := ℜ.E [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V ∧ b ∈ ℜ.V
-    enforced ℜ.foreignKey.V := ℜ.V ⊢ ⊤
+    enforced ℜ.foreignKey.E a b := ℜ.E [ .a ↦ a
+    , .b ↦ b ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
+    enforced ℜ.foreignKey.V := ℜ.V [] ⊢ ⊤
   end
 end
 
