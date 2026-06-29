@@ -303,22 +303,22 @@ tryName st k d =
 
 -- | Lex all the tokens
 run :: LexState -> Bool -> IO ()
-run st ws =
+run st fresh =
   peek st >>= \case
     '\t' -> skip st >> run st True
     ' ' -> skip st >> run st True
-    '(' -> classify st LParen >> run st False
+    '(' -> classify st LParen >> run st True
     ')' -> classify st RParen >> run st False
-    '[' -> classify st LBrack >> run st False
+    '[' -> classify st LBrack >> run st True
     ']' -> classify st RBrack >> run st False
-    '{' -> classify st LCurly >> run st False
+    '{' -> classify st LCurly >> run st True
     '}' -> classify st RCurly >> run st False
-    ',' -> classify st Comma >> run st False
-    ';' -> classify st Semicolon >> run st False
-    '\n' -> classify st Nl >> run st False
-    '#' -> comment st >> run st False
+    ',' -> classify st Comma >> run st True
+    ';' -> classify st Semicolon >> run st True
+    '\n' -> classify st Nl >> run st True
+    '#' -> comment st >> run st True
     '\"' -> string st >> run st False
-    '.' -> advance st >> tryName st (if ws then Field else FieldImmediate) "period" >> run st False
+    '.' -> advance st >> tryName st (if fresh then Field else FieldImmediate) "period" >> run st False
     '\'' -> advance st >> tryName st Tag "single quote" >> run st False
     '\0' -> emit0 st Eof
     '`' -> ident st >> run st False
@@ -334,5 +334,5 @@ lex config reporter file = do
   iter <- newIORef $ TU.iter file.contents 0
   out <- bufferWithCapacity (TU.lengthWord8 file.contents + 1)
   let st = LexState pos prev iter out file reporter config
-  run st False
+  run st True
   bufferUnsafeFreeze st.out

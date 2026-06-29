@@ -89,65 +89,65 @@ FieldImmediate a/b (159:163)
 Field c/d (164:168)
 Nl (168:169)
 Nl (169:170)
-FieldImmediate a (170:172)
+Field a (170:172)
 Nl (172:173)
-FieldImmediate a (173:175)
+Field a (173:175)
 FieldImmediate b (175:177)
 Nl (177:178)
 LParen (178:179)
-FieldImmediate a (179:181)
+Field a (179:181)
 RParen (181:182)
 Nl (182:183)
 LParen (183:184)
-FieldImmediate a (184:186)
+Field a (184:186)
 RParen (186:187)
 FieldImmediate b (187:189)
 Nl (189:190)
 AIdent f (190:191)
 LParen (192:193)
-FieldImmediate a (193:195)
+Field a (193:195)
 RParen (195:196)
 AIdent x (197:198)
 Nl (198:199)
 AIdent f (199:200)
 LParen (201:202)
-FieldImmediate a (202:204)
+Field a (202:204)
 RParen (204:205)
 Field b (206:208)
 AIdent x (209:210)
 Nl (210:211)
 AIdent f (211:212)
 LParen (213:214)
-FieldImmediate a (214:216)
+Field a (214:216)
 RParen (216:217)
 FieldImmediate b (217:219)
 AIdent x (220:221)
 Nl (221:222)
 LBrack (222:223)
-FieldImmediate a (223:225)
+Field a (223:225)
 RBrack (225:226)
 Nl (226:227)
 LBrack (227:228)
-FieldImmediate a (228:230)
+Field a (228:230)
 RBrack (230:231)
 FieldImmediate b (231:233)
 Nl (233:234)
 AIdent f (234:235)
 LBrack (236:237)
-FieldImmediate a (237:239)
+Field a (237:239)
 RBrack (239:240)
 AIdent x (241:242)
 Nl (242:243)
 AIdent f (243:244)
 LBrack (245:246)
-FieldImmediate a (246:248)
+Field a (246:248)
 RBrack (248:249)
 Field b (250:252)
 AIdent x (253:254)
 Nl (254:255)
 AIdent f (255:256)
 LBrack (257:258)
-FieldImmediate a (258:260)
+Field a (258:260)
 RBrack (260:261)
 FieldImmediate b (261:263)
 AIdent x (264:265)
@@ -167,9 +167,9 @@ FieldImmediate b (281:283)
 Nl (283:284)
 AIdent x (284:285)
 Nl (285:286)
-FieldImmediate a (286:288)
+Field a (286:288)
 Nl (288:289)
-FieldImmediate a (289:301)
+Field a (289:301)
 Nl (301:302)
 Eof (302:302)
 
@@ -314,9 +314,45 @@ Juxt (211:221)
       Field a (214:216)
       Field b (217:219)
   Ident x (220:221)
-Juxt (222:225)
-  Tuple (222:225)
+Tuple (222:227)
   Field a (223:225)
+Juxt (227:233)
+  Tuple (227:233)
+    Field a (228:230)
+  Field b (231:233)
+Juxt (234:242)
+  Juxt (234:242)
+    Ident f (234:235)
+    Tuple (236:242)
+      Field a (237:239)
+  Ident x (241:242)
+Juxt (243:254)
+  Juxt (243:252)
+    Juxt (243:252)
+      Ident f (243:244)
+      Tuple (245:252)
+        Field a (246:248)
+    Field b (250:252)
+  Ident x (253:254)
+Juxt (255:265)
+  Juxt (255:263)
+    Ident f (255:256)
+    Juxt (257:263)
+      Tuple (257:263)
+        Field a (258:260)
+      Field b (261:263)
+  Ident x (264:265)
+Tuple (266:274)
+  Ident x (267:268)
+  Field a (270:272)
+Juxt (274:283)
+  Tuple (274:283)
+    Ident x (275:276)
+    Field a (278:280)
+  Field b (281:283)
+Ident x (284:285)
+Field a (286:288)
+Field a (289:301)
 
 -- pretty
 f x.a
@@ -341,18 +377,15 @@ f x/y.a/b .c/d
 f.a x
 f.a.b x
 f (.a .b) x
-[] .a
+[.a]
+[.a] .b
+f [.a] x
+f [.a] .b x
+f ([.a] .b) x
+[x, .a]
+[x, .a] .b
+x
+.a
+.a
 
 -- messages
-
-error[E0100]: Unexpected token kind FieldImmediate, expected a token that can start an expression
-24 | [.a]
-24 |  ^^
-
-error[E0100]: Unexpected token kind FieldImmediate, expected RBrack
-24 | [.a]
-24 |  ^^
-
-error[E0104]: expected a newline, end, or eof after a statement
-24 | [.a]
-24 |    ^
