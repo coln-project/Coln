@@ -1,1 +1,6 @@
-\date{2026-05-27T09:54:56Z}
+\import{prelude}
+\title{Type formers}
+
+\p{One of the nice things about categorical semantics is that once we have fixed the basic structure (the category with families), the type theory essentially writes itself, in the sense that we may just look through various standard type formers and ask whether or not the semantics has the relevant universal property or not.}
+
+\transclude{002V}

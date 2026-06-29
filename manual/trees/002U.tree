@@ -1,0 +1,16 @@
+\title{Sets}
+\import{prelude}
+
+\p{We introduce a judgment on types capturing when an elephant theory is a [geometric construct](002F). We call such types \defcase{sets}.}
+
+##{\ms{IsSet} \colon \{\Gamma \colon \ms{Con}\} \to \ms{Ty}\,\Gamma \to \ms{Prop}}
+
+\p{A proof of #{\ms{IsSet}\,A} for #{A \colon \ms{Ty}\,\Gamma} is a natural choice of objects #{((\mc{E},M) \colon \groth \Gamma) \mapsto (X_{A}(\mc{E},M) \colon \mc{E})} such that #{A(\mc{E},M) \cong \mc{E}(1, X_{A}(\mc{E},M))}.}
+
+##{\ms{IsSet} \colon \{\Gamma \colon \ms{Con}\} \to \ms{Ty}\,\Gamma \to \ms{Prop} \quad \check}
+
+\p{We then have a universe #{\ms{Set}} which is given by the \em{weak} object classifier, which sends a topos #{\mc{E}} to the category of representable presheaves on #{\ms{Sh}(\mc{E})}. This is equivalent to the object classifier, but we use it because it makes the isomorphism below work out.}
+
+##{\ms{Tm}\,\Gamma\,\ms{Set} \cong (A \colon \ms{Ty}\,\Gamma) \times \ms{IsSet}\,A \quad \check}
+
+\p{In the above isomorphism, we call the right-to-left direction \defcase{encoding} and the left-to-right direction \defcase{decoding}.}

@@ -1,1 +1,15 @@
-\title{The basic judgments of geometric type theory}
+\title{Types and terms}
+\import{prelude}
+
+\p{In this section, we build a [category with families](cwf) #{\mb{E}} out of elephant theories, which gives the semantics of types and terms in our type theory.}
+
+\p{Categories with families have many parts; we build up the structure in sections. We follow [Kovacs](kovacs-2022-typetheoretic) in presenting a category with families as a model of a GAT. As we give the semantics for each part of the GAT, we write out the relevant part of the signature with a \check next to it to signify that that part of the GAT is defined.}
+
+\transclude{002O}
+
+\transclude{002P}
+
+\transclude{002Q}
+
+\transclude{002R}
+

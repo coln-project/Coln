@@ -1,0 +1,12 @@
+\title{Levels and universes}
+\import{prelude}
+
+\p{The basic structure of types and terms works for general elephant theories, but we are most concerned with geometric theories. To handle this, we introduce judgments inspired by the approach to levels and universes introduced by Jon Sterling in [[sterling-2025-fuss-free]].}
+
+\p{Note that Jon uses this for levels in MLTT, where the type theory “at each level” is essentially the same. However, in our use of levels, different rules in the type theory will only apply at certain levels.}
+
+\transclude{002U}
+
+\transclude{002T}
+
+\transclude{002W}

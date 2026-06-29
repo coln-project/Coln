@@ -16,7 +16,7 @@
 
 \p{The reason type theory may be usefully applied to propositional logic because all of the connectives of propositional logic (and, or, not, forall, exists, etc.) satisfy universal properties; this is the same as the reason why type theory may be applied to any other area.}
 
-\p{The way that type theory may be applied to a particular area is via the development of \em{a particular} type theory. Confusion between type theory as a subject and the concept of \em{a type theory} as a mathematical object is an unfortunate side effect of the nomenclature, because “ breaks with the convention that in group theory, we study groups, in field theory we study fields, or in category theory we study categories.} 
+\p{The way that type theory may be applied to a particular area is via the development of \em{a particular} type theory. Confusion between type theory as a subject and the concept of \em{a type theory} as a mathematical object is an unfortunate side effect of the nomenclature, because the use of “type theory” to describe the field breaks with the convention that in group theory, we study groups, in field theory we study fields, or in category theory we study categories. However, in type theory, we study type theories.} 
 
 \p{A particular type theory is merely a syntactic formalization of some collection of universal properties, consisting of a collection of \em{rules} by which we judge that a certain piece of syntax is \em{well-typed}. The beauty of universal properties is that each universal property is quite self-contained, so a type theory may be designed by systematically observing which universal properties the objects of interest support, and then adding the standard type-theoretic rules for those universal properties to one's type theory.}
 

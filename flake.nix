@@ -4,12 +4,17 @@
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
     ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
+    bib2forester = {
+      url = "github:olynch/bib2forester";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
   outputs =
     inputs@{
       self,
       nixpkgs,
       rust-overlay,
+      bib2forester,
       ...
     }:
     inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (
@@ -214,6 +219,7 @@
         devShells.default = pkgs.mkShell {
           name = "coln";
           buildInputs = with pkgs; [
+            bib2forester.packages."${system}".default
             cabal-install
             cabal2nix
             cargo-llvm-cov

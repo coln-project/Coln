@@ -14,8 +14,13 @@
 \def\kw[x]{\strong{\x}}
 
 \def\ms[t]{\mathsf{\t}}
+\def\mb[t]{\mathbf{\t}}
 \def\mc[t]{\mathcal{\t}}
 \def\bb[t]{\mathbb{\t}}
 \def\op{^\mathrm{op}}
-\def\groth{\int}
+\def\groth{{\textstyle\int}}
 \def\ext{\triangleright}
+
+\def\check{✅}
+
+\def\To{\Rightarrow}
