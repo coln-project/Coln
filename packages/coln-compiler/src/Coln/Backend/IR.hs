@@ -214,9 +214,8 @@ instance ToNotationTop Path where
   toNotationTop (BwdNil :> x) = N.Ident x ()
   toNotationTop (p :> x) = N.Juxt (toNotationTop p) (N.Field x ())
 
--- TODO: is this the right order?
 instance ToNotationTop TableName where
-  toNotationTop tn = foldr (\p n -> N.Juxt n (N.Field p ())) (N.Ident "ℜ" ()) tn.path
+  toNotationTop tn = foldl (\n p -> N.Juxt n (N.Field p ())) (N.Ident "ℜ" ()) tn.path
 
 instance ToNotationTop ColType where
   toNotationTop = \case
