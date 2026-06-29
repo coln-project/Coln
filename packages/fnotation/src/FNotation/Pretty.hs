@@ -40,6 +40,8 @@ type ConfigArg = (?config :: ConfTable Prec, ?lconfig :: ConfTable Kind)
 
 tryImmediate :: (ConfigArg) => NtnGeneric a -> Maybe DDoc
 tryImmediate (Ident x _) = return $ dprettyWithKinds ?lconfig x
+tryImmediate (Field x _) = return $ "." <> dprettyWithKinds ?lconfig x
+tryImmediate t@Tuple{} = return $ prtTop t
 tryImmediate (Juxt n (Field x _)) = do
   i <- tryImmediate n
   return $ i <> "." <> dprettyWithKinds ?lconfig x
