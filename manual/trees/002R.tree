@@ -1,0 +1,28 @@
+\import{prelude}
+\title{Context extension in #{\mb{E}}}
+
+\p{Given a context #{\Gamma} and type #{A}, we define the context extension #{\Gamma \ext A} by}
+
+##{(\Gamma \ext A)(\mc{E} \colon \ms{BTop}/\mc{S}) = (M \colon \Gamma(\mc{E})) \times A(\mc{E},M)}
+
+\p{extended suitably to produce a category, and to be 2-functorial.}
+
+##{{-}\ext{-} \colon (\Gamma \colon \ms{Con}) \to \ms{Ty}\,\Gamma \to \ms{Con} \quad \check}
+
+\p{We then have the weakening substitution given by first projection and the variable rule given by second projection.}
+
+##{\begin{align*}
+&\ms{p} \colon \{\Gamma \colon \ms{Con}\} \to \{A \colon \ms{Ty}\,\Gamma\} \to (\Gamma \ext A \To \Gamma) \quad \check \\
+&\ms{q} \colon \{\Gamma \colon \ms{Con}\} \to \{A \colon \ms{Ty}\,\Gamma\} \to \ms{Tm}\,(\Gamma \ext A)\,(A[\ms{p}]) \quad \check
+\end{align*}}
+
+\p{Finally, context comprehension is defined by pairing.}
+
+##{\begin{align*}
+  &({-},{-}) \colon \{\Delta\;\Gamma \colon \ms{Con}\} \to \{A \colon \ms{Ty}\,\Gamma\} \to \\
+  &\quad (\gamma \colon \Delta \To \Gamma) \to \ms{Tm}\,\Delta\,(A[\gamma]) \to (\Delta \To \Gamma \ext A) \quad \check
+\end{align*}}
+
+\p{Weakening/variable and context comprehension then can be used to form an isomorphism:}
+
+##{(\Delta \Rightarrow \Gamma \ext A) \cong (\gamma \colon \Delta \Rightarrow \Gamma) \times \ms{Tm}\,\Delta\,(A[\gamma]) \quad \check}

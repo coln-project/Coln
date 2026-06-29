@@ -1,0 +1,14 @@
+\import{prelude}
+\title{Types in #{\mb{E}}}
+
+\p{Given a context #{\Gamma}, a type in #{\Gamma} is a 2-functor #{A \colon \left(\groth \Gamma\right)\op \to \ms{CAT}}.}
+
+##{\ms{Ty} \colon \ms{Con} \to \ms{Type} \quad \check}
+
+\p{Note that #{\ms{Ty}\,\cdot} is again just the type of elephant theories.}
+
+\p{In general, #{\groth \Gamma} is the 2-category of topoi equipped with a model of #{\Gamma}. In the case that #{\Gamma} is a geometric theory, this is equivalent to elephant theories where #{\ms{BTop}/\ms{S}} is replaced with the #{\ms{BTop}/\ms{S}[\Gamma]}, where #{\ms{S}[\Gamma]} is the classifying topos for #{\Gamma}. Thus, #{\ms{Ty}\,\Gamma} can be thought of as the collection of elephant theories relative to #{\Gamma}.}
+
+\p{It is not hard to see that #{\ms{Ty}} forms a presheaf over #{\bb{C}_{\mb{E}}} because we can apply the Grothendieck construction to the 2-natural transformation #{\gamma \colon \Delta \To \Gamma} to get #{\groth \gamma \colon \groth \Delta \to \groth \Gamma}, and then precomposition with #{\groth \gamma} gives us the required map from #{\ms{Ty}\,\Gamma} to #{\ms{Ty}\,\Delta}.}
+
+##{{-}[-] \colon \{\Delta\;\Gamma \colon \ms{Con}\} \to \ms{Ty}\,\Gamma \to (\ms{Sub}\,\Delta\,\Gamma) \to \ms{Ty}\,\Delta \quad \check}

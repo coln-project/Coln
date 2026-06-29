@@ -1,0 +1,13 @@
+\import{prelude}
+\title{Category structure of #{\mb{E}}}
+
+\p{The category for #{\mb{E}} is just the category of [elephant theories](002C), where the morphisms are 2-natural transformations.}
+
+##{\begin{align*}
+&\ms{Con} \colon \ms{Type} \quad \check \\
+&\ms{Sub} \colon \ms{Con} \to \ms{Con} \to \ms{Type} \quad \check
+\end{align*}}
+
+\p{We omit some parts of the GAT signature; for instance here we omit the parts which declare that #{\ms{Con}} and #{\ms{Sub}} form a category. We refer to this category overall as #{\bb{C}_{\mb{E}}}.}
+
+\p{This category has a terminal object given by the functor constant at #{1}, the terminal category; we refer to this by #{\cdot} in light of its role as the empty context.}
