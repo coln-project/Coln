@@ -1,0 +1,12 @@
+\title{Sets are geometric theories}
+\import{prelude}
+
+\p{Any [set](002U) is a [geometric theory](002T), in the sense that we have.}
+
+##{\ms{SetImpliesTheory} \colon \{\Gamma \colon \ms{Con}\} \to \{A \colon \ms{Ty}\,\Gamma\} \to \ms{IsSet}\,A \to \ms{IsTheory}\,A}
+
+\p{This is because #{\ms{IsSet}\,A} implies that #{A} is represented by a 2-natural transformation #{X_A} into the object classifier, and thus #{A} is a simple functional extension of the empty theory given by postulating a morphism #{1 \to X_A}. In other words, #{A} is really “the theory of a global element of #{X_A}”.}
+
+##{\ms{SetImpliesTheory} \colon \{\Gamma \colon \ms{Con}\} \to \{A \colon \ms{Ty}\,\Gamma\} \to \ms{IsSet}\,A \to \ms{IsTheory}\,A \quad \check}
+
+\p{One can use #{\ms{SetImpliesTheory}} along with the encoding and decoding functions for #{\ms{Set}} and #{\ms{Theory}} in order to make a function #{\ms{Tm}\,\Gamma\,\ms{Set} \to \ms{Tm}\,\Gamma\,\ms{Theory}}. The advantage of #{\ms{SetImpliesTheory}} over directly postulating this function is that the way we have set things up, promotion from #{\ms{Set}} to #{\ms{Theory}} automatically commutes with coding/decoding.} 

@@ -1,0 +1,16 @@
+\title{Geometric theories}
+\import{prelude}
+
+\p{We introduce a judgment on types capturing when an elephant theory is a geometric theory. Confusingly enough, in Coln we call these types \defcase{theories}; general types (elephant theories) are called top-level types.}
+
+##{\ms{IsTheory} \colon \{\Gamma \colon \ms{Con}\} \to \ms{Ty}\,\Gamma \to \ms{Prop}}
+
+\p{A proof of #{\ms{IsTheory}\,A} is a construction of #{A} as a sequence of simple functional and simple equational extensions of the object classifier, establishing it as a [geometric theory](002D). As #{\ms{IsTheory}\,A} is a proposition, we propositionally truncate the type of such constructions.}
+
+##{\ms{IsTheory} \colon \{\Gamma \colon \ms{Con}\} \to \ms{Ty}\,\Gamma \to \ms{Prop} \quad \check}
+
+\p{We can then internalize this into a universe. The universe #{\ms{Theory} \colon \ms{Ty}\,\cdot} sends a topos #{\mc{E}} to the category of geometric theories #{A \colon \ms{BTop}/\mc{E} \to \ms{CAT}}.}
+
+##{\ms{Tm}\,\Gamma\,\ms{Theory} \cong (A \colon \ms{Ty}\,\Gamma) \times \ms{IsTheory}\,A \quad \check}
+
+\p{This is the shakiest part of the semantics for this type theory; it may be that non-strictness or size issues make this universe infeasible. However, this can be fixed by moving to a two-level type theory. “Presheaves over elephant theories” seems a bit absurd though, so hopefully this can work out as is.}

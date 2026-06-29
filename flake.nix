@@ -3,12 +3,17 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
+    bib2forester = {
+      url = "github:olynch/bib2forester";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
   outputs =
     inputs@{
       self,
       nixpkgs,
       rust-overlay,
+      bib2forester,
       ...
     }:
     inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (
@@ -171,6 +176,7 @@
         devShells.default = pkgs.mkShell {
           name = "coln";
           buildInputs = with pkgs; [
+            bib2forester.packages."${system}".default
             cabal-install
             cabal2nix
             coln-manual-dev

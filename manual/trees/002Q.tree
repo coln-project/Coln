@@ -1,0 +1,19 @@
+\import{prelude}
+\title{Terms in #{\mb{E}}}
+
+\p{Given a context #{\Gamma} and a type #{A \colon \left(\groth \Gamma\right)\op \to \ms{CAT}}, a term #{a} of type #{A} is a 2-section of #{A}.}
+
+##{\ms{Tm} \colon (\Gamma \colon \ms{Con}) \to \ms{Ty}\,\Gamma \to \ms{Type} \quad \check}
+
+\p{The categorical way to define “2-section” would be as a strict 2-functor #{a \colon \groth \Gamma \to \groth A} that is a strict section of the projection. A more type-theoretic way to define “2-section” would be to say a 2-section is a map #{a \colon \left((\mc{E},M) \colon \groth \Gamma\right) \to A(\mc{E},M)} such that #{a(\mc{E},M)} is 2-functorial in #{\mc{E}} and #{M}.}
+
+\p{Given #{\gamma \colon \Delta \To \Gamma}, we may define #{a[\gamma] \colon \ms{Tm}\,\Delta\,(A[\gamma])} by}
+
+##{a[\gamma]\,\left((\mc{E}, M) \colon \groth \Delta \right) = a(\mc{E}, \gamma_{\mc{E}}(M)) \colon ({A[\gamma]}(\mc{E}, M) = A(\mc{E}, \gamma_{\mc{E}}(M)))}
+
+\p{This turns #{\ms{Tm}} into an indexed presheaf over #{\ms{Ty}}.}
+
+##{\begin{align*}
+  &{-}[-] \colon \{\Delta\;\Gamma \colon \ms{Con}\} \to \{A \colon \ms{Ty}\,\Gamma\} \to \\
+  &\quad \ms{Tm}\,\Gamma\,A \to (\gamma \colon \Delta \To \Gamma) \to \ms{Tm}\,\Delta\,(A[\gamma]) \quad \check
+\end{align*}}
