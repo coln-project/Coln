@@ -62,7 +62,7 @@ data Atom = Atom
   { entity :: TableName
   , rowId :: Maybe Term
   , values :: Map Int Term
- }
+  }
   deriving (Show, Eq, Generic)
 
 data Prop
@@ -285,7 +285,6 @@ irLexConfig =
     [ ("flatrealm", K.Block)
     , ("entities", K.Block)
     , ("rules", K.Block)
-
     , ("table", K.Decl)
     , ("view", K.Decl)
     , ("index", K.Decl)
@@ -293,7 +292,6 @@ irLexConfig =
     , ("enforced", K.Decl)
     , ("monitored", K.Decl)
     , ("end", K.End)
-
     , (":=", K.SKeyword)
     , ("=", K.SKeyword)
     , (":", K.SKeyword)

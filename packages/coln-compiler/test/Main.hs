@@ -4,6 +4,7 @@
 
 module Main (main) where
 
+import Coln.Backend.Lower
 import Coln.Common
 import Coln.Core.Globals
 import Coln.Core.Params
@@ -12,7 +13,6 @@ import Coln.Core.Realm
 import Coln.Diagnostics
 import Coln.Frontend.Driver
 import Coln.Frontend.Notation
-import Coln.Backend.Lower
 import Coln.Report
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
