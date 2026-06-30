@@ -12,7 +12,9 @@ import Data.Map.Ordered (OMap, (>|), (|<))
 import Data.Map.Ordered qualified as OMap
 import Data.Set qualified as Set
 import Data.Traversable (mapAccumL)
+import Prettyprinter.Render.Text (hPutDoc)
 import System.FilePath ((</>))
+import System.IO (IOMode (..), withFile)
 import Prelude hiding (lookup)
 
 import Coln.Backend.IR qualified as I
@@ -412,3 +414,5 @@ writeIRFor ge fp = do
     let fr = lowerRealm x r
     let fn = fp </> mangleToString x <> ".json"
     AE.encodeFile fn fr
+    let pn = fp </> mangleToString x <> ".pretty"
+    withFile pn WriteMode (\h -> hPutDoc h (dpretty fr))
