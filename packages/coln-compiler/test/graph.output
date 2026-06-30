@@ -10,5 +10,18 @@ generators: node
   V = rel []
   E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
 end
+lowered: flatrealm
+  entities
+    table ℜ.V := []
+    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
+  end
+  rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+    enforced ℜ.E.foreignKey a b := ℜ.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
+  end
+end
 
 -- messages

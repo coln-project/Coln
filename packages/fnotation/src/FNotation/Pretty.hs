@@ -40,6 +40,8 @@ type ConfigArg = (?config :: ConfTable Prec, ?lconfig :: ConfTable Kind)
 
 tryImmediate :: (ConfigArg) => NtnGeneric a -> Maybe DDoc
 tryImmediate (Ident x _) = return $ dprettyWithKinds ?lconfig x
+tryImmediate (Field x _) = return $ "." <> dprettyWithKinds ?lconfig x
+tryImmediate t@Tuple{} = return $ prtTop t
 tryImmediate (Juxt n (Field x _)) = do
   i <- tryImmediate n
   return $ i <> "." <> dprettyWithKinds ?lconfig x
@@ -47,6 +49,15 @@ tryImmediate _ = Nothing
 
 prtTop :: (ConfigArg) => NtnGeneric a -> DDoc
 prtTop = prt Top
+
+bracketedTuple :: [DDoc] -> DDoc
+bracketedTuple [] = "[]"
+bracketedTuple ds =
+  group
+    . enclose ("[" <> line') (line' <> "]")
+    . vsep
+    . punctuate ","
+    $ (\d -> flatAlt (indent 2 d) d) <$> ds
 
 precApp :: Prec
 precApp = Prec 100 AssocL
@@ -83,7 +94,7 @@ prt p = \case
   Tag x _ -> "'" <> dprettyWithKinds ?lconfig x
   Int i _ -> pretty i
   String x _ -> "\"" <> pretty x <> "\""
-  Tuple ns _ -> list $ prtTop <$> ns
+  Tuple ns _ -> bracketedTuple $ prtTop <$> ns
   Error _ -> "<error>"
 
 dprettyWithConfigs :: ConfTable Prec -> ConfTable Kind -> NtnGeneric a -> DDoc

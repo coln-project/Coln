@@ -8,15 +8,20 @@ module Coln.Backend.IR where
 import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
-import Data.Map qualified as Map
-import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.List (foldl', intercalate)
+import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
+import Data.Maybe (fromJust, fromMaybe)
 import Data.Set qualified as Set
+import Data.String (fromString)
 import GHC.Generics
 
 -- XXX Lit/BultinTy should probably be moved up in the hierarchy
 import Coln.Common
 import Coln.Core.Params
+import Coln.Core.Print
+import FNotation as N
+import FNotation.Kinds as K
 
 type ColName = Path
 
@@ -57,7 +62,7 @@ data Term
 data Atom = Atom
   { entity :: TableName
   , rowId :: Maybe Term
-  , values :: Map Int Term
+  , values :: OMap Int Term
   }
   deriving (Show, Eq, Generic)
 
@@ -79,10 +84,16 @@ data Rule = Rule
   deriving (Show, Eq, Generic)
 
 data FlatRealm = FlatRealm
-  { entities :: Map TableName Entity
-  , rules :: Map TableName Rule
+  { entities :: OMap TableName Entity
+  , rules :: OMap TableName Rule
   }
   deriving (Show, Eq, Generic)
+
+emptyFlatRealm :: FlatRealm
+emptyFlatRealm = FlatRealm OMap.empty OMap.empty
+
+-- JSON
+--------------------------------------------------------------------------------
 
 aeOptions :: AE.Options
 aeOptions =
@@ -103,8 +114,8 @@ encPath = AE.list encName . namesOf
 instance PathLike Path where namesOf = toList
 instance PathLike TableName where namesOf tn = tn.realm : namesOf tn.path
 
-pathMapEncoding :: (PathLike k) => (a -> AE.Encoding) -> Map k a -> AE.Encoding
-pathMapEncoding f = AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (encPath k) <> AE.pair "value" (f v)) . Map.toAscList
+pathMapEncoding :: (PathLike k) => (a -> AE.Encoding) -> OMap k a -> AE.Encoding
+pathMapEncoding f = AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (encPath k) <> AE.pair "value" (f v)) . OMap.assocs
 
 taggedEncoding :: Text -> AE.Series -> AE.Encoding
 taggedEncoding t v = AE.pairs $ AE.pair "tag" (AE.toEncoding t) <> v
@@ -152,7 +163,7 @@ instance AE.ToJSON Atom where
       mconcat
         [ AE.pair "entity" $ encPath a.entity
         , AE.pair "rowId" $ AE.toEncoding a.rowId
-        , AE.pair "values" $ AE.list (\(k, v) -> AE.pairs $ AE.pair "column" (AE.toEncoding k) <> AE.pair "term" (AE.toEncoding v)) $ Map.toAscList a.values
+        , AE.pair "values" $ AE.list (\(k, v) -> AE.pairs $ AE.pair "column" (AE.toEncoding k) <> AE.pair "term" (AE.toEncoding v)) $ OMap.assocs a.values
         ]
 
 instance AE.ToJSON Prop where
@@ -179,5 +190,130 @@ instance AE.ToJSON FlatRealm where
   toJSON = panic "aesons behaving badly"
   toEncoding fr = AE.pairs $ AE.pair "entities" (pathMapEncoding AE.toEncoding fr.entities) <> AE.pair "rules" (pathMapEncoding AE.toEncoding fr.rules)
 
-emptyFlatRealm :: FlatRealm
-emptyFlatRealm = FlatRealm Map.empty Map.empty
+-- Pretty-printer
+--------------------------------------------------------------------------------
+
+entityVariantDeclKeyword :: EntityVariant -> Name
+entityVariantDeclKeyword e = Name [] $ fromString $ case e of
+  Table -> "table"
+  View _ -> "view" -- TODO
+  Index _ _ -> "index" -- TODO
+
+ruleVariantDeclKeyword :: RuleVariant -> Name
+ruleVariantDeclKeyword e = Name [] $ fromString $ case e of
+  Chased -> "chased"
+  Enforced -> "enforced"
+  Monitored -> "monitored"
+
+toNotationColName :: ColName -> N.Ntn0
+toNotationColName BwdNil = N.Tuple [] () -- Shouldn't happen
+toNotationColName (BwdNil :> x) = N.Field x ()
+toNotationColName (p :> x) = N.Juxt (toNotationColName p) (N.Field x ())
+
+instance ToNotationTop Path where
+  toNotationTop BwdNil = N.Tuple [] () -- Shouldn't happen
+  toNotationTop (BwdNil :> x) = N.Ident x ()
+  toNotationTop (p :> x) = N.Juxt (toNotationTop p) (N.Field x ())
+
+instance ToNotationTop TableName where
+  toNotationTop tn = foldl (\n p -> N.Juxt n (N.Field p ())) (N.Ident "ℜ" ()) tn.path
+
+instance ToNotationTop ColType where
+  toNotationTop = \case
+    RowId e -> toNotationTop e
+    BuiltinTy bt -> N.Keyword (fromString $ show bt) ()
+
+instance ToNotationTop (ColName, ColType) where
+  toNotationTop (n, t) = N.Infix (toNotationColName n) (N.Keyword ":" ()) (toNotationTop t)
+
+instance ToNotationTop (TableName, Entity) where
+  toNotationTop (tn, e) = do
+    let keyword = entityVariantDeclKeyword e.entityVariant
+    let cols = N.Tuple (map toNotationTop e.columns) ()
+    let colsWKey = case e.primaryKey of
+          Nothing -> cols
+          Just primaryKey -> N.Infix cols (N.Keyword "primarykey" ()) (N.Tuple (map toNotationColName $ Set.toList primaryKey) ())
+    N.Decl keyword (N.Infix (toNotationTop tn) (N.Keyword ":=" ()) colsWKey) ()
+
+instance ToNotationTop Literal where
+  toNotationTop = \case
+    LitInt i -> N.Int i ()
+    LitString t -> N.String t ()
+
+toNotationTerm :: Bwd ColName -> Term -> N.Ntn0
+toNotationTerm _ (Lit l) = toNotationTop l
+toNotationTerm cs (Var i) = toNotationTop (elemAt (rev cs) i) -- TODO: Why does Rule use Bwd and FId together?
+
+toNotationAtom :: OMap TableName [ColName] -> Bwd ColName -> Atom -> N.Ntn0
+toNotationAtom columnNames cs a = do
+  let entity = toNotationTop a.entity
+  let cols = fromJust (OMap.lookup a.entity columnNames)
+  let field (i, t) = N.Infix (toNotationColName (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
+  let body = N.Juxt entity $ N.Tuple (field <$> OMap.assocs a.values) ()
+  case a.rowId of
+    Nothing -> body
+    Just r -> N.Infix (toNotationTerm cs r) (N.Keyword "∈" ()) body
+
+toNotationProp :: OMap TableName [ColName] -> Bwd ColName -> Prop -> N.Ntn0
+toNotationProp ts cs = \case
+  PAtom a -> toNotationAtom ts cs a
+  PEq a b -> N.Infix (toNotationTerm cs a) (N.Keyword "=" ()) (toNotationTerm cs b)
+
+toNotationConjunction :: [N.Ntn0] -> N.Ntn0
+toNotationConjunction [] = N.Keyword "⊤" ()
+toNotationConjunction [p] = p
+toNotationConjunction (p : ps) = N.Infix p (N.Keyword "∧" ()) (toNotationConjunction ps)
+
+toNotationRule :: OMap TableName [ColName] -> (TableName, Rule) -> N.Ntn0
+toNotationRule columnNames (tn, r) = do
+  let keyword = ruleVariantDeclKeyword r.ruleVariant
+  let head = foldl' N.Juxt (toNotationTop tn) (fmap toNotationTop (toList r.varNames))
+  let ante = toNotationConjunction $ fmap (toNotationProp columnNames r.varNames) r.antecedents
+  let cons = toNotationConjunction $ fmap (toNotationProp columnNames r.varNames) r.consequents
+  let seq = N.Infix ante (N.Keyword "⊢" ()) cons
+  N.Decl keyword (N.Infix head (N.Keyword ":=" ()) seq) ()
+
+instance ToNotationTop FlatRealm where
+  toNotationTop (FlatRealm es rs) = do
+    let nes = N.Block "entities" Nothing (fmap toNotationTop (OMap.assocs es)) ()
+    let columnNames = fmap (fmap fst . (.columns)) es
+    let nrs = N.Block "rules" Nothing (fmap (toNotationRule columnNames) (OMap.assocs rs)) ()
+    N.Block "flatrealm" Nothing [nes, nrs] ()
+
+irLexConfig :: N.ConfTable Kind
+irLexConfig =
+  confTableFromList
+    [ ("flatrealm", K.Block)
+    , ("entities", K.Block)
+    , ("rules", K.Block)
+    , ("table", K.Decl)
+    , ("view", K.Decl)
+    , ("index", K.Decl)
+    , ("chased", K.Decl)
+    , ("enforced", K.Decl)
+    , ("monitored", K.Decl)
+    , ("end", K.End)
+    , (":=", K.SKeyword)
+    , ("=", K.SKeyword)
+    , (":", K.SKeyword)
+    , ("∈", K.SKeyword)
+    , ("∧", K.SKeyword)
+    , ("⊢", K.SKeyword)
+    , ("↦", K.SKeyword)
+    , ("⊤", K.SKeyword)
+    ]
+
+irParseConfig :: N.ConfTable N.Prec
+irParseConfig =
+  confTableFromList
+    [ (":=", Prec 10 AssocNon)
+    , (":", Prec 20 AssocNon)
+    , ("⊢", Prec 30 AssocNon)
+    , ("∧", Prec 35 AssocR)
+    , ("=", Prec 40 AssocNon)
+    , ("∈", Prec 45 AssocNon)
+    , ("↦", Prec 60 AssocNon)
+    ]
+
+instance DPretty FlatRealm where
+  dpretty r = N.dprettyWithConfigs irParseConfig irLexConfig $ toNotationTop r

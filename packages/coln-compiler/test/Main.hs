@@ -4,6 +4,7 @@
 
 module Main (main) where
 
+import Coln.Backend.Lower
 import Coln.Common
 import Coln.Core.Globals
 import Coln.Core.Params
@@ -48,6 +49,7 @@ prettyRealm (x, r) =
   vsep
     [ "realm named" <+> dpretty x
     , "generators:" <+> dpretty r
+    , "lowered:" <+> dpretty (lowerRealm x r)
     ]
 
 prettyDecls :: Globals -> DDoc

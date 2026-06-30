@@ -4,3 +4,14 @@
   c,
   [d,]
 ]
+
+[.a => b, .c => d]
+
+[
+  .a => b,
+  .c => d
+]
+
+[a, very, long, tuple, that, will, need, to, be, split, across, multiple, lines, when, output, by, the, pretty, printer]
+
+[[Through the darkness of future past, The magician longs to see, One chants out between two worlds, Fire walk with me]]
