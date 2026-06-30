@@ -40,8 +40,8 @@ lexConfig =
     , ("@", K.SKeyword)
     ]
 
-parseConfig :: ConfTable Prec
-parseConfig =
+readConfig :: ConfTable Prec
+readConfig =
   confTableFromList
     [ ("@", Prec 10 AssocNon)
     , (":=", Prec 10 AssocNon)

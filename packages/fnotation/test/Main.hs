@@ -6,7 +6,7 @@ module Main where
 
 import Test.FNotation.Golden (goldenTests)
 import Test.FNotation.Property.Lexing (lexerProperties)
-import Test.FNotation.Property.Parsing (parserProperties)
+import Test.FNotation.Property.Parsing (readerProperties)
 import Test.FNotation.Spot (spotTests)
 import Test.Tasty
 
@@ -20,7 +20,7 @@ main = do
       , testGroup
           "Property Tests"
           [ lexerProperties
-          , parserProperties
+          , readerProperties
           ]
       , spotTests
       ]

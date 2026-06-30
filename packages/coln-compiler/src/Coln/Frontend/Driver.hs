@@ -46,7 +46,7 @@ top e = foldlM (decl' e) emptyGlobals
 topFromText :: Reporter ColnCode -> File -> IO Globals
 topFromText r f = do
   ts <- N.lex lexConfig (contramap LexerCode r) f
-  ns <- N.parse parseConfig (contramap ParserCode r) f ts
+  ns <- N.read readConfig (contramap ReaderCode r) f ts
   top (DiagnosticEnv r f) ns
 
 decl' :: ParseEnv -> Globals -> Ntn -> IO Globals
@@ -187,7 +187,7 @@ fromTypD :: (V.HasEvaluation c) => ParseEnv -> Span -> Typ D -> IO (Judgment c)
 fromTypD @c e sp t = case V.scase @c of
   SNominative -> do
     let msg = "expected nominative type, got descriptive type"
-    failWith e sp (FrontendCode UnexpectedDescriptive) msg
+    failWith e sp (ParserCode UnexpectedDescriptive) msg
   SDescriptive -> pure $ FromTyp t
 
 expr :: (V.HasEvaluation c) => ParseEnv -> Ntn -> IO (Judgment c)
@@ -243,9 +243,9 @@ binder e = \case
 unexpectedNotation :: ParseEnv -> Ntn -> DDoc -> IO a
 unexpectedNotation e n c = do
   let msg = "unexpected notation for" <+> c <> ":" <+> N.head n
-  failWith e (N.span n) (FrontendCode UnexpectedNotation) msg
+  failWith e (N.span n) (ParserCode UnexpectedNotation) msg
 
 unknownCommand :: ParseEnv -> Span -> Name -> IO a
 unknownCommand e sp x = do
   let msg = "unknown command:" <+> dpretty x
-  failWith e sp (FrontendCode UnknownCommand) msg
+  failWith e sp (ParserCode UnknownCommand) msg

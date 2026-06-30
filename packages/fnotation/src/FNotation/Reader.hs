@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 
-module FNotation.Parser where
+module FNotation.Reader where
 
 import Data.IORef
 import Data.Map (Map)
@@ -18,10 +18,10 @@ import FNotation.Trees hiding (head)
 import Prettyprinter
 import Prelude hiding (head, lookup)
 
--- Parser diagnostics
+-- Reader diagnostics
 --------------------------------------------------------------------------------
 
-data ParserCode
+data ReaderCode
   = UnexpectedToken
   | DefaultedPrec
   | IncompatiblePrecedences
@@ -29,8 +29,8 @@ data ParserCode
   | StatementWithoutNewline
   deriving (Eq, Ord)
 
-parserCodeTable :: Map ParserCode CodeMeta
-parserCodeTable =
+readerCodeTable :: Map ReaderCode CodeMeta
+readerCodeTable =
   Map.fromList
     [ (UnexpectedToken, CodeMeta 0 SError Nothing)
     , (DefaultedPrec, CodeMeta 1 SWarning Nothing)
@@ -39,29 +39,29 @@ parserCodeTable =
     , (StatementWithoutNewline, CodeMeta 4 SError Nothing)
     ]
 
--- Parser monad
+-- Reader monad
 --------------------------------------------------------------------------------
 
-data ParseState = ParseState
+data ReaderState = ReaderState
   { pos :: IORef Int
   , gas :: IORef Int
   , skipNewlines :: IORef Bool
   , tokens :: V.Vector T.Token
   , file :: File
-  , reporter :: Reporter ParserCode
+  , reporter :: Reporter ReaderCode
   , config :: ConfTable Prec
   }
 
 -- Parsing utilities
 --------------------------------------------------------------------------------
 
-report :: ParseState -> Span -> ParserCode -> DDoc -> IO ()
+report :: ReaderState -> Span -> ReaderCode -> DDoc -> IO ()
 report st s c m = do
   let n = Note (Just (SourceLoc st.file s)) Nothing
   let d = Diagnostic c m [n]
   st.reporter.reportIO d
 
-cur :: ParseState -> IO T.Kind
+cur :: ReaderState -> IO T.Kind
 cur st = do
   gas <- readIORef st.gas
   if gas <= 0
@@ -81,44 +81,44 @@ locally ref v action = do
   writeIORef ref old
   pure res
 
-ignoreNewlines :: ParseState -> IO a -> IO a
+ignoreNewlines :: ReaderState -> IO a -> IO a
 ignoreNewlines st = locally st.skipNewlines True
 
-withNewlines :: ParseState -> IO a -> IO a
+withNewlines :: ReaderState -> IO a -> IO a
 withNewlines st = locally st.skipNewlines False
 
-curSpan :: ParseState -> IO Span
+curSpan :: ReaderState -> IO Span
 curSpan st = do
   pos <- readIORef st.pos
   pure (V.unsafeIndex st.tokens pos).span
 
-curValue :: ParseState -> IO T.TokenValue
+curValue :: ReaderState -> IO T.TokenValue
 curValue st = do
   pos <- readIORef st.pos
   pure (V.unsafeIndex st.tokens pos).value
 
-curName :: ParseState -> IO Name
+curName :: ReaderState -> IO Name
 curName st =
   curValue st >>= \case
     T.VName x -> pure x
     _ -> error "expected token to be associated with a name"
 
-curInt :: ParseState -> IO Int
+curInt :: ReaderState -> IO Int
 curInt st =
   curValue st >>= \case
     T.VInt x -> pure x
     _ -> error "expected token to be associated with an int"
 
-curString :: ParseState -> IO Text
+curString :: ReaderState -> IO Text
 curString st =
   curValue st >>= \case
     T.VString x -> pure x
     _ -> error "expected token to be associated with a string"
 
-at :: ParseState -> T.Kind -> IO Bool
+at :: ReaderState -> T.Kind -> IO Bool
 at st k = (k ==) <$> cur st
 
-advance :: ParseState -> IO ()
+advance :: ReaderState -> IO ()
 advance st = do
   pos <- readIORef st.pos
   let n = V.length st.tokens
@@ -135,19 +135,19 @@ advance st = do
       writeIORef st.gas 256
     else pure ()
 
-eat :: ParseState -> T.Kind -> IO Bool
+eat :: ReaderState -> T.Kind -> IO Bool
 eat st k =
   at st k >>= \case
     True -> advance st >> pure True
     False -> pure False
 
-reportUnexpected :: ParseState -> T.Kind -> T.Class -> IO ()
+reportUnexpected :: ReaderState -> T.Kind -> T.Class -> IO ()
 reportUnexpected st k c = do
   s <- curSpan st
   report st s UnexpectedToken $
     "Unexpected token kind" <+> dpretty k <> ", expected" <+> dpretty c
 
-expect :: ParseState -> T.Kind -> IO ()
+expect :: ReaderState -> T.Kind -> IO ()
 expect st k = do
   k' <- cur st
   if k == k'
@@ -155,15 +155,15 @@ expect st k = do
     else
       reportUnexpected st k' (T.CSpecific k) >> pure ()
 
-openingPos :: ParseState -> IO Pos
+openingPos :: ReaderState -> IO Pos
 openingPos st = (.start) <$> curSpan st
 
-close :: ParseState -> Pos -> (Span -> Ntn) -> IO Ntn
+close :: ReaderState -> Pos -> (Span -> Ntn) -> IO Ntn
 close st s f = do
   (Span _ e) <- curSpan st
   pure $ f (Span s e)
 
-advanceClose :: ParseState -> Pos -> (Span -> Ntn) -> IO Ntn
+advanceClose :: ReaderState -> Pos -> (Span -> Ntn) -> IO Ntn
 advanceClose st s f = do
   n <- close st s f
   advance st
@@ -188,7 +188,7 @@ argStarts =
 argStart :: T.Kind -> Bool
 argStart k = V.elem k argStarts
 
-tupleElems :: ParseState -> IO [Ntn]
+tupleElems :: ReaderState -> IO [Ntn]
 tupleElems st =
   cur st >>= \case
     T.RBrack -> pure []
@@ -207,7 +207,7 @@ tupleElems st =
       reportUnexpected st k T.CExprStart
       pure []
 
-argBase :: ParseState -> IO Ntn
+argBase :: ReaderState -> IO Ntn
 argBase st = do
   m <- openingPos st
   cur st >>= \case
@@ -247,7 +247,7 @@ argBase st = do
       advanceClose st m Error
 
 -- `.x.y.z -> [x, y, z]`
-argProjs :: ParseState -> IO [Ntn]
+argProjs :: ReaderState -> IO [Ntn]
 argProjs st =
   cur st >>= \case
     T.FieldImmediate -> do
@@ -256,20 +256,20 @@ argProjs st =
       return (field : rest)
     _ -> pure []
 
-arg :: ParseState -> IO Ntn
+arg :: ReaderState -> IO Ntn
 arg st = do
   head <- argBase st
   spine <- argProjs st
   pure $ foldr (flip Juxt) head (reverse spine)
 
-args :: ParseState -> IO [Ntn]
+args :: ReaderState -> IO [Ntn]
 args st = do
   k <- cur st
   if argStart k
     then (:) <$> arg st <*> args st
     else pure []
 
-expr :: ParseState -> IO Ntn
+expr :: ReaderState -> IO Ntn
 expr st = arg st >>= go (Prec 0 AssocNon)
  where
   go p lhs = do
@@ -300,7 +300,7 @@ expr st = arg st >>= go (Prec 0 AssocNon)
         go p (Juxt lhs rhs)
       _ -> pure lhs
 
-decl :: ParseState -> IO Ntn
+decl :: ReaderState -> IO Ntn
 decl st = do
   p <- openingPos st
   go p []
@@ -321,13 +321,13 @@ decl st = do
         report st s ModifierWithoutModifyee "expected a declaration after a declaration modifier"
         advanceClose st p Error
 
-stmt :: ParseState -> IO Ntn
+stmt :: ReaderState -> IO Ntn
 stmt st =
   cur st >>= \case
     T.Modifier; T.Decl -> decl st
     _ -> expr st
 
-stmts :: ParseState -> IO [Ntn]
+stmts :: ReaderState -> IO [Ntn]
 stmts st = go True []
  where
   -- following = we have seen at least one newline
@@ -346,7 +346,7 @@ stmts st = go True []
           n <- stmt st
           go False $ n : ns
 
-block :: ParseState -> IO Ntn
+block :: ReaderState -> IO Ntn
 block st =
   cur st >>= \case
     T.Block -> do
@@ -364,10 +364,10 @@ block st =
 -- Toplevel parsing interface
 --------------------------------------------------------------------------------
 
-parse :: ConfTable Prec -> Reporter ParserCode -> File -> V.Vector T.Token -> IO [Ntn]
-parse config reporter file tokens = do
+read :: ConfTable Prec -> Reporter ReaderCode -> File -> V.Vector T.Token -> IO [Ntn]
+read config reporter file tokens = do
   pos <- newIORef 0
   gas <- newIORef 256
   skipNewlines <- newIORef False
-  let st = ParseState pos gas skipNewlines tokens file reporter config
+  let st = ReaderState pos gas skipNewlines tokens file reporter config
   stmts st

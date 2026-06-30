@@ -34,7 +34,7 @@ import Prettyprinter
 import Prettyprinter.Render.Text
 import System.Console.Repline
 import System.IO
-import Prelude hiding (lex, lookup)
+import Prelude hiding (lex, lookup, read)
 
 type Repl = HaskelineT (StateT Globals IO)
 
@@ -74,7 +74,7 @@ runRepl =
 
 eval :: File -> Repl ()
 eval file = do
-  ntns <- liftIO $ parse parseConfig (reporter ParserCode) file =<< lex lexConfig (reporter LexerCode) file
+  ntns <- liftIO $ read readConfig (reporter ReaderCode) file =<< lex lexConfig (reporter LexerCode) file
   ((), newDeclNames) <- runWriterT $ for_ ntns \ntn -> do
     ge <- get
     let
