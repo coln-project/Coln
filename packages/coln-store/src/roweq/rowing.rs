@@ -25,11 +25,14 @@ struct RowKey {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum RowingError {
-    #[error("Missing child {rid}")]
+pub enum RowingError {
+    #[error("Child row missing {rid}")]
     MissingChild { rid: RowId },
+    #[error("duplicate rowid {rid} with different row values")]
+    InconsistentRow { rid: RowId },
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct Index {
     row_to_node: HashMap<RowId, u32>,
     uf: UnionFind<u32>,
@@ -38,6 +41,7 @@ pub(crate) struct Index {
 
     // check whether a structurally identical row exists
     // return value not necessary canonical
+    // this is the place hashcons is happening
     by_key: HashMap<RowKey, RowId>,
 
     by_row: HashMap<RowId, RowKey>,
@@ -69,23 +73,26 @@ impl Index {
         rid: &RowId,
         values: &[CellValue],
     ) -> Result<RowKey, RowingError> {
-        // Rows must be observed in dependency order: every referenced child row
-        // has already been observed, and its canonical id is settled before it
-        // is embedded in a parent key. This keeps parent row keys stable without
-        // a reverse-dependency re-keying pass.
-        let cells = values
-            .iter()
-            .map(|cell| match cell {
-                CellValue::Id(child) => {
-                    if !self.by_row.contains_key(child) {
-                        return Err(RowingError::MissingChild { rid: *child });
+        let cells = if table.hashcons() {
+            // Hashcons rows must be observed in dependency order: every
+            // referenced child row has already been observed, and its canonical
+            // id is settled before it is embedded in a parent key.
+            values
+                .iter()
+                .map(|cell| match cell {
+                    CellValue::Id(child) => {
+                        if !self.by_row.contains_key(child) {
+                            return Err(RowingError::MissingChild { rid: *child });
+                        }
+                        Ok(CellValue::Id(self.canonical(child)))
                     }
-                    Ok(CellValue::Id(self.canonical(child)))
-                }
-                CellValue::Int(i) => Ok(CellValue::Int(*i)),
-                CellValue::Str(s) => Ok(CellValue::Str(s.to_owned())),
-            })
-            .collect::<Result<Vec<_>, RowingError>>()?;
+                    CellValue::Int(i) => Ok(CellValue::Int(*i)),
+                    CellValue::Str(s) => Ok(CellValue::Str(s.to_owned())),
+                })
+                .collect::<Result<Vec<_>, RowingError>>()?
+        } else {
+            values.to_vec()
+        };
         Ok(RowKey {
             table: table.path().clone(),
             row_id: if table.hashcons() { None } else { Some(*rid) },
@@ -107,21 +114,21 @@ impl Index {
         &mut self,
         table: &Table,
         rid: RowId,
-        values: Vec<CellValue>,
+        values: &[CellValue],
     ) -> Result<ObservedOutcome, RowingError> {
+        let row_key = self.row_key(table, &rid, values)?;
         let node = self.node_for(&rid);
 
-        let row_key = self.row_key(table, &rid, &values)?;
-
-        // If we already saw this exact row id, it should have the same key.
         if let Some(old_key) = self.by_row.get(&rid) {
-            assert_eq!(old_key, &row_key);
+            // If we already saw this exact row id, it should have the same key.
+            if old_key != &row_key {
+                return Err(RowingError::InconsistentRow { rid });
+            }
         } else {
             self.by_row.insert(rid, row_key.clone());
         }
 
         if !table.hashcons() {
-            self.by_key.insert(row_key, rid);
             return Ok(ObservedOutcome::Inserted(rid));
         }
 
@@ -135,10 +142,23 @@ impl Index {
                 let new_canonical = std::cmp::min(old_canonical, self.canonical(&rid));
 
                 let existing_node = self.node_for(&existing_rid);
+
+                // Roots before the union; the survivor is one of these two, so
+                // the loser becomes a stale key in `canonical_row`.
+                let root_a = self.uf.find(node);
+                let root_b = self.uf.find(existing_node);
                 self.uf.union(node, existing_node);
 
                 let root = self.uf.find(node);
-                self.canonical_row.entry(root).insert_entry(new_canonical);
+                if root_a != root {
+                    self.canonical_row.remove(&root_a);
+                }
+                if root_b != root {
+                    self.canonical_row.remove(&root_b);
+                }
+                self.canonical_row.insert(root, new_canonical);
+
+                self.by_key.insert(row_key, new_canonical);
 
                 if new_canonical == old_canonical {
                     Ok(KeptOld(old_canonical))
@@ -209,10 +229,10 @@ mod tests {
         let second = row_id(2, 0);
 
         let first_outcome = index
-            .observe(&table, first, vec![CellValue::Int(7)])
+            .observe(&table, first, &[CellValue::Int(7)])
             .expect("first row should observe");
         let second_outcome = index
-            .observe(&table, second, vec![CellValue::Int(7)])
+            .observe(&table, second, &[CellValue::Int(7)])
             .expect("second row should observe");
 
         assert!(matches!(first_outcome, Inserted(row) if row == first));
@@ -229,10 +249,10 @@ mod tests {
         let second = row_id(2, 0);
 
         let first_outcome = index
-            .observe(&table, first, vec![CellValue::Int(7)])
+            .observe(&table, first, &[CellValue::Int(7)])
             .expect("first row should observe");
         let second_outcome = index
-            .observe(&table, second, vec![CellValue::Int(7)])
+            .observe(&table, second, &[CellValue::Int(7)])
             .expect("second row should observe");
 
         assert!(matches!(first_outcome, Inserted(row) if row == first));
@@ -251,13 +271,13 @@ mod tests {
         let b = row_id(1, 1);
         let c = row_id(1, 2);
         index
-            .observe(&leaf_table, a, vec![CellValue::Int(1)])
+            .observe(&leaf_table, a, &[CellValue::Int(1)])
             .expect("observe a");
         index
-            .observe(&leaf_table, b, vec![CellValue::Int(2)])
+            .observe(&leaf_table, b, &[CellValue::Int(2)])
             .expect("observe b");
         index
-            .observe(&leaf_table, c, vec![CellValue::Int(3)])
+            .observe(&leaf_table, c, &[CellValue::Int(3)])
             .expect("observe c");
 
         let first_child = row_id(2, 0);
@@ -266,14 +286,14 @@ mod tests {
             .observe(
                 &plus_table,
                 first_child,
-                vec![CellValue::Id(a), CellValue::Id(b)],
+                &[CellValue::Id(a), CellValue::Id(b)],
             )
             .expect("observe first child");
         index
             .observe(
                 &plus_table,
                 second_child,
-                vec![CellValue::Id(a), CellValue::Id(b)],
+                &[CellValue::Id(a), CellValue::Id(b)],
             )
             .expect("observe equivalent child");
 
@@ -283,14 +303,14 @@ mod tests {
             .observe(
                 &plus_table,
                 first_parent,
-                vec![CellValue::Id(first_child), CellValue::Id(c)],
+                &[CellValue::Id(first_child), CellValue::Id(c)],
             )
             .expect("observe first parent");
         let second_outcome = index
             .observe(
                 &plus_table,
                 second_parent,
-                vec![CellValue::Id(second_child), CellValue::Id(c)],
+                &[CellValue::Id(second_child), CellValue::Id(c)],
             )
             .expect("observe equivalent parent");
 
@@ -308,7 +328,7 @@ mod tests {
         let missing = row_id(2, 0);
 
         let err = index
-            .observe(&table, row, vec![CellValue::Id(missing), CellValue::Int(1)])
+            .observe(&table, row, &[CellValue::Id(missing), CellValue::Int(1)])
             .expect_err("missing child should be rejected");
 
         assert!(matches!(err, RowingError::MissingChild { rid } if rid == missing));
@@ -322,14 +342,56 @@ mod tests {
         let smaller = row_id(1, 0);
 
         index
-            .observe(&table, larger, vec![CellValue::Int(7)])
+            .observe(&table, larger, &[CellValue::Int(7)])
             .expect("larger row should observe");
         let outcome = index
-            .observe(&table, smaller, vec![CellValue::Int(7)])
+            .observe(&table, smaller, &[CellValue::Int(7)])
             .expect("smaller row should observe");
 
         assert!(matches!(outcome, Swap { old, new } if old == larger && new == smaller));
         assert_eq!(index.canonical(&larger), smaller);
         assert_eq!(index.canonical(&smaller), smaller);
+    }
+
+    #[test]
+    fn reobserving_row_with_different_values_errors() {
+        let table = int_table("Term", true);
+        let mut index = Index::new();
+        let rid = row_id(1, 0);
+
+        index
+            .observe(&table, rid, &[CellValue::Int(7)])
+            .expect("first observation should succeed");
+        let err = index
+            .observe(&table, rid, &[CellValue::Int(8)])
+            .expect_err("same row id with different values should be rejected");
+
+        assert!(matches!(err, RowingError::InconsistentRow { rid: got } if got == rid));
+    }
+
+    #[test]
+    fn three_equal_rows_merge_to_smallest() {
+        let table = int_table("Term", true);
+        let mut index = Index::new();
+        let high = row_id(3, 0);
+        let mid = row_id(2, 0);
+        let low = row_id(1, 0);
+
+        let high_outcome = index
+            .observe(&table, high, &[CellValue::Int(7)])
+            .expect("observe high");
+        let mid_outcome = index
+            .observe(&table, mid, &[CellValue::Int(7)])
+            .expect("observe mid");
+        let low_outcome = index
+            .observe(&table, low, &[CellValue::Int(7)])
+            .expect("observe low");
+
+        assert!(matches!(high_outcome, Inserted(row) if row == high));
+        assert!(matches!(mid_outcome, Swap { old, new } if old == high && new == mid));
+        assert!(matches!(low_outcome, Swap { old, new } if old == mid && new == low));
+        assert_eq!(index.canonical(&high), low);
+        assert_eq!(index.canonical(&mid), low);
+        assert_eq!(index.canonical(&low), low);
     }
 }

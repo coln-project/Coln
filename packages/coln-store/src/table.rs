@@ -150,6 +150,7 @@ pub struct Table {
     path: ir::Path,
     schema: Schema,
     col_index: HashMap<ColName, usize>,
+    row_index: HashMap<RowId, usize>,
     hashcons: bool,
     pub(crate) row_ids: Vec<RowId>,
     pub(crate) cols: Vec<Vec<CellValue>>,
@@ -167,6 +168,7 @@ impl Table {
         Self {
             path,
             col_index,
+            row_index: HashMap::new(),
             schema,
             hashcons: false,
             row_ids: vec![],
@@ -319,10 +321,28 @@ impl Table {
     pub(crate) fn append_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
+        self.row_index.insert(row_id, self.row_ids.len());
         self.row_ids.push(row_id);
         for (i, v) in values.into_iter().enumerate() {
             self.cols[i].push(v);
         }
+    }
+
+    /// Used for canonicalising row_ids
+    pub(crate) fn replace_row_id(
+        &mut self,
+        old: &RowId,
+        new: RowId,
+    ) -> Result<(), ValidationError> {
+        let i = self
+            .row_index
+            .remove(old)
+            .ok_or(ValidationError::InvalidRowHandle {
+                reason: format!("attempting to replace non-existing row_id {old}"),
+            })?;
+        self.row_ids[i] = new;
+        self.row_index.insert(new, i);
+        Ok(())
     }
 }
 

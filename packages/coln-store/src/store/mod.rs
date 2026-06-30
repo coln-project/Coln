@@ -13,6 +13,7 @@ use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatRealm, RuleEntry};
+use crate::roweq::{self, rowing};
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
@@ -35,7 +36,7 @@ pub struct Store {
     /// Compiled rule for this instance; table schemas live only on each [`Table`].
     rules: Vec<CompRule>,
     commits: CommitGraph,
-    
+    rowing: rowing::Index,
 }
 
 impl Store {
@@ -50,6 +51,7 @@ impl Store {
             rule_entries: vec![],
             rules: vec![],
             commits,
+            rowing: rowing::Index::new(),
         }
     }
 
@@ -150,6 +152,7 @@ impl Store {
             rule_entries: root.laws,
             rules,
             commits: CommitGraph::new(),
+            rowing: rowing::Index::new(),
         })
     }
 
@@ -202,9 +205,22 @@ impl Store {
                 row_id,
             } = op;
             let oid = self.resolve_table(table).expect("validated batch");
-            let t = self.table_mut(oid).expect("validated batch");
 
-            t.append_row(values.clone(), *row_id);
+            // use self.tables to make the borrow checker happy we are accessing separate fields
+            let t = self.tables.get_mut(&oid).expect("validated batch");
+            let observed = self.rowing.observe(t, *row_id, values)?;
+
+            // TODO We are invoking rowing even if tables might not be in hashcons mode
+            match observed {
+                roweq::ObservedOutcome::Inserted(rid) => t.append_row(values.clone(), rid),
+                roweq::ObservedOutcome::KeptOld(_row_id) => {
+                    // equivalent row exists, do nothing
+                }
+
+                roweq::ObservedOutcome::Swap { old, new } => {
+                    t.replace_row_id(&old, new)?;
+                }
+            }
         }
 
         self.check_rules()?;
@@ -285,6 +301,7 @@ impl Store {
             rule_entries: rules,
             rules: comp_rules,
             commits,
+            rowing: rowing::Index::new(),
         })
     }
 }

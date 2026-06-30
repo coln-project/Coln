@@ -1,7 +1,7 @@
 use crate::table::RowId;
 
 mod hashdag;
-mod rowing;
+pub(crate) mod rowing;
 
 #[derive(Debug)]
 pub(crate) enum ObservedOutcome {
@@ -9,4 +9,3 @@ pub(crate) enum ObservedOutcome {
     KeptOld(RowId),
     Swap { old: RowId, new: RowId },
 }
-
