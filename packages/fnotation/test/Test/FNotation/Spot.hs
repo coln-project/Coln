@@ -12,15 +12,15 @@ import FNotation
 import Test.FNotation.Common
 import Test.Tasty
 import Test.Tasty.HUnit
-import Prelude hiding (lex)
+import Prelude hiding (lex, read)
 
-parseErrorFree :: Text -> IO Bool
-parseErrorFree src = do
+readErrorFree :: Text -> IO Bool
+readErrorFree src = do
   ref <- newIORef ([] :: [Diagnostic TestCode])
   let r = pureReporter ref
   let f = newFile "<input>" src
   tokens <- lex lexConfig (contramap LexerCode r) f
-  _ <- parse parseConfig (contramap ParserCode r) f tokens
+  _ <- read readConfig (contramap ReaderCode r) f tokens
   errs <- readIORef ref
   pure $ null errs
 
@@ -29,5 +29,5 @@ spotTests =
   testGroup
     "Spot checks"
     [ testCase "Statement without newline" $ do
-        parseErrorFree "def x := 2" @? "failed to parse statement without newline"
+        readErrorFree "def x := 2" @? "failed to read statement without newline"
     ]

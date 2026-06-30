@@ -23,13 +23,13 @@ import System.IO.Temp (withSystemTempFile)
 import Test.FNotation.Common
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.Golden (findByExtension, goldenVsString)
-import Prelude hiding (lex)
+import Prelude hiding (lex, read)
 
 render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
-parseToPretty :: FilePath -> IO LBS.ByteString
-parseToPretty fp = do
+readToPretty :: FilePath -> IO LBS.ByteString
+readToPretty fp = do
   src <- T.readFile fp
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
@@ -37,8 +37,8 @@ parseToPretty fp = do
     try @SomeException (lex lexConfig (contramap LexerCode r) f) >>= \case
       Left err -> pure $ TLE.encodeUtf8 $ "lex error:\n" <> TL.show err
       Right tokens -> do
-        try @SomeException (parse parseConfig (contramap ParserCode r) f tokens) >>= \case
-          Left err -> pure $ TLE.encodeUtf8 $ "parse error:\n" <> TL.show err
+        try @SomeException (read readConfig (contramap ReaderCode r) f tokens) >>= \case
+          Left err -> pure $ TLE.encodeUtf8 $ "read error:\n" <> TL.show err
           Right ns -> do
             hFlush h
             hClose h
@@ -53,7 +53,7 @@ parseToPretty fp = do
                   , vsep $ dpretty <$> ns
                   , ""
                   , "-- pretty"
-                  , vsep $ dprettyWithConfigs parseConfig lexConfig <$> ns
+                  , vsep $ dprettyWithConfigs readConfig lexConfig <$> ns
                   , ""
                   , "-- messages"
                   , pretty $ msgs
@@ -65,7 +65,7 @@ goldenTests = do
   return $
     testGroup
       "Golden tests"
-      [ goldenVsString (takeBaseName ntnFile) outputFile (parseToPretty ntnFile)
+      [ goldenVsString (takeBaseName ntnFile) outputFile (readToPretty ntnFile)
       | ntnFile <- ntnFiles
       , let outputFile = replaceExtension ntnFile ".output"
       ]

@@ -27,7 +27,7 @@ import System.IO
 import System.IO.Temp (withSystemTempFile)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Golden (findByExtension, goldenVsString)
-import Prelude hiding (lex)
+import Prelude hiding (lex, read)
 
 main :: IO ()
 main = defaultMain =<< goldenTests
@@ -63,7 +63,7 @@ elaborate fp = do
   withSystemTempFile "reporter-output" $ \path h -> do
     let r = fileReporter h
     ts <- lex lexConfig (contramap LexerCode r) f
-    ns <- parse parseConfig (contramap ParserCode r) f ts
+    ns <- read readConfig (contramap ReaderCode r) f ts
     ge <- top (DiagnosticEnv r f) ns
     hFlush h
     hClose h

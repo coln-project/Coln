@@ -9,7 +9,7 @@ import Coln.Common
 import Data.Map qualified as Map
 import Diagnostician
 
-data FrontendCode
+data ParserCode
   = UnexpectedNotation
   | UnexpectedTuple
   | UnexpectedLambda
@@ -18,8 +18,8 @@ data FrontendCode
   | UnknownCommand
   deriving (Eq, Ord)
 
-frontendCodeTable :: Map FrontendCode CodeMeta
-frontendCodeTable =
+parserCodeTable :: Map ParserCode CodeMeta
+parserCodeTable =
   Map.fromList
     [ (UnexpectedNotation, CodeMeta 0 SError Nothing)
     , (UnexpectedTuple, CodeMeta 1 SError Nothing)

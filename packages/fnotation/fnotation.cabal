@@ -1,6 +1,6 @@
 cabal-version: 3.4
 name: fnotation
-version: 0.1.1.0
+version: 0.2.0.0
 license: (Apache-2.0 OR MIT)
 maintainer: root@owenlynch.org
 author: Coln contributors
@@ -17,8 +17,8 @@ library
     FNotation.Kinds
     FNotation.Lexer
     FNotation.Names
-    FNotation.Parser
     FNotation.Pretty
+    FNotation.Reader
     FNotation.Tokens
     FNotation.Trees
 

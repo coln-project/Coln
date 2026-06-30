@@ -10,19 +10,20 @@ import Test.FNotation.Common
 import Test.FNotation.Property.Gen.Token
 import Test.Tasty
 import Test.Tasty.QuickCheck
+import Prelude hiding (read)
 
 -- | A reporter that silently discards all diagnostics.
-nullReporter :: Reporter ParserCode
+nullReporter :: Reporter ReaderCode
 nullReporter = Reporter{reportIO = \_ -> pure ()}
 
--- | Property: the parser should not crash on any generated token stream.
-parserProperties :: TestTree
-parserProperties =
+-- | Property: the reader should not crash on any generated token stream.
+readerProperties :: TestTree
+readerProperties =
   testGroup
-    "Parser properties"
-    [ testProperty "parser does not crash on arbitrary tokens" \(FNTokens tokens) ->
+    "Reader properties"
+    [ testProperty "reader does not crash on arbitrary tokens" \(FNTokens tokens) ->
         ioProperty do
           let f = newFile "<quickcheck>" ""
-          ns <- parse parseConfig nullReporter f tokens
+          ns <- read readConfig nullReporter f tokens
           length ns `seq` pure True
     ]

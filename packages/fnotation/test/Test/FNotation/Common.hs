@@ -37,8 +37,8 @@ lexConfig =
     , ("=>", K.SKeyword)
     ]
 
-parseConfig :: ConfTable Prec
-parseConfig =
+readConfig :: ConfTable Prec
+readConfig =
   confTableFromList
     [ (":=", Prec 10 AssocNon)
     , (":", Prec 20 AssocNon)
@@ -51,14 +51,14 @@ parseConfig =
     , ("/", Prec 60 AssocL)
     ]
 
-data TestCode = LexerCode LexerCode | ParserCode ParserCode
+data TestCode = LexerCode LexerCode | ReaderCode ReaderCode
   deriving (Eq, Ord)
 
 codeTable :: Map TestCode CodeMeta
 codeTable =
   mconcat
     [ promoteCodeTable lexerCodeTable LexerCode 0
-    , promoteCodeTable parserCodeTable ParserCode 100
+    , promoteCodeTable readerCodeTable ReaderCode 100
     ]
 
 instance Code TestCode where

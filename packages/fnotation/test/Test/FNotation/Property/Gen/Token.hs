@@ -5,7 +5,7 @@
 {- | QuickCheck generators for FNotation token streams.
 
 These generators produce 'V.Vector Token' values that satisfy the invariants
-expected by the parser ('FNotation.Parser.parse'):
+expected by the reader ('FNotation.Reader.read'):
 
  1. Every token has the correct 'Kind'/'TokenValue' pairing:
 
@@ -17,7 +17,7 @@ expected by the parser ('FNotation.Parser.parse'):
         'RBrack', 'LCurly', 'RCurly', 'Comma', 'Semicolon', 'Nl', 'Eof',
         'Error') carry 'VEmpty'.
 
- 2. The stream is non-empty and always ends with an 'Eof' token (the parser's
+ 2. The stream is non-empty and always ends with an 'Eof' token (the reader's
     @stmts@ loop terminates only on 'End' or 'Eof').
 
  3. Spans are synthetic but well-formed (non-negative, start <= end), assigned
@@ -50,7 +50,7 @@ import Test.QuickCheck
 
 {- | A newtype wrapper around a non-empty 'V.Vector' of 'Token's that is
 always terminated by 'Eof'. Suitable for feeding directly to
-'FNotation.Parser.parse'.
+'FNotation.Reader.read'.
 -}
 newtype FNTokens = FNTokens {getTokens :: V.Vector Token}
 
@@ -105,13 +105,13 @@ dummySpan = Span 0 0
 {- | Generate a single token with a well-formed kind/value pairing.
 
 The frequency distribution covers every 'Kind' constructor. Kinds that the
-parser actively dispatches on ('AIdent', 'SIdent', 'LParen', 'LBrack', 'Nl',
-etc.) are weighted more heavily to produce interesting parse trees.
+reader actively dispatches on ('AIdent', 'SIdent', 'LParen', 'LBrack', 'Nl',
+etc.) are weighted more heavily to produce interesting read trees.
 -}
 genToken :: Gen Token
 genToken =
   frequency
-    [ -- Name-bearing tokens (parser dispatches on these in arg/expr/stmt)
+    [ -- Name-bearing tokens (reader dispatches on these in arg/expr/stmt)
       (10, genNameToken AIdent)
     , (3, genNameToken AKeyword)
     , (6, genNameToken SIdent)
@@ -135,7 +135,7 @@ genToken =
     , (3, genPunctToken Comma)
     , (2, genPunctToken Semicolon)
     , (6, genPunctToken Nl)
-    , -- Error token (parser may encounter these from lexer errors)
+    , -- Error token (reader may encounter these from lexer errors)
       (1, genPunctToken Error)
     ]
 
