@@ -353,3 +353,6 @@ manual/forester
 
 ## Node package manager caches
 /.pnpm-store/
+
+## MacOS
+.DS_Store

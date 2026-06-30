@@ -1,0 +1,123 @@
+//============================================================================
+// A miniature points-to + call-graph analysis for an OO language, written to
+// show mutual recursion in Datalog:
+//
+//     VarPointsTo  depends on  CallGraph   (args flow into callee parameters)
+//     CallGraph    depends on  VarPointsTo (virtual dispatch needs receiver type)
+//
+// Neither can be computed first; Souffle solves them together to a fixpoint.
+// This is "on-the-fly call graph construction".
+//
+// Run: souffle points_to_step_2.dl
+//============================================================================
+
+//--------------------------- Input relations (EDB) --------------------------
+.decl Alloc(var:symbol, obj:symbol)                         // var = new ...   (obj = alloc site)
+.decl Assign(dst:symbol, src:symbol)                        // dst = src
+.decl VirtualCall(site:symbol, recv:symbol, sig:symbol)     // recv.sig(...) at `site`
+.decl HeapType(obj:symbol, ty:symbol)                       // runtime type of an allocated object
+.decl Dispatch(ty:symbol, sig:symbol, meth:symbol)          // type + signature -> method
+.decl ActualArg(site:symbol, arg:symbol)                    // argument variable passed at a call
+.decl FormalParam(meth:symbol, param:symbol)                // a method's parameter variable
+
+//------------------------- Derived relations (IDB) --------------------------
+.decl VarPointsTo(var:symbol, obj:symbol)
+.decl CallGraph(site:symbol, meth:symbol)
+.output VarPointsTo(IO=stdout)
+.output CallGraph(IO=stdout)
+
+//--------------------------------- Rules ------------------------------------
+
+// A variable points to whatever it was directly allocated.
+VarPointsTo(V, Obj) :- Alloc(V, Obj).
+
+// Copies propagate points-to facts (transitively).
+VarPointsTo(Dst, Obj) :-
+    Assign(Dst, Src),
+    VarPointsTo(Src, Obj).
+
+// Resolve a virtual call: look at what the receiver points to, take that
+// object's type, and dispatch the signature on that type.
+//   --> this rule READS VarPointsTo.
+CallGraph(Site, Meth) :-
+    VirtualCall(Site, Recv, Sig),
+    VarPointsTo(Recv, Obj),
+    HeapType(Obj, Ty),
+    Dispatch(Ty, Sig, Meth).
+
+// Once a call edge exists, the actual arguments flow into the callee's
+// formal parameters.
+//   --> this rule READS CallGraph and WRITES VarPointsTo, closing the loop.
+VarPointsTo(Param, Obj) :-
+    CallGraph(Site, Meth),
+    ActualArg(Site, Arg),
+    FormalParam(Meth, Param),
+    VarPointsTo(Arg, Obj).
+
+//================================ Program ===================================
+// The "source program" being analysed, encoded as facts:
+//
+//   class Greeter { void greet(Animal x) { x.speak(); } }   // s3
+//   class Dog  extends Animal { void speak() {...} }
+//   class Cat  extends Animal { void speak() {...} }
+//   class Mouse extends Animal { void speak() {...} }
+//
+//   void main() {
+//     Greeter g = new Greeter();   // oG
+//     Dog     d = new Dog();       // oDog
+//     g.greet(d);                  // s1
+//     Cat     c = new Cat();       // oCat
+//     Animal ac = c;               // alias (exercises the Assign rule)
+//     g.greet(ac);                 // s2
+//     Mouse   m = new Mouse()      // oMouse
+//     g.greet(m);                  // s4
+//   }
+//============================================================================
+
+Alloc("g", "oG").
+Alloc("d", "oDog").
+Alloc("c", "oCat").
+Alloc("m", "oMouse").
+
+Assign("ac", "c").
+
+VirtualCall("s1", "g", "greet").
+VirtualCall("s2", "g", "greet").
+VirtualCall("s3", "x", "speak").
+VirtualCall("s4", "g", "greet").
+
+HeapType("oG",   "Greeter").
+HeapType("oDog", "Dog").
+HeapType("oCat", "Cat").
+HeapType("oMouse", "Mouse").
+
+Dispatch("Greeter", "greet", "Greeter.greet").
+Dispatch("Dog",     "speak", "Dog.speak").
+Dispatch("Cat",     "speak", "Cat.speak").
+Dispatch("Mouse",   "speak", "Mouse.speak").
+
+ActualArg("s1", "d").
+ActualArg("s2", "ac").
+ActualArg("s4", "m").
+
+FormalParam("Greeter.greet", "x").
+
+//============================ Expected output ===============================
+// VarPointsTo
+//   g     oG
+//   d     oDog
+//   c     oCat
+//   ac    oCat
+//   x     oDog
+//   x     oCat
+//   m     oMouse
+//   x     oMouse
+//
+// CallGraph
+//   s1   Greeter.greet
+//   s2   Greeter.greet
+//   s3   Dog.speak
+//   s3   Cat.speak
+//   s3   Mouse.speak
+//   s4   Greeter.greet
+//============================================================================
