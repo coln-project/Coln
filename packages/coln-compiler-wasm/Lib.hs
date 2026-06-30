@@ -20,6 +20,7 @@ import Data.Text.Lazy qualified as TL
 import Diagnostician
 import Diagnostician.HTML (diagnosticToHtml)
 import Foreign.StablePtr
+import GHC.Wasm.JS.String qualified as JSString
 import GHC.Wasm.Prim
 import Lucid qualified
 import Prettyprinter
@@ -34,14 +35,14 @@ foreign export javascript "freeCompileResult" freeStablePtr :: StablePtr Compile
 compile :: JSString -> IO (StablePtr CompileResult)
 compile src = do
   ref <- newIORef []
-  globals <- topFromText (pureReporter ref) (newFile "<wasm>" $ textFromJSString src)
+  globals <- topFromText (pureReporter ref) (newFile "<wasm>" $ JSString.toStrictText src)
   let ir = map (uncurry lowerRealm) $ OMap.assocs globals.realms
   diagnostics <- reverse <$> readIORef ref
   newStablePtr CompileResult{ir, diagnostics}
 foreign export javascript "compile" compile :: JSString -> IO (StablePtr CompileResult)
 
 getDiagnostics :: Bool -> StablePtr CompileResult -> IO JSVal
-getDiagnostics asHtml = jsStringArray . map (textToJSString . TL.toStrict . render) . (.diagnostics) <=< deRefStablePtr
+getDiagnostics asHtml = jsStringArray . map (JSString.fromStrictText . TL.toStrict . render) . (.diagnostics) <=< deRefStablePtr
  where
   render =
     if asHtml
@@ -50,17 +51,12 @@ getDiagnostics asHtml = jsStringArray . map (textToJSString . TL.toStrict . rend
 foreign export javascript "getDiagnostics" getDiagnostics :: Bool -> StablePtr CompileResult -> IO JSVal
 
 prettyIr :: StablePtr CompileResult -> IO JSVal
-prettyIr = jsStringArray . map (textToJSString . T.show) . (.ir) <=< deRefStablePtr
+prettyIr = jsStringArray . map (JSString.fromStrictText . T.show) . (.ir) <=< deRefStablePtr
 foreign export javascript "prettyIr" prettyIr :: StablePtr CompileResult -> IO JSVal
 
 irToJson :: StablePtr CompileResult -> IO JSString
-irToJson = fmap (textToJSString . TL.toStrict . Aeson.encodeToLazyText . (.ir)) . deRefStablePtr
+irToJson = fmap (JSString.fromStrictText . TL.toStrict . Aeson.encodeToLazyText . (.ir)) . deRefStablePtr
 foreign export javascript "irToJson" irToJson :: StablePtr CompileResult -> IO JSString
-
-textToJSString :: Text -> JSString
-textToJSString = toJSString . T.unpack
-textFromJSString :: JSString -> Text
-textFromJSString = T.pack . fromJSString
 
 foreign import javascript unsafe "[]" js_new_array :: IO JSVal
 foreign import javascript unsafe "$1.push($2)" js_push_string :: JSVal -> JSString -> IO ()

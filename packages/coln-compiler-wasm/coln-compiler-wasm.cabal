@@ -5,6 +5,8 @@ version: 0.1
 executable coln-compiler-wasm
   main-is: Lib.hs
   hs-source-dirs: .
+  other-modules:
+    GHC.Wasm.JS.String
   default-language: GHC2024
   default-extensions:
     NoFieldSelectors
@@ -14,6 +16,7 @@ executable coln-compiler-wasm
   build-depends:
     aeson,
     base,
+    bytestring,
     coln-compiler,
     containers,
     diagnostician,
@@ -23,6 +26,7 @@ executable coln-compiler-wasm
     lucid,
     ordered-containers,
     prettyprinter,
+    primitive,
     text,
 
   ghc-options:
