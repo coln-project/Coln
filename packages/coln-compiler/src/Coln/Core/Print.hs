@@ -143,19 +143,19 @@ class DPrettyWithNames a where
   dprettyWithNames :: Names -> a -> DDoc
 
 instance DPrettyWithNames BId where
-  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
+  dprettyWithNames xs t = N.dprettyWithConfigs readConfig lexConfig $ toNotation xs t
 
 instance DPrettyWithNames (El e) where
-  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
+  dprettyWithNames xs t = N.dprettyWithConfigs readConfig lexConfig $ toNotation xs t
 
 instance DPrettyWithNames (Ty e) where
-  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
+  dprettyWithNames xs t = N.dprettyWithConfigs readConfig lexConfig $ toNotation xs t
 
 instance DPrettyWithNames TypeBehavior where
-  dprettyWithNames xs t = N.dprettyWithConfigs parseConfig lexConfig $ toNotation xs t
+  dprettyWithNames xs t = N.dprettyWithConfigs readConfig lexConfig $ toNotation xs t
 
 instance DPretty Realm where
-  dpretty r = N.dprettyWithConfigs parseConfig lexConfig $ toNotationTop r
+  dpretty r = N.dprettyWithConfigs readConfig lexConfig $ toNotationTop r
 
 class HasShape a where
   shape :: a -> CtxShape

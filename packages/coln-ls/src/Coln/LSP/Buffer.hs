@@ -6,7 +6,7 @@ module Coln.LSP.Buffer (analyzeBuffer) where
 
 import Coln.Diagnostics (ColnCode (..))
 import Coln.Frontend.Driver (top)
-import Coln.Frontend.Notation (lexConfig, parseConfig)
+import Coln.Frontend.Notation (lexConfig, readConfig)
 import Coln.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
 import Coln.Report (DiagnosticEnv (DiagnosticEnv))
 import Control.Exception (SomeException (..), evaluate)
@@ -55,7 +55,7 @@ analyzeBuffer bufInfo = do
     reportCrash (FNotation.lex lexConfig (contramap LexerCode r) bufInfo.file) "Lexing Error: " >>= \case
       Nothing -> pure $ buf Nothing Nothing Nothing
       Just tokens ->
-        reportCrash (FNotation.parse parseConfig (contramap ParserCode r) bufInfo.file tokens) "Parsing Error: " >>= \case
+        reportCrash (FNotation.read readConfig (contramap ReaderCode r) bufInfo.file tokens) "Parsing Error: " >>= \case
           Nothing -> pure $ buf (Just tokens) Nothing Nothing
           Just notations ->
             reportCrash (top (DiagnosticEnv r bufInfo.file) notations) "Elaboration Error: " >>= \case

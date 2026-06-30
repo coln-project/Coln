@@ -13,8 +13,8 @@ import FNotation
 
 data ColnCode
   = LexerCode LexerCode
+  | ReaderCode ReaderCode
   | ParserCode ParserCode
-  | FrontendCode FrontendCode
   | ElaboratorCode ElaboratorCode
   deriving (Eq, Ord)
 
@@ -22,8 +22,8 @@ colnCodeTable :: Map ColnCode CodeMeta
 colnCodeTable =
   mconcat
     [ promoteCodeTable lexerCodeTable LexerCode 0
-    , promoteCodeTable parserCodeTable ParserCode 100
-    , promoteCodeTable frontendCodeTable FrontendCode 200
+    , promoteCodeTable readerCodeTable ReaderCode 100
+    , promoteCodeTable parserCodeTable ParserCode 200
     , promoteCodeTable elaboratorCodeTable ElaboratorCode 300
     ]
 
