@@ -6,9 +6,10 @@
 // at each value of the row one by one. And it sounds cool.
 // Anyway way it will probably be renamed in the future.
 
+use std::collections::HashMap;
+
 use coln_flir_rs::ir;
 use petgraph::unionfind::UnionFind;
-use std::collections::HashMap;
 
 use crate::{
     roweq::ObservedOutcome::{self, KeptOld},

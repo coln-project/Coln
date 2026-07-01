@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use hexane::v1::{Column, DeltaColumn};
 use std::io::Write;
+
+use hexane::v1::{Column, DeltaColumn};
 
 use crate::commit::author::Author;
 use crate::commit::leb128 as commit_leb128;

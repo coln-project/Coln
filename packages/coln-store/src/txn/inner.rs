@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use coln_flir_rs::ir;
 use tracing::info;
 
 use crate::{

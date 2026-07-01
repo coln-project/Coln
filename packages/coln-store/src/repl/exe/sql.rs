@@ -1,5 +1,6 @@
-use anyhow::Result;
 use std::path::PathBuf;
+
+use anyhow::Result;
 
 use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
 use crate::repl::Session;

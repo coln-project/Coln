@@ -120,6 +120,7 @@ fn execute(session: &mut Session, command: Command) -> Result<Step> {
 mod tests {
     use std::path::PathBuf;
 
+    use super::*;
     use crate::{
         ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant},
         repl::{
@@ -129,8 +130,6 @@ mod tests {
         },
         store::Store,
     };
-
-    use super::*;
 
     fn test_loaded_state() -> LoadedState {
         use crate::ir::{Path as IrPath, Schema};

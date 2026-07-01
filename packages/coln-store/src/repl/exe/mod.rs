@@ -2,12 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use anyhow::{Context, Result, anyhow, bail};
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
+
+use anyhow::{Context, Result, anyhow, bail};
 
 use crate::repl::{
     Session, Step,

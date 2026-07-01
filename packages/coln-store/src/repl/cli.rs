@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn prompt_reflects_mode_and_pending_statement() {
         assert_eq!(prompt(ShellMode::Coln, false), "coln-store> ");
-        assert_eq!(prompt(ShellMode::Sql, false), "coln-sql>");
+        assert_eq!(prompt(ShellMode::Sql, false), "coln-sql> ");
         assert_eq!(prompt(ShellMode::Sql, true), "....> ");
     }
 }

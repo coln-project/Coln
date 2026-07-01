@@ -1,10 +1,10 @@
-use crate::repl::ShellMode;
-
 use anyhow::{Result, bail};
 pub use coln::{BatchAssignment, Command as ColnCommand};
 pub(crate) use coln::{parse_cell_value, parse_cell_value_batch};
 pub(crate) use meta::Command as MetaCommand;
 pub(crate) use sql::{Col as SqlCol, Command as SqlCommand};
+
+use crate::repl::ShellMode;
 
 mod coln;
 mod meta;
