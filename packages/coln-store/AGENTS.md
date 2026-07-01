@@ -95,9 +95,9 @@ Use this sequence for your first change:
 1. Read `src/lib.rs`, and the relevant module files.
 2. Implement the smallest possible code change.
 3. Add or update tests that fail before and pass after.
-4. Run `cargo test --workspace --all-targets`.
-5. Run `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
-6. Run `cargo fmt --all --check`.
+4. Run `cargo test -p coln-store --all-targets`.
+5. Run `cargo clippy -p coln-store --all-targets --all-features -- -D warnings`.
+6. Run `cargo fmt -p coln-store --check`.
 7. Update docs if public API or user-facing behavior changed.
 
 Example scopes that are good first tasks:
@@ -135,9 +135,9 @@ Before coding:
 
 Before submitting:
 
-1. Passing `cargo test --workspace --all-targets`.
-2. Passing `cargo clippy --workspace --all-targets --all-features -- -D warnings`.
-3. Passing `cargo fmt --all --check`.
+1. Passing `cargo test -p coln-store --all-targets`.
+2. Passing `cargo clippy -p coln-store --all-targets --all-features -- -D warnings`.
+3. Passing `cargo fmt -p coln-store --check`.
 4. Tests added or updated where behavior changed.
 5. Docs updated where public behavior changed.
 
@@ -184,6 +184,6 @@ Use this review format:
 Suggested PR checklist:
 
 - [ ] Tests added or updated for behavior changes
-- [ ] `cargo test --workspace --all-targets` passes
-- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` passes
-- [ ] `cargo fmt --all --check` passes
+- [ ] `cargo test -p coln-store --all-targets` passes
+- [ ] `cargo clippy -p coln-store --all-targets --all-features -- -D warnings` passes
+- [ ] `cargo fmt -p coln-store --check` passes
