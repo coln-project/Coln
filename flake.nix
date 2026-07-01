@@ -12,7 +12,7 @@
       rust-overlay,
       ...
     }:
-    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (
+    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (
       system:
       let
         pkgs = import nixpkgs {
@@ -157,7 +157,7 @@
         };
 
         inherit (packages) forester coln-manual-dev;
-        haskell-wasm = inputs.ghc-wasm-meta.packages.${system}.default;
+        haskell-wasm = inputs.ghc-wasm-meta.packages.${system};
       in
       {
         inherit packages;
@@ -175,11 +175,14 @@
           buildInputs = with pkgs; [
             cabal-install
             cabal2nix
+            cargo-llvm-cov
+            clippy
             coln-manual-dev
             forester
             fourmolu
             esbuild
-            haskell-wasm
+            haskell-wasm.wasm32-wasi-ghc-9_14
+            haskell-wasm.wasm32-wasi-cabal-9_14
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
@@ -200,6 +203,11 @@
             zlib
             zlib.dev
           ];
+          shellHook = ''
+            # GCC 15 (nixos-26.05) defaults to -std=gnu23 which removed ATOMIC_VAR_INIT.
+            # This breaks mimalloc-rust-sys, which is a dependency of dbsp.
+            export CFLAGS="''${CFLAGS:+$CFLAGS }-std=gnu17"
+          '';
         };
       });
   nixConfig = {
