@@ -51,8 +51,8 @@ foreign export javascript "getDiagnostics" getDiagnostics :: Bool -> StablePtr C
 
 prettyIr :: StablePtr CompileResult -> IO JSVal
 prettyIr = jsStringArray . map (textToJSString . render . dpretty) . (.ir) <=< deRefStablePtr
-  where
-    render = Text.renderStrict . layoutPretty defaultLayoutOptions
+ where
+  render = Text.renderStrict . layoutPretty defaultLayoutOptions
 foreign export javascript "prettyIr" prettyIr :: StablePtr CompileResult -> IO JSVal
 
 irToJson :: StablePtr CompileResult -> IO JSString
