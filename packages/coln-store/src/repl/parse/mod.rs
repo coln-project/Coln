@@ -1,34 +1,35 @@
 use crate::repl::ShellMode;
 
+use anyhow::{Result, bail};
+pub use coln::{BatchAssignment, Command as ColnCommand};
+pub(crate) use coln::{parse_cell_value, parse_cell_value_batch};
+pub(crate) use meta::Command as MetaCommand;
+pub(crate) use sql::{Col as SqlCol, Command as SqlCommand};
+
 mod coln;
 mod meta;
 mod sql;
 
-pub use coln::{BatchAssignment, Command as ColnCommand};
-pub(crate) use coln::{parse_cell_value, parse_cell_value_batch};
-pub(crate) use meta::Command as MetaCommand;
-pub(crate) use sql::Command as SqlCommand;
-
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Command {
-    ColnCommand(ColnCommand),
-    SqlCommand(SqlCommand),
-    MetaCommand(MetaCommand),
+    Coln(ColnCommand),
+    Sql(SqlCommand),
+    Meta(MetaCommand),
 }
 
-pub(crate) fn parse_command(mode: ShellMode, input: &str) -> Result<Command, String> {
+pub(crate) fn parse_command(mode: ShellMode, input: &str) -> Result<Command> {
     let input = input.trim();
     if input.starts_with('.') {
-        meta::parse_meta_command(input).map(|mc| Command::MetaCommand(mc))
+        meta::parse_meta_command(input).map(Command::Meta)
     } else {
         let Some(input) = input.strip_suffix(';') else {
-            return Err("statements must end with `;`".to_string());
+            bail!("statements must end with `;`");
         };
         let input = input.trim_end();
 
         match mode {
-            ShellMode::Coln => coln::parse_statement(input).map(|cc| Command::ColnCommand(cc)),
-            ShellMode::Sql => sql::parse_sql_statement(input).map(|sc| Command::SqlCommand(sc)),
+            ShellMode::Coln => coln::parse_statement(input).map(Command::Coln),
+            ShellMode::Sql => sql::parse_sql_statement(input).map(Command::Sql),
         }
     }
 }
@@ -42,7 +43,7 @@ mod tests {
     fn parses_help() {
         assert_eq!(
             parse_command(ShellMode::Coln, ".help").unwrap(),
-            Command::MetaCommand(meta::Command::Help)
+            Command::Meta(meta::Command::Help)
         );
     }
 
@@ -50,7 +51,7 @@ mod tests {
     fn parses_load_with_quotes() {
         assert_eq!(
             parse_command(ShellMode::Coln, ".load \"tests/data/paths.json\"").unwrap(),
-            Command::MetaCommand(MetaCommand::Load {
+            Command::Meta(MetaCommand::Load {
                 path: "tests/data/paths.json".to_string()
             })
         );
@@ -60,7 +61,7 @@ mod tests {
     fn parses_add_command() {
         assert_eq!(
             parse_command(ShellMode::Coln, "add T values (7 \"alice\"), (8 \"bob\");").unwrap(),
-            Command::ColnCommand(ColnCommand::Add {
+            Command::Coln(ColnCommand::Add {
                 table: "T".to_string(),
                 rows: vec![
                     vec!["7".to_string(), "alice".to_string()],
@@ -74,7 +75,7 @@ mod tests {
     fn parses_add_command_single_value() {
         assert_eq!(
             parse_command(ShellMode::Coln, "add T values (#11);").unwrap(),
-            Command::ColnCommand(ColnCommand::Add {
+            Command::Coln(ColnCommand::Add {
                 table: "T".to_string(),
                 rows: vec![vec!["#11".to_string()],],
             })
@@ -84,20 +85,20 @@ mod tests {
     #[test]
     fn rejects_unknown_command() {
         let err = parse_command(ShellMode::Coln, "wat;").unwrap_err();
-        assert!(err.contains("unknown statement"));
+        assert!(err.to_string().contains("unknown statement"));
     }
 
     #[test]
     fn rejects_missing_semicolon() {
         let err = parse_command(ShellMode::Coln, "help").unwrap_err();
-        assert_eq!(err, "statements must end with `;`");
+        assert_eq!(err.to_string(), "statements must end with `;`");
     }
 
     #[test]
     fn parses_quit_without_semicolon() {
         assert_eq!(
             parse_command(ShellMode::Coln, ".quit").unwrap(),
-            Command::MetaCommand(MetaCommand::Exit)
+            Command::Meta(MetaCommand::Exit)
         );
     }
 
@@ -105,33 +106,33 @@ mod tests {
     fn parses_meta_commands_without_semicolons() {
         assert_eq!(
             parse_command(ShellMode::Coln, ".open paths.bin").unwrap(),
-            Command::MetaCommand(MetaCommand::Open {
+            Command::Meta(MetaCommand::Open {
                 path: "paths.bin".to_string()
             })
         );
         assert_eq!(
             parse_command(ShellMode::Coln, ".save paths.bin").unwrap(),
-            Command::MetaCommand(MetaCommand::Save {
+            Command::Meta(MetaCommand::Save {
                 path: "paths.bin".to_string()
             })
         );
         assert_eq!(
             parse_command(ShellMode::Coln, ".tables").unwrap(),
-            Command::MetaCommand(MetaCommand::Tables)
+            Command::Meta(MetaCommand::Tables)
         );
         assert_eq!(
             parse_command(ShellMode::Coln, ".rules").unwrap(),
-            Command::MetaCommand(MetaCommand::Rules)
+            Command::Meta(MetaCommand::Rules)
         );
         assert_eq!(
             parse_command(ShellMode::Coln, ".schema Path.G.V").unwrap(),
-            Command::MetaCommand(MetaCommand::Schema {
+            Command::Meta(MetaCommand::Schema {
                 table: Some("Path.G.V".to_string())
             })
         );
         assert_eq!(
             parse_command(ShellMode::Coln, ".dump Path.G.V").unwrap(),
-            Command::MetaCommand(MetaCommand::Dump {
+            Command::Meta(MetaCommand::Dump {
                 table: "Path.G.V".to_string()
             })
         );
@@ -141,7 +142,7 @@ mod tests {
     fn parses_batch_empty() {
         assert_eq!(
             parse_command(ShellMode::Coln, "begin transact; commit;").unwrap(),
-            Command::ColnCommand(ColnCommand::Batch {
+            Command::Coln(ColnCommand::Batch {
                 assignments: vec![]
             })
         );
@@ -156,7 +157,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             cmd,
-            Command::ColnCommand(ColnCommand::Batch {
+            Command::Coln(ColnCommand::Batch {
                 assignments: vec![
                     BatchAssignment {
                         name: "g".to_string(),
@@ -174,9 +175,37 @@ mod tests {
     }
 
     #[test]
+    fn parses_sql_create_table() {
+        let cmd = parse_command(
+            ShellMode::Sql,
+            "create table Person (name text, age integer);",
+        )
+        .unwrap();
+
+        let Command::Sql(SqlCommand::CreateTable {
+            table_name,
+            columns,
+        }) = cmd
+        else {
+            panic!("expected SQL create table");
+        };
+
+        assert_eq!(table_name, "Person");
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0].col_name, "name");
+        assert_eq!(columns[0].col_typ, crate::ir::BuiltinTy::BuiltinStr);
+        assert_eq!(columns[1].col_name, "age");
+        assert_eq!(columns[1].col_typ, crate::ir::BuiltinTy::BuiltinInt);
+    }
+
+    #[test]
     fn rejects_batch_without_commit_keyword() {
         let err =
             parse_command(ShellMode::Coln, "begin transact; g = add T values (1);").unwrap_err();
-        assert!(err.contains("transaction block must end with `commit`") || err.contains("commit"));
+        assert!(
+            err.to_string()
+                .contains("transaction block must end with `commit`")
+                || err.to_string().contains("commit")
+        );
     }
 }

@@ -96,7 +96,7 @@ mod tests {
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::store::test_support::link_foreign_key_theory;
-    use crate::table::{CellValue, Table, ValidationError};
+    use crate::table::{CellValue, ValidationError};
 
     fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
         Schema {
@@ -127,7 +127,9 @@ mod tests {
         let path = Path::from("T");
         let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
         tx.add(&path, vec![42_i64.into()]).expect("add");
@@ -141,7 +143,9 @@ mod tests {
         let path = Path::from("T");
         let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
         let err = tx
@@ -179,17 +183,15 @@ mod tests {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
         let mut store = Store::new();
-        store.insert_table(
-            nodes.clone(),
-            Table::new(nodes.clone(), table_schema(vec![], None)),
-        );
-        store.insert_table(
-            edges.clone(),
-            Table::new(
+        store
+            .create_table(nodes.clone(), table_schema(vec![], None))
+            .expect("create nodes table");
+        store
+            .create_table(
                 edges.clone(),
                 table_schema(vec![row_id_col("node", nodes.clone())], None),
-            ),
-        );
+            )
+            .expect("create edges table");
 
         let mut tx = store.transaction();
         let node_temp = tx.add(&nodes, vec![]).expect("add node");
@@ -216,17 +218,15 @@ mod tests {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
         let mut store = Store::new();
-        store.insert_table(
-            nodes.clone(),
-            Table::new(nodes.clone(), table_schema(vec![], None)),
-        );
-        store.insert_table(
-            edges.clone(),
-            Table::new(
+        store
+            .create_table(nodes.clone(), table_schema(vec![], None))
+            .expect("create nodes table");
+        store
+            .create_table(
                 edges.clone(),
                 table_schema(vec![row_id_col("node", nodes.clone())], None),
-            ),
-        );
+            )
+            .expect("create edges table");
 
         let mut tx = store.transaction();
         let node = tx.add(&nodes, vec![]).expect("add node");
@@ -248,17 +248,15 @@ mod tests {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
         let mut store = Store::new();
-        store.insert_table(
-            nodes.clone(),
-            Table::new(nodes.clone(), table_schema(vec![], Some(vec![]))),
-        );
-        store.insert_table(
-            edges.clone(),
-            Table::new(
+        store
+            .create_table(nodes.clone(), table_schema(vec![], Some(vec![])))
+            .expect("create nodes table");
+        store
+            .create_table(
                 edges.clone(),
                 table_schema(vec![row_id_col("node", nodes.clone())], None),
-            ),
-        );
+            )
+            .expect("create edges table");
 
         let mut tx = store.transaction();
         let node = tx.add(&nodes, vec![]).expect("add first node");
@@ -292,7 +290,9 @@ mod tests {
         let path = Path::from("T");
         let schema = table_schema(vec![int_col("c0")], None);
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
         let root = store.commits().root_commit().expect("root commit").hash();
 
         let mut tx = store.transaction();

@@ -198,10 +198,9 @@ mod tests {
     fn bind_rule_joins_antecedent_atoms() {
         let path = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(
-            path.clone(),
-            Table::new(path.clone(), int_schema(&["c0", "c1"])),
-        );
+        store
+            .create_table(path.clone(), int_schema(&["c0", "c1"]))
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(
@@ -284,7 +283,9 @@ mod tests {
     fn store_with_int_column(values: &[i64]) -> (Store, Path) {
         let path = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), int_schema(&["c0"])));
+        store
+            .create_table(path.clone(), int_schema(&["c0"]))
+            .expect("create table");
         let mut txn = store.transaction();
         for value in values {
             txn.add(&path, vec![CellValue::Int(*value).into()])

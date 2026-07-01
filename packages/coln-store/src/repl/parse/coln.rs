@@ -30,20 +30,20 @@ pub enum Command {
     Batch { assignments: Vec<BatchAssignment> },
 }
 
-pub fn parse_add_statement(input: &str) -> Result<Command, String> {
+pub fn parse_add_statement(input: &str) -> anyhow::Result<Command> {
     let Some(rest) = input.strip_prefix("add ") else {
-        return Err("usage: add <table> values (...), (...);".to_string());
+        anyhow::bail!("usage: add <table> values (...), (...);");
     };
     let Some((table, rows_src)) = rest.split_once(" values ") else {
-        return Err("usage: add <table> values (...), (...);".to_string());
+        anyhow::bail!("usage: add <table> values (...), (...);");
     };
     let table = table.trim();
     if table.is_empty() {
-        return Err("usage: add <table> values (...), (...);".to_string());
+        anyhow::bail!("usage: add <table> values (...), (...);");
     }
     let rows = parse_add_rows(rows_src.trim())?;
     if rows.is_empty() {
-        return Err("add requires at least one row".to_string());
+        anyhow::bail!("add requires at least one row");
     }
     Ok(Command::Add {
         table: table.to_string(),
@@ -51,22 +51,22 @@ pub fn parse_add_statement(input: &str) -> Result<Command, String> {
     })
 }
 
-pub fn parse_statement(input: &str) -> Result<Command, String> {
+pub fn parse_statement(input: &str) -> anyhow::Result<Command> {
     let input = input.trim();
     if input.starts_with("begin transact") {
         return parse_batch_block(input);
     }
 
-    let parts = shlex::split(input).ok_or_else(|| "could not parse input".to_string())?;
+    let parts = shlex::split(input).ok_or_else(|| anyhow::anyhow!("could not parse input"))?;
     let Some(command) = parts.first() else {
-        return Err("empty command".to_string());
+        anyhow::bail!("empty command");
     };
 
     match command.as_str() {
         "add" => parse_add_statement(input),
-        _ => Err(format!(
+        _ => anyhow::bail!(
             "unknown statement: {command}. Statements must end with `;`, or use `.help` for meta commands."
-        )),
+        ),
     }
 }
 
@@ -101,18 +101,18 @@ pub(crate) fn parse_cell_value_batch(
 }
 
 /// Parse `begin transact;` … `commit` (outer `;` already stripped by [`parse_command`]).
-fn parse_batch_block(input: &str) -> Result<Command, String> {
+fn parse_batch_block(input: &str) -> anyhow::Result<Command> {
     let input = input.trim();
     let Some(rest) = input.strip_prefix("begin transact") else {
-        return Err("internal error: expected begin transact".to_string());
+        anyhow::bail!("internal error: expected begin transact");
     };
     let mut rest = rest.trim_start();
     let Some(after_kw) = rest.strip_prefix(';') else {
-        return Err("expected `begin transact;`".to_string());
+        anyhow::bail!("expected `begin transact;`");
     };
     rest = after_kw.trim();
     let Some(inner) = rest.strip_suffix("commit") else {
-        return Err("transaction block must end with `commit`".to_string());
+        anyhow::bail!("transaction block must end with `commit`");
     };
     let inner = inner.trim().strip_suffix(';').unwrap_or(inner).trim();
     let assignments = parse_batch_assignments(inner)?;
@@ -155,7 +155,7 @@ fn split_semicolon_statements(s: &str) -> Vec<String> {
     out
 }
 
-fn parse_batch_assignments(inner: &str) -> Result<Vec<BatchAssignment>, String> {
+fn parse_batch_assignments(inner: &str) -> anyhow::Result<Vec<BatchAssignment>> {
     let mut v = Vec::new();
     for stmt in split_semicolon_statements(inner) {
         v.push(parse_batch_assignment(&stmt)?);
@@ -163,35 +163,30 @@ fn parse_batch_assignments(inner: &str) -> Result<Vec<BatchAssignment>, String> 
     Ok(v)
 }
 
-fn parse_batch_assignment(line: &str) -> Result<BatchAssignment, String> {
+fn parse_batch_assignment(line: &str) -> anyhow::Result<BatchAssignment> {
     let line = line.trim();
     if line.is_empty() {
-        return Err("empty statement inside batch block".to_string());
+        anyhow::bail!("empty statement inside batch block");
     }
     let Some((name, rhs)) = line.split_once(" = add ") else {
-        return Err(format!(
-            "expected `name = add <table> values (...)`, got: {line}"
-        ));
+        anyhow::bail!("expected `name = add <table> values (...)`, got: {line}");
     };
     let name = name.trim();
     if name.is_empty() || !is_binding_ident(name) {
-        return Err(format!("invalid binding name: {name}"));
+        anyhow::bail!("invalid binding name: {name}");
     }
     let rhs = rhs.trim();
     let Some((table, rows_src)) = rhs.split_once(" values ") else {
-        return Err(format!(
-            "expected `values (...)` after table name in: {line}"
-        ));
+        anyhow::bail!("expected `values (...)` after table name in: {line}");
     };
     let table = table.trim();
     if table.is_empty() {
-        return Err("missing table name".to_string());
+        anyhow::bail!("missing table name");
     }
     let rows = parse_add_rows(rows_src.trim())?;
     if rows.len() != 1 {
-        return Err(
+        anyhow::bail!(
             "each batch assignment must insert exactly one row (one `values (...)` group)"
-                .to_string(),
         );
     }
     let row = rows.into_iter().next().expect("one row");
@@ -213,7 +208,7 @@ fn parse_batch_assignment(line: &str) -> Result<BatchAssignment, String> {
 ///
 /// Regex is a poor fit here: a pattern like `\(([^)]*)\)` breaks when a string column contains
 /// `)`.
-pub fn parse_add_rows(input: &str) -> Result<Vec<Vec<String>>, String> {
+pub fn parse_add_rows(input: &str) -> anyhow::Result<Vec<Vec<String>>> {
     let mut rows = Vec::new();
     let mut chars = input.char_indices().peekable();
 
@@ -223,7 +218,7 @@ pub fn parse_add_rows(input: &str) -> Result<Vec<Vec<String>>, String> {
             continue;
         }
         if ch != '(' {
-            return Err("expected `(` to start a row".to_string());
+            anyhow::bail!("expected `(` to start a row");
         }
 
         chars.next();
@@ -249,7 +244,9 @@ pub fn parse_add_rows(input: &str) -> Result<Vec<Vec<String>>, String> {
             }
         }
 
-        let end = end.ok_or_else(|| "unterminated row in add statement".to_string())?;
+        let Some(end) = end else {
+            anyhow::bail!("unterminated row in add statement");
+        };
         let row_src = &input[start..end];
         let row = split_add_row_tokens(row_src);
         rows.push(row);

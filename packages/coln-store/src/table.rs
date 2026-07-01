@@ -40,8 +40,6 @@ pub enum ValidationError {
         expected: CellKind,
         got: CellKind,
     },
-    #[error("tuple columns are not supported yet (column {column})")]
-    UnsupportedTuple { column: usize },
     #[error("primary key references unknown column: {name}")]
     InvalidPrimaryKeyName { name: ColName },
     #[error("duplicate primary key")]

@@ -908,6 +908,7 @@ dependencies = [
 name = "coln-store"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "blake3",
  "coln-flir-rs",
  "future_form",

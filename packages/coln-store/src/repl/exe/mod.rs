@@ -2,23 +2,165 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use anyhow::{Context, Result, anyhow, bail};
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
 
+use crate::repl::{
+    Session, Step,
+    error::BatchCellParseError,
+    parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
+    parse::{ColnCommand, MetaCommand, SqlCommand},
+};
 use crate::{
-    commit::pst::decode_store,
+    commit::pst::{decode_store, encode_store},
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
-    repl::{
-        error::ReplError,
-        parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
-    },
     store::Store,
     table::{RowId, Table},
     txn::ops::{TempRowId, TxnCellValue},
 };
+
+mod sql;
+
+fn help_text() -> String {
+    [
+        "Commands:",
+        "  .help",
+        "  .exit",
+        "  .quit",
+        "  .load <schema-json-path>",
+        "  .open <store-path>",
+        "  .save <store-path>",
+        "  .tables",
+        "  .rules",
+        "  .schema [table]",
+        "  .dump <table>",
+        "  add <table> values (...), (...);",
+        "  begin transact; name = add <table> values (...); ... commit;",
+        "",
+        "Examples:",
+        "  .help",
+        "  .load tests/data/paths.json",
+        "  .schema",
+        "  .rules",
+        "  .dump T",
+        "  add T values (7 \"alice\"), (8 \"bob\");",
+        "  begin transact; g = add Graphs values (); e = add G0 values (g); commit;",
+    ]
+    .join("\n")
+}
+
+pub(super) fn execute_sql(session: &mut Session, command: SqlCommand) -> Result<String> {
+    sql::execute_sql(session, command)
+}
+
+pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Result<Step> {
+    match command {
+        MetaCommand::Help => Ok(Step::Continue(help_text())),
+        MetaCommand::Load { path } => {
+            let loaded = load_schema(std::path::Path::new(&path))?;
+            tracing::info!(
+                source = %loaded.schema.source.display(),
+                table_count = loaded.store.table_count(),
+                law_count = loaded.schema.law_count,
+                "loaded schema"
+            );
+            let message = format!(
+                "loaded schema from {} (tables: {}, laws: {})",
+                loaded.schema.source.display(),
+                loaded.store.table_count(),
+                loaded.schema.law_count
+            );
+            session.loaded = Some(loaded);
+            Ok(Step::Continue(message))
+        }
+        MetaCommand::Open { path } => {
+            let loaded = load_store(std::path::Path::new(&path))?;
+            tracing::info!(
+                source = %loaded.schema.source.display(),
+                table_count = loaded.store.table_count(),
+                law_count = loaded.schema.law_count,
+                "loaded store"
+            );
+            let message = format!(
+                "loaded store from {} (tables: {}, laws: {})",
+                loaded.schema.source.display(),
+                loaded.store.table_count(),
+                loaded.schema.law_count
+            );
+            session.loaded = Some(loaded);
+            Ok(Step::Continue(message))
+        }
+        MetaCommand::Schema { table } => {
+            let schema = session.loaded.as_ref().map(|loaded| &loaded.schema);
+            let message = match table {
+                Some(table) => render_table_schema(schema, &table)?,
+                None => render_schema_summary(schema),
+            };
+            Ok(Step::Continue(message))
+        }
+        MetaCommand::Rules => {
+            let store = session.loaded.as_ref().map(|loaded| &loaded.store);
+            Ok(Step::Continue(render_rules(store)?))
+        }
+        MetaCommand::Dump { table } => {
+            let loaded = session
+                .loaded
+                .as_mut()
+                .ok_or_else(|| anyhow!("no schema loaded"))?;
+            let tbl = loaded
+                .store
+                .table_at(&crate::ir::Path::from(table.clone()))
+                .ok_or_else(|| anyhow!("unknown table: {table}"))?;
+            Ok(Step::Continue(tbl.dump()))
+        }
+        MetaCommand::Tables => {
+            let loaded = session
+                .loaded
+                .as_mut()
+                .ok_or_else(|| anyhow!("no schema loaded"))?;
+            Ok(Step::Continue(loaded.store.dump()))
+        }
+        MetaCommand::Save { path } => {
+            let loaded = session
+                .loaded
+                .as_mut()
+                .ok_or_else(|| anyhow!("no schema loaded"))?;
+            let bytes = encode_store(&loaded.store)?;
+            fs::write(&path, &bytes)?;
+            Ok(Step::Continue(format!("saved store to {path}")))
+        }
+        MetaCommand::Exit => Ok(Step::Exit),
+    }
+}
+
+pub(super) fn execute_coln(session: &mut Session, command: ColnCommand) -> Result<String> {
+    match command {
+        ColnCommand::Add { table, rows } => {
+            let loaded = session
+                .loaded
+                .as_mut()
+                .ok_or_else(|| anyhow!("no schema loaded"))?;
+            let row_ids = add_rows(&mut loaded.store, &table, &rows)?;
+            let row_ids = row_ids
+                .into_iter()
+                .map(|row_id| format!("#{row_id}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            Ok(format!("inserted into {table} rows [{row_ids}]"))
+        }
+        ColnCommand::Batch { assignments } => {
+            let loaded = session
+                .loaded
+                .as_mut()
+                .ok_or_else(|| anyhow!("no schema loaded"))?;
+            run_transact(&mut loaded.store, &assignments)
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchemaSummary {
@@ -77,7 +219,7 @@ fn format_column(column: &ColumnEntry) -> String {
 }
 
 impl SchemaSummary {
-    fn from_store(source: PathBuf, store: &Store) -> Self {
+    pub(crate) fn from_store(source: PathBuf, store: &Store) -> Self {
         let mut tables: Vec<TableSummary> = store
             .tables()
             .map(|(_, table)| TableSummary {
@@ -127,16 +269,20 @@ impl SchemaSummary {
     }
 }
 
-pub fn load_store(path: &Path) -> Result<LoadedState, ReplError> {
-    let bytes = fs::read(path)?;
-    let store = decode_store(&bytes)?;
+pub fn load_store(path: &Path) -> Result<LoadedState> {
+    let bytes =
+        fs::read(path).with_context(|| format!("failed to read store {}", path.display()))?;
+    let store = decode_store(&bytes)
+        .with_context(|| format!("failed to decode store {}", path.display()))?;
     let schema = SchemaSummary::from_store(path.to_path_buf(), &store);
     Ok(LoadedState { store, schema })
 }
 
-pub fn load_schema(path: &Path) -> Result<LoadedState, ReplError> {
-    let input = fs::read_to_string(path)?;
-    let theory: FlatRealm = serde_json::from_str(&input)?;
+pub fn load_schema(path: &Path) -> Result<LoadedState> {
+    let input = fs::read_to_string(path)
+        .with_context(|| format!("failed to read schema {}", path.display()))?;
+    let theory: FlatRealm = serde_json::from_str(&input)
+        .with_context(|| format!("failed to parse schema {}", path.display()))?;
     let summary = SchemaSummary::from_theory(path.to_path_buf(), &theory);
     let store = Store::try_from_theory(theory)?;
     Ok(LoadedState {
@@ -175,22 +321,19 @@ fn render_table_schema_summary(table: &TableSummary) -> String {
     lines.join("\n")
 }
 
-pub fn render_table_schema(
-    schema: Option<&SchemaSummary>,
-    table_name: &str,
-) -> Result<String, ReplError> {
-    let schema = schema.ok_or(ReplError::NoSchemaLoaded)?;
+pub fn render_table_schema(schema: Option<&SchemaSummary>, table_name: &str) -> Result<String> {
+    let schema = schema.ok_or_else(|| anyhow!("no schema loaded"))?;
     let table = schema
         .tables
         .iter()
         .find(|table| table.path == table_name)
-        .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
+        .ok_or_else(|| anyhow!("unknown table: {table_name}"))?;
 
     Ok(render_table_schema_summary(table))
 }
 
-pub fn render_rules(store: Option<&Store>) -> Result<String, ReplError> {
-    let store = store.ok_or(ReplError::NoSchemaLoaded)?;
+pub fn render_rules(store: Option<&Store>) -> Result<String> {
+    let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
     if store.rules().is_empty() {
         return Ok("no rules".to_string());
     }
@@ -207,15 +350,15 @@ pub fn add_rows(
     store: &mut Store,
     table_name: &str,
     raw_rows: &[Vec<String>],
-) -> Result<Vec<RowId>, ReplError> {
+) -> Result<Vec<RowId>> {
     let table_path = crate::ir::Path::from(table_name);
     let oid = store
         .resolve_table(&table_path)
-        .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
+        .ok_or_else(|| anyhow!("unknown table: {table_name}"))?;
 
     let table = store
         .table(oid)
-        .ok_or_else(|| ReplError::UnknownTable(table_name.to_string()))?;
+        .ok_or_else(|| anyhow!("unknown table: {table_name}"))?;
     let mut rows = Vec::new();
     for raw_values in raw_rows {
         rows.push(parse_txn_values(table, raw_values)?);
@@ -235,41 +378,38 @@ pub fn add_rows(
 }
 
 /// Parse and commit a batch transaction, allowing later rows to refer to earlier bindings.
-pub fn run_transact(
-    store: &mut Store,
-    assignments: &[BatchAssignment],
-) -> Result<String, ReplError> {
+pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Result<String> {
     let mut bindings: HashMap<String, TempRowId> = HashMap::new();
     let mut pending = Vec::new();
 
     for (index, a) in assignments.iter().enumerate() {
         if bindings.contains_key(&a.name) {
-            return Err(ReplError::DuplicateBinding(a.name.clone()));
+            bail!("duplicate binding: {}", a.name);
         }
         let table_path = crate::ir::Path::from(a.table.as_str());
         let table = store
             .table_at(&table_path)
-            .ok_or_else(|| ReplError::UnknownTable(a.table.clone()))?;
+            .ok_or_else(|| anyhow!("unknown table: {}", a.table))?;
 
         let expected = table.schema().columns.len();
         if a.row.len() != expected {
-            return Err(ReplError::ColumnCountMismatch {
-                expected,
-                got: a.row.len(),
-            });
+            bail!(
+                "column count mismatch: expected {expected}, got {}",
+                a.row.len()
+            );
         }
 
         let mut values = Vec::with_capacity(expected);
         for (idx, column) in table.schema().columns.iter().enumerate() {
             let v =
                 parse_cell_value_batch(&column.col_type, &a.row[idx], &bindings).map_err(|e| {
-                    let err: ReplError = e.into();
-                    match err {
-                        ReplError::BadValue { message, .. } => ReplError::BadValue {
-                            column: idx,
-                            message,
-                        },
-                        other => other,
+                    match e {
+                        BatchCellParseError::UnknownBinding(name) => {
+                            anyhow!("unknown binding: {name}")
+                        }
+                        BatchCellParseError::InvalidValue(message) => {
+                            anyhow!("column {idx}: {message}")
+                        }
                     }
                 })?;
             values.push(v);
@@ -294,13 +434,13 @@ pub fn run_transact(
     Ok(message)
 }
 
-fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellValue>, ReplError> {
+fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellValue>> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
-        return Err(ReplError::ColumnCountMismatch {
-            expected,
-            got: raw_values.len(),
-        });
+        bail!(
+            "column count mismatch: expected {expected}, got {}",
+            raw_values.len()
+        );
     }
 
     table
@@ -308,14 +448,11 @@ fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellV
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, column)| -> Result<TxnCellValue, ReplError> {
+        .map(|(idx, column)| -> Result<TxnCellValue> {
             let raw = &raw_values[idx];
             parse_cell_value(&column.col_type, raw)
                 .map(Into::into)
-                .map_err(|message| ReplError::BadValue {
-                    column: idx,
-                    message,
-                })
+                .map_err(|message| anyhow!("column {idx}: {message}"))
         })
         .collect()
 }

@@ -180,13 +180,17 @@ impl Store {
         Ok(graph)
     }
 
-    #[cfg(test)]
-    pub(crate) fn insert_table(&mut self, path: ir::Path, table: Table) -> TableOid {
+    pub(crate) fn create_table(
+        &mut self,
+        path: ir::Path,
+        schema: ir::Schema,
+    ) -> Result<TableOid, StoreIntError> {
         let oid = self.next_oid;
         self.next_oid = self.next_oid.saturating_add(1);
-        self.path_to_oid.insert(path, oid);
-        self.tables.insert(oid, table);
-        oid
+        self.path_to_oid.insert(path.clone(), oid);
+        self.tables.insert(oid, Table::new(path, schema));
+        self.commits = Self::root_commit_graph(&self.tables, &self.rule_entries)?;
+        Ok(oid)
     }
 
     /// Validates and appends a batch to this store.
@@ -667,7 +671,7 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path, schema));
+        store.create_table(path, schema).expect("create test table");
         store
     }
 
@@ -689,10 +693,10 @@ mod tests {
             }],
             primary_key: None,
         };
-        let table = Table::new(path.clone(), schema);
-
         let mut store = Store::new();
-        let oid0 = store.insert_table(path.clone(), table);
+        let oid0 = store
+            .create_table(path.clone(), schema)
+            .expect("create table");
         assert_eq!(oid0, 0);
 
         let t = store.table(oid0).expect("table at oid 0");
@@ -710,10 +714,9 @@ mod tests {
             }],
             primary_key: None,
         };
-        let oid1 = store.insert_table(
-            Path::from("Other"),
-            Table::new(Path::from("table2"), schema2),
-        );
+        let oid1 = store
+            .create_table(Path::from("Other"), schema2)
+            .expect("create second table");
         assert_eq!(oid1, 1);
     }
 
@@ -730,7 +733,9 @@ mod tests {
         };
 
         let mut store = Store::new();
-        let oid = store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        let oid = store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         assert_eq!(store.resolve_table(&path), Some(oid));
         assert_eq!(store.resolve_table(&Path::from("missing")), None);
@@ -750,7 +755,9 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(&path, vec![CellValue::Int(1).into()])
@@ -779,7 +786,9 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let err = {
             let mut txn = store.transaction();
@@ -810,7 +819,9 @@ mod tests {
             primary_key: Some(vec![Path::from("c0")]),
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(&path, vec![CellValue::Int(1).into()])
@@ -840,7 +851,9 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(&path, vec![CellValue::Int(42).into()])

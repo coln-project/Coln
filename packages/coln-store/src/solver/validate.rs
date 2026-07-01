@@ -154,7 +154,7 @@ mod tests {
             RuleVariant, Schema,
         },
         solver::compile::compile_rule,
-        table::{CellValue, Table},
+        table::CellValue,
     };
 
     fn int_ty() -> ColType {
@@ -202,10 +202,9 @@ mod tests {
     fn true_antecedent_still_checks_consequent() {
         let g0_path = Path::from("G0");
         let mut store = Store::new();
-        store.insert_table(
-            g0_path.clone(),
-            Table::new(g0_path.clone(), int_schema(&[])),
-        );
+        store
+            .create_table(g0_path.clone(), int_schema(&[]))
+            .expect("create table");
 
         let rule = enforced_rule(
             "G0.total",
@@ -236,14 +235,12 @@ mod tests {
         let source = Path::from("Src");
         let target = Path::from("Dst");
         let mut store = Store::new();
-        store.insert_table(
-            source.clone(),
-            Table::new(source.clone(), int_schema(&["c0"])),
-        );
-        store.insert_table(
-            target.clone(),
-            Table::new(target.clone(), int_schema(&["c0"])),
-        );
+        store
+            .create_table(source.clone(), int_schema(&["c0"]))
+            .expect("create source table");
+        store
+            .create_table(target.clone(), int_schema(&["c0"]))
+            .expect("create target table");
 
         let mut txn = store.transaction();
         txn.add(&source, vec![CellValue::Int(7).into()])
@@ -287,15 +284,15 @@ mod tests {
         let right = Path::from("Right");
         let link = Path::from("Link");
         let mut store = Store::new();
-        store.insert_table(left.clone(), Table::new(left.clone(), int_schema(&["c0"])));
-        store.insert_table(
-            right.clone(),
-            Table::new(right.clone(), int_schema(&["c0"])),
-        );
-        store.insert_table(
-            link.clone(),
-            Table::new(link.clone(), int_schema(&["c0", "c1"])),
-        );
+        store
+            .create_table(left.clone(), int_schema(&["c0"]))
+            .expect("create left table");
+        store
+            .create_table(right.clone(), int_schema(&["c0"]))
+            .expect("create right table");
+        store
+            .create_table(link.clone(), int_schema(&["c0", "c1"]))
+            .expect("create link table");
 
         let rule = enforced_rule(
             "Link.foreignKeys",
@@ -378,7 +375,9 @@ mod tests {
     fn consequent_equality_holds_when_bindings_match() {
         let t = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(t.clone(), Table::new(t.clone(), int_schema(&["c0", "c1"])));
+        store
+            .create_table(t.clone(), int_schema(&["c0", "c1"]))
+            .expect("create table");
         let mut txn = store.transaction();
         txn.add(&t, vec![CellValue::Int(5).into(), CellValue::Int(5).into()])
             .expect("insert row");
@@ -417,7 +416,9 @@ mod tests {
     fn consequent_equality_violation_surfaces_unsatisfied_eq() {
         let t = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(t.clone(), Table::new(t.clone(), int_schema(&["c0", "c1"])));
+        store
+            .create_table(t.clone(), int_schema(&["c0", "c1"]))
+            .expect("create table");
         let mut txn = store.transaction();
         txn.add(&t, vec![CellValue::Int(1).into(), CellValue::Int(2).into()])
             .expect("insert row");
