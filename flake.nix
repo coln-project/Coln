@@ -201,6 +201,11 @@
             zlib
             zlib.dev
           ];
+          shellHook = ''
+            # GCC 15 (nixos-26.05) defaults to -std=gnu23 which removed ATOMIC_VAR_INIT.
+            # This breaks mimalloc-rust-sys, which is a dependency of dbsp.
+            export CFLAGS="''${CFLAGS:+$CFLAGS }-std=gnu17"
+          '';
         };
       });
   nixConfig = {
