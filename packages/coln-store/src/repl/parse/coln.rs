@@ -22,33 +22,12 @@ pub struct BatchAssignment {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
-    Help,
-    Load {
-        path: String,
-    },
-    Open {
-        path: String,
-    },
-    Schema {
-        table: Option<String>,
-    },
-    Tables,
-    Rules,
     Add {
         table: String,
         rows: Vec<Vec<String>>,
     },
     /// `begin transact;` … `commit;` with assignments using previous bindings in entity columns.
-    Batch {
-        assignments: Vec<BatchAssignment>,
-    },
-    Dump {
-        table: String,
-    },
-    Save {
-        path: String,
-    },
-    Exit,
+    Batch { assignments: Vec<BatchAssignment> },
 }
 
 pub fn parse_add_statement(input: &str) -> Result<Command, String> {
@@ -70,85 +49,6 @@ pub fn parse_add_statement(input: &str) -> Result<Command, String> {
         table: table.to_string(),
         rows,
     })
-}
-
-pub fn parse_command(input: &str) -> Result<Command, String> {
-    let input = input.trim();
-    if input.starts_with('.') {
-        parse_meta_command(input)
-    } else {
-        let Some(input) = input.strip_suffix(';') else {
-            return Err("statements must end with `;`".to_string());
-        };
-        let input = input.trim_end();
-        parse_statement(input)
-    }
-}
-
-pub fn parse_meta_command(input: &str) -> Result<Command, String> {
-    let parts = shlex::split(input).ok_or_else(|| "could not parse input".to_string())?;
-    let Some(command) = parts.first() else {
-        return Err("empty command".to_string());
-    };
-
-    match command.as_str() {
-        ".help" => {
-            if parts.len() == 1 {
-                Ok(Command::Help)
-            } else {
-                Err("usage: .help".to_string())
-            }
-        }
-        ".exit" | ".quit" => {
-            if parts.len() == 1 {
-                Ok(Command::Exit)
-            } else {
-                Err(format!("usage: {command}"))
-            }
-        }
-        ".load" => match parts.as_slice() {
-            [_, path] => Ok(Command::Load { path: path.clone() }),
-            _ => Err("usage: .load <schema-json-path>".to_string()),
-        },
-        ".open" => match parts.as_slice() {
-            [_, path] => Ok(Command::Open { path: path.clone() }),
-            _ => Err("usage: .open <store-path>".to_string()),
-        },
-        ".save" => match parts.as_slice() {
-            [_, path] => Ok(Command::Save { path: path.clone() }),
-            _ => Err("usage: .save <store-path>".to_string()),
-        },
-        ".tables" => {
-            if parts.len() == 1 {
-                Ok(Command::Tables)
-            } else {
-                Err("usage: .tables".to_string())
-            }
-        }
-        ".rules" => {
-            if parts.len() == 1 {
-                Ok(Command::Rules)
-            } else {
-                Err("usage: .rules".to_string())
-            }
-        }
-        ".schema" => match parts.as_slice() {
-            [_] => Ok(Command::Schema { table: None }),
-            [_, table] => Ok(Command::Schema {
-                table: Some(table.clone()),
-            }),
-            _ => Err("usage: .schema [table]".to_string()),
-        },
-        ".dump" => match parts.as_slice() {
-            [_, table] => Ok(Command::Dump {
-                table: table.clone(),
-            }),
-            _ => Err("usage: .dump <table>".to_string()),
-        },
-        _ => Err(format!(
-            "unknown meta command: {command}. Type `.help` for commands."
-        )),
-    }
 }
 
 pub fn parse_statement(input: &str) -> Result<Command, String> {
@@ -429,139 +329,10 @@ fn parse_row_id(raw: &str) -> Result<RowId, String> {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
-
-    #[test]
-    fn parses_help() {
-        assert_eq!(parse_command(".help").unwrap(), Command::Help);
-    }
 
     #[test]
     fn valid_binding_name() {
         assert!(is_binding_ident("g0"));
-    }
-
-    #[test]
-    fn parses_load_with_quotes() {
-        assert_eq!(
-            parse_command(".load \"tests/data/paths.json\"").unwrap(),
-            Command::Load {
-                path: "tests/data/paths.json".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn parses_add_command() {
-        assert_eq!(
-            parse_command("add T values (7 \"alice\"), (8 \"bob\");").unwrap(),
-            Command::Add {
-                table: "T".to_string(),
-                rows: vec![
-                    vec!["7".to_string(), "alice".to_string()],
-                    vec!["8".to_string(), "bob".to_string()],
-                ],
-            }
-        );
-    }
-
-    #[test]
-    fn parses_add_command_single_value() {
-        assert_eq!(
-            parse_command("add T values (#11);").unwrap(),
-            Command::Add {
-                table: "T".to_string(),
-                rows: vec![vec!["#11".to_string()],],
-            }
-        );
-    }
-
-    #[test]
-    fn rejects_unknown_command() {
-        let err = parse_command("wat;").unwrap_err();
-        assert!(err.contains("unknown statement"));
-    }
-
-    #[test]
-    fn rejects_missing_semicolon() {
-        let err = parse_command("help").unwrap_err();
-        assert_eq!(err, "statements must end with `;`");
-    }
-
-    #[test]
-    fn parses_quit_without_semicolon() {
-        assert_eq!(parse_command(".quit").unwrap(), Command::Exit);
-    }
-
-    #[test]
-    fn parses_meta_commands_without_semicolons() {
-        assert_eq!(
-            parse_command(".open paths.bin").unwrap(),
-            Command::Open {
-                path: "paths.bin".to_string()
-            }
-        );
-        assert_eq!(
-            parse_command(".save paths.bin").unwrap(),
-            Command::Save {
-                path: "paths.bin".to_string()
-            }
-        );
-        assert_eq!(parse_command(".tables").unwrap(), Command::Tables);
-        assert_eq!(parse_command(".rules").unwrap(), Command::Rules);
-        assert_eq!(
-            parse_command(".schema Path.G.V").unwrap(),
-            Command::Schema {
-                table: Some("Path.G.V".to_string())
-            }
-        );
-        assert_eq!(
-            parse_command(".dump Path.G.V").unwrap(),
-            Command::Dump {
-                table: "Path.G.V".to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn parses_batch_empty() {
-        assert_eq!(
-            parse_command("begin transact; commit;").unwrap(),
-            Command::Batch {
-                assignments: vec![]
-            }
-        );
-    }
-
-    #[test]
-    fn parses_batch_with_bindings() {
-        let cmd = parse_command(
-            "begin transact; g = add Graphs values (); x = add G0 values (g); commit;",
-        )
-        .unwrap();
-        assert_eq!(
-            cmd,
-            Command::Batch {
-                assignments: vec![
-                    BatchAssignment {
-                        name: "g".to_string(),
-                        table: "Graphs".to_string(),
-                        row: vec![],
-                    },
-                    BatchAssignment {
-                        name: "x".to_string(),
-                        table: "G0".to_string(),
-                        row: vec!["g".to_string()],
-                    },
-                ]
-            }
-        );
-    }
-
-    #[test]
-    fn rejects_batch_without_commit_keyword() {
-        let err = parse_command("begin transact; g = add T values (1);").unwrap_err();
-        assert!(err.contains("transaction block must end with `commit`") || err.contains("commit"));
     }
 }

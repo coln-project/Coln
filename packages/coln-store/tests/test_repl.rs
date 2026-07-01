@@ -10,8 +10,9 @@ use std::path::PathBuf;
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::{
     repl::{
+        ShellMode,
         exe::run_transact,
-        parse::{Command, parse_command},
+        parse::{ColnCommand, Command, parse_command},
     },
     store::Store,
 };
@@ -32,6 +33,7 @@ fn batch_block_matches_apply_batch_for_paths_fixture() {
     let mut store = Store::try_from_theory(theory).expect("valid theory");
 
     let cmd = parse_command(
+        ShellMode::Coln,
         "begin transact; gid1 = add Path.Graphs values (); gid2 = add Path.Graphs values (); \
          g0 = add Path.G0 values (gid2); g1 = add Path.G1 values (gid2); \
          v1 = add Path.G.V values (gid1); v2 = add Path.G.V values (gid1); \
@@ -39,7 +41,7 @@ fn batch_block_matches_apply_batch_for_paths_fixture() {
     )
     .expect("parse batch");
 
-    let Command::Batch { assignments } = cmd else {
+    let Command::ColnCommand(ColnCommand::Batch { assignments }) = cmd else {
         panic!("expected Command::Batch");
     };
 

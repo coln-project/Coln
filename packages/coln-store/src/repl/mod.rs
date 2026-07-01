@@ -18,8 +18,8 @@ use crate::repl::exe::{
     LoadedState, add_rows, load_schema, load_store, render_rules, render_schema_summary,
     render_table_schema, run_transact,
 };
-use crate::repl::parse::Command;
 use crate::repl::parse::parse_command;
+use crate::repl::parse::{ColnCommand, Command, MetaCommand, SqlCommand};
 
 pub mod error;
 pub mod exe;
@@ -29,9 +29,20 @@ const COMMANDS: &[&str] = &[
     ".help", ".exit", ".quit", ".load", ".open", ".save", ".tables", ".rules", ".schema", ".dump",
     "add", "begin",
 ];
+
+const SECRET_MODE: &str = "ILOVESQL";
+
+#[derive(Debug, Default, PartialEq, Eq, Copy, Clone)]
+pub enum ShellMode {
+    #[default]
+    Coln,
+    Sql,
+}
+
 #[derive(Default)]
 struct Session {
     loaded: Option<LoadedState>,
+    shell_mode: ShellMode,
 }
 
 #[derive(Debug)]
@@ -58,9 +69,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let prompt = if pending_statement.is_some() {
             "....> "
+        } else if session.shell_mode == ShellMode::Sql {
+            "coln-sql>"
         } else {
             "coln-store> "
         };
+
         let line = match editor.readline(prompt) {
             Ok(line) => line,
             Err(ReadlineError::Interrupted) => {
@@ -81,6 +95,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
+        if pending_statement.is_none()
+            && trimmed == SECRET_MODE
+            && session.shell_mode == ShellMode::Coln
+        {
+            session.shell_mode = ShellMode::Sql;
+            println!("Welcome to SQL mode!");
+            continue;
+        }
+
         let maybe_command = if pending_statement.is_some() || is_statement_start(trimmed) {
             let command = push_statement_line(&mut pending_statement, trimmed);
             if let Some(command) = command {
@@ -94,7 +117,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             Some(trimmed.to_string())
         };
 
-        match parse_command(maybe_command.as_deref().expect("command")) {
+        match parse_command(session.shell_mode, &maybe_command.expect("command")) {
             Ok(command) => match execute(&mut session, command) {
                 Ok(Step::Continue(message)) => println!("{message}"),
                 Ok(Step::Exit) => break,
@@ -158,8 +181,8 @@ impl Completer for CommandHelper {
 
 fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
     match command {
-        Command::Help => Ok(Step::Continue(help_text())),
-        Command::Load { path } => {
+        Command::MetaCommand(MetaCommand::Help) => Ok(Step::Continue(help_text())),
+        Command::MetaCommand(MetaCommand::Load { path }) => {
             let loaded = load_schema(std::path::Path::new(&path))?;
             info!(
                 source = %loaded.schema.source.display(),
@@ -176,7 +199,7 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
             session.loaded = Some(loaded);
             Ok(Step::Continue(message))
         }
-        Command::Open { path } => {
+        Command::MetaCommand(MetaCommand::Open { path }) => {
             let loaded = load_store(std::path::Path::new(&path))?;
             info!(
                 source = %loaded.schema.source.display(),
@@ -193,7 +216,7 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
             session.loaded = Some(loaded);
             Ok(Step::Continue(message))
         }
-        Command::Schema { table } => {
+        Command::MetaCommand(MetaCommand::Schema { table }) => {
             let schema = session.loaded.as_ref().map(|loaded| &loaded.schema);
             let message = match table {
                 Some(table) => render_table_schema(schema, &table)?,
@@ -201,11 +224,11 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
             };
             Ok(Step::Continue(message))
         }
-        Command::Rules => {
+        Command::MetaCommand(MetaCommand::Rules) => {
             let store = session.loaded.as_ref().map(|loaded| &loaded.store);
             Ok(Step::Continue(render_rules(store)?))
         }
-        Command::Add { table, rows } => {
+        Command::ColnCommand(ColnCommand::Add { table, rows }) => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let row_ids = add_rows(&mut loaded.store, &table, &rows)?;
             let row_ids = row_ids
@@ -217,12 +240,12 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
                 "inserted into {table} rows [{row_ids}]"
             )))
         }
-        Command::Batch { assignments } => {
+        Command::ColnCommand(ColnCommand::Batch { assignments }) => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let message = run_transact(&mut loaded.store, &assignments)?;
             Ok(Step::Continue(message))
         }
-        Command::Dump { table } => {
+        Command::MetaCommand(MetaCommand::Dump { table }) => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let tbl = loaded
                 .store
@@ -231,18 +254,21 @@ fn execute(session: &mut Session, command: Command) -> Result<Step, ReplError> {
             let message = tbl.dump();
             Ok(Step::Continue(message))
         }
-        Command::Tables => {
+        Command::MetaCommand(MetaCommand::Tables) => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let message = loaded.store.dump();
             Ok(Step::Continue(message))
         }
-        Command::Save { path } => {
+        Command::MetaCommand(MetaCommand::Save { path }) => {
             let loaded = session.loaded.as_mut().ok_or(ReplError::NoSchemaLoaded)?;
             let bytes = encode_store(&loaded.store)?;
             std::fs::write(&path, &bytes)?;
             Ok(Step::Continue(format!("saved store to {path}")))
         }
-        Command::Exit => Ok(Step::Exit),
+        Command::MetaCommand(MetaCommand::Exit) => Ok(Step::Exit),
+        Command::SqlCommand(SqlCommand::CreateTable) => Ok(Step::Continue(
+            "SQL CREATE TABLE is not implemented yet".to_string(),
+        )),
     }
 }
 
@@ -300,7 +326,7 @@ mod tests {
         ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant},
         repl::{
             exe::{PrimaryKeySummary, SchemaSummary, TableSummary},
-            parse::Command,
+            parse::{ColnCommand, Command},
         },
         store::Store,
     };
@@ -354,17 +380,18 @@ mod tests {
     fn add_inserts_rows_into_loaded_store() {
         let mut session = Session {
             loaded: Some(test_loaded_state()),
+            shell_mode: ShellMode::Coln,
         };
 
         let message = match execute(
             &mut session,
-            Command::Add {
+            Command::ColnCommand(ColnCommand::Add {
                 table: "T".to_string(),
                 rows: vec![
                     vec!["7".to_string(), "alice".to_string()],
                     vec!["8".to_string(), "bob".to_string()],
                 ],
-            },
+            }),
         )
         .expect("execute add")
         {
@@ -390,10 +417,10 @@ mod tests {
     fn add_requires_loaded_schema() {
         let err = execute(
             &mut Session::default(),
-            Command::Add {
+            Command::ColnCommand(ColnCommand::Add {
                 table: "T".to_string(),
                 rows: vec![vec!["7".to_string()]],
-            },
+            }),
         )
         .unwrap_err();
 
