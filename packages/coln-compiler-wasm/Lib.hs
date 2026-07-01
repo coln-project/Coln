@@ -50,7 +50,9 @@ getDiagnostics asHtml = jsStringArray . map (textToJSString . TL.toStrict . rend
 foreign export javascript "getDiagnostics" getDiagnostics :: Bool -> StablePtr CompileResult -> IO JSVal
 
 prettyIr :: StablePtr CompileResult -> IO JSVal
-prettyIr = jsStringArray . map (textToJSString . T.show) . (.ir) <=< deRefStablePtr
+prettyIr = jsStringArray . map (textToJSString . render . dpretty) . (.ir) <=< deRefStablePtr
+  where
+    render = Text.renderStrict . layoutPretty defaultLayoutOptions
 foreign export javascript "prettyIr" prettyIr :: StablePtr CompileResult -> IO JSVal
 
 irToJson :: StablePtr CompileResult -> IO JSString
