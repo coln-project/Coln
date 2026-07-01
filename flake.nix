@@ -157,7 +157,7 @@
         };
 
         inherit (packages) forester coln-manual-dev;
-        haskell-wasm = inputs.ghc-wasm-meta.packages.${system}.default;
+        haskell-wasm = inputs.ghc-wasm-meta.packages.${system};
       in
       {
         inherit packages;
@@ -179,7 +179,8 @@
             forester
             fourmolu
             esbuild
-            haskell-wasm
+            haskell-wasm.wasm32-wasi-ghc-9_14
+            haskell-wasm.wasm32-wasi-cabal-9_14
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
