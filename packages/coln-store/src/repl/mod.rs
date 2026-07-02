@@ -99,7 +99,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(Step::Exit) => break,
                 Err(err) => {
                     warn!(error = %err, "repl command failed");
-                    eprintln!("error: {err}");
+                    eprintln!("error: {err:#}");
                 }
             },
             Err(err) => eprintln!("error: {err}"),
@@ -302,6 +302,41 @@ mod tests {
             err.to_string(),
             "cannot create table after data commits have been recorded"
         );
+    }
+
+    #[test]
+    fn sql_copy_from_csv_inserts_rows() {
+        let mut session = Session {
+            loaded: None,
+            shell_mode: ShellMode::Sql,
+        };
+        execute(&mut session, sql_create_table_command("Person")).expect("create table");
+
+        let message = match execute(
+            &mut session,
+            Command::Sql(SqlCommand::CopyFromCsv {
+                table_name: "Person".to_string(),
+                path: "tests/data/people.csv".to_string(),
+                delimiter: b',',
+            }),
+        )
+        .expect("copy csv")
+        {
+            Step::Continue(message) => message,
+            Step::Exit => panic!("unexpected exit"),
+        };
+
+        assert_eq!(message, "copied 2 rows into Person");
+        let loaded = session.loaded.as_ref().expect("loaded session");
+        let table = loaded
+            .store
+            .table_at(&"Person".parse().unwrap())
+            .expect("Person table");
+        assert_eq!(table.row_count(), 2);
+        // The fixture header order (age, name) differs from the schema order.
+        let dump = table.dump();
+        assert!(dump.contains("alice"));
+        assert!(dump.contains("30"));
     }
 
     #[test]

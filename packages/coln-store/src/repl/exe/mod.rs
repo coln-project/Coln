@@ -11,7 +11,7 @@ use std::{
 use anyhow::{Context, Result, anyhow, bail};
 
 use crate::repl::{
-    Session, Step,
+    Session, ShellMode, Step,
     error::BatchCellParseError,
     parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
     parse::{ColnCommand, MetaCommand, SqlCommand},
@@ -26,8 +26,8 @@ use crate::{
 
 mod sql;
 
-fn help_text() -> String {
-    [
+fn help_text(mode: ShellMode) -> String {
+    let mut lines = vec![
         "Commands:",
         "  .help",
         "  .exit",
@@ -39,19 +39,38 @@ fn help_text() -> String {
         "  .rules",
         "  .schema [table]",
         "  .dump <table>",
-        "  add <table> values (...), (...);",
-        "  begin transact; name = add <table> values (...); ... commit;",
-        "",
-        "Examples:",
-        "  .help",
-        "  .load tests/data/paths.json",
-        "  .schema",
-        "  .rules",
-        "  .dump T",
-        "  add T values (7 \"alice\"), (8 \"bob\");",
-        "  begin transact; g = add Graphs values (); e = add G0 values (g); commit;",
-    ]
-    .join("\n")
+    ];
+
+    match mode {
+        ShellMode::Coln => lines.extend([
+            "  add <table> values (...), (...);",
+            "  begin transact; name = add <table> values (...); ... commit;",
+            "",
+            "Examples:",
+            "  .help",
+            "  .load tests/data/paths.json",
+            "  .schema",
+            "  .rules",
+            "  .dump T",
+            "  add T values (7 \"alice\"), (8 \"bob\");",
+            "  begin transact; g = add Graphs values (); e = add G0 values (g); commit;",
+        ]),
+        ShellMode::Sql => lines.extend([
+            "  create table <table> (<column> <type>, ...);",
+            "  copy <table> from '<file.csv>' with (format csv, header true);",
+            "  copy <table> from '<file.tsv>' with (format csv, header true, delimiter E'\\t');",
+            "",
+            "Examples:",
+            "  .help",
+            "  .schema",
+            "  .dump Person",
+            "  create table Person (name text, age integer);",
+            "  copy Person from 'tests/data/people.csv' with (format csv, header true);",
+            "  copy Decl from 'decl.csv' with (format csv, header true, delimiter E'\\t');",
+        ]),
+    }
+
+    lines.join("\n")
 }
 
 pub(super) fn execute_sql(session: &mut Session, command: SqlCommand) -> Result<String> {
@@ -60,7 +79,7 @@ pub(super) fn execute_sql(session: &mut Session, command: SqlCommand) -> Result<
 
 pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Result<Step> {
     match command {
-        MetaCommand::Help => Ok(Step::Continue(help_text())),
+        MetaCommand::Help => Ok(Step::Continue(help_text(session.shell_mode))),
         MetaCommand::Load { path } => {
             let loaded = load_schema(std::path::Path::new(&path))?;
             tracing::info!(
@@ -467,6 +486,26 @@ mod tests {
     #[test]
     fn lists_no_schema_message() {
         assert_eq!(render_schema_summary(None), "no schema loaded");
+    }
+
+    #[test]
+    fn coln_help_lists_only_coln_statements() {
+        let help = help_text(ShellMode::Coln);
+        assert!(help.contains(".load <schema-json-path>"));
+        assert!(help.contains("add <table> values"));
+        assert!(help.contains("begin transact;"));
+        assert!(!help.contains("create table"));
+        assert!(!help.contains("copy <table> from"));
+    }
+
+    #[test]
+    fn sql_help_lists_only_sql_statements() {
+        let help = help_text(ShellMode::Sql);
+        assert!(help.contains(".load <schema-json-path>"));
+        assert!(help.contains("create table <table>"));
+        assert!(help.contains("copy <table> from '<file.csv>' with (format csv, header true);"));
+        assert!(!help.contains("add <table> values"));
+        assert!(!help.contains("begin transact;"));
     }
 
     #[test]

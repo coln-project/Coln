@@ -199,6 +199,95 @@ mod tests {
     }
 
     #[test]
+    fn parses_sql_copy_from_csv() {
+        assert_eq!(
+            parse_command(
+                ShellMode::Sql,
+                "copy Person from 'people.csv' with (format csv, header true);",
+            )
+            .unwrap(),
+            Command::Sql(SqlCommand::CopyFromCsv {
+                table_name: "Person".to_string(),
+                path: "people.csv".to_string(),
+                delimiter: b',',
+            })
+        );
+    }
+
+    #[test]
+    fn parses_sql_copy_with_tab_delimiter() {
+        assert_eq!(
+            parse_command(
+                ShellMode::Sql,
+                "copy Decl from 'decl.csv' with (format csv, header true, delimiter E'\\t');",
+            )
+            .unwrap(),
+            Command::Sql(SqlCommand::CopyFromCsv {
+                table_name: "Decl".to_string(),
+                path: "decl.csv".to_string(),
+                delimiter: b'\t',
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_sql_copy_with_non_ascii_delimiter() {
+        // sqlparser rejects multi-byte char literals before our option checks.
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Decl from 'decl.csv' with (format csv, header true, delimiter '\u{00e9}');",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "failed to parse sql");
+    }
+
+    #[test]
+    fn rejects_sql_copy_without_csv_format() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person from 'people.csv' with (header true);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY requires FORMAT csv");
+    }
+
+    #[test]
+    fn rejects_sql_copy_without_header() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person from 'people.csv' with (format csv, header false);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY requires HEADER true");
+    }
+
+    #[test]
+    fn rejects_sql_copy_to() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person to 'people.csv' with (format csv, header true);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY TO is not supported");
+    }
+
+    #[test]
+    fn rejects_sql_copy_from_stdin() {
+        let err = parse_command(ShellMode::Sql, "copy Person from stdin;").unwrap_err();
+        assert_eq!(err.to_string(), "COPY FROM only supports a file source");
+    }
+
+    #[test]
+    fn rejects_sql_copy_with_column_list() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person (name) from 'people.csv' with (format csv, header true);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY column lists are not supported");
+    }
+
+    #[test]
     fn rejects_batch_without_commit_keyword() {
         let err =
             parse_command(ShellMode::Coln, "begin transact; g = add T values (1);").unwrap_err();

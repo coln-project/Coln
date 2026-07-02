@@ -911,6 +911,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "coln-flir-rs",
+ "csv",
  "future_form",
  "hex",
  "hexane",

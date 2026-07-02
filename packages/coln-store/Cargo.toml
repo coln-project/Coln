@@ -21,6 +21,7 @@ exclude = [
 anyhow.workspace = true
 blake3 = "1.8.5"
 coln-flir-rs = { path = "../coln-flir-rs" }
+csv = "1.4.0"
 # coln-query = { path = "../coln-query" }
 hex = "0.4.3"
 hexane = { git = "https://github.com/automerge/automerge", branch = "hexane_v1", package = "hexane" }
