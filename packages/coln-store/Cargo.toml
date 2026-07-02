@@ -20,6 +20,7 @@ exclude = [
 [dependencies]
 anyhow.workspace = true
 blake3 = "1.8.5"
+clap = { version = "4.6.1", features = ["derive"], optional = true }
 coln-flir-rs = { path = "../coln-flir-rs" }
 csv = "1.4.0"
 # coln-query = { path = "../coln-query" }
@@ -68,7 +69,7 @@ tokio = { version = "1.52.3", features = [
 
 [features]
 default = ["native"]
-native = ["dep:rustyline", "dep:tracing-subscriber"]
+native = ["dep:rustyline", "dep:tracing-subscriber", "dep:clap"]
 wasm = ["dep:js-sys"]
 
 [[bin]]

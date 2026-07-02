@@ -33,16 +33,29 @@ struct Session {
     shell_mode: ShellMode,
 }
 
+impl Session {
+    pub fn new(mode: ShellMode) -> Self {
+        Self {
+            loaded: None,
+            shell_mode: mode,
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Step {
     Continue(String),
     Exit,
 }
 
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(enable_sql: bool) -> Result<(), Box<dyn std::error::Error>> {
     let mut editor = Editor::<CommandHelper, DefaultHistory>::new()?;
-    editor.set_helper(Some(CommandHelper));
-    let mut session = Session::default();
+    editor.set_helper(Some(CommandHelper::new()));
+    let mut session = if enable_sql {
+        Session::new(ShellMode::Sql)
+    } else {
+        Session::new(ShellMode::Coln)
+    };
     let mut pending_statement: Option<String> = None;
 
     println!("coln-store repl");

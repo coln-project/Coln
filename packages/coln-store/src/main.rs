@@ -4,6 +4,14 @@
 
 use coln_store::repl;
 use tracing_subscriber::EnvFilter;
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(long, default_value_t = false, hide = true)]
+    enable_sql_mode: bool
+
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -12,5 +20,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    repl::run()
+    let args = Args::parse();
+    repl::run(args.enable_sql_mode)
 }
