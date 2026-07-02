@@ -7,7 +7,7 @@ mod common;
 use coln_flir_rs::ir::Path;
 
 // TODO add more theory json files
-const THEORY_FIXTURES: &[&str] = &["Graph.json"];
+const THEORY_FIXTURES: &[&str] = &["Graph.json", "Prim.json"];
 
 #[test]
 fn deserialises_all_theory_fixtures() {

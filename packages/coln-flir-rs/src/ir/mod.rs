@@ -36,8 +36,8 @@ impl Serialize for BuiltinTy {
         S: Serializer,
     {
         match self {
-            BuiltinTy::BuiltinInt => serializer.serialize_str("int"),
-            BuiltinTy::BuiltinStr => serializer.serialize_str("string"),
+            BuiltinTy::BuiltinInt => serializer.serialize_str("builtinInt"),
+            BuiltinTy::BuiltinStr => serializer.serialize_str("builtinString"),
         }
     }
 }
@@ -49,9 +49,12 @@ impl<'de> Deserialize<'de> for BuiltinTy {
     {
         let s = String::deserialize(deserializer)?;
         match s.as_str() {
-            "int" => Ok(BuiltinTy::BuiltinInt),
-            "string" => Ok(BuiltinTy::BuiltinStr),
-            _ => Err(DeError::unknown_variant(&s, &["int", "string"])),
+            "builtinInt" => Ok(BuiltinTy::BuiltinInt),
+            "builtinString" => Ok(BuiltinTy::BuiltinStr),
+            _ => Err(DeError::unknown_variant(
+                &s,
+                &["builtinInt", "builtinString"],
+            )),
         }
     }
 }
@@ -59,8 +62,14 @@ impl<'de> Deserialize<'de> for BuiltinTy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum ColType {
-    RowId { path: Path },
-    BuiltinTy { builtin_ty: BuiltinTy },
+    RowId {
+        path: Path,
+    },
+    #[serde(rename = "builtin")]
+    BuiltinTy {
+        #[serde(rename = "type")]
+        builtin_ty: BuiltinTy,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
