@@ -150,8 +150,16 @@ pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Resul
                 .as_mut()
                 .ok_or_else(|| anyhow!("no schema loaded"))?;
             let bytes = encode_store(&loaded.store)?;
-            fs::write(&path, &bytes)?;
-            Ok(Step::Continue(format!("saved store to {path}")))
+            let mut path = PathBuf::from(&path);
+            if path.extension().is_none() {
+                path.add_extension("colnstore");
+            }
+
+            fs::write(&path, &bytes).with_context(|| format!("cannot find path {path:?}"))?;
+            Ok(Step::Continue(format!(
+                "saved store to {}",
+                path.as_os_str().display()
+            )))
         }
         MetaCommand::Exit => Ok(Step::Exit),
     }
