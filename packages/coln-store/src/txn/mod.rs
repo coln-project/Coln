@@ -209,7 +209,7 @@ mod tests {
         assert_eq!(node_id.counter, 0);
         assert_eq!(edge_id.commit, commit);
         assert_eq!(edge_id.counter, 1);
-        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+        assert_eq!(edge.cell_at(0, 0), Some(CellValue::Id(node_id)));
     }
 
     #[test]
@@ -239,7 +239,7 @@ mod tests {
         tx.commit().expect("commit edge");
 
         let edge = store.table_at(&edges).expect("Edges");
-        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+        assert_eq!(edge.cell_at(0, 0), Some(CellValue::Id(node_id)));
     }
 
     #[test]

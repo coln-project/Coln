@@ -61,7 +61,7 @@ fn match_atom_row(
 
     for CompVal { column_idx, term } in &atom.values {
         let value = table.cell_at(row_idx, *column_idx)?;
-        bind_term(&mut b, term, BoundValue::Cell(value.clone())).then_some({})?
+        bind_term(&mut b, term, BoundValue::Cell(value)).then_some({})?
     }
     Some(b)
 }

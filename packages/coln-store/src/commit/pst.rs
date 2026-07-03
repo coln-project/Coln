@@ -390,7 +390,7 @@ mod tests {
 
         let restored_table = restored.table_at(&table).expect("table");
         assert_eq!(restored_table.row_count(), 1);
-        assert_eq!(restored_table.cell_at(0, 0), Some(&CellValue::Int(99)));
+        assert_eq!(restored_table.cell_at(0, 0), Some(CellValue::Int(99)));
         assert_eq!(restored_table.row_id_at(0).expect("row id").commit, commit);
         assert_eq!(
             restored.commits().parents_of(&commit),

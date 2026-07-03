@@ -71,7 +71,7 @@ fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i64)> {
         .map(|row| {
             let id = table.row_id_at(row).expect("row id");
             let value = match table.cell_at(row, 0).expect("cell") {
-                CellValue::Int(value) => *value,
+                CellValue::Int(value) => value,
                 other => panic!("expected int cell, got {other:?}"),
             };
             (id.commit, id.counter, value)
@@ -127,7 +127,7 @@ async fn copy_subduction_commits(
     Ok(())
 }
 
-async fn load_geomerge_chunk_bytes(
+async fn load_coln_chunk_bytes(
     storage: &MemoryStorage,
     sedimentree_id: SedimentreeId,
 ) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
@@ -143,7 +143,7 @@ async fn load_geomerge_chunk_bytes(
 }
 
 #[tokio::test]
-async fn subduction_storage_can_exchange_geomerge_commit_chunks() -> Result<(), Box<dyn Error>> {
+async fn subduction_storage_can_exchange_coln_commit_chunks() -> Result<(), Box<dyn Error>> {
     let mut left = Store::try_from_theory(int_theory())?;
     let mut right = Store::try_from_theory(int_theory())?;
     let sedimentree_id = sedimentree_id(&left);
@@ -162,8 +162,8 @@ async fn subduction_storage_can_exchange_geomerge_commit_chunks() -> Result<(), 
     copy_subduction_commits(&left_storage, &right_storage, sedimentree_id).await?;
     copy_subduction_commits(&right_storage, &left_storage, sedimentree_id).await?;
 
-    let left_received = load_geomerge_chunk_bytes(&left_storage, sedimentree_id).await?;
-    let right_received = load_geomerge_chunk_bytes(&right_storage, sedimentree_id).await?;
+    let left_received = load_coln_chunk_bytes(&left_storage, sedimentree_id).await?;
+    let right_received = load_coln_chunk_bytes(&right_storage, sedimentree_id).await?;
 
     left.apply_chunk_bytes(left_received)?;
     right.apply_chunk_bytes(right_received)?;
@@ -186,7 +186,7 @@ async fn subduction_storage_can_exchange_geomerge_commit_chunks() -> Result<(), 
 }
 
 #[tokio::test]
-async fn subduction_sync_geomerge_chunks() -> Result<(), Box<dyn Error>> {
+async fn subduction_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
     let mut left_store = Store::try_from_theory(int_theory())?;
     let mut right_store = Store::try_from_theory(int_theory())?;
     let sedimentree_id = sedimentree_id(&left_store);
@@ -317,7 +317,7 @@ async fn subduction_sync_geomerge_chunks() -> Result<(), Box<dyn Error>> {
 
 #[ignore = "opens localhost sockets and exercises the experimental Subduction WebSocket transport"]
 #[tokio::test(flavor = "multi_thread")]
-async fn subduction_websocket_sync_geomerge_chunks() -> Result<(), Box<dyn Error>> {
+async fn subduction_websocket_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
     let mut left_store = Store::try_from_theory(int_theory())?;
     let mut right_store = Store::try_from_theory(int_theory())?;
     let sedimentree_id = sedimentree_id(&left_store);

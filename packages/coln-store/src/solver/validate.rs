@@ -75,7 +75,7 @@ pub fn consequent_atom_holds(store: &Store, atom: &CompAtom, binding: &Binding) 
             let Some(value) = table.cell_at(row_idx, *column_idx) else {
                 continue 'row;
             };
-            if !term_matches(binding, term, &BoundValue::Cell(value.clone())) {
+            if !term_matches(binding, term, &BoundValue::Cell(value)) {
                 continue 'row;
             }
         }
