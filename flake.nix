@@ -4,6 +4,10 @@
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
     ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
+    wasm-bindgen-hs = {
+      url = "github:georgefst/wasm-bindgen-hs/72c12029c6f3f7a21d7cfe4396f898f3f7a38313";
+      flake = false;
+    };
   };
   outputs =
     inputs@{
@@ -67,6 +71,25 @@
           coln-cli = colnHaskellPackages.callPackage ./packages/coln-cli {
             inherit coln-compiler coln-repl coln-ls diagnostician diagnostician-terminal fnotation;
           };
+          cabal-npm = colnHaskellPackages.callPackage (
+            { mkDerivation, aeson, aeson-pretty, base, bytestring, directory
+            , filepath, optparse-applicative, process, temporary, text
+            }:
+            mkDerivation {
+              pname = "cabal-npm";
+              version = "0.1.0.0";
+              src = inputs.wasm-bindgen-hs;
+              postUnpack = "sourceRoot+=/cabal-npm";
+              isLibrary = false;
+              isExecutable = true;
+              executableHaskellDepends = [
+                aeson aeson-pretty base bytestring directory filepath
+                optparse-applicative process temporary text
+              ];
+              license = "unknown";
+              mainProgram = "cabal-npm";
+            }
+          ) { };
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''
             echo "built diagnostician: ${diagnostician}"
@@ -129,7 +152,7 @@
               npm ci --prefix packages/coln-js-runtime
               npm run --prefix packages/coln-js-runtime build
 
-              pnpm --dir examples/store-sync install --frozen-lockfile --store-dir "$pnpm_store_dir"
+              pnpm --dir examples/store-sync install --frozen-lockfile --filter store-sync --store-dir "$pnpm_store_dir"
               pnpm --dir examples/store-sync build
 
               echo "Built store-sync web demo at $repo_root/examples/store-sync/dist"
@@ -175,6 +198,7 @@
           buildInputs = with pkgs; [
             cabal-install
             cabal2nix
+            packages.cabal-npm
             cargo-llvm-cov
             clippy
             coln-manual-dev

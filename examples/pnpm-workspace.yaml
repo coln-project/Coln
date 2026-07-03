@@ -1,5 +1,9 @@
+packages:
+  - compiler
+  - store-sync
 allowBuilds:
   cbor-extract: false
+  esbuild: true
 minimumReleaseAgeExclude:
   - '@automerge/automerge-repo@2.6.0-subduction.33'
   - '@automerge/automerge-subduction@0.16.0'

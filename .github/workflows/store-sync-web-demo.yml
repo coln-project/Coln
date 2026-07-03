@@ -44,7 +44,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: store-sync-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'packages/coln-js-runtime/package-lock.json', 'examples/store-sync/pnpm-lock.yaml') }}
+          key: store-sync-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'packages/coln-js-runtime/package-lock.json', 'examples/pnpm-lock.yaml') }}
           restore-keys: |
             store-sync-${{ runner.os }}-
 

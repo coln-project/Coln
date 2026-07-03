@@ -1,0 +1,14 @@
+{
+  "name": "compiler",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.mjs --bundle --format=esm --outfile=dist/main.mjs"
+  },
+  "dependencies": {
+    "coln-compiler": "file:../../_build/npm/coln-compiler"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

@@ -110,7 +110,8 @@
         "flake-utils": "flake-utils",
         "ghc-wasm-meta": "ghc-wasm-meta",
         "nixpkgs": "nixpkgs_2",
-        "rust-overlay": "rust-overlay"
+        "rust-overlay": "rust-overlay",
+        "wasm-bindgen-hs": "wasm-bindgen-hs"
       }
     },
     "rust-overlay": {
@@ -158,6 +159,23 @@
       "original": {
         "owner": "nix-systems",
         "repo": "default",
+        "type": "github"
+      }
+    },
+    "wasm-bindgen-hs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1783098317,
+        "narHash": "sha256-B6CAjHz3vYPL3XPcuJ3iN9egJjIhI/VIMGAEoYlO40w=",
+        "owner": "georgefst",
+        "repo": "wasm-bindgen-hs",
+        "rev": "72c12029c6f3f7a21d7cfe4396f898f3f7a38313",
+        "type": "github"
+      },
+      "original": {
+        "owner": "georgefst",
+        "repo": "wasm-bindgen-hs",
+        "rev": "72c12029c6f3f7a21d7cfe4396f898f3f7a38313",
         "type": "github"
       }
     }

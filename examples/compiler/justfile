@@ -1,0 +1,18 @@
+npm_dir := "../../_build/npm/coln-compiler"
+
+build:
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    just ../../packages/coln-compiler-wasm/npm-package
+    rm -rf node_modules ../node_modules
+    pnpm install --store-dir "${PNPM_STORE_DIR:-$(realpath ../..)/.pnpm-store}"
+    pnpm run build
+    cp {{ npm_dir }}/coln-compiler-wasm.wasm dist/
+    cp index.html dist/
+    examples_dir=dist/examples
+    mkdir -p "$examples_dir"
+    cp ../../packages/coln-compiler/test/*.coln "$examples_dir/"
+    ls -1 "$examples_dir"/*.coln | xargs -n1 basename | jq -nR '[inputs]' > "$examples_dir/index.json"
+
+serve port="8000": build
+    simple-http-server --nocache --index --open --port {{ port }} dist

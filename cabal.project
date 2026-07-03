@@ -15,6 +15,14 @@ else
   packages:
     packages/coln-compiler-wasm
 
+source-repository-package
+  type: git
+  location: https://github.com/georgefst/wasm-bindgen-hs
+  tag: 72c12029c6f3f7a21d7cfe4396f898f3f7a38313
+  subdir:
+    .
+    canary
+
 jobs: $ncpus
 semaphore: true
 tests: True

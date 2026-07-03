@@ -135,12 +135,12 @@
 
     <script type="module">
       import {
-        WASI,
-        OpenFile,
-        File,
-        ConsoleStdout,
-      } from "https://cdn.jsdelivr.net/npm/@bjorn3/browser_wasi_shim@0.3.0/dist/index.js";
-      import ghc_wasm_jsffi from "./dist/ghc_wasm_jsffi.js";
+        init,
+        compile,
+        getDiagnostics,
+        prettyIr,
+        irToJson,
+      } from "./main.mjs";
 
       const inputEl = document.getElementById("input");
       const diagsEl = document.getElementById("diagnostics");
@@ -170,67 +170,26 @@
         }
       });
 
-      const wasi = new WASI(
-        [],
-        [],
-        [
-          new OpenFile(new File([])),
-          ConsoleStdout.lineBuffered(console.log),
-          ConsoleStdout.lineBuffered(console.error),
-        ],
-      );
-
-      const exports = {};
-      const { instance } = await WebAssembly.instantiateStreaming(
-        fetch("dist/coln.wasm"),
-        {
-          wasi_snapshot_preview1: wasi.wasiImport,
-          ghc_wasm_jsffi: ghc_wasm_jsffi(exports),
-        },
-      );
-      Object.assign(exports, instance.exports);
-      const compileResultRegistry = new FinalizationRegistry(
-        exports.freeCompileResult,
-      );
-      class CompileResult {
-        #ptr;
-        constructor(ptr) {
-          this.#ptr = ptr;
-          compileResultRegistry.register(this, ptr);
-        }
-        get diagnostics() {
-          return exports.getDiagnostics(true, this.#ptr);
-        }
-        get prettyIr() {
-          return exports.prettyIr(this.#ptr);
-        }
-        get irToJson() {
-          return exports.irToJson(this.#ptr);
-        }
-      }
-      const compile = async (src) =>
-        new CompileResult(await exports.compile(src));
-
-      wasi.initialize(instance);
+      await init();
 
       async function run() {
         document.body.dataset.compiling = "";
         const result = await compile(inputEl.value);
         prettyEl.replaceChildren(
-          ...(await result.prettyIr).map((chunk) => {
+          ...(await prettyIr(result)).map((chunk) => {
             const pre = document.createElement("pre");
             pre.innerHTML = chunk;
             return pre;
           }),
         );
         diagsEl.replaceChildren(
-          ...(await result.diagnostics).map((chunk) => {
+          ...(await getDiagnostics(true, result)).map((chunk) => {
             const pre = document.createElement("div");
             pre.innerHTML = chunk;
             return pre;
           }),
         );
-        jsonEl.textContent = await result.irToJson;
+        jsonEl.textContent = await irToJson(result);
         delete document.body.dataset.compiling;
       }
 
