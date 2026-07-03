@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use rustyline::completion::{Completer, FilenameCompleter, Pair};
 use rustyline::error::ReadlineError;
@@ -14,6 +16,15 @@ const COMMANDS: &[&str] = &[
 ];
 
 const PATH_COMMANDS: &[&str] = &[".load", ".open", ".save"];
+
+const HISTORY_FILE: &str = ".coln-store_history";
+
+pub(super) fn history_path() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(HISTORY_FILE)
+}
 
 pub(super) struct CommandHelper {
     filename_completer: FilenameCompleter,

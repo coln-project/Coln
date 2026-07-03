@@ -330,11 +330,12 @@ fn parse_row_id(raw: &str) -> Result<RowId, ParserError> {
     };
     let hash_bytes = hex::decode(hash_hex)
         .map_err(|_| ParserError::InvalidValue(format!("invalid entity id: {raw}")))?;
-    if hash_bytes.len() != HASH_SIZE {
+    if hash_bytes.len() > HASH_SIZE {
         return invalid_value_err(format!("invalid entity id: {raw}"));
     }
     let mut hash = [0; HASH_SIZE];
-    hash.copy_from_slice(&hash_bytes);
+    let ofs = HASH_SIZE - hash_bytes.len();
+    hash[ofs..].copy_from_slice(&hash_bytes);
     let counter = counter_raw
         .parse::<u32>()
         .map_err(|_| ParserError::InvalidValue(format!("invalid entity id: {raw}")))?;

@@ -13,9 +13,15 @@ struct Args {
 }
 
 fn main() -> anyhow::Result<()> {
+    const DEFAULT_FILTER: &str = if cfg!(debug_assertions) {
+        "coln_store=debug"
+    } else {
+        "coln_store=info"
+    };
+
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("coln_store=info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILTER)),
         )
         .init();
 

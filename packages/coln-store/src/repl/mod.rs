@@ -8,7 +8,9 @@ use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory;
 use tracing::warn;
 
-use crate::repl::cli::{CommandHelper, is_statement_start, prompt, push_statement_line};
+use crate::repl::cli::{
+    CommandHelper, history_path, is_statement_start, prompt, push_statement_line,
+};
 use crate::repl::exe::{LoadedState, execute_coln, execute_meta, execute_sql};
 use crate::repl::parse::Command;
 use crate::repl::parse::parse_command;
@@ -50,6 +52,8 @@ enum Step {
 pub fn run(enable_sql: bool) -> Result<()> {
     let mut editor = Editor::<CommandHelper, DefaultHistory>::new()?;
     editor.set_helper(Some(CommandHelper::new()));
+    let _ = editor.load_history(&history_path());
+
     let mut session = if enable_sql {
         Session::new(ShellMode::Sql)
     } else {
@@ -118,6 +122,7 @@ pub fn run(enable_sql: bool) -> Result<()> {
         }
     }
 
+    let _ = editor.append_history(&history_path());
     Ok(())
 }
 
