@@ -201,9 +201,9 @@ fn test_add_edge_referencing_vertices_from_previous_commit() {
             counter: 0,
         }
     );
-    assert_eq!(edges.cell_at(1, 0), Some(&CellValue::Id(graph)));
-    assert_eq!(edges.cell_at(1, 1), Some(&CellValue::Id(v1)));
-    assert_eq!(edges.cell_at(1, 2), Some(&CellValue::Id(v2)));
+    assert_eq!(edges.cell_at(1, 0), Some(CellValue::Id(graph)));
+    assert_eq!(edges.cell_at(1, 1), Some(CellValue::Id(v1)));
+    assert_eq!(edges.cell_at(1, 2), Some(CellValue::Id(v2)));
 }
 
 #[test]

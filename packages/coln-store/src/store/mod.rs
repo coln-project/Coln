@@ -864,7 +864,7 @@ mod tests {
 
         let t = store.table_at(&path).expect("T");
         assert_eq!(t.row_count(), 1);
-        assert_eq!(t.cell_at(0, 0), Some(&CellValue::Int(42)));
+        assert_eq!(t.cell_at(0, 0), Some(CellValue::Int(42)));
     }
 
     #[test]
@@ -969,7 +969,7 @@ mod tests {
 
         let table = target.table_at(&Path::from("T")).expect("table");
         assert_eq!(table.row_count(), 1);
-        assert_eq!(table.cell_at(0, 0), Some(&CellValue::Int(99)));
+        assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(99)));
         assert_eq!(table.row_id_at(0).expect("row id").commit, commit);
         assert_eq!(target.heads(), source.heads());
     }
@@ -987,8 +987,8 @@ mod tests {
 
         let table = target.table_at(&Path::from("T")).expect("table");
         assert_eq!(table.row_count(), 2);
-        assert_eq!(table.cell_at(0, 0), Some(&CellValue::Int(1)));
-        assert_eq!(table.cell_at(1, 0), Some(&CellValue::Int(2)));
+        assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(1)));
+        assert_eq!(table.cell_at(1, 0), Some(CellValue::Int(2)));
         assert_eq!(target.heads(), source.heads());
     }
 

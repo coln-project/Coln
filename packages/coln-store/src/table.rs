@@ -7,6 +7,7 @@ use std::fmt;
 use std::fmt::Write;
 
 use crate::commit::hash::CommitHash;
+use crate::commit::hash_dict::HashMapper;
 use crate::ir;
 use crate::ir::{BuiltinTy, ColType, Schema};
 use crate::txn::ops::TxnId;
@@ -27,6 +28,47 @@ impl fmt::Display for RowId {
             write!(f, "{byte:02x}")?;
         }
         write!(f, ":{}", self.counter)
+    }
+}
+
+/// This is a RowId representation used internally by dictionary encoding the
+/// hashes. So now we have 8 bytes instead of 36 bytes per row id.
+///
+/// Only meaningful together with the [`HashMapper`] that produced it, so it
+/// never crosses the table boundary: public APIs still speak [`RowId`].
+/// It is also only meaningful in memory, which is exactly the use case we want
+/// to optimise here.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+struct PackedRowId {
+    commit_idx: u32,
+    counter: u32,
+}
+
+impl PackedRowId {
+    /// Pack `id`, interning its commit hash in `dict` if it is new.
+    fn pack(id: RowId, dict: &mut HashMapper) -> Self {
+        PackedRowId {
+            commit_idx: dict.insert(id.commit),
+            counter: id.counter,
+        }
+    }
+
+    /// Pack without interning: `None` when the commit hash is not in `dict`,
+    /// which means no stored row can carry `id`.
+    fn lookup(id: RowId, dict: &HashMapper) -> Option<Self> {
+        Some(PackedRowId {
+            commit_idx: dict.index(id.commit)?,
+            counter: id.counter,
+        })
+    }
+
+    fn unpack(self, dict: &HashMapper) -> RowId {
+        RowId {
+            commit: dict
+                .hash_at(self.commit_idx)
+                .expect("packed row id commit hash was interned on insert"),
+            counter: self.counter,
+        }
     }
 }
 
@@ -142,26 +184,101 @@ pub struct RowView {
 
 type ColName = ir::Path;
 
+/// One column of typed storage. The variant is fixed by the schema column type.
+/// Each id is now 8 bytes instead of a 40-byte [`CellValue`].
+#[derive(Debug, Clone)]
+enum Column {
+    Id(Vec<PackedRowId>),
+    Int(Vec<i64>),
+    Str(Vec<String>),
+}
+
+impl Column {
+    fn new(kind: CellKind) -> Self {
+        match kind {
+            CellKind::RowId => Column::Id(Vec::new()),
+            CellKind::Int => Column::Int(Vec::new()),
+            CellKind::Str => Column::Str(Vec::new()),
+        }
+    }
+
+    /// Append a schema-validated cell. Panics on a type mismatch, which
+    /// [`Table::validate_insert`] rules out before rows reach storage.
+    fn push(&mut self, value: CellValue, dict: &mut HashMapper) {
+        match (self, value) {
+            (Column::Id(cells), CellValue::Id(id)) => cells.push(PackedRowId::pack(id, dict)),
+            (Column::Int(cells), CellValue::Int(value)) => cells.push(value),
+            (Column::Str(cells), CellValue::Str(value)) => cells.push(value),
+            (column, value) => panic!(
+                "cell type mismatch: column stores {:?}, got {value}",
+                CellKind::from(&*column)
+            ),
+        }
+    }
+
+    fn get(&self, row: usize, dict: &HashMapper) -> Option<CellValue> {
+        match self {
+            Column::Id(cells) => cells.get(row).map(|id| CellValue::Id(id.unpack(dict))),
+            Column::Int(cells) => cells.get(row).copied().map(CellValue::Int),
+            Column::Str(cells) => cells.get(row).cloned().map(CellValue::Str),
+        }
+    }
+
+    /// Equality against a candidate cell without materialising the stored
+    /// value. An id whose commit hash is absent from `dict` cannot be stored
+    /// in this table, so it does not match.
+    fn matches(&self, row: usize, value: &CellValue, dict: &HashMapper) -> bool {
+        match (self, value) {
+            (Column::Id(cells), CellValue::Id(id)) => {
+                PackedRowId::lookup(*id, dict).is_some_and(|packed| cells.get(row) == Some(&packed))
+            }
+            (Column::Int(cells), CellValue::Int(value)) => cells.get(row) == Some(value),
+            (Column::Str(cells), CellValue::Str(value)) => cells.get(row) == Some(value),
+            _ => false,
+        }
+    }
+}
+
+impl From<&Column> for CellKind {
+    fn from(column: &Column) -> Self {
+        match column {
+            Column::Id(_) => CellKind::RowId,
+            Column::Int(_) => CellKind::Int,
+            Column::Str(_) => CellKind::Str,
+        }
+    }
+}
+
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
+///
+/// Row ids are dictionary encoded: each distinct commit hash is stored once in
+/// `hash_dict` and rows refer to it by a `u32` index (see [`PackedRowId`]).
+/// The dictionary is append-only, so packed ids stay valid for the lifetime of
+/// the table.
 #[derive(Debug, Clone)]
 pub struct Table {
     path: ir::Path,
     schema: Schema,
     col_index: HashMap<ColName, usize>,
-    row_index: HashMap<RowId, usize>,
+    row_index: HashMap<PackedRowId, usize>,
     hashcons: bool,
-    pub(crate) row_ids: Vec<RowId>,
-    pub(crate) cols: Vec<Vec<CellValue>>,
+    hash_dict: HashMapper,
+    row_ids: Vec<PackedRowId>,
+    cols: Vec<Column>,
 }
 
 impl Table {
     pub fn new(path: ir::Path, schema: Schema) -> Self {
-        let n = schema.columns.len();
         let col_index = schema
             .columns
             .iter()
             .enumerate()
             .map(|(i, column)| (column.path.clone(), i))
+            .collect();
+        let cols = schema
+            .columns
+            .iter()
+            .map(|column| Column::new(CellKind::from(&column.col_type)))
             .collect();
         Self {
             path,
@@ -169,8 +286,9 @@ impl Table {
             row_index: HashMap::new(),
             schema,
             hashcons: false,
+            hash_dict: HashMapper::new(),
             row_ids: vec![],
-            cols: vec![Vec::new(); n],
+            cols,
         }
     }
 
@@ -202,18 +320,22 @@ impl Table {
 
     /// Row id at a given physical row index.
     pub fn row_id_at(&self, row_idx: usize) -> Option<RowId> {
-        self.row_ids.get(row_idx).copied()
+        self.row_ids
+            .get(row_idx)
+            .map(|packed| packed.unpack(&self.hash_dict))
     }
 
     /// Cell at `(row_idx, col_idx)` in columnar storage.
-    pub fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<&CellValue> {
-        self.cols.get(col_idx).and_then(|col| col.get(row_idx))
+    pub fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<CellValue> {
+        self.cols
+            .get(col_idx)
+            .and_then(|col| col.get(row_idx, &self.hash_dict))
     }
 
     pub(crate) fn row_at(&self, row_idx: usize) -> Option<RowView> {
         let row_id = self.row_id_at(row_idx)?;
         let values = (0..self.schema.columns.len())
-            .map(|col_idx| self.cell_at(row_idx, col_idx).cloned())
+            .map(|col_idx| self.cell_at(row_idx, col_idx))
             .collect::<Option<Vec<_>>>()?;
 
         Some(RowView { row_id, values })
@@ -231,10 +353,12 @@ impl Table {
         );
 
         for row_idx in 0..self.row_count() {
-            let row_id = self.row_ids[row_idx];
+            let row_id = self.row_ids[row_idx].unpack(&self.hash_dict);
             let _ = write!(out, "[{row_idx}] row_id={row_id}");
             for col_idx in 0..self.schema.columns.len() {
-                let value = &self.cols[col_idx][row_idx];
+                let value = self.cols[col_idx]
+                    .get(row_idx, &self.hash_dict)
+                    .expect("columns have one cell per row");
                 let _ = write!(out, " | c{col_idx}={value}");
             }
             let _ = writeln!(out);
@@ -280,7 +404,7 @@ impl Table {
                 for row in 0..n {
                     let same = pk_indexes
                         .iter()
-                        .all(|&ci| self.cols[ci][row] == values[ci]);
+                        .all(|&ci| self.cols[ci].matches(row, &values[ci], &self.hash_dict));
                     if same {
                         return Err(ValidationError::DuplicatePrimaryKey);
                     }
@@ -319,10 +443,11 @@ impl Table {
     pub(crate) fn append_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
-        self.row_index.insert(row_id, self.row_ids.len());
-        self.row_ids.push(row_id);
+        let packed = PackedRowId::pack(row_id, &mut self.hash_dict);
+        self.row_index.insert(packed, self.row_ids.len());
+        self.row_ids.push(packed);
         for (i, v) in values.into_iter().enumerate() {
-            self.cols[i].push(v);
+            self.cols[i].push(v, &mut self.hash_dict);
         }
     }
 
@@ -332,14 +457,14 @@ impl Table {
         old: &RowId,
         new: RowId,
     ) -> Result<(), ValidationError> {
-        let i = self
-            .row_index
-            .remove(old)
+        let i = PackedRowId::lookup(*old, &self.hash_dict)
+            .and_then(|packed| self.row_index.remove(&packed))
             .ok_or(ValidationError::InvalidRowHandle {
                 reason: format!("attempting to replace non-existing row_id {old}"),
             })?;
-        self.row_ids[i] = new;
-        self.row_index.insert(new, i);
+        let packed = PackedRowId::pack(new, &mut self.hash_dict);
+        self.row_ids[i] = packed;
+        self.row_index.insert(packed, i);
         Ok(())
     }
 }
@@ -354,6 +479,29 @@ mod tests {
         RowId {
             commit: CommitHash([0; 32]),
             counter,
+        }
+    }
+
+    fn row_id_from(commit_byte: u8, counter: u32) -> RowId {
+        RowId {
+            commit: CommitHash([commit_byte; 32]),
+            counter,
+        }
+    }
+
+    fn id_schema(columns: &[&str]) -> ir::Schema {
+        ir::Schema {
+            entity_variant: ir::EntityVariant::Table,
+            columns: columns
+                .iter()
+                .map(|name| ir::ColumnEntry {
+                    path: Path::from(*name),
+                    col_type: ColType::RowId {
+                        path: Path::from("T"),
+                    },
+                })
+                .collect(),
+            primary_key: None,
         }
     }
 
@@ -441,11 +589,94 @@ mod tests {
             })
         );
         assert_eq!(tbl.row_id_at(0), Some(row_id));
-        assert_eq!(tbl.cell_at(0, 0), Some(&CellValue::Int(7)));
-        assert_eq!(tbl.cell_at(0, 1), Some(&CellValue::Str("x".to_string())));
+        assert_eq!(tbl.cell_at(0, 0), Some(CellValue::Int(7)));
+        assert_eq!(tbl.cell_at(0, 1), Some(CellValue::Str("x".to_string())));
         assert_eq!(tbl.row_at(1), None);
         assert_eq!(tbl.row_id_at(1), None);
         assert_eq!(tbl.cell_at(0, 2), None);
+    }
+
+    /// Row ids and id cells survive the pack/unpack round trip across rows
+    /// from different commits.
+    #[test]
+    fn packed_row_ids_round_trip_across_commits() {
+        let mut tbl = Table::new(Path::from("edges"), id_schema(&["src", "dst"]));
+
+        let rows = [
+            (row_id_from(1, 0), row_id_from(3, 7), row_id_from(4, 8)),
+            (row_id_from(2, 1), row_id_from(3, 9), row_id_from(1, 0)),
+            (row_id_from(1, 2), row_id_from(2, 1), row_id_from(3, 7)),
+        ];
+        for (rid, src, dst) in rows {
+            tbl.append_row(vec![CellValue::Id(src), CellValue::Id(dst)], rid);
+        }
+
+        for (idx, (rid, src, dst)) in rows.into_iter().enumerate() {
+            assert_eq!(tbl.row_id_at(idx), Some(rid));
+            assert_eq!(tbl.cell_at(idx, 0), Some(CellValue::Id(src)));
+            assert_eq!(tbl.cell_at(idx, 1), Some(CellValue::Id(dst)));
+        }
+
+        // Four distinct commit hashes, each interned exactly once.
+        assert_eq!(tbl.hash_dict.hashes().len(), 4);
+    }
+
+    /// `replace_row_id` re-indexes the row under a hash the dictionary has
+    /// not seen before.
+    #[test]
+    fn replace_row_id_interns_new_commit_hash() {
+        let schema = ir::Schema {
+            entity_variant: ir::EntityVariant::Table,
+            columns: vec![],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("id_only"), schema);
+
+        let old = row_id_from(1, 0);
+        tbl.append_row(vec![], old);
+
+        let new = row_id_from(2, 5);
+        tbl.replace_row_id(&old, new).expect("replace row id");
+        assert_eq!(tbl.row_id_at(0), Some(new));
+
+        // Replacing an id that was never stored fails, including ids whose
+        // commit hash is unknown to the dictionary.
+        let missing = row_id_from(9, 0);
+        assert!(matches!(
+            tbl.replace_row_id(&missing, old),
+            Err(ValidationError::InvalidRowHandle { .. })
+        ));
+        assert!(matches!(
+            tbl.replace_row_id(&old, new),
+            Err(ValidationError::InvalidRowHandle { .. })
+        ));
+    }
+
+    /// Primary key comparison works on dictionary-encoded id columns, and an
+    /// id with an unseen commit hash never collides.
+    #[test]
+    fn primary_key_detects_duplicates_in_id_columns() {
+        let mut schema = id_schema(&["src", "dst"]);
+        schema.primary_key = Some(vec![Path::from("src")]);
+        let mut tbl = Table::new(Path::from("edges"), schema);
+
+        let src = row_id_from(3, 7);
+        tbl.append_row(
+            vec![CellValue::Id(src), CellValue::Id(row_id_from(4, 8))],
+            row_id_from(1, 0),
+        );
+
+        let duplicate = vec![CellValue::Id(src), CellValue::Id(row_id_from(4, 9))];
+        assert_eq!(
+            tbl.validate_insert(&duplicate),
+            Err(ValidationError::DuplicatePrimaryKey)
+        );
+
+        let unseen_commit = vec![
+            CellValue::Id(row_id_from(9, 7)),
+            CellValue::Id(row_id_from(4, 8)),
+        ];
+        assert!(tbl.validate_insert(&unseen_commit).is_ok());
     }
 
     #[test]
