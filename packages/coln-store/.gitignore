@@ -67,3 +67,6 @@ tmp/
 
 # colnstore
 *.colnstore
+
+# compressed data
+*.zst
