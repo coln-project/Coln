@@ -180,6 +180,8 @@ impl Store {
         Ok(graph)
     }
 
+    #[cfg(feature = "native")]
+    // used in SQL mode only
     pub(crate) fn create_table(
         &mut self,
         path: ir::Path,
