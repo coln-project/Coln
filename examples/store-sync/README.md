@@ -1,4 +1,4 @@
-# Coln + automerge-repo web demo
+# Coln + automerge-repo store-sync demo
 
 This demo stores a compiler-generated Coln realm in `automerge-repo` using a
 custom document type. Custom document types aren't actually a thing in 
@@ -39,7 +39,7 @@ You can compile them by running `./compile.sh`
 
 ## Run
 
-From `coln/examples/web-demo/`:
+From `coln/examples/store-sync/`:
 
 ```bash
 pnpm install
