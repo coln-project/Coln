@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -95,6 +99,7 @@ fn copy_from_csv(
     if rows.is_empty() {
         return Ok(format!("copied 0 rows into {table_name}"));
     }
+    tracing::debug!("ready to copy {} rows into the store", rows.len());
     let row_ids = add_rows(&mut loaded.store, table_name, &rows)?;
     Ok(format!("copied {} rows into {table_name}", row_ids.len()))
 }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use anyhow::{Result, bail};
 pub(crate) use coln::Command as ColnCommand;
 pub(crate) use meta::Command as MetaCommand;

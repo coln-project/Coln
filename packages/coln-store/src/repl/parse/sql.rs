@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use anyhow::{Context, Result, bail};
 use coln_flir_rs::ir::BuiltinTy::{BuiltinInt, BuiltinStr};
 use sqlparser::{
