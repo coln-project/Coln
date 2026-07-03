@@ -14,7 +14,6 @@ use crate::repl::parse::Command;
 use crate::repl::parse::parse_command;
 
 mod cli;
-pub mod error;
 pub mod exe;
 pub mod parse;
 
@@ -34,7 +33,7 @@ struct Session {
 }
 
 impl Session {
-    pub fn new(mode: ShellMode) -> Self {
+    fn new(mode: ShellMode) -> Self {
         Self {
             loaded: None,
             shell_mode: mode,
@@ -48,7 +47,7 @@ enum Step {
     Exit,
 }
 
-pub fn run(enable_sql: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(enable_sql: bool) -> Result<()> {
     let mut editor = Editor::<CommandHelper, DefaultHistory>::new()?;
     editor.set_helper(Some(CommandHelper::new()));
     let mut session = if enable_sql {
@@ -245,11 +244,15 @@ mod tests {
             columns: vec![
                 SqlCol {
                     col_name: "name".to_string(),
-                    col_typ: BuiltinTy::BuiltinStr,
+                    col_typ: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinStr,
+                    },
                 },
                 SqlCol {
                     col_name: "age".to_string(),
-                    col_typ: BuiltinTy::BuiltinInt,
+                    col_typ: ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
                 },
             ],
         })
@@ -375,7 +378,7 @@ mod tests {
         let err = add_rows(&mut store, "Ref", &[vec!["7".to_string()]]).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "column 0: expected entity id like #<commit>:<counter>"
+            "column 0: invalid input value expected entity id like #<commit>:<counter>"
         );
     }
 }

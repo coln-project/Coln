@@ -1,8 +1,9 @@
 use anyhow::{Context, Result, bail};
+use coln_flir_rs::ir::BuiltinTy::{BuiltinInt, BuiltinStr};
 use sqlparser::{
     ast::{
-        CopyLegacyOption, CopyOption, CopySource, CopyTarget, DataType, Expr, SetExpr, Statement,
-        TableObject, Value,
+        ColumnDef, CopyLegacyOption, CopyOption, CopySource, CopyTarget, DataType, Expr, Insert,
+        ObjectName, SetExpr, Statement, TableObject, Value,
     },
     dialect::GenericDialect,
     parser::Parser,
@@ -11,7 +12,7 @@ use sqlparser::{
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Col {
     pub(crate) col_name: String,
-    pub(crate) col_typ: coln_flir_rs::ir::BuiltinTy,
+    pub(crate) col_typ: coln_flir_rs::ir::ColType,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -27,7 +28,6 @@ pub(crate) enum Command {
     },
     /// `COPY <table> FROM '<file>' WITH (FORMAT csv, HEADER true)`, with an
     /// optional `DELIMITER` such as `E'\t'` for tab-separated files.
-    // TODO use duckdb style import
     CopyFromCsv {
         table_name: String,
         path: String,
@@ -45,66 +45,9 @@ pub(crate) fn parse_sql_statement(input: &str) -> Result<Command> {
     };
 
     if let Statement::CreateTable(sqlparser::ast::CreateTable { name, columns, .. }) = statement {
-        let mut cols = Vec::new();
-        for col in columns {
-            let col_typ = match &col.data_type {
-                DataType::Int(_) | DataType::Integer(_) => coln_flir_rs::ir::BuiltinTy::BuiltinInt,
-                DataType::Text | DataType::String(_) | DataType::Varchar(_) => {
-                    coln_flir_rs::ir::BuiltinTy::BuiltinStr
-                }
-                other => bail!("unsupported data type: {other}"),
-            };
-            cols.push(Col {
-                col_name: col.name.to_string(),
-                col_typ,
-            })
-        }
-        Ok(Command::CreateTable {
-            table_name: name.to_string(),
-            columns: cols,
-        })
+        parse_create_table(name, columns)
     } else if let Statement::Insert(insert) = statement {
-        let TableObject::TableName(table) = &insert.table else {
-            bail!("unsupported INSERT target: {}", insert.table);
-        };
-        if insert.columns.is_empty() {
-            bail!("INSERT must specify column names");
-        }
-        if !insert.assignments.is_empty() {
-            bail!("INSERT assignments are not supported");
-        }
-        if insert.returning.is_some() {
-            bail!("INSERT RETURNING is not supported");
-        }
-
-        let source = insert
-            .source
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("INSERT must provide VALUES"))?;
-        let SetExpr::Values(values) = source.body.as_ref() else {
-            bail!("only INSERT ... VALUES is supported");
-        };
-
-        let col_names = insert
-            .columns
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-        let rows = values
-            .rows
-            .iter()
-            .map(|row| {
-                row.iter()
-                    .map(sql_expr_to_raw_value)
-                    .collect::<Result<Vec<_>>>()
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(Command::Insert {
-            table_name: table.to_string(),
-            col_names,
-            values: rows,
-        })
+        parse_insert(insert)
     } else if let Statement::Copy {
         source,
         to,
@@ -118,6 +61,78 @@ pub(crate) fn parse_sql_statement(input: &str) -> Result<Command> {
     } else {
         bail!("Unsupported statements {}", input);
     }
+}
+
+fn parse_create_table(name: &ObjectName, columns: &[ColumnDef]) -> Result<Command> {
+    let mut cols = Vec::new();
+    for col in columns {
+        let col_typ = match &col.data_type {
+            DataType::Int(_) | DataType::Integer(_) => coln_flir_rs::ir::ColType::BuiltinTy {
+                builtin_ty: BuiltinInt,
+            },
+            DataType::Text | DataType::String(_) | DataType::Varchar(_) => {
+                coln_flir_rs::ir::ColType::BuiltinTy {
+                    builtin_ty: BuiltinStr,
+                }
+            }
+            DataType::Uuid => coln_flir_rs::ir::ColType::RowId {
+                path: "dummy".into(),
+            },
+            other => bail!("unsupported data type: {other}"),
+        };
+        cols.push(Col {
+            col_name: col.name.to_string(),
+            col_typ,
+        })
+    }
+    Ok(Command::CreateTable {
+        table_name: name.to_string(),
+        columns: cols,
+    })
+}
+
+fn parse_insert(insert: &Insert) -> Result<Command> {
+    let TableObject::TableName(table) = &insert.table else {
+        bail!("unsupported INSERT target: {}", insert.table);
+    };
+    if insert.columns.is_empty() {
+        bail!("INSERT must specify column names");
+    }
+    if !insert.assignments.is_empty() {
+        bail!("INSERT assignments are not supported");
+    }
+    if insert.returning.is_some() {
+        bail!("INSERT RETURNING is not supported");
+    }
+
+    let source = insert
+        .source
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("INSERT must provide VALUES"))?;
+    let SetExpr::Values(values) = source.body.as_ref() else {
+        bail!("only INSERT ... VALUES is supported");
+    };
+
+    let col_names = insert
+        .columns
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let rows = values
+        .rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(sql_expr_to_raw_value)
+                .collect::<Result<Vec<_>>>()
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(Command::Insert {
+        table_name: table.to_string(),
+        col_names,
+        values: rows,
+    })
 }
 
 fn parse_copy_from_csv(

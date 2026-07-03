@@ -12,8 +12,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use crate::repl::{
     Session, ShellMode, Step,
-    error::BatchCellParseError,
-    parse::{BatchAssignment, parse_cell_value, parse_cell_value_batch},
+    parse::coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
     parse::{ColnCommand, MetaCommand, SqlCommand},
 };
 use crate::{
@@ -432,11 +431,14 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
             let v =
                 parse_cell_value_batch(&column.col_type, &a.row[idx], &bindings).map_err(|e| {
                     match e {
-                        BatchCellParseError::UnknownBinding(name) => {
+                        coln::ParserError::UnknownBinding(name) => {
                             anyhow!("unknown binding: {name}")
                         }
-                        BatchCellParseError::InvalidValue(message) => {
+                        coln::ParserError::InvalidValue(message) => {
                             anyhow!("column {idx}: {message}")
+                        }
+                        coln::ParserError::InvalidInput(message) => {
+                            anyhow!("invalid intput: {message}")
                         }
                     }
                 })?;

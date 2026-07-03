@@ -7,10 +7,20 @@ use std::collections::HashMap;
 use crate::{
     commit::hash::{CommitHash, HASH_SIZE},
     ir::{BuiltinTy, ColType},
-    repl::error::BatchCellParseError,
     table::{CellValue, RowId},
     txn::ops::{TempRowId, TxnCellValue},
 };
+
+/// Parse failure for a single cell inside a `begin batch` block (before column index is known).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum ParserError {
+    #[error("unknown binding {0}")]
+    UnknownBinding(String),
+    #[error("{0}")]
+    InvalidValue(String),
+    #[error("invalid input value {0}")]
+    InvalidInput(String),
+}
 
 /// One `name = add <table> values (...);` step inside a batch block (exactly one row).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +31,7 @@ pub struct BatchAssignment {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Command {
+pub(crate) enum Command {
     Add {
         table: String,
         rows: Vec<Vec<String>>,
@@ -30,20 +40,48 @@ pub enum Command {
     Batch { assignments: Vec<BatchAssignment> },
 }
 
-pub fn parse_add_statement(input: &str) -> anyhow::Result<Command> {
+fn invalid_input_err<T>(s: &str) -> Result<T, ParserError> {
+    Err(ParserError::InvalidInput(s.into()))
+}
+
+fn invalid_value_err<T>(s: impl Into<String>) -> Result<T, ParserError> {
+    Err(ParserError::InvalidValue(s.into()))
+}
+
+pub(crate) fn parse_statement(input: &str) -> anyhow::Result<Command> {
+    let input = input.trim();
+    if input.starts_with("begin transact") {
+        return Ok(parse_batch_block(input)?);
+    }
+
+    let parts = shlex::split(input)
+        .ok_or_else(|| ParserError::InvalidInput("could not parse input".into()))?;
+    let Some(command) = parts.first() else {
+        return Ok(invalid_input_err("empty command")?);
+    };
+
+    match command.as_str() {
+        "add" => Ok(parse_add_statement(input)?),
+        _ => invalid_input_err(&format!(
+            "unknown statement: {command}. Statements must end with `;`, or use `.help` for meta commands."
+        ))?,
+    }
+}
+
+fn parse_add_statement(input: &str) -> Result<Command, ParserError> {
     let Some(rest) = input.strip_prefix("add ") else {
-        anyhow::bail!("usage: add <table> values (...), (...);");
+        return invalid_input_err("usage: add <table> values (...), (...);");
     };
     let Some((table, rows_src)) = rest.split_once(" values ") else {
-        anyhow::bail!("usage: add <table> values (...), (...);");
+        return invalid_input_err("usage: add <table> values (...), (...);");
     };
     let table = table.trim();
     if table.is_empty() {
-        anyhow::bail!("usage: add <table> values (...), (...);");
+        return invalid_input_err("usage: add <table> values (...), (...);");
     }
     let rows = parse_add_rows(rows_src.trim())?;
     if rows.is_empty() {
-        anyhow::bail!("add requires at least one row");
+        return invalid_input_err("add requires at least one row");
     }
     Ok(Command::Add {
         table: table.to_string(),
@@ -51,75 +89,52 @@ pub fn parse_add_statement(input: &str) -> anyhow::Result<Command> {
     })
 }
 
-pub fn parse_statement(input: &str) -> anyhow::Result<Command> {
-    let input = input.trim();
-    if input.starts_with("begin transact") {
-        return parse_batch_block(input);
-    }
-
-    let parts = shlex::split(input).ok_or_else(|| anyhow::anyhow!("could not parse input"))?;
-    let Some(command) = parts.first() else {
-        anyhow::bail!("empty command");
-    };
-
-    match command.as_str() {
-        "add" => parse_add_statement(input),
-        _ => anyhow::bail!(
-            "unknown statement: {command}. Statements must end with `;`, or use `.help` for meta commands."
-        ),
-    }
-}
-
 /// Resolve one cell for a batch insert: entity columns accept `#id` or a prior binding name.
 pub(crate) fn parse_cell_value_batch(
     col_type: &ColType,
     raw: &str,
     bindings: &HashMap<String, TempRowId>,
-) -> Result<TxnCellValue, BatchCellParseError> {
+) -> Result<TxnCellValue, ParserError> {
     match col_type {
         ColType::RowId { .. } => {
             if raw.starts_with('#') {
-                parse_cell_value(col_type, raw)
-                    .map(Into::into)
-                    .map_err(BatchCellParseError::InvalidValue)
+                parse_cell_value(col_type, raw).map(Into::into)
             } else if is_binding_ident(raw) {
                 let id = bindings
                     .get(raw)
                     .copied()
-                    .ok_or_else(|| BatchCellParseError::UnknownBinding(raw.to_string()))?;
+                    .ok_or_else(|| ParserError::UnknownBinding(raw.to_string()))?;
                 Ok(TxnCellValue::from(id))
             } else {
-                Err(BatchCellParseError::InvalidValue(format!(
+                Err(ParserError::InvalidValue(format!(
                     "expected entity id like #<commit>:<counter> or a binding name, got {raw}"
                 )))
             }
         }
-        _ => parse_cell_value(col_type, raw)
-            .map(Into::into)
-            .map_err(BatchCellParseError::InvalidValue),
+        _ => parse_cell_value(col_type, raw).map(Into::into),
     }
 }
 
 /// Parse `begin transact;` … `commit` (outer `;` already stripped by [`parse_command`]).
-fn parse_batch_block(input: &str) -> anyhow::Result<Command> {
+fn parse_batch_block(input: &str) -> Result<Command, ParserError> {
     let input = input.trim();
     let Some(rest) = input.strip_prefix("begin transact") else {
-        anyhow::bail!("internal error: expected begin transact");
+        return invalid_input_err("internal error: expected begin transact");
     };
     let mut rest = rest.trim_start();
     let Some(after_kw) = rest.strip_prefix(';') else {
-        anyhow::bail!("expected `begin transact;`");
+        return invalid_input_err("expected `begin transact;`");
     };
     rest = after_kw.trim();
     let Some(inner) = rest.strip_suffix("commit") else {
-        anyhow::bail!("transaction block must end with `commit`");
+        return invalid_input_err("transaction block must end with `commit`");
     };
     let inner = inner.trim().strip_suffix(';').unwrap_or(inner).trim();
     let assignments = parse_batch_assignments(inner)?;
     Ok(Command::Batch { assignments })
 }
 
-pub fn is_binding_ident(s: &str) -> bool {
+fn is_binding_ident(s: &str) -> bool {
     let mut chars = s.chars();
     let Some(first) = chars.next() else {
         return false;
@@ -155,7 +170,7 @@ fn split_semicolon_statements(s: &str) -> Vec<String> {
     out
 }
 
-fn parse_batch_assignments(inner: &str) -> anyhow::Result<Vec<BatchAssignment>> {
+fn parse_batch_assignments(inner: &str) -> Result<Vec<BatchAssignment>, ParserError> {
     let mut v = Vec::new();
     for stmt in split_semicolon_statements(inner) {
         v.push(parse_batch_assignment(&stmt)?);
@@ -163,30 +178,34 @@ fn parse_batch_assignments(inner: &str) -> anyhow::Result<Vec<BatchAssignment>> 
     Ok(v)
 }
 
-fn parse_batch_assignment(line: &str) -> anyhow::Result<BatchAssignment> {
+fn parse_batch_assignment(line: &str) -> Result<BatchAssignment, ParserError> {
     let line = line.trim();
     if line.is_empty() {
-        anyhow::bail!("empty statement inside batch block");
+        return invalid_input_err("empty statement inside batch block");
     }
     let Some((name, rhs)) = line.split_once(" = add ") else {
-        anyhow::bail!("expected `name = add <table> values (...)`, got: {line}");
+        return invalid_input_err(&format!(
+            "expected `name = add <table> values (...)`, got: {line}"
+        ));
     };
     let name = name.trim();
     if name.is_empty() || !is_binding_ident(name) {
-        anyhow::bail!("invalid binding name: {name}");
+        return invalid_input_err(&format!("invalid binding name: {name}"));
     }
     let rhs = rhs.trim();
     let Some((table, rows_src)) = rhs.split_once(" values ") else {
-        anyhow::bail!("expected `values (...)` after table name in: {line}");
+        return invalid_input_err(&format!(
+            "expected `values (...)` after table name in: {line}"
+        ));
     };
     let table = table.trim();
     if table.is_empty() {
-        anyhow::bail!("missing table name");
+        return invalid_input_err("missing table name");
     }
     let rows = parse_add_rows(rows_src.trim())?;
     if rows.len() != 1 {
-        anyhow::bail!(
-            "each batch assignment must insert exactly one row (one `values (...)` group)"
+        return invalid_input_err(
+            "each batch assignment must insert exactly one row (one `values (...)` group)",
         );
     }
     let row = rows.into_iter().next().expect("one row");
@@ -208,7 +227,7 @@ fn parse_batch_assignment(line: &str) -> anyhow::Result<BatchAssignment> {
 ///
 /// Regex is a poor fit here: a pattern like `\(([^)]*)\)` breaks when a string column contains
 /// `)`.
-pub fn parse_add_rows(input: &str) -> anyhow::Result<Vec<Vec<String>>> {
+fn parse_add_rows(input: &str) -> Result<Vec<Vec<String>>, ParserError> {
     let mut rows = Vec::new();
     let mut chars = input.char_indices().peekable();
 
@@ -218,7 +237,7 @@ pub fn parse_add_rows(input: &str) -> anyhow::Result<Vec<Vec<String>>> {
             continue;
         }
         if ch != '(' {
-            anyhow::bail!("expected `(` to start a row");
+            return invalid_input_err("expected `(` to start a row");
         }
 
         chars.next();
@@ -245,7 +264,7 @@ pub fn parse_add_rows(input: &str) -> anyhow::Result<Vec<Vec<String>>> {
         }
 
         let Some(end) = end else {
-            anyhow::bail!("unterminated row in add statement");
+            return invalid_input_err("unterminated row in add statement");
         };
         let row_src = &input[start..end];
         let row = split_add_row_tokens(row_src);
@@ -289,35 +308,36 @@ fn split_add_row_tokens(row_src: &str) -> Vec<String> {
     out
 }
 
-pub fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, String> {
+pub(crate) fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, ParserError> {
     match col_type {
         ColType::RowId { .. } => parse_row_id(raw).map(CellValue::Id),
         ColType::BuiltinTy { builtin_ty } => match builtin_ty {
             BuiltinTy::BuiltinInt => raw
                 .parse::<i64>()
                 .map(CellValue::Int)
-                .map_err(|_| format!("invalid int: {raw}")),
+                .map_err(|_| ParserError::InvalidValue(format!("invalid int: {raw}"))),
             BuiltinTy::BuiltinStr => Ok(CellValue::Str(raw.to_string())),
         },
     }
 }
 
-fn parse_row_id(raw: &str) -> Result<RowId, String> {
-    let rest = raw
-        .strip_prefix('#')
-        .ok_or_else(|| "expected entity id like #<commit>:<counter>".to_string())?;
-    let Some((hash_hex, counter_raw)) = rest.split_once(':') else {
-        return Err("expected entity id like #<commit>:<counter>".to_string());
+fn parse_row_id(raw: &str) -> Result<RowId, ParserError> {
+    let Some(rest) = raw.strip_prefix('#') else {
+        return invalid_input_err("expected entity id like #<commit>:<counter>");
     };
-    let hash_bytes = hex::decode(hash_hex).map_err(|_| format!("invalid entity id: {raw}"))?;
+    let Some((hash_hex, counter_raw)) = rest.split_once(':') else {
+        return invalid_input_err("expected entity id like #<commit>:<counter>");
+    };
+    let hash_bytes = hex::decode(hash_hex)
+        .map_err(|_| ParserError::InvalidValue(format!("invalid entity id: {raw}")))?;
     if hash_bytes.len() != HASH_SIZE {
-        return Err(format!("invalid entity id: {raw}"));
+        return invalid_value_err(format!("invalid entity id: {raw}"));
     }
     let mut hash = [0; HASH_SIZE];
     hash.copy_from_slice(&hash_bytes);
     let counter = counter_raw
         .parse::<u32>()
-        .map_err(|_| format!("invalid entity id: {raw}"))?;
+        .map_err(|_| ParserError::InvalidValue(format!("invalid entity id: {raw}")))?;
     Ok(RowId {
         commit: CommitHash(hash),
         counter,

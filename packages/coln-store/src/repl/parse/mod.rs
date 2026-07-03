@@ -1,12 +1,11 @@
 use anyhow::{Result, bail};
-pub use coln::{BatchAssignment, Command as ColnCommand};
-pub(crate) use coln::{parse_cell_value, parse_cell_value_batch};
+pub(crate) use coln::Command as ColnCommand;
 pub(crate) use meta::Command as MetaCommand;
 pub(crate) use sql::{Col as SqlCol, Command as SqlCommand};
 
 use crate::repl::ShellMode;
 
-mod coln;
+pub mod coln;
 mod meta;
 mod sql;
 
@@ -36,6 +35,10 @@ pub(crate) fn parse_command(mode: ShellMode, input: &str) -> Result<Command> {
 
 #[cfg(test)]
 mod tests {
+
+    use coln_flir_rs::ir::BuiltinTy;
+
+    use crate::repl::parse::coln::BatchAssignment;
 
     use super::*;
 
@@ -193,9 +196,19 @@ mod tests {
         assert_eq!(table_name, "Person");
         assert_eq!(columns.len(), 2);
         assert_eq!(columns[0].col_name, "name");
-        assert_eq!(columns[0].col_typ, crate::ir::BuiltinTy::BuiltinStr);
+        assert_eq!(
+            columns[0].col_typ,
+            crate::ir::ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinStr
+            }
+        );
         assert_eq!(columns[1].col_name, "age");
-        assert_eq!(columns[1].col_typ, crate::ir::BuiltinTy::BuiltinInt);
+        assert_eq!(
+            columns[1].col_typ,
+            crate::ir::ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt
+            }
+        );
     }
 
     #[test]

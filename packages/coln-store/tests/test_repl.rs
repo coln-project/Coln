@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::{
-    repl::{exe::run_transact, parse::BatchAssignment},
+    repl::{exe::run_transact, parse::coln::BatchAssignment},
     store::Store,
 };
 

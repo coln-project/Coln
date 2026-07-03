@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow, bail};
 
-use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
+use crate::ir::{ColumnEntry, EntityVariant, Path, Schema};
 use crate::repl::Session;
 use crate::repl::exe::{LoadedState, SchemaSummary, add_rows};
 use crate::repl::parse::{SqlCol as Col, SqlCommand as Command};
@@ -140,14 +140,7 @@ fn sql_schema_from_cols(columns: Vec<Col>) -> Schema {
             .into_iter()
             .map(|column| ColumnEntry {
                 path: Path::from(column.col_name.as_str()),
-                col_type: match column.col_typ {
-                    BuiltinTy::BuiltinInt => ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinInt,
-                    },
-                    BuiltinTy::BuiltinStr => ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinStr,
-                    },
-                },
+                col_type: column.col_typ,
             })
             .collect(),
         primary_key: None,
@@ -156,6 +149,8 @@ fn sql_schema_from_cols(columns: Vec<Col>) -> Schema {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::ir::ColType;
+
     use super::*;
     use crate::repl::ShellMode;
 
@@ -170,11 +165,15 @@ mod tests {
             vec![
                 Col {
                     col_name: "name".to_string(),
-                    col_typ: BuiltinTy::BuiltinStr,
+                    col_typ: ColType::BuiltinTy {
+                        builtin_ty: coln_flir_rs::ir::BuiltinTy::BuiltinStr,
+                    },
                 },
                 Col {
                     col_name: "age".to_string(),
-                    col_typ: BuiltinTy::BuiltinInt,
+                    col_typ: ColType::BuiltinTy {
+                        builtin_ty: coln_flir_rs::ir::BuiltinTy::BuiltinInt,
+                    },
                 },
             ],
         )
@@ -241,7 +240,9 @@ mod tests {
             "Person".to_string(),
             vec![Col {
                 col_name: "email".to_string(),
-                col_typ: BuiltinTy::BuiltinStr,
+                col_typ: ColType::BuiltinTy {
+                    builtin_ty: coln_flir_rs::ir::BuiltinTy::BuiltinStr,
+                },
             }],
         )
         .expect("create table");

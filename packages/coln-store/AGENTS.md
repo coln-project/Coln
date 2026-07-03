@@ -79,7 +79,7 @@ Quick examples:
 
 ## Required Validation
 
-Run these checks for any non-trivial change:
+Run these checks for non-trivial change when you are told to. Otherwise there is no need to run checks.
 
 `just check`
 
