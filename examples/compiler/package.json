@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.mjs --bundle --format=esm --outfile=dist/main.mjs"
+    "build": "esbuild src/main.mts --bundle --format=esm --outfile=dist/main.mjs"
   },
   "dependencies": {
     "coln-compiler": "file:../../_build/npm/coln-compiler"

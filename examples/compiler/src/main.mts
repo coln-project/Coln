@@ -1,15 +1,23 @@
-import { init, compile, getDiagnostics, prettyIr, irToJson } from "coln-compiler";
+import {
+  init,
+  compile,
+  getDiagnostics,
+  prettyIr,
+  irToJson,
+} from "coln-compiler";
 
-const inputEl = document.getElementById("input");
-const diagsEl = document.getElementById("diagnostics");
-const prettyEl = document.getElementById("pretty");
-const jsonEl = document.getElementById("json");
-const examplesEl = document.getElementById("examples");
-const exampleFiles = await fetch("examples/index.json").then((r) => r.json());
+const inputEl = document.getElementById("input") as HTMLTextAreaElement;
+const diagsEl = document.getElementById("diagnostics")!;
+const prettyEl = document.getElementById("pretty")!;
+const jsonEl = document.getElementById("json")!;
+const examplesEl = document.getElementById("examples") as HTMLSelectElement;
+const exampleFiles: string[] = await fetch("examples/index.json").then((r) =>
+  r.json(),
+);
 for (const name of exampleFiles) {
   const opt = document.createElement("option");
   opt.value = name;
-  opt.textContent = name.split(".")[0];
+  opt.textContent = name.split(".")[0]!;
   examplesEl.appendChild(opt);
 }
 examplesEl.addEventListener("change", async () => {
@@ -49,7 +57,7 @@ async function run() {
   delete document.body.dataset.compiling;
 }
 
-let debounceTimer;
+let debounceTimer: ReturnType<typeof setTimeout>;
 inputEl.addEventListener("input", () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(run, 50);
