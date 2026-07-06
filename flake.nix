@@ -25,6 +25,7 @@
 
         inherit (pkgs) colnHaskellPackages;
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [ "rust-src" "rust-analyzer" ];
           targets = [ "wasm32-unknown-unknown" ];
         };
 
