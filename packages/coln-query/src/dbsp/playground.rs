@@ -869,7 +869,9 @@ fn test_self_rec_trans_closure_recursive() -> Result<(), anyhow::Error> {
 // TODO and open questions:
 // - Why does this not work for more than one thread? I suspect
 //   this is due to the missing Consensus among worker threads, which
-//   recursive has built in via some fixedpoint() method. (NOPE!)
+//   recursive has built in via some fixedpoint() method. A quick try in my
+//   DBSP folk reveals it helps but it's still subject to race conditions.
+//   Currently, investigating this with the DBSP folks.
 #[test]
 fn test_self_rec_trans_closure_iterate() -> Result<(), anyhow::Error> {
     const STEPS: usize = 2;
@@ -1037,8 +1039,10 @@ fn graph_color_data() -> (
 
 /// This does mutual recursion of graph coloring using the recursive() method.
 // TODO and open questions:
-// - How to add a recursion/iteration depth limit with recursive()?
-// - Rewrite using `recursive_dynamic` once your PR got merged
+// - How to add a recursion/iteration depth limit with recursive()? I guess for
+//   that the iterative API must be used..
+// - Rewrite using `recursive_dynamic` once your PR got merged and released
+//   https://github.com/feldera/feldera/pull/6577
 #[test]
 fn test_mutual_rec_graph_color_recursive() -> Result<(), anyhow::Error> {
     const STEPS: usize = 3;
@@ -1113,7 +1117,7 @@ fn test_mutual_rec_graph_color_recursive() -> Result<(), anyhow::Error> {
 /// This does mutual recursion using the iterate_with_conditions() method.
 // TODO and open questions:
 // - Why does this produce wrong results starting from the second iteration?
-// - If the result is correct, does this work for more than one thread?
+// - If the result is correct someday, does this work for more than one thread?
 #[test]
 #[should_panic] // As of now, this is the expected behavior due the TODOs above.
 fn test_mutual_rec_graph_color_iterate() {

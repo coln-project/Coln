@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod api;
+mod tuple;
 mod context;
 pub(crate) mod dbsp;
 mod engine;
