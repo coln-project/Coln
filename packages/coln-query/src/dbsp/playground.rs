@@ -748,16 +748,23 @@ fn test_factorial_with_iterate() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+type NodeId = u64;
+type Weight = u64;
+type CumWeight = u64;
+type Hopcnt = u64;
+type WeightedEdge = Tup3<NodeId, NodeId, Weight>;
+type Path = Tup4<NodeId, NodeId, CumWeight, Hopcnt>;
+
 #[allow(clippy::type_complexity)]
 fn trans_closure_data() -> (
-    Vec<Vec<Tup2<Tup3<usize, usize, usize>, ZWeight>>>,
-    Vec<OrdZSet<Tup4<usize, usize, usize, usize>>>,
+    Vec<Vec<Tup2<WeightedEdge, ZWeight>>>,
+    Vec<OrdZSet<Path>>,
 ) {
     let edges_input = vec![
         // The first clock cycle adds a graph of four nodes:
         // |0| -1-> |1| -1-> |2| -2-> |3| -2-> |4|
         vec![
-            Tup2(Tup3(0_usize, 1_usize, 1_usize), 1_i64),
+            Tup2(Tup3(0, 1, 1), 1),
             Tup2(Tup3(1, 2, 1), 1),
             Tup2(Tup3(2, 3, 2), 1),
             Tup2(Tup3(3, 4, 2), 1),
@@ -775,7 +782,7 @@ fn trans_closure_data() -> (
     ];
     let expected_output = vec![
         zset! {
-            Tup4(0_usize, 1_usize, 1_usize, 1_usize) => 1,
+            Tup4(0, 1, 1, 1) => 1,
             Tup4(0, 2, 2, 2) => 1,
             Tup4(0, 3, 4, 3) => 1,
             Tup4(0, 4, 6, 4) => 1,
@@ -812,7 +819,7 @@ fn test_self_rec_trans_closure_recursive() -> Result<(), anyhow::Error> {
             let len_1 = edges.map(|Tup3(from, to, weight)| Tup4(*from, *to, *weight, 1));
 
             let closure = root_circuit.recursive(
-            |child_circuit, len_n_minus_1: Stream<_, OrdZSet<Tup4<usize, usize, usize, usize>>>| {
+            |child_circuit, len_n_minus_1: Stream<_, OrdZSet<Path>>| {
                 // Import the `edges` and `len_1` relation from the parent circuit.
                 let edges = edges.delta0(child_circuit);
                 let len_1 = len_1.delta0(child_circuit);
@@ -874,7 +881,7 @@ fn test_self_rec_trans_closure_iterate() -> Result<(), anyhow::Error> {
             // Create a base relation with all paths of length 1.
             let len_1 = edges.map(|Tup3(from, to, weight)| Tup4(*from, *to, *weight, 1));
 
-            // Safety measure to prevent infinite iterations.
+            // Maximum recursion/iteration depth.
             const MAX_ITERATIONS: usize = 128;
             let iteration_count = Rc::new(RefCell::new(0));
 
@@ -882,7 +889,7 @@ fn test_self_rec_trans_closure_iterate() -> Result<(), anyhow::Error> {
                 // Feedback carries only the frontier (the delta from the last step).
                 let (frontier, frontier_feedback) = child_circuit
                     .add_feedback(Z1::new(
-                        OrdZSet::<Tup4<usize, usize, usize, usize>>::default(),
+                        OrdZSet::<Path>::default(),
                     ));
 
                 // delta0 fires only at inner step 0, injecting the base case exactly once.
@@ -892,20 +899,22 @@ fn test_self_rec_trans_closure_iterate() -> Result<(), anyhow::Error> {
                 // Extend the frontier by one hop.
                 // At step 0: frontier={}, so the result is just len_1_inner, the base case.
                 // At step n with n > 0: len_1_inner={}, so it's purely frontier ⋈ edges.
-                let new_frontier = frontier
-                    .map_index(move |Tup4(start, end, cum_weight, hopcnt)| {
-                        (*end, Tup4(*start, *end, *cum_weight, *hopcnt))
-                    })
-                    .join(
-                        &edges_inner
-                            .map_index(|Tup3(from, to, weight)| (*from, Tup3(*from, *to, *weight))),
-                        |_end_from,
-                         Tup4(start, _end, cum_weight, hopcnt),
-                         Tup3(_from, to, weight)| {
-                            Tup4(*start, *to, cum_weight + weight, hopcnt + 1)
-                        },
-                    )
-                    .plus(&len_1_inner);
+                let new_frontier = len_1_inner.plus(
+                    &frontier
+                        .map_index(move |Tup4(start, end, cum_weight, hopcnt)| {
+                            (*end, Tup4(*start, *end, *cum_weight, *hopcnt))
+                        })
+                        .join(
+                            &edges_inner.map_index(|Tup3(from, to, weight)| {
+                                (*from, Tup3(*from, *to, *weight))
+                            }),
+                            |_end_from,
+                             Tup4(start, _end, cum_weight, hopcnt),
+                             Tup3(_from, to, weight)| {
+                                Tup4(*start, *to, cum_weight + weight, hopcnt + 1)
+                            },
+                        ),
+                );
 
                 frontier_feedback.connect(&new_frontier);
 
@@ -951,17 +960,20 @@ fn test_self_rec_trans_closure_iterate() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+type Edge = Tup2<usize, usize>;
+type Node = usize;
+
 #[allow(clippy::type_complexity)]
 fn graph_color_data() -> (
-    Vec<Vec<Tup2<usize, ZWeight>>>,
-    Vec<Vec<Tup2<Tup2<usize, usize>, ZWeight>>>,
-    Vec<OrdZSet<usize>>,
-    Vec<OrdZSet<usize>>,
+    Vec<Vec<Tup2<Node, ZWeight>>>,
+    Vec<Vec<Tup2<Edge, ZWeight>>>,
+    Vec<OrdZSet<Node>>,
+    Vec<OrdZSet<Node>>,
 ) {
     let init_data = vec![vec![Tup2(0, 1)], vec![], vec![]];
 
     let edges_data = vec![
-        // The first clock cycle adds a graph of four nodes:
+        // The first step adds a graph of four nodes:
         // |0| --> |1| --> |2| --> |3| --> |4|
         vec![
             Tup2(Tup2(0, 1), 1),
@@ -969,13 +981,14 @@ fn graph_color_data() -> (
             Tup2(Tup2(2, 3), 1),
             Tup2(Tup2(3, 4), 1),
         ],
-        // In total, we have the following graph:
+        // Now, we have the following graph in total:
         // |0| --> |1| --> |2| --> |3| --> |4|
         //  ^               |
         //  |               |
         //  ------ |5| <-----
         vec![Tup2(Tup2(2, 5), 1), Tup2(Tup2(5, 0), 1)],
-        // TODO: Odd-length cycle, destroying bipartite property.
+        // And we introduce an odd-length cycle, rendering the graph
+        // non-biparite anymore (all nodes are red _and_ blue):
         // |0| --> |1| --> |2| --> |3| --> |4|
         //  ^               |               |
         //  |               |               |
@@ -1025,27 +1038,21 @@ fn graph_color_data() -> (
 /// This does mutual recursion of graph coloring using the recursive() method.
 // TODO and open questions:
 // - How to add a recursion/iteration depth limit with recursive()?
-// - How can the second arg to recursive() be variadic in the amount of recursive streams?
-//   I think it requires `impl RecursiveStreams for Vec<Stream>` which is
-//   marked as TODO in the DBSP source (see `recursive.rs`).
+// - Rewrite using `recursive_dynamic` once your PR got merged
 #[test]
 fn test_mutual_rec_graph_color_recursive() -> Result<(), anyhow::Error> {
     const STEPS: usize = 3;
 
     let (mut circuit_handle, ((init_input, edges_input), (red_output, blue_output))) =
         Runtime::init_circuit(worker_threads(), move |root_circuit| {
-            let (edges, edges_input) = root_circuit.add_input_zset::<Tup2<usize, usize>>();
-            let (init, init_input) = root_circuit.add_input_zset::<usize>();
-
-            // Safety measure to prevent infinite iterations.
-            const MAX_ITERATIONS: usize = 128;
-            let iteration_count = Rc::new(RefCell::new(0));
+            let (edges, edges_input) = root_circuit.add_input_zset::<Edge>();
+            let (init, init_input) = root_circuit.add_input_zset::<Node>();
 
             let (red, blue) = root_circuit.recursive(
                 |child_circuit,
                  (red, blue): (
-                    Stream<NestedCircuit, OrdZSet<usize>>,
-                    Stream<NestedCircuit, OrdZSet<usize>>,
+                    Stream<NestedCircuit, OrdZSet<Node>>,
+                    Stream<NestedCircuit, OrdZSet<Node>>,
                 )| {
                     // delta0 fires only at inner step 0, injecting the base case exactly once.
                     let edges = edges.delta0(child_circuit);
@@ -1114,8 +1121,8 @@ fn test_mutual_rec_graph_color_iterate() {
 
     let (mut circuit_handle, ((init_input, edges_input), (red_output, blue_output))) =
         Runtime::init_circuit(1, move |root_circuit| {
-            let (edges, edges_input) = root_circuit.add_input_zset::<Tup2<usize, usize>>();
-            let (init, init_input) = root_circuit.add_input_zset::<usize>();
+            let (edges, edges_input) = root_circuit.add_input_zset::<Edge>();
+            let (init, init_input) = root_circuit.add_input_zset::<Node>();
 
             // Safety measure to prevent infinite iterations.
             const MAX_ITERATIONS: usize = 128;
