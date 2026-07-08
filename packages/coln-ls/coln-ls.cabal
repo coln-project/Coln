@@ -54,6 +54,15 @@ library
     transformers,
     vector,
 
+executable coln-language-server
+  main-is: Main.hs
+  hs-source-dirs: app
+  default-language: GHC2021
+  ghc-options: -Wall
+  build-depends:
+    base,
+    coln-ls
+
 test-suite coln-ls-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
