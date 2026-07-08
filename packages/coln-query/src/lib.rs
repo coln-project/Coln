@@ -21,6 +21,7 @@ mod runtime;
 pub mod scalar;
 pub mod stmt;
 pub mod test_helper;
+mod tuple;
 pub mod type_resolver;
 mod util;
 pub mod variable;
