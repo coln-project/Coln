@@ -61,7 +61,7 @@ executable coln-language-server
   ghc-options: -Wall
   build-depends:
     base,
-    coln-ls
+    coln-ls,
 
 test-suite coln-ls-test
   type: exitcode-stdio-1.0

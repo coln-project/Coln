@@ -153,8 +153,40 @@
             '';
           };
 
+          vscode-extension = pkgs.buildNpmPackage {
+            pname = "coln-vscode-extension";
+            version = "0.1.0";
+
+            src = ./packages/coln-ls/client;
+
+            npmDepsHash = "sha256-kzQf6ez17lzS8pJZFGkn8HVFbah/SdOULpzl0nAUl7c=";
+
+            postUnpack = ''
+              cp ${coln-ls}/bin/coln-language-server $sourceRoot/
+              cp -r ${./LICENSES} $sourceRoot/LICENSES
+              cat ${./LICENSES}/Apache-2.0.txt ${./LICENSES}/MIT.txt > $sourceRoot/LICENSE
+            '';
+
+            postPatch = ''
+              substituteInPlace package.json \
+                --replace-fail "cp -r ../../../LICENSES LICENSES" "true"
+            '';
+
+            nativeBuildInputs = [ pkgs.vsce ];
+            dontNpmBuild = true;
+
+            buildPhase = ''
+              vsce package --allow-missing-repository
+            '';
+
+            installPhase = ''
+              cp *.vsix $out
+            '';
+          };
+
           default = coln-cli;
         };
+
 
         inherit (packages) forester coln-manual-dev;
         haskell-wasm = inputs.ghc-wasm-meta.packages.${system};
