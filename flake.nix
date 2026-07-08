@@ -217,7 +217,6 @@
             cabal-install
             cabal2nix
             cargo-llvm-cov
-            clippy
             coln-manual-dev
             forester
             fourmolu
