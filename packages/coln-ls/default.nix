@@ -1,7 +1,6 @@
 { mkDerivation, base, coln-compiler, containers, diagnostician
-, exceptions, fnotation, lens, lib, lsp, lsp-test, megaparsec, mtl
-, prettyprinter, process, stm, tasty, tasty-hunit, text
-, transformers, vector
+, exceptions, fnotation, lens, lib, lsp, megaparsec, mtl
+, prettyprinter, stm, text, transformers, vector
 }:
 mkDerivation {
   pname = "coln-ls";
@@ -14,9 +13,6 @@ mkDerivation {
     lens lsp megaparsec mtl prettyprinter stm text transformers vector
   ];
   executableHaskellDepends = [ base ];
-  testHaskellDepends = [
-    base lsp-test process tasty tasty-hunit text
-  ];
   license = "(Apache-2.0 OR MIT)";
   mainProgram = "coln-language-server";
 }
