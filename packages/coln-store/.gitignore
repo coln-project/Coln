@@ -70,3 +70,5 @@ tmp/
 
 # compressed data
 *.zst
+
+/data/
