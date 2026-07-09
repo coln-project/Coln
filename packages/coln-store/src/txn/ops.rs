@@ -328,6 +328,7 @@ impl From<CellValue> for TxnCellValue {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum Op {
     Add {
         row_id: RowId,

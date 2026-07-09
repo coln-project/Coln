@@ -13,7 +13,7 @@ use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatRealm, RuleEntry};
-use crate::roweq::{self, rowing};
+use crate::roweq::rowing;
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
@@ -200,48 +200,50 @@ impl Store {
     /// This is a low level API that mutates `self` before rule checking, so
     /// callers that need atomicity must call it on a preview clone and publish
     /// that clone only after success.
-    fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
-        info!(op_count = ops.len(), "applying batch");
-        self.validate_batch(&ops)?;
+    fn apply_batch(&mut self, ops: impl Iterator<Item = Op> + Clone) -> Result<(), StoreIntError> {
+        self.validate_batch(ops.clone())?;
 
-        for op in &ops {
+        let mut op_count = 0usize;
+        for op in ops {
+            op_count += 1;
             let Op::Add {
                 table,
                 values,
                 row_id,
             } = op;
-            let oid = self.resolve_table(table).expect("validated batch");
+            let oid = self.resolve_table(&table).expect("validated batch");
 
             // use self.tables to make the borrow checker happy we are accessing separate fields
             let t = self.tables.get_mut(&oid).expect("validated batch");
-            let observed = self.rowing.observe(t, *row_id, values)?;
+            t.append_row(values, row_id);
+            // let observed = self.rowing.observe(t, *row_id, values)?;
 
-            // TODO We are invoking rowing even if tables might not be in hashcons mode
-            match observed {
-                roweq::ObservedOutcome::Inserted(rid) => t.append_row(values.clone(), rid),
-                roweq::ObservedOutcome::KeptOld(_row_id) => {
-                    // equivalent row exists, do nothing
-                }
+            // // TODO We are invoking rowing even if tables might not be in hashcons mode
+            // match observed {
+            //     roweq::ObservedOutcome::Inserted(rid) => t.append_row(values.clone(), rid),
+            //     roweq::ObservedOutcome::KeptOld(_row_id) => {
+            //         // equivalent row exists, do nothing
+            //     }
 
-                roweq::ObservedOutcome::Swap { old, new } => {
-                    t.replace_row_id(&old, new)?;
-                }
-            }
+            //     roweq::ObservedOutcome::Swap { old, new } => {
+            //         t.replace_row_id(&old, new)?;
+            //     }
+            // }
         }
+        info!(op_count, "applied batch");
 
         self.check_rules()?;
         Ok(())
     }
 
-    fn validate_batch(&self, ops: &[Op]) -> Result<(), StoreIntError> {
-        debug!(op_count = ops.len(), "validating batch");
+    fn validate_batch(&self, ops: impl Iterator<Item = Op> + Clone) -> Result<(), StoreIntError> {
         let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
 
         for op in ops {
             let Op::Add { table, values, .. } = op;
             // Check ops have the right table path
             let oid = self
-                .resolve_table(table)
+                .resolve_table(&table)
                 .ok_or_else(|| ValidationError::UnknownTable {
                     path: table.clone(),
                 })?;
@@ -250,10 +252,10 @@ impl Store {
                 .ok_or_else(|| ValidationError::UnknownTable {
                     path: table.clone(),
                 })?;
-            t.validate_insert(values)?;
+            t.validate_insert(&values)?;
 
             // Check primary key conflicts within ops batch
-            if let Some(key) = t.primary_key_values(values) {
+            if let Some(key) = t.primary_key_values(&values) {
                 let keys = pending_pk.entry(oid).or_default();
                 if keys.iter().any(|k| k == &key) {
                     return Err(ValidationError::DuplicatePrimaryKey.into());
@@ -405,7 +407,8 @@ impl Store {
     }
 
     fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), StoreIntError> {
-        self.apply_batch(cmt.resolved_ops())?;
+        let ops = cmt.resolved_ops(|path| self.schema_for(path))?;
+        self.apply_batch(ops)?;
         self.record_in_commit_graph(cmt);
         Ok(())
     }

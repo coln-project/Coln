@@ -35,6 +35,8 @@ pub(super) fn execute_sql(session: &mut Session, command: Command) -> Result<Str
     }
 }
 
+const COPY_CHUNK_ROWS: usize = 500_000;
+
 /// Load a delimited file with a header row into an existing table, mapping
 /// file columns to schema columns by name.
 fn copy_from_csv(
@@ -42,6 +44,22 @@ fn copy_from_csv(
     table_name: &str,
     path: &str,
     delimiter: u8,
+) -> Result<String> {
+    copy_from_csv_chunked(session, table_name, path, delimiter, COPY_CHUNK_ROWS)
+}
+
+/// [`copy_from_csv`] with an explicit chunk size, separated out for tests.
+///
+/// Each chunk commits as its own transaction, so a malformed record part way
+/// through the file leaves earlier chunks committed.
+/// This is also done to reduce peak memory usage: sometimes importing large files
+/// with lots of commit hashes can blow up the memory.
+fn copy_from_csv_chunked(
+    session: &mut Session,
+    table_name: &str,
+    path: &str,
+    delimiter: u8,
+    chunk_rows: usize,
 ) -> Result<String> {
     let loaded = session
         .loaded
@@ -82,7 +100,8 @@ fn copy_from_csv(
         indices.push(index);
     }
 
-    let mut rows = Vec::new();
+    let mut total = 0usize;
+    let mut chunk: Vec<Vec<String>> = Vec::with_capacity(chunk_rows.min(1024));
     for (row_index, record) in reader.records().enumerate() {
         let record = record
             .with_context(|| format!("failed to read csv row {} from {path}", row_index + 1))?;
@@ -93,15 +112,19 @@ fn copy_from_csv(
             })?;
             row.push(field.to_string());
         }
-        rows.push(row);
+        chunk.push(row);
+
+        if chunk.len() >= chunk_rows {
+            total += add_rows(&mut loaded.store, table_name, &chunk)?.len();
+            tracing::debug!("copied {total} rows into the store so far");
+            chunk.clear();
+        }
+    }
+    if !chunk.is_empty() {
+        total += add_rows(&mut loaded.store, table_name, &chunk)?.len();
     }
 
-    if rows.is_empty() {
-        return Ok(format!("copied 0 rows into {table_name}"));
-    }
-    tracing::debug!("ready to copy {} rows into the store", rows.len());
-    let row_ids = add_rows(&mut loaded.store, table_name, &rows)?;
-    Ok(format!("copied {} rows into {table_name}", row_ids.len()))
+    Ok(format!("copied {total} rows into {table_name}"))
 }
 
 fn create_sql_table(
@@ -215,6 +238,32 @@ mod tests {
             err.to_string()
                 .contains("failed to open csv tests/data/missing.csv")
         );
+    }
+
+    /// A chunk size smaller than the file splits the copy into one commit per
+    /// chunk while still ingesting every row.
+    #[test]
+    fn copy_commits_in_chunks() {
+        let mut session = sql_session_with_person();
+        let message =
+            copy_from_csv_chunked(&mut session, "Person", "tests/data/people.csv", b',', 1)
+                .expect("chunked copy");
+        assert_eq!(message, "copied 2 rows into Person");
+
+        let loaded = session.loaded.as_ref().expect("loaded session");
+        let table = loaded
+            .store
+            .table_at(&"Person".parse().unwrap())
+            .expect("Person table");
+        assert_eq!(table.row_count(), 2);
+
+        let data_commits = loaded
+            .store
+            .commits()
+            .iter_topological()
+            .filter(|commit| !commit.is_root())
+            .count();
+        assert_eq!(data_commits, 2, "one commit per chunk");
     }
 
     #[test]
