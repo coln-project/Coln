@@ -3,7 +3,8 @@ members = [
   "packages/coln-js-runtime",
   "packages/coln-flir-rs",
   "packages/coln-store",
-  "packages/coln-query"
+  "packages/coln-query",
+  "packages/coln-batch"
 ]
 resolver = "3"
 

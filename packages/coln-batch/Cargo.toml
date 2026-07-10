@@ -1,0 +1,12 @@
+[package]
+name = "coln-batch"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Batch query engine for Coln: multiway (worst-case-optimal) joins over sorted tables."
+repository = "https://github.com/coln-project/Coln"
+readme = "README.md"
+
+[dependencies]
+anyhow = { workspace = true }
+arrow = { version = "56", default-features = false, features = ["ipc"] }
