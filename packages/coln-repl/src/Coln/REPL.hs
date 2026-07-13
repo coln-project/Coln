@@ -12,8 +12,8 @@ import Coln.Core.Realm (Realm)
 import Coln.Diagnostics
 import Coln.Elaborator.Environment (emptyElabEnv)
 import Coln.Elaborator.Judgment (Syn (..))
-import Coln.Frontend.Parser (decl', syn)
 import Coln.Frontend.Notation
+import Coln.Frontend.Parser (decl', syn)
 import Control.Monad
 import Control.Monad.State.Strict
 import Control.Monad.Writer
