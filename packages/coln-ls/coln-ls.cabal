@@ -53,12 +53,3 @@ library
     text,
     transformers,
     vector,
-
-executable coln-language-server
-  main-is: Main.hs
-  hs-source-dirs: app
-  default-language: GHC2021
-  ghc-options: -Wall
-  build-depends:
-    base,
-    coln-ls,
