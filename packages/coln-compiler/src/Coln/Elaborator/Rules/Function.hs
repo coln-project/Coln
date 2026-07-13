@@ -5,15 +5,10 @@
 module Coln.Elaborator.Rules.Function where
 
 import Coln.Common
-import Coln.Core.Evaluation
-import Coln.Core.Memoed
-import Coln.Core.Params
+import Coln.Core
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
-import Coln.Elaborator.Diagnostics
-import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
-import Coln.Report
 
 variantFor :: Ty N -> Ty N -> Span -> ElabEnv c -> IO FunctionVariant
 variantFor dom cod sp e =

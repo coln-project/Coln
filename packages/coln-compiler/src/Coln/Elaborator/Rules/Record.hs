@@ -5,21 +5,13 @@
 
 module Coln.Elaborator.Rules.Record where
 
-import Control.Monad (unless)
-import Prettyprinter
-
 import Coln.Common
-import Coln.Core.Evaluation
-import Coln.Core.Memoed
-import Coln.Core.Params
-import Coln.Core.Print
+import Coln.Core
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Debug
-import Coln.Elaborator.Diagnostics
-import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
-import Coln.Report
+import Control.Monad (unless)
 
 data FieldDeclaration
   = FieldDeclaration {name :: Name, typ :: Typ N}

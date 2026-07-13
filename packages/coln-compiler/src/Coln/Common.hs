@@ -10,6 +10,7 @@ module Coln.Common (
   module Data.Vector.Strict,
   module Data.Text,
   module Prettyprinter,
+  module Coln.Report,
   panic,
   unimplemented,
   unwrap,
@@ -39,30 +40,24 @@ module Coln.Common (
   mangleToString,
   fromShow,
   for,
-) where
+)
+where
 
-import Control.Monad.IO.Class
+import Coln.Report
 import Data.Foldable qualified as F
-import Data.Hashable
 import Data.Kind (Constraint, Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
-import Data.Text.Unsafe qualified as TU
 import Data.Traversable hiding (for)
-import Data.Vector.Generic qualified as VG
-import Data.Vector.Generic.Mutable qualified as VGM
-import Data.Vector.Hashtables (FrozenDictionary)
-import Data.Vector.Hashtables qualified as HT
 import Data.Vector.Strict (Vector)
 import Data.Vector.Strict qualified as V
 import Diagnostician
 import FNotation (Name (..))
-import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty)
+import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty, (<+>))
 import Prettyprinter.Render.String
-import System.IO.Unsafe (unsafePerformIO)
 import Prelude hiding (lookup)
 
 #ifdef DEBUG

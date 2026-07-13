@@ -4,12 +4,11 @@
 
 module Coln.Core.Evaluation where
 
-import Prelude hiding (abs)
-
 import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
+import Prelude hiding (abs)
 
 class Compile (a :: Case -> Type) (b :: Case -> Type) | a -> b where
   compile :: (V.HasEvaluation c) => a c -> V.Locals -> V.Evaluation b c
@@ -23,12 +22,12 @@ compileAbs (S.Abs x t) = do
   \vs -> V.Clo x vs k
 compileAbs (S.AbsConst t) = do
   let k = compile t
-  \vs -> V.CloConst (k vs)
+  V.CloConst . k
 
 instance Compile S.El V.El where
   compile = \case
-    S.LocalVar i -> \vs -> elemAt vs i
-    S.GlobalVar _ v -> \_ -> v
+    S.LocalVar i -> (`elemAt` i)
+    S.GlobalVar _ v -> const v
     S.Code a -> V.emap V.Code . compile a
     S.App t0 t1 -> do
       let k0 = compile t0
@@ -47,7 +46,7 @@ instance Compile S.El V.El where
     S.Lit l -> \_ -> V.Lit l
     S.Is t -> do
       let k = compile t
-      \vs -> V.Become (k vs)
+      V.Become . k
     S.Lookup x ts -> do
       let k = compile <$> ts
       \vs -> V.Lookup x $ ($ vs) <$> k
@@ -72,17 +71,17 @@ compileEqualityType eq = do
 
 instance Compile S.Ty V.Ty where
   compile = \case
-    S.U u -> \_ -> V.U u
+    S.U u -> const $ V.U u
     S.Decode t -> do
       let k = compile t
-      \vs -> V.ebind V.decode (k vs)
+      V.ebind V.decode . k
     S.Function ft -> V.Function . compileFunctionType ft
     S.Record rt -> V.Describe . V.Record . compileRecordType rt
     S.Eq eq -> V.Eq . compileEqualityType eq
     S.BuiltinTy bt -> \_ -> V.BuiltinTy bt
     S.IsTy a -> do
       let k = compile a
-      \vs -> V.Become (k vs)
+      V.Become . k
     S.EltOf x ts -> do
       let k = compile <$> ts
       \vs -> V.EltOf x $ ($ vs) <$> k

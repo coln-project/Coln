@@ -17,6 +17,7 @@ library
     Coln.Backend.TypeScript.Generate
     Coln.Backend.TypeScript.Params
     Coln.Common
+    Coln.Core
     Coln.Core.Conversion
     Coln.Core.Evaluation
     Coln.Core.Globals
@@ -40,8 +41,8 @@ library
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
     Coln.Frontend.Diagnostics
-    Coln.Frontend.Driver
     Coln.Frontend.Notation
+    Coln.Frontend.Parser
     Coln.Report
 
   hs-source-dirs: src
@@ -73,7 +74,6 @@ library
   ghc-options:
     -Wall
     -funbox-strict-fields
-    -Wno-unused-imports
     -Wno-unused-top-binds
     -Wno-name-shadowing
     -Wno-x-partial

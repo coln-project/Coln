@@ -14,9 +14,7 @@ import Coln.Frontend.Notation
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.String (fromString)
 import Data.Text qualified as T
-import Diagnostician
 import FNotation qualified as N
-import FNotation.Names
 
 -- Pretty printing
 --------------------------------------------------------------------------------

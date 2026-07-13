@@ -10,7 +10,7 @@ import Diagnostician.Terminal
 import System.IO (stdout)
 
 import Coln.Core.Globals
-import Coln.Frontend.Driver
+import Coln.Frontend.Parser
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 

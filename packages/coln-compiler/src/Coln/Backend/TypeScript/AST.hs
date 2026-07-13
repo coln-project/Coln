@@ -5,9 +5,7 @@
 module Coln.Backend.TypeScript.AST where
 
 import Data.String (IsString (..))
-import Data.Text (Text)
 import Data.Text.Lazy qualified as TL
-import Diagnostician (DDoc, DPretty (..))
 import Prettyprinter
 import Prettyprinter.Render.Text
 

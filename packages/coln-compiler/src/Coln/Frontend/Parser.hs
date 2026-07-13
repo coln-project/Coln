@@ -3,24 +3,19 @@
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE TypeAbstractions #-}
 
-module Coln.Frontend.Driver where
+module Coln.Frontend.Parser where
 
 import Control.Exception (try)
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
-import Diagnostician
 import FNotation (Ntn)
 import FNotation qualified as N
 
 import Coln.Common
-import Coln.Core.Globals
+import Coln.Core
 import Coln.Core.Layout
 import Coln.Core.Memoed qualified as M
-import Coln.Core.Params
-import Coln.Core.Readback
-import Coln.Core.Realm
-import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 import Coln.Diagnostics
 import Coln.Elaborator.Debug
@@ -34,9 +29,6 @@ import Coln.Elaborator.Rules.Universe qualified as Universe
 import Coln.Elaborator.Rules.Variable qualified as Variable
 import Coln.Frontend.Diagnostics
 import Coln.Frontend.Notation
-import Coln.Report
-
-import Prettyprinter ((<+>))
 
 type ParseEnv = DiagnosticEnv ColnCode
 
