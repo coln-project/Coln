@@ -4,93 +4,64 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { spawn } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import * as vscode from "vscode";
 import { LanguageClient, ServerOptions } from "vscode-languageclient/node";
 
 let client: LanguageClient | undefined;
 
-function serverBinaryExists(serverPath: string): boolean {
+function binaryExists(binaryPath: string): boolean {
   try {
-    fs.accessSync(serverPath, fs.constants.X_OK);
+    fs.accessSync(binaryPath, fs.constants.X_OK);
     return true;
   } catch {
     return false;
   }
 }
 
-const SERVER_PATH_SETTING = "coln-ls.server.path";
-
-/** VS Code platform name for bundled server, e.g. x86_64-linux, aarch64-darwin, x86_64-mingw32.
- * Attempts to match build system names, which come from Haskell's `System.Info` module. */
-function getServerPlatform(): string {
-  const arch = (() => {
-    switch (process.arch) {
-      case "x64":
-        return "x86_64";
-      case "arm64":
-        return "aarch64";
-      default:
-        return process.arch;
-    }
-  })();
-  const platform = (() => {
-    switch (process.platform) {
-      case "win32":
-        return "mingw32";
-      default:
-        return process.platform;
-    }
-  })();
-  return `${arch}-${platform}`;
+/** Try to find a binary on PATH using `which`. */
+function whichBinary(name: string): string | null {
+  try {
+    return execFileSync("which", [name], { encoding: "utf-8" }).trim();
+  } catch {
+    return null;
+  }
 }
 
-/** Resolve path to coln-ls binary: config, then bundled server, then workspace, then extension dir. */
-function findServerPath(context: vscode.ExtensionContext): string | null {
-  const candidates: string[] = [];
+const COLN_PATH_SETTING = "coln-ls.server.path";
 
-  const dot = SERVER_PATH_SETTING.indexOf(".");
-  const configSection = SERVER_PATH_SETTING.slice(0, dot);
-  const configKey = SERVER_PATH_SETTING.slice(dot + 1);
+/** Resolve path to the coln binary: config setting, bundled in extension, then PATH. */
+function findColnPath(context: vscode.ExtensionContext): string | null {
+  const dot = COLN_PATH_SETTING.indexOf(".");
+  const configSection = COLN_PATH_SETTING.slice(0, dot);
+  const configKey = COLN_PATH_SETTING.slice(dot + 1);
   const configPath = vscode.workspace.getConfiguration(configSection).get<string>(configKey);
   if (configPath?.trim()) {
-    candidates.push(path.isAbsolute(configPath) ? configPath : path.join(context.extensionPath, configPath));
+    const resolved = path.isAbsolute(configPath) ? configPath : path.join(context.extensionPath, configPath);
+    if (binaryExists(resolved)) return resolved;
   }
-  // Bundled server (when extension is installed from .vsix)
-  candidates.push(path.join(context.extensionPath, "server", getServerPlatform(), "coln-ls"));
 
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    candidates.push(path.join(folder.uri.fsPath, "target", "debug", "coln-ls"));
-  }
-  // When extension runs from coln-ls/client, server is at repo root
-  const extRoot = path.join(context.extensionPath, "..");
-  candidates.push(path.join(extRoot, "target", "debug", "coln-ls"));
+  // Bundled coln binary (when extension is installed from .vsix)
+  const bundled = path.join(context.extensionPath, "coln");
+  if (binaryExists(bundled)) return bundled;
 
-  for (const p of candidates) {
-    if (serverBinaryExists(p)) return p;
-  }
-  return null;
+  // Fall back to coln on PATH
+  return whichBinary("coln");
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const serverPath = findServerPath(context);
+  const colnPath = findColnPath(context);
 
-  if (!serverPath) {
-    const extRoot = path.join(context.extensionPath, "..");
-    const tried = [
-      path.join(context.extensionPath, "server", getServerPlatform(), "coln-ls"),
-      ...(vscode.workspace.workspaceFolders ?? []).map((f: vscode.WorkspaceFolder) => path.join(f.uri.fsPath, "target", "debug", "coln-ls")),
-      path.join(extRoot, "target", "debug", "coln-ls"),
-    ];
+  if (!colnPath) {
     vscode.window.showErrorMessage(
-      `Coln LSP: server binary not found. Tried: ${tried.join("; ")}.`
+      "Coln LSP: 'coln' binary not found. Install coln or set the 'coln-ls.server.path' setting."
     );
     return;
   }
 
   const serverOptions: ServerOptions = () =>
     new Promise((resolve, reject) => {
-      const child = spawn(serverPath, [], { stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn(colnPath, ["language-server"], { stdio: ["pipe", "pipe", "pipe"] });
 
       child.on("error", (err: Error) => {
         reject(err);

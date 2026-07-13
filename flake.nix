@@ -163,7 +163,7 @@
             npmConfigHook = pkgs.importNpmLock.npmConfigHook;
 
             postUnpack = ''
-              cp ${coln-ls}/bin/coln-language-server $sourceRoot/
+              cp ${coln-cli}/bin/coln $sourceRoot/
               cp -r ${./LICENSES} $sourceRoot/LICENSES
               cat ${./LICENSES}/Apache-2.0.txt ${./LICENSES}/MIT.txt > $sourceRoot/LICENSE
             '';
