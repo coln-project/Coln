@@ -22,16 +22,6 @@
       "[coln]": {
         "editor.semanticHighlighting.enabled": true
       }
-    },
-    "configuration": {
-      "title": "Coln LSP",
-      "properties": {
-        "coln-ls.server.path": {
-          "type": "string",
-          "default": "",
-          "description": "Absolute path to the coln-ls server binary, or path relative to the extension. Leave empty to auto-detect from workspace or extension folder."
-        }
-      }
     }
   },
   "scripts": {

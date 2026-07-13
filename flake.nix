@@ -153,11 +153,52 @@
             '';
           };
 
+          vscode-extension = pkgs.buildNpmPackage {
+            pname = "coln-vscode-extension";
+            version = "0.1.0";
+
+            src = ./packages/coln-ls/client;
+
+            npmDeps = lsClientNpmDeps;
+            npmConfigHook = pkgs.importNpmLock.npmConfigHook;
+
+            postUnpack = ''
+              cp ${coln-cli}/bin/coln $sourceRoot/
+              cp -r ${./LICENSES} $sourceRoot/LICENSES
+              cat ${./LICENSES}/Apache-2.0.txt ${./LICENSES}/MIT.txt > $sourceRoot/LICENSE
+            '';
+
+            postPatch = ''
+              substituteInPlace package.json \
+                --replace-fail "cp -r ../../../LICENSES LICENSES" "true"
+            '';
+
+            nativeBuildInputs = [ pkgs.vsce ];
+            dontNpmBuild = true;
+
+            buildPhase = ''
+              vsce package --allow-missing-repository
+            '';
+
+            installPhase = ''
+              cp *.vsix $out
+            '';
+          };
+
           default = coln-cli;
         };
 
+
         inherit (packages) forester coln-manual-dev;
         haskell-wasm = inputs.ghc-wasm-meta.packages.${system};
+        lsTsDir = ./packages/coln-ls/client;
+        lsClientNpmDeps = pkgs.importNpmLock {
+          npmRoot = lsTsDir;
+        };
+        lsClientNodeModules = pkgs.importNpmLock.buildNodeModules {
+          npmRoot = lsTsDir;
+          inherit (pkgs) nodejs;
+        };
       in
       {
         inherit packages;
@@ -200,6 +241,7 @@
             simple-http-server
             tectonic
             typescript
+            vtsls
             zlib
             zlib.dev
           ];
@@ -207,6 +249,17 @@
             # GCC 15 (nixos-26.05) defaults to -std=gnu23 which removed ATOMIC_VAR_INIT.
             # This breaks mimalloc-rust-sys, which is a dependency of dbsp.
             export CFLAGS="''${CFLAGS:+$CFLAGS }-std=gnu17"
+          '';
+        };
+        devShells.vscode-extension = pkgs.mkShell {
+          name = "coln-vscode-extension";
+          buildInputs = with pkgs; [
+            nodejs
+            typescript
+            vtsls
+          ];
+          shellHook = ''
+            ln -sfn ${lsClientNodeModules}/node_modules "$PWD"/node_modules
           '';
         };
       });
