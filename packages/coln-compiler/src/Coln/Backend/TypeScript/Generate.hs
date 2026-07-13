@@ -11,10 +11,8 @@ import Data.Foldable (foldlM)
 import Data.Foldable qualified as F
 import Data.Map.Ordered qualified as OMap
 import Data.Set (Set)
-import Data.Set qualified as Set
 import Data.String (IsString (..))
 import Data.Text.Lazy qualified as TL
-import Data.Text.Lazy.Encoding qualified as TLE
 import Data.Text.Lazy.IO qualified as TLIO
 import Prettyprinter
 import Prettyprinter.Render.Text
@@ -30,7 +28,6 @@ import Coln.Core.Globals
 import Coln.Core.Params
 import Coln.Core.Readback
 import Coln.Core.Realm
-import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 
 mangle :: Name -> TS.Id
