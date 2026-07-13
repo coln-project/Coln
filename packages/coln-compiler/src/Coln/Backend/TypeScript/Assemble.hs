@@ -4,9 +4,6 @@
 
 module Coln.Backend.TypeScript.Assemble where
 
-import Data.String (IsString (..))
-import Data.Text (Text)
-import Diagnostician (DDoc, DPretty (..))
 import Prettyprinter hiding (tupled)
 
 import Coln.Backend.TypeScript.AST

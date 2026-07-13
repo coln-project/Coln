@@ -13,7 +13,6 @@ import Coln.Core.Print
 import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
-import Data.List (foldl', intercalate)
 import Data.Map.Ordered (OMap)
 import Data.Map.Ordered qualified as OMap
 import Data.Maybe (fromJust, fromMaybe)

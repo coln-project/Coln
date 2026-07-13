@@ -8,7 +8,7 @@ import Control.Arrow (first, second)
 import Control.Monad (forM_)
 import Data.Aeson qualified as AE
 import Data.Foldable qualified as F
-import Data.Map.Ordered (OMap, (>|), (|<))
+import Data.Map.Ordered (OMap, (>|))
 import Data.Map.Ordered qualified as OMap
 import Data.Set qualified as Set
 import Data.Traversable (mapAccumL)

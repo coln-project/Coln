@@ -5,7 +5,7 @@
 module Coln.LSP.Buffer (analyzeBuffer) where
 
 import Coln.Diagnostics (ColnCode (..))
-import Coln.Frontend.Driver (top)
+import Coln.Frontend.Parser (top)
 import Coln.Frontend.Notation (lexConfig, readConfig)
 import Coln.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
 import Coln.Report (DiagnosticEnv (DiagnosticEnv))

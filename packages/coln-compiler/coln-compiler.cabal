@@ -41,8 +41,8 @@ library
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
     Coln.Frontend.Diagnostics
-    Coln.Frontend.Driver
     Coln.Frontend.Notation
+    Coln.Frontend.Parser
     Coln.Report
 
   hs-source-dirs: src

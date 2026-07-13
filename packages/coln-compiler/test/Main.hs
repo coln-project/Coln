@@ -6,20 +6,15 @@ module Main (main) where
 
 import Coln.Backend.Lower
 import Coln.Common
-import Coln.Core.Globals
-import Coln.Core.Params
-import Coln.Core.Print
-import Coln.Core.Realm
+import Coln.Core
 import Coln.Diagnostics
-import Coln.Frontend.Driver
 import Coln.Frontend.Notation
-import Coln.Report
+import Coln.Frontend.Parser
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
-import Diagnostician
 import FNotation
 import Prettyprinter
 import Prettyprinter.Render.Text

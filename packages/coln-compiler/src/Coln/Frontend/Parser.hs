@@ -3,7 +3,7 @@
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE TypeAbstractions #-}
 
-module Coln.Frontend.Driver where
+module Coln.Frontend.Parser where
 
 import Control.Exception (try)
 import Data.Foldable
