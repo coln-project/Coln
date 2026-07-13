@@ -77,7 +77,7 @@ elaborate fp = do
 
 elaboratorTests :: IO TestTree
 elaboratorTests = do
-  colnFiles <- findByExtension [".coln"] "."
+  colnFiles <- findByExtension [".coln"] "test/golden"
   return $
     testGroup
       "Elaborator golden tests"
