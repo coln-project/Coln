@@ -4,18 +4,12 @@
 
 module Coln.Elaborator.Environment where
 
-import Control.Exception (Exception, evaluate, throw)
-import Data.Vector.Strict qualified as Vector
-
 import Coln.Common
-import Coln.Core.Globals
-import Coln.Core.Params
-import Coln.Core.Print (HasShape (shape))
-import Coln.Core.Syntax qualified as S
+import Coln.Core
 import Coln.Core.Value qualified as BN (BareNeutral (..))
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Diagnostics
-import Coln.Report
+import Data.Vector.Strict qualified as Vector
 
 -- * Scope
 

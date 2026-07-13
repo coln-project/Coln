@@ -2,9 +2,14 @@
 --
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE DeriveGeneric #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Coln.Backend.IR where
 
+-- XXX Lit/BultinTy should probably be moved up in the hierarchy
+import Coln.Common
+import Coln.Core.Params
+import Coln.Core.Print
 import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
@@ -14,14 +19,9 @@ import Data.Map.Ordered qualified as OMap
 import Data.Maybe (fromJust, fromMaybe)
 import Data.Set qualified as Set
 import Data.String (fromString)
-import GHC.Generics
-
--- XXX Lit/BultinTy should probably be moved up in the hierarchy
-import Coln.Common
-import Coln.Core.Params
-import Coln.Core.Print
 import FNotation as N
 import FNotation.Kinds as K
+import GHC.Generics
 
 type ColName = Path
 
@@ -112,6 +112,7 @@ encPath :: (PathLike a) => a -> AE.Encoding
 encPath = AE.list encName . namesOf
 
 instance PathLike Path where namesOf = toList
+
 instance PathLike TableName where namesOf tn = tn.realm : namesOf tn.path
 
 pathMapEncoding :: (PathLike k) => (a -> AE.Encoding) -> OMap k a -> AE.Encoding

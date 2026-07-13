@@ -5,8 +5,6 @@
 
 module Coln.Core.Memoed where
 
-import Data.Coerce (coerce)
-
 import Coln.Common
 import Coln.Core.Evaluation
 import Coln.Core.Globals
@@ -21,6 +19,7 @@ data Memoed stx val c = M
   }
 
 type El = Memoed S.El V.El
+
 type Ty = Memoed S.Ty V.Ty
 
 class Core el ty | el -> ty, ty -> el where

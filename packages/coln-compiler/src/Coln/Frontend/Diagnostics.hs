@@ -5,9 +5,7 @@
 module Coln.Frontend.Diagnostics where
 
 import Coln.Common
-
 import Data.Map qualified as Map
-import Diagnostician
 
 data ParserCode
   = UnexpectedNotation

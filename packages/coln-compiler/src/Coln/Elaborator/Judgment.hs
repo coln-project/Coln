@@ -3,22 +3,27 @@
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE TypeAbstractions #-}
 
-module Coln.Elaborator.Judgment where
-
-import Data.Coerce (coerce)
-import Data.Functor.Compose (Compose (Compose))
+module Coln.Elaborator.Judgment (
+  module Coln.Elaborator.Diagnostics,
+  module Coln.Elaborator.Environment,
+  Typ (..),
+  Syn (..),
+  Chk (..),
+  Judgment (..),
+  useIs,
+  intoTyp,
+  intoSyn,
+  intoChk,
+  annotate,
+)
+where
 
 import Coln.Common
-import Coln.Core.Conversion (defEq)
+import Coln.Core
 import Coln.Core.Memoed qualified as M
-import Coln.Core.Params
-import Coln.Core.Print (prtIn, shape)
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Diagnostics
 import Coln.Elaborator.Environment
-import Coln.Report
-
-import Prettyprinter ((<+>))
 
 newtype Typ c = Typ {elab :: ElabEnv c -> IO (M.Ty c)}
 
@@ -37,16 +42,6 @@ useIs @c f e = fmap change $ f e{target = TargetAnonymous}
   change = case V.scase @c of
     SNominative -> id
     SDescriptive -> M.is
-
--- elimSyn :: (V.HasEvaluation c) => Span -> (ElabEnv N -> IO (V.Ty N, M.El N)) -> Judgment c
--- elimSyn sp = Syn sp . coerce . useIs . (coerce `asTypeOf` (Compose .))
-
--- descSyn :: (V.HasEvaluation c) => DDoc -> Span -> (ElabEnv D -> IO (V.Ty N, M.El D)) -> Judgment c
--- descSyn @c nd sp f = Syn sp $ case V.scase @c of
---   SNominative -> \e -> do
---     let msg = "cannot use an unnamed" <+> nd
---     failWith e.diagEnv sp RequiresName msg
---   SDescriptive -> f
 
 intoTyp :: Span -> Judgment N -> Typ N
 intoTyp _ (FromTyp t) = t

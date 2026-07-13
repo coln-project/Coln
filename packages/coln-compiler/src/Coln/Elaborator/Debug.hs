@@ -4,20 +4,10 @@
 
 module Coln.Elaborator.Debug where
 
-import Prettyprinter
-
 import Coln.Common
-import Coln.Core.Conversion
-import Coln.Core.Evaluation
-import Coln.Core.Memoed
-import Coln.Core.Params
-import Coln.Core.Print
-import Coln.Core.Syntax qualified as S
+import Coln.Core
 import Coln.Core.Value qualified as V
-import Coln.Elaborator.Diagnostics
-import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
-import Coln.Report
 
 data DebugCommand
   = ShowType Span (Syn N)
