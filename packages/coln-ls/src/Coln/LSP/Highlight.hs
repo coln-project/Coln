@@ -54,6 +54,8 @@ tokColour = \case
   SKeyword -> Just SemanticTokenTypes_Operator
   Block -> Just SemanticTokenTypes_Keyword
   Field -> Just SemanticTokenTypes_Method
+  Modifier -> Just SemanticTokenTypes_Method
+  FieldImmediate -> Just SemanticTokenTypes_Method
   Int -> Just SemanticTokenTypes_Number
   String -> Just SemanticTokenTypes_String
   LParen -> Just bcol
