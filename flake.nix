@@ -43,7 +43,6 @@
         in rec {
           forester = pkgs.callPackage ./nix/forester.nix { };
 
-          coln-do = colnHaskellPackages.callPackage ./packages/coln-do { };
           diagnostician = colnHaskellPackages.callPackage ./packages/diagnostician { };
           diagnostician-terminal = colnHaskellPackages.callPackage ./packages/diagnostician-terminal {
             inherit diagnostician;
