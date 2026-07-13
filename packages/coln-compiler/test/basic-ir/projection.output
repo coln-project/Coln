@@ -1,0 +1,36 @@
+-- elaborated
+global entry named Payload
+type: Set
+value: sig
+  name : String
+  rank : Int
+end
+global entry named T
+type: Theory
+value: sig
+  eq : (p : Payload) -> p.rank = p.rank
+end
+realm named TRealm
+generators: node
+  eq = (fun [p : Payload] -> p.rank = p.rank)
+end
+lowered: flatrealm
+  entities
+    table ℜ.eq := [.p.name : String, .p.rank : Int] primarykey [
+      .p.name,
+      .p.rank
+    ]
+  end
+  rules
+    enforced ℜ.eq.foreignKey p.name p.rank := ℜ.eq [
+      .p.name ↦ p.name,
+      .p.rank ↦ p.rank
+    ] ⊢ p.rank = p.rank
+    monitored ℜ.eq.total p.name p.rank := ⊤ ⊢ ℜ.eq [
+      .p.name ↦ p.name,
+      .p.rank ↦ p.rank
+    ]
+  end
+end
+
+-- messages

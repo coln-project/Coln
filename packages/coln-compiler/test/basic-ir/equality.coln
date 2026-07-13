@@ -1,0 +1,9 @@
+theory T := sig
+  V : Set
+  x : V
+  y : V
+  eq : x = y
+end
+
+realm TRealm @ T
+end

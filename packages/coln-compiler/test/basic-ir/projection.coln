@@ -1,0 +1,11 @@
+def Payload : Set := sig
+  name : String
+  rank : Int
+end
+
+theory T := sig
+  eq : (p : Payload) -> p.rank = p.rank
+end
+
+realm TRealm @ T
+end
