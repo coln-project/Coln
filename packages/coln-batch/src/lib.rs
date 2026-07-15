@@ -14,14 +14,19 @@
 //!    ([`table::ArrowSortedTable`]),
 //! 4. conjunctive queries as data ([`query`], fixtures in [`fixtures`],
 //!    a brute-force test oracle in [`reference`]),
-//! 5. (next) join executors: a binary hash-join chain and a worst-case-
-//!    optimal generic join, later semi-naive recursion.
+//! 5. two executors over the same query representation: a binary
+//!    hash-join chain ([`binary_join`]) and a worst-case-optimal generic
+//!    join ([`generic_join`]), differential-tested against each other and
+//!    against the oracle,
+//! 6. (next) semi-naive recursion to a fixpoint.
 //!
 //! The storage-facing interface contract is documented in
 //! `docs/sorted-table-api.md`.
 
+pub mod binary_join;
 pub mod fixtures;
 pub mod generate;
+pub mod generic_join;
 pub mod io;
 pub mod query;
 pub mod reference;

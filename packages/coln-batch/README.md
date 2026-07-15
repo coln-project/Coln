@@ -9,10 +9,14 @@ The batch query engine for Coln, built bottom-up. Current state:
   engine reads relations (`src/table.rs`), an in-memory implementation
   built from Arrow data, and a conformance checker. Contract:
   [docs/sorted-table-api.md](docs/sorted-table-api.md).
-- [ ] **AP3** — query representation (conjunctive queries as data).
-- [ ] **AP4** — executor 1: binary hash-join chain (acyclic queries).
-- [ ] **AP5** — executor 2: worst-case-optimal generic join (cyclic
-  queries); differential testing against executor 1.
+- [x] **AP3** — query representation (`src/query.rs`: conjunctive queries
+  as data, mirroring FLIR's rule shape; catalog; fixtures in
+  `src/fixtures.rs`).
+- [x] **AP4** — executor 1: binary hash-join chain
+  (`src/binary_join.rs`).
+- [x] **AP5** — executor 2: worst-case-optimal generic join
+  (`src/generic_join.rs`); differential-tested against executor 1 and a
+  brute-force oracle (`src/reference.rs`, `tests/differential.rs`).
 - [ ] **AP6** — end-to-end example.
 - [ ] **AP7** — recursion: semi-naive evaluation to a fixpoint.
 
