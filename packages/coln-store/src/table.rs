@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write;
@@ -184,31 +185,114 @@ pub struct RowView {
 
 type ColName = ir::Path;
 
+/// Columnar storage for [`PackedRowId`]s, split into two parallel columns.
+///
+/// Commit indexes are RLE encoded: rows created by the same commit form long
+/// runs of the same `u32`. Counters are delta encoded: they ascend within a
+/// commit, so consecutive deltas are mostly 1.
+///
+/// When used as [`Table::row_ids`] the ids are kept sorted by
+/// `(commit_idx, counter)`, which makes [`position`](Self::position) the row
+/// lookup mechanism.
+#[derive(Debug, Clone)]
+struct IdColumn {
+    commit_idxs: hexane::Column<u32>,
+    counters: hexane::DeltaColumn<u32>,
+}
+
+impl IdColumn {
+    fn new() -> Self {
+        IdColumn {
+            commit_idxs: hexane::Column::new(),
+            counters: hexane::DeltaColumn::new(),
+        }
+    }
+
+    fn get(&self, row: usize) -> Option<PackedRowId> {
+        Some(PackedRowId {
+            commit_idx: self.commit_idxs.get(row)?,
+            counter: self.counters.get(row)?,
+        })
+    }
+
+    fn insert(&mut self, row: usize, id: PackedRowId) {
+        self.commit_idxs.insert(row, id.commit_idx);
+        self.counters.insert(row, id.counter);
+    }
+
+    fn remove(&mut self, row: usize) {
+        self.commit_idxs.remove(row);
+        self.counters.remove(row);
+    }
+
+    /// Sorted position of `id`: `Ok(row)` when present, `Err(row)` with the
+    /// insertion point otherwise. Requires ids sorted by
+    /// `(commit_idx, counter)`.
+    fn position(&self, id: PackedRowId) -> Result<usize, usize> {
+        let run = self.commit_idxs.scope_to_value(id.commit_idx, ..);
+        if run.is_empty() {
+            return Err(run.start);
+        }
+
+        // Counters within a commit usually arrive ascending, so new ids
+        // mostly land at the end of their commit run; check it first to keep
+        // commit-order inserts constant time.
+        let last = self.counters.get(run.end - 1).expect("run is in bounds");
+        match last.cmp(&id.counter) {
+            Ordering::Less => return Err(run.end),
+            Ordering::Equal => return Ok(run.end - 1),
+            Ordering::Greater => {}
+        }
+
+        // Binary search the rest of the run. Each `get` probe jumps to the
+        // containing slab through the column index instead of decoding the
+        // run from the start.
+        let mut lo = run.start;
+        let mut hi = run.end - 1;
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            let counter = self.counters.get(mid).expect("run is in bounds");
+            match counter.cmp(&id.counter) {
+                Ordering::Less => lo = mid + 1,
+                Ordering::Equal => return Ok(mid),
+                Ordering::Greater => hi = mid,
+            }
+        }
+        Err(lo)
+    }
+
+    fn len(&self) -> usize {
+        self.counters.len()
+    }
+}
+
 /// One column of typed storage. The variant is fixed by the schema column type.
 /// Each id is now 8 bytes instead of a 40-byte [`CellValue`].
 #[derive(Debug, Clone)]
 enum Column {
-    Id(Vec<PackedRowId>),
-    Int(Vec<i64>),
-    Str(Vec<String>),
+    Id(IdColumn),
+    Int(hexane::Column<i64>),
+    Str(hexane::Column<String>),
 }
 
 impl Column {
     fn new(kind: CellKind) -> Self {
         match kind {
-            CellKind::RowId => Column::Id(Vec::new()),
-            CellKind::Int => Column::Int(Vec::new()),
-            CellKind::Str => Column::Str(Vec::new()),
+            CellKind::RowId => Column::Id(IdColumn::new()),
+            CellKind::Int => Column::Int(hexane::Column::<i64>::new()),
+            CellKind::Str => Column::Str(hexane::Column::<String>::new()),
         }
     }
 
-    /// Append a schema-validated cell. Panics on a type mismatch, which
-    /// [`Table::validate_insert`] rules out before rows reach storage.
-    fn push(&mut self, value: CellValue, dict: &mut HashMapper) {
+    /// Insert a schema-validated cell at `row`. Panics on a type mismatch,
+    /// which [`Table::validate_insert`] rules out before rows reach storage.
+    fn insert(&mut self, row: usize, value: CellValue, dict: &mut HashMapper) {
         match (self, value) {
-            (Column::Id(cells), CellValue::Id(id)) => cells.push(PackedRowId::pack(id, dict)),
-            (Column::Int(cells), CellValue::Int(value)) => cells.push(value),
-            (Column::Str(cells), CellValue::Str(value)) => cells.push(value),
+            (Column::Id(cells), CellValue::Id(id)) => {
+                cells.insert(row, PackedRowId::pack(id, dict))
+            }
+            (Column::Int(cells), CellValue::Int(value)) => cells.insert(row, value),
+            (Column::Str(cells), CellValue::Str(value)) => cells.insert(row, value),
             (column, value) => panic!(
                 "cell type mismatch: column stores {:?}, got {value}",
                 CellKind::from(&*column)
@@ -216,11 +300,19 @@ impl Column {
         }
     }
 
+    fn remove(&mut self, row: usize) {
+        match self {
+            Column::Id(cells) => cells.remove(row),
+            Column::Int(cells) => cells.remove(row),
+            Column::Str(cells) => cells.remove(row),
+        }
+    }
+
     fn get(&self, row: usize, dict: &HashMapper) -> Option<CellValue> {
         match self {
             Column::Id(cells) => cells.get(row).map(|id| CellValue::Id(id.unpack(dict))),
-            Column::Int(cells) => cells.get(row).copied().map(CellValue::Int),
-            Column::Str(cells) => cells.get(row).cloned().map(CellValue::Str),
+            Column::Int(cells) => cells.get(row).map(CellValue::Int),
+            Column::Str(cells) => cells.get(row).map(|s| CellValue::Str(s.to_owned())),
         }
     }
 
@@ -230,9 +322,9 @@ impl Column {
     fn matches(&self, row: usize, value: &CellValue, dict: &HashMapper) -> bool {
         match (self, value) {
             (Column::Id(cells), CellValue::Id(id)) => {
-                PackedRowId::lookup(*id, dict).is_some_and(|packed| cells.get(row) == Some(&packed))
+                PackedRowId::lookup(*id, dict).is_some_and(|packed| cells.get(row) == Some(packed))
             }
-            (Column::Int(cells), CellValue::Int(value)) => cells.get(row) == Some(value),
+            (Column::Int(cells), CellValue::Int(value)) => cells.get(row) == Some(*value),
             (Column::Str(cells), CellValue::Str(value)) => cells.get(row) == Some(value),
             _ => false,
         }
@@ -260,10 +352,9 @@ pub struct Table {
     path: ir::Path,
     schema: Schema,
     col_index: HashMap<ColName, usize>,
-    row_index: HashMap<PackedRowId, usize>,
     hashcons: bool,
     hash_dict: HashMapper,
-    row_ids: Vec<PackedRowId>,
+    row_ids: IdColumn,
     cols: Vec<Column>,
 }
 
@@ -283,11 +374,10 @@ impl Table {
         Self {
             path,
             col_index,
-            row_index: HashMap::new(),
             schema,
             hashcons: false,
             hash_dict: HashMapper::new(),
-            row_ids: vec![],
+            row_ids: IdColumn::new(),
             cols,
         }
     }
@@ -353,7 +443,8 @@ impl Table {
         );
 
         for row_idx in 0..self.row_count() {
-            let row_id = self.row_ids[row_idx].unpack(&self.hash_dict);
+            // should be fine here as
+            let row_id = self.row_ids.get(row_idx).unwrap().unpack(&self.hash_dict);
             let _ = write!(out, "[{row_idx}] row_id={row_id}");
             for col_idx in 0..self.schema.columns.len() {
                 let value = self.cols[col_idx]
@@ -436,35 +527,53 @@ impl Table {
         })
     }
 
-    /// Append a row to columnar storage and assign a new [`RowId`].
+    /// Physical row index of `row_id`, found by sorted search on the id
+    /// columns. `None` when the row is not stored.
+    pub fn row_position(&self, row_id: RowId) -> Option<usize> {
+        let packed = PackedRowId::lookup(row_id, &self.hash_dict)?;
+        self.row_ids.position(packed).ok()
+    }
+
+    /// Insert a row into columnar storage at its sorted position.
     ///
     /// Does **not** validate. Used internally when the caller has already checked the row
-    /// (e.g. batch validation); otherwise use [`try_append_row`].
-    pub(crate) fn append_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
+    /// (e.g. batch validation).
+    pub(crate) fn insert_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
         let packed = PackedRowId::pack(row_id, &mut self.hash_dict);
-        self.row_index.insert(packed, self.row_ids.len());
-        self.row_ids.push(packed);
+        let pos = match self.row_ids.position(packed) {
+            Ok(pos) | Err(pos) => pos,
+        };
+        self.row_ids.insert(pos, packed);
         for (i, v) in values.into_iter().enumerate() {
-            self.cols[i].push(v, &mut self.hash_dict);
+            self.cols[i].insert(pos, v, &mut self.hash_dict);
         }
     }
 
-    /// Used for canonicalising row_ids
+    /// Used for canonicalising row_ids. The row moves to the sorted position
+    /// of its new id, together with its cells.
     pub(crate) fn replace_row_id(
         &mut self,
         old: &RowId,
         new: RowId,
     ) -> Result<(), ValidationError> {
-        let i = PackedRowId::lookup(*old, &self.hash_dict)
-            .and_then(|packed| self.row_index.remove(&packed))
-            .ok_or(ValidationError::InvalidRowHandle {
+        let old_pos = self
+            .row_position(*old)
+            .ok_or_else(|| ValidationError::InvalidRowHandle {
                 reason: format!("attempting to replace non-existing row_id {old}"),
             })?;
-        let packed = PackedRowId::pack(new, &mut self.hash_dict);
-        self.row_ids[i] = packed;
-        self.row_index.insert(packed, i);
+        let values = (0..self.cols.len())
+            .map(|col_idx| {
+                self.cell_at(old_pos, col_idx)
+                    .expect("columns have one cell per row")
+            })
+            .collect();
+        self.row_ids.remove(old_pos);
+        for col in &mut self.cols {
+            col.remove(old_pos);
+        }
+        self.insert_row(values, new);
         Ok(())
     }
 }
@@ -519,12 +628,12 @@ mod tests {
         assert_eq!(tbl.row_count(), 0);
 
         let r0 = test_row_id(0);
-        tbl.append_row(vec![], r0);
+        tbl.insert_row(vec![], r0);
         assert_eq!(tbl.row_count(), 1);
         assert_eq!(tbl.row_id_at(0), Some(r0));
 
         let r1 = test_row_id(1);
-        tbl.append_row(vec![], r1);
+        tbl.insert_row(vec![], r1);
         assert_eq!(tbl.row_count(), 2);
         assert_eq!(tbl.row_id_at(1), Some(r1));
     }
@@ -544,7 +653,7 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("singleton"), schema);
 
-        tbl.append_row(vec![CellValue::Int(0)], test_row_id(0));
+        tbl.insert_row(vec![CellValue::Int(0)], test_row_id(0));
         assert_eq!(tbl.row_count(), 1);
 
         let values1 = vec![CellValue::Int(1)];
@@ -576,7 +685,7 @@ mod tests {
         let mut tbl = Table::new(Path::from("readable"), schema);
 
         let row_id = test_row_id(0);
-        tbl.append_row(
+        tbl.insert_row(
             vec![CellValue::Int(7), CellValue::Str("x".to_string())],
             row_id,
         );
@@ -608,10 +717,11 @@ mod tests {
             (row_id_from(1, 2), row_id_from(2, 1), row_id_from(3, 7)),
         ];
         for (rid, src, dst) in rows {
-            tbl.append_row(vec![CellValue::Id(src), CellValue::Id(dst)], rid);
+            tbl.insert_row(vec![CellValue::Id(src), CellValue::Id(dst)], rid);
         }
 
-        for (idx, (rid, src, dst)) in rows.into_iter().enumerate() {
+        for (rid, src, dst) in rows {
+            let idx = tbl.row_position(rid).expect("row is stored");
             assert_eq!(tbl.row_id_at(idx), Some(rid));
             assert_eq!(tbl.cell_at(idx, 0), Some(CellValue::Id(src)));
             assert_eq!(tbl.cell_at(idx, 1), Some(CellValue::Id(dst)));
@@ -619,6 +729,137 @@ mod tests {
 
         // Four distinct commit hashes, each interned exactly once.
         assert_eq!(tbl.hash_dict.hashes().len(), 4);
+    }
+
+    /// `IdColumn::position` finds stored rows and insertion points through
+    /// the end-of-run fast path, the binary search, and the empty-run case.
+    #[test]
+    fn id_column_position_finds_rows_and_insertion_points() {
+        let mut ids = IdColumn::new();
+        // Commit 0 with even counters 0, 2, ..., 126, then commit 1 with one row.
+        for row in 0..64 {
+            ids.insert(
+                row,
+                PackedRowId {
+                    commit_idx: 0,
+                    counter: row as u32 * 2,
+                },
+            );
+        }
+        ids.insert(
+            64,
+            PackedRowId {
+                commit_idx: 1,
+                counter: 5,
+            },
+        );
+
+        for row in 0..64 {
+            let id = PackedRowId {
+                commit_idx: 0,
+                counter: row as u32 * 2,
+            };
+            assert_eq!(ids.position(id), Ok(row), "counter {}", row * 2);
+        }
+
+        let absent = |commit_idx, counter| PackedRowId {
+            commit_idx,
+            counter,
+        };
+        // Odd counters fall between stored rows.
+        assert_eq!(ids.position(absent(0, 7)), Err(4));
+        // Before the first row of the run.
+        assert_eq!(ids.position(absent(1, 0)), Err(64));
+        // Past the end of the run (fast path).
+        assert_eq!(ids.position(absent(0, 999)), Err(64));
+        // Commit without any rows sorts after everything.
+        assert_eq!(ids.position(absent(2, 0)), Err(65));
+    }
+
+    /// Rows are stored sorted by packed row id regardless of insertion order,
+    /// and `row_position` reports presence and absence accordingly.
+    #[test]
+    fn rows_stay_sorted_by_row_id() {
+        let schema = ir::Schema {
+            entity_variant: ir::EntityVariant::Table,
+            columns: vec![ir::ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
+            }],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("sorted"), schema);
+
+        // Commit A is interned first, so its rows sort before commit B's, and
+        // counters order rows within a commit.
+        let rows = [
+            (row_id_from(1, 5), 0),
+            (row_id_from(2, 0), 1),
+            (row_id_from(1, 0), 2),
+            (row_id_from(2, 7), 3),
+            (row_id_from(1, 2), 4),
+        ];
+        for (rid, v) in rows {
+            tbl.insert_row(vec![CellValue::Int(v)], rid);
+        }
+
+        let stored: Vec<RowId> = (0..tbl.row_count())
+            .map(|idx| tbl.row_id_at(idx).expect("row id"))
+            .collect();
+        assert_eq!(
+            stored,
+            vec![
+                row_id_from(1, 0),
+                row_id_from(1, 2),
+                row_id_from(1, 5),
+                row_id_from(2, 0),
+                row_id_from(2, 7),
+            ]
+        );
+
+        // Cells moved together with their row ids.
+        for (rid, v) in rows {
+            let idx = tbl.row_position(rid).expect("row is stored");
+            assert_eq!(tbl.cell_at(idx, 0), Some(CellValue::Int(v)));
+        }
+
+        // Absent ids: known commit with unused counter, and unknown commit.
+        assert_eq!(tbl.row_position(row_id_from(1, 3)), None);
+        assert_eq!(tbl.row_position(row_id_from(9, 0)), None);
+    }
+
+    /// `replace_row_id` moves the row and its cells to the sorted position of
+    /// the new id.
+    #[test]
+    fn replace_row_id_moves_row_to_sorted_position() {
+        let schema = ir::Schema {
+            entity_variant: ir::EntityVariant::Table,
+            columns: vec![ir::ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
+            }],
+            primary_key: None,
+        };
+        let mut tbl = Table::new(Path::from("moving"), schema);
+
+        tbl.insert_row(vec![CellValue::Int(0)], row_id_from(1, 0));
+        tbl.insert_row(vec![CellValue::Int(1)], row_id_from(1, 1));
+        tbl.insert_row(vec![CellValue::Int(2)], row_id_from(1, 2));
+
+        // (1, 1) -> (1, 9): the row moves from the middle to the end.
+        tbl.replace_row_id(&row_id_from(1, 1), row_id_from(1, 9))
+            .expect("replace row id");
+
+        assert_eq!(tbl.row_position(row_id_from(1, 1)), None);
+        let idx = tbl.row_position(row_id_from(1, 9)).expect("row is stored");
+        assert_eq!(idx, 2);
+        assert_eq!(tbl.cell_at(idx, 0), Some(CellValue::Int(1)));
+        assert_eq!(tbl.row_id_at(0), Some(row_id_from(1, 0)));
+        assert_eq!(tbl.row_id_at(1), Some(row_id_from(1, 2)));
     }
 
     /// `replace_row_id` re-indexes the row under a hash the dictionary has
@@ -633,7 +874,7 @@ mod tests {
         let mut tbl = Table::new(Path::from("id_only"), schema);
 
         let old = row_id_from(1, 0);
-        tbl.append_row(vec![], old);
+        tbl.insert_row(vec![], old);
 
         let new = row_id_from(2, 5);
         tbl.replace_row_id(&old, new).expect("replace row id");
@@ -661,7 +902,7 @@ mod tests {
         let mut tbl = Table::new(Path::from("edges"), schema);
 
         let src = row_id_from(3, 7);
-        tbl.append_row(
+        tbl.insert_row(
             vec![CellValue::Id(src), CellValue::Id(row_id_from(4, 8))],
             row_id_from(1, 0),
         );
@@ -701,11 +942,11 @@ mod tests {
         };
         let mut tbl = Table::new(Path::from("debug.table"), schema);
 
-        tbl.append_row(
+        tbl.insert_row(
             vec![CellValue::Int(7), CellValue::Str("x".to_string())],
             test_row_id(0),
         );
-        tbl.append_row(
+        tbl.insert_row(
             vec![CellValue::Int(8), CellValue::Str("y".to_string())],
             test_row_id(1),
         );

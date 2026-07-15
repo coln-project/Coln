@@ -107,11 +107,8 @@ impl Store {
     }
 
     pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
-        self.table_at(table).and_then(|table| {
-            (0..table.row_count())
-                .filter_map(|row_idx| table.row_at(row_idx))
-                .find(|row| row.row_id == row_id)
-        })
+        self.table_at(table)
+            .and_then(|table| table.row_at(table.row_position(row_id)?))
     }
 
     /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
@@ -219,7 +216,7 @@ impl Store {
 
             // TODO We are invoking rowing even if tables might not be in hashcons mode
             match observed {
-                roweq::ObservedOutcome::Inserted(rid) => t.append_row(values.clone(), rid),
+                roweq::ObservedOutcome::Inserted(rid) => t.insert_row(values.clone(), rid),
                 roweq::ObservedOutcome::KeptOld(_row_id) => {
                     // equivalent row exists, do nothing
                 }
