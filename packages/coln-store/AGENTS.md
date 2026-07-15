@@ -19,8 +19,8 @@ Priorities, in order:
 - Keep mutable state inside well-defined structs; avoid global mutable state.
 - Prefer small, focused changes over broad refactoring.
 - Add comments only when they clarify non-obvious behaviour.
-- Follow Rust idioms: use `Result` for errors, iterators where they improve clarity, and precise ownership.
 - This is a research prototype, so do not worry about backwards compatibility issues, prioritise cleaner design & implementation.
+- When making technical decisions, don't give too much weight to development cost.
 
 Quick examples:
 
