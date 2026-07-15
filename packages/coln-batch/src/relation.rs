@@ -94,6 +94,25 @@ impl Relation {
         }
     }
 
+    /// Build a relation from row-major flat data (`width` values per row).
+    pub fn from_flat_rows(
+        name: impl Into<String>,
+        col_names: impl IntoIterator<Item = impl Into<String>>,
+        width: usize,
+        flat: &[u64],
+    ) -> Self {
+        assert!(width > 0, "from_flat_rows needs at least one column");
+        assert_eq!(flat.len() % width, 0, "flat data must be whole rows");
+        let n = flat.len() / width;
+        let mut cols: Vec<Vec<u64>> = (0..width).map(|_| Vec::with_capacity(n)).collect();
+        for row in flat.chunks_exact(width) {
+            for (c, &x) in row.iter().enumerate() {
+                cols[c].push(x);
+            }
+        }
+        Self::new(name, col_names, cols)
+    }
+
     pub fn to_record_batch(&self) -> Result<RecordBatch> {
         let fields: Vec<Field> = self
             .col_names
