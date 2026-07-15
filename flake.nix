@@ -106,8 +106,8 @@
             doCheck = false;
           };
 
-          build-web-demo = pkgs.writeShellApplication {
-            name = "build-web-demo";
+          build-sync-demo = pkgs.writeShellApplication {
+            name = "build-sync-demo";
             runtimeInputs = [
               coln-cli
               pkgs.binaryen
@@ -128,10 +128,10 @@
               npm ci --prefix packages/coln-js-runtime
               npm run --prefix packages/coln-js-runtime build
 
-              pnpm --dir examples/web-demo install --frozen-lockfile --store-dir "$pnpm_store_dir"
-              pnpm --dir examples/web-demo build
+              pnpm --dir examples/sync-demo install --frozen-lockfile --store-dir "$pnpm_store_dir"
+              pnpm --dir examples/sync-demo build
 
-              echo "Built web demo at $repo_root/examples/web-demo/dist"
+              echo "Built sync demo at $repo_root/examples/sync-demo/dist"
             '';
           };
 
@@ -202,13 +202,13 @@
       {
         inherit packages;
         apps = let
-          buildWebDemo = {
+          buildSyncDemo = {
             type = "app";
-            program = "${pkgs.lib.getExe packages.build-web-demo}";
+            program = "${pkgs.lib.getExe packages.build-sync-demo}";
           };
         in {
-          build-web-demo = buildWebDemo;
-          web-demo = buildWebDemo;
+          build-sync-demo = buildSyncDemo;
+          sync-demo = buildSyncDemo;
         };
         devShells.default = pkgs.mkShell {
           name = "coln";

@@ -3,14 +3,14 @@ on:
   push:
     branches: [main]
 
-name: Web demo
+name: Sync demo
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: web-demo-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: sync-demo-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,12 +44,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: web-demo-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'packages/coln-js-runtime/package-lock.json', 'examples/web-demo/pnpm-lock.yaml') }}
+          key: sync-demo-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'packages/coln-js-runtime/package-lock.json', 'examples/sync-demo/pnpm-lock.yaml') }}
           restore-keys: |
-            web-demo-${{ runner.os }}-
+            sync-demo-${{ runner.os }}-
 
-      - name: Build web demo
-        run: nix run --accept-flake-config .#web-demo -- "$GITHUB_WORKSPACE"
+      - name: Build sync demo
+        run: nix run --accept-flake-config .#sync-demo -- "$GITHUB_WORKSPACE"
 
       - name: Deploy PR preview to Netlify
         id: deploy-preview
@@ -58,10 +58,10 @@ jobs:
           npx --yes netlify-cli@latest deploy \
             --auth "$NETLIFY_AUTH_TOKEN" \
             --site "$NETLIFY_SITE_ID" \
-            --dir examples/web-demo/dist \
+            --dir examples/sync-demo/dist \
             --no-build \
             --alias "pr-${{ github.event.pull_request.number }}" \
-            --message "PR #${{ github.event.pull_request.number }} web demo" \
+            --message "PR #${{ github.event.pull_request.number }} sync demo" \
             --json > netlify-deploy.json
 
           cat netlify-deploy.json
@@ -73,8 +73,8 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const marker = '<!-- coln-web-demo-deploy-preview -->'
-            const body = `${marker}\nWeb demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
+            const marker = '<!-- coln-sync-demo-deploy-preview -->'
+            const body = `${marker}\nSync demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
             const { owner, repo } = context.repo
             const issue_number = context.issue.number
             const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
@@ -91,7 +91,7 @@ jobs:
           npx --yes netlify-cli@latest deploy \
             --auth "$NETLIFY_AUTH_TOKEN" \
             --site "$NETLIFY_SITE_ID" \
-            --dir examples/web-demo/dist \
+            --dir examples/sync-demo/dist \
             --no-build \
             --prod \
-            --message "main web demo ${{ github.sha }}"
+            --message "main sync demo ${{ github.sha }}"
