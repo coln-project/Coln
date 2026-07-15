@@ -115,11 +115,11 @@ impl ValueMeta {
     }
 }
 
-impl hexane::v1::ColumnValue for ValueMeta {
-    type Encoding = hexane::v1::RleEncoding<ValueMeta>;
+impl hexane::ColumnValue for ValueMeta {
+    type Encoding = hexane::RleEncoding<ValueMeta>;
 }
 
-impl hexane::v1::RleValue for ValueMeta {
+impl hexane::RleValue for ValueMeta {
     fn try_unpack(data: &[u8]) -> Result<(usize, ValueMeta), PackError> {
         let mut buf = data;
         let start = buf.len();
@@ -132,12 +132,12 @@ impl hexane::v1::RleValue for ValueMeta {
     }
 }
 
-impl hexane::v1::PrefixValue for ValueMeta {
+impl hexane::PrefixValue for ValueMeta {
     type Prefix = u64;
     fn accumulate(target: &mut u64, val: ValueMeta) {
         *target += val.length() as u64;
     }
-    fn accumulate_run(target: &mut u64, run: &hexane::v1::Run<ValueMeta>) {
+    fn accumulate_run(target: &mut u64, run: &hexane::Run<ValueMeta>) {
         *target += run.value.length() as u64 * run.count as u64;
     }
 }

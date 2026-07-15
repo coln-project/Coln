@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use hexane::v1::{Column, DeltaColumn};
+use hexane::{Column, DeltaColumn};
 
 use crate::commit::author::Author;
 use crate::commit::leb128 as commit_leb128;

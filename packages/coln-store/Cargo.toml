@@ -25,7 +25,7 @@ coln-flir-rs = { path = "../coln-flir-rs" }
 csv = "1.4.0"
 # coln-query = { path = "../coln-query" }
 hex = "0.4.3"
-hexane = { git = "https://github.com/automerge/automerge", branch = "hexane_v1", package = "hexane" }
+hexane = "1.0.0-alpha.2"
 js-sys = { version = "0.3.83", optional = true }
 leb128 = "0.2.6"
 petgraph = "0.8.3"

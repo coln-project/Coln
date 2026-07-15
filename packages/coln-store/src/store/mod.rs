@@ -13,7 +13,7 @@ use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatRealm, RuleEntry};
-use crate::roweq::rowing;
+use crate::roweq::{self, rowing};
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
@@ -215,20 +215,19 @@ impl Store {
 
             // use self.tables to make the borrow checker happy we are accessing separate fields
             let t = self.tables.get_mut(&oid).expect("validated batch");
-            t.append_row(values, row_id);
-            // let observed = self.rowing.observe(t, *row_id, values)?;
+            let observed = self.rowing.observe(t, row_id, &values)?;
 
-            // // TODO We are invoking rowing even if tables might not be in hashcons mode
-            // match observed {
-            //     roweq::ObservedOutcome::Inserted(rid) => t.append_row(values.clone(), rid),
-            //     roweq::ObservedOutcome::KeptOld(_row_id) => {
-            //         // equivalent row exists, do nothing
-            //     }
+            // TODO We are invoking rowing even if tables might not be in hashcons mode
+            match observed {
+                roweq::ObservedOutcome::Inserted(rid) => t.append_row(values.clone(), rid),
+                roweq::ObservedOutcome::KeptOld(_row_id) => {
+                    // equivalent row exists, do nothing
+                }
 
-            //     roweq::ObservedOutcome::Swap { old, new } => {
-            //         t.replace_row_id(&old, new)?;
-            //     }
-            // }
+                roweq::ObservedOutcome::Swap { old, new } => {
+                    t.replace_row_id(&old, new)?;
+                }
+            }
         }
         info!(op_count, "applied batch");
 
@@ -407,6 +406,8 @@ impl Store {
     }
 
     fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), StoreIntError> {
+        // TODO resolved_ops need to decode data, there is code path which decodes
+        // to get ops immediately after a commit has been encoded. Consider optimise this.
         let ops = cmt.resolved_ops(|path| self.schema_for(path))?;
         self.apply_batch(ops)?;
         self.record_in_commit_graph(cmt);

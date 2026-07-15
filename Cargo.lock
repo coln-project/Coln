@@ -2167,8 +2167,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hexane"
-version = "1.0.0-alpha.1"
-source = "git+https://github.com/automerge/automerge?branch=hexane_v1#583114e24ec5f01e7568503099e840168d3735f3"
+version = "1.0.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6fa73ae43aeadf80e9032268bcb216fb1bd1930a08d7f73e44bb0b740c3d702"
 dependencies = [
  "leb128",
  "thiserror 2.0.18",
