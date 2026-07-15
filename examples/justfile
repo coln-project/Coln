@@ -6,6 +6,7 @@ build-web-compiler: coln-compiler-wasm::build
     #!/usr/bin/env bash
     set -euxo pipefail
     cp compiler-demo/index.html {{ build_dir }}/index.html
+    cp style.css {{ build_dir }}/style.css
     examples_dir="{{ build_dir }}/examples"
     mkdir -p "$examples_dir"
     cp ../packages/coln-compiler/test/golden/*.coln "$examples_dir/"
