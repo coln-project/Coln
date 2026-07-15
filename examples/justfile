@@ -1,0 +1,15 @@
+mod coln-compiler-wasm '../packages/coln-compiler-wasm'
+
+build_dir := "../_build/web/compiler"
+
+build-web-compiler: coln-compiler-wasm::build
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    cp compiler-demo/index.html {{ build_dir }}/index.html
+    examples_dir="{{ build_dir }}/examples"
+    mkdir -p "$examples_dir"
+    cp ../packages/coln-compiler/test/golden/*.coln "$examples_dir/"
+    ls -1 "$examples_dir"/*.coln | xargs -n1 basename | jq -nR '[inputs]' > "$examples_dir/index.json"
+
+serve-web-compiler port="8000": build-web-compiler
+    simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
