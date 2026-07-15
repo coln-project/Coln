@@ -9,6 +9,7 @@ build:
     cp "$(wasm32-wasi-cabal list-bin coln-compiler-wasm)" {{ dist_dir }}/coln.wasm
     libdir="$(wasm32-wasi-ghc --print-libdir)"
     "$libdir/post-link.mjs" --input {{ dist_dir }}/coln.wasm --output {{ dist_dir }}/ghc_wasm_jsffi.js
+    cp loadHaskellWasm.js {{ dist_dir }}/loadHaskellWasm.js
 
 build-example: build
     #!/usr/bin/env bash

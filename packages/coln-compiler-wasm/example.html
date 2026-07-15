@@ -134,13 +134,13 @@
     </div>
 
     <script type="module">
-      import {
-        WASI,
-        OpenFile,
-        File,
-        ConsoleStdout,
-      } from "https://cdn.jsdelivr.net/npm/@bjorn3/browser_wasi_shim@0.3.0/dist/index.js";
+      import loadHaskellWasm from "./dist/loadHaskellWasm.js";
       import ghc_wasm_jsffi from "./dist/ghc_wasm_jsffi.js";
+
+      const exports = await loadHaskellWasm({
+        wasmUrl: "dist/coln.wasm",
+        ghc_wasm_jsffi,
+      });
 
       const inputEl = document.getElementById("input");
       const diagsEl = document.getElementById("diagnostics");
@@ -170,25 +170,6 @@
         }
       });
 
-      const wasi = new WASI(
-        [],
-        [],
-        [
-          new OpenFile(new File([])),
-          ConsoleStdout.lineBuffered(console.log),
-          ConsoleStdout.lineBuffered(console.error),
-        ],
-      );
-
-      const exports = {};
-      const { instance } = await WebAssembly.instantiateStreaming(
-        fetch("dist/coln.wasm"),
-        {
-          wasi_snapshot_preview1: wasi.wasiImport,
-          ghc_wasm_jsffi: ghc_wasm_jsffi(exports),
-        },
-      );
-      Object.assign(exports, instance.exports);
       const compileResultRegistry = new FinalizationRegistry(
         exports.freeCompileResult,
       );
@@ -210,8 +191,6 @@
       }
       const compile = async (src) =>
         new CompileResult(await exports.compile(src));
-
-      wasi.initialize(instance);
 
       async function run() {
         document.body.dataset.compiling = "";
