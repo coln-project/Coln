@@ -49,7 +49,7 @@ render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 prettyEntry :: (Name, GlobalEntry) -> DDoc
-prettyEntry (x, (GlobalEntry t _ a)) =
+prettyEntry (x, (GlobalEntry t _ a _)) =
   vsep
     [ "global entry named" <+> dpretty x
     , "type:" <+> prtIn (CtxShape 0 BwdNil) a

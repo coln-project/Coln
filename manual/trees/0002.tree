@@ -72,8 +72,4 @@
 
 \transclude{000B}
 
-\subtree[000I]{
-  \title{Organization}
-
-  \p{}
-}
+\transclude{000I}

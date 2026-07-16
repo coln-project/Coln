@@ -17,6 +17,7 @@ data GlobalEntry = GlobalEntry
   { syn :: S.El D
   , val :: V.El N
   , ty :: V.Ty N
+  , mode :: Mode
   }
 
 data Globals = Globals

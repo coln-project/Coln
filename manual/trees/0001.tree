@@ -2,9 +2,11 @@
 
 \p{Coln is a database with an expressive language for schemas, queries, and migrations. This document forms the manual for Coln.}
 
-\transclude{002H}
-\transclude{0002}
-\transclude{000K}
-\transclude{000L}
-\transclude{000M}
-\transclude{0003}
+\ol{
+  \li{[[002H]]}
+  \li{[[0002]]}
+  \li{[[000K]]}
+  \li{[[000L]]}
+  \li{[[000M]]}
+  \li{[[0003]]}
+}
