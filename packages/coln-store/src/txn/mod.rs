@@ -284,6 +284,50 @@ mod tests {
         ));
     }
 
+    /// A handle whose row deduplicates into an existing hashcons class
+    /// finalizes to the id the store actually kept, not to its raw
+    /// `(commit, counter)` id, which names no stored row. The first handle
+    /// may still go stale when the second commit wins the merge; reading
+    /// through `row_by_handle` resolves and repairs it.
+    #[test]
+    fn deduplicated_row_handle_finalizes_to_canonical_id() {
+        let term = Path::from("Term");
+        let mut store = Store::new();
+        store
+            .create_table(term.clone(), table_schema(vec![int_col("value")], None))
+            .expect("create term table");
+        store.set_hashcons_for_test(&term, true);
+
+        let mut tx = store.transaction();
+        let first = tx.add(&term, vec![7_i64.into()]).expect("add first term");
+        tx.commit().expect("commit first term");
+
+        // Structurally equal row: deduplicates into the first row's class.
+        // Which id wins the merge depends on the commit hash ordering.
+        let mut tx = store.transaction();
+        let second = tx.add(&term, vec![7_i64.into()]).expect("add equal term");
+        tx.commit().expect("commit equal term");
+
+        let stored = store
+            .table_at(&term)
+            .expect("Term")
+            .row_id_at(0)
+            .expect("one stored row");
+        assert_eq!(store.table_at(&term).expect("Term").row_count(), 1);
+
+        // The second handle is born canonical, whether its row was kept old
+        // or won the merge.
+        assert_eq!(second.row_id().expect("finalized"), stored);
+
+        // The first handle resolves through the store even if its id went
+        // stale, and the read writes the canonical id back into the handle.
+        let view = store
+            .row_by_handle(&term, first.clone())
+            .expect("class row is stored");
+        assert_eq!(view.row_id, stored);
+        assert_eq!(first.row_id().expect("finalized"), stored);
+    }
+
     #[test]
     fn transaction_commit_updates_commit_graph_heads_and_deps() {
         let path = Path::from("T");

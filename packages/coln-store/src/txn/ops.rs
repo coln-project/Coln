@@ -75,6 +75,19 @@ impl RowHandle {
         }
     }
 
+    pub(crate) fn replace_row_id(&self, new_row_id: RowId) -> Result<(), StoreIntError> {
+        match &*self.state.borrow() {
+            RowHandleState::Existing(..) => {
+                self.state.replace(RowHandleState::Existing(new_row_id));
+                Ok(())
+            }
+            _ => Err(ValidationError::InvalidRowHandle {
+                reason: "cannot replace row id on a non finalised rowhandle".to_string(),
+            }
+            .into()),
+        }
+    }
+
     pub(crate) fn to_txn_cell_value(
         &self,
         current_tx: TxnId,
@@ -96,12 +109,13 @@ impl RowHandle {
         }
     }
 
-    pub(crate) fn finalize(&self, commit: CommitHash) {
+    pub(crate) fn finalize(&self, commit: CommitHash, resolve: impl Fn(RowId) -> RowId) {
         let mut state = self.state.borrow_mut();
         if let RowHandleState::Pending { counter, .. } = *state {
-            *state = RowHandleState::Existing(RowId { commit, counter });
+            *state = RowHandleState::Existing(resolve(RowId { commit, counter }));
         }
     }
+
     pub(crate) fn invalidate(&self, reason: &str) {
         *self.state.borrow_mut() = RowHandleState::Invalid(reason.into());
     }
@@ -328,7 +342,7 @@ impl From<CellValue> for TxnCellValue {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Op {
     Add {
         row_id: RowId,
