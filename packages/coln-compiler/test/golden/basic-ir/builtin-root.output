@@ -1,0 +1,26 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  count : Int
+  label : String
+end
+realm named TRealm
+generators: node
+  count = (fun [] -> Int)
+  label = (fun [] -> String)
+end
+lowered: flatrealm
+  entities
+    table ℜ.count := [.a : Int] primarykey []
+    table ℜ.label := [.a : String] primarykey []
+  end
+  rules
+    enforced ℜ.count.foreignKey a := ℜ.count [.a ↦ a] ⊢ ⊤
+    monitored ℜ.count.total := ⊤ ⊢ ℜ.count []
+    enforced ℜ.label.foreignKey a := ℜ.label [.a ↦ a] ⊢ ⊤
+    monitored ℜ.label.total := ⊤ ⊢ ℜ.label []
+  end
+end
+
+-- messages

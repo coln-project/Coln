@@ -46,6 +46,7 @@ genTy access n = \case
     TS.Fun (TS.Binding (TS.Id "x") (TS.runtime Value)) (genTy access (n + 1) (V.appClo ft.cod v))
   V.EltOf _ _ -> TS.runtime $ ColnRef access
   V.Decode n -> tyFromHead access n.head
+  V.BuiltinTy _ -> TS.runtime $ ColnRef access
   _ -> error "not yet supported"
 
 genInterface :: Access -> CtxLen -> V.Ty D -> TS.Interface

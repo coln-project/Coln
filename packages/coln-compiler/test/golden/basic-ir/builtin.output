@@ -2,24 +2,28 @@
 global entry named T
 type: Theory
 value: sig
-  count : Int
-  label : String
+  V : Set
+  count : V -> Int
+  label : V -> String
 end
 realm named TRealm
 generators: node
-  count = (fun [] -> Int)
-  label = (fun [] -> String)
+  V = rel []
+  count = (fun [a : TRealm.V []] -> Int)
+  label = (fun [a : TRealm.V []] -> String)
 end
 lowered: flatrealm
   entities
-    table ℜ.count := [.a : Int] primarykey []
-    table ℜ.label := [.a : String] primarykey []
+    table ℜ.V := []
+    table ℜ.count := [.a : ℜ.V, .b : Int] primarykey [.a]
+    table ℜ.label := [.a : ℜ.V, .b : String] primarykey [.a]
   end
   rules
-    enforced ℜ.count.foreignKey a := ℜ.count [.a ↦ a] ⊢ ⊤
-    monitored ℜ.count.total := ⊤ ⊢ ℜ.count []
-    enforced ℜ.label.foreignKey a := ℜ.label [.a ↦ a] ⊢ ⊤
-    monitored ℜ.label.total := ⊤ ⊢ ℜ.label []
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+    enforced ℜ.count.foreignKey a b := ℜ.count [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V []
+    monitored ℜ.count.total a := a ∈ ℜ.V [] ⊢ ℜ.count [.a ↦ a]
+    enforced ℜ.label.foreignKey a b := ℜ.label [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V []
+    monitored ℜ.label.total a := a ∈ ℜ.V [] ⊢ ℜ.label [.a ↦ a]
   end
 end
 
