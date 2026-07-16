@@ -26,6 +26,12 @@ textarea,
 pre {
   padding: 0.8em 1em;
 }
+a {
+  color: var(--accent);
+  &:hover {
+    color: hsl(var(--hue), var(--sat), 90%);
+  }
+}
 textarea,
 select {
   color: inherit;
