@@ -30,6 +30,7 @@ library
     Coln.Core.Syntax
     Coln.Core.Value
     Coln.Diagnostics
+    Coln.Elaborator.Coercion
     Coln.Elaborator.Debug
     Coln.Elaborator.Diagnostics
     Coln.Elaborator.Environment
@@ -38,11 +39,14 @@ library
     Coln.Elaborator.Rules.Equality
     Coln.Elaborator.Rules.Function
     Coln.Elaborator.Rules.Record
+    Coln.Elaborator.Rules.Polarity
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
     Coln.Frontend.Diagnostics
     Coln.Frontend.Notation
     Coln.Frontend.Parser
+    Coln.Frontend.Parser.Top
+    Coln.Frontend.Parser.Expr
     Coln.Report
 
   hs-source-dirs: src

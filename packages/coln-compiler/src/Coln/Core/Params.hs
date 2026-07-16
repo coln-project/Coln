@@ -183,3 +183,9 @@ data TableName = TableName {realm :: RealmId, path :: Path}
 
 instance DPretty TableName where
   dpretty tn = concatWith (surround dot) (dpretty <$> toList tn.path)
+
+-- Mode
+--------------------------------------------------------------------------------
+
+data Mode = Inductive | Conjunctive
+  deriving (Show, Eq, Ord)

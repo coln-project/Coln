@@ -11,10 +11,6 @@ module Coln.Elaborator.Judgment (
   Chk (..),
   Judgment (..),
   useIs,
-  intoTyp,
-  intoSyn,
-  intoChk,
-  annotate,
 )
 where
 
@@ -43,54 +39,6 @@ useIs @c f e = fmap change $ f e{target = TargetAnonymous}
     SNominative -> id
     SDescriptive -> M.is
 
-intoTyp :: Span -> Judgment N -> Typ N
-intoTyp _ (FromTyp t) = t
-intoTyp sp (FromSyn s) = Typ $ \e -> do
-  (ty, el) <- s.elab e
-  case V.behavior ty of
-    V.LikeU _ -> pure $ M.decode el
-    _ -> do
-      let msg = "tried to use a value of type" <+> prtIn e ty <+> "as a type"
-      failWith e.diagEnv sp TypeMismatch msg
-intoTyp _ (FromChk _ c) = Typ $ \e -> do
-  el <- c.elab e $ V.U TheoryU
-  pure $ M.decode el
-
-intoSyn :: (V.HasEvaluation c) => DDoc -> Span -> Judgment c -> Syn c
-intoSyn _ sp (FromTyp t) = Syn $ \e -> do
-  raw <- t.elab e
-  case universeFor (levelOf raw) of
-    Nothing -> do
-      let msg = "type" <+> prtIn e raw <+> "too large to fit in a universe"
-      failWith e.diagEnv sp TypeTooLarge msg
-    Just u -> pure (V.U u, M.code raw)
-intoSyn _ _ (FromSyn s) = s
-intoSyn use sp (FromChk nd _) = Syn $ \e -> do
-  let msg = "Type annotation required when using a" <+> nd <+> "as" <+> use
-  failWith e.diagEnv sp AnnotationRequired msg
-
-intoChk :: (V.HasEvaluation c) => Span -> Judgment c -> Chk c
-intoChk sp (FromTyp t) = Chk $ \e ty -> do
-  raw <- t.elab e
-  case V.behavior ty of
-    V.LikeU u -> do
-      case leq (levelOf raw) (decodesInto u) of
-        True -> pure $ M.code raw
-        False -> do
-          let msg = "type" <+> prtIn e raw <+> "too large for universe" <+> pretty u
-          failWith e.diagEnv sp TypeTooLarge msg
-    _ -> do
-      let msg = "cannot check type" <+> prtIn e raw <+> "at non-universe type" <+> prtIn e.scope ty
-      failWith e.diagEnv sp TypeAtNonUniverse msg
-intoChk sp (FromSyn s) = Chk $ \e ty -> do
-  (ty', el) <- s.elab e
-  case defEq (shape e) ty ty' of
-    Right _ -> pure el
-    Left err -> do
-      let msg = "expected type" <+> prtIn e.scope ty <> ", but got type" <+> prtIn e.scope ty'
-      let note = Just $ dpretty err
-      failWithNote e.diagEnv sp TypeMismatch msg note
-intoChk _ (FromChk _ c) = c
 
 annotate :: Typ N -> Chk c -> Syn c
 annotate t c = Syn \e -> do

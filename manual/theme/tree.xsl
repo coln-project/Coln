@@ -27,18 +27,18 @@
       <body>
         <ninja-keys placeholder="Start typing a note title or ID"></ninja-keys>
         <div id="grid-wrapper">
-          <xsl:if test="f:tree/f:mainmatter/f:tree[not(@toc='false')] and not(/f:tree/f:frontmatter/f:meta[@name = 'toc']/.='false')">
+          <!-- <xsl:if test="f:tree/f:mainmatter/f:tree[not(@toc='false')] and not(/f:tree/f:frontmatter/f:meta[@name = 'toc']/.='false')"> -->
 
-            <nav id="toc">
-              <input type="checkbox" id="menu-toggle" />
-              <label for="menu-toggle" >
-                <img class="hamburger" src="/menu.svg" />
-              </label>
-              <div class="block">
-                <xsl:apply-templates select="f:tree/f:mainmatter" mode="toc" />
-              </div>
-            </nav>
-          </xsl:if>
+          <!--   <nav id="toc"> -->
+          <!--     <input type="checkbox" id="menu-toggle" /> -->
+          <!--     <label for="menu-toggle" > -->
+          <!--       <img class="hamburger" src="/menu.svg" /> -->
+          <!--     </label> -->
+          <!--     <div class="block"> -->
+          <!--       <xsl:apply-templates select="f:tree/f:mainmatter" mode="toc" /> -->
+          <!--     </div> -->
+          <!--   </nav> -->
+          <!-- </xsl:if> -->
           <div class="main">
             <article>
               <xsl:apply-templates select="f:tree" />
@@ -167,11 +167,11 @@
     </li>
   </xsl:template>
 
-  <xsl:template match="f:mainmatter" mode="toc">
-    <ul class="block">
-      <xsl:apply-templates select="f:tree[not(@toc='false')]" mode="toc" />
-    </ul>
-  </xsl:template>
+  <!-- <xsl:template match="f:mainmatter" mode="toc"> -->
+  <!--   <ul class="block"> -->
+  <!--     <xsl:apply-templates select="f:tree[not(@toc='false')]" mode="toc" /> -->
+  <!--   </ul> -->
+  <!-- </xsl:template> -->
 
   <xsl:template match="f:frontmatter/f:title">
     <xsl:apply-templates />
