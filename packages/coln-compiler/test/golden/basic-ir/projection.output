@@ -8,25 +8,30 @@ end
 global entry named T
 type: Theory
 value: sig
-  eq : (p : Payload) -> p.rank = p.rank
+  E : Int -> Set
+  r : (p : Payload) -> E p.rank
 end
 realm named TRealm
 generators: node
-  eq = (fun [p : Payload] -> p.rank = p.rank)
+  E = rel [a : Int]
+  r = (fun [p : Payload] -> TRealm.E [a := p.rank])
 end
 lowered: flatrealm
   entities
-    table ℜ.eq := [.p.name : String, .p.rank : Int] primarykey [
+    table ℜ.E := [.a : Int]
+    table ℜ.r := [.p.name : String, .p.rank : Int, .a : ℜ.E] primarykey [
       .p.name,
       .p.rank
     ]
   end
   rules
-    enforced ℜ.eq.foreignKey p.name p.rank := ℜ.eq [
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ⊤
+    enforced ℜ.r.foreignKey p.name p.rank a := ℜ.r [
       .p.name ↦ p.name,
-      .p.rank ↦ p.rank
-    ] ⊢ p.rank = p.rank
-    monitored ℜ.eq.total p.name p.rank := ⊤ ⊢ ℜ.eq [
+      .p.rank ↦ p.rank,
+      .a ↦ a
+    ] ⊢ a ∈ ℜ.E [.a ↦ p.rank]
+    monitored ℜ.r.total p.name p.rank := ⊤ ⊢ ℜ.r [
       .p.name ↦ p.name,
       .p.rank ↦ p.rank
     ]

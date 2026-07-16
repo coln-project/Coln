@@ -4,7 +4,8 @@ def Payload : Set := sig
 end
 
 theory T := sig
-  eq : (p : Payload) -> p.rank = p.rank
+  E : Int -> Set
+  r : (p : Payload) -> E p.rank
 end
 
 realm TRealm @ T
