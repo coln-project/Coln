@@ -12,7 +12,9 @@
   "scripts": {
     "copy-license": "cp -r ../../LICENSES LICENSES",
     "build": "wasm-bodge build",
-    "test": "tsx --test tests/test_id_resolution.ts"
+    "test": "npm run test:unit && npm run test:basic-ir",
+    "test:unit": "tsx --test tests/id-resolution.test.ts",
+    "test:basic-ir": "tsx --tsconfig tests/basic-ir/tsconfig.json --test \"tests/basic-ir/*.test.ts\""
   },
   "wasm-bodge": {
     "wrapper": {
