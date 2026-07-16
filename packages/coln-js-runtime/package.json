@@ -23,6 +23,8 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.23.1",
     "typescript": "^5.0.0"
   },
   "main": "./dist/wrapper/cjs/node.cjs",

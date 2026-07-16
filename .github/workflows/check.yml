@@ -101,9 +101,6 @@ jobs:
           cache: npm
           cache-dependency-path: packages/coln-js-runtime/package-lock.json
 
-      - name: Install npm tooling
-        run: npm install -g esbuild tsx
-
       - name: Install npm dependencies
         working-directory: packages/coln-js-runtime
         run: npm ci
