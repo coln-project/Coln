@@ -1,7 +1,22 @@
+type V
+type E: V -> V -> Type
+
 theory Graph := sig
   V : Set
   E : V -> V -> Set
+  Q : E -> E -> Set
 end
+
+vertices
+1
+2
+3
+
+edges
+v1 v2
+v2 v3
+
+
 
 theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
   V : G0.V -> G1.V

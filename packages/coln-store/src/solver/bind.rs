@@ -11,7 +11,7 @@ use crate::{
         matcher::term_matches,
     },
     store::Store,
-    table::{CellValue, RowId, Table},
+    table::{CellValue, RowId, TableRef},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -44,7 +44,7 @@ fn bind_term(binding: &mut Binding, term: &CompTerm, value: BoundValue) -> bool 
 }
 
 fn match_atom_row(
-    table: &Table,
+    table: TableRef<'_>,
     row_idx: usize,
     atom: &CompAtom,
     binding: &Binding,

@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::commit::error::CodecError;
-use crate::roweq::rowing::RowingError;
 use crate::solver::compile::CompileError;
 use crate::solver::validate::RuleViolation;
+use crate::store::rowing::RowingError;
 use crate::table::ValidationError;
 
 /// Store integrity error

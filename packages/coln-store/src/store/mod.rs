@@ -11,18 +11,19 @@ use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
+use crate::commit::hash_dict::HashMapper;
 use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatRealm, RuleEntry};
-use crate::roweq::{self, rowing};
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreIntError};
-use crate::table::{CellValue, RowId, RowView, Table, TableOid, ValidationError};
-use crate::txn::ops::Op;
+use crate::table::{CellValue, RowId, RowView, Table, TableOid, TableRef, ValidationError};
+use crate::txn::ops::{Op, RowHandle};
 use crate::txn::{OwnedTransaction, Transaction};
 
 pub mod error;
+mod rowing;
 
 // TODO this should not be cloneable for efficiency reasons. In the future we should
 // be able to teach the rule validator to check the delta
@@ -31,12 +32,13 @@ pub struct Store {
     pub(crate) next_oid: TableOid,
     path_to_oid: HashMap<ir::Path, TableOid>,
     tables: HashMap<TableOid, Table>,
+    id_packer: HashMapper,
     /// Source rule entries retained for persistence. Compiled form lives in `rules`.
     rule_entries: Vec<ir::RuleEntry>,
     /// Compiled rule for this instance; table schemas live only on each [`Table`].
     rules: Vec<CompRule>,
     commits: CommitGraph,
-    rowing: rowing::Index,
+    rowing: rowing::Rowing,
 }
 
 impl Store {
@@ -48,15 +50,18 @@ impl Store {
             next_oid: 0,
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
+            id_packer: HashMapper::new(),
             rule_entries: vec![],
             rules: vec![],
             commits,
-            rowing: rowing::Index::new(),
+            rowing: rowing::Rowing::new(),
         }
     }
 
-    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, &Table)> {
-        self.tables.iter()
+    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, TableRef<'_>)> {
+        self.tables
+            .iter()
+            .map(|(oid, table)| (oid, TableRef::new(table, &self.id_packer)))
     }
 
     pub fn commits(&self) -> &CommitGraph {
@@ -73,24 +78,28 @@ impl Store {
         self.path_to_oid.get(path).copied()
     }
 
-    pub fn table(&self, oid: TableOid) -> Option<&Table> {
-        self.tables.get(&oid)
+    pub fn table(&self, oid: TableOid) -> Option<TableRef<'_>> {
+        self.tables
+            .get(&oid)
+            .map(|table| TableRef::new(table, &self.id_packer))
     }
 
-    pub fn table_mut(&mut self, oid: TableOid) -> Option<&mut Table> {
-        self.tables.get_mut(&oid)
-    }
-
-    pub fn table_at(&self, path: &ir::Path) -> Option<&Table> {
+    pub fn table_at(&self, path: &ir::Path) -> Option<TableRef<'_>> {
         self.resolve_table(path).and_then(|oid| self.table(oid))
-    }
-
-    pub fn table_at_mut(&mut self, path: &ir::Path) -> Option<&mut Table> {
-        self.resolve_table(path).and_then(|oid| self.table_mut(oid))
     }
 
     pub fn rules(&self) -> &[CompRule] {
         &self.rules
+    }
+
+    // TODO remove this when we have schema level hashcons
+    #[cfg(test)]
+    pub(crate) fn set_hashcons_for_test(&mut self, path: &ir::Path, hashcons: bool) {
+        let oid = self.resolve_table(path).expect("table exists");
+        self.tables
+            .get_mut(&oid)
+            .expect("resolved tables are registered")
+            .set_hashcons_for_test(hashcons);
     }
 
     pub fn table_count(&self) -> usize {
@@ -101,12 +110,29 @@ impl Store {
         &self.rule_entries
     }
 
-    pub fn scan_table(&self, table: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
-        self.table_at(table)
-            .map(|table| (0..table.row_count()).filter_map(|row_idx| table.row_at(row_idx)))
+    pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
+        self.table_at(table_path)
+            .map(|table| (0..table.row_count()).filter_map(move |row_idx| table.row_at(row_idx)))
     }
 
+    pub(crate) fn canonical_row_id(&self, row_id: RowId) -> RowId {
+        self.rowing.canonical(row_id, &self.id_packer)
+    }
+
+    pub fn row_by_handle(&self, table: &ir::Path, row_handle: RowHandle) -> Option<RowView> {
+        let row_id = row_handle.row_id().ok()?;
+        let con_rowid = self.canonical_row_id(row_id);
+        if row_id != con_rowid {
+            row_handle.replace_row_id(con_rowid).ok()?
+        }
+        self.row_by_id(table, con_rowid)
+    }
+
+    // This function will canonicalise the row_id on read, but will not change it
+    // See `row_by_handle` which will actually canonicalise the handle.
+    // We need both because the TS FFI does not deal with handles.
     pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
+        let row_id = self.canonical_row_id(row_id);
         self.table_at(table)
             .and_then(|table| table.row_at(table.row_position(row_id)?))
     }
@@ -117,7 +143,7 @@ impl Store {
         let mut oids: Vec<TableOid> = self.tables.keys().copied().collect();
         oids.sort_unstable();
         oids.into_iter()
-            .map(|oid| self.tables[&oid].dump())
+            .map(|oid| self.tables[&oid].dump(&self.id_packer))
             .collect::<Vec<_>>()
             .join("\n\n")
     }
@@ -146,10 +172,11 @@ impl Store {
             next_oid,
             path_to_oid,
             tables: tables_map,
+            id_packer: HashMapper::new(),
             rule_entries: root.laws,
             rules,
             commits: CommitGraph::new(),
-            rowing: rowing::Index::new(),
+            rowing: rowing::Rowing::new(),
         })
     }
 
@@ -211,19 +238,43 @@ impl Store {
             let oid = self.resolve_table(&table).expect("validated batch");
 
             // use self.tables to make the borrow checker happy we are accessing separate fields
-            let t = self.tables.get_mut(&oid).expect("validated batch");
-            let observed = self.rowing.observe(t, row_id, &values)?;
+            let t = self.tables.get(&oid).expect("validated batch");
 
-            // TODO We are invoking rowing even if tables might not be in hashcons mode
-            match observed {
-                roweq::ObservedOutcome::Inserted(rid) => t.insert_row(values.clone(), rid),
-                roweq::ObservedOutcome::KeptOld(_row_id) => {
+            // TODO: non-hashcons rows pay by_row and union-find bookkeeping on
+            // every insert; this is only needed for rows that a hashcons table
+            // can reference or that reference a hashcons table themselves.
+            let rowing::Observed { outcome, fixups } =
+                self.rowing
+                    .observe(t, &mut self.id_packer, row_id, &values)?;
+
+            // TODO do batch insert
+            let t = self.tables.get_mut(&oid).expect("validated batch");
+            match outcome {
+                // Insert the values as canonicalized by rowing, so id cells
+                // always name a stored, canonical row.
+                rowing::ObservedOutcome::Inserted { rid, values } => {
+                    t.insert_row(values, rid, &mut self.id_packer)
+                }
+                rowing::ObservedOutcome::KeptOld(_row_id) => {
                     // equivalent row exists, do nothing
                 }
 
-                roweq::ObservedOutcome::Swap { old, new } => {
-                    t.replace_row_id(&old, new)?;
+                rowing::ObservedOutcome::Swap { old, new } => {
+                    t.replace_row_id(&old, new, &mut self.id_packer)?;
                 }
+            }
+
+            // A canonical id change leaves stale id cells in rows that
+            // reference the merged class; rewrite them now.
+            for fixup in fixups {
+                let oid = self
+                    .resolve_table(&fixup.table)
+                    .expect("fixups target observed tables");
+                let t = self
+                    .tables
+                    .get_mut(&oid)
+                    .expect("fixups target observed tables");
+                t.rewrite_row_cells(&fixup.row, fixup.values, &mut self.id_packer)?;
             }
         }
         info!(op_count, "applied batch");
@@ -302,10 +353,11 @@ impl Store {
             next_oid,
             path_to_oid,
             tables: tables_map,
+            id_packer: HashMapper::new(),
             rule_entries: rules,
             rules: comp_rules,
             commits,
-            rowing: rowing::Index::new(),
+            rowing: rowing::Rowing::new(),
         })
     }
 }
@@ -912,6 +964,174 @@ mod tests {
         );
         assert_eq!(store.row_by_id(&path, RowId { commit, counter: 1 }), None);
         assert_eq!(store.row_by_id(&Path::from("missing"), row_id), None);
+    }
+
+    fn row_id_from(commit_byte: u8, counter: u32) -> RowId {
+        RowId {
+            commit: CommitHash([commit_byte; 32]),
+            counter,
+        }
+    }
+
+    /// Store with a hashcons `Term` table (one int column), a hashcons
+    /// `Plus` table (two id columns), and a non-hashcons `Note` table (one
+    /// id column).
+    fn hashcons_store() -> Store {
+        let int_col = |name: &str| ColumnEntry {
+            path: Path::from(name),
+            col_type: ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt,
+            },
+        };
+        let id_col = |name: &str, target: &str| ColumnEntry {
+            path: Path::from(name),
+            col_type: ColType::RowId {
+                path: Path::from(target),
+            },
+        };
+        let schema = |columns: Vec<ColumnEntry>| Schema {
+            entity_variant: EntityVariant::Table,
+            columns,
+            primary_key: None,
+        };
+
+        let mut store = Store::new();
+        for (path, table_schema, hashcons) in [
+            ("Term", schema(vec![int_col("value")]), true),
+            (
+                "Plus",
+                schema(vec![id_col("left", "Term"), id_col("right", "Term")]),
+                true,
+            ),
+            ("Note", schema(vec![id_col("term", "Term")]), false),
+        ] {
+            store
+                .create_table(Path::from(path), table_schema)
+                .expect("create table");
+            store.set_hashcons_for_test(&Path::from(path), hashcons);
+        }
+        store
+    }
+
+    fn add_op(table: &str, rid: RowId, values: Vec<CellValue>) -> Op {
+        Op::Add {
+            row_id: rid,
+            table: Path::from(table),
+            values,
+        }
+    }
+
+    /// When a smaller structurally equal row swaps a class's canonical id,
+    /// `apply_batch` renames the row in its own table and rewrites the id
+    /// cells of every table that references it.
+    #[test]
+    fn swap_rewrites_referencing_table_cells() {
+        let mut store = hashcons_store();
+
+        let t_high = row_id_from(2, 0);
+        store
+            .apply_batch(vec![add_op("Term", t_high, vec![CellValue::Int(7)])].into_iter())
+            .expect("insert high term");
+
+        let plus = row_id_from(3, 0);
+        let note = row_id_from(4, 0);
+        store
+            .apply_batch(
+                vec![
+                    add_op(
+                        "Plus",
+                        plus,
+                        vec![CellValue::Id(t_high), CellValue::Id(t_high)],
+                    ),
+                    add_op("Note", note, vec![CellValue::Id(t_high)]),
+                ]
+                .into_iter(),
+            )
+            .expect("insert referencing rows");
+
+        // A smaller equal term swaps the class canonical from t_high to t_low.
+        let t_low = row_id_from(1, 0);
+        store
+            .apply_batch(vec![add_op("Term", t_low, vec![CellValue::Int(7)])].into_iter())
+            .expect("insert low term");
+
+        // The stored row is now t_low; the stale id t_high resolves to it.
+        let term_path = Path::from("Term");
+        let term_view = Some(RowView {
+            row_id: t_low,
+            values: vec![CellValue::Int(7)],
+        });
+        assert_eq!(store.row_by_id(&term_path, t_low), term_view);
+        assert_eq!(store.row_by_id(&term_path, t_high), term_view);
+        // An id that was never observed still misses.
+        assert_eq!(store.row_by_id(&term_path, row_id_from(9, 0)), None);
+
+        // Both referencing tables now name the new canonical id.
+        assert_eq!(
+            store.row_by_id(&Path::from("Plus"), plus),
+            Some(RowView {
+                row_id: plus,
+                values: vec![CellValue::Id(t_low), CellValue::Id(t_low)],
+            })
+        );
+        assert_eq!(
+            store.row_by_id(&Path::from("Note"), note),
+            Some(RowView {
+                row_id: note,
+                values: vec![CellValue::Id(t_low)],
+            })
+        );
+    }
+
+    /// Rows referencing a deduplicated (kept-old) member store the canonical
+    /// id, not the member id, which names no stored row.
+    #[test]
+    fn insert_stores_canonical_child_ids() {
+        let mut store = hashcons_store();
+
+        let t_a = row_id_from(1, 0);
+        let t_b = row_id_from(2, 0);
+        store
+            .apply_batch(
+                vec![
+                    add_op("Term", t_a, vec![CellValue::Int(7)]),
+                    add_op("Term", t_b, vec![CellValue::Int(7)]),
+                ]
+                .into_iter(),
+            )
+            .expect("insert terms");
+
+        // t_b deduplicated into t_a's class and is not stored; looking it up
+        // resolves to the canonical row.
+        let term_path = Path::from("Term");
+        assert_eq!(store.table_at(&term_path).expect("Term").row_count(), 1);
+        assert_eq!(
+            store.row_by_id(&term_path, t_b),
+            Some(RowView {
+                row_id: t_a,
+                values: vec![CellValue::Int(7)],
+            })
+        );
+
+        let plus = row_id_from(3, 0);
+        store
+            .apply_batch(
+                vec![add_op(
+                    "Plus",
+                    plus,
+                    vec![CellValue::Id(t_b), CellValue::Id(t_b)],
+                )]
+                .into_iter(),
+            )
+            .expect("insert referencing row");
+
+        assert_eq!(
+            store.row_by_id(&Path::from("Plus"), plus),
+            Some(RowView {
+                row_id: plus,
+                values: vec![CellValue::Id(t_a), CellValue::Id(t_a)],
+            })
+        );
     }
 
     #[test]
