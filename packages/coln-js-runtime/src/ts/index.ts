@@ -7,4 +7,8 @@ export { CommitResult, StoreHandle, TransactionHandle, valueEqual } from "#wasm-
 
 export * as ColnSet from "./ColnSet";
 
+export * as ColnRef from "./ColnRef";
+
 export * as RowIdSet from "./RowIdSet"
+
+export * as TableCellRef from "./TableCellRef";
