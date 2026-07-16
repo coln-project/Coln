@@ -7,7 +7,7 @@ import test from "node:test";
 
 import { StoreHandle } from "#wasm-bodge/bindings";
 
-import theory from "../../coln-compiler/test/basic-ir/set.ts.output/TRealm.json" with {
+import theory from "../../coln-compiler/test/golden/basic-ir/set.ts.output/TRealm.json" with {
   type: "json",
 };
 

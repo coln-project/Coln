@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import * as SetRealm from "../../../coln-compiler/test/basic-ir/set.ts.output/TRealm.ts";
+import * as SetRealm from "../../../coln-compiler/test/golden/basic-ir/set.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
 test("set", () => {

@@ -109,7 +109,7 @@ elaboratorTests = do
 
 typescriptTests :: IO TestTree
 typescriptTests = do
-  colnFiles <- findByExtension [".coln"] "test/basic-ir"
+  colnFiles <- findByExtension [".coln"] "test/golden/basic-ir"
   tests <- mapM typescriptTest colnFiles
   return $ testGroup "TypeScript FFI golden tests" tests
 

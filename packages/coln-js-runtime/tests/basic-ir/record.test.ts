@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import * as RecordRealm from "../../../coln-compiler/test/basic-ir/record.ts.output/TRealm.ts";
+import * as RecordRealm from "../../../coln-compiler/test/golden/basic-ir/record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
 test("record", () => {

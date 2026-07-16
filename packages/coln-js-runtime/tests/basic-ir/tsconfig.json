@@ -9,6 +9,6 @@
   },
   "include": [
     "*.ts",
-    "../../../coln-compiler/test/basic-ir/*.ts.output/**/*.ts"
+    "../../../coln-compiler/test/golden/basic-ir/*.ts.output/**/*.ts"
   ]
 }

@@ -9,7 +9,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const goldenDirectory = resolve(here, "../../../coln-compiler/test/basic-ir");
+const goldenDirectory = resolve(
+  here,
+  "../../../coln-compiler/test/golden/basic-ir",
+);
 
 test("every generated realm has an integration test", () => {
   const realms = readdirSync(goldenDirectory)

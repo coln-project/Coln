@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import * as ForeignKeyRealm from "../../../coln-compiler/test/basic-ir/foreign-key.ts.output/TRealm.ts";
+import * as ForeignKeyRealm from "../../../coln-compiler/test/golden/basic-ir/foreign-key.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
 test("foreign-key", () => {

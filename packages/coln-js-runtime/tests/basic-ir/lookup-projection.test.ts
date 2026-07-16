@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { valueEqual } from "@coln-project/runtime";
-import * as LookupProjectionRealm from "../../../coln-compiler/test/basic-ir/lookup-projection.ts.output/TRealm.ts";
+import * as LookupProjectionRealm from "../../../coln-compiler/test/golden/basic-ir/lookup-projection.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
 test("lookup-projection", () => {
