@@ -3,7 +3,7 @@ theory T := sig
   B : Prop
   E : B -> Set
   next : A -> B
-  next-edge : (x : A) -> E (next x)
+  nextedge : (x : A) -> E (next x)
 end
 
 realm TRealm @ T

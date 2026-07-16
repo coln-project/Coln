@@ -6,11 +6,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { valueEqual } from "@coln-project/runtime";
-import * as LookupProjectionRealm from "../../../coln-compiler/test/golden/basic-ir/lookup-projection.ts.output/TRealm.ts";
+import * as LookupProjectionSetSetPropRealm from "../../../coln-compiler/test/golden/basic-ir/lookup-projection-set-set-prop.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("lookup-projection", () => {
-  const realm = beginRealm(LookupProjectionRealm);
+test("lookup-projection-set-set-prop", () => {
+  const realm = beginRealm(LookupProjectionSetSetPropRealm);
   const source = realm.root.A.add();
   const target = realm.root.B.add();
   const edge = realm.root.E(target).add();
