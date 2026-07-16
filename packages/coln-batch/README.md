@@ -17,14 +17,14 @@ The batch query engine for Coln, built bottom-up. Current state:
 - [x] **AP5** — executor 2: worst-case-optimal generic join
   (`src/generic_join.rs`); differential-tested against executor 1 and a
   brute-force oracle (`src/reference.rs`, `tests/differential.rs`).
-- [ ] **AP6** — end-to-end example.
+- [x] **AP6** — end-to-end example (`examples/demo.rs`: generate → Arrow
+  IPC round-trip → generic join → result sizes and timings).
 - [ ] **AP7** — recursion: semi-naive evaluation to a fixpoint.
 
 ## Usage
 
 ```sh
-cargo test -p coln-batch                      # fast tests
-cargo test -p coln-batch -- --include-ignored # + 1M-row roundtrip
+cargo test -p coln-batch                              # fast tests
+cargo test -p coln-batch --release -- --include-ignored # + 1M-row runs
+cargo run -p coln-batch --example demo --release      # end-to-end demo
 ```
-
-The crate is a library; an `examples/` demo arrives with AP6.
