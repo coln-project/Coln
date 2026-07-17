@@ -1,0 +1,49 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  count : X -> Int
+  label : X -> String
+  countIs19 : (x : X) -> count x = 19
+  labelIsZombocom : (x : X) -> label x = "zombocom"
+end
+realm named TRealm
+generators: node
+  X = rel []
+  count = (fun [a : TRealm.X []] -> Int)
+  label = (fun [a : TRealm.X []] -> String)
+  countIs19 = (fun [x : TRealm.X []] -> TRealm.count [a := x] = 19)
+  labelIsZombocom = (fun [x : TRealm.X []] -> TRealm.label [
+    a := x
+  ] = "zombocom")
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.count := [.a : ℜ.X, .b : Int] primarykey [.a]
+    table ℜ.label := [.a : ℜ.X, .b : String] primarykey [.a]
+    table ℜ.countIs19 := [.x : ℜ.X] primarykey [.x]
+    table ℜ.labelIsZombocom := [.x : ℜ.X] primarykey [.x]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.count.foreignKey a b := ℜ.count [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
+    monitored ℜ.count.total a := a ∈ ℜ.X [] ⊢ ℜ.count [.a ↦ a]
+    enforced ℜ.label.foreignKey a b := ℜ.label [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
+    monitored ℜ.label.total a := a ∈ ℜ.X [] ⊢ ℜ.label [.a ↦ a]
+    enforced ℜ.countIs19.foreignKey x a.lhs := ℜ.countIs19 [.x ↦ x] ∧ ℜ.count [
+      .a ↦ x,
+      .b ↦ a.lhs
+    ] ⊢ x ∈ ℜ.X [] ∧ a.lhs = 19
+    monitored ℜ.countIs19.total x := x ∈ ℜ.X [] ⊢ ℜ.countIs19 [.x ↦ x]
+    enforced ℜ.labelIsZombocom.foreignKey x a.lhs := ℜ.labelIsZombocom [
+      .x ↦ x
+    ] ∧ ℜ.label [.a ↦ x, .b ↦ a.lhs] ⊢ x ∈ ℜ.X [] ∧ a.lhs = "zombocom"
+    monitored ℜ.labelIsZombocom.total x := x ∈ ℜ.X [] ⊢ ℜ.labelIsZombocom [
+      .x ↦ x
+    ]
+  end
+end
+
+-- messages

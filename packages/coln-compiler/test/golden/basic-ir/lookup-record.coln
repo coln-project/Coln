@@ -3,11 +3,14 @@ def Payload : Set := sig
   rank : Int
 end
 
+def fixed : Payload := struct
+  name := "fixed"
+  rank := 1
+end
+
 theory T := sig
-  X : Set
-  payload : X -> Payload
-  E : Int -> Set
-  edge : (x : X) -> E (payload x).rank
+  E : Payload -> Set
+  selected : E fixed
 end
 
 realm TRealm @ T

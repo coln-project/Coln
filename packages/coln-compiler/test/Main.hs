@@ -32,10 +32,10 @@ import Test.Tasty.HUnit (testCase, (@?=))
 import Prelude hiding (lex, read)
 
 knownFailingElaboratorTests :: [String]
-knownFailingElaboratorTests = ["literal-record", "lookup-record"]
+knownFailingElaboratorTests = ["lookup-record", "lookup-record-field"]
 
 knownFailingTypeScriptTests :: [String]
-knownFailingTypeScriptTests = ["equality", "equality-prop", "literal-record", "lookup-record"]
+knownFailingTypeScriptTests = ["equality", "equality-prop", "lookup-record", "lookup-record-field", "rule-literals"]
 
 main :: IO ()
 main = defaultMain =<< goldenTests

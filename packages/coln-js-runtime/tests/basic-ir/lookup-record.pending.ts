@@ -11,34 +11,14 @@ import { beginRealm } from "./helpers.ts";
 
 test("lookup-record", () => {
   const realm = beginRealm(LookupRecordRealm);
-  const source = realm.root.X.add();
-  const name = { tag: "string", value: "example" } as const;
-  const rank = { tag: "int", value: 1 } as const;
-  const payload = realm.root.payload(source);
-  payload.name.set(name);
-  payload.rank.set(rank);
-  const edge = realm.root.E(rank).add();
-  realm.root.edge(source).set(edge);
+  const fixed = {
+    name: { tag: "string", value: "fixed" },
+    rank: { tag: "int", value: 1 },
+  } as const;
+  const selected = realm.root.E(fixed).add();
+  realm.root.selected.set(selected);
   const view = realm.commit();
 
-  assert.equal(view.X.has(source), true);
-  assert.equal(view.E(rank).has(edge), true);
-  assert.equal(valueEqual(view.payload(source).name.get(), name), true);
-  assert.equal(valueEqual(view.payload(source).rank.get(), rank), true);
-  assert.equal(valueEqual(view.edge(source).get(), edge), true);
-});
-
-test("lookup-record rejects an edge at a different payload rank", () => {
-  const realm = beginRealm(LookupRecordRealm);
-  const source = realm.root.X.add();
-  const name = { tag: "string", value: "example" } as const;
-  const rank = { tag: "int", value: 1 } as const;
-  const otherRank = { tag: "int", value: 2 } as const;
-  const payload = realm.root.payload(source);
-  payload.name.set(name);
-  payload.rank.set(rank);
-  const edge = realm.root.E(otherRank).add();
-  realm.root.edge(source).set(edge);
-
-  assert.throws(() => realm.commit(), /\.edge\.foreignKey/);
+  assert.equal(view.E(fixed).has(selected), true);
+  assert.equal(valueEqual(view.selected.get(), selected), true);
 });

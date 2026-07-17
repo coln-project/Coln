@@ -1,0 +1,38 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  IntEdge : Int -> Set
+  StringEdge : String -> Set
+  intEdge : IntEdge 19
+  stringEdge : StringEdge "zombocom"
+end
+realm named TRealm
+generators: node
+  IntEdge = rel [a : Int]
+  StringEdge = rel [a : String]
+  intEdge = (fun [] -> TRealm.IntEdge [a := 19])
+  stringEdge = (fun [] -> TRealm.StringEdge [a := "zombocom"])
+end
+lowered: flatrealm
+  entities
+    table ℜ.IntEdge := [.a : Int]
+    table ℜ.StringEdge := [.a : String]
+    table ℜ.intEdge := [.a : ℜ.IntEdge] primarykey []
+    table ℜ.stringEdge := [.a : ℜ.StringEdge] primarykey []
+  end
+  rules
+    enforced ℜ.IntEdge.foreignKey a := ℜ.IntEdge [.a ↦ a] ⊢ ⊤
+    enforced ℜ.StringEdge.foreignKey a := ℜ.StringEdge [.a ↦ a] ⊢ ⊤
+    enforced ℜ.intEdge.foreignKey a := ℜ.intEdge [.a ↦ a] ⊢ a ∈ ℜ.IntEdge [
+      .a ↦ 19
+    ]
+    monitored ℜ.intEdge.total := ⊤ ⊢ ℜ.intEdge []
+    enforced ℜ.stringEdge.foreignKey a := ℜ.stringEdge [
+      .a ↦ a
+    ] ⊢ a ∈ ℜ.StringEdge [.a ↦ "zombocom"]
+    monitored ℜ.stringEdge.total := ⊤ ⊢ ℜ.stringEdge []
+  end
+end
+
+-- messages

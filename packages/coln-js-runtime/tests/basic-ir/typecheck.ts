@@ -35,17 +35,17 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     },
   ],
   [
-    "literal-record",
+    "lookup-record",
     {
       label: "literal record generation crashes before producing a realm",
-      match: /Cannot find module .*literal-record\.ts\.output\/TRealm\.ts/,
+      match: /Cannot find module .*lookup-record\.ts\.output\/TRealm\.ts/,
     },
   ],
   [
-    "lookup-record",
+    "lookup-record-field",
     {
-      label: "record lookup generation crashes before producing a realm",
-      match: /Cannot find module .*lookup-record\.ts\.output\/TRealm\.ts/,
+      label: "record field lookup generation crashes before producing a realm",
+      match: /Cannot find module .*lookup-record-field\.ts\.output\/TRealm\.ts/,
     },
   ],
   [
@@ -74,6 +74,13 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     {
       label: "record values are not represented as runtime Values",
       match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "rule-literals",
+    {
+      label: "equality-valued fields are not supported by TypeScript generation",
+      match: /Cannot find module .*rule-literals\.ts\.output\/TRealm\.ts/,
     },
   ],
 ]);
