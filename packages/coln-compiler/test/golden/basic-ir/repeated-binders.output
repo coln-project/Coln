@@ -1,0 +1,27 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  Pair : (x : X) -> (x : X) -> Set
+end
+realm named TRealm
+generators: node
+  X = rel []
+  Pair = rel [x : TRealm.X [], x/a : TRealm.X []]
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.Pair := [.x : ℜ.X, .x/a : ℜ.X]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.Pair.foreignKey x x/a := ℜ.Pair [
+      .x ↦ x,
+      .x/a ↦ x/a
+    ] ⊢ x ∈ ℜ.X [] ∧ x/a ∈ ℜ.X []
+  end
+end
+
+-- messages
