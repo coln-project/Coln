@@ -18,3 +18,21 @@ test("function", () => {
 
   assert.equal(valueEqual(view.next(input).get(), output), true);
 });
+
+test("function requires an output for every input", () => {
+  const realm = beginRealm(FunctionRealm);
+  realm.root.X.add();
+
+  assert.throws(() => realm.commit(), /\.next \.total/);
+});
+
+test("function rejects an output from the wrong table", () => {
+  const realm = beginRealm(FunctionRealm);
+  const input = realm.root.X.add();
+  const wrongOutput = realm.root.X.add();
+  const output = realm.root.Y.add();
+  realm.root.next(input).set(wrongOutput);
+  realm.root.next(wrongOutput).set(output);
+
+  assert.throws(() => realm.commit(), /\.next \.foreignKey/);
+});

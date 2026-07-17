@@ -14,5 +14,16 @@ test("set", () => {
   const view = realm.commit();
 
   assert.equal(view.V.has(value), true);
-  assert.equal(view.V.values().next().done, false);
+  assert.equal(value.tag, "row_id");
+  if (value.tag !== "row_id") {
+    assert.fail("set insertion did not return a row ID");
+  }
+  const values = view.V.values();
+  const first = values.next();
+  assert.equal(first.done, false);
+  if (first.done) {
+    assert.fail("committed set was empty");
+  }
+  assert.deepEqual(first.value, { rowId: value.value, values: [] });
+  assert.equal(values.next().done, true);
 });

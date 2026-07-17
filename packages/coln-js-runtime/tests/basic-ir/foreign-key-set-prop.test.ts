@@ -17,3 +17,12 @@ test("foreign-key-set-prop", () => {
   assert.equal(view.V.has(vertex), true);
   assert.equal(view.E(vertex).has(edge), true);
 });
+
+test("foreign-key-set-prop rejects a parameter from the wrong table", () => {
+  const realm = beginRealm(ForeignKeySetPropRealm);
+  const vertex = realm.root.V.add();
+  const edge = realm.root.E(vertex).add();
+  realm.root.E(edge).add();
+
+  assert.throws(() => realm.commit(), /\.E \.foreignKey/);
+});

@@ -18,3 +18,21 @@ test("function-prop-prop", () => {
 
   assert.equal(valueEqual(view.next(input).get(), output), true);
 });
+
+test("function-prop-prop requires an output for every input", () => {
+  const realm = beginRealm(FunctionPropPropRealm);
+  realm.root.X.add();
+
+  assert.throws(() => realm.commit(), /\.next \.total/);
+});
+
+test("function-prop-prop rejects an output from the wrong table", () => {
+  const realm = beginRealm(FunctionPropPropRealm);
+  const input = realm.root.X.add();
+  const wrongOutput = realm.root.X.add();
+  const output = realm.root.Y.add();
+  realm.root.next(input).set(wrongOutput);
+  realm.root.next(wrongOutput).set(output);
+
+  assert.throws(() => realm.commit(), /\.next \.foreignKey/);
+});

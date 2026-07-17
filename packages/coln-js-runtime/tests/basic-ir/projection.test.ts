@@ -19,5 +19,19 @@ test("projection", () => {
   realm.root.r(payload).set(value);
   const view = realm.commit();
 
+  assert.equal(view.E(payload.rank).has(value), true);
   assert.equal(valueEqual(view.r(payload).get(), value), true);
+});
+
+test("projection rejects a value at a different projected rank", () => {
+  const realm = beginRealm(ProjectionRealm);
+  const payload = {
+    name: { tag: "string", value: "example" },
+    rank: { tag: "int", value: 1 },
+  } as const;
+  const otherRank = { tag: "int", value: 2 } as const;
+  const value = realm.root.E(otherRank).add();
+  realm.root.r(payload).set(value);
+
+  assert.throws(() => realm.commit(), /\.r \.foreignKey/);
 });
