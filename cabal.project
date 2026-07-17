@@ -7,7 +7,6 @@ packages:
 if !os(wasi)
   packages:
     packages/coln-manual-dev
-    packages/coln-do
     packages/coln-repl
     packages/coln-ls
     packages/coln-cli
