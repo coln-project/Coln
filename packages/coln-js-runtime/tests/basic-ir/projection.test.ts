@@ -40,5 +40,5 @@ test("projection rejects a value at a different projected rank", expectedFailure
   const value = realm.root.E(otherRank).add();
   realm.root.r(payload).set(value);
 
-  assert.throws(() => realm.commit(), /\.r \.foreignKey/);
+  assert.throws(() => realm.commit(), /\.r\.foreignKey/);
 });

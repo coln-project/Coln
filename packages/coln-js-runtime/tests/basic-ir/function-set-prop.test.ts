@@ -23,7 +23,7 @@ test("function-set-prop requires an output for every input", () => {
   const realm = beginRealm(FunctionSetPropRealm);
   realm.root.X.add();
 
-  assert.throws(() => realm.commit(), /\.next \.total/);
+  assert.throws(() => realm.commit(), /\.next\.total/);
 });
 
 test("function-set-prop rejects an output from the wrong table", () => {
@@ -34,5 +34,5 @@ test("function-set-prop rejects an output from the wrong table", () => {
   realm.root.next(input).set(wrongOutput);
   realm.root.next(wrongOutput).set(output);
 
-  assert.throws(() => realm.commit(), /\.next \.foreignKey/);
+  assert.throws(() => realm.commit(), /\.next\.foreignKey/);
 });

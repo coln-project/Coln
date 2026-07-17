@@ -33,5 +33,5 @@ test("lookup-builtin rejects an edge at a different rank", () => {
   realm.root.rank(source).set(rank);
   realm.root.edge(source).set(edge);
 
-  assert.throws(() => realm.commit(), /\.edge \.foreignKey/);
+  assert.throws(() => realm.commit(), /\.edge\.foreignKey/);
 });

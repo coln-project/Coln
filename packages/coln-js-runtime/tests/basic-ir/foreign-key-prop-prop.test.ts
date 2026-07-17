@@ -24,5 +24,5 @@ test("foreign-key-prop-prop rejects a parameter from the wrong table", () => {
   const edge = realm.root.E(vertex).add();
   realm.root.E(edge).add();
 
-  assert.throws(() => realm.commit(), /\.E \.foreignKey/);
+  assert.throws(() => realm.commit(), /\.E\.foreignKey/);
 });

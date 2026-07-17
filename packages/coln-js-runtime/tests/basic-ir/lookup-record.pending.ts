@@ -40,5 +40,5 @@ test("lookup-record rejects an edge at a different payload rank", () => {
   const edge = realm.root.E(otherRank).add();
   realm.root.edge(source).set(edge);
 
-  assert.throws(() => realm.commit(), /\.edge \.foreignKey/);
+  assert.throws(() => realm.commit(), /\.edge\.foreignKey/);
 });

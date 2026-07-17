@@ -34,5 +34,5 @@ test("lookup-projection-set-set-prop rejects an edge at a different target", () 
   realm.root.next(source).set(target);
   realm.root.nextedge(source).set(edge);
 
-  assert.throws(() => realm.commit(), /\.nextedge \.foreignKey/);
+  assert.throws(() => realm.commit(), /\.nextedge\.foreignKey/);
 });

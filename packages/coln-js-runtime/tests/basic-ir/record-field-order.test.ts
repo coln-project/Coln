@@ -38,5 +38,5 @@ test("record-field-order rejects declaration order as dependency order", expecte
   const edge = realm.root.E(pair.first)(pair.second).add();
   realm.root.R(pair)(edge).add();
 
-  assert.throws(() => realm.commit(), /\.R \.foreignKey/);
+  assert.throws(() => realm.commit(), /\.R\.foreignKey/);
 });
