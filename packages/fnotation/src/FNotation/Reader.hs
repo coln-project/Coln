@@ -182,6 +182,7 @@ argStarts =
     , T.Field
     , T.Tag
     , T.Int
+    , T.String
     , T.Block
     ]
 
