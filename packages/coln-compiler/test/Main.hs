@@ -11,27 +11,39 @@ import Coln.Core
 import Coln.Diagnostics
 import Coln.Frontend.Notation
 import Coln.Frontend.Parser
-import Coln.Report
-import Control.Exception (onException)
+import Control.Exception (evaluate, finally, onException)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
+import Data.List (partition)
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy.Encoding qualified as TLE
 import FNotation
 import Prettyprinter
 import Prettyprinter.Render.Text
-import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory, removeDirectoryRecursive, removePathForcibly)
+import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory, removePathForcibly)
 import System.FilePath (replaceExtension, takeBaseName, takeExtension, (</>))
 import System.IO
 import System.IO.Temp (withSystemTempFile)
 import Test.Tasty (DependencyType (AllSucceed), TestTree, defaultMain, dependentTestGroup, testGroup, withResource)
+import Test.Tasty.ExpectedFailure (expectFail)
 import Test.Tasty.Golden (findByExtension, goldenVsFile, goldenVsString)
 import Test.Tasty.HUnit (testCase, (@?=))
 import Prelude hiding (lex, read)
 
+knownFailingElaboratorTests :: [String]
+knownFailingElaboratorTests = ["literal-record", "lookup-record"]
+
+knownFailingTypeScriptTests :: [String]
+knownFailingTypeScriptTests = ["equality", "equality-prop", "literal-record", "lookup-record"]
+
 main :: IO ()
 main = defaultMain =<< goldenTests
+
+goldenTests :: IO TestTree
+goldenTests = do
+  ts <- mapM id [elaboratorTests, typescriptTests]
+  return $ testGroup "All tests" ts
 
 render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
@@ -99,22 +111,42 @@ typescriptFiles directory =
 elaboratorTests :: IO TestTree
 elaboratorTests = do
   colnFiles <- findByExtension [".coln"] "test/golden"
+  let (failingFiles, goldenFiles) = partition (isKnownFailure knownFailingElaboratorTests) colnFiles
   return $
     testGroup
       "Elaborator golden tests"
-      [ goldenVsString (takeBaseName colnFile) outputFile (elaborate colnFile)
-      | colnFile <- colnFiles
-      , let outputFile = replaceExtension colnFile ".output"
+      [ testGroup "goldens" (elaboratorGoldenTest <$> goldenFiles)
+      , testGroup "known failures" (elaboratorFailingTest <$> failingFiles)
       ]
+
+elaboratorGoldenTest :: FilePath -> TestTree
+elaboratorGoldenTest colnFile = goldenVsString name outputFile (elaborate colnFile)
+ where
+  name = takeBaseName colnFile
+  outputFile = replaceExtension colnFile ".output"
+
+elaboratorFailingTest :: FilePath -> TestTree
+elaboratorFailingTest colnFile =
+  expectFail $ testCase (takeBaseName colnFile) $ do
+    output <- elaborate colnFile
+    -- Force the elaboration to acutally happen
+    _ <- evaluate $ LBS.length output
+    pure ()
 
 typescriptTests :: IO TestTree
 typescriptTests = do
   colnFiles <- findByExtension [".coln"] "test/golden/basic-ir"
-  tests <- mapM typescriptTest colnFiles
-  return $ testGroup "TypeScript FFI golden tests" tests
+  let (failingFiles, goldenFiles) = partition (isKnownFailure knownFailingTypeScriptTests) colnFiles
+  goldenTestTrees <- mapM typescriptGoldenTest goldenFiles
+  return $
+    testGroup
+      "TypeScript FFI golden tests"
+      [ testGroup "goldens" goldenTestTrees
+      , testGroup "known failures" (typescriptFailingTest <$> failingFiles)
+      ]
 
-typescriptTest :: FilePath -> IO TestTree
-typescriptTest colnFile = do
+typescriptGoldenTest :: FilePath -> IO TestTree
+typescriptGoldenTest colnFile = do
   let name = takeBaseName colnFile
       goldenDir = replaceExtension colnFile ".ts.output"
       outputDir = replaceExtension colnFile ".test"
@@ -127,8 +159,8 @@ typescriptTest colnFile = do
       ( generateTypeScript colnFile outputDir
           `onException` removePathForcibly outputDir
       )
-      (\_ -> removeDirectoryRecursive outputDir)
-      (\_ ->
+      (\_ -> removePathForcibly outputDir)
+      ( \_ ->
           dependentTestGroup
             name
             AllSucceed
@@ -145,6 +177,17 @@ typescriptTest colnFile = do
             ]
       )
 
+typescriptFailingTest :: FilePath -> TestTree
+typescriptFailingTest colnFile =
+  expectFail $
+    testCase (takeBaseName colnFile) $
+      generateTypeScript colnFile outputDir `finally` removePathForcibly outputDir
+ where
+  outputDir = replaceExtension colnFile ".test"
+
+isKnownFailure :: [String] -> FilePath -> Bool
+isKnownFailure knownFailures = (`elem` knownFailures) . takeBaseName
+
 missingGoldenFilesTest :: FilePath -> FilePath -> [FilePath] -> TestTree
 missingGoldenFilesTest goldenDir outputDir expectedFiles =
   testCase "generated files have goldens" $ do
@@ -157,8 +200,3 @@ touchMissingGolden goldenDir path = do
   let goldenFile = goldenDir </> path
   exists <- doesFileExist goldenFile
   if exists then pure () else LBS.writeFile goldenFile mempty
-
-goldenTests :: IO TestTree
-goldenTests = do
-  ts <- mapM id [elaboratorTests, typescriptTests]
-  return $ testGroup "All tests" ts

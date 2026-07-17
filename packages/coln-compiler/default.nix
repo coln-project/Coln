@@ -1,7 +1,7 @@
 { mkDerivation, aeson, base, bytestring, containers, diagnostician
 , directory, filepath, fnotation, hashable, lib, mtl
-, ordered-containers, prettyprinter, tasty, tasty-golden, temporary
-, text, vector, vector-hashtables
+, ordered-containers, prettyprinter, tasty, tasty-expected-failure
+, tasty-golden, temporary, text, vector, vector-hashtables
 }:
 mkDerivation {
   pname = "coln-compiler";
@@ -14,8 +14,8 @@ mkDerivation {
   ];
   testHaskellDepends = [
     base bytestring containers diagnostician filepath fnotation
-    ordered-containers prettyprinter tasty tasty-golden temporary text
-    vector
+    ordered-containers prettyprinter tasty tasty-expected-failure
+    tasty-golden temporary text vector
   ];
   license = "(Apache-2.0 OR MIT)";
 }

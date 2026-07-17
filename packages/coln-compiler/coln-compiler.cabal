@@ -139,6 +139,7 @@ test-suite coln-compiler-test
     ordered-containers,
     prettyprinter,
     tasty,
+    tasty-expected-failure,
     tasty-golden,
     tasty-hunit,
     temporary >=1.3,
