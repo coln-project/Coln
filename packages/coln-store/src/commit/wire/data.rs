@@ -2,12 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use hexane::v1::{Column, DeltaColumn};
 use std::io::Write;
+
+use hexane::v1::{Column, DeltaColumn};
 
 use crate::commit::author::Author;
 use crate::commit::leb128 as commit_leb128;
-use crate::commit::wire::prim::{ValueMeta, decode_prim_value, encode_prim_value};
+use crate::commit::wire::prim::{
+    self, ValueMeta, decode_prim_value, encode_path, encode_prim_value,
+};
 use crate::{
     commit::{
         error::CodecError,
@@ -307,9 +310,8 @@ fn encode_op_group(
     }
 
     let mut buf = Vec::new();
-    let path = table.to_string();
-    commit_leb128::write_len(&mut buf, path.len());
-    buf.write_all(path.as_bytes())?;
+    let path = encode_path(table);
+    buf.write_all(&path)?;
 
     commit_leb128::write_len(&mut buf, rows.len());
 
@@ -470,12 +472,7 @@ where
 {
     let mut pos = 0usize;
 
-    let path_len = commit_leb128::read_len(data, &mut pos, "op group table path length")?;
-    let path_bytes = read_slice(data, &mut pos, path_len, "op group table path")?;
-    let table =
-        Path::from(std::str::from_utf8(path_bytes).map_err(|_| {
-            CodecError::DataFormatError("op group table path: invalid utf-8".into())
-        })?);
+    let table = prim::decode_path(data, &mut pos)?;
 
     let row_count = commit_leb128::read_len(data, &mut pos, "op group row count")?;
     let column_count = commit_leb128::read_len(data, &mut pos, "op group column count")?;
@@ -862,9 +859,8 @@ mod tests {
 
         let encoded = encode_op_group(&table, &schema, &ops, &hash_mapper).expect("encode group");
         let mut pos = 0usize;
-        let path_len = commit_leb128::read_len(&encoded, &mut pos, "path length").unwrap();
-        let path_bytes = read_slice(&encoded, &mut pos, path_len, "path").unwrap();
-        assert_eq!(std::str::from_utf8(path_bytes).unwrap(), "T");
+        let path = prim::decode_path(&encoded, &mut pos).unwrap();
+        assert_eq!(path.to_string(), "T");
         assert_eq!(
             commit_leb128::read_len(&encoded, &mut pos, "row count").unwrap(),
             2
@@ -1016,10 +1012,8 @@ mod tests {
         let group_a =
             commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "group a").unwrap();
         let mut group_pos = 0usize;
-        let path_len =
-            commit_leb128::read_len(group_a, &mut group_pos, "group a path length").unwrap();
-        let path = read_slice(group_a, &mut group_pos, path_len, "group a path").unwrap();
-        assert_eq!(std::str::from_utf8(path).unwrap(), "A");
+        let path = prim::decode_path(group_a, &mut group_pos).unwrap();
+        assert_eq!(path.to_string(), "A");
         assert_eq!(
             commit_leb128::read_len(group_a, &mut group_pos, "group a rows").unwrap(),
             2
@@ -1032,10 +1026,8 @@ mod tests {
         let group_b =
             commit_leb128::read_len_prefixed_bytes(&encoded, &mut pos, "group b").unwrap();
         let mut group_pos = 0usize;
-        let path_len =
-            commit_leb128::read_len(group_b, &mut group_pos, "group b path length").unwrap();
-        let path = read_slice(group_b, &mut group_pos, path_len, "group b path").unwrap();
-        assert_eq!(std::str::from_utf8(path).unwrap(), "B");
+        let path = prim::decode_path(group_b, &mut group_pos).unwrap();
+        assert_eq!(path.to_string(), "B");
         assert_eq!(
             commit_leb128::read_len(group_b, &mut group_pos, "group b rows").unwrap(),
             1

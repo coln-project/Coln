@@ -135,10 +135,10 @@ fn bind_prop(store: &Store, bindings: Vec<Binding>, prop: &CompProp) -> Vec<Bind
     }
 }
 
-pub fn bind_law(store: &Store, law: &CompRule) -> Vec<Binding> {
-    debug!(law_name = %law.path, law=?law, "binding vars for law");
-    let initial = vec![vec![None; law.vars.len()]];
-    bind_prop(store, initial, &law.antecedent)
+pub fn bind_rule(store: &Store, rule: &CompRule) -> Vec<Binding> {
+    debug!(rule_name = %rule.path, rule=?rule, "binding vars for rule");
+    let initial = vec![vec![None; rule.vars.len()]];
+    bind_prop(store, initial, &rule.antecedent)
 }
 
 #[cfg(test)]
@@ -149,7 +149,7 @@ mod tests {
             self, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Rule, RuleEntry,
             RuleVariant, Schema,
         },
-        solver::compile::compile_law,
+        solver::compile::compile_rule,
         table::CellValue,
     };
 
@@ -195,13 +195,12 @@ mod tests {
     }
 
     #[test]
-    fn bind_law_joins_antecedent_atoms() {
+    fn bind_rule_joins_antecedent_atoms() {
         let path = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(
-            path.clone(),
-            Table::new(path.clone(), int_schema(&["c0", "c1"])),
-        );
+        store
+            .create_table(path.clone(), int_schema(&["c0", "c1"]))
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(
@@ -221,7 +220,7 @@ mod tests {
         .expect("insert row");
         txn.commit().expect("commit rows");
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.chain",
             vec![int_ty(), int_ty(), int_ty()],
             vec![
@@ -270,8 +269,8 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
-        let bindings = bind_law(&store, &compiled);
+        let compiled = compile_rule(&rule).expect("compile rule");
+        let bindings = bind_rule(&store, &compiled);
 
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0][0], Some(BoundValue::Cell(CellValue::Int(1))));
@@ -284,7 +283,9 @@ mod tests {
     fn store_with_int_column(values: &[i64]) -> (Store, Path) {
         let path = Path::from("T");
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), int_schema(&["c0"])));
+        store
+            .create_table(path.clone(), int_schema(&["c0"]))
+            .expect("create table");
         let mut txn = store.transaction();
         for value in values {
             txn.add(&path, vec![CellValue::Int(*value).into()])
@@ -298,7 +299,7 @@ mod tests {
     fn eq_in_antecedent_filters_to_matching_rows() {
         let (store, path) = store_with_int_column(&[1, 2, 3]);
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.eq_filter",
             vec![int_ty(), int_ty()],
             vec![
@@ -339,8 +340,8 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
-        let bindings = bind_law(&store, &compiled);
+        let compiled = compile_rule(&rule).expect("compile rule");
+        let bindings = bind_rule(&store, &compiled);
 
         assert_eq!(bindings.len(), 3);
         for b in &bindings {
@@ -352,7 +353,7 @@ mod tests {
     fn eq_with_literal_in_antecedent_pins_var_to_value() {
         let (store, path) = store_with_int_column(&[1, 2, 3]);
 
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.eq_literal",
             vec![int_ty()],
             vec![
@@ -385,8 +386,8 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
-        let bindings = bind_law(&store, &compiled);
+        let compiled = compile_rule(&rule).expect("compile rule");
+        let bindings = bind_rule(&store, &compiled);
 
         assert_eq!(bindings.len(), 1);
         assert_eq!(bindings[0][0], Some(BoundValue::Cell(CellValue::Int(2))));

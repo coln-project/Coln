@@ -1,0 +1,317 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+use anyhow::{Result, bail};
+pub(crate) use coln::Command as ColnCommand;
+pub(crate) use meta::Command as MetaCommand;
+pub(crate) use sql::{Col as SqlCol, Command as SqlCommand};
+
+use crate::repl::ShellMode;
+
+pub mod coln;
+mod meta;
+mod sql;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Command {
+    Coln(ColnCommand),
+    Sql(SqlCommand),
+    Meta(MetaCommand),
+}
+
+pub(crate) fn parse_command(mode: ShellMode, input: &str) -> Result<Command> {
+    let input = input.trim();
+    if input.starts_with('.') {
+        meta::parse_meta_command(input).map(Command::Meta)
+    } else {
+        let Some(input) = input.strip_suffix(';') else {
+            bail!("statements must end with `;`");
+        };
+        let input = input.trim_end();
+
+        match mode {
+            ShellMode::Coln => coln::parse_statement(input).map(Command::Coln),
+            ShellMode::Sql => sql::parse_sql_statement(input).map(Command::Sql),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use coln_flir_rs::ir::BuiltinTy;
+
+    use crate::repl::parse::coln::BatchAssignment;
+
+    use super::*;
+
+    #[test]
+    fn parses_help() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".help").unwrap(),
+            Command::Meta(meta::Command::Help)
+        );
+    }
+
+    #[test]
+    fn parses_load_with_quotes() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".load \"tests/data/paths.json\"").unwrap(),
+            Command::Meta(MetaCommand::Load {
+                path: "tests/data/paths.json".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn parses_add_command() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, "add T values (7 \"alice\"), (8 \"bob\");").unwrap(),
+            Command::Coln(ColnCommand::Add {
+                table: "T".to_string(),
+                rows: vec![
+                    vec!["7".to_string(), "alice".to_string()],
+                    vec!["8".to_string(), "bob".to_string()],
+                ],
+            })
+        );
+    }
+
+    #[test]
+    fn parses_add_command_single_value() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, "add T values (#11);").unwrap(),
+            Command::Coln(ColnCommand::Add {
+                table: "T".to_string(),
+                rows: vec![vec!["#11".to_string()],],
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_command() {
+        let err = parse_command(ShellMode::Coln, "wat;").unwrap_err();
+        assert!(err.to_string().contains("unknown statement"));
+    }
+
+    #[test]
+    fn rejects_missing_semicolon() {
+        let err = parse_command(ShellMode::Coln, "help").unwrap_err();
+        assert_eq!(err.to_string(), "statements must end with `;`");
+    }
+
+    #[test]
+    fn parses_quit_without_semicolon() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".quit").unwrap(),
+            Command::Meta(MetaCommand::Exit)
+        );
+    }
+
+    #[test]
+    fn parses_meta_commands_without_semicolons() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".open paths.bin").unwrap(),
+            Command::Meta(MetaCommand::Open {
+                path: "paths.bin".to_string()
+            })
+        );
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".save paths.bin").unwrap(),
+            Command::Meta(MetaCommand::Save {
+                path: "paths.bin".to_string()
+            })
+        );
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".tables").unwrap(),
+            Command::Meta(MetaCommand::Tables)
+        );
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".rules").unwrap(),
+            Command::Meta(MetaCommand::Rules)
+        );
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".schema Path.G.V").unwrap(),
+            Command::Meta(MetaCommand::Schema {
+                table: Some("Path.G.V".to_string())
+            })
+        );
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".dump Path.G.V").unwrap(),
+            Command::Meta(MetaCommand::Dump {
+                table: "Path.G.V".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn parses_batch_empty() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, "begin transact; commit;").unwrap(),
+            Command::Coln(ColnCommand::Batch {
+                assignments: vec![]
+            })
+        );
+    }
+
+    #[test]
+    fn parses_batch_with_bindings() {
+        let cmd = parse_command(
+            ShellMode::Coln,
+            "begin transact; g = add Graphs values (); x = add G0 values (g); commit;",
+        )
+        .unwrap();
+        assert_eq!(
+            cmd,
+            Command::Coln(ColnCommand::Batch {
+                assignments: vec![
+                    BatchAssignment {
+                        name: "g".to_string(),
+                        table: "Graphs".to_string(),
+                        row: vec![],
+                    },
+                    BatchAssignment {
+                        name: "x".to_string(),
+                        table: "G0".to_string(),
+                        row: vec!["g".to_string()],
+                    },
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn parses_sql_create_table() {
+        let cmd = parse_command(
+            ShellMode::Sql,
+            "create table Person (name text, age integer);",
+        )
+        .unwrap();
+
+        let Command::Sql(SqlCommand::CreateTable {
+            table_name,
+            columns,
+        }) = cmd
+        else {
+            panic!("expected SQL create table");
+        };
+
+        assert_eq!(table_name, "Person");
+        assert_eq!(columns.len(), 2);
+        assert_eq!(columns[0].col_name, "name");
+        assert_eq!(
+            columns[0].col_typ,
+            crate::ir::ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinStr
+            }
+        );
+        assert_eq!(columns[1].col_name, "age");
+        assert_eq!(
+            columns[1].col_typ,
+            crate::ir::ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt
+            }
+        );
+    }
+
+    #[test]
+    fn parses_sql_copy_from_csv() {
+        assert_eq!(
+            parse_command(
+                ShellMode::Sql,
+                "copy Person from 'people.csv' with (format csv, header true);",
+            )
+            .unwrap(),
+            Command::Sql(SqlCommand::CopyFromCsv {
+                table_name: "Person".to_string(),
+                path: "people.csv".to_string(),
+                delimiter: b',',
+            })
+        );
+    }
+
+    #[test]
+    fn parses_sql_copy_with_tab_delimiter() {
+        assert_eq!(
+            parse_command(
+                ShellMode::Sql,
+                "copy Decl from 'decl.csv' with (format csv, header true, delimiter E'\\t');",
+            )
+            .unwrap(),
+            Command::Sql(SqlCommand::CopyFromCsv {
+                table_name: "Decl".to_string(),
+                path: "decl.csv".to_string(),
+                delimiter: b'\t',
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_sql_copy_with_non_ascii_delimiter() {
+        // sqlparser rejects multi-byte char literals before our option checks.
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Decl from 'decl.csv' with (format csv, header true, delimiter '\u{00e9}');",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "failed to parse sql");
+    }
+
+    #[test]
+    fn rejects_sql_copy_without_csv_format() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person from 'people.csv' with (header true);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY requires FORMAT csv");
+    }
+
+    #[test]
+    fn rejects_sql_copy_without_header() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person from 'people.csv' with (format csv, header false);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY requires HEADER true");
+    }
+
+    #[test]
+    fn rejects_sql_copy_to() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person to 'people.csv' with (format csv, header true);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY TO is not supported");
+    }
+
+    #[test]
+    fn rejects_sql_copy_from_stdin() {
+        let err = parse_command(ShellMode::Sql, "copy Person from stdin;").unwrap_err();
+        assert_eq!(err.to_string(), "COPY FROM only supports a file source");
+    }
+
+    #[test]
+    fn rejects_sql_copy_with_column_list() {
+        let err = parse_command(
+            ShellMode::Sql,
+            "copy Person (name) from 'people.csv' with (format csv, header true);",
+        )
+        .unwrap_err();
+        assert_eq!(err.to_string(), "COPY column lists are not supported");
+    }
+
+    #[test]
+    fn rejects_batch_without_commit_keyword() {
+        let err =
+            parse_command(ShellMode::Coln, "begin transact; g = add T values (1);").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("transaction block must end with `commit`")
+                || err.to_string().contains("commit")
+        );
+    }
+}

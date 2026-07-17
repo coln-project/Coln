@@ -203,6 +203,8 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
     use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
@@ -210,7 +212,6 @@ mod tests {
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path};
     use crate::table::RowId;
     use crate::txn::ops::{RowRef, TempRowId};
-    use std::sync::LazyLock;
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])

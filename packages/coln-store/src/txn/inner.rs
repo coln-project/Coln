@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use coln_flir_rs::ir;
 use tracing::info;
 
 use crate::{
@@ -147,7 +148,7 @@ impl TxnInner {
         // 3. resolve: TxnRowId(k) -> RowId { commit: hash, counter: k }
         //             CellValue::TxnId(k) -> CellValue::Id(RowId { commit: hash, counter: k })
         // 4. apply resolved Ops to tables via table.append_row
-        // 5. check_laws
+        // 5. check_rules
         // 6. push CommitMeta into store.commit_graph, advance heads
         // 7. return hash
     }

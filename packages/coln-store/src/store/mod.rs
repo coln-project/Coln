@@ -13,6 +13,7 @@ use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::ir::{self, FlatRealm, RuleEntry};
+use crate::roweq::{self, rowing};
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
@@ -24,7 +25,7 @@ use crate::txn::{OwnedTransaction, Transaction};
 pub mod error;
 
 // TODO this should not be cloneable for efficiency reasons. In the future we should
-// be able to teach the law validator to check the delta
+// be able to teach the rule validator to check the delta
 #[derive(Debug, Clone)]
 pub struct Store {
     pub(crate) next_oid: TableOid,
@@ -35,6 +36,7 @@ pub struct Store {
     /// Compiled rule for this instance; table schemas live only on each [`Table`].
     rules: Vec<CompRule>,
     commits: CommitGraph,
+    rowing: rowing::Index,
 }
 
 impl Store {
@@ -49,6 +51,7 @@ impl Store {
             rule_entries: vec![],
             rules: vec![],
             commits,
+            rowing: rowing::Index::new(),
         }
     }
 
@@ -149,6 +152,7 @@ impl Store {
             rule_entries: root.laws,
             rules,
             commits: CommitGraph::new(),
+            rowing: rowing::Index::new(),
         })
     }
 
@@ -176,18 +180,24 @@ impl Store {
         Ok(graph)
     }
 
-    #[cfg(test)]
-    pub(crate) fn insert_table(&mut self, path: ir::Path, table: Table) -> TableOid {
+    #[cfg(feature = "native")]
+    // used in SQL mode only
+    pub(crate) fn create_table(
+        &mut self,
+        path: ir::Path,
+        schema: ir::Schema,
+    ) -> Result<TableOid, StoreIntError> {
         let oid = self.next_oid;
         self.next_oid = self.next_oid.saturating_add(1);
-        self.path_to_oid.insert(path, oid);
-        self.tables.insert(oid, table);
-        oid
+        self.path_to_oid.insert(path.clone(), oid);
+        self.tables.insert(oid, Table::new(path, schema));
+        self.commits = Self::root_commit_graph(&self.tables, &self.rule_entries)?;
+        Ok(oid)
     }
 
     /// Validates and appends a batch to this store.
     ///
-    /// This is a low level API that mutates `self` before law checking, so
+    /// This is a low level API that mutates `self` before rule checking, so
     /// callers that need atomicity must call it on a preview clone and publish
     /// that clone only after success.
     fn apply_batch(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
@@ -201,12 +211,25 @@ impl Store {
                 row_id,
             } = op;
             let oid = self.resolve_table(table).expect("validated batch");
-            let t = self.table_mut(oid).expect("validated batch");
 
-            t.append_row(values.clone(), *row_id);
+            // use self.tables to make the borrow checker happy we are accessing separate fields
+            let t = self.tables.get_mut(&oid).expect("validated batch");
+            let observed = self.rowing.observe(t, *row_id, values)?;
+
+            // TODO We are invoking rowing even if tables might not be in hashcons mode
+            match observed {
+                roweq::ObservedOutcome::Inserted(rid) => t.append_row(values.clone(), rid),
+                roweq::ObservedOutcome::KeptOld(_row_id) => {
+                    // equivalent row exists, do nothing
+                }
+
+                roweq::ObservedOutcome::Swap { old, new } => {
+                    t.replace_row_id(&old, new)?;
+                }
+            }
         }
 
-        self.check_laws()?;
+        self.check_rules()?;
         Ok(())
     }
 
@@ -284,6 +307,7 @@ impl Store {
             rule_entries: rules,
             rules: comp_rules,
             commits,
+            rowing: rowing::Index::new(),
         })
     }
 }
@@ -294,17 +318,17 @@ impl Store {
         debug!(rule_count = rules.len(), "compiling rules");
         let comp = rules
             .iter()
-            .map(solver::compile::compile_law)
+            .map(solver::compile::compile_rule)
             .collect::<Result<Vec<_>, CompileError>>()?;
         debug!(compiled_rule_count = comp.len(), "compiled rules");
         Ok(comp)
     }
 
-    pub fn check_laws(&self) -> Result<(), StoreIntError> {
+    pub fn check_rules(&self) -> Result<(), StoreIntError> {
         debug!(rule_count = self.rules.len(), "checking rules");
         self.rules()
             .iter()
-            .map(|law_entry| solver::validate::check_law(self, law_entry))
+            .map(|rule| solver::validate::check_rule(self, rule))
             .collect::<Result<Vec<_>, Box<RuleViolation>>>()?;
         debug!(rule_count = self.rules.len(), "all rules satisfied");
         Ok(())
@@ -634,7 +658,7 @@ mod tests {
 
     use super::test_support::link_foreign_key_theory;
     use super::*;
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema};
 
     fn single_int_store() -> Store {
         let path = Path::from("T");
@@ -649,7 +673,7 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path, schema));
+        store.create_table(path, schema).expect("create test table");
         store
     }
 
@@ -671,10 +695,10 @@ mod tests {
             }],
             primary_key: None,
         };
-        let table = Table::new(path.clone(), schema);
-
         let mut store = Store::new();
-        let oid0 = store.insert_table(path.clone(), table);
+        let oid0 = store
+            .create_table(path.clone(), schema)
+            .expect("create table");
         assert_eq!(oid0, 0);
 
         let t = store.table(oid0).expect("table at oid 0");
@@ -692,10 +716,9 @@ mod tests {
             }],
             primary_key: None,
         };
-        let oid1 = store.insert_table(
-            Path::from("Other"),
-            Table::new(Path::from("table2"), schema2),
-        );
+        let oid1 = store
+            .create_table(Path::from("Other"), schema2)
+            .expect("create second table");
         assert_eq!(oid1, 1);
     }
 
@@ -712,7 +735,9 @@ mod tests {
         };
 
         let mut store = Store::new();
-        let oid = store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        let oid = store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         assert_eq!(store.resolve_table(&path), Some(oid));
         assert_eq!(store.resolve_table(&Path::from("missing")), None);
@@ -732,7 +757,9 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(&path, vec![CellValue::Int(1).into()])
@@ -761,7 +788,9 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let err = {
             let mut txn = store.transaction();
@@ -792,7 +821,9 @@ mod tests {
             primary_key: Some(vec![Path::from("c0")]),
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(&path, vec![CellValue::Int(1).into()])
@@ -822,7 +853,9 @@ mod tests {
             primary_key: None,
         };
         let mut store = Store::new();
-        store.insert_table(path.clone(), Table::new(path.clone(), schema));
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
 
         let mut txn = store.transaction();
         txn.add(&path, vec![CellValue::Int(42).into()])
@@ -1007,7 +1040,7 @@ mod tests {
     }
 
     #[test]
-    fn transaction_leaves_store_unchanged_when_laws_fail() {
+    fn transaction_leaves_store_unchanged_when_rules_fail() {
         let theory = link_foreign_key_theory();
         let link = Path::from("Link");
         let mut store = Store::try_from_theory(theory).expect("theory");
@@ -1020,7 +1053,7 @@ mod tests {
         .expect("add");
         let err = txn.commit().unwrap_err();
 
-        assert!(matches!(err, StoreIntError::Law(_)));
+        assert!(matches!(err, StoreIntError::Rule(_)));
         assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
     }
 
@@ -1040,13 +1073,14 @@ mod tests {
 
         let compiled_rule = solver::compile::CompRule {
             path: Path::from("T.total"),
+            rule_variant: RuleVariant::Enforced,
             vars: vec![],
             antecedent: solver::compile::CompProp::And(vec![]),
             consequent: solver::compile::CompProp::And(vec![]),
             tables: vec![Path::from("T")],
         };
         let violation = RuleViolation {
-            law: compiled_rule,
+            rule: compiled_rule,
             cause: solver::validate::ViolationCause::MissingAtom(solver::compile::CompAtom {
                 table: Path::from("T"),
                 row_id: None,
@@ -1054,7 +1088,7 @@ mod tests {
             }),
             binding: vec![],
         };
-        let law = StoreIntError::from(Box::new(violation));
-        assert!(matches!(law, StoreIntError::Law(_)));
+        let rule = StoreIntError::from(Box::new(violation));
+        assert!(matches!(rule, StoreIntError::Rule(_)));
     }
 }

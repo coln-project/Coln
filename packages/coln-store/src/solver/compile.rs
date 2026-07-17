@@ -19,13 +19,14 @@ pub enum CompileError {
     InvalidColumnIndex { column: i64 },
 }
 
-/// A rule lowered into a small execution-oriented law form.
+/// A rule lowered into a small execution-oriented rule form.
 ///
 /// The IR stores antecedents and consequents as vectors of propositions; each
 /// vector is interpreted as a conjunction here.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct CompRule {
     pub path: ir::Path,
+    pub rule_variant: ir::RuleVariant,
     pub vars: Vec<VarSpec>,
     pub antecedent: CompProp,
     pub consequent: CompProp,
@@ -84,7 +85,7 @@ pub enum CompTerm {
 /// - keeps table references in their source-level `ir::Path` form
 /// - validates variable and column indices
 /// - rejects IR forms not yet supported by the solver
-pub fn compile_law(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
+pub fn compile_rule(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
     let path = rule_entry.path.clone();
     let vars = rule_entry
         .rule
@@ -99,6 +100,8 @@ pub fn compile_law(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
     let antecedent = compile_props(&rule_entry.rule.antecedents, var_count)?;
     let consequent = compile_props(&rule_entry.rule.consequents, var_count)?;
 
+    let rule_variant = rule_entry.rule.rule_variant.clone();
+
     let mut seen = HashSet::new();
     let mut tables = Vec::new();
     collect_atom_tables(&antecedent, &mut seen, &mut tables);
@@ -106,6 +109,7 @@ pub fn compile_law(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
 
     Ok(CompRule {
         path,
+        rule_variant,
         vars,
         antecedent,
         consequent,
@@ -202,7 +206,12 @@ fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError>
 
 impl fmt::Display for CompRule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} := forall", DisplayPath(&self.path))?;
+        write!(
+            f,
+            "{} ({:?}) := forall",
+            DisplayPath(&self.path),
+            self.rule_variant
+        )?;
         for var in &self.vars {
             write!(
                 f,
@@ -306,7 +315,7 @@ impl fmt::Display for DisplayPath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (idx, qname) in self.0.iter().enumerate() {
             if idx > 0 {
-                write!(f, " .")?;
+                write!(f, ".")?;
             }
             write!(f, "{}", display_qname(qname))?;
         }
@@ -363,8 +372,8 @@ mod tests {
     }
 
     #[test]
-    fn compiles_single_atom_law() {
-        let law = enforced_rule(
+    fn compiles_single_atom_rule() {
+        let rule = enforced_rule(
             "T.total",
             vec![int_ty()],
             vec![Prop::Atom {
@@ -389,7 +398,7 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
+        let compiled = compile_rule(&rule).expect("compile rule");
         assert!(matches!(compiled.antecedent, CompProp::And(_)));
         assert!(matches!(compiled.consequent, CompProp::And(_)));
         assert_eq!(compiled.tables.len(), 1);
@@ -407,9 +416,10 @@ mod tests {
     }
 
     #[test]
-    fn displays_compiled_law_like_lowered_output() {
+    fn displays_compiled_rule_like_lowered_output() {
         let compiled = CompRule {
             path: Path::from("G.E.foreignKeys"),
+            rule_variant: RuleVariant::Enforced,
             vars: vec![
                 VarSpec {
                     index: 0,
@@ -465,7 +475,7 @@ mod tests {
 
         assert_eq!(
             compiled.to_string(),
-            "G .E .foreignKeys := forall (a : Graphs) (b : G .V) (c : G .V) => G .E [a, b, c] |- b @ G .V [a] /\\ c @ G .V [a]"
+            "G.E.foreignKeys (Enforced) := forall (a : Graphs) (b : G.V) (c : G.V) => G.E [a, b, c] |- b @ G.V [a] /\\ c @ G.V [a]"
         );
     }
 
@@ -473,6 +483,7 @@ mod tests {
     fn displays_compiled_equality_consequent() {
         let compiled = CompRule {
             path: Path::from("PathHom.empty"),
+            rule_variant: RuleVariant::Enforced,
             vars: vec![
                 VarSpec {
                     index: 0,
@@ -506,13 +517,13 @@ mod tests {
 
         assert_eq!(
             compiled.to_string(),
-            "PathHom .empty := forall (a : Path0 .t) (b : Path1 .t) => PathHom .t [a, b] |- a = b"
+            "PathHom.empty (Enforced) := forall (a : Path0.t) (b : Path1.t) => PathHom.t [a, b] |- a = b"
         );
     }
 
     #[test]
     fn compiles_eq_in_antecedent() {
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.eq_antecedent",
             vec![int_ty(), int_ty()],
             vec![Prop::Eq {
@@ -527,7 +538,7 @@ mod tests {
                 },
             }],
         );
-        let compiled = compile_law(&law).expect("compile law");
+        let compiled = compile_rule(&rule).expect("compile rule");
         assert!(matches!(
             compiled.antecedent,
             CompProp::And(ref children) if matches!(children.as_slice(), [CompProp::Eq(_)])
@@ -536,7 +547,7 @@ mod tests {
 
     #[test]
     fn compiles_consequent_equality() {
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.eq",
             vec![int_ty(), int_ty()],
             vec![Prop::Atom {
@@ -561,7 +572,7 @@ mod tests {
             }],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
+        let compiled = compile_rule(&rule).expect("compile rule");
         match compiled.consequent {
             CompProp::And(children) if matches!(children.as_slice(), [CompProp::Eq(_)]) => {
                 let CompProp::Eq(CompEq { left, right }) = &children[0] else {
@@ -579,7 +590,7 @@ mod tests {
     #[test]
     fn compiles_conjunction_of_atoms_and_eq() {
         let t = Path::from("T");
-        let law = enforced_rule(
+        let rule = enforced_rule(
             "T.mixed",
             vec![int_ty(), int_ty()],
             vec![Prop::Atom {
@@ -616,7 +627,7 @@ mod tests {
             ],
         );
 
-        let compiled = compile_law(&law).expect("compile law");
+        let compiled = compile_rule(&rule).expect("compile rule");
         match &compiled.consequent {
             CompProp::And(children) => {
                 assert_eq!(children.len(), 2);

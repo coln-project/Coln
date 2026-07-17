@@ -2,10 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-pub use coln_flir_rs::ir;
+use coln_flir_rs::ir;
 pub mod commit;
 #[cfg(feature = "native")]
 pub mod repl;
+mod roweq;
 pub mod solver;
 pub mod store;
 pub mod table;

@@ -64,3 +64,9 @@ tmp/
 .claude/
 .codex
 .agent/
+
+# colnstore
+*.colnstore
+
+# compressed data
+*.zst
