@@ -129,7 +129,7 @@ elaboratorFailingTest :: FilePath -> TestTree
 elaboratorFailingTest colnFile =
   expectFail $ testCase (takeBaseName colnFile) $ do
     output <- elaborate colnFile
-    -- Force the elaboration to acutally happen
+    -- Force the elaboration to actually happen
     _ <- evaluate $ LBS.length output
     pure ()
 
