@@ -1,0 +1,17 @@
+def Payload : Set := sig
+  name : String
+  rank : Int
+end
+
+def fixed : Payload := struct
+  name := "fixed"
+  rank := 1
+end
+
+theory T := sig
+  E : Payload -> Set
+  selected : E fixed
+end
+
+realm TRealm @ T
+end

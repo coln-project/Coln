@@ -1,0 +1,16 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+end
+realm named TRealm
+generators: node
+end
+lowered: flatrealm
+  entities
+  end
+  rules
+  end
+end
+
+-- messages

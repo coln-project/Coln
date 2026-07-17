@@ -1,0 +1,12 @@
+def Pair : Set := sig
+  first : Int
+  second : Int
+end
+
+theory T := sig
+  E : Int -> Int -> Set
+  R : (p : Pair) -> E p.second p.first -> Set
+end
+
+realm TRealm @ T
+end

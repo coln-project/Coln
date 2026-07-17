@@ -1,0 +1,9 @@
+theory T := sig
+  X : Set
+  rank : X -> Int
+  E : Int -> Set
+  edge : (x : X) -> E (rank x)
+end
+
+realm TRealm @ T
+end

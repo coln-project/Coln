@@ -1,0 +1,11 @@
+def Witness (X : Set) (x : X) : Set := sig
+  proof : x = x
+end
+
+theory T := sig
+  X : Set
+  witness : (x : X) -> Witness X x
+end
+
+realm TRealm @ T
+end

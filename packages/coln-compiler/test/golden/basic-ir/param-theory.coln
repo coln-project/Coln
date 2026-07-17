@@ -1,0 +1,11 @@
+theory PointOf (X : Set) := sig
+  point : X
+end
+
+theory T := sig
+  X : Set
+  P : PointOf X
+end
+
+realm TRealm @ T
+end

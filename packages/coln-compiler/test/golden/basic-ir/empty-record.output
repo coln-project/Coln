@@ -1,0 +1,25 @@
+-- elaborated
+global entry named Unit
+type: Set
+value: sig
+end
+global entry named T
+type: Theory
+value: sig
+  unit : Unit
+end
+realm named TRealm
+generators: node
+  unit = (fun [] -> Unit)
+end
+lowered: flatrealm
+  entities
+    table ℜ.unit := [] primarykey []
+  end
+  rules
+    enforced ℜ.unit.foreignKey := ℜ.unit [] ⊢ ⊤
+    monitored ℜ.unit.total := ⊤ ⊢ ℜ.unit []
+  end
+end
+
+-- messages

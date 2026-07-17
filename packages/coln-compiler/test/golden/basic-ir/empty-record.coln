@@ -1,0 +1,9 @@
+def Unit : Set := sig
+end
+
+theory T := sig
+  unit : Unit
+end
+
+realm TRealm @ T
+end
