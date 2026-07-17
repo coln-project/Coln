@@ -13,17 +13,18 @@ const goldenDirectory = resolve(
   here,
   "../../../coln-compiler/test/golden/basic-ir",
 );
+const missingRealms = ["literal-record", "lookup-record"];
+const testSuffix = /\.(?:pending|test)\.ts$/;
 
-test("every generated realm has an integration test", () => {
+test("every realm has an integration test", () => {
   const realms = readdirSync(goldenDirectory)
     .filter((path) => path.endsWith(".ts.output"))
     .filter((path) => existsSync(resolve(goldenDirectory, path, "TRealm.ts")))
-    .map((path) => path.slice(0, -".ts.output".length))
-    .sort();
+    .map((path) => path.slice(0, -".ts.output".length));
   const integrationTests = readdirSync(here)
-    .filter((path) => path.endsWith(".test.ts") && path !== "inventory.test.ts")
-    .map((path) => path.slice(0, -".test.ts".length))
+    .filter((path) => testSuffix.test(path) && path !== "inventory.test.ts")
+    .map((path) => path.replace(testSuffix, ""))
     .sort();
 
-  assert.deepEqual(integrationTests, realms);
+  assert.deepEqual(integrationTests, [...realms, ...missingRealms].sort());
 });

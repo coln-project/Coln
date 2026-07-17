@@ -112,7 +112,7 @@
               coln-cli
               pkgs.binaryen
               pkgs.esbuild
-              pkgs.nodejs
+              pkgs.nodejs_24
               pkgs.pnpm
               rustToolchain
               wasm-bindgen-cli
@@ -196,7 +196,7 @@
         };
         lsClientNodeModules = pkgs.importNpmLock.buildNodeModules {
           npmRoot = lsTsDir;
-          inherit (pkgs) nodejs;
+          nodejs = pkgs.nodejs_24;
         };
       in
       {
@@ -228,7 +228,7 @@
             haskellPackages.cabal-gild
             jq
             just
-            nodejs
+            nodejs_24
             pnpm
             packages.wasm-bodge
             rustToolchain
@@ -253,7 +253,7 @@
         devShells.vscode-extension = pkgs.mkShell {
           name = "coln-vscode-extension";
           buildInputs = with pkgs; [
-            nodejs
+            nodejs_24
             typescript
             vtsls
           ];

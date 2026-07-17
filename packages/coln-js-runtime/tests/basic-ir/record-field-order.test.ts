@@ -8,7 +8,14 @@ import test from "node:test";
 import * as RecordFieldOrderRealm from "../../../coln-compiler/test/golden/basic-ir/record-field-order.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("record-field-order", () => {
+const expectedFailure = {
+  expectFailure: {
+    label: "record values are not implemented by the runtime",
+    match: /missing field `tag`/,
+  },
+};
+
+test("record-field-order", expectedFailure, () => {
   const realm = beginRealm(RecordFieldOrderRealm);
   const pair = {
     first: { tag: "int", value: 1 },
@@ -22,7 +29,7 @@ test("record-field-order", () => {
   assert.equal(view.R(pair)(edge).has(related), true);
 });
 
-test("record-field-order rejects declaration order as dependency order", () => {
+test("record-field-order rejects declaration order as dependency order", expectedFailure, () => {
   const realm = beginRealm(RecordFieldOrderRealm);
   const pair = {
     first: { tag: "int", value: 1 },

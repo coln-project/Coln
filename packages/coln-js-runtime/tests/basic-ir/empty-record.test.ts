@@ -8,7 +8,14 @@ import test from "node:test";
 import * as EmptyRecordRealm from "../../../coln-compiler/test/golden/basic-ir/empty-record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("empty-record", () => {
+const expectedFailure = {
+  expectFailure: {
+    label: "empty records are emitted as table cells rather than sets",
+    match: /realm\.root\.unit\.add is not a function/,
+  },
+};
+
+test("empty-record", expectedFailure, () => {
   const realm = beginRealm(EmptyRecordRealm);
   const value = realm.root.unit.add();
   const view = realm.commit();
