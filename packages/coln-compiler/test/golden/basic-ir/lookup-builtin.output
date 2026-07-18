@@ -1,0 +1,37 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  rank : X -> Int
+  E : Int -> Set
+  edge : (x : X) -> E (rank x)
+end
+realm named TRealm
+generators: node
+  X = rel []
+  rank = (fun [a : TRealm.X []] -> Int)
+  E = rel [a : Int]
+  edge = (fun [x : TRealm.X []] -> TRealm.E [a := TRealm.rank [a := x]])
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.rank := [.a : ℜ.X, .b : Int] primarykey [.a]
+    table ℜ.E := [.a : Int]
+    table ℜ.edge := [.x : ℜ.X, .a : ℜ.E] primarykey [.x]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.rank.foreignKey a b := ℜ.rank [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
+    monitored ℜ.rank.total a := a ∈ ℜ.X [] ⊢ ℜ.rank [.a ↦ a]
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ⊤
+    enforced ℜ.edge.foreignKey x a a.a := ℜ.edge [.x ↦ x, .a ↦ a] ∧ ℜ.rank [
+      .a ↦ x,
+      .b ↦ a.a
+    ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.E [.a ↦ a.a]
+    monitored ℜ.edge.total x := x ∈ ℜ.X [] ⊢ ℜ.edge [.x ↦ x]
+  end
+end
+
+-- messages

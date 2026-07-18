@@ -1,0 +1,8 @@
+theory T := sig
+  X : Prop
+  Y : Prop
+  next : X -> Y
+end
+
+realm TRealm @ T
+end

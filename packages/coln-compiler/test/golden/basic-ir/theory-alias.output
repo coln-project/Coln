@@ -1,0 +1,23 @@
+-- elaborated
+global entry named Base
+type: Theory
+value: sig
+  X : Set
+end
+global entry named Alias
+type: Theory
+value: Base
+realm named TRealm
+generators: node
+  X = rel []
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+  end
+end
+
+-- messages

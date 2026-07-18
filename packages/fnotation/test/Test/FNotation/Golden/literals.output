@@ -1,0 +1,81 @@
+-- tokens
+Int 34 (0:2)
+Nl (2:3)
+String peter (3:10)
+Nl (10:11)
+AIdent f (11:12)
+Int 19 (13:15)
+Nl (15:16)
+AIdent f (16:17)
+String piper (18:25)
+Nl (25:26)
+AIdent f (26:27)
+Int 41 (28:30)
+String picked (31:39)
+Nl (39:40)
+AIdent f (40:41)
+String a (42:45)
+Int 38 (46:48)
+Nl (48:49)
+Int 49 (49:51)
+AIdent x (52:53)
+Nl (53:54)
+String peck (54:60)
+AIdent x (61:62)
+Nl (62:63)
+Int 53 (63:65)
+String of (66:70)
+AIdent x (71:72)
+Nl (72:73)
+String pickled (73:82)
+String peppers (83:92)
+Nl (92:93)
+Eof (93:93)
+
+-- notation
+Int 34 (0:2)
+String peter (3:10)
+Juxt (11:15)
+  Ident f (11:12)
+  Int 19 (13:15)
+Juxt (16:25)
+  Ident f (16:17)
+  String piper (18:25)
+Juxt (26:39)
+  Juxt (26:30)
+    Ident f (26:27)
+    Int 41 (28:30)
+  String picked (31:39)
+Juxt (40:48)
+  Juxt (40:45)
+    Ident f (40:41)
+    String a (42:45)
+  Int 38 (46:48)
+Juxt (49:53)
+  Int 49 (49:51)
+  Ident x (52:53)
+Juxt (54:62)
+  String peck (54:60)
+  Ident x (61:62)
+Juxt (63:72)
+  Juxt (63:70)
+    Int 53 (63:65)
+    String of (66:70)
+  Ident x (71:72)
+Juxt (73:92)
+  String pickled (73:82)
+  String peppers (83:92)
+
+-- pretty
+34
+"peter"
+f 19
+f "piper"
+f 41 "picked"
+f "a" 38
+49 x
+"peck" x
+53 "of" x
+"pickled" "peppers"
+
+-- messages

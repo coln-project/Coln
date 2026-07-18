@@ -1,0 +1,106 @@
+-- elaborated
+global entry named Pair
+type: Set
+value: sig
+  first : Int
+  second : Int
+end
+global entry named pair
+type: Pair
+value: [first := 1, second := 2]
+global entry named Dependent
+type: Theory
+value: sig
+  A : Set
+  value : A
+end
+global entry named dependent
+type: Dependent
+value: [A := Int, value := 1]
+global entry named identity
+type: Int -> Int
+value: x => x
+global entry named shadow
+type: (x : String) -> Int -> Int
+value: x => x => x
+
+-- messages
+
+error[E0302]: tried to project from a value that was not of a record type
+25 | def projectionOfNonRecord : Int := (1).missing
+25 |                                       ^^^^^^^^
+
+error[E0303]: no such field missing in type Pair
+27 | def noSuchField : Int := pair.missing
+27 |                              ^^^^^^^^
+
+error[E0304]: tried to apply a value that was not of a function type
+29 | def applicationOfNonFunction : Int := 1 2
+29 |                                         ^
+
+error[E0305]: Type annotation required when using a lambda expression as target of elimination
+31 | def annotationRequired : Int := (x => x) 1
+31 |                                  ^^^^^^
+
+error[E0306]: expected 2 fields, got:  1
+33 | def wrongNumberOfRecordFields : Pair := struct
+33 |                                         ^^^^^^
+34 |   first := 1
+34 | ^^^^^^^^^^^^
+35 | end
+35 | ^^^
+
+error[E0300]: types Int and String of compared terms differ
+37 | def equalityTypeMismatch : Prop := 1 = "one"
+37 |                                    ^^^^^^^^^
+types Int and String are not equal because unequal builtin types
+
+error[E0308]: equality requires data types, but Set is a schema-level type
+39 | def equalityUnsupported : Prop := Pair = Pair
+39 |                                   ^^^^^^^^^^^
+
+error[E0309]: cannot check type Set at non-universe type Int
+41 | def typeAtNonUniverse : Int := Set
+41 |                                ^^^
+
+error[E0310]: tried to check a lambda expression at a non-function type
+43 | def checkLambdaAtNonFunctionType : Int := x => x
+43 |                                             ^^
+
+error[E0312]: tried to check a record expression at a non-record type
+45 | def checkRecordAtNonRecordType : Int := struct
+45 |                                         ^^^^^^
+46 | end
+46 | ^^^
+
+error[E0313]: expected record field first got:  second
+49 |   second := 2
+49 |   ^^^^^^
+
+error[E0307]: type sig
+  V : Set -> Set
+end too large for universe Theory
+53 | theory InvalidArrow := sig
+53 |                        ^^^
+54 |   V : Set -> Set
+54 | ^^^^^^^^^^^^^^^^
+55 | end
+55 | ^^^
+
+error[E0307]: type sig
+  V : (Int -> Int) -> Set
+end too large for universe Theory
+57 | theory InvalidIntArrow := sig
+57 |                           ^^^
+58 |   V : (Int -> Int) -> Set
+58 | ^^^^^^^^^^^^^^^^^^^^^^^^^
+59 | end
+59 | ^^^
+
+error[E0311]: higher-order theories are not supported
+61 | theory InvalidParameter (F : Set -> Set) := sig
+61 |                          ^^^^^^^^^^^^^^
+
+error[E0311]: higher-order theories are not supported
+64 | theory InvalidIntParameter (F : (Int -> Int) -> Set) := sig
+64 |                             ^^^^^^^^^^^^^^^^^^^^^^^

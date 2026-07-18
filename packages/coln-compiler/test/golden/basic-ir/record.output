@@ -1,0 +1,39 @@
+-- elaborated
+global entry named Payload
+type: Set
+value: sig
+  name : String
+  rank : Int
+end
+global entry named T
+type: Theory
+value: sig
+  point : Set
+  payload : point -> Payload
+end
+realm named TRealm
+generators: node
+  point = rel []
+  payload = (fun [a : TRealm.point []] -> Payload)
+end
+lowered: flatrealm
+  entities
+    table ℜ.point := []
+    table ℜ.payload := [
+      .a : ℜ.point,
+      .b.name : String,
+      .b.rank : Int
+    ] primarykey [.a]
+  end
+  rules
+    enforced ℜ.point.foreignKey := ℜ.point [] ⊢ ⊤
+    enforced ℜ.payload.foreignKey a b.name b.rank := ℜ.payload [
+      .a ↦ a,
+      .b.name ↦ b.name,
+      .b.rank ↦ b.rank
+    ] ⊢ a ∈ ℜ.point []
+    monitored ℜ.payload.total a := a ∈ ℜ.point [] ⊢ ℜ.payload [.a ↦ a]
+  end
+end
+
+-- messages

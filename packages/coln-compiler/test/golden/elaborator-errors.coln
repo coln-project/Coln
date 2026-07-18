@@ -1,0 +1,65 @@
+def Pair : Set := sig
+  first : Int
+  second : Int
+end
+
+def pair : Pair := struct
+  first := 1
+  second := 2
+end
+
+theory Dependent := sig
+  A : Set
+  value : A
+end
+
+def dependent : Dependent := struct
+  A := Int
+  value := 1
+end
+
+def identity : Int -> Int := x => x
+
+def shadow (x : String) : Int -> Int := x => x
+
+def projectionOfNonRecord : Int := (1).missing
+
+def noSuchField : Int := pair.missing
+
+def applicationOfNonFunction : Int := 1 2
+
+def annotationRequired : Int := (x => x) 1
+
+def wrongNumberOfRecordFields : Pair := struct
+  first := 1
+end
+
+def equalityTypeMismatch : Prop := 1 = "one"
+
+def equalityUnsupported : Prop := Pair = Pair
+
+def typeAtNonUniverse : Int := Set
+
+def checkLambdaAtNonFunctionType : Int := x => x
+
+def checkRecordAtNonRecordType : Int := struct
+end
+
+def mismatchedRecordField : Pair := struct
+  second := 2
+  first := 1
+end
+
+theory InvalidArrow := sig
+  V : Set -> Set
+end
+
+theory InvalidIntArrow := sig
+  V : (Int -> Int) -> Set
+end
+
+theory InvalidParameter (F : Set -> Set) := sig
+end
+
+theory InvalidIntParameter (F : (Int -> Int) -> Set) := sig
+end

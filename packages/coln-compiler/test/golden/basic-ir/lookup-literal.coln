@@ -1,0 +1,9 @@
+theory T := sig
+  IntEdge : Int -> Set
+  StringEdge : String -> Set
+  intEdge : IntEdge 19
+  stringEdge : StringEdge "zombocom"
+end
+
+realm TRealm @ T
+end

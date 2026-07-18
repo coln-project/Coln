@@ -1,0 +1,10 @@
+theory T := sig
+  X : Set
+  count : X -> Int
+  label : X -> String
+  countIs19 : (x : X) -> count x = 19
+  labelIsZombocom : (x : X) -> label x = "zombocom"
+end
+
+realm TRealm @ T
+end

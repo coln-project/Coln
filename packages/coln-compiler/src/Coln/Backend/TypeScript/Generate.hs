@@ -40,12 +40,13 @@ tyFromHead access (V.LocalVar _) = TS.runtime $ ColnRef access
 
 genTy :: Access -> CtxLen -> V.Ty N -> TS.Ty
 genTy access n = \case
-  V.U SetU -> TS.runtime (ColnSet access)
+  V.U (SetU; PropU) -> TS.runtime (ColnSet access)
   V.Function ft -> do
     let v = V.local (FId n) ft.dom
     TS.Fun (TS.Binding (TS.Id "x") (TS.runtime Value)) (genTy access (n + 1) (V.appClo ft.cod v))
   V.EltOf _ _ -> TS.runtime $ ColnRef access
   V.Decode n -> tyFromHead access n.head
+  V.BuiltinTy _ -> TS.runtime $ ColnRef access
   _ -> error "not yet supported"
 
 genInterface :: Access -> CtxLen -> V.Ty D -> TS.Interface

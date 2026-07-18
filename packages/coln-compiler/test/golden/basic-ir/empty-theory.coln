@@ -1,0 +1,5 @@
+theory T := sig
+end
+
+realm TRealm @ T
+end

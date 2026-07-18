@@ -1,0 +1,24 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  V : Set
+  E : V -> Set
+end
+realm named TRealm
+generators: node
+  V = rel []
+  E = rel [a : TRealm.V []]
+end
+lowered: flatrealm
+  entities
+    table ℜ.V := []
+    table ℜ.E := [.a : ℜ.V]
+  end
+  rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.V []
+  end
+end
+
+-- messages

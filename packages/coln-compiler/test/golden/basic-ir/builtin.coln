@@ -1,0 +1,8 @@
+theory T := sig
+  V : Set
+  count : V -> Int
+  label : V -> String
+end
+
+realm TRealm @ T
+end

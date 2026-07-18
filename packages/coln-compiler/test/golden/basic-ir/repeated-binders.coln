@@ -1,0 +1,7 @@
+theory T := sig
+  X : Set
+  Pair : (x : X) -> (x : X) -> Set
+end
+
+realm TRealm @ T
+end

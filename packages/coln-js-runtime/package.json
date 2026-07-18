@@ -5,6 +5,9 @@
   "author": "Coln contributors",
   "type": "module",
   "license": "(Apache-2.0 OR MIT)",
+  "engines": {
+    "node": ">=24.14.0"
+  },
   "files": [
     "dist",
     "LICENSES"
@@ -12,7 +15,11 @@
   "scripts": {
     "copy-license": "cp -r ../../LICENSES LICENSES",
     "build": "wasm-bodge build",
-    "test": "tsx --test tests/test_id_resolution.ts"
+    "test": "npm run test:unit && npm run test:basic-ir",
+    "test:unit": "tsx --test tests/id-resolution.test.ts",
+    "test:basic-ir": "npm run typecheck:basic-ir && npm run test:basic-ir:runtime",
+    "typecheck:basic-ir": "tsx --tsconfig tests/basic-ir/tsconfig.json --test tests/basic-ir/typecheck.ts",
+    "test:basic-ir:runtime": "tsx --tsconfig tests/basic-ir/tsconfig.json --test \"tests/basic-ir/*.test.ts\""
   },
   "wasm-bodge": {
     "wrapper": {
@@ -21,6 +28,8 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.23.1",
     "typescript": "^5.0.0"
   },
   "main": "./dist/wrapper/cjs/node.cjs",

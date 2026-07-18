@@ -1,0 +1,37 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  V : Set
+  x : V
+  y : V
+  eq : x = y
+end
+realm named TRealm
+generators: node
+  V = rel []
+  x = (fun [] -> TRealm.V [])
+  y = (fun [] -> TRealm.V [])
+  eq = (fun [] -> TRealm.x [] = TRealm.y [])
+end
+lowered: flatrealm
+  entities
+    table ℜ.V := []
+    table ℜ.x := [.a : ℜ.V] primarykey []
+    table ℜ.y := [.a : ℜ.V] primarykey []
+    table ℜ.eq := [] primarykey []
+  end
+  rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+    enforced ℜ.x.foreignKey a := ℜ.x [.a ↦ a] ⊢ a ∈ ℜ.V []
+    monitored ℜ.x.total := ⊤ ⊢ ℜ.x []
+    enforced ℜ.y.foreignKey a := ℜ.y [.a ↦ a] ⊢ a ∈ ℜ.V []
+    monitored ℜ.y.total := ⊤ ⊢ ℜ.y []
+    enforced ℜ.eq.foreignKey a.lhs a.rhs := ℜ.eq [] ∧ ℜ.x [.a ↦ a.lhs] ∧ ℜ.y [
+      .a ↦ a.rhs
+    ] ⊢ a.lhs = a.rhs
+    monitored ℜ.eq.total := ⊤ ⊢ ℜ.eq []
+  end
+end
+
+-- messages

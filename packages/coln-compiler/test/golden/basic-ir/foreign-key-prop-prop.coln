@@ -1,0 +1,7 @@
+theory T := sig
+  V : Prop
+  E : V -> Prop
+end
+
+realm TRealm @ T
+end

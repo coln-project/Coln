@@ -103,7 +103,7 @@ head (Keyword x _) = "Keyword" <+> dpretty x
 head (Field x _) = "Field" <+> dpretty x
 head (Tag x _) = "Tag" <+> dpretty x
 head (Int i _) = "Int" <+> pretty i
-head (String i _) = "Int" <+> pretty i
+head (String s _) = "String" <+> pretty s
 head (Tuple _ _) = "Tuple"
 head (Error _) = "Error"
 

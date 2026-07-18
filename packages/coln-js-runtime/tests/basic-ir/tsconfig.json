@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@coln-project/runtime": ["src/ts/index.ts"]
+    }
+  },
+  "include": [
+    "*.ts",
+    "../../../coln-compiler/test/golden/basic-ir/*.ts.output/**/*.ts"
+  ]
+}

@@ -97,12 +97,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: packages/coln-js-runtime/package-lock.json
-
-      - name: Install npm tooling
-        run: npm install -g esbuild tsx
 
       - name: Install npm dependencies
         working-directory: packages/coln-js-runtime

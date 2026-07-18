@@ -1,0 +1,20 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  V : Prop
+end
+realm named TRealm
+generators: node
+  V = rel []
+end
+lowered: flatrealm
+  entities
+    table ℜ.V := []
+  end
+  rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+  end
+end
+
+-- messages

@@ -1,0 +1,1 @@
+{"entities":[{"path":[["TRealm"],["X"]],"value":{"entityVariant":{"tag":"table"},"columns":[],"primaryKey":null}}],"rules":[{"path":[["TRealm"],["X"],["foreignKey"]],"value":{"ruleVariant":"enforced","varNames":[],"varTypes":[],"antecedents":[{"tag":"atom","atom":{"entity":[["TRealm"],["X"]],"rowId":null,"values":[]}}],"consequents":[]}}]}

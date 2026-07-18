@@ -1,0 +1,8 @@
+theory Base := sig
+  X : Set
+end
+
+theory Alias := Base
+
+realm TRealm @ Alias
+end
