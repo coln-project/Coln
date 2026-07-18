@@ -1,5 +1,4 @@
-build_dir := "../../_build/wasm"
-dist_dir := build_dir / "dist"
+dist_dir := "../../_build/web/compiler/dist"
 
 build:
     #!/usr/bin/env bash
@@ -9,13 +8,4 @@ build:
     cp "$(wasm32-wasi-cabal list-bin coln-compiler-wasm)" {{ dist_dir }}/coln.wasm
     libdir="$(wasm32-wasi-ghc --print-libdir)"
     "$libdir/post-link.mjs" --input {{ dist_dir }}/coln.wasm --output {{ dist_dir }}/ghc_wasm_jsffi.js
-
-serve-example port="8000": build
-    #!/usr/bin/env bash
-    set -euxo pipefail
-    cp example.html {{ build_dir }}/index.html
-    examples_dir="{{ build_dir }}/examples"
-    mkdir -p "$examples_dir"
-    cp ../../packages/coln-compiler/test/*.coln "$examples_dir/"
-    ls -1 "$examples_dir"/*.coln | xargs -n1 basename | jq -nR '[inputs]' > "$examples_dir/index.json"
-    simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
+    cp loadHaskellWasm.js {{ dist_dir }}/loadHaskellWasm.js

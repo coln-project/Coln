@@ -8,7 +8,7 @@ import Coln.Backend.IR qualified as I
 import Coln.Backend.Lower
 import Coln.Core.Globals
 import Coln.Diagnostics
-import Coln.Frontend.Driver
+import Coln.Frontend.Parser
 import Control.Monad
 import Data.Aeson.Text qualified as Aeson
 import Data.Foldable

@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Coln</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="main">
+      <div class="header">
+        <h1>Coln</h1>
+        <select id="examples">
+          <option value="">—</option>
+        </select>
+      </div>
+      <h2>Source</h2>
+      <textarea id="input" spellcheck="false" rows="15"></textarea>
+      <h2>Diagnostics</h2>
+      <div class="output" id="diagnostics"></div>
+      <h2>IR</h2>
+      <div class="output" id="pretty"></div>
+      <h2>JSON</h2>
+      <pre class="output" id="json"></pre>
+    </div>
+
+    <script type="module">
+      import loadHaskellWasm from "./dist/loadHaskellWasm.js";
+      import ghc_wasm_jsffi from "./dist/ghc_wasm_jsffi.js";
+
+      const exports = await loadHaskellWasm({
+        wasmUrl: "dist/coln.wasm",
+        ghc_wasm_jsffi,
+      });
+
+      const inputEl = document.getElementById("input");
+      const diagsEl = document.getElementById("diagnostics");
+      const prettyEl = document.getElementById("pretty");
+      const jsonEl = document.getElementById("json");
+      const examplesEl = document.getElementById("examples");
+      const exampleFiles = await fetch("examples/index.json").then((r) =>
+        r.json(),
+      );
+      for (const name of exampleFiles) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name.split(".")[0];
+        examplesEl.appendChild(opt);
+      }
+      examplesEl.addEventListener("change", async () => {
+        if (!examplesEl.value) {
+          inputEl.value = "";
+          diagsEl.replaceChildren();
+          prettyEl.replaceChildren();
+          jsonEl.textContent = "";
+        } else {
+          inputEl.value = await fetch("examples/" + examplesEl.value).then(
+            (r) => r.text(),
+          );
+          run();
+        }
+      });
+
+      const compileResultRegistry = new FinalizationRegistry(
+        exports.freeCompileResult,
+      );
+      class CompileResult {
+        #ptr;
+        constructor(ptr) {
+          this.#ptr = ptr;
+          compileResultRegistry.register(this, ptr);
+        }
+        get diagnostics() {
+          return exports.getDiagnostics(true, this.#ptr);
+        }
+        get prettyIr() {
+          return exports.prettyIr(this.#ptr);
+        }
+        get irToJson() {
+          return exports.irToJson(this.#ptr);
+        }
+      }
+      const compile = async (src) =>
+        new CompileResult(await exports.compile(src));
+
+      async function run() {
+        document.body.dataset.compiling = "";
+        const result = await compile(inputEl.value);
+        prettyEl.replaceChildren(
+          ...(await result.prettyIr).map((chunk) => {
+            const pre = document.createElement("pre");
+            pre.innerHTML = chunk;
+            return pre;
+          }),
+        );
+        diagsEl.replaceChildren(
+          ...(await result.diagnostics).map((chunk) => {
+            const pre = document.createElement("div");
+            pre.innerHTML = chunk;
+            return pre;
+          }),
+        );
+        jsonEl.textContent = await result.irToJson;
+        delete document.body.dataset.compiling;
+      }
+
+      let debounceTimer;
+      inputEl.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(run, 50);
+      });
+
+      run();
+    </script>
+  </body>
+</html>

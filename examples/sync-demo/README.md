@@ -39,7 +39,7 @@ You can compile them by running `./compile.sh`
 
 ## Run
 
-From `coln/examples/web-demo/`:
+From `coln/examples/sync-demo/`:
 
 ```bash
 pnpm install

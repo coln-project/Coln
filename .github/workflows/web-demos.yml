@@ -3,14 +3,14 @@ on:
   push:
     branches: [main]
 
-name: Web demo
+name: Web demos
 
 permissions:
   contents: read
   pull-requests: write
 
 concurrency:
-  group: web-demo-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: web-demos-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,13 +43,27 @@ jobs:
             ~/.npm
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.ghc-wasm/.cabal
             target
-          key: web-demo-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'packages/coln-js-runtime/package-lock.json', 'examples/web-demo/pnpm-lock.yaml') }}
+            dist-newstyle
+          key: web-demos-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'cabal.project', 'packages/**/*.cabal', 'packages/coln-js-runtime/package-lock.json', 'examples/sync-demo/pnpm-lock.yaml') }}
           restore-keys: |
-            web-demo-${{ runner.os }}-
+            web-demos-${{ runner.os }}-
 
-      - name: Build web demo
-        run: nix run --accept-flake-config .#web-demo -- "$GITHUB_WORKSPACE"
+      - name: Build sync demo
+        run: nix run --accept-flake-config .#sync-demo -- "$GITHUB_WORKSPACE"
+        env:
+          VITE_BASE: /sync/
+
+      - name: Build web compiler
+        run: |
+          nix develop --accept-flake-config --command wasm32-wasi-cabal update 'hackage.haskell.org,2026-07-15T17:07:49Z'
+          nix develop --accept-flake-config --command just examples/build-web-compiler
+
+      - name: Assemble deploy directory
+        run: |
+          cp examples/index.html examples/style.css _build/web/
+          cp -r examples/sync-demo/dist _build/web/sync
 
       - name: Deploy PR preview to Netlify
         id: deploy-preview
@@ -58,10 +72,10 @@ jobs:
           npx --yes netlify-cli@latest deploy \
             --auth "$NETLIFY_AUTH_TOKEN" \
             --site "$NETLIFY_SITE_ID" \
-            --dir examples/web-demo/dist \
+            --dir _build/web \
             --no-build \
             --alias "pr-${{ github.event.pull_request.number }}" \
-            --message "PR #${{ github.event.pull_request.number }} web demo" \
+            --message "PR #${{ github.event.pull_request.number }} web demos" \
             --json > netlify-deploy.json
 
           cat netlify-deploy.json
@@ -73,7 +87,7 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const marker = '<!-- coln-web-demo-deploy-preview -->'
+            const marker = '<!-- coln-web-demos-deploy-preview -->'
             const body = `${marker}\nWeb demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
             const { owner, repo } = context.repo
             const issue_number = context.issue.number
@@ -91,7 +105,7 @@ jobs:
           npx --yes netlify-cli@latest deploy \
             --auth "$NETLIFY_AUTH_TOKEN" \
             --site "$NETLIFY_SITE_ID" \
-            --dir examples/web-demo/dist \
+            --dir _build/web \
             --no-build \
             --prod \
-            --message "main web demo ${{ github.sha }}"
+            --message "web demos ${{ github.sha }}"
