@@ -1,5 +1,6 @@
 -- elaborated
 global entry named Graph
+in mode: Conjunctive
 type: Theory
 value: sig
   V : Set

@@ -14,6 +14,7 @@ data ParserCode
   | UnexpectedField
   | UnexpectedDescriptive
   | UnknownCommand
+  | UnknownModifiers
   deriving (Eq, Ord)
 
 parserCodeTable :: Map ParserCode CodeMeta
@@ -25,4 +26,5 @@ parserCodeTable =
     , (UnexpectedField, CodeMeta 3 SError Nothing)
     , (UnexpectedDescriptive, CodeMeta 4 SError Nothing)
     , (UnknownCommand, CodeMeta 5 SError Nothing)
+    , (UnknownModifiers, CodeMeta 6 SError Nothing)
     ]

@@ -6,6 +6,7 @@ import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
 import FNotation (Ntn)
 import FNotation qualified as N
+import Prettyprinter
 
 import Coln.Common
 import Coln.Core
@@ -18,6 +19,7 @@ import Coln.Elaborator.Judgment
 import Coln.Elaborator.Rules.Function qualified as Function
 import Coln.Frontend.Parser.Expr
 import Coln.Frontend.Notation
+import Coln.Frontend.Diagnostics
 
 definition :: ParserEnv -> Ntn -> IO (Ntn, Ntn)
 definition _ (N.Infix n0 (N.Keyword ":=" _) n1) = pure (n0, n1)
@@ -67,14 +69,14 @@ def e n = do
   let (ty, tm) = withArgs args (returnTyp, body)
   pure (name, ty, tm)
 
-elabEntry :: DiagnosticEnv ElaboratorCode -> Globals -> (Name, Typ N, Chk D) -> IO GlobalEntry
-elabEntry e g (x, ty, tm) = do
-  let tyE = emptyElabEnv e g
+elabEntry :: DiagnosticEnv ElaboratorCode -> Globals -> Mode -> (Name, Typ N, Chk D) -> IO GlobalEntry
+elabEntry e g m (x, ty, tm) = do
+  let tyE = emptyElabEnv e g m
   a <- ty.elab tyE
-  let tmE = emptyElabEnvFor e g x a.val
+  let tmE = emptyElabEnvFor e g m x a.val
   t <- tm.elab tmE a.val
   let v = V.reflect (V.GlobalVar x v) V.Id a.val (Just t.val)
-  let entry = GlobalEntry t.stx v a.val Conjunctive
+  let entry = GlobalEntry t.stx v a.val m
   pure entry
 
 realmHead :: ParserEnv -> Ntn -> IO (Name, Ntn)
@@ -85,18 +87,27 @@ realm :: DiagnosticEnv ColnCode -> Globals -> Ntn -> [Ntn] -> IO (Name, Realm)
 realm e g head _defs = do
   (x, theory_n) <- realmHead (contramap ParserCode e) head
   theory_typ <- typ (contramap ParserCode e) theory_n
-  theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g)
+  theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g Inductive)
   let (gt, root) = layoutTop x theory.val
   pure (x, Realm gt root.val theory.val)
 
+mode :: ParserEnv -> Span -> [Name] -> IO Mode
+mode _ _ [] = pure Conjunctive
+mode _ _ ["ind"] = pure Inductive
+mode e sp ms = do
+  let msg = "unknown modifiers" <+> hsep (dpretty <$> ms)
+  failWith e sp UnknownModifiers msg
+
 decl :: DiagnosticEnv ColnCode -> Globals -> Ntn -> IO Globals
-decl e g (N.Decl "theory" n _) = do
+decl e g (N.MDecl ms "theory" n sp) = do
+  m <- mode (contramap ParserCode e) sp ms
   (x, t, c) <- theory (contramap ParserCode e) n
-  ge <- elabEntry (contramap ElaboratorCode e) g (x, t, c)
+  ge <- elabEntry (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addGlobalEntry x ge g
-decl e g (N.Decl "def" n _) = do
+decl e g (N.MDecl ms "def" n sp) = do
+  m <- mode (contramap ParserCode e) sp ms
   (x, t, c) <- def (contramap ParserCode e) n
-  ge <- elabEntry (contramap ElaboratorCode e) g (x, t, c)
+  ge <- elabEntry (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addGlobalEntry x ge g
 decl e g (N.Block "realm" (Just head) body _) = do
   (x, r) <- realm e g head body

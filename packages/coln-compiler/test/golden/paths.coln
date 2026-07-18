@@ -16,6 +16,8 @@ theory Reachability/motive (G : Graph) := sig
   )
 end
 
+
+
 realm Graph @ Graph
   ind def reachability : Reachability/motive self := init (Reachability/motive self)
 end

@@ -1,5 +1,6 @@
 -- elaborated
 global entry named Magma
+in mode: Conjunctive
 type: Theory
 value: sig
   car : Set

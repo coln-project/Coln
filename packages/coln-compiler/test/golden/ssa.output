@@ -1,69 +1,39 @@
 -- elaborated
-global entry named IsTransClosure
-type: (X : Set) -> (R : X -> X -> Set) -> (P : X -> X -> Set) -> Theory
-value: X => R => P => sig
-  refl : (x : X) -> P x x
-  snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
-end
-global entry named LinearOrder
-type: Theory
-value: sig
-  car : Set
-  first : car
-  last : car
-  next : car -> car
-  prev : car -> car
-  next/prev : (x : car) -> next (prev x) = x
-  prev/next : (x : car) -> prev (next x) = x
-  follows : car -> car -> Set
-  follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
-  acyclic : (x : car) -> (y : car) -> follows x y -> follows y x -> x = y
-  first-is-top : (x : car) -> follows first x
-  last-is-bot : (x : car) -> follows x last
-end
 global entry named OpInfo
+in mode: Conjunctive
 type: Theory
 value: sig
   OpType : Set
   inputArity : OpType -> Set
   outputArity : OpType -> Set
 end
-global entry named Iso
-type: (A : Set) -> (B : Set) -> Theory
-value: A => B => sig
-  fwd : A -> B
-  bwd : B -> A
-  fwd/bwd : (a : A) -> bwd (fwd a) = a
-  bwd/fwd : (b : B) -> fwd (bwd b) = b
-end
-global entry named Operation
-type: (opInfo : OpInfo) -> (val : Set) -> (outputs : Set) -> Theory
-value: opInfo => val => outputs => sig
-  opType : opInfo.OpType
-  opInputs : opInfo.inputArity opType -> val
-  opOutputs : Iso outputs (opInfo.outputArity opType)
-end
-global entry named PrecedingOutput
-type: (X : Set) -> (rel : X -> X -> Set) -> (x : X) -> (outputs : X -> Set) -> Set
-value: X => rel => x => outputs => sig
-  y : X
-  isPreceding : rel y x
-  output : outputs y
-end
-global entry named Block
-type: (opInfo : OpInfo) -> Theory
-value: opInfo => sig
-  ops : LinearOrder
-  outputs : ops.car -> Set
-  payload : (x : ops.car) -> Operation opInfo (PrecedingOutput ops.car ops.follows x outputs) (outputs x)
-  args : LinearOrder
-end
-global entry named SSA
-type: (opInfo : OpInfo) -> Theory
-value: opInfo => sig
-  RegionId : Set
-  BlockId : RegionId -> Set
-  ops : (r : RegionId) -> BlockId r -> Block opInfo
-end
 
 -- messages
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+2 |   refl : (x : X) -> P x x
+2 |                     ^
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+13 |   next/prev : (x : car) -> next (prev x) = x
+13 |                                            ^
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+32 |   fwd : A -> B
+32 |              ^
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+39 |   opType : opInfo.OpType
+39 |            ^^^^^^
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+45 |   y : X
+45 |       ^
+
+error[E0314]: no such variable LinearOrder in scope
+51 |   ops : LinearOrder
+51 |         ^^^^^^^^^^^
+
+error[E0314]: no such variable Block in scope
+65 |   ops : (r : RegionId) -> BlockId r -> Block opInfo
+65 |                                        ^^^^^
