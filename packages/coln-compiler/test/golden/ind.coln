@@ -1,0 +1,18 @@
+ind theory T := Set
+
+theory Graph := sig
+  v : Set
+  e : v -> v -> Prop
+end
+
+theory TransitiveExt (G : Graph) := sig
+  p : G.v -> G.v -> Prop
+  incl : (v0 : G.v) -> (v1 : G.v) -> G.e v0 v1 -> p v0 v1
+  snoc : (v0 : G.v) -> (v1 : G.v) -> (v2 : G.v) -> p v0 v1 -> G.e v1 v2 -> p v0 v2
+end
+
+theory Point (X : Set) := X
+
+# ind def transitive-closure (G : Graph) := init (TransitiveExt G)
+
+theory S := T

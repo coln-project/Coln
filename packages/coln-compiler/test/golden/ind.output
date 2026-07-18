@@ -1,0 +1,30 @@
+-- elaborated
+global entry named T
+in mode: Inductive
+type: Theory
+value: Set
+global entry named Graph
+in mode: Conjunctive
+type: Theory
+value: sig
+  v : Set
+  e : v -> v -> Prop
+end
+global entry named TransitiveExt
+in mode: Conjunctive
+type: (G : Graph) -> Theory
+value: G => sig
+  p : G.v -> G.v -> Prop
+  incl : (v0 : G.v) -> (v1 : G.v) -> G.e v0 v1 -> p v0 v1
+  snoc : (v0 : G.v) -> (v1 : G.v) -> (v2 : G.v) -> p v0 v1 -> G.e v1 v2 -> p v0 v2
+end
+
+-- messages
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+14 | theory Point (X : Set) := X
+14 |                           ^
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+18 | theory S := T
+18 |             ^

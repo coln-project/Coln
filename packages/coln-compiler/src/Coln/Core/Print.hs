@@ -55,6 +55,7 @@ instance ToNotation (El e) where
       N.Tuple [field y t | (y, t) <- toList d] ()
      where
       field y t = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
+    Init t -> N.Juxt (N.Keyword "init" ()) (toNotation xs t)
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible

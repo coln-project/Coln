@@ -189,3 +189,6 @@ instance DPretty TableName where
 
 data Mode = Inductive | Conjunctive
   deriving (Show, Eq, Ord)
+
+instance DPretty Mode where
+  dpretty = pretty . show

@@ -1,18 +1,14 @@
 -- elaborated
 global entry named Family
+in mode: Conjunctive
 type: Theory
 value: sig
   person : Set
   is-parent : person -> person -> Prop
   happy : Prop
 end
-global entry named Q
-type: (F : Family) -> Theory
-value: F => sig
-  son : F.person
-  father : F.person
-end
 global entry named HP
+in mode: Conjunctive
 type: Theory
 value: sig
   person : Set
@@ -21,10 +17,12 @@ value: sig
   reveal : voldemort = tomriddle
 end
 global entry named Unit
+in mode: Conjunctive
 type: Prop
 value: sig
 end
 global entry named P
+in mode: Conjunctive
 type: Theory
 value: sig
   u : Unit
@@ -60,13 +58,9 @@ debug[D0315]: type person -> happy has level Level {mlevel = Theory, hlevel = HP
 13 |   showlevel person -> happy
 13 |             ^^^^^^^^^^^^^^^
 
-debug[D0315]: value F.is-parent has type F.person -> F.person -> Prop
-20 |   showtype F.is-parent
-20 |            ^^^^^^^^^^^
-
-debug[D0315]: value F.is-parent father son has type Prop
-21 |   showtype F.is-parent father son
-21 |            ^^^^^^^^^^^^^^^^^^^^^^
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+17 |   son : F.person
+17 |         ^
 
 debug[D0315]: type voldemort = tomriddle has level Level {mlevel = Set, hlevel = HProp}
 31 |   showlevel voldemort = tomriddle
@@ -96,15 +90,6 @@ debug[D0315]: type u = u has level Level {mlevel = Set, hlevel = HUnit}
 48 |   showlevel u = u
 48 |             ^^^^^
 
-error[E0307]: type sig
-  f : A -> P
-  a : A
-end too large for universe Set
-51 | def LevelJoinRecordIsNotSet (A : Set) (P : Prop) : Set := sig
-51 |                                                           ^^^
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
 52 |   f : A -> P
-52 | ^^^^^^^^^^^^
-53 |   a : A
-53 | ^^^^^^^
-54 | end
-54 | ^^^
+52 |            ^

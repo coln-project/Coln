@@ -52,6 +52,7 @@ instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
     V.Cons d -> S.Cons $ case V.scase @c of
       SNominative -> readb n <$> d
       SDescriptive -> readb n <$> d
+    V.Init a sp -> readb n sp $ S.Init (readb n a)
     V.Lit l -> S.Lit l
 
 instance Readback V.FunctionType (S.FunctionType S.Ty) where

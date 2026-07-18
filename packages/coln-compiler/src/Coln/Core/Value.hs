@@ -157,6 +157,7 @@ data El :: Case -> Type where
   Code :: Ty c -> El c
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
+  Init :: Ty N -> Spine -> El D
   Lit :: Literal -> El N
 
 app :: El c -> El N -> Evaluation El c
@@ -190,6 +191,11 @@ data RecordType = RecordType
   , fieldTypes :: Dict (Locals -> Ty N)
   }
 
+data InductiveType = InductiveType
+  { initialOf :: Ty N
+  , spine :: Spine
+  }
+
 data EqualityType = EqualityType
   { at :: Ty N
   , lhs :: El N
@@ -208,6 +214,7 @@ data Ty :: Case -> Type where
   Decode :: DecodedNeutral -> Ty N
   Function :: FunctionType -> Ty N
   Record :: RecordType -> Ty D
+  Ind :: InductiveType -> Ty D
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
   EltOf :: TableName -> Dict (El N) -> Ty N
@@ -218,6 +225,7 @@ instance DebugVal (Ty c) where
     Decode _ -> "Decode"
     Function _ -> "Function"
     Record _ -> "Record"
+    Ind _ -> "Inductive"
     Eq _ -> "Eq"
     BuiltinTy _ -> "BuiltinTy"
     EltOf _ _ -> "EltOf"
@@ -228,6 +236,7 @@ instance LevelOf (Ty c) where
     Decode n -> decodesInto n.universe
     Function ft -> levelOf ft.variant
     Record rt -> rt.level
+    Ind _ -> Level Set HSet
     Eq ety -> Level (levelOf ety.at).mlevel (equalityHLevelOf (levelOf ety.at).hlevel)
     BuiltinTy _ -> Level Set HSet -- Only Int/String so far
     EltOf _ _ -> Level Set HSet -- TODO
@@ -236,10 +245,11 @@ behavior :: Ty c -> TypeBehavior
 behavior = \case
   U u -> LikeU u
   Decode n -> case n.description of
-    Just (Record rt) -> LikeRecord rt
+    Just t -> behavior t
     Nothing -> NoRules
   Function ft -> LikeFunction ft
   Record rt -> LikeRecord rt
+  Ind it -> LikeInductive it
   Eq _ -> NoRules
   BuiltinTy bty -> LikeBuiltinTy bty
   EltOf _ _ -> NoRules
@@ -255,6 +265,7 @@ decode (Neu n) = do
     Just (Describe desc) -> k (Just desc)
     Just (Become ty) -> ty
     Nothing -> k Nothing
+decode (Init a sp) = Describe $ Ind $ InductiveType a sp
 decode _ = panic "ill-typed decoding"
 
 -- Type behavior
@@ -264,6 +275,7 @@ data TypeBehavior
   = LikeU Universe
   | LikeFunction FunctionType
   | LikeRecord RecordType
+  | LikeInductive InductiveType
   | LikeBuiltinTy BuiltinTy
   | NoRules
 
@@ -272,6 +284,7 @@ instance DebugVal TypeBehavior where
     LikeU _ -> "LikeU"
     LikeFunction _ -> "LikeFunction"
     LikeRecord _ -> "LikeRecord"
+    LikeInductive _ -> "LikeInductive"
     LikeBuiltinTy _ -> "LikeBuiltinTy"
     NoRules -> "NoRules"
 

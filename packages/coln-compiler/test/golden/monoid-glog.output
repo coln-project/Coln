@@ -1,13 +1,8 @@
 -- elaborated
-global entry named Monoid
-type: Theory
-value: sig
-  car : Set
-  unit : car
-  mul : car -> car -> car
-  mul/unitl : (x : car) -> mul unit x = x
-  mul/unitr : (x : car) -> mul x unit = x
-  mul/assoc : (x : car) -> (y : car) -> (z : car) -> mul (mul x y) z = mul x (mul y z)
-end
+
 
 -- messages
+
+debug[D0316]: cannot use inductively bound variable in a conjunctive context
+6 |   mul/unitl : (x : car) -> mul unit x = x
+6 |                                         ^
