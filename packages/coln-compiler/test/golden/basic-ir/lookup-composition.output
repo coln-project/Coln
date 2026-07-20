@@ -1,0 +1,61 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  A : Set
+  B : Set
+  C : Set
+  E : C -> Set
+  first : A -> B
+  second : B -> C
+  edge : (x : A) -> E (second (first x))
+end
+realm named TRealm
+generators: node
+  A = rel []
+  B = rel []
+  C = rel []
+  E = rel [a : TRealm.C []]
+  first = (fun [a : TRealm.A []] -> TRealm.B [])
+  second = (fun [a : TRealm.B []] -> TRealm.C [])
+  edge = (fun [x : TRealm.A []] -> TRealm.E [
+    a := TRealm.second [a := TRealm.first [a := x]]
+  ])
+end
+lowered: flatrealm
+  entities
+    table ℜ.A := []
+    table ℜ.B := []
+    table ℜ.C := []
+    table ℜ.E := [.a : ℜ.C]
+    table ℜ.first := [.a : ℜ.A, .b : ℜ.B] primarykey [.a]
+    table ℜ.second := [.a : ℜ.B, .b : ℜ.C] primarykey [.a]
+    table ℜ.edge := [.x : ℜ.A, .a : ℜ.E] primarykey [.x]
+  end
+  rules
+    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
+    enforced ℜ.B.foreignKey := ℜ.B [] ⊢ ⊤
+    enforced ℜ.C.foreignKey := ℜ.C [] ⊢ ⊤
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.C []
+    enforced ℜ.first.foreignKey a b := ℜ.first [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B []
+    monitored ℜ.first.total a := a ∈ ℜ.A [] ⊢ ℜ.first [.a ↦ a]
+    enforced ℜ.second.foreignKey a b := ℜ.second [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.B [] ∧ b ∈ ℜ.C []
+    monitored ℜ.second.total a := a ∈ ℜ.B [] ⊢ ℜ.second [.a ↦ a]
+    enforced ℜ.edge.foreignKey x a a.a a.a.a := ℜ.edge [
+      .x ↦ x,
+      .a ↦ a
+    ] ∧ ℜ.first [.a ↦ x, .b ↦ a.a.a] ∧ ℜ.second [
+      .a ↦ a.a.a,
+      .b ↦ a.a
+    ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.a ↦ a.a]
+    monitored ℜ.edge.total x := x ∈ ℜ.A [] ⊢ ℜ.edge [.x ↦ x]
+  end
+end
+
+-- messages

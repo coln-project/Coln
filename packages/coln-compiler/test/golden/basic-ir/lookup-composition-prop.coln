@@ -1,0 +1,12 @@
+theory T := sig
+  A : Prop
+  B : Prop
+  C : Prop
+  E : C -> Prop
+  first : A -> B
+  second : B -> C
+  edge : (x : A) -> E (second (first x))
+end
+
+realm TRealm @ T
+end
