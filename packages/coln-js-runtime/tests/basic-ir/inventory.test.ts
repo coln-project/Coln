@@ -13,7 +13,13 @@ const goldenDirectory = resolve(
   here,
   "../../../coln-compiler/test/golden/basic-ir",
 );
-const missingRealms = ["lookup-record", "lookup-record-field", "rule-literals"];
+const missingRealms = [
+  "equality",
+  "equality-prop",
+  "lookup-record",
+  "lookup-record-field",
+  "rule-literals",
+];
 const testSuffix = /\.(?:pending|test)\.ts$/;
 
 test("every realm has an integration test", () => {

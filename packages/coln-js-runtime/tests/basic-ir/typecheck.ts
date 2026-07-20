@@ -28,6 +28,20 @@ if (config.errors.length !== 0) {
 
 const knownFailures = new Map<string, { label: string; match: RegExp }>([
   [
+    "equality",
+    {
+      label: "equality generation crashes before producing a realm",
+      match: /Cannot find module .*equality\.ts\.output\/TRealm\.ts/,
+    },
+  ],
+  [
+    "equality-prop",
+    {
+      label: "proof equality generation crashes before producing a realm",
+      match: /Cannot find module .*equality-prop\.ts\.output\/TRealm\.ts/,
+    },
+  ],
+  [
     "empty-record",
     {
       label: "empty record declarations refer to a missing Unit namespace",

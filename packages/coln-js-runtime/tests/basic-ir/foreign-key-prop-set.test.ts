@@ -8,6 +8,13 @@ import test from "node:test";
 import * as ForeignKeyPropSetRealm from "../../../coln-compiler/test/golden/basic-ir/foreign-key-prop-set.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
+const expectedProofIrrelevanceFailure = {
+  expectFailure: {
+    label: "sets indexed by equal proofs are treated as distinct",
+    match: /false !== true/,
+  },
+};
+
 test("foreign-key-prop-set", () => {
   const realm = beginRealm(ForeignKeyPropSetRealm);
   const vertex = realm.root.V.add();
@@ -25,4 +32,14 @@ test("foreign-key-prop-set rejects a parameter from the wrong table", () => {
   realm.root.E(edge).add();
 
   assert.throws(() => realm.commit(), /\.E\.foreignKey/);
+});
+
+test("foreign-key-prop-set ignores proof identity in its parameter", expectedProofIrrelevanceFailure, () => {
+  const realm = beginRealm(ForeignKeyPropSetRealm);
+  const firstVertex = realm.root.V.add();
+  const secondVertex = realm.root.V.add();
+  const edge = realm.root.E(firstVertex).add();
+  const view = realm.commit();
+
+  assert.equal(view.E(secondVertex).has(edge), true);
 });
