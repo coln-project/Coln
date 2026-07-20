@@ -1,3 +1,4 @@
+
 on:
   pull_request:
   merge_group:
@@ -8,131 +9,71 @@ name: Check
 
 jobs:
   license-check:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
-
-      - name: Install Nix ❄️
-        uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-26.05
 
       - name: Check licenses
-        run: |
-          nix-env -i just reuse -f '<nixpkgs>'
-          just check-licenses
+        run: just check-licenses
   rust-fmt:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: rustfmt
 
       - name: Check formatting
         run: cargo fmt --check
 
   rust-clippy:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: clippy
 
       - name: Run Clippy
         run: cargo clippy --all-targets -- -D warnings
 
   rust-tests:
-    runs-on: ubuntu-latest
-    needs: [rust-fmt, rust-clippy]
+    runs-on: coln-runner
+    # needs: [rust-fmt, rust-clippy]
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: Install just
-        uses: extractions/setup-just@v3
 
       - name: Run tests
         run: just check-rust
 
   coln-js-runtime-check:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: wasm32-unknown-unknown
-
-      - name: Install nextest
-        uses: taiki-e/install-action@nextest
-
-      - name: Install wasm-bindgen-cli
-        run: |
-          VERSION="0.2.123"
-          curl -sSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$VERSION/wasm-bindgen-$VERSION-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv "wasm-bindgen-$VERSION-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/
-          wasm-bindgen --version
-
-      - name: Install wasm-opt
-        run: |
-          VERSION="version_124"
-          curl -sSL "https://github.com/WebAssembly/binaryen/releases/download/$VERSION/binaryen-$VERSION-x86_64-linux.tar.gz" | tar xz
-          sudo mv "binaryen-$VERSION/bin/wasm-opt" /usr/local/bin/
-          wasm-opt --version
-
-      - name: Install wasm-bodge
-        run: cargo install wasm-bodge --locked
-
-      - name: Install just
-        uses: extractions/setup-just@v3
-
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: packages/coln-js-runtime/package-lock.json
 
       - name: Install npm dependencies
         working-directory: packages/coln-js-runtime
-        run: npm ci
+        run: pnpm ci
 
-      - name: Run checks
+      - name: Rust Checks
         working-directory: packages/coln-js-runtime
-        run: just check
+        run: just test-rust
+
+      - name: JS Checks
+        working-directory: packages/coln-js-runtime
+        run: just test-npm
 
   haskell-tests:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
 
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
 
-      - name: Install Nix ❄️
-        uses: cachix/install-nix-action@v31
-
-      - name: Set up Cachix ♻️
-        uses: cachix/cachix-action@v17
-        with:
-          name: coln
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # - name: Set up Cachix ♻️
+      #   uses: cachix/cachix-action@v17
+      #   with:
+      #     name: coln
+      #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Formatting (.hs)
         run: nix build .#format-hs

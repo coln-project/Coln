@@ -15,10 +15,10 @@ test-rust:
     cargo test --doc -p {{crate}}
 
 build:
-    npm run build
+    pnpm run build
 
 test-npm: build
-    npm test
+    pnpm test
 
 test: test-rust test-npm
 
