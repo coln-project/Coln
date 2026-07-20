@@ -9,7 +9,14 @@ import { valueEqual } from "@coln-project/runtime";
 import * as LookupRecordRealm from "../../../coln-compiler/test/golden/basic-ir/lookup-record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("lookup-record", () => {
+const expectedFailure = {
+  expectFailure: {
+    label: "record values are not implemented by the runtime",
+    match: /missing field `tag`/,
+  },
+};
+
+test("lookup-record", expectedFailure, () => {
   const realm = beginRealm(LookupRecordRealm);
   const fixed = {
     name: { tag: "string", value: "fixed" },

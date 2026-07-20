@@ -51,8 +51,8 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
   [
     "lookup-record",
     {
-      label: "literal record generation crashes before producing a realm",
-      match: /Cannot find module .*lookup-record\.ts\.output\/TRealm\.ts/,
+      label: "record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
     },
   ],
   [

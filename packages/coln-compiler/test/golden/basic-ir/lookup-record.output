@@ -1,0 +1,40 @@
+-- elaborated
+global entry named Payload
+type: Set
+value: sig
+  name : String
+  rank : Int
+end
+global entry named fixed
+type: Payload
+value: [name := "fixed", rank := 1]
+global entry named T
+type: Theory
+value: sig
+  E : Payload -> Set
+  selected : E fixed
+end
+realm named TRealm
+generators: node
+  E = rel [a : Payload]
+  selected = (fun [] -> TRealm.E [a := fixed])
+end
+lowered: flatrealm
+  entities
+    table ℜ.E := [.a.name : String, .a.rank : Int]
+    table ℜ.selected := [.a : ℜ.E] primarykey []
+  end
+  rules
+    enforced ℜ.E.foreignKey a.name a.rank := ℜ.E [
+      .a.name ↦ a.name,
+      .a.rank ↦ a.rank
+    ] ⊢ ⊤
+    enforced ℜ.selected.foreignKey a := ℜ.selected [.a ↦ a] ⊢ a ∈ ℜ.E [
+      .a.name ↦ "fixed",
+      .a.rank ↦ 1
+    ]
+    monitored ℜ.selected.total := ⊤ ⊢ ℜ.selected []
+  end
+end
+
+-- messages

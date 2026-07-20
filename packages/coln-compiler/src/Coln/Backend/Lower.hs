@@ -64,7 +64,9 @@ instance Lower V.Spine (Term -> Term) where
     V.Proj sp x -> \t -> Proj (lower n sp t) x
 
 instance Lower V.Neutral Term where
-  lower n ne = lower n ne.spine $ lower n ne.head
+  lower n ne = case ne.expansion of
+    V.IntoCons fields -> Cons (lower n <$> fields)
+    V.NotApplicable -> lower n ne.spine $ lower n ne.head
 
 instance Lower (V.El N) Term where
   lower :: CtxLen -> V.El N -> Term

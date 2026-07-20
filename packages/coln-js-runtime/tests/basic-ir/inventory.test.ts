@@ -16,7 +16,6 @@ const goldenDirectory = resolve(
 const missingRealms = [
   "equality",
   "equality-prop",
-  "lookup-record",
   "lookup-record-field",
   "rule-literals",
 ];
