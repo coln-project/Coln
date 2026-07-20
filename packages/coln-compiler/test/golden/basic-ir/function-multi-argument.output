@@ -1,0 +1,37 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  P : Prop
+  Q : Prop
+  f : P -> X -> Q
+end
+realm named TRealm
+generators: node
+  X = rel []
+  P = rel []
+  Q = rel []
+  f = (fun [a : TRealm.P [], b : TRealm.X []] -> TRealm.Q [])
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.P := []
+    table ℜ.Q := []
+    table ℜ.f := [.a : ℜ.P, .b : ℜ.X, .c : ℜ.Q] primarykey [.a, .b]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
+    enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
+    enforced ℜ.f.foreignKey a b c := ℜ.f [
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ a ∈ ℜ.P [] ∧ b ∈ ℜ.X [] ∧ c ∈ ℜ.Q []
+    monitored ℜ.f.total a b := a ∈ ℜ.P [] ∧ b ∈ ℜ.X [] ⊢ ℜ.f [.a ↦ a, .b ↦ b]
+  end
+end
+
+-- messages

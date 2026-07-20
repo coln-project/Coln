@@ -1,0 +1,36 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  P : Prop
+  Q : Prop
+  R : X -> P -> Q -> Prop
+end
+realm named TRealm
+generators: node
+  X = rel []
+  P = rel []
+  Q = rel []
+  R = rel [a : TRealm.X [], b : TRealm.P [], c : TRealm.Q []]
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.P := []
+    table ℜ.Q := []
+    table ℜ.R := [.a : ℜ.X, .b : ℜ.P, .c : ℜ.Q]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
+    enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
+    enforced ℜ.R.foreignKey a b c := ℜ.R [
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.P [] ∧ c ∈ ℜ.Q []
+  end
+end
+
+-- messages

@@ -1,0 +1,9 @@
+theory T := sig
+  X : Set
+  P : Prop
+  Q : Prop
+  R : X -> P -> Q -> Prop
+end
+
+realm TRealm @ T
+end
