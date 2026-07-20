@@ -43,10 +43,8 @@ jobs:
             ~/.npm
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.ghc-wasm/.cabal
             target
-            dist-newstyle
-          key: web-demos-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'cabal.project', 'packages/**/*.cabal', 'packages/coln-js-runtime/package-lock.json', 'examples/sync-demo/pnpm-lock.yaml') }}
+          key: web-demos-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'packages/coln-js-runtime/package-lock.json', 'examples/sync-demo/pnpm-lock.yaml') }}
           restore-keys: |
             web-demos-${{ runner.os }}-
 
@@ -55,57 +53,60 @@ jobs:
         env:
           VITE_BASE: /sync/
 
-      - name: Build web compiler
-        run: |
-          nix develop --accept-flake-config --command wasm32-wasi-cabal update 'hackage.haskell.org,2026-07-15T17:07:49Z'
-          nix develop --accept-flake-config --command just examples/build-web-compiler
+      # TODO commented out to prevent CI compiling a GHC from source
+      # - name: Build web compiler
+      #   run: |
+      #     nix build --accept-flake-config .#web-compiler
+      #     mkdir -p _build/web
+      #     cp -rL result _build/web/compiler
+      #     chmod -R u+w _build/web/compiler
 
-      - name: Assemble deploy directory
-        run: |
-          cp examples/index.html examples/style.css _build/web/
-          cp -r examples/sync-demo/dist _build/web/sync
+      # - name: Assemble deploy directory
+      #   run: |
+      #     cp examples/index.html examples/style.css _build/web/
+      #     cp -r examples/sync-demo/dist _build/web/sync
 
-      - name: Deploy PR preview to Netlify
-        id: deploy-preview
-        if: github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
-        run: |
-          npx --yes netlify-cli@latest deploy \
-            --auth "$NETLIFY_AUTH_TOKEN" \
-            --site "$NETLIFY_SITE_ID" \
-            --dir _build/web \
-            --no-build \
-            --alias "pr-${{ github.event.pull_request.number }}" \
-            --message "PR #${{ github.event.pull_request.number }} web demos" \
-            --json > netlify-deploy.json
+      # - name: Deploy PR preview to Netlify
+      #   id: deploy-preview
+      #   if: github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+      #   run: |
+      #     npx --yes netlify-cli@latest deploy \
+      #       --auth "$NETLIFY_AUTH_TOKEN" \
+      #       --site "$NETLIFY_SITE_ID" \
+      #       --dir _build/web \
+      #       --no-build \
+      #       --alias "pr-${{ github.event.pull_request.number }}" \
+      #       --message "PR #${{ github.event.pull_request.number }} web demos" \
+      #       --json > netlify-deploy.json
 
-          cat netlify-deploy.json
-          deploy_url=$(node -e "const d = require('./netlify-deploy.json'); console.log(d.deploy_ssl_url || d.ssl_url || d.deploy_url || d.url)")
-          echo "deploy-url=$deploy_url" >> "$GITHUB_OUTPUT"
+      #     cat netlify-deploy.json
+      #     deploy_url=$(node -e "const d = require('./netlify-deploy.json'); console.log(d.deploy_ssl_url || d.ssl_url || d.deploy_url || d.url)")
+      #     echo "deploy-url=$deploy_url" >> "$GITHUB_OUTPUT"
 
-      - name: Comment with deploy preview URL
-        if: github.event_name == 'pull_request' && steps.deploy-preview.outputs.deploy-url != ''
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const marker = '<!-- coln-web-demos-deploy-preview -->'
-            const body = `${marker}\nWeb demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
-            const { owner, repo } = context.repo
-            const issue_number = context.issue.number
-            const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
-            const existing = comments.data.find(comment => comment.body?.includes(marker))
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body })
-            }
+      # - name: Comment with deploy preview URL
+      #   if: github.event_name == 'pull_request' && steps.deploy-preview.outputs.deploy-url != ''
+      #   uses: actions/github-script@v8
+      #   with:
+      #     script: |
+      #       const marker = '<!-- coln-web-demos-deploy-preview -->'
+      #       const body = `${marker}\nWeb demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
+      #       const { owner, repo } = context.repo
+      #       const issue_number = context.issue.number
+      #       const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
+      #       const existing = comments.data.find(comment => comment.body?.includes(marker))
+      #       if (existing) {
+      #         await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
+      #       } else {
+      #         await github.rest.issues.createComment({ owner, repo, issue_number, body })
+      #       }
 
-      - name: Deploy main to Netlify production
-        if: github.event_name == 'push' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
-        run: |
-          npx --yes netlify-cli@latest deploy \
-            --auth "$NETLIFY_AUTH_TOKEN" \
-            --site "$NETLIFY_SITE_ID" \
-            --dir _build/web \
-            --no-build \
-            --prod \
-            --message "web demos ${{ github.sha }}"
+      # - name: Deploy main to Netlify production
+      #   if: github.event_name == 'push' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+      #   run: |
+      #     npx --yes netlify-cli@latest deploy \
+      #       --auth "$NETLIFY_AUTH_TOKEN" \
+      #       --site "$NETLIFY_SITE_ID" \
+      #       --dir _build/web \
+      #       --no-build \
+      #       --prod \
+      #       --message "web demos ${{ github.sha }}"

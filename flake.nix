@@ -1,9 +1,8 @@
 {
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    nixpkgs.url = "github:georgefst/nixpkgs/ghc-wasm";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
-    ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
   };
   outputs =
     inputs@{
@@ -135,6 +134,29 @@
             '';
           };
 
+          # TODO find some way to DRY this with `just examples/build-web-compiler`
+          # TODO do the combined web-demo build in Nix, removing logic from YAML
+          web-compiler = pkgs.runCommand "coln-web-compiler"
+            {
+              nativeBuildInputs = [
+                pkgs.nodejs
+                pkgs.jq
+              ];
+            }
+            ''
+              dist=$out/dist
+              mkdir -p $dist
+              cp ${wasmColnPackages.coln-compiler-wasm}/bin/coln-compiler-wasm* $dist/coln.wasm
+              libdir=$(${wasmHaskellPackages.ghc}/bin/${wasmHaskellPackages.ghc.targetPrefix}ghc --print-libdir)
+              node "$libdir/post-link.mjs" --input $dist/coln.wasm --output $dist/ghc_wasm_jsffi.js
+              cp ${./packages/coln-compiler-wasm/loadHaskellWasm.js} $dist/loadHaskellWasm.js
+              cp ${./examples/compiler-demo/index.html} $out/index.html
+              cp ${./examples/style.css} $out/style.css
+              mkdir -p $out/examples
+              cp ${./packages/coln-compiler/test/golden}/*.coln $out/examples/
+              ls -1 $out/examples/*.coln | xargs -n1 basename | jq -nR '[inputs]' > $out/examples/index.json
+            '';
+
           format-hs = nuShellCheck [pkgs.fourmolu] ./nix/checks/format-hs.nu;
           format-cabal = nuShellCheck [pkgs.haskellPackages.cabal-gild] ./nix/checks/format-cabal.nu;
 
@@ -189,7 +211,30 @@
 
 
         inherit (packages) forester coln-manual-dev;
-        haskell-wasm = inputs.ghc-wasm-meta.packages.${system};
+        # TODO DRY with native builds
+        wasmHaskellPackages = pkgs.pkgsCross.wasi32.haskell.packages.ghc9141.override {
+          overrides = _: prev: {
+            # mirrors cabal.project
+            # TODO these are actually about GHC 9.14 compatibility rather than Wasm
+            ordered-containers = pkgs.haskell.lib.doJailbreak prev.ordered-containers;
+            prettyprinter-lucid = pkgs.haskell.lib.doJailbreak prev.prettyprinter-lucid;
+          };
+        };
+        wasmColnPackages = rec {
+          diagnostician = wasmHaskellPackages.callPackage ./packages/diagnostician { };
+          diagnostician-html = wasmHaskellPackages.callPackage ./packages/diagnostician-html {
+            inherit diagnostician;
+          };
+          fnotation = wasmHaskellPackages.callPackage ./packages/fnotation {
+            inherit diagnostician;
+          };
+          coln-compiler = wasmHaskellPackages.callPackage ./packages/coln-compiler {
+            inherit diagnostician fnotation;
+          };
+          coln-compiler-wasm = wasmHaskellPackages.callPackage ./packages/coln-compiler-wasm {
+            inherit coln-compiler diagnostician diagnostician-html fnotation;
+          };
+        };
         lsTsDir = ./packages/coln-ls/client;
         lsClientNpmDeps = pkgs.importNpmLock {
           npmRoot = lsTsDir;
@@ -221,8 +266,10 @@
             forester
             fourmolu
             esbuild
-            haskell-wasm.wasm32-wasi-ghc-9_14
-            haskell-wasm.wasm32-wasi-cabal-9_14
+            wasmHaskellPackages.ghc
+            (pkgs.writeShellScriptBin "wasm32-unknown-wasi-cabal" ''
+              exec ${pkgs.cabal-install}/bin/cabal --with-compiler=${wasmHaskellPackages.ghc.unprefixed}/bin/ghc "$@"
+            '')
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
