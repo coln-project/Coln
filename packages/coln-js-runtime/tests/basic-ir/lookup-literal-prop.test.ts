@@ -11,14 +11,21 @@ import { beginRealm } from "./helpers.ts";
 
 const intIndex = { tag: "int", value: 19 } as const;
 const stringIndex = { tag: "string", value: "zombocom" } as const;
-const expectedLiteralFailure = {
+const expectedCanonicalizationFailure = {
   expectFailure: {
-    label: "literal terms use a different compiler and runtime JSON encoding",
-    match: /unknown variant `int`, expected `lit` or `var`/,
+    label: "multiple proofs at a literal index are not canonicalized",
+    match: /false !== true/,
   },
 };
 
-test("lookup-literal-prop", expectedLiteralFailure, () => {
+const expectedCardinalityFailure = {
+  expectFailure: {
+    label: "a proposition can contain multiple proofs at one literal index",
+    match: /false !== true/,
+  },
+};
+
+test("lookup-literal-prop", () => {
   const realm = beginRealm(LookupLiteralPropRealm);
   const intProof = realm.root.IntFact(intIndex).add();
   const stringProof = realm.root.StringFact(stringIndex).add();
@@ -32,7 +39,7 @@ test("lookup-literal-prop", expectedLiteralFailure, () => {
   assert.equal(valueEqual(view.stringFact.get(), stringProof), true);
 });
 
-test("lookup-literal-prop rejects a proof at a different integer", expectedLiteralFailure, () => {
+test("lookup-literal-prop rejects a proof at a different integer", () => {
   const realm = beginRealm(LookupLiteralPropRealm);
   const intProof = realm.root.IntFact({ tag: "int", value: 20 }).add();
   const stringProof = realm.root.StringFact(stringIndex).add();
@@ -42,7 +49,7 @@ test("lookup-literal-prop rejects a proof at a different integer", expectedLiter
   assert.throws(() => realm.commit(), /\.intFact\.foreignKey/);
 });
 
-test("lookup-literal-prop rejects a proof at a different string", expectedLiteralFailure, () => {
+test("lookup-literal-prop rejects a proof at a different string", () => {
   const realm = beginRealm(LookupLiteralPropRealm);
   const intProof = realm.root.IntFact(intIndex).add();
   const stringProof = realm.root.StringFact({
@@ -55,7 +62,7 @@ test("lookup-literal-prop rejects a proof at a different string", expectedLitera
   assert.throws(() => realm.commit(), /\.stringFact\.foreignKey/);
 });
 
-test("lookup-literal-prop canonicalizes proofs at the same index", expectedLiteralFailure, () => {
+test("lookup-literal-prop canonicalizes proofs at the same index", expectedCanonicalizationFailure, () => {
   const realm = beginRealm(LookupLiteralPropRealm);
   const firstIntProof = realm.root.IntFact(intIndex).add();
   const secondIntProof = realm.root.IntFact(intIndex).add();
@@ -71,7 +78,7 @@ test("lookup-literal-prop canonicalizes proofs at the same index", expectedLiter
   assert.equal(view.StringFact(stringIndex).has(firstStringProof), true);
 });
 
-test("lookup-literal-prop keeps proofs at different indexes distinct", expectedLiteralFailure, () => {
+test("lookup-literal-prop keeps proofs at different indexes distinct", () => {
   const realm = beginRealm(LookupLiteralPropRealm);
   const firstIntProof = realm.root.IntFact(intIndex).add();
   const secondIntProof = realm.root.IntFact({ tag: "int", value: 20 }).add();
@@ -88,7 +95,7 @@ test("lookup-literal-prop keeps proofs at different indexes distinct", expectedL
   assert.equal(valueEqual(firstStringProof, secondStringProof), false);
 });
 
-test("lookup-literal-prop has at most one proof at each index", expectedLiteralFailure, () => {
+test("lookup-literal-prop has at most one proof at each index", expectedCardinalityFailure, () => {
   const realm = beginRealm(LookupLiteralPropRealm);
   const intProof = realm.root.IntFact(intIndex).add();
   realm.root.IntFact(intIndex).add();

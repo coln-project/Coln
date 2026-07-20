@@ -11,14 +11,8 @@ import { beginRealm } from "./helpers.ts";
 
 const intIndex = { tag: "int", value: 19 } as const;
 const stringIndex = { tag: "string", value: "zombocom" } as const;
-const expectedFailure = {
-  expectFailure: {
-    label: "literal terms use a different compiler and runtime JSON encoding",
-    match: /unknown variant `int`, expected `lit` or `var`/,
-  },
-};
 
-test("lookup-literal", expectedFailure, () => {
+test("lookup-literal", () => {
   const realm = beginRealm(LookupLiteralRealm);
   const intEdge = realm.root.IntEdge(intIndex).add();
   const stringEdge = realm.root.StringEdge(stringIndex).add();
@@ -32,7 +26,7 @@ test("lookup-literal", expectedFailure, () => {
   assert.equal(valueEqual(view.stringEdge.get(), stringEdge), true);
 });
 
-test("lookup-literal rejects an edge at a different integer", expectedFailure, () => {
+test("lookup-literal rejects an edge at a different integer", () => {
   const realm = beginRealm(LookupLiteralRealm);
   const intEdge = realm.root.IntEdge({ tag: "int", value: 20 }).add();
   const stringEdge = realm.root.StringEdge(stringIndex).add();
@@ -42,7 +36,7 @@ test("lookup-literal rejects an edge at a different integer", expectedFailure, (
   assert.throws(() => realm.commit(), /\.intEdge\.foreignKey/);
 });
 
-test("lookup-literal rejects an edge at a different string", expectedFailure, () => {
+test("lookup-literal rejects an edge at a different string", () => {
   const realm = beginRealm(LookupLiteralRealm);
   const intEdge = realm.root.IntEdge(intIndex).add();
   const stringEdge = realm.root.StringEdge({
