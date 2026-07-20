@@ -1,0 +1,44 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  A : Prop
+  B : Prop
+  E : B -> Prop
+  next : A -> B
+  nextedge : (x : A) -> E (next x)
+end
+realm named TRealm
+generators: node
+  A = rel []
+  B = rel []
+  E = rel [a : TRealm.B []]
+  next = (fun [a : TRealm.A []] -> TRealm.B [])
+  nextedge = (fun [x : TRealm.A []] -> TRealm.E [a := TRealm.next [a := x]])
+end
+lowered: flatrealm
+  entities
+    table ℜ.A := []
+    table ℜ.B := []
+    table ℜ.E := [.a : ℜ.B]
+    table ℜ.next := [.a : ℜ.A, .b : ℜ.B] primarykey [.a]
+    table ℜ.nextedge := [.x : ℜ.A, .a : ℜ.E] primarykey [.x]
+  end
+  rules
+    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
+    enforced ℜ.B.foreignKey := ℜ.B [] ⊢ ⊤
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.B []
+    enforced ℜ.next.foreignKey a b := ℜ.next [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B []
+    monitored ℜ.next.total a := a ∈ ℜ.A [] ⊢ ℜ.next [.a ↦ a]
+    enforced ℜ.nextedge.foreignKey x a a.a := ℜ.nextedge [
+      .x ↦ x,
+      .a ↦ a
+    ] ∧ ℜ.next [.a ↦ x, .b ↦ a.a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.a ↦ a.a]
+    monitored ℜ.nextedge.total x := x ∈ ℜ.A [] ⊢ ℜ.nextedge [.x ↦ x]
+  end
+end
+
+-- messages
