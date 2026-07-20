@@ -8,22 +8,17 @@ name: Check
 
 jobs:
   license-check:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
-
-      - name: Install Nix ❄️
-        uses: cachix/install-nix-action@v31
-        with:
-          nix_path: nixpkgs=channel:nixos-26.05
 
       - name: Check licenses
         run: |
           nix-env -i just reuse -f '<nixpkgs>'
           just check-licenses
   rust-fmt:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
@@ -37,7 +32,7 @@ jobs:
         run: cargo fmt --check
 
   rust-clippy:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
@@ -51,7 +46,7 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
   rust-tests:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     needs: [rust-fmt, rust-clippy]
     steps:
       - name: Checkout ⬇️
@@ -64,7 +59,7 @@ jobs:
         run: cargo test
 
   coln-js-runtime-check:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
@@ -110,20 +105,17 @@ jobs:
         run: just check
 
   haskell-tests:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
 
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
 
-      - name: Install Nix ❄️
-        uses: cachix/install-nix-action@v31
-
-      - name: Set up Cachix ♻️
-        uses: cachix/cachix-action@v17
-        with:
-          name: coln
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # - name: Set up Cachix ♻️
+      #   uses: cachix/cachix-action@v17
+      #   with:
+      #     name: coln
+      #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Formatting (.hs)
         run: nix build .#format-hs
