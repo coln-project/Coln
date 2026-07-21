@@ -58,7 +58,7 @@ instance ToNotation (El e) where
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
-    Lookup x ts -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
+    Lookup x ts _ -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
      where
       field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 

@@ -56,10 +56,24 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     },
   ],
   [
+    "lookup-record-composition",
+    {
+      label: "record declarations refer to missing record namespaces",
+      match: /Cannot find namespace 'Key'/,
+    },
+  ],
+  [
+    "lookup-record-expansion",
+    {
+      label: "record declarations refer to a missing Payload namespace",
+      match: /Cannot find namespace 'Payload'/,
+    },
+  ],
+  [
     "lookup-record-field",
     {
-      label: "record field lookup generation crashes before producing a realm",
-      match: /Cannot find module .*lookup-record-field\.ts\.output\/TRealm\.ts/,
+      label: "record declarations refer to a missing Payload namespace",
+      match: /Cannot find namespace 'Payload'/,
     },
   ],
   [

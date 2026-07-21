@@ -47,9 +47,10 @@ instance Compile S.El V.El where
     S.Is t -> do
       let k = compile t
       V.Become . k
-    S.Lookup x ts -> do
-      let k = compile <$> ts
-      \vs -> V.Lookup x $ ($ vs) <$> k
+    S.Lookup x ts a -> do
+      let kts = compile <$> ts
+      let ka = compile a
+      \vs -> V.tableLookup x (fmap (\kt -> kt vs) kts) (ka vs)
 
 compileFunctionType :: S.FunctionType S.Ty -> V.Locals -> V.FunctionType
 compileFunctionType ft = do

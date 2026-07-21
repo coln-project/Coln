@@ -56,6 +56,7 @@ class Lower a b | a -> b where
 instance Lower V.Head Term where
   lower n (V.LocalVar (FId i)) = Var (BId (n - i - 1))
   lower _ (V.GlobalVar _ _) = panic "not fully evaluated"
+  lower n (V.Lookup x ts _) = Lookup x (lower n <$> ts)
 
 instance Lower V.Spine (Term -> Term) where
   lower n = \case
@@ -76,7 +77,6 @@ instance Lower (V.El N) Term where
     V.Lam _ _ -> panic "non set-level term"
     V.Cons ds -> Cons (lower n <$> ds)
     V.Lit l -> Lit l
-    V.Lookup x ts -> Lookup x (lower n <$> ts)
 
 data Ty = Ty
   { shape :: Shape

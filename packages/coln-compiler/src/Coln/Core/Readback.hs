@@ -21,6 +21,7 @@ instance Readback V.Head (S.El N) where
   readb n = \case
     V.LocalVar (FId i) -> S.LocalVar (BId (n - i - 1))
     V.GlobalVar x v -> S.GlobalVar x v
+    V.Lookup x vs a -> S.Lookup x (readb n <$> vs) (readb n a)
 
 instance Readback V.Spine (S.El N -> S.El N) where
   readb n = \case
@@ -52,7 +53,6 @@ instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
       SNominative -> readb n <$> d
       SDescriptive -> readb n <$> d
     V.Lit l -> S.Lit l
-    V.Lookup x vs -> S.Lookup x (readb n <$> vs)
 
 instance Readback V.FunctionType (S.FunctionType S.Ty) where
   readb n f =

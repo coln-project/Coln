@@ -74,7 +74,7 @@ layout p sc a
       V.LikeBuiltinTy _; V.LikeU _ -> panic "non-theory type"
   | (levelOf a).mlevel == Set = do
       let gt = Leaf (Fun (toList sc.names) (toList sc.ctx) (readb sc.len a))
-      let v = V.Lookup (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
+      let v = V.tableLookup (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound)) a
       (gt, M.fromVEl sc.len v)
   | otherwise = panic "tried to layout a toplevel type"
 

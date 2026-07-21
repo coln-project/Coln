@@ -37,6 +37,7 @@ tyFromHead :: Access -> V.Head -> TS.Ty
 tyFromHead access (V.GlobalVar x _) =
   TS.TyConst (TS.QId [mangle x] (fromString (show access)))
 tyFromHead access (V.LocalVar _) = TS.runtime $ ColnRef access
+tyFromHead _ (V.Lookup _ _ _) = panic "table lookup cannot be used as a type"
 
 genTy :: Access -> CtxLen -> V.Ty N -> TS.Ty
 genTy access n = \case
@@ -147,10 +148,17 @@ genTyVal access cs = \case
     TS.New (TS.Const (TS.runtime (RowIdSet access))) args
   _ -> panic "composite not yet supported"
 
-genHead :: TSCtxShape -> V.Head -> TS.El
-genHead cs = \case
+genHead :: Access -> TSCtxShape -> V.Head -> TS.El
+genHead access cs = \case
   V.LocalVar (FId i) -> TS.Var $ elemAt cs.names (BId (cs.len - i - 1))
   V.GlobalVar _ _ -> panic "global var neutral not yet supported"
+  V.Lookup tn vs _ -> do
+    let params = TS.List $ genEl access cs <$> F.toList vs
+    let transactionArg = case access of
+          View -> []
+          Transaction -> [TS.Var "transaction"]
+    let args = [TS.Var "store", TS.String (tableNameDoc tn), params] ++ transactionArg
+    TS.New (TS.Const (TS.runtime (TableCellRef access))) args
 
 genSp :: TSCtxShape -> V.Spine -> TS.El -> TS.El
 genSp _cs = \case
@@ -163,7 +171,7 @@ argName _ (V.CloConst _) = panic "closures from the layout process should have a
 
 genEl :: Access -> TSCtxShape -> V.El N -> TS.El
 genEl access cs = \case
-  V.Neu n -> genSp cs n.spine $ genHead cs n.head
+  V.Neu n -> genSp cs n.spine $ genHead access cs n.head
   V.Code a -> genTyVal access cs a
   V.Lam dom clo -> do
     let v = V.local (FId cs.len) dom
@@ -174,13 +182,6 @@ genEl access cs = \case
   V.Cons fields -> TS.Object $ for (toList fields) $ \(x, v) ->
     (mangle x, genEl access cs v)
   V.Lit l -> TS.Lit l
-  V.Lookup tn vs -> do
-    let params = TS.List $ genEl access cs <$> F.toList vs
-    let transactionArg = case access of
-          View -> []
-          Transaction -> [TS.Var "transaction"]
-    let args = [TS.Var "store", TS.String (tableNameDoc tn), params] ++ transactionArg
-    TS.New (TS.Const (TS.runtime (TableCellRef access))) args
 
 genRealmConstructor :: Access -> Realm -> TS.Constructor
 genRealmConstructor access r = do
