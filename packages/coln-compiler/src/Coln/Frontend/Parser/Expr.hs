@@ -15,6 +15,7 @@ import Coln.Elaborator.Judgment
 import Coln.Elaborator.Rules.Builtin qualified as Builtin
 import Coln.Elaborator.Rules.Equality qualified as Equality
 import Coln.Elaborator.Rules.Function qualified as Function
+import Coln.Elaborator.Rules.Initial qualified as Initial
 import Coln.Elaborator.Rules.Record qualified as Record
 import Coln.Elaborator.Rules.Universe qualified as Universe
 import Coln.Elaborator.Rules.Variable qualified as Variable
@@ -76,6 +77,13 @@ fromSynN @c s = case V.scase @c of
   SDescriptive -> FromSyn $ Syn \e -> do
     (a, m) <- s.elab (e{target = TargetAnonymous})
     pure (a, M.is m)
+  
+fromSynD :: (V.HasEvaluation c) => ParserEnv -> Span -> Syn D -> IO (Judgment c)
+fromSynD @c e sp s = case V.scase @c of
+  SNominative -> do
+    let msg = "expected nominative expression, got descriptive expression"
+    failWith e sp UnexpectedDescriptive msg
+  SDescriptive -> pure $ FromSyn s
 
 fromTypN :: (V.HasEvaluation c) => Typ N -> Judgment c
 fromTypN @c t = case V.scase @c of
@@ -94,6 +102,9 @@ fromTypD @c e sp t = case V.scase @c of
 expr :: (V.HasEvaluation c) => ParserEnv -> Ntn -> IO (Judgment c)
 expr e n = case n of
   N.Ident name s -> pure $ fromSynN $ Variable.find s name
+  N.Juxt (N.Keyword "init" _) n -> do
+    t <- typ e n
+    fromSynD e (N.span n) (Initial.create t)
   N.Juxt n0 n1 -> do
     s <- syn e "target of elimination" n0
     fromSynN <$> elim e s n1

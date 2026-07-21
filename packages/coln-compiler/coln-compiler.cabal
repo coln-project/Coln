@@ -38,6 +38,7 @@ library
     Coln.Elaborator.Rules.Builtin
     Coln.Elaborator.Rules.Equality
     Coln.Elaborator.Rules.Function
+    Coln.Elaborator.Rules.Initial
     Coln.Elaborator.Rules.Record
     Coln.Elaborator.Rules.Polarity
     Coln.Elaborator.Rules.Universe

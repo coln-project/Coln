@@ -103,6 +103,7 @@ instance ToNotation TypeBehavior where
     LikeFunction ft -> toNotation xs (Function ft)
     LikeRecord rt -> toNotation xs (Record rt)
     LikeBuiltinTy bt -> toNotation xs (BuiltinTy bt)
+    LikeInductive t -> toNotation xs t
     NoRules -> N.Keyword "NoRules" ()
 
 toNotationTele :: [Name] -> [Ty N] -> [N.Ntn0]

@@ -30,6 +30,7 @@ class Core el ty | el -> ty, ty -> el where
   lam :: (V.HasEvaluation c) => V.Locals -> ty N -> S.Abs el c -> el c
   cons :: (V.HasEvaluation c) => Dict (el c) -> el c
   proj :: el N -> Name -> el N
+  init :: ty N -> el D
   lit :: Literal -> el N
   is :: el N -> el D
   univ :: Universe -> ty N
@@ -55,6 +56,8 @@ instance Core El Ty where
       (V.epure $ V.Lam dom.val (V.CloConst body.val))
   cons d = M (S.Cons $ (.stx) <$> d) (V.epure $ V.Cons $ (.val) <$> d)
   proj x f = M (S.Proj x.stx f) (V.proj x.val f)
+  init a =
+    M (S.Init a.stx) (V.BecomeWith $ \n -> V.InitNeu (V.InitNeutral n a.val V.Id))
   lit l = M (S.Lit l) (V.Lit l)
   is x = M (S.Is x.stx) (V.Become x.val)
   univ u = M (S.U u) (V.U u)
@@ -90,6 +93,8 @@ instance (V.HasEvaluation c) => LevelOf (Ty c) where
     SDescriptive -> case ty.val of
       V.Describe ty' -> levelOf ty'
       V.Become ty' -> levelOf ty'
+      -- This is kind of a hack, but shouldn't appear in practice in any case
+      V.BecomeWith f -> levelOf (f $ V.BareNeutral (V.LocalVar (FId 0)) V.Id)
 
 instance Readback (Memoed a b c) (a c) where
   readb _ m = m.stx

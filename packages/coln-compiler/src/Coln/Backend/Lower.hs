@@ -73,6 +73,7 @@ instance Lower (V.El N) Term where
   lower :: CtxLen -> V.El N -> Term
   lower n = \case
     V.Neu ne -> lower n ne
+    V.InitNeu _ -> panic "can't lower init yet"
     V.Code _ -> panic "non set-level term"
     V.Lam _ _ -> panic "non set-level term"
     V.Cons ds -> Cons (lower n <$> ds)
@@ -99,6 +100,7 @@ separate n = \case
       let (shapes, props) = unzip $ go rt.capture (toList rt.fieldTypes)
       Ty (Tuple (withHead rt.fieldTypes shapes)) (And (withHead rt.fieldTypes props))
     Nothing -> panic "lowering neutral type"
+  V.InitDecode _ -> panic "can't lower init yet"
   V.Function _ -> panic "lowering non-set-level type: Function"
   V.Eq et -> \_ -> Ty Unit (Equal (lower n et.lhs) (lower n et.rhs))
   V.BuiltinTy t -> \_ -> Ty (BuiltinTy t) PTrue

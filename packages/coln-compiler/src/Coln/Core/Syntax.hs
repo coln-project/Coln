@@ -59,5 +59,6 @@ data TypeBehavior
   = LikeU Universe
   | LikeFunction (FunctionType Ty)
   | LikeRecord (RecordType Ty)
+  | LikeInductive (El N)
   | LikeBuiltinTy BuiltinTy
   | NoRules
