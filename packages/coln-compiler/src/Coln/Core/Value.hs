@@ -36,6 +36,7 @@ type family Evaluation (f :: Case -> Type) (c :: Case) = r | r -> c f where
 data Description :: (Case -> Type) -> Type where
   Describe :: f D -> Description f
   Become :: f N -> Description f
+  BecomeWith :: (BareNeutral -> f N) -> Description f
 
 class HasEvaluation (c :: Case) where
   epure :: a c -> Evaluation a c
@@ -53,8 +54,10 @@ instance HasEvaluation D where
   epure = Describe
   emap f (Describe x) = Describe (f x)
   emap f (Become x) = Become (f x)
+  emap f (BecomeWith g) = BecomeWith (f . g)
   ebind f (Describe x) = f x
   ebind f (Become x) = Become (f x)
+  ebind f (BecomeWith g) = BecomeWith (f . g)
   scase = SDescriptive
 
 -- Abstractions
@@ -75,6 +78,11 @@ data Spine
   = Id
   | App Spine (El N)
   | Proj Spine Name
+
+composeSpines :: Spine -> Spine -> Spine
+composeSpines s Id = s
+composeSpines s (App s' v) = App (composeSpines s s') v
+composeSpines s (Proj s' x) = Proj (composeSpines s s') x
 
 data Head
   = LocalVar FId
@@ -120,6 +128,7 @@ reflect head spine ~ty edesc = do
   case edesc of
     Just (Describe desc) -> k (Just desc)
     Just (Become v) -> v
+    Just (BecomeWith f) -> f (BareNeutral head spine)
     Nothing -> k Nothing
 
 local :: FId -> Ty N -> El N
@@ -152,12 +161,21 @@ instance ToBare DecodedNeutral where
 -- Elements
 --------------------------------------------------------------------------------
 
+data InitNeutral = InitNeutral
+  { name :: BareNeutral
+  , initialOf :: Ty N
+  , spine :: Spine
+  }
+
+fullNeu :: InitNeutral -> BareNeutral
+fullNeu n = BareNeutral n.name.head (composeSpines n.name.spine n.spine)
+
 data El :: Case -> Type where
   Neu :: Neutral -> El N
+  InitNeu :: InitNeutral -> El N
   Code :: Ty c -> El c
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
-  Init :: Ty N -> Spine -> El D
   Lit :: Literal -> El N
 
 app :: El c -> El N -> Evaluation El c
@@ -212,9 +230,9 @@ typeForProjection rt x fields = do
 data Ty :: Case -> Type where
   U :: Universe -> Ty N
   Decode :: DecodedNeutral -> Ty N
+  InitDecode :: InitNeutral -> Ty N
   Function :: FunctionType -> Ty N
   Record :: RecordType -> Ty D
-  Ind :: InductiveType -> Ty D
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
   EltOf :: TableName -> Dict (El N) -> Ty N
@@ -223,9 +241,9 @@ instance DebugVal (Ty c) where
   debugVal = \case
     U _ -> "U"
     Decode _ -> "Decode"
+    InitDecode _ -> "InitDecode"
     Function _ -> "Function"
     Record _ -> "Record"
-    Ind _ -> "Inductive"
     Eq _ -> "Eq"
     BuiltinTy _ -> "BuiltinTy"
     EltOf _ _ -> "EltOf"
@@ -236,7 +254,7 @@ instance LevelOf (Ty c) where
     Decode n -> decodesInto n.universe
     Function ft -> levelOf ft.variant
     Record rt -> rt.level
-    Ind _ -> Level Set HSet
+    InitDecode _ -> Level Set HSet
     Eq ety -> Level (levelOf ety.at).mlevel (equalityHLevelOf (levelOf ety.at).hlevel)
     BuiltinTy _ -> Level Set HSet -- Only Int/String so far
     EltOf _ _ -> Level Set HSet -- TODO
@@ -247,9 +265,9 @@ behavior = \case
   Decode n -> case n.description of
     Just t -> behavior t
     Nothing -> NoRules
+  InitDecode n -> LikeInductive n
   Function ft -> LikeFunction ft
   Record rt -> LikeRecord rt
-  Ind it -> LikeInductive it
   Eq _ -> NoRules
   BuiltinTy bty -> LikeBuiltinTy bty
   EltOf _ _ -> NoRules
@@ -264,8 +282,9 @@ decode (Neu n) = do
   case decode <$> n.description of
     Just (Describe desc) -> k (Just desc)
     Just (Become ty) -> ty
+    Just (BecomeWith f) -> f (BareNeutral n.head n.spine)
     Nothing -> k Nothing
-decode (Init a sp) = Describe $ Ind $ InductiveType a sp
+decode (InitNeu n) = InitDecode n
 decode _ = panic "ill-typed decoding"
 
 -- Type behavior
@@ -275,7 +294,7 @@ data TypeBehavior
   = LikeU Universe
   | LikeFunction FunctionType
   | LikeRecord RecordType
-  | LikeInductive InductiveType
+  | LikeInductive InitNeutral
   | LikeBuiltinTy BuiltinTy
   | NoRules
 

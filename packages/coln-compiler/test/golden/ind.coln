@@ -11,8 +11,6 @@ theory TransitiveExt (G : Graph) := sig
   snoc : (v0 : G.v) -> (v1 : G.v) -> (v2 : G.v) -> p v0 v1 -> G.e v1 v2 -> p v0 v2
 end
 
-theory Point (X : Set) := X
+ind def transitive-closure (G : Graph) : TransitiveExt G := init (TransitiveExt G)
 
-# ind def transitive-closure (G : Graph) := init (TransitiveExt G)
-
-theory S := T
+ind def freept (X : Set) : X := init X
