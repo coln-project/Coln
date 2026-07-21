@@ -77,10 +77,24 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     },
   ],
   [
-    "projection",
+    "param-record",
     {
       label: "record values are not represented as runtime Values",
       match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "param-record-nested",
+    {
+      label: "nested record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "projection",
+    {
+      label: "record values are not represented as runtime Values",
+      match: /does not exist in type 'Value'/,
     },
   ],
   [

@@ -1,0 +1,54 @@
+-- elaborated
+global entry named Box
+type: (X : Set) -> Set
+value: X => sig
+  value : X
+end
+global entry named Nested
+type: (X : Set) -> Set
+value: X => sig
+  inner : Box X
+  sibling : X
+end
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  nested : Nested X -> Set
+  selected : Nested X -> X
+end
+realm named TRealm
+generators: node
+  X = rel []
+  nested = rel [a : Nested (TRealm.X [])]
+  selected = (fun [a : Nested (TRealm.X [])] -> TRealm.X [])
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.nested := [.a.inner.value : ℜ.X, .a.sibling : ℜ.X]
+    table ℜ.selected := [
+      .a.inner.value : ℜ.X,
+      .a.sibling : ℜ.X,
+      .b : ℜ.X
+    ] primarykey [.a.sibling, .a.inner.value]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.nested.foreignKey a.inner.value a.sibling := ℜ.nested [
+      .a.inner.value ↦ a.inner.value,
+      .a.sibling ↦ a.sibling
+    ] ⊢ a.inner.value ∈ ℜ.X [] ∧ a.sibling ∈ ℜ.X []
+    enforced ℜ.selected.foreignKey a.inner.value a.sibling b := ℜ.selected [
+      .a.inner.value ↦ a.inner.value,
+      .a.sibling ↦ a.sibling,
+      .b ↦ b
+    ] ⊢ a.inner.value ∈ ℜ.X [] ∧ a.sibling ∈ ℜ.X [] ∧ b ∈ ℜ.X []
+    monitored ℜ.selected.total a.inner.value a.sibling := a.inner.value ∈ ℜ.X [] ∧ a.sibling ∈ ℜ.X [] ⊢ ℜ.selected [
+      .a.inner.value ↦ a.inner.value,
+      .a.sibling ↦ a.sibling
+    ]
+  end
+end
+
+-- messages
