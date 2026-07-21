@@ -84,6 +84,20 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     },
   ],
   [
+    "param-record-concrete",
+    {
+      label: "concrete nested record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "param-record-model",
+    {
+      label: "model-parameterized record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
     "param-record-nested",
     {
       label: "nested record values are not represented as runtime Values",

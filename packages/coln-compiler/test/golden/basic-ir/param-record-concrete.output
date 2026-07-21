@@ -1,0 +1,32 @@
+-- elaborated
+global entry named Payload
+type: Set
+value: sig
+  name : String
+end
+global entry named Box
+type: (X : Set) -> Set
+value: X => sig
+  value : X
+end
+global entry named T
+type: Theory
+value: sig
+  boxed : Box Payload -> Set
+end
+realm named TRealm
+generators: node
+  boxed = rel [a : Box Payload]
+end
+lowered: flatrealm
+  entities
+    table ℜ.boxed := [.a.value.name : String]
+  end
+  rules
+    enforced ℜ.boxed.foreignKey a.value.name := ℜ.boxed [
+      .a.value.name ↦ a.value.name
+    ] ⊢ ⊤
+  end
+end
+
+-- messages
