@@ -1,11 +1,12 @@
-def Payload : Set := sig
-  name : String
-  rank : Int
+def Payload (X : Set) : Set := sig
+  first : X
+  second : X
 end
 
 theory T := sig
-  E : Int -> Set
-  r : (p : Payload) -> E p.rank
+  X : Set
+  E : X -> Set
+  r : (p : Payload X) -> E p.second
 end
 
 realm TRealm @ T

@@ -12,8 +12,20 @@ export class View {
       key: (a: runtime.Value) => {
         return (new runtime.TableCellRef.View(store, "TRealm.key", [a]));
       },
-      payload: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.payload", [a]));
+      PayloadAt: (a: runtime.Value) => {
+        return (new runtime.RowIdSet.View(store, "TRealm.PayloadAt", [a]));
+      },
+      slot: (x: runtime.Value) => {
+        return (new runtime.TableCellRef.View(store, "TRealm.slot", [x]));
+      },
+      payload: (rank: runtime.Value) => {
+        return (a: runtime.Value) => {
+          return (new runtime.TableCellRef.View(
+            store,
+            "TRealm.payload",
+            [rank, a]
+          ));
+        };
       },
       E: (a: runtime.Value) => {
         return (new runtime.RowIdSet.View(store, "TRealm.E", [a]));
@@ -43,13 +55,31 @@ export class Transaction extends View {
           transaction
         ));
       },
-      payload: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.Transaction(
+      PayloadAt: (a: runtime.Value) => {
+        return (new runtime.RowIdSet.Transaction(
           store,
-          "TRealm.payload",
+          "TRealm.PayloadAt",
           [a],
           transaction
         ));
+      },
+      slot: (x: runtime.Value) => {
+        return (new runtime.TableCellRef.Transaction(
+          store,
+          "TRealm.slot",
+          [x],
+          transaction
+        ));
+      },
+      payload: (rank: runtime.Value) => {
+        return (a: runtime.Value) => {
+          return (new runtime.TableCellRef.Transaction(
+            store,
+            "TRealm.payload",
+            [rank, a],
+            transaction
+          ));
+        };
       },
       E: (a: runtime.Value) => {
         return (new runtime.RowIdSet.Transaction(

@@ -9,9 +9,11 @@ end
 theory T := sig
   X : Set
   key : X -> Key
-  payload : Int -> Payload
+  PayloadAt : Int -> Set
+  slot : (x : X) -> PayloadAt (key x .rank)
+  payload : (rank : Int) -> PayloadAt rank -> Payload
   E : String -> Set
-  edge : (x : X) -> E (payload (key x .rank) .name)
+  edge : (x : X) -> E (payload (key x .rank) (slot x) .name)
 end
 
 realm TRealm @ T

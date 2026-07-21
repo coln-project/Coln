@@ -8,6 +8,7 @@ export class View {
 
   constructor(store: runtime.StoreHandle) {
     this.root = {
+      X: (new runtime.RowIdSet.View(store, "TRealm.X", [])),
       E: (a: runtime.Value) => {
         return (new runtime.RowIdSet.View(store, "TRealm.E", [a]));
       },
@@ -27,6 +28,7 @@ export class Transaction extends View {
   ) {
     super(store);
     this.root = {
+      X: (new runtime.RowIdSet.Transaction(store, "TRealm.X", [], transaction)),
       E: (a: runtime.Value) => {
         return (new runtime.RowIdSet.Transaction(
           store,

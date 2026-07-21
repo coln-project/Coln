@@ -14,25 +14,40 @@ type: Theory
 value: sig
   X : Set
   key : X -> Key
-  payload : Int -> Payload
+  PayloadAt : Int -> Set
+  slot : (x : X) -> PayloadAt (key x .rank)
+  payload : (rank : Int) -> PayloadAt rank -> Payload
   E : String -> Set
-  edge : (x : X) -> E (payload (key x .rank) .name)
+  edge : (x : X) -> E (payload (key x .rank) (slot x) .name)
 end
 realm named TRealm
 generators: node
   X = rel []
   key = (fun [a : TRealm.X []] -> Key)
-  payload = (fun [a : Int] -> Payload)
+  PayloadAt = rel [a : Int]
+  slot = (fun [x : TRealm.X []] -> TRealm.PayloadAt [
+    a := TRealm.key [a := x] .rank
+  ])
+  payload = (fun [rank : Int, a : TRealm.PayloadAt [a := rank]] -> Payload)
   E = rel [a : String]
   edge = (fun [x : TRealm.X []] -> TRealm.E [
-    a := TRealm.payload [a := TRealm.key [a := x] .rank] .name
+    a := TRealm.payload [
+      rank := TRealm.key [a := x] .rank,
+      a := TRealm.slot [x := x]
+    ] .name
   ])
 end
 lowered: flatrealm
   entities
     table ℜ.X := []
     table ℜ.key := [.a : ℜ.X, .b.rank : Int] primarykey [.a]
-    table ℜ.payload := [.a : Int, .b.name : String] primarykey [.a]
+    table ℜ.PayloadAt := [.a : Int]
+    table ℜ.slot := [.x : ℜ.X, .a : ℜ.PayloadAt] primarykey [.x]
+    table ℜ.payload := [
+      .rank : Int,
+      .a : ℜ.PayloadAt,
+      .b.name : String
+    ] primarykey [.a, .rank]
     table ℜ.E := [.a : String]
     table ℜ.edge := [.x : ℜ.X, .a : ℜ.E] primarykey [.x]
   end
@@ -43,17 +58,30 @@ lowered: flatrealm
       .b.rank ↦ b.rank
     ] ⊢ a ∈ ℜ.X []
     monitored ℜ.key.total a := a ∈ ℜ.X [] ⊢ ℜ.key [.a ↦ a]
-    enforced ℜ.payload.foreignKey a b.name := ℜ.payload [
+    enforced ℜ.PayloadAt.foreignKey a := ℜ.PayloadAt [.a ↦ a] ⊢ ⊤
+    enforced ℜ.slot.foreignKey x a a.a.rank := ℜ.slot [.x ↦ x, .a ↦ a] ∧ ℜ.key [
+      .a ↦ x,
+      .b.rank ↦ a.a.rank
+    ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.PayloadAt [.a ↦ a.a.rank]
+    monitored ℜ.slot.total x := x ∈ ℜ.X [] ⊢ ℜ.slot [.x ↦ x]
+    enforced ℜ.payload.foreignKey rank a b.name := ℜ.payload [
+      .rank ↦ rank,
       .a ↦ a,
       .b.name ↦ b.name
-    ] ⊢ ⊤
-    monitored ℜ.payload.total a := ⊤ ⊢ ℜ.payload [.a ↦ a]
+    ] ⊢ a ∈ ℜ.PayloadAt [.a ↦ rank]
+    monitored ℜ.payload.total rank a := a ∈ ℜ.PayloadAt [
+      .a ↦ rank
+    ] ⊢ ℜ.payload [.rank ↦ rank, .a ↦ a]
     enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ⊤
-    enforced ℜ.edge.foreignKey x a a.a.name a.a.a.rank := ℜ.edge [
+    enforced ℜ.edge.foreignKey x a a.a.name a.a.rank.rank a.a.a := ℜ.edge [
       .x ↦ x,
       .a ↦ a
-    ] ∧ ℜ.key [.a ↦ x, .b.rank ↦ a.a.a.rank] ∧ ℜ.payload [
-      .a ↦ a.a.a.rank,
+    ] ∧ ℜ.key [.a ↦ x, .b.rank ↦ a.a.rank.rank] ∧ ℜ.slot [
+      .x ↦ x,
+      .a ↦ a.a.a
+    ] ∧ ℜ.payload [
+      .rank ↦ a.a.rank.rank,
+      .a ↦ a.a.a,
       .b.name ↦ a.a.name
     ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.E [.a ↦ a.a.name]
     monitored ℜ.edge.total x := x ∈ ℜ.X [] ⊢ ℜ.edge [.x ↦ x]
