@@ -27,7 +27,7 @@ pub enum Value {
     Iint(i64),
     /// Boolean.
     Bool(bool),
-    /// Character.
+    /// A single character as defined by Rust's [`char`].
     Char(char),
     /// Null.
     // The `Null` variant carries the unit type to align its field-arity with

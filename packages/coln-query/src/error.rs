@@ -8,12 +8,18 @@ use thiserror::Error;
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 /// Public error type for any Incremental Datalog error.
 pub enum IncLogError {
+    /// An error that occurs during parsing or static analysis at compile time.
     #[error(transparent)]
     Syntax(#[from] SyntaxError),
+    /// An error that occurs during an optimization pass prior to runtime.
     #[error(transparent)]
     Optimization(#[from] OptimizationError),
+    /// An error which occurs during runtime of the circuit constructing,
+    /// tree-walk interpreter.
     #[error(transparent)]
     Engine(#[from] EngineError),
+    /// An error that occurs during runtime of the underlying (incremental)
+    /// query execution engine (currently only DBSP).
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
 }
@@ -53,9 +59,10 @@ impl OptimizationError {
 #[error("{message}")]
 /// An error which occurs during runtime of the circuit constructing,
 /// tree-walk interpreter.
-// TODO: Instead of being generic, we could introduce:
+// TODO: Instead of being general, we could introduce:
 // - a type error
 // - a reference error
+// - ... ?
 pub struct EngineError {
     message: String,
 }
