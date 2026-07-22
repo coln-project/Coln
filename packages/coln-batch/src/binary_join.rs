@@ -40,6 +40,9 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
     for atom in &query.atoms {
         let rel = catalog.get(&atom.relation)?;
         let identity: Vec<usize> = (0..rel.arity()).collect();
+        // TODO(perf): from_relation sorts O(N log N) even though the hash
+        // join only scans; add a scan-only constructor (or take pre-sorted
+        // tables from storage) when performance work starts.
         let table = ArrowSortedTable::from_relation(rel, identity)?;
 
         // Classify the atom's columns.
@@ -66,6 +69,9 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         }
 
         // Build the hash index over the atom's rows (post-filter).
+        // TODO(perf): the per-row `key` Vecs here and in the probe loop
+        // below are hot-loop allocations; reuse one buffer when
+        // performance work starts.
         let mut index: HashMap<Vec<u64>, Vec<usize>> = HashMap::new();
         for r in 0..table.len() {
             if lit_checks.iter().any(|&(c, x)| table.value(r, c) != x) {

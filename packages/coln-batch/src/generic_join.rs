@@ -34,6 +34,9 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
     catalog.check(query)?;
 
     // Build one suitably-sorted index per atom.
+    // TODO(perf): sorting happens here, per query. Once the storage layer
+    // serves SortedTable directly (pre-built indexes), this block becomes
+    // a lookup instead of an O(N log N) build.
     let mut atoms: Vec<AtomExec<ArrowSortedTable>> = Vec::with_capacity(query.atoms.len());
     for atom in &query.atoms {
         let rel = catalog.get(&atom.relation)?;
