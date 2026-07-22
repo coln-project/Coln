@@ -3,7 +3,7 @@
 #   just              # list available recipes
 #   just check           # run all package checks
 
-generated_file_pathspecs := "':(exclude,glob)packages/coln-compiler/test/golden/basic-ir/*.ts.output/**' ':(exclude,glob)examples/web-demo/src/generated/**'"
+generated_file_pathspecs := "':(exclude,glob)packages/coln-compiler/test/golden/basic-ir/*.ts.output/**' ':(exclude,glob)examples/sync-demo/src/generated/**'"
 
 default:
     @just --list
