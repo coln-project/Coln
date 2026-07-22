@@ -19,9 +19,6 @@
 //!    join ([`generic_join`]), differential-tested against each other and
 //!    against the oracle,
 //! 6. (next) semi-naive recursion to a fixpoint.
-//!
-//! The storage-facing interface contract is documented in
-//! `docs/sorted-table-api.md`.
 
 pub mod binary_join;
 pub mod fixtures;

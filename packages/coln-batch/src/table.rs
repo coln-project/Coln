@@ -10,8 +10,6 @@
 //! Anything that can answer its five required methods — the in-memory
 //! [`ArrowSortedTable`] below today, a Hexane-backed B-tree index later —
 //! can back the engine unchanged.
-//!
-//! The full contract and rationale live in `docs/sorted-table-api.md`.
 
 use std::cmp::Ordering;
 use std::ops::Range;
