@@ -73,15 +73,15 @@ mod tests {
         }
     }
 
-    /// Scale test: generate ~1M rows per relation, save, reload.
-    /// Run with: cargo test -p coln-batch -- --include-ignored
+    /// Scale test: generate ~10M rows per relation, save, reload.
+    /// Run with: cargo test -p coln-batch --release -- --include-ignored
     #[test]
-    #[ignore = "large; run explicitly"]
-    fn roundtrip_one_million_rows() {
+    #[ignore = "large; run explicitly (use --release)"]
+    fn roundtrip_ten_million_rows() {
         let dir = tmp_dir();
-        let [f, _g, _h] = generate::triangle(1_000_000, 1_000_000, 10_000, 42);
-        assert!(f.len() > 950_000, "got {}", f.len());
-        let path = dir.join("R_f_1m.arrow");
+        let [f, _g, _h] = generate::triangle(10_000_000, 10_000_000, 100_000, 42);
+        assert!(f.len() > 9_500_000, "got {}", f.len());
+        let path = dir.join("R_f_10m.arrow");
         save_relation(&f, &path).unwrap();
         let back = load_relation("R_f", &path).unwrap();
         assert_eq!(f, back);

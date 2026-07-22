@@ -207,16 +207,38 @@ fn fixtures_medium_executors_agree() {
     assert!(r.len() >= 900, "got {}", r.len());
 }
 
-/// Executor agreement at the 1M-row scale.
+/// Executor agreement at the 10M-row scale. Prints per-executor timings,
+/// visible with `--nocapture`.
 /// Run with: cargo test -p coln-batch --release -- --include-ignored
 #[test]
 #[ignore = "large; run explicitly (use --release)"]
 fn fixtures_large_executors_agree() {
-    let cat = fixtures::fg_catalog(500_000, 1_000_000, 20_000, 8);
-    let r = agree(&fixtures::fg_query(), &cat);
-    assert!(r.len() >= 18_000, "got {}", r.len());
-
-    let cat = fixtures::triangle_catalog(1_000_000, 1_000_000, 10_000, 7);
-    let r = agree(&fixtures::triangle_query(), &cat);
-    assert!(r.len() >= 9_000, "got {}", r.len());
+    let cases = [
+        (
+            "f(a, g(a))",
+            fixtures::fg_catalog(5_000_000, 10_000_000, 200_000, 8),
+            fixtures::fg_query(),
+            180_000,
+        ),
+        (
+            "triangle",
+            fixtures::triangle_catalog(10_000_000, 10_000_000, 100_000, 7),
+            fixtures::triangle_query(),
+            90_000,
+        ),
+    ];
+    for (name, cat, query, floor) in cases {
+        let started = std::time::Instant::now();
+        let binary = binary_join::execute(&query, &cat).unwrap();
+        let t_binary = started.elapsed();
+        let started = std::time::Instant::now();
+        let generic = generic_join::execute(&query, &cat).unwrap();
+        let t_generic = started.elapsed();
+        assert_eq!(binary, generic, "{name}: executors disagree");
+        assert!(binary.len() >= floor, "{name}: got {}", binary.len());
+        eprintln!(
+            "{name}: {} rows, binary join {t_binary:.2?}, generic join {t_generic:.2?}",
+            binary.len()
+        );
+    }
 }

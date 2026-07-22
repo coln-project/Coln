@@ -58,7 +58,7 @@ differential tests over generated query shapes
 
 ```sh
 cargo test -p coln-batch                                 # fast suite
-cargo test -p coln-batch --release -- --include-ignored  # + 1M-row runs
+cargo test -p coln-batch --release -- --include-ignored --nocapture  # + 10M-row runs with timings
 ```
 
 `just check` runs the same gate as CI (format, clippy, tests).
