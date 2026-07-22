@@ -1,0 +1,40 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  P : Prop
+  Y : Set
+  choose : X -> P -> Y
+end
+realm named TRealm
+generators: node
+  X = rel []
+  P = rel []
+  Y = rel []
+  choose = (fun [a : TRealm.X [], b : TRealm.P []] -> TRealm.Y [])
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.P := []
+    table ℜ.Y := []
+    table ℜ.choose := [.a : ℜ.X, .b : ℜ.P, .c : ℜ.Y] primarykey [.a, .b]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
+    enforced ℜ.Y.foreignKey := ℜ.Y [] ⊢ ⊤
+    enforced ℜ.choose.foreignKey a b c := ℜ.choose [
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.P [] ∧ c ∈ ℜ.Y []
+    monitored ℜ.choose.total a b := a ∈ ℜ.X [] ∧ b ∈ ℜ.P [] ⊢ ℜ.choose [
+      .a ↦ a,
+      .b ↦ b
+    ]
+  end
+end
+
+-- messages

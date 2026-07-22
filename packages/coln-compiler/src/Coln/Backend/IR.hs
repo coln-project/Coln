@@ -152,8 +152,9 @@ instance AE.ToJSON Entity where
 instance AE.ToJSON Term where
   toJSON = panic "aesons behaving badly"
   toEncoding = \case
-    Lit (LitInt i) -> taggedEncoding "int" $ AE.pair "int" $ AE.toEncoding $ show i
-    Lit (LitString s) -> taggedEncoding "string" $ AE.pair "string" $ AE.toEncoding s
+    Lit l -> taggedEncoding "lit" $ AE.pair "lit" $ case l of
+      LitInt i -> taggedEncoding "int" $ AE.pair "value" $ AE.toEncoding i
+      LitString s -> taggedEncoding "string" $ AE.pair "value" $ AE.toEncoding s
     Var (FId i) -> taggedEncoding "var" $ AE.pair "index" $ AE.toEncoding i
 
 instance AE.ToJSON Atom where

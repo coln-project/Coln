@@ -18,27 +18,33 @@ const expectedFailure = {
 
 test("projection", expectedFailure, () => {
   const realm = beginRealm(ProjectionRealm);
-  const payload = {
-    name: { tag: "string", value: "example" },
-    rank: { tag: "int", value: 1 },
-  } as const;
-  const value = realm.root.E(payload.rank).add();
-  realm.root.r(payload).set(value);
+  const first = realm.root.X.add();
+  const second = realm.root.X.add();
+  const firstValue = realm.root.E(first).add();
+  const secondValue = realm.root.E(second).add();
+  realm.root.r({ first, second: first }).set(firstValue);
+  realm.root.r({ first, second }).set(secondValue);
+  realm.root.r({ first: second, second: first }).set(firstValue);
+  realm.root.r({ first: second, second }).set(secondValue);
   const view = realm.commit();
 
-  assert.equal(view.E(payload.rank).has(value), true);
-  assert.equal(valueEqual(view.r(payload).get(), value), true);
+  assert.equal(view.X.has(first), true);
+  assert.equal(view.X.has(second), true);
+  assert.equal(view.E(first).has(firstValue), true);
+  assert.equal(view.E(second).has(secondValue), true);
+  assert.equal(valueEqual(view.r({ first, second }).get(), secondValue), true);
 });
 
-test("projection rejects a value at a different projected rank", expectedFailure, () => {
+test("projection rejects a value at a different projected value", expectedFailure, () => {
   const realm = beginRealm(ProjectionRealm);
-  const payload = {
-    name: { tag: "string", value: "example" },
-    rank: { tag: "int", value: 1 },
-  } as const;
-  const otherRank = { tag: "int", value: 2 } as const;
-  const value = realm.root.E(otherRank).add();
-  realm.root.r(payload).set(value);
+  const first = realm.root.X.add();
+  const second = realm.root.X.add();
+  const firstValue = realm.root.E(first).add();
+  const secondValue = realm.root.E(second).add();
+  realm.root.r({ first, second: first }).set(firstValue);
+  realm.root.r({ first, second }).set(firstValue);
+  realm.root.r({ first: second, second: first }).set(firstValue);
+  realm.root.r({ first: second, second }).set(secondValue);
 
   assert.throws(() => realm.commit(), /\.r\.foreignKey/);
 });

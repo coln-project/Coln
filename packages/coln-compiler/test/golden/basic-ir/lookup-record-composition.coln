@@ -1,0 +1,20 @@
+def Key : Set := sig
+  rank : Int
+end
+
+def Payload : Set := sig
+  name : String
+end
+
+theory T := sig
+  X : Set
+  key : X -> Key
+  PayloadAt : Int -> Set
+  slot : (x : X) -> PayloadAt (key x .rank)
+  payload : (rank : Int) -> PayloadAt rank -> Payload
+  E : String -> Set
+  edge : (x : X) -> E (payload (key x .rank) (slot x) .name)
+end
+
+realm TRealm @ T
+end

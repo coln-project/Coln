@@ -28,6 +28,27 @@ if (config.errors.length !== 0) {
 
 const knownFailures = new Map<string, { label: string; match: RegExp }>([
   [
+    "equality",
+    {
+      label: "equality generation crashes before producing a realm",
+      match: /Cannot find module .*equality\.ts\.output\/TRealm\.ts/,
+    },
+  ],
+  [
+    "equality-prop",
+    {
+      label: "proof equality generation crashes before producing a realm",
+      match: /Cannot find module .*equality-prop\.ts\.output\/TRealm\.ts/,
+    },
+  ],
+  [
+    "empty-prop-record",
+    {
+      label: "proposition record declarations refer to a missing Truth namespace",
+      match: /Cannot find namespace 'Truth'/,
+    },
+  ],
+  [
     "empty-record",
     {
       label: "empty record declarations refer to a missing Unit namespace",
@@ -37,22 +58,64 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
   [
     "lookup-record",
     {
-      label: "literal record generation crashes before producing a realm",
-      match: /Cannot find module .*lookup-record\.ts\.output\/TRealm\.ts/,
+      label: "record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "lookup-record-composition",
+    {
+      label: "record declarations refer to missing record namespaces",
+      match: /Cannot find namespace 'Key'/,
+    },
+  ],
+  [
+    "lookup-record-expansion",
+    {
+      label: "record declarations refer to a missing Payload namespace",
+      match: /Cannot find namespace 'Payload'/,
     },
   ],
   [
     "lookup-record-field",
     {
-      label: "record field lookup generation crashes before producing a realm",
-      match: /Cannot find module .*lookup-record-field\.ts\.output\/TRealm\.ts/,
+      label: "record declarations refer to a missing Payload namespace",
+      match: /Cannot find namespace 'Payload'/,
+    },
+  ],
+  [
+    "param-record",
+    {
+      label: "record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "param-record-concrete",
+    {
+      label: "concrete nested record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "param-record-model",
+    {
+      label: "model-parameterized record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "param-record-nested",
+    {
+      label: "nested record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
     },
   ],
   [
     "projection",
     {
       label: "record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
+      match: /does not exist in type 'Value'/,
     },
   ],
   [
@@ -60,6 +123,27 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     {
       label: "proof record declarations refer to a missing Witness namespace",
       match: /Cannot find namespace 'Witness'/,
+    },
+  ],
+  [
+    "proof-record-mixed",
+    {
+      label: "mixed proof record declarations refer to a missing EqualTriple namespace",
+      match: /Cannot find namespace 'EqualTriple'/,
+    },
+  ],
+  [
+    "proof-record-parameter",
+    {
+      label: "proof-bearing record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "prop-record",
+    {
+      label: "proposition record declarations refer to a missing And namespace",
+      match: /Cannot find namespace 'And'/,
     },
   ],
   [

@@ -25,7 +25,7 @@ data El :: Case -> Type where
   Proj :: El N -> Name -> El N
   Lit :: Literal -> El N
   Is :: El N -> El D
-  Lookup :: TableName -> Dict (El N) -> El N
+  Lookup :: TableName -> Dict (El N) -> Ty N -> El N
 
 data FunctionType ty = FunctionType
   { variant :: FunctionVariant

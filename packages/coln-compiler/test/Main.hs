@@ -32,10 +32,10 @@ import Test.Tasty.HUnit (testCase, (@?=))
 import Prelude hiding (lex, read)
 
 knownFailingElaboratorTests :: [String]
-knownFailingElaboratorTests = ["lookup-record", "lookup-record-field"]
+knownFailingElaboratorTests = []
 
 knownFailingTypeScriptTests :: [String]
-knownFailingTypeScriptTests = ["equality", "equality-prop", "lookup-record", "lookup-record-field", "rule-literals"]
+knownFailingTypeScriptTests = ["equality", "equality-prop", "rule-literals"]
 
 main :: IO ()
 main = defaultMain =<< goldenTests
@@ -129,7 +129,7 @@ elaboratorFailingTest :: FilePath -> TestTree
 elaboratorFailingTest colnFile =
   expectFail $ testCase (takeBaseName colnFile) $ do
     output <- elaborate colnFile
-    -- Force the elaboration to acutally happen
+    -- Force the elaboration to actually happen
     _ <- evaluate $ LBS.length output
     pure ()
 

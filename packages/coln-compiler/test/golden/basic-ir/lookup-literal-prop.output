@@ -1,0 +1,38 @@
+-- elaborated
+global entry named T
+type: Theory
+value: sig
+  IntFact : Int -> Prop
+  StringFact : String -> Prop
+  intFact : IntFact 19
+  stringFact : StringFact "zombocom"
+end
+realm named TRealm
+generators: node
+  IntFact = rel [a : Int]
+  StringFact = rel [a : String]
+  intFact = (fun [] -> TRealm.IntFact [a := 19])
+  stringFact = (fun [] -> TRealm.StringFact [a := "zombocom"])
+end
+lowered: flatrealm
+  entities
+    table ℜ.IntFact := [.a : Int]
+    table ℜ.StringFact := [.a : String]
+    table ℜ.intFact := [.a : ℜ.IntFact] primarykey []
+    table ℜ.stringFact := [.a : ℜ.StringFact] primarykey []
+  end
+  rules
+    enforced ℜ.IntFact.foreignKey a := ℜ.IntFact [.a ↦ a] ⊢ ⊤
+    enforced ℜ.StringFact.foreignKey a := ℜ.StringFact [.a ↦ a] ⊢ ⊤
+    enforced ℜ.intFact.foreignKey a := ℜ.intFact [.a ↦ a] ⊢ a ∈ ℜ.IntFact [
+      .a ↦ 19
+    ]
+    monitored ℜ.intFact.total := ⊤ ⊢ ℜ.intFact []
+    enforced ℜ.stringFact.foreignKey a := ℜ.stringFact [
+      .a ↦ a
+    ] ⊢ a ∈ ℜ.StringFact [.a ↦ "zombocom"]
+    monitored ℜ.stringFact.total := ⊤ ⊢ ℜ.stringFact []
+  end
+end
+
+-- messages

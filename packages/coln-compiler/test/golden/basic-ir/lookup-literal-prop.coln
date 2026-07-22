@@ -1,0 +1,9 @@
+theory T := sig
+  IntFact : Int -> Prop
+  StringFact : String -> Prop
+  intFact : IntFact 19
+  stringFact : StringFact "zombocom"
+end
+
+realm TRealm @ T
+end

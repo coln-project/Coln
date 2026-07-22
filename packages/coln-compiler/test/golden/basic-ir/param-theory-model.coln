@@ -1,0 +1,15 @@
+theory Model := sig
+  X : Set
+end
+
+theory PointOf (M : Model) := sig
+  point : M.X
+end
+
+theory T := sig
+  model : Model
+  pointed : PointOf model
+end
+
+realm TRealm @ T
+end

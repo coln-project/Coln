@@ -1,0 +1,17 @@
+def Box (X : Set) : Set := sig
+  value : X
+end
+
+def Nested (X : Set) : Set := sig
+  inner : Box X
+  sibling : X
+end
+
+theory T := sig
+  X : Set
+  nested : Nested X -> Set
+  selected : Nested X -> X
+end
+
+realm TRealm @ T
+end

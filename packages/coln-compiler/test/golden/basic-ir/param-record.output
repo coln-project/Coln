@@ -1,0 +1,31 @@
+-- elaborated
+global entry named Box
+type: (X : Set) -> Set
+value: X => sig
+  value : X
+end
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  boxed : Box X -> Set
+end
+realm named TRealm
+generators: node
+  X = rel []
+  boxed = rel [a : Box (TRealm.X [])]
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.boxed := [.a.value : ℜ.X]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.boxed.foreignKey a.value := ℜ.boxed [
+      .a.value ↦ a.value
+    ] ⊢ a.value ∈ ℜ.X []
+  end
+end
+
+-- messages

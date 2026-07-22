@@ -95,6 +95,11 @@ instance DefEq V.Head where
     V.GlobalVar x _ -> case h' of
       V.GlobalVar x' _ | x == x' -> pure ()
       _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing
+    V.Lookup x vs _ -> case h' of
+      V.Lookup x' vs' _ -> do
+        unless (x == x') $ throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) $ Just "unequal table names"
+        zipWithM_ (defEq cs) (F.toList vs) (F.toList vs') -- XXX check heads?
+      _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing
 
 instance DefEq V.BareNeutral where
   defEq cs n n' = case n.spine of
@@ -143,9 +148,4 @@ instance DefEq (V.El N) where
       _ -> throwUnequalEls cs v v' Nothing
     V.Lit l -> case canon v' of
       V.Lit l' -> unless (l == l') $ throwUnequalEls cs v v' $ Just "unequal literals"
-      _ -> throwUnequalEls cs v v' Nothing
-    V.Lookup x vs -> case canon v' of
-      V.Lookup x' vs' -> do
-        unless (x == x') $ throwUnequalEls cs v v' $ Just "unequal table names"
-        zipWithM_ (defEq cs) (F.toList vs) (F.toList vs') -- XXX check heads?
       _ -> throwUnequalEls cs v v' Nothing

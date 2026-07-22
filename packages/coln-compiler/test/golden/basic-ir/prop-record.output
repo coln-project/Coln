@@ -1,0 +1,67 @@
+-- elaborated
+global entry named And
+type: (P : Prop) -> (Q : Prop) -> Prop
+value: P => Q => sig
+  left : P
+  right : Q
+end
+global entry named T
+type: Theory
+value: sig
+  P : Prop
+  Q : Prop
+  make : P -> Q -> And P Q
+  projectLeft : And P Q -> P
+end
+realm named TRealm
+generators: node
+  P = rel []
+  Q = rel []
+  make = (fun [
+    a : TRealm.P [],
+    b : TRealm.Q []
+  ] -> And (TRealm.P []) (TRealm.Q []))
+  projectLeft = (fun [a : And (TRealm.P []) (TRealm.Q [])] -> TRealm.P [])
+end
+lowered: flatrealm
+  entities
+    table ℜ.P := []
+    table ℜ.Q := []
+    table ℜ.make := [
+      .a : ℜ.P,
+      .b : ℜ.Q,
+      .c.left : ℜ.P,
+      .c.right : ℜ.Q
+    ] primarykey [.a, .b]
+    table ℜ.projectLeft := [
+      .a.left : ℜ.P,
+      .a.right : ℜ.Q,
+      .b : ℜ.P
+    ] primarykey [.a.left, .a.right]
+  end
+  rules
+    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
+    enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
+    enforced ℜ.make.foreignKey a b c.left c.right := ℜ.make [
+      .a ↦ a,
+      .b ↦ b,
+      .c.left ↦ c.left,
+      .c.right ↦ c.right
+    ] ⊢ a ∈ ℜ.P [] ∧ b ∈ ℜ.Q [] ∧ c.left ∈ ℜ.P [] ∧ c.right ∈ ℜ.Q []
+    monitored ℜ.make.total a b := a ∈ ℜ.P [] ∧ b ∈ ℜ.Q [] ⊢ ℜ.make [
+      .a ↦ a,
+      .b ↦ b
+    ]
+    enforced ℜ.projectLeft.foreignKey a.left a.right b := ℜ.projectLeft [
+      .a.left ↦ a.left,
+      .a.right ↦ a.right,
+      .b ↦ b
+    ] ⊢ a.left ∈ ℜ.P [] ∧ a.right ∈ ℜ.Q [] ∧ b ∈ ℜ.P []
+    monitored ℜ.projectLeft.total a.left a.right := a.left ∈ ℜ.P [] ∧ a.right ∈ ℜ.Q [] ⊢ ℜ.projectLeft [
+      .a.left ↦ a.left,
+      .a.right ↦ a.right
+    ]
+  end
+end
+
+-- messages

@@ -1,0 +1,9 @@
+def Truth : Prop := sig
+end
+
+theory T := sig
+  truth : Truth
+end
+
+realm TRealm @ T
+end

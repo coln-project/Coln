@@ -1,0 +1,12 @@
+theory T := sig
+  A : Set
+  B : Set
+  C : Set
+  E : C -> Set
+  first : A -> B
+  second : B -> C
+  edge : (x : A) -> E (second (first x))
+end
+
+realm TRealm @ T
+end

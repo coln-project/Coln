@@ -79,6 +79,7 @@ data Spine
 data Head
   = LocalVar FId
   | GlobalVar Name ~(El N)
+  | Lookup TableName (Dict (El N)) ~(Ty N)
 
 data Expansion
   = IntoCons (Dict (El N))
@@ -124,6 +125,9 @@ reflect head spine ~ty edesc = do
 local :: FId -> Ty N -> El N
 local i a = reflect (LocalVar i) Id a Nothing
 
+tableLookup :: TableName -> Dict (El N) -> Ty N -> El N
+tableLookup x vs a = reflect (Lookup x vs a) Id a Nothing
+
 data DecodedNeutral = DecodedNeutral
   { head :: Head
   , spine :: Spine
@@ -154,7 +158,6 @@ data El :: Case -> Type where
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
   Lit :: Literal -> El N
-  Lookup :: TableName -> Dict (El N) -> El N
 
 app :: El c -> El N -> Evaluation El c
 app (Lam _ clo) arg = appClo clo arg

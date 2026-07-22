@@ -1,39 +1,43 @@
 -- elaborated
 global entry named Payload
-type: Set
-value: sig
-  name : String
-  rank : Int
+type: (X : Set) -> Set
+value: X => sig
+  first : X
+  second : X
 end
 global entry named T
 type: Theory
 value: sig
-  E : Int -> Set
-  r : (p : Payload) -> E p.rank
+  X : Set
+  E : X -> Set
+  r : (p : Payload X) -> E p.second
 end
 realm named TRealm
 generators: node
-  E = rel [a : Int]
-  r = (fun [p : Payload] -> TRealm.E [a := p.rank])
+  X = rel []
+  E = rel [a : TRealm.X []]
+  r = (fun [p : Payload (TRealm.X [])] -> TRealm.E [a := p.second])
 end
 lowered: flatrealm
   entities
-    table ℜ.E := [.a : Int]
-    table ℜ.r := [.p.name : String, .p.rank : Int, .a : ℜ.E] primarykey [
-      .p.name,
-      .p.rank
+    table ℜ.X := []
+    table ℜ.E := [.a : ℜ.X]
+    table ℜ.r := [.p.first : ℜ.X, .p.second : ℜ.X, .a : ℜ.E] primarykey [
+      .p.first,
+      .p.second
     ]
   end
   rules
-    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ⊤
-    enforced ℜ.r.foreignKey p.name p.rank a := ℜ.r [
-      .p.name ↦ p.name,
-      .p.rank ↦ p.rank,
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.X []
+    enforced ℜ.r.foreignKey p.first p.second a := ℜ.r [
+      .p.first ↦ p.first,
+      .p.second ↦ p.second,
       .a ↦ a
-    ] ⊢ a ∈ ℜ.E [.a ↦ p.rank]
-    monitored ℜ.r.total p.name p.rank := ⊤ ⊢ ℜ.r [
-      .p.name ↦ p.name,
-      .p.rank ↦ p.rank
+    ] ⊢ p.first ∈ ℜ.X [] ∧ p.second ∈ ℜ.X [] ∧ a ∈ ℜ.E [.a ↦ p.second]
+    monitored ℜ.r.total p.first p.second := p.first ∈ ℜ.X [] ∧ p.second ∈ ℜ.X [] ⊢ ℜ.r [
+      .p.first ↦ p.first,
+      .p.second ↦ p.second
     ]
   end
 end

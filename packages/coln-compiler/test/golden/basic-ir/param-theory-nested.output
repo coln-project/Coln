@@ -1,0 +1,41 @@
+-- elaborated
+global entry named PointOf
+type: (X : Set) -> Theory
+value: X => sig
+  point : X
+end
+global entry named Pointed
+type: (X : Set) -> Theory
+value: X => sig
+  inner : PointOf X
+end
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  outer : Pointed X
+end
+realm named TRealm
+generators: node
+  X = rel []
+  outer = node
+    inner = node
+      point = (fun [] -> TRealm.X [])
+    end
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.outer.inner.point := [.a : ℜ.X] primarykey []
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.outer.inner.point.foreignKey a := ℜ.outer.inner.point [
+      .a ↦ a
+    ] ⊢ a ∈ ℜ.X []
+    monitored ℜ.outer.inner.point.total := ⊤ ⊢ ℜ.outer.inner.point []
+  end
+end
+
+-- messages

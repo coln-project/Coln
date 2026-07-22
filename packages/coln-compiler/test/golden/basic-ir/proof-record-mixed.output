@@ -1,0 +1,41 @@
+-- elaborated
+global entry named EqualTriple
+type: (X : Set) -> Set
+value: X => sig
+  first : X
+  second : X
+  proof : first = second
+  trailing : X
+end
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  value : EqualTriple X
+end
+realm named TRealm
+generators: node
+  X = rel []
+  value = (fun [] -> EqualTriple (TRealm.X []))
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.value := [
+      .a.first : ℜ.X,
+      .a.second : ℜ.X,
+      .a.trailing : ℜ.X
+    ] primarykey []
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.value.foreignKey a.first a.second a.trailing := ℜ.value [
+      .a.first ↦ a.first,
+      .a.second ↦ a.second,
+      .a.trailing ↦ a.trailing
+    ] ⊢ a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X []
+    monitored ℜ.value.total := ⊤ ⊢ ℜ.value []
+  end
+end
+
+-- messages
