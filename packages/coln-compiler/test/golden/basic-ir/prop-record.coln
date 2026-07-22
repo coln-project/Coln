@@ -1,0 +1,14 @@
+def And (P : Prop) (Q : Prop) : Prop := sig
+  left : P
+  right : Q
+end
+
+theory T := sig
+  P : Prop
+  Q : Prop
+  make : P -> Q -> And P Q
+  projectLeft : And P Q -> P
+end
+
+realm TRealm @ T
+end

@@ -1,0 +1,55 @@
+-- elaborated
+global entry named EqualTriple
+type: (X : Set) -> Set
+value: X => sig
+  first : X
+  second : X
+  proof : first = second
+  trailing : X
+end
+global entry named T
+type: Theory
+value: sig
+  X : Set
+  Accepted : EqualTriple X -> Prop
+  select : EqualTriple X -> X
+end
+realm named TRealm
+generators: node
+  X = rel []
+  Accepted = rel [a : EqualTriple (TRealm.X [])]
+  select = (fun [a : EqualTriple (TRealm.X [])] -> TRealm.X [])
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.Accepted := [.a.first : ℜ.X, .a.second : ℜ.X, .a.trailing : ℜ.X]
+    table ℜ.select := [
+      .a.first : ℜ.X,
+      .a.second : ℜ.X,
+      .a.trailing : ℜ.X,
+      .b : ℜ.X
+    ] primarykey [.a.first, .a.second, .a.trailing]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.Accepted.foreignKey a.first a.second a.trailing := ℜ.Accepted [
+      .a.first ↦ a.first,
+      .a.second ↦ a.second,
+      .a.trailing ↦ a.trailing
+    ] ⊢ a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X []
+    enforced ℜ.select.foreignKey a.first a.second a.trailing b := ℜ.select [
+      .a.first ↦ a.first,
+      .a.second ↦ a.second,
+      .a.trailing ↦ a.trailing,
+      .b ↦ b
+    ] ⊢ a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X [] ∧ b ∈ ℜ.X []
+    monitored ℜ.select.total a.first a.second a.trailing := a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X [] ⊢ ℜ.select [
+      .a.first ↦ a.first,
+      .a.second ↦ a.second,
+      .a.trailing ↦ a.trailing
+    ]
+  end
+end
+
+-- messages

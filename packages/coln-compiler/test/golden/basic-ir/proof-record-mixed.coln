@@ -1,0 +1,14 @@
+def EqualTriple (X : Set) : Set := sig
+  first : X
+  second : X
+  proof : first = second
+  trailing : X
+end
+
+theory T := sig
+  X : Set
+  value : EqualTriple X
+end
+
+realm TRealm @ T
+end

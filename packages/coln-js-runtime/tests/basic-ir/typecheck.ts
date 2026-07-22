@@ -42,6 +42,13 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     },
   ],
   [
+    "empty-prop-record",
+    {
+      label: "proposition record declarations refer to a missing Truth namespace",
+      match: /Cannot find namespace 'Truth'/,
+    },
+  ],
+  [
     "empty-record",
     {
       label: "empty record declarations refer to a missing Unit namespace",
@@ -116,6 +123,27 @@ const knownFailures = new Map<string, { label: string; match: RegExp }>([
     {
       label: "proof record declarations refer to a missing Witness namespace",
       match: /Cannot find namespace 'Witness'/,
+    },
+  ],
+  [
+    "proof-record-mixed",
+    {
+      label: "mixed proof record declarations refer to a missing EqualTriple namespace",
+      match: /Cannot find namespace 'EqualTriple'/,
+    },
+  ],
+  [
+    "proof-record-parameter",
+    {
+      label: "proof-bearing record values are not represented as runtime Values",
+      match: /not assignable to parameter of type 'Value'/,
+    },
+  ],
+  [
+    "prop-record",
+    {
+      label: "proposition record declarations refer to a missing And namespace",
+      match: /Cannot find namespace 'And'/,
     },
   ],
   [
