@@ -124,12 +124,13 @@ fn hand_cases() {
     assert_eq!(agree_with_oracle(&not_exists, &cat).len(), 0);
 }
 
-/// Corner cases the random generator hits only by luck: empty inputs,
-/// duplicate input rows, and projections that collapse rows.
+/// Corner cases the random generator is not guaranteed to produce: empty
+/// inputs, duplicate input rows, and projections that collapse rows.
 #[test]
 fn edge_cases() {
     let mut cat = Catalog::new();
-    // (2,3) appears twice: relations are sets, duplicates must not leak.
+    // (2,3) appears twice: relations are sets, so duplicate input rows
+    // must not reach the output.
     cat.insert(Relation::new(
         "R",
         ["a", "b"],

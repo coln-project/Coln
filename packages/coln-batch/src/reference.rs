@@ -5,9 +5,10 @@
 //! Brute-force reference executor — the test oracle.
 //!
 //! Evaluates a query by trying every combination of rows, atom by atom.
-//! Exponential in the number of atoms; only ever use it on small data to
-//! establish ground truth for the real executors. Kept dead simple so its
-//! correctness is obvious by inspection.
+//! Exponential in the number of atoms; intended only for small inputs,
+//! where it establishes ground truth for the real executors. The
+//! implementation is deliberately minimal so that its correctness can be
+//! verified by inspection.
 
 use anyhow::Result;
 

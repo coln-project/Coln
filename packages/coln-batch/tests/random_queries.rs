@@ -5,10 +5,12 @@
 //! Randomized differential testing: hundreds of generated conjunctive
 //! queries over generated catalogs, each checked three ways (binary join,
 //! generic join, brute-force oracle) like `tests/differential.rs`, but
-//! over query shapes no fixture writer would think of.
+//! covering a far larger space of query shapes than hand-written
+//! fixtures.
 //!
-//! The value domain is tiny on purpose: joins that hit, joins that miss,
-//! empty relations, cross products and dead literals all occur naturally.
+//! The value domain is deliberately small: matching and non-matching
+//! joins, empty relations, cross products and unsatisfied literals all
+//! occur naturally.
 //! Each case seeds its own [`SplitMix64`], so a failing case number
 //! reproduces in isolation.
 
@@ -21,8 +23,8 @@ const CASES: u64 = 250;
 /// Values are drawn from `0..DOMAIN`, small so collisions are common.
 const DOMAIN: u64 = 8;
 
-/// Random catalog: 1..=4 relations, arity 1..=3, 0..=20 rows each (zero
-/// rows included on purpose).
+/// Random catalog: 1..=4 relations, arity 1..=3, 0..=20 rows each
+/// (zero-row relations included deliberately).
 fn random_catalog(rng: &mut SplitMix64) -> (Catalog, Vec<(String, usize)>) {
     let mut cat = Catalog::new();
     let mut rels = Vec::new();
@@ -125,7 +127,8 @@ fn random_queries_agree_with_oracle() {
             non_empty += 1;
         }
     }
-    // Guard the generator itself: it must neither skip nor trivialize.
+    // Guard against a degenerate generator: it must neither skip most
+    // cases nor produce only trivial ones.
     assert!(ran >= CASES * 8 / 10, "only {ran}/{CASES} cases ran");
     assert!(non_empty >= CASES / 10, "only {non_empty} non-empty results");
 }

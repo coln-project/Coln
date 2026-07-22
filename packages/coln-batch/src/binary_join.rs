@@ -7,8 +7,8 @@
 //! Atoms are processed in query order. The intermediate result is a flat
 //! table of bindings for all variables seen so far; each step hash-joins
 //! it with the next atom on their shared variables. This is the classic
-//! plan shape — solid on acyclic queries, and the executor whose oversized
-//! intermediates on *cyclic* queries motivate the generic join
+//! plan shape: efficient on acyclic queries, while its oversized
+//! intermediate results on *cyclic* queries motivate the generic join
 //! ([`crate::generic_join`]).
 //!
 //! Data is read exclusively through the [`SortedTable`] trait (a plain

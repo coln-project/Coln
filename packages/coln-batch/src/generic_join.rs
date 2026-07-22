@@ -147,7 +147,8 @@ impl<T: SortedTable> Solver<'_, T> {
 
         let mut cand: u64 = 0;
         loop {
-            // Leapfrog: ratchet `cand` up until every participant has it.
+            // Leapfrog: advance `cand` until every participating atom
+            // contains it.
             let mut agreed = true;
             for &p in parts {
                 let a = &self.atoms[p];

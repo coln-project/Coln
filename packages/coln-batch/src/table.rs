@@ -182,9 +182,10 @@ impl SortedTable for ArrowSortedTable {
 ///
 /// Verifies (a) `sort_order` is a permutation, (b) rows are sorted, and
 /// (c) `lower_bound`/`upper_bound`/`equal_range` agree with linear scans
-/// on every prefix range — walking ranges exactly the way the generic
-/// join will. Quadratic-ish; use on small instances in tests. Storage
-/// implementors: point this at your index to validate the contract.
+/// on every prefix range, walking ranges exactly the way the generic
+/// join will. The cost is roughly quadratic, so restrict it to small
+/// instances in tests. Storage implementations can run this against
+/// their own indexes to validate the contract.
 pub fn check_contract<T: SortedTable>(t: &T) {
     let arity = t.arity();
     let order = t.sort_order();
