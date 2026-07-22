@@ -124,6 +124,58 @@ fn hand_cases() {
     assert_eq!(agree_with_oracle(&not_exists, &cat).len(), 0);
 }
 
+/// Corner cases the random generator hits only by luck: empty inputs,
+/// duplicate input rows, and projections that collapse rows.
+#[test]
+fn edge_cases() {
+    let mut cat = Catalog::new();
+    // (2,3) appears twice: relations are sets, duplicates must not leak.
+    cat.insert(Relation::new(
+        "R",
+        ["a", "b"],
+        vec![vec![1, 1, 2, 2], vec![2, 4, 3, 3]],
+    ));
+    cat.insert(Relation::new("E", ["a", "b"], vec![Vec::new(), Vec::new()]));
+    let (x, y, z) = (0, 1, 2);
+
+    // Scanning an empty relation yields an empty result.
+    let empty_scan = Query {
+        var_names: vec!["x".into(), "y".into()],
+        atoms: vec![atom("E", vec![Term::Var(x), Term::Var(y)])],
+        head: vec![x, y],
+    };
+    assert_eq!(agree_with_oracle(&empty_scan, &cat).len(), 0);
+
+    // An empty relation anywhere in the body empties the whole result.
+    let empty_join = Query {
+        var_names: vec!["x".into(), "y".into(), "z".into()],
+        atoms: vec![
+            atom("R", vec![Term::Var(x), Term::Var(y)]),
+            atom("E", vec![Term::Var(y), Term::Var(z)]),
+        ],
+        head: vec![x, y, z],
+    };
+    assert_eq!(agree_with_oracle(&empty_join, &cat).len(), 0);
+
+    // Projection collapses rows (set semantics): x=1 and x=2 each stem
+    // from two body rows but appear once.
+    let proj = Query {
+        var_names: vec!["x".into(), "y".into()],
+        atoms: vec![atom("R", vec![Term::Var(x), Term::Var(y)])],
+        head: vec![x],
+    };
+    let r = agree_with_oracle(&proj, &cat);
+    assert_eq!((r.len(), r.row(0), r.row(1)), (2, vec![1], vec![2]));
+
+    // Duplicate input rows do not survive into the output.
+    let scan = Query {
+        var_names: vec!["x".into(), "y".into()],
+        atoms: vec![atom("R", vec![Term::Var(x), Term::Var(y)])],
+        head: vec![x, y],
+    };
+    assert_eq!(agree_with_oracle(&scan, &cat).len(), 3);
+}
+
 #[test]
 fn fixtures_small_vs_oracle() {
     let cat = fixtures::fg_catalog(40, 120, 10, 6);
