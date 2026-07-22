@@ -130,5 +130,8 @@ fn random_queries_agree_with_oracle() {
     // Guard against a degenerate generator: it must neither skip most
     // cases nor produce only trivial ones.
     assert!(ran >= CASES * 8 / 10, "only {ran}/{CASES} cases ran");
-    assert!(non_empty >= CASES / 10, "only {non_empty} non-empty results");
+    assert!(
+        non_empty >= CASES / 10,
+        "only {non_empty} non-empty results"
+    );
 }

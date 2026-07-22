@@ -24,6 +24,31 @@ brute-force oracle.
 - `reference.rs` is the brute-force oracle that defines correct results
   in tests.
 
+## Examples
+
+`examples/smoke.rs` is the smallest possible run, a three-edge graph
+and one join, checkable by hand:
+
+```sh
+cargo run -p coln-batch --example smoke
+```
+
+```text
+path [1, 3]
+path [2, 4]
+```
+
+`examples/demo.rs` is the full pipeline at scale. It generates two
+workloads with 10,000 planted matches each, round-trips them through
+Arrow IPC files, answers the fixture queries, and cross-checks the
+executors against each other and against the planted count. Every step
+prints what it does and what it verified, ending in `All checks
+passed.`:
+
+```sh
+cargo run -p coln-batch --example demo --release
+```
+
 ## Testing
 
 Three layers. Unit tests per module, differential tests (both executors
@@ -34,8 +59,9 @@ differential tests over generated query shapes
 ```sh
 cargo test -p coln-batch                                 # fast suite
 cargo test -p coln-batch --release -- --include-ignored  # + 1M-row runs
-cargo run -p coln-batch --example demo --release         # end-to-end demo
 ```
+
+`just check` runs the same gate as CI (format, clippy, tests).
 
 ## Scope
 
