@@ -73,7 +73,7 @@ mod tests {
         }
     }
 
-    /// AP1 acceptance test: generate ~1M rows per relation, save, reload.
+    /// Scale test: generate ~1M rows per relation, save, reload.
     /// Run with: cargo test -p coln-batch -- --include-ignored
     #[test]
     #[ignore = "large; run explicitly"]

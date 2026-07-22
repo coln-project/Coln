@@ -7,7 +7,7 @@
 //! One [`SortedTable`] is one **index**: the rows of a relation, totally
 //! ordered by the lexicographic order of a declared column permutation.
 //! All join executors in this crate are written purely against this trait.
-//! Anything that can answer its five required methods — the in-memory
+//! Anything that can answer its four required methods — the in-memory
 //! [`ArrowSortedTable`] below today, a Hexane-backed B-tree index later —
 //! can back the engine unchanged.
 

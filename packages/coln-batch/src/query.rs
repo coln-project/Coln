@@ -21,8 +21,7 @@ use anyhow::{Context, Result, bail};
 use crate::relation::Relation;
 
 /// A query variable, identified by its index. For the worst-case-optimal
-/// executor the variable numbering doubles as the elimination order (a
-/// planner that picks good orders comes later).
+/// executor the variable numbering doubles as the elimination order
 pub type VarId = usize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

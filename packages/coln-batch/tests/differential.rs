@@ -206,7 +206,7 @@ fn fixtures_medium_executors_agree() {
     assert!(r.len() >= 900, "got {}", r.len());
 }
 
-/// AP5 acceptance test at the 1M-row scale.
+/// Executor agreement at the 1M-row scale.
 /// Run with: cargo test -p coln-batch --release -- --include-ignored
 #[test]
 #[ignore = "large; run explicitly (use --release)"]
