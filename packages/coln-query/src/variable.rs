@@ -71,6 +71,12 @@ impl From<RelationRef> for Value {
     }
 }
 
+impl From<Tuple> for Value {
+    fn from(value: Tuple) -> Self {
+        Value::Tuple(value)
+    }
+}
+
 impl From<ScalarTypedValue> for Value {
     fn from(value: ScalarTypedValue) -> Self {
         match value {

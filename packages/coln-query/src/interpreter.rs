@@ -9,8 +9,8 @@ use crate::{
     expr::{
         AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
         DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitor, FixedPointIterExpr,
-        FunctionExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr, UnaryExpr,
-        UnionExpr, VarExpr,
+        FunctionExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr, TupleExpr,
+        UnaryExpr, UnionExpr, VarExpr,
     },
     function::new_function,
     operator::Operator,
@@ -21,6 +21,7 @@ use crate::{
     },
     relation::{Relation, RelationRef, SchemaTuple, TupleKey, TupleValue, new_relation},
     stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
+    tuple::Tuple,
     variable::{Environment, Value},
 };
 use std::{cell::Ref, rc::Rc};
@@ -183,6 +184,26 @@ type VisitorCtx<'a, 'b> = &'a mut InterpreterContext<'b>;
 type ExprVisitorResult = Result<Value, EngineError>;
 
 impl ExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>> for Interpreter {
+    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: VisitorCtx) -> ExprVisitorResult {
+        // Maybe make values reference counted instead of cloning here?
+        let literal = expr.value.clone();
+        Ok(Value::from(literal))
+    }
+
+    fn visit_tuple_expr(&mut self, expr: &TupleExpr, ctx: VisitorCtx<'_, '_>) -> ExprVisitorResult {
+        let values = expr
+            .elements
+            .iter()
+            .map(|expr| self.visit_expr(expr, ctx))
+            .collect::<Result<Vec<Value>, _>>()?;
+
+        Ok(Value::from(Tuple::from(values)))
+    }
+
+    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: VisitorCtx) -> ExprVisitorResult {
+        self.visit_expr(&expr.expr, ctx)
+    }
+
     fn visit_binary_expr(&mut self, expr: &BinaryExpr, ctx: VisitorCtx) -> ExprVisitorResult {
         if let Operator::And | Operator::Or = expr.operator {
             self.visit_lazy_binary_expr(expr, ctx)
@@ -207,10 +228,6 @@ impl ExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>> for Interpreter {
                 expr.operator
             ))),
         }
-    }
-
-    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: VisitorCtx) -> ExprVisitorResult {
-        self.visit_expr(&expr.expr, ctx)
     }
 
     fn visit_var_expr(&mut self, expr: &VarExpr, ctx: VisitorCtx) -> ExprVisitorResult {
@@ -241,11 +258,6 @@ impl ExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>> for Interpreter {
                 .unwrap_or_else(|| panic!("Unresolved variable '{name}'."));
             ctx.environment.assign_var(resolved, value.clone());
         })
-    }
-
-    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: VisitorCtx) -> ExprVisitorResult {
-        // Maybe make values reference counted instead of cloning here?
-        Ok(Value::from(expr.value.clone()))
     }
 
     fn visit_function_expr(&mut self, expr: &FunctionExpr, ctx: VisitorCtx) -> ExprVisitorResult {

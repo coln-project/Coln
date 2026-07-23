@@ -8,8 +8,8 @@ use crate::{
     expr::{
         AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
         DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitorMut, FixedPointIterExpr,
-        FunctionExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr, UnaryExpr,
-        UnionExpr, VarExpr,
+        FunctionExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr, TupleExpr,
+        UnaryExpr, UnionExpr, VarExpr,
     },
     stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitorMut, VarStmt},
     util::{Named, Resolvable},
@@ -197,6 +197,20 @@ type VisitorResult = Result<(), SyntaxError>;
 type VisitorCtx<'a, 'b> = &'a mut ResolverContext<'b>;
 
 impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
+    fn visit_literal_expr(&mut self, expr: &mut LiteralExpr, ctx: VisitorCtx) -> VisitorResult {
+        Ok(())
+    }
+
+    fn visit_tuple_expr(&mut self, expr: &mut TupleExpr, ctx: VisitorCtx<'_, '_>) -> VisitorResult {
+        expr.elements
+            .iter_mut()
+            .try_for_each(|relation| self.visit_expr(relation, ctx))
+    }
+
+    fn visit_grouping_expr(&mut self, expr: &mut GroupingExpr, ctx: VisitorCtx) -> VisitorResult {
+        self.visit_expr(&mut expr.expr, ctx)
+    }
+
     fn visit_binary_expr(&mut self, expr: &mut BinaryExpr, ctx: VisitorCtx) -> VisitorResult {
         self.visit_expr(&mut expr.left, ctx)
             .and_then(|()| self.visit_expr(&mut expr.right, ctx))
@@ -204,10 +218,6 @@ impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
 
     fn visit_unary_expr(&mut self, expr: &mut UnaryExpr, ctx: VisitorCtx) -> VisitorResult {
         self.visit_expr(&mut expr.operand, ctx)
-    }
-
-    fn visit_grouping_expr(&mut self, expr: &mut GroupingExpr, ctx: VisitorCtx) -> VisitorResult {
-        self.visit_expr(&mut expr.expr, ctx)
     }
 
     fn visit_var_expr(&mut self, expr: &mut VarExpr, ctx: VisitorCtx) -> VisitorResult {
@@ -229,10 +239,6 @@ impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
         self.visit_expr(&mut expr.value, ctx)?;
         // `resolve_var` returns an error if the variable is not declared.
         self.resolve_var(expr, ctx)
-    }
-
-    fn visit_literal_expr(&mut self, expr: &mut LiteralExpr, ctx: VisitorCtx) -> VisitorResult {
-        Ok(())
     }
 
     fn visit_function_expr(&mut self, expr: &mut FunctionExpr, ctx: VisitorCtx) -> VisitorResult {

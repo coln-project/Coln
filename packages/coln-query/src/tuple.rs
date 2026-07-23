@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use crate::type_resolver::ExprType;
 use crate::variable::Value;
 use std::fmt;
 use std::rc::Rc;
@@ -122,6 +123,17 @@ impl fmt::Display for Tuple {
             }
         }
         write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TupleType {
+    element_types: Vec<ExprType>,
+}
+
+impl From<Vec<ExprType>> for TupleType {
+    fn from(element_types: Vec<ExprType>) -> Self {
+        Self { element_types }
     }
 }
 

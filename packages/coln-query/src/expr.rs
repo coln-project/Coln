@@ -14,12 +14,13 @@ use std::fmt::{self, Debug, Display};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Expr {
+    Literal(Box<LiteralExpr>),
+    Tuple(Box<TupleExpr>),
+    Grouping(Box<GroupingExpr>),
     Binary(Box<BinaryExpr>),
     Unary(Box<UnaryExpr>),
-    Grouping(Box<GroupingExpr>),
     Var(Box<VarExpr>),
     Assign(Box<AssignExpr>),
-    Literal(Box<LiteralExpr>),
     Call(Box<CallExpr>),
     Function(Box<FunctionExpr>),
     Alias(Box<AliasExpr>),
@@ -36,12 +37,13 @@ pub enum Expr {
 
 impl_from_auto_box! {
     Expr,
+    (Expr::Literal, LiteralExpr),
+    (Expr::Tuple, TupleExpr),
+    (Expr::Grouping, GroupingExpr),
     (Expr::Binary, BinaryExpr),
     (Expr::Unary, UnaryExpr),
-    (Expr::Grouping, GroupingExpr),
     (Expr::Var, VarExpr),
     (Expr::Assign, AssignExpr),
-    (Expr::Literal, LiteralExpr),
     (Expr::Call, CallExpr),
     (Expr::Function, FunctionExpr),
     (Expr::Alias, AliasExpr),
@@ -57,6 +59,29 @@ impl_from_auto_box! {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LiteralExpr {
+    pub value: Literal,
+}
+
+impl<T: Into<Literal>> From<T> for LiteralExpr {
+    fn from(value: T) -> Self {
+        Self {
+            value: value.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TupleExpr {
+    pub elements: Vec<Expr>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroupingExpr {
+    pub expr: Expr,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BinaryExpr {
     pub operator: Operator,
     pub left: Expr,
@@ -67,11 +92,6 @@ pub struct BinaryExpr {
 pub struct UnaryExpr {
     pub operator: Operator,
     pub operand: Expr,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GroupingExpr {
-    pub expr: Expr,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -127,19 +147,6 @@ impl Resolvable for AssignExpr {
 impl Named for AssignExpr {
     fn name(&self) -> &str {
         &self.name
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LiteralExpr {
-    pub value: Literal,
-}
-
-impl<T: Into<Literal>> From<T> for LiteralExpr {
-    fn from(value: T) -> Self {
-        Self {
-            value: value.into(),
-        }
     }
 }
 
@@ -386,12 +393,13 @@ impl Display for Literal {
 pub trait ExprVisitor<T, C> {
     fn visit_expr(&mut self, expr: &Expr, ctx: C) -> T {
         match expr {
+            Expr::Literal(expr) => self.visit_literal_expr(expr, ctx),
+            Expr::Tuple(expr) => self.visit_tuple_expr(expr, ctx),
+            Expr::Grouping(expr) => self.visit_grouping_expr(expr, ctx),
             Expr::Binary(expr) => self.visit_binary_expr(expr, ctx),
             Expr::Unary(expr) => self.visit_unary_expr(expr, ctx),
-            Expr::Grouping(expr) => self.visit_grouping_expr(expr, ctx),
             Expr::Var(expr) => self.visit_var_expr(expr, ctx),
             Expr::Assign(expr) => self.visit_assign_expr(expr, ctx),
-            Expr::Literal(expr) => self.visit_literal_expr(expr, ctx),
             Expr::Function(expr) => self.visit_function_expr(expr, ctx),
             Expr::Call(expr) => self.visit_call_expr(expr, ctx),
             Expr::Alias(expr) => self.visit_alias_expr(expr, ctx),
@@ -406,12 +414,13 @@ pub trait ExprVisitor<T, C> {
             Expr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(expr, ctx),
         }
     }
+    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: C) -> T;
+    fn visit_tuple_expr(&mut self, expr: &TupleExpr, ctx: C) -> T;
+    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: C) -> T;
     fn visit_binary_expr(&mut self, expr: &BinaryExpr, ctx: C) -> T;
     fn visit_unary_expr(&mut self, expr: &UnaryExpr, ctx: C) -> T;
-    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: C) -> T;
     fn visit_var_expr(&mut self, expr: &VarExpr, ctx: C) -> T;
     fn visit_assign_expr(&mut self, expr: &AssignExpr, ctx: C) -> T;
-    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: C) -> T;
     fn visit_function_expr(&mut self, expr: &FunctionExpr, ctx: C) -> T;
     fn visit_call_expr(&mut self, expr: &CallExpr, ctx: C) -> T;
     fn visit_alias_expr(&mut self, expr: &AliasExpr, ctx: C) -> T;
@@ -429,12 +438,13 @@ pub trait ExprVisitor<T, C> {
 pub trait ExprVisitorMut<T, C> {
     fn visit_expr(&mut self, expr: &mut Expr, ctx: C) -> T {
         match expr {
+            Expr::Literal(expr) => self.visit_literal_expr(expr, ctx),
+            Expr::Tuple(expr) => self.visit_tuple_expr(expr, ctx),
+            Expr::Grouping(expr) => self.visit_grouping_expr(expr, ctx),
             Expr::Binary(expr) => self.visit_binary_expr(expr, ctx),
             Expr::Unary(expr) => self.visit_unary_expr(expr, ctx),
-            Expr::Grouping(expr) => self.visit_grouping_expr(expr, ctx),
             Expr::Var(expr) => self.visit_var_expr(expr, ctx),
             Expr::Assign(expr) => self.visit_assign_expr(expr, ctx),
-            Expr::Literal(expr) => self.visit_literal_expr(expr, ctx),
             Expr::Function(expr) => self.visit_function_expr(expr, ctx),
             Expr::Call(expr) => self.visit_call_expr(expr, ctx),
             Expr::Alias(expr) => self.visit_alias_expr(expr, ctx),
@@ -449,12 +459,13 @@ pub trait ExprVisitorMut<T, C> {
             Expr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(expr, ctx),
         }
     }
+    fn visit_literal_expr(&mut self, expr: &mut LiteralExpr, ctx: C) -> T;
+    fn visit_tuple_expr(&mut self, expr: &mut TupleExpr, ctx: C) -> T;
+    fn visit_grouping_expr(&mut self, expr: &mut GroupingExpr, ctx: C) -> T;
     fn visit_binary_expr(&mut self, expr: &mut BinaryExpr, ctx: C) -> T;
     fn visit_unary_expr(&mut self, expr: &mut UnaryExpr, ctx: C) -> T;
-    fn visit_grouping_expr(&mut self, expr: &mut GroupingExpr, ctx: C) -> T;
     fn visit_var_expr(&mut self, expr: &mut VarExpr, ctx: C) -> T;
     fn visit_assign_expr(&mut self, expr: &mut AssignExpr, ctx: C) -> T;
-    fn visit_literal_expr(&mut self, expr: &mut LiteralExpr, ctx: C) -> T;
     fn visit_function_expr(&mut self, expr: &mut FunctionExpr, ctx: C) -> T;
     fn visit_call_expr(&mut self, expr: &mut CallExpr, ctx: C) -> T;
     fn visit_alias_expr(&mut self, expr: &mut AliasExpr, ctx: C) -> T;
@@ -472,12 +483,13 @@ pub trait ExprVisitorMut<T, C> {
 pub trait ExprVisitorOwn<T, C> {
     fn visit_expr(&mut self, expr: Expr, ctx: C) -> T {
         match expr {
+            Expr::Literal(expr) => self.visit_literal_expr(*expr, ctx),
+            Expr::Tuple(expr) => self.visit_tuple_expr(*expr, ctx),
+            Expr::Grouping(expr) => self.visit_grouping_expr(*expr, ctx),
             Expr::Binary(expr) => self.visit_binary_expr(*expr, ctx),
             Expr::Unary(expr) => self.visit_unary_expr(*expr, ctx),
-            Expr::Grouping(expr) => self.visit_grouping_expr(*expr, ctx),
             Expr::Var(expr) => self.visit_var_expr(*expr, ctx),
             Expr::Assign(expr) => self.visit_assign_expr(*expr, ctx),
-            Expr::Literal(expr) => self.visit_literal_expr(*expr, ctx),
             Expr::Function(expr) => self.visit_function_expr(*expr, ctx),
             Expr::Call(expr) => self.visit_call_expr(*expr, ctx),
             Expr::Alias(expr) => self.visit_alias_expr(*expr, ctx),
@@ -492,12 +504,13 @@ pub trait ExprVisitorOwn<T, C> {
             Expr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(*expr, ctx),
         }
     }
+    fn visit_literal_expr(&mut self, expr: LiteralExpr, ctx: C) -> T;
+    fn visit_tuple_expr(&mut self, expr: TupleExpr, ctx: C) -> T;
+    fn visit_grouping_expr(&mut self, expr: GroupingExpr, ctx: C) -> T;
     fn visit_binary_expr(&mut self, expr: BinaryExpr, ctx: C) -> T;
     fn visit_unary_expr(&mut self, expr: UnaryExpr, ctx: C) -> T;
-    fn visit_grouping_expr(&mut self, expr: GroupingExpr, ctx: C) -> T;
     fn visit_var_expr(&mut self, expr: VarExpr, ctx: C) -> T;
     fn visit_assign_expr(&mut self, expr: AssignExpr, ctx: C) -> T;
-    fn visit_literal_expr(&mut self, expr: LiteralExpr, ctx: C) -> T;
     fn visit_function_expr(&mut self, expr: FunctionExpr, ctx: C) -> T;
     fn visit_call_expr(&mut self, expr: CallExpr, ctx: C) -> T;
     fn visit_alias_expr(&mut self, expr: AliasExpr, ctx: C) -> T;
@@ -513,12 +526,13 @@ pub trait ExprVisitorOwn<T, C> {
 }
 
 impl MemAddr for Expr {}
+impl MemAddr for LiteralExpr {}
+impl MemAddr for TupleExpr {}
+impl MemAddr for GroupingExpr {}
 impl MemAddr for BinaryExpr {}
 impl MemAddr for UnaryExpr {}
-impl MemAddr for GroupingExpr {}
 impl MemAddr for VarExpr {}
 impl MemAddr for AssignExpr {}
-impl MemAddr for LiteralExpr {}
 impl MemAddr for FunctionExpr {}
 impl MemAddr for CallExpr {}
 impl MemAddr for AliasExpr {}

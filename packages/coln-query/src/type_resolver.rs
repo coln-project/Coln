@@ -7,12 +7,13 @@ use crate::{
     expr::{
         AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
         DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitor, FixedPointIterExpr,
-        FunctionExpr, GroupingExpr, Literal, LiteralExpr, ProjectionExpr, SelectionExpr, UnaryExpr,
-        UnionExpr, VarExpr,
+        FunctionExpr, GroupingExpr, Literal, LiteralExpr, ProjectionExpr, SelectionExpr, TupleExpr,
+        UnaryExpr, UnionExpr, VarExpr,
     },
     operator::Operator,
     resolver::ScopeStack,
     stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
+    tuple::TupleType,
 };
 pub use crate::{function::FunctionType, relation::RelationType, scalar::ScalarType};
 use std::collections::HashMap;
@@ -74,6 +75,7 @@ pub enum ExprType {
     Scalar(ScalarType),
     Relation(RelationType),
     Function(FunctionType),
+    Tuple(TupleType),
 }
 
 pub struct TypeResolverContext<'a> {
@@ -137,6 +139,23 @@ impl TypeResolver {
 }
 
 impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
+    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: VisitorCtx) -> VisitorResult {
+        Ok(ExprType::from(&expr.value))
+    }
+
+    fn visit_tuple_expr(&mut self, expr: &TupleExpr, ctx: VisitorCtx<'_, '_>) -> VisitorResult {
+        let element_types = expr
+            .elements
+            .iter()
+            .map(|expr| self.visit_expr(expr, ctx))
+            .collect::<Result<Vec<ExprType>, _>>()?;
+        Ok(ExprType::Tuple(TupleType::from(element_types)))
+    }
+
+    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: VisitorCtx) -> VisitorResult {
+        self.visit_expr(&expr.expr, ctx)
+    }
+
     fn visit_binary_expr(&mut self, expr: &BinaryExpr, ctx: VisitorCtx) -> VisitorResult {
         self.visit_expr(&expr.left, ctx).and_then(|left_type| {
             let right_type = self.visit_expr(&expr.right, ctx)?;
@@ -163,10 +182,6 @@ impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
         }
     }
 
-    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: VisitorCtx) -> VisitorResult {
-        self.visit_expr(&expr.expr, ctx)
-    }
-
     fn visit_var_expr(&mut self, expr: &VarExpr, ctx: VisitorCtx) -> VisitorResult {
         let name = &expr.name;
         ctx.get_type(name)
@@ -176,10 +191,6 @@ impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
     fn visit_assign_expr(&mut self, expr: &AssignExpr, ctx: VisitorCtx) -> VisitorResult {
         // We return the type of the value that is being assigned.
         self.visit_expr(&expr.value, ctx)
-    }
-
-    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: VisitorCtx) -> VisitorResult {
-        Ok(ExprType::from(&expr.value))
     }
 
     fn visit_function_expr(&mut self, expr: &FunctionExpr, ctx: VisitorCtx) -> VisitorResult {
