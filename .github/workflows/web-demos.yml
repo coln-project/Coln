@@ -65,39 +65,39 @@ jobs:
           cp examples/index.html examples/style.css _build/web/
           cp -r examples/sync-demo/dist _build/web/sync
 
-      - name: Deploy PR preview to Netlify
-        id: deploy-preview
-        if: github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
-        run: |
-          npx --yes netlify-cli@latest deploy \
-            --auth "$NETLIFY_AUTH_TOKEN" \
-            --site "$NETLIFY_SITE_ID" \
-            --dir _build/web \
-            --no-build \
-            --alias "pr-${{ github.event.pull_request.number }}" \
-            --message "PR #${{ github.event.pull_request.number }} web demos" \
-            --json > netlify-deploy.json
+      # - name: Deploy PR preview to Netlify
+      #   id: deploy-preview
+      #   if: github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+      #   run: |
+      #     npx --yes netlify-cli@latest deploy \
+      #       --auth "$NETLIFY_AUTH_TOKEN" \
+      #       --site "$NETLIFY_SITE_ID" \
+      #       --dir _build/web \
+      #       --no-build \
+      #       --alias "pr-${{ github.event.pull_request.number }}" \
+      #       --message "PR #${{ github.event.pull_request.number }} web demos" \
+      #       --json > netlify-deploy.json
 
-          cat netlify-deploy.json
-          deploy_url=$(node -e "const d = require('./netlify-deploy.json'); console.log(d.deploy_ssl_url || d.ssl_url || d.deploy_url || d.url)")
-          echo "deploy-url=$deploy_url" >> "$GITHUB_OUTPUT"
+      #     cat netlify-deploy.json
+      #     deploy_url=$(node -e "const d = require('./netlify-deploy.json'); console.log(d.deploy_ssl_url || d.ssl_url || d.deploy_url || d.url)")
+      #     echo "deploy-url=$deploy_url" >> "$GITHUB_OUTPUT"
 
-      - name: Comment with deploy preview URL
-        if: github.event_name == 'pull_request' && steps.deploy-preview.outputs.deploy-url != ''
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const marker = '<!-- coln-web-demos-deploy-preview -->'
-            const body = `${marker}\nWeb demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
-            const { owner, repo } = context.repo
-            const issue_number = context.issue.number
-            const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
-            const existing = comments.data.find(comment => comment.body?.includes(marker))
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body })
-            }
+      # - name: Comment with deploy preview URL
+      #   if: github.event_name == 'pull_request' && steps.deploy-preview.outputs.deploy-url != ''
+      #   uses: actions/github-script@v8
+      #   with:
+      #     script: |
+      #       const marker = '<!-- coln-web-demos-deploy-preview -->'
+      #       const body = `${marker}\nWeb demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
+      #       const { owner, repo } = context.repo
+      #       const issue_number = context.issue.number
+      #       const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
+      #       const existing = comments.data.find(comment => comment.body?.includes(marker))
+      #       if (existing) {
+      #         await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
+      #       } else {
+      #         await github.rest.issues.createComment({ owner, repo, issue_number, body })
+      #       }
 
       - name: Deploy main to Netlify production
         if: github.event_name == 'push' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
