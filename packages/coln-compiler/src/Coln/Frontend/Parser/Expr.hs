@@ -1,4 +1,9 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.Frontend.Parser.Expr where
 
 import FNotation (Ntn)
@@ -77,7 +82,7 @@ fromSynN @c s = case V.scase @c of
   SDescriptive -> FromSyn $ Syn \e -> do
     (a, m) <- s.elab (e{target = TargetAnonymous})
     pure (a, M.is m)
-  
+
 fromSynD :: (V.HasEvaluation c) => ParserEnv -> Span -> Syn D -> IO (Judgment c)
 fromSynD @c e sp s = case V.scase @c of
   SNominative -> do
@@ -145,4 +150,3 @@ elim :: ParserEnv -> Syn N -> Ntn -> IO (Syn N)
 elim e j = \case
   N.Field x s -> pure $ Record.elim s j x
   arg -> Function.elim (N.span arg) j <$> chk e arg
-

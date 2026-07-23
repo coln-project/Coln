@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Elaborator.Rules.Polarity where
 
 import Coln.Common
@@ -17,6 +21,6 @@ conv sp s = Chk \e a -> do
 
 annot :: (V.HasEvaluation c) => Chk c -> Typ N -> Syn c
 annot c t = Syn \e -> do
-  a <- t.elab (e { target = TargetAnonymous })
+  a <- t.elab (e{target = TargetAnonymous})
   m <- c.elab e a.val
   pure (a.val, m)

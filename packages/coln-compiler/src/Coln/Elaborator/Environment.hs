@@ -22,10 +22,10 @@ data Scope = Scope
   }
 
 lock :: Scope -> Scope
-lock sc = sc { mode = Conjunctive, ctx = fmap (\(a, _) -> (a, Inductive)) sc.ctx }
+lock sc = sc{mode = Conjunctive, ctx = fmap (\(a, _) -> (a, Inductive)) sc.ctx}
 
 unlock :: Scope -> Scope
-unlock sc = sc { mode = Inductive }
+unlock sc = sc{mode = Inductive}
 
 emptyScope :: Mode -> Scope
 emptyScope = Scope 0 BwdNil V.LNil BwdNil

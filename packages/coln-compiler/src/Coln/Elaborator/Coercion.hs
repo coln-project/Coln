@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Elaborator.Coercion where
 
 import Coln.Common
@@ -5,8 +9,8 @@ import Coln.Core
 import Coln.Core.Memoed qualified as M
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Judgment
-import Coln.Elaborator.Rules.Universe qualified as Universe
 import Coln.Elaborator.Rules.Polarity qualified as Polarity
+import Coln.Elaborator.Rules.Universe qualified as Universe
 
 intoTyp :: Span -> Judgment N -> Typ N
 intoTyp _ (FromTyp t) = t

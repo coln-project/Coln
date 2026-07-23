@@ -22,12 +22,12 @@ data Binder = Anonymous (Typ N) | Named Name (Typ N)
 
 formation :: Span -> Binder -> Typ N -> Typ N
 formation sp (Anonymous dom) cod = Typ \e -> do
-  edom <- dom.elab (e { scope = unlock e.scope })
+  edom <- dom.elab (e{scope = unlock e.scope})
   ecod <- cod.elab e
   v <- variantFor edom ecod sp e
   pure $ function e.scope.locals v edom (S.AbsConst ecod)
 formation sp (Named x dom) cod = Typ \e -> do
-  edom <- dom.elab (e { scope = unlock e.scope })
+  edom <- dom.elab (e{scope = unlock e.scope})
   ecod <- cod.elab $ e{scope = bind x edom.val Inductive e.scope}
   v <- variantFor edom ecod sp e
   pure $ function e.scope.locals v edom (S.Abs x ecod)
@@ -50,7 +50,7 @@ elim sp callee arg = Syn $ \e -> do
   (ty, ecallee) <- callee.elab e
   case V.behavior ty of
     V.LikeFunction ft -> do
-      earg <- arg.elab (e { scope = unlock e.scope }) ft.dom
+      earg <- arg.elab (e{scope = unlock e.scope}) ft.dom
       pure (V.appClo ft.cod earg.val, app ecallee earg)
     _ -> do
       let msg = "tried to apply a value that was not of a function type"
