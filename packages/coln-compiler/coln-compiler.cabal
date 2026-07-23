@@ -39,15 +39,15 @@ library
     Coln.Elaborator.Rules.Equality
     Coln.Elaborator.Rules.Function
     Coln.Elaborator.Rules.Initial
-    Coln.Elaborator.Rules.Record
     Coln.Elaborator.Rules.Polarity
+    Coln.Elaborator.Rules.Record
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
     Coln.Frontend.Diagnostics
     Coln.Frontend.Notation
     Coln.Frontend.Parser
-    Coln.Frontend.Parser.Top
     Coln.Frontend.Parser.Expr
+    Coln.Frontend.Parser.Top
     Coln.Report
 
   hs-source-dirs: src

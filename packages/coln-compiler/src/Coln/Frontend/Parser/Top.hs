@@ -1,3 +1,7 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Frontend.Parser.Top where
 
 import Control.Exception (try)
@@ -17,9 +21,9 @@ import Coln.Diagnostics
 import Coln.Elaborator.Environment
 import Coln.Elaborator.Judgment
 import Coln.Elaborator.Rules.Function qualified as Function
-import Coln.Frontend.Parser.Expr
-import Coln.Frontend.Notation
 import Coln.Frontend.Diagnostics
+import Coln.Frontend.Notation
+import Coln.Frontend.Parser.Expr
 
 definition :: ParserEnv -> Ntn -> IO (Ntn, Ntn)
 definition _ (N.Infix n0 (N.Keyword ":=" _) n1) = pure (n0, n1)
@@ -38,18 +42,18 @@ argBinding e n = unexpectedNotation e n "argument binding of the form `<name> : 
 
 unpackArgs :: ParserEnv -> Ntn -> IO (Name, [(Span, Name, Typ N)])
 unpackArgs e (N.Group (xN :| argsN)) = do
-    x <- ident e xN
-    args <- mapM (argBinding e) argsN
-    pure (x, args)
+  x <- ident e xN
+  args <- mapM (argBinding e) argsN
+  pure (x, args)
 
 withArgs :: (V.HasEvaluation c) => [(Span, Name, Typ N)] -> (Typ N, Chk c) -> (Typ N, Chk c)
 withArgs args base = foldr go base args
-  where
-    go :: (V.HasEvaluation c) => (Span, Name, Typ N) -> (Typ N, Chk c) -> (Typ N, Chk c)
-    go (sp, name, a) (t, c) =
-        ( Function.formation sp (Function.Named name a) t
-        , Function.intro sp name c
-        )
+ where
+  go :: (V.HasEvaluation c) => (Span, Name, Typ N) -> (Typ N, Chk c) -> (Typ N, Chk c)
+  go (sp, name, a) (t, c) =
+    ( Function.formation sp (Function.Named name a) t
+    , Function.intro sp name c
+    )
 
 theory :: ParserEnv -> Ntn -> IO (Name, Typ N, Chk D)
 theory e n = do

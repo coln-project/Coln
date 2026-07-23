@@ -39,7 +39,6 @@ useIs @c f e = fmap change $ f e{target = TargetAnonymous}
     SNominative -> id
     SDescriptive -> M.is
 
-
 annotate :: Typ N -> Chk c -> Syn c
 annotate t c = Syn \e -> do
   a <- t.elab (e{target = TargetAnonymous})
