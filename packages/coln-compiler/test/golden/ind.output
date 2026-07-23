@@ -18,12 +18,12 @@ value: G => sig
   incl : (v0 : G.v) -> (v1 : G.v) -> G.e v0 v1 -> p v0 v1
   snoc : (v0 : G.v) -> (v1 : G.v) -> (v2 : G.v) -> p v0 v1 -> G.e v1 v2 -> p v0 v2
 end
-global entry named transitive-closure
-in mode: Inductive
-type: (G : Graph) -> TransitiveExt G
-value: G => init (TransitiveExt G)
 
 -- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+14 | ind def transitive-closure (G : Graph) : TransitiveExt G := init (TransitiveExt G)
+14 |                                                                                 ^
 
 error[E0316]: cannot use inductively bound variable in a conjunctive context
 16 | ind def freept (X : Set) : X := init X

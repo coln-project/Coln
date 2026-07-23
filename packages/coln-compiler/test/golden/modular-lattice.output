@@ -1,11 +1,23 @@
 -- elaborated
-
+global entry named ModularLattice
+in mode: Conjunctive
+type: Theory
+value: sig
+  Element : Set
+  meet : Element -> Element -> Element
+  meet/associative : (a : Element) -> (b : Element) -> (c : Element) -> meet (meet a b) c = meet a (meet b c)
+  meet/commutative : (a : Element) -> (b : Element) -> meet a b = meet b a
+  meet/idempotent : (a : Element) -> meet a a = a
+  join : Element -> Element -> Element
+  join/associative : (a : Element) -> (b : Element) -> (c : Element) -> join (join a b) c = join a (join b c)
+  join/associative : (a : Element) -> (b : Element) -> join a b = join b a
+  join/idempotent : (a : Element) -> join a a = a
+  ax/absorptive1 : (a : Element) -> (b : Element) -> meet a (join a b) = a
+  ax/absorptive2 : (a : Element) -> (b : Element) -> join a (meet a b) = a
+  ax/modular : (a : Element) -> (b : Element) -> (x : Element) -> join (meet a b) (meet x b) = meet (join (meet a b) x) b
+end
 
 -- messages
-
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-17 |     meet a a = a
-17 |                ^
 
 error[E0200]: unexpected notation for field setting of the form `<fieldname> := <expr>`: Infix
 49 |     bot : Element                                                                                                        

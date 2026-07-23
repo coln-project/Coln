@@ -181,6 +181,7 @@ argStarts =
     , T.AKeyword
     , T.Field
     , T.Tag
+    , T.Mode
     , T.Int
     , T.String
     , T.Block
@@ -236,6 +237,9 @@ argBase st = do
     T.Tag -> do
       x <- curName st
       advanceClose st m $ Tag x
+    T.Mode -> do
+      x <- curName st
+      advanceClose st m $ Mode x
     T.Int -> do
       i <- curInt st
       advanceClose st m $ Int i

@@ -1,26 +1,32 @@
 -- elaborated
 global entry named Pair
+in mode: Conjunctive
 type: Set
 value: sig
   first : Int
   second : Int
 end
 global entry named pair
+in mode: Conjunctive
 type: Pair
 value: [first := 1, second := 2]
 global entry named Dependent
+in mode: Conjunctive
 type: Theory
 value: sig
   A : Set
   value : A
 end
 global entry named dependent
+in mode: Conjunctive
 type: Dependent
 value: [A := Int, value := 1]
 global entry named identity
+in mode: Conjunctive
 type: Int -> Int
 value: x => x
 global entry named shadow
+in mode: Conjunctive
 type: (x : String) -> Int -> Int
 value: x => x => x
 

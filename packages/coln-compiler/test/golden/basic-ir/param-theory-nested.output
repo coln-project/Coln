@@ -1,15 +1,18 @@
 -- elaborated
 global entry named PointOf
+in mode: Conjunctive
 type: (X : Set) -> Theory
 value: X => sig
   point : X
 end
 global entry named Pointed
+in mode: Conjunctive
 type: (X : Set) -> Theory
 value: X => sig
   inner : PointOf X
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   X : Set

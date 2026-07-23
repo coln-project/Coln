@@ -109,7 +109,11 @@ functionMLevelFor v1 v2 = case (v1, v2) of
   (Theory, _) -> pure TheoryTop
   (Top, _) -> Nothing
 
-data FunctionVariant = FunctionVariant {mlevel :: FunctionVariantMLevel, hlevel :: HLevel}
+data FunctionVariant = FunctionVariant
+  { mlevel :: FunctionVariantMLevel
+  , hlevel :: HLevel
+  , domainMode :: Mode
+  }
   deriving (Eq, Show)
 
 instance Pretty FunctionVariant where

@@ -1,9 +1,11 @@
 -- elaborated
 global entry named Truth
+in mode: Conjunctive
 type: Prop
 value: sig
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   truth : Truth

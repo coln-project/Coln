@@ -1,10 +1,12 @@
 -- elaborated
 global entry named Base
+in mode: Conjunctive
 type: Theory
 value: sig
   X : Set
 end
 global entry named Alias
+in mode: Conjunctive
 type: Theory
 value: Base
 realm named TRealm

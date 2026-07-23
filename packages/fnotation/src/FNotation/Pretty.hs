@@ -92,6 +92,7 @@ prt p = \case
   Keyword x _ -> dpretty x
   Field x _ -> "." <> dprettyWithKinds ?lconfig x
   Tag x _ -> "'" <> dprettyWithKinds ?lconfig x
+  Mode x _ -> "^" <> dprettyWithKinds ?lconfig x
   Int i _ -> pretty i
   String x _ -> "\"" <> pretty x <> "\""
   Tuple ns _ -> bracketedTuple $ prtTop <$> ns

@@ -1,15 +1,18 @@
 -- elaborated
 global entry named Model
+in mode: Conjunctive
 type: Theory
 value: sig
   X : Set
 end
 global entry named PointOf
+in mode: Conjunctive
 type: (M : Model) -> Theory
 value: M => sig
   point : M.X
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   model : Model
