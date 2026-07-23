@@ -46,9 +46,10 @@ debugCommand e sp x _ = unknownCommand e sp x
 
 binder :: ParserEnv -> Ntn -> IO Function.Binder
 binder e = \case
-  N.Infix name (N.Keyword ":" _) arg ->
-    Function.Named <$> ident e name <*> typ e arg
-  n -> Function.Anonymous <$> typ e n
+  N.Infix name (N.Keyword ":" _) arg -> do
+    (mode, x) <- modalIdent e name
+    Function.Named mode x <$> typ e arg
+  n -> Function.Anonymous Conjunctive <$> typ e n
 
 fieldDecl :: ParserEnv -> Ntn -> IO Record.FieldDeclaration
 fieldDecl e (N.Infix (N.Ident x _) (N.Keyword ":" _) n) =
@@ -65,6 +66,13 @@ fieldSetting e n = unexpectedNotation e n "field setting of the form `<fieldname
 ident :: ParserEnv -> Ntn -> IO Name
 ident _ (N.Ident x _) = pure x
 ident e n = unexpectedNotation e n "identifier"
+
+modalIdent :: ParserEnv -> Ntn -> IO (Mode, Name)
+modalIdent _ (N.Ident x _) = pure (Conjunctive, x)
+modalIdent _ (N.Juxt (N.Mode "i" _) (N.Ident x _)) = pure (Inductive, x)
+modalIdent e (N.Juxt (N.Mode _ sp) (N.Ident _ _)) =
+  failWith e sp UnknownMode "unknown mode"
+modalIdent e n = unexpectedNotation e n "identifier, possibly with mode annotation"
 
 unexpectedNotation :: ParserEnv -> Ntn -> DDoc -> IO a
 unexpectedNotation e n c = do

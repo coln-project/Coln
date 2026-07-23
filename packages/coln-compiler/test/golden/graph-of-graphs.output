@@ -6,6 +6,21 @@ value: sig
   V : Set
   E : V -> V -> Set
 end
+global entry named Graph/hom
+in mode: Conjunctive
+type: (G0 : Graph) -> (G1 : Graph) -> Theory
+value: G0 => G1 => sig
+  V : G0.V -> G1.V
+  E : (v0 : G0.V) -> (v1 : G0.V) -> G0.E v0 v1 -> G1.E (V v0) (V v1)
+end
+global entry named GraphOfGraphs
+in mode: Conjunctive
+type: Theory
+value: sig
+  base : Graph
+  fiber : base.V -> Graph
+  action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
+end
 realm named GraphRealm
 generators: node
   V = rel []
@@ -24,17 +39,139 @@ lowered: flatrealm
     ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
   end
 end
+realm named GraphOfGraphsRealm
+generators: node
+  base = node
+    V = rel []
+    E = rel [a : GraphOfGraphsRealm.base.V [], b : GraphOfGraphsRealm.base.V []]
+  end
+  fiber = node
+    V = rel [a : GraphOfGraphsRealm.base.V []]
+    E = rel [
+      a : GraphOfGraphsRealm.base.V [],
+      b : GraphOfGraphsRealm.fiber.V [a := a],
+      c : GraphOfGraphsRealm.fiber.V [a := a]
+    ]
+  end
+  action = node
+    V = (fun [
+      v0 : GraphOfGraphsRealm.base.V [],
+      v1 : GraphOfGraphsRealm.base.V [],
+      a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
+      b : GraphOfGraphsRealm.fiber.V [a := v0]
+    ] -> GraphOfGraphsRealm.fiber.V [a := v1])
+    E = (fun [
+      v0 : GraphOfGraphsRealm.base.V [],
+      v1 : GraphOfGraphsRealm.base.V [],
+      a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
+      v0/a : GraphOfGraphsRealm.fiber.V [a := v0],
+      v1/a : GraphOfGraphsRealm.fiber.V [a := v0],
+      b : GraphOfGraphsRealm.fiber.E [a := v0, b := v0/a, c := v1/a]
+    ] -> GraphOfGraphsRealm.fiber.E [
+      a := v1,
+      b := GraphOfGraphsRealm.action.V [v0 := v0, v1 := v1, a := a, b := v0/a],
+      c := GraphOfGraphsRealm.action.V [v0 := v0, v1 := v1, a := a, b := v1/a]
+    ])
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.base.V := []
+    table ℜ.base.E := [.a : ℜ.base.V, .b : ℜ.base.V]
+    table ℜ.fiber.V := [.a : ℜ.base.V]
+    table ℜ.fiber.E := [.a : ℜ.base.V, .b : ℜ.fiber.V, .c : ℜ.fiber.V]
+    table ℜ.action.V := [
+      .v0 : ℜ.base.V,
+      .v1 : ℜ.base.V,
+      .a : ℜ.base.E,
+      .b : ℜ.fiber.V,
+      .c : ℜ.fiber.V
+    ] primarykey [.a, .b, .v0, .v1]
+    table ℜ.action.E := [
+      .v0 : ℜ.base.V,
+      .v1 : ℜ.base.V,
+      .a : ℜ.base.E,
+      .v0/a : ℜ.fiber.V,
+      .v1/a : ℜ.fiber.V,
+      .b : ℜ.fiber.E,
+      .c : ℜ.fiber.E
+    ] primarykey [.a, .b, .v0, .v1, .v0/a, .v1/a]
+  end
+  rules
+    enforced ℜ.base.V.foreignKey := ℜ.base.V [] ⊢ ⊤
+    enforced ℜ.base.E.foreignKey a b := ℜ.base.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.base.V []
+    enforced ℜ.fiber.V.foreignKey a := ℜ.fiber.V [.a ↦ a] ⊢ a ∈ ℜ.base.V []
+    enforced ℜ.fiber.E.foreignKey a b c := ℜ.fiber.E [
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.fiber.V [.a ↦ a] ∧ c ∈ ℜ.fiber.V [.a ↦ a]
+    enforced ℜ.action.V.foreignKey v0 v1 a b c := ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
+      .a ↦ v0,
+      .b ↦ v1
+    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ∧ c ∈ ℜ.fiber.V [.a ↦ v1]
+    monitored ℜ.action.V.total v0 v1 a b := v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
+      .a ↦ v0,
+      .b ↦ v1
+    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ⊢ ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ b
+    ]
+    enforced ℜ.action.E.foreignKey v0 v1 a v0/a v1/a b c c.b c.c := ℜ.action.E [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .v0/a ↦ v0/a,
+      .v1/a ↦ v1/a,
+      .b ↦ b,
+      .c ↦ c
+    ] ∧ ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ v0/a,
+      .c ↦ c.b
+    ] ∧ ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ v1/a,
+      .c ↦ c.c
+    ] ⊢ v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
+      .a ↦ v0,
+      .b ↦ v1
+    ] ∧ v0/a ∈ ℜ.fiber.V [.a ↦ v0] ∧ v1/a ∈ ℜ.fiber.V [
+      .a ↦ v0
+    ] ∧ b ∈ ℜ.fiber.E [.a ↦ v0, .b ↦ v0/a, .c ↦ v1/a] ∧ c ∈ ℜ.fiber.E [
+      .a ↦ v1,
+      .b ↦ c.b,
+      .c ↦ c.c
+    ]
+    monitored ℜ.action.E.total v0 v1 a v0/a v1/a b := v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
+      .a ↦ v0,
+      .b ↦ v1
+    ] ∧ v0/a ∈ ℜ.fiber.V [.a ↦ v0] ∧ v1/a ∈ ℜ.fiber.V [
+      .a ↦ v0
+    ] ∧ b ∈ ℜ.fiber.E [.a ↦ v0, .b ↦ v0/a, .c ↦ v1/a] ⊢ ℜ.action.E [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .v0/a ↦ v0/a,
+      .v1/a ↦ v1/a,
+      .b ↦ b
+    ]
+  end
+end
 
 -- messages
-
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-15 |   V : G0.V -> G1.V
-15 |               ^^
-
-error[E0314]: no such variable Graph/hom in scope
-22 |   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
-22 |                                                              ^^^^^^^^^
-
-error[E0314]: no such variable GraphOfGraphs in scope
-25 | realm GraphOfGraphsRealm @ GraphOfGraphs
-25 |                            ^^^^^^^^^^^^^

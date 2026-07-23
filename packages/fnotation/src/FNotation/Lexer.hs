@@ -320,6 +320,7 @@ run st fresh =
     '\"' -> string st >> run st False
     '.' -> advance st >> tryName st (if fresh then Field else FieldImmediate) "period" >> run st False
     '\'' -> advance st >> tryName st Tag "single quote" >> run st False
+    '^' -> advance st >> tryName st Mode "at sign" >> run st False
     '\0' -> emit0 st Eof
     '`' -> ident st >> run st False
     c | isDigit c -> (int st >>= emit st Int . VInt) >> run st False

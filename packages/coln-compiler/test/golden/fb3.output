@@ -1,8 +1,12 @@
 -- elaborated
-
+global entry named IdempotentSemigroup
+in mode: Conjunctive
+type: Theory
+value: sig
+  Element : Set
+  mul : (x : Element) -> (y : Element) -> Element
+  mul/idempotent : (x : Element) -> mul x x = x
+  mul/assoc : (x : Element) -> (y : Element) -> (z : Element) -> mul (mul x y) z = mul x (mul y z)
+end
 
 -- messages
-
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-7 |   mul/idempotent : (x : Element) -> mul x x = x
-7 |                                               ^

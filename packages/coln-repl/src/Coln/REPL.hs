@@ -6,14 +6,14 @@ module Coln.REPL (runRepl) where
 
 import Coln.Common
 import Coln.Core.Globals
-import Coln.Core.Params (CtxShape (..), N)
+import Coln.Core.Params (CtxShape (..), N, Mode (..))
 import Coln.Core.Print (DPrettyWithNames (dprettyWithNames), prtIn)
 import Coln.Core.Realm (Realm)
 import Coln.Diagnostics
 import Coln.Elaborator.Environment (emptyElabEnv)
 import Coln.Elaborator.Judgment (Syn (..))
 import Coln.Frontend.Notation
-import Coln.Frontend.Parser (decl', syn)
+import Coln.Frontend.Parser (decl, syn)
 import Control.Monad
 import Control.Monad.State.Strict
 import Control.Monad.Writer
@@ -81,15 +81,15 @@ eval file = do
     case ntn of
       -- register declaration
       Decl name _ _ -> do
-        put =<< liftIO (decl' diagEnv ge ntn)
+        put =<< liftIO (decl diagEnv ge ntn)
         tell [name]
       -- ignore realms
       Block "realm" _ _ _ -> pure ()
       -- evaluate expression
       _ ->
         liftIO do
-          let elabEnv = emptyElabEnv (envFor ElaboratorCode) ge
-          ntnSyn <- (syn @N) diagEnv "" ntn
+          let elabEnv = emptyElabEnv (envFor ElaboratorCode) ge Conjunctive
+          ntnSyn <- (syn @N) (contramap ParserCode diagEnv) "" ntn
           (t, m) <- ntnSyn.elab elabEnv
           putDoc $ prtIn elabEnv m <+> ":" <+> prtIn elabEnv t <+> "\n"
 

@@ -1,5 +1,6 @@
 -- elaborated
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   IntFact : Int -> Prop

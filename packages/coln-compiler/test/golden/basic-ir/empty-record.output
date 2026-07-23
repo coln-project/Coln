@@ -1,9 +1,11 @@
 -- elaborated
 global entry named Unit
+in mode: Conjunctive
 type: Set
 value: sig
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   unit : Unit

@@ -33,25 +33,25 @@ annot :: ParserEnv -> Ntn -> IO (Ntn, Ntn)
 annot _ (N.Infix n0 (N.Keyword ":" _) n1) = pure (n0, n1)
 annot e n = unexpectedNotation e n "type-annotated expression, e.g. `<pattern> : <type>`"
 
-argBinding :: ParserEnv -> Ntn -> IO (Span, Name, Typ N)
+argBinding :: ParserEnv -> Ntn -> IO (Span, Mode, Name, Typ N)
 argBinding e n@(N.Infix n0 (N.Keyword ":" _) n1) = do
-  x <- ident e n0
+  (m, x) <- modalIdent e n0
   a <- typ e n1
-  pure (N.span n, x, a)
+  pure (N.span n, m, x, a)
 argBinding e n = unexpectedNotation e n "argument binding of the form `<name> : <type>`"
 
-unpackArgs :: ParserEnv -> Ntn -> IO (Name, [(Span, Name, Typ N)])
+unpackArgs :: ParserEnv -> Ntn -> IO (Name, [(Span, Mode, Name, Typ N)])
 unpackArgs e (N.Group (xN :| argsN)) = do
   x <- ident e xN
   args <- mapM (argBinding e) argsN
   pure (x, args)
 
-withArgs :: (V.HasEvaluation c) => [(Span, Name, Typ N)] -> (Typ N, Chk c) -> (Typ N, Chk c)
+withArgs :: (V.HasEvaluation c) => [(Span, Mode, Name, Typ N)] -> (Typ N, Chk c) -> (Typ N, Chk c)
 withArgs args base = foldr go base args
  where
-  go :: (V.HasEvaluation c) => (Span, Name, Typ N) -> (Typ N, Chk c) -> (Typ N, Chk c)
-  go (sp, name, a) (t, c) =
-    ( Function.formation sp (Function.Named name a) t
+  go :: (V.HasEvaluation c) => (Span, Mode, Name, Typ N) -> (Typ N, Chk c) -> (Typ N, Chk c)
+  go (sp, m, name, a) (t, c) =
+    ( Function.formation sp (Function.Named m name a) t
     , Function.intro sp name c
     )
 

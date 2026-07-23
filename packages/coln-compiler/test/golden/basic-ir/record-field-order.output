@@ -1,11 +1,13 @@
 -- elaborated
 global entry named Pair
+in mode: Conjunctive
 type: Set
 value: sig
   first : Int
   second : Int
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   E : Int -> Int -> Set
