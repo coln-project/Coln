@@ -1,0 +1,6 @@
+theory ReflexiveRelation (X : Set) := sig
+  rel : X -> X -> Prop
+  refl : (x : X) -> rel x x
+end
+
+ind def Eq (X : Set) : ReflexiveRelation X := init (ReflexiveRelation X)

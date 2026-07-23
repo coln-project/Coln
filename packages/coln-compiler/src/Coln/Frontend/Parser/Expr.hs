@@ -104,7 +104,7 @@ expr e n = case n of
   N.Ident name s -> pure $ fromSynN $ Variable.find s name
   N.Juxt (N.Keyword "init" _) n -> do
     t <- typ e n
-    fromSynD e (N.span n) (Initial.create t)
+    fromSynD e (N.span n) (Initial.create (N.span n) t)
   N.Juxt n0 n1 -> do
     s <- syn e "target of elimination" n0
     fromSynN <$> elim e s n1

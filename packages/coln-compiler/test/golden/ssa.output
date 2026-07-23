@@ -10,23 +10,23 @@ end
 
 -- messages
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 2 |   refl : (x : X) -> P x x
 2 |                     ^
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 13 |   next/prev : (x : car) -> next (prev x) = x
 13 |                                            ^
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 32 |   fwd : A -> B
 32 |              ^
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 39 |   opType : opInfo.OpType
 39 |            ^^^^^^
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 45 |   y : X
 45 |       ^
 

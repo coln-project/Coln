@@ -3,7 +3,7 @@
 
 -- messages
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 17 |     meet a a = a
 17 |                ^
 

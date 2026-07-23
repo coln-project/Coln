@@ -30,6 +30,7 @@ data ElaboratorCode
   | VariableNotInScope
   | DebugMisc
   | InductiveInConjunctive
+  | InitInConjunctive
   deriving (Eq, Ord)
 
 elaboratorCodeTable :: Map ElaboratorCode CodeMeta
@@ -51,5 +52,6 @@ elaboratorCodeTable =
     , (MismatchedRecordField, CodeMeta 13 SError Nothing)
     , (VariableNotInScope, CodeMeta 14 SError Nothing)
     , (DebugMisc, CodeMeta 15 SDebug Nothing)
-    , (InductiveInConjunctive, CodeMeta 16 SDebug Nothing)
+    , (InductiveInConjunctive, CodeMeta 16 SError Nothing)
+    , (InitInConjunctive, CodeMeta 17 SError Nothing)
     ]
