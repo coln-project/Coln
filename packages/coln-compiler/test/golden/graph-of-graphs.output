@@ -27,7 +27,7 @@ end
 
 -- messages
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 15 |   V : G0.V -> G1.V
 15 |               ^^
 

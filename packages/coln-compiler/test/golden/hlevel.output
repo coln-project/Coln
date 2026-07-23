@@ -58,7 +58,7 @@ debug[D0315]: type person -> happy has level Level {mlevel = Theory, hlevel = HP
 13 |   showlevel person -> happy
 13 |             ^^^^^^^^^^^^^^^
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 17 |   son : F.person
 17 |         ^
 
@@ -90,6 +90,6 @@ debug[D0315]: type u = u has level Level {mlevel = Set, hlevel = HUnit}
 48 |   showlevel u = u
 48 |             ^^^^^
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 52 |   f : A -> P
 52 |            ^

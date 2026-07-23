@@ -3,6 +3,6 @@
 
 -- messages
 
-debug[D0316]: cannot use inductively bound variable in a conjunctive context
+error[E0316]: cannot use inductively bound variable in a conjunctive context
 7 |   mul/idempotent : (x : Element) -> mul x x = x
 7 |                                               ^
