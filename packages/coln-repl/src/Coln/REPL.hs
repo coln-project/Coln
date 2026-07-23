@@ -6,7 +6,7 @@ module Coln.REPL (runRepl) where
 
 import Coln.Common
 import Coln.Core.Globals
-import Coln.Core.Params (CtxShape (..), N, Mode (..))
+import Coln.Core.Params (CtxShape (..), Mode (..), N)
 import Coln.Core.Print (DPrettyWithNames (dprettyWithNames), prtIn)
 import Coln.Core.Realm (Realm)
 import Coln.Diagnostics
