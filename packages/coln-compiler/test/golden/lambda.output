@@ -1,5 +1,6 @@
 -- elaborated
 global entry named Lambda
+in mode: Conjunctive
 type: Theory
 value: sig
   con : Set

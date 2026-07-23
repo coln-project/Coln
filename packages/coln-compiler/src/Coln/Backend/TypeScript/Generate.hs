@@ -117,6 +117,7 @@ genEntryModule imports a ev = go 0 a ev
           case V.ebind V.decode ev' of
             V.Become a -> TS.DTypeDef $ genTypeDef access n a
             V.Describe a -> TS.DInterface $ genInterface access n a
+            V.BecomeWith _ -> panic "can't lower becomewith yet"
     Just $ TS.Module imports (TS.Exported <$> definitions)
   go n (V.Function ft) ev' = do
     let v = V.local (FId n) ft.dom
@@ -172,6 +173,7 @@ argName _ (V.CloConst _) = panic "closures from the layout process should have a
 genEl :: Access -> TSCtxShape -> V.El N -> TS.El
 genEl access cs = \case
   V.Neu n -> genSp cs n.spine $ genHead access cs n.head
+  V.InitNeu _ -> panic "can't lower init yet"
   V.Code a -> genTyVal access cs a
   V.Lam dom clo -> do
     let v = V.local (FId cs.len) dom

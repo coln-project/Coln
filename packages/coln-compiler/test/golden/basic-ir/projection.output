@@ -1,11 +1,13 @@
 -- elaborated
 global entry named Payload
+in mode: Conjunctive
 type: (X : Set) -> Set
 value: X => sig
   first : X
   second : X
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   X : Set

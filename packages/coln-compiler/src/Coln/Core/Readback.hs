@@ -36,6 +36,8 @@ instance Readback (V.Description V.El) (S.El D) where
   readb n = \case
     V.Describe v -> readb n v
     V.Become v -> S.Is (readb n v)
+    V.BecomeWith f ->
+      S.Is (readb (n + 1) (f (V.BareNeutral (V.LocalVar (FId n)) V.Id)))
 
 readbClo :: (Readback (V.Evaluation a c) (b c)) => CtxLen -> V.Ty N -> V.Clo a c -> S.Abs b c
 readbClo n dom = \case
@@ -45,6 +47,7 @@ readbClo n dom = \case
 instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
   readb n = \case
     V.Neu ne -> readb n ne.spine $ readb n ne.head
+    V.InitNeu ne -> readb n ne.spine $ readb n ne.name
     V.Code a -> S.Code (readb n a)
     V.Lam dom body -> S.Lam (readb n dom) $ case V.scase @c of
       SNominative -> readbClo n dom body
@@ -92,6 +95,7 @@ instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
   readb n = \case
     V.U u -> S.U u
     V.Decode ne -> S.Decode $ readb n ne.spine $ readb n ne.head
+    V.InitDecode ne -> S.Decode $ readb n ne.spine $ readb n ne.name
     V.Function f -> S.Function $ readb n f
     V.Record r -> S.Record $ readb n r
     V.Eq eq -> S.Eq $ readb n eq
@@ -103,5 +107,6 @@ instance Readback V.TypeBehavior S.TypeBehavior where
     V.LikeU u -> S.LikeU u
     V.LikeRecord rt -> S.LikeRecord $ readb n rt
     V.LikeFunction ft -> S.LikeFunction $ readb n ft
+    V.LikeInductive ne -> S.LikeInductive $ readb n ne.spine $ readb n ne.name
     V.LikeBuiltinTy bt -> S.LikeBuiltinTy bt
     V.NoRules -> S.NoRules

@@ -1,13 +1,16 @@
 -- elaborated
 global entry named A
+in mode: Conjunctive
 type: Theory
 value: sig
 end
 global entry named B
+in mode: Conjunctive
 type: Theory
 value: sig
 end
 global entry named a
+in mode: Conjunctive
 type: A
 value: []
 

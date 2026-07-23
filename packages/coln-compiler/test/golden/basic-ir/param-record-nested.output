@@ -1,16 +1,19 @@
 -- elaborated
 global entry named Box
+in mode: Conjunctive
 type: (X : Set) -> Set
 value: X => sig
   value : X
 end
 global entry named Nested
+in mode: Conjunctive
 type: (X : Set) -> Set
 value: X => sig
   inner : Box X
   sibling : X
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   X : Set

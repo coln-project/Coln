@@ -55,6 +55,7 @@ instance ToNotation (El e) where
       N.Tuple [field y t | (y, t) <- toList d] ()
      where
       field y t = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
+    Init t -> N.Juxt (N.Keyword "init" ()) (toNotation xs t)
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
@@ -102,6 +103,7 @@ instance ToNotation TypeBehavior where
     LikeFunction ft -> toNotation xs (Function ft)
     LikeRecord rt -> toNotation xs (Record rt)
     LikeBuiltinTy bt -> toNotation xs (BuiltinTy bt)
+    LikeInductive t -> toNotation xs t
     NoRules -> N.Keyword "NoRules" ()
 
 toNotationTele :: [Name] -> [Ty N] -> [N.Ntn0]

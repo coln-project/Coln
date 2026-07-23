@@ -1,5 +1,6 @@
 -- elaborated
 global entry named Family
+in mode: Conjunctive
 type: Theory
 value: sig
   person : Set

@@ -1,11 +1,13 @@
 -- elaborated
 global entry named And
+in mode: Conjunctive
 type: (P : Prop) -> (Q : Prop) -> Prop
 value: P => Q => sig
   left : P
   right : Q
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   P : Prop

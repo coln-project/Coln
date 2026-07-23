@@ -1,5 +1,6 @@
 -- elaborated
 global entry named ModularLattice
+in mode: Conjunctive
 type: Theory
 value: sig
   Element : Set

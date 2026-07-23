@@ -1,11 +1,13 @@
 -- elaborated
 global entry named IsTransClosure
+in mode: Conjunctive
 type: (X : Set) -> (R : X -> X -> Set) -> (P : X -> X -> Set) -> Theory
 value: X => R => P => sig
   refl : (x : X) -> P x x
   snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
 end
 global entry named LinearOrder
+in mode: Conjunctive
 type: Theory
 value: sig
   car : Set
@@ -22,6 +24,7 @@ value: sig
   last-is-bot : (x : car) -> follows x last
 end
 global entry named OpInfo
+in mode: Conjunctive
 type: Theory
 value: sig
   OpType : Set
@@ -29,6 +32,7 @@ value: sig
   outputArity : OpType -> Set
 end
 global entry named Iso
+in mode: Conjunctive
 type: (A : Set) -> (B : Set) -> Theory
 value: A => B => sig
   fwd : A -> B
@@ -37,6 +41,7 @@ value: A => B => sig
   bwd/fwd : (b : B) -> fwd (bwd b) = b
 end
 global entry named Operation
+in mode: Conjunctive
 type: (opInfo : OpInfo) -> (val : Set) -> (outputs : Set) -> Theory
 value: opInfo => val => outputs => sig
   opType : opInfo.OpType
@@ -44,6 +49,7 @@ value: opInfo => val => outputs => sig
   opOutputs : Iso outputs (opInfo.outputArity opType)
 end
 global entry named PrecedingOutput
+in mode: Conjunctive
 type: (X : Set) -> (rel : X -> X -> Set) -> (x : X) -> (outputs : X -> Set) -> Set
 value: X => rel => x => outputs => sig
   y : X
@@ -51,6 +57,7 @@ value: X => rel => x => outputs => sig
   output : outputs y
 end
 global entry named Block
+in mode: Conjunctive
 type: (opInfo : OpInfo) -> Theory
 value: opInfo => sig
   ops : LinearOrder
@@ -59,6 +66,7 @@ value: opInfo => sig
   args : LinearOrder
 end
 global entry named SSA
+in mode: Conjunctive
 type: (opInfo : OpInfo) -> Theory
 value: opInfo => sig
   RegionId : Set
