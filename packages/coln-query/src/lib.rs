@@ -21,6 +21,7 @@ mod runtime;
 pub mod scalar;
 pub mod stmt;
 pub mod test_helper;
+mod tuple;
 pub mod type_resolver;
 mod util;
 pub mod variable;
@@ -126,7 +127,7 @@ impl<O: Optimizer + Send + 'static> IncDataLog<O> {
     pub fn build_circuit_from_ir<F, Code>(
         &self,
         intermediate_representation: F,
-    ) -> Result<(DbspHandle, DbspInputs, DbspOutput), IncLogError>
+    ) -> Result<(DbspHandle, DbspInputs, Vec<DbspOutput>), IncLogError>
     where
         Code: IntoIterator<Item = Stmt>,
         F: Fn(&mut RootCircuit, &mut DbspInputs) -> Result<Code, SyntaxError>
@@ -154,7 +155,7 @@ impl<O: Optimizer + Send + 'static> IncDataLog<O> {
     pub fn build_circuit_from_parser<F>(
         &self,
         parser: F,
-    ) -> Result<(DbspHandle, DbspInputs, DbspOutput), IncLogError>
+    ) -> Result<(DbspHandle, DbspInputs, Vec<DbspOutput>), IncLogError>
     where
         F: Fn(&mut RootCircuit) -> Result<(DbspInputs, Code), SyntaxError> + Clone + Send + 'static,
     {
@@ -176,19 +177,38 @@ impl<O: Optimizer + Send + 'static> IncDataLog<O> {
         root_circuit: &mut RootCircuit,
         inputs: DbspInputs,
         program: Code,
-    ) -> Result<(DbspInputs, DbspOutput), EngineError> {
+    ) -> Result<(DbspInputs, Vec<DbspOutput>), EngineError> {
         let output = IncLog::with_recursion(root_circuit.clone()).execute(program);
 
         let output = match output {
             Ok(Some(Value::Relation(relation))) => {
-                let relation = relation.borrow();
-                let output_handle = relation.inner.output();
-                let output_schema = relation.schema.clone();
-                DbspOutput::new(output_schema, output_handle)
+                vec![DbspOutput::from(relation)]
             }
-            result => {
+            Ok(Some(Value::Tuple(tuple))) => tuple
+                .into_iter()
+                .map(|v| match v {
+                    // We deliberately only handle the basic case of programs
+                    // outputting a tuple made of relations exclusively and
+                    // also pretend as if nested tuples are not a thing ever.
+                    Value::Relation(r) => Ok(DbspOutput::from(r)),
+                    _ => Err(EngineError::new(format!(
+                        "Non relation found in program's output tuple: {v:?}"
+                    ))),
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            Ok(Some(v)) => {
                 return Err(EngineError::new(format!(
-                    "Expected a relation as program's output, got {result:?}",
+                    "Expected relation(s) as the program's output, got {v:?}",
+                )));
+            }
+            Ok(None) => {
+                return Err(EngineError::new(
+                    "Expected relation(s) as the program's output, got nothing".to_string(),
+                ));
+            }
+            Err(e) => {
+                return Err(EngineError::new(format!(
+                    "Error during build_circuit, got {e:?}",
                 )));
             }
         };
@@ -201,16 +221,17 @@ impl<O: Optimizer + Send + 'static> IncDataLog<O> {
 mod test {
     use super::*;
     use crate::{
-        dbsp::{DbspInput, zset},
+        dbsp::{DbspInput, ZWeight, zset},
         expr::{
             AliasExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-            FixedPointIterExpr, ProjectionExpr, SelectionExpr, UnionExpr,
+            FixedPointIterExpr, ProjectionExpr, SelectionExpr, TupleExpr, UnionExpr,
         },
         relation::TupleValue,
         scalar::ScalarTypedValue,
         stmt::BlockStmt,
         test_helper::{person_profession_data, setup_inc_data_log},
     };
+    use ::dbsp::OrdZSet;
     use expr::{AssignExpr, BinaryExpr, CallExpr, Expr, Literal, LiteralExpr, VarExpr};
     use operator::Operator;
     use stmt::{ExprStmt, Stmt, VarStmt};
@@ -380,63 +401,80 @@ mod test {
                                 .collect(),
                         })),
                     }),
+                    Stmt::from(VarStmt {
+                        name: "selected_projected_tuple".to_string(),
+                        initializer: Some(Expr::from(TupleExpr {
+                            elements: ["selected", "projected"]
+                                .map(|var| Expr::from(VarExpr::new(var)))
+                                .into_iter()
+                                .collect(),
+                        })),
+                    }),
                 ])
             })?;
 
-        circuit.start_transaction()?;
-
         let edges_input = inputs.get("edges").unwrap();
 
-        let data1 = [Edge::new(0, 1, 1), Edge::new(1, 2, 2), Edge::new(2, 3, 3)];
-        let data2 = [Edge::new(3, 4, 1), Edge::new(4, 5, 2), Edge::new(5, 6, 3)];
+        const STEPS: usize = 3;
 
-        println!("Insert of data1:");
+        let mut edges_data = ([
+            [Edge::new(0, 1, 1), Edge::new(1, 2, 2), Edge::new(2, 3, 3)]
+                .map(|e| (e, 2))
+                .into_iter()
+                .collect(),
+            [Edge::new(3, 4, 1), Edge::new(4, 5, 2), Edge::new(5, 6, 3)]
+                .map(|e| (e, 1))
+                .into_iter()
+                .collect(),
+            [Edge::new(0, 1, 1), Edge::new(1, 2, 2), Edge::new(2, 3, 3)]
+                .map(|e| (e, -1))
+                .into_iter()
+                .collect(),
+        ] as [Vec<(Edge, ZWeight)>; STEPS])
+            .into_iter();
 
-        edges_input.insert_with_same_weight(data1.iter(), 2);
+        let mut selected_output = ([
+            zset! {
+                tuple!(1_u64, 2_u64, 2_u64, true) => 2,
+                tuple!(2_u64, 3_u64, 3_u64, true) => 2,
+            },
+            zset! {
+                tuple!(4_u64, 5_u64, 2_u64, true) => 1,
+                tuple!(5_u64, 6_u64, 3_u64, true) => 1,
+            },
+            zset! {
+                tuple!(1_u64, 2_u64, 2_u64, true) => -1,
+                tuple!(2_u64, 3_u64, 3_u64, true) => -1,
+            },
+        ] as [OrdZSet<TupleValue>; STEPS])
+            .into_iter();
 
-        circuit.transaction()?;
-
-        let batch = output.to_batch();
-        println!("{}", batch.as_table());
-        assert_eq!(
-            batch.as_debug_zset(),
+        let mut projected_output = ([
             zset! {
                 tuple!(1_u64, 2_u64, 2_u64, 2_u64) => 2,
                 tuple!(2_u64, 3_u64, 3_u64, 6_u64) => 2,
-            }
-        );
-
-        println!("Insert of data2:");
-
-        edges_input.insert_with_same_weight(data2.iter(), 1);
-
-        circuit.transaction()?;
-
-        let batch = output.to_batch();
-        println!("{}", batch.as_table());
-        assert_eq!(
-            batch.as_debug_zset(),
+            },
             zset! {
                 tuple!(4_u64, 5_u64, 2_u64, 20_u64) => 1,
                 tuple!(5_u64, 6_u64, 3_u64, 30_u64) => 1,
-            }
-        );
-
-        println!("Removal of data1:");
-
-        edges_input.insert_with_same_weight(data1.iter(), -1);
-
-        circuit.transaction()?;
-
-        let batch = output.to_batch();
-        println!("{}", batch.as_table());
-        assert_eq!(
-            batch.as_debug_zset(),
+            },
             zset! {
                 tuple!(1_u64, 2_u64, 2_u64, 2_u64) => -1,
                 tuple!(2_u64, 3_u64, 3_u64, 6_u64) => -1,
-            }
-        );
+            },
+        ] as [OrdZSet<TupleValue>; STEPS])
+            .into_iter();
+
+        for i in 1..=STEPS {
+            edges_input.insert_consume(edges_data.next().unwrap());
+            circuit.transaction()?;
+            let selected = output[0].to_batch();
+            println!("SELECTED\n{}", selected.as_table());
+            assert_eq!(selected.as_debug_zset(), selected_output.next().unwrap());
+            let projected = output[1].to_batch();
+            println!("PROJECTED\n{}", projected.as_table());
+            assert_eq!(projected.as_debug_zset(), projected_output.next().unwrap());
+        }
 
         Ok(())
     }
@@ -513,7 +551,7 @@ mod test {
 
             circuit.transaction()?;
 
-            let batch = output.to_batch();
+            let batch = output[0].to_batch();
             println!("{}", batch.as_table());
             assert_eq!(
                 batch.as_debug_zset(),
@@ -577,7 +615,7 @@ mod test {
 
             circuit.transaction()?;
 
-            let batch = output.to_batch();
+            let batch = output[0].to_batch();
             println!("{}", batch.as_debug_table());
             assert_eq!(
                 batch.as_debug_zset(),
@@ -790,7 +828,7 @@ mod test {
 
         circuit.transaction()?;
 
-        let batch = output.to_batch();
+        let batch = output[0].to_batch();
         println!("{}", batch.as_table());
         assert_eq!(
             batch.as_debug_zset(),
@@ -810,7 +848,7 @@ mod test {
 
         circuit.transaction()?;
 
-        let batch = output.to_batch();
+        let batch = output[0].to_batch();
         println!("{}", batch.as_table());
         assert_eq!(
             batch.as_debug_zset(),
@@ -950,7 +988,7 @@ mod test {
 
         circuit.transaction()?;
 
-        let batch = output.to_batch();
+        let batch = output[0].to_batch();
         println!("{}", batch.as_table());
         assert_eq!(
             batch.as_debug_zset(),
@@ -1213,7 +1251,7 @@ mod test {
 
             circuit.transaction()?;
 
-            let batch = output.to_batch();
+            let batch = output[0].to_batch();
             println!("{}", batch.as_table());
             assert_eq!(batch.as_zset(), expected.next().unwrap());
         }

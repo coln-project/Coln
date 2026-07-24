@@ -15,7 +15,7 @@ pub type ZWeight = i64;
 /// see [`z_weight`](`Self::z_weight`) documentation.
 pub struct RowDelta {
     /// A ZWeight value ...
-    /// - `== 0` behaves as if there was no insertion happening at all.
+    /// - `== 0` behaves as if there was no change happening at all.
     /// - `n if n > 0` represents an insertion. If `n > 1` it is a duplicated
     ///   insertion, that is, the row is inserted n-times.
     /// - `n if n < 0` represents a deletion. If `n < 1` we remove the row

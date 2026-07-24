@@ -4,6 +4,7 @@
 
 use crate::{
     expr::Literal, function::FunctionRef, relation::RelationRef, scalar::ScalarTypedValue,
+    tuple::Tuple,
 };
 use std::{
     cell::{Ref, RefCell},
@@ -26,7 +27,7 @@ pub enum Value {
     Iint(i64),
     /// Boolean.
     Bool(bool),
-    /// Character.
+    /// A single character as defined by Rust's [`char`].
     Char(char),
     /// Null.
     // The `Null` variant carries the unit type to align its field-arity with
@@ -36,6 +37,8 @@ pub enum Value {
     Function(FunctionRef),
     /// Relation.
     Relation(RelationRef),
+    /// Tuple.
+    Tuple(Tuple),
 }
 
 impl Eq for Value {}
@@ -50,6 +53,7 @@ impl PartialEq for Value {
             (Value::Null(()), Value::Null(())) => true,
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             (Value::Relation(a), Value::Relation(b)) => Rc::ptr_eq(a, b),
+            (Value::Tuple(a), Value::Tuple(b)) => a == b,
             _ => false,
         }
     }
@@ -64,6 +68,12 @@ impl Default for Value {
 impl From<RelationRef> for Value {
     fn from(value: RelationRef) -> Self {
         Value::Relation(value)
+    }
+}
+
+impl From<Tuple> for Value {
+    fn from(value: Tuple) -> Self {
+        Value::Tuple(value)
     }
 }
 
@@ -93,10 +103,46 @@ impl From<Literal> for Value {
     }
 }
 
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        Self::String(value.to_owned())
+    }
+}
+
+impl From<u64> for Value {
+    fn from(value: u64) -> Self {
+        Self::Uint(value)
+    }
+}
+
+impl From<u32> for Value {
+    fn from(value: u32) -> Self {
+        Self::Uint(value as u64)
+    }
+}
+
+impl From<i64> for Value {
+    fn from(value: i64) -> Self {
+        Self::Iint(value)
+    }
+}
+
+impl From<i32> for Value {
+    fn from(value: i32) -> Self {
+        Self::Iint(value as i64)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Self::Bool(value)
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Value::String(value) => write!(f, "{value}"),
+            Value::String(value) => write!(f, "\"{value}\""),
             Value::Uint(value) => write!(f, "{value}"),
             Value::Iint(value) => write!(f, "{value}"),
             Value::Bool(value) => write!(f, "{value}"),
@@ -104,6 +150,7 @@ impl fmt::Display for Value {
             Value::Null(()) => write!(f, "null"),
             Value::Function(function) => write!(f, "{}", function.borrow()),
             Value::Relation(relation) => write!(f, "{}", relation.borrow()),
+            Value::Tuple(tuple) => write!(f, "{}", tuple),
         }
     }
 }

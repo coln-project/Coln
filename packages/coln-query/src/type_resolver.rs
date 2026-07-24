@@ -7,22 +7,24 @@ use crate::{
     expr::{
         AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
         DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitor, FixedPointIterExpr,
-        FunctionExpr, GroupingExpr, Literal, LiteralExpr, ProjectionExpr, SelectionExpr, UnaryExpr,
-        UnionExpr, VarExpr,
+        FunctionExpr, GetIndexExpr, GroupingExpr, Literal, LiteralExpr, ProjectionExpr,
+        SelectionExpr, TupleExpr, UnaryExpr, UnionExpr, VarExpr,
     },
     operator::Operator,
     resolver::ScopeStack,
     stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
+    tuple::TupleType,
 };
 pub use crate::{function::FunctionType, relation::RelationType, scalar::ScalarType};
 use std::collections::HashMap;
+use std::fmt;
 
 macro_rules! assert_type {
     ($value:expr, $variant:path) => {
         match $value {
             $variant(inner) => Ok(inner),
             _ => Err(SyntaxError::new(format!(
-                "expected {} type, got: {:?}",
+                "expected {} type, got: {}",
                 stringify!($variant:path), $value
             ))),
         }
@@ -64,6 +66,28 @@ impl TypeResolver {
             .into_iter()
             .try_fold(None, |_prev, stmt| Ok(Some(self.resolve_stmt(stmt, ctx)?)))
     }
+    fn const_eval_uint(&self, expr: &Expr) -> Option<u64> {
+        match expr {
+            Expr::Literal(literal) => match literal.value {
+                Literal::Uint(n) => Some(n),
+                _ => None,
+            },
+            Expr::Grouping(grouping) => self.const_eval_uint(&grouping.expr),
+            Expr::Binary(binary) => {
+                let left = self.const_eval_uint(&binary.left)?;
+                let right = self.const_eval_uint(&binary.right)?;
+
+                match binary.operator {
+                    Operator::Addition => left.checked_add(right),
+                    Operator::Subtraction => left.checked_sub(right),
+                    Operator::Multiplication => left.checked_mul(right),
+                    Operator::Division => left.checked_div(right),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 type VisitorCtx<'a, 'b> = &'a mut TypeResolverContext<'b>;
@@ -74,6 +98,18 @@ pub enum ExprType {
     Scalar(ScalarType),
     Relation(RelationType),
     Function(FunctionType),
+    Tuple(TupleType),
+}
+
+impl fmt::Display for ExprType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExprType::Scalar(scalar_type) => write!(f, "{scalar_type}"),
+            ExprType::Relation(relation_type) => write!(f, "{relation_type}"),
+            ExprType::Function(function_type) => write!(f, "{function_type}"),
+            ExprType::Tuple(tuple_type) => write!(f, "{tuple_type}"),
+        }
+    }
 }
 
 pub struct TypeResolverContext<'a> {
@@ -137,6 +173,57 @@ impl TypeResolver {
 }
 
 impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
+    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: VisitorCtx) -> VisitorResult {
+        Ok(ExprType::from(&expr.value))
+    }
+
+    fn visit_tuple_expr(&mut self, expr: &TupleExpr, ctx: VisitorCtx<'_, '_>) -> VisitorResult {
+        let element_types = expr
+            .elements
+            .iter()
+            .map(|expr| self.visit_expr(expr, ctx))
+            .collect::<Result<Vec<ExprType>, _>>()?;
+        Ok(ExprType::Tuple(TupleType::from(element_types)))
+    }
+
+    fn visit_get_index_expr(
+        &mut self,
+        expr: &GetIndexExpr,
+        ctx: VisitorCtx<'_, '_>,
+    ) -> VisitorResult {
+        let index_type = self.visit_expr(&expr.index, ctx).and_then(|expr_type| {
+            let scalar_type = assert_type!(expr_type, ExprType::Scalar)?;
+            match scalar_type {
+                ScalarType::Uint => Ok(scalar_type),
+                _ => Err(SyntaxError::new(format!(
+                    "expected {} type, got: {}",
+                    ScalarType::Uint,
+                    scalar_type
+                ))),
+            }
+        })?;
+
+        match self.visit_expr(&expr.target, ctx)? {
+            ExprType::Tuple(tuple_type) => {
+                let const_index = self
+                    .const_eval_uint(&expr.target)
+                    .ok_or(SyntaxError::new("cannot compute tuple index statically"))?;
+                tuple_type
+                    .element_type(const_index as usize)
+                    .ok_or(SyntaxError::new(format!(
+                        "{} at index {const_index} is out of bounds.",
+                        tuple_type.display_compact()
+                    )))
+                    .cloned()
+            }
+            expr_type => Err(SyntaxError::new(format!("cannot index {expr_type}"))),
+        }
+    }
+
+    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: VisitorCtx) -> VisitorResult {
+        self.visit_expr(&expr.expr, ctx)
+    }
+
     fn visit_binary_expr(&mut self, expr: &BinaryExpr, ctx: VisitorCtx) -> VisitorResult {
         self.visit_expr(&expr.left, ctx).and_then(|left_type| {
             let right_type = self.visit_expr(&expr.right, ctx)?;
@@ -163,10 +250,6 @@ impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
         }
     }
 
-    fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: VisitorCtx) -> VisitorResult {
-        self.visit_expr(&expr.expr, ctx)
-    }
-
     fn visit_var_expr(&mut self, expr: &VarExpr, ctx: VisitorCtx) -> VisitorResult {
         let name = &expr.name;
         ctx.get_type(name)
@@ -176,10 +259,6 @@ impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
     fn visit_assign_expr(&mut self, expr: &AssignExpr, ctx: VisitorCtx) -> VisitorResult {
         // We return the type of the value that is being assigned.
         self.visit_expr(&expr.value, ctx)
-    }
-
-    fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: VisitorCtx) -> VisitorResult {
-        Ok(ExprType::from(&expr.value))
     }
 
     fn visit_function_expr(&mut self, expr: &FunctionExpr, ctx: VisitorCtx) -> VisitorResult {

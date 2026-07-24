@@ -28,6 +28,7 @@
 .vscode/
 .cursor/
 .idea/
+.zed/
 **/*.iml
 
 ## Bibliography auxiliary files (bibtex/biblatex/biber):

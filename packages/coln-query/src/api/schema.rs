@@ -19,7 +19,7 @@ pub struct TableSchema {
     /// All fields of the table in their physical order.
     columns: Vec<Column>,
     /// The list of (possibly compound) primary keys into the table, specified
-    /// as indices into the [`header`](Self::header).
+    /// as indices into the [`columns`](Self::columns).
     primary_keys: Vec<Vec<usize>>,
 }
 

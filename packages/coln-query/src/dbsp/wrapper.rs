@@ -4,7 +4,7 @@
 
 use crate::{
     expr::{Literal, LiteralExpr},
-    relation::{Relation, RelationSchema, SchemaTuple, TupleKey, TupleValue},
+    relation::{Relation, RelationRef, RelationSchema, SchemaTuple, TupleKey, TupleValue},
 };
 use cli_table::{Cell, Style, Table, format::Justify};
 pub use dbsp::{
@@ -223,6 +223,21 @@ impl DbspInput {
     pub fn handle(&self) -> &OrdIndexedStreamInputHandle {
         &self.handle
     }
+    pub fn insert_consume<T: Into<TupleKey> + Into<TupleValue> + Clone>(
+        &self,
+        tuples: impl IntoIterator<Item = (T, ZWeight)>,
+    ) {
+        let mut delta_batch = tuples
+            .into_iter()
+            .map(|(data, zweight)| {
+                Tup2(
+                    Into::<TupleKey>::into(data.clone()),
+                    Tup2(Into::<TupleValue>::into(data), zweight),
+                )
+            })
+            .collect();
+        self.handle.append(&mut delta_batch);
+    }
     pub fn insert<'a, T: Into<TupleKey> + Into<TupleValue> + Clone + 'a>(
         &self,
         tuples: impl IntoIterator<Item = (&'a T, ZWeight)>,
@@ -264,6 +279,15 @@ impl DbspOutput {
             schema: &self.schema,
             inner,
         }
+    }
+}
+
+impl From<RelationRef> for DbspOutput {
+    fn from(relation: RelationRef) -> Self {
+        let relation = relation.borrow();
+        let schema = relation.schema.clone();
+        let handle = relation.inner.output();
+        Self { schema, handle }
     }
 }
 

@@ -69,3 +69,9 @@ pub struct FunctionType {
     // TODO: parameters' type
     pub return_type: Box<ExprType>,
 }
+
+impl Display for FunctionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<fn -> {}>", self.return_type)
+    }
+}
