@@ -16,6 +16,7 @@ use std::fmt::{self, Debug, Display};
 pub enum Expr {
     Literal(Box<LiteralExpr>),
     Tuple(Box<TupleExpr>),
+    GetIndex(Box<GetIndexExpr>),
     Grouping(Box<GroupingExpr>),
     Binary(Box<BinaryExpr>),
     Unary(Box<UnaryExpr>),
@@ -39,6 +40,7 @@ impl_from_auto_box! {
     Expr,
     (Expr::Literal, LiteralExpr),
     (Expr::Tuple, TupleExpr),
+    (Expr::GetIndex, GetIndexExpr),
     (Expr::Grouping, GroupingExpr),
     (Expr::Binary, BinaryExpr),
     (Expr::Unary, UnaryExpr),
@@ -74,6 +76,12 @@ impl<T: Into<Literal>> From<T> for LiteralExpr {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TupleExpr {
     pub elements: Vec<Expr>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GetIndexExpr {
+    pub target: Expr,
+    pub index: Expr,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -395,6 +403,7 @@ pub trait ExprVisitor<T, C> {
         match expr {
             Expr::Literal(expr) => self.visit_literal_expr(expr, ctx),
             Expr::Tuple(expr) => self.visit_tuple_expr(expr, ctx),
+            Expr::GetIndex(expr) => self.visit_get_index_expr(expr, ctx),
             Expr::Grouping(expr) => self.visit_grouping_expr(expr, ctx),
             Expr::Binary(expr) => self.visit_binary_expr(expr, ctx),
             Expr::Unary(expr) => self.visit_unary_expr(expr, ctx),
@@ -416,6 +425,7 @@ pub trait ExprVisitor<T, C> {
     }
     fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: C) -> T;
     fn visit_tuple_expr(&mut self, expr: &TupleExpr, ctx: C) -> T;
+    fn visit_get_index_expr(&mut self, expr: &GetIndexExpr, ctx: C) -> T;
     fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: C) -> T;
     fn visit_binary_expr(&mut self, expr: &BinaryExpr, ctx: C) -> T;
     fn visit_unary_expr(&mut self, expr: &UnaryExpr, ctx: C) -> T;
@@ -440,6 +450,7 @@ pub trait ExprVisitorMut<T, C> {
         match expr {
             Expr::Literal(expr) => self.visit_literal_expr(expr, ctx),
             Expr::Tuple(expr) => self.visit_tuple_expr(expr, ctx),
+            Expr::GetIndex(expr) => self.visit_get_index_expr(expr, ctx),
             Expr::Grouping(expr) => self.visit_grouping_expr(expr, ctx),
             Expr::Binary(expr) => self.visit_binary_expr(expr, ctx),
             Expr::Unary(expr) => self.visit_unary_expr(expr, ctx),
@@ -461,6 +472,7 @@ pub trait ExprVisitorMut<T, C> {
     }
     fn visit_literal_expr(&mut self, expr: &mut LiteralExpr, ctx: C) -> T;
     fn visit_tuple_expr(&mut self, expr: &mut TupleExpr, ctx: C) -> T;
+    fn visit_get_index_expr(&mut self, expr: &mut GetIndexExpr, ctx: C) -> T;
     fn visit_grouping_expr(&mut self, expr: &mut GroupingExpr, ctx: C) -> T;
     fn visit_binary_expr(&mut self, expr: &mut BinaryExpr, ctx: C) -> T;
     fn visit_unary_expr(&mut self, expr: &mut UnaryExpr, ctx: C) -> T;
@@ -485,6 +497,7 @@ pub trait ExprVisitorOwn<T, C> {
         match expr {
             Expr::Literal(expr) => self.visit_literal_expr(*expr, ctx),
             Expr::Tuple(expr) => self.visit_tuple_expr(*expr, ctx),
+            Expr::GetIndex(expr) => self.visit_get_index_expr(*expr, ctx),
             Expr::Grouping(expr) => self.visit_grouping_expr(*expr, ctx),
             Expr::Binary(expr) => self.visit_binary_expr(*expr, ctx),
             Expr::Unary(expr) => self.visit_unary_expr(*expr, ctx),
@@ -506,6 +519,7 @@ pub trait ExprVisitorOwn<T, C> {
     }
     fn visit_literal_expr(&mut self, expr: LiteralExpr, ctx: C) -> T;
     fn visit_tuple_expr(&mut self, expr: TupleExpr, ctx: C) -> T;
+    fn visit_get_index_expr(&mut self, expr: GetIndexExpr, ctx: C) -> T;
     fn visit_grouping_expr(&mut self, expr: GroupingExpr, ctx: C) -> T;
     fn visit_binary_expr(&mut self, expr: BinaryExpr, ctx: C) -> T;
     fn visit_unary_expr(&mut self, expr: UnaryExpr, ctx: C) -> T;

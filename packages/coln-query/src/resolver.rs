@@ -8,8 +8,8 @@ use crate::{
     expr::{
         AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
         DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitorMut, FixedPointIterExpr,
-        FunctionExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr, TupleExpr,
-        UnaryExpr, UnionExpr, VarExpr,
+        FunctionExpr, GetIndexExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr,
+        TupleExpr, UnaryExpr, UnionExpr, VarExpr,
     },
     stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitorMut, VarStmt},
     util::{Named, Resolvable},
@@ -205,6 +205,15 @@ impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
         expr.elements
             .iter_mut()
             .try_for_each(|relation| self.visit_expr(relation, ctx))
+    }
+
+    fn visit_get_index_expr(
+        &mut self,
+        expr: &mut GetIndexExpr,
+        ctx: VisitorCtx<'_, '_>,
+    ) -> VisitorResult {
+        self.visit_expr(&mut expr.target, ctx)
+            .and_then(|()| self.visit_expr(&mut expr.index, ctx))
     }
 
     fn visit_grouping_expr(&mut self, expr: &mut GroupingExpr, ctx: VisitorCtx) -> VisitorResult {

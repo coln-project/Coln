@@ -28,6 +28,12 @@ impl Tuple {
     pub fn iter(&self) -> std::slice::Iter<'_, Value> {
         self.inner.iter()
     }
+    pub fn display_compact(&self) -> CompactTupleDisplay<'_, Self> {
+        CompactTupleDisplay(self)
+    }
+    pub fn display_detailed(&self) -> DetailedTupleDisplay<'_, Self> {
+        DetailedTupleDisplay(self)
+    }
 }
 
 impl<'a> IntoIterator for &'a Tuple {
@@ -112,10 +118,50 @@ impl<T: Into<Value>> FromIterator<T> for Tuple {
     }
 }
 
-impl fmt::Display for Tuple {
+/// Shared slice access for the tuple-like types, backing the generic
+/// [`CompactTupleDisplay`] / [`DetailedTupleDisplay`] wrappers.
+///
+/// This is a private implementation detail: callers use the inherent
+/// `display_compact` / `display_detailed` methods on [`Tuple`] and [`TupleType`]
+/// instead of touching this trait.
+trait TupleLike {
+    type Elem;
+    fn elements(&self) -> &[Self::Elem];
+}
+
+impl TupleLike for Tuple {
+    type Elem = Value;
+    fn elements(&self) -> &[Self::Elem] {
+        &self.inner
+    }
+}
+
+impl TupleLike for TupleType {
+    type Elem = ExprType;
+    fn elements(&self) -> &[Self::Elem] {
+        &self.element_types
+    }
+}
+
+// The `TupleLike` bound is kept off the struct definitions (it lives only on the
+// `Display` impls) so the private trait does not leak into these public types.
+pub struct CompactTupleDisplay<'a, T>(&'a T);
+pub struct DetailedTupleDisplay<'a, T>(&'a T);
+
+impl<T: TupleLike> fmt::Display for CompactTupleDisplay<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let len = self.0.elements().len();
+        write!(f, "{len}-tuple")
+    }
+}
+
+impl<T: TupleLike> fmt::Display for DetailedTupleDisplay<'_, T>
+where
+    T::Elem: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
-        let mut iter = self.inner.iter();
+        let mut iter = self.0.elements().iter();
         if let Some(first) = iter.next() {
             write!(f, "{}", first)?;
             for v in iter {
@@ -126,9 +172,33 @@ impl fmt::Display for Tuple {
     }
 }
 
+impl fmt::Display for Tuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.display_detailed().fmt(f)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TupleType {
     element_types: Vec<ExprType>,
+}
+
+impl TupleType {
+    pub fn element_type(&self, at: usize) -> Option<&ExprType> {
+        self.element_types.get(at)
+    }
+    pub fn display_compact(&self) -> CompactTupleDisplay<'_, Self> {
+        CompactTupleDisplay(self)
+    }
+    pub fn display_detailed(&self) -> DetailedTupleDisplay<'_, Self> {
+        DetailedTupleDisplay(self)
+    }
+}
+
+impl fmt::Display for TupleType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.display_detailed().fmt(f)
+    }
 }
 
 impl From<Vec<ExprType>> for TupleType {
@@ -167,8 +237,34 @@ mod test {
     #[test]
     fn tuple_display() {
         let tuple = Tuple::from([Value::from(1), Value::from(true), Value::from("Hi")]);
-        let display = format!("{tuple}");
-        assert_eq!(display, "(1, true, \"Hi\")");
+
+        assert_eq!(format!("{}", tuple.display_compact()), "3-tuple");
+        assert_eq!(format!("{}", tuple.display_detailed()), "(1, true, \"Hi\")");
+        // the `Display` impl uses the detailed form
+        assert_eq!(format!("{tuple}"), "(1, true, \"Hi\")");
+
+        let empty = Tuple::empty();
+        assert_eq!(format!("{}", empty.display_compact()), "0-tuple");
+        assert_eq!(format!("{}", empty.display_detailed()), "()");
+    }
+
+    #[test]
+    fn tuple_type_display() {
+        use crate::scalar::ScalarType;
+
+        let tuple_type = TupleType::from(vec![
+            ExprType::Scalar(ScalarType::Uint),
+            ExprType::Scalar(ScalarType::Bool),
+        ]);
+
+        assert_eq!(format!("{}", tuple_type.display_compact()), "2-tuple");
+        assert_eq!(format!("{}", tuple_type.display_detailed()), "(uint, bool)");
+        // the `Display` impl uses the detailed form
+        assert_eq!(format!("{tuple_type}"), "(uint, bool)");
+
+        let empty = TupleType::from(Vec::<ExprType>::new());
+        assert_eq!(format!("{}", empty.display_compact()), "0-tuple");
+        assert_eq!(format!("{}", empty.display_detailed()), "()");
     }
 
     #[test]

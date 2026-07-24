@@ -539,6 +539,24 @@ pub struct RelationType {
     fields: HashMap<String, ScalarType>,
 }
 
+impl Display for RelationType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Sort by field name so the output is deterministic (`HashMap`
+        // iteration order is not).
+        let mut fields: Vec<_> = self.fields.iter().collect();
+        fields.sort_by_key(|(name, _)| *name);
+        write!(f, "{{")?;
+        let mut iter = fields.into_iter();
+        if let Some((name, scalar_type)) = iter.next() {
+            write!(f, "{name}: {scalar_type}")?;
+            for (name, scalar_type) in iter {
+                write!(f, ", {name}: {scalar_type}")?;
+            }
+        }
+        write!(f, "}}")
+    }
+}
+
 impl RelationType {
     pub fn join(self, other: Self) -> Self {
         // We start with other to have duplicate fields' types be taken from self.

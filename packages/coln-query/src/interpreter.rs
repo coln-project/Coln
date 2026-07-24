@@ -9,8 +9,8 @@ use crate::{
     expr::{
         AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
         DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitor, FixedPointIterExpr,
-        FunctionExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr, TupleExpr,
-        UnaryExpr, UnionExpr, VarExpr,
+        FunctionExpr, GetIndexExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr,
+        TupleExpr, UnaryExpr, UnionExpr, VarExpr,
     },
     function::new_function,
     operator::Operator,
@@ -198,6 +198,44 @@ impl ExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>> for Interpreter {
             .collect::<Result<Vec<Value>, _>>()?;
 
         Ok(Value::from(Tuple::from(values)))
+    }
+
+    fn visit_get_index_expr(
+        &mut self,
+        expr: &GetIndexExpr,
+        ctx: VisitorCtx<'_, '_>,
+    ) -> ExprVisitorResult {
+        let target = self.visit_expr(&expr.target, ctx)?;
+        let index = self.visit_expr(&expr.index, ctx)?;
+
+        if let Value::Uint(idx) = index {
+            match target {
+                Value::Tuple(tuple) => {
+                    let idx = idx as usize;
+                    let tuple_len = tuple.len();
+                    if idx < tuple_len {
+                        Ok(tuple.get(idx).clone())
+                    } else {
+                        Err(EngineError::new(format!(
+                            "{} at index {idx} is out of bounds.",
+                            tuple.display_compact()
+                        )))
+                    }
+                }
+                // Extend here to handle arrays, string indexing, etc.
+                _ =>
+                // If the type checker is used this case is actually unreachable.
+                {
+                    Err(EngineError::new(format!(
+                        "Invalid index operation on {target}."
+                    )))
+                }
+            }
+        } else {
+            Err(EngineError::new(format!(
+                "Index {index} does not evaluate to an uint"
+            )))
+        }
     }
 
     fn visit_grouping_expr(&mut self, expr: &GroupingExpr, ctx: VisitorCtx) -> ExprVisitorResult {

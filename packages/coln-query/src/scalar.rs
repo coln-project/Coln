@@ -158,3 +158,17 @@ pub enum ScalarType {
     Char,
     Null,
 }
+
+impl Display for ScalarType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            ScalarType::String => "string",
+            ScalarType::Uint => "uint",
+            ScalarType::Iint => "iint",
+            ScalarType::Bool => "bool",
+            ScalarType::Char => "char",
+            ScalarType::Null => "null",
+        };
+        write!(f, "{name}")
+    }
+}
