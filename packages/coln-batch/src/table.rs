@@ -22,6 +22,10 @@ use crate::relation::Relation;
 /// Column id, in *schema* order (position in the relation's column list).
 pub type ColId = usize;
 
+/// Row position in *sorted* order (`0..len()`). Not to be confused with a
+/// FLIR row id, which is a value stored inside a cell.
+pub type RowIdx = usize;
+
 pub trait SortedTable {
     /// Number of columns of the underlying relation.
     fn arity(&self) -> usize;
@@ -37,9 +41,16 @@ pub trait SortedTable {
     /// `sort_order()[0]` is the major sort column.
     fn sort_order(&self) -> &[ColId];
 
+    /// The table's (possibly compound) unique keys, as column ids in
+    /// schema order. Defaults to empty, meaning no keys are known.
+    /// Planning metadata; the executors do not rely on it yet.
+    fn primary_keys(&self) -> &[Vec<ColId>] {
+        &[]
+    }
+
     /// Cell access. `row` is a position in *sorted* order (`0..len()`);
     /// `col` is a column id in *schema* order.
-    fn value(&self, row: usize, col: ColId) -> u64;
+    fn value(&self, row: RowIdx, col: ColId) -> u64;
 
     /// First position in `lo..hi` whose value in sort column `depth`
     /// (i.e. schema column `sort_order()[depth]`) is `>= v`.
@@ -51,7 +62,7 @@ pub trait SortedTable {
     /// The default is a binary search over [`Self::value`]; back ends with
     /// better means (galloping search, block statistics, B-tree descent)
     /// should override it.
-    fn lower_bound(&self, depth: usize, v: u64, lo: usize, hi: usize) -> usize {
+    fn lower_bound(&self, depth: usize, v: u64, lo: RowIdx, hi: RowIdx) -> RowIdx {
         let col = self.sort_order()[depth];
         let (mut lo, mut hi) = (lo, hi);
         while lo < hi {
@@ -67,7 +78,7 @@ pub trait SortedTable {
 
     /// First position in `lo..hi` whose value in sort column `depth` is
     /// `> v`. Same precondition as [`Self::lower_bound`].
-    fn upper_bound(&self, depth: usize, v: u64, lo: usize, hi: usize) -> usize {
+    fn upper_bound(&self, depth: usize, v: u64, lo: RowIdx, hi: RowIdx) -> RowIdx {
         let col = self.sort_order()[depth];
         let (mut lo, mut hi) = (lo, hi);
         while lo < hi {
@@ -84,7 +95,7 @@ pub trait SortedTable {
     /// The contiguous range of positions in `lo..hi` whose sort column
     /// `depth` equals `v` (empty, positioned at the insertion point, if
     /// `v` is absent). Same precondition as [`Self::lower_bound`].
-    fn equal_range(&self, depth: usize, v: u64, lo: usize, hi: usize) -> Range<usize> {
+    fn equal_range(&self, depth: usize, v: u64, lo: RowIdx, hi: RowIdx) -> Range<RowIdx> {
         let start = self.lower_bound(depth, v, lo, hi);
         let end = self.upper_bound(depth, v, start, hi);
         start..end
@@ -173,7 +184,7 @@ impl SortedTable for ArrowSortedTable {
         &self.sort_order
     }
 
-    fn value(&self, row: usize, col: ColId) -> u64 {
+    fn value(&self, row: RowIdx, col: ColId) -> u64 {
         self.cols[col][row]
     }
 }
@@ -195,7 +206,26 @@ pub fn check_contract<T: SortedTable>(t: &T) {
         assert!(c < arity && !seen[c], "sort order must be a permutation");
         seen[c] = true;
     }
-    let sort_key = |row: usize| -> Vec<u64> { order.iter().map(|&c| t.value(row, c)).collect() };
+    for key in t.primary_keys() {
+        assert!(
+            !key.is_empty(),
+            "a primary key must name at least one column"
+        );
+        for &c in key {
+            assert!(c < arity, "primary key column {c} out of range");
+        }
+        let mut tuples: Vec<Vec<u64>> = (0..t.len())
+            .map(|r| key.iter().map(|&c| t.value(r, c)).collect())
+            .collect();
+        tuples.sort_unstable();
+        tuples.dedup();
+        assert_eq!(
+            tuples.len(),
+            t.len(),
+            "rows must be unique under a declared primary key"
+        );
+    }
+    let sort_key = |row: RowIdx| -> Vec<u64> { order.iter().map(|&c| t.value(row, c)).collect() };
     for r in 1..t.len() {
         assert!(
             sort_key(r - 1) <= sort_key(r),
@@ -208,7 +238,7 @@ pub fn check_contract<T: SortedTable>(t: &T) {
     }
 }
 
-fn check_range<T: SortedTable>(t: &T, depth: usize, lo: usize, hi: usize) {
+fn check_range<T: SortedTable>(t: &T, depth: usize, lo: RowIdx, hi: RowIdx) {
     if depth == t.arity() || lo == hi {
         return;
     }
