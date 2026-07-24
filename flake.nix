@@ -217,6 +217,7 @@
             cabal-install
             cabal2nix
             cargo-llvm-cov
+            cargo-nextest
             coln-manual-dev
             forester
             fourmolu
