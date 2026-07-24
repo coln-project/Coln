@@ -16,7 +16,7 @@ fix package:
 
 check-haskell: (check "coln-compiler") (check "coln-cli") (check "coln-repl") (check "coln-ls") (check "fnotation") (check "diagnostician")
 
-check-rust: (check "coln-store")
+check-rust: (check "coln-store") (check "coln-batch")
 
 check-typescript: (check "coln-js-runtime")
 
