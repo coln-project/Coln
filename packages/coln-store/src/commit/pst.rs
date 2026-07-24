@@ -27,7 +27,7 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
     let mut buf: Vec<u8> = Vec::new();
     buf.write_all(MAGIC)?;
     commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
-    commit_leb128::write_u64(&mut buf, store.next_oid);
+    commit_leb128::write_len(&mut buf, store.next_oid);
 
     commit_leb128::write_len(&mut buf, commits.len());
 
@@ -68,7 +68,7 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
         )));
     }
 
-    let next_oid = commit_leb128::read_u64(data, &mut pos, "next_oid")?;
+    let next_oid = commit_leb128::read_len(data, &mut pos, "next_oid")?;
 
     let chunk_count = commit_leb128::read_len(data, &mut pos, "chunk count")?;
     let mut chunks = Vec::with_capacity(chunk_count);

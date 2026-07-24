@@ -146,7 +146,7 @@ mod tests {
         root_with_table(0)
     }
 
-    fn root_with_table(oid: u64) -> Commit<'static> {
+    fn root_with_table(oid: usize) -> Commit<'static> {
         Commit::from_root_data(&RootCommitData {
             tables: vec![RootTableEntry {
                 path: format!("T{oid}"),

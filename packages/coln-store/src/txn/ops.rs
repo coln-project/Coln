@@ -75,7 +75,7 @@ impl RowHandle {
         }
     }
 
-    pub(crate) fn replace_row_id(&self, new_row_id: RowId) -> Result<(), StoreIntError> {
+    pub(crate) fn canonicalise(&self, new_row_id: RowId) -> Result<(), StoreIntError> {
         match &*self.state.borrow() {
             RowHandleState::Existing(..) => {
                 self.state.replace(RowHandleState::Existing(new_row_id));

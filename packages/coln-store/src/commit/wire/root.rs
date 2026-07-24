@@ -49,7 +49,7 @@ pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, CodecErro
     write_count(&mut buf, tables.len());
     for table in tables {
         commit_leb128::write_len_prefixed_bytes(&mut buf, table.path.as_bytes());
-        commit_leb128::write_u64(&mut buf, table.oid);
+        commit_leb128::write_len(&mut buf, table.oid);
 
         let schema_bytes = encode_schema(&table.schema)?;
         commit_leb128::write_len_prefixed_bytes(&mut buf, &schema_bytes);
@@ -75,7 +75,7 @@ pub(crate) fn deserialize_root(data: &[u8]) -> Result<RootCommitData, CodecError
             .map_err(|_| CodecError::DataFormatError("root table path: invalid utf-8".into()))?
             .to_owned();
 
-        let oid = commit_leb128::read_u64(data, &mut pos, "root table oid")?;
+        let oid = commit_leb128::read_len(data, &mut pos, "root table oid")?;
 
         let schema_bytes =
             commit_leb128::read_len_prefixed_bytes(data, &mut pos, "root table schema")?;

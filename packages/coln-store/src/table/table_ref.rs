@@ -1,7 +1,10 @@
 use crate::commit::hash_dict::HashMapper;
 use crate::ir;
 use crate::ir::Schema;
-use crate::table::{CellValue, RowId, RowView, Table, ValidationError};
+use crate::table::index::{IndexId, IndexMeta};
+use crate::table::{
+    CellValue, PackedCell, PackedRowId, RowId, RowView, SeekKey, Table, ValidationError,
+};
 
 /// A [`Table`] together with the store-wide hash dictionary, for read-only
 /// access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -42,7 +45,35 @@ impl<'a> TableRef<'a> {
     }
 
     pub fn row_position(self, row_id: RowId) -> Option<usize> {
-        self.table.row_position(row_id, self.dict)
+        self.table.row_idx(row_id, self.dict)
+    }
+
+    pub fn table_scan(self) -> impl Iterator<Item = RowView> + 'a {
+        self.table.table_scan(self.dict)
+    }
+
+    pub fn indexes_meta(self) -> Vec<IndexMeta<'a>> {
+        self.table.indexes_meta()
+    }
+
+    pub fn seek(self, key: &[SeekKey]) -> Result<impl Iterator<Item = RowId>, ValidationError> {
+        self.table.seek(key, self.dict)
+    }
+
+    pub fn index_seek(
+        self,
+        index: IndexId,
+        key: &[CellValue],
+    ) -> Result<impl Iterator<Item = RowId>, ValidationError> {
+        self.table.index_seek(index, key, self.dict)
+    }
+
+    pub fn lookup(self, key: &[SeekKey]) -> Result<bool, ValidationError> {
+        self.table.lookup(key, self.dict)
+    }
+
+    pub fn index_lookup(self, index: IndexId, key: &[CellValue]) -> Result<bool, ValidationError> {
+        self.table.index_lookup(index, key, self.dict)
     }
 
     pub fn dump(self) -> String {

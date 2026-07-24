@@ -111,8 +111,7 @@ impl Store {
     }
 
     pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
-        self.table_at(table_path)
-            .map(|table| (0..table.row_count()).filter_map(move |row_idx| table.row_at(row_idx)))
+        self.table_at(table_path).map(|table| table.table_scan())
     }
 
     pub(crate) fn canonical_row_id(&self, row_id: RowId) -> RowId {
@@ -122,8 +121,9 @@ impl Store {
     pub fn row_by_handle(&self, table: &ir::Path, row_handle: RowHandle) -> Option<RowView> {
         let row_id = row_handle.row_id().ok()?;
         let con_rowid = self.canonical_row_id(row_id);
+        // replace the rowid in the row_handle so it stays canonical
         if row_id != con_rowid {
-            row_handle.replace_row_id(con_rowid).ok()?
+            row_handle.canonicalise(con_rowid).ok()?
         }
         self.row_by_id(table, con_rowid)
     }
@@ -237,15 +237,12 @@ impl Store {
             } = op;
             let oid = self.resolve_table(&table).expect("validated batch");
 
-            // use self.tables to make the borrow checker happy we are accessing separate fields
-            let t = self.tables.get(&oid).expect("validated batch");
-
             // TODO: non-hashcons rows pay by_row and union-find bookkeeping on
             // every insert; this is only needed for rows that a hashcons table
             // can reference or that reference a hashcons table themselves.
             let rowing::Observed { outcome, fixups } =
                 self.rowing
-                    .observe(t, &mut self.id_packer, row_id, &values)?;
+                    .observe(oid, &self.tables, &mut self.id_packer, row_id, &values)?;
 
             // TODO do batch insert
             let t = self.tables.get_mut(&oid).expect("validated batch");
@@ -260,21 +257,18 @@ impl Store {
                 }
 
                 rowing::ObservedOutcome::Swap { old, new } => {
-                    t.replace_row_id(&old, new, &mut self.id_packer)?;
+                    t.replace_row_id(&old, new, &mut self.id_packer);
                 }
             }
 
             // A canonical id change leaves stale id cells in rows that
             // reference the merged class; rewrite them now.
             for fixup in fixups {
-                let oid = self
-                    .resolve_table(&fixup.table)
-                    .expect("fixups target observed tables");
                 let t = self
                     .tables
-                    .get_mut(&oid)
+                    .get_mut(&fixup.table)
                     .expect("fixups target observed tables");
-                t.rewrite_row_cells(&fixup.row, fixup.values, &mut self.id_packer)?;
+                t.rewrite_row_cells(&fixup.row, fixup.values, &mut self.id_packer);
             }
         }
         info!(op_count, "applied batch");
@@ -527,13 +521,15 @@ impl Store {
             }
         }
 
-        let mut preview = self.clone();
+        // TODO disable cloning for now
+        // let mut preview = self.clone();
 
         while let Some(hash) = ready.pop_front() {
             let commit = pending
                 .remove(&hash)
                 .ok_or(CommitApplyError::MissingCommit)?;
-            preview.apply_commit_ready(commit)?;
+            // preview.apply_commit_ready(commit)?;
+            self.apply_commit_ready(commit)?;
 
             if let Some(waitings) = waiting_on.remove(&hash) {
                 for wh in waitings {
@@ -554,7 +550,7 @@ impl Store {
             return Err(CommitApplyError::DisconnectedCommit.into());
         }
 
-        *self = preview;
+        // *self = preview;
         Ok(())
     }
 }
