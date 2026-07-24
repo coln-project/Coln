@@ -756,10 +756,7 @@ type WeightedEdge = Tup3<NodeId, NodeId, Weight>;
 type Path = Tup4<NodeId, NodeId, CumWeight, Hopcnt>;
 
 #[allow(clippy::type_complexity)]
-fn trans_closure_data() -> (
-    Vec<Vec<Tup2<WeightedEdge, ZWeight>>>,
-    Vec<OrdZSet<Path>>,
-) {
+fn trans_closure_data() -> (Vec<Vec<Tup2<WeightedEdge, ZWeight>>>, Vec<OrdZSet<Path>>) {
     let edges_input = vec![
         // The first clock cycle adds a graph of four nodes:
         // |0| -1-> |1| -1-> |2| -2-> |3| -2-> |4|
@@ -819,34 +816,32 @@ fn test_self_rec_trans_closure_recursive() -> Result<(), anyhow::Error> {
             let len_1 = edges.map(|Tup3(from, to, weight)| Tup4(*from, *to, *weight, 1));
 
             let closure = root_circuit.recursive(
-            |child_circuit, len_n_minus_1: Stream<_, OrdZSet<Path>>| {
-                // Import the `edges` and `len_1` relation from the parent circuit.
-                let edges = edges.delta0(child_circuit);
-                let len_1 = len_1.delta0(child_circuit);
+                |child_circuit, len_n_minus_1: Stream<_, OrdZSet<Path>>| {
+                    // Import the `edges` and `len_1` relation from the parent circuit.
+                    let edges = edges.delta0(child_circuit);
+                    let len_1 = len_1.delta0(child_circuit);
 
-                // Perform an iterative step (n-1 to n) through joining the
-                // paths of length n-1 with the edges.
-                let len_n = len_n_minus_1
-                    .map_index(|Tup4(start, end, cum_weight, hopcnt)| {
-                        (
-                            *end,
-                            Tup4(*start, *end, *cum_weight, *hopcnt),
+                    // Perform an iterative step (n-1 to n) through joining the
+                    // paths of length n-1 with the edges.
+                    let len_n = len_n_minus_1
+                        .map_index(|Tup4(start, end, cum_weight, hopcnt)| {
+                            (*end, Tup4(*start, *end, *cum_weight, *hopcnt))
+                        })
+                        .join(
+                            &edges.map_index(|Tup3(from, to, weight)| {
+                                (*from, Tup3(*from, *to, *weight))
+                            }),
+                            |_end_from,
+                             Tup4(start, _end, cum_weight, hopcnt),
+                             Tup3(_from, to, weight)| {
+                                Tup4(*start, *to, cum_weight + weight, hopcnt + 1)
+                            },
                         )
-                    })
-                    .join(
-                        &edges.map_index(|Tup3(from, to, weight)| {
-                            (*from, Tup3(*from, *to, *weight))
-                        }),
-                        |_end_from,
-                         Tup4(start, _end, cum_weight, hopcnt),
-                         Tup3(_from, to, weight)| {
-                            Tup4(*start, *to, cum_weight + weight, hopcnt + 1)
-                        },
-                    ).plus(&len_1);
+                        .plus(&len_1);
 
-                Ok(len_n)
-            },
-        )?;
+                    Ok(len_n)
+                },
+            )?;
 
             Ok((edges_input, closure.accumulate_output()))
         })?;
@@ -887,10 +882,8 @@ fn test_self_rec_trans_closure_iterate() -> Result<(), anyhow::Error> {
 
             let closure = root_circuit.iterate_with_condition(|child_circuit| {
                 // Feedback carries only the frontier (the delta from the last step).
-                let (frontier, frontier_feedback) = child_circuit
-                    .add_feedback(Z1::new(
-                        OrdZSet::<Path>::default(),
-                    ));
+                let (frontier, frontier_feedback) =
+                    child_circuit.add_feedback(Z1::new(OrdZSet::<Path>::default()));
 
                 // delta0 fires only at inner step 0, injecting the base case exactly once.
                 let edges_inner = edges.delta0(child_circuit);
