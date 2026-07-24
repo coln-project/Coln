@@ -60,8 +60,14 @@ jobs:
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Install just
+        uses: extractions/setup-just@v3
+
       - name: Run tests
-        run: cargo test
+        run: just check-rust
 
   coln-js-runtime-check:
     runs-on: ubuntu-latest
@@ -73,6 +79,9 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: wasm32-unknown-unknown
+
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
 
       - name: Install wasm-bindgen-cli
         run: |
