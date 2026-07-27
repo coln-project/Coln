@@ -12,22 +12,6 @@
     boot.loader.systemd-boot.enable = true;
     boot.loader.efi.canTouchEfiVariables = true;
     nix.settings.experimental-features = ["nix-command" "flakes"];
-    networking.hostName = "runner-server";
-    services.avahi = {
-      enable = true;
-      publish = {
-        enable = true;
-        addresses = true;
-      };
-    };
-    networking.wireless = {
-      enable = true;
-      interfaces = [ "wlp58s0" ];
-      secretsFile = config.age.secrets.wifi.path;
-      networks = builtins.listToAttrs
-        (map (name: { inherit name; value.pskRaw = "ext:PSK_${name}"; })
-            ["<YOUR SSID HERE>"]);
-    };
     services.openssh.enable = true;
     virtualisation.vmVariant = {
       virtualisation = {
