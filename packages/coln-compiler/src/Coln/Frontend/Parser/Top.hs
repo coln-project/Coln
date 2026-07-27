@@ -118,6 +118,12 @@ decl e g (N.Block "realm" (Just head) body _) = do
   pure $ addRealm x r g
 decl e _ n = unexpectedNotation (contramap ParserCode e) n "top-level declaration"
 
+elabRealmEntry :: ElabEnv N -> Mode -> (Name, Typ N, Chk D) -> IO GlobalEntry
+elabRealmEntry = undefined
+
+realmDecl :: DiagnosticEnv ColnCode -> ElabEnv N -> Ntn -> IO (ElabEnv N)
+realmDecl = undefined
+
 tryDecl :: DiagnosticEnv ColnCode -> Globals -> Ntn -> IO Globals
 tryDecl e g n = do
   try (decl e g n) >>= \case
