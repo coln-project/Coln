@@ -12,10 +12,6 @@ let
 
 in
 {
-  "root-pass.age".publicKeys = all;
   "runner-token.age".publicKeys = all;
   "wifi.age".publicKeys = all;
-
-  # ssh user keys
-  "root-user-ssh.age".publicKeys = all;
 }
