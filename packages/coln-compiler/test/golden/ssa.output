@@ -1,4 +1,11 @@
 -- elaborated
+global entry named IsTransClosure
+in mode: Conjunctive
+type: (X : Set) -> (R : X -> X -> Set) -> (P : X -> X -> Set) -> Theory
+value: X => R => P => sig
+  refl : (x : X) -> P x x
+  snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
+end
 global entry named OpInfo
 in mode: Conjunctive
 type: Theory
@@ -7,28 +14,28 @@ value: sig
   inputArity : OpType -> Set
   outputArity : OpType -> Set
 end
+global entry named PrecedingOutput
+in mode: Conjunctive
+type: (X : Set) -> (rel : X -> X -> Set) -> (x : X) -> (outputs : X -> Set) -> Set
+value: X => rel => x => outputs => sig
+  y : X
+  isPreceding : rel y x
+  output : outputs y
+end
 
 -- messages
-
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-2 |   refl : (x : X) -> P x x
-2 |                     ^
 
 error[E0316]: cannot use inductively bound variable in a conjunctive context
 13 |   next/prev : (x : car) -> next (prev x) = x
 13 |                                            ^
 
 error[E0316]: cannot use inductively bound variable in a conjunctive context
-32 |   fwd : A -> B
-32 |              ^
+34 |   fwd/bwd : (a : A) -> bwd (fwd a) = a
+34 |                                      ^
 
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-39 |   opType : opInfo.OpType
-39 |            ^^^^^^
-
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-45 |   y : X
-45 |       ^
+error[E0314]: no such variable Iso in scope
+41 |   opOutputs : Iso outputs (opInfo.outputArity opType)
+41 |               ^^^
 
 error[E0314]: no such variable LinearOrder in scope
 51 |   ops : LinearOrder

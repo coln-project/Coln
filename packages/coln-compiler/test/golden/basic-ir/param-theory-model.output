@@ -5,17 +5,40 @@ type: Theory
 value: sig
   X : Set
 end
+global entry named PointOf
+in mode: Conjunctive
+type: (M : Model) -> Theory
+value: M => sig
+  point : M.X
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  model : Model
+  pointed : PointOf model
+end
+realm named TRealm
+generators: node
+  model = node
+    X = rel []
+  end
+  pointed = node
+    point = (fun [] -> TRealm.model.X [])
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.model.X := []
+    table ℜ.pointed.point := [.a : ℜ.model.X] primarykey []
+  end
+  rules
+    enforced ℜ.model.X.foreignKey := ℜ.model.X [] ⊢ ⊤
+    enforced ℜ.pointed.point.foreignKey a := ℜ.pointed.point [
+      .a ↦ a
+    ] ⊢ a ∈ ℜ.model.X []
+    monitored ℜ.pointed.point.total := ⊤ ⊢ ℜ.pointed.point []
+  end
+end
 
 -- messages
-
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-6 |   point : M.X
-6 |           ^
-
-error[E0314]: no such variable PointOf in scope
-11 |   pointed : PointOf model
-11 |             ^^^^^^^
-
-error[E0314]: no such variable T in scope
-14 | realm TRealm @ T
-14 |                ^
