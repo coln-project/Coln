@@ -1,47 +1,16 @@
 -- elaborated
-global entry named Payload
-in mode: Conjunctive
-type: (X : Set) -> Set
-value: X => sig
-  first : X
-  second : X
-end
-global entry named T
-in mode: Conjunctive
-type: Theory
-value: sig
-  X : Set
-  E : X -> Set
-  r : (p : Payload X) -> E p.second
-end
-realm named TRealm
-generators: node
-  X = rel []
-  E = rel [a : TRealm.X []]
-  r = (fun [p : Payload (TRealm.X [])] -> TRealm.E [a := p.second])
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.E := [.a : ℜ.X]
-    table ℜ.r := [.p.first : ℜ.X, .p.second : ℜ.X, .a : ℜ.E] primarykey [
-      .p.first,
-      .p.second
-    ]
-  end
-  rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.X []
-    enforced ℜ.r.foreignKey p.first p.second a := ℜ.r [
-      .p.first ↦ p.first,
-      .p.second ↦ p.second,
-      .a ↦ a
-    ] ⊢ p.first ∈ ℜ.X [] ∧ p.second ∈ ℜ.X [] ∧ a ∈ ℜ.E [.a ↦ p.second]
-    monitored ℜ.r.total p.first p.second := p.first ∈ ℜ.X [] ∧ p.second ∈ ℜ.X [] ⊢ ℜ.r [
-      .p.first ↦ p.first,
-      .p.second ↦ p.second
-    ]
-  end
-end
+
 
 -- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+2 |   first : X
+2 |           ^
+
+error[E0314]: no such variable Payload in scope
+9 |   r : (p : Payload X) -> E p.second
+9 |            ^^^^^^^
+
+error[E0314]: no such variable T in scope
+12 | realm TRealm @ T
+12 |                ^

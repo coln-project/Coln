@@ -35,7 +35,7 @@ annot e n = unexpectedNotation e n "type-annotated expression, e.g. `<pattern> :
 
 argBinding :: ParserEnv -> Ntn -> IO (Span, Mode, Name, Typ N)
 argBinding e n@(N.Infix n0 (N.Keyword ":" _) n1) = do
-  (m, x) <- modalIdent e n0
+  (m, x) <- modalIdent e Conjunctive n0
   a <- typ e n1
   pure (N.span n, m, x, a)
 argBinding e n = unexpectedNotation e n "argument binding of the form `<name> : <type>`"

@@ -10,20 +10,20 @@ value: sig
   v : Set
   e : v -> v -> Prop
 end
-global entry named TransitiveExt
-in mode: Conjunctive
-type: (G : Graph) -> Theory
-value: G => sig
-  p : G.v -> G.v -> Prop
-  incl : (v0 : G.v) -> (v1 : G.v) -> G.e v0 v1 -> p v0 v1
-  snoc : (v0 : G.v) -> (v1 : G.v) -> (v2 : G.v) -> p v0 v1 -> G.e v1 v2 -> p v0 v2
-end
 
 -- messages
 
-error[E0316]: cannot use inductively bound variable in a conjunctive context
+error[E0100]: Unexpected token kind SKeyword, expected a token that can start an expression
+8 | theory TransitiveExt (@i G : Graph) := sig
+8 |                       ^
+
+error[E0200]: unexpected notation for identifier, possibly with mode annotation: Juxt
+8 | theory TransitiveExt (@i G : Graph) := sig
+8 |                       ^^^^
+
+error[E0314]: no such variable TransitiveExt in scope
 14 | ind def transitive-closure (G : Graph) : TransitiveExt G := init (TransitiveExt G)
-14 |                                                                                 ^
+14 |                                          ^^^^^^^^^^^^^
 
 error[E0316]: cannot use inductively bound variable in a conjunctive context
 16 | ind def freept (X : Set) : X := init X

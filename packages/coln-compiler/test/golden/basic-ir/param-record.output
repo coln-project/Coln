@@ -1,33 +1,16 @@
 -- elaborated
-global entry named Box
-in mode: Conjunctive
-type: (X : Set) -> Set
-value: X => sig
-  value : X
-end
-global entry named T
-in mode: Conjunctive
-type: Theory
-value: sig
-  X : Set
-  boxed : Box X -> Set
-end
-realm named TRealm
-generators: node
-  X = rel []
-  boxed = rel [a : Box (TRealm.X [])]
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.boxed := [.a.value : ℜ.X]
-  end
-  rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.boxed.foreignKey a.value := ℜ.boxed [
-      .a.value ↦ a.value
-    ] ⊢ a.value ∈ ℜ.X []
-  end
-end
+
 
 -- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+2 |   value : X
+2 |           ^
+
+error[E0314]: no such variable Box in scope
+7 |   boxed : Box X -> Set
+7 |           ^^^
+
+error[E0314]: no such variable T in scope
+10 | realm TRealm @ T
+10 |                ^

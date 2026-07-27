@@ -1,57 +1,16 @@
 -- elaborated
-global entry named EqualTriple
-in mode: Conjunctive
-type: (X : Set) -> Set
-value: X => sig
-  first : X
-  second : X
-  proof : first = second
-  trailing : X
-end
-global entry named T
-in mode: Conjunctive
-type: Theory
-value: sig
-  X : Set
-  Accepted : EqualTriple X -> Prop
-  select : EqualTriple X -> X
-end
-realm named TRealm
-generators: node
-  X = rel []
-  Accepted = rel [a : EqualTriple (TRealm.X [])]
-  select = (fun [a : EqualTriple (TRealm.X [])] -> TRealm.X [])
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.Accepted := [.a.first : ℜ.X, .a.second : ℜ.X, .a.trailing : ℜ.X]
-    table ℜ.select := [
-      .a.first : ℜ.X,
-      .a.second : ℜ.X,
-      .a.trailing : ℜ.X,
-      .b : ℜ.X
-    ] primarykey [.a.first, .a.second, .a.trailing]
-  end
-  rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.Accepted.foreignKey a.first a.second a.trailing := ℜ.Accepted [
-      .a.first ↦ a.first,
-      .a.second ↦ a.second,
-      .a.trailing ↦ a.trailing
-    ] ⊢ a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X []
-    enforced ℜ.select.foreignKey a.first a.second a.trailing b := ℜ.select [
-      .a.first ↦ a.first,
-      .a.second ↦ a.second,
-      .a.trailing ↦ a.trailing,
-      .b ↦ b
-    ] ⊢ a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X [] ∧ b ∈ ℜ.X []
-    monitored ℜ.select.total a.first a.second a.trailing := a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X [] ⊢ ℜ.select [
-      .a.first ↦ a.first,
-      .a.second ↦ a.second,
-      .a.trailing ↦ a.trailing
-    ]
-  end
-end
+
 
 -- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+2 |   first : X
+2 |           ^
+
+error[E0314]: no such variable EqualTriple in scope
+10 |   Accepted : EqualTriple X -> Prop
+10 |              ^^^^^^^^^^^
+
+error[E0314]: no such variable T in scope
+14 | realm TRealm @ T
+14 |                ^

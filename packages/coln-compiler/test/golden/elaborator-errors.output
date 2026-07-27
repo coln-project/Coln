@@ -21,16 +21,16 @@ global entry named dependent
 in mode: Conjunctive
 type: Dependent
 value: [A := Int, value := 1]
-global entry named identity
-in mode: Conjunctive
-type: Int -> Int
-value: x => x
-global entry named shadow
-in mode: Conjunctive
-type: (x : String) -> Int -> Int
-value: x => x => x
 
 -- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+21 | def identity : Int -> Int := x => x
+21 |                                   ^
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+23 | def shadow (x : String) : Int -> Int := x => x
+23 |                                              ^
 
 error[E0302]: tried to project from a value that was not of a record type
 25 | def projectionOfNonRecord : Int := (1).missing

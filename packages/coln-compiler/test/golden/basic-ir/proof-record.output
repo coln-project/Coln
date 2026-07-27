@@ -1,32 +1,16 @@
 -- elaborated
-global entry named Witness
-in mode: Conjunctive
-type: (X : Set) -> (x : X) -> Set
-value: X => x => sig
-  proof : x = x
-end
-global entry named T
-in mode: Conjunctive
-type: Theory
-value: sig
-  X : Set
-  witness : (x : X) -> Witness X x
-end
-realm named TRealm
-generators: node
-  X = rel []
-  witness = (fun [x : TRealm.X []] -> Witness (TRealm.X []) x)
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.witness := [.x : ℜ.X] primarykey [.x]
-  end
-  rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.witness.foreignKey x := ℜ.witness [.x ↦ x] ⊢ x ∈ ℜ.X [] ∧ x = x
-    monitored ℜ.witness.total x := x ∈ ℜ.X [] ⊢ ℜ.witness [.x ↦ x]
-  end
-end
+
 
 -- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+2 |   proof : x = x
+2 |           ^
+
+error[E0314]: no such variable Witness in scope
+7 |   witness : (x : X) -> Witness X x
+7 |                        ^^^^^^^
+
+error[E0314]: no such variable T in scope
+10 | realm TRealm @ T
+10 |                ^

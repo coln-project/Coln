@@ -11,39 +11,17 @@ type: Set
 value: sig
   name : String
 end
-global entry named Box
-in mode: Conjunctive
-type: (M : Model) -> (Y : Set) -> Set
-value: M => Y => sig
-  modelValue : M.X
-  value : Y
-end
-global entry named T
-in mode: Conjunctive
-type: Theory
-value: sig
-  model : Model
-  boxed : Box model Payload -> Set
-end
-realm named TRealm
-generators: node
-  model = node
-    X = rel []
-  end
-  boxed = rel [a : Box [X := TRealm.model.X []] Payload]
-end
-lowered: flatrealm
-  entities
-    table ℜ.model.X := []
-    table ℜ.boxed := [.a.modelValue : ℜ.model.X, .a.value.name : String]
-  end
-  rules
-    enforced ℜ.model.X.foreignKey := ℜ.model.X [] ⊢ ⊤
-    enforced ℜ.boxed.foreignKey a.modelValue a.value.name := ℜ.boxed [
-      .a.modelValue ↦ a.modelValue,
-      .a.value.name ↦ a.value.name
-    ] ⊢ a.modelValue ∈ ℜ.model.X []
-  end
-end
 
 -- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+10 |   modelValue : M.X
+10 |                ^
+
+error[E0314]: no such variable Box in scope
+16 |   boxed : Box model Payload -> Set
+16 |           ^^^
+
+error[E0314]: no such variable T in scope
+19 | realm TRealm @ T
+19 |                ^
