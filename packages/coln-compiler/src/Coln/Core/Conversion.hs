@@ -143,6 +143,9 @@ instance DefEq (V.El N) where
     V.Neu n -> case canon v' of
       V.Neu n' -> defEq cs n n'
       _ -> throwUnequalEls cs v v' Nothing
+    V.InitNeu n -> case canon v' of
+      V.InitNeu n' -> defEq cs n n'
+      _ -> throwUnequalEls cs v v' Nothing
     V.Code a -> case canon v' of
       V.Code a' -> defEq cs a a'
       _ -> throwUnequalEls cs v v' Nothing

@@ -35,7 +35,7 @@ elimSyn :: Span -> Syn N -> Typ N
 elimSyn sp s = Typ \e -> do
   (a, el) <- s.elab e
   case V.behavior a of
-    V.LikeU u -> pure $ decode el
+    V.LikeU _ -> pure $ decode el
     _ -> do
       let msg = "expected element of universe type"
       failWith e.diagEnv sp TypeAtNonUniverse msg
