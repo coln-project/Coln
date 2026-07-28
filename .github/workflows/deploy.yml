@@ -20,7 +20,7 @@ jobs:
       #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build manual
-        run: nix build .#manual
+        run: nix build .#manual --accept-flake-config
 
       # - name: Deploy manual
       #   uses: peaceiris/actions-gh-pages@v4

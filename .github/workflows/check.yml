@@ -76,12 +76,12 @@ jobs:
       #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Formatting (.hs)
-        run: nix build .#format-hs
+        run: nix build .#format-hs --accept-flake-config
 
       - name: Formatting (.cabal)
-        run: nix build .#format-cabal
+        run: nix build .#format-cabal --accept-flake-config
 
       - name: Haskell Tests
         run: |
-          RUN_CHECKS=$(nix build .#haskell-tests --no-link --print-out-paths)
+          RUN_CHECKS=$(nix build .#haskell-tests --no-link --print-out-paths --accept-flake-config)
           $RUN_CHECKS

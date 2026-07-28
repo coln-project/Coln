@@ -9,7 +9,11 @@
     system.stateVersion = "25.05";
     boot.loader.systemd-boot.enable = true;
     boot.loader.efi.canTouchEfiVariables = true;
-    nix.settings.experimental-features = ["nix-command" "flakes"];
+    nix.settings = {
+      experimental-features = ["nix-command" "flakes"];
+      trusted-substituters = [ "https://coln.cachix.org" ];
+      trusted-public-keys = [ "coln.cachix.org-1:xplHZrvUVve3NSquwwW5QRl6MYbDBHx3rw3Np69kjw4=" ];
+    };
     services.openssh.enable = true;
 
     # VM Settings

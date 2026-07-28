@@ -21,7 +21,7 @@ jobs:
 
       - name: Build extension
         run: |
-          nix build .#vscode-extension
+          nix build .#vscode-extension --accept-flake-config
           mv result coln-vscode-extension.vsix
 
       - name: Upload artefact
