@@ -1,7 +1,6 @@
 {agenix, ...}:{
   imports = [
     agenix.nixosModules.default
-    ./hardware-configuration.nix
     ./github.nix
   ];
 
