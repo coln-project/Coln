@@ -18,7 +18,10 @@ clippy:
     cargo clippy -p {{crate}} --all-targets --all-features -- -D warnings
 
 test:
-    cargo test -p {{crate}} --all-targets
+    cargo nextest run -p {{crate}} --all-targets
+    # As of now nextest does not support doc tests, so we fallback to
+    # cargo test to run them.
+    cargo test --doc -p {{crate}}
 
 import:
     cargo fix -p {{crate}} --all-targets --all-features --allow-dirty --allow-staged

@@ -3,11 +3,16 @@
 #   just              # list recipes
 #   just test         # rust + npm tests
 
+crate := "coln-js-runtime"
+
 default:
     @just --list
 
 test-rust:
-    cargo test --all-targets
+    cargo nextest run -p {{crate}} --all-targets
+    # As of now nextest does not support doc tests, so we fallback to
+    # cargo test to run them.
+    cargo test --doc -p {{crate}}
 
 build:
     npm run build
