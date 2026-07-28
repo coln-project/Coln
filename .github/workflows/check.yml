@@ -36,7 +36,7 @@ jobs:
 
   rust-tests:
     runs-on: coln-runner
-    # needs: [rust-fmt, rust-clippy]
+    needs: [rust-fmt, rust-clippy]
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
@@ -68,12 +68,6 @@ jobs:
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
-
-      # - name: Set up Cachix ♻️
-      #   uses: cachix/cachix-action@v17
-      #   with:
-      #     name: coln
-      #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Formatting (.hs)
         run: nix build .#format-hs --accept-flake-config

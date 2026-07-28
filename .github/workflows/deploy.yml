@@ -13,19 +13,13 @@ jobs:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
 
-      # - name: Set up Cachix ♻️
-      #   uses: cachix/cachix-action@v17
-      #   with:
-      #     name: coln
-      #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
       - name: Build manual
         run: nix build .#manual --accept-flake-config
 
-      # - name: Deploy manual
-      #   uses: peaceiris/actions-gh-pages@v4
-      #   with:
-      #     deploy_key: ${{ secrets.COLN_WEBSITE_DEPLOY_KEY }}
-      #     external_repository: coln-project/coln-project.github.io
-      #     publish_branch: main
-      #     publish_dir: ./result
+      - name: Deploy manual
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.COLN_WEBSITE_DEPLOY_KEY }}
+          external_repository: coln-project/coln-project.github.io
+          publish_branch: main
+          publish_dir: ./result

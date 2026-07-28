@@ -13,12 +13,6 @@ jobs:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
 
-      # - name: Set up Cachix ♻️
-      #   uses: cachix/cachix-action@v17
-      #   with:
-      #     name: coln
-      #     authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
       - name: Build extension
         run: |
           nix build .#vscode-extension --accept-flake-config
