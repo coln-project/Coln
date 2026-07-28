@@ -11,10 +11,12 @@
     boot.loader.efi.canTouchEfiVariables = true;
     nix.settings.experimental-features = ["nix-command" "flakes"];
     services.openssh.enable = true;
+
+    # VM Settings
     virtualisation.vmVariant = {
       virtualisation = {
-        memorySize = 20000; # use 2048MiB memory
-        cores = 8;         # use 3 cpu cores
+        memorySize = 8000;
+        cores = 8;
       };
     };
   };
