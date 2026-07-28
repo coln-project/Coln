@@ -2,7 +2,6 @@
   imports = [
     ./hardware-configuration.nix
     ./age.nix
-    ./disko.nix
     ./github.nix
   ];
 
