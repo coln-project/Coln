@@ -52,6 +52,7 @@ in
 {
   config = lib.mkMerge [
     {
+      age.secrets.runner-token.file = ./secrets/runner-token.age;
       users.users.coln-runner = {
         isSystemUser = true;
         group = "coln-runner";

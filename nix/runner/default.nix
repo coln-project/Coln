@@ -1,7 +1,7 @@
-{config, ...}:{
+{agenix, ...}:{
   imports = [
+    agenix.nixosModules.default
     ./hardware-configuration.nix
-    ./age.nix
     ./github.nix
   ];
 
