@@ -2,12 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::dbsp::DbspError;
+use crate::relational::incremental::dbsp::DbspError;
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 /// Public error type for any Incremental Datalog error.
-pub enum IncLogError {
+pub enum QueryEngineError {
     /// An error that occurs during parsing or static analysis at compile time.
     #[error(transparent)]
     Syntax(#[from] SyntaxError),
@@ -17,7 +17,7 @@ pub enum IncLogError {
     /// An error which occurs during runtime of the circuit constructing,
     /// tree-walk interpreter.
     #[error(transparent)]
-    Engine(#[from] EngineError),
+    Build(#[from] BuildError),
     /// An error that occurs during runtime of the underlying (incremental)
     /// query execution engine (currently only DBSP).
     #[error(transparent)]
@@ -63,14 +63,22 @@ impl OptimizationError {
 // - a type error
 // - a reference error
 // - ... ?
-pub struct EngineError {
-    message: String,
+pub struct BuildError {
+    pub message: String,
 }
 
-impl EngineError {
+impl BuildError {
     pub fn new<T: Into<String>>(message: T) -> Self {
         Self {
             message: message.into(),
+        }
+    }
+}
+
+impl From<DbspError> for BuildError {
+    fn from(value: DbspError) -> Self {
+        Self {
+            message: value.to_string(),
         }
     }
 }
@@ -80,13 +88,21 @@ impl EngineError {
 /// An error that occurs during runtime of the underlying (incremental)
 /// query execution engine (currently only DBSP).
 pub struct RuntimeError {
-    message: String,
+    pub message: String,
 }
 
-impl From<DbspError> for IncLogError {
+impl RuntimeError {
+    pub fn new<T: Into<String>>(message: T) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl From<DbspError> for RuntimeError {
     fn from(value: DbspError) -> Self {
-        IncLogError::Runtime(RuntimeError {
+        Self {
             message: value.to_string(),
-        })
+        }
     }
 }

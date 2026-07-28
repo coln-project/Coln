@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::{
-    expr::Literal, function::FunctionRef, relation::RelationRef, scalar::ScalarTypedValue,
-    tuple::Tuple,
+    host::expr::Literal, host::function::FunctionRef, host::tuple::Tuple, relational::RelationRef,
+    scalarial::ScalarTypedValue,
 };
 use std::{
     cell::{Ref, RefCell},
@@ -12,10 +12,10 @@ use std::{
     rc::Rc,
 };
 
-/// The value of a variable of the [`Interpreter`](crate::interpreter::Interpreter)
-/// at runtime.
-/// Compared to [`ScalarTypedValue`], this type allows
-/// [functions](`FunctionRef`) and [relations](`RelationRef`), too.
+/// The value of a variable of the host
+/// [`Interpreter`](crate::host::interpreter::HostInterpreter) at runtime.
+/// Compared to a [`ScalarTypedValue`], this type allows [functions](`FunctionRef`),
+/// [relations](`RelationRef`), and [tuples](`Tuple`), too.
 #[derive(Clone, Debug)]
 pub enum Value {
     /// String.
@@ -98,7 +98,6 @@ impl From<Literal> for Value {
             Literal::Iint(value) => Value::Iint(value),
             Literal::Bool(value) => Value::Bool(value),
             Literal::Null(()) => Value::Null(()),
-            Literal::Relation(value) => Value::Relation(Rc::new(RefCell::new(value))),
         }
     }
 }
@@ -146,7 +145,7 @@ impl fmt::Display for Value {
             Value::Uint(value) => write!(f, "{value}"),
             Value::Iint(value) => write!(f, "{value}"),
             Value::Bool(value) => write!(f, "{value}"),
-            Value::Char(value) => write!(f, "{value}"),
+            Value::Char(value) => write!(f, "'{value}'"),
             Value::Null(()) => write!(f, "null"),
             Value::Function(function) => write!(f, "{}", function.borrow()),
             Value::Relation(relation) => write!(f, "{}", relation.borrow()),

@@ -1052,6 +1052,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "coln-integrator",
 ]
 
 [[package]]
@@ -1060,6 +1061,16 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "coln-integrator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "coln-store",
+ "criterion",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1084,6 +1095,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cli-table",
+ "coln-flir-rs",
  "criterion",
  "dbsp",
  "feldera-size-of",
@@ -1099,6 +1111,7 @@ dependencies = [
  "blake3",
  "clap",
  "coln-flir-rs",
+ "coln-query",
  "csv",
  "ena",
  "future_form",

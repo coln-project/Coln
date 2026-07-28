@@ -9,6 +9,7 @@
 // missing in here.
 
 pub mod deltas;
+pub mod query;
 pub mod schema;
 pub mod store;
 pub mod transaction;

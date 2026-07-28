@@ -4,18 +4,25 @@
 
 use crate::{
     error::SyntaxError,
-    expr::{
-        AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
-        DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitor, FixedPointIterExpr,
-        FunctionExpr, GetIndexExpr, GroupingExpr, Literal, LiteralExpr, ProjectionExpr,
-        SelectionExpr, TupleExpr, UnaryExpr, UnionExpr, VarExpr,
+    host::{
+        expr::{
+            AssignExpr, BinaryExpr, CallExpr, Expr, ExprVisitor, FunctionExpr, GetIndexExpr,
+            GroupingExpr, Literal, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
+        },
+        operator::Operator,
+        resolver::ScopeStack,
+        stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
+        tuple::TupleType,
     },
-    operator::Operator,
-    resolver::ScopeStack,
-    stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
-    tuple::TupleType,
+    relational::expr::{
+        AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
+        FixedPointIterExpr, OutputExpr, ProjectionExpr, RelExpr, RelExprVisitor, SelectionExpr,
+        SourceExpr, UnionExpr,
+    },
 };
-pub use crate::{function::FunctionType, relation::RelationType, scalar::ScalarType};
+pub use crate::{
+    host::function::FunctionType, relational::relation::RelationType, scalarial::ScalarType,
+};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -31,7 +38,7 @@ macro_rules! assert_type {
     };
 }
 
-/// This is "get me the type but don't check it".
+/// This is "get me the type of this part of the AST but don't type check it".
 #[derive(Default)]
 pub struct TypeResolver {}
 
@@ -274,6 +281,21 @@ impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
         }
     }
 
+    fn visit_relational_expr(&mut self, expr: &RelExpr, ctx: VisitorCtx) -> VisitorResult {
+        self.visit_rel(expr, ctx)
+    }
+}
+
+impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
+    fn visit_source_expr(&mut self, expr: &SourceExpr, ctx: VisitorCtx) -> VisitorResult {
+        Ok(ExprType::Relation(RelationType::from(&expr.schema)))
+    }
+
+    fn visit_output_expr(&mut self, expr: &OutputExpr, ctx: VisitorCtx) -> VisitorResult {
+        // Output is a pass-through tap; its type is its inner relation's type.
+        self.visit_expr(&expr.relation, ctx)
+    }
+
     fn visit_alias_expr(&mut self, expr: &AliasExpr, ctx: VisitorCtx) -> VisitorResult {
         self.visit_expr(&expr.relation, ctx)
     }
@@ -349,7 +371,6 @@ impl From<&Literal> for ExprType {
             Literal::Uint(_) => Self::Scalar(ScalarType::Uint),
             Literal::Bool(_) => Self::Scalar(ScalarType::Bool),
             Literal::Null(_) => Self::Scalar(ScalarType::Null),
-            Literal::Relation(relation) => Self::Relation(RelationType::from(&relation.schema)),
         }
     }
 }

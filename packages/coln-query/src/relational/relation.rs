@@ -2,10 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use super::scalar::ScalarTypedValue;
-use crate::{dbsp::StreamWrapper, error::SyntaxError, scalar::ScalarType};
+use crate::scalarial::ScalarTypedValue;
+use crate::{error::SyntaxError, scalarial::ScalarType};
 use dbsp::{never_none, never_roaring_filter};
 use std::{
+    any::Any,
     cell::RefCell,
     collections::{HashMap, HashSet},
     fmt::{self, Debug, Display},
@@ -112,11 +113,6 @@ pub struct TupleValue {
     pub data: Vec<ScalarTypedValue>,
 }
 
-// impl DbData for TupleValue {}
-//     + ArchivedDBData
-//     + IsNone<Inner: ArchivedDBData>
-//     + 'static
-
 never_none!(TupleValue);
 never_roaring_filter!(TupleValue);
 
@@ -213,8 +209,30 @@ impl Display for Identifier {
 /// Convenience type alias for a reference to a [`Relation`].
 pub type RelationRef = Rc<RefCell<Relation>>;
 
-pub fn new_relation<T: Into<StreamWrapper>>(schema: RelationSchema, inner: T) -> RelationRef {
+pub fn new_relation<R: RelationData>(schema: RelationSchema, inner: R) -> RelationRef {
     Rc::new(RefCell::new(Relation::new(schema, inner)))
+}
+
+/// The backend-neutral payload of a [`Relation`] — a type-erased envelope over a
+/// backend's concrete relation representation (a DBSP `StreamWrapper`, a batch
+/// Z-set, …).
+///
+/// This is layer 3 of the multi-backend split ("the only place `StreamWrapper`
+/// vs a batch Z-set actually differs"). It carries **no algebra**: relational
+/// operations live in each backend's
+/// [`RelExprVisitor`](crate::relational::expr::RelExprVisitor), which recovers
+/// its own concrete type via [`Relation::downcast_ref`]. Keeping this trait
+/// algebra-free is what stops any backend's operator vocabulary from leaking
+/// into the host `Value` type.
+pub trait RelationData: Any {
+    fn as_any(&self) -> &dyn Any;
+    fn clone_box(&self) -> Box<dyn RelationData>;
+}
+
+impl Clone for Box<dyn RelationData> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -508,15 +526,26 @@ pub struct Relation {
     /// The schema of the relation. We need to track it on a per-relation basis
     /// because it may change during execution.
     pub schema: RelationSchema,
-    pub inner: StreamWrapper,
+    /// The backend's concrete relation, type-erased. Access it from within a
+    /// backend via [`Self::downcast_ref`].
+    inner: Box<dyn RelationData>,
 }
 
 impl Relation {
-    pub fn new<T: Into<StreamWrapper>>(schema: RelationSchema, inner: T) -> Self {
+    pub fn new<R: RelationData>(schema: RelationSchema, inner: R) -> Self {
         Self {
             schema,
-            inner: inner.into(),
+            inner: Box::new(inner),
         }
+    }
+    /// Recover the backend's concrete relation type. Called only from within a
+    /// backend that knows its own representation (a run is single-backend, so a
+    /// mismatch is a programming error that cannot occur through the public API).
+    pub fn downcast_ref<R: RelationData>(&self) -> &R {
+        self.inner
+            .as_any()
+            .downcast_ref::<R>()
+            .expect("relation runtime backend mismatch")
     }
 }
 

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-struct Engine<Optimizer, Runtime> {
-    optimizer: Optimizer,
-    runtime: Runtime,
-}
+pub use super::dbsp::*;
+pub mod coalesce;
+pub mod projection;
+pub mod reindex;

@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::type_resolver::ExprType;
-use crate::variable::Value;
+use crate::host::variable::Value;
+use crate::typing::ExprType;
 use std::fmt;
 use std::rc::Rc;
 
@@ -250,7 +250,7 @@ mod test {
 
     #[test]
     fn tuple_type_display() {
-        use crate::scalar::ScalarType;
+        use crate::scalarial::ScalarType;
 
         let tuple_type = TupleType::from(vec![
             ExprType::Scalar(ScalarType::Uint),
