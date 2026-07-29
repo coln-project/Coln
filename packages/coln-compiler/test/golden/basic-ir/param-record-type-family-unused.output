@@ -1,0 +1,37 @@
+-- elaborated
+global entry named Box
+in mode: Conjunctive
+type: (X : Set) -> (E : X -> Set) -> Set
+value: X => E => sig
+  value : X
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  E : Int -> Set
+  boxed : Box Int E -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      E = rel [a : Int]
+      boxed = rel [a : Box Int (a => TRealm.E [a := a])]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.E := [.a : Int]
+    table ℜ.boxed := [.a.value : Int]
+  end
+  rules
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ⊤
+    enforced ℜ.boxed.foreignKey a.value := ℜ.boxed [.a.value ↦ a.value] ⊢ ⊤
+  end
+end
+
+-- messages

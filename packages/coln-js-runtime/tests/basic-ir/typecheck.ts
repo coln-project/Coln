@@ -28,143 +28,10 @@ if (config.errors.length !== 0) {
 
 const knownFailures = new Map<string, { label: string; match: RegExp }>([
   [
-    "equality",
+    "param-record-repeated-binders",
     {
-      label: "equality generation crashes before producing a realm",
-      match: /Cannot find module .*equality\.ts\.output\/TRealm\.ts/,
-    },
-  ],
-  [
-    "equality-prop",
-    {
-      label: "proof equality generation crashes before producing a realm",
-      match: /Cannot find module .*equality-prop\.ts\.output\/TRealm\.ts/,
-    },
-  ],
-  [
-    "empty-prop-record",
-    {
-      label: "proposition record declarations refer to a missing Truth namespace",
-      match: /Cannot find namespace 'Truth'/,
-    },
-  ],
-  [
-    "empty-record",
-    {
-      label: "empty record declarations refer to a missing Unit namespace",
-      match: /Cannot find namespace 'Unit'/,
-    },
-  ],
-  [
-    "lookup-record",
-    {
-      label: "record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
-    },
-  ],
-  [
-    "lookup-record-composition",
-    {
-      label: "record declarations refer to missing record namespaces",
-      match: /Cannot find namespace 'Key'/,
-    },
-  ],
-  [
-    "lookup-record-expansion",
-    {
-      label: "record declarations refer to a missing Payload namespace",
-      match: /Cannot find namespace 'Payload'/,
-    },
-  ],
-  [
-    "lookup-record-field",
-    {
-      label: "record declarations refer to a missing Payload namespace",
-      match: /Cannot find namespace 'Payload'/,
-    },
-  ],
-  [
-    "param-record",
-    {
-      label: "record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
-    },
-  ],
-  [
-    "param-record-concrete",
-    {
-      label: "concrete nested record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
-    },
-  ],
-  [
-    "param-record-model",
-    {
-      label: "model-parameterized record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
-    },
-  ],
-  [
-    "param-record-nested",
-    {
-      label: "nested record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
-    },
-  ],
-  [
-    "projection",
-    {
-      label: "record values are not represented as runtime Values",
-      match: /does not exist in type 'Value'/,
-    },
-  ],
-  [
-    "proof-record",
-    {
-      label: "proof record declarations refer to a missing Witness namespace",
-      match: /Cannot find namespace 'Witness'/,
-    },
-  ],
-  [
-    "proof-record-mixed",
-    {
-      label: "mixed proof record declarations refer to a missing EqualTriple namespace",
-      match: /Cannot find namespace 'EqualTriple'/,
-    },
-  ],
-  [
-    "proof-record-parameter",
-    {
-      label: "proof-bearing record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
-    },
-  ],
-  [
-    "prop-record",
-    {
-      label: "proposition record declarations refer to a missing And namespace",
-      match: /Cannot find namespace 'And'/,
-    },
-  ],
-  [
-    "record",
-    {
-      label: "record declarations refer to a missing Payload namespace",
-      match: /Cannot find namespace 'Payload'/,
-    },
-  ],
-  [
-    "record-field-order",
-    {
-      label: "record values are not represented as runtime Values",
-      match: /not assignable to parameter of type 'Value'/,
-    },
-  ],
-  [
-    "rule-literals",
-    {
-      label: "equality-valued fields are not supported by TypeScript generation",
-      match: /Cannot find module .*rule-literals\.ts\.output\/TRealm\.ts/,
+      label: "repeated record type parameters produce duplicate TypeScript identifiers",
+      match: /Duplicate identifier 'X'/,
     },
   ],
 ]);
@@ -174,24 +41,43 @@ const testFiles = readdirSync(here)
   .filter((path) => integrationTestSuffix.test(path))
   .sort();
 
+const fixtureNames = new Set(
+  testFiles.map((path) => path.replace(integrationTestSuffix, "")),
+);
+for (const name of knownFailures.keys()) {
+  if (!fixtureNames.has(name)) {
+    throw new Error(`Known typecheck failure has no fixture: ${name}`);
+  }
+}
+
+const successfulFiles = testFiles.filter(
+  (path) => !knownFailures.has(path.replace(integrationTestSuffix, "")),
+);
+
+test("typecheck basic-ir fixtures", () => {
+  typecheck(successfulFiles);
+});
+
 for (const path of testFiles) {
   const name = path.replace(integrationTestSuffix, "");
   const expectedFailure = knownFailures.get(name);
+  if (expectedFailure !== undefined) {
+    test(`typecheck ${name}`, { expectFailure: expectedFailure }, () => {
+      typecheck([path]);
+    });
+  }
+}
 
-  test(
-    `typecheck ${name}`,
-    expectedFailure === undefined
-      ? {}
-      : { expectFailure: expectedFailure },
-    () => {
-      const program = ts.createProgram([resolve(here, path)], config.options);
-      const diagnostics = ts.getPreEmitDiagnostics(program);
-
-      if (diagnostics.length !== 0) {
-        throw new Error(formatDiagnostics(diagnostics));
-      }
-    },
+function typecheck(paths: readonly string[]): void {
+  const program = ts.createProgram(
+    paths.map((path) => resolve(here, path)),
+    config.options,
   );
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+
+  if (diagnostics.length !== 0) {
+    throw new Error(formatDiagnostics(diagnostics));
+  }
 }
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {

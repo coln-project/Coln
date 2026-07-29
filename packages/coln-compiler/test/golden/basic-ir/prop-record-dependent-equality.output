@@ -1,0 +1,43 @@
+-- elaborated
+global entry named Witness
+in mode: Conjunctive
+type: (P : Prop) -> Prop
+value: P => sig
+  first : P
+  second : P
+  same : first = second
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  P : Prop
+  witness : Witness P
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      P = rel []
+      witness = (fun [] -> Witness (TRealm.P []))
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.P := []
+    table ℜ.witness := [.a.first : ℜ.P, .a.second : ℜ.P] primarykey []
+  end
+  rules
+    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
+    enforced ℜ.witness.foreignKey a.first a.second := ℜ.witness [
+      .a.first ↦ a.first,
+      .a.second ↦ a.second
+    ] ⊢ a.first ∈ ℜ.P [] ∧ a.second ∈ ℜ.P [] ∧ a.first = a.second
+    monitored ℜ.witness.total := ⊤ ⊢ ℜ.witness []
+  end
+end
+
+-- messages

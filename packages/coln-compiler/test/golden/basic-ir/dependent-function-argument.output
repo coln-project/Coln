@@ -1,0 +1,52 @@
+-- elaborated
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  A : Set
+  B : A -> Set
+  C : (a : A) -> B a -> Set
+  f : (a : A) -> (b : B a) -> C a b
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      A = rel []
+      B = rel [a : TRealm.A []]
+      C = rel [a : TRealm.A [], b : TRealm.B [a := a]]
+      f = (fun [a : TRealm.A [], b : TRealm.B [a := a]] -> TRealm.C [
+        a := a,
+        b := b
+      ])
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.A := []
+    table ℜ.B := [.a : ℜ.A]
+    table ℜ.C := [.a : ℜ.A, .b : ℜ.B]
+    table ℜ.f := [.a : ℜ.A, .b : ℜ.B, .c : ℜ.C] primarykey [.a, .b]
+  end
+  rules
+    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
+    enforced ℜ.B.foreignKey a := ℜ.B [.a ↦ a] ⊢ a ∈ ℜ.A []
+    enforced ℜ.C.foreignKey a b := ℜ.C [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [
+      .a ↦ a
+    ]
+    enforced ℜ.f.foreignKey a b c := ℜ.f [
+      .a ↦ a,
+      .b ↦ b,
+      .c ↦ c
+    ] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ∧ c ∈ ℜ.C [.a ↦ a, .b ↦ b]
+    monitored ℜ.f.total a b := a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ⊢ ℜ.f [
+      .a ↦ a,
+      .b ↦ b
+    ]
+  end
+end
+
+-- messages

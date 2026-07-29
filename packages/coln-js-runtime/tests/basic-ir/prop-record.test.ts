@@ -9,21 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as PropRecordRealm from "../../../coln-compiler/test/golden/basic-ir/prop-record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-const expectedFieldFailure = {
-  expectFailure: {
-    label: "proposition record fields are not exposed structurally",
-    match: /Cannot read properties of undefined \(reading 'set'\)/,
-  },
-};
-
-const expectedShapeFailure = {
-  expectFailure: {
-    label: "proposition records are exposed as table cells",
-    match: /Expected values to be strictly deep-equal/,
-  },
-};
-
-test("prop-record", expectedFieldFailure, () => {
+test("prop-record", () => {
   const realm = beginRealm(PropRecordRealm);
   const left = realm.root.P.add();
   const right = realm.root.Q.add();
@@ -31,26 +17,12 @@ test("prop-record", expectedFieldFailure, () => {
   pair.left.set(left);
   pair.right.set(right);
   const view = realm.commit();
+  const made = view.make(left)(right);
 
-  assert.equal(view.P.has(left), true);
-  assert.equal(view.Q.has(right), true);
+  assert.equal(valueEqual(made.left.get(), left), true);
+  assert.equal(valueEqual(made.right.get(), right), true);
   assert.equal(
     valueEqual(view.projectLeft({ left, right }).get(), left),
     true,
   );
 });
-
-test(
-  "prop-record exposes its erased fields structurally",
-  expectedShapeFailure,
-  () => {
-    const realm = beginRealm(PropRecordRealm);
-    const left = realm.root.P.add();
-    const right = realm.root.Q.add();
-
-    assert.deepEqual(Object.keys(realm.root.make(left)(right)), [
-      "left",
-      "right",
-    ]);
-  },
-);

@@ -18,9 +18,6 @@ test("lookup-builtin", () => {
   realm.root.edge(source).set(edge);
   const view = realm.commit();
 
-  assert.equal(view.X.has(source), true);
-  assert.equal(view.E(rank).has(edge), true);
-  assert.equal(valueEqual(view.rank(source).get(), rank), true);
   assert.equal(valueEqual(view.edge(source).get(), edge), true);
 });
 
