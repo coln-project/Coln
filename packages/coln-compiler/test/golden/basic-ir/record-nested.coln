@@ -1,0 +1,15 @@
+def Inner : Set := sig
+  rank : Int
+end
+
+def Outer : Set := sig
+  name : String
+  inner : Inner
+end
+
+theory T := sig
+  payload : Outer
+end
+
+realm TRealm @ T
+end

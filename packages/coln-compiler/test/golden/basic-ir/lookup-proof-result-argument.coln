@@ -1,0 +1,10 @@
+theory T := sig
+  X : Set
+  P : X -> Prop
+  witness : (x : X) -> P x
+  R : (x : X) -> P x -> Prop
+  use : (x : X) -> R x (witness x)
+end
+
+realm TRealm @ T
+end

@@ -1,0 +1,56 @@
+-- elaborated
+global entry named Slice
+in mode: Conjunctive
+type: (Y : Set) -> (S : Y -> Set) -> (y : Y) -> Set
+value: Y => S => y => sig
+  entry : S y
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  Y : Set
+  R : X -> Y -> Set
+  slices : (x : X) -> (y : Y) -> Slice Y (R x) y -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      Y = rel []
+      R = rel [a : TRealm.X [], b : TRealm.Y []]
+      slices = rel [
+        x : TRealm.X [],
+        y : TRealm.Y [],
+        a : Slice (TRealm.Y []) (b => TRealm.R [a := x, b := b]) y
+      ]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.Y := []
+    table ℜ.R := [.a : ℜ.X, .b : ℜ.Y]
+    table ℜ.slices := [.x : ℜ.X, .y : ℜ.Y, .a.entry : ℜ.R]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.Y.foreignKey := ℜ.Y [] ⊢ ⊤
+    enforced ℜ.R.foreignKey a b := ℜ.R [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.Y []
+    enforced ℜ.slices.foreignKey x y a.entry := ℜ.slices [
+      .x ↦ x,
+      .y ↦ y,
+      .a.entry ↦ a.entry
+    ] ⊢ x ∈ ℜ.X [] ∧ y ∈ ℜ.Y [] ∧ a.entry ∈ ℜ.R [.a ↦ x, .b ↦ y]
+  end
+end
+
+-- messages

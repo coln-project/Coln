@@ -1,0 +1,13 @@
+def Slice (Y : Set) (S : Y -> Set) (y : Y) : Set := sig
+  entry : S y
+end
+
+theory T := sig
+  X : Set
+  Y : Set
+  R : X -> Y -> Set
+  slices : (x : X) -> (y : Y) -> Slice Y (R x) y -> Set
+end
+
+realm TRealm @ T
+end

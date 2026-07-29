@@ -1,0 +1,18 @@
+def Pair (X : Set) : Set := sig
+  left : X
+  right : X
+end
+
+def Comparison (X : Set) : Set := sig
+  first : Pair X
+  second : Pair X
+  same : first = second
+end
+
+theory T := sig
+  X : Set
+  comparison : Comparison X
+end
+
+realm TRealm @ T
+end

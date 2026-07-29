@@ -1,0 +1,58 @@
+-- elaborated
+global entry named PointOf
+in mode: Conjunctive
+type: (X : Set) -> Theory
+value: X => sig
+  point : X
+end
+global entry named Key
+in mode: Conjunctive
+type: Set
+value: sig
+  rank : Int
+end
+global entry named Box
+in mode: Conjunctive
+type: (X : Set) -> (p : PointOf X) -> (Y : Set) -> Set
+value: X => p => Y => sig
+  key : X
+  value : Y
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  pointed : PointOf Key
+  boxed : Box Key pointed String -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      pointed = node
+        point = (fun [] -> Key)
+      end
+      boxed = rel [a : Box Key [point := TRealm.pointed.point []] String]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.pointed.point := [.a.rank : Int] primarykey []
+    table ℜ.boxed := [.a.key.rank : Int, .a.value : String]
+  end
+  rules
+    enforced ℜ.pointed.point.foreignKey a.rank := ℜ.pointed.point [
+      .a.rank ↦ a.rank
+    ] ⊢ ⊤
+    monitored ℜ.pointed.point.total := ⊤ ⊢ ℜ.pointed.point []
+    enforced ℜ.boxed.foreignKey a.key.rank a.value := ℜ.boxed [
+      .a.key.rank ↦ a.key.rank,
+      .a.value ↦ a.value
+    ] ⊢ ⊤
+  end
+end
+
+-- messages

@@ -1,0 +1,12 @@
+def Evidence (X : Set) (P : X -> Prop) (x : X) : Set := sig
+  proof : P x
+end
+
+theory T := sig
+  X : Set
+  P : X -> Prop
+  evidence : (x : X) -> Evidence X P x -> Set
+end
+
+realm TRealm @ T
+end

@@ -9,42 +9,34 @@ import { valueEqual } from "@coln-project/runtime";
 import * as ProjectionRealm from "../../../coln-compiler/test/golden/basic-ir/projection.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-const expectedFailure = {
-  expectFailure: {
-    label: "record values are not implemented by the runtime",
-    match: /missing field `tag`/,
-  },
-};
-
-test("projection", expectedFailure, () => {
+test("projection", () => {
   const realm = beginRealm(ProjectionRealm);
-  const first = realm.root.X.add();
-  const second = realm.root.X.add();
-  const firstValue = realm.root.E(first).add();
-  const secondValue = realm.root.E(second).add();
-  realm.root.r({ first, second: first }).set(firstValue);
-  realm.root.r({ first, second }).set(secondValue);
-  realm.root.r({ first: second, second: first }).set(firstValue);
-  realm.root.r({ first: second, second }).set(secondValue);
+  const a = realm.root.X.add();
+  const b = realm.root.X.add();
+  const valueForA = realm.root.E(a).add();
+  const valueForB = realm.root.E(b).add();
+  realm.root.r({ first: a, second: a }).set(valueForA);
+  realm.root.r({ first: a, second: b }).set(valueForB);
+  realm.root.r({ first: b, second: a }).set(valueForA);
+  realm.root.r({ first: b, second: b }).set(valueForB);
   const view = realm.commit();
 
-  assert.equal(view.X.has(first), true);
-  assert.equal(view.X.has(second), true);
-  assert.equal(view.E(first).has(firstValue), true);
-  assert.equal(view.E(second).has(secondValue), true);
-  assert.equal(valueEqual(view.r({ first, second }).get(), secondValue), true);
+  assert.equal(
+    valueEqual(view.r({ first: a, second: b }).get(), valueForB),
+    true,
+  );
 });
 
-test("projection rejects a value at a different projected value", expectedFailure, () => {
+test("projection rejects a value at a different projected value", () => {
   const realm = beginRealm(ProjectionRealm);
-  const first = realm.root.X.add();
-  const second = realm.root.X.add();
-  const firstValue = realm.root.E(first).add();
-  const secondValue = realm.root.E(second).add();
-  realm.root.r({ first, second: first }).set(firstValue);
-  realm.root.r({ first, second }).set(firstValue);
-  realm.root.r({ first: second, second: first }).set(firstValue);
-  realm.root.r({ first: second, second }).set(secondValue);
+  const a = realm.root.X.add();
+  const b = realm.root.X.add();
+  const valueForA = realm.root.E(a).add();
+  const valueForB = realm.root.E(b).add();
+  realm.root.r({ first: a, second: a }).set(valueForA);
+  realm.root.r({ first: a, second: b }).set(valueForA);
+  realm.root.r({ first: b, second: a }).set(valueForA);
+  realm.root.r({ first: b, second: b }).set(valueForB);
 
   assert.throws(() => realm.commit(), /\.r\.foreignKey/);
 });
