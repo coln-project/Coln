@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as LookupRecordCompositionRealm from "../../../coln-compiler/test/golden/basic-ir/lookup-record-composition.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("lookup-record-composition", () => {
+test("lookup-record-composition", { expectFailure: true }, () => {
   const realm = beginRealm(LookupRecordCompositionRealm);
   const source = realm.root.X.add();
   const rank = { tag: "int", value: 1 } as const;

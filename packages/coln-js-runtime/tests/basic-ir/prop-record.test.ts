@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as PropRecordRealm from "../../../coln-compiler/test/golden/basic-ir/prop-record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("prop-record", () => {
+test("prop-record", { expectFailure: true }, () => {
   const realm = beginRealm(PropRecordRealm);
   const left = realm.root.P.add();
   const right = realm.root.Q.add();

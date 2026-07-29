@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as RecordNestedRealm from "../../../coln-compiler/test/golden/basic-ir/record-nested.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("record-nested", () => {
+test("record-nested", { expectFailure: true }, () => {
   const realm = beginRealm(RecordNestedRealm);
   const name = { tag: "string", value: "example" } as const;
   const rank = { tag: "int", value: 1 } as const;

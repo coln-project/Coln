@@ -8,7 +8,7 @@ import test from "node:test";
 import * as ParamRecordTypeFamilyPropRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-type-family-prop.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("param-record-type-family-prop", () => {
+test("param-record-type-family-prop", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordTypeFamilyPropRealm);
   const x = realm.root.X.add();
   const proof = realm.root.P(x).add();

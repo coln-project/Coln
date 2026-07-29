@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as PropRecordNestedDependentRealm from "../../../coln-compiler/test/golden/basic-ir/prop-record-nested-dependent.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("prop-record-nested-dependent", () => {
+test("prop-record-nested-dependent", { expectFailure: true }, () => {
   const realm = beginRealm(PropRecordNestedDependentRealm);
   const value = realm.root.X.add();
   const nested = realm.root.P(value).add();

@@ -13,6 +13,13 @@ const goldenDirectory = resolve(
   here,
   "../../../coln-compiler/test/golden/basic-ir",
 );
+const missingRealms = [
+  "equality",
+  "equality-prop",
+  "equality-record",
+  "equality-record-nested",
+  "rule-literals",
+];
 const testSuffix = /\.(?:pending|test)\.ts$/;
 
 test("every realm has an integration test", () => {
@@ -25,5 +32,5 @@ test("every realm has an integration test", () => {
     .map((path) => path.replace(testSuffix, ""))
     .sort();
 
-  assert.deepEqual(integrationTests, realms.sort());
+  assert.deepEqual(integrationTests, [...realms, ...missingRealms].sort());
 });

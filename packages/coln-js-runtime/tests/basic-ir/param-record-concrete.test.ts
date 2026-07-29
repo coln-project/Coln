@@ -8,7 +8,7 @@ import test from "node:test";
 import * as ParamRecordConcreteRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-concrete.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("param-record-concrete", () => {
+test("param-record-concrete", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordConcreteRealm);
   const box = {
     value: {

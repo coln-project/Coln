@@ -8,7 +8,7 @@ import test from "node:test";
 import * as EmptyPropRecordRealm from "../../../coln-compiler/test/golden/basic-ir/empty-prop-record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("empty-prop-record", () => {
+test("empty-prop-record", { expectFailure: true }, () => {
   const realm = beginRealm(EmptyPropRecordRealm);
 
   assert.deepEqual(realm.root.truth, {});

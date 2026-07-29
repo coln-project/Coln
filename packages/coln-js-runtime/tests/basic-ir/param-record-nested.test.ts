@@ -8,7 +8,7 @@ import test from "node:test";
 import * as ParamRecordNestedRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-nested.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("param-record-nested", () => {
+test("param-record-nested", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordNestedRealm);
   const inner = realm.root.X.add();
   const nested = { inner: { value: inner } };

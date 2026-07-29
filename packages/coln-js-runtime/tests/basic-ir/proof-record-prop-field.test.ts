@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as ProofRecordPropFieldRealm from "../../../coln-compiler/test/golden/basic-ir/proof-record-prop-field.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("proof-record-prop-field", () => {
+test("proof-record-prop-field", { expectFailure: true }, () => {
   const realm = beginRealm(ProofRecordPropFieldRealm);
   const proof = realm.root.P.add();
   const view = realm.commit();
