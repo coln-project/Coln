@@ -12,8 +12,8 @@ import { beginRealm } from "./helpers.ts";
 test("lookup-argument-projection", () => {
   const realm = beginRealm(LookupArgumentProjectionRealm);
   const source = realm.root.A.add();
-  const target = realm.root.B.add();
-  const edge = realm.root.E(target).add();
+  const target = realm.root.B(source).add();
+  const edge = realm.root.E(source)(target).add();
   realm.root.next(source).set(target);
   realm.root.nextedge(source).set(edge);
   const view = realm.commit();
@@ -24,9 +24,9 @@ test("lookup-argument-projection", () => {
 test("lookup-argument-projection rejects an edge at a different target", () => {
   const realm = beginRealm(LookupArgumentProjectionRealm);
   const source = realm.root.A.add();
-  const target = realm.root.B.add();
-  const otherTarget = realm.root.B.add();
-  const edge = realm.root.E(otherTarget).add();
+  const target = realm.root.B(source).add();
+  const otherTarget = realm.root.B(source).add();
+  const edge = realm.root.E(source)(otherTarget).add();
   realm.root.next(source).set(target);
   realm.root.nextedge(source).set(edge);
 

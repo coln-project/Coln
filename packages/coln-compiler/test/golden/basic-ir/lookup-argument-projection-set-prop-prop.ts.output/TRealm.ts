@@ -9,12 +9,16 @@ export class View {
   constructor(store: runtime.StoreHandle) {
     this.root = {
       A: (new runtime.RowIdSet.View(store, "TRealm.A", [])),
-      B: (new runtime.RowIdSet.View(store, "TRealm.B", [])),
-      E: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.E", [a]));
+      B: (a: runtime.Value) => {
+        return (new runtime.RowIdSet.View(store, "TRealm.B", [a]));
       },
-      next: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.next", [a]));
+      E: (x: runtime.Value) => {
+        return (a: runtime.Value) => {
+          return (new runtime.RowIdSet.View(store, "TRealm.E", [x, a]));
+        };
+      },
+      next: (x: runtime.Value) => {
+        return (new runtime.TableCellRef.View(store, "TRealm.next", [x]));
       },
       nextedge: (x: runtime.Value) => {
         return (new runtime.TableCellRef.View(store, "TRealm.nextedge", [x]));
@@ -33,20 +37,29 @@ export class Transaction extends View {
     super(store);
     this.root = {
       A: (new runtime.RowIdSet.Transaction(store, "TRealm.A", [], transaction)),
-      B: (new runtime.RowIdSet.Transaction(store, "TRealm.B", [], transaction)),
-      E: (a: runtime.Value) => {
+      B: (a: runtime.Value) => {
         return (new runtime.RowIdSet.Transaction(
           store,
-          "TRealm.E",
+          "TRealm.B",
           [a],
           transaction
         ));
       },
-      next: (a: runtime.Value) => {
+      E: (x: runtime.Value) => {
+        return (a: runtime.Value) => {
+          return (new runtime.RowIdSet.Transaction(
+            store,
+            "TRealm.E",
+            [x, a],
+            transaction
+          ));
+        };
+      },
+      next: (x: runtime.Value) => {
         return (new runtime.TableCellRef.Transaction(
           store,
           "TRealm.next",
-          [a],
+          [x],
           transaction
         ));
       },

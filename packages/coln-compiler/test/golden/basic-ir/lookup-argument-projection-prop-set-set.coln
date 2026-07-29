@@ -1,9 +1,9 @@
 theory T := sig
   A : Prop
-  B : Set
-  E : B -> Set
-  next : A -> B
-  nextedge : (x : A) -> E (next x)
+  B : A -> Set
+  E : (x : A) -> B x -> Set
+  next : (x : A) -> B x
+  nextedge : (x : A) -> E x (next x)
 end
 
 realm TRealm @ T

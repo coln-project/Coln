@@ -12,8 +12,8 @@ import { beginRealm } from "./helpers.ts";
 test("lookup-argument-projection-set-set-prop", () => {
   const realm = beginRealm(LookupArgumentProjectionSetSetPropRealm);
   const source = realm.root.A.add();
-  const target = realm.root.B.add();
-  const edge = realm.root.E(target).add();
+  const target = realm.root.B(source).add();
+  const edge = realm.root.E(source)(target).add();
   realm.root.next(source).set(target);
   realm.root.nextedge(source).set(edge);
   const view = realm.commit();
@@ -24,9 +24,9 @@ test("lookup-argument-projection-set-set-prop", () => {
 test("lookup-argument-projection-set-set-prop rejects an edge at a different target", () => {
   const realm = beginRealm(LookupArgumentProjectionSetSetPropRealm);
   const source = realm.root.A.add();
-  const target = realm.root.B.add();
-  const otherTarget = realm.root.B.add();
-  const edge = realm.root.E(otherTarget).add();
+  const target = realm.root.B(source).add();
+  const otherTarget = realm.root.B(source).add();
+  const edge = realm.root.E(source)(otherTarget).add();
   realm.root.next(source).set(target);
   realm.root.nextedge(source).set(edge);
 
@@ -36,38 +36,22 @@ test("lookup-argument-projection-set-set-prop rejects an edge at a different tar
 test("lookup-argument-projection-set-set-prop infers its output from an inhabited proposition", () => {
   const realm = beginRealm(LookupArgumentProjectionSetSetPropRealm);
   const source = realm.root.A.add();
-  const target = realm.root.B.add();
-  const edge = realm.root.E(target).add();
+  const target = realm.root.B(source).add();
+  const edge = realm.root.E(source)(target).add();
   realm.root.next(source).set(target);
   const view = realm.commit();
 
   assert.equal(valueEqual(view.nextedge(source).get(), edge), true);
 });
 
-test("lookup-argument-projection-set-set-prop returns equal proofs for equal lookup results", () => {
-  const realm = beginRealm(LookupArgumentProjectionSetSetPropRealm);
-  const firstSource = realm.root.A.add();
-  const secondSource = realm.root.A.add();
-  const target = realm.root.B.add();
-  const firstEdge = realm.root.E(target).add();
-  const secondEdge = realm.root.E(target).add();
-  realm.root.next(firstSource).set(target);
-  realm.root.next(secondSource).set(target);
-  realm.root.nextedge(firstSource).set(firstEdge);
-  realm.root.nextedge(secondSource).set(secondEdge);
-  const view = realm.commit();
-
-  assert.equal(valueEqual(view.nextedge(firstSource).get(), view.nextedge(secondSource).get()), true);
-});
-
 test("lookup-argument-projection-set-set-prop keeps proofs for different lookup results distinct", () => {
   const realm = beginRealm(LookupArgumentProjectionSetSetPropRealm);
   const firstSource = realm.root.A.add();
   const secondSource = realm.root.A.add();
-  const firstTarget = realm.root.B.add();
-  const secondTarget = realm.root.B.add();
-  const firstEdge = realm.root.E(firstTarget).add();
-  const secondEdge = realm.root.E(secondTarget).add();
+  const firstTarget = realm.root.B(firstSource).add();
+  const secondTarget = realm.root.B(secondSource).add();
+  const firstEdge = realm.root.E(firstSource)(firstTarget).add();
+  const secondEdge = realm.root.E(secondSource)(secondTarget).add();
   realm.root.next(firstSource).set(firstTarget);
   realm.root.next(secondSource).set(secondTarget);
   realm.root.nextedge(firstSource).set(firstEdge);

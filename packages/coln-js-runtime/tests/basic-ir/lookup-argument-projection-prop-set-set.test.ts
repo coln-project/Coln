@@ -12,8 +12,8 @@ import { beginRealm } from "./helpers.ts";
 test("lookup-argument-projection-prop-set-set", () => {
   const realm = beginRealm(LookupArgumentProjectionPropSetSetRealm);
   const source = realm.root.A.add();
-  const target = realm.root.B.add();
-  const edge = realm.root.E(target).add();
+  const target = realm.root.B(source).add();
+  const edge = realm.root.E(source)(target).add();
   realm.root.next(source).set(target);
   realm.root.nextedge(source).set(edge);
   const view = realm.commit();
