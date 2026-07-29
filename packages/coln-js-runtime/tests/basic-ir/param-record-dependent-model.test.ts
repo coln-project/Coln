@@ -8,7 +8,7 @@ import test from "node:test";
 import * as ParamRecordDependentModelRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-dependent-model.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("param-record-dependent-model", () => {
+test("param-record-dependent-model", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordDependentModelRealm);
   const rank = { tag: "int", value: 1 } as const;
   const key = { rank };

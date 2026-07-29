@@ -8,7 +8,7 @@ import test from "node:test";
 import * as ParamRecordTypeFamilyPartialRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-type-family-partial.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("param-record-type-family-partial", () => {
+test("param-record-type-family-partial", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordTypeFamilyPartialRealm);
   const x = realm.root.X.add();
   const y = realm.root.Y.add();

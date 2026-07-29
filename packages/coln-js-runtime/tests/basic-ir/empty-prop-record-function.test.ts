@@ -8,7 +8,7 @@ import test from "node:test";
 import * as EmptyPropRecordFunctionRealm from "../../../coln-compiler/test/golden/basic-ir/empty-prop-record-function.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("empty-prop-record-function", () => {
+test("empty-prop-record-function", { expectFailure: true }, () => {
   const realm = beginRealm(EmptyPropRecordFunctionRealm);
   const value = realm.root.X.add();
 

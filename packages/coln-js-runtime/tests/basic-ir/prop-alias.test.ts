@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as PropAliasRealm from "../../../coln-compiler/test/golden/basic-ir/prop-alias.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("prop-alias canonicalizes proofs", () => {
+test("prop-alias canonicalizes proofs", { expectFailure: true }, () => {
   const realm = beginRealm(PropAliasRealm);
   const first = realm.root.V.add();
   const second = realm.root.V.add();

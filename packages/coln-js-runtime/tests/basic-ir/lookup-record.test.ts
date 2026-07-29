@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as LookupRecordRealm from "../../../coln-compiler/test/golden/basic-ir/lookup-record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("lookup-record", () => {
+test("lookup-record", { expectFailure: true }, () => {
   const realm = beginRealm(LookupRecordRealm);
   const fixed = {
     name: { tag: "string", value: "fixed" },

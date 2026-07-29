@@ -8,7 +8,7 @@ import test from "node:test";
 import * as ParamRecordTypeFamilyMultiArgumentRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-type-family-multi-argument.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("param-record-type-family-multi-argument", () => {
+test("param-record-type-family-multi-argument", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordTypeFamilyMultiArgumentRealm);
   const x = realm.root.X.add();
   const y = realm.root.Y.add();

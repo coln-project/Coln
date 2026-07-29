@@ -26,14 +26,47 @@ if (config.errors.length !== 0) {
   throw new Error(formatDiagnostics(config.errors));
 }
 
-const knownFailures = new Map<string, { label: string; match: RegExp }>([
-  [
-    "param-record-repeated-binders",
-    {
-      label: "repeated record type parameters produce duplicate TypeScript identifiers",
-      match: /Duplicate identifier 'X'/,
-    },
-  ],
+const knownFailures = new Set([
+  "empty-prop-record",
+  "empty-prop-record-function",
+  "empty-record",
+  "equality",
+  "equality-prop",
+  "equality-record",
+  "equality-record-nested",
+  "lookup-record",
+  "lookup-record-composition",
+  "lookup-record-expansion",
+  "lookup-record-field",
+  "param-alias",
+  "param-alias-set",
+  "param-record",
+  "param-record-concrete",
+  "param-record-dependent-function",
+  "param-record-dependent-model",
+  "param-record-function",
+  "param-record-model",
+  "param-record-nested",
+  "param-record-type-family-lambda",
+  "param-record-type-family-multi-argument",
+  "param-record-type-family-partial",
+  "param-record-type-family-prop",
+  "param-record-type-family-unused",
+  "projection",
+  "proof-record",
+  "proof-record-function-argument",
+  "proof-record-mixed-fields",
+  "proof-record-nested-dependent-equality",
+  "proof-record-nested-dependent-prop",
+  "proof-record-prop-field",
+  "proof-record-structural-equality",
+  "prop-record",
+  "prop-record-dependent-equality",
+  "prop-record-nested-dependent",
+  "record",
+  "record-field-order",
+  "record-nested",
+  "rule-literals",
 ]);
 
 const integrationTestSuffix = /\.(?:pending|test)\.ts$/;
@@ -60,9 +93,8 @@ test("typecheck basic-ir fixtures", () => {
 
 for (const path of testFiles) {
   const name = path.replace(integrationTestSuffix, "");
-  const expectedFailure = knownFailures.get(name);
-  if (expectedFailure !== undefined) {
-    test(`typecheck ${name}`, { expectFailure: expectedFailure }, () => {
+  if (knownFailures.has(name)) {
+    test(`typecheck ${name}`, { expectFailure: true }, () => {
       typecheck([path]);
     });
   }

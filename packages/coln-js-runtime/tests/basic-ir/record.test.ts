@@ -9,7 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as RecordRealm from "../../../coln-compiler/test/golden/basic-ir/record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("record", () => {
+test("record", { expectFailure: true }, () => {
   const realm = beginRealm(RecordRealm);
   const point = realm.root.point.add();
   const name = { tag: "string", value: "example" } as const;

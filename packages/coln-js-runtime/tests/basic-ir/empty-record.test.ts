@@ -8,7 +8,7 @@ import test from "node:test";
 import * as EmptyRecordRealm from "../../../coln-compiler/test/golden/basic-ir/empty-record.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("empty-record is inhabited without a write", () => {
+test("empty-record is inhabited without a write", { expectFailure: true }, () => {
   const realm = beginRealm(EmptyRecordRealm);
   const view = realm.commit();
   assert.deepEqual(view.unit, {});

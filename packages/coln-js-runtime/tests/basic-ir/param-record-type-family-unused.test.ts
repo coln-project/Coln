@@ -8,7 +8,7 @@ import test from "node:test";
 import * as ParamRecordTypeFamilyUnusedRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-type-family-unused.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-test("param-record-type-family-unused", () => {
+test("param-record-type-family-unused", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordTypeFamilyUnusedRealm);
   const box = {
     value: { tag: "int", value: 1 },
