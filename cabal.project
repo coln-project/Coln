@@ -18,6 +18,9 @@ jobs: $ncpus
 semaphore: true
 tests: True
 
+if os(wasi)
+  shared: True
+
 constraints:
   -- Cabal otherwise sometimes picks bad build plans due to faulty metadata in older versions of these libs:
   -- https://github.com/haskell/lsp/issues/641
