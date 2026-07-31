@@ -25,7 +25,6 @@ pub(crate) trait ColIndex {
     fn remove(columns: &mut Self::Columns, index: usize);
 }
 
-
 impl<T> ColIndex for T
 where
     T: hexane::ColumnValueRef,
@@ -87,6 +86,14 @@ where
     pub(crate) fn get(&self, key: K::Ref<'_>) -> impl Iterator<Item = V::Ref<'_>> {
         let range = K::scope(&self.keys, key, 0..self.len());
         V::iter_range(&self.values, range)
+    }
+
+    pub(crate) fn get_unique(&self, key: K::Ref<'_>) -> Option<V::Ref<'_>> {
+        let range = K::scope(&self.keys, key, 0..self.len());
+        let mut it = V::iter_range(&self.values, range);
+        let r = it.next();
+        assert!(it.next().is_none());
+        r
     }
 
     pub(crate) fn contains_key(&self, key: K::Ref<'_>) -> bool {

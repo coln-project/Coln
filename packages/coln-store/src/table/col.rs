@@ -5,7 +5,7 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use crate::commit::hash_dict::HashMapper;
+use crate::id_packer::IdPacker;
 
 use super::{CellKind, CellValue, PackedCell, PackedRowId};
 
@@ -164,9 +164,11 @@ impl Column {
         }
     }
 
-    pub(super) fn get(&self, row: usize, dict: &HashMapper) -> Option<CellValue> {
+    pub(super) fn get(&self, row: usize, packer: &IdPacker) -> Option<CellValue> {
         match self {
-            Column::Id(cells) => cells.get(row).map(|id| CellValue::Id(id.unpack(dict))),
+            Column::Id(cells) => cells
+                .get(row)
+                .map(|id| CellValue::Id(packer.unpack_row_id(id))),
             Column::Int(cells) => cells.get(row).map(CellValue::Int),
             Column::Str(cells) => cells.get(row).map(|s| CellValue::Str(s.to_owned())),
         }

@@ -5,9 +5,9 @@
 use crate::commit::error::CodecError;
 use crate::solver::compile::CompileError;
 use crate::solver::validate::RuleViolation;
-use crate::store::rowing::RowingError;
 use crate::table::ValidationError;
 
+// TODO rename this to just store error
 /// Store integrity error
 #[derive(Debug, thiserror::Error)]
 pub enum StoreIntError {
@@ -21,8 +21,6 @@ pub enum StoreIntError {
     Encode(#[from] CodecError),
     #[error(transparent)]
     Commit(#[from] CommitApplyError),
-    #[error(transparent)]
-    Rowing(#[from] RowingError),
 }
 
 #[derive(Debug, thiserror::Error)]

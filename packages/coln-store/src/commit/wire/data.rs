@@ -248,6 +248,7 @@ fn encode_txn_prim_value_column(
     let mut value_bytes = Vec::new();
     let mut buf = Vec::new();
     let mut meta: Vec<ValueMeta> = Vec::with_capacity(values.len());
+    // TODO use RawColumn?
     for value in values {
         let meta_value = encode_prim_value(value, prim, &mut value_bytes)?;
         meta.push(meta_value);

@@ -6,6 +6,7 @@ mod cell;
 mod col;
 pub(crate) mod index;
 pub mod table_ref;
+mod undo;
 
 pub use cell::{CellKind, CellValue, RowId};
 pub use table_ref::TableRef;
@@ -13,11 +14,13 @@ pub use table_ref::TableRef;
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use crate::commit::hash_dict::HashMapper;
+use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
+use crate::rollback::Rollback;
 use crate::table::index::{IndexId, IndexMeta, TableIndex};
-use crate::txn::ops::TxnId;
+use crate::table::undo::UndoOp;
+use crate::txn::ops::{PackedOp, TxnId};
 
 pub(crate) use self::cell::{PackedCell, PackedRowId};
 use self::col::{Column, IdColumn};
@@ -85,24 +88,26 @@ enum PkConstraint {
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
 ///
 /// Row ids are dictionary encoded: each distinct commit hash is stored once
-/// in the store-wide [`HashMapper`] and rows refer to it by a `u32` index
+/// in the store-wide [`IdPacker`] and rows refer to it by a `u32` index
 /// (see [`PackedRowId`]). The dictionary is append-only, so packed ids stay
 /// valid for the lifetime of the store. The [`Store`](crate::store::Store)
-/// owns the dictionary and passes it into every table operation that packs
-/// or unpacks ids; [`TableRef`] bundles the two for read-only callers.
-#[derive(Debug, Clone)]
+/// owns the dictionary and packs mutations before staging them in a table;
+/// [`TableRef`] bundles the table and dictionary for decoded reads.
+#[derive(Debug)]
 pub struct Table {
     path: ir::Path,
     schema: Schema,
     col_name_map: HashMap<ColName, usize>,
     /// Structural (all-columns) index used for hashcons lookup, when enabled.
     hashcons_index: Option<IndexId>,
-    row_ids: IdColumn,
-    cols: Vec<Column>,
     /// Sorted secondary indexes, maintained by [`Self::insert_row`] and
     /// [`Self::replace_row_id`]. Currently only the primary key index.
     indexes: Vec<TableIndex>,
+    row_ids: IdColumn,
+    cols: Vec<Column>,
     pk: PkConstraint,
+    pending_updates: Vec<PackedOp>,
+    undo_log: Option<Vec<UndoOp>>,
 }
 
 impl Table {
@@ -157,6 +162,8 @@ impl Table {
             cols,
             indexes,
             pk,
+            pending_updates: Vec::new(),
+            undo_log: None,
         }
     }
 
@@ -178,8 +185,10 @@ impl Table {
     }
 
     /// Row id at a given physical row index.
-    pub(crate) fn row_id_at(&self, row_idx: usize, dict: &HashMapper) -> Option<RowId> {
-        self.row_ids.get(row_idx).map(|packed| packed.unpack(dict))
+    pub(crate) fn row_id_at(&self, row_idx: usize, packer: &IdPacker) -> Option<RowId> {
+        self.row_ids
+            .get(row_idx)
+            .map(|packed| packer.unpack_row_id(packed))
     }
 
     /// Cell at `(row_idx, col_idx)` in columnar storage.
@@ -187,17 +196,16 @@ impl Table {
         &self,
         row_idx: usize,
         col_idx: usize,
-        dict: &HashMapper,
+        packer: &IdPacker,
     ) -> Option<CellValue> {
         self.cols
             .get(col_idx)
-            .and_then(|col| col.get(row_idx, dict))
+            .and_then(|col| col.get(row_idx, packer))
     }
 
     /// Find the index of the row given a `row_id`. Internal API only.
-    fn row_idx(&self, row_id: RowId, dict: &HashMapper) -> Option<usize> {
-        let packed = PackedRowId::lookup(row_id, dict)?;
-        self.row_ids.position(packed).ok()
+    fn row_idx(&self, row_id: PackedRowId) -> Option<usize> {
+        self.row_ids.position(row_id).ok()
     }
 
     pub fn indexes_meta(&self) -> Vec<IndexMeta<'_>> {
@@ -230,9 +238,9 @@ pub struct SeekKey {
 }
 
 impl Table {
-    // public(ish) facing lookup APIs
+    // public facing read and indexing APIs
 
-    pub(crate) fn row_at(&self, row_idx: usize, id_packer: &HashMapper) -> Option<RowView> {
+    pub(crate) fn row_at(&self, row_idx: usize, id_packer: &IdPacker) -> Option<RowView> {
         let row_id = self.row_id_at(row_idx, id_packer)?;
         let values = (0..self.schema.columns.len())
             .map(|col_idx| self.cell_at(row_idx, col_idx, id_packer))
@@ -254,14 +262,14 @@ impl Table {
             .collect()
     }
 
-    pub(crate) fn table_scan(&self, id_packer: &HashMapper) -> impl Iterator<Item = RowView> {
+    pub(crate) fn table_scan(&self, id_packer: &IdPacker) -> impl Iterator<Item = RowView> {
         (0..self.row_count()).filter_map(move |row_idx| self.row_at(row_idx, id_packer))
     }
 
     pub(crate) fn seek(
         &self,
         key: &[SeekKey],
-        id_packer: &HashMapper,
+        id_packer: &IdPacker,
     ) -> Result<impl Iterator<Item = RowId>, ValidationError> {
         if let Some(column) = key
             .iter()
@@ -290,7 +298,7 @@ impl Table {
         &self,
         index: IndexId,
         key: &[CellValue],
-        id_packer: &HashMapper,
+        id_packer: &IdPacker,
     ) -> Result<impl Iterator<Item = RowId>, ValidationError> {
         let table_index = self
             .indexes
@@ -308,12 +316,12 @@ impl Table {
 
         let rows = key
             .iter()
-            .map(|value| PackedCell::try_pack_cell(value, id_packer))
+            .map(|value| id_packer.try_pack_cell(value))
             .collect::<Option<Vec<_>>>()
             .map(|key| {
                 table_index
                     .get(&key)
-                    .map(|row_id| row_id.unpack(id_packer))
+                    .map(|row_id| id_packer.unpack_row_id(row_id))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -344,7 +352,7 @@ impl Table {
     pub(crate) fn lookup(
         &self,
         key: &[SeekKey],
-        id_packer: &HashMapper,
+        id_packer: &IdPacker,
     ) -> Result<bool, ValidationError> {
         Ok(self.seek(key, id_packer)?.next().is_some())
     }
@@ -353,7 +361,7 @@ impl Table {
         &self,
         index: IndexId,
         key: &[CellValue],
-        id_packer: &HashMapper,
+        id_packer: &IdPacker,
     ) -> Result<bool, ValidationError> {
         Ok(self.index_seek(index, key, id_packer)?.next().is_some())
     }
@@ -377,7 +385,7 @@ impl Table {
     pub(crate) fn validate_insert(
         &self,
         values: &[CellValue],
-        dict: &HashMapper,
+        dict: &IdPacker,
     ) -> Result<(), ValidationError> {
         // duplicated as txn::add(), but this is cheap enough we can afford to
         // do it here just in case.
@@ -401,7 +409,7 @@ impl Table {
                 let Some(key) = index
                     .key_cols()
                     .iter()
-                    .map(|&ci| PackedCell::try_pack_cell(&values[ci], dict))
+                    .map(|&ci| dict.try_pack_cell(&values[ci]))
                     .collect::<Option<Vec<_>>>()
                 else {
                     // If we cannot pack, then the primary key should be absent, so noneed to check
@@ -434,41 +442,126 @@ impl Table {
     }
 }
 
+#[must_use]
+pub(crate) struct TableSnapshot;
+
+impl Rollback for Table {
+    type Snapshot = TableSnapshot;
+
+    // Take a snapshot of the table, which should then start recording all of the
+    // operations that are recorded in the table.
+    // Returns a handle to the user so they can roll back the changes applied
+    fn snapshot(&mut self) -> Self::Snapshot {
+        assert!(
+            self.undo_log.is_none(),
+            "nested table snapshots are not supported"
+        );
+        assert!(
+            self.pending_updates.is_empty(),
+            "cannot snapshot a table with staged updates"
+        );
+
+        self.undo_log = Some(Vec::new());
+        TableSnapshot
+    }
+
+    fn commit_snapshot(&mut self, _snapshot: Self::Snapshot) {
+        assert!(
+            self.pending_updates.is_empty(),
+            "cannot commit a snapshot with staged updates"
+        );
+        self.undo_log.take().expect("table has no active snapshot");
+    }
+
+    fn rollback(&mut self, _snapshot: Self::Snapshot) {
+        self.pending_updates.clear();
+
+        let undo_ops = self.undo_log.take().expect("table has no active snapshot");
+        for undo_op in undo_ops.into_iter().rev() {
+            self.apply_undo(undo_op);
+        }
+    }
+}
+
 impl Table {
-    // Adding and changing contents of the table
+    /// Stage an already packed operation without changing the materialised table.
+    pub(crate) fn stage(&mut self, op: PackedOp) {
+        self.pending_updates.push(op);
+    }
+
+    // Apply the staged updates to the table. Rollback support will record
+    // inverse operations separately before these operations are consumed.
+    pub(crate) fn apply_staged_ops(&mut self) {
+        let ops = std::mem::take(&mut self.pending_updates);
+        for op in ops {
+            let undo_op = self.apply_op(op);
+            if let Some(undo_log) = &mut self.undo_log {
+                undo_log.push(undo_op);
+            }
+        }
+    }
+
+    fn apply_op(&mut self, op: PackedOp) -> UndoOp {
+        match op {
+            PackedOp::Add { row_id, values } => {
+                self.insert_row(values, row_id);
+                UndoOp::UndoAdd { row_id }
+            }
+        }
+    }
+
+    fn apply_undo(&mut self, undo_op: UndoOp) {
+        match undo_op {
+            UndoOp::UndoAdd { row_id } => self.remove_packed(row_id),
+        }
+    }
+}
+
+impl Table {
+    // Actually modifying the table content
 
     /// Insert a row into columnar storage at its sorted position.
     ///
     /// Does **not** validate. Used internally when the caller has already checked the row
     /// (e.g. batch validation).
-    pub(crate) fn insert_row(
-        &mut self,
-        values: Vec<CellValue>,
-        row_id: RowId,
-        dict: &mut HashMapper,
-    ) {
+    pub(super) fn insert_row(&mut self, values: Vec<PackedCell>, row_id: PackedRowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
-        let values: Vec<PackedCell> = values
-            .iter()
-            .map(|v| PackedCell::pack_cell(v, dict))
-            .collect();
-        self.insert_packed(values, row_id, dict);
-    }
-
-    fn insert_packed(&mut self, values: Vec<PackedCell>, row_id: RowId, dict: &mut HashMapper) {
-        debug_assert_eq!(values.len(), self.schema.columns.len());
-
-        let row_id = PackedRowId::pack(row_id, dict);
+        // if let Some(index) = self.hashcons_index {
+        //     let Some(conflict) = self
+        //         .index_seek(index, key, id_packer)
+        //         .expect("valid hashcons index and key structure")
+        //         .next();
+        // }
         for index in &mut self.indexes {
             let key = Self::project_index_key(index, &values);
             index.insert(key, row_id);
         }
+
         let pos = match self.row_ids.position(row_id) {
             Ok(pos) | Err(pos) => pos,
         };
         self.row_ids.insert(pos, row_id);
         for (i, v) in values.into_iter().enumerate() {
             self.cols[i].insert(pos, v);
+        }
+    }
+
+    fn remove_packed(&mut self, row_id: PackedRowId) {
+        let row_idx = self
+            .row_ids
+            .position(row_id)
+            .expect("undo target should be present");
+        let values = self
+            .packed_row_at(row_id)
+            .expect("undo target should have a complete row");
+
+        for index in &mut self.indexes {
+            let key = Self::project_index_key(index, &values);
+            index.remove_rowid(&key, row_id);
+        }
+        self.row_ids.remove(row_idx);
+        for column in &mut self.cols {
+            column.remove(row_idx);
         }
     }
 
@@ -483,26 +576,24 @@ impl Table {
     /// Used for canonicalising row_ids. The row moves to the sorted position
     /// of its new id, together with its cells. Panics if `old` is absent,
     /// because rowing only reports swaps for physical rows.
-    pub(crate) fn replace_row_id(&mut self, old: &RowId, new: RowId, dict: &mut HashMapper) {
+    pub(crate) fn replace_row_id(&mut self, old: PackedRowId, new: PackedRowId) {
         let old_pos = self
-            .row_idx(*old, dict)
+            .row_idx(old)
             .expect("row id should exist, as produced by rowing");
-        let packed_old = PackedRowId::lookup(*old, dict)
-            .expect("row_position found the row, so its commit hash is interned");
 
         let values = self
-            .packed_row_at(packed_old)
+            .packed_row_at(old)
             .expect("row id should exist, as produced by rowing");
 
         for index in &mut self.indexes {
             let key = Self::project_index_key(index, &values);
-            index.remove_rowid(&key, packed_old);
+            index.remove_rowid(&key, old);
         }
         self.row_ids.remove(old_pos);
         for col in &mut self.cols {
             col.remove(old_pos);
         }
-        self.insert_packed(values, new, dict);
+        self.insert_row(values, new);
     }
 
     // TODO this is potentially an expensive operation. If on the hot path, then
@@ -512,27 +603,20 @@ impl Table {
     /// referenced row's canonical id changes and cells embedding the old id
     /// must be rewritten. Panics if `row_id` is absent, because rowing only
     /// reports fixups for physical rows.
-    pub(crate) fn rewrite_row_cells(
-        &mut self,
-        row_id: &RowId,
-        values: Vec<PackedCell>,
-        dict: &mut HashMapper,
-    ) {
+    pub(crate) fn rewrite_row_cells(&mut self, row_id: PackedRowId, values: Vec<PackedCell>) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
         let pos = self
-            .row_idx(*row_id, dict)
+            .row_idx(row_id)
             .expect("row id should exist, otherwise rowing is wrong");
-        let packed = PackedRowId::lookup(*row_id, dict)
-            .expect("row_position found the row, so its commit hash is interned");
         let old_values = self
-            .packed_row_at(packed)
+            .packed_row_at(row_id)
             .expect("row id should exist, as produced by rowing");
 
         for index in &mut self.indexes {
             let old_key = Self::project_index_key(index, &old_values);
             let new_key = Self::project_index_key(index, &values);
-            index.remove_rowid(&old_key, packed);
-            index.insert(new_key, packed);
+            index.remove_rowid(&old_key, row_id);
+            index.insert(new_key, row_id);
         }
 
         for (i, v) in values.into_iter().enumerate() {
@@ -554,7 +638,7 @@ impl Table {
     }
 
     /// Dump table contents row by row for debugging.
-    pub(crate) fn dump(&self, dict: &HashMapper) -> String {
+    pub(crate) fn dump(&self, dict: &IdPacker) -> String {
         let mut out = String::new();
         let _ = writeln!(
             out,
@@ -566,7 +650,7 @@ impl Table {
 
         for row_idx in 0..self.row_count() {
             // should be fine here as
-            let row_id = self.row_ids.at(row_idx).unpack(dict);
+            let row_id = dict.unpack_row_id(self.row_ids.at(row_idx));
             let _ = write!(out, "[{row_idx}] row_id={row_id}");
             for col_idx in 0..self.schema.columns.len() {
                 let value = self.cols[col_idx]
@@ -588,6 +672,7 @@ mod tests {
     use crate::commit::hash::CommitHash;
     use crate::ir::{self, Path};
     use crate::ir::{BuiltinTy, ColType};
+    use crate::txn::ops::Op;
 
     fn test_row_id(counter: u32) -> RowId {
         RowId {
@@ -619,18 +704,18 @@ mod tests {
         }
     }
 
-    /// A [`Table`] paired with its own dictionary, forwarding every method
-    /// that takes a dict, so tests read like production call sites.
+    /// A [`Table`] paired with its own dictionary, packing mutations at the
+    /// same boundary as [`Store`](crate::store::Store).
     struct TestTable {
         table: Table,
-        dict: HashMapper,
+        dict: IdPacker,
     }
 
     impl TestTable {
         fn new(path: Path, schema: ir::Schema) -> Self {
             Self {
                 table: Table::new(path, schema),
-                dict: HashMapper::new(),
+                dict: IdPacker::new(),
             }
         }
 
@@ -651,7 +736,8 @@ mod tests {
         }
 
         fn row_position(&self, row_id: RowId) -> Option<usize> {
-            self.table.row_idx(row_id, &self.dict)
+            let row_id = self.dict.lookup_row_id(row_id)?;
+            self.table.row_idx(row_id)
         }
 
         fn validate_insert(&self, values: &[CellValue]) -> Result<(), ValidationError> {
@@ -659,15 +745,42 @@ mod tests {
         }
 
         fn insert_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
-            self.table.insert_row(values, row_id, &mut self.dict)
+            let row_id = self.dict.pack_row_id(row_id);
+            let values = values
+                .into_iter()
+                .map(|value| self.dict.pack_cell(value))
+                .collect();
+            self.table.insert_row(values, row_id)
+        }
+
+        fn stage_update(&mut self, op: Op) {
+            let Op::Add {
+                row_id,
+                table,
+                values,
+            } = op;
+            debug_assert_eq!(table, *self.table.path());
+            let row_id = self.dict.pack_row_id(row_id);
+            let values = values
+                .into_iter()
+                .map(|value| self.dict.pack_cell(value))
+                .collect();
+            self.table.stage(PackedOp::Add { row_id, values });
+        }
+
+        fn apply_staged_ops(&mut self) {
+            self.table.apply_staged_ops();
         }
 
         fn replace_row_id(&mut self, old: &RowId, new: RowId) {
-            self.table.replace_row_id(old, new, &mut self.dict)
+            let old = self.dict.pack_row_id(*old);
+            let new = self.dict.pack_row_id(new);
+            self.table.replace_row_id(old, new)
         }
 
         fn rewrite_row_cells(&mut self, row_id: &RowId, values: Vec<PackedCell>) {
-            self.table.rewrite_row_cells(row_id, values, &mut self.dict)
+            let row_id = self.dict.pack_row_id(*row_id);
+            self.table.rewrite_row_cells(row_id, values)
         }
 
         fn dump(&self) -> String {
@@ -697,6 +810,82 @@ mod tests {
         tbl.insert_row(vec![], r1);
         assert_eq!(tbl.row_count(), 2);
         assert_eq!(tbl.row_id_at(1), Some(r1));
+    }
+
+    #[test]
+    fn rollback_removes_applied_rows_and_index_entries() {
+        let path = Path::from("rollback");
+        let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], Some(&["value"])));
+        let existing = test_row_id(0);
+        let first_added = test_row_id(1);
+        let second_added = test_row_id(2);
+        tbl.insert_row(vec![CellValue::Int(1)], existing);
+
+        let snapshot = tbl.table.snapshot();
+        tbl.stage_update(Op::Add {
+            row_id: first_added,
+            table: path.clone(),
+            values: vec![CellValue::Int(2)],
+        });
+        tbl.stage_update(Op::Add {
+            row_id: second_added,
+            table: path,
+            values: vec![CellValue::Int(3)],
+        });
+        tbl.apply_staged_ops();
+
+        assert_eq!(tbl.row_count(), 3);
+        assert_eq!(
+            tbl.validate_insert(&[CellValue::Int(2)]),
+            Err(ValidationError::DuplicatePrimaryKey)
+        );
+
+        tbl.table.rollback(snapshot);
+
+        assert_eq!(tbl.row_count(), 1);
+        assert_eq!(tbl.row_id_at(0), Some(existing));
+        assert_eq!(tbl.row_position(first_added), None);
+        assert_eq!(tbl.row_position(second_added), None);
+        assert!(tbl.validate_insert(&[CellValue::Int(2)]).is_ok());
+        assert!(tbl.validate_insert(&[CellValue::Int(3)]).is_ok());
+        assert!(tbl.table.undo_log.is_none());
+    }
+
+    #[test]
+    fn commit_snapshot_keeps_rows_and_discards_undo_log() {
+        let path = Path::from("commit_snapshot");
+        let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], None));
+        let row_id = test_row_id(0);
+
+        let snapshot = tbl.table.snapshot();
+        tbl.stage_update(Op::Add {
+            row_id,
+            table: path,
+            values: vec![CellValue::Int(7)],
+        });
+        tbl.apply_staged_ops();
+        tbl.table.commit_snapshot(snapshot);
+
+        assert_eq!(tbl.row_count(), 1);
+        assert_eq!(tbl.row_id_at(0), Some(row_id));
+        assert!(tbl.table.undo_log.is_none());
+    }
+
+    #[test]
+    fn rollback_discards_updates_staged_after_snapshot() {
+        let path = Path::from("staged_rollback");
+        let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], None));
+
+        let snapshot = tbl.table.snapshot();
+        tbl.stage_update(Op::Add {
+            row_id: test_row_id(0),
+            table: path,
+            values: vec![CellValue::Int(7)],
+        });
+        tbl.table.rollback(snapshot);
+
+        assert_eq!(tbl.row_count(), 0);
+        assert!(tbl.table.pending_updates.is_empty());
     }
 
     /// `primary_key: Some([])` marks a singleton table (at most one row).
@@ -761,7 +950,10 @@ mod tests {
         assert_eq!(tbl.row_id_at(0), Some(row_id));
         assert_eq!(tbl.cell_at(0, 0), Some(CellValue::Int(7)));
         assert_eq!(tbl.cell_at(0, 1), Some(CellValue::Str("x".to_string())));
-        let packed = PackedRowId::lookup(row_id, &tbl.dict).expect("insert packed the row id");
+        let packed = tbl
+            .dict
+            .lookup_row_id(row_id)
+            .expect("insert packed the row id");
         assert_eq!(
             tbl.table.packed_row_at(packed),
             Some(vec![PackedCell::Int(7), PackedCell::Str("x".to_string())])
@@ -794,7 +986,7 @@ mod tests {
         }
 
         // Four distinct commit hashes, each interned exactly once.
-        assert_eq!(tbl.dict.hashes().len(), 4);
+        assert_eq!(tbl.dict.len(), 4);
     }
 
     /// Rows are stored sorted by packed row id regardless of insertion order,

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use tracing::{debug, info};
 
@@ -11,34 +11,80 @@ use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
-use crate::commit::hash_dict::HashMapper;
 use crate::commit::wire::root::{RootCommitData, RootTableEntry};
+use crate::id_packer::{IdPacker, IdPackerSnapshot};
 use crate::ir::{self, FlatRealm, RuleEntry};
+use crate::rollback::Rollback;
+use crate::rowing;
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreIntError};
-use crate::table::{CellValue, RowId, RowView, Table, TableOid, TableRef, ValidationError};
+use crate::table::{
+    CellValue, RowId, RowView, Table, TableOid, TableRef, TableSnapshot, ValidationError,
+};
 use crate::txn::ops::{Op, RowHandle};
 use crate::txn::{OwnedTransaction, Transaction};
 
 pub mod error;
-mod rowing;
 
-// TODO this should not be cloneable for efficiency reasons. In the future we should
-// be able to teach the rule validator to check the delta
-#[derive(Debug, Clone)]
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug)]
 pub struct Store {
     pub(crate) next_oid: TableOid,
     path_to_oid: HashMap<ir::Path, TableOid>,
     tables: HashMap<TableOid, Table>,
-    id_packer: HashMapper,
+    id_packer: IdPacker,
     /// Source rule entries retained for persistence. Compiled form lives in `rules`.
     rule_entries: Vec<ir::RuleEntry>,
     /// Compiled rule for this instance; table schemas live only on each [`Table`].
     rules: Vec<CompRule>,
     commits: CommitGraph,
-    rowing: rowing::Rowing,
+    // rowing: rowing::Rowing,
+}
+
+pub(crate) struct StoreSnapshot {
+    tables: Vec<(TableOid, TableSnapshot)>,
+    id_packer: IdPackerSnapshot,
+    // rowing: RowingSnapshot
+}
+
+impl Rollback for Store {
+    type Snapshot = StoreSnapshot;
+
+    fn snapshot(&mut self) -> Self::Snapshot {
+        let tables = self
+            .tables
+            .iter_mut()
+            .map(|(&oid, table)| (oid, table.snapshot()))
+            .collect();
+        let id_packer = self.id_packer.snapshot();
+        StoreSnapshot { tables, id_packer }
+    }
+
+    fn commit_snapshot(&mut self, snapshot: Self::Snapshot) {
+        let StoreSnapshot { tables, id_packer } = snapshot;
+        for (oid, snapshot) in tables {
+            self.tables
+                .get_mut(&oid)
+                .expect("snapshotted table should still exist")
+                .commit_snapshot(snapshot);
+        }
+        self.id_packer.commit_snapshot(id_packer);
+    }
+
+    fn rollback(&mut self, snapshot: Self::Snapshot) {
+        let StoreSnapshot { tables, id_packer } = snapshot;
+        for (oid, snapshot) in tables {
+            self.tables
+                .get_mut(&oid)
+                .expect("snapshotted table should still exist")
+                .rollback(snapshot);
+        }
+        self.id_packer.rollback(id_packer);
+    }
 }
 
 impl Store {
@@ -50,11 +96,11 @@ impl Store {
             next_oid: 0,
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
-            id_packer: HashMapper::new(),
+            id_packer: IdPacker::new(),
             rule_entries: vec![],
             rules: vec![],
             commits,
-            rowing: rowing::Rowing::new(),
+            // rowing: rowing::Rowing::new(),
         }
     }
 
@@ -114,25 +160,25 @@ impl Store {
         self.table_at(table_path).map(|table| table.table_scan())
     }
 
-    pub(crate) fn canonical_row_id(&self, row_id: RowId) -> RowId {
-        self.rowing.canonical(row_id, &self.id_packer)
-    }
+    // pub(crate) fn canonical_row_id(&self, row_id: RowId) -> RowId {
+    //     self.rowing.canonical(row_id, &self.id_packer)
+    // }
 
     pub fn row_by_handle(&self, table: &ir::Path, row_handle: RowHandle) -> Option<RowView> {
         let row_id = row_handle.row_id().ok()?;
-        let con_rowid = self.canonical_row_id(row_id);
+        // let con_rowid = self.canonical_row_id(row_id);
         // replace the rowid in the row_handle so it stays canonical
-        if row_id != con_rowid {
-            row_handle.canonicalise(con_rowid).ok()?
-        }
-        self.row_by_id(table, con_rowid)
+        // if row_id != con_rowid {
+        //     row_handle.canonicalise(con_rowid).ok()?
+        // }
+        self.row_by_id(table, row_id)
     }
 
     // This function will canonicalise the row_id on read, but will not change it
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
     pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
-        let row_id = self.canonical_row_id(row_id);
+        // let row_id = self.canonical_row_id(row_id);
         self.table_at(table)
             .and_then(|table| table.row_at(table.row_position(row_id)?))
     }
@@ -172,11 +218,11 @@ impl Store {
             next_oid,
             path_to_oid,
             tables: tables_map,
-            id_packer: HashMapper::new(),
+            id_packer: IdPacker::new(),
             rule_entries: root.laws,
             rules,
             commits: CommitGraph::new(),
-            rowing: rowing::Rowing::new(),
+            // rowing: rowing::Rowing::new(),
         })
     }
 
@@ -219,94 +265,6 @@ impl Store {
         Ok(oid)
     }
 
-    /// Validates and appends a batch to this store.
-    ///
-    /// This is a low level API that mutates `self` before rule checking, so
-    /// callers that need atomicity must call it on a preview clone and publish
-    /// that clone only after success.
-    fn apply_batch(&mut self, ops: impl Iterator<Item = Op> + Clone) -> Result<(), StoreIntError> {
-        self.validate_batch(ops.clone())?;
-
-        let mut op_count = 0usize;
-        for op in ops {
-            op_count += 1;
-            let Op::Add {
-                table,
-                values,
-                row_id,
-            } = op;
-            let oid = self.resolve_table(&table).expect("validated batch");
-
-            // TODO: non-hashcons rows pay by_row and union-find bookkeeping on
-            // every insert; this is only needed for rows that a hashcons table
-            // can reference or that reference a hashcons table themselves.
-            let rowing::Observed { outcome, fixups } =
-                self.rowing
-                    .observe(oid, &self.tables, &mut self.id_packer, row_id, &values)?;
-
-            // TODO do batch insert
-            let t = self.tables.get_mut(&oid).expect("validated batch");
-            match outcome {
-                // Insert the values as canonicalized by rowing, so id cells
-                // always name a stored, canonical row.
-                rowing::ObservedOutcome::Inserted { rid, values } => {
-                    t.insert_row(values, rid, &mut self.id_packer)
-                }
-                rowing::ObservedOutcome::KeptOld(_row_id) => {
-                    // equivalent row exists, do nothing
-                }
-
-                rowing::ObservedOutcome::Swap { old, new } => {
-                    t.replace_row_id(&old, new, &mut self.id_packer);
-                }
-            }
-
-            // A canonical id change leaves stale id cells in rows that
-            // reference the merged class; rewrite them now.
-            for fixup in fixups {
-                let t = self
-                    .tables
-                    .get_mut(&fixup.table)
-                    .expect("fixups target observed tables");
-                t.rewrite_row_cells(&fixup.row, fixup.values, &mut self.id_packer);
-            }
-        }
-        info!(op_count, "applied batch");
-
-        self.check_rules()?;
-        Ok(())
-    }
-
-    fn validate_batch(&self, ops: impl Iterator<Item = Op> + Clone) -> Result<(), StoreIntError> {
-        let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
-
-        for op in ops {
-            let Op::Add { table, values, .. } = op;
-            // Check ops have the right table path
-            let oid = self
-                .resolve_table(&table)
-                .ok_or_else(|| ValidationError::UnknownTable {
-                    path: table.clone(),
-                })?;
-            let t = self
-                .table(oid)
-                .ok_or_else(|| ValidationError::UnknownTable {
-                    path: table.clone(),
-                })?;
-            t.validate_insert(&values)?;
-
-            // Check primary key conflicts within ops batch
-            if let Some(key) = t.primary_key_values(&values) {
-                let keys = pending_pk.entry(oid).or_default();
-                if keys.iter().any(|k| k == &key) {
-                    return Err(ValidationError::DuplicatePrimaryKey.into());
-                }
-                keys.push(key);
-            }
-        }
-        Ok(())
-    }
-
     pub fn transaction(&mut self) -> Transaction<'_> {
         Transaction::new(self)
     }
@@ -347,11 +305,11 @@ impl Store {
             next_oid,
             path_to_oid,
             tables: tables_map,
-            id_packer: HashMapper::new(),
+            id_packer: IdPacker::new(),
             rule_entries: rules,
             rules: comp_rules,
             commits,
-            rowing: rowing::Rowing::new(),
+            // rowing: rowing::Rowing::new(),
         })
     }
 }
@@ -448,15 +406,6 @@ impl Store {
         Ok(self.heads())
     }
 
-    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), StoreIntError> {
-        // TODO resolved_ops need to decode data, there is code path which decodes
-        // to get ops immediately after a commit has been encoded. Consider optimise this.
-        let ops = cmt.resolved_ops(|path| self.schema_for(path))?;
-        self.apply_batch(ops)?;
-        self.record_in_commit_graph(cmt);
-        Ok(())
-    }
-
     pub fn apply_commit(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
         self.apply_commits([commit])
     }
@@ -495,7 +444,8 @@ impl Store {
         let mut waiting_on: HashMap<CommitHash, Vec<CommitHash>> = HashMap::new();
 
         // commits that can be applied
-        let mut ready: VecDeque<CommitHash> = VecDeque::new();
+        // use BTreeSet to ensure concurrent commit ordering is deterministic
+        let mut ready: BTreeSet<CommitHash> = BTreeSet::new();
 
         for (hash, commit) in &pending {
             let mut count = 0;
@@ -515,21 +465,24 @@ impl Store {
             }
 
             if count == 0 {
-                ready.push_back(*hash);
+                ready.insert(*hash);
             } else {
                 unsatisfied.insert(*hash, count);
             }
         }
 
-        // TODO disable cloning for now
-        // let mut preview = self.clone();
-
-        while let Some(hash) = ready.pop_front() {
+        while let Some(hash) = ready.pop_first() {
             let commit = pending
                 .remove(&hash)
                 .ok_or(CommitApplyError::MissingCommit)?;
-            // preview.apply_commit_ready(commit)?;
-            self.apply_commit_ready(commit)?;
+            let snapshot = self.snapshot();
+            match self.apply_commit_ready(commit) {
+                Ok(()) => self.commit_snapshot(snapshot),
+                Err(e) => {
+                    self.rollback(snapshot);
+                    return Err(e);
+                }
+            }
 
             if let Some(waitings) = waiting_on.remove(&hash) {
                 for wh in waitings {
@@ -539,7 +492,7 @@ impl Store {
                     *count -= 1;
                     if *count == 0 {
                         unsatisfied.remove(&wh).unwrap();
-                        ready.push_back(wh);
+                        ready.insert(wh);
                     }
                 }
             }
@@ -550,9 +503,147 @@ impl Store {
             return Err(CommitApplyError::DisconnectedCommit.into());
         }
 
-        // *self = preview;
         Ok(())
     }
+
+    // Apply a commit with its deps checked to be satisfied
+    // The commit data itself might still be wrong though
+    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), StoreIntError> {
+        // TODO resolved_ops need to decode data, there is code path which decodes
+        // to get ops immediately after a commit has been encoded. Consider optimise this.
+
+        // Here we check the commit and then apply it without worrying about the
+        // store changing after checking and before applying.
+        // This is ok because the model we have is that the store should only
+        // materialise up to one particular commit, if violations are caused by
+        // concurrent commits, then this would be resolved at merge time, not when
+        // applying one of the concurrent commits.
+        // TODO currently we just reject the commit if it has a primary key conflict
+        // we should allow such data because they might be concurrent commits
+
+        let PrecheckedCommit { ops, original } = self.precheck_commit(cmt)?;
+        self.apply_commit_ops(ops);
+        self.check_rules()?;
+        self.record_in_commit_graph(original);
+        Ok(())
+    }
+
+    /// Applying the data, assuming that it has passed the format checker, i.e.
+    /// the data conforms the the schema type definitions.
+    /// But it might not follow all the rule definitions, it might also violate
+    /// primary key constraints after hashconsing
+    fn apply_commit_ops(&mut self, ops: Vec<Op>) {
+        let op_count = ops.len();
+        let affected = self.stage_commit_ops(ops);
+        self.apply_staged_ops(&affected);
+
+        // TODO: non-hashcons rows pay by_row and union-find bookkeeping on
+        // every insert; this is only needed for rows that a hashcons table
+        // can reference or that reference a hashcons table themselves.
+        // let rowing::Observed { outcome, fixups } =
+        //     self.rowing
+        //         .observe(oid, &self.tables, &mut self.id_packer, row_id, &values);
+
+        // TODO do batch insert
+        // match outcome {
+        //     // Insert the values as canonicalized by rowing, so id cells
+        //     // always name a stored, canonical row.
+        //     rowing::ObservedOutcome::Inserted { rid, values } => {
+        //         t.insert_row(values, rid, &mut self.id_packer)
+        //     }
+        //     rowing::ObservedOutcome::KeptOld(_row_id) => {
+        //         // equivalent row exists, do nothing
+        //     }
+
+        //     rowing::ObservedOutcome::Swap { old, new } => {
+        //         t.replace_row_id(&old, new, &mut self.id_packer);
+        //     }
+        // }
+
+        // A canonical id change leaves stale id cells in rows that
+        // reference the merged class; rewrite them now.
+        // for fixup in fixups {
+        //     let t = self
+        //         .tables
+        //         .get_mut(&fixup.table)
+        //         .expect("fixups target observed tables");
+        //     t.rewrite_row_cells(&fixup.row, fixup.values, &mut self.id_packer);
+        // }
+
+        info!(op_count, "applied batch");
+    }
+
+    // Stage all the commit ops into the table's pending state.
+    fn stage_commit_ops(&mut self, ops: Vec<Op>) -> Vec<TableOid> {
+        let mut affected = HashSet::new();
+        for op in ops {
+            let oid = self.resolve_table(op.table()).expect("validated batch");
+            let op = self.id_packer.pack_op(op);
+            self.tables
+                .get_mut(&oid)
+                .expect("validated batch")
+                .stage(op);
+            affected.insert(oid);
+        }
+        affected.into_iter().collect()
+    }
+
+    fn apply_staged_ops(&mut self, tables: &[TableOid]) {
+        for oid in tables {
+            self.tables
+                .get_mut(oid)
+                .expect("staged table exists")
+                .apply_staged_ops();
+        }
+    }
+
+    // We do as much check as possible without making changes to the tables
+    // including checks like:
+    //  - data following schema format
+    //  - no duplication of primary keys before hashconsing
+    fn precheck_commit(&self, cmt: Commit<'static>) -> Result<PrecheckedCommit, StoreIntError> {
+        // TODO perhaps use late resolution, i.e. not resolving any ids, and when
+        // we resolve, immediately make them packed.
+        let ops = cmt.resolved_ops(|path| self.schema_for(path))?;
+        self.validate_commit_ops(&ops)?;
+        Ok(PrecheckedCommit { ops, original: cmt })
+    }
+
+    // TODO also need to validate that ids in op is referring to an existing id
+    fn validate_commit_ops(&self, ops: &[Op]) -> Result<(), StoreIntError> {
+        let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
+
+        for op in ops {
+            let Op::Add { table, values, .. } = op;
+            // Check ops have the right table path
+            let oid = self
+                .resolve_table(&table)
+                .ok_or_else(|| ValidationError::UnknownTable {
+                    path: table.clone(),
+                })?;
+            let t = self
+                .table(oid)
+                .ok_or_else(|| ValidationError::UnknownTable {
+                    path: table.clone(),
+                })?;
+            t.validate_insert(&values)?;
+
+            // Check primary key conflicts within ops batch
+            if let Some(key) = t.primary_key_values(&values) {
+                let keys = pending_pk.entry(oid).or_default();
+                if keys.iter().any(|k| k == &key) {
+                    return Err(ValidationError::DuplicatePrimaryKey.into());
+                }
+                keys.push(key);
+            }
+        }
+        Ok(())
+    }
+}
+
+struct PrecheckedCommit {
+    ops: Vec<Op>,
+    original: Commit<'static>,
 }
 
 /// For consumption by subduction
@@ -602,710 +693,5 @@ impl Store {
 impl Default for Store {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Shared theory fixtures for unit tests (`store`, `transaction`, etc.).
-#[cfg(test)]
-pub(crate) mod test_support {
-    use crate::ir::{
-        Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Prop, Rule,
-        RuleEntry, RuleVariant, Schema, TableEntry, Term, ValueEntry,
-    };
-
-    fn int_col_type() -> ColType {
-        ColType::BuiltinTy {
-            builtin_ty: BuiltinTy::BuiltinInt,
-        }
-    }
-
-    fn int_entity(col_names: &[&str]) -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns: col_names
-                .iter()
-                .map(|name| ColumnEntry {
-                    path: Path::from(*name),
-                    col_type: int_col_type(),
-                })
-                .collect(),
-            primary_key: None,
-        }
-    }
-
-    pub fn link_foreign_key_theory() -> FlatRealm {
-        let left = Path::from("Left");
-        let right = Path::from("Right");
-        let link = Path::from("Link");
-        FlatRealm {
-            tables: vec![
-                TableEntry {
-                    path: left.clone(),
-                    table: int_entity(&["x"]),
-                },
-                TableEntry {
-                    path: right.clone(),
-                    table: int_entity(&["x"]),
-                },
-                TableEntry {
-                    path: link.clone(),
-                    table: int_entity(&["a", "b"]),
-                },
-            ],
-            rules: vec![RuleEntry {
-                path: Path::from("Link.foreignKeys"),
-                rule: Rule {
-                    rule_variant: RuleVariant::Enforced,
-                    var_names: vec![Path::from("a"), Path::from("b")],
-                    var_types: vec![int_col_type(), int_col_type()],
-                    antecedents: vec![Prop::Atom {
-                        atom: Atom {
-                            entity: link.clone(),
-                            row_id: None,
-                            values: vec![
-                                ValueEntry {
-                                    column: 0,
-                                    term: Term::Var { index: 0 },
-                                },
-                                ValueEntry {
-                                    column: 1,
-                                    term: Term::Var { index: 1 },
-                                },
-                            ],
-                        },
-                    }],
-                    consequents: vec![
-                        Prop::Atom {
-                            atom: Atom {
-                                entity: left.clone(),
-                                row_id: None,
-                                values: vec![ValueEntry {
-                                    column: 0,
-                                    term: Term::Var { index: 0 },
-                                }],
-                            },
-                        },
-                        Prop::Atom {
-                            atom: Atom {
-                                entity: right.clone(),
-                                row_id: None,
-                                values: vec![ValueEntry {
-                                    column: 0,
-                                    term: Term::Var { index: 1 },
-                                }],
-                            },
-                        },
-                    ],
-                },
-            }],
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::test_support::link_foreign_key_theory;
-    use super::*;
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema};
-
-    fn single_int_store() -> Store {
-        let path = Path::from("T");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        };
-        let mut store = Store::new();
-        store.create_table(path, schema).expect("create test table");
-        store
-    }
-
-    fn commit_int(store: &mut Store, value: i64) -> CommitHash {
-        let path = Path::from("T");
-        let mut tx = store.transaction();
-        tx.add(&path, vec![value.into()]).expect("add row");
-        tx.commit().expect("commit row")
-    }
-
-    #[test]
-    fn test_store_create_table() {
-        let path = Path::from("table1");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::RowId { path: path.clone() },
-            }],
-            primary_key: None,
-        };
-        let mut store = Store::new();
-        let oid0 = store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-        assert_eq!(oid0, 0);
-
-        let t = store.table(oid0).expect("table at oid 0");
-        assert_eq!(t.schema().columns.len(), 1);
-        assert_eq!(t.row_count(), 0);
-
-        // Second registration gets the next oid.
-        let schema2 = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        };
-        let oid1 = store
-            .create_table(Path::from("Other"), schema2)
-            .expect("create second table");
-        assert_eq!(oid1, 1);
-    }
-
-    #[test]
-    fn test_store_resolve_table_oid() {
-        let path = Path::from("G.E");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::RowId { path: path.clone() },
-            }],
-            primary_key: None,
-        };
-
-        let mut store = Store::new();
-        let oid = store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        assert_eq!(store.resolve_table(&path), Some(oid));
-        assert_eq!(store.resolve_table(&Path::from("missing")), None);
-    }
-
-    #[test]
-    fn transaction_validates_then_applies() {
-        let path = Path::from("T");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        };
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut txn = store.transaction();
-        txn.add(&path, vec![CellValue::Int(1).into()])
-            .expect("first add");
-        txn.add(&path, vec![CellValue::Int(2).into()])
-            .expect("second add");
-
-        txn.commit().expect("commit");
-
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 2);
-    }
-
-    /// Covers the same rollback guarantee as the old `transact` test: if validation fails,
-    /// no rows from the batch are committed (here the second op references an unregistered table).
-    #[test]
-    fn transaction_unknown_table_leaves_store_unchanged() {
-        let path = Path::from("T");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        };
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let err = {
-            let mut txn = store.transaction();
-            txn.add(&path, vec![CellValue::Int(1).into()])
-                .expect("first add");
-            txn.add(&Path::from("missing"), vec![CellValue::Int(2).into()])
-                .unwrap_err()
-        };
-
-        assert!(matches!(
-            err,
-            StoreIntError::Validation(ValidationError::UnknownTable { .. })
-        ));
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
-    }
-
-    #[test]
-    fn transaction_duplicate_primary_key_within_batch() {
-        let path = Path::from("T");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: Some(vec![Path::from("c0")]),
-        };
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut txn = store.transaction();
-        txn.add(&path, vec![CellValue::Int(1).into()])
-            .expect("first add");
-        txn.add(&path, vec![CellValue::Int(1).into()])
-            .expect("second add");
-        let err = txn.commit().unwrap_err();
-
-        assert!(matches!(
-            err,
-            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
-        ));
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
-    }
-
-    #[test]
-    fn transaction_single_insert_commits() {
-        let path = Path::from("T");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        };
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut txn = store.transaction();
-        txn.add(&path, vec![CellValue::Int(42).into()])
-            .expect("add");
-        txn.commit().expect("commit");
-
-        let t = store.table_at(&path).expect("T");
-        assert_eq!(t.row_count(), 1);
-        assert_eq!(t.cell_at(0, 0), Some(CellValue::Int(42)));
-    }
-
-    #[test]
-    fn scan_table_returns_rows_for_known_table() {
-        let path = Path::from("T");
-        let mut store = single_int_store();
-
-        assert_eq!(
-            store
-                .scan_table(&path)
-                .expect("known table")
-                .collect::<Vec<_>>(),
-            vec![]
-        );
-        assert!(store.scan_table(&Path::from("missing")).is_none());
-
-        let commit = commit_int(&mut store, 42);
-
-        assert_eq!(
-            store
-                .scan_table(&path)
-                .expect("known table")
-                .collect::<Vec<_>>(),
-            vec![RowView {
-                row_id: RowId { commit, counter: 0 },
-                values: vec![CellValue::Int(42)],
-            }]
-        );
-    }
-
-    #[test]
-    fn row_by_id_finds_committed_row() {
-        let path = Path::from("T");
-        let mut store = single_int_store();
-        let commit = commit_int(&mut store, 42);
-        let row_id = RowId { commit, counter: 0 };
-
-        assert_eq!(
-            store.row_by_id(&path, row_id),
-            Some(RowView {
-                row_id,
-                values: vec![CellValue::Int(42)],
-            })
-        );
-        assert_eq!(store.row_by_id(&path, RowId { commit, counter: 1 }), None);
-        assert_eq!(store.row_by_id(&Path::from("missing"), row_id), None);
-    }
-
-    fn row_id_from(commit_byte: u8, counter: u32) -> RowId {
-        RowId {
-            commit: CommitHash([commit_byte; 32]),
-            counter,
-        }
-    }
-
-    /// Store with a hashcons `Term` table (one int column), a hashcons
-    /// `Plus` table (two id columns), and a non-hashcons `Note` table (one
-    /// id column).
-    fn hashcons_store() -> Store {
-        let int_col = |name: &str| ColumnEntry {
-            path: Path::from(name),
-            col_type: ColType::BuiltinTy {
-                builtin_ty: BuiltinTy::BuiltinInt,
-            },
-        };
-        let id_col = |name: &str, target: &str| ColumnEntry {
-            path: Path::from(name),
-            col_type: ColType::RowId {
-                path: Path::from(target),
-            },
-        };
-        let schema = |columns: Vec<ColumnEntry>| Schema {
-            entity_variant: EntityVariant::Table,
-            columns,
-            primary_key: None,
-        };
-
-        let mut store = Store::new();
-        for (path, table_schema, hashcons) in [
-            ("Term", schema(vec![int_col("value")]), true),
-            (
-                "Plus",
-                schema(vec![id_col("left", "Term"), id_col("right", "Term")]),
-                true,
-            ),
-            ("Note", schema(vec![id_col("term", "Term")]), false),
-        ] {
-            store
-                .create_table(Path::from(path), table_schema)
-                .expect("create table");
-            store.set_hashcons_for_test(&Path::from(path), hashcons);
-        }
-        store
-    }
-
-    fn add_op(table: &str, rid: RowId, values: Vec<CellValue>) -> Op {
-        Op::Add {
-            row_id: rid,
-            table: Path::from(table),
-            values,
-        }
-    }
-
-    /// When a smaller structurally equal row swaps a class's canonical id,
-    /// `apply_batch` renames the row in its own table and rewrites the id
-    /// cells of every table that references it.
-    #[test]
-    fn swap_rewrites_referencing_table_cells() {
-        let mut store = hashcons_store();
-
-        let t_high = row_id_from(2, 0);
-        store
-            .apply_batch(vec![add_op("Term", t_high, vec![CellValue::Int(7)])].into_iter())
-            .expect("insert high term");
-
-        let plus = row_id_from(3, 0);
-        let note = row_id_from(4, 0);
-        store
-            .apply_batch(
-                vec![
-                    add_op(
-                        "Plus",
-                        plus,
-                        vec![CellValue::Id(t_high), CellValue::Id(t_high)],
-                    ),
-                    add_op("Note", note, vec![CellValue::Id(t_high)]),
-                ]
-                .into_iter(),
-            )
-            .expect("insert referencing rows");
-
-        // A smaller equal term swaps the class canonical from t_high to t_low.
-        let t_low = row_id_from(1, 0);
-        store
-            .apply_batch(vec![add_op("Term", t_low, vec![CellValue::Int(7)])].into_iter())
-            .expect("insert low term");
-
-        // The stored row is now t_low; the stale id t_high resolves to it.
-        let term_path = Path::from("Term");
-        let term_view = Some(RowView {
-            row_id: t_low,
-            values: vec![CellValue::Int(7)],
-        });
-        assert_eq!(store.row_by_id(&term_path, t_low), term_view);
-        assert_eq!(store.row_by_id(&term_path, t_high), term_view);
-        // An id that was never observed still misses.
-        assert_eq!(store.row_by_id(&term_path, row_id_from(9, 0)), None);
-
-        // Both referencing tables now name the new canonical id.
-        assert_eq!(
-            store.row_by_id(&Path::from("Plus"), plus),
-            Some(RowView {
-                row_id: plus,
-                values: vec![CellValue::Id(t_low), CellValue::Id(t_low)],
-            })
-        );
-        assert_eq!(
-            store.row_by_id(&Path::from("Note"), note),
-            Some(RowView {
-                row_id: note,
-                values: vec![CellValue::Id(t_low)],
-            })
-        );
-    }
-
-    /// Rows referencing a deduplicated (kept-old) member store the canonical
-    /// id, not the member id, which names no stored row.
-    #[test]
-    fn insert_stores_canonical_child_ids() {
-        let mut store = hashcons_store();
-
-        let t_a = row_id_from(1, 0);
-        let t_b = row_id_from(2, 0);
-        store
-            .apply_batch(
-                vec![
-                    add_op("Term", t_a, vec![CellValue::Int(7)]),
-                    add_op("Term", t_b, vec![CellValue::Int(7)]),
-                ]
-                .into_iter(),
-            )
-            .expect("insert terms");
-
-        // t_b deduplicated into t_a's class and is not stored; looking it up
-        // resolves to the canonical row.
-        let term_path = Path::from("Term");
-        assert_eq!(store.table_at(&term_path).expect("Term").row_count(), 1);
-        assert_eq!(
-            store.row_by_id(&term_path, t_b),
-            Some(RowView {
-                row_id: t_a,
-                values: vec![CellValue::Int(7)],
-            })
-        );
-
-        let plus = row_id_from(3, 0);
-        store
-            .apply_batch(
-                vec![add_op(
-                    "Plus",
-                    plus,
-                    vec![CellValue::Id(t_b), CellValue::Id(t_b)],
-                )]
-                .into_iter(),
-            )
-            .expect("insert referencing row");
-
-        assert_eq!(
-            store.row_by_id(&Path::from("Plus"), plus),
-            Some(RowView {
-                row_id: plus,
-                values: vec![CellValue::Id(t_a), CellValue::Id(t_a)],
-            })
-        );
-    }
-
-    #[test]
-    fn heads_and_commit_by_hash_track_current_frontier() {
-        let mut store = single_int_store();
-        let root = store.heads();
-        assert_eq!(root.len(), 1);
-        assert_eq!(
-            store.commit_by_hash(&root[0]).expect("root").hash(),
-            root[0]
-        );
-
-        let commit = commit_int(&mut store, 42);
-
-        assert_eq!(store.heads(), vec![commit]);
-        assert_eq!(
-            store.commit_by_hash(&commit).expect("data commit").hash(),
-            commit
-        );
-    }
-
-    #[test]
-    fn commits_after_returns_descendants_in_topological_order() {
-        let mut store = single_int_store();
-        let root = store.heads();
-        let first = commit_int(&mut store, 1);
-        let second = commit_int(&mut store, 2);
-
-        let commits = store.commits_after(&root);
-        let hashes = commits.iter().map(Commit::hash).collect::<Vec<_>>();
-
-        assert_eq!(hashes, vec![first, second]);
-        assert!(store.commits_after(&store.heads()).is_empty());
-    }
-
-    #[test]
-    fn commits_added_returns_commits_in_other_store() {
-        let base = single_int_store();
-        let mut other = base.clone();
-        let commit = commit_int(&mut other, 7);
-
-        let commits = base.commits_added(&other);
-        let hashes = commits.iter().map(Commit::hash).collect::<Vec<_>>();
-
-        assert_eq!(hashes, vec![commit]);
-    }
-
-    #[test]
-    fn apply_commits_applies_rows_and_updates_heads() {
-        let mut source = single_int_store();
-        let mut target = single_int_store();
-        let commit = commit_int(&mut source, 99);
-
-        let commits = source.commits_after(&target.heads());
-        target.apply_commits(commits).expect("apply commits");
-
-        let table = target.table_at(&Path::from("T")).expect("table");
-        assert_eq!(table.row_count(), 1);
-        assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(99)));
-        assert_eq!(table.row_id_at(0).expect("row id").commit, commit);
-        assert_eq!(target.heads(), source.heads());
-    }
-
-    #[test]
-    fn apply_commits_accepts_out_of_order_input() {
-        let mut source = single_int_store();
-        let mut target = single_int_store();
-        commit_int(&mut source, 1);
-        commit_int(&mut source, 2);
-
-        let mut commits = source.commits_after(&target.heads());
-        commits.reverse();
-        target.apply_commits(commits).expect("apply commits");
-
-        let table = target.table_at(&Path::from("T")).expect("table");
-        assert_eq!(table.row_count(), 2);
-        assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(1)));
-        assert_eq!(table.cell_at(1, 0), Some(CellValue::Int(2)));
-        assert_eq!(target.heads(), source.heads());
-    }
-
-    #[test]
-    fn apply_commits_ignores_known_commits() {
-        let mut source = single_int_store();
-        let mut target = single_int_store();
-        commit_int(&mut source, 5);
-
-        let commits = source.commits_after(&target.heads());
-        target
-            .apply_commits(commits.clone())
-            .expect("first apply commits");
-        target.apply_commits(commits).expect("second apply commits");
-
-        assert_eq!(
-            target
-                .table_at(&Path::from("T"))
-                .expect("table")
-                .row_count(),
-            1
-        );
-    }
-
-    #[test]
-    fn apply_commits_rejects_missing_dependency_without_changing_store() {
-        let mut source = single_int_store();
-        let mut target = single_int_store();
-        commit_int(&mut source, 1);
-        let second = commit_int(&mut source, 2);
-        let second_commit = source
-            .commit_by_hash(&second)
-            .expect("second commit")
-            .clone();
-
-        let err = target.apply_commits([second_commit]).unwrap_err();
-
-        assert!(matches!(
-            err,
-            StoreIntError::Commit(CommitApplyError::MissingDep)
-        ));
-        assert_eq!(
-            target
-                .table_at(&Path::from("T"))
-                .expect("table")
-                .row_count(),
-            0
-        );
-    }
-
-    #[test]
-    fn transaction_leaves_store_unchanged_when_rules_fail() {
-        let theory = link_foreign_key_theory();
-        let link = Path::from("Link");
-        let mut store = Store::try_from_theory(theory).expect("theory");
-
-        let mut txn = store.transaction();
-        txn.add(
-            &link,
-            vec![CellValue::Int(10).into(), CellValue::Int(20).into()],
-        )
-        .expect("add");
-        let err = txn.commit().unwrap_err();
-
-        assert!(matches!(err, StoreIntError::Rule(_)));
-        assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
-    }
-
-    #[test]
-    fn apply_error_from_inner_errors() {
-        let validation = StoreIntError::from(ValidationError::DuplicatePrimaryKey);
-        assert!(matches!(
-            validation,
-            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
-        ));
-
-        let compile = StoreIntError::from(CompileError::UnsupportedTerm);
-        assert!(matches!(
-            compile,
-            StoreIntError::Compile(CompileError::UnsupportedTerm)
-        ));
-
-        let compiled_rule = solver::compile::CompRule {
-            path: Path::from("T.total"),
-            rule_variant: RuleVariant::Enforced,
-            vars: vec![],
-            antecedent: solver::compile::CompProp::And(vec![]),
-            consequent: solver::compile::CompProp::And(vec![]),
-            tables: vec![Path::from("T")],
-        };
-        let violation = RuleViolation {
-            rule: compiled_rule,
-            cause: solver::validate::ViolationCause::MissingAtom(solver::compile::CompAtom {
-                table: Path::from("T"),
-                row_id: None,
-                values: vec![],
-            }),
-            binding: vec![],
-        };
-        let rule = StoreIntError::from(Box::new(violation));
-        assert!(matches!(rule, StoreIntError::Rule(_)));
     }
 }

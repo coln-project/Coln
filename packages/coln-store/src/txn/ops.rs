@@ -8,7 +8,7 @@ use crate::{
     commit::hash::CommitHash,
     ir,
     store::error::StoreIntError,
-    table::{CellValue, RowId, ValidationError},
+    table::{CellValue, PackedCell, PackedRowId, RowId, ValidationError},
 };
 
 pub const OP_KIND_ADD: u32 = 0;
@@ -349,12 +349,28 @@ pub enum Op {
         table: ir::Path, // using path so it's stable across replicas
         values: Vec<CellValue>,
     },
+    // TODO Delete + Update
+}
+
+/// Packed representation of an operation.
+#[derive(Debug)]
+pub(crate) enum PackedOp {
+    Add {
+        row_id: PackedRowId,
+        values: Vec<PackedCell>,
+    },
 }
 
 impl Op {
     pub fn id(&self) -> RowId {
         match self {
             Op::Add { row_id, .. } => *row_id,
+        }
+    }
+
+    pub fn table(&self) -> &ir::Path {
+        match self {
+            Op::Add { table, .. } => table,
         }
     }
 }

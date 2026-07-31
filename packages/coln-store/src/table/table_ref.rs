@@ -1,10 +1,8 @@
-use crate::commit::hash_dict::HashMapper;
+use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
 use crate::table::index::{IndexId, IndexMeta};
-use crate::table::{
-    CellValue, PackedCell, PackedRowId, RowId, RowView, SeekKey, Table, ValidationError,
-};
+use crate::table::{CellValue, RowId, RowView, SeekKey, Table, ValidationError};
 
 /// A [`Table`] together with the store-wide hash dictionary, for read-only
 /// access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -12,12 +10,12 @@ use crate::table::{
 #[derive(Debug, Clone, Copy)]
 pub struct TableRef<'a> {
     table: &'a Table,
-    dict: &'a HashMapper,
+    id_packer: &'a IdPacker,
 }
 
 impl<'a> TableRef<'a> {
-    pub(crate) fn new(table: &'a Table, dict: &'a HashMapper) -> Self {
-        Self { table, dict }
+    pub(crate) fn new(table: &'a Table, id_packer: &'a IdPacker) -> Self {
+        Self { table, id_packer }
     }
 
     pub fn path(self) -> &'a ir::Path {
@@ -33,23 +31,24 @@ impl<'a> TableRef<'a> {
     }
 
     pub fn row_id_at(self, row_idx: usize) -> Option<RowId> {
-        self.table.row_id_at(row_idx, self.dict)
+        self.table.row_id_at(row_idx, self.id_packer)
     }
 
     pub fn cell_at(self, row_idx: usize, col_idx: usize) -> Option<CellValue> {
-        self.table.cell_at(row_idx, col_idx, self.dict)
+        self.table.cell_at(row_idx, col_idx, self.id_packer)
     }
 
     pub(crate) fn row_at(self, row_idx: usize) -> Option<RowView> {
-        self.table.row_at(row_idx, self.dict)
+        self.table.row_at(row_idx, self.id_packer)
     }
 
     pub fn row_position(self, row_id: RowId) -> Option<usize> {
-        self.table.row_idx(row_id, self.dict)
+        let row_id = self.id_packer.lookup_row_id(row_id)?;
+        self.table.row_idx(row_id)
     }
 
     pub fn table_scan(self) -> impl Iterator<Item = RowView> + 'a {
-        self.table.table_scan(self.dict)
+        self.table.table_scan(self.id_packer)
     }
 
     pub fn indexes_meta(self) -> Vec<IndexMeta<'a>> {
@@ -57,7 +56,7 @@ impl<'a> TableRef<'a> {
     }
 
     pub fn seek(self, key: &[SeekKey]) -> Result<impl Iterator<Item = RowId>, ValidationError> {
-        self.table.seek(key, self.dict)
+        self.table.seek(key, self.id_packer)
     }
 
     pub fn index_seek(
@@ -65,19 +64,19 @@ impl<'a> TableRef<'a> {
         index: IndexId,
         key: &[CellValue],
     ) -> Result<impl Iterator<Item = RowId>, ValidationError> {
-        self.table.index_seek(index, key, self.dict)
+        self.table.index_seek(index, key, self.id_packer)
     }
 
     pub fn lookup(self, key: &[SeekKey]) -> Result<bool, ValidationError> {
-        self.table.lookup(key, self.dict)
+        self.table.lookup(key, self.id_packer)
     }
 
     pub fn index_lookup(self, index: IndexId, key: &[CellValue]) -> Result<bool, ValidationError> {
-        self.table.index_lookup(index, key, self.dict)
+        self.table.index_lookup(index, key, self.id_packer)
     }
 
     pub fn dump(self) -> String {
-        self.table.dump(self.dict)
+        self.table.dump(self.id_packer)
     }
 
     pub fn validate_column_count(self, got: usize) -> Result<(), ValidationError> {
@@ -85,7 +84,7 @@ impl<'a> TableRef<'a> {
     }
 
     pub fn validate_insert(self, values: &[CellValue]) -> Result<(), ValidationError> {
-        self.table.validate_insert(values, self.dict)
+        self.table.validate_insert(values, self.id_packer)
     }
 
     pub fn primary_key_values(self, values: &[CellValue]) -> Option<Vec<CellValue>> {

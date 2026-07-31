@@ -46,6 +46,15 @@ impl HashMapper {
     pub(crate) fn hashes(&self) -> &[CommitHash] {
         &self.hashes
     }
+
+    pub(crate) fn truncate(&mut self, len: usize) {
+        assert!(len <= self.hashes.len(), "invalid hash dictionary length");
+        for hash in self.hashes.drain(len..) {
+            self.indexes
+                .remove(&hash)
+                .expect("hash vector and reverse index should agree");
+        }
+    }
 }
 
 // Write all the hashes stored in the hash_mapper. The order of these hashes are

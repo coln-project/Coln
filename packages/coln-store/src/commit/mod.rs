@@ -185,10 +185,7 @@ impl<'a> Commit<'a> {
     /// neither the commit nor `schema_for`, hence the 'static.
     ///
     /// Root commits carry no ops and yield an empty iterator.
-    pub(crate) fn resolved_ops<'s, F>(
-        &self,
-        schema_for: F,
-    ) -> Result<impl Iterator<Item = Op> + Clone + 'static, CodecError>
+    pub(crate) fn resolved_ops<'s, F>(&self, schema_for: F) -> Result<Vec<Op>, CodecError>
     where
         F: Fn(&Path) -> Option<&'s Schema>,
     {
@@ -200,7 +197,8 @@ impl<'a> Commit<'a> {
         };
         Ok(pending
             .into_iter()
-            .map(move |pending| pending.resolve(hash)))
+            .map(move |pending| pending.resolve(hash))
+            .collect())
     }
 }
 
@@ -358,7 +356,7 @@ mod tests {
         assert_eq!(decoded.payload(), original.payload());
         assert!(decoded.deps.is_empty());
         assert_eq!(
-            decoded.resolved_ops(|_| None).expect("resolve ops").count(),
+            decoded.resolved_ops(|_| None).expect("resolve ops").len(),
             0,
             "root commits carry no ops"
         );
@@ -412,8 +410,7 @@ mod tests {
         let expected: Vec<Op> = pending.iter().map(|op| op.resolve(hash)).collect();
         let got: Vec<Op> = decoded
             .resolved_ops(&payload_schema_for)
-            .expect("resolve ops")
-            .collect();
+            .expect("resolve ops");
         assert_eq!(got, expected);
     }
 
@@ -534,10 +531,7 @@ mod tests {
 
         assert_eq!(commit.chunk_type(), ChunkType::Root);
         assert!(commit.deps.is_empty());
-        assert_eq!(
-            commit.resolved_ops(|_| None).expect("resolve ops").count(),
-            0
-        );
+        assert_eq!(commit.resolved_ops(|_| None).expect("resolve ops").len(), 0);
         assert_eq!(commit.hash(), hash(ChunkType::Root, commit.payload()));
 
         let decoded = commit.root_payload().expect("decode root payload");
