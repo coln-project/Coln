@@ -25,7 +25,8 @@ use crate::{
         wire::{CommitData, root::RootCommitData},
     },
     ir::{Path, Schema},
-    txn::ops::{Op, PendingOp, RowRef, TxnCellValue},
+    op::Op,
+    txn::{PendingOp, RowRef, TxnCellValue},
 };
 
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
@@ -224,7 +225,7 @@ mod tests {
     use crate::commit::wire::root::{RootCommitData, RootTableEntry};
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path};
     use crate::table::RowId;
-    use crate::txn::ops::{RowRef, TempRowId};
+    use crate::txn::{RowRef, TempRowId};
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])

@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::commit::hash_dict::HashMapper;
+use crate::op::Op;
 use crate::rollback::Rollback;
-use crate::table::{CellValue, PackedCell, PackedRowId, RowId};
-use crate::txn::ops::{Op, PackedOp};
+use crate::table::{CellValue, PackedCell, PackedOp, PackedRowId, RowId};
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]

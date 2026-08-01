@@ -23,8 +23,8 @@ use crate::store::error::{CommitApplyError, StoreIntError};
 use crate::table::{
     CellValue, RowId, RowView, Table, TableOid, TableRef, TableSnapshot, ValidationError,
 };
-use crate::txn::ops::{Op, RowHandle};
 use crate::txn::{OwnedTransaction, Transaction};
+use crate::{op::Op, txn::RowHandle};
 
 pub mod error;
 

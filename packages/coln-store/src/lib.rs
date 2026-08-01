@@ -6,6 +6,7 @@ use coln_flir_rs::ir;
 mod column_map;
 pub mod commit;
 mod id_packer;
+pub mod op;
 #[cfg(feature = "native")]
 pub mod repl;
 mod rollback;

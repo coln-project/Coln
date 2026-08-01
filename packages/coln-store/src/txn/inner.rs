@@ -11,10 +11,7 @@ use crate::{
     commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
     store::{Store, error::StoreIntError},
     table::ValidationError,
-    txn::{
-        ops::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue},
-        timestamp::Timestamp,
-    },
+    txn::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue, timestamp::Timestamp},
 };
 
 static NEXT_TX_ID: AtomicU64 = AtomicU64::new(1);

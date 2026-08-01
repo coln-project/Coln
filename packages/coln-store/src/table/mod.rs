@@ -20,12 +20,21 @@ use crate::ir::Schema;
 use crate::rollback::Rollback;
 use crate::table::index::{IndexId, IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
-use crate::txn::ops::{PackedOp, TxnId};
+use crate::txn::TxnId;
 
 pub(crate) use self::cell::{PackedCell, PackedRowId};
 use self::col::{Column, IdColumn};
 
 pub type TableOid = usize;
+
+/// Packed representation of an operation staged for a table.
+#[derive(Debug)]
+pub(crate) enum PackedOp {
+    Add {
+        row_id: PackedRowId,
+        values: Vec<PackedCell>,
+    },
+}
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ValidationError {
@@ -672,7 +681,7 @@ mod tests {
     use crate::commit::hash::CommitHash;
     use crate::ir::{self, Path};
     use crate::ir::{BuiltinTy, ColType};
-    use crate::txn::ops::Op;
+    use crate::op::Op;
 
     fn test_row_id(counter: u32) -> RowId {
         RowId {

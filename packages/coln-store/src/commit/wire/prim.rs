@@ -8,7 +8,7 @@ use coln_flir_rs::ir::{self, BuiltinTy};
 use hexane::{PackError, lebsize};
 
 use crate::commit::leb128 as commit_leb128;
-use crate::{commit::error::CodecError, txn::ops::TxnCellValue};
+use crate::{commit::error::CodecError, txn::TxnCellValue};
 
 /// Number of low bits reserved for the [`ValueType`] code in a [`ValueMeta`].
 const TYPE_CODE_BITS: u32 = 5;

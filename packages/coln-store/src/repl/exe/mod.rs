@@ -20,7 +20,7 @@ use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
     store::Store,
     table::{RowId, TableRef},
-    txn::ops::{TempRowId, TxnCellValue},
+    txn::{TempRowId, TxnCellValue},
 };
 
 mod sql;

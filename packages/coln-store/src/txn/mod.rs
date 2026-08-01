@@ -4,19 +4,18 @@
 
 use coln_flir_rs::ir;
 
-#[cfg(feature = "native")]
-use crate::txn::ops::{TempRowId, TxnCellValue};
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreIntError},
-    txn::ops::{RowHandle, TxnValue},
 };
 
 mod inner;
-pub mod ops;
+mod row_handle;
 mod timestamp;
 
 use inner::TxnInner;
+pub(crate) use row_handle::{PendingOp, RowRef, TempRowId, TxnCellValue};
+pub use row_handle::{RowHandle, TxnId, TxnValue};
 
 pub struct Transaction<'a> {
     inner: TxnInner,

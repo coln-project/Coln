@@ -19,8 +19,9 @@ use crate::{
         utils::read_slice,
     },
     ir::{BuiltinTy, ColType, Path, Schema},
+    op::OP_KIND_ADD,
     table::RowId,
-    txn::ops::{OP_KIND_ADD, PendingOp, RowRef, TempRowId, TxnCellValue},
+    txn::{PendingOp, RowRef, TempRowId, TxnCellValue},
 };
 
 // TODO change this to i32 when we support it as a column type
@@ -634,7 +635,7 @@ mod tests {
     use crate::commit::wire::prim::ValueType;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::RowId;
-    use crate::txn::ops::{RowRef, TempRowId};
+    use crate::txn::{RowRef, TempRowId};
 
     #[test]
     fn txn_row_ref_column_round_trips_existing_and_pending_refs() {
