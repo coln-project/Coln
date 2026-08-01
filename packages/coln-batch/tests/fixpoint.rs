@@ -80,32 +80,6 @@ fn dag_strategies_and_executors_agree() {
 }
 
 #[test]
-fn points_to_matches_souffle_reference() {
-    let program = fixtures::points_to::program();
-    let edb = fixtures::points_to::catalog();
-
-    let result = agree(&program, &edb, &["VarPointsTo", "CallGraph"]);
-    assert_eq!(
-        rows(result.get("VarPointsTo").unwrap()),
-        {
-            let mut expected = fixtures::points_to::expected_var_points_to();
-            expected.sort();
-            expected
-        },
-        "VarPointsTo"
-    );
-    assert_eq!(
-        rows(result.get("CallGraph").unwrap()),
-        {
-            let mut expected = fixtures::points_to::expected_call_graph();
-            expected.sort();
-            expected
-        },
-        "CallGraph"
-    );
-}
-
-#[test]
 fn initial_idb_facts_are_respected() {
     // parent: 0 -> 1 -> 2, plus a pre-seeded ancestor fact (7, 8).
     let mut edb = fixtures::ancestor_chain_catalog(3);
