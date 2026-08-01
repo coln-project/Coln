@@ -13,8 +13,16 @@ data Generator
   = Rel [Name] [S.Ty N]
   | Fun [Name] [S.Ty N] (S.Ty N)
 
+data RealmEntry = RealmEntry
+  { ty :: V.Ty N
+  , stx :: S.El D
+  , val :: V.El N
+  , mode :: Mode
+  }
+
 data Realm = Realm
   { generators :: Trie Generator
   , root :: V.El N
   , rootType :: V.Ty N
+  , entries :: Dict RealmEntry
   }
