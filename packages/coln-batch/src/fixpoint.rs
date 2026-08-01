@@ -14,7 +14,7 @@
 //!   rows that were new in the previous round). Facts derived twice are
 //!   removed by set difference, so work per round shrinks with the delta.
 //! - [`naive`] — the test oracle. Re-evaluates every rule against the
-//!   full totals every round. Obviously correct, obviously wasteful.
+//!   full totals every round. Correct by inspection, wasteful by design.
 //!
 //! Rule bodies are executed by one of the crate's query executors (the
 //! [`Exec`] parameter), so recursion composes with both the hash-join
@@ -103,6 +103,9 @@ fn evaluate(program: &Program, edb: &Catalog, exec: Exec, semi: bool) -> Result<
     let staging = derive_full(&compiled, &work, exec)?;
     let mut deltas = merge_round(&compiled, &mut totals, staging, &mut stats);
 
+    // TODO(perf): every round re-runs the executors, which rebuild their
+    // sorted indexes over the growing totals. Persistent indexes from the
+    // storage layer behind `SortedTable` remove this rebuild.
     while deltas.values().any(|d| !d.is_empty()) {
         // Publish the previous round's state.
         for rel in totals.values() {
