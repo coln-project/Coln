@@ -243,6 +243,7 @@ impl From<TempRowId> for RowRef {
     }
 }
 
+// TODO should clean this up, who uses txncellvalue and it should have a better name
 /// The internal transaction representation derived from `TxnValue`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TxnCellValue {

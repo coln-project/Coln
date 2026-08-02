@@ -410,7 +410,7 @@ mod tests {
         let hash = decoded.hash();
         let expected: Vec<Op> = pending.iter().map(|op| op.resolve(hash)).collect();
         let got: Vec<Op> = decoded
-            .resolved_ops(&payload_schema_for)
+            .resolved_ops(payload_schema_for)
             .expect("resolve ops");
         assert_eq!(got, expected);
     }

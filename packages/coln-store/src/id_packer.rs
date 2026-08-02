@@ -85,14 +85,6 @@ impl IdPacker {
         })
     }
 
-    pub(crate) fn unpack_cell(&self, value: &PackedCell) -> CellValue {
-        match value {
-            PackedCell::Id(id) => CellValue::Id(self.unpack_row_id(*id)),
-            PackedCell::Int(value) => CellValue::Int(*value),
-            PackedCell::Str(value) => CellValue::Str(value.clone()),
-        }
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.dict.hashes().len()
     }

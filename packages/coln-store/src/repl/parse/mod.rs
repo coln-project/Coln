@@ -2,16 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+pub mod coln;
+mod meta;
+mod sql;
+
 use anyhow::{Result, bail};
 pub(crate) use coln::Command as ColnCommand;
 pub(crate) use meta::Command as MetaCommand;
 pub(crate) use sql::{Col as SqlCol, Command as SqlCommand};
 
 use crate::repl::ShellMode;
-
-pub mod coln;
-mod meta;
-mod sql;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Command {

@@ -2,16 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+mod inner;
+mod row_handle;
+mod timestamp;
+
 use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreIntError},
 };
-
-mod inner;
-mod row_handle;
-mod timestamp;
 
 use inner::TxnInner;
 pub(crate) use row_handle::{PendingOp, RowRef, TempRowId, TxnCellValue};

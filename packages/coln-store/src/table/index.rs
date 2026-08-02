@@ -20,8 +20,8 @@ use super::{CellKind, Column, IdColumn, PackedCell, PackedRowId};
 pub(crate) type IndexId = usize;
 
 pub struct IndexMeta<'a> {
-    pub(crate) id: IndexId,
-    pub(crate) key_cols: &'a [usize],
+    pub id: IndexId,
+    pub key_cols: &'a [usize],
 }
 
 /// Index for tables, with support for dynamic sizing and types.
@@ -68,6 +68,7 @@ impl TableIndex {
         self.values.insert(position, value);
     }
 
+    #[allow(unused)]
     pub(super) fn remove(&mut self, key: &[PackedCell]) {
         let range = self.scope_key(key);
         for position in range.rev() {

@@ -8,366 +8,199 @@
 //! looking at each value of the row one by one. And it sounds cool. Anyway it
 //! will probably be renamed in the future.
 
-use std::collections::{HashMap, HashSet};
-
-use crate::{
-    commit::hash_dict::HashMapper,
-    rowing::uf::UnionFind,
-    table::{CellValue, PackedCell, PackedRowId, RowId, Table, TableOid},
-};
-
 mod uf;
 
-type NodeId = u32;
+use std::{cell::RefCell, collections::HashMap};
+
+use ena::unify::{InPlace, Snapshot};
+
+use crate::{
+    id_packer::IdPacker,
+    rollback::Rollback,
+    rowing::uf::{NodeId, UnionFind},
+    table::{PackedRowId, TableOid},
+};
 
 #[derive(Debug)]
-pub(crate) enum ObservedOutcome {
-    /// The row is new: store it with these values, whose id cells are
-    /// canonicalized.
-    Inserted {
-        rid: RowId,
-        values: Vec<CellValue>,
-    },
-    KeptOld(RowId),
-    Swap {
-        old: RowId,
-        new: RowId,
-    },
-}
-
-/// A stored row whose id cells went stale because a canonical id changed.
-/// The store must rewrite the row's cells to `values` in `table`.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) struct CellFixup {
-    pub(crate) table: TableOid,
-    pub(crate) row: RowId,
-    pub(crate) values: Vec<PackedCell>,
-}
-
-/// Result of observing one row: the outcome for the observed row itself,
-/// plus cell rewrites for previously stored rows affected by a canonical id
-/// change.
-#[derive(Debug)]
-pub(crate) struct Observed {
-    pub(crate) outcome: ObservedOutcome,
-    pub(crate) fixups: Vec<CellFixup>,
-}
-
-// #[derive(Debug, thiserror::Error)]
-// pub enum RowingError {
-//     #[error("Child row missing {rid}")]
-//     MissingChild { rid: RowId },
-//     #[error("duplicate rowid {rid} with different row values")]
-//     InconsistentRow { rid: RowId },
-// }
-
-// A data structure that allows the tables to query what the canonical ids
-// should be
-pub(crate) struct Canonicaliser<'a> {
-    uf: &'a UnionFind,
-}
-
-impl<'a> Canonicaliser<'a> {
-    pub(crate) fn canonical_id(&self, rid: PackedRowId) -> PackedRowId {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone)]
 pub(crate) struct Rowing {
-    uf: UnionFind,
+    // interior mutability because uf.find requires &mut self
+    uf: RefCell<UnionFind>,
+    keys: HashMap<PackedRowId, NodeId>,
     // stale rowids
     displaced: Vec<PackedRowId>,
-    // index into how many dispalced ids we have processed
-    rebuild_cursor: usize,
 
-    row_to_table: HashMap<PackedRowId, TableOid>,
+    pending_unions: Vec<(TableOid, PackedRowId, PackedRowId)>,
+}
+
+#[must_use]
+pub(crate) struct RowingSnapshot {
+    uf_snapshot: Snapshot<InPlace<NodeId>>,
+    keys: HashMap<PackedRowId, NodeId>,
+    displaced_len: usize,
+    pending_unions: Vec<(TableOid, PackedRowId, PackedRowId)>,
+}
+
+impl Rollback for Rowing {
+    type Snapshot = RowingSnapshot;
+
+    fn snapshot(&mut self) -> Self::Snapshot {
+        RowingSnapshot {
+            uf_snapshot: self.uf.get_mut().snapshot(),
+            keys: self.keys.clone(),
+            displaced_len: self.displaced.len(),
+            pending_unions: self.pending_unions.clone(),
+        }
+    }
+
+    fn commit_snapshot(&mut self, snapshot: Self::Snapshot) {
+        self.uf.get_mut().commit(snapshot.uf_snapshot);
+    }
+
+    fn rollback(&mut self, snapshot: Self::Snapshot) {
+        self.uf.get_mut().rollback_to(snapshot.uf_snapshot);
+        self.keys = snapshot.keys;
+        self.displaced.truncate(snapshot.displaced_len);
+        self.pending_unions = snapshot.pending_unions;
+    }
 }
 
 impl Rowing {
     pub(crate) fn new() -> Self {
-        todo!()
+        Self {
+            uf: RefCell::new(UnionFind::new()),
+            keys: HashMap::new(),
+            displaced: Vec::new(),
+            pending_unions: Vec::new(),
+        }
     }
 
     // When we found that two ids have equivalent row structures, stage them in
     // the rowing data structure.
     // This is equivalent in egglog terms with a union(a, c), except don't allow
     // arbitrary union, but only identify structurally identical terms.
-    fn stage_identical_row(
-        &mut self,
-        table: TableOid,
-        old_rid: PackedRowId,
-        new_rid: PackedRowId,
-        id_packer: &HashMapper,
-    ) {
-        todo!()
+    pub(crate) fn stage_union(&mut self, table: TableOid, rid1: PackedRowId, rid2: PackedRowId) {
+        self.pending_unions.push((table, rid1, rid2));
     }
 
     // Apply all the staged unions and populate the displaced table. The displaced
     // table will then contain all the old rowids that need to be updated, which
     // can then be mapped to tables with `row_to_table`
-    fn apply_updates(&mut self) {
-        todo!()
+    //? I think we can clear up pending unions after this so it is ready to be used
+    // for tables during rebuild
+    pub(crate) fn apply_unions(&mut self, id_packer: &IdPacker) {
+        for (_tbl, r1, r2) in self.pending_unions.drain(..) {
+            let mut uf = self.uf.borrow_mut();
+            let unpacked1 = id_packer.unpack_row_id(r1);
+            let unpacked2 = id_packer.unpack_row_id(r2);
+
+            let k1 = *self.keys.entry(r1).or_insert_with(|| uf.new_key(unpacked1));
+            let k2 = *self.keys.entry(r2).or_insert_with(|| uf.new_key(unpacked2));
+            let canonical1 = uf.probe_value(k1);
+            let canonical2 = uf.probe_value(k2);
+            if canonical1 == canonical2 {
+                continue;
+            }
+
+            uf.union(k1, k2);
+            let displaced = canonical1.max(canonical2);
+            self.displaced.push(
+                id_packer
+                    .lookup_row_id(displaced)
+                    .expect("displaced row id was packed before union"),
+            );
+        }
     }
 
-    pub(crate) fn rebuilder(&self) -> Canonicaliser {
-        todo!()
+    pub(crate) fn canonical_id(&self, row_id: &PackedRowId, id_packer: &IdPacker) -> PackedRowId {
+        let Some(&key) = self.keys.get(row_id) else {
+            // if the keys is not known to rowing, then we have not done any uf
+            // just return it
+            return *row_id;
+        };
+        let canonical = self.uf.borrow_mut().probe_value(key);
+        id_packer
+            .lookup_row_id(canonical)
+            .expect("canonical row id was packed before union")
+    }
+
+    /// Ids a union made stale. A rebuild pass resolves each one to its current
+    /// canonical id itself, since it also has to canonicalise the cells of the
+    /// rows that refer to them.
+    pub(crate) fn displaced(&self) -> impl Iterator<Item = PackedRowId> {
+        self.displaced.iter().copied()
     }
 
     pub(crate) fn uf_len(&self) -> usize {
-        todo!()
+        self.displaced.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commit::hash::CommitHash;
+    use crate::table::RowId;
+
+    use super::*;
+
+    fn row_id(byte: u8) -> RowId {
+        RowId {
+            commit: CommitHash([byte; 32]),
+            counter: 0,
+        }
     }
 
-    // pub(crate) fn observe(
-    //     &mut self,
-    //     table_oid: TableOid,
-    //     tables: &HashMap<TableOid, Table>,
-    //     dict: &mut HashMapper,
-    //     rid: RowId,
-    //     values: &[CellValue],
-    // ) -> Observed {
-    //     let table = tables
-    //         .get(&table_oid)
-    //         .expect("observed table is registered");
-    //     let prid = PackedRowId::pack(rid, dict);
-    //     let (canon_values, child_refs) = self.canonicalize_row_values(table, values, dict);
-    //     self.node_for(prid);
+    #[test]
+    fn union_uses_unpacked_order_and_records_displaced_id() {
+        let mut packer = IdPacker::new();
+        let low = packer.pack_row_id(row_id(1));
+        let high = packer.pack_row_id(row_id(2));
+        let unseen = packer.pack_row_id(row_id(3));
+        let mut rowing = Rowing::new();
 
-    //     if let Some(_old) = self.row_to_table.get(&prid) {
-    //         unreachable!(
-    //             "We should have already checked that same rowid would not lead to different row values"
-    //         );
-    //         // If the rowid already exists, we assume it's the same content, so
-    //         // we do nothing. This should be checked before we apply the commit.
+        rowing.stage_union(0, high, low);
+        rowing.apply_unions(&packer);
 
-    //         // We should check the canonical row id for consistency, it might be
-    //         // the case that we are checking a non-canonical rid.
-    //         // let physical = self.canonical_packed(prid);
-    //         // let old_values = tables
-    //         //     .get(&old_table_oid)
-    //         //     .and_then(|table| table.packed_row_at(physical))
-    //         //     .expect("an observed class has a physical table row");
-    //         // if old_table_oid != table_oid || old_values != canon_values {
-    //         //     return Err(RowingError::InconsistentRow { rid });
-    //         // }
-    //     } else {
-    //         self.row_to_table.insert(prid, table_oid);
-    //     }
+        assert_eq!(rowing.canonical_id(&high, &packer), low);
+        assert_eq!(rowing.canonical_id(&low, &packer), low);
+        assert_eq!(rowing.canonical_id(&unseen, &packer), unseen);
+        assert_eq!(rowing.displaced().collect::<Vec<_>>(), [high]);
 
-    //     // Register the row as a parent of each referenced child class, so a
-    //     // later change of the id that class member resolves to re-keys this
-    //     // row.
-    //     for child in child_refs {
-    //         let child_node = self.node_for(child);
-    //         let child_root = self.uf.find(child_node);
-    //         let list = self.parents.entry(child_root).or_default();
-    //         if !list.contains(&prid) {
-    //             list.push(prid);
-    //         }
-    //     }
+        rowing.stage_union(0, low, high);
+        rowing.apply_unions(&packer);
+        assert_eq!(rowing.displaced().collect::<Vec<_>>(), [high]);
+    }
 
-    //     let unpacked_con = canon_values.iter().map(|p| p.unpack_cell(dict)).collect();
+    #[test]
+    fn transitive_union_displaces_each_previous_canonical_id() {
+        let mut packer = IdPacker::new();
+        let low = packer.pack_row_id(row_id(1));
+        let middle = packer.pack_row_id(row_id(2));
+        let high = packer.pack_row_id(row_id(3));
+        let mut rowing = Rowing::new();
 
-    //     let inserted_outcome = Observed {
-    //         outcome: ObservedOutcome::Inserted {
-    //             rid,
-    //             values: unpacked_con,
-    //         },
-    //         fixups: Vec::new(),
-    //     };
+        rowing.stage_union(0, high, middle);
+        rowing.stage_union(0, high, low);
+        rowing.apply_unions(&packer);
 
-    //     if !table.hashcons() {
-    //         return inserted_outcome;
-    //     }
+        assert_eq!(rowing.canonical_id(&high, &packer), low);
+        assert_eq!(rowing.canonical_id(&middle, &packer), low);
+        assert_eq!(rowing.displaced().collect::<Vec<_>>(), [high, middle]);
+    }
 
-    //     let existing = table
-    //         .index_seek_packed(
-    //             table
-    //                 .hashcons_index()
-    //                 .expect("hashcons index to exist on hashcons table"),
-    //             &canon_values,
-    //         )
-    //         .expect("hashcons index id is valid for this table")
-    //         .next();
+    #[test]
+    fn rollback_restores_union_state() {
+        let mut packer = IdPacker::new();
+        let low = packer.pack_row_id(row_id(1));
+        let high = packer.pack_row_id(row_id(2));
+        let mut rowing = Rowing::new();
+        let snapshot = rowing.snapshot();
 
-    //     match existing {
-    //         None => inserted_outcome,
-    //         Some(existing) => self.merge(prid, existing, tables, dict),
-    //     }
-    // }
+        rowing.stage_union(0, high, low);
+        rowing.apply_unions(&packer);
+        rowing.rollback(snapshot);
 
-    // /// Canonical row values and packed child refs for parent registration.
-    // /// Hashcons rows must be observed in dependency order: every referenced
-    // /// child row has already been observed. Non-hashcons rows may reference
-    // /// unobserved rows, whose canonical id is themselves. When a later merge
-    // /// changes a referenced id, [`Self::rekey_parents`] re-keys the affected
-    // /// rows.
-    // fn canonicalize_row_values(
-    //     &self,
-    //     table: &Table,
-    //     values: &[CellValue],
-    //     dict: &mut HashMapper,
-    // ) -> (Vec<PackedCell>, Vec<PackedRowId>) {
-    //     let mut canon_values = Vec::with_capacity(values.len());
-    //     let mut child_refs = Vec::new();
-    //     for cell in values {
-    //         match cell {
-    //             CellValue::Id(child) => {
-    //                 let packed = if table.hashcons() {
-    //                     PackedRowId::lookup(*child, dict)
-    //                         .filter(|packed| self.row_to_table.contains_key(packed))
-    //                         .expect(&format!("hashcons child {child} must be known to us"))
-    //                 } else {
-    //                     PackedRowId::pack(*child, dict)
-    //                 };
-    //                 let canonical = self.canonical_packed(packed);
-    //                 child_refs.push(canonical);
-    //                 canon_values.push(PackedCell::Id(canonical));
-    //             }
-    //             CellValue::Int(i) => canon_values.push(PackedCell::Int(*i)),
-    //             CellValue::Str(s) => canon_values.push(PackedCell::Str(s.clone())),
-    //         }
-    //     }
-    //     (canon_values, child_refs)
-    // }
-    // /*
-    // a b
-    // f(a, b)
-
-    // c
-    // f(c, b)
-
-    // a == c
-
-    // a is canonical
-    // then c needs to be changed
-    // as is f(c, b)
-
-    // c is canonical
-    // then a needs to be changed, as is f(a, b)
-
-    //  */
-    // /// Union the classes of `prid` and `existing`, keeping the smaller
-    // /// canonical id (compared as unpacked [`RowId`]s, for cross-store
-    // /// determinism). When any member's resolved id changed, re-key the
-    // /// class's parents and report their table fixups.
-    // fn merge(
-    //     &mut self,
-    //     prid: PackedRowId,
-    //     existing: PackedRowId,
-    //     tables: &HashMap<TableOid, Table>,
-    //     dict: &mut HashMapper,
-    // ) -> Observed {
-    //     let node = self.node_for(prid);
-    //     let existing_node = self.node_for(existing);
-
-    //     let old_canonical = self.canonical_packed(existing);
-    //     let rid_canonical = self.canonical_packed(prid);
-    //     let new_canonical = if rid_canonical.unpack(dict) < old_canonical.unpack(dict) {
-    //         rid_canonical
-    //     } else {
-    //         old_canonical
-    //     };
-
-    //     // Roots before the union; the survivor is one of these two, so the
-    //     // loser becomes a stale key in `canonical_row` and `parents`.
-    //     let root_a = self.uf.find(node);
-    //     let root_b = self.uf.find(existing_node);
-    //     self.uf.union(node, existing_node);
-
-    //     let root = self.uf.find(node);
-    //     for stale_root in [root_a, root_b] {
-    //         if stale_root == root {
-    //             continue;
-    //         }
-    //         self.canonical_row.remove(&stale_root);
-    //         // Parents lists follow the class to its surviving root.
-    //         if let Some(moved) = self.parents.remove(&stale_root) {
-    //             let list = self.parents.entry(root).or_default();
-    //             for parent in moved {
-    //                 if !list.contains(&parent) {
-    //                     list.push(parent);
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     self.canonical_row.insert(root, new_canonical);
-
-    //     // The losing side's members now resolve to `new_canonical`, so cells
-    //     // embedding their previous canonical id are stale and must be
-    //     // rewritten now, before any further lookup can miss them. When both
-    //     // sides already resolved to the same id (a re-observation), nothing
-    //     // changed.
-    //     let fixups = if rid_canonical == old_canonical {
-    //         Vec::new()
-    //     } else {
-    //         self.rekey_parents(root, tables, dict)
-    //     };
-
-    //     let outcome = if new_canonical == old_canonical {
-    //         ObservedOutcome::KeptOld(old_canonical.unpack(dict))
-    //     } else {
-    //         ObservedOutcome::Swap {
-    //             old: old_canonical.unpack(dict),
-    //             new: new_canonical.unpack(dict),
-    //         }
-    //     };
-    //     Observed { outcome, fixups }
-    // }
-
-    // /// Re-express the cells of every parent of `root`'s class in current
-    // /// canonical ids, emit [`CellFixup`]s for the parent's table storage.
-    // /// Called when the id some class member resolves to changed.
-    // ///
-    // /// One level of rekeying is sufficient. We can this in, for example
-    // ///
-    // /// B is currently canonical.
-    // /// A arrives which is more canonical than B.
-    // /// Pair(B, X) -> Pair(A, X).
-    // /// But there is no need to rewrite further because A is completely new. And
-    // /// all references to Pair(B, X) remain valid because its row_id remain the same.
-    // fn rekey_parents(
-    //     &mut self,
-    //     root: NodeId,
-    //     tables: &HashMap<TableOid, Table>,
-    //     dict: &mut HashMapper,
-    // ) -> Vec<CellFixup> {
-    //     let mut fixups = Vec::new();
-    //     // Parents in one class share one physical row; fix it up once.
-    //     let mut fixed_rows: HashSet<(TableOid, PackedRowId)> = HashSet::new();
-    //     let parent_rids = self.parents.get(&root).cloned().unwrap_or_default();
-    //     for prid in parent_rids {
-    //         let ptbl = self
-    //             .row_to_table
-    //             .get(&prid)
-    //             .expect("registered parents were observed")
-    //             .to_owned();
-    //         let target = self.canonical_packed(prid);
-    //         if !fixed_rows.insert((ptbl, target)) {
-    //             continue;
-    //         }
-    //         let old_values = tables
-    //             .get(&ptbl)
-    //             .and_then(|table| table.packed_row_at(target))
-    //             .expect("an observed parent class has a physical table row");
-    //         let new_values: Vec<PackedCell> = old_values
-    //             .iter()
-    //             .map(|cell| match cell {
-    //                 PackedCell::Id(packed) => PackedCell::Id(self.canonical_packed(*packed)),
-    //                 other => other.clone(),
-    //             })
-    //             .collect();
-    //         if new_values == old_values {
-    //             continue;
-    //         }
-
-    //         fixups.push(CellFixup {
-    //             table: ptbl,
-    //             row: target.unpack(dict),
-    //             values: new_values,
-    //         });
-    //     }
-    //     fixups
-    // }
+        assert_eq!(rowing.canonical_id(&high, &packer), high);
+        assert_eq!(rowing.canonical_id(&low, &packer), low);
+        assert_eq!(rowing.uf_len(), 0);
+    }
 }

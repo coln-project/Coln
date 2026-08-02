@@ -4,6 +4,8 @@
 
 //! Typed sorted maps backed by parallel Hexane columns.
 
+#![allow(unused)]
+
 use std::ops::Range;
 
 use hexane::AsColumnRef;

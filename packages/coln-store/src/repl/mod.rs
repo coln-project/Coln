@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+mod cli;
+pub mod exe;
+pub mod parse;
+
 use anyhow::Result;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
@@ -14,10 +18,6 @@ use crate::repl::cli::{
 use crate::repl::exe::{LoadedState, execute_coln, execute_meta, execute_sql};
 use crate::repl::parse::Command;
 use crate::repl::parse::parse_command;
-
-mod cli;
-pub mod exe;
-pub mod parse;
 
 const SECRET_MODE: &str = "ILOVESQL";
 

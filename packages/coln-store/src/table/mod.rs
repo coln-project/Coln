@@ -18,6 +18,7 @@ use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
 use crate::rollback::Rollback;
+use crate::rowing::Rowing;
 use crate::table::index::{IndexId, IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 use crate::txn::TxnId;
@@ -33,6 +34,9 @@ pub(crate) enum PackedOp {
     Add {
         row_id: PackedRowId,
         values: Vec<PackedCell>,
+    },
+    Delete {
+        row_id: PackedRowId,
     },
 }
 
@@ -104,25 +108,27 @@ enum PkConstraint {
 /// [`TableRef`] bundles the table and dictionary for decoded reads.
 #[derive(Debug)]
 pub struct Table {
+    oid: TableOid,
     path: ir::Path,
     schema: Schema,
     col_name_map: HashMap<ColName, usize>,
     /// Structural (all-columns) index used for hashcons lookup, when enabled.
     hashcons_index: Option<IndexId>,
-    /// Sorted secondary indexes, maintained by [`Self::insert_row`] and
-    /// [`Self::replace_row_id`]. Currently only the primary key index.
     indexes: Vec<TableIndex>,
     row_ids: IdColumn,
     cols: Vec<Column>,
     pk: PkConstraint,
     pending_updates: Vec<PackedOp>,
     undo_log: Option<Vec<UndoOp>>,
+
+    // Map each rowid to the rows that refer to them.
+    rebuild_index: HashMap<PackedRowId, Vec<PackedRowId>>,
 }
 
 impl Table {
     // Basic accessors
 
-    pub fn new(path: ir::Path, schema: Schema) -> Self {
+    pub fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
         let col_name_map: HashMap<ColName, usize> = schema
             .columns
             .iter()
@@ -163,6 +169,7 @@ impl Table {
         indexes.push(TableIndex::new(&hashcons_cols, &schema));
 
         Self {
+            oid,
             path,
             col_name_map,
             schema,
@@ -173,6 +180,7 @@ impl Table {
             pk,
             pending_updates: Vec::new(),
             undo_log: None,
+            rebuild_index: HashMap::new(),
         }
     }
 
@@ -182,10 +190,6 @@ impl Table {
 
     pub fn path(&self) -> &ir::Path {
         &self.path
-    }
-
-    pub(crate) fn hashcons(&self) -> bool {
-        self.hashcons_index.is_some()
     }
 
     pub fn row_count(&self) -> usize {
@@ -233,10 +237,6 @@ impl Table {
             PkConstraint::Indexed(i) => Some(i),
             PkConstraint::None | PkConstraint::Singleton => None,
         }
-    }
-
-    pub(crate) fn hashcons_index(&self) -> Option<IndexId> {
-        self.hashcons_index
     }
 }
 
@@ -291,16 +291,16 @@ impl Table {
             });
         }
 
-        Ok((0..self.row_count()).filter_map(move |row_idx| {
-            key.iter()
-                .all(|part| {
+        Ok((0..self.row_count())
+            .filter(move |&row_idx| {
+                key.iter().all(|part| {
                     self.cell_at(row_idx, part.column, id_packer).as_ref() == Some(&part.value)
                 })
-                .then(|| {
-                    self.row_id_at(row_idx, id_packer)
-                        .expect("row index came from the table's row count")
-                })
-        }))
+            })
+            .map(move |row_idx| {
+                self.row_id_at(row_idx, id_packer)
+                    .expect("row index came from the table's row count")
+            }))
     }
 
     pub(crate) fn index_seek(
@@ -494,35 +494,127 @@ impl Rollback for Table {
 
 impl Table {
     /// Stage an already packed operation without changing the materialised table.
-    pub(crate) fn stage(&mut self, op: PackedOp) {
+    pub(crate) fn stage_update(&mut self, op: PackedOp) {
         self.pending_updates.push(op);
     }
 
     // Apply the staged updates to the table. Rollback support will record
     // inverse operations separately before these operations are consumed.
-    pub(crate) fn apply_staged_ops(&mut self) {
+    pub(crate) fn apply_staged_ops(&mut self, rowing: &mut Rowing) -> Result<(), ValidationError> {
         let ops = std::mem::take(&mut self.pending_updates);
         for op in ops {
-            let undo_op = self.apply_op(op);
+            let undo_op = self.apply_op(op, rowing)?;
             if let Some(undo_log) = &mut self.undo_log {
                 undo_log.push(undo_op);
             }
         }
+        Ok(())
     }
 
-    fn apply_op(&mut self, op: PackedOp) -> UndoOp {
+    fn apply_op(&mut self, op: PackedOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
         match op {
             PackedOp::Add { row_id, values } => {
-                self.insert_row(values, row_id);
-                UndoOp::UndoAdd { row_id }
+                self.insert_row(values, row_id, rowing)?;
+                Ok(UndoOp::UndoAdd { row_id })
+            }
+            PackedOp::Delete { row_id } => {
+                let values = self.remove_packed(row_id);
+                Ok(UndoOp::UndoDelete { row_id, values })
             }
         }
     }
 
     fn apply_undo(&mut self, undo_op: UndoOp) {
         match undo_op {
-            UndoOp::UndoAdd { row_id } => self.remove_packed(row_id),
+            UndoOp::UndoAdd { row_id } => {
+                self.remove_packed(row_id);
+            }
+            // inserting when undo cannot fail, and does not need rowing, primary key check, etc.
+            UndoOp::UndoDelete { row_id, values } => self.insert_packed(values, row_id),
         }
+    }
+}
+
+impl Table {
+    // Rebuilding
+
+    pub(crate) fn rebuild(&mut self, rowing: &Rowing, id_packer: &IdPacker) {
+        for old in rowing.displaced() {
+            // A row whose own id was displaced is rebuilt here, including any
+            // stale ids in its cells. Referring-row handling below skips it.
+            if let Some(old_cells) = self.packed_row_at(old) {
+                let new_rid = rowing.canonical_id(&old, id_packer);
+                let new_cells = Self::canonicalise_cells(&old_cells, rowing, id_packer);
+
+                // Displacement onto an id that the table already has. Do not stage
+                // an addition in this case.
+                let collapses = self.row_ids.position(new_rid).is_ok();
+                debug_assert!(
+                    !collapses
+                        || self.packed_row_at(new_rid).is_some_and(|stored| {
+                            Self::canonicalise_cells(&stored, rowing, id_packer) == new_cells
+                        }),
+                    "collapsing {old:?} onto {new_rid:?} would discard differing cells"
+                );
+
+                self.stage_update(PackedOp::Delete { row_id: old });
+                if !collapses {
+                    self.stage_update(PackedOp::Add {
+                        row_id: new_rid,
+                        values: new_cells,
+                    });
+                }
+            }
+
+            // Clone the small referring-row list so staging can mutably borrow
+            // the table. Rows with stale identities are owned by the branch
+            // above and must not be staged a second time here.
+            let referring = self.rebuild_index.get(&old).cloned().unwrap_or_default();
+            for row_id in referring {
+                if rowing.canonical_id(&row_id, id_packer) != row_id {
+                    continue;
+                }
+                let old_cells = self
+                    .packed_row_at(row_id)
+                    .expect("a referring row is present in the table");
+                let new_cells = Self::canonicalise_cells(&old_cells, rowing, id_packer);
+                if new_cells == old_cells {
+                    continue;
+                }
+
+                self.stage_update(PackedOp::Delete { row_id });
+                self.stage_update(PackedOp::Add {
+                    row_id,
+                    values: new_cells,
+                });
+            }
+        }
+    }
+
+    /// Rewrite every id cell to its canonical id, leaving other cells alone.
+    fn canonicalise_cells(
+        values: &[PackedCell],
+        rowing: &Rowing,
+        id_packer: &IdPacker,
+    ) -> Vec<PackedCell> {
+        values
+            .iter()
+            .map(|cell| match cell {
+                PackedCell::Id(id) => PackedCell::Id(rowing.canonical_id(id, id_packer)),
+                other => other.clone(),
+            })
+            .collect()
+    }
+
+    /// ids referred by this row.
+    fn referenced_ids(values: &[PackedCell]) -> impl Iterator<Item = PackedRowId> {
+        values
+            .iter()
+            .enumerate()
+            .filter_map(|(i, cell)| match cell {
+                PackedCell::Id(id) if !values[..i].contains(cell) => Some(*id),
+                _ => None,
+            })
     }
 }
 
@@ -531,22 +623,65 @@ impl Table {
 
     /// Insert a row into columnar storage at its sorted position.
     ///
-    /// Does **not** validate. Used internally when the caller has already checked the row
-    /// (e.g. batch validation).
-    pub(super) fn insert_row(&mut self, values: Vec<PackedCell>, row_id: PackedRowId) {
+    /// Only does primary key check, but no other validation.
+    pub(super) fn insert_row(
+        &mut self,
+        values: Vec<PackedCell>,
+        row_id: PackedRowId,
+        rowing: &mut Rowing,
+    ) -> Result<(), ValidationError> {
+        // Checked before anything is recorded, so a rejected row leaves behind
+        // neither an index entry nor a staged union.
+        match self.pk {
+            PkConstraint::None => {}
+            PkConstraint::Singleton => {
+                if self.row_count() >= 1 {
+                    return Err(ValidationError::DuplicatePrimaryKey);
+                }
+            }
+            PkConstraint::Indexed(pk_index) => {
+                let key = Self::project_index_key(&self.indexes[pk_index], &values);
+                if self.indexes[pk_index].contains_key(&key) {
+                    return Err(ValidationError::DuplicatePrimaryKey);
+                }
+            }
+        }
+
+        // A structurally identical row is stored anyway: rowing unions the two
+        // ids and a later rebuild pass collapses them.
+        if let Some(index) = self.hashcons_index {
+            let key = Self::project_index_key(&self.indexes[index], &values);
+            if let Some(old) = self
+                .index_seek_packed(index, &key)
+                .expect("valid hashcons index and key structure")
+                .next()
+            {
+                rowing.stage_union(self.oid, old, row_id);
+            }
+        }
+
+        // Checks for existing row ids
+        if let Ok(_pos) = self.row_ids.position(row_id) {
+            panic!("should never insert a rowid that already exists");
+        }
+
+        self.insert_packed(values, row_id);
+        Ok(())
+    }
+
+    /// Place a row in columnar storage and every index, with no validation
+    fn insert_packed(&mut self, values: Vec<PackedCell>, row_id: PackedRowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
-        // if let Some(index) = self.hashcons_index {
-        //     let Some(conflict) = self
-        //         .index_seek(index, key, id_packer)
-        //         .expect("valid hashcons index and key structure")
-        //         .next();
-        // }
+
         for index in &mut self.indexes {
             let key = Self::project_index_key(index, &values);
             index.insert(key, row_id);
         }
+        for child in Self::referenced_ids(&values) {
+            self.rebuild_index.entry(child).or_default().push(row_id);
+        }
 
-        let pos = match self.row_ids.position(row_id) {
+        let pos: usize = match self.row_ids.position(row_id) {
             Ok(pos) | Err(pos) => pos,
         };
         self.row_ids.insert(pos, row_id);
@@ -555,23 +690,39 @@ impl Table {
         }
     }
 
-    fn remove_packed(&mut self, row_id: PackedRowId) {
+    /// Take a row out of columnar storage and every index, returning its cells
+    fn remove_packed(&mut self, row_id: PackedRowId) -> Vec<PackedCell> {
         let row_idx = self
             .row_ids
             .position(row_id)
-            .expect("undo target should be present");
+            .expect("removal target should be present");
         let values = self
             .packed_row_at(row_id)
-            .expect("undo target should have a complete row");
+            .expect("removal target should have a complete row");
 
         for index in &mut self.indexes {
             let key = Self::project_index_key(index, &values);
             index.remove_rowid(&key, row_id);
         }
+        for child in Self::referenced_ids(&values) {
+            let referring = self
+                .rebuild_index
+                .get_mut(&child)
+                .expect("a stored row is recorded against every id it refers to");
+            let pos = referring
+                .iter()
+                .position(|rid| *rid == row_id)
+                .expect("a stored row is recorded against every id it refers to");
+            referring.swap_remove(pos);
+            if referring.is_empty() {
+                self.rebuild_index.remove(&child);
+            }
+        }
         self.row_ids.remove(row_idx);
         for column in &mut self.cols {
             column.remove(row_idx);
         }
+        values
     }
 
     fn project_index_key(index: &TableIndex, values: &[PackedCell]) -> Vec<PackedCell> {
@@ -580,58 +731,6 @@ impl Table {
             .iter()
             .map(|&col_idx| values[col_idx].clone())
             .collect()
-    }
-
-    /// Used for canonicalising row_ids. The row moves to the sorted position
-    /// of its new id, together with its cells. Panics if `old` is absent,
-    /// because rowing only reports swaps for physical rows.
-    pub(crate) fn replace_row_id(&mut self, old: PackedRowId, new: PackedRowId) {
-        let old_pos = self
-            .row_idx(old)
-            .expect("row id should exist, as produced by rowing");
-
-        let values = self
-            .packed_row_at(old)
-            .expect("row id should exist, as produced by rowing");
-
-        for index in &mut self.indexes {
-            let key = Self::project_index_key(index, &values);
-            index.remove_rowid(&key, old);
-        }
-        self.row_ids.remove(old_pos);
-        for col in &mut self.cols {
-            col.remove(old_pos);
-        }
-        self.insert_row(values, new);
-    }
-
-    // TODO this is potentially an expensive operation. If on the hot path, then
-    // we need to reconsider...
-
-    /// Replace the cells of a stored row, keeping its row id. Used when a
-    /// referenced row's canonical id changes and cells embedding the old id
-    /// must be rewritten. Panics if `row_id` is absent, because rowing only
-    /// reports fixups for physical rows.
-    pub(crate) fn rewrite_row_cells(&mut self, row_id: PackedRowId, values: Vec<PackedCell>) {
-        debug_assert_eq!(values.len(), self.schema.columns.len());
-        let pos = self
-            .row_idx(row_id)
-            .expect("row id should exist, otherwise rowing is wrong");
-        let old_values = self
-            .packed_row_at(row_id)
-            .expect("row id should exist, as produced by rowing");
-
-        for index in &mut self.indexes {
-            let old_key = Self::project_index_key(index, &old_values);
-            let new_key = Self::project_index_key(index, &values);
-            index.remove_rowid(&old_key, row_id);
-            index.insert(new_key, row_id);
-        }
-
-        for (i, v) in values.into_iter().enumerate() {
-            self.cols[i].remove(pos);
-            self.cols[i].insert(pos, v);
-        }
     }
 }
 
@@ -675,786 +774,4 @@ impl Table {
 }
 
 #[cfg(test)]
-mod tests {
-
-    use super::*;
-    use crate::commit::hash::CommitHash;
-    use crate::ir::{self, Path};
-    use crate::ir::{BuiltinTy, ColType};
-    use crate::op::Op;
-
-    fn test_row_id(counter: u32) -> RowId {
-        RowId {
-            commit: CommitHash([0; 32]),
-            counter,
-        }
-    }
-
-    fn row_id_from(commit_byte: u8, counter: u32) -> RowId {
-        RowId {
-            commit: CommitHash([commit_byte; 32]),
-            counter,
-        }
-    }
-
-    fn id_schema(columns: &[&str]) -> ir::Schema {
-        ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: columns
-                .iter()
-                .map(|name| ir::ColumnEntry {
-                    path: Path::from(*name),
-                    col_type: ColType::RowId {
-                        path: Path::from("T"),
-                    },
-                })
-                .collect(),
-            primary_key: None,
-        }
-    }
-
-    /// A [`Table`] paired with its own dictionary, packing mutations at the
-    /// same boundary as [`Store`](crate::store::Store).
-    struct TestTable {
-        table: Table,
-        dict: IdPacker,
-    }
-
-    impl TestTable {
-        fn new(path: Path, schema: ir::Schema) -> Self {
-            Self {
-                table: Table::new(path, schema),
-                dict: IdPacker::new(),
-            }
-        }
-
-        fn row_count(&self) -> usize {
-            self.table.row_count()
-        }
-
-        fn row_id_at(&self, row_idx: usize) -> Option<RowId> {
-            self.table.row_id_at(row_idx, &self.dict)
-        }
-
-        fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<CellValue> {
-            self.table.cell_at(row_idx, col_idx, &self.dict)
-        }
-
-        fn row_at(&self, row_idx: usize) -> Option<RowView> {
-            self.table.row_at(row_idx, &self.dict)
-        }
-
-        fn row_position(&self, row_id: RowId) -> Option<usize> {
-            let row_id = self.dict.lookup_row_id(row_id)?;
-            self.table.row_idx(row_id)
-        }
-
-        fn validate_insert(&self, values: &[CellValue]) -> Result<(), ValidationError> {
-            self.table.validate_insert(values, &self.dict)
-        }
-
-        fn insert_row(&mut self, values: Vec<CellValue>, row_id: RowId) {
-            let row_id = self.dict.pack_row_id(row_id);
-            let values = values
-                .into_iter()
-                .map(|value| self.dict.pack_cell(value))
-                .collect();
-            self.table.insert_row(values, row_id)
-        }
-
-        fn stage_update(&mut self, op: Op) {
-            let Op::Add {
-                row_id,
-                table,
-                values,
-            } = op;
-            debug_assert_eq!(table, *self.table.path());
-            let row_id = self.dict.pack_row_id(row_id);
-            let values = values
-                .into_iter()
-                .map(|value| self.dict.pack_cell(value))
-                .collect();
-            self.table.stage(PackedOp::Add { row_id, values });
-        }
-
-        fn apply_staged_ops(&mut self) {
-            self.table.apply_staged_ops();
-        }
-
-        fn replace_row_id(&mut self, old: &RowId, new: RowId) {
-            let old = self.dict.pack_row_id(*old);
-            let new = self.dict.pack_row_id(new);
-            self.table.replace_row_id(old, new)
-        }
-
-        fn rewrite_row_cells(&mut self, row_id: &RowId, values: Vec<PackedCell>) {
-            let row_id = self.dict.pack_row_id(*row_id);
-            self.table.rewrite_row_cells(row_id, values)
-        }
-
-        fn dump(&self) -> String {
-            self.table.dump(&self.dict)
-        }
-    }
-
-    /// Tables with no data columns still allocate row ids on insert; `row_count` must reflect
-    /// those rows (it cannot use column length when `cols` is empty).
-    #[test]
-    fn row_count_matches_inserts_when_schema_has_no_columns() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![],
-            primary_key: None,
-        };
-        let mut tbl = TestTable::new(Path::from("id_only"), schema);
-        assert!(tbl.table.cols.is_empty());
-        assert_eq!(tbl.row_count(), 0);
-
-        let r0 = test_row_id(0);
-        tbl.insert_row(vec![], r0);
-        assert_eq!(tbl.row_count(), 1);
-        assert_eq!(tbl.row_id_at(0), Some(r0));
-
-        let r1 = test_row_id(1);
-        tbl.insert_row(vec![], r1);
-        assert_eq!(tbl.row_count(), 2);
-        assert_eq!(tbl.row_id_at(1), Some(r1));
-    }
-
-    #[test]
-    fn rollback_removes_applied_rows_and_index_entries() {
-        let path = Path::from("rollback");
-        let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], Some(&["value"])));
-        let existing = test_row_id(0);
-        let first_added = test_row_id(1);
-        let second_added = test_row_id(2);
-        tbl.insert_row(vec![CellValue::Int(1)], existing);
-
-        let snapshot = tbl.table.snapshot();
-        tbl.stage_update(Op::Add {
-            row_id: first_added,
-            table: path.clone(),
-            values: vec![CellValue::Int(2)],
-        });
-        tbl.stage_update(Op::Add {
-            row_id: second_added,
-            table: path,
-            values: vec![CellValue::Int(3)],
-        });
-        tbl.apply_staged_ops();
-
-        assert_eq!(tbl.row_count(), 3);
-        assert_eq!(
-            tbl.validate_insert(&[CellValue::Int(2)]),
-            Err(ValidationError::DuplicatePrimaryKey)
-        );
-
-        tbl.table.rollback(snapshot);
-
-        assert_eq!(tbl.row_count(), 1);
-        assert_eq!(tbl.row_id_at(0), Some(existing));
-        assert_eq!(tbl.row_position(first_added), None);
-        assert_eq!(tbl.row_position(second_added), None);
-        assert!(tbl.validate_insert(&[CellValue::Int(2)]).is_ok());
-        assert!(tbl.validate_insert(&[CellValue::Int(3)]).is_ok());
-        assert!(tbl.table.undo_log.is_none());
-    }
-
-    #[test]
-    fn commit_snapshot_keeps_rows_and_discards_undo_log() {
-        let path = Path::from("commit_snapshot");
-        let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], None));
-        let row_id = test_row_id(0);
-
-        let snapshot = tbl.table.snapshot();
-        tbl.stage_update(Op::Add {
-            row_id,
-            table: path,
-            values: vec![CellValue::Int(7)],
-        });
-        tbl.apply_staged_ops();
-        tbl.table.commit_snapshot(snapshot);
-
-        assert_eq!(tbl.row_count(), 1);
-        assert_eq!(tbl.row_id_at(0), Some(row_id));
-        assert!(tbl.table.undo_log.is_none());
-    }
-
-    #[test]
-    fn rollback_discards_updates_staged_after_snapshot() {
-        let path = Path::from("staged_rollback");
-        let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], None));
-
-        let snapshot = tbl.table.snapshot();
-        tbl.stage_update(Op::Add {
-            row_id: test_row_id(0),
-            table: path,
-            values: vec![CellValue::Int(7)],
-        });
-        tbl.table.rollback(snapshot);
-
-        assert_eq!(tbl.row_count(), 0);
-        assert!(tbl.table.pending_updates.is_empty());
-    }
-
-    /// `primary_key: Some([])` marks a singleton table (at most one row).
-    #[test]
-    fn empty_primary_key_rejects_second_row() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![ir::ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: Some(vec![]),
-        };
-        let mut tbl = TestTable::new(Path::from("singleton"), schema);
-
-        tbl.insert_row(vec![CellValue::Int(0)], test_row_id(0));
-        assert_eq!(tbl.row_count(), 1);
-
-        let values1 = vec![CellValue::Int(1)];
-        let err = tbl.validate_insert(&values1).unwrap_err();
-        assert_eq!(err, ValidationError::DuplicatePrimaryKey);
-        assert_eq!(tbl.row_count(), 1);
-    }
-
-    #[test]
-    fn row_read_helpers_return_row_id_and_cells() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![
-                ir::ColumnEntry {
-                    path: Path::from("c0"),
-                    col_type: ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinInt,
-                    },
-                },
-                ir::ColumnEntry {
-                    path: Path::from("c1"),
-                    col_type: ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinStr,
-                    },
-                },
-            ],
-            primary_key: None,
-        };
-        let mut tbl = TestTable::new(Path::from("readable"), schema);
-
-        let row_id = test_row_id(0);
-        tbl.insert_row(
-            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
-            row_id,
-        );
-
-        assert_eq!(
-            tbl.row_at(0),
-            Some(RowView {
-                row_id,
-                values: vec![CellValue::Int(7), CellValue::Str("x".to_string())],
-            })
-        );
-        assert_eq!(tbl.row_id_at(0), Some(row_id));
-        assert_eq!(tbl.cell_at(0, 0), Some(CellValue::Int(7)));
-        assert_eq!(tbl.cell_at(0, 1), Some(CellValue::Str("x".to_string())));
-        let packed = tbl
-            .dict
-            .lookup_row_id(row_id)
-            .expect("insert packed the row id");
-        assert_eq!(
-            tbl.table.packed_row_at(packed),
-            Some(vec![PackedCell::Int(7), PackedCell::Str("x".to_string())])
-        );
-        assert_eq!(tbl.row_at(1), None);
-        assert_eq!(tbl.row_id_at(1), None);
-        assert_eq!(tbl.cell_at(0, 2), None);
-    }
-
-    /// Row ids and id cells survive the pack/unpack round trip across rows
-    /// from different commits.
-    #[test]
-    fn packed_row_ids_round_trip_across_commits() {
-        let mut tbl = TestTable::new(Path::from("edges"), id_schema(&["src", "dst"]));
-
-        let rows = [
-            (row_id_from(1, 0), row_id_from(3, 7), row_id_from(4, 8)),
-            (row_id_from(2, 1), row_id_from(3, 9), row_id_from(1, 0)),
-            (row_id_from(1, 2), row_id_from(2, 1), row_id_from(3, 7)),
-        ];
-        for (rid, src, dst) in rows {
-            tbl.insert_row(vec![CellValue::Id(src), CellValue::Id(dst)], rid);
-        }
-
-        for (rid, src, dst) in rows {
-            let idx = tbl.row_position(rid).expect("row is stored");
-            assert_eq!(tbl.row_id_at(idx), Some(rid));
-            assert_eq!(tbl.cell_at(idx, 0), Some(CellValue::Id(src)));
-            assert_eq!(tbl.cell_at(idx, 1), Some(CellValue::Id(dst)));
-        }
-
-        // Four distinct commit hashes, each interned exactly once.
-        assert_eq!(tbl.dict.len(), 4);
-    }
-
-    /// Rows are stored sorted by packed row id regardless of insertion order,
-    /// and `row_position` reports presence and absence accordingly.
-    #[test]
-    fn rows_stay_sorted_by_row_id() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![ir::ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        };
-        let mut tbl = TestTable::new(Path::from("sorted"), schema);
-
-        // Commit A is interned first, so its rows sort before commit B's, and
-        // counters order rows within a commit.
-        let rows = [
-            (row_id_from(1, 5), 0),
-            (row_id_from(2, 0), 1),
-            (row_id_from(1, 0), 2),
-            (row_id_from(2, 7), 3),
-            (row_id_from(1, 2), 4),
-        ];
-        for (rid, v) in rows {
-            tbl.insert_row(vec![CellValue::Int(v)], rid);
-        }
-
-        let stored: Vec<RowId> = (0..tbl.row_count())
-            .map(|idx| tbl.row_id_at(idx).expect("row id"))
-            .collect();
-        assert_eq!(
-            stored,
-            vec![
-                row_id_from(1, 0),
-                row_id_from(1, 2),
-                row_id_from(1, 5),
-                row_id_from(2, 0),
-                row_id_from(2, 7),
-            ]
-        );
-
-        // Cells moved together with their row ids.
-        for (rid, v) in rows {
-            let idx = tbl.row_position(rid).expect("row is stored");
-            assert_eq!(tbl.cell_at(idx, 0), Some(CellValue::Int(v)));
-        }
-
-        // Absent ids: known commit with unused counter, and unknown commit.
-        assert_eq!(tbl.row_position(row_id_from(1, 3)), None);
-        assert_eq!(tbl.row_position(row_id_from(9, 0)), None);
-    }
-
-    /// `replace_row_id` moves the row and its cells to the sorted position of
-    /// the new id.
-    #[test]
-    fn replace_row_id_moves_row_to_sorted_position() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![ir::ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        };
-        let mut tbl = TestTable::new(Path::from("moving"), schema);
-
-        tbl.insert_row(vec![CellValue::Int(0)], row_id_from(1, 0));
-        tbl.insert_row(vec![CellValue::Int(1)], row_id_from(1, 1));
-        tbl.insert_row(vec![CellValue::Int(2)], row_id_from(1, 2));
-
-        // (1, 1) -> (1, 9): the row moves from the middle to the end.
-        tbl.replace_row_id(&row_id_from(1, 1), row_id_from(1, 9));
-
-        assert_eq!(tbl.row_position(row_id_from(1, 1)), None);
-        let idx = tbl.row_position(row_id_from(1, 9)).expect("row is stored");
-        assert_eq!(idx, 2);
-        assert_eq!(tbl.cell_at(idx, 0), Some(CellValue::Int(1)));
-        assert_eq!(tbl.row_id_at(0), Some(row_id_from(1, 0)));
-        assert_eq!(tbl.row_id_at(1), Some(row_id_from(1, 2)));
-    }
-
-    /// `replace_row_id` re-indexes the row under a hash the dictionary has
-    /// not seen before.
-    #[test]
-    fn replace_row_id_interns_new_commit_hash() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![],
-            primary_key: None,
-        };
-        let mut tbl = TestTable::new(Path::from("id_only"), schema);
-
-        let old = row_id_from(1, 0);
-        tbl.insert_row(vec![], old);
-
-        let new = row_id_from(2, 5);
-        tbl.replace_row_id(&old, new);
-        assert_eq!(tbl.row_id_at(0), Some(new));
-    }
-
-    #[test]
-    #[should_panic(expected = "row id should exist, as produced by rowing")]
-    fn replace_row_id_panics_when_old_row_is_missing() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![],
-            primary_key: None,
-        };
-        let mut tbl = TestTable::new(Path::from("id_only"), schema);
-        let missing = row_id_from(9, 0);
-        tbl.replace_row_id(&missing, row_id_from(1, 0));
-    }
-
-    /// Primary key comparison works on dictionary-encoded id columns, and an
-    /// id with an unseen commit hash never collides.
-    #[test]
-    fn primary_key_detects_duplicates_in_id_columns() {
-        let mut schema = id_schema(&["src", "dst"]);
-        schema.primary_key = Some(vec![Path::from("src")]);
-        let mut tbl = TestTable::new(Path::from("edges"), schema);
-
-        let src = row_id_from(3, 7);
-        tbl.insert_row(
-            vec![CellValue::Id(src), CellValue::Id(row_id_from(4, 8))],
-            row_id_from(1, 0),
-        );
-
-        let duplicate = vec![CellValue::Id(src), CellValue::Id(row_id_from(4, 9))];
-        assert_eq!(
-            tbl.validate_insert(&duplicate),
-            Err(ValidationError::DuplicatePrimaryKey)
-        );
-
-        let unseen_commit = vec![
-            CellValue::Id(row_id_from(9, 7)),
-            CellValue::Id(row_id_from(4, 8)),
-        ];
-        assert!(tbl.validate_insert(&unseen_commit).is_ok());
-    }
-
-    fn int_schema(columns: &[&str], primary_key: Option<&[&str]>) -> ir::Schema {
-        ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: columns
-                .iter()
-                .map(|name| ir::ColumnEntry {
-                    path: Path::from(*name),
-                    col_type: ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinInt,
-                    },
-                })
-                .collect(),
-            primary_key: primary_key.map(|pk| pk.iter().map(|name| Path::from(*name)).collect()),
-        }
-    }
-
-    /// Multi-column primary keys reject a duplicate pair but accept rows
-    /// sharing only one key column, regardless of insert order.
-    #[test]
-    fn multi_column_primary_key_checks_all_columns() {
-        let schema = int_schema(&["c0", "c1", "c2"], Some(&["c0", "c1"]));
-        let mut tbl = TestTable::new(Path::from("pairs"), schema);
-
-        let rows = [(3, 1), (1, 2), (1, 1), (2, 1), (2, 2)];
-        for (i, (a, b)) in rows.into_iter().enumerate() {
-            let values = vec![CellValue::Int(a), CellValue::Int(b), CellValue::Int(0)];
-            tbl.validate_insert(&values).expect("unique pair");
-            tbl.insert_row(values, test_row_id(i as u32));
-        }
-
-        for (a, b) in rows {
-            let dup = vec![CellValue::Int(a), CellValue::Int(b), CellValue::Int(9)];
-            assert_eq!(
-                tbl.validate_insert(&dup),
-                Err(ValidationError::DuplicatePrimaryKey)
-            );
-        }
-        let fresh = vec![CellValue::Int(3), CellValue::Int(2), CellValue::Int(0)];
-        assert!(tbl.validate_insert(&fresh).is_ok());
-    }
-
-    /// String primary keys go through the sorted index as well.
-    #[test]
-    fn string_primary_key_detects_duplicates() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![ir::ColumnEntry {
-                path: Path::from("name"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinStr,
-                },
-            }],
-            primary_key: Some(vec![Path::from("name")]),
-        };
-        let mut tbl = TestTable::new(Path::from("named"), schema);
-
-        for (i, name) in ["b", "a", "c"].into_iter().enumerate() {
-            let values = vec![CellValue::Str(name.to_string())];
-            tbl.validate_insert(&values).expect("unique name");
-            tbl.insert_row(values, test_row_id(i as u32));
-        }
-
-        assert_eq!(
-            tbl.validate_insert(&[CellValue::Str("a".to_string())]),
-            Err(ValidationError::DuplicatePrimaryKey)
-        );
-        assert!(
-            tbl.validate_insert(&[CellValue::Str("d".to_string())])
-                .is_ok()
-        );
-    }
-
-    /// Schemas are compiler-generated, so a primary key referencing an
-    /// unknown column is a bug and fails table construction.
-    #[test]
-    #[should_panic(expected = "schema pk spec is correct")]
-    fn invalid_primary_key_name_panics_at_construction() {
-        let schema = int_schema(&["c0"], Some(&["missing"]));
-        Table::new(Path::from("broken"), schema);
-    }
-
-    /// The primary key index follows `replace_row_id`, so duplicate
-    /// detection still works after a row changes its id.
-    #[test]
-    fn primary_key_index_follows_replace_row_id() {
-        let schema = int_schema(&["c0"], Some(&["c0"]));
-        let mut tbl = TestTable::new(Path::from("moving"), schema);
-
-        tbl.insert_row(vec![CellValue::Int(7)], row_id_from(1, 0));
-        tbl.insert_row(vec![CellValue::Int(8)], row_id_from(1, 1));
-        tbl.replace_row_id(&row_id_from(1, 0), row_id_from(2, 3));
-
-        assert_eq!(
-            tbl.validate_insert(&[CellValue::Int(7)]),
-            Err(ValidationError::DuplicatePrimaryKey)
-        );
-        assert_eq!(
-            tbl.validate_insert(&[CellValue::Int(8)]),
-            Err(ValidationError::DuplicatePrimaryKey)
-        );
-        assert!(tbl.validate_insert(&[CellValue::Int(9)]).is_ok());
-    }
-
-    /// `rewrite_row_cells` replaces cells in place: the row keeps its id and
-    /// position, and secondary indexes follow the new values.
-    #[test]
-    fn rewrite_row_cells_updates_cells_and_indexes() {
-        let schema = int_schema(&["c0"], Some(&["c0"]));
-        let mut tbl = TestTable::new(Path::from("rewritten"), schema);
-
-        tbl.insert_row(vec![CellValue::Int(7)], row_id_from(1, 0));
-        tbl.insert_row(vec![CellValue::Int(8)], row_id_from(1, 1));
-
-        tbl.rewrite_row_cells(&row_id_from(1, 0), vec![PackedCell::Int(9)]);
-
-        // Same row id and position, new cell value.
-        assert_eq!(tbl.row_position(row_id_from(1, 0)), Some(0));
-        assert_eq!(tbl.cell_at(0, 0), Some(CellValue::Int(9)));
-
-        // The primary key index dropped the old key and holds the new one.
-        assert!(tbl.validate_insert(&[CellValue::Int(7)]).is_ok());
-        assert_eq!(
-            tbl.validate_insert(&[CellValue::Int(9)]),
-            Err(ValidationError::DuplicatePrimaryKey)
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "row id should exist, otherwise rowing is wrong")]
-    fn rewrite_row_cells_panics_when_row_is_missing() {
-        let schema = int_schema(&["c0"], Some(&["c0"]));
-        let mut tbl = TestTable::new(Path::from("rewritten"), schema);
-        tbl.rewrite_row_cells(&row_id_from(9, 0), vec![PackedCell::Int(1)]);
-    }
-
-    /// Manual benchmark for the primary key duplicate check on insert.
-    /// Run with:
-    /// cargo test -p coln-store --release pk_insert_benchmark -- --ignored --nocapture
-    #[test]
-    #[ignore = "manual benchmark"]
-    fn pk_insert_benchmark() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![ir::ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: Some(vec![Path::from("c0")]),
-        };
-        let mut tbl = TestTable::new(Path::from("bench"), schema);
-        let n = 50_000;
-        let start = std::time::Instant::now();
-        for i in 0..n {
-            let values = vec![CellValue::Int(i)];
-            tbl.validate_insert(&values).expect("keys are unique");
-            tbl.insert_row(values, test_row_id(i as u32));
-        }
-        println!("inserted {n} rows with pk check in {:?}", start.elapsed());
-    }
-
-    /// Creates a table with an index, and does an indexed lookup as well
-    /// a non-indexed lookup and both should work.
-    #[test]
-    fn table_performs_index_lookup() {
-        let schema = int_schema(&["indexed", "plain"], Some(&["indexed"]));
-        let mut tbl = TestTable::new(Path::from("lookup"), schema);
-        tbl.insert_row(vec![CellValue::Int(7), CellValue::Int(70)], test_row_id(0));
-        tbl.insert_row(vec![CellValue::Int(8), CellValue::Int(80)], test_row_id(1));
-
-        let index = tbl.table.primary_index().expect("primary-key index");
-        assert_eq!(
-            tbl.table
-                .index_lookup(index, &[CellValue::Int(7)], &tbl.dict),
-            Ok(true)
-        );
-        assert_eq!(
-            tbl.table
-                .index_lookup(index, &[CellValue::Int(9)], &tbl.dict),
-            Ok(false)
-        );
-        assert_eq!(
-            tbl.table.lookup(
-                &[SeekKey {
-                    column: 1,
-                    value: CellValue::Int(80),
-                }],
-                &tbl.dict,
-            ),
-            Ok(true)
-        );
-        assert_eq!(
-            tbl.table.lookup(
-                &[SeekKey {
-                    column: 1,
-                    value: CellValue::Int(90),
-                }],
-                &tbl.dict,
-            ),
-            Ok(false)
-        );
-    }
-
-    /// Creates a table with an index, but passes an index id that does not exist
-    /// which is then rejected by the table.
-    #[test]
-    fn table_index_lookup_non_existing_index() {
-        let schema = int_schema(&["indexed"], Some(&["indexed"]));
-        let tbl = TestTable::new(Path::from("lookup"), schema);
-
-        assert_eq!(
-            tbl.table.index_lookup(99, &[CellValue::Int(7)], &tbl.dict),
-            Err(ValidationError::InvalidIndex { index: 99 })
-        );
-    }
-
-    /// Creates a table with an index, but gives a key that does not match the
-    /// index shape, which should be rejected as an error.
-    #[test]
-    fn table_index_lookup_incorrect_key() {
-        let schema = int_schema(&["indexed", "plain"], Some(&["indexed"]));
-        let tbl = TestTable::new(Path::from("lookup"), schema);
-        let index = tbl.table.primary_index().expect("primary-key index");
-
-        assert_eq!(
-            tbl.table
-                .index_lookup(index, &[CellValue::Int(7), CellValue::Int(8)], &tbl.dict,),
-            Err(ValidationError::InvalidIndexKey {
-                index,
-                expected: 1,
-                got: 2,
-            })
-        );
-    }
-
-    /// Creates a table with index, and requests a index lookup. Also do a
-    /// non-index lookup on a different column but looks for the same row(s)
-    /// Indexed and non-index lookup should return the same results (positive and
-    /// negative)
-    #[test]
-    fn table_index_non_index_give_same_results() {
-        let schema = int_schema(&["indexed", "plain"], Some(&["indexed"]));
-        let mut tbl = TestTable::new(Path::from("lookup"), schema);
-        for value in [7, 8, 7] {
-            let row_id = test_row_id(tbl.row_count() as u32);
-            tbl.insert_row(vec![CellValue::Int(value), CellValue::Int(value)], row_id);
-        }
-        let index = tbl.table.primary_index().expect("primary-key index");
-
-        for value in [7, 9] {
-            let indexed = tbl
-                .table
-                .index_seek(index, &[CellValue::Int(value)], &tbl.dict)
-                .expect("valid index lookup")
-                .collect::<Vec<_>>();
-            let scanned = tbl
-                .table
-                .seek(
-                    &[SeekKey {
-                        column: 1,
-                        value: CellValue::Int(value),
-                    }],
-                    &tbl.dict,
-                )
-                .expect("valid table scan")
-                .collect::<Vec<_>>();
-            assert_eq!(indexed, scanned);
-        }
-    }
-
-    #[test]
-    fn debug_dumps_rows() {
-        let schema = ir::Schema {
-            entity_variant: ir::EntityVariant::Table,
-            columns: vec![
-                ir::ColumnEntry {
-                    path: Path::from("c0"),
-                    col_type: ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinInt,
-                    },
-                },
-                ir::ColumnEntry {
-                    path: Path::from("c1"),
-                    col_type: ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinStr,
-                    },
-                },
-            ],
-            primary_key: None,
-        };
-        let mut tbl = TestTable::new(Path::from("debug.table"), schema);
-
-        tbl.insert_row(
-            vec![CellValue::Int(7), CellValue::Str("x".to_string())],
-            test_row_id(0),
-        );
-        tbl.insert_row(
-            vec![CellValue::Int(8), CellValue::Str("y".to_string())],
-            test_row_id(1),
-        );
-
-        assert_eq!(
-            tbl.dump(),
-            format!(
-                concat!(
-                    "table debug.table (rows: 2, cols: 2)\n",
-                    "[0] row_id={} | c0=7 | c1=\"x\"\n",
-                    "[1] row_id={} | c0=8 | c1=\"y\"\n",
-                ),
-                test_row_id(0),
-                test_row_id(1),
-            )
-        );
-    }
-}
+mod tests;

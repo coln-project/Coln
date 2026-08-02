@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+pub mod error;
+
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use tracing::{debug, info};
@@ -15,7 +17,7 @@ use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::id_packer::{IdPacker, IdPackerSnapshot};
 use crate::ir::{self, FlatRealm, RuleEntry};
 use crate::rollback::Rollback;
-use crate::rowing;
+use crate::rowing::{self, RowingSnapshot};
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
@@ -25,11 +27,6 @@ use crate::table::{
 };
 use crate::txn::{OwnedTransaction, Transaction};
 use crate::{op::Op, txn::RowHandle};
-
-pub mod error;
-
-#[cfg(test)]
-mod tests;
 
 #[derive(Debug)]
 pub struct Store {
@@ -42,13 +39,13 @@ pub struct Store {
     /// Compiled rule for this instance; table schemas live only on each [`Table`].
     rules: Vec<CompRule>,
     commits: CommitGraph,
-    // rowing: rowing::Rowing,
+    rowing: rowing::Rowing,
 }
 
 pub(crate) struct StoreSnapshot {
     tables: Vec<(TableOid, TableSnapshot)>,
     id_packer: IdPackerSnapshot,
-    // rowing: RowingSnapshot
+    rowing: RowingSnapshot,
 }
 
 impl Rollback for Store {
@@ -61,11 +58,20 @@ impl Rollback for Store {
             .map(|(&oid, table)| (oid, table.snapshot()))
             .collect();
         let id_packer = self.id_packer.snapshot();
-        StoreSnapshot { tables, id_packer }
+        let rowing = self.rowing.snapshot();
+        StoreSnapshot {
+            tables,
+            id_packer,
+            rowing,
+        }
     }
 
     fn commit_snapshot(&mut self, snapshot: Self::Snapshot) {
-        let StoreSnapshot { tables, id_packer } = snapshot;
+        let StoreSnapshot {
+            tables,
+            id_packer,
+            rowing,
+        } = snapshot;
         for (oid, snapshot) in tables {
             self.tables
                 .get_mut(&oid)
@@ -73,10 +79,15 @@ impl Rollback for Store {
                 .commit_snapshot(snapshot);
         }
         self.id_packer.commit_snapshot(id_packer);
+        self.rowing.commit_snapshot(rowing);
     }
 
     fn rollback(&mut self, snapshot: Self::Snapshot) {
-        let StoreSnapshot { tables, id_packer } = snapshot;
+        let StoreSnapshot {
+            tables,
+            id_packer,
+            rowing,
+        } = snapshot;
         for (oid, snapshot) in tables {
             self.tables
                 .get_mut(&oid)
@@ -84,6 +95,7 @@ impl Rollback for Store {
                 .rollback(snapshot);
         }
         self.id_packer.rollback(id_packer);
+        self.rowing.rollback(rowing);
     }
 }
 
@@ -100,7 +112,7 @@ impl Store {
             rule_entries: vec![],
             rules: vec![],
             commits,
-            // rowing: rowing::Rowing::new(),
+            rowing: rowing::Rowing::new(),
         }
     }
 
@@ -138,16 +150,6 @@ impl Store {
         &self.rules
     }
 
-    // TODO remove this when we have schema level hashcons
-    #[cfg(test)]
-    pub(crate) fn set_hashcons_for_test(&mut self, path: &ir::Path, hashcons: bool) {
-        let oid = self.resolve_table(path).expect("table exists");
-        self.tables
-            .get_mut(&oid)
-            .expect("resolved tables are registered")
-            .set_hashcons_for_test(hashcons);
-    }
-
     pub fn table_count(&self) -> usize {
         self.tables.len()
     }
@@ -160,17 +162,19 @@ impl Store {
         self.table_at(table_path).map(|table| table.table_scan())
     }
 
-    // pub(crate) fn canonical_row_id(&self, row_id: RowId) -> RowId {
-    //     self.rowing.canonical(row_id, &self.id_packer)
-    // }
+    pub(crate) fn canonical_row_id(&self, row_id: RowId) -> Option<RowId> {
+        let packed = self.id_packer.lookup_row_id(row_id)?;
+        let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
+        Some(self.id_packer.unpack_row_id(canonical))
+    }
 
     pub fn row_by_handle(&self, table: &ir::Path, row_handle: RowHandle) -> Option<RowView> {
         let row_id = row_handle.row_id().ok()?;
-        // let con_rowid = self.canonical_row_id(row_id);
+        let con_rowid = self.canonical_row_id(row_id)?;
         // replace the rowid in the row_handle so it stays canonical
-        // if row_id != con_rowid {
-        //     row_handle.canonicalise(con_rowid).ok()?
-        // }
+        if row_id != con_rowid {
+            row_handle.canonicalise(con_rowid).ok()?
+        }
         self.row_by_id(table, row_id)
     }
 
@@ -178,20 +182,9 @@ impl Store {
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
     pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
-        // let row_id = self.canonical_row_id(row_id);
+        let row_id = self.canonical_row_id(row_id)?;
         self.table_at(table)
             .and_then(|table| table.row_at(table.row_position(row_id)?))
-    }
-
-    /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
-    /// separated by a blank line.
-    pub fn dump(&self) -> String {
-        let mut oids: Vec<TableOid> = self.tables.keys().copied().collect();
-        oids.sort_unstable();
-        oids.into_iter()
-            .map(|oid| self.tables[&oid].dump(&self.id_packer))
-            .collect::<Vec<_>>()
-            .join("\n\n")
     }
 }
 
@@ -210,7 +203,7 @@ impl Store {
         for entry in root.tables {
             let path = ir::Path::from(entry.path.as_str());
             path_to_oid.insert(path.clone(), entry.oid);
-            tables_map.insert(entry.oid, Table::new(path, entry.schema));
+            tables_map.insert(entry.oid, Table::new(path, entry.oid, entry.schema));
         }
 
         let rules = Store::compile_rules(&root.laws)?;
@@ -222,7 +215,7 @@ impl Store {
             rule_entries: root.laws,
             rules,
             commits: CommitGraph::new(),
-            // rowing: rowing::Rowing::new(),
+            rowing: rowing::Rowing::new(),
         })
     }
 
@@ -260,7 +253,7 @@ impl Store {
         let oid = self.next_oid;
         self.next_oid = self.next_oid.saturating_add(1);
         self.path_to_oid.insert(path.clone(), oid);
-        self.tables.insert(oid, Table::new(path, schema));
+        self.tables.insert(oid, Table::new(path, oid, schema));
         self.commits = Self::root_commit_graph(&self.tables, &self.rule_entries)?;
         Ok(oid)
     }
@@ -291,7 +284,7 @@ impl Store {
             let oid = next_oid;
             next_oid = next_oid.saturating_add(1);
             path_to_oid.insert(entry.path.clone(), oid);
-            tables_map.insert(oid, Table::new(entry.path, entry.table));
+            tables_map.insert(oid, Table::new(entry.path, oid, entry.table));
         }
 
         let comp_rules = Store::compile_rules(&rules)?;
@@ -309,7 +302,7 @@ impl Store {
             rule_entries: rules,
             rules: comp_rules,
             commits,
-            // rowing: rowing::Rowing::new(),
+            rowing: rowing::Rowing::new(),
         })
     }
 }
@@ -407,6 +400,7 @@ impl Store {
     }
 
     pub fn apply_commit(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
+        // This needs to call apply_commits because it needs to do dependency check
         self.apply_commits([commit])
     }
 
@@ -475,15 +469,8 @@ impl Store {
             let commit = pending
                 .remove(&hash)
                 .ok_or(CommitApplyError::MissingCommit)?;
-            let snapshot = self.snapshot();
-            match self.apply_commit_ready(commit) {
-                Ok(()) => self.commit_snapshot(snapshot),
-                Err(e) => {
-                    self.rollback(snapshot);
-                    return Err(e);
-                }
-            }
 
+            self.apply_commit_atomic(commit)?;
             if let Some(waitings) = waiting_on.remove(&hash) {
                 for wh in waitings {
                     let count = unsatisfied
@@ -506,9 +493,62 @@ impl Store {
         Ok(())
     }
 
+    fn apply_commit_atomic(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
+        let snapshot = self.snapshot();
+        match self.apply_atomic_inner(commit) {
+            Ok(()) => {
+                self.commit_snapshot(snapshot);
+                Ok(())
+            }
+            Err(e) => {
+                self.rollback(snapshot);
+                Err(e)
+            }
+        }
+    }
+
+    // Apply a commit + and fixpoint rebuilding + rule checking
+    // This function is doing the actual work, after a dozen levels of indirection.
+    fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
+        let unions_before = self.rowing.uf_len();
+        let commit = self.apply_commit_ready(commit)?;
+        self.rebuild_to_fixpoint(unions_before)?;
+        self.check_rules()?;
+        self.record_in_commit_graph(commit);
+        Ok(())
+    }
+
+    /// Rebuild until a pass produces no new unions. `unions_before` is the
+    /// count from before the commit was applied, so a commit that merged
+    /// nothing does no rebuild work at all.
+    fn rebuild_to_fixpoint(&mut self, unions_before: usize) -> Result<(), StoreIntError> {
+        let mut unions = unions_before;
+        loop {
+            let observed = self.rowing.uf_len();
+            if observed == unions {
+                return Ok(());
+            }
+            self.rebuild_one()?;
+            unions = observed;
+        }
+    }
+
+    fn rebuild_one(&mut self) -> Result<(), StoreIntError> {
+        for tbl in self.tables.values_mut() {
+            tbl.rebuild(&self.rowing, &self.id_packer);
+        }
+
+        let affected: Vec<TableOid> = self.tables.keys().copied().collect();
+        self.apply_staged_ops(&affected)?;
+        Ok(())
+    }
+
     // Apply a commit with its deps checked to be satisfied
-    // The commit data itself might still be wrong though
-    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<(), StoreIntError> {
+    // The commit data itself might still violate rules, primary key constraints, etc
+    fn apply_commit_ready(
+        &mut self,
+        cmt: Commit<'static>,
+    ) -> Result<Commit<'static>, StoreIntError> {
         // TODO resolved_ops need to decode data, there is code path which decodes
         // to get ops immediately after a commit has been encoded. Consider optimise this.
 
@@ -518,59 +558,23 @@ impl Store {
         // materialise up to one particular commit, if violations are caused by
         // concurrent commits, then this would be resolved at merge time, not when
         // applying one of the concurrent commits.
-        // TODO currently we just reject the commit if it has a primary key conflict
-        // we should allow such data because they might be concurrent commits
 
         let PrecheckedCommit { ops, original } = self.precheck_commit(cmt)?;
-        self.apply_commit_ops(ops);
-        self.check_rules()?;
-        self.record_in_commit_graph(original);
-        Ok(())
+        self.apply_commit_ops(ops)?;
+        Ok(original)
     }
 
     /// Applying the data, assuming that it has passed the format checker, i.e.
     /// the data conforms the the schema type definitions.
     /// But it might not follow all the rule definitions, it might also violate
     /// primary key constraints after hashconsing
-    fn apply_commit_ops(&mut self, ops: Vec<Op>) {
+    fn apply_commit_ops(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
         let op_count = ops.len();
         let affected = self.stage_commit_ops(ops);
-        self.apply_staged_ops(&affected);
-
-        // TODO: non-hashcons rows pay by_row and union-find bookkeeping on
-        // every insert; this is only needed for rows that a hashcons table
-        // can reference or that reference a hashcons table themselves.
-        // let rowing::Observed { outcome, fixups } =
-        //     self.rowing
-        //         .observe(oid, &self.tables, &mut self.id_packer, row_id, &values);
-
-        // TODO do batch insert
-        // match outcome {
-        //     // Insert the values as canonicalized by rowing, so id cells
-        //     // always name a stored, canonical row.
-        //     rowing::ObservedOutcome::Inserted { rid, values } => {
-        //         t.insert_row(values, rid, &mut self.id_packer)
-        //     }
-        //     rowing::ObservedOutcome::KeptOld(_row_id) => {
-        //         // equivalent row exists, do nothing
-        //     }
-
-        //     rowing::ObservedOutcome::Swap { old, new } => {
-        //         t.replace_row_id(&old, new, &mut self.id_packer);
-        //     }
-        // }
-
-        // A canonical id change leaves stale id cells in rows that
-        // reference the merged class; rewrite them now.
-        // for fixup in fixups {
-        //     let t = self
-        //         .tables
-        //         .get_mut(&fixup.table)
-        //         .expect("fixups target observed tables");
-        //     t.rewrite_row_cells(&fixup.row, fixup.values, &mut self.id_packer);
-        // }
+        self.apply_staged_ops(&affected)?;
 
         info!(op_count, "applied batch");
+        Ok(())
     }
 
     // Stage all the commit ops into the table's pending state.
@@ -582,19 +586,21 @@ impl Store {
             self.tables
                 .get_mut(&oid)
                 .expect("validated batch")
-                .stage(op);
+                .stage_update(op);
             affected.insert(oid);
         }
         affected.into_iter().collect()
     }
 
-    fn apply_staged_ops(&mut self, tables: &[TableOid]) {
+    fn apply_staged_ops(&mut self, tables: &[TableOid]) -> Result<(), StoreIntError> {
         for oid in tables {
             self.tables
                 .get_mut(oid)
                 .expect("staged table exists")
-                .apply_staged_ops();
+                .apply_staged_ops(&mut self.rowing)?;
         }
+        self.rowing.apply_unions(&self.id_packer);
+        Ok(())
     }
 
     // We do as much check as possible without making changes to the tables
@@ -617,7 +623,7 @@ impl Store {
             let Op::Add { table, values, .. } = op;
             // Check ops have the right table path
             let oid = self
-                .resolve_table(&table)
+                .resolve_table(table)
                 .ok_or_else(|| ValidationError::UnknownTable {
                     path: table.clone(),
                 })?;
@@ -626,10 +632,10 @@ impl Store {
                 .ok_or_else(|| ValidationError::UnknownTable {
                     path: table.clone(),
                 })?;
-            t.validate_insert(&values)?;
+            t.validate_insert(values)?;
 
             // Check primary key conflicts within ops batch
-            if let Some(key) = t.primary_key_values(&values) {
+            if let Some(key) = t.primary_key_values(values) {
                 let keys = pending_pk.entry(oid).or_default();
                 if keys.iter().any(|k| k == &key) {
                     return Err(ValidationError::DuplicatePrimaryKey.into());
@@ -690,8 +696,41 @@ impl Store {
     }
 }
 
+impl Store {
+    /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
+    /// separated by a blank line.
+    pub fn dump(&self) -> String {
+        let mut oids: Vec<TableOid> = self.tables.keys().copied().collect();
+        oids.sort_unstable();
+        oids.into_iter()
+            .map(|oid| self.tables[&oid].dump(&self.id_packer))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    #[cfg(test)]
+    fn apply_ops_and_rebuild(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
+        let unions_before = self.rowing.uf_len();
+        self.apply_commit_ops(ops)?;
+        self.rebuild_to_fixpoint(unions_before)
+    }
+
+    // TODO remove this when we have schema level hashcons
+    #[cfg(test)]
+    pub(crate) fn set_hashcons_for_test(&mut self, path: &ir::Path, hashcons: bool) {
+        let oid = self.resolve_table(path).expect("table exists");
+        self.tables
+            .get_mut(&oid)
+            .expect("resolved tables are registered")
+            .set_hashcons_for_test(hashcons);
+    }
+}
+
 impl Default for Store {
     fn default() -> Self {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests;

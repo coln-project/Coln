@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+mod sql;
+
 use std::{
     collections::HashMap,
     fs,
@@ -22,8 +24,6 @@ use crate::{
     table::{RowId, TableRef},
     txn::{TempRowId, TxnCellValue},
 };
-
-mod sql;
 
 fn help_text(mode: ShellMode) -> String {
     let mut lines = vec![

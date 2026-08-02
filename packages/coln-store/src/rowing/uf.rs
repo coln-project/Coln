@@ -1,12 +1,6 @@
-use ena::{
-    snapshot_vec::Snapshot,
-    unify::{InPlaceUnificationTable, UnifyKey, UnifyValue},
-};
+use ena::unify::{InPlaceUnificationTable, UnifyKey, UnifyValue};
 
-use crate::{
-    commit::hash_dict::HashMapper,
-    table::{PackedRowId, RowId},
-};
+use crate::table::RowId;
 
 pub(super) type UnionFind = InPlaceUnificationTable<NodeId>;
 
@@ -17,15 +11,15 @@ impl UnifyKey for NodeId {
     type Value = RowId;
 
     fn index(&self) -> u32 {
-        todo!()
+        self.0
     }
 
     fn from_index(u: u32) -> Self {
-        todo!()
+        Self(u)
     }
 
     fn tag() -> &'static str {
-        todo!()
+        "rowing"
     }
 }
 
@@ -33,6 +27,6 @@ impl UnifyValue for RowId {
     type Error = ena::unify::NoError;
 
     fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
-        todo!()
+        Ok((*value1).min(*value2))
     }
 }

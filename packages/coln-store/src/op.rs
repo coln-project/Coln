@@ -16,7 +16,10 @@ pub enum Op {
         table: ir::Path, // using path so it's stable across replicas
         values: Vec<CellValue>,
     },
-    // TODO Delete + Update
+    // Delete {
+    //     row_id: RowId,
+    //     table: ir::Path,
+    // }, // TODO Delete + Update
 }
 
 impl Op {
