@@ -6,10 +6,6 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
     agenix.url = "github:ryantm/agenix";
-    disko = {
-      url = "github:nix-community/disko";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
   outputs =
     inputs@{
