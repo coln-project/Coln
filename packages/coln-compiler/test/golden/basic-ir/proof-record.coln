@@ -4,7 +4,7 @@ end
 
 theory T := sig
   X : Set
-  witness : (x : X) -> Witness X x
+  witness : (^c x : X) -> Witness X x
 end
 
 realm TRealm @ T

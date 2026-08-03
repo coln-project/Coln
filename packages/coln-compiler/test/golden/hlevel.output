@@ -1,5 +1,6 @@
 -- elaborated
 global entry named Family
+in mode: Conjunctive
 type: Theory
 value: sig
   person : Set
@@ -7,12 +8,14 @@ value: sig
   happy : Prop
 end
 global entry named Q
+in mode: Conjunctive
 type: (F : Family) -> Theory
 value: F => sig
   son : F.person
   father : F.person
 end
 global entry named HP
+in mode: Conjunctive
 type: Theory
 value: sig
   person : Set
@@ -21,10 +24,12 @@ value: sig
   reveal : voldemort = tomriddle
 end
 global entry named Unit
+in mode: Conjunctive
 type: Prop
 value: sig
 end
 global entry named P
+in mode: Conjunctive
 type: Theory
 value: sig
   u : Unit

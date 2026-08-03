@@ -71,7 +71,7 @@ layout p sc a
         let a = V.EltOf (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
         (gt, M.code (M.fromVTy sc.len a))
       V.NoRules -> panic "cannot layout type with no rules"
-      V.LikeBuiltinTy _; V.LikeU _ -> panic "non-theory type"
+      V.LikeBuiltinTy _; V.LikeU _; V.LikeInductive _ -> panic "non-theory type"
   | (levelOf a).mlevel == Set = do
       let gt = Leaf (Fun (toList sc.names) (toList sc.ctx) (readb sc.len a))
       let v = V.tableLookup (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound)) a

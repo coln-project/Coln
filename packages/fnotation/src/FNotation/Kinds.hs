@@ -24,6 +24,7 @@ data Kind
   | Field
   | -- | No-space field, like the `x` in `f.x`
     FieldImmediate
+  | Mode
   | Int
   | String
   | LParen

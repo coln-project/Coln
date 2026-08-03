@@ -23,6 +23,7 @@ data El :: Case -> Type where
   App :: El N -> El N -> El N
   Cons :: Dict (El c) -> El c
   Proj :: El N -> Name -> El N
+  Init :: Ty N -> El D
   Lit :: Literal -> El N
   Is :: El N -> El D
   Lookup :: TableName -> Dict (El N) -> Ty N -> El N
@@ -58,5 +59,6 @@ data TypeBehavior
   = LikeU Universe
   | LikeFunction (FunctionType Ty)
   | LikeRecord (RecordType Ty)
+  | LikeInductive (El N)
   | LikeBuiltinTy BuiltinTy
   | NoRules

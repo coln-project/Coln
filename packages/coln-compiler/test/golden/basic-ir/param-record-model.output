@@ -1,21 +1,25 @@
 -- elaborated
 global entry named Model
+in mode: Conjunctive
 type: Theory
 value: sig
   X : Set
 end
 global entry named Payload
+in mode: Conjunctive
 type: Set
 value: sig
   name : String
 end
 global entry named Box
+in mode: Conjunctive
 type: (M : Model) -> (Y : Set) -> Set
 value: M => Y => sig
   modelValue : M.X
   value : Y
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   model : Model

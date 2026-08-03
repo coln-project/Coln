@@ -37,6 +37,7 @@ data NtnGeneric a
   | Keyword Name a
   | Field Name a
   | Tag Name a
+  | Mode Name a
   | Int Int a
   | String Text a
   | Error a
@@ -68,6 +69,7 @@ startPos (Ident _ s) = s.start
 startPos (Keyword _ s) = s.start
 startPos (Field _ s) = s.start
 startPos (Tag _ s) = s.start
+startPos (Mode _ s) = s.start
 startPos (Int _ s) = s.start
 startPos (String _ s) = s.start
 startPos (Tuple _ s) = s.start
@@ -82,6 +84,7 @@ endPos (Ident _ s) = s.end
 endPos (Keyword _ s) = s.end
 endPos (Field _ s) = s.end
 endPos (Tag _ s) = s.end
+endPos (Mode _ s) = s.end
 endPos (Int _ s) = s.end
 endPos (String _ s) = s.end
 endPos (Tuple _ s) = s.end
@@ -102,6 +105,7 @@ head (Ident x _) = "Ident" <+> dpretty x
 head (Keyword x _) = "Keyword" <+> dpretty x
 head (Field x _) = "Field" <+> dpretty x
 head (Tag x _) = "Tag" <+> dpretty x
+head (Mode x _) = "Mode" <+> dpretty x
 head (Int i _) = "Int" <+> pretty i
 head (String s _) = "String" <+> pretty s
 head (Tuple _ _) = "Tuple"
@@ -116,6 +120,7 @@ children (Ident _ _) = []
 children (Keyword _ _) = []
 children (Field _ _) = []
 children (Tag _ _) = []
+children (Mode _ _) = []
 children (Int _ _) = []
 children (String _ _) = []
 children (Tuple ns _) = ns

@@ -22,6 +22,7 @@ lexConfig =
     , ("showtype", K.Decl)
     , ("showlevel", K.Decl)
     , ("expand", K.Decl)
+    , ("ind", K.Modifier)
     , ("end", K.End)
     , ("Set", K.AKeyword)
     , ("Prop", K.AKeyword)

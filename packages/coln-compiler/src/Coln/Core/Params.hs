@@ -109,7 +109,11 @@ functionMLevelFor v1 v2 = case (v1, v2) of
   (Theory, _) -> pure TheoryTop
   (Top, _) -> Nothing
 
-data FunctionVariant = FunctionVariant {mlevel :: FunctionVariantMLevel, hlevel :: HLevel}
+data FunctionVariant = FunctionVariant
+  { mlevel :: FunctionVariantMLevel
+  , hlevel :: HLevel
+  , domainMode :: Mode
+  }
   deriving (Eq, Show)
 
 instance Pretty FunctionVariant where
@@ -183,3 +187,12 @@ data TableName = TableName {realm :: RealmId, path :: Path}
 
 instance DPretty TableName where
   dpretty tn = concatWith (surround dot) (dpretty <$> toList tn.path)
+
+-- Mode
+--------------------------------------------------------------------------------
+
+data Mode = Inductive | Conjunctive
+  deriving (Show, Eq, Ord)
+
+instance DPretty Mode where
+  dpretty = pretty . show

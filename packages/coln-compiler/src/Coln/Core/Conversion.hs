@@ -62,6 +62,9 @@ instance DefEq (V.Ty N) where
     V.Decode n -> case a' of
       V.Decode n' -> defEq cs n n'
       _ -> throwUnequalTys cs a a' Nothing
+    V.InitDecode n -> case a' of
+      V.InitDecode n' -> defEq cs n n'
+      _ -> throwUnequalTys cs a a' Nothing
     V.Function f -> case a' of
       V.Function f' -> do
         unless (f.variant == f'.variant) $
@@ -123,6 +126,9 @@ instance DefEq V.DecodedNeutral where
 instance DefEq V.Neutral where
   defEq cs n n' = defEq cs (V.toBare n) (V.toBare n')
 
+instance DefEq V.InitNeutral where
+  defEq cs n n' = defEq cs (V.fullNeu n) (V.fullNeu n')
+
 canon :: V.El N -> V.El N
 canon v@(V.Neu n) = case V.behavior n.ty of
   V.LikeRecord _ -> V.Cons (V.unwrap n.expansion)
@@ -136,6 +142,9 @@ instance DefEq (V.El N) where
   defEq cs v v' = case canon v of
     V.Neu n -> case canon v' of
       V.Neu n' -> defEq cs n n'
+      _ -> throwUnequalEls cs v v' Nothing
+    V.InitNeu n -> case canon v' of
+      V.InitNeu n' -> defEq cs n n'
       _ -> throwUnequalEls cs v v' Nothing
     V.Code a -> case canon v' of
       V.Code a' -> defEq cs a a'

@@ -1,11 +1,13 @@
 -- elaborated
 global entry named Payload
+in mode: Conjunctive
 type: Set
 value: sig
   name : String
   rank : Int
 end
 global entry named T
+in mode: Conjunctive
 type: Theory
 value: sig
   X : Set
