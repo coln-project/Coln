@@ -102,10 +102,10 @@ impl TxnInner {
     /// Finalize handles to the id the store actually kept: a row that was
     /// deduplicated against an existing class finalizes to that class's
     /// canonical id, not to the never-stored raw id.
-    fn finalize_handles(pending_handles: Vec<RowHandle>, h: CommitHash) {
-        pending_handles
-            .into_iter()
-            .for_each(|handle| handle.finalize(h, |rid| rid));
+    fn finalize_handles(pending_handles: Vec<RowHandle>, h: CommitHash, store: &Store) {
+        pending_handles.into_iter().for_each(|handle| {
+            handle.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
+        });
     }
 
     pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreIntError> {
@@ -134,8 +134,7 @@ impl TxnInner {
         let h = cmt.hash();
         match store.apply_commit(cmt) {
             Ok(()) => {
-                Self::finalize_handles(pending_handles, h);
-                info!("applied batch");
+                Self::finalize_handles(pending_handles, h, store);
                 Ok(h)
             }
             Err(err) => {

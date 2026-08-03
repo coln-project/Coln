@@ -273,7 +273,6 @@ mod tests {
     /// may still go stale when the second commit wins the merge; reading
     /// through `row_by_handle` resolves and repairs it.
     #[test]
-    #[ignore = "fails until rowing is implemented"]
     fn deduplicated_row_handle_finalizes_to_canonical_id() {
         let term = Path::from("Term");
         let mut store = Store::new();

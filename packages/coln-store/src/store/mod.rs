@@ -175,7 +175,7 @@ impl Store {
         if row_id != con_rowid {
             row_handle.canonicalise(con_rowid).ok()?
         }
-        self.row_by_id(table, row_id)
+        self.row_by_id(table, con_rowid)
     }
 
     // This function will canonicalise the row_id on read, but will not change it
@@ -510,27 +510,20 @@ impl Store {
     // Apply a commit + and fixpoint rebuilding + rule checking
     // This function is doing the actual work, after a dozen levels of indirection.
     fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
-        let unions_before = self.rowing.uf_len();
         let commit = self.apply_commit_ready(commit)?;
-        self.rebuild_to_fixpoint(unions_before)?;
+        self.rebuild_to_fixpoint()?;
         self.check_rules()?;
         self.record_in_commit_graph(commit);
         Ok(())
     }
 
-    /// Rebuild until a pass produces no new unions. `unions_before` is the
-    /// count from before the commit was applied, so a commit that merged
+    /// Rebuild until a pass displaces no further ids, so a commit that merged
     /// nothing does no rebuild work at all.
-    fn rebuild_to_fixpoint(&mut self, unions_before: usize) -> Result<(), StoreIntError> {
-        let mut unions = unions_before;
-        loop {
-            let observed = self.rowing.uf_len();
-            if observed == unions {
-                return Ok(());
-            }
+    fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreIntError> {
+        while self.rowing.has_displaced() {
             self.rebuild_one()?;
-            unions = observed;
         }
+        Ok(())
     }
 
     fn rebuild_one(&mut self) -> Result<(), StoreIntError> {
@@ -538,6 +531,8 @@ impl Store {
             tbl.rebuild(&self.rowing, &self.id_packer);
         }
 
+        // clear up the displaced table because the changes have all been staged.
+        self.rowing.clear_displaced();
         let affected: Vec<TableOid> = self.tables.keys().copied().collect();
         self.apply_staged_ops(&affected)?;
         Ok(())
@@ -710,9 +705,8 @@ impl Store {
 
     #[cfg(test)]
     fn apply_ops_and_rebuild(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
-        let unions_before = self.rowing.uf_len();
         self.apply_commit_ops(ops)?;
-        self.rebuild_to_fixpoint(unions_before)
+        self.rebuild_to_fixpoint()
     }
 
     // TODO remove this when we have schema level hashcons

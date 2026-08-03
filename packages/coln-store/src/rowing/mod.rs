@@ -44,6 +44,7 @@ impl Rollback for Rowing {
     type Snapshot = RowingSnapshot;
 
     fn snapshot(&mut self) -> Self::Snapshot {
+        // TODO all doing cloning. If conflicts are rare, this is probably fine.
         RowingSnapshot {
             uf_snapshot: self.uf.get_mut().snapshot(),
             keys: self.keys.clone(),
@@ -130,8 +131,14 @@ impl Rowing {
         self.displaced.iter().copied()
     }
 
-    pub(crate) fn uf_len(&self) -> usize {
-        self.displaced.len()
+    pub(crate) fn has_displaced(&self) -> bool {
+        !self.displaced.is_empty()
+    }
+
+    /// Drop the worklist once a rebuild pass has consumed it, so the next pass
+    /// only sees ids displaced by unions staged after this point.
+    pub(crate) fn clear_displaced(&mut self) {
+        self.displaced.clear();
     }
 }
 
@@ -201,6 +208,33 @@ mod tests {
 
         assert_eq!(rowing.canonical_id(&high, &packer), high);
         assert_eq!(rowing.canonical_id(&low, &packer), low);
-        assert_eq!(rowing.uf_len(), 0);
+        assert!(!rowing.has_displaced());
+    }
+
+    #[test]
+    fn clearing_displaced_keeps_canonical_ids_and_empties_the_worklist() {
+        let mut packer = IdPacker::new();
+        let first = packer.pack_row_id(row_id(1));
+        let second = packer.pack_row_id(row_id(2));
+        let third = packer.pack_row_id(row_id(3));
+        let fourth = packer.pack_row_id(row_id(4));
+        let mut rowing = Rowing::new();
+
+        rowing.stage_union(0, second, first);
+        rowing.stage_union(0, fourth, third);
+        rowing.apply_unions(&packer);
+        rowing.clear_displaced();
+
+        assert!(!rowing.has_displaced());
+        assert_eq!(rowing.canonical_id(&second, &packer), first);
+        assert_eq!(rowing.canonical_id(&fourth, &packer), third);
+
+        // Merging two classes that are both already known adds no union-find
+        // key, but it still displaces an id and so still needs a rebuild pass.
+        rowing.stage_union(0, third, first);
+        rowing.apply_unions(&packer);
+
+        assert_eq!(rowing.displaced().collect::<Vec<_>>(), [third]);
+        assert_eq!(rowing.canonical_id(&fourth, &packer), first);
     }
 }

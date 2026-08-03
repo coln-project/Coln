@@ -209,7 +209,6 @@ fn test_add_edge_referencing_vertices_from_previous_commit() {
 #[test]
 // Rejects a graph insert when the corresponding witness rows are missing and
 // confirms the failed batch leaves the store unchanged.
-#[ignore = "atomic not implemented"]
 fn test_missing_graph_witness_rejects_batch_without_mutation() {
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");
@@ -252,7 +251,6 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
 }
 
 #[test]
-#[ignore = "atomicity not implemented"]
 fn test_fk() {
     let theory = fixture_theory(PATHS_IR);
     let mut store = Store::try_from_theory(theory).expect("valid theory");

@@ -11,7 +11,7 @@ mod undo;
 pub use cell::{CellKind, CellValue, RowId};
 pub use table_ref::TableRef;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use crate::id_packer::IdPacker;
@@ -164,16 +164,18 @@ impl Table {
             }
         };
 
-        // TODO if hashcons, then create another index
+        // TODO if hashcons, then create another index.
         let hashcons_cols: Vec<usize> = (0..schema.columns.len()).collect();
         indexes.push(TableIndex::new(&hashcons_cols, &schema));
+        // let hashcons_index = Some(indexes.len() - 1);
+        let hashcons_index = None;
 
         Self {
             oid,
             path,
             col_name_map,
             schema,
-            hashcons_index: None,
+            hashcons_index,
             row_ids: IdColumn::new(),
             cols,
             indexes,
@@ -538,7 +540,9 @@ impl Table {
 impl Table {
     // Rebuilding
 
-    pub(crate) fn rebuild(&mut self, rowing: &Rowing, id_packer: &IdPacker) {
+    #[allow(unused)]
+    // Rebuild using rebuild_index
+    fn rebuild_incremental(&mut self, rowing: &Rowing, id_packer: &IdPacker) {
         for old in rowing.displaced() {
             // A row whose own id was displaced is rebuilt here, including any
             // stale ids in its cells. Referring-row handling below skips it.
@@ -589,6 +593,55 @@ impl Table {
                 });
             }
         }
+    }
+
+    fn rebuild_full(&mut self, rowing: &Rowing, id_packer: &IdPacker) {
+        let stale: HashSet<PackedRowId> = rowing.displaced().collect();
+
+        for row_idx in 0..self.row_count() {
+            let old_row_id = self.row_ids.at(row_idx);
+            let row_stale = stale.contains(&old_row_id);
+            let cells_stale = self.cols.iter().any(|column| match column {
+                Column::Id(ids) => stale.contains(&ids.at(row_idx)),
+                Column::Int(_) | Column::Str(_) => false,
+            });
+            if !row_stale && !cells_stale {
+                continue;
+            }
+
+            let new_row_id = rowing.canonical_id(&old_row_id, id_packer);
+            let old_cells: Vec<PackedCell> = self
+                .cols
+                .iter()
+                .map(|column| {
+                    column
+                        .get_packed(row_idx)
+                        .expect("all table columns have the same row count")
+                })
+                .collect();
+            let new_cells = Self::canonicalise_cells(&old_cells, rowing, id_packer);
+            let collapses = row_stale && self.row_ids.position(new_row_id).is_ok();
+
+            debug_assert!(
+                !collapses
+                    || self.packed_row_at(new_row_id).is_some_and(|stored| {
+                        Self::canonicalise_cells(&stored, rowing, id_packer) == new_cells
+                    }),
+                "collapsing {old_row_id:?} onto {new_row_id:?} would discard differing cells"
+            );
+
+            self.stage_update(PackedOp::Delete { row_id: old_row_id });
+            if !collapses {
+                self.stage_update(PackedOp::Add {
+                    row_id: new_row_id,
+                    values: new_cells,
+                });
+            }
+        }
+    }
+
+    pub(crate) fn rebuild(&mut self, rowing: &Rowing, id_packer: &IdPacker) {
+        self.rebuild_full(rowing, id_packer)
     }
 
     /// Rewrite every id cell to its canonical id, leaving other cells alone.
@@ -677,9 +730,10 @@ impl Table {
             let key = Self::project_index_key(index, &values);
             index.insert(key, row_id);
         }
-        for child in Self::referenced_ids(&values) {
-            self.rebuild_index.entry(child).or_default().push(row_id);
-        }
+        // TODO this should only be maintained when a table needs rebuild, i.e. a hahscons table.
+        // for child in Self::referenced_ids(&values) {
+        //     self.rebuild_index.entry(child).or_default().push(row_id);
+        // }
 
         let pos: usize = match self.row_ids.position(row_id) {
             Ok(pos) | Err(pos) => pos,
@@ -704,20 +758,20 @@ impl Table {
             let key = Self::project_index_key(index, &values);
             index.remove_rowid(&key, row_id);
         }
-        for child in Self::referenced_ids(&values) {
-            let referring = self
-                .rebuild_index
-                .get_mut(&child)
-                .expect("a stored row is recorded against every id it refers to");
-            let pos = referring
-                .iter()
-                .position(|rid| *rid == row_id)
-                .expect("a stored row is recorded against every id it refers to");
-            referring.swap_remove(pos);
-            if referring.is_empty() {
-                self.rebuild_index.remove(&child);
-            }
-        }
+        // for child in Self::referenced_ids(&values) {
+        //     let referring = self
+        //         .rebuild_index
+        //         .get_mut(&child)
+        //         .expect("a stored row is recorded against every id it refers to");
+        //     let pos = referring
+        //         .iter()
+        //         .position(|rid| *rid == row_id)
+        //         .expect("a stored row is recorded against every id it refers to");
+        //     referring.swap_remove(pos);
+        //     if referring.is_empty() {
+        //         self.rebuild_index.remove(&child);
+        //     }
+        // }
         self.row_ids.remove(row_idx);
         for column in &mut self.cols {
             column.remove(row_idx);

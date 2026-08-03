@@ -51,6 +51,13 @@ impl TestTable {
         }
     }
 
+    /// A table that unions structurally identical rows on insert.
+    fn with_hashcons(path: Path, schema: ir::Schema) -> Self {
+        let mut tbl = Self::new(path, schema);
+        tbl.table.set_hashcons_for_test(true);
+        tbl
+    }
+
     fn row_count(&self) -> usize {
         self.table.row_count()
     }
@@ -240,6 +247,7 @@ fn staged_delete_removes_row_and_undo_restores_it() {
 /// scanning the table. Inserts and deletes are the only ways in and out of
 /// storage, so both have to keep it in step.
 #[test]
+#[ignore = "indexing disabled until we need it"]
 fn rebuild_index_tracks_rows_referring_to_an_id() {
     let mut tbl = TestTable::new(Path::from("edge"), id_schema(&["left", "right"]));
     let a = row_id_from(1, 0);
@@ -272,9 +280,48 @@ fn rebuild_index_tracks_rows_referring_to_an_id() {
     );
 }
 
+#[test]
+fn full_rebuild_rewrites_stale_id_cells() {
+    let mut tbl = TestTable::new(Path::from("edge"), id_schema(&["child"]));
+    let canonical_child = row_id_from(1, 0);
+    let stale_child = row_id_from(2, 0);
+    let owner = test_row_id(0);
+    tbl.insert_row(vec![CellValue::Id(stale_child)], owner);
+
+    let stale_child = tbl.dict.lookup_row_id(stale_child).unwrap();
+    let canonical_child = tbl.dict.pack_row_id(canonical_child);
+    tbl.rowing.stage_union(0, stale_child, canonical_child);
+    tbl.rowing.apply_unions(&tbl.dict);
+
+    tbl.table.rebuild_full(&tbl.rowing, &tbl.dict);
+    tbl.apply_staged_ops().unwrap();
+
+    assert_eq!(tbl.row_count(), 1);
+    assert_eq!(tbl.row_id_at(0), Some(owner));
+    assert_eq!(tbl.cell_at(0, 0), Some(CellValue::Id(row_id_from(1, 0))));
+}
+
+#[test]
+fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row() {
+    let mut tbl = TestTable::with_hashcons(Path::from("term"), int_schema(&["value"], None));
+    let canonical = row_id_from(1, 0);
+    let displaced = row_id_from(2, 0);
+    tbl.insert_row(vec![CellValue::Int(7)], displaced);
+    tbl.insert_row(vec![CellValue::Int(7)], canonical);
+    tbl.rowing.apply_unions(&tbl.dict);
+
+    tbl.table.rebuild_full(&tbl.rowing, &tbl.dict);
+    tbl.apply_staged_ops().unwrap();
+
+    assert_eq!(tbl.row_count(), 1);
+    assert_eq!(tbl.row_id_at(0), Some(canonical));
+    assert_eq!(tbl.cell_at(0, 0), Some(CellValue::Int(7)));
+}
+
 /// Rollback replays the undo log through the same insert path, so the
 /// rebuild index has to come back with the rows it restores.
 #[test]
+#[ignore = "rebuild index disabled until we need it"]
 fn rollback_restores_rebuild_index_entries() {
     let mut tbl = TestTable::new(Path::from("edge"), id_schema(&["left", "right"]));
     let a = row_id_from(1, 0);

@@ -75,9 +75,10 @@ impl RowHandle {
     }
 
     pub(crate) fn canonicalise(&self, new_row_id: RowId) -> Result<(), StoreIntError> {
-        match &*self.state.borrow() {
+        let mut state = self.state.borrow_mut();
+        match &*state {
             RowHandleState::Existing(..) => {
-                self.state.replace(RowHandleState::Existing(new_row_id));
+                *state = RowHandleState::Existing(new_row_id);
                 Ok(())
             }
             _ => Err(ValidationError::InvalidRowHandle {
