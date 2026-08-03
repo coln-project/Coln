@@ -2,10 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{
-    ir,
-    table::{CellValue, RowId},
-};
+use crate::table::{CellValue, RowId, TableOid};
 
 pub const OP_KIND_ADD: u32 = 0;
 
@@ -13,12 +10,12 @@ pub const OP_KIND_ADD: u32 = 0;
 pub enum Op {
     Add {
         row_id: RowId,
-        table: ir::Path, // using path so it's stable across replicas
+        table: TableOid,
         values: Vec<CellValue>,
     },
     // Delete {
     //     row_id: RowId,
-    //     table: ir::Path,
+    //     table: TableOid,
     // }, // TODO Delete + Update
 }
 
@@ -29,9 +26,9 @@ impl Op {
         }
     }
 
-    pub fn table(&self) -> &ir::Path {
+    pub fn table(&self) -> TableOid {
         match self {
-            Op::Add { table, .. } => table,
+            Op::Add { table, .. } => *table,
         }
     }
 }

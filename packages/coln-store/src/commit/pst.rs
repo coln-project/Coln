@@ -114,7 +114,11 @@ fn decode_store_chunks(next_oid: TableOid, chunks: Vec<Chunk>) -> Result<Store, 
             continue;
         }
 
-        let commit = Commit::from_chunk(chunk, |path| store.schema_for(path))?;
+        let commit = Commit::from_chunk(chunk, |path| {
+            store
+                .resolve_table(path)
+                .and_then(|oid| store.table_meta(oid))
+        })?;
         commits.push(commit);
     }
 

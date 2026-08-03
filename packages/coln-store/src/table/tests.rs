@@ -119,7 +119,7 @@ impl TestTable {
             table,
             values,
         } = op;
-        debug_assert_eq!(table, *self.table.path());
+        debug_assert_eq!(table, self.table.oid());
         let row_id = self.dict.pack_row_id(row_id);
         let values = values
             .into_iter()
@@ -178,12 +178,12 @@ fn rollback_removes_applied_rows_and_index_entries() {
     let snapshot = tbl.table.snapshot();
     tbl.stage_update(Op::Add {
         row_id: first_added,
-        table: path.clone(),
+        table: 0,
         values: vec![CellValue::Int(2)],
     });
     tbl.stage_update(Op::Add {
         row_id: second_added,
-        table: path,
+        table: 0,
         values: vec![CellValue::Int(3)],
     });
     tbl.apply_staged_ops()
@@ -350,7 +350,7 @@ fn commit_snapshot_keeps_rows_and_discards_undo_log() {
     let snapshot = tbl.table.snapshot();
     tbl.stage_update(Op::Add {
         row_id,
-        table: path,
+        table: 0,
         values: vec![CellValue::Int(7)],
     });
     tbl.apply_staged_ops()
@@ -370,7 +370,7 @@ fn rollback_discards_updates_staged_after_snapshot() {
     let snapshot = tbl.table.snapshot();
     tbl.stage_update(Op::Add {
         row_id: test_row_id(0),
-        table: path,
+        table: 0,
         values: vec![CellValue::Int(7)],
     });
     tbl.table.rollback(snapshot);

@@ -26,6 +26,7 @@ use crate::{
     },
     ir::{Path, Schema},
     op::Op,
+    table::{TableMeta, TableOid},
     txn::{PendingOp, RowRef, TxnCellValue},
 };
 
@@ -69,15 +70,15 @@ impl Commit<'static> {
 
     pub(crate) fn from_commit_data<'s, F>(
         mut data: CommitData,
-        schema_for: F,
+        table_meta_for: F,
     ) -> Result<Self, CodecError>
     where
-        F: Fn(&Path) -> Option<&'s Schema>,
+        F: Fn(TableOid) -> Option<TableMeta<'s>>,
     {
         let mut hash_mapper = HashMapper::new();
         collect_op_hashes(&data.pending, &mut hash_mapper);
         data.other_hashes = hash_mapper.hashes().to_vec();
-        let bytes = wire::serialize(&data, &hash_mapper, schema_for)?;
+        let bytes = wire::serialize(&data, &hash_mapper, table_meta_for)?;
         Ok(Self::from_commit_bytes(bytes, data))
     }
 
@@ -115,21 +116,21 @@ impl Commit<'static> {
         }
     }
 
-    pub(crate) fn from_chunk<'s, F>(chunk: Chunk, schema_for: F) -> Result<Self, CodecError>
+    pub(crate) fn from_chunk<'s, F>(chunk: Chunk, table_meta_for: F) -> Result<Self, CodecError>
     where
-        F: Fn(&Path) -> Option<&'s Schema>,
+        F: Fn(&Path) -> Option<TableMeta<'s>>,
     {
         let (header, bytes) = chunk.into_parts();
-        Self::decode_payload_with_header(header, bytes, schema_for)
+        Self::decode_payload_with_header(header, bytes, table_meta_for)
     }
 
     fn decode_payload_with_header<'s, F>(
         header: Header,
         bytes: Vec<u8>,
-        schema_for: F,
+        table_meta_for: F,
     ) -> Result<Self, CodecError>
     where
-        F: Fn(&Path) -> Option<&'s Schema>,
+        F: Fn(&Path) -> Option<TableMeta<'s>>,
     {
         match header.chunk_type {
             ChunkType::Root => {
@@ -138,7 +139,7 @@ impl Commit<'static> {
                 Ok(Self::from_root_payload(header, bytes))
             }
             ChunkType::Commit => {
-                let data = wire::deserialize(&bytes, schema_for)?;
+                let data = wire::deserialize(&bytes, table_meta_for)?;
                 Ok(Self::from_commit_payload(header, bytes, data))
             }
         }
@@ -183,18 +184,18 @@ impl<'a> Commit<'a> {
     ///
     /// Ops are not retained in decoded form: this re-decodes them from the
     /// canonical payload, so the returned iterator owns its data and borrows
-    /// neither the commit nor `schema_for`, hence the 'static.
+    /// neither the commit nor `table_meta_for`, hence the 'static.
     ///
     /// Root commits carry no ops and yield an empty iterator.
-    pub(crate) fn resolved_ops<'s, F>(&self, schema_for: F) -> Result<Vec<Op>, CodecError>
+    pub(crate) fn resolved_ops<'s, F>(&self, table_meta_for: F) -> Result<Vec<Op>, CodecError>
     where
-        F: Fn(&Path) -> Option<&'s Schema>,
+        F: Fn(&Path) -> Option<TableMeta<'s>>,
     {
         let hash = self.hash();
         let pending = if self.is_root() {
             vec![]
         } else {
-            wire::deserialize(self.payload(), schema_for)?.pending
+            wire::deserialize(self.payload(), table_meta_for)?.pending
         };
         Ok(pending
             .into_iter()
@@ -224,7 +225,7 @@ mod tests {
     use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::root::{RootCommitData, RootTableEntry};
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path};
-    use crate::table::RowId;
+    use crate::table::{RowId, TableMeta, TableOid};
     use crate::txn::{RowRef, TempRowId};
 
     fn zero_hash() -> CommitHash {
@@ -295,22 +296,64 @@ mod tests {
         &SCHEMA
     }
 
-    fn int_schema_for(path: &Path) -> Option<&'static Schema> {
-        (path == &Path::from("T")).then_some(int_schema())
+    fn path_t() -> &'static Path {
+        static PATH: LazyLock<Path> = LazyLock::new(|| Path::from("T"));
+        &PATH
     }
 
-    fn payload_schema_for(path: &Path) -> Option<&'static Schema> {
-        if path == &Path::from("T") {
-            Some(int_schema())
-        } else if path == &Path::from("U.V") {
-            Some(mixed_schema())
+    fn path_uv() -> &'static Path {
+        static PATH: LazyLock<Path> = LazyLock::new(|| Path::from("U.V"));
+        &PATH
+    }
+
+    fn int_encode_table_meta(oid: TableOid) -> Option<TableMeta<'static>> {
+        (oid == 0).then_some(TableMeta {
+            path: path_t(),
+            oid: 0,
+            schema: int_schema(),
+        })
+    }
+
+    fn payload_encode_table_meta(oid: TableOid) -> Option<TableMeta<'static>> {
+        match oid {
+            0 => Some(TableMeta {
+                path: path_t(),
+                oid: 0,
+                schema: int_schema(),
+            }),
+            1 => Some(TableMeta {
+                path: path_uv(),
+                oid: 1,
+                schema: mixed_schema(),
+            }),
+            _ => None,
+        }
+    }
+
+    fn payload_decode_table_meta(path: &Path) -> Option<TableMeta<'static>> {
+        if path == path_t() {
+            Some(TableMeta {
+                path: path_t(),
+                oid: 0,
+                schema: int_schema(),
+            })
+        } else if path == path_uv() {
+            Some(TableMeta {
+                path: path_uv(),
+                oid: 1,
+                schema: mixed_schema(),
+            })
         } else {
             None
         }
     }
 
-    fn entity_pair_schema_for(path: &Path) -> Option<&'static Schema> {
-        (path == &Path::from("T")).then_some(entity_pair_schema())
+    fn entity_pair_encode_table_meta(oid: TableOid) -> Option<TableMeta<'static>> {
+        (oid == 0).then_some(TableMeta {
+            path: path_t(),
+            oid: 0,
+            schema: entity_pair_schema(),
+        })
     }
 
     fn owned_int_schema() -> Schema {
@@ -374,12 +417,12 @@ mod tests {
         let pending = vec![
             PendingOp::Add {
                 row_id: TempRowId(0),
-                table: Path::from("T"),
+                table: 0,
                 values: vec![1i64.into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
-                table: Path::from("U.V"),
+                table: 1,
                 values: vec![
                     TxnCellValue::Id(RowRef::Existing(rid)),
                     TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
@@ -389,13 +432,13 @@ mod tests {
         ];
         let original = Commit::from_commit_data(
             data(deps.clone(), Author::foo(), 42, Some("hi"), pending.clone()),
-            payload_schema_for,
+            payload_encode_table_meta,
         )
         .expect("build commit");
 
         let bytes = Chunk::from(&original).encoded();
         let chunk = Chunk::decode(&bytes).expect("decode commit chunk");
-        let decoded = Commit::from_chunk(chunk, payload_schema_for).expect("decode commit");
+        let decoded = Commit::from_chunk(chunk, payload_decode_table_meta).expect("decode commit");
 
         assert_eq!(decoded.chunk_type(), ChunkType::Commit);
         assert_eq!(decoded.hash(), original.hash());
@@ -410,7 +453,7 @@ mod tests {
         let hash = decoded.hash();
         let expected: Vec<Op> = pending.iter().map(|op| op.resolve(hash)).collect();
         let got: Vec<Op> = decoded
-            .resolved_ops(payload_schema_for)
+            .resolved_ops(payload_decode_table_meta)
             .expect("resolve ops");
         assert_eq!(got, expected);
     }
@@ -484,23 +527,23 @@ mod tests {
     fn different_ops_produce_different_hashes() {
         let op = PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("T"),
+            table: 0,
             values: vec![42.into()],
         };
         let a = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op]),
-            int_schema_for,
+            int_encode_table_meta,
         )
         .expect("build a");
 
         let op2 = PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("T"),
+            table: 0,
             values: vec![99.into()],
         };
         let b = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op2]),
-            int_schema_for,
+            int_encode_table_meta,
         )
         .expect("build b");
 
@@ -573,12 +616,12 @@ mod tests {
         };
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("T"),
+            table: 0,
             values: vec![1i64.into()],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
-            table: Path::from("U.V"),
+            table: 1,
             values: vec![
                 TxnCellValue::Id(RowRef::Existing(rid)),
                 TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
@@ -588,7 +631,7 @@ mod tests {
         let pending = vec![op0, op1];
         let commit = Commit::from_commit_data(
             data(deps.clone(), author, 42, Some("hi"), pending.clone()),
-            payload_schema_for,
+            payload_encode_table_meta,
         )
         .expect("build commit");
 
@@ -597,7 +640,7 @@ mod tests {
         assert_eq!(commit.message.as_deref(), Some("hi"));
         assert_eq!(commit.other_hashes, vec![dep]);
         assert_eq!(
-            wire::data::deserialize(commit.payload(), payload_schema_for)
+            wire::data::deserialize(commit.payload(), payload_decode_table_meta)
                 .expect("decode payload")
                 .pending,
             pending,
@@ -617,12 +660,12 @@ mod tests {
         };
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("T"),
+            table: 0,
             values: vec![1i64.into()],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
-            table: Path::from("U.V"),
+            table: 1,
             values: vec![
                 TxnCellValue::Id(RowRef::Existing(rid)),
                 TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
@@ -632,12 +675,12 @@ mod tests {
         let pending = vec![op0, op1];
         let commit = Commit::from_commit_data(
             data(deps, author, 42, Some("hi"), pending.clone()),
-            payload_schema_for,
+            payload_encode_table_meta,
         )
         .expect("build commit");
 
-        let got =
-            wire::data::deserialize(commit.payload(), payload_schema_for).expect("decode commit");
+        let got = wire::data::deserialize(commit.payload(), payload_decode_table_meta)
+            .expect("decode commit");
         assert_eq!(got.deps, commit.deps);
         assert_eq!(got.author, commit.author);
         assert_eq!(got.timestamp, commit.timestamp);
@@ -666,7 +709,7 @@ mod tests {
 
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("T"),
+            table: 0,
             values: vec![
                 TxnCellValue::Id(RowRef::Existing(rid_a)),
                 TxnCellValue::Id(RowRef::Existing(rid_a)),
@@ -674,7 +717,7 @@ mod tests {
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
-            table: Path::from("T"),
+            table: 0,
             values: vec![
                 TxnCellValue::Id(RowRef::Existing(rid_b)),
                 TxnCellValue::Id(RowRef::Existing(rid_a_later)),
@@ -682,7 +725,7 @@ mod tests {
         };
         let commit = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op0, op1]),
-            entity_pair_schema_for,
+            entity_pair_encode_table_meta,
         )
         .expect("build commit");
         assert_eq!(
@@ -693,12 +736,12 @@ mod tests {
 
         let op_int = PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("T"),
+            table: 0,
             values: vec![42.into()],
         };
         let no_row_refs = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op_int]),
-            int_schema_for,
+            int_encode_table_meta,
         )
         .expect("build");
         assert!(

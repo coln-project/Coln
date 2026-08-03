@@ -60,7 +60,7 @@ impl TxnInner {
         let temp_id = self.next_id();
         self.pending.push(PendingOp::Add {
             row_id: temp_id,
-            table: table.clone(),
+            table: t.oid(),
             values,
         });
         Ok(temp_id)
@@ -121,7 +121,7 @@ impl TxnInner {
         } = self;
         let cmt = Commit::from_commit_data(
             CommitData::new(deps, author, *timestamp.as_ref(), message, pending),
-            |path| store.table_at(path).map(|table| table.schema()),
+            |oid| store.table_meta(oid),
         );
         let cmt = match cmt {
             Ok(cmt) => cmt,

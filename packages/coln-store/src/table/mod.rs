@@ -28,6 +28,14 @@ use self::col::{Column, IdColumn};
 
 pub type TableOid = usize;
 
+/// Borrowed identity and schema for a registered table.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TableMeta<'a> {
+    pub path: &'a ir::Path,
+    pub oid: TableOid,
+    pub schema: &'a Schema,
+}
+
 /// Packed representation of an operation staged for a table.
 #[derive(Debug)]
 pub(crate) enum PackedOp {
@@ -55,6 +63,9 @@ pub enum ValidationError {
     /// No table registered for this path (e.g. batch apply).
     #[error("unknown table: {path:?}")]
     UnknownTable { path: ir::Path },
+    /// No table registered for this store-local oid.
+    #[error("unknown table oid: {oid}")]
+    UnknownTableOid { oid: TableOid },
     #[error("table mismatch: expected: {expected:?}, actual: {actual:?}")]
     TableMismatch {
         expected: ir::Path,
@@ -192,6 +203,10 @@ impl Table {
 
     pub fn path(&self) -> &ir::Path {
         &self.path
+    }
+
+    pub fn oid(&self) -> TableOid {
+        self.oid
     }
 
     pub fn row_count(&self) -> usize {

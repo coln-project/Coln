@@ -497,10 +497,12 @@ mod rowing {
         store
     }
 
-    fn add_op(table: &str, rid: RowId, values: Vec<CellValue>) -> Op {
+    fn add_op(store: &Store, table: &str, rid: RowId, values: Vec<CellValue>) -> Op {
         Op::Add {
             row_id: rid,
-            table: Path::from(table),
+            table: store
+                .resolve_table(&Path::from(table))
+                .expect("test table exists"),
             values,
         }
     }
@@ -514,7 +516,12 @@ mod rowing {
 
         let t_high = row_id_from(2, 0);
         store
-            .apply_ops_and_rebuild(vec![add_op("Term", t_high, vec![CellValue::Int(7)])])
+            .apply_ops_and_rebuild(vec![add_op(
+                &store,
+                "Term",
+                t_high,
+                vec![CellValue::Int(7)],
+            )])
             .unwrap();
 
         let plus = row_id_from(3, 0);
@@ -522,18 +529,19 @@ mod rowing {
         store
             .apply_ops_and_rebuild(vec![
                 add_op(
+                    &store,
                     "Plus",
                     plus,
                     vec![CellValue::Id(t_high), CellValue::Id(t_high)],
                 ),
-                add_op("Note", note, vec![CellValue::Id(t_high)]),
+                add_op(&store, "Note", note, vec![CellValue::Id(t_high)]),
             ])
             .unwrap();
 
         // A smaller equal term swaps the class canonical from t_high to t_low.
         let t_low = row_id_from(1, 0);
         store
-            .apply_ops_and_rebuild(vec![add_op("Term", t_low, vec![CellValue::Int(7)])])
+            .apply_ops_and_rebuild(vec![add_op(&store, "Term", t_low, vec![CellValue::Int(7)])])
             .unwrap();
 
         // The stored row is now t_low; the stale id t_high resolves to it.
@@ -583,14 +591,16 @@ mod rowing {
         let dup = row_id_from(4, 0);
         store
             .apply_ops_and_rebuild(vec![
-                add_op("Term", t_low, vec![CellValue::Int(7)]),
-                add_op("Term", t_high, vec![CellValue::Int(7)]),
+                add_op(&store, "Term", t_low, vec![CellValue::Int(7)]),
+                add_op(&store, "Term", t_high, vec![CellValue::Int(7)]),
                 add_op(
+                    &store,
                     "Plus",
                     keep,
                     vec![CellValue::Id(t_high), CellValue::Id(t_high)],
                 ),
                 add_op(
+                    &store,
                     "Plus",
                     dup,
                     vec![CellValue::Id(t_high), CellValue::Id(t_high)],
@@ -628,11 +638,12 @@ mod rowing {
         let plus = row_id_from(3, 0);
         store
             .apply_ops_and_rebuild(vec![
-                add_op("Term", t_low, vec![CellValue::Int(7)]),
-                add_op("Term", u_low, vec![CellValue::Int(8)]),
-                add_op("Term", t_high, vec![CellValue::Int(7)]),
-                add_op("Term", u_high, vec![CellValue::Int(8)]),
+                add_op(&store, "Term", t_low, vec![CellValue::Int(7)]),
+                add_op(&store, "Term", u_low, vec![CellValue::Int(8)]),
+                add_op(&store, "Term", t_high, vec![CellValue::Int(7)]),
+                add_op(&store, "Term", u_high, vec![CellValue::Int(8)]),
                 add_op(
+                    &store,
                     "Plus",
                     plus,
                     vec![CellValue::Id(t_high), CellValue::Id(u_high)],

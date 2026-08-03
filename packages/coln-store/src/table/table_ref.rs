@@ -2,7 +2,7 @@ use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
 use crate::table::index::{IndexId, IndexMeta};
-use crate::table::{CellValue, RowId, RowView, SeekKey, Table, ValidationError};
+use crate::table::{CellValue, RowId, RowView, SeekKey, Table, TableOid, ValidationError};
 
 /// A [`Table`] together with the store-wide hash dictionary, for read-only
 /// access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -20,6 +20,10 @@ impl<'a> TableRef<'a> {
 
     pub fn path(self) -> &'a ir::Path {
         self.table.path()
+    }
+
+    pub fn oid(self) -> TableOid {
+        self.table.oid()
     }
 
     pub fn schema(self) -> &'a Schema {

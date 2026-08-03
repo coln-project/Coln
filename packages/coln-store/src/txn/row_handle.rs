@@ -6,10 +6,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     commit::hash::CommitHash,
-    ir,
     op::Op,
     store::error::StoreIntError,
-    table::{CellValue, RowId, ValidationError},
+    table::{CellValue, RowId, TableOid, ValidationError},
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -314,7 +313,7 @@ impl From<CellValue> for TxnCellValue {
 pub(crate) enum PendingOp {
     Add {
         row_id: TempRowId,
-        table: ir::Path,
+        table: TableOid,
         values: Vec<TxnCellValue>,
     },
 }
@@ -328,7 +327,7 @@ impl PendingOp {
                 values,
             } => Op::Add {
                 row_id: row_id.resolve(commit),
-                table: table.clone(),
+                table: *table,
                 values: values.iter().map(|value| value.resolve(commit)).collect(),
             },
         }

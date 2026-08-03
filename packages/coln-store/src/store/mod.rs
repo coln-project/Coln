@@ -23,7 +23,7 @@ use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreIntError};
 use crate::table::{
-    CellValue, RowId, RowView, Table, TableOid, TableRef, TableSnapshot, ValidationError,
+    CellValue, RowId, RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError,
 };
 use crate::txn::{OwnedTransaction, Transaction};
 use crate::{op::Op, txn::RowHandle};
@@ -341,8 +341,13 @@ impl Store {
         self.commits.get(hash)
     }
 
-    pub(crate) fn schema_for(&self, path: &ir::Path) -> Option<&ir::Schema> {
-        self.table_at(path).map(|table| table.schema())
+    /// Path, oid, and schema for a registered table.
+    pub(crate) fn table_meta(&self, oid: TableOid) -> Option<TableMeta<'_>> {
+        self.table(oid).map(|table| TableMeta {
+            path: table.path(),
+            oid,
+            schema: table.schema(),
+        })
     }
 
     /// return commits that are not ancestors of the heads
@@ -576,7 +581,7 @@ impl Store {
     fn stage_commit_ops(&mut self, ops: Vec<Op>) -> Vec<TableOid> {
         let mut affected = HashSet::new();
         for op in ops {
-            let oid = self.resolve_table(op.table()).expect("validated batch");
+            let oid = op.table();
             let op = self.id_packer.pack_op(op);
             self.tables
                 .get_mut(&oid)
@@ -605,7 +610,10 @@ impl Store {
     fn precheck_commit(&self, cmt: Commit<'static>) -> Result<PrecheckedCommit, StoreIntError> {
         // TODO perhaps use late resolution, i.e. not resolving any ids, and when
         // we resolve, immediately make them packed.
-        let ops = cmt.resolved_ops(|path| self.schema_for(path))?;
+        let ops = cmt.resolved_ops(|path| {
+            self.resolve_table(path)
+                .and_then(|oid| self.table_meta(oid))
+        })?;
         self.validate_commit_ops(&ops)?;
         Ok(PrecheckedCommit { ops, original: cmt })
     }
@@ -616,22 +624,14 @@ impl Store {
 
         for op in ops {
             let Op::Add { table, values, .. } = op;
-            // Check ops have the right table path
-            let oid = self
-                .resolve_table(table)
-                .ok_or_else(|| ValidationError::UnknownTable {
-                    path: table.clone(),
-                })?;
             let t = self
-                .table(oid)
-                .ok_or_else(|| ValidationError::UnknownTable {
-                    path: table.clone(),
-                })?;
+                .table(*table)
+                .ok_or(ValidationError::UnknownTableOid { oid: *table })?;
             t.validate_insert(values)?;
 
             // Check primary key conflicts within ops batch
             if let Some(key) = t.primary_key_values(values) {
-                let keys = pending_pk.entry(oid).or_default();
+                let keys = pending_pk.entry(*table).or_default();
                 if keys.iter().any(|k| k == &key) {
                     return Err(ValidationError::DuplicatePrimaryKey.into());
                 }
@@ -683,7 +683,12 @@ impl Store {
             .into_iter()
             .map(|bytes| Chunk::decode(&bytes))
             .map(|chunk| {
-                chunk.and_then(|chunk| Commit::from_chunk(chunk, |path| self.schema_for(path)))
+                chunk.and_then(|chunk| {
+                    Commit::from_chunk(chunk, |path| {
+                        self.resolve_table(path)
+                            .and_then(|oid| self.table_meta(oid))
+                    })
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
 
