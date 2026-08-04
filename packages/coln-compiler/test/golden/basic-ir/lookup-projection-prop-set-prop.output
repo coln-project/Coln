@@ -10,12 +10,18 @@ value: sig
   nextedge : (x : A) -> E (next x)
 end
 realm named TRealm
-generators: node
-  A = rel []
-  B = rel []
-  E = rel [a : TRealm.B []]
-  next = (fun [a : TRealm.A []] -> TRealm.B [])
-  nextedge = (fun [x : TRealm.A []] -> TRealm.E [a := TRealm.next [a := x]])
+elaborated: realm
+  generators
+    node
+      A = rel []
+      B = rel []
+      E = rel [a : TRealm.B []]
+      next = (fun [a : TRealm.A []] -> TRealm.B [])
+      nextedge = (fun [x : TRealm.A []] -> TRealm.E [a := TRealm.next [a := x]])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

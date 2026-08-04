@@ -9,11 +9,17 @@ value: sig
   R : X -> P -> Q -> Prop
 end
 realm named TRealm
-generators: node
-  X = rel []
-  P = rel []
-  Q = rel []
-  R = rel [a : TRealm.X [], b : TRealm.P [], c : TRealm.Q []]
+elaborated: realm
+  generators
+    node
+      X = rel []
+      P = rel []
+      Q = rel []
+      R = rel [a : TRealm.X [], b : TRealm.P [], c : TRealm.Q []]
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

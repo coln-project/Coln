@@ -9,11 +9,17 @@ value: sig
   eq : x = y
 end
 realm named TRealm
-generators: node
-  P = rel []
-  x = (fun [] -> TRealm.P [])
-  y = (fun [] -> TRealm.P [])
-  eq = (fun [] -> TRealm.x [] = TRealm.y [])
+elaborated: realm
+  generators
+    node
+      P = rel []
+      x = (fun [] -> TRealm.P [])
+      y = (fun [] -> TRealm.P [])
+      eq = (fun [] -> TRealm.x [] = TRealm.y [])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

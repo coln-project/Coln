@@ -5,10 +5,10 @@
 module Coln.REPL (runRepl) where
 
 import Coln.Common
+import Coln.Core.Memoed
 import Coln.Core.Globals
-import Coln.Core.Params (CtxShape (..), Mode (..), N)
+import Coln.Core.Params (CtxShape (..), Mode (..), N, DefinitionScope (..))
 import Coln.Core.Print (DPrettyWithNames (dprettyWithNames), prtIn)
-import Coln.Core.Realm (Realm)
 import Coln.Diagnostics
 import Coln.Elaborator.Environment (emptyElabEnv)
 import Coln.Elaborator.Judgment (Syn (..))
@@ -59,7 +59,7 @@ runRepl =
   completer =
     Prefix
       ( wordCompleter \s -> do
-          names <- gets $ fmap fst . OMap.assocs . (.entries)
+          names <- gets $ fmap fst . OMap.assocs . (.definitions)
           let nameStrings = map (\n -> mconcat ((<> "/") . T.unpack <$> n.init) <> T.unpack n.last) names
           pure $ filter (s `isPrefixOf`) $ cmdStrings <> nameStrings
       )
@@ -99,12 +99,12 @@ eval file = do
   envFor f = DiagnosticEnv (reporter f) file
   reporter translator = contramap translator $ terminalReporter stdout
 
-prettyEntry :: (Name, GlobalEntry) -> DDoc
-prettyEntry (x, GlobalEntry t _ a _) =
+prettyEntry :: (Name, Definition Global) -> DDoc
+prettyEntry (x, Definition t a _ _) =
   vsep
     [ "global entry named" <+> dpretty x
     , "type:" <+> prtIn (CtxShape 0 BwdNil) a
-    , "value:" <+> dprettyWithNames mempty t
+    , "value:" <+> dprettyWithNames mempty t.stx
     ]
 
 prettyRealm :: (Name, Realm) -> DDoc
@@ -117,5 +117,5 @@ prettyRealm (x, r) =
 prettyDecls :: Globals -> DDoc
 prettyDecls ge =
   vsep $
-    (prettyEntry <$> OMap.assocs ge.entries)
+    (prettyEntry <$> OMap.assocs ge.definitions)
       ++ (prettyRealm <$> OMap.assocs ge.realms)

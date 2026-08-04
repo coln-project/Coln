@@ -26,7 +26,6 @@ library
     Coln.Core.Params
     Coln.Core.Print
     Coln.Core.Readback
-    Coln.Core.Realm
     Coln.Core.Syntax
     Coln.Core.Value
     Coln.Diagnostics

@@ -14,9 +14,15 @@ value: sig
   payload : point -> Payload
 end
 realm named TRealm
-generators: node
-  point = rel []
-  payload = (fun [a : TRealm.point []] -> Payload)
+elaborated: realm
+  generators
+    node
+      point = rel []
+      payload = (fun [a : TRealm.point []] -> Payload)
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

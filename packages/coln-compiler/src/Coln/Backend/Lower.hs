@@ -20,9 +20,8 @@ import Prelude hiding (lookup)
 import Coln.Backend.IR qualified as I
 import Coln.Common
 import Coln.Core.Evaluation
-import Coln.Core.Globals
 import Coln.Core.Params
-import Coln.Core.Realm qualified as C
+import Coln.Core.Globals qualified as C
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 
@@ -412,7 +411,7 @@ lowerRealm realmName r = go OMap.empty I.emptyFlatRealm (toList r.generators)
           _ -> fs
     go fs' fr' rest
 
-writeIRFor :: Globals -> FilePath -> IO ()
+writeIRFor :: C.Globals -> FilePath -> IO ()
 writeIRFor ge fp = do
   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
     let fr = lowerRealm x r

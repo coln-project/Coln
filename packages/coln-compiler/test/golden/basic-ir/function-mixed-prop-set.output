@@ -9,11 +9,17 @@ value: sig
   choose : X -> P -> Y
 end
 realm named TRealm
-generators: node
-  X = rel []
-  P = rel []
-  Y = rel []
-  choose = (fun [a : TRealm.X [], b : TRealm.P []] -> TRealm.Y [])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      P = rel []
+      Y = rel []
+      choose = (fun [a : TRealm.X [], b : TRealm.P []] -> TRealm.Y [])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

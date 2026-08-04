@@ -13,9 +13,15 @@ value: sig
   boxed : Box X -> Set
 end
 realm named TRealm
-generators: node
-  X = rel []
-  boxed = rel [a : Box (TRealm.X [])]
+elaborated: realm
+  generators
+    node
+      X = rel []
+      boxed = rel [a : Box (TRealm.X [])]
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

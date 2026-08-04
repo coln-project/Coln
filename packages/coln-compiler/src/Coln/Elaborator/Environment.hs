@@ -5,7 +5,7 @@
 module Coln.Elaborator.Environment where
 
 import Coln.Common
-import Coln.Core hiding (GlobalEntry (..))
+import Coln.Core hiding (Definition (..))
 import Coln.Core.Value qualified as BN (BareNeutral (..))
 import Coln.Core.Value qualified as V
 import Coln.Elaborator.Diagnostics

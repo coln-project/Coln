@@ -6,8 +6,14 @@ value: sig
   V : Prop
 end
 realm named TRealm
-generators: node
-  V = rel []
+elaborated: realm
+  generators
+    node
+      V = rel []
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

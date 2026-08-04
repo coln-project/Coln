@@ -9,33 +9,58 @@ import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
 import Coln.Core.Params
-import Coln.Core.Realm
+import Coln.Core.Memoed qualified as M
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 
-data GlobalEntry = GlobalEntry
-  { syn :: S.El D
-  , val :: V.El N
+-- Definitions
+--------------------------------------------------------------------------------
+
+data Definition (s :: DefinitionScope) = Definition
+  { body :: M.El D
   , ty :: V.Ty N
+  , reflected :: V.El N
   , mode :: Mode
   }
 
+mkDefinition :: Name -> V.Ty N -> M.El D -> Mode -> Definition s
+mkDefinition x ty tm m = do
+  let neu = V.reflect (V.GlobalVar x neu) V.Id ty (Just tm.val)
+  Definition tm ty neu m
+
+-- Realms
+--------------------------------------------------------------------------------
+
+data Generator
+  = Rel [Name] [S.Ty N]
+  | Fun [Name] [S.Ty N] (S.Ty N)
+
+data Realm = Realm
+  { generators :: Trie Generator
+  , root :: V.El N
+  , rootType :: V.Ty N
+  , realmDefinitions :: OMap Name (Definition Local)
+  }
+
+-- Global environment
+--------------------------------------------------------------------------------
+
 data Globals = Globals
-  { entries :: OMap Name GlobalEntry
+  { definitions :: OMap Name (Definition Global)
   , realms :: OMap Name Realm
   }
 
 emptyGlobals :: Globals
 emptyGlobals = Globals OMap.empty OMap.empty
 
-addGlobalEntry :: Name -> GlobalEntry -> Globals -> Globals
-addGlobalEntry n e g = g{entries = g.entries OMap.>| (n, e)}
+addDefinition :: Name -> Definition Global -> Globals -> Globals
+addDefinition n e g = g{definitions = g.definitions OMap.>| (n, e)}
 
 addRealm :: Name -> Realm -> Globals -> Globals
 addRealm n r g = g{realms = g.realms OMap.>| (n, r)}
 
-instance Lookup Globals Name GlobalEntry where
-  lookup gs x = OMap.lookup x gs.entries
+instance Lookup Globals Name (Definition Global) where
+  lookup gs x = OMap.lookup x gs.definitions
 
-instance ToList Globals (Name, GlobalEntry) where
-  toList ge = OMap.assocs ge.entries
+instance ToList Globals (Name, Definition Global) where
+  toList ge = OMap.assocs ge.definitions

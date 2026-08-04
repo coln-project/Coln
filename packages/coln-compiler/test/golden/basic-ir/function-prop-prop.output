@@ -8,10 +8,16 @@ value: sig
   next : X -> Y
 end
 realm named TRealm
-generators: node
-  X = rel []
-  Y = rel []
-  next = (fun [a : TRealm.X []] -> TRealm.Y [])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      Y = rel []
+      next = (fun [a : TRealm.X []] -> TRealm.Y [])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

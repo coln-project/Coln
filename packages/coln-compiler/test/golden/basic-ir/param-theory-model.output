@@ -19,12 +19,18 @@ value: sig
   pointed : PointOf model
 end
 realm named TRealm
-generators: node
-  model = node
-    X = rel []
+elaborated: realm
+  generators
+    node
+      model = node
+        X = rel []
+      end
+      pointed = node
+        point = (fun [] -> TRealm.model.X [])
+      end
+    end
   end
-  pointed = node
-    point = (fun [] -> TRealm.model.X [])
+  definitions
   end
 end
 lowered: flatrealm

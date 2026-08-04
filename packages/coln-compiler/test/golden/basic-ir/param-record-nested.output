@@ -21,10 +21,16 @@ value: sig
   selected : Nested X -> X
 end
 realm named TRealm
-generators: node
-  X = rel []
-  nested = rel [a : Nested (TRealm.X [])]
-  selected = (fun [a : Nested (TRealm.X [])] -> TRealm.X [])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      nested = rel [a : Nested (TRealm.X [])]
+      selected = (fun [a : Nested (TRealm.X [])] -> TRealm.X [])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

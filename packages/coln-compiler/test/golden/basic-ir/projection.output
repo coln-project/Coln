@@ -15,10 +15,16 @@ value: sig
   r : (p : Payload X) -> E p.second
 end
 realm named TRealm
-generators: node
-  X = rel []
-  E = rel [a : TRealm.X []]
-  r = (fun [p : Payload (TRealm.X [])] -> TRealm.E [a := p.second])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      E = rel [a : TRealm.X []]
+      r = (fun [p : Payload (TRealm.X [])] -> TRealm.E [a := p.second])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

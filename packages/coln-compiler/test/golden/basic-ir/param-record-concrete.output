@@ -18,8 +18,14 @@ value: sig
   boxed : Box Payload -> Set
 end
 realm named TRealm
-generators: node
-  boxed = rel [a : Box Payload]
+elaborated: realm
+  generators
+    node
+      boxed = rel [a : Box Payload]
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

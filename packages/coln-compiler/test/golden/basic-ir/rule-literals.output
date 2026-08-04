@@ -10,14 +10,20 @@ value: sig
   labelIsZombocom : (x : X) -> label x = "zombocom"
 end
 realm named TRealm
-generators: node
-  X = rel []
-  count = (fun [a : TRealm.X []] -> Int)
-  label = (fun [a : TRealm.X []] -> String)
-  countIs19 = (fun [x : TRealm.X []] -> TRealm.count [a := x] = 19)
-  labelIsZombocom = (fun [x : TRealm.X []] -> TRealm.label [
-    a := x
-  ] = "zombocom")
+elaborated: realm
+  generators
+    node
+      X = rel []
+      count = (fun [a : TRealm.X []] -> Int)
+      label = (fun [a : TRealm.X []] -> String)
+      countIs19 = (fun [x : TRealm.X []] -> TRealm.count [a := x] = 19)
+      labelIsZombocom = (fun [x : TRealm.X []] -> TRealm.label [
+        a := x
+      ] = "zombocom")
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

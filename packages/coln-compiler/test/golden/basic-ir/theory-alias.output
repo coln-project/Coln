@@ -10,8 +10,14 @@ in mode: Conjunctive
 type: Theory
 value: Base
 realm named TRealm
-generators: node
-  X = rel []
+elaborated: realm
+  generators
+    node
+      X = rel []
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

@@ -7,9 +7,24 @@ value: sig
   E : V -> V -> Set
 end
 realm named GraphRealm
-generators: node
-  V = rel []
-  E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
+elaborated: realm
+  generators
+    node
+      V = rel []
+      E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
+    end
+  end
+  definitions
+    def free-edge : Set := sig
+      v0 : root.V
+      v1 : root.V
+      e : root.E v0 v1
+    end
+    def free-edge-pair : Set := sig
+      e0 : free-edge
+      e1 : free-edge
+    end
+  end
 end
 lowered: flatrealm
   entities

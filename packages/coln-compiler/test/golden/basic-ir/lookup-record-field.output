@@ -16,13 +16,19 @@ value: sig
   edge : (x : X) -> E (payload x .rank)
 end
 realm named TRealm
-generators: node
-  X = rel []
-  payload = (fun [a : TRealm.X []] -> Payload)
-  E = rel [a : Int]
-  edge = (fun [x : TRealm.X []] -> TRealm.E [
-    a := TRealm.payload [a := x] .rank
-  ])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      payload = (fun [a : TRealm.X []] -> Payload)
+      E = rel [a : Int]
+      edge = (fun [x : TRealm.X []] -> TRealm.E [
+        a := TRealm.payload [a := x] .rank
+      ])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

@@ -17,10 +17,16 @@ value: sig
   select : EqualTriple X -> X
 end
 realm named TRealm
-generators: node
-  X = rel []
-  Accepted = rel [a : EqualTriple (TRealm.X [])]
-  select = (fun [a : EqualTriple (TRealm.X [])] -> TRealm.X [])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      Accepted = rel [a : EqualTriple (TRealm.X [])]
+      select = (fun [a : EqualTriple (TRealm.X [])] -> TRealm.X [])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities
