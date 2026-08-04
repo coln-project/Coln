@@ -7,7 +7,6 @@ module Coln.Core.Memoed where
 
 import Coln.Common
 import Coln.Core.Evaluation
-import Coln.Core.Globals
 import Coln.Core.Params
 import Coln.Core.Readback (Readback (readb))
 import Coln.Core.Syntax qualified as S
@@ -98,8 +97,3 @@ instance (V.HasEvaluation c) => LevelOf (Ty c) where
 
 instance Readback (Memoed a b c) (a c) where
   readb _ m = m.stx
-
-mkGlobal :: Name -> V.Ty N -> El D -> Mode -> GlobalEntry
-mkGlobal n ty x m = do
-  let neu = V.reflect (V.GlobalVar n neu) V.Id ty (Just x.val)
-  GlobalEntry x.stx neu ty m

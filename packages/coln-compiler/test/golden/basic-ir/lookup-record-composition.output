@@ -24,21 +24,27 @@ value: sig
   edge : (x : X) -> E (payload (key x .rank) (slot x) .name)
 end
 realm named TRealm
-generators: node
-  X = rel []
-  key = (fun [a : TRealm.X []] -> Key)
-  PayloadAt = rel [a : Int]
-  slot = (fun [x : TRealm.X []] -> TRealm.PayloadAt [
-    a := TRealm.key [a := x] .rank
-  ])
-  payload = (fun [rank : Int, a : TRealm.PayloadAt [a := rank]] -> Payload)
-  E = rel [a : String]
-  edge = (fun [x : TRealm.X []] -> TRealm.E [
-    a := TRealm.payload [
-      rank := TRealm.key [a := x] .rank,
-      a := TRealm.slot [x := x]
-    ] .name
-  ])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      key = (fun [a : TRealm.X []] -> Key)
+      PayloadAt = rel [a : Int]
+      slot = (fun [x : TRealm.X []] -> TRealm.PayloadAt [
+        a := TRealm.key [a := x] .rank
+      ])
+      payload = (fun [rank : Int, a : TRealm.PayloadAt [a := rank]] -> Payload)
+      E = rel [a : String]
+      edge = (fun [x : TRealm.X []] -> TRealm.E [
+        a := TRealm.payload [
+          rank := TRealm.key [a := x] .rank,
+          a := TRealm.slot [x := x]
+        ] .name
+      ])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

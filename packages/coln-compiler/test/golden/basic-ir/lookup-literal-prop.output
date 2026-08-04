@@ -9,11 +9,17 @@ value: sig
   stringFact : StringFact "zombocom"
 end
 realm named TRealm
-generators: node
-  IntFact = rel [a : Int]
-  StringFact = rel [a : String]
-  intFact = (fun [] -> TRealm.IntFact [a := 19])
-  stringFact = (fun [] -> TRealm.StringFact [a := "zombocom"])
+elaborated: realm
+  generators
+    node
+      IntFact = rel [a : Int]
+      StringFact = rel [a : String]
+      intFact = (fun [] -> TRealm.IntFact [a := 19])
+      stringFact = (fun [] -> TRealm.StringFact [a := "zombocom"])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

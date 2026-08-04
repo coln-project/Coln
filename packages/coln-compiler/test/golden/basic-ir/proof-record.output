@@ -13,9 +13,15 @@ value: sig
   witness : (x : X) -> Witness X x
 end
 realm named TRealm
-generators: node
-  X = rel []
-  witness = (fun [x : TRealm.X []] -> Witness (TRealm.X []) x)
+elaborated: realm
+  generators
+    node
+      X = rel []
+      witness = (fun [x : TRealm.X []] -> Witness (TRealm.X []) x)
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

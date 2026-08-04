@@ -9,11 +9,17 @@ value: sig
   stringEdge : StringEdge "zombocom"
 end
 realm named TRealm
-generators: node
-  IntEdge = rel [a : Int]
-  StringEdge = rel [a : String]
-  intEdge = (fun [] -> TRealm.IntEdge [a := 19])
-  stringEdge = (fun [] -> TRealm.StringEdge [a := "zombocom"])
+elaborated: realm
+  generators
+    node
+      IntEdge = rel [a : Int]
+      StringEdge = rel [a : String]
+      intEdge = (fun [] -> TRealm.IntEdge [a := 19])
+      stringEdge = (fun [] -> TRealm.StringEdge [a := "zombocom"])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

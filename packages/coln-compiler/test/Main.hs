@@ -48,27 +48,27 @@ goldenTests = do
 render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
-prettyEntry :: (Name, GlobalEntry) -> DDoc
-prettyEntry (x, (GlobalEntry t _ a m)) =
+prettyEntry :: (Name, Definition Global) -> DDoc
+prettyEntry (x, (Definition t a _ m)) =
   vsep
     [ "global entry named" <+> dpretty x
     , "in mode:" <+> dpretty m
     , "type:" <+> prtIn (CtxShape 0 BwdNil) a
-    , "value:" <+> dprettyWithNames mempty t
+    , "value:" <+> dprettyWithNames mempty t.stx
     ]
 
 prettyRealm :: (Name, Realm) -> DDoc
 prettyRealm (x, r) =
   vsep
     [ "realm named" <+> dpretty x
-    , "generators:" <+> dpretty r
+    , "elaborated:" <+> dpretty r
     , "lowered:" <+> dpretty (lowerRealm x r)
     ]
 
 prettyDecls :: Globals -> DDoc
 prettyDecls ge =
   vsep $
-    (prettyEntry <$> OMap.assocs ge.entries)
+    (prettyEntry <$> OMap.assocs ge.definitions)
       ++ (prettyRealm <$> OMap.assocs ge.realms)
 
 loadGlobals :: FilePath -> IO (Globals, Text)

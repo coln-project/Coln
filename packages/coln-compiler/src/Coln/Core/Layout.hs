@@ -10,10 +10,10 @@ import Data.String (fromString)
 import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
+import Coln.Core.Globals
 import Coln.Core.Memoed qualified as M
 import Coln.Core.Params
 import Coln.Core.Readback
-import Coln.Core.Realm
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 

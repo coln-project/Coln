@@ -23,11 +23,10 @@ import Coln.Backend.TypeScript.AST qualified as TS
 import Coln.Backend.TypeScript.Assemble (asm)
 import Coln.Backend.TypeScript.Params
 import Coln.Common
-import Coln.Core.Evaluation
 import Coln.Core.Globals
+import Coln.Core.Memoed
 import Coln.Core.Params
 import Coln.Core.Readback
-import Coln.Core.Realm
 import Coln.Core.Value qualified as V
 
 mangle :: Name -> TS.Id
@@ -235,8 +234,8 @@ forAccM bs init f = foldlM f init bs
 
 generate :: Globals -> FilePath -> IO ()
 generate ge outdir = do
-  typeImports <- forAccM (OMap.assocs ge.entries) BwdNil $ \imports (x, e) -> do
-    let ev = eval V.LNil e.syn
+  typeImports <- forAccM (OMap.assocs ge.definitions) BwdNil $ \imports (x, e) -> do
+    let ev = e.body.val :: V.Evaluation V.El D
     case genEntryModule (runtimeImport : toList imports) e.ty ev of
       Just mod -> do
         writeModule outdir x mod

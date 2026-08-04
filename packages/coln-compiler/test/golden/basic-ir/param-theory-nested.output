@@ -19,12 +19,18 @@ value: sig
   outer : Pointed X
 end
 realm named TRealm
-generators: node
-  X = rel []
-  outer = node
-    inner = node
-      point = (fun [] -> TRealm.X [])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      outer = node
+        inner = node
+          point = (fun [] -> TRealm.X [])
+        end
+      end
     end
+  end
+  definitions
   end
 end
 lowered: flatrealm

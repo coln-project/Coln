@@ -14,23 +14,9 @@ value: G => sig
   empty : (x : G.V) -> t x x
   cons : (x : G.V) -> (y : G.V) -> (z : G.V) -> (e : G.E x y) -> t y z -> t x z
 end
-realm named Graph
-generators: node
-  V = rel []
-  E = rel [a : Graph.V [], b : Graph.V []]
-end
-lowered: flatrealm
-  entities
-    table ℜ.V := []
-    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
-  end
-  rules
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
-    enforced ℜ.E.foreignKey a b := ℜ.E [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
-  end
-end
 
 -- messages
+
+error[E0314]: no such variable self in scope
+22 |   ind def reachability : Reachability/motive self := init (Reachability/motive self)
+22 |                                              ^^^^

@@ -21,57 +21,58 @@ value: sig
   fiber : base.V -> Graph
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
-realm named GraphRealm
-generators: node
-  V = rel []
-  E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
-end
-lowered: flatrealm
-  entities
-    table ℜ.V := []
-    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
-  end
-  rules
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
-    enforced ℜ.E.foreignKey a b := ℜ.E [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
-  end
-end
 realm named GraphOfGraphsRealm
-generators: node
-  base = node
-    V = rel []
-    E = rel [a : GraphOfGraphsRealm.base.V [], b : GraphOfGraphsRealm.base.V []]
+elaborated: realm
+  generators
+    node
+      base = node
+        V = rel []
+        E = rel [
+          a : GraphOfGraphsRealm.base.V [],
+          b : GraphOfGraphsRealm.base.V []
+        ]
+      end
+      fiber = node
+        V = rel [a : GraphOfGraphsRealm.base.V []]
+        E = rel [
+          a : GraphOfGraphsRealm.base.V [],
+          b : GraphOfGraphsRealm.fiber.V [a := a],
+          c : GraphOfGraphsRealm.fiber.V [a := a]
+        ]
+      end
+      action = node
+        V = (fun [
+          v0 : GraphOfGraphsRealm.base.V [],
+          v1 : GraphOfGraphsRealm.base.V [],
+          a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
+          b : GraphOfGraphsRealm.fiber.V [a := v0]
+        ] -> GraphOfGraphsRealm.fiber.V [a := v1])
+        E = (fun [
+          v0 : GraphOfGraphsRealm.base.V [],
+          v1 : GraphOfGraphsRealm.base.V [],
+          a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
+          v0/a : GraphOfGraphsRealm.fiber.V [a := v0],
+          v1/a : GraphOfGraphsRealm.fiber.V [a := v0],
+          b : GraphOfGraphsRealm.fiber.E [a := v0, b := v0/a, c := v1/a]
+        ] -> GraphOfGraphsRealm.fiber.E [
+          a := v1,
+          b := GraphOfGraphsRealm.action.V [
+            v0 := v0,
+            v1 := v1,
+            a := a,
+            b := v0/a
+          ],
+          c := GraphOfGraphsRealm.action.V [
+            v0 := v0,
+            v1 := v1,
+            a := a,
+            b := v1/a
+          ]
+        ])
+      end
+    end
   end
-  fiber = node
-    V = rel [a : GraphOfGraphsRealm.base.V []]
-    E = rel [
-      a : GraphOfGraphsRealm.base.V [],
-      b : GraphOfGraphsRealm.fiber.V [a := a],
-      c : GraphOfGraphsRealm.fiber.V [a := a]
-    ]
-  end
-  action = node
-    V = (fun [
-      v0 : GraphOfGraphsRealm.base.V [],
-      v1 : GraphOfGraphsRealm.base.V [],
-      a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
-      b : GraphOfGraphsRealm.fiber.V [a := v0]
-    ] -> GraphOfGraphsRealm.fiber.V [a := v1])
-    E = (fun [
-      v0 : GraphOfGraphsRealm.base.V [],
-      v1 : GraphOfGraphsRealm.base.V [],
-      a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
-      v0/a : GraphOfGraphsRealm.fiber.V [a := v0],
-      v1/a : GraphOfGraphsRealm.fiber.V [a := v0],
-      b : GraphOfGraphsRealm.fiber.E [a := v0, b := v0/a, c := v1/a]
-    ] -> GraphOfGraphsRealm.fiber.E [
-      a := v1,
-      b := GraphOfGraphsRealm.action.V [v0 := v0, v1 := v1, a := a, b := v0/a],
-      c := GraphOfGraphsRealm.action.V [v0 := v0, v1 := v1, a := a, b := v1/a]
-    ])
+  definitions
   end
 end
 lowered: flatrealm
@@ -175,3 +176,7 @@ lowered: flatrealm
 end
 
 -- messages
+
+error[E0314]: no such variable self in scope
+8 |     v0 : self.V
+8 |          ^^^^

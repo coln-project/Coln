@@ -5,10 +5,13 @@
 
 module Coln.Core.Print where
 
+import Data.Map.Ordered qualified as OMap
+
 import Coln.Common
+import Coln.Core.Globals
+import Coln.Core.Memoed (Memoed (..))
 import Coln.Core.Params
 import Coln.Core.Readback
-import Coln.Core.Realm
 import Coln.Core.Syntax
 import Coln.Frontend.Notation
 import Data.List.NonEmpty (NonEmpty (..))
@@ -134,7 +137,24 @@ instance (ToNotationTop a) => ToNotationTop (Trie a) where
       ()
 
 instance ToNotationTop Realm where
-  toNotationTop r = toNotationTop r.generators
+  toNotationTop r =
+    N.Block
+      "realm"
+      Nothing
+      [ N.Block "generators" Nothing [toNotationTop r.generators] ()
+      , N.Block "definitions" Nothing (go (BwdNil :> "root") (OMap.assocs r.realmDefinitions)) ()
+      ]
+      ()
+   where
+    toAnn Conjunctive = []
+    toAnn Inductive = ["ind"]
+    go _ [] = []
+    go xs ((x, d) : ds) = do
+      let body = toNotation xs d.body.stx
+      let ty = toNotation xs $ readb (length xs) d.ty
+      let head = N.Infix (N.Ident x ()) (N.Keyword ":" ()) ty
+      let def = N.MDecl (toAnn d.mode) "def" (N.Infix head (N.Keyword ":=" ()) body) ()
+      def : go (xs :> x) ds
 
 -- DPrettyWithNames
 --------------------------------------------------------------------------------

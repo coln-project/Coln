@@ -5,7 +5,13 @@ type: Theory
 value: sig
 end
 realm named TRealm
-generators: node
+elaborated: realm
+  generators
+    node
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

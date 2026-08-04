@@ -16,9 +16,15 @@ value: sig
   value : EqualTriple X
 end
 realm named TRealm
-generators: node
-  X = rel []
-  value = (fun [] -> EqualTriple (TRealm.X []))
+elaborated: realm
+  generators
+    node
+      X = rel []
+      value = (fun [] -> EqualTriple (TRealm.X []))
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

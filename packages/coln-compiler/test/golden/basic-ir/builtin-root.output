@@ -7,9 +7,15 @@ value: sig
   label : String
 end
 realm named TRealm
-generators: node
-  count = (fun [] -> Int)
-  label = (fun [] -> String)
+elaborated: realm
+  generators
+    node
+      count = (fun [] -> Int)
+      label = (fun [] -> String)
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

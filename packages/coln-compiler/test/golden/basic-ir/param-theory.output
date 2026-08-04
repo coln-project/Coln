@@ -13,10 +13,16 @@ value: sig
   P : PointOf X
 end
 realm named TRealm
-generators: node
-  X = rel []
-  P = node
-    point = (fun [] -> TRealm.X [])
+elaborated: realm
+  generators
+    node
+      X = rel []
+      P = node
+        point = (fun [] -> TRealm.X [])
+      end
+    end
+  end
+  definitions
   end
 end
 lowered: flatrealm

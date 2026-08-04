@@ -11,8 +11,14 @@ value: sig
   unit : Unit
 end
 realm named TRealm
-generators: node
-  unit = (fun [] -> Unit)
+elaborated: realm
+  generators
+    node
+      unit = (fun [] -> Unit)
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

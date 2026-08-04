@@ -11,8 +11,14 @@ value: sig
   truth : Truth
 end
 realm named TRealm
-generators: node
-  truth = (fun [] -> Truth)
+elaborated: realm
+  generators
+    node
+      truth = (fun [] -> Truth)
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

@@ -196,3 +196,8 @@ data Mode = Inductive | Conjunctive
 
 instance DPretty Mode where
   dpretty = pretty . show
+
+-- Definition scope
+--------------------------------------------------------------------------------
+
+type data DefinitionScope = Local | Global

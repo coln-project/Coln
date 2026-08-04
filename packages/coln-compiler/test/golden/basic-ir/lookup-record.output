@@ -18,9 +18,15 @@ value: sig
   selected : E fixed
 end
 realm named TRealm
-generators: node
-  E = rel [a : Payload]
-  selected = (fun [] -> TRealm.E [a := fixed])
+elaborated: realm
+  generators
+    node
+      E = rel [a : Payload]
+      selected = (fun [] -> TRealm.E [a := fixed])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

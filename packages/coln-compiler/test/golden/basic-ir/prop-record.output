@@ -16,14 +16,20 @@ value: sig
   projectLeft : And P Q -> P
 end
 realm named TRealm
-generators: node
-  P = rel []
-  Q = rel []
-  make = (fun [
-    a : TRealm.P [],
-    b : TRealm.Q []
-  ] -> And (TRealm.P []) (TRealm.Q []))
-  projectLeft = (fun [a : And (TRealm.P []) (TRealm.Q [])] -> TRealm.P [])
+elaborated: realm
+  generators
+    node
+      P = rel []
+      Q = rel []
+      make = (fun [
+        a : TRealm.P [],
+        b : TRealm.Q []
+      ] -> And (TRealm.P []) (TRealm.Q []))
+      projectLeft = (fun [a : And (TRealm.P []) (TRealm.Q [])] -> TRealm.P [])
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

@@ -7,9 +7,15 @@ value: sig
   Pair : (x : X) -> (x : X) -> Set
 end
 realm named TRealm
-generators: node
-  X = rel []
-  Pair = rel [x : TRealm.X [], x/a : TRealm.X []]
+elaborated: realm
+  generators
+    node
+      X = rel []
+      Pair = rel [x : TRealm.X [], x/a : TRealm.X []]
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities

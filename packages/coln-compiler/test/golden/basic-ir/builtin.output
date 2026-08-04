@@ -8,10 +8,16 @@ value: sig
   label : V -> String
 end
 realm named TRealm
-generators: node
-  V = rel []
-  count = (fun [a : TRealm.V []] -> Int)
-  label = (fun [a : TRealm.V []] -> String)
+elaborated: realm
+  generators
+    node
+      V = rel []
+      count = (fun [a : TRealm.V []] -> Int)
+      label = (fun [a : TRealm.V []] -> String)
+    end
+  end
+  definitions
+  end
 end
 lowered: flatrealm
   entities
