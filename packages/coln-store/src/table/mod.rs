@@ -555,7 +555,7 @@ impl Table {
 impl Table {
     // Rebuilding
 
-    #[allow(unused)]
+    #[expect(dead_code)]
     // Rebuild using rebuild_index
     fn rebuild_incremental(&mut self, rowing: &Rowing, id_packer: &IdPacker) {
         for old in rowing.displaced() {
@@ -675,6 +675,7 @@ impl Table {
     }
 
     /// ids referred by this row.
+    #[expect(dead_code)]
     fn referenced_ids(values: &[PackedCell]) -> impl Iterator<Item = PackedRowId> {
         values
             .iter()
@@ -771,7 +772,7 @@ impl Table {
 
         for index in &mut self.indexes {
             let key = Self::project_index_key(index, &values);
-            index.remove_rowid(&key, row_id);
+            index.remove(&key, row_id);
         }
         // for child in Self::referenced_ids(&values) {
         //     let referring = self

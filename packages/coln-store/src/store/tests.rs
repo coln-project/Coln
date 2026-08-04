@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 /// Shared theory fixtures for unit tests (`store`, `transaction`, etc.).
 pub(crate) mod test_support {
     use crate::ir::{

@@ -8,6 +8,10 @@ use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 struct Args {
+    /// Run commands and exit. May be repeated; pending statements may span values.
+    #[arg(short = 'c', long = "command", action = clap::ArgAction::Append)]
+    commands: Vec<String>,
+
     #[arg(long, default_value_t = false, hide = true)]
     enable_sql_mode: bool,
 }
@@ -26,5 +30,9 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let args = Args::parse();
-    repl::run(args.enable_sql_mode)
+    if args.commands.is_empty() {
+        repl::run(args.enable_sql_mode)
+    } else {
+        repl::run_commands(args.enable_sql_mode, &args.commands)
+    }
 }

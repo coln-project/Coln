@@ -6,7 +6,7 @@ mod cli;
 pub mod exe;
 pub mod parse;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 use rustyline::history::DefaultHistory;
@@ -41,6 +41,14 @@ impl Session {
             shell_mode: mode,
         }
     }
+
+    fn with_flags(enable_sql: bool) -> Self {
+        if enable_sql {
+            Self::new(ShellMode::Sql)
+        } else {
+            Self::new(ShellMode::Coln)
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -49,16 +57,70 @@ enum Step {
     Exit,
 }
 
+/// Run `-c` / `--command` strings non-interactively and exit.
+///
+/// Each string is split on newlines and fed through the same statement buffer as
+/// the interactive REPL. Pending statements may span multiple `-c` arguments.
+/// Stops on the first parse or execution error.
+pub fn run_commands(enable_sql: bool, commands: &[String]) -> Result<()> {
+    let mut session = Session::with_flags(enable_sql);
+    run_commands_into(&mut session, commands)
+}
+
+fn run_commands_into(session: &mut Session, commands: &[String]) -> Result<()> {
+    let mut pending: Option<String> = None;
+
+    for command_arg in commands {
+        for line in command_arg.lines() {
+            if !process_line(session, &mut pending, line)? {
+                return Ok(());
+            }
+        }
+    }
+
+    if pending.is_some() {
+        bail!("incomplete statement: missing `;` or `commit;`");
+    }
+    Ok(())
+}
+
+/// Parse and execute one completed command string.
+fn dispatch(session: &mut Session, command_src: &str) -> Result<Step> {
+    let command = parse_command(session.shell_mode, command_src)?;
+    execute(session, command)
+}
+
+/// Feed one input line through the statement buffer. Returns `Ok(false)` on `.exit` / `.quit`.
+fn process_line(session: &mut Session, pending: &mut Option<String>, line: &str) -> Result<bool> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Ok(true);
+    }
+
+    let command_src = if pending.is_some() || is_statement_start(trimmed) {
+        match push_statement_line(pending, trimmed) {
+            Some(command) => command,
+            None => return Ok(true),
+        }
+    } else {
+        trimmed.to_string()
+    };
+
+    match dispatch(session, &command_src)? {
+        Step::Continue(message) => {
+            println!("{message}");
+            Ok(true)
+        }
+        Step::Exit => Ok(false),
+    }
+}
+
 pub fn run(enable_sql: bool) -> Result<()> {
     let mut editor = Editor::<CommandHelper, DefaultHistory>::new()?;
     editor.set_helper(Some(CommandHelper::new()));
     let _ = editor.load_history(&history_path());
 
-    let mut session = if enable_sql {
-        Session::new(ShellMode::Sql)
-    } else {
-        Session::new(ShellMode::Coln)
-    };
+    let mut session = Session::with_flags(enable_sql);
     let mut pending_statement: Option<String> = None;
 
     println!("coln-store repl");
@@ -109,16 +171,13 @@ pub fn run(enable_sql: bool) -> Result<()> {
             Some(trimmed.to_string())
         };
 
-        match parse_command(session.shell_mode, &maybe_command.expect("command")) {
-            Ok(command) => match execute(&mut session, command) {
-                Ok(Step::Continue(message)) => println!("{message}"),
-                Ok(Step::Exit) => break,
-                Err(err) => {
-                    warn!(error = %err, "repl command failed");
-                    eprintln!("error: {err:#}");
-                }
-            },
-            Err(err) => eprintln!("error: {err}"),
+        match dispatch(&mut session, &maybe_command.expect("command")) {
+            Ok(Step::Continue(message)) => println!("{message}"),
+            Ok(Step::Exit) => break,
+            Err(err) => {
+                warn!(error = %err, "repl command failed");
+                eprintln!("error: {err:#}");
+            }
         }
     }
 
@@ -385,5 +444,122 @@ mod tests {
             err.to_string(),
             "column 0: invalid input value expected entity id like #<commit>:<counter>"
         );
+    }
+
+    #[test]
+    fn run_commands_executes_sql_sequence() {
+        let mut session = Session::new(ShellMode::Sql);
+        run_commands_into(
+            &mut session,
+            &[
+                "create table Person (name text, age integer);".to_string(),
+                "copy Person from 'tests/data/people.csv' with (format csv, header true);"
+                    .to_string(),
+            ],
+        )
+        .expect("run commands");
+
+        let loaded = session.loaded.as_ref().expect("loaded session");
+        let table = loaded
+            .store
+            .table_at(&"Person".parse().unwrap())
+            .expect("Person table");
+        assert_eq!(table.row_count(), 2);
+    }
+
+    #[test]
+    fn run_commands_multiline_string() {
+        let mut session = Session::new(ShellMode::Sql);
+        run_commands_into(
+            &mut session,
+            &["create table Person (name text, age integer);\n.tables".to_string()],
+        )
+        .expect("run multiline command");
+
+        assert!(session.loaded.is_some());
+        assert_eq!(session.loaded.as_ref().unwrap().schema.table_count, 1);
+    }
+
+    #[test]
+    fn run_commands_pending_spans_arguments() {
+        let mut session = Session {
+            loaded: Some(test_loaded_state()),
+            shell_mode: ShellMode::Coln,
+        };
+        run_commands_into(
+            &mut session,
+            &[
+                "begin transact;".to_string(),
+                "x = add T values (1 \"a\");".to_string(),
+                "commit;".to_string(),
+            ],
+        )
+        .expect("spanned batch");
+
+        let loaded = session.loaded.as_ref().expect("loaded session");
+        assert_eq!(
+            loaded
+                .store
+                .table_at(&"T".parse().unwrap())
+                .unwrap()
+                .row_count(),
+            1
+        );
+    }
+
+    #[test]
+    fn run_commands_rejects_incomplete_statement() {
+        let mut session = Session {
+            loaded: Some(test_loaded_state()),
+            shell_mode: ShellMode::Coln,
+        };
+        let err =
+            run_commands_into(&mut session, &["add T values (1 \"a\")".to_string()]).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "incomplete statement: missing `;` or `commit;`"
+        );
+    }
+
+    #[test]
+    fn run_commands_stops_on_first_error() {
+        let mut session = Session::new(ShellMode::Sql);
+        let err = run_commands_into(
+            &mut session,
+            &[
+                "create table Person (name text, age integer);".to_string(),
+                "not a valid statement;".to_string(),
+                "create table Other (name text);".to_string(),
+            ],
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("failed to parse sql") || err.to_string().contains("parse")
+        );
+        let loaded = session
+            .loaded
+            .as_ref()
+            .expect("first create should have succeeded");
+        assert_eq!(loaded.schema.table_count, 1);
+        assert!(loaded.store.table_at(&"Other".parse().unwrap()).is_none());
+    }
+
+    #[test]
+    fn run_commands_exit_stops_early() {
+        let mut session = Session::new(ShellMode::Sql);
+        run_commands_into(
+            &mut session,
+            &[
+                "create table Person (name text, age integer);".to_string(),
+                ".exit".to_string(),
+                "create table Other (name text);".to_string(),
+            ],
+        )
+        .expect("exit is success");
+
+        let loaded = session.loaded.as_ref().expect("loaded");
+        assert_eq!(loaded.schema.table_count, 1);
+        assert!(loaded.store.table_at(&"Other".parse().unwrap()).is_none());
     }
 }

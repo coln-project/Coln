@@ -68,19 +68,7 @@ impl TableIndex {
         self.values.insert(position, value);
     }
 
-    #[allow(unused)]
-    pub(super) fn remove(&mut self, key: &[PackedCell]) {
-        let range = self.scope_key(key);
-        for position in range.rev() {
-            for column in &mut self.keys {
-                column.remove(position);
-            }
-            self.values.remove(position);
-        }
-    }
-
-    /// removes the key, but only the entry with a particular rowid
-    pub(super) fn remove_rowid(&mut self, key: &[PackedCell], value: PackedRowId) {
+    pub(super) fn remove(&mut self, key: &[PackedCell], value: PackedRowId) {
         let key_range = self.scope_key(key);
         let value_range = self.values.scope_to_value(value, key_range);
         for position in value_range.rev() {
@@ -179,7 +167,8 @@ mod tests {
         );
     }
 
-    /// An index containing duplicate keys. Calling remove will remove both of them.
+    /// Removing each duplicate-key entry by row id clears that key and leaves
+    /// other keys untouched.
     #[test]
     fn duplicate_key_removal() {
         let mut index = one_int_index();
@@ -190,7 +179,8 @@ mod tests {
         index.insert(vec![PackedCell::Int(7)], other);
         index.insert(vec![PackedCell::Int(5)], first);
 
-        index.remove(&[PackedCell::Int(5)]);
+        index.remove(&[PackedCell::Int(5)], first);
+        index.remove(&[PackedCell::Int(5)], second);
 
         assert_eq!(index.get(&[PackedCell::Int(5)]).next(), None);
         assert_eq!(
@@ -199,27 +189,7 @@ mod tests {
         );
     }
 
-    /// Index with duplicate keys, but we specify the rowid we want to remove, so
-    /// only precisely the one with matching rowid.
-    #[test]
-    fn duplicate_key_remove_by_id() {
-        let mut index = one_int_index();
-        let first = packed(1);
-        let second = packed(2);
-        index.insert(vec![PackedCell::Int(5)], second);
-        index.insert(vec![PackedCell::Int(5)], first);
-
-        index.remove_rowid(&[PackedCell::Int(5)], first);
-
-        assert_eq!(
-            index.get(&[PackedCell::Int(5)]).collect::<Vec<_>>(),
-            vec![second]
-        );
-    }
-
-    /// Trying to remove a non-existing key does nothing to the index.
-    /// Removing an existing key with a non-existing row id does nothing.
-    /// Removing a non-existing key with an existing row id does nothing.
+    /// Missing key, missing row id, or mismatched key/row id pairs are no-ops.
     #[test]
     fn remove_non_existing_key_does_nothing() {
         let mut index = one_int_index();
@@ -230,9 +200,9 @@ mod tests {
         index.insert(vec![PackedCell::Int(7)], other);
         index.insert(vec![PackedCell::Int(5)], first);
 
-        index.remove(&[PackedCell::Int(4)]);
-        index.remove_rowid(&[PackedCell::Int(5)], packed(9));
-        index.remove_rowid(&[PackedCell::Int(4)], first);
+        index.remove(&[PackedCell::Int(4)], first);
+        index.remove(&[PackedCell::Int(5)], packed(9));
+        index.remove(&[PackedCell::Int(4)], first);
 
         assert_eq!(
             index.get(&[PackedCell::Int(5)]).collect::<Vec<_>>(),

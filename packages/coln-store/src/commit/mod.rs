@@ -24,7 +24,7 @@ use crate::{
         hash_dict::HashMapper,
         wire::{CommitData, root::RootCommitData},
     },
-    ir::{Path, Schema},
+    ir::Path,
     op::Op,
     table::{TableMeta, TableOid},
     txn::{PendingOp, RowRef, TxnCellValue},
@@ -219,6 +219,8 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 #[cfg(test)]
 mod tests {
     use std::sync::LazyLock;
+
+    use coln_flir_rs::ir::Schema;
 
     use super::*;
     use crate::commit::chunk::{Chunk, hash};

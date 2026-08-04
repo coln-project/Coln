@@ -1091,8 +1091,10 @@ mod tests {
                 schema: &schema_b,
             },
         ];
-        let encode_table_meta = |oid: TableOid| schemas.iter().copied().find(|meta| meta.oid == oid);
-        let decode_table_meta = |path: &Path| schemas.iter().copied().find(|meta| meta.path == path);
+        let encode_table_meta =
+            |oid: TableOid| schemas.iter().copied().find(|meta| meta.oid == oid);
+        let decode_table_meta =
+            |path: &Path| schemas.iter().copied().find(|meta| meta.path == path);
         let pending = vec![
             PendingOp::Add {
                 row_id: TempRowId(0),
@@ -1111,8 +1113,8 @@ mod tests {
             },
         ];
 
-        let encoded =
-            encode_commit_body(&pending, encode_table_meta, &HashMapper::new()).expect("encode body");
+        let encoded = encode_commit_body(&pending, encode_table_meta, &HashMapper::new())
+            .expect("encode body");
         let mut pos = 0usize;
         let decoded =
             decode_commit_body(&encoded, &mut pos, &[], decode_table_meta).expect("decode body");
