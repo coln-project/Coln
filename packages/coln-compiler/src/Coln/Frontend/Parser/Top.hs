@@ -8,11 +8,11 @@ import Control.Exception (try)
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
 import FNotation (Ntn)
 import FNotation qualified as N
 import Prettyprinter
-import Data.Map.Ordered qualified as OMap
-import Data.Map.Ordered (OMap)
 
 import Coln.Common
 import Coln.Core
@@ -123,10 +123,10 @@ realm e g head def_ns = do
 
 elabRealmDefinition :: ElabEnv N -> Mode -> (Typ N, Chk D) -> IO (Definition Local)
 elabRealmDefinition e m (ty, tm) = do
-  let e' = e { scope = e.scope { Environment.mode = m } }
+  let e' = e{scope = e.scope{Environment.mode = m}}
   a <- ty.elab e'
   let var = V.LocalVar (FId e'.scope.len)
-  let e'' = e' { target = TargetNamed $ V.BareNeutral var V.Id }
+  let e'' = e'{target = TargetNamed $ V.BareNeutral var V.Id}
   t <- tm.elab e'' a.val
   let v = V.reflect var V.Id a.val (Just t.val)
   pure $ Definition t a.val v m
@@ -142,11 +142,11 @@ realmDecl de _ n = unexpectedNotation (contramap ParserCode de) n "realm declara
 realmDecls :: DiagnosticEnv ColnCode -> Globals -> V.Ty N -> V.El N -> [Ntn] -> IO (OMap Name (Definition Local))
 realmDecls de g theory root ns = do
   let e0 = emptyElabEnv (contramap ElaboratorCode de) g Conjunctive
-  let e = e0 { scope = let_ "root" root theory Conjunctive e0.scope }
+  let e = e0{scope = let_ "root" root theory Conjunctive e0.scope}
   let addDecl (e', ds) n = do
         (x, d) <- realmDecl de e' n
-        pure (
-          e' { scope = let_ x d.reflected d.ty d.mode e'.scope }
+        pure
+          ( e'{scope = let_ x d.reflected d.ty d.mode e'.scope}
           , ds OMap.>| (x, d)
           )
   (_, ds) <- foldlM addDecl (e, OMap.empty) ns

@@ -8,8 +8,8 @@ import Data.Map.Ordered (OMap)
 import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
-import Coln.Core.Params
 import Coln.Core.Memoed qualified as M
+import Coln.Core.Params
 import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 

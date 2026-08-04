@@ -23,8 +23,8 @@ import Coln.Backend.TypeScript.AST qualified as TS
 import Coln.Backend.TypeScript.Assemble (asm)
 import Coln.Backend.TypeScript.Params
 import Coln.Common
-import Coln.Core.Memoed
 import Coln.Core.Globals
+import Coln.Core.Memoed
 import Coln.Core.Params
 import Coln.Core.Readback
 import Coln.Core.Value qualified as V

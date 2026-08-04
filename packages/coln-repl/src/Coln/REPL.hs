@@ -5,9 +5,9 @@
 module Coln.REPL (runRepl) where
 
 import Coln.Common
-import Coln.Core.Memoed
 import Coln.Core.Globals
-import Coln.Core.Params (CtxShape (..), Mode (..), N, DefinitionScope (..))
+import Coln.Core.Memoed
+import Coln.Core.Params (CtxShape (..), DefinitionScope (..), Mode (..), N)
 import Coln.Core.Print (DPrettyWithNames (dprettyWithNames), prtIn)
 import Coln.Diagnostics
 import Coln.Elaborator.Environment (emptyElabEnv)
