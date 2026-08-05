@@ -1,9 +1,11 @@
+# trivial
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
     ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
+    agenix.url = "github:ryantm/agenix";
   };
   outputs =
     inputs@{
@@ -139,6 +141,11 @@
           format-hs = nuShellCheck [pkgs.fourmolu] ./nix/checks/format-hs.nu;
           format-cabal = nuShellCheck [pkgs.haskellPackages.cabal-gild] ./nix/checks/format-cabal.nu;
 
+          nixosConfigurations.github-runner = inputs.nixpkgs.lib.nixosSystem {
+            modules = [./nix/runner];
+            specialArgs = {agenix = inputs.agenix; disko = inputs.disko; inherit shellInputs; };
+          };
+
           manual = pkgs.stdenv.mkDerivation {
             name = "coln-manual";
 
@@ -199,6 +206,39 @@
           npmRoot = lsTsDir;
           nodejs = pkgs.nodejs_24;
         };
+
+      shellInputs = with pkgs; [
+                  inputs.agenix.packages.${system}.agenix
+                  cabal-install
+                  cabal2nix
+                  cargo-llvm-cov
+                  coln-manual-dev
+                  forester
+                  fourmolu
+                  esbuild
+                  haskell-wasm.wasm32-wasi-ghc-9_14
+                  haskell-wasm.wasm32-wasi-cabal-9_14
+                  haskell.compiler.ghc912
+                  haskell.packages.ghc912.haskell-language-server
+                  haskellPackages.cabal-gild
+                  jq
+                  just
+                  nodejs_24
+                  pnpm
+                  packages.wasm-bodge
+                  rustToolchain
+                  packages.wasm-bindgen-cli
+                  binaryen
+                  openssl
+                  pkg-config
+                  reuse
+                  simple-http-server
+                  tectonic
+                  typescript
+                  vtsls
+                  zlib
+                  zlib.dev
+                ];
       in
       {
         inherit packages;
@@ -213,38 +253,7 @@
         };
         devShells.default = pkgs.mkShell {
           name = "coln";
-          buildInputs = with pkgs; [
-            cabal-install
-            cabal2nix
-            cargo-llvm-cov
-            cargo-nextest
-            coln-manual-dev
-            forester
-            fourmolu
-            esbuild
-            haskell-wasm.wasm32-wasi-ghc-9_14
-            haskell-wasm.wasm32-wasi-cabal-9_14
-            haskell.compiler.ghc912
-            haskell.packages.ghc912.haskell-language-server
-            haskellPackages.cabal-gild
-            jq
-            just
-            nodejs_24
-            pnpm
-            packages.wasm-bodge
-            rustToolchain
-            packages.wasm-bindgen-cli
-            binaryen
-            openssl
-            pkg-config
-            reuse
-            simple-http-server
-            tectonic
-            typescript
-            vtsls
-            zlib
-            zlib.dev
-          ];
+          buildInputs = shellInputs;
           shellHook = ''
             # GCC 15 (nixos-26.05) defaults to -std=gnu23 which removed ATOMIC_VAR_INIT.
             # This breaks mimalloc-rust-sys, which is a dependency of dbsp.

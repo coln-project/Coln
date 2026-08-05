@@ -7,23 +7,14 @@ name: Deploy
 
 jobs:
   deploy-manual:
-    runs-on: ubuntu-latest
+    runs-on: coln-runner
 
     steps:
       - name: Checkout ⬇️
         uses: actions/checkout@v6
 
-      - name: Install Nix ❄️
-        uses: cachix/install-nix-action@v31
-
-      - name: Set up Cachix ♻️
-        uses: cachix/cachix-action@v17
-        with:
-          name: coln
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
       - name: Build manual
-        run: nix build .#manual
+        run: nix build .#manual --accept-flake-config
 
       - name: Deploy manual
         uses: peaceiris/actions-gh-pages@v4
