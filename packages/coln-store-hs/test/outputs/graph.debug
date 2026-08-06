@@ -1,0 +1,255 @@
+FlatRealm {
+    tables: [
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "V",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [],
+                primary_key: None,
+            },
+        },
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "E",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                ],
+                primary_key: None,
+            },
+        },
+    ],
+    rules: [
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "V",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [],
+                var_types: [],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [],
+                        },
+                    },
+                ],
+                consequents: [],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "E",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphRealm",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphRealm",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                ],
+            },
+        },
+    ],
+}

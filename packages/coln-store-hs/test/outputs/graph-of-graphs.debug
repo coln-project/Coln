@@ -1,0 +1,3040 @@
+FlatRealm {
+    tables: [
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "V",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [],
+                primary_key: None,
+            },
+        },
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "E",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                ],
+                primary_key: None,
+            },
+        },
+    ],
+    rules: [
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "V",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [],
+                var_types: [],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [],
+                        },
+                    },
+                ],
+                consequents: [],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphRealm",
+                    ],
+                    [
+                        "E",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphRealm",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphRealm",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphRealm",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                ],
+            },
+        },
+    ],
+}
+FlatRealm {
+    tables: [
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "base",
+                    ],
+                    [
+                        "V",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [],
+                primary_key: None,
+            },
+        },
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "base",
+                    ],
+                    [
+                        "E",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                ],
+                primary_key: None,
+            },
+        },
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "fiber",
+                    ],
+                    [
+                        "V",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                ],
+                primary_key: None,
+            },
+        },
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "fiber",
+                    ],
+                    [
+                        "E",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "c",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                ],
+                primary_key: None,
+            },
+        },
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "action",
+                    ],
+                    [
+                        "V",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "v0",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "v1",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "c",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                ],
+                primary_key: Some(
+                    [
+                        Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "v0",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "v1",
+                                ],
+                            ],
+                        ),
+                    ],
+                ),
+            },
+        },
+        TableEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "action",
+                    ],
+                    [
+                        "E",
+                    ],
+                ],
+            ),
+            table: Schema {
+                entity_variant: Table,
+                columns: [
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "v0",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "v1",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "v0",
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "v1",
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                    ColumnEntry {
+                        path: Path(
+                            [
+                                [
+                                    "c",
+                                ],
+                            ],
+                        ),
+                        col_type: RowId {
+                            path: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                        },
+                    },
+                ],
+                primary_key: Some(
+                    [
+                        Path(
+                            [
+                                [
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "b",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "v0",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "v1",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "v0",
+                                    "a",
+                                ],
+                            ],
+                        ),
+                        Path(
+                            [
+                                [
+                                    "v1",
+                                    "a",
+                                ],
+                            ],
+                        ),
+                    ],
+                ),
+            },
+        },
+    ],
+    rules: [
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "base",
+                    ],
+                    [
+                        "V",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [],
+                var_types: [],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [],
+                        },
+                    },
+                ],
+                consequents: [],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "base",
+                    ],
+                    [
+                        "E",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                ],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "fiber",
+                    ],
+                    [
+                        "V",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                ],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "fiber",
+                    ],
+                    [
+                        "E",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "c",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 2,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 2,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "action",
+                    ],
+                    [
+                        "V",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "v0",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v1",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "c",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "E",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "action",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 2,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 3,
+                                    term: Var {
+                                        index: 3,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 4,
+                                    term: Var {
+                                        index: 4,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 2,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 3,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 4,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "action",
+                    ],
+                    [
+                        "V",
+                    ],
+                    [
+                        "total",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Monitored,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "v0",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v1",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "E",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 2,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 3,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "action",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 2,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 3,
+                                    term: Var {
+                                        index: 3,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "action",
+                    ],
+                    [
+                        "E",
+                    ],
+                    [
+                        "foreignKey",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Enforced,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "v0",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v1",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v0",
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v1",
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "c",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "c",
+                            ],
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "c",
+                            ],
+                            [
+                                "c",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "E",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "E",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "E",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "action",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 2,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 3,
+                                    term: Var {
+                                        index: 3,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 4,
+                                    term: Var {
+                                        index: 4,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 5,
+                                    term: Var {
+                                        index: 5,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 6,
+                                    term: Var {
+                                        index: 6,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "action",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 2,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 3,
+                                    term: Var {
+                                        index: 3,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 4,
+                                    term: Var {
+                                        index: 7,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "action",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 2,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 3,
+                                    term: Var {
+                                        index: 4,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 4,
+                                    term: Var {
+                                        index: 8,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 2,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 3,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 4,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 5,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 3,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 4,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 6,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 7,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 8,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        },
+        RuleEntry {
+            path: Path(
+                [
+                    [
+                        "GraphOfGraphsRealm",
+                    ],
+                    [
+                        "action",
+                    ],
+                    [
+                        "E",
+                    ],
+                    [
+                        "total",
+                    ],
+                ],
+            ),
+            rule: Rule {
+                rule_variant: Monitored,
+                var_names: [
+                    Path(
+                        [
+                            [
+                                "v0",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v1",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v0",
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "v1",
+                                "a",
+                            ],
+                        ],
+                    ),
+                    Path(
+                        [
+                            [
+                                "b",
+                            ],
+                        ],
+                    ),
+                ],
+                var_types: [
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "base",
+                                ],
+                                [
+                                    "E",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "V",
+                                ],
+                            ],
+                        ),
+                    },
+                    RowId {
+                        path: Path(
+                            [
+                                [
+                                    "GraphOfGraphsRealm",
+                                ],
+                                [
+                                    "fiber",
+                                ],
+                                [
+                                    "E",
+                                ],
+                            ],
+                        ),
+                    },
+                ],
+                antecedents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 0,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 1,
+                                },
+                            ),
+                            values: [],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "base",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 2,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 3,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "V",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 4,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "fiber",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: Some(
+                                Var {
+                                    index: 5,
+                                },
+                            ),
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 3,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 4,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+                consequents: [
+                    Atom {
+                        atom: Atom {
+                            entity: Path(
+                                [
+                                    [
+                                        "GraphOfGraphsRealm",
+                                    ],
+                                    [
+                                        "action",
+                                    ],
+                                    [
+                                        "E",
+                                    ],
+                                ],
+                            ),
+                            row_id: None,
+                            values: [
+                                ValueEntry {
+                                    column: 0,
+                                    term: Var {
+                                        index: 0,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 1,
+                                    term: Var {
+                                        index: 1,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 2,
+                                    term: Var {
+                                        index: 2,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 3,
+                                    term: Var {
+                                        index: 3,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 4,
+                                    term: Var {
+                                        index: 4,
+                                    },
+                                },
+                                ValueEntry {
+                                    column: 5,
+                                    term: Var {
+                                        index: 5,
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+        },
+    ],
+}

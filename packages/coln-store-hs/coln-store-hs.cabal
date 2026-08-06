@@ -44,3 +44,34 @@ library
     hs-bindgen-runtime,
     template-haskell,
     text,
+
+test-suite coln-store-hs-test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  hs-source-dirs: test
+  default-language: GHC2024
+  default-extensions:
+    BlockArguments
+    OverloadedRecordDot
+    OverloadedStrings
+
+  ghc-options: -Wall
+  build-depends:
+    aeson,
+    aeson-pretty,
+    base,
+    bytestring,
+    coln-compiler,
+    coln-store-hs,
+    containers,
+    diagnostician,
+    directory,
+    filepath,
+    fnotation,
+    ordered-containers,
+    prettyprinter,
+    tasty,
+    tasty-golden,
+    tasty-hunit,
+    temporary,
+    text,
