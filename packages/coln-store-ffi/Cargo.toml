@@ -1,0 +1,27 @@
+[package]
+name = "coln-store-ffi"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "C API for Coln's storage backend, for consumption by other languages, e.g. Haskell."
+repository = "https://github.com/coln-project/Coln"
+
+[lib]
+# "C" prefix matches what's in `coln-store-hs.cabal` - it's a Cabal convention for bundled libraries
+# the Haskell package declares `extra-bundled-libraries: Ccoln_store_ffi`
+# and Cabal looks for `libCcoln_store_ffi.a` in its own build directory
+# due to silly legacy naming restrictions: https://github.com/haskell/cabal/issues/8701
+# otherwise we could just use a more conventional name here and add a renaming step in our build scripts
+# especially as in theory there's nothing in this crate specific to Haskell
+name = "Ccoln_store_ffi"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+coln-flir-rs = { path = "../coln-flir-rs" }
+# TODO `default-features = false` to avoid unnecessary deps?
+coln-store = { path = "../coln-store" }
+serde_json = { workspace = true }
+
+[build-dependencies]
+cbindgen = "0.29"

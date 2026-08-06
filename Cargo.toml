@@ -3,6 +3,7 @@ members = [
   "packages/coln-js-runtime",
   "packages/coln-flir-rs",
   "packages/coln-store",
+  "packages/coln-store-ffi",
   "packages/coln-query",
   "packages/coln-batch"
 ]

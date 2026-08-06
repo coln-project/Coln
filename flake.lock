@@ -57,6 +57,22 @@
         "type": "gitlab"
       }
     },
+    "hs-bindgen-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1784799012,
+        "narHash": "sha256-d0KWG5ch+83yC1/iJO1FSdkjv4tY/b0a0ORLhGjjU+E=",
+        "owner": "well-typed",
+        "repo": "hs-bindgen",
+        "rev": "55c339cf0b74af1fc438259ba8fea0674b1a0c31",
+        "type": "github"
+      },
+      "original": {
+        "owner": "well-typed",
+        "repo": "hs-bindgen",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1781472460,
@@ -109,6 +125,7 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "ghc-wasm-meta": "ghc-wasm-meta",
+        "hs-bindgen-src": "hs-bindgen-src",
         "nixpkgs": "nixpkgs_2",
         "rust-overlay": "rust-overlay"
       }
