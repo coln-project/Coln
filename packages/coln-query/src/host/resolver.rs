@@ -3,22 +3,27 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::{
-    context::ResolverContext,
     error::SyntaxError,
-    expr::{
-        AliasExpr, AntiJoinExpr, AssignExpr, BinaryExpr, CallExpr, CartesianProductExpr,
-        DifferenceExpr, DistinctExpr, EquiJoinExpr, Expr, ExprVisitorMut, FixedPointIterExpr,
-        FunctionExpr, GetIndexExpr, GroupingExpr, LiteralExpr, ProjectionExpr, SelectionExpr,
-        TupleExpr, UnaryExpr, UnionExpr, VarExpr,
+    host::{
+        Code,
+        expr::{
+            AssignExpr, BinaryExpr, CallExpr, Expr, ExprVisitorMut, FunctionExpr, GetIndexExpr,
+            GroupingExpr, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
+        },
+        stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitorMut, VarStmt},
+        variable::SCOPES_CAPACITY,
     },
-    stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitorMut, VarStmt},
+    relational::expr::{
+        AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
+        FixedPointIterExpr, OutputExpr, ProjectionExpr, RelExpr, RelExprVisitorMut, SelectionExpr,
+        SourceExpr, UnionExpr,
+    },
     util::{Named, Resolvable},
-    variable::SCOPES_CAPACITY,
 };
-use std::{collections::HashMap, iter};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
-pub struct VariableMeta {
+struct VariableMeta {
     initialized: bool,
     slot: usize,
 }
@@ -77,13 +82,35 @@ impl<T> ScopeStack<T> {
     }
 }
 
-pub struct Resolver {}
+/// A plan that has been through a static resolve pass. Only
+/// [`ResolvedCode::from`] mints one, so a backend cannot be handed an
+/// unprocessed plan.
+#[derive(Clone)]
+pub struct ResolvedCode(Code);
+
+impl ResolvedCode {
+    /// Run the static pipeline over a raw plan and resolve variable slots.
+    pub fn from(mut code: Code) -> Result<Self, SyntaxError> {
+        let mut scopes = ScopeStack::new();
+        let mut ctx = ResolverContext::new(&mut scopes);
+        Resolver::new().resolve(code.iter_mut(), &mut ctx)?;
+        Ok(Self(code))
+    }
+    pub fn as_code(&self) -> &Code {
+        &self.0
+    }
+    pub fn into_code(self) -> Code {
+        self.0
+    }
+}
+
+struct Resolver {}
 
 impl Resolver {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {}
     }
-    pub fn resolve<'a>(
+    fn resolve<'a>(
         &mut self,
         stmts: impl IntoIterator<Item = &'a mut Stmt>,
         ctx: VisitorCtx,
@@ -269,6 +296,24 @@ impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
         Ok(())
     }
 
+    fn visit_relational_expr(&mut self, expr: &mut RelExpr, ctx: VisitorCtx) -> VisitorResult {
+        self.visit_rel(expr, ctx)
+    }
+}
+
+impl RelExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
+    fn visit_source_expr(&mut self, expr: &mut SourceExpr, ctx: VisitorCtx) -> VisitorResult {
+        // A source is a plan leaf that names an extensional relation; it carries
+        // no variables to resolve.
+        Ok(())
+    }
+
+    fn visit_output_expr(&mut self, expr: &mut OutputExpr, ctx: VisitorCtx) -> VisitorResult {
+        // Output is a pass-through tap; only its inner relation carries variables
+        // to resolve. Its id/kind are inert plan data.
+        self.visit_expr(&mut expr.relation, ctx)
+    }
+
     fn visit_alias_expr(&mut self, expr: &mut AliasExpr, ctx: VisitorCtx) -> VisitorResult {
         self.visit_expr(&mut expr.relation, ctx)
     }
@@ -363,17 +408,17 @@ impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
         expr: &mut FixedPointIterExpr,
         ctx: VisitorCtx,
     ) -> VisitorResult {
-        let exprs = iter::once(&mut expr.accumulator)
-            .chain(expr.imports.iter_mut())
-            .try_for_each(|variable| self.visit_expr(&mut variable.1, ctx));
+        // The accumulator's initial value is resolved in the enclosing scope.
+        self.visit_expr(&mut expr.accumulator.1, ctx)?;
+        // Only the accumulator is a step-local binding. Any other relation the
+        // step references (an outer variable or a `SourceExpr`) keeps its outer
+        // resolution; the backend bridges it into the iteration. This is what
+        // lets the step be written as a plain computation without an explicit
+        // imports list.
         self.visit_block(&mut expr.step.stmts, ctx, |resolver, ctx| {
-            iter::once(&expr.accumulator)
-                .chain(expr.imports.iter())
-                .try_for_each(|variable| {
-                    resolver.declare_var(&variable.0, ctx)?;
-                    resolver.define_var(&variable.0, ctx)?;
-                    Ok(())
-                })
+            resolver.declare_var(&expr.accumulator.0, ctx)?;
+            resolver.define_var(&expr.accumulator.0, ctx)?;
+            Ok(())
         })
     }
 }
@@ -397,5 +442,25 @@ impl StmtVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
 
     fn visit_block_stmt(&mut self, stmt: &mut BlockStmt, ctx: VisitorCtx) -> VisitorResult {
         self.visit_block(&mut stmt.stmts, ctx, |_resolver, _ctx| Ok(()))
+    }
+}
+
+struct ResolverContext<'a> {
+    scopes: &'a mut ScopeStack<VariableMeta>,
+    is_tuple_context: bool,
+}
+
+impl ResolverContext<'_> {
+    fn new(scopes: &mut ScopeStack<VariableMeta>) -> ResolverContext<'_> {
+        ResolverContext {
+            scopes,
+            is_tuple_context: false,
+        }
+    }
+    fn begin_tuple_context(&mut self) {
+        self.is_tuple_context = true;
+    }
+    fn end_tuple_context(&mut self) {
+        self.is_tuple_context = false;
     }
 }

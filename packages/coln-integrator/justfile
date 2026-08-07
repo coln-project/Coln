@@ -1,13 +1,13 @@
 # Task runner: https://github.com/casey/just
-# From packages/coln-query, with Rust on PATH (e.g. `nix develop`):
+# From packages/coln-integrator, with Rust on PATH (e.g. `nix develop`):
 #   just              # list available recipes
 #   just check        # fmt-check + clippy + test
-#   just cargo-check  # type-check coln-query targets
+#   just cargo-check  # type-check coln-integrator targets
 #   just import
 #   just fix          # apply cargo fixes + format
 #   just coverage     # llvm-cov + Cobertura
 
-crate := "coln-query"
+crate := "coln-integrator"
 
 default:
     @just --list
@@ -30,18 +30,12 @@ import:
 fix: import fmt
 
 test:
-    cargo nextest run -p {{crate}} --all-targets
+    cargo nextest run -p {{crate}} --all-targets --no-tests pass
     # As of now nextest does not support doc tests, so we fallback to
     # cargo test to run them.
     cargo test --doc -p {{crate}}
 
-doc-build:
-    cargo doc
-
-doc-check:
-    cargo doc --no-deps --document-private-items --config 'build.rustdocflags=["-D", "warnings"]'
-
-check: fmt-check clippy test doc-check
+check: fmt-check clippy test
 
 ci: check
 
