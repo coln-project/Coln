@@ -18,9 +18,12 @@
 //!    hash-join chain ([`binary_join`]) and a worst-case-optimal generic
 //!    join ([`generic_join`]), differential-tested against each other and
 //!    against the oracle,
-//! 6. (next) semi-naive recursion to a fixpoint.
+//! 6. recursive Datalog: rules and programs ([`rule`]) evaluated to the
+//!    least fixpoint with semi-naive iteration ([`fixpoint`]), again
+//!    differential-tested (semi-naive vs. naive, per executor).
 
 pub mod binary_join;
+pub mod fixpoint;
 pub mod fixtures;
 pub mod generate;
 pub mod generic_join;
@@ -29,4 +32,5 @@ pub mod query;
 pub mod reference;
 pub mod relation;
 pub mod rng;
+pub mod rule;
 pub mod table;

@@ -23,6 +23,10 @@ brute-force oracle.
   classic hash-join chain and a worst-case-optimal generic join.
 - `reference.rs` is the brute-force oracle that defines correct results
   in tests.
+- `rule.rs` and `fixpoint.rs` evaluate recursive Datalog programs to
+  their least fixpoint with semi-naive iteration; a naive re-evaluation
+  strategy serves as the recursion oracle. Either query executor can
+  drive the rule bodies.
 
 ## Examples
 
@@ -54,7 +58,9 @@ cargo run -p coln-batch --example demo --release
 Three layers. Unit tests per module, differential tests (both executors
 must agree with the oracle, `tests/differential.rs`), and randomized
 differential tests over generated query shapes
-(`tests/random_queries.rs`).
+(`tests/random_queries.rs`). Recursion is differential-tested as well,
+semi-naive against naive re-evaluation, with either executor
+underneath (`tests/fixpoint.rs`).
 
 ```sh
 cargo test -p coln-batch                                 # fast suite
@@ -67,5 +73,5 @@ cargo test -p coln-batch --release -- --include-ignored --nocapture  # + 10M-row
 
 Correctness only for now. Performance work is deliberately deferred and
 marked with `TODO(perf)`. Real storage plugs in behind `SortedTable`
-without touching the join code. Next step is recursion, semi-naive
-evaluation to a fixpoint.
+without touching the join code. Next steps are the plan IR (logical and
+physical) and a browser-capable mode.

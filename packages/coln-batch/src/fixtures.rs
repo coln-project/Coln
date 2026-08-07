@@ -7,6 +7,7 @@
 
 use crate::generate;
 use crate::query::{Atom, Catalog, Query, Term};
+use crate::rule::{Program, Rule};
 
 /// The acyclic e-matching pattern `f(α, g(α))`:
 ///
@@ -75,6 +76,63 @@ pub fn triangle_catalog(nodes: u64, noise_edges: usize, planted: usize, seed: u6
     for rel in generate::triangle(nodes, noise_edges, planted, seed) {
         cat.insert(rel);
     }
+    cat
+}
+
+/// The classic recursive program:
+///
+/// ```text
+/// ancestor(x, y) ← parent(x, y)
+/// ancestor(x, z) ← parent(x, y), ancestor(y, z)
+/// ```
+pub fn ancestor_program() -> Program {
+    let (x, y, z) = (0, 1, 2);
+    Program {
+        rules: vec![
+            Rule {
+                var_names: vec!["x".into(), "y".into()],
+                head: Atom {
+                    relation: "ancestor".into(),
+                    terms: vec![Term::Var(x), Term::Var(y)],
+                },
+                body: vec![Atom {
+                    relation: "parent".into(),
+                    terms: vec![Term::Var(x), Term::Var(y)],
+                }],
+            },
+            Rule {
+                var_names: vec!["x".into(), "y".into(), "z".into()],
+                head: Atom {
+                    relation: "ancestor".into(),
+                    terms: vec![Term::Var(x), Term::Var(z)],
+                },
+                body: vec![
+                    Atom {
+                        relation: "parent".into(),
+                        terms: vec![Term::Var(x), Term::Var(y)],
+                    },
+                    Atom {
+                        relation: "ancestor".into(),
+                        terms: vec![Term::Var(y), Term::Var(z)],
+                    },
+                ],
+            },
+        ],
+    }
+}
+
+/// Catalog with a chain 0 → 1 → … → k-1 as the `parent` relation. The
+/// ancestor fixpoint has exactly k·(k-1)/2 facts.
+pub fn ancestor_chain_catalog(k: u64) -> Catalog {
+    let mut cat = Catalog::new();
+    cat.insert(generate::chain(k));
+    cat
+}
+
+/// Catalog with a random DAG as the `parent` relation.
+pub fn ancestor_dag_catalog(nodes: u64, edges: usize, seed: u64) -> Catalog {
+    let mut cat = Catalog::new();
+    cat.insert(generate::dag(nodes, edges, seed));
     cat
 }
 

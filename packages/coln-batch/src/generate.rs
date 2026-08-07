@@ -90,9 +90,55 @@ pub fn f_g_pattern(eclasses: u64, noise: usize, planted: usize, seed: u64) -> [R
     ]
 }
 
+/// Parent edges forming the chain 0 → 1 → … → k-1 (that is, k-1 rows).
+/// Its transitive closure has exactly k·(k-1)/2 pairs, which makes the
+/// chain an exact acceptance test for recursive evaluation.
+pub fn chain(k: u64) -> Relation {
+    assert!(k >= 2, "chain needs at least two nodes");
+    Relation::new(
+        "parent",
+        ["parent", "child"],
+        vec![(0..k - 1).collect(), (1..k).collect()],
+    )
+}
+
+/// Random DAG: `edges` random edges a → b with a < b over `nodes`
+/// vertices, deduplicated. Acyclic by construction; with sparse edge
+/// counts the longest path (= number of fixpoint rounds) stays small.
+pub fn dag(nodes: u64, edges: usize, seed: u64) -> Relation {
+    assert!(nodes >= 2, "dag needs at least two nodes");
+    let mut rng = SplitMix64::new(seed);
+    let mut src = Vec::with_capacity(edges);
+    let mut dst = Vec::with_capacity(edges);
+    for _ in 0..edges {
+        let a = rng.below(nodes - 1); // a in 0..=nodes-2
+        let b = a + 1 + rng.below(nodes - 1 - a); // b in a+1..=nodes-1
+        src.push(a);
+        dst.push(b);
+    }
+    Relation::new("parent", ["parent", "child"], vec![src, dst]).sorted_dedup()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chain_and_dag_are_well_formed() {
+        let c = chain(5);
+        assert_eq!(c.len(), 4);
+        assert_eq!(c.row(0), vec![0, 1]);
+        assert_eq!(c.row(3), vec![3, 4]);
+
+        let d = dag(100, 300, 9);
+        assert!(!d.is_empty() && d.len() <= 300);
+        for i in 0..d.len() {
+            let row = d.row(i);
+            assert!(row[0] < row[1], "edge must go forward: {row:?}");
+            assert!(row[1] < 100);
+        }
+        assert_eq!(d, dag(100, 300, 9), "deterministic");
+    }
 
     #[test]
     fn triangle_is_deterministic_and_dedduped() {

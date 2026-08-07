@@ -94,6 +94,76 @@ impl Relation {
         }
     }
 
+    /// Set union of two relations with the same arity. Both inputs must be
+    /// sorted and deduplicated (as produced by [`Self::sorted_dedup`]); the
+    /// result keeps this relation's name and column names and is sorted and
+    /// deduplicated again.
+    pub fn union(&self, other: &Relation) -> Relation {
+        assert_eq!(self.arity(), other.arity(), "union needs equal arity");
+        let mut cols: Vec<Vec<u64>> = (0..self.arity())
+            .map(|_| Vec::with_capacity(self.len() + other.len()))
+            .collect();
+        let mut push = |rel: &Relation, row: usize| {
+            for (c, col) in cols.iter_mut().enumerate() {
+                col.push(rel.cols[c][row]);
+            }
+        };
+        let (mut i, mut j) = (0, 0);
+        while i < self.len() && j < other.len() {
+            match cmp_row_pair(self, i, other, j) {
+                Ordering::Less => {
+                    push(self, i);
+                    i += 1;
+                }
+                Ordering::Greater => {
+                    push(other, j);
+                    j += 1;
+                }
+                Ordering::Equal => {
+                    push(self, i);
+                    i += 1;
+                    j += 1;
+                }
+            }
+        }
+        while i < self.len() {
+            push(self, i);
+            i += 1;
+        }
+        while j < other.len() {
+            push(other, j);
+            j += 1;
+        }
+        Relation::new(self.name.clone(), self.col_names.clone(), cols)
+    }
+
+    /// Rows of this relation that are absent from `other` (set difference).
+    /// Both inputs must be sorted and deduplicated.
+    pub fn minus(&self, other: &Relation) -> Relation {
+        assert_eq!(self.arity(), other.arity(), "minus needs equal arity");
+        let mut cols: Vec<Vec<u64>> = (0..self.arity()).map(|_| Vec::new()).collect();
+        let (mut i, mut j) = (0, 0);
+        while i < self.len() {
+            let keep = loop {
+                if j == other.len() {
+                    break true;
+                }
+                match cmp_row_pair(self, i, other, j) {
+                    Ordering::Less => break true,
+                    Ordering::Equal => break false,
+                    Ordering::Greater => j += 1,
+                }
+            };
+            if keep {
+                for (c, col) in cols.iter_mut().enumerate() {
+                    col.push(self.cols[c][i]);
+                }
+            }
+            i += 1;
+        }
+        Relation::new(self.name.clone(), self.col_names.clone(), cols)
+    }
+
     /// Build a relation from row-major flat data (`width` values per row).
     pub fn from_flat_rows(
         name: impl Into<String>,
@@ -155,9 +225,37 @@ impl Relation {
     }
 }
 
+/// Lexicographic comparison of row `i` of `a` with row `j` of `b`
+/// (equal arity required).
+fn cmp_row_pair(a: &Relation, i: usize, b: &Relation, j: usize) -> Ordering {
+    for (ca, cb) in a.cols.iter().zip(&b.cols) {
+        match ca[i].cmp(&cb[j]) {
+            Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    Ordering::Equal
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn union_and_minus() {
+        let a = Relation::new("a", ["x", "y"], vec![vec![1, 2, 4], vec![1, 2, 4]]);
+        let b = Relation::new("b", ["x", "y"], vec![vec![2, 3], vec![2, 3]]);
+        let u = a.union(&b);
+        assert_eq!(u.len(), 4);
+        assert_eq!(u.row(0), vec![1, 1]);
+        assert_eq!(u.row(3), vec![4, 4]);
+        let m = a.minus(&b);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m.row(0), vec![1, 1]);
+        assert_eq!(m.row(1), vec![4, 4]);
+        let empty = b.minus(&u);
+        assert_eq!(empty.len(), 0);
+    }
 
     #[test]
     fn sorted_dedup_sorts_and_drops_duplicates() {
