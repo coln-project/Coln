@@ -90,7 +90,9 @@ pub enum IndexMethod {
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum EntityVariant {
     Table,
-    View(Materialization),
+    View {
+        materialization: Materialization,
+    },
     Index {
         method: IndexMethod,
         columns: Vec<ColName>,

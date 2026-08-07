@@ -175,7 +175,7 @@ fn read_column_entry(data: &[u8], pos: &mut usize) -> Result<ColumnEntry, CodecE
 fn write_entity_variant(buf: &mut Vec<u8>, variant: &EntityVariant) -> Result<(), CodecError> {
     match variant {
         EntityVariant::Table => write_u8(buf, 0),
-        EntityVariant::View(materialization) => {
+        EntityVariant::View { materialization } => {
             write_u8(buf, 1)?;
             write_materialization(buf, materialization)
         }
@@ -194,7 +194,9 @@ fn write_entity_variant(buf: &mut Vec<u8>, variant: &EntityVariant) -> Result<()
 fn read_entity_variant(data: &[u8], pos: &mut usize) -> Result<EntityVariant, CodecError> {
     match read_u8(data, pos, "entity variant tag")? {
         0 => Ok(EntityVariant::Table),
-        1 => Ok(EntityVariant::View(read_materialization(data, pos)?)),
+        1 => Ok(EntityVariant::View {
+            materialization: read_materialization(data, pos)?,
+        }),
         2 => {
             let method = read_index_method(data, pos)?;
             let column_count = commit_leb128::read_len(data, pos, "index column count")?;
