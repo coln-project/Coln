@@ -1,0 +1,21 @@
+table GraphRealm.V (rows: 0, cols: 0)
+
+
+table GraphRealm.E (rows: 0, cols: 2)
+
+table GraphOfGraphsRealm.base.V (rows: 0, cols: 0)
+
+
+table GraphOfGraphsRealm.base.E (rows: 0, cols: 2)
+
+
+table GraphOfGraphsRealm.fiber.V (rows: 0, cols: 1)
+
+
+table GraphOfGraphsRealm.fiber.E (rows: 0, cols: 3)
+
+
+table GraphOfGraphsRealm.action.V (rows: 0, cols: 5)
+
+
+table GraphOfGraphsRealm.action.E (rows: 0, cols: 7)

@@ -1,0 +1,4 @@
+table GraphRealm.V (rows: 0, cols: 0)
+
+
+table GraphRealm.E (rows: 0, cols: 2)

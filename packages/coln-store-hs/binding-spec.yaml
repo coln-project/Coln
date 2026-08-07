@@ -1,0 +1,20 @@
+# TODO we'd really prefer to have annotations on individual Rust definitions, rather than needing one of these files
+# that would help with future attempts to provide a macro library to reduce boilerplate on the Rust side
+# it would also be great even before that for monomorphised types like the Result/Either below, to avoid repetition
+# it also simplifies building and distribution, especially as I can't get `addDependentFile` to work with any path
+# "Annotations in the C headers themselves" is mentioned here, albeit in a slightly different context: https://github.com/well-typed/hs-bindgen/issues/21
+# see also https://github.com/mozilla/cbindgen/blob/main/docs.md#annotations
+# and https://github.com/well-typed/hs-bindgen/issues/2101#issuecomment-4873919664
+version:
+  hs_bindgen: 0.1.0
+  binding_specification: "1.0"
+
+hsmodule: Coln.Store.Raw
+
+ctypes:
+  - headers: coln_store.h
+    cname: enum ResultFlatRealmCChar_Tag
+    enum: closed
+  - headers: coln_store.h
+    cname: enum ResultStoreCChar_Tag
+    enum: closed

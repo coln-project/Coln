@@ -21,6 +21,35 @@ value: sig
   fiber : base.V -> Graph
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
+realm named GraphRealm
+elaborated: realm
+  generators
+    node
+      V = rel []
+      E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
+    end
+  end
+  definitions
+    def free-edge : Set := sig
+      v0 : root.V
+      v1 : root.V
+      f : root.E v0 v1
+    end
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.V := []
+    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
+  end
+  rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+    enforced ℜ.E.foreignKey a b := ℜ.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
+  end
+end
 realm named GraphOfGraphsRealm
 elaborated: realm
   generators
@@ -176,7 +205,3 @@ lowered: flatrealm
 end
 
 -- messages
-
-error[E0314]: no such variable self in scope
-8 |     v0 : self.V
-8 |          ^^^^

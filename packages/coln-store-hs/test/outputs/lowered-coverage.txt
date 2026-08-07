@@ -1,0 +1,53 @@
+# emitted by the lowering pass (2 .coln files)
+  Atom.Atom
+  Bwd (Bwd Name).(:>)
+  Bwd (Bwd Name).BwdNil
+  Bwd ColType.(:>)
+  Bwd ColType.BwdNil
+  Bwd Name.(:>)
+  ColType.RowId
+  Entity.Entity
+  EntityVariant.Table
+  FlatRealm.FlatRealm
+  Maybe (Set (Bwd Name)).Just
+  Maybe (Set (Bwd Name)).Nothing
+  Maybe Term.Just
+  Maybe Term.Nothing
+  OMap Int Term.empty
+  OMap Int Term.nonEmpty
+  OMap TableName Entity.nonEmpty
+  OMap TableName Rule.nonEmpty
+  Prop.PAtom
+  Rule.Rule
+  RuleVariant.Enforced
+  RuleVariant.Monitored
+  Set (Bwd Name).nonEmpty
+  Term.Var
+  [(Bwd Name, ColType)].(:)
+  [(Bwd Name, ColType)].[]
+  [Prop].(:)
+  [Prop].[]
+  [Text].(:)
+  [Text].[]
+
+# never emitted, so only covered by the synthetic theories
+  BuiltinTy.BuiltinInt
+  BuiltinTy.BuiltinString
+  Bwd Name.BwdNil
+  ColType.BuiltinTy
+  EntityVariant.Index
+  EntityVariant.View
+  IndexMethod.BTree
+  Literal.LitInt
+  Literal.LitString
+  Materialization.Materialized
+  Materialization.Memoized
+  Materialization.Recomputed
+  OMap TableName Entity.empty
+  OMap TableName Rule.empty
+  Prop.PEq
+  RuleVariant.Chased
+  Set (Bwd Name).empty
+  Term.Lit
+  [Bwd Name].(:)
+  [Bwd Name].[]

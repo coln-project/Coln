@@ -1,0 +1,16 @@
+import '../../build-support/haskell.just'
+
+# build the Rust staticlib, and symlink it to where Cabal expects to find "extra-bundled-libraries"
+gen-bindings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo build --manifest-path ../../Cargo.toml -p coln-store-ffi
+    BUNDLED_LIB_DIR=$(cabal list-bin coln-store-hs-test \
+      | sed -e 's|t/coln-store-hs-test/build/coln-store-hs-test/coln-store-hs-test|build|g')
+    mkdir -p "$BUNDLED_LIB_DIR"
+    # TODO copying may be safer than symlinking, but it requires re-running this a lot more often
+    ln -sf "$(pwd)/../../target/debug/libCcoln_store_ffi.a" "$BUNDLED_LIB_DIR/"
+
+# TODO having to rename to avoid clash with the import is annoying...
+test-full: gen-bindings
+    cabal test coln-store-hs-test

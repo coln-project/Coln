@@ -4,6 +4,13 @@
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
     ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
+    # TODO when the library is available on Hackage, we'll want to use that
+    # https://github.com/well-typed/hs-bindgen/issues/945
+    # though we may still need it for `hsBindgenHook` which sets up LLVM/Clang paths
+    hs-bindgen-src = {
+      url = "github:well-typed/hs-bindgen";
+      flake = false;
+    };
   };
   outputs =
     inputs@{
@@ -19,12 +26,13 @@
           inherit system;
           overlays = [
             rust-overlay.overlays.default
+            (import "${inputs.hs-bindgen-src}/nix/overlay" { inherit (nixpkgs) lib; }).default
             (import ./nix/haskell-packages.nix)
           ];
         };
 
         inherit (pkgs) colnHaskellPackages;
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+        rustToolchain = pkgs.rust-bin.nightly.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" ];
           targets = [ "wasm32-unknown-unknown" ];
         };
@@ -67,6 +75,61 @@
           coln-cli = colnHaskellPackages.callPackage ./packages/coln-cli {
             inherit coln-compiler coln-repl coln-ls diagnostician diagnostician-terminal fnotation;
           };
+          # TODO Claude-generated - the details could do with some more careful review
+          coln-store-hs =
+            let
+              coln-store-ffi =
+                (pkgs.makeRustPlatform {
+                  cargo = rustToolchain;
+                  rustc = rustToolchain;
+                }).buildRustPackage
+                  {
+                    pname = "coln-store-ffi";
+                    version = "0.1.0";
+                    nativeBuildInputs = [ pkgs.cargo-expand ];
+                    src = pkgs.lib.fileset.toSource {
+                      root = ./.;
+                      fileset = pkgs.lib.fileset.unions (
+                        [
+                          ./Cargo.toml
+                          ./Cargo.lock
+                        ]
+                        ++ map (member: ./. + "/${member}") (
+                          (builtins.fromTOML (builtins.readFile ./Cargo.toml)).workspace.members
+                        )
+                      );
+                    };
+                    cargoHash = "sha256-y9eGnr9zU5fmJA/T21XWFX8gXOqCXguoKFFpMJoJJNE=";
+                    buildAndTestSubdir = "packages/coln-store-ffi";
+                    doCheck = false;
+                    installPhase = ''
+                      runHook preInstall
+                      mkdir -p $out/lib $out/include
+                      cp "$(find target -name libCcoln_store_ffi.a | head -n1)" $out/lib/
+                      cp "$(find target -name coln_store.h | head -n1)" $out/include/
+                      runHook postInstall
+                    '';
+                  };
+            in
+            pkgs.haskell.lib.compose.overrideCabal
+              (drv: {
+                preConfigure = (drv.preConfigure or "") + ''
+                  mkdir -p include
+                  cp ${coln-store-ffi}/include/coln_store.h include/
+                  mkdir -p ../coln-compiler/test/golden
+                  cp ${./packages/coln-compiler/test/golden}/*.coln ../coln-compiler/test/golden/
+                '';
+                preBuild = (drv.preBuild or "") + ''
+                  mkdir -p dist/build
+                  cp ${coln-store-ffi}/lib/libCcoln_store_ffi.a dist/build/
+                '';
+                buildDepends = (drv.buildDepends or [ ]) ++ [ pkgs.hsBindgenHook ];
+              })
+              (
+                colnHaskellPackages.callPackage ./packages/coln-store-hs {
+                  inherit coln-compiler diagnostician fnotation;
+                }
+              );
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''
             echo "built diagnostician: ${diagnostician}"
@@ -77,6 +140,7 @@
             echo "built coln-repl: ${coln-repl}"
             echo "built coln-ls: ${coln-ls}"
             echo "built coln-cli: ${coln-cli}"
+            echo "built coln-store-hs: ${coln-store-hs}"
           '';
 
           wasm-bodge = pkgs.rustPlatform.buildRustPackage rec {
@@ -216,9 +280,11 @@
           buildInputs = with pkgs; [
             cabal-install
             cabal2nix
+            cargo-expand
             cargo-llvm-cov
             cargo-nextest
             coln-manual-dev
+            doxygen
             forester
             fourmolu
             esbuild
@@ -227,8 +293,11 @@
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
+            hsBindgenHook
             jq
             just
+            llvmPackages.llvm
+            llvmPackages.libclang
             nodejs_24
             pnpm
             packages.wasm-bodge

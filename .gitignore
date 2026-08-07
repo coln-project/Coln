@@ -358,3 +358,6 @@ node_modules
 
 ## MacOS
 .DS_Store
+
+# TODO do we need this?
+packages/coln-store-hs/include/

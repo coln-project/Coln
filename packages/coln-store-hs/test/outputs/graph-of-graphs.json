@@ -1,0 +1,2834 @@
+{
+    "entities": [
+        {
+            "path": [
+                [
+                    "GraphRealm"
+                ],
+                [
+                    "V"
+                ]
+            ],
+            "value": {
+                "columns": [],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": null
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphRealm"
+                ],
+                [
+                    "E"
+                ]
+            ],
+            "value": {
+                "columns": [
+                    {
+                        "path": [
+                            [
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphRealm"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "b"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphRealm"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    }
+                ],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": null
+            }
+        }
+    ],
+    "rules": [
+        {
+            "path": [
+                [
+                    "GraphRealm"
+                ],
+                [
+                    "V"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphRealm"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": []
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [],
+                "ruleVariant": "enforced",
+                "varNames": [],
+                "varTypes": []
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphRealm"
+                ],
+                [
+                    "E"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphRealm"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphRealm"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphRealm"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 1,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "enforced",
+                "varNames": [
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphRealm"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphRealm"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        }
+    ]
+}
+{
+    "entities": [
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "base"
+                ],
+                [
+                    "V"
+                ]
+            ],
+            "value": {
+                "columns": [],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": null
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "base"
+                ],
+                [
+                    "E"
+                ]
+            ],
+            "value": {
+                "columns": [
+                    {
+                        "path": [
+                            [
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "b"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    }
+                ],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": null
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "fiber"
+                ],
+                [
+                    "V"
+                ]
+            ],
+            "value": {
+                "columns": [
+                    {
+                        "path": [
+                            [
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    }
+                ],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": null
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "fiber"
+                ],
+                [
+                    "E"
+                ]
+            ],
+            "value": {
+                "columns": [
+                    {
+                        "path": [
+                            [
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "b"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "c"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    }
+                ],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": null
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "action"
+                ],
+                [
+                    "V"
+                ]
+            ],
+            "value": {
+                "columns": [
+                    {
+                        "path": [
+                            [
+                                "v0"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "v1"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "b"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "c"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    }
+                ],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": [
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ],
+                    [
+                        [
+                            "v0"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1"
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "action"
+                ],
+                [
+                    "E"
+                ]
+            ],
+            "value": {
+                "columns": [
+                    {
+                        "path": [
+                            [
+                                "v0"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "v1"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "v0",
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "v1",
+                                "a"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "b"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    },
+                    {
+                        "path": [
+                            [
+                                "c"
+                            ]
+                        ],
+                        "type": {
+                            "path": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "tag": "rowId"
+                        }
+                    }
+                ],
+                "entityVariant": {
+                    "tag": "table"
+                },
+                "primaryKey": [
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ],
+                    [
+                        [
+                            "v0"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1"
+                        ]
+                    ],
+                    [
+                        [
+                            "v0",
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1",
+                            "a"
+                        ]
+                    ]
+                ]
+            }
+        }
+    ],
+    "rules": [
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "base"
+                ],
+                [
+                    "V"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": []
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [],
+                "ruleVariant": "enforced",
+                "varNames": [],
+                "varTypes": []
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "base"
+                ],
+                [
+                    "E"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 1,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "enforced",
+                "varNames": [
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "fiber"
+                ],
+                [
+                    "V"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "enforced",
+                "varNames": [
+                    [
+                        [
+                            "a"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "fiber"
+                ],
+                [
+                    "E"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 2,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 1,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 2,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "enforced",
+                "varNames": [
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ],
+                    [
+                        [
+                            "c"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "action"
+                ],
+                [
+                    "V"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "action"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 2,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 3,
+                                    "term": {
+                                        "index": 3,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 4,
+                                    "term": {
+                                        "index": 4,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 1,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 2,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 3,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 4,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "enforced",
+                "varNames": [
+                    [
+                        [
+                            "v0"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1"
+                        ]
+                    ],
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ],
+                    [
+                        [
+                            "c"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "E"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "action"
+                ],
+                [
+                    "V"
+                ],
+                [
+                    "total"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 1,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 2,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 3,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "action"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 2,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 3,
+                                    "term": {
+                                        "index": 3,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "monitored",
+                "varNames": [
+                    [
+                        [
+                            "v0"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1"
+                        ]
+                    ],
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "E"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "action"
+                ],
+                [
+                    "E"
+                ],
+                [
+                    "foreignKey"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "action"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 2,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 3,
+                                    "term": {
+                                        "index": 3,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 4,
+                                    "term": {
+                                        "index": 4,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 5,
+                                    "term": {
+                                        "index": 5,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 6,
+                                    "term": {
+                                        "index": 6,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "action"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 2,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 3,
+                                    "term": {
+                                        "index": 3,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 4,
+                                    "term": {
+                                        "index": 7,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "action"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 2,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 3,
+                                    "term": {
+                                        "index": 4,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 4,
+                                    "term": {
+                                        "index": 8,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 1,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 2,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 3,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 4,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 5,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 3,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 4,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 6,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 7,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 8,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "enforced",
+                "varNames": [
+                    [
+                        [
+                            "v0"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1"
+                        ]
+                    ],
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "v0",
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1",
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ],
+                    [
+                        [
+                            "c"
+                        ]
+                    ],
+                    [
+                        [
+                            "c"
+                        ],
+                        [
+                            "b"
+                        ]
+                    ],
+                    [
+                        [
+                            "c"
+                        ],
+                        [
+                            "c"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "E"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "E"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "E"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        },
+        {
+            "path": [
+                [
+                    "GraphOfGraphsRealm"
+                ],
+                [
+                    "action"
+                ],
+                [
+                    "E"
+                ],
+                [
+                    "total"
+                ]
+            ],
+            "value": {
+                "antecedents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 0,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 1,
+                                "tag": "var"
+                            },
+                            "values": []
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "base"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 2,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 3,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "V"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 4,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    },
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "fiber"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": {
+                                "index": 5,
+                                "tag": "var"
+                            },
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 3,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 4,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "consequents": [
+                    {
+                        "atom": {
+                            "entity": [
+                                [
+                                    "GraphOfGraphsRealm"
+                                ],
+                                [
+                                    "action"
+                                ],
+                                [
+                                    "E"
+                                ]
+                            ],
+                            "rowId": null,
+                            "values": [
+                                {
+                                    "column": 0,
+                                    "term": {
+                                        "index": 0,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 1,
+                                    "term": {
+                                        "index": 1,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 2,
+                                    "term": {
+                                        "index": 2,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 3,
+                                    "term": {
+                                        "index": 3,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 4,
+                                    "term": {
+                                        "index": 4,
+                                        "tag": "var"
+                                    }
+                                },
+                                {
+                                    "column": 5,
+                                    "term": {
+                                        "index": 5,
+                                        "tag": "var"
+                                    }
+                                }
+                            ]
+                        },
+                        "tag": "atom"
+                    }
+                ],
+                "ruleVariant": "monitored",
+                "varNames": [
+                    [
+                        [
+                            "v0"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1"
+                        ]
+                    ],
+                    [
+                        [
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "v0",
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "v1",
+                            "a"
+                        ]
+                    ],
+                    [
+                        [
+                            "b"
+                        ]
+                    ]
+                ],
+                "varTypes": [
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "base"
+                            ],
+                            [
+                                "E"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "V"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    },
+                    {
+                        "path": [
+                            [
+                                "GraphOfGraphsRealm"
+                            ],
+                            [
+                                "fiber"
+                            ],
+                            [
+                                "E"
+                            ]
+                        ],
+                        "tag": "rowId"
+                    }
+                ]
+            }
+        }
+    ]
+}

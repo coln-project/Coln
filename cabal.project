@@ -10,9 +10,19 @@ if !os(wasi)
     packages/coln-repl
     packages/coln-ls
     packages/coln-cli
+    packages/coln-store-hs
 else
   packages:
     packages/coln-compiler-wasm
+
+-- TODO see `hs-bindgen-src` input in `flake.nix` for context
+-- until released, this pin needs to be kept in sync with the `hs-bindgen-src` flake input
+-- at least for the benefit of non-Nix-using Coln developers
+source-repository-package
+  type: git
+  location: https://github.com/well-typed/hs-bindgen
+  tag: 55c339cf0b74af1fc438259ba8fea0674b1a0c31
+  subdir: hs-bindgen hs-bindgen-runtime
 
 jobs: $ncpus
 semaphore: true

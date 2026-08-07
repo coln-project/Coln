@@ -5,9 +5,9 @@ end
 
 realm GraphRealm @ Graph
   def free-edge : Set := sig
-    v0 : self.V
-    v1 : self.V
-    f : self.E v0 v1
+    v0 : root.V
+    v1 : root.V
+    f : root.E v0 v1
   end
 end
 
