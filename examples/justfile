@@ -1,16 +1,50 @@
 mod coln-compiler-wasm '../packages/coln-compiler-wasm'
+mod coln-js-runtime '../packages/coln-js-runtime'
 
-build_dir := "../_build/web/compiler"
+store_dir := "${PNPM_STORE_DIR:-$(realpath ..)/.pnpm-store}"
 
-build-web-compiler: coln-compiler-wasm::build
-    #!/usr/bin/env bash
-    set -euxo pipefail
-    cp compiler-demo/index.html {{ build_dir }}/index.html
-    cp style.css {{ build_dir }}/style.css
-    examples_dir="{{ build_dir }}/examples"
-    mkdir -p "$examples_dir"
-    cp ../packages/coln-compiler/test/golden/*.coln "$examples_dir/"
-    ls -1 "$examples_dir"/*.coln | xargs -n1 basename | jq -nR '[inputs]' > "$examples_dir/index.json"
+# Every package builds straight in to its own slot under `_build/web`, so
+# there's nothing to assemble afterwards.
 
-serve-web-compiler port="8000": build-web-compiler
-    simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
+# the whole site: both demos and the landing page
+build-web: build-web-compiler build-web-sync build-web-index
+
+# the whole site, in a browser
+serve-web *args: build-web
+    pnpm --filter coln-demos exec vite preview --open {{ args }}
+
+install-web-index:
+    pnpm install --filter coln-demos --store-dir "{{ store_dir }}"
+
+# the landing page linking the demos together
+build-web-index: install-web-index
+    pnpm --filter coln-demos run build
+
+# `pnpm install` has to come after the Wasm build, since the compiler demo
+# depends on the NPM package it produces. `--filter` keeps the other packages,
+# whose dependencies are irrelevant here, out of it.
+
+install-web-compiler: coln-compiler-wasm::npm-package
+    pnpm install --filter coln-compiler-demo --store-dir "{{ store_dir }}"
+
+# the compiler playground
+build-web-compiler: install-web-compiler
+    pnpm --filter coln-compiler-demo run build
+
+# the compiler playground, in a browser, with hot reloading
+serve-web-compiler *args: install-web-compiler
+    pnpm --filter coln-compiler-demo exec vite --open {{ args }}
+
+# The sync demo links against `coln-js-runtime`, which is itself built from
+# Rust, and its own build step compiles `graph.coln` with the Coln CLI.
+
+install-web-sync: coln-js-runtime::install coln-js-runtime::build
+    pnpm install --filter coln-sync-demo --store-dir "{{ store_dir }}"
+
+# the store sync demo
+build-web-sync: install-web-sync
+    pnpm --filter coln-sync-demo run build
+
+# the store sync demo, in a browser, with hot reloading
+serve-web-sync *args: install-web-sync
+    pnpm --filter coln-sync-demo exec vite --open {{ args }}

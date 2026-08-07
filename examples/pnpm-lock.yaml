@@ -6,6 +6,31 @@ settings:
 
 importers:
 
+  compiler-demo:
+    dependencies:
+      coln-compiler:
+        specifier: file:../../_build/npm/coln-compiler
+        version: file:../_build/npm/coln-compiler
+    devDependencies:
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.14
+        version: 8.0.16
+
+  site:
+    devDependencies:
+      coln-compiler-demo:
+        specifier: workspace:*
+        version: link:../compiler-demo
+      coln-sync-demo:
+        specifier: workspace:*
+        version: link:../sync-demo
+      vite:
+        specifier: ^8.0.14
+        version: 8.0.16
+
   sync-demo:
     dependencies:
       '@automerge/automerge-repo':
@@ -64,6 +89,9 @@ packages:
 
   '@automerge/automerge@3.3.0-fragments.1':
     resolution: {integrity: sha512-Im2n3qcYSuIsLDSjofTRo7CZyyvFn5pKLSCCO5sjWzESw+9q9G25ZIrL2mczDX43cXtyzi+w/4b9VUaiNdY56Q==}
+
+  '@bjorn3/browser_wasi_shim@0.4.2':
+    resolution: {integrity: sha512-/iHkCVUG3VbcbmEHn5iIUpIrh7a7WPiwZ3sHy4HZKZzBdSadwdddYDZAII2zBvQYV0Lfi8naZngPCN7WPHI/hA==}
 
   '@cbor-extract/cbor-extract-darwin-arm64@2.2.2':
     resolution: {integrity: sha512-ZKZ/F8US7JR92J4DMct6cLW/Y66o2K576+zjlEN/MevH70bFIsB10wkZEQPLzl2oNh2SMGy55xpJ9JoBRl5DOA==}
@@ -259,6 +287,9 @@ packages:
 
   cbor-x@1.6.4:
     resolution: {integrity: sha512-UGKHjp6RHC6QuZ2yy5LCKm7MojM4716DwoSaqwQpaH4DvZvbBTGcoDNTiG9Y2lByXZYFEs9WRkS5tLl96IrF1Q==}
+
+  coln-compiler@file:../_build/npm/coln-compiler:
+    resolution: {directory: ../_build/npm/coln-compiler, type: directory}
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
@@ -537,6 +568,8 @@ snapshots:
 
   '@automerge/automerge@3.3.0-fragments.1': {}
 
+  '@bjorn3/browser_wasi_shim@0.4.2': {}
+
   '@cbor-extract/cbor-extract-darwin-arm64@2.2.2':
     optional: true
 
@@ -681,6 +714,10 @@ snapshots:
   cbor-x@1.6.4:
     optionalDependencies:
       cbor-extract: 2.2.2
+
+  coln-compiler@file:../_build/npm/coln-compiler:
+    dependencies:
+      '@bjorn3/browser_wasi_shim': 0.4.2
 
   csstype@3.2.3: {}
 

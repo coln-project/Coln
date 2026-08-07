@@ -50,20 +50,8 @@ jobs:
   #         restore-keys: |
   #           web-demos-${{ runner.os }}-
 
-  #     - name: Build sync demo
-  #       run: nix run --accept-flake-config .#sync-demo -- "$GITHUB_WORKSPACE"
-  #       env:
-  #         VITE_BASE: /sync/
-
-  #     - name: Build web compiler
-  #       run: |
-  #         nix develop --accept-flake-config --command wasm32-wasi-cabal update 'hackage.haskell.org,2026-07-15T17:07:49Z'
-  #         nix develop --accept-flake-config --command just examples/build-web-compiler
-
-  #     - name: Assemble deploy directory
-  #       run: |
-  #         cp examples/index.html examples/style.css _build/web/
-  #         cp -r examples/sync-demo/dist _build/web/sync
+  #     - name: Build the demo site
+  #       run: nix run --accept-flake-config .#web-demos -- "$GITHUB_WORKSPACE"
 
   #     - name: Deploy PR preview to Netlify
   #       id: deploy-preview

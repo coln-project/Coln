@@ -10,6 +10,7 @@ executable coln-compiler-wasm
     NoFieldSelectors
     OverloadedRecordDot
     OverloadedStrings
+    TemplateHaskell
 
   build-depends:
     aeson,
@@ -24,6 +25,7 @@ executable coln-compiler-wasm
     ordered-containers,
     prettyprinter,
     text,
+    wasm-bindgen-hs,
 
   ghc-options:
     -Wall
