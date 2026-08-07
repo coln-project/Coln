@@ -201,9 +201,9 @@ fn test_add_edge_referencing_vertices_from_previous_commit() {
             counter: 0,
         }
     );
-    assert_eq!(edges.cell_at(1, 0), Some(&CellValue::Id(graph)));
-    assert_eq!(edges.cell_at(1, 1), Some(&CellValue::Id(v1)));
-    assert_eq!(edges.cell_at(1, 2), Some(&CellValue::Id(v2)));
+    assert_eq!(edges.cell_at(1, 0), Some(CellValue::Id(graph)));
+    assert_eq!(edges.cell_at(1, 1), Some(CellValue::Id(v1)));
+    assert_eq!(edges.cell_at(1, 2), Some(CellValue::Id(v2)));
 }
 
 #[test]
@@ -321,8 +321,17 @@ fn test_divergent_commits_merge_between_stores() {
         tx.commit().expect("commit second graph");
     }
 
-    let mut left = base.clone();
-    let mut right = base.clone();
+    let mut left =
+        Store::try_from_theory(fixture_theory(PATHS_IR)).expect("valid left-hand theory");
+    let mut right =
+        Store::try_from_theory(fixture_theory(PATHS_IR)).expect("valid right-hand theory");
+    let baseline_commits = base.commits_after(&left.heads());
+    left.apply_commits(baseline_commits.clone())
+        .expect("apply shared baseline to left");
+    right
+        .apply_commits(baseline_commits)
+        .expect("apply shared baseline to right");
+
     let left_commit = add_vertex_to_graph(&mut left, 0).expect("left branch commit");
     let right_commit = add_vertex_to_graph(&mut right, 2).expect("right branch commit");
     let expected_heads = BTreeSet::from([left_commit, right_commit]);

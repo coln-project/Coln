@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+mod sql;
+
 use std::{
     collections::HashMap,
     fs,
@@ -19,11 +21,9 @@ use crate::{
     commit::pst::{decode_store, encode_store},
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
     store::Store,
-    table::{RowId, Table},
-    txn::ops::{TempRowId, TxnCellValue},
+    table::{RowId, TableRef},
+    txn::{TempRowId, TxnCellValue},
 };
-
-mod sql;
 
 fn help_text(mode: ShellMode) -> String {
     let mut lines = vec![
@@ -464,7 +464,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: &Table, raw_values: &[String]) -> Result<Vec<TxnCellValue>> {
+fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<TxnCellValue>> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         bail!(

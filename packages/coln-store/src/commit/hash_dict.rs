@@ -12,7 +12,9 @@ use crate::commit::utils::read_slice;
 
 /// A hash mapper builds up all the commit hashes seen in a particular commit
 /// so they can be stored in the commit for dictionary encoding
-#[derive(Debug, Default)]
+///
+/// Used for dictionary encoding hashes into indexes into the hashtable
+#[derive(Debug, Default, Clone)]
 pub(crate) struct HashMapper {
     hashes: Vec<CommitHash>,
     indexes: HashMap<CommitHash, u32>,
@@ -37,8 +39,21 @@ impl HashMapper {
         self.indexes.get(&hash).copied()
     }
 
+    pub(crate) fn hash_at(&self, index: u32) -> Option<CommitHash> {
+        self.hashes.get(index as usize).copied()
+    }
+
     pub(crate) fn hashes(&self) -> &[CommitHash] {
         &self.hashes
+    }
+
+    pub(crate) fn truncate(&mut self, len: usize) {
+        assert!(len <= self.hashes.len(), "invalid hash dictionary length");
+        for hash in self.hashes.drain(len..) {
+            self.indexes
+                .remove(&hash)
+                .expect("hash vector and reverse index should agree");
+        }
     }
 }
 

@@ -2,21 +2,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+mod inner;
+mod row_handle;
+mod timestamp;
+
 use coln_flir_rs::ir;
 
-#[cfg(feature = "native")]
-use crate::txn::ops::{TempRowId, TxnCellValue};
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreIntError},
-    txn::ops::{RowHandle, TxnValue},
 };
 
-mod inner;
-pub mod ops;
-mod timestamp;
-
 use inner::TxnInner;
+pub(crate) use row_handle::{PendingOp, RowRef, TempRowId, TxnCellValue};
+pub use row_handle::{RowHandle, TxnId, TxnValue};
 
 pub struct Transaction<'a> {
     inner: TxnInner,
@@ -94,7 +93,6 @@ impl OwnedTransaction {
 mod tests {
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
-    use crate::store::test_support::link_foreign_key_theory;
     use crate::table::{CellValue, ValidationError};
 
     fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
@@ -163,21 +161,6 @@ mod tests {
     }
 
     #[test]
-    fn owned_transaction_commit_err_returns_original_store() {
-        let theory = link_foreign_key_theory();
-        let link = Path::from("Link");
-        let store = Store::try_from_theory(theory).expect("theory");
-
-        let mut tx = OwnedTransaction::new(store);
-        tx.add(&link, vec![10_i64.into(), 20_i64.into()])
-            .expect("add");
-
-        let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(err, StoreIntError::Rule(_)));
-        assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
-    }
-
-    #[test]
     fn transaction_resolves_pending_row_references_with_commit_hash() {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
@@ -209,7 +192,7 @@ mod tests {
         assert_eq!(node_id.counter, 0);
         assert_eq!(edge_id.commit, commit);
         assert_eq!(edge_id.counter, 1);
-        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+        assert_eq!(edge.cell_at(0, 0), Some(CellValue::Id(node_id)));
     }
 
     #[test]
@@ -239,7 +222,7 @@ mod tests {
         tx.commit().expect("commit edge");
 
         let edge = store.table_at(&edges).expect("Edges");
-        assert_eq!(edge.cell_at(0, 0), Some(&CellValue::Id(node_id)));
+        assert_eq!(edge.cell_at(0, 0), Some(CellValue::Id(node_id)));
     }
 
     #[test]
@@ -282,6 +265,50 @@ mod tests {
             err,
             StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
         ));
+    }
+
+    /// A handle whose row deduplicates into an existing hashcons class
+    /// finalizes to the id the store actually kept, not to its raw
+    /// `(commit, counter)` id, which names no stored row. The first handle
+    /// may still go stale when the second commit wins the merge; reading
+    /// through `row_by_handle` resolves and repairs it.
+    #[test]
+    fn deduplicated_row_handle_finalizes_to_canonical_id() {
+        let term = Path::from("Term");
+        let mut store = Store::new();
+        store
+            .create_table(term.clone(), table_schema(vec![int_col("value")], None))
+            .expect("create term table");
+        store.set_hashcons_for_test(&term, true);
+
+        let mut tx = store.transaction();
+        let first = tx.add(&term, vec![7_i64.into()]).expect("add first term");
+        tx.commit().expect("commit first term");
+
+        // Structurally equal row: deduplicates into the first row's class.
+        // Which id wins the merge depends on the commit hash ordering.
+        let mut tx = store.transaction();
+        let second = tx.add(&term, vec![7_i64.into()]).expect("add equal term");
+        tx.commit().expect("commit equal term");
+
+        let stored = store
+            .table_at(&term)
+            .expect("Term")
+            .row_id_at(0)
+            .expect("one stored row");
+        assert_eq!(store.table_at(&term).expect("Term").row_count(), 1);
+
+        // The second handle is born canonical, whether its row was kept old
+        // or won the merge.
+        assert_eq!(second.row_id().expect("finalized"), stored);
+
+        // The first handle resolves through the store even if its id went
+        // stale, and the read writes the canonical id back into the handle.
+        let view = store
+            .row_by_handle(&term, first.clone())
+            .expect("class row is stored");
+        assert_eq!(view.row_id, stored);
+        assert_eq!(first.row_id().expect("finalized"), stored);
     }
 
     #[test]

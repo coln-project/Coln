@@ -8,7 +8,7 @@ use crate::{
     commit::hash::{CommitHash, HASH_SIZE},
     ir::{BuiltinTy, ColType},
     table::{CellValue, RowId},
-    txn::ops::{TempRowId, TxnCellValue},
+    txn::{TempRowId, TxnCellValue},
 };
 
 /// Parse failure for a single cell inside a `begin batch` block (before column index is known).

@@ -11,7 +11,7 @@ use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::CommitChunk as StoreCommitChunk,
     table::{CellValue as StoreCellValue, RowId as StoreRowId, RowView as StoreRowView},
-    txn::ops::{RowHandle, TxnValue as StoreTxnValue},
+    txn::{RowHandle, TxnValue as StoreTxnValue},
 };
 
 use crate::error::BoundaryError;

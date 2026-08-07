@@ -6,12 +6,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     commit::hash::CommitHash,
-    ir,
+    op::Op,
     store::error::StoreIntError,
-    table::{CellValue, RowId, ValidationError},
+    table::{CellValue, RowId, TableOid, ValidationError},
 };
-
-pub const OP_KIND_ADD: u32 = 0;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct TxnId(u64);
@@ -75,6 +73,20 @@ impl RowHandle {
         }
     }
 
+    pub(crate) fn canonicalise(&self, new_row_id: RowId) -> Result<(), StoreIntError> {
+        let mut state = self.state.borrow_mut();
+        match &*state {
+            RowHandleState::Existing(..) => {
+                *state = RowHandleState::Existing(new_row_id);
+                Ok(())
+            }
+            _ => Err(ValidationError::InvalidRowHandle {
+                reason: "cannot replace row id on a non finalised rowhandle".to_string(),
+            }
+            .into()),
+        }
+    }
+
     pub(crate) fn to_txn_cell_value(
         &self,
         current_tx: TxnId,
@@ -96,12 +108,13 @@ impl RowHandle {
         }
     }
 
-    pub(crate) fn finalize(&self, commit: CommitHash) {
+    pub(crate) fn finalize(&self, commit: CommitHash, resolve: impl Fn(RowId) -> RowId) {
         let mut state = self.state.borrow_mut();
         if let RowHandleState::Pending { counter, .. } = *state {
-            *state = RowHandleState::Existing(RowId { commit, counter });
+            *state = RowHandleState::Existing(resolve(RowId { commit, counter }));
         }
     }
+
     pub(crate) fn invalidate(&self, reason: &str) {
         *self.state.borrow_mut() = RowHandleState::Invalid(reason.into());
     }
@@ -147,9 +160,7 @@ impl From<RowHandle> for TxnValue {
 
 impl From<RowId> for TxnValue {
     fn from(value: RowId) -> Self {
-        TxnValue::Id(RowHandle {
-            state: Rc::new(RefCell::new(RowHandleState::Existing(value))),
-        })
+        TxnValue::Id(RowHandle::from_existing(value))
     }
 }
 
@@ -174,19 +185,14 @@ impl From<&str> for TxnValue {
 impl From<CellValue> for TxnValue {
     fn from(value: CellValue) -> Self {
         match value {
-            CellValue::Id(id) => TxnValue::Id(RowHandle {
-                state: Rc::new(RefCell::new(RowHandleState::Existing(id))),
-            }),
+            CellValue::Id(id) => TxnValue::Id(RowHandle::from_existing(id)),
             CellValue::Int(value) => TxnValue::Int(value),
             CellValue::Str(value) => TxnValue::Str(value),
         }
     }
 }
 
-/// This is a temporary rowid only valid during a transaction. Not persisted, no hash.
-/// It does not keep a txn id around because that is only valid during a transaction.
-/// The in memory representation is always just a TempRowId because the hash for
-/// the rowids in the same transaction will just be the same.
+/// A temporary row ID that is valid only within a transaction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct TempRowId(pub(crate) u32);
 
@@ -198,7 +204,7 @@ impl TempRowId {
         }
     }
 
-    pub fn counter(self) -> u32 {
+    pub(crate) fn counter(self) -> u32 {
         self.0
     }
 }
@@ -209,34 +215,7 @@ impl From<u32> for TempRowId {
     }
 }
 
-/// The temporary ops in flight for a transaction
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum PendingOp {
-    Add {
-        row_id: TempRowId,
-        table: ir::Path,
-        values: Vec<TxnCellValue>,
-    },
-}
-
-impl PendingOp {
-    pub(crate) fn resolve(&self, commit: CommitHash) -> Op {
-        match self {
-            PendingOp::Add {
-                row_id,
-                table,
-                values,
-            } => Op::Add {
-                row_id: row_id.resolve(commit),
-                table: table.clone(),
-                values: values.iter().map(|value| value.resolve(commit)).collect(),
-            },
-        }
-    }
-}
-
-/// A RowRef is either an existing rowid, or a pending id that belongs to a
-/// a particular transaction.
+/// A reference to an existing row or a pending row in the current transaction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum RowRef {
     Existing(RowId),
@@ -264,7 +243,8 @@ impl From<TempRowId> for RowRef {
     }
 }
 
-/// This is the internal representation which is derived from `TxnValue`
+// TODO should clean this up, who uses txncellvalue and it should have a better name
+/// The internal transaction representation derived from `TxnValue`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TxnCellValue {
     Id(RowRef),
@@ -328,18 +308,28 @@ impl From<CellValue> for TxnCellValue {
     }
 }
 
-pub enum Op {
+/// An operation staged within a transaction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum PendingOp {
     Add {
-        row_id: RowId,
-        table: ir::Path, // using path so it's stable across replicas
-        values: Vec<CellValue>,
+        row_id: TempRowId,
+        table: TableOid,
+        values: Vec<TxnCellValue>,
     },
 }
 
-impl Op {
-    pub fn id(&self) -> RowId {
+impl PendingOp {
+    pub(crate) fn resolve(&self, commit: CommitHash) -> Op {
         match self {
-            Op::Add { row_id, .. } => *row_id,
+            PendingOp::Add {
+                row_id,
+                table,
+                values,
+            } => Op::Add {
+                row_id: row_id.resolve(commit),
+                table: *table,
+                values: values.iter().map(|value| value.resolve(commit)).collect(),
+            },
         }
     }
 }

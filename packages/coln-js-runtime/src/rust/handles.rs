@@ -7,7 +7,7 @@ use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::Store,
     table::RowId as StoreRowId,
-    txn::{OwnedTransaction, ops::RowHandle as StoreRowHandle},
+    txn::{OwnedTransaction, RowHandle as StoreRowHandle},
 };
 use js_sys::Reflect;
 

@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use hexane::v1::{Column, DeltaColumn};
+use hexane::{Column, DeltaColumn};
 
 use crate::commit::author::Author;
 use crate::commit::leb128 as commit_leb128;
@@ -19,8 +19,9 @@ use crate::{
         utils::read_slice,
     },
     ir::{BuiltinTy, ColType, Path, Schema},
-    table::RowId,
-    txn::ops::{OP_KIND_ADD, PendingOp, RowRef, TempRowId, TxnCellValue},
+    op::OP_KIND_ADD,
+    table::{RowId, TableMeta, TableOid},
+    txn::{PendingOp, RowRef, TempRowId, TxnCellValue},
 };
 
 // TODO change this to i32 when we support it as a column type
@@ -91,10 +92,10 @@ impl CommitData {
 pub(crate) fn serialize<'s, F>(
     data: &CommitData,
     hash_mapper: &HashMapper,
-    schema_for: F,
+    table_meta_for: F,
 ) -> Result<Vec<u8>, CodecError>
 where
-    F: Fn(&Path) -> Option<&'s Schema>,
+    F: Fn(TableOid) -> Option<TableMeta<'s>>,
 {
     let mut buf: Vec<u8> = Vec::new();
 
@@ -112,7 +113,7 @@ where
     commit_leb128::write_len(&mut buf, msg.len());
     buf.write_all(msg.as_bytes()).unwrap();
 
-    let body = encode_commit_body(&data.pending, schema_for, hash_mapper)?;
+    let body = encode_commit_body(&data.pending, table_meta_for, hash_mapper)?;
     buf.write_all(&body).unwrap();
 
     buf.write_all(&data.extra_bytes).unwrap();
@@ -129,14 +130,14 @@ where
 /// followed by one len-prefixed [`encode_op_group`] blob per first-seen table.
 fn encode_commit_body<'s, F>(
     pending: &[PendingOp],
-    schema_for: F,
+    table_meta_for: F,
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError>
 where
-    F: Fn(&Path) -> Option<&'s Schema>,
+    F: Fn(TableOid) -> Option<TableMeta<'s>>,
 {
     // Grouping order entirely determined by the pending_op order
-    let mut groups: Vec<(Path, Vec<PendingOp>)> = Vec::new();
+    let mut groups: Vec<(TableOid, Vec<&PendingOp>)> = Vec::new();
     /*  table_sequence[i] is the group index of the ith operation. It effectively
         stores the original order the operations are in.
         operation. For example, the following two set of operations will have
@@ -165,10 +166,10 @@ where
                 {
                     index
                 } else {
-                    groups.push((table.clone(), Vec::new()));
+                    groups.push((*table, Vec::new()));
                     groups.len() - 1
                 };
-                groups[group_index].1.push(op.clone());
+                groups[group_index].1.push(op);
                 table_sequence.push(group_index as u32);
                 op_kinds.push(OP_KIND_ADD);
             }
@@ -191,11 +192,11 @@ where
 
     // NOTE each group is encoded with its row and columns first, and then the column
     // body. Automerge does the header + concatenated body approach
-    for (table, ops) in &groups {
-        let schema = schema_for(table).ok_or_else(|| {
-            CodecError::SchemaError(format!("missing schema for table {table:?}"))
+    for (table_oid, ops) in &groups {
+        let meta = table_meta_for(*table_oid).ok_or_else(|| {
+            CodecError::SchemaError(format!("missing schema for table oid {table_oid}"))
         })?;
-        let group_blob = encode_op_group(table, schema, ops, hash_mapper)?;
+        let group_blob = encode_op_group(meta.path, *table_oid, meta.schema, ops, hash_mapper)?;
         commit_leb128::write_len_prefixed_bytes(&mut buf, &group_blob);
     }
 
@@ -248,6 +249,7 @@ fn encode_txn_prim_value_column(
     let mut value_bytes = Vec::new();
     let mut buf = Vec::new();
     let mut meta: Vec<ValueMeta> = Vec::with_capacity(values.len());
+    // TODO use RawColumn?
     for value in values {
         let meta_value = encode_prim_value(value, prim, &mut value_bytes)?;
         meta.push(meta_value);
@@ -282,21 +284,22 @@ fn encode_txn_value_column(
 /// `[table_path_len][table_path: utf-8][row_count][column_count]`
 /// followed by one len-prefixed column blob per schema column.
 fn encode_op_group(
-    table: &Path,
+    table_path: &Path,
+    table_oid: TableOid,
     schema: &Schema,
-    ops: &[PendingOp],
+    ops: &[&PendingOp],
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
-    let mut rows = Vec::with_capacity(ops.len());
+    let mut rows: Vec<&[TxnCellValue]> = Vec::with_capacity(ops.len());
     for op in ops {
         let PendingOp::Add {
             table: op_table,
             values,
             ..
         } = op;
-        if op_table != table {
+        if *op_table != table_oid {
             return Err(CodecError::SchemaError(format!(
-                "op group table mismatch: expected {table:?}, got {op_table:?}"
+                "op group table mismatch: expected oid {table_oid}, got {op_table}"
             )));
         }
         if values.len() != schema.columns.len() {
@@ -310,7 +313,7 @@ fn encode_op_group(
     }
 
     let mut buf = Vec::new();
-    let path = encode_path(table);
+    let path = encode_path(table_path);
     buf.write_all(&path)?;
 
     commit_leb128::write_len(&mut buf, rows.len());
@@ -331,9 +334,9 @@ fn encode_op_group(
 
 /// Parse canonical payload bytes (the slice passed to [`crate::persist::chunk::hash`],
 /// not including the chunk type or outer length prefix).
-pub(crate) fn deserialize<'s, F>(data: &[u8], schema_for: F) -> Result<CommitData, CodecError>
+pub(crate) fn deserialize<'s, F>(data: &[u8], table_meta_for: F) -> Result<CommitData, CodecError>
 where
-    F: Fn(&Path) -> Option<&'s Schema>,
+    F: Fn(&Path) -> Option<TableMeta<'s>>,
 {
     let mut pos = 0usize;
 
@@ -366,7 +369,7 @@ where
         )
     };
 
-    let pending = decode_commit_body(data, &mut pos, &other_hashes, schema_for)?;
+    let pending = decode_commit_body(data, &mut pos, &other_hashes, table_meta_for)?;
 
     // The body ends at `pos`. Anything beyond it is `extra_bytes`.
     let extra_bytes = data[pos..].to_vec();
@@ -388,10 +391,10 @@ fn decode_commit_body<'s, F>(
     data: &[u8],
     pos: &mut usize,
     hashes: &[CommitHash],
-    schema_for: F,
+    table_meta_for: F,
 ) -> Result<Vec<PendingOp>, CodecError>
 where
-    F: Fn(&Path) -> Option<&'s Schema>,
+    F: Fn(&Path) -> Option<TableMeta<'s>>,
 {
     let op_kind_blob = commit_leb128::read_len_prefixed_bytes(data, pos, "op kind column")?;
     let op_kinds: Vec<u32> = Column::<u32>::load(op_kind_blob)?.iter().collect();
@@ -411,7 +414,7 @@ where
     let mut groups = Vec::with_capacity(group_count);
     for _ in 0..group_count {
         let group_blob = commit_leb128::read_len_prefixed_bytes(data, pos, "op group")?;
-        groups.push(decode_op_group(group_blob, hashes, &schema_for)?);
+        groups.push(decode_op_group(group_blob, hashes, &table_meta_for)?);
     }
 
     // reconstruct the pending ops
@@ -440,7 +443,7 @@ where
 
         pending.push(PendingOp::Add {
             row_id: TempRowId(op_idx as u32),
-            table: group.table.clone(),
+            table: group.table,
             values,
         });
     }
@@ -458,26 +461,29 @@ where
 }
 
 struct DecodedOpGroup {
-    table: Path,
+    table: TableOid,
     rows: Vec<Vec<TxnCellValue>>,
 }
 
 fn decode_op_group<'s, F>(
     data: &[u8],
     hashes: &[CommitHash],
-    schema_for: &F,
+    table_meta_for: &F,
 ) -> Result<DecodedOpGroup, CodecError>
 where
-    F: Fn(&Path) -> Option<&'s Schema>,
+    F: Fn(&Path) -> Option<TableMeta<'s>>,
 {
     let mut pos = 0usize;
 
-    let table = prim::decode_path(data, &mut pos)?;
+    let table_path = prim::decode_path(data, &mut pos)?;
 
     let row_count = commit_leb128::read_len(data, &mut pos, "op group row count")?;
     let column_count = commit_leb128::read_len(data, &mut pos, "op group column count")?;
-    let schema = schema_for(&table)
-        .ok_or_else(|| CodecError::SchemaError(format!("missing schema for table {table:?}")))?;
+    let meta = table_meta_for(&table_path).ok_or_else(|| {
+        CodecError::SchemaError(format!("missing schema for table {table_path:?}"))
+    })?;
+    let table_oid = meta.oid;
+    let schema = meta.schema;
     if column_count != schema.columns.len() {
         return Err(CodecError::DataFormatError(format!(
             "op group column count mismatch: encoded {column_count}, schema expects {}",
@@ -517,7 +523,10 @@ where
         );
     }
 
-    Ok(DecodedOpGroup { table, rows })
+    Ok(DecodedOpGroup {
+        table: table_oid,
+        rows,
+    })
 }
 
 /// Decode a column produced by [`encode_txn_value_column`].
@@ -633,7 +642,7 @@ mod tests {
     use crate::commit::wire::prim::ValueType;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::RowId;
-    use crate::txn::ops::{RowRef, TempRowId};
+    use crate::txn::{RowRef, TempRowId};
 
     #[test]
     fn txn_row_ref_column_round_trips_existing_and_pending_refs() {
@@ -807,6 +816,7 @@ mod tests {
     #[test]
     fn op_group_encodes_schema_columns() {
         let table = Path::from("T");
+        let table_oid = 0;
         let entity = Path::from("T.E");
         let schema = Schema {
             entity_variant: EntityVariant::Table,
@@ -833,10 +843,10 @@ mod tests {
         let ha = CommitHash([1u8; HASH_SIZE]);
         let mut hash_mapper = HashMapper::new();
         hash_mapper.insert(ha);
-        let ops = vec![
+        let ops = [
             PendingOp::Add {
                 row_id: TempRowId(0),
-                table: table.clone(),
+                table: table_oid,
                 values: vec![
                     1i64.into(),
                     "a".into(),
@@ -848,7 +858,7 @@ mod tests {
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
-                table: table.clone(),
+                table: table_oid,
                 values: vec![
                     2i64.into(),
                     "b".into(),
@@ -856,8 +866,10 @@ mod tests {
                 ],
             },
         ];
+        let op_refs: Vec<&PendingOp> = ops.iter().collect();
 
-        let encoded = encode_op_group(&table, &schema, &ops, &hash_mapper).expect("encode group");
+        let encoded = encode_op_group(&table, table_oid, &schema, &op_refs, &hash_mapper)
+            .expect("encode group");
         let mut pos = 0usize;
         let path = prim::decode_path(&encoded, &mut pos).unwrap();
         assert_eq!(path.to_string(), "T");
@@ -903,10 +915,10 @@ mod tests {
         };
         let op = PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("Other"),
+            table: 1,
             values: vec![],
         };
-        let err = encode_op_group(&Path::from("T"), &schema, &[op], &HashMapper::new())
+        let err = encode_op_group(&Path::from("T"), 0, &schema, &[&op], &HashMapper::new())
             .expect_err("table mismatch");
         assert!(matches!(err, CodecError::SchemaError(_)));
     }
@@ -926,10 +938,10 @@ mod tests {
         };
         let op = PendingOp::Add {
             row_id: TempRowId(0),
-            table: table.clone(),
+            table: 0,
             values: vec![],
         };
-        let err = encode_op_group(&table, &schema, &[op], &HashMapper::new())
+        let err = encode_op_group(&table, 0, &schema, &[&op], &HashMapper::new())
             .expect_err("column count mismatch");
         assert!(matches!(err, CodecError::SchemaError(_)));
     }
@@ -959,35 +971,38 @@ mod tests {
             primary_key: None,
         };
         let schemas = [
-            (table_a.clone(), schema_a.clone()),
-            (table_b.clone(), schema_b.clone()),
+            TableMeta {
+                path: &table_a,
+                oid: 0,
+                schema: &schema_a,
+            },
+            TableMeta {
+                path: &table_b,
+                oid: 1,
+                schema: &schema_b,
+            },
         ];
         let pending = vec![
             PendingOp::Add {
                 row_id: TempRowId(0),
-                table: table_a.clone(),
+                table: 0,
                 values: vec![1i64.into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
-                table: table_b.clone(),
+                table: 1,
                 values: vec!["x".into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(2),
-                table: table_a.clone(),
+                table: 0,
                 values: vec![2i64.into()],
             },
         ];
 
         let encoded = encode_commit_body(
             &pending,
-            |path| {
-                schemas
-                    .iter()
-                    .find(|(p, _)| p == path)
-                    .map(|(_, schema)| schema)
-            },
+            |oid| schemas.iter().copied().find(|meta| meta.oid == oid),
             &HashMapper::new(),
         )
         .expect("encode commit body");
@@ -1065,37 +1080,44 @@ mod tests {
             primary_key: None,
         };
         let schemas = [
-            (table_a.clone(), schema_a.clone()),
-            (table_b.clone(), schema_b.clone()),
+            TableMeta {
+                path: &table_a,
+                oid: 0,
+                schema: &schema_a,
+            },
+            TableMeta {
+                path: &table_b,
+                oid: 1,
+                schema: &schema_b,
+            },
         ];
+        let encode_table_meta =
+            |oid: TableOid| schemas.iter().copied().find(|meta| meta.oid == oid);
+        let decode_table_meta =
+            |path: &Path| schemas.iter().copied().find(|meta| meta.path == path);
         let pending = vec![
             PendingOp::Add {
                 row_id: TempRowId(0),
-                table: table_a.clone(),
+                table: 0,
                 values: vec![1i64.into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
-                table: table_b.clone(),
+                table: 1,
                 values: vec!["x".into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(2),
-                table: table_a.clone(),
+                table: 0,
                 values: vec![2i64.into()],
             },
         ];
-        let schema_for = |path: &Path| {
-            schemas
-                .iter()
-                .find(|(p, _)| p == path)
-                .map(|(_, schema)| schema)
-        };
 
-        let encoded =
-            encode_commit_body(&pending, schema_for, &HashMapper::new()).expect("encode body");
+        let encoded = encode_commit_body(&pending, encode_table_meta, &HashMapper::new())
+            .expect("encode body");
         let mut pos = 0usize;
-        let decoded = decode_commit_body(&encoded, &mut pos, &[], schema_for).expect("decode body");
+        let decoded =
+            decode_commit_body(&encoded, &mut pos, &[], decode_table_meta).expect("decode body");
 
         assert_eq!(decoded, pending);
         assert_eq!(pos, encoded.len());
@@ -1111,12 +1133,18 @@ mod tests {
         };
         let pending = vec![PendingOp::Add {
             row_id: TempRowId(0),
-            table: table.clone(),
+            table: 0,
             values: vec![],
         }];
         let encoded = encode_commit_body(
             &pending,
-            |path| (path == &table).then_some(&schema),
+            |oid| {
+                (oid == 0).then_some(TableMeta {
+                    path: &table,
+                    oid: 0,
+                    schema: &schema,
+                })
+            },
             &HashMapper::new(),
         )
         .expect("encode body");
@@ -1131,7 +1159,7 @@ mod tests {
     fn commit_body_rejects_missing_schema() {
         let pending = vec![PendingOp::Add {
             row_id: TempRowId(0),
-            table: Path::from("Missing"),
+            table: 0,
             values: vec![],
         }];
 

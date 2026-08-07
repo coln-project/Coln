@@ -11,10 +11,7 @@ use crate::{
     commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
     store::{Store, error::StoreIntError},
     table::ValidationError,
-    txn::{
-        ops::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue},
-        timestamp::Timestamp,
-    },
+    txn::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue, timestamp::Timestamp},
 };
 
 static NEXT_TX_ID: AtomicU64 = AtomicU64::new(1);
@@ -63,7 +60,7 @@ impl TxnInner {
         let temp_id = self.next_id();
         self.pending.push(PendingOp::Add {
             row_id: temp_id,
-            table: table.clone(),
+            table: t.oid(),
             values,
         });
         Ok(temp_id)
@@ -102,10 +99,13 @@ impl TxnInner {
             .for_each(|h| h.invalidate(reason));
     }
 
-    fn finalize_handles(pending_handles: Vec<RowHandle>, h: CommitHash) {
-        pending_handles
-            .into_iter()
-            .for_each(|handle| handle.finalize(h));
+    /// Finalize handles to the id the store actually kept: a row that was
+    /// deduplicated against an existing class finalizes to that class's
+    /// canonical id, not to the never-stored raw id.
+    fn finalize_handles(pending_handles: Vec<RowHandle>, h: CommitHash, store: &Store) {
+        pending_handles.into_iter().for_each(|handle| {
+            handle.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
+        });
     }
 
     pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreIntError> {
@@ -121,7 +121,7 @@ impl TxnInner {
         } = self;
         let cmt = Commit::from_commit_data(
             CommitData::new(deps, author, *timestamp.as_ref(), message, pending),
-            |path| store.table_at(path).map(|table| table.schema()),
+            |oid| store.table_meta(oid),
         );
         let cmt = match cmt {
             Ok(cmt) => cmt,
@@ -134,8 +134,7 @@ impl TxnInner {
         let h = cmt.hash();
         match store.apply_commit(cmt) {
             Ok(()) => {
-                Self::finalize_handles(pending_handles, h);
-                info!("applied batch");
+                Self::finalize_handles(pending_handles, h, store);
                 Ok(h)
             }
             Err(err) => {
@@ -147,7 +146,7 @@ impl TxnInner {
         // 2. compute hash: blake3(deps || timestamp || message || canonical(ops))
         // 3. resolve: TxnRowId(k) -> RowId { commit: hash, counter: k }
         //             CellValue::TxnId(k) -> CellValue::Id(RowId { commit: hash, counter: k })
-        // 4. apply resolved Ops to tables via table.append_row
+        // 4. apply resolved Ops to tables via table.insert_row
         // 5. check_rules
         // 6. push CommitMeta into store.commit_graph, advance heads
         // 7. return hash

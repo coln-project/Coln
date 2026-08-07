@@ -27,7 +27,7 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
     let mut buf: Vec<u8> = Vec::new();
     buf.write_all(MAGIC)?;
     commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
-    commit_leb128::write_u64(&mut buf, store.next_oid);
+    commit_leb128::write_len(&mut buf, store.next_oid);
 
     commit_leb128::write_len(&mut buf, commits.len());
 
@@ -68,7 +68,7 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
         )));
     }
 
-    let next_oid = commit_leb128::read_u64(data, &mut pos, "next_oid")?;
+    let next_oid = commit_leb128::read_len(data, &mut pos, "next_oid")?;
 
     let chunk_count = commit_leb128::read_len(data, &mut pos, "chunk count")?;
     let mut chunks = Vec::with_capacity(chunk_count);
@@ -114,7 +114,11 @@ fn decode_store_chunks(next_oid: TableOid, chunks: Vec<Chunk>) -> Result<Store, 
             continue;
         }
 
-        let commit = Commit::from_chunk(chunk, |path| store.schema_for(path))?;
+        let commit = Commit::from_chunk(chunk, |path| {
+            store
+                .resolve_table(path)
+                .and_then(|oid| store.table_meta(oid))
+        })?;
         commits.push(commit);
     }
 
@@ -390,7 +394,7 @@ mod tests {
 
         let restored_table = restored.table_at(&table).expect("table");
         assert_eq!(restored_table.row_count(), 1);
-        assert_eq!(restored_table.cell_at(0, 0), Some(&CellValue::Int(99)));
+        assert_eq!(restored_table.cell_at(0, 0), Some(CellValue::Int(99)));
         assert_eq!(restored_table.row_id_at(0).expect("row id").commit, commit);
         assert_eq!(
             restored.commits().parents_of(&commit),

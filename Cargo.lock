@@ -1100,6 +1100,7 @@ dependencies = [
  "clap",
  "coln-flir-rs",
  "csv",
+ "ena",
  "future_form",
  "hex",
  "hexane",
@@ -1724,6 +1725,15 @@ name = "embedded-io"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+
+[[package]]
+name = "ena"
+version = "0.14.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eabffdaee24bd1bf95c5ef7cec31260444317e72ea56c4c91750e8b7ee58d5f1"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "encoding_rs"
@@ -2385,8 +2395,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hexane"
-version = "1.0.0-alpha.1"
-source = "git+https://github.com/automerge/automerge?branch=hexane_v1#583114e24ec5f01e7568503099e840168d3735f3"
+version = "1.0.0-alpha.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6fa73ae43aeadf80e9032268bcb216fb1bd1930a08d7f73e44bb0b740c3d702"
 dependencies = [
  "leb128",
  "thiserror 2.0.18",
