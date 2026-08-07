@@ -4,6 +4,10 @@
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay.url = "github:oxalica/rust-overlay";
     ghc-wasm-meta.url = "gitlab:haskell-wasm/ghc-wasm-meta?host=gitlab.haskell.org";
+    wasm-bindgen-hs = {
+      url = "github:georgefst/wasm-bindgen-hs/72c12029c6f3f7a21d7cfe4396f898f3f7a38313";
+      flake = false;
+    };
   };
   outputs =
     inputs@{
@@ -67,6 +71,27 @@
           coln-cli = colnHaskellPackages.callPackage ./packages/coln-cli {
             inherit coln-compiler coln-repl coln-ls diagnostician diagnostician-terminal fnotation;
           };
+          # `cabal npm`, the NPM packager from wasm-bindgen-hs. There's no Nix
+          # expression upstream yet, so we spell out the dependencies here.
+          cabal-npm = colnHaskellPackages.callPackage (
+            { mkDerivation, aeson, aeson-pretty, base, bytestring, directory
+            , filepath, optparse-applicative, process, temporary, text
+            }:
+            mkDerivation {
+              pname = "cabal-npm";
+              version = "0.1.0.0";
+              src = inputs.wasm-bindgen-hs;
+              postUnpack = "sourceRoot+=/cabal-npm";
+              isLibrary = false;
+              isExecutable = true;
+              executableHaskellDepends = [
+                aeson aeson-pretty base bytestring directory filepath
+                optparse-applicative process temporary text
+              ];
+              license = "unknown";
+              mainProgram = "cabal-npm";
+            }
+          ) { };
 
           haskell-tests = pkgs.writeScript "haskell-tests" ''
             echo "built diagnostician: ${diagnostician}"
@@ -107,33 +132,24 @@
             doCheck = false;
           };
 
-          build-sync-demo = pkgs.writeShellApplication {
+          # The demo site, built the same way a developer would with `just`:
+          # these only add the toolchains that the dev shell would otherwise
+          # provide. Each package writes straight in to its own slot under
+          # `_build/web`, so there's nothing to assemble afterwards.
+          build-sync-demo = webDemoBuilder {
             name = "build-sync-demo";
-            runtimeInputs = [
-              coln-cli
-              pkgs.binaryen
-              pkgs.esbuild
-              pkgs.nodejs_24
-              pkgs.pnpm
-              rustToolchain
-              wasm-bindgen-cli
-              wasm-bodge
-            ];
-            text = ''
-              repo_root="''${1:-$PWD}"
-              cd "$repo_root"
-
-              export CI="''${CI:-1}"
-              pnpm_store_dir="''${PNPM_STORE_DIR:-$repo_root/.pnpm-store}"
-
-              npm ci --prefix packages/coln-js-runtime
-              npm run --prefix packages/coln-js-runtime build
-
-              pnpm --dir examples/sync-demo install --frozen-lockfile --store-dir "$pnpm_store_dir"
-              pnpm --dir examples/sync-demo build
-
-              echo "Built sync demo at $repo_root/examples/sync-demo/dist"
-            '';
+            toolchain = syncDemoToolchain;
+            recipe = "build-web-sync";
+            built = "sync demo";
+            outDir = "_build/web/sync";
+          };
+          build-web-demos = webDemoBuilder {
+            name = "build-web-demos";
+            toolchain = syncDemoToolchain ++ compilerDemoToolchain;
+            recipe = "build-web";
+            built = "demo site";
+            outDir = "_build/web";
+            hackageIndexState = "2026-07-15T17:07:49Z";
           };
 
           format-hs = nuShellCheck [pkgs.fourmolu] ./nix/checks/format-hs.nu;
@@ -191,6 +207,63 @@
 
         inherit (packages) forester coln-manual-dev;
         haskell-wasm = inputs.ghc-wasm-meta.packages.${system};
+
+        # Everything `just examples/build-web-sync` shells out to: the Coln CLI
+        # for `compile.sh`, and the Rust toolchain behind `coln-js-runtime`.
+        syncDemoToolchain = [
+          packages.coln-cli
+          packages.wasm-bindgen-cli
+          packages.wasm-bodge
+          pkgs.binaryen
+          pkgs.esbuild
+          rustToolchain
+        ];
+        # ...and what the compiler demo adds: GHC's Wasm backend, plus `cabal
+        # npm` from wasm-bindgen-hs. `git` because cabal fetches that as a
+        # `source-repository-package`.
+        compilerDemoToolchain = [
+          packages.cabal-npm
+          pkgs.cabal-install
+          pkgs.git
+          haskell-wasm.wasm32-wasi-cabal-9_14
+          haskell-wasm.wasm32-wasi-ghc-9_14
+        ];
+        # The build logic itself lives in `examples/justfile`, so that CI and a
+        # developer in the dev shell run exactly the same thing.
+        webDemoBuilder =
+          { name, toolchain, recipe, built, outDir, hackageIndexState ? null }:
+          pkgs.writeShellApplication {
+            inherit name;
+            runtimeInputs = toolchain ++ [
+              pkgs.bash
+              pkgs.coreutils
+              # pnpm's `node_modules/.bin` shims call out to `sed`
+              pkgs.gnused
+              pkgs.just
+              pkgs.nodejs_24
+              pkgs.pnpm
+            ];
+            text = ''
+              repo_root="''${1:-$PWD}"
+              cd "$repo_root"
+
+              # pnpm treats a lockfile as frozen when CI is set, which is what
+              # we want here whoever is running it
+              export CI="''${CI:-1}"
+              export PNPM_STORE_DIR="''${PNPM_STORE_DIR:-$repo_root/.pnpm-store}"
+              # GCC 15 (nixos-26.05) defaults to -std=gnu23, which removed
+              # ATOMIC_VAR_INIT, breaking mimalloc-rust-sys via dbsp. Mirrors
+              # the dev shell's shellHook.
+              export CFLAGS="''${CFLAGS:+$CFLAGS }-std=gnu17"
+
+              ${pkgs.lib.optionalString (hackageIndexState != null) ''
+                wasm32-wasi-cabal update 'hackage.haskell.org,${hackageIndexState}'
+              ''}
+              just examples/${recipe}
+
+              echo "Built ${built} at $repo_root/${outDir}"
+            '';
+          };
         lsTsDir = ./packages/coln-ls/client;
         lsClientNpmDeps = pkgs.importNpmLock {
           npmRoot = lsTsDir;
@@ -203,19 +276,21 @@
       {
         inherit packages;
         apps = let
-          buildSyncDemo = {
-            type = "app";
-            program = "${pkgs.lib.getExe packages.build-sync-demo}";
-          };
+          app = p: { type = "app"; program = "${pkgs.lib.getExe p}"; };
+          buildSyncDemo = app packages.build-sync-demo;
+          buildWebDemos = app packages.build-web-demos;
         in {
           build-sync-demo = buildSyncDemo;
           sync-demo = buildSyncDemo;
+          build-web-demos = buildWebDemos;
+          web-demos = buildWebDemos;
         };
         devShells.default = pkgs.mkShell {
           name = "coln";
           buildInputs = with pkgs; [
             cabal-install
             cabal2nix
+            packages.cabal-npm
             cargo-llvm-cov
             cargo-nextest
             coln-manual-dev
@@ -238,7 +313,6 @@
             openssl
             pkg-config
             reuse
-            simple-http-server
             tectonic
             typescript
             vtsls

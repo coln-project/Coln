@@ -356,5 +356,8 @@ manual/forester
 /.pnpm-store/
 node_modules
 
+## Marker file left behind by an interrupted `cabal npm` (wasm-bindgen-hs)
+.wasm-bindgen-hs-ts-out-dir
+
 ## MacOS
 .DS_Store
