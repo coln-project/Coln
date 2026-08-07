@@ -1,3 +1,5 @@
+packages:
+  - sync-demo
 allowBuilds:
   cbor-extract: false
 minimumReleaseAgeExclude:

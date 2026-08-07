@@ -46,7 +46,7 @@ jobs:
   #           ~/.ghc-wasm/.cabal
   #           target
   #           dist-newstyle
-  #         key: web-demos-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'cabal.project', 'packages/**/*.cabal', 'packages/coln-js-runtime/package-lock.json', 'examples/sync-demo/pnpm-lock.yaml') }}
+  #         key: web-demos-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'cabal.project', 'packages/**/*.cabal', 'packages/coln-js-runtime/package-lock.json', 'examples/pnpm-lock.yaml') }}
   #         restore-keys: |
   #           web-demos-${{ runner.os }}-
 

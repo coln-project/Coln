@@ -6,11 +6,11 @@ settings:
 
 importers:
 
-  .:
+  sync-demo:
     dependencies:
       '@automerge/automerge-repo':
         specifier: file:./vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz
-        version: file:vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz
+        version: file:sync-demo/vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz
       '@automerge/automerge-subduction':
         specifier: 0.16.0
         version: 0.16.0
@@ -54,8 +54,8 @@ importers:
 
 packages:
 
-  '@automerge/automerge-repo@file:vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz':
-    resolution: {integrity: sha512-zz6O4jJTKHy1bncoGn2pq0OKfW0DxkCJ5ccjoPiaya5v0gDyMnqbEpB5/UU5NJ7TKIBXU97NutNTFJDHWvwdvg==, tarball: file:vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz}
+  '@automerge/automerge-repo@file:sync-demo/vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz':
+    resolution: {integrity: sha512-zz6O4jJTKHy1bncoGn2pq0OKfW0DxkCJ5ccjoPiaya5v0gDyMnqbEpB5/UU5NJ7TKIBXU97NutNTFJDHWvwdvg==, tarball: file:sync-demo/vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz}
     version: 2.6.0-subduction.33
     engines: {node: '>=22.13'}
 
@@ -515,7 +515,7 @@ packages:
 
 snapshots:
 
-  '@automerge/automerge-repo@file:vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz':
+  '@automerge/automerge-repo@file:sync-demo/vendor/automerge-automerge-repo-2.6.0-subduction.33.tgz':
     dependencies:
       '@automerge/automerge': 3.3.0-fragments.1
       '@automerge/automerge-subduction': 0.16.0
