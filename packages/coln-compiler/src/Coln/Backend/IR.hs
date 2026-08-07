@@ -98,6 +98,7 @@ aeOptions :: AE.Options
 aeOptions =
   AE.defaultOptions
     { AE.allNullaryToStringTag = False
+    , AE.tagSingleConstructors = True
     , AE.constructorTagModifier = \x -> fmap toLower (take 1 x) ++ (drop 1 x)
     }
 
