@@ -16,6 +16,8 @@ const goldenDirectory = resolve(
 const missingRealms = [
   "equality",
   "equality-prop",
+  "equality-record",
+  "equality-record-nested",
   "rule-literals",
 ];
 const testSuffix = /\.(?:pending|test)\.ts$/;

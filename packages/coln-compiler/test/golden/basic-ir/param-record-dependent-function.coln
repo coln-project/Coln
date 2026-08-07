@@ -1,0 +1,18 @@
+def PointAt (X : Set) (x : X) : Set := sig
+end
+
+def Box (X : Set) (x : X) (E : X -> Set) (f : (x : X) -> E x) (p : PointAt (E x) (f x)) : Set := sig
+  image : E x
+end
+
+theory T := sig
+  Key : Set
+  key : Key
+  E : Key -> Set
+  f : (x : Key) -> E x
+  point : PointAt (E key) (f key)
+  boxed : Box Key key E f point -> Set
+end
+
+realm TRealm @ T
+end

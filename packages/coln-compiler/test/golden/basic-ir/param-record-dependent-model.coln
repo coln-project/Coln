@@ -1,0 +1,20 @@
+theory PointOf (X : Set) := sig
+  point : X
+end
+
+def Key : Set := sig
+  rank : Int
+end
+
+def Box (X : Set) (p : PointOf X) (Y : Set) : Set := sig
+  key : X
+  value : Y
+end
+
+theory T := sig
+  pointed : PointOf Key
+  boxed : Box Key pointed String -> Set
+end
+
+realm TRealm @ T
+end

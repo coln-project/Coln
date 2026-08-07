@@ -1,0 +1,10 @@
+theory T := sig
+  A : Set
+  B : A -> Prop
+  E : (x : A) -> B x -> Set
+  next : (x : A) -> B x
+  nextedge : (x : A) -> E x (next x)
+end
+
+realm TRealm @ T
+end

@@ -1,0 +1,50 @@
+-- elaborated
+global entry named Evidence
+in mode: Conjunctive
+type: (X : Set) -> (actual : X) -> (expected : X) -> Set
+value: X => actual => expected => sig
+  proof : actual = expected
+end
+global entry named Result
+in mode: Conjunctive
+type: (X : Set) -> (expected : X) -> Set
+value: X => expected => sig
+  actual : X
+  evidence : Evidence X actual expected
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  result : (expected : X) -> Result X expected
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      result = (fun [expected : TRealm.X []] -> Result (TRealm.X []) expected)
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.result := [.expected : ℜ.X, .a.actual : ℜ.X] primarykey [.expected]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.result.foreignKey expected a.actual := ℜ.result [
+      .expected ↦ expected,
+      .a.actual ↦ a.actual
+    ] ⊢ expected ∈ ℜ.X [] ∧ a.actual ∈ ℜ.X [] ∧ a.actual = expected
+    monitored ℜ.result.total expected := expected ∈ ℜ.X [] ⊢ ℜ.result [
+      .expected ↦ expected
+    ]
+  end
+end
+
+-- messages

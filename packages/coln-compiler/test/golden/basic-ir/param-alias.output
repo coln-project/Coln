@@ -1,0 +1,59 @@
+-- elaborated
+global entry named Model
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+end
+global entry named Alias
+in mode: Conjunctive
+type: Theory
+value: Model
+global entry named Box
+in mode: Conjunctive
+type: (X : Set) -> (M : Model) -> (Y : Set) -> Set
+value: X => M => Y => sig
+  key : X
+  modelValue : M.X
+  value : Y
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  model : Alias
+  boxed : Box Int model String -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      model = node
+        X = rel []
+      end
+      boxed = rel [a : Box Int [X := TRealm.model.X []] String]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.model.X := []
+    table ℜ.boxed := [
+      .a.key : Int,
+      .a.modelValue : ℜ.model.X,
+      .a.value : String
+    ]
+  end
+  rules
+    enforced ℜ.model.X.foreignKey := ℜ.model.X [] ⊢ ⊤
+    enforced ℜ.boxed.foreignKey a.key a.modelValue a.value := ℜ.boxed [
+      .a.key ↦ a.key,
+      .a.modelValue ↦ a.modelValue,
+      .a.value ↦ a.value
+    ] ⊢ a.modelValue ∈ ℜ.model.X []
+  end
+end
+
+-- messages

@@ -1,0 +1,106 @@
+-- elaborated
+global entry named Unit
+in mode: Conjunctive
+type: Set
+value: sig
+end
+global entry named Inner
+in mode: Conjunctive
+type: (X : Set) -> (P : Prop) -> Set
+value: X => P => sig
+  value : X
+  evidence : P
+end
+global entry named Outer
+in mode: Conjunctive
+type: (X : Set) -> (P : Prop) -> Set
+value: X => P => sig
+  unit : Unit
+  inner : Inner X P
+  trailing : X
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  P : Prop
+  first : Outer X P
+  second : Outer X P
+  same : first = second
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      P = rel []
+      first = (fun [] -> Outer (TRealm.X []) (TRealm.P []))
+      second = (fun [] -> Outer (TRealm.X []) (TRealm.P []))
+      same = (fun [] -> TRealm.first [] = TRealm.second [])
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.P := []
+    table ℜ.first := [
+      .a.inner.value : ℜ.X,
+      .a.inner.evidence : ℜ.P,
+      .a.trailing : ℜ.X
+    ] primarykey []
+    table ℜ.second := [
+      .a.inner.value : ℜ.X,
+      .a.inner.evidence : ℜ.P,
+      .a.trailing : ℜ.X
+    ] primarykey []
+    table ℜ.same := [] primarykey []
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
+    enforced ℜ.first.foreignKey a.inner.value a.inner.evidence a.trailing := ℜ.first [
+      .a.inner.value ↦ a.inner.value,
+      .a.inner.evidence ↦ a.inner.evidence,
+      .a.trailing ↦ a.trailing
+    ] ⊢ a.inner.value ∈ ℜ.X [] ∧ a.inner.evidence ∈ ℜ.P [] ∧ a.trailing ∈ ℜ.X []
+    monitored ℜ.first.total := ⊤ ⊢ ℜ.first []
+    enforced ℜ.second.foreignKey a.inner.value a.inner.evidence a.trailing := ℜ.second [
+      .a.inner.value ↦ a.inner.value,
+      .a.inner.evidence ↦ a.inner.evidence,
+      .a.trailing ↦ a.trailing
+    ] ⊢ a.inner.value ∈ ℜ.X [] ∧ a.inner.evidence ∈ ℜ.P [] ∧ a.trailing ∈ ℜ.X []
+    monitored ℜ.second.total := ⊤ ⊢ ℜ.second []
+    enforced ℜ.same.foreignKey a.lhs.inner.value.inner.value a.lhs.inner.value.inner.evidence a.lhs.inner.value.trailing a.lhs.inner.evidence.inner.value a.lhs.inner.evidence.inner.evidence a.lhs.inner.evidence.trailing a.lhs.trailing.inner.value a.lhs.trailing.inner.evidence a.lhs.trailing.trailing a.rhs.inner.value.inner.value a.rhs.inner.value.inner.evidence a.rhs.inner.value.trailing a.rhs.inner.evidence.inner.value a.rhs.inner.evidence.inner.evidence a.rhs.inner.evidence.trailing a.rhs.trailing.inner.value a.rhs.trailing.inner.evidence a.rhs.trailing.trailing := ℜ.same [] ∧ ℜ.first [
+      .a.inner.value ↦ a.lhs.inner.value.inner.value,
+      .a.inner.evidence ↦ a.lhs.inner.value.inner.evidence,
+      .a.trailing ↦ a.lhs.inner.value.trailing
+    ] ∧ ℜ.first [
+      .a.inner.value ↦ a.lhs.inner.evidence.inner.value,
+      .a.inner.evidence ↦ a.lhs.inner.evidence.inner.evidence,
+      .a.trailing ↦ a.lhs.inner.evidence.trailing
+    ] ∧ ℜ.first [
+      .a.inner.value ↦ a.lhs.trailing.inner.value,
+      .a.inner.evidence ↦ a.lhs.trailing.inner.evidence,
+      .a.trailing ↦ a.lhs.trailing.trailing
+    ] ∧ ℜ.second [
+      .a.inner.value ↦ a.rhs.inner.value.inner.value,
+      .a.inner.evidence ↦ a.rhs.inner.value.inner.evidence,
+      .a.trailing ↦ a.rhs.inner.value.trailing
+    ] ∧ ℜ.second [
+      .a.inner.value ↦ a.rhs.inner.evidence.inner.value,
+      .a.inner.evidence ↦ a.rhs.inner.evidence.inner.evidence,
+      .a.trailing ↦ a.rhs.inner.evidence.trailing
+    ] ∧ ℜ.second [
+      .a.inner.value ↦ a.rhs.trailing.inner.value,
+      .a.inner.evidence ↦ a.rhs.trailing.inner.evidence,
+      .a.trailing ↦ a.rhs.trailing.trailing
+    ] ⊢ a.lhs.inner.value.inner.value = a.rhs.inner.value.inner.value ∧ a.lhs.inner.evidence.inner.evidence = a.rhs.inner.evidence.inner.evidence ∧ a.lhs.trailing.trailing = a.rhs.trailing.trailing
+    monitored ℜ.same.total := ⊤ ⊢ ℜ.same []
+  end
+end
+
+-- messages

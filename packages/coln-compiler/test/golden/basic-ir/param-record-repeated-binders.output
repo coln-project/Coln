@@ -1,0 +1,43 @@
+-- elaborated
+global entry named Shadowed
+in mode: Conjunctive
+type: (X : Set) -> (X : Set) -> Set
+value: X => X => sig
+  value : X
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  A : Set
+  B : Set
+  shadowed : Shadowed A B -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      A = rel []
+      B = rel []
+      shadowed = rel [a : Shadowed (TRealm.A []) (TRealm.B [])]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.A := []
+    table ℜ.B := []
+    table ℜ.shadowed := [.a.value : ℜ.B]
+  end
+  rules
+    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
+    enforced ℜ.B.foreignKey := ℜ.B [] ⊢ ⊤
+    enforced ℜ.shadowed.foreignKey a.value := ℜ.shadowed [
+      .a.value ↦ a.value
+    ] ⊢ a.value ∈ ℜ.B []
+  end
+end
+
+-- messages

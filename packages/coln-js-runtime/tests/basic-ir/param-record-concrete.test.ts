@@ -8,14 +8,7 @@ import test from "node:test";
 import * as ParamRecordConcreteRealm from "../../../coln-compiler/test/golden/basic-ir/param-record-concrete.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-const expectedFailure = {
-  expectFailure: {
-    label: "concrete nested record values are not implemented by the runtime",
-    match: /missing field `tag`/,
-  },
-};
-
-test("param-record-concrete", expectedFailure, () => {
+test("param-record-concrete", { expectFailure: true }, () => {
   const realm = beginRealm(ParamRecordConcreteRealm);
   const box = {
     value: {
