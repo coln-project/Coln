@@ -62,9 +62,10 @@ impl<'de> Deserialize<'de> for BuiltinTy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum ColType {
-    RowId {
-        path: Path,
-    },
+    /// A foreign key into another table by referencing its _row id_ through
+    /// provided the path.
+    RowId { path: Path },
+    /// A data column with the scalar type [`BuiltinTy`].
     #[serde(rename = "builtin")]
     BuiltinTy {
         #[serde(rename = "type")]
@@ -110,7 +111,13 @@ pub struct ColumnEntry {
 #[serde(rename_all = "camelCase")]
 pub struct Schema {
     pub entity_variant: EntityVariant,
+    // TODO: Are the columns guaranteed to be in their physical order?
     pub columns: Vec<ColumnEntry>,
+    // TODO:
+    // 1. What about multiple primary keys per table? Not a thing?
+    // 2. Why wrap the Vec in an Option? `null` could become the empty vec.
+    // 3. Why is this Vec<ColName>/Vec<Path>? Why not Vec<Vec<usize>> which could
+    //    just be indices into `Self::columns`.
     pub primary_key: Option<Vec<ColName>>,
 }
 
@@ -151,6 +158,7 @@ pub enum Prop {
     Eq { left: Term, right: Term },
 }
 
+// TODO: Why not make it Copy?
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuleVariant {
