@@ -1,0 +1,59 @@
+cabal-version: 2.4
+name: yclept
+version: 5.2.0
+synopsis: Name pattern combinators for hierarchical names (Haskell port)
+description:
+  Based on the OCaml library @yuujinchou@: name-modifier combinators
+  for hierarchical names, a modifier engine, and a lexical-scope engine.
+
+license: Apache-2.0
+author: Yuujinchou contributors and James Deikun
+maintainer: jamesdeikun@gmail.com
+category: Language
+build-type: Simple
+extra-source-files: README.md
+
+common warnings
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+
+library
+  import: warnings
+  hs-source-dirs: src
+  default-language: GHC2021
+  exposed-modules:
+    Yclept
+    Yclept.Bwd
+    Yclept.Language
+    Yclept.Modifier
+    Yclept.Scope
+    Yclept.Trie
+    Yclept.Trie.Untagged
+
+  build-depends:
+    base >=4.14 && <5,
+    containers >=0.6 && <0.8,
+    text >=1.2 && <2.2,
+    transformers >=0.5 && <0.7,
+
+executable yclept-easy-example
+  import: warnings
+  hs-source-dirs: test
+  main-is: EasyExample.hs
+  default-language: GHC2021
+  build-depends:
+    base,
+    text,
+    yclept,
+
+executable yclept-example
+  import: warnings
+  hs-source-dirs: test
+  main-is: Example.hs
+  default-language: GHC2021
+  build-depends:
+    base,
+    text,
+    yclept,
