@@ -73,7 +73,7 @@ pub enum ColType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "tag", rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub enum Materialization {
     Recomputed,
     Memoized,
@@ -90,7 +90,9 @@ pub enum IndexMethod {
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum EntityVariant {
     Table,
-    View(Materialization),
+    View {
+        materialization: Materialization,
+    },
     Index {
         method: IndexMethod,
         columns: Vec<ColName>,
