@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::variable::Value;
+//! A scalar of the host language.
+
+use crate::host::variable::Value;
 use std::fmt::{self, Display, Formatter};
 
 /// Stores a scalar value plus its type. These are the kinds of values that
@@ -30,7 +32,8 @@ pub enum ScalarTypedValue {
     Iint(i64),
     /// Boolean.
     Bool(bool),
-    /// A single character.
+    /// A single character, represented as 32 bits regardless of the character.
+    /// See documentation of [`char`] for more details on its memory layout.
     Char(char),
     /// Null.
     // The `Null` variant carries the unit type to align its field-arity with
@@ -139,11 +142,11 @@ impl From<()> for ScalarTypedValue {
 impl Display for ScalarTypedValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ScalarTypedValue::String(value) => write!(f, "{value}"),
+            ScalarTypedValue::String(value) => write!(f, "\"{value}\""),
             ScalarTypedValue::Uint(value) => write!(f, "{value}"),
             ScalarTypedValue::Iint(value) => write!(f, "{value}"),
             ScalarTypedValue::Bool(value) => write!(f, "{value}"),
-            ScalarTypedValue::Char(value) => write!(f, "{value}"),
+            ScalarTypedValue::Char(value) => write!(f, "'{value}'"),
             ScalarTypedValue::Null(()) => write!(f, "null"),
         }
     }

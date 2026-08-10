@@ -10,3 +10,4 @@ readme = "README.md"
 [dependencies]
 anyhow = { workspace = true }
 arrow = { version = "56", default-features = false, features = ["ipc"] }
+coln-integrator = { path = "../coln-integrator" }

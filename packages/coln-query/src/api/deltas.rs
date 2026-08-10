@@ -6,7 +6,7 @@
 //! [RowDelta], [TableDelta], [StoreDelta], and [DerivedDataDelta].
 
 use super::schema::TableRef;
-use crate::scalar::ScalarTypedValue;
+pub use crate::scalarial::ScalarTypedValue;
 
 pub type ZWeight = i64;
 

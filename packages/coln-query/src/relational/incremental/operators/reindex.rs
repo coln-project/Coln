@@ -2,22 +2,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use super::super::super::relation::{RelationRef, SchemaTuple, TupleKey};
+use super::StreamWrapper;
 use super::projection::is_pickable;
 use crate::{
-    context::InterpreterContext,
-    dbsp::StreamWrapper,
-    expr::Expr,
-    interpreter::Interpreter,
-    relation::{RelationRef, SchemaTuple, TupleKey},
-    scalar::ScalarTypedValue,
-    variable::Environment,
+    host::{InterpreterContext, expr::Expr, variable::Environment},
+    scalarial::{RowScalarEngine, ScalarTypedValue},
 };
 use std::rc::Rc;
 
-pub fn reindex_helper(
+pub fn reindex_helper<E: RowScalarEngine>(
     relation: &RelationRef,
     on: &[&Expr],
     environment: &Environment,
+    engine: E,
 ) -> (StreamWrapper, Vec<String>) {
     let requires_projection = on.iter().any(|expr| is_pickable(expr).is_none());
     // We disable the pick optimization for now, as it may cause trouble with
@@ -32,21 +30,27 @@ pub fn reindex_helper(
             .enumerate()
             .map(|(idx, _)| format!("anonym_field_{idx}"))
             .collect();
-        let indexed = relation_ref.inner.map_index({
+        let indexed = relation_ref.downcast_ref::<StreamWrapper>().map_index({
             let relation = Rc::clone(relation);
-            let exprs: Vec<Expr> = on.iter().map(|expr| (*expr).clone()).collect();
+            // Compile each key expression once, off the per-tuple hot path.
+            let programs = on
+                .iter()
+                .map(|map| engine.compile(map))
+                .collect::<Result<Vec<_>, _>>()
+                // TODO: beautify.
+                .expect("Key expression compilation error");
             let environment = environment.clone();
             move |(_key, tuple)| {
                 let schema = &relation.borrow().schema;
                 let environment = &mut environment.clone();
                 let mut new_ctx = InterpreterContext::new(environment);
                 new_ctx.extend_tuple_ctx(&None, &schema.tuple, tuple);
-                let key: TupleKey = exprs
+                let key: TupleKey = programs
                     .iter()
-                    .map(|expr| {
+                    .map(|program| {
                         ScalarTypedValue::try_from(
-                            Interpreter::new(None)
-                                .evaluate(expr, &mut new_ctx)
+                            engine
+                                .run(program, &mut new_ctx)
                                 .expect("Runtime error while interpreting projection function"),
                         )
                         .expect("Type error while interpreting projection function")
@@ -65,7 +69,7 @@ pub fn reindex_helper(
                     .clone()
             })
             .collect();
-        let indexed = relation_ref.inner.map_index({
+        let indexed = relation_ref.downcast_ref::<StreamWrapper>().map_index({
             let key_field_picks = key_field_picks.clone();
             let relation = Rc::clone(relation);
             move |(_key, tuple)| {

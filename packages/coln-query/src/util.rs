@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::variable::VariableSlot;
+use crate::host::variable::VariableSlot;
 
 pub trait MemAddr {
     /// Make sure that the value is not moved in memory!

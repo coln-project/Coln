@@ -2,21 +2,23 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{
-    expr::{Literal, LiteralExpr},
-    relation::{Relation, RelationRef, RelationSchema, SchemaTuple, TupleKey, TupleValue},
+use crate::relational::relation::Relation;
+
+use super::super::super::relation::{
+    RelationData, RelationSchema, SchemaTuple, TupleKey, TupleValue,
 };
 use cli_table::{Cell, Style, Table, format::Justify};
 pub use dbsp::{
     DBSPHandle as DbspHandle, Error as DbspError, NestedCircuit, RootCircuit, Runtime, ZWeight,
 };
 use dbsp::{
-    IndexedZSetHandle, IndexedZSetReader, OrdIndexedZSet, OrdZSet, OutputHandle, Stream,
+    IndexedZSetHandle, IndexedZSetReader, OrdIndexedZSet, OutputHandle, Stream,
     typed_batch::SpineSnapshot, utils::Tup2,
 };
 #[allow(unused_imports, reason = "For testing purposes")]
-pub use dbsp::{indexed_zset, zset, zset_set};
+pub use dbsp::{OrdZSet, indexed_zset, zset, zset_set};
 use std::{
+    any::Any,
     collections::HashMap,
     fmt::{Debug, Display},
     iter,
@@ -178,14 +180,28 @@ impl IntoIterator for &'_ StreamWrapper {
     }
 }
 
+/// A DBSP stream is the DBSP backend's concrete relation representation. This is
+/// the single point where the DBSP runtime plugs into the backend-neutral
+/// [`Relation`] envelope.
+impl RelationData for StreamWrapper {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn clone_box(&self) -> Box<dyn RelationData> {
+        Box::new(self.clone())
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct DbspInputs {
     inputs: HashMap<String, DbspInput>,
 }
 
 impl DbspInputs {
-    fn insert(&mut self, name: String, input: DbspInput) {
-        self.inputs.insert(name, input);
+    pub fn from_named_inputs<I: IntoIterator<Item = (String, DbspInput)>>(inputs: I) -> Self {
+        Self {
+            inputs: HashMap::from_iter(inputs),
+        }
     }
     pub fn get(&self, name: &str) -> Option<&DbspInput> {
         self.inputs.get(name)
@@ -205,54 +221,38 @@ pub struct DbspInput {
 }
 
 impl DbspInput {
-    pub fn add(
-        schema: RelationSchema,
-        circuit: &mut RootCircuit,
-        inputs: &mut DbspInputs,
-    ) -> LiteralExpr {
-        let (stream, handle) = new_ord_indexed_stream(circuit);
-        let input = Self {
-            schema: schema.clone(),
-            handle,
-        };
-        inputs.insert(schema.name.clone(), input);
-        LiteralExpr {
-            value: Literal::Relation(Relation::new(schema, stream)),
-        }
+    pub fn new(schema: RelationSchema, handle: OrdIndexedStreamInputHandle) -> Self {
+        Self { schema, handle }
+    }
+    /// Feed a batch of value tuples (with z-weights) into this input. The tuple
+    /// key is derived from the value by picking the schema's key fields, so
+    /// callers only supply the value — matching the neutral `Runtime::feed`.
+    pub fn feed(&self, rows: impl IntoIterator<Item = (TupleValue, ZWeight)>) {
+        let tuple_names: Vec<String> = self.schema.tuple.field_names(&None).collect();
+        let key_indices: Vec<usize> = self
+            .schema
+            .key
+            .field_names(&None)
+            .map(|key_field| {
+                tuple_names
+                    .iter()
+                    .position(|name| *name == key_field)
+                    .expect("key field must appear in the tuple schema")
+            })
+            .collect();
+        let mut batch = rows
+            .into_iter()
+            .map(|(value, weight)| {
+                let key = TupleKey {
+                    data: key_indices.iter().map(|&i| value.data[i].clone()).collect(),
+                };
+                Tup2(key, Tup2(value, weight))
+            })
+            .collect();
+        self.handle.append(&mut batch);
     }
     pub fn handle(&self) -> &OrdIndexedStreamInputHandle {
         &self.handle
-    }
-    pub fn insert_consume<T: Into<TupleKey> + Into<TupleValue> + Clone>(
-        &self,
-        tuples: impl IntoIterator<Item = (T, ZWeight)>,
-    ) {
-        let mut delta_batch = tuples
-            .into_iter()
-            .map(|(data, zweight)| {
-                Tup2(
-                    Into::<TupleKey>::into(data.clone()),
-                    Tup2(Into::<TupleValue>::into(data), zweight),
-                )
-            })
-            .collect();
-        self.handle.append(&mut delta_batch);
-    }
-    pub fn insert<'a, T: Into<TupleKey> + Into<TupleValue> + Clone + 'a>(
-        &self,
-        tuples: impl IntoIterator<Item = (&'a T, ZWeight)>,
-    ) {
-        tuples.into_iter().for_each(|(tuple, z_weight)| {
-            self.handle
-                .push(tuple.clone().into(), (tuple.clone().into(), z_weight))
-        })
-    }
-    pub fn insert_with_same_weight<'a, T: Into<TupleKey> + Into<TupleValue> + Clone + 'a>(
-        &self,
-        tuples: impl IntoIterator<Item = &'a T>,
-        z_weight: ZWeight,
-    ) {
-        self.insert(tuples.into_iter().map(|tuple| (tuple, z_weight)));
     }
 }
 
@@ -282,11 +282,10 @@ impl DbspOutput {
     }
 }
 
-impl From<RelationRef> for DbspOutput {
-    fn from(relation: RelationRef) -> Self {
-        let relation = relation.borrow();
+impl From<&Relation> for DbspOutput {
+    fn from(relation: &Relation) -> Self {
         let schema = relation.schema.clone();
-        let handle = relation.inner.output();
+        let handle = relation.downcast_ref::<StreamWrapper>().output();
         Self { schema, handle }
     }
 }

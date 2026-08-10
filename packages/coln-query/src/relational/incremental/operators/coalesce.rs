@@ -2,7 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::relation::{RelationRef, SchemaTuple, TupleKey, TupleValue, new_relation};
+use super::super::super::relation::{RelationRef, SchemaTuple, TupleKey, TupleValue, new_relation};
+use super::StreamWrapper;
 use std::rc::Rc;
 
 /// If the schema is not coalesced, this helper will compact the tuple key and
@@ -19,7 +20,7 @@ pub fn coalesce_helper(relation: RelationRef) -> RelationRef {
     }
 
     let schema = relation_ref.schema.coalesce();
-    let coalesced = relation_ref.inner.map_index({
+    let coalesced = relation_ref.downcast_ref::<StreamWrapper>().map_index({
         let relation = Rc::clone(&relation);
         move |(key, tuple)| {
             let relation_ref = relation.borrow();

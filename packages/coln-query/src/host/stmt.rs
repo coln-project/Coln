@@ -2,44 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{expr::Expr, impl_from_auto_box, util::MemAddr};
-
-pub type Code = Vec<Stmt>;
-
-#[derive(Clone, Debug)]
-pub struct Program {
-    stmts: Code,
-    /// Index from which unexecuted code is stored in the program.
-    partition_index: usize,
-}
-
-impl From<Code> for Program {
-    fn from(stmts: Code) -> Self {
-        Self {
-            stmts,
-            partition_index: 0,
-        }
-    }
-}
-
-impl Program {
-    pub fn empty() -> Self {
-        Self {
-            stmts: Vec::new(),
-            partition_index: 0,
-        }
-    }
-    pub fn unexecuted_code(&self) -> impl Iterator<Item = &Stmt> {
-        self.stmts.iter().skip(self.partition_index)
-    }
-    pub fn unexecuted_code_mut(&mut self) -> impl Iterator<Item = &mut Stmt> {
-        self.stmts.iter_mut().skip(self.partition_index)
-    }
-    pub fn extend_program(&mut self, code: impl Iterator<Item = Stmt>) {
-        self.partition_index = self.stmts.len();
-        self.stmts.extend(code);
-    }
-}
+use super::expr::Expr;
+use crate::{impl_from_auto_box, util::MemAddr};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Stmt {

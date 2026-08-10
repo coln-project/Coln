@@ -2,12 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use super::super::super::relation::{RelationSchema, Tuple, TupleKey, TupleValue};
 use crate::{
-    context::InterpreterContext,
-    expr::Expr,
-    interpreter::Interpreter,
-    relation::{RelationSchema, Tuple, TupleKey, TupleValue},
-    scalar::ScalarTypedValue,
+    host::InterpreterContext,
+    host::expr::Expr,
+    scalarial::{RowScalarEngine, ScalarTypedValue},
 };
 
 pub fn projection_helper(attributes: &[(String, Expr)]) -> ProjectionStrategy<'_> {
@@ -40,22 +39,30 @@ impl ProjectionHelper {
         let (attributes, maps) = attributes.iter().cloned().unzip();
         Self { attributes, maps }
     }
-    pub fn prepare(
+    pub fn prepare<E: RowScalarEngine>(
         self,
         schema: &RelationSchema,
+        engine: E,
     ) -> (
         RelationSchema,
-        impl Fn(InterpreterContext) -> (TupleKey, TupleValue) + use<> + Clone,
+        impl Fn(InterpreterContext) -> (TupleKey, TupleValue) + Clone + use<E>,
     ) {
         let schema = schema.project(self.attributes);
+        // Compile each attribute expression once, off the per-tuple hot path.
+        let programs = self
+            .maps
+            .iter()
+            .map(|map| engine.compile(map))
+            .collect::<Result<Vec<_>, _>>()
+            // TODO: beautify.
+            .expect("Attribute expression compilation error");
         let projection = move |mut ctx: InterpreterContext| {
-            let value: TupleValue = self
-                .maps
+            let value: TupleValue = programs
                 .iter()
-                .map(|map| {
+                .map(|program| {
                     ScalarTypedValue::try_from(
-                        Interpreter::new(None)
-                            .evaluate(map, &mut ctx)
+                        engine
+                            .run(program, &mut ctx)
                             .expect("Runtime error while interpreting projection function"),
                     )
                     .expect("Type error while interpreting projection function")

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{error::OptimizationError, stmt::Code};
+use crate::{error::OptimizationError, host::Code};
 
 /// An optimizer does a series of transformations on the relational algebra IR
 /// which retain the semantics of the program but intend to improve performance.

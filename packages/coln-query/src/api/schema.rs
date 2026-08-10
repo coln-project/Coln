@@ -5,7 +5,7 @@
 //! This module provides implementations for passing references to tables
 //! ([TableRef]) and communicating a schema of a table ([TableSchema]).
 
-use crate::scalar::ScalarType;
+use crate::scalarial::ScalarType;
 
 /// An identifier that uniquely identifies a table (globally across the store).
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]

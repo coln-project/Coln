@@ -1,9 +1,9 @@
 [package]
-name = "coln-query"
+name = "coln-integrator"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "The query engine of the Coln language."
+description = "The snapshot table data interface of the Coln language."
 repository = "https://github.com/coln-project/Coln"
 readme = "README.md"
 exclude = [
@@ -21,11 +21,7 @@ test = []
 
 [dependencies]
 anyhow = { workspace = true }
-cli-table = "0.4.9"
-coln-flir-rs = { path = "../coln-flir-rs" }
-dbsp = "0.305.0"
-rkyv = { version = "0.7.46", default-features = false, features = [ "std", "size_64", "validation", "uuid", ] }
-size-of = { version = "0.1.7", package = "feldera-size-of", features = [ "hashbrown", "time-std", "xxhash-xxh3", "arcstr", "chrono", "ordered-float", ] }
+coln-store = { path = "../coln-store" }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -6,15 +6,31 @@
 //! It provides helpers for testing and benchmarking purposes.
 
 use crate::{
-    IncDataLog,
-    optimizer::NoOptimizer,
-    relation::{RelationSchema, TupleKey, TupleValue},
-    scalar::ScalarTypedValue,
+    relational::{RelationSchema, TupleKey, TupleValue, incremental::dbsp::ZWeight},
+    scalarial::ScalarTypedValue,
 };
 use std::fmt::Debug;
 
-pub fn setup_inc_data_log() -> IncDataLog<NoOptimizer> {
-    IncDataLog::default()
+/// Convenience: turn input entities (with per-row z-weights) into the value rows
+/// that [`crate::relational::Runtime::feed`] expects.
+pub fn rows<E: InputEntity>(
+    entities: impl IntoIterator<Item = (E, ZWeight)>,
+) -> Vec<(TupleValue, ZWeight)> {
+    entities
+        .into_iter()
+        .map(|(entity, weight)| (entity.into(), weight))
+        .collect()
+}
+
+/// Convenience: turn input entities into value rows all carrying `weight`.
+pub fn rows_with_weight<E: InputEntity>(
+    entities: impl IntoIterator<Item = E>,
+    weight: ZWeight,
+) -> Vec<(TupleValue, ZWeight)> {
+    entities
+        .into_iter()
+        .map(|entity| (entity.into(), weight))
+        .collect()
 }
 
 pub trait InputEntity: Into<TupleKey> + Into<TupleValue> + Clone + Debug {
