@@ -84,8 +84,9 @@ instance DefEq (V.Ty N) where
       V.BuiltinTy b' ->
         unless (b == b') $ throwUnequalTys cs a a' $ Just "unequal builtin types"
       _ -> throwUnequalTys cs a a' Nothing
-    V.EltOf x vs -> case a' of
-      V.EltOf x' vs' -> do
+    V.EltOf x vs u -> case a' of
+      V.EltOf x' vs' u' -> do
+        unless (u == u') $ throwUnequalTys cs a a' $ Just "unequal universes"
         unless (x == x') $ throwUnequalTys cs a a' $ Just "unequal table names"
         zipWithM_ (defEq cs) (F.toList vs) (F.toList vs')
       _ -> throwUnequalTys cs a a' Nothing

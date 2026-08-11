@@ -65,10 +65,9 @@ layout p sc a
         let (gts, ms) = go rt.capture (toList rt.fieldTypes)
         let m = M.cons (Dict rt.fieldTypes.head (Vector.fromList ms))
         (Node $ Dict rt.fieldTypes.head (Vector.fromList gts), m)
-      V.LikeU (SetU; PropU) -> do
-        -- TODO: layout Prop correctly
-        let gt = Leaf (Rel (toList sc.names) (toList sc.ctx))
-        let a = V.EltOf (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound))
+      V.LikeU u@(SetU; PropU) -> do
+        let gt = Leaf (Rel (toList sc.names) (toList sc.ctx) u)
+        let a = V.EltOf (TableName sc.realm p) (fromList $ zip (toList sc.names) (toList sc.bound)) u
         (gt, M.code (M.fromVTy sc.len a))
       V.NoRules -> panic "cannot layout type with no rules"
       V.LikeBuiltinTy _; V.LikeU _; V.LikeInductive _ -> panic "non-theory type"

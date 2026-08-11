@@ -53,7 +53,7 @@ data Ty :: Case -> Type where
   Eq :: EqualityType El Ty -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
   IsTy :: Ty N -> Ty D
-  EltOf :: TableName -> Dict (El N) -> Ty N
+  EltOf :: TableName -> Dict (El N) -> Universe -> Ty N
 
 data TypeBehavior
   = LikeU Universe

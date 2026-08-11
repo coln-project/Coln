@@ -32,7 +32,7 @@ mkDefinition x ty tm m = do
 --------------------------------------------------------------------------------
 
 data Generator
-  = Rel [Name] [S.Ty N]
+  = Rel [Name] [S.Ty N] Universe
   | Fun [Name] [S.Ty N] (S.Ty N)
 
 data Realm = Realm

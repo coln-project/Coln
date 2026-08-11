@@ -103,10 +103,10 @@ separate n = \case
   V.Function _ -> panic "lowering non-set-level type: Function"
   V.Eq et -> \_ -> Ty Unit (Equal (lower n et.lhs) (lower n et.rhs))
   V.BuiltinTy t -> \_ -> Ty (BuiltinTy t) PTrue
-  V.EltOf x ts -> \v -> Ty (RowId x) (EltOf (lower n v) x (lower n <$> ts))
+  V.EltOf x ts _ -> \v -> Ty (RowId x) (EltOf (lower n v) x (lower n <$> ts))
 
 data Generator
-  = Rel [Name] [Ty]
+  = Rel [Name] [Ty] Universe
   | Fun [Name] [Ty] Ty
 
 lowerAtFresh :: CtxLen -> V.Ty N -> Ty
@@ -126,9 +126,9 @@ lowerGen :: C.Generator -> Generator
 lowerGen (C.Fun xs ts t) = do
   let (ts', vs) = lowerTele ts
   Fun xs ts' (lowerAtFresh (length ts) (eval vs t))
-lowerGen (C.Rel xs ts) = do
+lowerGen (C.Rel xs ts u) = do
   let (ts', _) = lowerTele ts
-  Rel xs ts'
+  Rel xs ts' u
 
 newtype ColumnBinding = ColumnBinding
   { columnIndex :: Int
@@ -252,7 +252,7 @@ pushTerm' ps = uncurry $ \x -> \case
   Var b -> (ps, elemAt ps.parent.oldEnv b)
   Lookup tn d -> case OMap.lookup tn ps.parent.generators of
     Nothing -> panic "unknown function"
-    Just (Rel _ _) -> panic "looked up a relation"
+    Just (Rel _ _ _) -> panic "looked up a relation"
     Just (Fun _ _ t) -> do
       let (ps', ts) = pushVars ps (x, t.shape)
       let ps'' = pushCond ps' x tn d ts
@@ -356,7 +356,7 @@ tableAtom name columns =
       ColumnTerm binding
 
 disaggregateGen :: OMap TableName Generator -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
-disaggregateGen gs tn (Rel xs ts) fr = do
+disaggregateGen gs tn (Rel xs ts _) fr = do
   let ds = disaggregateTele gs xs ts
   let rf = mergeFrags ds
   let columns = ds.newColumns

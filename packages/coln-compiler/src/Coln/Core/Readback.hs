@@ -100,7 +100,7 @@ instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
     V.Record r -> S.Record $ readb n r
     V.Eq eq -> S.Eq $ readb n eq
     V.BuiltinTy b -> S.BuiltinTy b
-    V.EltOf x vs -> S.EltOf x (readb n <$> vs)
+    V.EltOf x vs u -> S.EltOf x (readb n <$> vs) u
 
 instance Readback V.TypeBehavior S.TypeBehavior where
   readb n = \case

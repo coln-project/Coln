@@ -96,7 +96,7 @@ instance ToNotation (Ty e) where
         (toNotation xs eq.rhs)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
     IsTy a -> toNotation xs a
-    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
+    EltOf x ts _ -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
      where
       field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 
@@ -119,7 +119,7 @@ toNotationTele xs tys = go xs BwdNil tys
   go _ _ _ = panic "mismatched lengths"
 
 instance ToNotationTop Generator where
-  toNotationTop (Rel xs tys) =
+  toNotationTop (Rel xs tys _) =
     N.Juxt (N.Keyword "rel" ()) (N.Tuple (toNotationTele xs tys) ())
   toNotationTop (Fun xs tys ret) =
     N.Infix

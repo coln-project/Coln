@@ -235,7 +235,7 @@ data Ty :: Case -> Type where
   Record :: RecordType -> Ty D
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
-  EltOf :: TableName -> Dict (El N) -> Ty N
+  EltOf :: TableName -> Dict (El N) -> Universe -> Ty N
 
 instance DebugVal (Ty c) where
   debugVal = \case
@@ -246,7 +246,7 @@ instance DebugVal (Ty c) where
     Record _ -> "Record"
     Eq _ -> "Eq"
     BuiltinTy _ -> "BuiltinTy"
-    EltOf _ _ -> "EltOf"
+    EltOf _ _ _ -> "EltOf"
 
 instance LevelOf (Ty c) where
   levelOf = \case
@@ -257,7 +257,7 @@ instance LevelOf (Ty c) where
     InitDecode _ -> Level Set HSet
     Eq ety -> Level (levelOf ety.at).mlevel (equalityHLevelOf (levelOf ety.at).hlevel)
     BuiltinTy _ -> Level Set HSet -- Only Int/String so far
-    EltOf _ _ -> Level Set HSet -- TODO
+    EltOf _ _ u -> decodesInto u
 
 behavior :: Ty c -> TypeBehavior
 behavior = \case
@@ -270,7 +270,7 @@ behavior = \case
   Record rt -> LikeRecord rt
   Eq _ -> NoRules
   BuiltinTy bty -> LikeBuiltinTy bty
-  EltOf _ _ -> NoRules
+  EltOf _ _ _ -> NoRules
 
 decode :: (HasEvaluation c) => El c -> Evaluation Ty c
 decode (Code a) = epure a

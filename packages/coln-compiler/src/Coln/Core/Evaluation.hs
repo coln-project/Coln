@@ -86,6 +86,6 @@ instance Compile S.Ty V.Ty where
     S.IsTy a -> do
       let k = compile a
       V.Become . k
-    S.EltOf x ts -> do
+    S.EltOf x ts u -> do
       let k = compile <$> ts
-      \vs -> V.EltOf x $ ($ vs) <$> k
+      \vs -> V.EltOf x (($ vs) <$> k) u

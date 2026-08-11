@@ -44,7 +44,7 @@ genTy access n = \case
   V.Function ft -> do
     let v = V.local (FId n) ft.dom
     TS.Fun (TS.Binding (TS.Id "x") (TS.runtime Value)) (genTy access (n + 1) (V.appClo ft.cod v))
-  V.EltOf _ _ -> TS.runtime $ ColnRef access
+  V.EltOf _ _ _ -> TS.runtime $ ColnRef access
   V.Decode n -> tyFromHead access n.head
   V.BuiltinTy _ -> TS.runtime $ ColnRef access
   _ -> error "not yet supported"
@@ -102,7 +102,7 @@ class TrackGlobals a where
 --       trackGlobals et.rhs
 --     S.BuiltinTy _ -> pure ()
 --     S.IsTy a -> trackGlobals a
---     S.EltOf _ _ -> pure ()
+--     S.EltOf _ _ _ -> pure ()
 
 genTypeDef :: Access -> CtxLen -> V.Ty N -> TS.TypeDef
 genTypeDef access n a = TS.TypeDef (fromShow access) (genTy access n a)
@@ -139,7 +139,7 @@ tableNameDoc tn = concatWith (surround dot) (dpretty <$> (tn.realm : toList tn.p
 
 genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
 genTyVal access cs = \case
-  V.EltOf x vs -> do
+  V.EltOf x vs _ -> do
     let params = TS.List $ genEl access cs <$> F.toList vs
     let transactionArg = case access of
           View -> []
