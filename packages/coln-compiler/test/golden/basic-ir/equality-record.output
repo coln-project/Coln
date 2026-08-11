@@ -47,19 +47,13 @@ lowered: flatrealm
       .a.right ↦ a.right
     ] ⊢ a.left ∈ ℜ.X [] ∧ a.right ∈ ℜ.X []
     monitored ℜ.second.total := ⊤ ⊢ ℜ.second []
-    enforced ℜ.same.foreignKey a.lhs.left.left a.lhs.left.right a.lhs.right.left a.lhs.right.right a.rhs.left.left a.rhs.left.right a.rhs.right.left a.rhs.right.right := ℜ.same [] ∧ ℜ.first [
-      .a.left ↦ a.lhs.left.left,
-      .a.right ↦ a.lhs.left.right
-    ] ∧ ℜ.first [
-      .a.left ↦ a.lhs.right.left,
-      .a.right ↦ a.lhs.right.right
+    enforced ℜ.same.foreignKey a.lhs.left a.lhs.right a.rhs.left a.rhs.right := ℜ.same [] ∧ ℜ.first [
+      .a.left ↦ a.lhs.left,
+      .a.right ↦ a.lhs.right
     ] ∧ ℜ.second [
-      .a.left ↦ a.rhs.left.left,
-      .a.right ↦ a.rhs.left.right
-    ] ∧ ℜ.second [
-      .a.left ↦ a.rhs.right.left,
-      .a.right ↦ a.rhs.right.right
-    ] ⊢ a.lhs.left.left = a.rhs.left.left ∧ a.lhs.right.right = a.rhs.right.right
+      .a.left ↦ a.rhs.left,
+      .a.right ↦ a.rhs.right
+    ] ⊢ a.lhs.left = a.rhs.left ∧ a.lhs.right = a.rhs.right
     monitored ℜ.same.total := ⊤ ⊢ ℜ.same []
   end
 end
