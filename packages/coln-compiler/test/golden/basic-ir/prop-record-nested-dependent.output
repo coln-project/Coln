@@ -39,8 +39,8 @@ end
 lowered: flatrealm
   entities
     table ℜ.X := []
-    table ℜ.P := [.a : ℜ.X]
-    table ℜ.Q := [.a : ℜ.X]
+    table ℜ.P := [.a : ℜ.X] primarykey [.a]
+    table ℜ.Q := [.a : ℜ.X] primarykey [.a]
     table ℜ.make := [
       .x : ℜ.X,
       .a.nested.proof : ℜ.P,

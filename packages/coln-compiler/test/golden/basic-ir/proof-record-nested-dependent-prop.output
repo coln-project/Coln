@@ -32,7 +32,7 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.P := [.a : Int]
+    table ℜ.P := [.a : Int] primarykey [.a]
     table ℜ.package := [.a.value : Int, .a.evidence.proof : ℜ.P] primarykey []
   end
   rules

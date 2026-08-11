@@ -46,7 +46,7 @@ end
 lowered: flatrealm
   entities
     table ℜ.X := []
-    table ℜ.P := []
+    table ℜ.P := [] primarykey []
     table ℜ.first := [
       .a.inner.value : ℜ.X,
       .a.inner.evidence : ℜ.P,

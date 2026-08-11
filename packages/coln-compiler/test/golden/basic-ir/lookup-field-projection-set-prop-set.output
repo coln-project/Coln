@@ -28,7 +28,7 @@ end
 lowered: flatrealm
   entities
     table ℜ.A := []
-    table ℜ.B := []
+    table ℜ.B := [] primarykey []
     table ℜ.E := [.a : ℜ.B]
     table ℜ.x := [.a : ℜ.A] primarykey []
     table ℜ.next := [.a : ℜ.A, .b : ℜ.B] primarykey [.a]

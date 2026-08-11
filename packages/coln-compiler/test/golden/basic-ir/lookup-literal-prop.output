@@ -23,8 +23,8 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.IntFact := [.a : Int]
-    table ℜ.StringFact := [.a : String]
+    table ℜ.IntFact := [.a : Int] primarykey [.a]
+    table ℜ.StringFact := [.a : String] primarykey [.a]
     table ℜ.intFact := [.a : ℜ.IntFact] primarykey []
     table ℜ.stringFact := [.a : ℜ.StringFact] primarykey []
   end

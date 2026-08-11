@@ -21,8 +21,8 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.A := []
-    table ℜ.B := [.a : ℜ.A]
+    table ℜ.A := [] primarykey []
+    table ℜ.B := [.a : ℜ.A] primarykey [.a]
     table ℜ.f := [.a : ℜ.A, .b : ℜ.B] primarykey [.a]
   end
   rules

@@ -29,7 +29,11 @@ end
 lowered: flatrealm
   entities
     table ℜ.X := []
-    table ℜ.Accepted := [.a.first : ℜ.X, .a.second : ℜ.X, .a.trailing : ℜ.X]
+    table ℜ.Accepted := [
+      .a.first : ℜ.X,
+      .a.second : ℜ.X,
+      .a.trailing : ℜ.X
+    ] primarykey [.a.first, .a.second, .a.trailing]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤

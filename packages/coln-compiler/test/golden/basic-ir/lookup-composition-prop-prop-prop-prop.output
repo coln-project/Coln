@@ -31,10 +31,10 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.A := []
-    table ℜ.B := []
-    table ℜ.C := []
-    table ℜ.E := [.a : ℜ.C]
+    table ℜ.A := [] primarykey []
+    table ℜ.B := [] primarykey []
+    table ℜ.C := [] primarykey []
+    table ℜ.E := [.a : ℜ.C] primarykey [.a]
     table ℜ.first := [.a : ℜ.A, .b : ℜ.B] primarykey [.a]
     table ℜ.second := [.a : ℜ.B, .b : ℜ.C] primarykey [.a]
     table ℜ.edge := [.x : ℜ.A, .a : ℜ.E] primarykey [.x]

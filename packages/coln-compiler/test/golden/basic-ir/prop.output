@@ -17,7 +17,7 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.V := []
+    table ℜ.V := [] primarykey []
   end
   rules
     enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤

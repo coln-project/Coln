@@ -22,8 +22,8 @@ end
 lowered: flatrealm
   entities
     table ℜ.A := []
-    table ℜ.B := [.a : ℜ.A]
-    table ℜ.R := [.a : ℜ.A, .b : ℜ.B]
+    table ℜ.B := [.a : ℜ.A] primarykey [.a]
+    table ℜ.R := [.a : ℜ.A, .b : ℜ.B] primarykey [.a, .b]
   end
   rules
     enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤

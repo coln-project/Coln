@@ -22,7 +22,7 @@ end
 lowered: flatrealm
   entities
     table ℜ.X := []
-    table ℜ.Y := []
+    table ℜ.Y := [] primarykey []
     table ℜ.next := [.a : ℜ.X, .b : ℜ.Y] primarykey [.a]
   end
   rules

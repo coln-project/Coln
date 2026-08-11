@@ -24,9 +24,9 @@ end
 lowered: flatrealm
   entities
     table ℜ.X := []
-    table ℜ.P := []
-    table ℜ.Q := []
-    table ℜ.R := [.a : ℜ.X, .b : ℜ.P, .c : ℜ.Q]
+    table ℜ.P := [] primarykey []
+    table ℜ.Q := [] primarykey []
+    table ℜ.R := [.a : ℜ.X, .b : ℜ.P, .c : ℜ.Q] primarykey [.a, .b, .c]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤

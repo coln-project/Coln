@@ -23,7 +23,7 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.P := []
+    table ℜ.P := [] primarykey []
     table ℜ.x := [.a : ℜ.P] primarykey []
     table ℜ.y := [.a : ℜ.P] primarykey []
     table ℜ.eq := [] primarykey []

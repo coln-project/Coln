@@ -356,7 +356,7 @@ tableAtom name columns =
       ColumnTerm binding
 
 disaggregateGen :: OMap TableName Generator -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
-disaggregateGen gs tn (Rel xs ts _) fr = do
+disaggregateGen gs tn (Rel xs ts u) fr = do
   let ds = disaggregateTele gs xs ts
   let rf = mergeFrags ds
   let columns = ds.newColumns
@@ -371,7 +371,10 @@ disaggregateGen gs tn (Rel xs ts _) fr = do
         I.Entity
           { I.entityVariant = I.Table
           , I.columns = for (toList columns) $ \(_, name, ty) -> (name, ty)
-          , primaryKey = Nothing
+          , primaryKey = case u of
+              SetU -> Nothing
+              PropU -> Just . Set.fromList $ for (toList columns) $ \(_, name, _) -> name
+              TheoryU -> panic "non-set relation"
           }
   fr
     { I.entities = fr.entities >| (tn, table)

@@ -33,8 +33,8 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.P := []
-    table ℜ.Q := []
+    table ℜ.P := [] primarykey []
+    table ℜ.Q := [] primarykey []
     table ℜ.make := [
       .a : ℜ.P,
       .b : ℜ.Q,

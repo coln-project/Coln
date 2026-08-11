@@ -20,7 +20,7 @@ end
 lowered: flatrealm
   entities
     table ℜ.V := []
-    table ℜ.E := [.a : ℜ.V]
+    table ℜ.E := [.a : ℜ.V] primarykey [.a]
   end
   rules
     enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
