@@ -181,7 +181,7 @@ instance Monoid RuleFragment where
       }
 
 data DisaggState = DisaggState
-  { funShapes :: OMap TableName Shape
+  { generators :: OMap TableName Generator
   , oldLen :: CtxLen
   , oldNames :: Bwd Name
   , oldTys :: Bwd Ty
@@ -250,10 +250,11 @@ pushVars ps = uncurry $ \x -> \case
 pushTerm' :: PredState -> (I.ColName, Term) -> (PredState, RuleValue)
 pushTerm' ps = uncurry $ \x -> \case
   Var b -> (ps, elemAt ps.parent.oldEnv b)
-  Lookup tn d -> case OMap.lookup tn ps.parent.funShapes of
+  Lookup tn d -> case OMap.lookup tn ps.parent.generators of
     Nothing -> panic "unknown function"
-    Just s -> do
-      let (ps', ts) = pushVars ps (x, s)
+    Just (Rel _ _) -> panic "looked up a relation"
+    Just (Fun _ _ t) -> do
+      let (ps', ts) = pushVars ps (x, t.shape)
       let ps'' = pushCond ps' x tn d ts
       (ps'', ts)
   Cons d -> second (RuleRecord . withHead d) . mapAccumL pushTerm' ps . fmap (first (x :>)) $ toList d
@@ -299,11 +300,11 @@ pushTy ds (x, ty) = do
   let ds'' = pushOld ds' (x, ty, et)
   pushPred ds'' (BwdNil :> x, ty.pred)
 
-disaggregateTele :: OMap TableName Shape -> [Name] -> [Ty] -> DisaggState
-disaggregateTele fs xs tys = do
+disaggregateTele :: OMap TableName Generator -> [Name] -> [Ty] -> DisaggState
+disaggregateTele gs xs tys = do
   let ds =
         DisaggState
-          { funShapes = fs
+          { generators = gs
           , oldLen = 0
           , oldNames = BwdNil
           , oldTys = BwdNil
@@ -354,9 +355,9 @@ tableAtom name columns =
     for (toList columns) $ \(binding, _, _) ->
       ColumnTerm binding
 
-disaggregateGen :: OMap TableName Shape -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
-disaggregateGen fs tn (Rel xs ts) fr = do
-  let ds = disaggregateTele fs xs ts
+disaggregateGen :: OMap TableName Generator -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
+disaggregateGen gs tn (Rel xs ts) fr = do
+  let ds = disaggregateTele gs xs ts
   let rf = mergeFrags ds
   let columns = ds.newColumns
   let foreignKey =
@@ -376,8 +377,8 @@ disaggregateGen fs tn (Rel xs ts) fr = do
     { I.entities = fr.entities >| (tn, table)
     , I.rules = fr.rules >| (tn{path = tn.path :> "foreignKey"}, foreignKey)
     }
-disaggregateGen fs tn (Fun xs ts t) fr = do
-  let ds = disaggregateTele fs xs ts
+disaggregateGen gs tn (Fun xs ts t) fr = do
+  let ds = disaggregateTele gs xs ts
   let rf = mergeFrags ds
   let parameterColumns = ds.newColumns
   let totality =
@@ -410,17 +411,16 @@ disaggregateGen fs tn (Fun xs ts t) fr = do
     }
 
 lowerRealm :: Name -> C.Realm -> I.FlatRealm
-lowerRealm realmName r = go OMap.empty I.emptyFlatRealm (toList r.generators)
+lowerRealm realmName r = go I.emptyFlatRealm $ OMap.assocs generators
  where
-  go _ fr [] = fr
-  go fs fr ((xs, g) : rest) = do
-    let tn = TableName realmName xs
-    let lg = lowerGen g
-    let fr' = disaggregateGen fs tn lg fr
-    let fs' = case lg of
-          Fun _ _ t -> fs >| (tn, t.shape)
-          _ -> fs
-    go fs' fr' rest
+  generators =
+    OMap.fromList $
+      for (toList r.generators) $ \(path, generator) ->
+        (TableName realmName path, lowerGen generator)
+
+  go fr [] = fr
+  go fr ((tn, generator) : rest) =
+    go (disaggregateGen generators tn generator fr) rest
 
 writeIRFor :: C.Globals -> FilePath -> IO ()
 writeIRFor ge fp = do
