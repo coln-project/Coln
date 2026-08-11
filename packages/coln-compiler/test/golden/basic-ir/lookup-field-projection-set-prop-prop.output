@@ -31,8 +31,6 @@ lowered: flatrealm
     table ℜ.B := [] primarykey []
     table ℜ.E := [] primarykey []
     table ℜ.x := [.a : ℜ.A] primarykey []
-    table ℜ.next := [.a : ℜ.A] primarykey [.a]
-    table ℜ.edge := [] primarykey []
   end
   rules
     enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
@@ -40,12 +38,8 @@ lowered: flatrealm
     enforced ℜ.E.foreignKey := ℜ.E [] ⊢ ℜ.B []
     enforced ℜ.x.foreignKey a := ℜ.x [.a ↦ a] ⊢ a ∈ ℜ.A []
     monitored ℜ.x.total := ⊤ ⊢ ℜ.x []
-    enforced ℜ.next.foreignKey a := ℜ.next [.a ↦ a] ⊢ a ∈ ℜ.A [] ∧ ℜ.B []
-    monitored ℜ.next.total a := a ∈ ℜ.A [] ⊢ ℜ.next [.a ↦ a]
-    enforced ℜ.edge.foreignKey a.a.a := ℜ.edge [] ∧ ℜ.x [.a ↦ a.a.a] ∧ ℜ.next [
-      .a ↦ a.a.a
-    ] ⊢ ℜ.E []
-    monitored ℜ.edge.total := ⊤ ⊢ ℜ.edge []
+    monitored ℜ.next a := a ∈ ℜ.A [] ⊢ ℜ.B []
+    monitored ℜ.edge a.a.a := ℜ.x [.a ↦ a.a.a] ⊢ ℜ.E []
   end
 end
 

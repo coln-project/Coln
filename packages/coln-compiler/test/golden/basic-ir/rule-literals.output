@@ -30,8 +30,6 @@ lowered: flatrealm
     table ℜ.X := []
     table ℜ.count := [.a : ℜ.X, .b : Int] primarykey [.a]
     table ℜ.label := [.a : ℜ.X, .b : String] primarykey [.a]
-    table ℜ.countIs19 := [.x : ℜ.X] primarykey [.x]
-    table ℜ.labelIsZombocom := [.x : ℜ.X] primarykey [.x]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
@@ -39,17 +37,14 @@ lowered: flatrealm
     monitored ℜ.count.total a := a ∈ ℜ.X [] ⊢ ℜ.count [.a ↦ a]
     enforced ℜ.label.foreignKey a b := ℜ.label [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
     monitored ℜ.label.total a := a ∈ ℜ.X [] ⊢ ℜ.label [.a ↦ a]
-    enforced ℜ.countIs19.foreignKey x a.lhs := ℜ.countIs19 [.x ↦ x] ∧ ℜ.count [
+    monitored ℜ.countIs19 x a.lhs := x ∈ ℜ.X [] ∧ ℜ.count [
       .a ↦ x,
       .b ↦ a.lhs
-    ] ⊢ x ∈ ℜ.X [] ∧ a.lhs = 19
-    monitored ℜ.countIs19.total x := x ∈ ℜ.X [] ⊢ ℜ.countIs19 [.x ↦ x]
-    enforced ℜ.labelIsZombocom.foreignKey x a.lhs := ℜ.labelIsZombocom [
-      .x ↦ x
-    ] ∧ ℜ.label [.a ↦ x, .b ↦ a.lhs] ⊢ x ∈ ℜ.X [] ∧ a.lhs = "zombocom"
-    monitored ℜ.labelIsZombocom.total x := x ∈ ℜ.X [] ⊢ ℜ.labelIsZombocom [
-      .x ↦ x
-    ]
+    ] ⊢ a.lhs = 19
+    monitored ℜ.labelIsZombocom x a.lhs := x ∈ ℜ.X [] ∧ ℜ.label [
+      .a ↦ x,
+      .b ↦ a.lhs
+    ] ⊢ a.lhs = "zombocom"
   end
 end
 

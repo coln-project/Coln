@@ -25,12 +25,9 @@ end
 lowered: flatrealm
   entities
     table ℜ.X := []
-    table ℜ.trivial := [.x : ℜ.X] primarykey [.x]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.trivial.foreignKey x := ℜ.trivial [.x ↦ x] ⊢ x ∈ ℜ.X []
-    monitored ℜ.trivial.total x := x ∈ ℜ.X [] ⊢ ℜ.trivial [.x ↦ x]
   end
 end
 

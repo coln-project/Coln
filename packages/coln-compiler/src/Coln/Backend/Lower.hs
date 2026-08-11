@@ -32,6 +32,13 @@ data Shape
   | Unit
   deriving (Show)
 
+storedWidth :: Shape -> Int
+storedWidth = \case
+  RowId _ -> 1
+  BuiltinTy _ -> 1
+  Tuple fields -> sum $ storedWidth <$> fields
+  Unit -> 0
+
 data Term
   = Var BId
   | Lookup TableName (Dict Term)
@@ -261,7 +268,9 @@ pushTerm' ps = uncurry $ \x -> \case
     Just (Rel _ _ _) -> panic "looked up a relation"
     Just (Fun _ _ t) -> do
       let (ps', ts) = pushVars ps (x, t.shape)
-      let ps'' = pushCond ps' x tn d ts
+      let ps''
+            | storedWidth t.shape == 0 = fst . mapAccumL pushTerm ps' . fmap (first (x :>)) $ toList d
+            | otherwise = pushCond ps' x tn d ts
       (ps'', ts)
   Cons d -> second (RuleRecord . withHead d) . mapAccumL pushTerm' ps . fmap (first (x :>)) $ toList d
   Proj y f -> do
@@ -390,6 +399,23 @@ disaggregateGen gs tn (Rel xs ts u) fr = do
     { I.entities = fr.entities >| (tn, table)
     , I.rules = fr.rules >| (tn{path = tn.path :> "foreignKey"}, foreignKey)
     }
+disaggregateGen gs tn (Fun xs ts t) fr
+  | storedWidth t.shape == 0 = do
+      let ds = disaggregateTele gs xs ts
+      let parameterFragment = mergeFrags ds
+      let x = freshNameFor xs
+      let ds' = pushTy ds{frags = BwdNil} (x, t)
+      let resultFragment = mergeFrags ds'
+      let fragment = parameterFragment <> resultFragment
+      let antecedents =
+            toList parameterFragment.lookupConditions
+              ++ toList parameterFragment.typePredicates
+              ++ toList resultFragment.lookupConditions
+      let consequents = toList resultFragment.typePredicates
+      let law = buildRule ds'.newColumns I.Monitored fragment antecedents consequents
+      if null consequents
+        then fr
+        else fr{I.rules = fr.rules >| (tn, law)}
 disaggregateGen gs tn (Fun xs ts t) fr = do
   let ds = disaggregateTele gs xs ts
   let rf = mergeFrags ds

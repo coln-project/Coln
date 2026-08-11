@@ -35,16 +35,12 @@ lowered: flatrealm
   entities
     table ℜ.P := [] primarykey []
     table ℜ.Q := [] primarykey []
-    table ℜ.make := [] primarykey []
-    table ℜ.projectLeft := [] primarykey []
   end
   rules
     enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
     enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
-    enforced ℜ.make.foreignKey := ℜ.make [] ⊢ ℜ.P [] ∧ ℜ.Q [] ∧ ℜ.P [] ∧ ℜ.Q []
-    monitored ℜ.make.total := ℜ.P [] ∧ ℜ.Q [] ⊢ ℜ.make []
-    enforced ℜ.projectLeft.foreignKey := ℜ.projectLeft [] ⊢ ℜ.P [] ∧ ℜ.Q [] ∧ ℜ.P []
-    monitored ℜ.projectLeft.total := ℜ.P [] ∧ ℜ.Q [] ⊢ ℜ.projectLeft []
+    monitored ℜ.make := ℜ.P [] ∧ ℜ.Q [] ⊢ ℜ.P [] ∧ ℜ.Q []
+    monitored ℜ.projectLeft := ℜ.P [] ∧ ℜ.Q [] ⊢ ℜ.P []
   end
 end
 

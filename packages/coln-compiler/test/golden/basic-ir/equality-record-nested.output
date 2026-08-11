@@ -49,7 +49,6 @@ lowered: flatrealm
     table ℜ.P := [] primarykey []
     table ℜ.first := [.a.inner.value : ℜ.X, .a.trailing : ℜ.X] primarykey []
     table ℜ.second := [.a.inner.value : ℜ.X, .a.trailing : ℜ.X] primarykey []
-    table ℜ.same := [] primarykey []
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
@@ -64,14 +63,13 @@ lowered: flatrealm
       .a.trailing ↦ a.trailing
     ] ⊢ a.inner.value ∈ ℜ.X [] ∧ ℜ.P [] ∧ a.trailing ∈ ℜ.X []
     monitored ℜ.second.total := ⊤ ⊢ ℜ.second []
-    enforced ℜ.same.foreignKey a.lhs.inner.value a.lhs.trailing a.rhs.inner.value a.rhs.trailing := ℜ.same [] ∧ ℜ.first [
+    monitored ℜ.same a.lhs.inner.value a.lhs.trailing a.rhs.inner.value a.rhs.trailing := ℜ.first [
       .a.inner.value ↦ a.lhs.inner.value,
       .a.trailing ↦ a.lhs.trailing
     ] ∧ ℜ.second [
       .a.inner.value ↦ a.rhs.inner.value,
       .a.trailing ↦ a.rhs.trailing
     ] ⊢ a.lhs.inner.value = a.rhs.inner.value ∧ a.lhs.trailing = a.rhs.trailing
-    monitored ℜ.same.total := ⊤ ⊢ ℜ.same []
   end
 end
 

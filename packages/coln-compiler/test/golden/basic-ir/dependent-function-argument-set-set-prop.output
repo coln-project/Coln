@@ -29,7 +29,6 @@ lowered: flatrealm
     table ℜ.A := []
     table ℜ.B := [.a : ℜ.A]
     table ℜ.C := [.a : ℜ.A, .b : ℜ.B] primarykey [.a, .b]
-    table ℜ.f := [.a : ℜ.A, .b : ℜ.B] primarykey [.a, .b]
   end
   rules
     enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
@@ -37,13 +36,7 @@ lowered: flatrealm
     enforced ℜ.C.foreignKey a b := ℜ.C [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [
       .a ↦ a
     ]
-    enforced ℜ.f.foreignKey a b := ℜ.f [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [
-      .a ↦ a
-    ] ∧ ℜ.C [.a ↦ a, .b ↦ b]
-    monitored ℜ.f.total a b := a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ⊢ ℜ.f [
-      .a ↦ a,
-      .b ↦ b
-    ]
+    monitored ℜ.f a b := a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ⊢ ℜ.C [.a ↦ a, .b ↦ b]
   end
 end
 

@@ -25,18 +25,12 @@ lowered: flatrealm
   entities
     table ℜ.IntFact := [.a : Int] primarykey [.a]
     table ℜ.StringFact := [.a : String] primarykey [.a]
-    table ℜ.intFact := [] primarykey []
-    table ℜ.stringFact := [] primarykey []
   end
   rules
     enforced ℜ.IntFact.foreignKey a := ℜ.IntFact [.a ↦ a] ⊢ ⊤
     enforced ℜ.StringFact.foreignKey a := ℜ.StringFact [.a ↦ a] ⊢ ⊤
-    enforced ℜ.intFact.foreignKey := ℜ.intFact [] ⊢ ℜ.IntFact [.a ↦ 19]
-    monitored ℜ.intFact.total := ⊤ ⊢ ℜ.intFact []
-    enforced ℜ.stringFact.foreignKey := ℜ.stringFact [] ⊢ ℜ.StringFact [
-      .a ↦ "zombocom"
-    ]
-    monitored ℜ.stringFact.total := ⊤ ⊢ ℜ.stringFact []
+    monitored ℜ.intFact := ⊤ ⊢ ℜ.IntFact [.a ↦ 19]
+    monitored ℜ.stringFact := ⊤ ⊢ ℜ.StringFact [.a ↦ "zombocom"]
   end
 end
 

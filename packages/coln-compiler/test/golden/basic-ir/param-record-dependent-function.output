@@ -48,7 +48,6 @@ lowered: flatrealm
     table ℜ.key := [.a : ℜ.Key] primarykey []
     table ℜ.E := [.a : ℜ.Key]
     table ℜ.f := [.x : ℜ.Key, .a : ℜ.E] primarykey [.x]
-    table ℜ.point := [] primarykey []
     table ℜ.boxed := [.a.image : ℜ.E]
   end
   rules
@@ -61,8 +60,6 @@ lowered: flatrealm
       .a ↦ a
     ] ⊢ x ∈ ℜ.Key [] ∧ a ∈ ℜ.E [.a ↦ x]
     monitored ℜ.f.total x := x ∈ ℜ.Key [] ⊢ ℜ.f [.x ↦ x]
-    enforced ℜ.point.foreignKey := ℜ.point [] ⊢ ⊤
-    monitored ℜ.point.total := ⊤ ⊢ ℜ.point []
     enforced ℜ.boxed.foreignKey a.image a.image.a := ℜ.boxed [
       .a.image ↦ a.image
     ] ∧ ℜ.key [.a ↦ a.image.a] ⊢ a.image ∈ ℜ.E [.a ↦ a.image.a]

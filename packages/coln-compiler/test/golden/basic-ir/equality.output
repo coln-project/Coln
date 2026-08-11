@@ -26,7 +26,6 @@ lowered: flatrealm
     table ℜ.V := []
     table ℜ.x := [.a : ℜ.V] primarykey []
     table ℜ.y := [.a : ℜ.V] primarykey []
-    table ℜ.eq := [] primarykey []
   end
   rules
     enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
@@ -34,10 +33,9 @@ lowered: flatrealm
     monitored ℜ.x.total := ⊤ ⊢ ℜ.x []
     enforced ℜ.y.foreignKey a := ℜ.y [.a ↦ a] ⊢ a ∈ ℜ.V []
     monitored ℜ.y.total := ⊤ ⊢ ℜ.y []
-    enforced ℜ.eq.foreignKey a.lhs a.rhs := ℜ.eq [] ∧ ℜ.x [.a ↦ a.lhs] ∧ ℜ.y [
+    monitored ℜ.eq a.lhs a.rhs := ℜ.x [.a ↦ a.lhs] ∧ ℜ.y [
       .a ↦ a.rhs
     ] ⊢ a.lhs = a.rhs
-    monitored ℜ.eq.total := ⊤ ⊢ ℜ.eq []
   end
 end
 

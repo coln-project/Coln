@@ -24,18 +24,11 @@ end
 lowered: flatrealm
   entities
     table ℜ.P := [] primarykey []
-    table ℜ.x := [] primarykey []
-    table ℜ.y := [] primarykey []
-    table ℜ.eq := [] primarykey []
   end
   rules
     enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
-    enforced ℜ.x.foreignKey := ℜ.x [] ⊢ ℜ.P []
-    monitored ℜ.x.total := ⊤ ⊢ ℜ.x []
-    enforced ℜ.y.foreignKey := ℜ.y [] ⊢ ℜ.P []
-    monitored ℜ.y.total := ⊤ ⊢ ℜ.y []
-    enforced ℜ.eq.foreignKey := ℜ.eq [] ∧ ℜ.x [] ∧ ℜ.y [] ⊢ ⊤
-    monitored ℜ.eq.total := ⊤ ⊢ ℜ.eq []
+    monitored ℜ.x := ⊤ ⊢ ℜ.P []
+    monitored ℜ.y := ⊤ ⊢ ℜ.P []
   end
 end
 

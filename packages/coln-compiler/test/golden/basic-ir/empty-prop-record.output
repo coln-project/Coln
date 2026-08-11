@@ -22,11 +22,8 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ.truth := [] primarykey []
   end
   rules
-    enforced ℜ.truth.foreignKey := ℜ.truth [] ⊢ ⊤
-    monitored ℜ.truth.total := ⊤ ⊢ ℜ.truth []
   end
 end
 

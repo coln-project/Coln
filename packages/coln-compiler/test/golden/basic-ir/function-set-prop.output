@@ -23,13 +23,11 @@ lowered: flatrealm
   entities
     table ℜ.X := []
     table ℜ.Y := [] primarykey []
-    table ℜ.next := [.a : ℜ.X] primarykey [.a]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
     enforced ℜ.Y.foreignKey := ℜ.Y [] ⊢ ⊤
-    enforced ℜ.next.foreignKey a := ℜ.next [.a ↦ a] ⊢ a ∈ ℜ.X [] ∧ ℜ.Y []
-    monitored ℜ.next.total a := a ∈ ℜ.X [] ⊢ ℜ.next [.a ↦ a]
+    monitored ℜ.next a := a ∈ ℜ.X [] ⊢ ℜ.Y []
   end
 end
 
