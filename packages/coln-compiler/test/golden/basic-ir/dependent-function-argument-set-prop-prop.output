@@ -28,24 +28,17 @@ lowered: flatrealm
   entities
     table ℜ.A := []
     table ℜ.B := [.a : ℜ.A] primarykey [.a]
-    table ℜ.C := [.a : ℜ.A, .b : ℜ.B] primarykey [.a, .b]
-    table ℜ.f := [.a : ℜ.A, .b : ℜ.B, .c : ℜ.C] primarykey [.a, .b]
+    table ℜ.C := [.a : ℜ.A] primarykey [.a]
+    table ℜ.f := [.a : ℜ.A] primarykey [.a]
   end
   rules
     enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
     enforced ℜ.B.foreignKey a := ℜ.B [.a ↦ a] ⊢ a ∈ ℜ.A []
-    enforced ℜ.C.foreignKey a b := ℜ.C [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [
+    enforced ℜ.C.foreignKey a := ℜ.C [.a ↦ a] ⊢ a ∈ ℜ.A [] ∧ ℜ.B [.a ↦ a]
+    enforced ℜ.f.foreignKey a := ℜ.f [.a ↦ a] ⊢ a ∈ ℜ.A [] ∧ ℜ.B [
       .a ↦ a
-    ]
-    enforced ℜ.f.foreignKey a b c := ℜ.f [
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ∧ c ∈ ℜ.C [.a ↦ a, .b ↦ b]
-    monitored ℜ.f.total a b := a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ⊢ ℜ.f [
-      .a ↦ a,
-      .b ↦ b
-    ]
+    ] ∧ ℜ.C [.a ↦ a]
+    monitored ℜ.f.total a := a ∈ ℜ.A [] ∧ ℜ.B [.a ↦ a] ⊢ ℜ.f [.a ↦ a]
   end
 end
 

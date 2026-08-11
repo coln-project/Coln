@@ -42,6 +42,7 @@ data Term
 
 data Pred
   = EltOf Term TableName (Dict Term)
+  | Holds TableName (Dict Term) -- Alternatively, `EltOf (Maybe Term) ...`?
   | And (Dict Pred)
   | Equal Term Term
   | PTrue
@@ -103,7 +104,10 @@ separate n = \case
   V.Function _ -> panic "lowering non-set-level type: Function"
   V.Eq et -> \_ -> Ty Unit (Equal (lower n et.lhs) (lower n et.rhs))
   V.BuiltinTy t -> \_ -> Ty (BuiltinTy t) PTrue
-  V.EltOf x ts _ -> \v -> Ty (RowId x) (EltOf (lower n v) x (lower n <$> ts))
+  V.EltOf x ts u -> case u of
+    SetU -> \v -> Ty (RowId x) (EltOf (lower n v) x (lower n <$> ts))
+    PropU -> \_ -> Ty Unit (Holds x (lower n <$> ts))
+    TheoryU -> \_ -> panic "element of a non-set relation"
 
 data Generator
   = Rel [Name] [Ty] Universe
@@ -286,6 +290,10 @@ pushPred ds = uncurry $ \x -> \case
     let elt = case elts of RuleScalar term -> term; _ -> panic "EltOf lhs was not an entity"
     let (ps3, fields) = mapAccumL pushTerm ps2 . fmap (first (x :>)) $ toList ts
     pushFrag ps3 [RuleAtom n (Just elt) $ concat fields]
+  Holds n ts -> do
+    let ps = openPred ds
+    let (ps', fields) = mapAccumL pushTerm ps . fmap (first (x :>)) $ toList ts
+    pushFrag ps' [RuleAtom n Nothing $ concat fields]
   And d -> foldl' pushPred ds . fmap (first (x :>)) $ toList d
   Equal lhs rhs -> do
     let ps = openPred ds

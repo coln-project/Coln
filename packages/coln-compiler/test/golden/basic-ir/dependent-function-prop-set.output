@@ -22,16 +22,14 @@ end
 lowered: flatrealm
   entities
     table ℜ.A := [] primarykey []
-    table ℜ.B := [.a : ℜ.A]
-    table ℜ.f := [.a : ℜ.A, .b : ℜ.B] primarykey [.a]
+    table ℜ.B := []
+    table ℜ.f := [.b : ℜ.B] primarykey []
   end
   rules
     enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
-    enforced ℜ.B.foreignKey a := ℜ.B [.a ↦ a] ⊢ a ∈ ℜ.A []
-    enforced ℜ.f.foreignKey a b := ℜ.f [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [
-      .a ↦ a
-    ]
-    monitored ℜ.f.total a := a ∈ ℜ.A [] ⊢ ℜ.f [.a ↦ a]
+    enforced ℜ.B.foreignKey := ℜ.B [] ⊢ ℜ.A []
+    enforced ℜ.f.foreignKey b := ℜ.f [.b ↦ b] ⊢ ℜ.A [] ∧ b ∈ ℜ.B []
+    monitored ℜ.f.total := ℜ.A [] ⊢ ℜ.f []
   end
 end
 

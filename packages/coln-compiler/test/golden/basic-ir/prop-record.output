@@ -35,40 +35,16 @@ lowered: flatrealm
   entities
     table ℜ.P := [] primarykey []
     table ℜ.Q := [] primarykey []
-    table ℜ.make := [
-      .a : ℜ.P,
-      .b : ℜ.Q,
-      .c.left : ℜ.P,
-      .c.right : ℜ.Q
-    ] primarykey [.a, .b]
-    table ℜ.projectLeft := [
-      .a.left : ℜ.P,
-      .a.right : ℜ.Q,
-      .b : ℜ.P
-    ] primarykey [.a.left, .a.right]
+    table ℜ.make := [] primarykey []
+    table ℜ.projectLeft := [] primarykey []
   end
   rules
     enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
     enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
-    enforced ℜ.make.foreignKey a b c.left c.right := ℜ.make [
-      .a ↦ a,
-      .b ↦ b,
-      .c.left ↦ c.left,
-      .c.right ↦ c.right
-    ] ⊢ a ∈ ℜ.P [] ∧ b ∈ ℜ.Q [] ∧ c.left ∈ ℜ.P [] ∧ c.right ∈ ℜ.Q []
-    monitored ℜ.make.total a b := a ∈ ℜ.P [] ∧ b ∈ ℜ.Q [] ⊢ ℜ.make [
-      .a ↦ a,
-      .b ↦ b
-    ]
-    enforced ℜ.projectLeft.foreignKey a.left a.right b := ℜ.projectLeft [
-      .a.left ↦ a.left,
-      .a.right ↦ a.right,
-      .b ↦ b
-    ] ⊢ a.left ∈ ℜ.P [] ∧ a.right ∈ ℜ.Q [] ∧ b ∈ ℜ.P []
-    monitored ℜ.projectLeft.total a.left a.right := a.left ∈ ℜ.P [] ∧ a.right ∈ ℜ.Q [] ⊢ ℜ.projectLeft [
-      .a.left ↦ a.left,
-      .a.right ↦ a.right
-    ]
+    enforced ℜ.make.foreignKey := ℜ.make [] ⊢ ℜ.P [] ∧ ℜ.Q [] ∧ ℜ.P [] ∧ ℜ.Q []
+    monitored ℜ.make.total := ℜ.P [] ∧ ℜ.Q [] ⊢ ℜ.make []
+    enforced ℜ.projectLeft.foreignKey := ℜ.projectLeft [] ⊢ ℜ.P [] ∧ ℜ.Q [] ∧ ℜ.P []
+    monitored ℜ.projectLeft.total := ℜ.P [] ∧ ℜ.Q [] ⊢ ℜ.projectLeft []
   end
 end
 

@@ -20,11 +20,11 @@ end
 lowered: flatrealm
   entities
     table ℜ.V := [] primarykey []
-    table ℜ.E := [.a : ℜ.V] primarykey [.a]
+    table ℜ.E := [] primarykey []
   end
   rules
     enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
-    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.V []
+    enforced ℜ.E.foreignKey := ℜ.E [] ⊢ ℜ.V []
   end
 end
 

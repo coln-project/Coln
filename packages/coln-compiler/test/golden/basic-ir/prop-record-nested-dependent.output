@@ -41,21 +41,15 @@ lowered: flatrealm
     table ℜ.X := []
     table ℜ.P := [.a : ℜ.X] primarykey [.a]
     table ℜ.Q := [.a : ℜ.X] primarykey [.a]
-    table ℜ.make := [
-      .x : ℜ.X,
-      .a.nested.proof : ℜ.P,
-      .a.direct : ℜ.Q
-    ] primarykey [.x]
+    table ℜ.make := [.x : ℜ.X] primarykey [.x]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
     enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ a ∈ ℜ.X []
     enforced ℜ.Q.foreignKey a := ℜ.Q [.a ↦ a] ⊢ a ∈ ℜ.X []
-    enforced ℜ.make.foreignKey x a.nested.proof a.direct := ℜ.make [
-      .x ↦ x,
-      .a.nested.proof ↦ a.nested.proof,
-      .a.direct ↦ a.direct
-    ] ⊢ x ∈ ℜ.X [] ∧ a.nested.proof ∈ ℜ.P [.a ↦ x] ∧ a.direct ∈ ℜ.Q [.a ↦ x]
+    enforced ℜ.make.foreignKey x := ℜ.make [.x ↦ x] ⊢ x ∈ ℜ.X [] ∧ ℜ.P [
+      .a ↦ x
+    ] ∧ ℜ.Q [.a ↦ x]
     monitored ℜ.make.total x := x ∈ ℜ.X [] ⊢ ℜ.make [.x ↦ x]
   end
 end

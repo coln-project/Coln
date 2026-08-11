@@ -26,17 +26,13 @@ lowered: flatrealm
     table ℜ.X := []
     table ℜ.P := [] primarykey []
     table ℜ.Q := [] primarykey []
-    table ℜ.R := [.a : ℜ.X, .b : ℜ.P, .c : ℜ.Q] primarykey [.a, .b, .c]
+    table ℜ.R := [.a : ℜ.X] primarykey [.a]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
     enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
     enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
-    enforced ℜ.R.foreignKey a b c := ℜ.R [
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.P [] ∧ c ∈ ℜ.Q []
+    enforced ℜ.R.foreignKey a := ℜ.R [.a ↦ a] ⊢ a ∈ ℜ.X [] ∧ ℜ.P [] ∧ ℜ.Q []
   end
 end
 

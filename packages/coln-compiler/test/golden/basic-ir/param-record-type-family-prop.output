@@ -32,15 +32,14 @@ lowered: flatrealm
   entities
     table ℜ.X := []
     table ℜ.P := [.a : ℜ.X] primarykey [.a]
-    table ℜ.evidence := [.x : ℜ.X, .a.proof : ℜ.P]
+    table ℜ.evidence := [.x : ℜ.X]
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
     enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ a ∈ ℜ.X []
-    enforced ℜ.evidence.foreignKey x a.proof := ℜ.evidence [
-      .x ↦ x,
-      .a.proof ↦ a.proof
-    ] ⊢ x ∈ ℜ.X [] ∧ a.proof ∈ ℜ.P [.a ↦ x]
+    enforced ℜ.evidence.foreignKey x := ℜ.evidence [.x ↦ x] ⊢ x ∈ ℜ.X [] ∧ ℜ.P [
+      .a ↦ x
+    ]
   end
 end
 

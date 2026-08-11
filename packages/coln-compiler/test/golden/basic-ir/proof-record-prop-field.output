@@ -26,13 +26,11 @@ end
 lowered: flatrealm
   entities
     table ℜ.P := [] primarykey []
-    table ℜ.evidence := [.a.proof : ℜ.P] primarykey []
+    table ℜ.evidence := [] primarykey []
   end
   rules
     enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
-    enforced ℜ.evidence.foreignKey a.proof := ℜ.evidence [
-      .a.proof ↦ a.proof
-    ] ⊢ a.proof ∈ ℜ.P []
+    enforced ℜ.evidence.foreignKey := ℜ.evidence [] ⊢ ℜ.P []
     monitored ℜ.evidence.total := ⊤ ⊢ ℜ.evidence []
   end
 end

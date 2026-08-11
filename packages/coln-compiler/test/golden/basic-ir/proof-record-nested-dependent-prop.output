@@ -33,14 +33,13 @@ end
 lowered: flatrealm
   entities
     table ℜ.P := [.a : Int] primarykey [.a]
-    table ℜ.package := [.a.value : Int, .a.evidence.proof : ℜ.P] primarykey []
+    table ℜ.package := [.a.value : Int] primarykey []
   end
   rules
     enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ ⊤
-    enforced ℜ.package.foreignKey a.value a.evidence.proof := ℜ.package [
-      .a.value ↦ a.value,
-      .a.evidence.proof ↦ a.evidence.proof
-    ] ⊢ a.evidence.proof ∈ ℜ.P [.a ↦ a.value]
+    enforced ℜ.package.foreignKey a.value := ℜ.package [
+      .a.value ↦ a.value
+    ] ⊢ ℜ.P [.a ↦ a.value]
     monitored ℜ.package.total := ⊤ ⊢ ℜ.package []
   end
 end
