@@ -483,6 +483,7 @@ impl Store {
     fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreError> {
         while self.rowing.has_displaced() {
             self.rebuild_one()?;
+            tracing::debug!("finished one iteration of rebuilding");
         }
         Ok(())
     }

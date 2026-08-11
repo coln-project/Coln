@@ -80,6 +80,7 @@ impl Rowing {
     // This is equivalent in egglog terms with a union(a, c), except don't allow
     // arbitrary union, but only identify structurally identical terms.
     pub(crate) fn stage_union(&mut self, table: TableOid, rid1: PackedRowId, rid2: PackedRowId) {
+        tracing::debug!(table_id = %table, rid1 = ?rid1, rid2 = ?rid2, "staging unions");
         self.pending_unions.push((table, rid1, rid2));
     }
 
