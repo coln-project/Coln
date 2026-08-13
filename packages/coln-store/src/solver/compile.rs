@@ -14,9 +14,9 @@ pub enum CompileError {
     #[error("unsupported term")]
     UnsupportedTerm,
     #[error("invalid var index: {index} var_count {var_count}")]
-    InvalidVarIndex { index: i64, var_count: usize },
+    InvalidVarIndex { index: u64, var_count: usize },
     #[error("invalid column index {column}")]
-    InvalidColumnIndex { column: i64 },
+    InvalidColumnIndex { column: u64 },
 }
 
 /// A rule lowered into a small execution-oriented rule form.
@@ -188,17 +188,13 @@ fn compile_atom(atom: &Atom, var_count: usize) -> Result<CompAtom, CompileError>
 fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError> {
     match term {
         Term::Var { index } => {
-            let index = usize::try_from(*index).map_err(|_| CompileError::InvalidVarIndex {
-                index: *index,
-                var_count,
-            })?;
-            if index >= var_count {
+            if *index >= var_count as u64 {
                 return Err(CompileError::InvalidVarIndex {
-                    index: index as i64,
+                    index: *index,
                     var_count,
                 });
             }
-            Ok(CompTerm::Var(index))
+            Ok(CompTerm::Var(*index as usize))
         }
         Term::Lit { lit } => Ok(CompTerm::Lit(lit.clone())),
     }

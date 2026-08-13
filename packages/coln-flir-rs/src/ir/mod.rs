@@ -16,8 +16,17 @@ pub type QName = Vec<String>;
 #[serde(transparent)]
 pub struct Path(pub Vec<QName>);
 
+/// A column name is given by a [`Path`].
 type ColName = Path;
-pub type FId = i64;
+
+/// An index into the [`varNames`](Rule::var_names) and
+/// [`varTypes`](Rule::var_types) arrays of a [`Rule`].
+///
+/// Note: An `FId` in `coln-compiler`.
+pub type VarIdx = u64;
+
+/// An index into a relation's physical [`columns`](Schema::columns).
+pub type ColumnIdx = u64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinTy {
@@ -63,7 +72,7 @@ impl<'de> Deserialize<'de> for BuiltinTy {
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum ColType {
     /// A foreign key into another table by referencing its _row id_ through
-    /// provided the path.
+    /// the provided path.
     RowId { path: Path },
     /// A data column with the scalar type [`BuiltinTy`].
     #[serde(rename = "builtin")]
@@ -90,8 +99,11 @@ pub enum IndexMethod {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "tag", rename_all = "camelCase")]
 pub enum EntityVariant {
+    /// A base table of the extensional database (EDB).
     Table,
+    /// A derived view of the intensional database (IDB).
     View(Materialization),
+    /// Tell `coln-store` to create an index and possibly hint to `coln-query`.
     Index {
         method: IndexMethod,
         columns: Vec<ColName>,
@@ -106,21 +118,25 @@ pub struct ColumnEntry {
     pub col_type: ColType,
 }
 
-// This is really Entity on the Haskell IR side, but I feel schema matches it better
+/// Describes a schema of a relation.
+///
+/// Note: An `Entity` in `coln-compiler`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Schema {
     pub entity_variant: EntityVariant,
-    // TODO: Are the columns guaranteed to be in their physical order?
+    /// The columns of the table in their physical order.
     pub columns: Vec<ColumnEntry>,
-    // TODO:
-    // 1. What about multiple primary keys per table? Not a thing?
-    // 2. Why wrap the Vec in an Option? `null` could become the empty vec.
-    // 3. Why is this Vec<ColName>/Vec<Path>? Why not Vec<Vec<usize>> which could
-    //    just be indices into `Self::columns`.
+    /// A `None` indicates that there is no primary key. `Some(vec![])` means
+    /// that there is at most one row in the table. `Some(vec![ColA, ColB])`
+    /// encodes a compound primary key consisting of the columns `ColA` and
+    ///  `ColB`.
+    ///
+    /// At the moment there is only support for a single (compound) primary key.
     pub primary_key: Option<Vec<ColName>>,
 }
 
+/// A literal expression.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Lit {
@@ -134,51 +150,82 @@ pub enum Lit {
 #[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Term {
     Lit { lit: Lit },
-    Var { index: FId },
+    Var { index: VarIdx },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValueEntry {
-    pub column: i64,
+    pub column: ColumnIdx,
+    /// Note: A [`Term::Lit`] together with a [`ColumnIdx`](Self::column) does
+    /// not make sense, I suppose.
     pub term: Term,
 }
 
+/// An [`Atom`] references an entity (a relation or a table) to bring some of
+/// its fields into the scope of a [`Rule`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Atom {
+    /// The "name" of the entity being referenced by this [`Atom`].
     pub entity: Path,
+    /// To bring the `row_id` of the [`Entity`](Self::entity) into scope.
+    ///
+    /// Note: A [`Some(Term::Lit)`](Term::Lit) does not make sense, I suppose.
     pub row_id: Option<Term>,
+    /// To bring some columns of the [`Entity`](Self::entity) into scope.
     pub values: Vec<ValueEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Prop {
-    Atom { atom: Atom },
-    Eq { left: Term, right: Term },
+    Atom {
+        atom: Atom,
+    },
+    /// An equality condition between the left and the right term, that is,
+    /// we assert `left == right`.
+    Eq {
+        left: Term,
+        right: Term,
+    },
 }
 
-// TODO: Why not make it Copy?
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuleVariant {
+    /// _Chased_ rules are not yet fully alive but become relevant once initial
+    /// models land.
     Chased,
+    /// Violations of _enforced_ rules cause a transaction to abort.
     Enforced,
+    /// Violations of _monitored_ rules are just reported back to the user but
+    /// still allow a transaction to commit.
     Monitored,
 }
 
+/// A `Rule` is an implication and must be true in all valid states of
+/// `coln-store` and `coln-query`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
     pub rule_variant: RuleVariant,
+    /// Assigns some names to the variables the rule binds.
+    ///
+    /// Note: Must be of the same arity as [`Self::var_types`].
     pub var_names: Vec<ColName>,
+    /// Tells the types of the variables the rule binds.
+    ///
+    /// Note: Must be of the same arity as [`Self::var_names`].
     pub var_types: Vec<ColType>,
+    /// The left-hand side of the implication.
     pub antecedents: Vec<Prop>,
+    /// The right-hand side of the implication.
     pub consequents: Vec<Prop>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableEntry {
+    /// The "name" of the table.
     pub path: Path,
     #[serde(rename = "value")]
     pub table: Schema,
@@ -186,14 +233,18 @@ pub struct TableEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleEntry {
+    /// The "name" of the rule.
     pub path: Path,
     #[serde(rename = "value")]
     pub rule: Rule,
 }
 
+/// The top-level type of a flattened realm and the starting point of the FLIR.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatRealm {
+    /// The tables of the flattened realm.
     #[serde(rename = "entities")]
     pub tables: Vec<TableEntry>,
+    /// The rules (laws) of the flattened realm.
     pub rules: Vec<RuleEntry>,
 }

@@ -426,7 +426,7 @@ fn write_atom(buf: &mut Vec<u8>, atom: &Atom) -> Result<(), CodecError> {
     }
     write_count(buf, atom.values.len());
     for value in &atom.values {
-        commit_leb128::write_i64(buf, value.column);
+        commit_leb128::write_u64(buf, value.column);
         write_term(buf, &value.term)?;
     }
     Ok(())
@@ -447,7 +447,7 @@ fn read_atom(data: &[u8], pos: &mut usize) -> Result<Atom, CodecError> {
     let mut values = Vec::with_capacity(value_count);
     for _ in 0..value_count {
         values.push(ValueEntry {
-            column: commit_leb128::read_i64(data, pos, "atom value column")?,
+            column: commit_leb128::read_u64(data, pos, "atom value column")?,
             term: read_term(data, pos)?,
         });
     }
@@ -466,7 +466,7 @@ fn write_term(buf: &mut Vec<u8>, term: &Term) -> Result<(), CodecError> {
         }
         Term::Var { index } => {
             write_u8(buf, 1)?;
-            commit_leb128::write_i64(buf, *index);
+            commit_leb128::write_u64(buf, *index);
             Ok(())
         }
     }
@@ -478,7 +478,7 @@ fn read_term(data: &[u8], pos: &mut usize) -> Result<Term, CodecError> {
             lit: read_lit(data, pos)?,
         }),
         1 => Ok(Term::Var {
-            index: commit_leb128::read_i64(data, pos, "term var index")?,
+            index: commit_leb128::read_u64(data, pos, "term var index")?,
         }),
         tag => Err(CodecError::DataFormatError(format!(
             "unknown term tag {tag}"
