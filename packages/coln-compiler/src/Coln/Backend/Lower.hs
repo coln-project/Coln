@@ -331,7 +331,7 @@ flattenGen ti tn = \case
       ( Just entity
         ,
           [ (tn{path = tn.path :> "foreignKey"}, foreignKeyRule)
-          , (tn{path = tn.path :> "totality"}, totalityRule)
+          , (tn{path = tn.path :> "total"}, totalityRule)
           ]
         )
 
