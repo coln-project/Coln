@@ -22,6 +22,7 @@ module Coln.Common (
   PartialOrd (..),
   Reverse (..),
   Bwd (..),
+  (++>),
   BId (..),
   Fwd (..),
   FId (..),
@@ -31,6 +32,10 @@ module Coln.Common (
   getKeyIndex,
   withHead,
   Trie (..),
+  projTrie,
+  unwrapLeaf,
+  flattenTrie,
+  flattenTries,
   HasNames (..),
   alphaStrings,
   alphaNames,
@@ -98,6 +103,9 @@ class Contains a i | a -> i where
 class ToList a e | a -> e where
   toList :: a -> [e]
 
+instance ToList (Vector a) a where
+  toList = V.toList
+
 class FromList a e | a -> e where
   fromList :: [e] -> a
 
@@ -151,6 +159,10 @@ instance Semigroup (Bwd a) where
 
 instance Monoid (Bwd a) where
   mempty = BwdNil
+
+(++>) :: Bwd a -> [a] -> Bwd a
+xs ++> [] = xs
+xs ++> (y:ys) = (xs :> y) ++> ys
 
 infixr 5 :<
 
@@ -251,6 +263,22 @@ instance ToList (Trie a) (Bwd Name, a) where
       Leaf x -> [(prefix, x)]
       Node ts -> concat $ [go (prefix :> x) t | (x, t) <- toList ts]
 
+projTrie :: Trie a -> Name -> Trie a
+projTrie (Node fields) x = elemAt fields x
+projTrie (Leaf _) _ = panic "tried to project from leaf node"
+
+unwrapLeaf :: Trie a -> a
+unwrapLeaf (Leaf v) = v
+unwrapLeaf (Node _) = panic "tried to unwrap a non-leaf"
+
+flattenTrie :: Trie a -> [a]
+flattenTrie = \case
+  Leaf t -> [t]
+  Node ts -> flattenTries $ snd <$> toList ts
+
+flattenTries :: [Trie a] -> [a]
+flattenTries = (>>= flattenTrie)
+
 -- Fresh Variable Names
 --------------------------------------------------------------------------------
 
@@ -272,6 +300,9 @@ instance HasNames (Dict a) where
 
 instance HasNames [Name] where
   namesIn xs = Set.fromList xs
+
+instance HasNames (Set.Set Name) where
+  namesIn = id
 
 freshNamesFor :: (HasNames a) => a -> [Name]
 freshNamesFor a = flip filter alphaNames $ flip Set.notMember $ namesIn a

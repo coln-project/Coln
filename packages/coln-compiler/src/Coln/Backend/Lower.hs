@@ -2,10 +2,11 @@
 --
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 module Coln.Backend.Lower where
 
 import Control.Arrow (first, second)
-import Control.Monad (forM_)
+import Control.Monad (forM_, forM)
 import Data.Aeson qualified as AE
 import Data.Map.Ordered (OMap, (>|))
 import Data.Map.Ordered qualified as OMap
@@ -16,6 +17,9 @@ import Prettyprinter.Render.Text (hPutDoc)
 import System.FilePath ((</>))
 import System.IO (IOMode (..), withFile)
 import Prelude hiding (lookup)
+import Control.Monad.RWS
+import Control.Monad.State.Class
+import Control.Monad.Reader.Class
 
 import Coln.Backend.IR qualified as I
 import Coln.Common
@@ -31,6 +35,11 @@ data Shape
   | Tuple (Dict Shape)
   | Unit
   deriving (Show)
+
+projShape :: Shape -> Name -> Shape
+projShape sh x = case sh of
+  Tuple fields -> elemAt fields x
+  _ -> panic "expected a tuple shape"
 
 storedWidth :: Shape -> Int
 storedWidth = \case
@@ -143,311 +152,197 @@ lowerGen (C.Rel xs ts u) = do
   let (ts', _) = lowerTele ts
   Rel xs ts' u
 
-newtype ColumnBinding = ColumnBinding
-  { columnIndex :: Int
-  }
-  deriving (Show)
+data TableInfo = TableInfo
+  { tableShapes :: OMap TableName Generator }
 
-newtype RuleLocalBinding = RuleLocalBinding Int
-  deriving (Eq, Ord, Show)
-
-data RuleTerm
-  = ColumnTerm ColumnBinding
-  | RuleLocalTerm RuleLocalBinding
-  | LitTerm Literal
-
-data RuleProp
-  = RuleAtom TableName (Maybe RuleTerm) [RuleTerm]
-  | RuleEq RuleTerm RuleTerm
-
-data RuleValue
-  = RuleScalar RuleTerm
-  | RuleRecord (Dict RuleValue)
-  | RuleErased
-
-flattenRuleValue :: RuleValue -> [RuleTerm]
-flattenRuleValue = \case
-  RuleScalar term -> [term]
-  RuleRecord fields -> concatMap flattenRuleValue fields
-  RuleErased -> []
-
-data RuleFragment = RuleFragment
-  { ruleLocalBindings :: Bwd (RuleLocalBinding, I.ColName, I.ColType)
-  , lookupConditions :: Bwd RuleProp
-  , typePredicates :: Bwd RuleProp
+data VarInfo = VarInfo
+  { vars :: Bwd (I.ColName, I.ColType)
+  , length :: Int
+  , usedRoots :: Set.Set Name
   }
 
-instance Semigroup RuleFragment where
-  a <> b =
-    RuleFragment
-      { ruleLocalBindings = a.ruleLocalBindings <> b.ruleLocalBindings
-      , lookupConditions = a.lookupConditions <> b.lookupConditions
-      , typePredicates = a.typePredicates <> b.typePredicates
-      }
+newtype FlatM a = FlatM { unFlatM :: RWS TableInfo (Bwd I.Prop) VarInfo a }
+  deriving (Functor, Applicative, Monad, MonadState VarInfo, MonadWriter (Bwd I.Prop), MonadReader TableInfo)
 
-instance Monoid RuleFragment where
-  mempty =
-    RuleFragment
-      { ruleLocalBindings = BwdNil
-      , lookupConditions = BwdNil
-      , typePredicates = BwdNil
-      }
+runFlatM :: TableInfo -> FlatM a -> (a, Bwd (I.ColName, I.ColType), Bwd I.Prop)
+runFlatM ti action = do
+  let (res, s, w) = runRWS action.unFlatM ti (VarInfo BwdNil 0 Set.empty)
+  (res, s.vars, w)
 
-data DisaggState = DisaggState
-  { generators :: OMap TableName Generator
-  , oldLen :: CtxLen
-  , oldNames :: Bwd Name
-  , oldTys :: Bwd Ty
-  , oldEnv :: Bwd RuleValue
-  , newColumns :: Bwd (ColumnBinding, I.ColName, I.ColType)
-  , nextRuleLocal :: Int
-  , frags :: Bwd RuleFragment
-  }
+scalarShape :: Shape -> Maybe I.ColType
+scalarShape = \case
+  RowId x -> Just $ I.RowId x
+  BuiltinTy t -> Just $ I.BuiltinTy t
+  _ -> Nothing
 
-data PredState = PredState
-  { parent :: DisaggState
-  , fragment :: RuleFragment
-  }
+fresh :: Path -> Shape -> FlatM (Trie I.Term)
+fresh p = \case
+  (scalarShape -> Just colTy) -> do
+    ni <- get
+    let i = ni.length
+    put $ ni { vars = (ni.vars :> (p, colTy)), length = (i + 1) }
+    pure $ Leaf $ I.Var $ FId i
+  (RowId _; BuiltinTy _) -> panic "should have been covered by scalarShape"
+  Tuple fields -> do
+    fields' <- forM (toList fields) $ \(x, sh) -> do
+      v <- fresh (p :> x) sh
+      pure (x, v)
+    pure $ Node $ fromList fields'
+  Unit -> pure $ Node (fromList [])
 
-nextColumnIndex :: Bwd (ColumnBinding, I.ColName, I.ColType) -> Int
-nextColumnIndex BwdNil = 0
-nextColumnIndex (_ :> (binding, _, _)) = binding.columnIndex + 1
+freshName :: FlatM Name
+freshName = do
+  ni <- get
+  let x = freshNameFor ni.usedRoots
+  put $ ni { usedRoots = Set.insert x ni.usedRoots }
+  pure x
 
-pushNew :: DisaggState -> (I.ColName, I.ColType) -> (DisaggState, RuleValue)
-pushNew ds (cn, ct) = do
-  let binding = ColumnBinding $ nextColumnIndex ds.newColumns
-  let ds' =
-        ds
-          { newColumns = ds.newColumns :> (binding, cn, ct)
-          }
-  (ds', RuleScalar $ ColumnTerm binding)
+emit :: I.Prop -> FlatM ()
+emit = tell . (BwdNil :>)
 
-pushShape :: DisaggState -> (I.ColName, Shape) -> (DisaggState, RuleValue)
-pushShape ds = uncurry $ \x -> \case
-  RowId y -> pushNew ds (x, I.RowId y)
-  BuiltinTy bt -> pushNew ds (x, I.BuiltinTy bt)
-  Tuple d -> second (RuleRecord . withHead d) . mapAccumL pushShape ds . fmap (first (x :>)) $ toList d
-  Unit -> (ds, RuleErased)
+retShapeOf :: TableName -> FlatM Shape
+retShapeOf tn = do
+  ti <- ask
+  case OMap.lookup tn ti.tableShapes of
+    Just (Fun _ _ ret) -> pure ret.shape
+    _ -> panic "can only lookup from function"
 
-pushOld :: DisaggState -> (Name, Ty, RuleValue) -> DisaggState
-pushOld ds (x, ty, et) = ds{oldLen = ds.oldLen + 1, oldNames = ds.oldNames :> x, oldTys = ds.oldTys :> ty, oldEnv = ds.oldEnv :> et}
+type FlatEnv = Bwd (Trie I.Term)
 
-openPred :: DisaggState -> PredState
-openPred ds = PredState ds mempty
+class Flatten a b | a -> b where
+  flatten :: FlatEnv -> a -> FlatM b 
 
-pushFrag :: PredState -> [RuleProp] -> DisaggState
-pushFrag ps predicates = do
-  let fragment =
-        ps.fragment
-          { typePredicates = ps.fragment.typePredicates <> fromList predicates
-          }
-  ps.parent{frags = ps.parent.frags :> fragment}
+instance Flatten Term (Trie I.Term) where
+  flatten e = \case
+    Var i -> pure $ elemAt e i
+    Lookup x ts -> do
+      retSh <- retShapeOf x
+      retName <- freshName
+      ret <- fresh (BwdNil :> retName) retSh
+      args <- mapM (flatten e) $ toList ts.values
+      emit $ I.PAtom $ I.Atom x Nothing $ OMap.fromList $ (zip [0..] (flattenTries (args ++ [ret])))
+      pure ret
+    Proj t x -> do
+      v <- flatten e t
+      pure $ projTrie v x
+    Lit l -> pure $ Leaf $ I.Lit l
+    Cons ts -> Node <$> traverse (flatten e) ts
 
-pushRuleLocal :: PredState -> (I.ColName, I.ColType) -> (PredState, RuleValue)
-pushRuleLocal ps (cn, ct) = do
-  let binding = RuleLocalBinding ps.parent.nextRuleLocal
-  let parent' = ps.parent{nextRuleLocal = ps.parent.nextRuleLocal + 1}
-  let fragment' =
-        ps.fragment
-          { ruleLocalBindings = ps.fragment.ruleLocalBindings :> (binding, cn, ct)
-          }
-  (ps{parent = parent', fragment = fragment'}, RuleScalar $ RuleLocalTerm binding)
+instance Flatten Pred [I.Prop] where
+  flatten e = \case
+    EltOf t x ts -> do
+      v <- flatten e t
+      vs <- traverse (flatten e) $ toList ts.values
+      pure [I.PAtom $ I.Atom x (Just (unwrapLeaf v)) (OMap.fromList $ (zip [0..] (flattenTries vs)))]
+    Holds x ts -> do
+      vs <- traverse (flatten e . snd) $ toList ts
+      pure [I.PAtom $ I.Atom x Nothing (OMap.fromList $ (zip [0..] (flattenTries vs)))]
+    And ts -> do
+      pss <- mapM (flatten e) ts.values
+      pure $ concat pss
+    Equal t0 t1 -> do
+      v0 <- flatten e t0
+      v1 <- flatten e t1
+      pure [I.PEq c0 c1 | (c0, c1) <- zip (flattenTrie v0) (flattenTrie v1)]
+    PTrue -> pure []
 
-pushVars :: PredState -> (I.ColName, Shape) -> (PredState, RuleValue)
-pushVars ps = uncurry $ \x -> \case
-  RowId tn -> pushRuleLocal ps (x, I.RowId tn)
-  BuiltinTy bt -> pushRuleLocal ps (x, I.BuiltinTy bt)
-  Tuple d -> second (RuleRecord . withHead d) . mapAccumL pushVars ps . fmap (first (x :>)) $ toList d
-  Unit -> (ps, RuleErased)
+validity :: [(Name, Ty)] -> FlatM (Bwd (Trie I.Term), [I.Prop])
+validity = go BwdNil BwdNil
+  where
+    go e ps [] = pure (e, toList ps)
+    go e ps ((x, ty):tys) = do
+      v <- fresh (BwdNil :> x) ty.shape
+      let e' = e :> v
+      p <- flatten e' ty.pred
+      go e' (ps ++> p) tys
 
-pushTerm' :: PredState -> (I.ColName, Term) -> (PredState, RuleValue)
-pushTerm' ps = uncurry $ \x -> \case
-  Var b -> (ps, elemAt ps.parent.oldEnv b)
-  Lookup tn d -> case OMap.lookup tn ps.parent.generators of
-    Nothing -> panic "unknown function"
-    Just (Rel _ _ _) -> panic "looked up a relation"
-    Just (Fun _ _ t) -> do
-      let (ps', ts) = pushVars ps (x, t.shape)
-      let ps''
-            | storedWidth t.shape == 0 = fst . mapAccumL pushTerm ps' . fmap (first (x :>)) $ toList d
-            | otherwise = pushCond ps' x tn d ts
-      (ps'', ts)
-  Cons d -> second (RuleRecord . withHead d) . mapAccumL pushTerm' ps . fmap (first (x :>)) $ toList d
-  Proj y f -> do
-    let (ps', ts) = pushTerm' ps (x, y)
-    case ts of
-      RuleScalar _ -> panic "projection of non-record value"
-      RuleRecord d -> case lookup d f of
-        Nothing -> panic "nonexistent field"
-        Just z -> (ps', z)
-      RuleErased -> panic "projection of erased value"
-  Lit l -> (ps, RuleScalar $ LitTerm l)
+flattenArg :: I.ColName -> Shape -> [(I.ColName, I.ColType)]
+flattenArg p sh = case sh of
+  (scalarShape -> Just colTy) -> [(p, colTy)]
+  (RowId _; BuiltinTy _) -> panic "should have been covered by scalarShape"
+  Tuple fields -> concat [flattenArg (p :> x) sh' | (x, sh') <- toList fields]
+  Unit -> []
 
-pushTerm :: PredState -> (I.ColName, Term) -> (PredState, [RuleTerm])
-pushTerm ps a = second flattenRuleValue $ pushTerm' ps a
+flattenArgs :: [(Name, Ty)] -> [(I.ColName, I.ColType)]
+flattenArgs args = concat [flattenArg (BwdNil :> x) ty.shape | (x, ty) <- args]
 
-pushCond :: PredState -> I.ColName -> TableName -> Dict Term -> RuleValue -> PredState
-pushCond ps x tn d ts' = do
-  let (ps', ts) = mapAccumL pushTerm ps . fmap (first (x :>)) $ toList d
-  let c = RuleAtom tn Nothing $ foldr (++) (flattenRuleValue ts') ts
-  ps'{fragment = ps'.fragment{lookupConditions = ps'.fragment.lookupConditions :> c}}
+flattenGen :: TableInfo -> TableName -> Generator -> (Maybe I.Entity, [(TableName, I.Rule)])
+flattenGen ti tn = \case
+  Rel xs tys u -> do
+    let args = zip xs tys
+    let cols = flattenArgs args
+    let pkey = case u of
+          SetU -> Nothing
+          PropU -> Just $ Set.fromList $ fst <$> cols
+          _ -> panic "generator must be of a set or smaller universe"
+    let entity = I.Entity I.Table cols pkey
+    let ((vs, ps), vars, props) = runFlatM ti $ do
+          (e, ps) <- validity args
+          pure (flattenTries $ toList e, ps)
+    let (varNames, varTypes) = unzip $ toList vars
+    let ante = toList $ props :> I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0..] vs))
+    let rule = I.Rule I.Enforced (fromList varNames) (fromList varTypes) ante ps
+    (Just entity, [(tn { path = tn.path :> "foreignKey" }, rule)])
+  Fun xs argTys retTy -> case storedWidth retTy.shape of
+    0 -> do
+      let args = zip xs argTys
+      let ((cons, ps), vars, props) = runFlatM ti $ do
+            (e, ps) <- validity args
+            let ret = Node (fromList [])
+            cons <- flatten (e :> ret) retTy.pred
+            pure (cons, ps)
+      let ante = toList $ props ++> ps
+      let (varNames, varTypes) = unzip $ toList vars
+      let rule = I.Rule I.Monitored (fromList varNames) (fromList varTypes) ante cons
+      (Nothing, [(tn, rule)])
+    _ -> do
+      let args = zip xs argTys
+      let argCols = flattenArgs args
+      let pkey = Just $ Set.fromList $ fst <$> argCols
+      let retName = BwdNil :> freshNameFor xs
+      let retCols = flattenArg retName retTy.shape
+      let cols = argCols ++ retCols
+      let entity = I.Entity I.Table cols pkey
+      let ((argVs, argPreds, retV, retPreds), vars, props) = runFlatM ti $ do
+            (e, ps) <- validity args
+            ret <- fresh retName retTy.shape
+            retPred <- flatten (e :> ret) retTy.pred
+            pure (flattenTries $ toList e, ps, flattenTrie ret, retPred)
+      let (varNames, varTypes) = unzip $ toList vars
+      let head = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0..] (argVs ++ retV)))
+      let fkeyRule = I.Rule
+            { ruleVariant = I.Enforced
+            , varNames = fromList varNames
+            , varTypes = fromList varTypes
+            , antecedents = toList $ props :> head
+            , consequents = argPreds ++ retPreds
+            }
+      let ((argVs', argPreds'), vars', props') = runFlatM ti $ do
+            (e, ps) <- validity args
+            pure (flattenTries $ toList e, ps)
+      let (varNames', varTypes') = unzip $ toList vars'
+      let head' = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0..] argVs'))
+      let totalityRule = I.Rule
+            { ruleVariant = I.Monitored
+            , varNames = fromList varNames'
+            , varTypes = fromList varTypes'
+            , antecedents = toList $ props' ++> argPreds'
+            , consequents = [head']
+            }
+      ( Just entity
+        , [ (tn { path = tn.path :> "foreignKey" }, fkeyRule)
+          , (tn { path = tn.path :> "totality" }, totalityRule)
+          ]
+        )
 
--- XXX actual state monad?
-pushPred :: DisaggState -> (I.ColName, Pred) -> DisaggState
-pushPred ds = uncurry $ \x -> \case
-  EltOf t n ts -> do
-    let ps1 = openPred ds
-    let (ps2, elts) = pushTerm' ps1 (x, t)
-    let elt = case elts of RuleScalar term -> term; _ -> panic "EltOf lhs was not an entity"
-    let (ps3, fields) = mapAccumL pushTerm ps2 . fmap (first (x :>)) $ toList ts
-    pushFrag ps3 [RuleAtom n (Just elt) $ concat fields]
-  Holds n ts -> do
-    let ps = openPred ds
-    let (ps', fields) = mapAccumL pushTerm ps . fmap (first (x :>)) $ toList ts
-    pushFrag ps' [RuleAtom n Nothing $ concat fields]
-  And d -> foldl' pushPred ds . fmap (first (x :>)) $ toList d
-  Equal lhs rhs -> do
-    let ps = openPred ds
-    let (ps', lhs') = pushTerm ps (x :> "lhs", lhs)
-    let (ps'', rhs') = pushTerm ps' (x :> "rhs", rhs)
-    pushFrag ps'' $ zipWith RuleEq lhs' rhs'
-  PTrue -> ds
-
-pushTy :: DisaggState -> (Name, Ty) -> DisaggState
-pushTy ds (x, ty) = do
-  let (ds', et) = pushShape ds (BwdNil :> x, ty.shape)
-  let ds'' = pushOld ds' (x, ty, et)
-  pushPred ds'' (BwdNil :> x, ty.pred)
-
-disaggregateTele :: OMap TableName Generator -> [Name] -> [Ty] -> DisaggState
-disaggregateTele gs xs tys = do
-  let ds =
-        DisaggState
-          { generators = gs
-          , oldLen = 0
-          , oldNames = BwdNil
-          , oldTys = BwdNil
-          , oldEnv = BwdNil
-          , newColumns = BwdNil
-          , nextRuleLocal = 0
-          , frags = BwdNil
-          }
-  foldl' pushTy ds $ zip xs tys
-
-mergeFrags :: DisaggState -> RuleFragment
-mergeFrags ds = foldl' (<>) mempty ds.frags
-
--- When the number of columns is finally known, we can assign `FIds`
--- to the rule-local variables
-buildRule :: Bwd (ColumnBinding, I.ColName, I.ColType) -> I.RuleVariant -> RuleFragment -> [RuleProp] -> [RuleProp] -> I.Rule
-buildRule columns variant fragment antecedents consequents =
-  I.Rule
-    { I.ruleVariant = variant
-    , I.varNames = fmap (\(_, name, _) -> name) columns <> fmap (\(_, name, _) -> name) fragment.ruleLocalBindings
-    , I.varTypes = fmap (\(_, _, ty) -> ty) columns <> fmap (\(_, _, ty) -> ty) fragment.ruleLocalBindings
-    , I.antecedents = toIRProp <$> antecedents
-    , I.consequents = toIRProp <$> consequents
-    }
- where
-  ruleLocalIds =
-    Map.fromList $
-      for (zip [nextColumnIndex columns ..] $ toList fragment.ruleLocalBindings) $ \(index, (binding, _, _)) ->
-        (binding, FId index)
-
-  toIRTerm = \case
-    ColumnTerm binding -> I.Var $ FId binding.columnIndex
-    RuleLocalTerm binding -> I.Var $ ruleLocalIds Map.! binding
-    LitTerm literal -> I.Lit literal
-
-  toIRProp = \case
-    RuleAtom entity rowId values ->
-      I.PAtom $
-        I.Atom
-          entity
-          (toIRTerm <$> rowId)
-          (OMap.fromList $ zip [0 ..] $ toIRTerm <$> values)
-    RuleEq lhs rhs -> I.PEq (toIRTerm lhs) (toIRTerm rhs)
-
-tableAtom :: TableName -> Bwd (ColumnBinding, I.ColName, I.ColType) -> RuleProp
-tableAtom name columns =
-  RuleAtom name Nothing $
-    for (toList columns) $ \(binding, _, _) ->
-      ColumnTerm binding
-
-disaggregateGen :: OMap TableName Generator -> TableName -> Generator -> I.FlatRealm -> I.FlatRealm
-disaggregateGen gs tn (Rel xs ts u) fr = do
-  let ds = disaggregateTele gs xs ts
-  let rf = mergeFrags ds
-  let columns = ds.newColumns
-  let foreignKey =
-        buildRule
-          columns
-          I.Enforced
-          rf
-          (tableAtom tn columns : toList rf.lookupConditions)
-          (toList rf.typePredicates)
-  let table =
-        I.Entity
-          { I.entityVariant = I.Table
-          , I.columns = for (toList columns) $ \(_, name, ty) -> (name, ty)
-          , primaryKey = case u of
-              SetU -> Nothing
-              PropU -> Just . Set.fromList $ for (toList columns) $ \(_, name, _) -> name
-              TheoryU -> panic "non-set relation"
-          }
-  fr
-    { I.entities = fr.entities >| (tn, table)
-    , I.rules = fr.rules >| (tn{path = tn.path :> "foreignKey"}, foreignKey)
-    }
-disaggregateGen gs tn (Fun xs ts t) fr
-  | storedWidth t.shape == 0 = do
-      let ds = disaggregateTele gs xs ts
-      let parameterFragment = mergeFrags ds
-      let x = freshNameFor xs
-      let ds' = pushTy ds{frags = BwdNil} (x, t)
-      let resultFragment = mergeFrags ds'
-      let fragment = parameterFragment <> resultFragment
-      let antecedents =
-            toList parameterFragment.lookupConditions
-              ++ toList parameterFragment.typePredicates
-              ++ toList resultFragment.lookupConditions
-      let consequents = toList resultFragment.typePredicates
-      let law = buildRule ds'.newColumns I.Monitored fragment antecedents consequents
-      if null consequents
-        then fr
-        else fr{I.rules = fr.rules >| (tn, law)}
-disaggregateGen gs tn (Fun xs ts t) fr = do
-  let ds = disaggregateTele gs xs ts
-  let rf = mergeFrags ds
-  let parameterColumns = ds.newColumns
-  let totality =
-        buildRule
-          parameterColumns
-          I.Monitored -- XXX do Enforced when appropriate
-          rf
-          (toList rf.lookupConditions ++ toList rf.typePredicates)
-          [tableAtom tn parameterColumns]
-  let x = freshNameFor xs
-  let ds' = pushTy ds (x, t)
-  let rf' = mergeFrags ds'
-  let columns = ds'.newColumns
-  let foreignKey =
-        buildRule
-          columns
-          I.Enforced
-          rf'
-          (tableAtom tn columns : toList rf'.lookupConditions)
-          (toList rf'.typePredicates)
-  let table =
-        I.Entity
-          { I.entityVariant = I.Table
-          , I.columns = for (toList columns) $ \(_, name, ty) -> (name, ty)
-          , I.primaryKey = Just . Set.fromList $ for (toList parameterColumns) $ \(_, name, _) -> name
-          }
-  fr
-    { I.entities = fr.entities >| (tn, table)
-    , I.rules = fr.rules >| (tn{path = tn.path :> "foreignKey"}, foreignKey) >| (tn{path = tn.path :> "total"}, totality)
-    }
+addFlatGenerator :: TableInfo -> I.FlatRealm -> TableName -> Generator -> I.FlatRealm
+addFlatGenerator ti fr x g = do
+  let (me, rules) = flattenGen ti x g
+  fr { I.entities = case me of
+        Just e -> fr.entities OMap.>| (x, e)
+        Nothing -> fr.entities
+     , I.rules = fr.rules OMap.<>| (OMap.fromList rules)
+     }
 
 lowerRealm :: Name -> C.Realm -> I.FlatRealm
 lowerRealm realmName r = go I.emptyFlatRealm $ OMap.assocs generators
@@ -456,10 +351,12 @@ lowerRealm realmName r = go I.emptyFlatRealm $ OMap.assocs generators
     OMap.fromList $
       for (toList r.generators) $ \(path, generator) ->
         (TableName realmName path, lowerGen generator)
+        
+  tableInfo = TableInfo generators
 
   go fr [] = fr
   go fr ((tn, generator) : rest) =
-    go (disaggregateGen generators tn generator fr) rest
+    go (addFlatGenerator tableInfo fr tn generator) rest
 
 writeIRFor :: C.Globals -> FilePath -> IO ()
 writeIRFor ge fp = do

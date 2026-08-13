@@ -49,7 +49,7 @@ data Entity = Entity
   { entityVariant :: EntityVariant
   , -- , columns :: Trie ColType
     columns :: [(ColName, ColType)]
-  , primaryKey :: Maybe (Set.Set ColName)
+  , primaryKey :: Maybe (Set.Set ColName) -- Should these just be integers instead of names?
   }
   deriving (Show, Eq, Generic)
 
