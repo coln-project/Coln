@@ -98,8 +98,8 @@ instance DefEq V.Head where
     V.GlobalVar x _ -> case h' of
       V.GlobalVar x' _ | x == x' -> pure ()
       _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing
-    V.Lookup x vs _ -> case h' of
-      V.Lookup x' vs' _ -> do
+    V.Lookup x vs -> case h' of
+      V.Lookup x' vs' -> do
         unless (x == x') $ throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) $ Just "unequal table names"
         zipWithM_ (defEq cs) (F.toList vs) (F.toList vs') -- XXX check heads?
       _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing

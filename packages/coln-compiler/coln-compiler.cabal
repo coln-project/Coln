@@ -10,7 +10,8 @@ build-type: Simple
 
 library
   exposed-modules:
-    Coln.Backend.IR
+    Coln.Backend.CIR
+    Coln.Backend.FLIR
     Coln.Backend.Lower
     Coln.Backend.TypeScript.AST
     Coln.Backend.TypeScript.Assemble

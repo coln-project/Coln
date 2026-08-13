@@ -88,6 +88,9 @@ data Head
   = LocalVar FId
   | GlobalVar Name ~(El N)
   | Lookup TableName (Dict (El N)) ~(Ty N)
+    -- ^ needs a type because the syntax needs a type in order to reflect into a
+    -- neutral
+    
 
 data Expansion
   = IntoCons (Dict (El N))
@@ -315,3 +318,4 @@ projTy :: Ty N -> El N -> Name -> Ty N
 projTy (behavior -> LikeRecord rt) v x =
   typeForProjection rt x (coerceToFields v)
 projTy _ _ _ = panic "ill-typed computation of type for projection"
+

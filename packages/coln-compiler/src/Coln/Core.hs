@@ -3,7 +3,6 @@
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 
 module Coln.Core (
-  module Coln.Core.Memoed,
   module Coln.Core.Globals,
   module Coln.Core.Params,
   module Coln.Core.Print,
@@ -13,6 +12,5 @@ where
 
 import Coln.Core.Conversion
 import Coln.Core.Globals
-import Coln.Core.Memoed
 import Coln.Core.Params
 import Coln.Core.Print

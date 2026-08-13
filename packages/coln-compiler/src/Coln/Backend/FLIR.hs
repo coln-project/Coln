@@ -4,7 +4,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Coln.Backend.IR where
+module Coln.Backend.FLIR where
 
 -- XXX Lit/BultinTy should probably be moved up in the hierarchy
 import Coln.Common
@@ -82,14 +82,21 @@ data Rule = Rule
   }
   deriving (Show, Eq, Generic)
 
+data Query = Query
+  { variables :: [ColType]
+  , predicates :: [Prop]
+  }
+  deriving (Show, Eq, Generic)
+
 data FlatRealm = FlatRealm
   { entities :: OMap TableName Entity
   , rules :: OMap TableName Rule
+  , queries :: OMap TableName Query
   }
   deriving (Show, Eq, Generic)
 
 emptyFlatRealm :: FlatRealm
-emptyFlatRealm = FlatRealm OMap.empty OMap.empty
+emptyFlatRealm = FlatRealm OMap.empty OMap.empty OMap.empty
 
 -- JSON
 --------------------------------------------------------------------------------
@@ -275,7 +282,7 @@ toNotationRule columnNames (tn, r) = do
   N.Decl keyword (N.Infix head (N.Keyword ":=" ()) seq) ()
 
 instance ToNotationTop FlatRealm where
-  toNotationTop (FlatRealm es rs) = do
+  toNotationTop (FlatRealm es rs _) = do
     let nes = N.Block "entities" Nothing (fmap toNotationTop (OMap.assocs es)) ()
     let columnNames = fmap (fmap fst . (.columns)) es
     let nrs = N.Block "rules" Nothing (fmap (toNotationRule columnNames) (OMap.assocs rs)) ()

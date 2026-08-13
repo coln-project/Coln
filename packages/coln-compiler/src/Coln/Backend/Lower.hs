@@ -17,7 +17,7 @@ import System.FilePath ((</>))
 import System.IO (IOMode (..), withFile)
 import Prelude hiding (lookup)
 
-import Coln.Backend.IR qualified as I
+import Coln.Backend.FLIR qualified as I
 import Coln.Common
 import Coln.Core.Evaluation
 import Coln.Core.Globals qualified as C
