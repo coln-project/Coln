@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::ir::Equality;
+
 use crate::{
     commit::{
         error::CodecError,
@@ -392,10 +394,10 @@ fn write_prop(buf: &mut Vec<u8>, prop: &Prop) -> Result<(), CodecError> {
             write_u8(buf, 0)?;
             write_atom(buf, atom)
         }
-        Prop::Eq { left, right } => {
+        Prop::Eq { equality } => {
             write_u8(buf, 1)?;
-            write_term(buf, left)?;
-            write_term(buf, right)
+            write_term(buf, &equality.left)?;
+            write_term(buf, &equality.right)
         }
     }
 }
@@ -406,8 +408,10 @@ fn read_prop(data: &[u8], pos: &mut usize) -> Result<Prop, CodecError> {
             atom: read_atom(data, pos)?,
         }),
         1 => Ok(Prop::Eq {
-            left: read_term(data, pos)?,
-            right: read_term(data, pos)?,
+            equality: Equality {
+                left: read_term(data, pos)?,
+                right: read_term(data, pos)?,
+            },
         }),
         tag => Err(CodecError::DataFormatError(format!(
             "unknown prop tag {tag}"
@@ -618,8 +622,10 @@ mod tests {
                     },
                 }],
                 consequents: vec![Prop::Eq {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 0 },
+                    equality: Equality {
+                        left: Term::Var { index: 0 },
+                        right: Term::Var { index: 0 },
+                    },
                 }],
             },
         }

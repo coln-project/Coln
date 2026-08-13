@@ -143,6 +143,8 @@ pub fn bind_rule(store: &Store, rule: &CompRule) -> Vec<Binding> {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::ir::Equality;
+
     use super::*;
     use crate::{
         ir::{
@@ -324,8 +326,10 @@ mod tests {
                     },
                 },
                 ir::Prop::Eq {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Var { index: 1 },
+                    equality: Equality {
+                        left: ir::Term::Var { index: 0 },
+                        right: ir::Term::Var { index: 1 },
+                    },
                 },
             ],
             vec![ir::Prop::Atom {
@@ -368,9 +372,11 @@ mod tests {
                     },
                 },
                 ir::Prop::Eq {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Lit {
-                        lit: ir::Lit::Int { value: 2 },
+                    equality: Equality {
+                        left: ir::Term::Var { index: 0 },
+                        right: ir::Term::Lit {
+                            lit: ir::Lit::Int { value: 2 },
+                        },
                     },
                 },
             ],

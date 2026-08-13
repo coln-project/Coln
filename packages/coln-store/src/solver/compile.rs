@@ -148,9 +148,9 @@ fn compile_props(props: &[Prop], var_count: usize) -> Result<CompProp, CompileEr
 fn compile_prop(prop: &Prop, var_count: usize) -> Result<CompProp, CompileError> {
     match prop {
         Prop::Atom { atom } => Ok(CompProp::Atom(compile_atom(atom, var_count)?)),
-        Prop::Eq { left, right } => Ok(CompProp::Eq(CompEq {
-            left: compile_term(left, var_count)?,
-            right: compile_term(right, var_count)?,
+        Prop::Eq { equality } => Ok(CompProp::Eq(CompEq {
+            left: compile_term(&equality.left, var_count)?,
+            right: compile_term(&equality.right, var_count)?,
         })),
     }
 }
@@ -332,6 +332,8 @@ fn var_name(index: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::ir::Equality;
+
     use super::*;
     use crate::ir::{BuiltinTy, ColType, Path, Rule, RuleEntry, RuleVariant};
 
@@ -523,8 +525,10 @@ mod tests {
             "T.eq_antecedent",
             vec![int_ty(), int_ty()],
             vec![Prop::Eq {
-                left: Term::Var { index: 0 },
-                right: Term::Var { index: 1 },
+                equality: Equality {
+                    left: Term::Var { index: 0 },
+                    right: Term::Var { index: 1 },
+                },
             }],
             vec![Prop::Atom {
                 atom: Atom {
@@ -563,8 +567,10 @@ mod tests {
                 },
             }],
             vec![Prop::Eq {
-                left: Term::Var { index: 0 },
-                right: Term::Var { index: 1 },
+                equality: Equality {
+                    left: Term::Var { index: 0 },
+                    right: Term::Var { index: 1 },
+                },
             }],
         );
 
@@ -617,8 +623,10 @@ mod tests {
                     },
                 },
                 Prop::Eq {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
+                    equality: Equality {
+                        left: Term::Var { index: 0 },
+                        right: Term::Var { index: 1 },
+                    },
                 },
             ],
         );

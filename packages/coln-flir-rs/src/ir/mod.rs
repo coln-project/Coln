@@ -182,12 +182,18 @@ pub enum Prop {
     Atom {
         atom: Atom,
     },
-    /// An equality condition between the left and the right term, that is,
-    /// we assert `left == right`.
     Eq {
-        left: Term,
-        right: Term,
+        #[serde(flatten)]
+        equality: Equality,
     },
+}
+
+/// An equality condition between the left and the right term, that is,
+/// we assert `left == right`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Equality {
+    pub left: Term,
+    pub right: Term,
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
