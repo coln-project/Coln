@@ -1096,6 +1096,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cli-table",
+ "coln-batch",
  "coln-flir-rs",
  "coln-query",
  "criterion",
