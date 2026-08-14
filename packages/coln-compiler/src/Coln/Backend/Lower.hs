@@ -312,11 +312,13 @@ flattenGen ti tn = \case
       let args = zip xs argTys
       let argCols = flattenArgs args
       let pkey = Just $ Set.fromList $ fst <$> argCols
-      let retName = BwdNil :> freshNameFor xs
+      let retRoot = freshNameFor xs
+      let retName = BwdNil :> retRoot
       let retCols = flattenArg retName retTy.shape
       let cols = argCols ++ retCols
       let entity = I.Entity I.Table cols pkey
       let foreignKeyRule = createRule ti I.Enforced $ do
+            useRoot retRoot
             (e, argPreds) <- validity args
             ret <- fresh retName retTy.shape
             let e' = e :> ret
