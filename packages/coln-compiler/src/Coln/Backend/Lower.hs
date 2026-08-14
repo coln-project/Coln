@@ -246,6 +246,9 @@ instance Flatten Pred [I.Prop] where
       pure [I.PEq c0 c1 | (c0, c1) <- zip (flattenTrie v0) (flattenTrie v1)]
     PTrue -> pure []
 
+useRoot :: Name -> FlatM ()
+useRoot x = modify $ \ni -> ni{usedRoots = Set.insert x ni.usedRoots}
+
 validity :: [(Name, Ty)] -> FlatM (Bwd (Trie I.Term), [I.Prop])
 validity = go BwdNil BwdNil
  where
@@ -253,6 +256,7 @@ validity = go BwdNil BwdNil
   go e ps ((x, ty) : tys) = do
     v <- fresh (BwdNil :> x) ty.shape
     let e' = e :> v
+    useRoot x
     p <- flatten e' ty.pred
     go e' (ps ++> p) tys
 
@@ -266,6 +270,18 @@ flattenArg p sh = case sh of
 flattenArgs :: [(Name, Ty)] -> [(I.ColName, I.ColType)]
 flattenArgs args = concat [flattenArg (BwdNil :> x) ty.shape | (x, ty) <- args]
 
+createRule :: TableInfo -> I.RuleVariant -> FlatM ([I.Prop], [I.Prop]) -> I.Rule
+createRule ti variant action = do
+  let ((ante, cons), vars, props) = runFlatM ti action
+  let (varNames, varTypes) = unzip $ toList vars
+  I.Rule
+    { I.ruleVariant = variant
+    , I.varNames = fromList varNames
+    , I.varTypes = fromList varTypes
+    , I.antecedents = toList (props ++> ante)
+    , I.consequents = cons
+    }
+
 flattenGen :: TableInfo -> TableName -> Generator -> (Maybe I.Entity, [(TableName, I.Rule)])
 flattenGen ti tn = \case
   Rel xs tys u -> do
@@ -276,24 +292,20 @@ flattenGen ti tn = \case
           PropU -> Just $ Set.fromList $ fst <$> cols
           _ -> panic "generator must be of a set or smaller universe"
     let entity = I.Entity I.Table cols pkey
-    let ((vs, ps), vars, props) = runFlatM ti $ do
-          (e, ps) <- validity args
-          pure (flattenTries $ toList e, ps)
-    let (varNames, varTypes) = unzip $ toList vars
-    let ante = toList $ props :> I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] vs))
-    let rule = I.Rule I.Enforced (fromList varNames) (fromList varTypes) ante ps
-    (Just entity, [(tn{path = tn.path :> "foreignKey"}, rule)])
+    let foreignKeyRule = createRule ti I.Enforced $ do
+          (e, cons) <- validity args
+          let vs = flattenTries $ toList e
+          let ante = [I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] vs))]
+          pure (ante, cons)
+    (Just entity, [(tn{path = tn.path :> "foreignKey"}, foreignKeyRule)])
   Fun xs argTys retTy -> case storedWidth retTy.shape of
     0 -> do
       let args = zip xs argTys
-      let ((cons, ps), vars, props) = runFlatM ti $ do
-            (e, ps) <- validity args
+      let rule = createRule ti I.Monitored $ do
+            (e, argPreds) <- validity args
             let ret = Node (fromList [])
-            cons <- flatten (e :> ret) retTy.pred
-            pure (cons, ps)
-      let ante = toList $ props ++> ps
-      let (varNames, varTypes) = unzip $ toList vars
-      let rule = I.Rule I.Monitored (fromList varNames) (fromList varTypes) ante cons
+            retPred <- flatten (e :> ret) retTy.pred
+            pure (argPreds, retPred)
       (Nothing, [(tn, rule)])
     _ -> do
       let args = zip xs argTys
@@ -303,37 +315,22 @@ flattenGen ti tn = \case
       let retCols = flattenArg retName retTy.shape
       let cols = argCols ++ retCols
       let entity = I.Entity I.Table cols pkey
-      let ((argVs, argPreds, retV, retPreds), vars, props) = runFlatM ti $ do
-            (e, ps) <- validity args
+      let foreignKeyRule = createRule ti I.Enforced $ do
+            (e, argPreds) <- validity args
             ret <- fresh retName retTy.shape
+            let e' = e :> ret
             retPred <- flatten (e :> ret) retTy.pred
-            pure (flattenTries $ toList e, ps, flattenTrie ret, retPred)
-      let (varNames, varTypes) = unzip $ toList vars
-      let head = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] (argVs ++ retV)))
-      let fkeyRule =
-            I.Rule
-              { ruleVariant = I.Enforced
-              , varNames = fromList varNames
-              , varTypes = fromList varTypes
-              , antecedents = toList $ props :> head
-              , consequents = argPreds ++ retPreds
-              }
-      let ((argVs', argPreds'), vars', props') = runFlatM ti $ do
-            (e, ps) <- validity args
-            pure (flattenTries $ toList e, ps)
-      let (varNames', varTypes') = unzip $ toList vars'
-      let head' = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] argVs'))
-      let totalityRule =
-            I.Rule
-              { ruleVariant = I.Monitored
-              , varNames = fromList varNames'
-              , varTypes = fromList varTypes'
-              , antecedents = toList $ props' ++> argPreds'
-              , consequents = [head']
-              }
+            let vs = flattenTries $ toList e'
+            let ante = [I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] vs))]
+            pure (ante, argPreds ++ retPred)
+      let totalityRule = createRule ti I.Monitored $ do
+            (e, argPreds) <- validity args
+            let vs = flattenTries $ toList e
+            let cons = [I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] vs))]
+            pure (argPreds, cons)
       ( Just entity
         ,
-          [ (tn{path = tn.path :> "foreignKey"}, fkeyRule)
+          [ (tn{path = tn.path :> "foreignKey"}, foreignKeyRule)
           , (tn{path = tn.path :> "totality"}, totalityRule)
           ]
         )
