@@ -39,7 +39,7 @@ lowered: flatrealm
     monitored ℜ.x := ⊤ ⊢ ℜ.A []
     enforced ℜ.next.foreignKey b := ℜ.next [.b ↦ b] ⊢ ℜ.A [] ∧ b ∈ ℜ.B []
     monitored ℜ.next.total := ℜ.A [] ⊢ ℜ.next []
-    monitored ℜ.edge a.a := ℜ.next [.b ↦ a.a] ⊢ ℜ.E [.a ↦ a.a]
+    monitored ℜ.edge b := ℜ.next [.b ↦ b] ⊢ ℜ.E [.a ↦ b]
   end
 end
 

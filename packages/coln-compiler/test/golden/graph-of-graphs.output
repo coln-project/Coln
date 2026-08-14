@@ -21,6 +21,35 @@ value: sig
   fiber : base.V -> Graph
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
+realm named GraphRealm
+elaborated: realm
+  generators
+    node
+      V = rel []
+      E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
+    end
+  end
+  definitions
+    def free-edge : Set := sig
+      v0 : root.V
+      v1 : root.V
+      f : root.E v0 v1
+    end
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.V := []
+    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
+  end
+  rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+    enforced ℜ.E.foreignKey a b := ℜ.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
+  end
+end
 realm named GraphOfGraphsRealm
 elaborated: realm
   generators
@@ -129,7 +158,19 @@ lowered: flatrealm
       .a ↦ a,
       .b ↦ b
     ]
-    enforced ℜ.action.E.foreignKey v0 v1 a v0/a v1/a b c c.b c.c := ℜ.action.E [
+    enforced ℜ.action.E.foreignKey v0 v1 a v0/a v1/a b c d e := ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ v0/a,
+      .c ↦ d
+    ] ∧ ℜ.action.V [
+      .v0 ↦ v0,
+      .v1 ↦ v1,
+      .a ↦ a,
+      .b ↦ v1/a,
+      .c ↦ e
+    ] ∧ ℜ.action.E [
       .v0 ↦ v0,
       .v1 ↦ v1,
       .a ↦ a,
@@ -137,18 +178,6 @@ lowered: flatrealm
       .v1/a ↦ v1/a,
       .b ↦ b,
       .c ↦ c
-    ] ∧ ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ v0/a,
-      .c ↦ c.b
-    ] ∧ ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ v1/a,
-      .c ↦ c.c
     ] ⊢ v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
       .a ↦ v0,
       .b ↦ v1
@@ -156,8 +185,8 @@ lowered: flatrealm
       .a ↦ v0
     ] ∧ b ∈ ℜ.fiber.E [.a ↦ v0, .b ↦ v0/a, .c ↦ v1/a] ∧ c ∈ ℜ.fiber.E [
       .a ↦ v1,
-      .b ↦ c.b,
-      .c ↦ c.c
+      .b ↦ d,
+      .c ↦ e
     ]
     monitored ℜ.action.E.total v0 v1 a v0/a v1/a b := v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
       .a ↦ v0,
@@ -176,7 +205,3 @@ lowered: flatrealm
 end
 
 -- messages
-
-error[E0314]: no such variable self in scope
-8 |     v0 : self.V
-8 |          ^^^^

@@ -44,9 +44,9 @@ lowered: flatrealm
       .a ↦ a
     ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [.a ↦ x]
     monitored ℜ.next.total x := x ∈ ℜ.A [] ⊢ ℜ.next [.x ↦ x]
-    monitored ℜ.nextedge x a.a := x ∈ ℜ.A [] ∧ ℜ.next [.x ↦ x, .a ↦ a.a] ⊢ ℜ.E [
+    monitored ℜ.nextedge x b := ℜ.next [.x ↦ x, .a ↦ b] ∧ x ∈ ℜ.A [] ⊢ ℜ.E [
       .x ↦ x,
-      .a ↦ a.a
+      .a ↦ b
     ]
   end
 end

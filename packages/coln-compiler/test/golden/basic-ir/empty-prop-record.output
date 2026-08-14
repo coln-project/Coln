@@ -24,6 +24,7 @@ lowered: flatrealm
   entities
   end
   rules
+    monitored ℜ.truth := ⊤ ⊢ ⊤
   end
 end
 

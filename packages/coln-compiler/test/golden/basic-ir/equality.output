@@ -33,9 +33,7 @@ lowered: flatrealm
     monitored ℜ.x.total := ⊤ ⊢ ℜ.x []
     enforced ℜ.y.foreignKey a := ℜ.y [.a ↦ a] ⊢ a ∈ ℜ.V []
     monitored ℜ.y.total := ⊤ ⊢ ℜ.y []
-    monitored ℜ.eq a.lhs a.rhs := ℜ.x [.a ↦ a.lhs] ∧ ℜ.y [
-      .a ↦ a.rhs
-    ] ⊢ a.lhs = a.rhs
+    monitored ℜ.eq b c := ℜ.x [.a ↦ b] ∧ ℜ.y [.a ↦ c] ⊢ b = c
   end
 end
 

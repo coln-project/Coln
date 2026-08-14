@@ -60,9 +60,10 @@ lowered: flatrealm
       .a ↦ a
     ] ⊢ x ∈ ℜ.Key [] ∧ a ∈ ℜ.E [.a ↦ x]
     monitored ℜ.f.total x := x ∈ ℜ.Key [] ⊢ ℜ.f [.x ↦ x]
-    enforced ℜ.boxed.foreignKey a.image a.image.a := ℜ.boxed [
+    monitored ℜ.point := ⊤ ⊢ ⊤
+    enforced ℜ.boxed.foreignKey a.image b := ℜ.key [.a ↦ b] ∧ ℜ.boxed [
       .a.image ↦ a.image
-    ] ∧ ℜ.key [.a ↦ a.image.a] ⊢ a.image ∈ ℜ.E [.a ↦ a.image.a]
+    ] ⊢ a.image ∈ ℜ.E [.a ↦ b]
   end
 end
 

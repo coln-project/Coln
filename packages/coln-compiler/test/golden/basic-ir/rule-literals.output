@@ -37,14 +37,11 @@ lowered: flatrealm
     monitored ℜ.count.total a := a ∈ ℜ.X [] ⊢ ℜ.count [.a ↦ a]
     enforced ℜ.label.foreignKey a b := ℜ.label [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
     monitored ℜ.label.total a := a ∈ ℜ.X [] ⊢ ℜ.label [.a ↦ a]
-    monitored ℜ.countIs19 x a.lhs := x ∈ ℜ.X [] ∧ ℜ.count [
+    monitored ℜ.countIs19 x b := ℜ.count [.a ↦ x, .b ↦ b] ∧ x ∈ ℜ.X [] ⊢ b = 19
+    monitored ℜ.labelIsZombocom x b := ℜ.label [
       .a ↦ x,
-      .b ↦ a.lhs
-    ] ⊢ a.lhs = 19
-    monitored ℜ.labelIsZombocom x a.lhs := x ∈ ℜ.X [] ∧ ℜ.label [
-      .a ↦ x,
-      .b ↦ a.lhs
-    ] ⊢ a.lhs = "zombocom"
+      .b ↦ b
+    ] ∧ x ∈ ℜ.X [] ⊢ b = "zombocom"
   end
 end
 

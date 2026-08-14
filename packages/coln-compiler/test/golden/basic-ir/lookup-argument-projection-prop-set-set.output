@@ -40,9 +40,9 @@ lowered: flatrealm
     enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ℜ.A [] ∧ a ∈ ℜ.B []
     enforced ℜ.next.foreignKey a := ℜ.next [.a ↦ a] ⊢ ℜ.A [] ∧ a ∈ ℜ.B []
     monitored ℜ.next.total := ℜ.A [] ⊢ ℜ.next []
-    enforced ℜ.nextedge.foreignKey a a.a := ℜ.nextedge [.a ↦ a] ∧ ℜ.next [
-      .a ↦ a.a
-    ] ⊢ ℜ.A [] ∧ a ∈ ℜ.E [.a ↦ a.a]
+    enforced ℜ.nextedge.foreignKey a b := ℜ.next [.a ↦ b] ∧ ℜ.nextedge [
+      .a ↦ a
+    ] ⊢ ℜ.A [] ∧ a ∈ ℜ.E [.a ↦ b]
     monitored ℜ.nextedge.total := ℜ.A [] ⊢ ℜ.nextedge []
   end
 end

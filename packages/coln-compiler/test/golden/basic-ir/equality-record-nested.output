@@ -63,13 +63,13 @@ lowered: flatrealm
       .a.trailing ↦ a.trailing
     ] ⊢ a.inner.value ∈ ℜ.X [] ∧ ℜ.P [] ∧ a.trailing ∈ ℜ.X []
     monitored ℜ.second.total := ⊤ ⊢ ℜ.second []
-    monitored ℜ.same a.lhs.inner.value a.lhs.trailing a.rhs.inner.value a.rhs.trailing := ℜ.first [
-      .a.inner.value ↦ a.lhs.inner.value,
-      .a.trailing ↦ a.lhs.trailing
+    monitored ℜ.same b.inner.value b.trailing c.inner.value c.trailing := ℜ.first [
+      .a.inner.value ↦ b.inner.value,
+      .a.trailing ↦ b.trailing
     ] ∧ ℜ.second [
-      .a.inner.value ↦ a.rhs.inner.value,
-      .a.trailing ↦ a.rhs.trailing
-    ] ⊢ a.lhs.inner.value = a.rhs.inner.value ∧ a.lhs.trailing = a.rhs.trailing
+      .a.inner.value ↦ c.inner.value,
+      .a.trailing ↦ c.trailing
+    ] ⊢ b.inner.value = c.inner.value ∧ b.trailing = c.trailing
   end
 end
 

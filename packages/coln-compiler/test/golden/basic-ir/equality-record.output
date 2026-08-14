@@ -46,13 +46,13 @@ lowered: flatrealm
       .a.right ↦ a.right
     ] ⊢ a.left ∈ ℜ.X [] ∧ a.right ∈ ℜ.X []
     monitored ℜ.second.total := ⊤ ⊢ ℜ.second []
-    monitored ℜ.same a.lhs.left a.lhs.right a.rhs.left a.rhs.right := ℜ.first [
-      .a.left ↦ a.lhs.left,
-      .a.right ↦ a.lhs.right
+    monitored ℜ.same b.left b.right c.left c.right := ℜ.first [
+      .a.left ↦ b.left,
+      .a.right ↦ b.right
     ] ∧ ℜ.second [
-      .a.left ↦ a.rhs.left,
-      .a.right ↦ a.rhs.right
-    ] ⊢ a.lhs.left = a.rhs.left ∧ a.lhs.right = a.rhs.right
+      .a.left ↦ c.left,
+      .a.right ↦ c.right
+    ] ⊢ b.left = c.left ∧ b.right = c.right
   end
 end
 

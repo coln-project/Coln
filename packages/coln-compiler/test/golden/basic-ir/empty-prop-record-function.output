@@ -28,6 +28,7 @@ lowered: flatrealm
   end
   rules
     enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    monitored ℜ.trivial x := x ∈ ℜ.X [] ⊢ ⊤
   end
 end
 

@@ -54,13 +54,10 @@ lowered: flatrealm
       .b ↦ b
     ] ⊢ a ∈ ℜ.B [] ∧ b ∈ ℜ.C []
     monitored ℜ.second.total a := a ∈ ℜ.B [] ⊢ ℜ.second [.a ↦ a]
-    enforced ℜ.edge.foreignKey x a a.a a.a.a := ℜ.edge [
-      .x ↦ x,
-      .a ↦ a
-    ] ∧ ℜ.first [.a ↦ x, .b ↦ a.a.a] ∧ ℜ.second [
-      .a ↦ a.a.a,
-      .b ↦ a.a
-    ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.a ↦ a.a]
+    enforced ℜ.edge.foreignKey x a b c := ℜ.first [.a ↦ x, .b ↦ c] ∧ ℜ.second [
+      .a ↦ c,
+      .b ↦ b
+    ] ∧ ℜ.edge [.x ↦ x, .a ↦ a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.a ↦ b]
     monitored ℜ.edge.total x := x ∈ ℜ.A [] ⊢ ℜ.edge [.x ↦ x]
   end
 end

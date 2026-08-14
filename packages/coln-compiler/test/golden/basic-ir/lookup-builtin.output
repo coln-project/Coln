@@ -33,10 +33,10 @@ lowered: flatrealm
     enforced ℜ.rank.foreignKey a b := ℜ.rank [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
     monitored ℜ.rank.total a := a ∈ ℜ.X [] ⊢ ℜ.rank [.a ↦ a]
     enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ⊤
-    enforced ℜ.edge.foreignKey x a a.a := ℜ.edge [.x ↦ x, .a ↦ a] ∧ ℜ.rank [
-      .a ↦ x,
-      .b ↦ a.a
-    ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.E [.a ↦ a.a]
+    enforced ℜ.edge.foreignKey x a b := ℜ.rank [.a ↦ x, .b ↦ b] ∧ ℜ.edge [
+      .x ↦ x,
+      .a ↦ a
+    ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.E [.a ↦ b]
     monitored ℜ.edge.total x := x ∈ ℜ.X [] ⊢ ℜ.edge [.x ↦ x]
   end
 end

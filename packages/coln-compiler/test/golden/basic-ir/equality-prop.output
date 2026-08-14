@@ -29,6 +29,7 @@ lowered: flatrealm
     enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
     monitored ℜ.x := ⊤ ⊢ ℜ.P []
     monitored ℜ.y := ⊤ ⊢ ℜ.P []
+    monitored ℜ.eq := ⊤ ⊢ ⊤
   end
 end
 

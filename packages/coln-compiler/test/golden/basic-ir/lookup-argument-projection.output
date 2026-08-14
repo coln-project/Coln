@@ -45,10 +45,10 @@ lowered: flatrealm
       .a ↦ a
     ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [.a ↦ x]
     monitored ℜ.next.total x := x ∈ ℜ.A [] ⊢ ℜ.next [.x ↦ x]
-    enforced ℜ.nextedge.foreignKey x a a.a := ℜ.nextedge [
+    enforced ℜ.nextedge.foreignKey x a b := ℜ.next [
       .x ↦ x,
-      .a ↦ a
-    ] ∧ ℜ.next [.x ↦ x, .a ↦ a.a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.x ↦ x, .a ↦ a.a]
+      .a ↦ b
+    ] ∧ ℜ.nextedge [.x ↦ x, .a ↦ a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.x ↦ x, .a ↦ b]
     monitored ℜ.nextedge.total x := x ∈ ℜ.A [] ⊢ ℜ.nextedge [.x ↦ x]
   end
 end
