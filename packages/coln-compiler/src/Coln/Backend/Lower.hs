@@ -302,10 +302,14 @@ flattenGen ti tn = \case
   Fun xs argTys retTy -> case storedWidth retTy.shape of
     0 -> do
       let args = zip xs argTys
+      let retRoot = freshNameFor xs
+      let retName = BwdNil :> retRoot
       let rule = createRule ti I.Monitored $ do
+            useRoot retRoot
             (e, argPreds) <- validity args
-            let ret = Node (fromList [])
-            retPred <- flatten (e :> ret) retTy.pred
+            ret <- fresh retName retTy.shape
+            let e' = e :> ret
+            retPred <- flatten e' retTy.pred
             pure (argPreds, retPred)
       (Nothing, [(tn, rule)])
     _ -> do
@@ -322,7 +326,7 @@ flattenGen ti tn = \case
             (e, argPreds) <- validity args
             ret <- fresh retName retTy.shape
             let e' = e :> ret
-            retPred <- flatten (e :> ret) retTy.pred
+            retPred <- flatten e' retTy.pred
             let vs = flattenTries $ toList e'
             let ante = [I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] vs))]
             pure (ante, argPreds ++ retPred)
