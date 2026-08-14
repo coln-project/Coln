@@ -6,7 +6,7 @@
 module Coln.Backend.Lower where
 
 import Control.Arrow (first, second)
-import Control.Monad (forM, forM_)
+import Control.Monad (forM, forM_, when)
 import Control.Monad.RWS
 import Control.Monad.Reader.Class
 import Control.Monad.State.Class
@@ -220,7 +220,8 @@ instance Flatten Term (Trie I.Term) where
       retName <- freshName
       ret <- fresh (BwdNil :> retName) retSh
       args <- mapM (flatten e) $ toList ts.values
-      emit $ I.PAtom $ I.Atom x Nothing $ OMap.fromList $ (zip [0 ..] (flattenTries (args ++ [ret])))
+      when (storedWidth retSh /= 0) $
+        emit $ I.PAtom $ I.Atom x Nothing $ OMap.fromList $ (zip [0.. ] (flattenTries (args ++ [ret])))
       pure ret
     Proj t x -> do
       v <- flatten e t
