@@ -162,7 +162,7 @@ instance Monoid (Bwd a) where
 
 (++>) :: Bwd a -> [a] -> Bwd a
 xs ++> [] = xs
-xs ++> (y:ys) = (xs :> y) ++> ys
+xs ++> (y : ys) = (xs :> y) ++> ys
 
 infixr 5 :<
 

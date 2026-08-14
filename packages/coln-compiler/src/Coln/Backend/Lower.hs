@@ -1,12 +1,15 @@
 -- SPDX-FileCopyrightText: 2026 Coln contributors
 --
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
-
 {-# OPTIONS_GHC -Wno-unused-imports #-}
+
 module Coln.Backend.Lower where
 
 import Control.Arrow (first, second)
-import Control.Monad (forM_, forM)
+import Control.Monad (forM, forM_)
+import Control.Monad.RWS
+import Control.Monad.Reader.Class
+import Control.Monad.State.Class
 import Data.Aeson qualified as AE
 import Data.Map.Ordered (OMap, (>|))
 import Data.Map.Ordered qualified as OMap
@@ -17,9 +20,6 @@ import Prettyprinter.Render.Text (hPutDoc)
 import System.FilePath ((</>))
 import System.IO (IOMode (..), withFile)
 import Prelude hiding (lookup)
-import Control.Monad.RWS
-import Control.Monad.State.Class
-import Control.Monad.Reader.Class
 
 import Coln.Backend.IR qualified as I
 import Coln.Common
@@ -153,7 +153,7 @@ lowerGen (C.Rel xs ts u) = do
   Rel xs ts' u
 
 data TableInfo = TableInfo
-  { tableShapes :: OMap TableName Generator }
+  {tableShapes :: OMap TableName Generator}
 
 data VarInfo = VarInfo
   { vars :: Bwd (I.ColName, I.ColType)
@@ -161,7 +161,7 @@ data VarInfo = VarInfo
   , usedRoots :: Set.Set Name
   }
 
-newtype FlatM a = FlatM { unFlatM :: RWS TableInfo (Bwd I.Prop) VarInfo a }
+newtype FlatM a = FlatM {unFlatM :: RWS TableInfo (Bwd I.Prop) VarInfo a}
   deriving (Functor, Applicative, Monad, MonadState VarInfo, MonadWriter (Bwd I.Prop), MonadReader TableInfo)
 
 runFlatM :: TableInfo -> FlatM a -> (a, Bwd (I.ColName, I.ColType), Bwd I.Prop)
@@ -180,7 +180,7 @@ fresh p = \case
   (scalarShape -> Just colTy) -> do
     ni <- get
     let i = ni.length
-    put $ ni { vars = (ni.vars :> (p, colTy)), length = (i + 1) }
+    put $ ni{vars = (ni.vars :> (p, colTy)), length = (i + 1)}
     pure $ Leaf $ I.Var $ FId i
   (RowId _; BuiltinTy _) -> panic "should have been covered by scalarShape"
   Tuple fields -> do
@@ -194,7 +194,7 @@ freshName :: FlatM Name
 freshName = do
   ni <- get
   let x = freshNameFor ni.usedRoots
-  put $ ni { usedRoots = Set.insert x ni.usedRoots }
+  put $ ni{usedRoots = Set.insert x ni.usedRoots}
   pure x
 
 emit :: I.Prop -> FlatM ()
@@ -210,7 +210,7 @@ retShapeOf tn = do
 type FlatEnv = Bwd (Trie I.Term)
 
 class Flatten a b | a -> b where
-  flatten :: FlatEnv -> a -> FlatM b 
+  flatten :: FlatEnv -> a -> FlatM b
 
 instance Flatten Term (Trie I.Term) where
   flatten e = \case
@@ -220,7 +220,7 @@ instance Flatten Term (Trie I.Term) where
       retName <- freshName
       ret <- fresh (BwdNil :> retName) retSh
       args <- mapM (flatten e) $ toList ts.values
-      emit $ I.PAtom $ I.Atom x Nothing $ OMap.fromList $ (zip [0..] (flattenTries (args ++ [ret])))
+      emit $ I.PAtom $ I.Atom x Nothing $ OMap.fromList $ (zip [0 ..] (flattenTries (args ++ [ret])))
       pure ret
     Proj t x -> do
       v <- flatten e t
@@ -233,10 +233,10 @@ instance Flatten Pred [I.Prop] where
     EltOf t x ts -> do
       v <- flatten e t
       vs <- traverse (flatten e) $ toList ts.values
-      pure [I.PAtom $ I.Atom x (Just (unwrapLeaf v)) (OMap.fromList $ (zip [0..] (flattenTries vs)))]
+      pure [I.PAtom $ I.Atom x (Just (unwrapLeaf v)) (OMap.fromList $ (zip [0 ..] (flattenTries vs)))]
     Holds x ts -> do
       vs <- traverse (flatten e . snd) $ toList ts
-      pure [I.PAtom $ I.Atom x Nothing (OMap.fromList $ (zip [0..] (flattenTries vs)))]
+      pure [I.PAtom $ I.Atom x Nothing (OMap.fromList $ (zip [0 ..] (flattenTries vs)))]
     And ts -> do
       pss <- mapM (flatten e) ts.values
       pure $ concat pss
@@ -248,13 +248,13 @@ instance Flatten Pred [I.Prop] where
 
 validity :: [(Name, Ty)] -> FlatM (Bwd (Trie I.Term), [I.Prop])
 validity = go BwdNil BwdNil
-  where
-    go e ps [] = pure (e, toList ps)
-    go e ps ((x, ty):tys) = do
-      v <- fresh (BwdNil :> x) ty.shape
-      let e' = e :> v
-      p <- flatten e' ty.pred
-      go e' (ps ++> p) tys
+ where
+  go e ps [] = pure (e, toList ps)
+  go e ps ((x, ty) : tys) = do
+    v <- fresh (BwdNil :> x) ty.shape
+    let e' = e :> v
+    p <- flatten e' ty.pred
+    go e' (ps ++> p) tys
 
 flattenArg :: I.ColName -> Shape -> [(I.ColName, I.ColType)]
 flattenArg p sh = case sh of
@@ -280,9 +280,9 @@ flattenGen ti tn = \case
           (e, ps) <- validity args
           pure (flattenTries $ toList e, ps)
     let (varNames, varTypes) = unzip $ toList vars
-    let ante = toList $ props :> I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0..] vs))
+    let ante = toList $ props :> I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] vs))
     let rule = I.Rule I.Enforced (fromList varNames) (fromList varTypes) ante ps
-    (Just entity, [(tn { path = tn.path :> "foreignKey" }, rule)])
+    (Just entity, [(tn{path = tn.path :> "foreignKey"}, rule)])
   Fun xs argTys retTy -> case storedWidth retTy.shape of
     0 -> do
       let args = zip xs argTys
@@ -309,40 +309,44 @@ flattenGen ti tn = \case
             retPred <- flatten (e :> ret) retTy.pred
             pure (flattenTries $ toList e, ps, flattenTrie ret, retPred)
       let (varNames, varTypes) = unzip $ toList vars
-      let head = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0..] (argVs ++ retV)))
-      let fkeyRule = I.Rule
-            { ruleVariant = I.Enforced
-            , varNames = fromList varNames
-            , varTypes = fromList varTypes
-            , antecedents = toList $ props :> head
-            , consequents = argPreds ++ retPreds
-            }
+      let head = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] (argVs ++ retV)))
+      let fkeyRule =
+            I.Rule
+              { ruleVariant = I.Enforced
+              , varNames = fromList varNames
+              , varTypes = fromList varTypes
+              , antecedents = toList $ props :> head
+              , consequents = argPreds ++ retPreds
+              }
       let ((argVs', argPreds'), vars', props') = runFlatM ti $ do
             (e, ps) <- validity args
             pure (flattenTries $ toList e, ps)
       let (varNames', varTypes') = unzip $ toList vars'
-      let head' = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0..] argVs'))
-      let totalityRule = I.Rule
-            { ruleVariant = I.Monitored
-            , varNames = fromList varNames'
-            , varTypes = fromList varTypes'
-            , antecedents = toList $ props' ++> argPreds'
-            , consequents = [head']
-            }
+      let head' = I.PAtom (I.Atom tn Nothing (OMap.fromList $ zip [0 ..] argVs'))
+      let totalityRule =
+            I.Rule
+              { ruleVariant = I.Monitored
+              , varNames = fromList varNames'
+              , varTypes = fromList varTypes'
+              , antecedents = toList $ props' ++> argPreds'
+              , consequents = [head']
+              }
       ( Just entity
-        , [ (tn { path = tn.path :> "foreignKey" }, fkeyRule)
-          , (tn { path = tn.path :> "totality" }, totalityRule)
+        ,
+          [ (tn{path = tn.path :> "foreignKey"}, fkeyRule)
+          , (tn{path = tn.path :> "totality"}, totalityRule)
           ]
         )
 
 addFlatGenerator :: TableInfo -> I.FlatRealm -> TableName -> Generator -> I.FlatRealm
 addFlatGenerator ti fr x g = do
   let (me, rules) = flattenGen ti x g
-  fr { I.entities = case me of
+  fr
+    { I.entities = case me of
         Just e -> fr.entities OMap.>| (x, e)
         Nothing -> fr.entities
-     , I.rules = fr.rules OMap.<>| (OMap.fromList rules)
-     }
+    , I.rules = fr.rules OMap.<>| (OMap.fromList rules)
+    }
 
 lowerRealm :: Name -> C.Realm -> I.FlatRealm
 lowerRealm realmName r = go I.emptyFlatRealm $ OMap.assocs generators
@@ -351,7 +355,7 @@ lowerRealm realmName r = go I.emptyFlatRealm $ OMap.assocs generators
     OMap.fromList $
       for (toList r.generators) $ \(path, generator) ->
         (TableName realmName path, lowerGen generator)
-        
+
   tableInfo = TableInfo generators
 
   go fr [] = fr
