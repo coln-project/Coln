@@ -18,7 +18,7 @@ data Abs (f :: Case -> Type) (c :: Case) = Abs Name (f c) | AbsConst (f c)
 data El :: Case -> Type where
   LocalVar :: BId -> El N
   GlobalVar :: Name -> V.El N -> El N
-  Code :: Ty c -> El c
+  Code :: Universe -> Ty c -> El c
   Lam :: Ty N -> Abs El c -> El c
   App :: El N -> El N -> El N
   Cons :: Dict (El c) -> El c
@@ -47,7 +47,7 @@ data EqualityType el ty = EqualityType
 
 data Ty :: Case -> Type where
   U :: Universe -> Ty N
-  Decode :: El N -> Ty N
+  Decode :: Universe -> El N -> Ty N
   Function :: FunctionType Ty -> Ty N
   Record :: RecordType Ty -> Ty D
   Eq :: EqualityType El Ty -> Ty N

@@ -48,7 +48,7 @@ instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
   readb n = \case
     V.Neu ne -> readb n ne.spine $ readb n ne.head
     V.InitNeu ne -> readb n ne.spine $ readb n ne.name
-    V.Code a -> S.Code (readb n a)
+    V.Code u a -> S.Code u (readb n a)
     V.Lam dom body -> S.Lam (readb n dom) $ case V.scase @c of
       SNominative -> readbClo n dom body
       SDescriptive -> readbClo n dom body
@@ -94,8 +94,8 @@ instance Readback V.EqualityType (S.EqualityType S.El S.Ty) where
 instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
   readb n = \case
     V.U u -> S.U u
-    V.Decode ne -> S.Decode $ readb n ne.spine $ readb n ne.head
-    V.InitDecode ne -> S.Decode $ readb n ne.spine $ readb n ne.name
+    V.Decode ne -> S.Decode ne.universe $ readb n ne.spine $ readb n ne.head
+    V.InitDecode ne -> S.Decode TheoryU $ readb n ne.spine $ readb n ne.name
     V.Function f -> S.Function $ readb n f
     V.Record r -> S.Record $ readb n r
     V.Eq eq -> S.Eq $ readb n eq

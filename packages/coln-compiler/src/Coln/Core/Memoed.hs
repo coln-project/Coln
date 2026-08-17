@@ -24,7 +24,7 @@ type Ty = Memoed S.Ty V.Ty
 class Core el ty | el -> ty, ty -> el where
   localVar :: BId -> V.El N -> el N
   globalVar :: Name -> V.El N -> el N
-  code :: (V.HasEvaluation c) => ty c -> el c
+  code :: (V.HasEvaluation c) => Universe -> ty c -> el c
   app :: el N -> el N -> el N
   lam :: (V.HasEvaluation c) => V.Locals -> ty N -> S.Abs el c -> el c
   cons :: (V.HasEvaluation c) => Dict (el c) -> el c
@@ -33,7 +33,7 @@ class Core el ty | el -> ty, ty -> el where
   lit :: Literal -> el N
   is :: el N -> el D
   univ :: Universe -> ty N
-  decode :: el N -> ty N
+  decode :: Universe -> el N -> ty N
   function :: V.Locals -> FunctionVariant -> ty N -> S.Abs ty N -> ty N
   record :: V.Locals -> S.RecordType ty -> ty D
   equality :: S.EqualityType el ty -> ty N
@@ -43,7 +43,7 @@ class Core el ty | el -> ty, ty -> el where
 instance Core El Ty where
   localVar i v = M (S.LocalVar i) v
   globalVar x v = M (S.GlobalVar x v) v
-  code t = M (S.Code t.stx) (V.emap V.Code t.val)
+  code u t = M (S.Code u t.stx) (V.emap (V.Code u) t.val)
   app f x = M (S.App f.stx x.stx) (V.app f.val x.val)
   lam vs dom (S.Abs x body) =
     M
@@ -60,7 +60,7 @@ instance Core El Ty where
   lit l = M (S.Lit l) (V.Lit l)
   is x = M (S.Is x.stx) (V.Become x.val)
   univ u = M (S.U u) (V.U u)
-  decode x = M (S.Decode x.stx) (V.decode x.val)
+  decode u x = M (S.Decode u x.stx) (V.decode x.val)
   function vs fv dom (S.Abs x body) =
     M
       (S.Function $ S.FunctionType fv dom.stx (S.Abs x body.stx))

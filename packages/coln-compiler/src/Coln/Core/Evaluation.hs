@@ -28,7 +28,7 @@ instance Compile S.El V.El where
   compile = \case
     S.LocalVar i -> (`elemAt` i)
     S.GlobalVar _ v -> const v
-    S.Code a -> V.emap V.Code . compile a
+    S.Code u a -> V.emap (V.Code u) . compile a
     S.App t0 t1 -> do
       let k0 = compile t0
       let k1 = compile t1
@@ -76,7 +76,7 @@ compileEqualityType eq = do
 instance Compile S.Ty V.Ty where
   compile = \case
     S.U u -> const $ V.U u
-    S.Decode t -> do
+    S.Decode u t -> do
       let k = compile t
       V.ebind V.decode . k
     S.Function ft -> V.Function . compileFunctionType ft

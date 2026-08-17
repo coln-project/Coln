@@ -119,6 +119,7 @@ realm e g head def_ns = do
   theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g Inductive)
   let (gt, root) = layoutTop x theory.val
   defs <- realmDecls e g theory.val root.val def_ns
+  let (gts, defs') = layoutDecls defs
   pure (x, Realm gt root.val theory.val defs)
 
 elabRealmDefinition :: ElabEnv N -> Mode -> (Typ N, Chk D) -> IO (Definition Local)

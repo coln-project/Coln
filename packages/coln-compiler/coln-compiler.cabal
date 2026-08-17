@@ -47,6 +47,8 @@ library
     Coln.Frontend.Parser
     Coln.Frontend.Parser.Expr
     Coln.Frontend.Parser.Top
+    Coln.MIR.Value
+    Coln.MIR.Interpret
     Coln.Report
 
   hs-source-dirs: src

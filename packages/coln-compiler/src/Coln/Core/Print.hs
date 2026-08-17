@@ -47,7 +47,7 @@ instance ToNotation (El e) where
   toNotation xs = \case
     LocalVar i -> toNotation xs i
     GlobalVar x _ -> N.Ident x ()
-    Code ty -> toNotation xs ty
+    Code _ ty -> toNotation xs ty
     App f t -> N.Juxt (toNotation xs f) (toNotation xs t)
     Lam _ (Abs x t) ->
       N.Infix (N.Ident x ()) (N.Keyword "=>" ()) (toNotation (xs :> x) t)
@@ -72,7 +72,7 @@ nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 instance ToNotation (Ty e) where
   toNotation xs = \case
     U u -> N.Keyword (fromString $ show $ pretty u) ()
-    Decode t -> toNotation xs t
+    Decode _ t -> toNotation xs t
     Function f -> case f.cod of
       Abs x b ->
         N.Infix

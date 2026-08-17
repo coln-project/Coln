@@ -6,6 +6,7 @@ module Coln.Common (
   module Diagnostician,
   module FNotation,
   module Data.Map,
+  module Data.Map.Ordered,
   module Data.Kind,
   module Data.Vector.Strict,
   module Data.Text,
@@ -48,6 +49,8 @@ import Data.Foldable qualified as F
 import Data.Kind (Constraint, Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
 import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
@@ -88,6 +91,12 @@ unwrap Nothing = panic "should only unwrap a Just"
 
 class ElemAt a i b | a i -> b where
   elemAt :: a -> i -> b
+
+instance (Ord a) => ElemAt (OMap a b) a b where
+  elemAt m k = case OMap.lookup k m of
+    Just v -> v
+    Nothing -> panic "no such key found in map"
+    
 
 class Lookup a i b | a -> i b where
   lookup :: a -> i -> Maybe b

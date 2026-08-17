@@ -4,7 +4,6 @@
 
 module Coln.Core.Globals where
 
-import Data.Map.Ordered (OMap)
 import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
@@ -34,6 +33,7 @@ mkDefinition x ty tm m = do
 data Generator
   = Rel [Name] [S.Ty N]
   | Fun [Name] [S.Ty N] (S.Ty N)
+  | View [Name] [S.Ty N] (S.Ty N)
 
 data Realm = Realm
   { generators :: Trie Generator

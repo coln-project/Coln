@@ -173,7 +173,7 @@ fullNeu n = BareNeutral n.name.head (composeSpines n.name.spine n.spine)
 data El :: Case -> Type where
   Neu :: Neutral -> El N
   InitNeu :: InitNeutral -> El N
-  Code :: Ty c -> El c
+  Code :: Universe -> Ty c -> El c
   Lam :: ~(Ty N) -> Clo El c -> El c
   Cons :: Dict (Evaluation El c) -> El c
   Lit :: Literal -> El N
@@ -273,7 +273,7 @@ behavior = \case
   EltOf _ _ -> NoRules
 
 decode :: (HasEvaluation c) => El c -> Evaluation Ty c
-decode (Code a) = epure a
+decode (Code _ a) = epure a
 decode (Neu n) = do
   let u = case behavior n.ty of
         LikeU u' -> u'
