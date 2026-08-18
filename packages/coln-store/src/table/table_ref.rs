@@ -38,6 +38,10 @@ impl<'a> TableRef<'a> {
         self.table.row_count()
     }
 
+    pub fn col_count(self) -> usize {
+        self.table.cols.len() + 1
+    }
+
     pub fn row_id_at(self, row_idx: usize) -> Option<RowId> {
         self.table.row_id_at(row_idx, self.id_packer)
     }

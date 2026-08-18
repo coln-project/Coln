@@ -56,9 +56,9 @@ impl TestTable {
     }
 
     /// A table that unions structurally identical rows on insert.
-    fn with_hashcons(path: Path, schema: ir::Schema) -> Self {
+    fn with_structural_index(path: Path, schema: ir::Schema) -> Self {
         let mut tbl = Self::new(path, schema);
-        tbl.table.set_hashcons_for_test(true);
+        tbl.table.set_structural_index_for_test(true);
         tbl
     }
 
@@ -307,7 +307,8 @@ fn full_rebuild_rewrites_stale_id_cells() {
 
 #[test]
 fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row() {
-    let mut tbl = TestTable::with_hashcons(Path::from("term"), int_schema(&["value"], None));
+    let mut tbl =
+        TestTable::with_structural_index(Path::from("term"), int_schema(&["value"], None));
     let canonical = row_id_from(1, 0);
     let displaced = row_id_from(2, 0);
     tbl.insert_row(vec![CellValue::Int(7)], displaced);

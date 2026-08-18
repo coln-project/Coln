@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Structural row identity (hashcons) and canonical row ids.
+//! Structural row identity and canonical row ids.
 //!
 //! Why is it called rowing? Because it is comparing rows for equivalence by
 //! looking at each value of the row one by one. And it sounds cool. Anyway it

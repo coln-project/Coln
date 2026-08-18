@@ -29,7 +29,7 @@ impl fmt::Display for RowId {
 }
 
 /// One cell in columnar storage: an entity id or a primitive value.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash)]
 pub enum CellValue {
     Id(RowId),
     Int(i64),
