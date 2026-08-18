@@ -16,8 +16,8 @@ use crate::{
     },
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, OutputExpr, ProjectionExpr, RelExpr, RelExprVisitor, SelectionExpr,
-        SourceExpr, UnionExpr,
+        FixedPointIterExpr, MultiWayEquiJoin, OutputExpr, ProjectionExpr, RelExpr, RelExprVisitor,
+        SelectionExpr, SourceExpr, UnionExpr,
     },
 };
 pub use crate::{
@@ -308,7 +308,7 @@ impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
         let first = expr
             .relations
             .first()
-            .ok_or_else(|| SyntaxError::new("Union expr with only no operands"))?;
+            .ok_or_else(|| SyntaxError::new("Union expr with no operands"))?;
         self.visit_expr(first, ctx)
     }
 
@@ -346,6 +346,28 @@ impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
             .visit_expr(&expr.right, ctx)
             .and_then(|expr_type| assert_type!(expr_type, ExprType::Relation))?;
         let joined = left_relation_type.join(right_relation_type);
+        self.visit_projection_attributes(joined, expr.attributes.as_ref(), ctx)
+    }
+
+    fn visit_multi_way_equi_join_expr(
+        &mut self,
+        expr: &MultiWayEquiJoin,
+        ctx: VisitorCtx<'_, '_>,
+    ) -> VisitorResult {
+        let mut relations = expr.relations.iter();
+        let first_relation_type = relations
+            .next()
+            .ok_or_else(|| SyntaxError::new("Multi way equi join with no operands"))
+            .and_then(|first_relation| {
+                self.visit_expr(first_relation, ctx)
+                    .and_then(|expr_type| assert_type!(expr_type, ExprType::Relation))
+            })?;
+        let joined = relations.try_fold(first_relation_type, |fold, relation| {
+            let relation_type = self
+                .visit_expr(relation, ctx)
+                .and_then(|expr_type| assert_type!(expr_type, ExprType::Relation))?;
+            Ok(fold.join(relation_type))
+        })?;
         self.visit_projection_attributes(joined, expr.attributes.as_ref(), ctx)
     }
 

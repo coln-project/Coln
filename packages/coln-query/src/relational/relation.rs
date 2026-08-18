@@ -587,6 +587,8 @@ impl Display for RelationType {
 }
 
 impl RelationType {
+    // TODO: Maybe the relation type should be position-aware and allow for
+    // duplicated columns sharing the same name..
     pub fn join(self, other: Self) -> Self {
         // We start with other to have duplicate fields' types be taken from self.
         let mut fields = other.fields;

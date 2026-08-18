@@ -11,6 +11,7 @@ use super::operators::{
     reindex::reindex_helper,
 };
 use crate::relational::RelationSchema;
+use crate::relational::expr::MultiWayEquiJoin;
 use crate::relational::incremental::dbsp::{
     DbspInput, OrdIndexedStreamInputHandle, new_ord_indexed_stream,
 };
@@ -100,10 +101,24 @@ fn collect_source_exprs<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a SourceExpr>) {
             }
             RelExpr::Projection(expr) => {
                 walk_expr(&expr.relation, out);
-                expr.attributes.iter().for_each(|(_, e)| walk_expr(e, out));
+                expr.attributes
+                    .iter()
+                    .for_each(|(_, expr)| walk_expr(expr, out));
             }
             RelExpr::CartesianProduct(expr) => walk_equi_join(&expr.inner, out),
             RelExpr::EquiJoin(expr) => walk_equi_join(expr, out),
+            RelExpr::MultiWayEquiJoin(expr) => {
+                expr.relations.iter().for_each(|rel| walk_expr(rel, out));
+                expr.on
+                    .iter()
+                    .flatten()
+                    .flatten()
+                    .for_each(|expr| walk_expr(expr, out));
+                expr.attributes
+                    .iter()
+                    .flatten()
+                    .for_each(|(_, expr)| walk_expr(expr, out));
+            }
             RelExpr::AntiJoin(expr) => {
                 walk_expr(&expr.left, out);
                 walk_expr(&expr.right, out);
@@ -125,9 +140,10 @@ fn collect_source_exprs<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a SourceExpr>) {
             walk_expr(l, out);
             walk_expr(r, out);
         });
-        if let Some(attributes) = &expr.attributes {
-            attributes.iter().for_each(|(_, e)| walk_expr(e, out));
-        }
+        expr.attributes
+            .iter()
+            .flatten()
+            .for_each(|(_, expr)| walk_expr(expr, out));
     }
     stmts.iter().for_each(|stmt| walk_stmt(stmt, out));
 }
@@ -584,6 +600,16 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         });
 
         Ok(Value::Relation(new_relation(schema, joined)))
+    }
+
+    fn visit_multi_way_equi_join_expr(
+        &mut self,
+        expr: &MultiWayEquiJoin,
+        ctx: VisitorCtx<'_, '_>,
+    ) -> ExprVisitorResult {
+        unimplemented!(
+            "Multi way equi joins are not supported by DBSP. Fold it into a sequence of binary equi joins prior to handing off to the DBSP backend."
+        )
     }
 
     fn visit_anti_join_expr(&mut self, expr: &AntiJoinExpr, ctx: VisitorCtx) -> ExprVisitorResult {

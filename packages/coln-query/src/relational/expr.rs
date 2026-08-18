@@ -29,12 +29,16 @@ pub enum RelExpr {
     Output(Box<OutputExpr>),
     Alias(Box<AliasExpr>),
     Distinct(Box<DistinctExpr>),
+    // A union can also be expressed with a full outer join and a projection.
     Union(Box<UnionExpr>),
+    // As the antijoin is a generalization of the set difference, this may be
+    // removed in the future.
     Difference(Box<DifferenceExpr>),
     Selection(Box<SelectionExpr>),
     Projection(Box<ProjectionExpr>),
     CartesianProduct(Box<CartesianProductExpr>),
     EquiJoin(Box<EquiJoinExpr>),
+    MultiWayEquiJoin(Box<MultiWayEquiJoin>),
     AntiJoin(Box<AntiJoinExpr>),
     FixedPointIter(Box<FixedPointIterExpr>),
 }
@@ -250,10 +254,36 @@ pub struct EquiJoinExpr {
     pub left: Expr,
     /// Must evaluate to a relation.
     pub right: Expr,
-    /// The attributes to join on. The first element of any pair belongs to the
-    /// left relation, and the second element of any pair belongs to right relation.
-    /// Each attribute pair should produce the same type.
+    /// The attribute(s) to join on. The first element of any pair is evaluated
+    /// in the context of the left relation, and the second element of any pair
+    /// is evaluated in the context of the right relation.
+    ///
+    /// If `on` is empty, a [`CartesianProduct`](CartesianProductExpr) is computed.
     pub on: Vec<(Expr, Expr)>,
+    /// An optional projection step. See documentation of [`ProjectionExpr`].
+    pub attributes: Option<Vec<(String, Expr)>>,
+}
+
+/// An equijoin involving `N` relations. A better input than a folded sequence
+/// of [binary `EquiJoin`s](EquiJoinExpr) for worst-case optimal join algorithms
+/// (such as the leapfrog triejoin).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiWayEquiJoin {
+    /// The `N` relations which participate in the join. Each [`Expr`] must
+    /// evaluate to a relation.
+    pub relations: Vec<Expr>,
+    /// Each entry in the outer vector corresponds to a variable which must be
+    /// equal among all its occurrences. The inner vector vector tracks the
+    /// occurrences for each variable. The inner vector is _guaranteed_ to have
+    /// the same arity as the [`relations`](Self::relations) vector. An entry
+    /// at index `i` in the inner vector with value `None` indicates that the
+    /// corresponding relation ([`relations[i]`](Self::relations)) does _not_
+    /// bind the variable, whereas a value of [`Some(Expr)`](Expr) binds the
+    /// variable to the value of the `Expr` evaluated in the context of the
+    /// corresponding relation (which is again [`relations[i]`](Self::relations)).
+    ///
+    /// If `on` is empty, a [`CartesianProduct`](CartesianProductExpr) is computed.
+    pub on: Vec<Vec<Option<Expr>>>,
     /// An optional projection step. See documentation of [`ProjectionExpr`].
     pub attributes: Option<Vec<(String, Expr)>>,
 }
@@ -275,6 +305,7 @@ pub struct AntiJoinExpr {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ThetaJoinExpr {
+    // Can be subsumed by the EquiJoin/MultiWayJoin, but better
     /// Must evaluate to a relation.
     pub left: Expr,
     /// Must evaluate to a relation.
@@ -334,6 +365,7 @@ pub trait RelExprVisitor<T, C> {
             RelExpr::Projection(expr) => self.visit_projection_expr(expr, ctx),
             RelExpr::CartesianProduct(expr) => self.visit_cartesian_product_expr(expr, ctx),
             RelExpr::EquiJoin(expr) => self.visit_equi_join_expr(expr, ctx),
+            RelExpr::MultiWayEquiJoin(expr) => self.visit_multi_way_equi_join_expr(expr, ctx),
             RelExpr::AntiJoin(expr) => self.visit_anti_join_expr(expr, ctx),
             RelExpr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(expr, ctx),
         }
@@ -348,6 +380,7 @@ pub trait RelExprVisitor<T, C> {
     fn visit_projection_expr(&mut self, expr: &ProjectionExpr, ctx: C) -> T;
     fn visit_cartesian_product_expr(&mut self, expr: &CartesianProductExpr, ctx: C) -> T;
     fn visit_equi_join_expr(&mut self, expr: &EquiJoinExpr, ctx: C) -> T;
+    fn visit_multi_way_equi_join_expr(&mut self, expr: &MultiWayEquiJoin, ctx: C) -> T;
     fn visit_anti_join_expr(&mut self, expr: &AntiJoinExpr, ctx: C) -> T;
     fn visit_fixed_point_iter_expr(&mut self, expr: &FixedPointIterExpr, ctx: C) -> T;
 }
@@ -365,6 +398,7 @@ pub trait RelExprVisitorMut<T, C> {
             RelExpr::Projection(expr) => self.visit_projection_expr(expr, ctx),
             RelExpr::CartesianProduct(expr) => self.visit_cartesian_product_expr(expr, ctx),
             RelExpr::EquiJoin(expr) => self.visit_equi_join_expr(expr, ctx),
+            RelExpr::MultiWayEquiJoin(expr) => self.visit_multi_way_equi_join_expr(expr, ctx),
             RelExpr::AntiJoin(expr) => self.visit_anti_join_expr(expr, ctx),
             RelExpr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(expr, ctx),
         }
@@ -379,6 +413,7 @@ pub trait RelExprVisitorMut<T, C> {
     fn visit_projection_expr(&mut self, expr: &mut ProjectionExpr, ctx: C) -> T;
     fn visit_cartesian_product_expr(&mut self, expr: &mut CartesianProductExpr, ctx: C) -> T;
     fn visit_equi_join_expr(&mut self, expr: &mut EquiJoinExpr, ctx: C) -> T;
+    fn visit_multi_way_equi_join_expr(&mut self, expr: &mut MultiWayEquiJoin, ctx: C) -> T;
     fn visit_anti_join_expr(&mut self, expr: &mut AntiJoinExpr, ctx: C) -> T;
     fn visit_fixed_point_iter_expr(&mut self, expr: &mut FixedPointIterExpr, ctx: C) -> T;
 }
@@ -396,6 +431,7 @@ pub trait RelExprVisitorOwn<T, C> {
             RelExpr::Projection(expr) => self.visit_projection_expr(*expr, ctx),
             RelExpr::CartesianProduct(expr) => self.visit_cartesian_product_expr(*expr, ctx),
             RelExpr::EquiJoin(expr) => self.visit_equi_join_expr(*expr, ctx),
+            RelExpr::MultiWayEquiJoin(expr) => self.visit_multi_way_equi_join_expr(*expr, ctx),
             RelExpr::AntiJoin(expr) => self.visit_anti_join_expr(*expr, ctx),
             RelExpr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(*expr, ctx),
         }
@@ -410,6 +446,7 @@ pub trait RelExprVisitorOwn<T, C> {
     fn visit_projection_expr(&mut self, expr: ProjectionExpr, ctx: C) -> T;
     fn visit_cartesian_product_expr(&mut self, expr: CartesianProductExpr, ctx: C) -> T;
     fn visit_equi_join_expr(&mut self, expr: EquiJoinExpr, ctx: C) -> T;
+    fn visit_multi_way_equi_join_expr(&mut self, expr: MultiWayEquiJoin, ctx: C) -> T;
     fn visit_anti_join_expr(&mut self, expr: AntiJoinExpr, ctx: C) -> T;
     fn visit_fixed_point_iter_expr(&mut self, expr: FixedPointIterExpr, ctx: C) -> T;
 }
@@ -425,6 +462,7 @@ impl MemAddr for SelectionExpr {}
 impl MemAddr for ProjectionExpr {}
 impl MemAddr for CartesianProductExpr {}
 impl MemAddr for EquiJoinExpr {}
+impl MemAddr for MultiWayEquiJoin {}
 impl MemAddr for AntiJoinExpr {}
 impl MemAddr for ThetaJoinExpr {}
 impl MemAddr for FixedPointIterExpr {}
