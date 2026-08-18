@@ -17,7 +17,7 @@ pub type QName = Vec<String>;
 pub struct Path(pub Vec<QName>);
 
 /// A column name is given by a [`Path`].
-type ColName = Path;
+pub type ColName = Path;
 
 /// An index into the [`varNames`](Rule::var_names) and
 /// [`varTypes`](Rule::var_types) arrays of a [`Rule`].
