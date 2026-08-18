@@ -110,11 +110,7 @@ impl From<&ir::TableEntry> for Option<BaseTableSchema> {
                             .iter()
                             .position(|column| column.path == *primary_key_column)
                             .map(|idx| CompilerColIdx::Column(idx as u64))
-                            .expect(
-                                &format!(
-                                    "Primary key column {primary_key_column} not found in base table {path}",
-                                )
-                            )
+                            .unwrap_or_else(|| panic!("Primary key column {primary_key_column} not found in base table {path}"))
                     })
                     .collect::<Vec<_>>()
             });
@@ -320,7 +316,7 @@ impl From<&[CompilerCol]> for StoreEngineCols {
             let name = col.name.clone();
             let (first, second) = match &col.ty {
                 ir::ColType::RowId { path } => {
-                    let [hash_col, ctr_col] = StoreEngineCols::foreign_key_cols(&name, &path);
+                    let [hash_col, ctr_col] = StoreEngineCols::foreign_key_cols(&name, path);
                     (hash_col, Some(ctr_col))
                 }
                 ir::ColType::BuiltinTy { builtin_ty } => (

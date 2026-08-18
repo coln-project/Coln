@@ -26,9 +26,9 @@ impl Path {
     }
 }
 
-impl Into<String> for Path {
-    fn into(self) -> String {
-        self.to_string()
+impl From<Path> for String {
+    fn from(value: Path) -> Self {
+        value.to_string()
     }
 }
 
