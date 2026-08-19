@@ -164,6 +164,11 @@ impl Store {
         self.table_at(table_path).map(|table| table.table_scan())
     }
 
+    pub fn json_ir(&self) -> Result<String, StoreError> {
+        let realm = self.commits.root_commit()?.root_payload()?;
+        Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
+    }
+
     pub(crate) fn canonical_row_id(&self, row_id: RowId) -> Option<RowId> {
         let packed = self.id_packer.lookup_row_id(row_id)?;
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);

@@ -16,7 +16,7 @@ use crate::repl::ShellMode;
 
 const COMMANDS: &[&str] = &[
     ".help", ".exit", ".quit", ".load", ".open", ".save", ".tables", ".rules", ".schema", ".dump",
-    "add", "begin",
+    "add", "begin", "ir",
 ];
 
 const PATH_COMMANDS: &[&str] = &[".load", ".open", ".save"];
