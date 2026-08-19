@@ -320,7 +320,7 @@ mod transactions {
     fn leaves_store_unchanged_when_rules_fail() {
         let theory = link_foreign_key_theory();
         let link = Path::from("Link");
-        let mut store = Store::try_from_theory(theory).expect("theory");
+        let mut store = Store::try_from_ir(theory).expect("theory");
         let packed_id_count = store.id_packer.len();
 
         let mut txn = store.transaction();
@@ -340,7 +340,7 @@ mod transactions {
     fn owned_transaction_commit_err_returns_original_store() {
         let theory = link_foreign_key_theory();
         let link = Path::from("Link");
-        let store = Store::try_from_theory(theory).expect("theory");
+        let store = Store::try_from_ir(theory).expect("theory");
 
         let mut tx = OwnedTransaction::new(store);
         tx.add(&link, vec![10_i64.into(), 20_i64.into()])

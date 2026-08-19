@@ -13,7 +13,6 @@ use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
-use crate::commit::wire::root::{RootCommitData, RootTableEntry};
 use crate::id_packer::{IdPacker, IdPackerSnapshot};
 use crate::ir::{self, FlatRealm, RuleEntry};
 use crate::rollback::Rollback;
@@ -102,8 +101,11 @@ impl Rollback for Store {
 impl Store {
     // Constructors and basic accessors
     pub fn new() -> Self {
-        let commits =
-            Self::root_commit_graph(&HashMap::new(), &[]).expect("empty root commit should build");
+        let commits = Self::graph_with_root_commit(&FlatRealm {
+            tables: Vec::new(),
+            rules: Vec::new(),
+        })
+        .expect("empty root commit should build");
         Self {
             next_oid: 0,
             path_to_oid: HashMap::new(),
@@ -191,55 +193,9 @@ impl Store {
 impl Store {
     // create stores from theory and transactions on stores
 
-    /// Create a store from a root commit. A root commit contains all the necessary
-    /// information about schema and laws for the store to generate the right shape
-    /// of tables.
-    pub(crate) fn from_root_commit_data(
-        next_oid: TableOid,
-        root: RootCommitData,
-    ) -> Result<Self, CompileError> {
-        let mut path_to_oid = HashMap::new();
-        let mut tables_map = HashMap::new();
-        for entry in root.tables {
-            let path = ir::Path::from(entry.path.as_str());
-            path_to_oid.insert(path.clone(), entry.oid);
-            tables_map.insert(entry.oid, Table::new(path, entry.oid, entry.schema));
-        }
-
-        let rules = Store::compile_rules(&root.laws)?;
-        Ok(Self {
-            next_oid,
-            path_to_oid,
-            tables: tables_map,
-            id_packer: IdPacker::new(),
-            rule_entries: root.laws,
-            rules,
-            commits: CommitGraph::new(),
-            rowing: rowing::Rowing::new(),
-        })
-    }
-
-    fn root_commit_graph(
-        tables: &HashMap<TableOid, Table>,
-        rule_entries: &[RuleEntry],
-    ) -> Result<CommitGraph, CodecError> {
-        let mut table_entries = tables
-            .iter()
-            .map(|(&oid, table)| RootTableEntry {
-                path: table.path().to_string(),
-                oid,
-                schema: table.schema().clone(),
-            })
-            .collect::<Vec<_>>();
-        table_entries.sort_by_key(|entry| entry.oid);
-
-        let root = RootCommitData {
-            tables: table_entries,
-            laws: rule_entries.to_vec(),
-        };
-
+    fn graph_with_root_commit(ir: &FlatRealm) -> Result<CommitGraph, CodecError> {
         let mut graph = CommitGraph::new();
-        graph.add_commit(Commit::from_root_data(&root)?);
+        graph.add_commit(Commit::from_root_data(ir)?);
         Ok(graph)
     }
 
@@ -254,7 +210,26 @@ impl Store {
         self.next_oid = self.next_oid.saturating_add(1);
         self.path_to_oid.insert(path.clone(), oid);
         self.tables.insert(oid, Table::new(path, oid, schema));
-        self.commits = Self::root_commit_graph(&self.tables, &self.rule_entries)?;
+
+        let mut tables: Vec<_> = self
+            .tables
+            .values()
+            .map(|table| {
+                (
+                    table.oid(),
+                    ir::TableEntry {
+                        path: table.path().clone(),
+                        table: table.schema().clone(),
+                    },
+                )
+            })
+            .collect();
+        tables.sort_by_key(|(oid, _)| *oid);
+        let ir = FlatRealm {
+            tables: tables.into_iter().map(|(_, entry)| entry).collect(),
+            rules: self.rule_entries.clone(),
+        };
+        self.commits = Self::graph_with_root_commit(&ir)?;
         Ok(oid)
     }
 
@@ -268,11 +243,10 @@ impl Store {
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
-    pub fn try_from_theory(theory: FlatRealm) -> Result<Self, StoreIntError> {
-        let FlatRealm { tables, rules } = theory;
+    pub fn try_from_ir(ir: FlatRealm) -> Result<Self, StoreIntError> {
         info!(
-            table_count = tables.len(),
-            rule_count = rules.len(),
+            table_count = ir.tables.len(),
+            rule_count = ir.rules.len(),
             "building store from theory"
         );
 
@@ -280,26 +254,25 @@ impl Store {
         let mut path_to_oid = HashMap::new();
         let mut tables_map = HashMap::new();
 
-        for entry in tables {
+        for entry in &ir.tables {
             let oid = next_oid;
             next_oid = next_oid.saturating_add(1);
             path_to_oid.insert(entry.path.clone(), oid);
-            tables_map.insert(oid, Table::new(entry.path, oid, entry.table));
+            tables_map.insert(
+                oid,
+                Table::new(entry.path.clone(), oid, entry.table.clone()),
+            );
         }
 
-        let comp_rules = Store::compile_rules(&rules)?;
-        let commits = Self::root_commit_graph(&tables_map, &rules)?;
-        info!(
-            table_count = tables_map.len(),
-            compiled_rule_count = comp_rules.len(),
-            "store initialized"
-        );
+        let comp_rules = Store::compile_rules(&ir.rules)?;
+        let commits = Self::graph_with_root_commit(&ir)?;
+
         Ok(Self {
             next_oid,
             path_to_oid,
             tables: tables_map,
             id_packer: IdPacker::new(),
-            rule_entries: rules,
+            rule_entries: ir.rules,
             rules: comp_rules,
             commits,
             rowing: rowing::Rowing::new(),

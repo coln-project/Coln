@@ -127,8 +127,7 @@ mod tests {
     use super::*;
     use crate::commit::author::Author;
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::root::{RootCommitData, RootTableEntry};
-    use crate::ir::Schema;
+    use crate::ir::{FlatRealm, Path, Schema, TableEntry};
 
     fn h(n: u8) -> CommitHash {
         CommitHash([n; HASH_SIZE])
@@ -147,17 +146,16 @@ mod tests {
     }
 
     fn root_with_table(oid: usize) -> Commit<'static> {
-        Commit::from_root_data(&RootCommitData {
-            tables: vec![RootTableEntry {
-                path: format!("T{oid}"),
-                oid,
-                schema: Schema {
+        Commit::from_root_data(&FlatRealm {
+            tables: vec![TableEntry {
+                path: Path::from(format!("T{oid}")),
+                table: Schema {
                     entity_variant: EntityVariant::Table,
                     columns: vec![],
                     primary_key: None,
                 },
             }],
-            laws: vec![],
+            rules: vec![],
         })
         .expect("build root commit")
     }

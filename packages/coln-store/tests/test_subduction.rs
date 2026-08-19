@@ -144,8 +144,8 @@ async fn load_coln_chunk_bytes(
 
 #[tokio::test]
 async fn subduction_storage_can_exchange_coln_commit_chunks() -> Result<(), Box<dyn Error>> {
-    let mut left = Store::try_from_theory(int_theory())?;
-    let mut right = Store::try_from_theory(int_theory())?;
+    let mut left = Store::try_from_ir(int_theory())?;
+    let mut right = Store::try_from_ir(int_theory())?;
     let sedimentree_id = sedimentree_id(&left);
 
     let left_commit = add_row(&mut left, 1)?;
@@ -187,8 +187,8 @@ async fn subduction_storage_can_exchange_coln_commit_chunks() -> Result<(), Box<
 
 #[tokio::test]
 async fn subduction_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_theory(int_theory())?;
-    let mut right_store = Store::try_from_theory(int_theory())?;
+    let mut left_store = Store::try_from_ir(int_theory())?;
+    let mut right_store = Store::try_from_ir(int_theory())?;
     let sedimentree_id = sedimentree_id(&left_store);
 
     let left_commit = add_row(&mut left_store, 1)?;
@@ -318,8 +318,8 @@ async fn subduction_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
 #[ignore = "opens localhost sockets and exercises the experimental Subduction WebSocket transport"]
 #[tokio::test(flavor = "multi_thread")]
 async fn subduction_websocket_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_theory(int_theory())?;
-    let mut right_store = Store::try_from_theory(int_theory())?;
+    let mut left_store = Store::try_from_ir(int_theory())?;
+    let mut right_store = Store::try_from_ir(int_theory())?;
     let sedimentree_id = sedimentree_id(&left_store);
     assert_eq!(root_hash(&left_store).0, root_hash(&right_store).0);
 

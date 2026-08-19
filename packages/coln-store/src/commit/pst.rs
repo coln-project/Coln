@@ -10,7 +10,6 @@ use crate::commit::error::CodecError;
 use crate::commit::leb128 as commit_leb128;
 use crate::store::Store;
 use crate::store::error::StoreIntError;
-use crate::table::TableOid;
 
 /// The store magic bytes
 const MAGIC: &[u8; 4] = b"GMst";
@@ -20,15 +19,13 @@ const FORMAT_VERSION: u32 = 2;
 
 /// Store file layout, scalar integers use LEB128:
 ///
-/// `[MAGIC:4][version][next_oid][chunk_count]`
+/// `[MAGIC:4][version][chunk_count]`
 /// `[chunk_count × [chunk_header || payload]]` (see [`Header::write`])
 pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
     let commits = store.commits().iter_topological().collect::<Vec<_>>();
     let mut buf: Vec<u8> = Vec::new();
     buf.write_all(MAGIC)?;
     commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
-    commit_leb128::write_len(&mut buf, store.next_oid);
-
     commit_leb128::write_len(&mut buf, commits.len());
 
     for commit in commits {
@@ -41,11 +38,10 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
 /// Decode a store from bytes produced by [`encode_store`].
 pub fn decode_store(data: &[u8]) -> Result<Store, StoreIntError> {
     let encoded = read_store_envelope(data)?;
-    decode_store_chunks(encoded.next_oid, encoded.chunks)
+    decode_store_chunks(encoded.chunks)
 }
 
 struct EncodedStore {
-    next_oid: TableOid,
     chunks: Vec<Chunk>,
 }
 
@@ -68,8 +64,6 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
         )));
     }
 
-    let next_oid = commit_leb128::read_len(data, &mut pos, "next_oid")?;
-
     let chunk_count = commit_leb128::read_len(data, &mut pos, "chunk count")?;
     let mut chunks = Vec::with_capacity(chunk_count);
     for _ in 0..chunk_count {
@@ -82,14 +76,14 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
         )));
     }
 
-    Ok(EncodedStore { next_oid, chunks })
+    Ok(EncodedStore { chunks })
 }
 
 fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
     Chunk::from(commit).write(buf)
 }
 
-fn decode_store_chunks(next_oid: TableOid, chunks: Vec<Chunk>) -> Result<Store, StoreIntError> {
+fn decode_store_chunks(chunks: Vec<Chunk>) -> Result<Store, StoreIntError> {
     let roots = chunks
         .iter()
         .filter(|chunk| chunk.chunk_type() == ChunkType::Root)
@@ -105,8 +99,7 @@ fn decode_store_chunks(next_oid: TableOid, chunks: Vec<Chunk>) -> Result<Store, 
 
     let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
     let root_payload = root_commit.root_payload()?;
-    let mut store = Store::from_root_commit_data(next_oid, root_payload)?;
-    store.record_in_commit_graph(root_commit);
+    let mut store = Store::try_from_ir(root_payload)?;
 
     let mut commits = Vec::new();
     for chunk in chunks {
@@ -166,7 +159,6 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
         commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
-        commit_leb128::write_u64(&mut bytes, 0);
         commit_leb128::write_len(&mut bytes, framed_chunks.len());
         for chunk in framed_chunks {
             bytes.write_all(chunk).unwrap();
@@ -242,7 +234,7 @@ mod tests {
 
     #[test]
     fn encode_store_writes_topological_commit_chunks() {
-        let mut store = Store::try_from_theory(int_theory()).expect("store");
+        let mut store = Store::try_from_ir(int_theory()).expect("store");
         let table = Path::from("T");
         let mut txn = store.transaction();
         txn.add(&table, vec![99_i64.into()]).expect("add row");
@@ -285,7 +277,6 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
         commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
-        commit_leb128::write_u64(&mut bytes, 0);
         commit_leb128::write_len(&mut bytes, 1);
         bytes.write_all(&[0x47]).unwrap(); // partial chunk: not even a full magic
 
@@ -382,7 +373,7 @@ mod tests {
 
     #[test]
     fn store_round_trip_replays_commits_and_preserves_graph() {
-        let mut store = Store::try_from_theory(int_theory()).expect("store");
+        let mut store = Store::try_from_ir(int_theory()).expect("store");
         let root = store.commits().root_commit().expect("root").hash();
         let table = Path::from("T");
         let mut txn = store.transaction();
@@ -411,7 +402,6 @@ mod tests {
         let mut bytes = Vec::new();
         bytes.write_all(MAGIC).unwrap();
         commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
-        commit_leb128::write_u64(&mut bytes, 0);
         commit_leb128::write_len(&mut bytes, 0);
 
         assert!(is_data_format_error(decode_store(&bytes)));

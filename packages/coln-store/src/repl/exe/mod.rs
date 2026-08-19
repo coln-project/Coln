@@ -311,7 +311,7 @@ pub fn load_schema(path: &Path) -> Result<LoadedState> {
     let theory: FlatRealm = serde_json::from_str(&input)
         .with_context(|| format!("failed to parse schema {}", path.display()))?;
     let summary = SchemaSummary::from_theory(path.to_path_buf(), &theory);
-    let store = Store::try_from_theory(theory)?;
+    let store = Store::try_from_ir(theory)?;
     Ok(LoadedState {
         store,
         schema: summary,
