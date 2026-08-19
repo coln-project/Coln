@@ -25,10 +25,10 @@ class Core el ty | el -> ty, ty -> el where
   localVar :: BId -> V.El N -> el N
   globalVar :: Name -> V.El N -> el N
   code :: (V.HasEvaluation c) => Universe -> ty c -> el c
-  app :: el N -> el N -> el N
-  lam :: (V.HasEvaluation c) => V.Locals -> ty N -> S.Abs el c -> el c
-  cons :: (V.HasEvaluation c) => Dict (el c) -> el c
-  proj :: el N -> Name -> el N
+  app :: FunctionVariant -> el N -> el N -> el N
+  lam :: (V.HasEvaluation c) => FunctionVariant -> V.Locals -> ty N -> S.Abs el c -> el c
+  cons :: (V.HasEvaluation c) => Level -> Dict (el c) -> el c
+  proj :: Level -> el N -> Name -> el N
   init :: ty N -> el D
   lit :: Literal -> el N
   is :: el N -> el D
@@ -44,17 +44,17 @@ instance Core El Ty where
   localVar i v = M (S.LocalVar i) v
   globalVar x v = M (S.GlobalVar x v) v
   code u t = M (S.Code u t.stx) (V.emap (V.Code u) t.val)
-  app f x = M (S.App f.stx x.stx) (V.app f.val x.val)
-  lam vs dom (S.Abs x body) =
+  app fv f x = M (S.App fv f.stx x.stx) (V.app fv f.val x.val)
+  lam fv vs dom (S.Abs x body) =
     M
-      (S.Lam dom.stx (S.Abs x body.stx))
-      (V.epure $ V.Lam dom.val (V.Clo x vs (compile body.stx)))
-  lam _ dom (S.AbsConst body) =
+      (S.Lam fv dom.stx (S.Abs x body.stx))
+      (V.epure $ V.Lam fv dom.val (V.Clo x vs (compile body.stx)))
+  lam fv _ dom (S.AbsConst body) =
     M
-      (S.Lam dom.stx (S.AbsConst body.stx))
-      (V.epure $ V.Lam dom.val (V.CloConst body.val))
-  cons d = M (S.Cons $ (.stx) <$> d) (V.epure $ V.Cons $ (.val) <$> d)
-  proj x f = M (S.Proj x.stx f) (V.proj x.val f)
+      (S.Lam fv dom.stx (S.AbsConst body.stx))
+      (V.epure $ V.Lam fv dom.val (V.CloConst body.val))
+  cons l d = M (S.Cons l $ (.stx) <$> d) (V.epure $ V.Cons l $ (.val) <$> d)
+  proj l x f = M (S.Proj l x.stx f) (V.proj x.val f)
   init a =
     M (S.Init a.stx) (V.BecomeWith $ \n -> V.InitNeu (V.InitNeutral n a.val V.Id))
   lit l = M (S.Lit l) (V.Lit l)

@@ -29,18 +29,18 @@ instance Compile S.El V.El where
     S.LocalVar i -> (`elemAt` i)
     S.GlobalVar _ v -> const v
     S.Code u a -> V.emap (V.Code u) . compile a
-    S.App t0 t1 -> do
+    S.App fv t0 t1 -> do
       let k0 = compile t0
       let k1 = compile t1
-      \vs -> V.app (k0 vs) (k1 vs)
-    S.Lam dom abs -> do
+      \vs -> V.app fv (k0 vs) (k1 vs)
+    S.Lam fv dom abs -> do
       let k_dom = compile dom
       let k_clo = compileAbs abs
-      \vs -> V.epure $ V.Lam (k_dom vs) (k_clo vs)
-    S.Cons fields -> do
+      \vs -> V.epure $ V.Lam fv (k_dom vs) (k_clo vs)
+    S.Cons l fields -> do
       let k_fields = compile <$> fields
-      \vs -> V.epure $ V.Cons $ ($ vs) <$> k_fields
-    S.Proj t x -> do
+      \vs -> V.epure $ V.Cons l $ ($ vs) <$> k_fields
+    S.Proj _ t x -> do
       let k = compile t
       \vs -> V.proj (k vs) x
     S.Init t -> do
@@ -50,10 +50,6 @@ instance Compile S.El V.El where
     S.Is t -> do
       let k = compile t
       V.Become . k
-    S.Lookup x ts a -> do
-      let kts = compile <$> ts
-      let ka = compile a
-      \vs -> V.tableLookup x (fmap (\kt -> kt vs) kts) (ka vs)
 
 compileFunctionType :: S.FunctionType S.Ty -> V.Locals -> V.FunctionType
 compileFunctionType ft = do
@@ -86,6 +82,3 @@ instance Compile S.Ty V.Ty where
     S.IsTy a -> do
       let k = compile a
       V.Become . k
-    S.EltOf x ts -> do
-      let k = compile <$> ts
-      \vs -> V.EltOf x $ ($ vs) <$> k

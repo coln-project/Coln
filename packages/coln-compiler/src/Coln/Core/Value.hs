@@ -76,18 +76,17 @@ appClo (CloConst body) _ = body
 
 data Spine
   = Id
-  | App Spine (El N)
-  | Proj Spine Name
+  | App FunctionVariant Spine (El N)
+  | Proj Level Spine Name
 
 composeSpines :: Spine -> Spine -> Spine
 composeSpines s Id = s
-composeSpines s (App s' v) = App (composeSpines s s') v
-composeSpines s (Proj s' x) = Proj (composeSpines s s') x
+composeSpines s (App fv s' v) = App fv (composeSpines s s') v
+composeSpines s (Proj l s' x) = Proj l (composeSpines s s') x
 
 data Head
   = LocalVar FId
   | GlobalVar Name ~(El N)
-  | Lookup TableName (Dict (El N)) ~(Ty N)
 
 data Expansion
   = IntoCons (Dict (El N))
@@ -110,7 +109,7 @@ expandRecord recordType head spine desc = do
   let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
       go _ [] = []
       go vs ((x, ty) : rest) = do
-        let v = reflect head (Proj spine x) (ty vs) ((`proj` x) <$> desc)
+        let v = reflect head (Proj recordType.level spine x) (ty vs) ((`proj` x) <$> desc)
         v : go (LSnoc vs v) rest
   let tele = recordType.fieldTypes
   Dict
@@ -133,9 +132,6 @@ reflect head spine ~ty edesc = do
 
 local :: FId -> Ty N -> El N
 local i a = reflect (LocalVar i) Id a Nothing
-
-tableLookup :: TableName -> Dict (El N) -> Ty N -> El N
-tableLookup x vs a = reflect (Lookup x vs a) Id a Nothing
 
 data DecodedNeutral = DecodedNeutral
   { head :: Head
@@ -174,18 +170,18 @@ data El :: Case -> Type where
   Neu :: Neutral -> El N
   InitNeu :: InitNeutral -> El N
   Code :: Universe -> Ty c -> El c
-  Lam :: ~(Ty N) -> Clo El c -> El c
-  Cons :: Dict (Evaluation El c) -> El c
+  Lam :: FunctionVariant -> ~(Ty N) -> Clo El c -> El c
+  Cons :: Level -> Dict (Evaluation El c) -> El c
   Lit :: Literal -> El N
 
-app :: El c -> El N -> Evaluation El c
-app (Lam _ clo) arg = appClo clo arg
-app (Neu n) arg =
-  reflect n.head (App n.spine arg) (appTy n.ty arg) ((`app` arg) <$> n.description)
-app _ _ = panic "ill-typed application"
+app :: FunctionVariant -> El c -> El N -> Evaluation El c
+app _ (Lam _ _ clo) arg = appClo clo arg
+app fv (Neu n) arg =
+  reflect n.head (App fv n.spine arg) (appTy n.ty arg) ((flip (app fv) arg) <$> n.description)
+app _ _ _ = panic "ill-typed application"
 
 coerceToFields :: El c -> Dict (Evaluation El c)
-coerceToFields (Cons fields) = fields
+coerceToFields (Cons _ fields) = fields
 coerceToFields (Neu n) = case n.expansion of
   IntoCons fields -> fields
   _ -> panic "unexpanded neutral of record type"
@@ -235,7 +231,6 @@ data Ty :: Case -> Type where
   Record :: RecordType -> Ty D
   Eq :: EqualityType -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
-  EltOf :: TableName -> Dict (El N) -> Ty N
 
 instance DebugVal (Ty c) where
   debugVal = \case
@@ -246,7 +241,6 @@ instance DebugVal (Ty c) where
     Record _ -> "Record"
     Eq _ -> "Eq"
     BuiltinTy _ -> "BuiltinTy"
-    EltOf _ _ -> "EltOf"
 
 instance LevelOf (Ty c) where
   levelOf = \case
@@ -257,7 +251,6 @@ instance LevelOf (Ty c) where
     InitDecode _ -> Level Set HSet
     Eq ety -> Level (levelOf ety.at).mlevel (equalityHLevelOf (levelOf ety.at).hlevel)
     BuiltinTy _ -> Level Set HSet -- Only Int/String so far
-    EltOf _ _ -> Level Set HSet -- TODO
 
 behavior :: Ty c -> TypeBehavior
 behavior = \case
@@ -270,7 +263,6 @@ behavior = \case
   Record rt -> LikeRecord rt
   Eq _ -> NoRules
   BuiltinTy bty -> LikeBuiltinTy bty
-  EltOf _ _ -> NoRules
 
 decode :: (HasEvaluation c) => El c -> Evaluation Ty c
 decode (Code _ a) = epure a

@@ -3,72 +3,65 @@ module Coln.MIR.Interpret where
 -- Interpret Core syntax into MIR values
 import Coln.Common
 
-import Coln.MIR.Value qualified as MV
-import Coln.Core.Syntax qualified as CS
-import Coln.Core.Globals
+import Coln.MIR.Value qualified as V
+import Coln.MIR.Params
+import Coln.Core.Syntax qualified as S
 import Coln.Core.Params
-import Coln.Core.Memoed (Memoed (..))
 
--- No FunctionalDependency here, because we interpret syntax into different
--- parts!
-class Interp a b where
-  interp :: Globals -> MV.Locals -> a -> b
+class Interp a (f :: MLevel -> Type) | a -> f where
+  interp :: V.Globals -> V.Locals -> a -> Match SMLevel f
 
--- We need to plumb through more information about variants in the syntax.
---
--- Universe for Code
--- FunctionVariant for Lam/App
--- Level for Cons/Proj
+interpAt :: (Interp a f, LevelCoerce f) => SMLevel l -> V.Globals -> V.Locals -> a -> f l
+interpAt l0 g e t = case interp g e t of
+  Pair l1 v -> levelCoerce l1 l0 v
 
--- This probably needs to also go through values.
+-- Should this also be "compile"?
 
--- Alternatives:
--- - Coercion from TopLam and TheoryCode downward
---
--- Arguably, the "right" way to do this is to plumb through that information.
--- Or rather... looking at the SOGAT, this information is *not* part of the syntax
--- for function/records, but *is* for universe operations.
--- Which implies that we should plumb through for Code/Decode, but not for
--- Lam/App/Cons/Proj...
+instance Interp (S.El c) V.El where
+  interp g e = \case
+    S.LocalVar i -> elemAt e i
+    S.GlobalVar x _ -> elemAt g x
+    S.Code u a -> withUniverse u $ \su -> do
+      let (l0, l1) = (sDecodesInto su, sCodesInto su)
+      Pair l1 (V.Code su (interpAt l0 g e a))
+    S.Lam fv _ abs -> withFunctionVariant fv.mlevel $ \sfv -> do
+      let (d, c) = (sDom sfv, sCod sfv)
+      let clo = case abs of
+            S.Abs x body -> V.Clo x (\v -> interpAt c g (e :> Pair d v) body)
+            S.AbsConst body -> V.CloConst (interpAt c g e body)
+      Pair c (V.Lam sfv clo)
+    S.App fv t0 t1 -> withFunctionVariant fv.mlevel $ \sfv -> do
+      let (d, c) = (sDom sfv, sCod sfv)
+      Pair c (V.app sfv (interpAt c g e t0) (interpAt d g e t1))
+    S.Cons l fields -> withLevel l.mlevel $ \sl -> do
+      let fields' = interpAt sl g e <$> fields
+      Pair sl (V.Cons fields')
+    S.Proj l t0 x -> withLevel l.mlevel $ \sl -> do
+      let v = interpAt sl g e t0
+      Pair sl (V.proj v x)
+    S.Init _ -> panic "cannot interpret init yet"
+    S.Lit l -> Pair SSet (V.Lit l)
+    S.Is t -> interp g e t
 
--- I guess we are, in a sense, *always* in checking mode?
--- Let's try coercion
-
--- Another option: bidirectional
--- Another option: GADT
-
-interpAbs :: (Interp (f c) b) => Globals -> MV.Locals -> CS.Abs f c -> MV.Clo b
-interpAbs g l (CS.Abs x body) = MV.Clo x (\v -> interp g (l :> v) body)
-interpAbs g l (CS.AbsConst t) = MV.CloConst (interp g l t)
-
-appClo :: MV.Clo b -> MV.Model -> b
-appClo (MV.Clo _ f) v = f v
-appClo (MV.CloConst v) _ = v
-
-app :: MV.Top -> MV.Top -> MV.Top
-app f v  = case v of
-  MV.Model v -> case f of
-    MV.TopLam f -> appClo f v
-    MV.Model (MV.Lam f) -> MV.Model $ appClo f v
-    _ -> panic "expected lambda"
-  _ -> panic "cannot apply function to non-model value"
-
-instance Interp (CS.El c) MV.Top where
-  interp g l = \case
-    CS.LocalVar i -> MV.Model $ elemAt l i
-    CS.GlobalVar x _ -> do
-      let def = elemAt g.definitions x
-      interp g l def.body.stx
-    CS.Code u a -> case u of
-      (PropU; SetU) -> MV.Model $ MV.All $ interp g l a
-      TheoryU -> MV.TheoryCode $ interp g l a
-    CS.Lam _ abs -> MV.TopLam $ interpAbs g l abs
-    CS.App t0 t1 -> app (interp g l t0) (interp g l t1)
-    CS.Cons fields -> 
-      
-
-instance Interp (CS.Ty c) MV.Ty where
-  interp = undefined
-
-instance Interp (CS.Ty c) MV.Theory where
-  interp = undefined
+instance Interp (S.Ty c) V.Ty where
+  interp g e = \case
+    S.U u -> withUniverse u $ \su -> Pair (sCodesInto su) (V.U su)
+    S.Decode u t -> withUniverse u $ \su ->
+      Pair (sDecodesInto su) (V.decode su (interpAt (sCodesInto su) g e t))
+    S.Function ft -> withFunctionVariant ft.variant.mlevel $ \sfv -> do
+      let (d, c) = (sDom sfv, sCod sfv)
+      let dom = interpAt d g e ft.dom
+      let cod = case ft.cod of
+            S.Abs x body -> V.Clo x (\v -> interpAt c g (e :> Pair d v) body)
+            S.AbsConst body -> V.CloConst (interpAt c g e body)
+      Pair c (V.Function (V.FunctionType sfv dom cod))
+    S.Record rt -> withLevel rt.level.mlevel $ \sl -> do
+      let rt' = V.RecordType e (flip (interpAt sl g) <$> rt.fieldTypes)
+      Pair sl (V.Record rt')
+    S.Eq et -> do
+      let at = interpAt SSet g e et.at
+      let (lhs, rhs) = (interpAt SSet g e et.lhs, interpAt SSet g e et.rhs)
+      Pair SSet $ V.Eq at lhs rhs
+    S.BuiltinTy t -> do
+      Pair SSet $ V.BuiltinTy t
+    S.IsTy t -> interp g e t

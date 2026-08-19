@@ -37,6 +37,7 @@ module Coln.Common (
   alphaNames,
   freshNameFor,
   freshNamesFor,
+  Match (..),
   mangleToDoc,
   mangleToString,
   fromShow,
@@ -282,11 +283,20 @@ instance HasNames (Dict a) where
 instance HasNames [Name] where
   namesIn xs = Set.fromList xs
 
+instance HasNames (Set.Set Name) where
+  namesIn = id
+
 freshNamesFor :: (HasNames a) => a -> [Name]
 freshNamesFor a = flip filter alphaNames $ flip Set.notMember $ namesIn a
 
 freshNameFor :: (HasNames a) => a -> Name
 freshNameFor = head . freshNamesFor
+
+-- Any
+--------------------------------------------------------------------------------
+
+data Match (f :: k -> Type) (g :: k -> Type) where
+  Pair :: f i -> g i -> Match f g
 
 -- Misc
 --------------------------------------------------------------------------------
