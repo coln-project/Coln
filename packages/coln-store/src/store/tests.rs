@@ -251,7 +251,7 @@ mod transactions {
 
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::UnknownTable { .. })
+            StoreError::Validation(ValidationError::UnknownTable { .. })
         ));
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
     }
@@ -283,7 +283,7 @@ mod transactions {
 
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
         ));
         assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
     }
@@ -331,7 +331,7 @@ mod transactions {
         .expect("add");
         let err = txn.commit().unwrap_err();
 
-        assert!(matches!(err, StoreIntError::Rule(_)));
+        assert!(matches!(err, StoreError::Rule(_)));
         assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
         assert_eq!(store.id_packer.len(), packed_id_count);
     }
@@ -347,7 +347,7 @@ mod transactions {
             .expect("add");
 
         let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(err, StoreIntError::Rule(_)));
+        assert!(matches!(err, StoreError::Rule(_)));
         assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
     }
 }
@@ -765,7 +765,7 @@ mod rowing {
         let err = second.commit().unwrap_err();
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
         ));
 
         // The rejected commit rolls back whole, including Term(4), which was
@@ -896,7 +896,7 @@ mod commits {
 
         assert!(matches!(
             err,
-            StoreIntError::Commit(CommitApplyError::MissingDep)
+            StoreError::Commit(CommitApplyError::MissingDep)
         ));
         assert_eq!(
             target
@@ -913,16 +913,16 @@ mod errors {
 
     #[test]
     fn apply_error_from_inner_errors() {
-        let validation = StoreIntError::from(ValidationError::DuplicatePrimaryKey);
+        let validation = StoreError::from(ValidationError::DuplicatePrimaryKey);
         assert!(matches!(
             validation,
-            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
         ));
 
-        let compile = StoreIntError::from(CompileError::UnsupportedTerm);
+        let compile = StoreError::from(CompileError::UnsupportedTerm);
         assert!(matches!(
             compile,
-            StoreIntError::Compile(CompileError::UnsupportedTerm)
+            StoreError::Compile(CompileError::UnsupportedTerm)
         ));
 
         let compiled_rule = solver::compile::CompRule {
@@ -942,7 +942,7 @@ mod errors {
             }),
             binding: vec![],
         };
-        let rule = StoreIntError::from(Box::new(violation));
-        assert!(matches!(rule, StoreIntError::Rule(_)));
+        let rule = StoreError::from(Box::new(violation));
+        assert!(matches!(rule, StoreError::Rule(_)));
     }
 }

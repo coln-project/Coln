@@ -7,7 +7,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     commit::hash::CommitHash,
     op::Op,
-    store::error::StoreIntError,
+    store::error::StoreError,
     table::{CellValue, RowId, TableOid, ValidationError},
 };
 
@@ -47,7 +47,7 @@ pub struct RowHandle {
 }
 
 impl RowHandle {
-    pub fn row_id(&self) -> Result<RowId, StoreIntError> {
+    pub fn row_id(&self) -> Result<RowId, StoreError> {
         match &*self.state.borrow() {
             RowHandleState::Existing(row_id) => Ok(*row_id),
             RowHandleState::Pending { .. } => Err(ValidationError::InvalidRowHandle {
@@ -63,7 +63,7 @@ impl RowHandle {
 
     /// For FFI authors only
     #[doc(hidden)]
-    pub fn pending_ids(&self) -> Result<(u64, u32), StoreIntError> {
+    pub fn pending_ids(&self) -> Result<(u64, u32), StoreError> {
         match *self.state.borrow() {
             RowHandleState::Pending { tx_id, counter } => Ok((tx_id.as_u64(), counter)),
             _ => Err(ValidationError::InvalidRowHandle {
@@ -73,7 +73,7 @@ impl RowHandle {
         }
     }
 
-    pub(crate) fn canonicalise(&self, new_row_id: RowId) -> Result<(), StoreIntError> {
+    pub(crate) fn canonicalise(&self, new_row_id: RowId) -> Result<(), StoreError> {
         let mut state = self.state.borrow_mut();
         match &*state {
             RowHandleState::Existing(..) => {
@@ -90,7 +90,7 @@ impl RowHandle {
     pub(crate) fn to_txn_cell_value(
         &self,
         current_tx: TxnId,
-    ) -> Result<TxnCellValue, StoreIntError> {
+    ) -> Result<TxnCellValue, StoreError> {
         match &*self.state.borrow() {
             RowHandleState::Existing(row_id) => Ok(TxnCellValue::Id(RowRef::Existing(*row_id))),
             RowHandleState::Pending { tx_id, counter } if *tx_id == current_tx => {
@@ -143,7 +143,7 @@ impl TxnValue {
     pub(crate) fn to_txn_cell_value(
         &self,
         current_tx: TxnId,
-    ) -> Result<TxnCellValue, StoreIntError> {
+    ) -> Result<TxnCellValue, StoreError> {
         match self {
             TxnValue::Id(handle) => handle.to_txn_cell_value(current_tx),
             TxnValue::Int(value) => Ok(TxnCellValue::Int(*value)),

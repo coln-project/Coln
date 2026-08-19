@@ -20,7 +20,7 @@ use crate::rowing::{self, RowingSnapshot};
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
-use crate::store::error::{CommitApplyError, StoreIntError};
+use crate::store::error::{CommitApplyError, StoreError};
 use crate::table::{
     CellValue, RowId, RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError,
 };
@@ -205,7 +205,7 @@ impl Store {
         &mut self,
         path: ir::Path,
         schema: ir::Schema,
-    ) -> Result<TableOid, StoreIntError> {
+    ) -> Result<TableOid, StoreError> {
         let oid = self.next_oid;
         self.next_oid = self.next_oid.saturating_add(1);
         self.path_to_oid.insert(path.clone(), oid);
@@ -243,7 +243,7 @@ impl Store {
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
-    pub fn try_from_ir(ir: FlatRealm) -> Result<Self, StoreIntError> {
+    pub fn try_from_ir(ir: FlatRealm) -> Result<Self, StoreError> {
         info!(
             table_count = ir.tables.len(),
             rule_count = ir.rules.len(),
@@ -292,7 +292,7 @@ impl Store {
         Ok(comp)
     }
 
-    pub fn check_rules(&self) -> Result<(), StoreIntError> {
+    pub fn check_rules(&self) -> Result<(), StoreError> {
         debug!(rule_count = self.rules.len(), "checking rules");
         self.rules()
             .iter()
@@ -371,13 +371,13 @@ impl Store {
             .collect()
     }
 
-    pub fn merge(&mut self, other: &Self) -> Result<Vec<CommitHash>, StoreIntError> {
+    pub fn merge(&mut self, other: &Self) -> Result<Vec<CommitHash>, StoreError> {
         let commits = self.commits_added(other);
         self.apply_commits(commits)?;
         Ok(self.heads())
     }
 
-    pub fn apply_commit(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
+    pub fn apply_commit(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
         // This needs to call apply_commits because it needs to do dependency check
         self.apply_commits([commit])
     }
@@ -385,7 +385,7 @@ impl Store {
     pub fn apply_commits(
         &mut self,
         commits: impl IntoIterator<Item = Commit<'static>>,
-    ) -> Result<(), StoreIntError> {
+    ) -> Result<(), StoreError> {
         let mut pending = HashMap::new();
 
         for commit in commits {
@@ -471,7 +471,7 @@ impl Store {
         Ok(())
     }
 
-    fn apply_commit_atomic(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
+    fn apply_commit_atomic(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
         let snapshot = self.snapshot();
         match self.apply_atomic_inner(commit) {
             Ok(()) => {
@@ -487,7 +487,7 @@ impl Store {
 
     // Apply a commit + and fixpoint rebuilding + rule checking
     // This function is doing the actual work, after a dozen levels of indirection.
-    fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreIntError> {
+    fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
         let commit = self.apply_commit_ready(commit)?;
         self.rebuild_to_fixpoint()?;
         self.check_rules()?;
@@ -497,14 +497,14 @@ impl Store {
 
     /// Rebuild until a pass displaces no further ids, so a commit that merged
     /// nothing does no rebuild work at all.
-    fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreIntError> {
+    fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreError> {
         while self.rowing.has_displaced() {
             self.rebuild_one()?;
         }
         Ok(())
     }
 
-    fn rebuild_one(&mut self) -> Result<(), StoreIntError> {
+    fn rebuild_one(&mut self) -> Result<(), StoreError> {
         for tbl in self.tables.values_mut() {
             tbl.rebuild(&self.rowing, &self.id_packer);
         }
@@ -518,10 +518,7 @@ impl Store {
 
     // Apply a commit with its deps checked to be satisfied
     // The commit data itself might still violate rules, primary key constraints, etc
-    fn apply_commit_ready(
-        &mut self,
-        cmt: Commit<'static>,
-    ) -> Result<Commit<'static>, StoreIntError> {
+    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<Commit<'static>, StoreError> {
         // TODO resolved_ops need to decode data, there is code path which decodes
         // to get ops immediately after a commit has been encoded. Consider optimise this.
 
@@ -541,7 +538,7 @@ impl Store {
     /// the data conforms the the schema type definitions.
     /// But it might not follow all the rule definitions, it might also violate
     /// primary key constraints after hashconsing
-    fn apply_commit_ops(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
+    fn apply_commit_ops(&mut self, ops: Vec<Op>) -> Result<(), StoreError> {
         let op_count = ops.len();
         let affected = self.stage_commit_ops(ops);
         self.apply_staged_ops(&affected)?;
@@ -565,7 +562,7 @@ impl Store {
         affected.into_iter().collect()
     }
 
-    fn apply_staged_ops(&mut self, tables: &[TableOid]) -> Result<(), StoreIntError> {
+    fn apply_staged_ops(&mut self, tables: &[TableOid]) -> Result<(), StoreError> {
         for oid in tables {
             self.tables
                 .get_mut(oid)
@@ -580,7 +577,7 @@ impl Store {
     // including checks like:
     //  - data following schema format
     //  - no duplication of primary keys before hashconsing
-    fn precheck_commit(&self, cmt: Commit<'static>) -> Result<PrecheckedCommit, StoreIntError> {
+    fn precheck_commit(&self, cmt: Commit<'static>) -> Result<PrecheckedCommit, StoreError> {
         // TODO perhaps use late resolution, i.e. not resolving any ids, and when
         // we resolve, immediately make them packed.
         let ops = cmt.resolved_ops(|path| {
@@ -592,7 +589,7 @@ impl Store {
     }
 
     // TODO also need to validate that ids in op is referring to an existing id
-    fn validate_commit_ops(&self, ops: &[Op]) -> Result<(), StoreIntError> {
+    fn validate_commit_ops(&self, ops: &[Op]) -> Result<(), StoreError> {
         let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
 
         for op in ops {
@@ -651,7 +648,7 @@ impl Store {
     pub fn apply_chunk_bytes(
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<(), StoreIntError> {
+    ) -> Result<(), StoreError> {
         let commits = chunk_bytes
             .into_iter()
             .map(|bytes| Chunk::decode(&bytes))
@@ -670,6 +667,8 @@ impl Store {
 }
 
 impl Store {
+    // for debugging and testing
+
     /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
     /// separated by a blank line.
     pub fn dump(&self) -> String {
@@ -682,7 +681,7 @@ impl Store {
     }
 
     #[cfg(test)]
-    fn apply_ops_and_rebuild(&mut self, ops: Vec<Op>) -> Result<(), StoreIntError> {
+    fn apply_ops_and_rebuild(&mut self, ops: Vec<Op>) -> Result<(), StoreError> {
         self.apply_commit_ops(ops)?;
         self.rebuild_to_fixpoint()
     }

@@ -9,7 +9,7 @@ use crate::commit::chunk::{Chunk, ChunkType};
 use crate::commit::error::CodecError;
 use crate::commit::leb128 as commit_leb128;
 use crate::store::Store;
-use crate::store::error::StoreIntError;
+use crate::store::error::StoreError;
 
 /// The store magic bytes
 const MAGIC: &[u8; 4] = b"GMst";
@@ -36,7 +36,7 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
 }
 
 /// Decode a store from bytes produced by [`encode_store`].
-pub fn decode_store(data: &[u8]) -> Result<Store, StoreIntError> {
+pub fn decode_store(data: &[u8]) -> Result<Store, StoreError> {
     let encoded = read_store_envelope(data)?;
     decode_store_chunks(encoded.chunks)
 }
@@ -83,7 +83,7 @@ fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
     Chunk::from(commit).write(buf)
 }
 
-fn decode_store_chunks(chunks: Vec<Chunk>) -> Result<Store, StoreIntError> {
+fn decode_store_chunks(chunks: Vec<Chunk>) -> Result<Store, StoreError> {
     let roots = chunks
         .iter()
         .filter(|chunk| chunk.chunk_type() == ChunkType::Root)
@@ -187,13 +187,13 @@ mod tests {
             .collect()
     }
 
-    fn is_data_format_error(result: Result<Store, StoreIntError>) -> bool {
+    fn is_data_format_error(result: Result<Store, StoreError>) -> bool {
         matches!(
             result,
             Err(err)
                 if matches!(
                     &err,
-                    StoreIntError::Encode(CodecError::DataFormatError(_))
+                    StoreError::Encode(CodecError::DataFormatError(_))
                 )
         )
     }
@@ -209,13 +209,13 @@ mod tests {
             .expect("encoded store contains a chunk magic")
     }
 
-    fn is_missing_dep_error(result: Result<Store, StoreIntError>) -> bool {
+    fn is_missing_dep_error(result: Result<Store, StoreError>) -> bool {
         matches!(
             result,
             Err(err)
                 if matches!(
                     &err,
-                    StoreIntError::Commit(crate::store::error::CommitApplyError::MissingDep)
+                    StoreError::Commit(crate::store::error::CommitApplyError::MissingDep)
                 )
         )
     }
@@ -304,7 +304,7 @@ mod tests {
         let err = decode_store(&corrupted).expect_err("checksum mismatch");
         assert!(matches!(
             err,
-            StoreIntError::Encode(CodecError::ChecksumMismatch)
+            StoreError::Encode(CodecError::ChecksumMismatch)
         ));
     }
 

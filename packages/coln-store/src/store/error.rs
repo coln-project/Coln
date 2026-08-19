@@ -7,10 +7,9 @@ use crate::solver::compile::CompileError;
 use crate::solver::validate::RuleViolation;
 use crate::table::ValidationError;
 
-// TODO rename this to just store error
 /// Store integrity error
 #[derive(Debug, thiserror::Error)]
-pub enum StoreIntError {
+pub enum StoreError {
     #[error(transparent)]
     Validation(#[from] ValidationError),
     #[error(transparent)]
