@@ -29,7 +29,7 @@ data El :: MLevel -> Type where
   LiftEl :: Lift l0 l1 -> El l0 -> El l1
   Neu :: Neutral -> El Set
   Code :: SUniverse l0 l1 -> Ty l0 -> El l1
-  Lam :: SFunctionVariant l0 l1 -> Clo (El l0) (El l1) -> El l1
+  Lam :: SFunctionVariant l0 l1 -> Ty l0 -> Clo (El l0) (El l1) -> El l1
   Cons :: Dict (El l) -> El l
   Lit :: Literal -> El Set
 
@@ -40,7 +40,7 @@ lookup :: TableName -> [El Set] -> Ty Set -> El Set
 lookup tn args a = Neu $ Neutral (Lookup tn args a) BwdNil
 
 app :: SFunctionVariant l0 l1 -> El l1 -> El l0 -> El l1
-app fv (Lam fv' clo) v = case (fv, fv') of
+app fv (Lam fv' _ clo) v = case (fv, fv') of
   (SSetTheory, SSetTheory) -> appClo clo v
   (STheoryTop, STheoryTop) -> appClo clo v
 app _ _ _ = panic "can only apply lambda"

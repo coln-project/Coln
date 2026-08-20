@@ -111,6 +111,9 @@ class ToList a e | a -> e where
 class FromList a e | a -> e where
   fromList :: [e] -> a
 
+instance FromList (Vector a) a where
+  fromList = V.fromList
+
 -- Partial orderings
 --------------------------------------------------------------------------------
 

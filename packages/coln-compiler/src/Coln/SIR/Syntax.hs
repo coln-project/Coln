@@ -2,21 +2,21 @@ module Coln.SIR.Syntax where
 
 import Coln.Common
 import Coln.Core.Params
+import Coln.MIR.Params
 
 data El :: MLevel -> Type where
   LiftEl :: El Set -> El Theory
   Var :: BId -> El Set
   Single :: Query -> El Set
   Proj :: El Set -> Name -> El Set
-  Holds :: Pred -> El Theory
-  Multi :: Query -> El Theory
-  Lam :: Abs (El Theory) -> El Theory
+  Multi :: SUniverse Set Theory -> Query -> El Theory
+  Lam :: Query -> Abs (El Theory) -> El Theory
   Cons :: Dict (El l) -> El l
   Lit :: Literal -> El Set
 
-data Pred
+data Prop
   = Atom TableName (Maybe (El Set)) [El Set]
-  | And (Dict Pred)
+  | And (Dict Prop)
   | Eq Shape (El Set) (El Set)
 
 data Shape
@@ -27,8 +27,8 @@ data Shape
 unitShape :: Shape
 unitShape = Tuple (fromList [])
 
-truePred :: Pred
-truePred = And (fromList [])
+trueProp :: Prop
+trueProp = And (fromList [])
 
 data Abs a
   = Abs (Maybe Name) a
@@ -36,6 +36,6 @@ data Abs a
 
 data Query = Query
   { shape :: Shape
-  , pred :: Abs Pred
+  , pred :: Abs Prop
   }
 

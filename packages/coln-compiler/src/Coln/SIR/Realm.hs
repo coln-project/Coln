@@ -23,8 +23,8 @@ data Definition = Definition
 
 data Law = Law
   { inCtx :: [Query]
-  , antecedent :: Pred
-  , consequent :: Pred
+  , antecedent :: Prop
+  , consequent :: Prop
   }
 
 data Realm = Realm

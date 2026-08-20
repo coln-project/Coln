@@ -56,5 +56,5 @@ instance Readback (V.El Theory) (S.El Theory) where
     V.LiftEl LSetTheory v -> S.LiftEl (readb n v)
     V.Code SPropU a -> S.Code SPropU (readb n a)
     V.Code SSetU a -> S.Code SSetU (readb n a)
-    V.Lam SSetTheory clo -> S.Lam (readbClo n clo)
+    V.Lam SSetTheory dom clo -> S.Lam (readb n dom) (readbClo n clo)
     V.Cons fields -> S.Cons $ readb n <$> fields

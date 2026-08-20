@@ -34,10 +34,10 @@ code u (M s v) = M (S.Code u s) (V.Code u v)
 eltOf :: TableName -> [El Set] -> Ty Set
 eltOf tn args = M (S.EltOf tn ((.stx) <$> args)) (V.EltOf tn ((.val) <$> args))
 
-lam :: V.Locals -> S.Abs (S.El Theory) -> El Theory
-lam vs abs = do
+lam :: V.Locals -> Ty Set -> S.Abs (S.El Theory) -> El Theory
+lam vs dom abs = do
   let clo = evalAbs vs abs
-  M (S.Lam abs) (V.Lam SSetTheory clo)
+  M (S.Lam dom.stx abs) (V.Lam SSetTheory dom.val clo)
 
 cons :: Dict (El l) -> El l
 cons fields = M (S.Cons ((.stx) <$> fields)) (V.Cons ((.val) <$> fields))

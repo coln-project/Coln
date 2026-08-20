@@ -24,12 +24,12 @@ instance Interp (S.El c) V.El where
     S.Code u a -> withUniverse u $ \su -> do
       let (l0, l1) = (sDecodesInto su, sCodesInto su)
       Pair l1 (V.Code su (interpAt l0 g e a))
-    S.Lam fv _ abs -> withFunctionVariant fv.mlevel $ \sfv -> do
+    S.Lam fv dom abs -> withFunctionVariant fv.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
       let clo = case abs of
             S.Abs x body -> V.Clo x (\v -> interpAt c g (e :> Pair d v) body)
             S.AbsConst body -> V.CloConst (interpAt c g e body)
-      Pair c (V.Lam sfv clo)
+      Pair c (V.Lam sfv (interpAt d g e dom) clo)
     S.App fv t0 t1 -> withFunctionVariant fv.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
       Pair c (V.app sfv (interpAt c g e t0) (interpAt d g e t1))

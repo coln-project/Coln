@@ -84,37 +84,3 @@ layout p sc = \case
 
 layoutTop :: RealmId -> V.Ty Theory -> (Trie Generator, M.El Theory)
 layoutTop x = layout BwdNil (emptyScope x)
-
--- Walk through the term, and replace any conjunctive queries with lookups of
--- emitted views, which will be incrementally maintained
--- cache :: Path -> Scope -> V.El N -> (Trie Generator, M.El N)
--- cache p sc v = case v of
---   V.Code a -> do
---     let gt = Leaf (View (toList sc.names) (toList sc.ctx) (readb sc.len a))
---     let a' = V.EltOf (TableName sc.realm p) (fromList $ zip (toList (sc.names)) (toList sc.bound))
---     (gt, M.code (M.fromVTy sc.len a'))
---   V.Lam a f -> do
---     let x = argName sc.usedNames f
---     let (v, sc') = bind sc x a
---     let (gt, m) = cache p sc' (V.appClo f v)
---     let m' = M.lam sc.locals (M.fromVTy sc.len a) (S.Abs x m)
---     (gt, m')
---   V.Cons fields -> do
---     let go [] = ([], [])
---         go ((x, v) : rest) = do
---           let (gt, m) = cache (p :> x) sc v
---           let (gts, ms) = go rest
---           (gt : gts, m : ms)
---     let (gts, ms) = go (toList fields)
---     let m = M.cons (Dict fields.head (Vector.fromList ms))
---     (Node $ Dict fields.head (Vector.fromList gts), m)
---   (V.Neu _; V.InitNeu _; V.Lit _) -> (Node (fromList []), M.fromVEl sc.len v)
-
--- -- `cache` should produce an element whose behavior with respect to type-checking
--- -- is precisely the same as before.
-
--- -- In other words, `cache` should only serve to *annotate* each query with extra
--- -- information about how to look it up.
-
--- -- layoutDecls :: OMap Name (Definition Local) -> ([(Name, Trie Generator)], OMap Name (Definition Local))
--- -- layoutDecls ds

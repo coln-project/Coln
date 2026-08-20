@@ -11,7 +11,7 @@ data El :: MLevel -> Type where
   Var :: BId -> El Set
   Lookup :: TableName -> [El Set] -> Ty Set -> El Set
   Code :: SUniverse Set Theory -> Ty Set -> El Theory
-  Lam :: Abs (El Theory) -> El Theory
+  Lam :: Ty Set -> Abs (El Theory) -> El Theory
   Cons :: Dict (El l) -> El l
   Proj :: El l -> Name -> El l
   Lit :: Literal -> El Set
