@@ -4,25 +4,27 @@ import Coln.Common
 import Coln.Core.Params
 import Coln.SIR.Syntax
 
-data EntityType
+data EntityVariant
   = Table
   | View
 
 data Entity = Entity
-  { entityType :: EntityType
-  , columnNames :: [Name]
-  , columnShapes :: [Shape]
+  { entityVariant :: EntityVariant
+  , columns :: [(Name, Shape)]
   , primaryKey :: Maybe [Int]
   }
 
 data Definition = Definition
-  { inCtx :: [Query]
+  { inCtx :: [(Name, Query)]
   , definand :: TableName
   , args :: [El Set]
   }
 
-data Law = Law
-  { inCtx :: [Query]
+data RuleVariant = Enforced | Monitored
+
+data Rule = Rule
+  { ruleVariant :: RuleVariant
+  , inCtx :: [(Name, Query)]
   , antecedent :: Prop
   , consequent :: Prop
   }
@@ -30,5 +32,5 @@ data Law = Law
 data Realm = Realm
   { entities :: Trie Entity
   , definitions :: Trie Definition
-  , laws :: Trie Law
+  , rules :: Trie Rule
   }

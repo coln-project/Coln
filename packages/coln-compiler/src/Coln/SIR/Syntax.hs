@@ -30,6 +30,11 @@ data Shape
   = Tuple (Dict Shape)
   | Scalar ScalarType
 
+shapeSize :: Shape -> Int
+shapeSize = \case
+  Tuple ds -> sum $ shapeSize <$> toList ds.values
+  Scalar _ -> 1
+
 unitShape :: Shape
 unitShape = Tuple (fromList [])
 

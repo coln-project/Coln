@@ -3,8 +3,8 @@ module Coln.FLIR.Value where
 import Coln.Common
 import Coln.Core.Params
 import Coln.SIR.Syntax qualified as SIR
+import Coln.SIR.Realm qualified as SIR
 
-import Data.Set qualified as Set
 import GHC.Generics
 
 type ColName = Path
@@ -30,7 +30,7 @@ data EntityVariant
 data Entity = Entity
   { entityVariant :: EntityVariant
   , columns :: [(ColName, ColType)]
-  , primaryKey :: Maybe (Set.Set ColName)
+  , primaryKey :: Maybe [Int]
   }
   deriving (Show, Eq, Generic)
 
@@ -53,11 +53,17 @@ data Prop e
   = PAtom (Atom e)
   | PEq (El e) (El e)
 
-data RuleVariant = Enforced | Monitored
 
 data Rule = Rule
-  { ruleVariant :: RuleVariant
+  { ruleVariant :: SIR.RuleVariant
   , vars :: [(ColName, ColType)]
   , antecedents :: [Prop Void]
   , consequents :: [Prop Void]
+  }
+
+data Definition = Definition
+  { vars :: [(ColName, ColType)]
+  , antecedents :: [Prop Void]
+  , definand :: TableName
+  , args :: [El Void]
   }

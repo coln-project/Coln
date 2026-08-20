@@ -4,10 +4,11 @@ import Coln.Common
 import Coln.Core.Params
 import Coln.FLIR.Value qualified as V
 import Coln.SIR.Syntax qualified as S
+import Coln.SIR.Realm qualified as S
 
 import Control.Monad (forM)
 import Control.Monad.State
-
+import Data.Vector.Strict qualified as Vec
 import Data.Set qualified as Set
 
 newtype Els e = Els { unEls :: Trie (V.El e) }
@@ -41,12 +42,15 @@ instance Semigroup (Props e) where
 instance Monoid (Props e) where
   mempty = Props id
 
+instance ToList (Props e) (V.Prop e) where
+  toList ps = toList (ps.apply BwdNil)
+
 single :: V.Prop e -> Props e
 single p = Props (:> p)
 
 data AuxilaryVars e = AuxilaryVars
   { vars :: Bwd (V.ColName, V.ColType)
-  , props :: Bwd (V.Prop e)
+  , props :: Props e
   , length :: Int
   , usedRoots :: Set.Set Name
   }
@@ -54,6 +58,10 @@ data AuxilaryVars e = AuxilaryVars
 newtype FlatM e a = FlatM {unFlatM :: State (AuxilaryVars e) a}
   deriving (Functor, Applicative, Monad, MonadState (AuxilaryVars e))
 
+runFlatM :: FlatM e a -> (a, [(V.ColName, V.ColType)], Props e)
+runFlatM action = do
+  let (x, aux) = runState action.unFlatM (AuxilaryVars BwdNil mempty 0 Set.empty)
+  (x, toList aux.vars, aux.props)
 
 freshAt :: Path -> S.Shape -> FlatM e (Els e)
 freshAt p = \case
@@ -87,7 +95,7 @@ absName (S.Abs mx _) = mx
 absName (S.AbsConst _) = Nothing
 
 assert :: Props e -> FlatM e ()
-assert ps = modify (\aux -> aux { props = ps.apply aux.props })
+assert ps = modify (\aux -> aux { props = aux.props <> ps })
 
 app :: (Flatten a b) => Locals e -> S.Abs a -> Els e -> FlatM e (b e)
 app l (S.Abs _ body) v = flatten (l :> v) body
@@ -125,3 +133,61 @@ instance Flatten S.Prop Props where
       v1 <- flatten l t1
       pure $ equate sh v0 v1
 
+flattenColumn :: V.ColName -> S.Shape -> [(V.ColName, V.ColType)]
+flattenColumn p = \case
+  S.Scalar t -> [(p, t)]
+  S.Tuple d -> concat [flattenColumn (p :> x) t | (x, t) <- toList d]
+
+flattenColumns :: [(Name, S.Shape)] -> [(V.ColName, V.ColType)]
+flattenColumns = concat . fmap (\(x, sh) -> flattenColumn (BwdNil :> x) sh)
+
+flattenPrimaryKey :: [S.Shape] -> [Int] -> [Int]
+flattenPrimaryKey shapes cols = do
+  let go n [] = [n]
+      go n (sh:rest) = do
+        let s = S.shapeSize sh
+        n : go (n + s) rest
+  let offsets = Vec.fromList $ go 0 shapes
+  concat [[(offsets Vec.! i)..(offsets Vec.! (i + 1)) - 1] | i <- cols]
+
+flattenEntity :: S.Entity -> V.Entity
+flattenEntity e = V.Entity
+  { V.entityVariant = case e.entityVariant of
+      S.Table -> V.Table
+      S.View -> V.View V.Materialized
+  , V.columns = flattenColumns e.columns
+  , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
+  }
+
+bindTele :: Locals e -> [(Name, S.Query)] -> FlatM e (Locals e)
+bindTele l [] = pure l
+bindTele l ((x, a):rest) = do
+  v <- fresh (Just x) a.shape
+  app l a.pred v >>= assert
+  bindTele (l :> v) rest
+
+flattenRule :: S.Rule -> V.Rule
+flattenRule r = do
+  let ((ante, cons), vars, ps) = runFlatM $ do
+        vs <- bindTele BwdNil r.inCtx
+        ante <- flatten vs r.antecedent
+        cons <- flatten vs r.consequent
+        pure (ante, cons)
+  V.Rule
+    { V.ruleVariant = r.ruleVariant
+    , V.vars = vars
+    , V.antecedents = toList (ps <> ante)
+    , V.consequents = toList cons
+    }
+
+flattenDefinition :: S.Definition -> V.Definition
+flattenDefinition d = do
+  let (args, vars, ps) = runFlatM $ do
+        vs <- bindTele BwdNil d.inCtx
+        concatEls <$> traverse (flatten vs) d.args
+  V.Definition
+    { V.vars = vars
+    , V.antecedents = toList ps
+    , V.definand = d.definand
+    , V.args = args
+    }
