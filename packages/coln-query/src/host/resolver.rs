@@ -90,7 +90,8 @@ pub struct ResolvedCode(Code);
 
 impl ResolvedCode {
     /// Run the static pipeline over a raw plan and resolve variable slots.
-    pub fn from(mut code: Code) -> Result<Self, SyntaxError> {
+    pub fn from(code: impl Into<Code>) -> Result<Self, SyntaxError> {
+        let mut code = code.into();
         let mut scopes = ScopeStack::new();
         let mut ctx = ResolverContext::new(&mut scopes);
         Resolver::new().resolve(code.iter_mut(), &mut ctx)?;

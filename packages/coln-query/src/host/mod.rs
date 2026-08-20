@@ -7,6 +7,7 @@
 //! The latter is important because `coln-flir` rarely emits just a single
 //! query but an entire program of queries.
 
+pub mod code;
 pub mod expr;
 pub mod function;
 pub mod interpreter;
@@ -18,8 +19,6 @@ pub mod tuple;
 pub mod variable;
 pub mod walk;
 
+pub use code::Code;
 pub use interpreter::{HostInterpreter, InterpreterContext, ScalarHost};
-pub use print::{AsSource, AsTree};
 pub use walk::{Node, post_order, pre_order, walk};
-
-pub type Code = Vec<stmt::Stmt>;

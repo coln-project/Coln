@@ -29,8 +29,8 @@ type BaseTableName = TableRef;
 type DerivedViewName = TableRef;
 
 struct QueryProgram {
-    /// The (raw, that is, unresolved, unoptimized) query program itself.
-    program: Code,
+    /// The (raw, that is, unresolved, unoptimized) statements themselves.
+    code: Code,
     /// The declared base tables.
     base_tables: HashMap<BaseTableName, BaseTableSchema>,
     /// The relations the program itself defines, that is, one per declared rule.
@@ -77,13 +77,13 @@ impl From<&BaseTableSchema> for RelationSchema {
 impl QueryProgram {
     fn empty() -> Self {
         Self {
-            program: Vec::new(),
+            code: Code::default(),
             base_tables: HashMap::new(),
             derived_views: HashMap::new(),
         }
     }
-    pub fn program(&self) -> &Code {
-        &self.program
+    pub fn code(&self) -> &Code {
+        &self.code
     }
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
         let mut builder = QueryProgram::empty();
@@ -135,7 +135,7 @@ impl QueryProgram {
             return Ok(());
         };
         let (stmt, output_bindings) = self.rule(name.to_string(), &rule)?;
-        self.program.push(stmt);
+        self.code.push(stmt);
         let rule_meta = RuleMeta::new(rule.kind, rule_output_schema(&name, &output_bindings));
         // See `base_table` on the direction of this check.
         if self.derived_views.insert(name.clone(), rule_meta).is_some() {
@@ -421,11 +421,11 @@ impl QueryProgram {
 
 /// Just like [`ir::Rule`] but friendlier because:
 ///
-/// 1. Meaningless rules with an empty [consequent](Rule::consequents) are
+/// 1. Meaningless rules with an empty [consequent](ir::Rule::consequents) are
 ///    skipped and chased rules panic at the moment due to open questions.
-/// 2. It zips the [`Rule::var_names`] and the [`Rule::var_types`] into one
+/// 2. It zips the [`ir::Rule::var_names`] and the [`ir::Rule::var_types`] into one
 ///    array of [`FriendlyVar`]s.
-/// 3. It converts [`Rule::antecedents`] and [`Rule::consequents`] into a
+/// 3. It converts [`ir::Rule::antecedents`] and [`ir::Rule::consequents`] into a
 ///    [`ConjunctiveQuery`], each.
 struct FriendlyRule {
     kind: ir::RuleVariant,
@@ -468,8 +468,8 @@ impl FriendlyRule {
     }
 }
 
-/// Prepares either a [left-hand side](Rule::antecedents) or a
-/// [right-hand side](Rule::consequents) of a [`Rule`] for inclusion in an
+/// Prepares either a [left-hand side](ir::Rule::antecedents) or a
+/// [right-hand side](ir::Rule::consequents) of a [`ir::Rule`] for inclusion in an
 /// antijoin by partitioning a `Vec<Prop>` into atoms and conditions. This is
 /// useful because applying all atoms first, guarantees that every variable a
 /// condition may refer to is in scope already.
@@ -660,7 +660,7 @@ impl AtomBinder {
 /// The schema of the relation a rule evaluates to.
 ///
 /// Its columns are the parts the rule's output binds, in the
-/// `(VarIdx, VarPart)` order [`QueryProgramBuilder::conjunctive_query`] reports
+/// `(VarIdx, VarPart)` order [`QueryProgram::conjunctive_query`] reports
 /// them in, and their types come from the query columns those parts resolve to
 /// rather than from the FLIR variables — a row id's two halves reach the query
 /// engine as plain unsigned integers, which the variable's [`ir::ColType`] does
@@ -1021,7 +1021,7 @@ mod tests {
 
         let builder = QueryProgram::from_flat_realm(&realm).expect("The realm lowers");
 
-        assert_eq!(builder.program().len(), 1, "One rule is one statement");
+        assert_eq!(builder.code().len(), 1, "One rule is one statement");
         let schema = &builder
             .derived_views
             .get(&TableRef::from(&ir::Path::from("r")))
@@ -1062,7 +1062,7 @@ mod tests {
         };
         let builder = QueryProgram::from_flat_realm(&realm).expect("The realm lowers");
 
-        crate::host::resolver::ResolvedCode::from(builder.program)
+        crate::host::resolver::ResolvedCode::from(builder.code)
             .expect("The lowered program must resolve");
     }
 

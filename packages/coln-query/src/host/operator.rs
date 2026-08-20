@@ -37,33 +37,7 @@ pub enum Operator {
     Division,
 }
 
-/// The binding power of a prefix operator ([`Operator::Not`],
-/// [`Operator::Subtraction`] applied to one operand). Above every binary
-/// operator, so `-a + b` needs no parentheses.
-pub const UNARY_PRECEDENCE: u8 = 7;
-
-/// The binding power of a postfix form (a call, an index) and of any atom that
-/// can never need parentheses.
-pub const PRIMARY_PRECEDENCE: u8 = 8;
-
 impl Operator {
-    /// This operator's binding power as a *binary* operator: higher binds
-    /// tighter. Only a printer needs it — evaluation order is already fixed by
-    /// the tree's shape — but a tree built by hand (or by a lowering) carries no
-    /// [`GroupingExpr`](super::expr::GroupingExpr), so rendering it back to
-    /// readable text has to re-derive where parentheses belong.
-    pub fn precedence(self) -> u8 {
-        match self {
-            Operator::Or => 1,
-            Operator::And => 2,
-            Operator::Equal | Operator::NotEqual => 3,
-            Operator::Less | Operator::LessEqual | Operator::Greater | Operator::GreaterEqual => 4,
-            Operator::Addition | Operator::Subtraction => 5,
-            Operator::Multiplication | Operator::Division => 6,
-            Operator::Not => UNARY_PRECEDENCE,
-        }
-    }
-
     pub fn symbol(self) -> &'static str {
         match self {
             Operator::Equal => "==",

@@ -97,8 +97,8 @@ impl<O: Optimizer, B: Backend> Pipeline<O, B> {
     /// Optimize, resolve and evaluate a self-container **query** program
     /// (with relational operators) on the [`Backend`](`Self::backend`) and
     /// with the [`Optimizer`](`Self::optimizer`).
-    pub fn runtime(self, plan: Code) -> Result<B::Runtime, QueryEngineError> {
-        let type_checked = plan; // Not for now.
+    pub fn runtime(self, plan: impl Into<Code>) -> Result<B::Runtime, QueryEngineError> {
+        let type_checked = plan.into(); // Not for now.
         let optimized = self.optimizer.optimize(type_checked)?;
         let resolved = ResolvedCode::from(optimized)?;
         self.backend
@@ -111,8 +111,8 @@ impl Pipeline<(), ()> {
     /// Resolve and evaluate a self-contained **host-language** program once (no
     /// relational operators), returning the value of its last statement. For pure
     /// scalar/host tests. Relational programs must go through [`Self::runtime`].
-    pub fn run(host_code: Code) -> Result<Option<Value>, QueryEngineError> {
-        let type_checked = host_code; // Not for now.
+    pub fn run(host_code: impl Into<Code>) -> Result<Option<Value>, QueryEngineError> {
+        let type_checked = host_code.into(); // Not for now.
         let resolved = ResolvedCode::from(type_checked)?;
 
         let mut environment = Environment::default();
