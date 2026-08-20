@@ -25,18 +25,19 @@ instance Eval (S.El l) (V.El l) where
     S.Cons fields -> V.Cons (eval vs <$> fields)
     S.Proj t x -> V.proj (eval vs t) x
     S.Lit l -> V.Lit l
+    S.Erased -> V.Erased
 
 instance Eval (S.Ty l) (V.Ty l) where
   eval vs = \case
     S.LiftTy t -> V.LiftTy LSetTheory (eval vs t)
     S.U u -> V.U u
-    S.EltOf tn args -> V.EltOf tn (eval vs <$> args)
+    S.EltOf u tn args -> V.EltOf u tn (eval vs <$> args)
     S.Function ft ->
       V.Function $
-        V.FunctionType SSetTheory (eval vs ft.dom) (evalAbs vs ft.cod)
+        V.FunctionType ft.variant (eval vs ft.dom) (evalAbs vs ft.cod)
     S.Record rt ->
       V.Record $
-        V.RecordType vs $
+        V.RecordType rt.hlevel vs $
           flip eval <$> rt.fieldTypes
     S.BuiltinTy t -> V.BuiltinTy t
     S.Eq at lhs rhs -> V.Eq (eval vs at) (eval vs lhs) (eval vs rhs)

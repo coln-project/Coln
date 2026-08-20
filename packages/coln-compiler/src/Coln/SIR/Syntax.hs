@@ -15,9 +15,10 @@ data El :: MLevel -> Type where
   Lam :: Query -> Abs (El Theory) -> El Theory
   Cons :: Dict (El l) -> El l
   Lit :: Literal -> El Set
+  Erased :: El Set
 
 data Prop
-  = Atom TableName (Maybe (El Set)) [El Set]
+  = Atom TableName (El Set) [El Set]
   | And (Dict Prop)
   | Eq Shape (El Set) (El Set)
 
@@ -29,14 +30,13 @@ data ScalarType
 data Shape
   = Tuple (Dict Shape)
   | Scalar ScalarType
+  | Unstored
 
 shapeSize :: Shape -> Int
 shapeSize = \case
   Tuple ds -> sum $ shapeSize <$> toList ds.values
   Scalar _ -> 1
-
-unitShape :: Shape
-unitShape = Tuple (fromList [])
+  Unstored -> 0
 
 trueProp :: Prop
 trueProp = And (fromList [])

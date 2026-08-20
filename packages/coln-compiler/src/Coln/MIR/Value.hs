@@ -29,9 +29,10 @@ data El :: MLevel -> Type where
   LiftEl :: Lift l0 l1 -> El l0 -> El l1
   Neu :: Neutral -> El Set
   Code :: SUniverse l0 l1 -> Ty l0 -> El l1
-  Lam :: SFunctionVariant l0 l1 -> Ty l0 -> Clo (El l0) (El l1) -> El l1
+  Lam :: SMFunctionVariant l0 l1 -> Ty l0 -> Clo (El l0) (El l1) -> El l1
   Cons :: Dict (El l) -> El l
   Lit :: Literal -> El Set
+  Erased :: El Set
 
 local :: FId -> El Set
 local i = Neu $ Neutral (Var i) BwdNil
@@ -39,7 +40,7 @@ local i = Neu $ Neutral (Var i) BwdNil
 lookup :: TableName -> [El Set] -> Ty Set -> El Set
 lookup tn args a = Neu $ Neutral (Lookup tn args a) BwdNil
 
-app :: SFunctionVariant l0 l1 -> El l1 -> El l0 -> El l1
+app :: SMFunctionVariant l0 l1 -> El l1 -> El l0 -> El l1
 app fv (Lam fv' _ clo) v = case (fv, fv') of
   (SSetTheory, SSetTheory) -> appClo clo v
   (STheoryTop, STheoryTop) -> appClo clo v
@@ -48,6 +49,7 @@ app _ _ _ = panic "can only apply lambda"
 proj :: El l -> Name -> El l
 proj (Neu n) x = Neu $ n{spine = n.spine :> x}
 proj (Cons fields) x = elemAt fields x
+proj Erased _ = Erased
 proj _ _ = panic "can only project from neutral or cons"
 
 decode :: SUniverse l0 l1 -> El l1 -> Ty l0
@@ -78,14 +80,15 @@ data FunctionType (l0 :: MLevel) (l1 :: MLevel) = FunctionType
   }
 
 data RecordType (l :: MLevel) = RecordType
-  { capture :: Locals
+  { hlevel :: HLevel
+  , capture :: Locals
   , fieldTypes :: Dict (Locals -> Ty l)
   }
 
 data Ty :: MLevel -> Type where
   LiftTy :: Lift l0 l1 -> Ty l0 -> Ty l1
   U :: SUniverse l0 l1 -> Ty l1
-  EltOf :: TableName -> [El Set] -> Ty Set
+  EltOf :: SUniverse Set Theory -> TableName -> [El Set] -> Ty Set
   Function :: FunctionType l0 l1 -> Ty l1
   Record :: RecordType l -> Ty l
   BuiltinTy :: BuiltinTy -> Ty Set
@@ -102,3 +105,11 @@ instance LevelCoerce Ty where
   levelCoerce STop STheory (LiftTy LTheoryTop v) = v
   levelCoerce STop SSet (LiftTy LTheoryTop (LiftTy LSetTheory v)) = v
   levelCoerce _ _ _ = panic "cannot lift"
+
+instance HLevelOf (Ty Set) where
+  hlevelOf = \case
+    EltOf SPropU _ _ -> HProp
+    EltOf SSetU _ _ -> HSet
+    Record rt -> rt.hlevel
+    Eq eat _ _ -> equalityHLevelOf (hlevelOf eat)
+    BuiltinTy _ -> HSet

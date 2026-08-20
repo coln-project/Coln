@@ -31,8 +31,8 @@ lookup tn args a = M (S.Lookup tn ((.stx) <$> args) a.stx) (V.lookup tn ((.val) 
 code :: SUniverse Set Theory -> Ty Set -> El Theory
 code u (M s v) = M (S.Code u s) (V.Code u v)
 
-eltOf :: TableName -> [El Set] -> Ty Set
-eltOf tn args = M (S.EltOf tn ((.stx) <$> args)) (V.EltOf tn ((.val) <$> args))
+eltOf :: SUniverse Set Theory -> TableName -> [El Set] -> Ty Set
+eltOf u tn args = M (S.EltOf u tn ((.stx) <$> args)) (V.EltOf u tn ((.val) <$> args))
 
 lam :: V.Locals -> Ty Set -> S.Abs (S.El Theory) -> El Theory
 lam vs dom abs = do

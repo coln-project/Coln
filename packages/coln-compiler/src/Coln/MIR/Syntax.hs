@@ -15,19 +15,23 @@ data El :: MLevel -> Type where
   Cons :: Dict (El l) -> El l
   Proj :: El l -> Name -> El l
   Lit :: Literal -> El Set
+  Erased :: El Set
 
 data FunctionType = FunctionType
-  { dom :: Ty Set
+  { variant :: SFunctionVariant Set Theory
+  , dom :: Ty Set
   , cod :: Abs (Ty Theory)
   }
 
 data RecordType l = RecordType
-  {fieldTypes :: Dict (Ty l)}
+  { hlevel :: HLevel
+  , fieldTypes :: Dict (Ty l)
+  }
 
 data Ty :: MLevel -> Type where
   LiftTy :: Ty Set -> Ty Theory
   U :: SUniverse Set Theory -> Ty Theory
-  EltOf :: TableName -> [El Set] -> Ty Set
+  EltOf :: SUniverse Set Theory -> TableName -> [El Set] -> Ty Set
   Function :: FunctionType -> Ty Theory
   Record :: RecordType l -> Ty l
   BuiltinTy :: BuiltinTy -> Ty Set

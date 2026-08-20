@@ -24,13 +24,14 @@ instance Readback (V.El Set) (S.El Set) where
       go (readb n ne.head) ne.spine
     V.Cons fields -> S.Cons $ readb n <$> fields
     V.Lit l -> S.Lit l
+    V.Erased -> S.Erased
 
 fresh :: CtxLen -> V.El Set
 fresh n = V.local (FId n)
 
 instance Readback (V.Ty Set) (S.Ty Set) where
   readb n = \case
-    V.EltOf tn args -> S.EltOf tn (readb n <$> args)
+    V.EltOf u tn args -> S.EltOf u tn (readb n <$> args)
     V.BuiltinTy t -> S.BuiltinTy t
     V.Eq at lhs rhs -> S.Eq (readb n at) (readb n lhs) (readb n rhs)
     V.Record rt -> do
@@ -38,7 +39,7 @@ instance Readback (V.Ty Set) (S.Ty Set) where
           go n' vs ((x, k) : rest) =
             (x, readb n' (k vs)) : (go (n' + 1) (vs :> Pair SSet (fresh n')) rest)
       let fieldTypes = fromList $ go n rt.capture (toList rt.fieldTypes)
-      S.Record $ S.RecordType fieldTypes
+      S.Record $ S.RecordType rt.hlevel fieldTypes
 
 instance Readback (V.Ty Theory) (S.Ty Theory) where
   readb n = \case

@@ -3,7 +3,9 @@ module Coln.SIR.Separate where
 import Coln.Common
 import Coln.Core.Params
 import Coln.MIR.Params
+import Coln.MIR.Realm qualified as V
 import Coln.MIR.Value qualified as V
+import Coln.SIR.Realm
 import Coln.SIR.Syntax qualified as S
 
 type CtxLen = Int
@@ -16,7 +18,7 @@ instance Separate V.Head (S.El Set) where
     V.Var (FId i) -> S.Var (BId (n - i - 1))
     V.Lookup tn args ret -> do
       let args' = separate n <$> args
-      let pred = S.Atom tn Nothing (args' ++ [S.Var 0])
+      let pred = S.Atom tn S.Erased (args' ++ [S.Var 0])
       S.Single $ S.Query (shapeOf ret) (S.Abs Nothing pred)
 
 instance Separate (V.El Set) (S.El Set) where
@@ -27,6 +29,7 @@ instance Separate (V.El Set) (S.El Set) where
       go (separate n ne.head) ne.spine
     V.Cons fields -> S.Cons $ separate n <$> fields
     V.Lit l -> S.Lit l
+    V.Erased -> S.Erased
 
 separateClo :: (Separate a b) => CtxLen -> V.Clo (V.El Set) a -> S.Abs b
 separateClo n (V.Clo x body) = S.Abs (Just x) (separate (n + 1) (body (V.local (FId n))))
@@ -42,26 +45,27 @@ instance Separate (V.El Theory) (S.El Theory) where
 
 shapeOf :: V.Ty Set -> S.Shape
 shapeOf = \case
-  V.EltOf x _ -> S.Scalar $ S.RowId x
+  V.EltOf SPropU _ _ -> S.Unstored
+  V.EltOf SSetU x _ -> S.Scalar $ S.RowId x
   V.Record rt -> do
     let go [] _ _ = []
         go ((x, k) : rest) vs v = do
           let v' = V.proj v x
-          (x, shapeOf (k vs)) : (go rest (vs :> Pair SSet v') v)
+          (x, shapeOf (k vs)) : go rest (vs :> Pair SSet v') v
     let v = V.local (FId 0)
     S.Tuple $ fromList $ go (toList rt.fieldTypes) rt.capture v
   V.BuiltinTy t -> S.Scalar $ S.BuiltinTy t
-  V.Eq _ _ _ -> S.unitShape
+  V.Eq _ _ _ -> S.Unstored
 
 propAt :: CtxLen -> V.Ty Set -> V.El Set -> S.Prop
 propAt n = \case
-  V.EltOf x args -> \v ->
-    S.Atom x (Just (separate n v)) (separate n <$> args)
+  V.EltOf _ x args -> \v ->
+    S.Atom x (separate n v) (separate n <$> args)
   V.Record rt -> \v -> do
     let go [] _ = []
         go ((x, k) : rest) vs = do
           let v' = V.proj v x
-          (x, propAt n (k vs) v') : (go rest (vs :> Pair SSet v'))
+          (x, propAt n (k vs) v') : go rest (vs :> Pair SSet v')
     S.And $ fromList $ go (toList rt.fieldTypes) rt.capture
   V.BuiltinTy _ -> \_ -> S.trueProp
   V.Eq at lhs rhs -> \_ ->
@@ -70,3 +74,40 @@ propAt n = \case
 instance Separate (V.Ty Set) S.Query where
   separate n a =
     S.Query (shapeOf a) (S.Abs Nothing (propAt (n + 1) a (V.local (FId n))))
+
+separateGenerator :: TableName -> V.Generator -> Realm
+separateGenerator tn = \case
+  V.Rel u xs tys -> do
+    let names = toList xs
+    let argNum = length names
+    let septys = uncurry separate <$> zip [0 ..] (toList tys)
+    let primaryKey = case u of
+          SSetU -> Nothing
+          SPropU -> Just [0 .. argNum - 1]
+    let table = Entity Table (zip names ((.shape) <$> septys)) primaryKey
+    let atom = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
+    let foreignKey = Rule Enforced Consequent (zip names septys) atom S.trueProp
+    Realm{entities = Leaf table, definitions = Node $ fromList [], rules = Leaf foreignKey}
+  V.Fun xs tys cod -> case hlevelOf cod of
+    HUnit -> Realm{entities = Node $ fromList [], definitions = Node $ fromList [], rules = Node $ fromList []}
+    HProp -> do
+      let names = toList xs
+      let argNum = length names
+      let septys = uncurry separate <$> zip [0 ..] (toList tys)
+      let codProp = propAt argNum cod V.Erased
+      let rule = Rule Monitored Antecedent (zip names septys) S.trueProp codProp
+      Realm{entities = Node $ fromList [], definitions = Node $ fromList [], rules = Leaf rule}
+    HSet -> do
+      let names = toList xs
+      let argNum = length names
+      let septys = uncurry separate <$> zip [0 ..] (toList (tys :> cod))
+      let table = Entity Table (zip names ((.shape) <$> septys)) (Just [0 .. argNum - 1])
+      let foreignKeyAnte = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum]]
+      let foreignKey = Rule Enforced Consequent (zip names septys) foreignKeyAnte S.trueProp
+      let totalCons = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
+      let total = Rule Monitored Antecedent (zip names (take argNum septys)) S.trueProp totalCons
+      Realm{entities = Leaf table, definitions = Node $ fromList [], rules = Node $ fromList [("foreignKey", Leaf foreignKey), ("total", Leaf total)]}
+    _ -> panic "bad h-level of cod"
+
+-- separateRealm :: V.Realm -> Realm
+-- separateRealm r = _

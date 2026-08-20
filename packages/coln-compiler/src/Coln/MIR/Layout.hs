@@ -51,7 +51,7 @@ bind sc x a = do
           , names = sc.names :> x
           , ctx = sc.ctx :> a
           , bound = sc.bound :> v
-          , locals = sc.locals :> (Pair SSet v)
+          , locals = sc.locals :> Pair SSet v
           , usedNames = Set.insert x sc.usedNames
           , realm = sc.realm
           }
@@ -67,8 +67,8 @@ layout p sc = \case
     (gt, M.liftEl $ M.lookup (TableName sc.realm p) (args sc) (M.fromV sc.len a))
   V.U (inferSetCodes -> u) -> do
     let gt = Leaf (Rel u sc.names sc.ctx)
-    (gt, M.code u $ M.eltOf (TableName sc.realm p) (args sc))
-  V.Function ft -> case ft.variant of
+    (gt, M.code u $ M.eltOf u (TableName sc.realm p) (args sc))
+  V.Function ft -> case ft.variant.mlevel of
     SSetTheory -> do
       let x = argName sc.usedNames ft.cod
       let (v, sc') = bind sc x ft.dom

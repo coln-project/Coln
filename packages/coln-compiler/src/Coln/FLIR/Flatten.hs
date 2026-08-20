@@ -11,28 +11,32 @@ import Control.Monad.State
 import Data.Set qualified as Set
 import Data.Vector.Strict qualified as Vec
 
-newtype Els e = Els {unEls :: Trie (V.El e)}
+data Els e
+  = Scalar (V.El e)
+  | Cons (Dict (Els e))
+  | Erased
 
-leaf :: V.El e -> Els e
-leaf = Els . Leaf
+getScalar :: Els e -> V.El e
+getScalar (Scalar v) = v
+getScalar _ = panic "tried to get leaf value of non-leaf"
 
-getLeaf :: Els e -> V.El e
-getLeaf (Els (Leaf v)) = v
-getLeaf _ = panic "tried to get leaf value of non-leaf"
-
-node :: Dict a -> [Els e] -> Els e
-node d vs = Els $ Node $ Dict d.head (fromList $ (.unEls) <$> vs)
+asAtomHead :: Els e -> Maybe (V.El e)
+asAtomHead (Scalar v) = Just v
+asAtomHead Erased = Nothing
+asAtomHead _ = panic "tried to get leaf value of non-leaf"
 
 proj :: Els e -> Name -> Els e
-proj (Els (Node fields)) x = Els $ elemAt fields x
-proj (Els (Leaf _)) _ = panic "tried to project from non-node"
+proj (Cons fields) x = elemAt fields x
+proj Erased _ = Erased
+proj (Scalar _) _ = panic "tried to project from non-node"
 
 concatEls :: [Els e] -> [V.El e]
 concatEls vs = toList $ go vs BwdNil
  where
   go [] vs' = vs'
-  go ((Els (Leaf v)) : rest) vs' = go rest (vs' :> v)
-  go ((Els (Node d)) : rest) vs' = go rest (go (Els <$> toList d.values) vs')
+  go (Scalar v : rest) vs' = go rest (vs' :> v)
+  go (Cons d : rest) vs' = go rest (go (toList d.values) vs')
+  go (Erased : rest) vs' = go rest vs'
 
 newtype Props e = Props {apply :: Bwd (V.Prop e) -> Bwd (V.Prop e)}
 
@@ -69,10 +73,11 @@ freshAt p = \case
     aux <- get
     let i = aux.length
     put $ aux{vars = (aux.vars :> (p, t)), length = (i + 1)}
-    pure $ leaf $ V.LocalVar $ FId i
+    pure $ Scalar $ V.LocalVar $ FId i
   S.Tuple fields -> do
     fields' <- forM (toList fields) $ \(x, sh) -> freshAt (p :> x) sh
-    pure $ node fields fields'
+    pure $ Cons $ withHead fields fields'
+  S.Unstored -> pure Erased
 
 fresh :: Maybe Name -> S.Shape -> FlatM e (Els e)
 fresh mx sh = do
@@ -113,18 +118,20 @@ instance Flatten (S.El Set) Els where
       pure $ proj v x
     S.Cons fields -> do
       fields' <- forM (toList fields) $ \(_, t) -> flatten l t
-      pure $ node fields fields'
-    S.Lit l -> pure $ leaf $ V.Lit l
+      pure $ Cons $ withHead fields fields'
+    S.Lit l -> pure $ Scalar $ V.Lit l
+    S.Erased -> pure Erased
 
 equate :: S.Shape -> Els e -> Els e -> Props e
-equate (S.Scalar _) v0 v1 = single $ V.PEq (getLeaf v0) (getLeaf v1)
+equate (S.Scalar _) v0 v1 = single $ V.PEq (getScalar v0) (getScalar v1)
 equate (S.Tuple fs) v0 v1 =
   mconcat [equate t (proj v0 x) (proj v1 x) | (x, t) <- toList fs]
+equate S.Unstored _ _ = mempty
 
 instance Flatten S.Prop Props where
   flatten l = \case
-    S.Atom tn mt args -> do
-      mv <- traverse (\t -> getLeaf <$> flatten l t) mt
+    S.Atom tn t args -> do
+      mv <- asAtomHead <$> flatten l t
       argvs <- traverse (flatten l) args
       pure $ single $ V.PAtom (V.Atom tn mv (Just <$> concatEls argvs))
     S.And ps -> mconcat <$> traverse (flatten l) (toList ps.values)
@@ -137,6 +144,7 @@ flattenColumn :: V.ColName -> S.Shape -> [(V.ColName, V.ColType)]
 flattenColumn p = \case
   S.Scalar t -> [(p, t)]
   S.Tuple d -> concat [flattenColumn (p :> x) t | (x, t) <- toList d]
+  S.Unstored -> []
 
 flattenColumns :: [(Name, S.Shape)] -> [(V.ColName, V.ColType)]
 flattenColumns = concat . fmap (\(x, sh) -> flattenColumn (BwdNil :> x) sh)

@@ -54,7 +54,7 @@ cache p sc v = do
         let ent = Entity View (zip xs ((.shape) <$> cols)) (Just [0 .. sc.len])
         let tn = TableName sc.realm p
         let def = Definition (zip xs cols) tn boundStx
-        let prop = S.Atom tn Nothing boundStx
+        let prop = S.Atom tn S.Erased boundStx
         let elt = S.Multi u $ S.Query sa.shape (S.Abs Nothing prop)
         (Leaf ent, Node (fromList [("definition", Leaf def)]), elt)
   case v of

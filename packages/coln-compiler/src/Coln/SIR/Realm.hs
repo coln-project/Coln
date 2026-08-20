@@ -22,8 +22,11 @@ data Definition = Definition
 
 data RuleVariant = Enforced | Monitored
 
+data RuleContextSide = Antecedent | Consequent
+
 data Rule = Rule
   { ruleVariant :: RuleVariant
+  , ctxSide :: RuleContextSide
   , inCtx :: [(Name, Query)]
   , antecedent :: Prop
   , consequent :: Prop

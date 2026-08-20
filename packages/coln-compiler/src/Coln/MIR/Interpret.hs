@@ -54,9 +54,9 @@ instance Interp (S.Ty c) V.Ty where
       let cod = case ft.cod of
             S.Abs x body -> V.Clo x (\v -> interpAt c g (e :> Pair d v) body)
             S.AbsConst body -> V.CloConst (interpAt c g e body)
-      Pair c (V.Function (V.FunctionType sfv dom cod))
+      Pair c (V.Function (V.FunctionType (SFunctionVariant sfv ft.variant.hlevel) dom cod))
     S.Record rt -> withLevel rt.level.mlevel $ \sl -> do
-      let rt' = V.RecordType e (flip (interpAt sl g) <$> rt.fieldTypes)
+      let rt' = V.RecordType rt.level.hlevel e (flip (interpAt sl g) <$> rt.fieldTypes)
       Pair sl (V.Record rt')
     S.Eq et -> do
       let at = interpAt SSet g e et.at

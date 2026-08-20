@@ -51,6 +51,9 @@ equalityHLevelOf = \case
   HSet -> HProp
   HTop -> HTop
 
+class HLevelOf a where
+  hlevelOf :: a -> HLevel
+
 data Level = Level
   { mlevel :: MLevel
   , hlevel :: HLevel

@@ -14,6 +14,11 @@ withLevel l f = case l of
   Theory -> f STheory
   Top -> f STop
 
+data SLevel (l :: MLevel) = SLevel
+  { mlevel :: SMLevel l
+  , hlevel :: HLevel
+  }
+
 class LevelCoerce (f :: MLevel -> Type) where
   levelCoerce :: SMLevel l0 -> SMLevel l1 -> f l0 -> f l1
 
@@ -51,21 +56,29 @@ inferSetCodes :: SUniverse l Theory -> SUniverse Set Theory
 inferSetCodes SSetU = SSetU
 inferSetCodes SPropU = SPropU
 
-data SFunctionVariant :: MLevel -> MLevel -> Type where
-  SSetTheory :: SFunctionVariant Set Theory
-  STheoryTop :: SFunctionVariant Theory Top
+data SMFunctionVariant :: MLevel -> MLevel -> Type where
+  SSetTheory :: SMFunctionVariant Set Theory
+  STheoryTop :: SMFunctionVariant Theory Top
 
-sDom :: SFunctionVariant l0 l1 -> SMLevel l0
+sDom :: SMFunctionVariant l0 l1 -> SMLevel l0
 sDom = \case
   SSetTheory -> SSet
   STheoryTop -> STheory
 
-sCod :: SFunctionVariant l0 l1 -> SMLevel l1
+sCod :: SMFunctionVariant l0 l1 -> SMLevel l1
 sCod = \case
   SSetTheory -> STheory
   STheoryTop -> STop
 
-withFunctionVariant :: FunctionVariantMLevel -> (forall l0 l1. SFunctionVariant l0 l1 -> a) -> a
+withFunctionVariant :: FunctionVariantMLevel -> (forall l0 l1. SMFunctionVariant l0 l1 -> a) -> a
 withFunctionVariant fv f = case fv of
   SetTheory -> f SSetTheory
   TheoryTop -> f STheoryTop
+
+data SFunctionVariant (l0 :: MLevel) (l1 :: MLevel) = SFunctionVariant
+  { mlevel :: SMFunctionVariant l0 l1
+  , hlevel :: HLevel
+  }
+
+instance HLevelOf (SFunctionVariant l0 l1) where
+  hlevelOf sfv = sfv.hlevel
