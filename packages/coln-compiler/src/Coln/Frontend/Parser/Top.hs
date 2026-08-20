@@ -8,7 +8,7 @@ import Control.Exception (try)
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
-import Data.Map.Ordered (OMap)
+
 import Data.Map.Ordered qualified as OMap
 import FNotation (Ntn)
 import FNotation qualified as N
@@ -16,7 +16,6 @@ import Prettyprinter
 
 import Coln.Common
 import Coln.Core
-import Coln.Core.Layout
 import Coln.Core.Memoed qualified as M
 import Coln.Core.Value qualified as V
 import Coln.Diagnostics
@@ -117,10 +116,8 @@ realm e g head def_ns = do
   (x, theory_n) <- realmHead (contramap ParserCode e) head
   theory_typ <- typ (contramap ParserCode e) theory_n
   theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g Inductive)
-  let (gt, root) = layoutTop x theory.val
-  defs <- realmDecls e g theory.val root.val def_ns
-  let (gts, defs') = layoutDecls defs
-  pure (x, Realm gt root.val theory.val defs)
+  defs <- realmDecls e g theory.val def_ns
+  pure (x, Realm theory defs)
 
 elabRealmDefinition :: ElabEnv N -> Mode -> (Typ N, Chk D) -> IO (Definition Local)
 elabRealmDefinition e m (ty, tm) = do
@@ -140,10 +137,10 @@ realmDecl de e (N.MDecl ms "def" n sp) = do
   pure (x, d)
 realmDecl de _ n = unexpectedNotation (contramap ParserCode de) n "realm declaration"
 
-realmDecls :: DiagnosticEnv ColnCode -> Globals -> V.Ty N -> V.El N -> [Ntn] -> IO (OMap Name (Definition Local))
-realmDecls de g theory root ns = do
+realmDecls :: DiagnosticEnv ColnCode -> Globals -> V.Ty N -> [Ntn] -> IO (OMap Name (Definition Local))
+realmDecls de g theory ns = do
   let e0 = emptyElabEnv (contramap ElaboratorCode de) g Conjunctive
-  let e = e0{scope = let_ "root" root theory Conjunctive e0.scope}
+  let e = e0{scope = bind "root" theory Conjunctive e0.scope}
   let addDecl (e', ds) n = do
         (x, d) <- realmDecl de e' n
         pure

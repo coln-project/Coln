@@ -50,9 +50,10 @@ cache p sc v = do
         let cols = toList (sc.ctx :> sa)
         let bound = toList (sc.bound :> V.local (FId sc.len))
         let boundStx = separate (sc.len + 1) <$> bound
-        let ent = Entity View (toList sc.names) ((.shape) <$> cols) (Just [0 .. sc.len])
+        let xs = toList sc.names
+        let ent = Entity View (zip xs ((.shape) <$> cols)) (Just [0 .. sc.len])
         let tn = TableName sc.realm p
-        let def = Definition cols tn boundStx
+        let def = Definition (zip xs cols) tn boundStx
         let prop = S.Atom tn Nothing boundStx
         let elt = S.Multi u $ S.Query sa.shape (S.Abs Nothing prop)
         (Leaf ent, Node (fromList [("definition", Leaf def)]), elt)

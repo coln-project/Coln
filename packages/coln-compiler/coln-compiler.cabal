@@ -57,6 +57,7 @@ library
     Coln.MIR.Value
     Coln.Report
     Coln.SIR.Cache
+    Coln.SIR.Realm
     Coln.SIR.Separate
     Coln.SIR.Syntax
 

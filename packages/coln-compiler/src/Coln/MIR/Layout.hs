@@ -73,7 +73,7 @@ layout p sc = \case
       let x = argName sc.usedNames ft.cod
       let (v, sc') = bind sc x ft.dom
       let (gt, m) = layout p sc' (V.appClo ft.cod v)
-      (gt, M.lam sc.locals (S.Abs x m.stx))
+      (gt, M.lam sc.locals (M.fromV sc.len ft.dom) (S.Abs x m.stx))
   V.Record rt -> do
     let go _ [] = ([], [])
         go l ((x, a) : rest) = do

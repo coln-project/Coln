@@ -39,15 +39,15 @@ data FieldSetting c = FieldSetting
 
 intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Chk c
 intro @c sp fieldSettings = Chk \e a -> do
-  let go :: V.Locals -> [(FieldSetting c, (Name, V.Locals -> V.Ty N))] -> IO [(Name, El c)]
-      go _ [] = pure []
-      go vs ((fs, (x, fieldTyC)) : rest)
+  let go :: Level -> V.Locals -> [(FieldSetting c, (Name, V.Locals -> V.Ty N))] -> IO [(Name, El c)]
+      go lvl _ [] = pure []
+      go lvl vs ((fs, (x, fieldTyC)) : rest)
         | fs.name == x = do
             let fieldTy = fieldTyC vs
-            let target' = projTarget e.target x
+            let target' = projTarget lvl e.target x
             m <- fs.body.elab (e{target = target'}) fieldTy
             let v = reflectTarget target' fieldTy m.val
-            fields <- go (V.LSnoc vs v) rest
+            fields <- go lvl (V.LSnoc vs v) rest
             pure ((x, m) : fields)
         | otherwise = do
             let msg = "expected record field" <+> dpretty x <+> "got: " <+> dpretty fs.name
@@ -59,8 +59,8 @@ intro @c sp fieldSettings = Chk \e a -> do
       unless (expectedLength == givenLength) $ do
         let msg = "expected" <+> pretty expectedLength <+> "fields, got: " <+> pretty givenLength
         failWith e.diagEnv sp WrongNumberOfRecordFields msg
-      fields <- go rt.capture (zip fieldSettings (toList rt.fieldTypes))
-      pure $ cons (fromList fields)
+      fields <- go rt.level rt.capture (zip fieldSettings (toList rt.fieldTypes))
+      pure $ cons rt.level (fromList fields)
     _ -> do
       let msg = "tried to check a record expression at a non-record type"
       failWith e.diagEnv sp CheckRecordAtNonRecordType msg
@@ -73,7 +73,7 @@ elim sp projectee x = Syn \e -> do
       unless (contains rt.fieldTypes x) $ do
         let msg = "no such field" <+> dpretty x <+> "in type" <+> prtIn e ty
         failWith e.diagEnv sp NoSuchField msg
-      pure (V.projTy ty eprojectee.val x, proj eprojectee x)
+      pure (V.projTy ty eprojectee.val x, proj rt.level eprojectee x)
     _ -> do
       let msg = "tried to project from a value that was not of a record type"
       failWith e.diagEnv sp ProjectionOfNonRecord msg

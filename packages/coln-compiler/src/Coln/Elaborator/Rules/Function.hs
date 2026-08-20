@@ -42,9 +42,9 @@ intro sp x body = Chk \e a ->
     V.LikeFunction ft -> do
       ebody <- withBound x ft.dom ft.variant.domainMode e.scope $ \v scope' ->
         body.elab
-          (e{scope = scope', target = appTarget e.target v})
+          (e{scope = scope', target = appTarget ft.variant e.target v})
           (V.appClo ft.cod v)
-      pure $ lam e.scope.locals (fromVTy e.scope.len a) (S.Abs x ebody)
+      pure $ lam ft.variant e.scope.locals (fromVTy e.scope.len a) (S.Abs x ebody)
     _ -> do
       let msg = "tried to check a lambda expression at a non-function type"
       failWith e.diagEnv sp CheckLambdaAtNonFunctionType msg
@@ -55,7 +55,7 @@ elim sp callee arg = Syn $ \e -> do
   case V.behavior ty of
     V.LikeFunction ft -> do
       earg <- arg.elab (e{scope = shiftToMode ft.variant.domainMode e.scope}) ft.dom
-      pure (V.appClo ft.cod earg.val, app ecallee earg)
+      pure (V.appClo ft.cod earg.val, app ft.variant ecallee earg)
     _ -> do
       let msg = "tried to apply a value that was not of a function type"
       failWith e.diagEnv sp ApplicationOfNonFunction msg

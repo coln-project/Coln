@@ -76,13 +76,13 @@ data Target :: Case -> Type where
   TargetAnonymous :: Target N
   TargetNamed :: V.BareNeutral -> Target D
 
-projTarget :: Target c -> Name -> Target c
-projTarget TargetAnonymous _ = TargetAnonymous
-projTarget (TargetNamed n) x = TargetNamed n{BN.spine = V.Proj n.spine x}
+projTarget :: Level -> Target c -> Name -> Target c
+projTarget _ TargetAnonymous _ = TargetAnonymous
+projTarget l (TargetNamed n) x = TargetNamed n{BN.spine = V.Proj l n.spine x}
 
-appTarget :: Target c -> V.El N -> Target c
-appTarget TargetAnonymous _ = TargetAnonymous
-appTarget (TargetNamed n) x = TargetNamed n{BN.spine = V.App n.spine x}
+appTarget :: FunctionVariant -> Target c -> V.El N -> Target c
+appTarget _ TargetAnonymous _ = TargetAnonymous
+appTarget fv (TargetNamed n) v = TargetNamed n{BN.spine = V.App fv n.spine v}
 
 reflectTarget :: Target c -> V.Ty N -> V.Evaluation V.El c -> V.El N
 reflectTarget TargetAnonymous _ v = v
