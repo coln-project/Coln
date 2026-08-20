@@ -21,7 +21,7 @@ use crate::{
     host::{
         expr::{Expr, VarExpr},
         interpreter::{EvalResult, HostInterpreter, InterpreterContext, assert_type, is_truthy},
-        stmt::Stmt,
+        walk::{Node, pre_order},
     },
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
@@ -36,113 +36,6 @@ use crate::{
 };
 use std::collections::HashMap;
 use std::{cell::Ref, rc::Rc};
-
-// TODO: As I expect such traversals to be more common, implement iterators in
-// at least execution order (post-order traversal), and possibly other orderings,
-// and simply filter on the iterator..
-
-/// Collect every [`SourceExpr`] reachable from `stmts`.
-///
-/// The DBSP backend uses this to wire the root inputs of sources referenced
-/// inside a [`FixedPointIterExpr`] step *before* entering the `recursive`
-/// block: DBSP forbids adding a root input once a nested circuit is under
-/// construction (the input node would not belong to the root scope). Unlike the
-/// main interpretation walk this only inspects the tree, so keeping it separate
-/// is cheap and avoids threading circuit state through a discovery pass.
-fn collect_source_exprs<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a SourceExpr>) {
-    fn walk_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<&'a SourceExpr>) {
-        match stmt {
-            Stmt::Var(stmt) => {
-                if let Some(expr) = &stmt.initializer {
-                    walk_expr(expr, out);
-                }
-            }
-            Stmt::Expr(stmt) => walk_expr(&stmt.expr, out),
-            Stmt::Block(stmt) => stmt.stmts.iter().for_each(|stmt| walk_stmt(stmt, out)),
-        }
-    }
-    fn walk_expr<'a>(expr: &'a Expr, out: &mut Vec<&'a SourceExpr>) {
-        match expr {
-            Expr::Literal(_) | Expr::Var(_) => {}
-            Expr::Tuple(expr) => expr.elements.iter().for_each(|expr| walk_expr(expr, out)),
-            Expr::GetIndex(expr) => {
-                walk_expr(&expr.target, out);
-                walk_expr(&expr.index, out);
-            }
-            Expr::Grouping(expr) => walk_expr(&expr.expr, out),
-            Expr::Binary(expr) => {
-                walk_expr(&expr.left, out);
-                walk_expr(&expr.right, out);
-            }
-            Expr::Unary(expr) => walk_expr(&expr.operand, out),
-            Expr::Assign(expr) => walk_expr(&expr.value, out),
-            Expr::Call(expr) => {
-                walk_expr(&expr.callee, out);
-                expr.arguments.iter().for_each(|arg| walk_expr(arg, out));
-            }
-            Expr::Function(expr) => expr.body.stmts.iter().for_each(|stmt| walk_stmt(stmt, out)),
-            Expr::Relational(expr) => walk_rel(expr, out),
-        }
-    }
-    fn walk_rel<'a>(rel: &'a RelExpr, out: &mut Vec<&'a SourceExpr>) {
-        match rel {
-            RelExpr::Source(source) => out.push(source),
-            RelExpr::Output(expr) => walk_expr(&expr.relation, out),
-            RelExpr::Alias(expr) => walk_expr(&expr.relation, out),
-            RelExpr::Distinct(expr) => walk_expr(&expr.relation, out),
-            RelExpr::Union(expr) => expr.relations.iter().for_each(|rel| walk_expr(rel, out)),
-            RelExpr::Difference(expr) => {
-                walk_expr(&expr.left, out);
-                walk_expr(&expr.right, out);
-            }
-            RelExpr::Selection(expr) => {
-                walk_expr(&expr.relation, out);
-                walk_expr(&expr.condition, out);
-            }
-            RelExpr::Projection(expr) => {
-                walk_expr(&expr.relation, out);
-                expr.attributes
-                    .iter()
-                    .for_each(|(_, expr)| walk_expr(expr, out));
-            }
-            RelExpr::CartesianProduct(expr) => walk_equi_join(&expr.inner, out),
-            RelExpr::EquiJoin(expr) => walk_equi_join(expr, out),
-            RelExpr::MultiWayEquiJoin(expr) => {
-                expr.relations.iter().for_each(|rel| walk_expr(rel, out));
-                expr.on_exprs().for_each(|expr| walk_expr(expr, out));
-                expr.attributes
-                    .iter()
-                    .flatten()
-                    .for_each(|(_, expr)| walk_expr(expr, out));
-            }
-            RelExpr::AntiJoin(expr) => {
-                walk_expr(&expr.left, out);
-                walk_expr(&expr.right, out);
-                expr.on.iter().for_each(|(l, r)| {
-                    walk_expr(l, out);
-                    walk_expr(r, out);
-                });
-            }
-            RelExpr::FixedPointIter(expr) => {
-                walk_expr(&expr.accumulator.1, out);
-                expr.step.stmts.iter().for_each(|stmt| walk_stmt(stmt, out));
-            }
-        }
-    }
-    fn walk_equi_join<'a>(expr: &'a EquiJoinExpr, out: &mut Vec<&'a SourceExpr>) {
-        walk_expr(&expr.left, out);
-        walk_expr(&expr.right, out);
-        expr.on.iter().for_each(|(l, r)| {
-            walk_expr(l, out);
-            walk_expr(r, out);
-        });
-        expr.attributes
-            .iter()
-            .flatten()
-            .for_each(|(_, expr)| walk_expr(expr, out));
-    }
-    stmts.iter().for_each(|stmt| walk_stmt(stmt, out));
-}
 
 type Sources = HashMap<String, Source>;
 
@@ -675,11 +568,10 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
         // Wire the root inputs of any source referenced inside the step *before*
         // entering `recursive`: DBSP forbids adding a root input once a nested
-        // circuit is under construction. Deduped against sources already wired
-        // elsewhere; inside the step each is `delta0`'d like any outer relation.
-        let mut step_sources = Vec::new();
-        collect_source_exprs(&expr.step.stmts, &mut step_sources);
-        for source_expr in step_sources {
+        // circuit is under construction (the input node would not belong to the
+        // root scope). Deduped against sources already wired elsewhere; inside
+        // the step each is `delta0`'d like any outer relation.
+        for source_expr in pre_order(&expr.step.stmts).filter_map(Node::as_source) {
             if !self.sources.contains_key(source_expr.as_id()) {
                 let source = Source::from_source_expr(source_expr, &mut self.root_circuit);
                 self.sources.insert(source_expr.to_id(), source);

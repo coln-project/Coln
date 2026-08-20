@@ -28,8 +28,10 @@ use std::collections::{BTreeMap, HashMap};
 type BaseTableName = TableRef;
 type DerivedViewName = TableRef;
 
-struct QueryProgramBuilder {
+struct QueryProgram {
+    /// The (raw, that is, unresolved, unoptimized) query program itself.
     program: Code,
+    /// The declared base tables.
     base_tables: HashMap<BaseTableName, BaseTableSchema>,
     /// The relations the program itself defines, that is, one per declared rule.
     ///
@@ -72,16 +74,19 @@ impl From<&BaseTableSchema> for RelationSchema {
     }
 }
 
-impl QueryProgramBuilder {
-    fn new() -> Self {
+impl QueryProgram {
+    fn empty() -> Self {
         Self {
             program: Vec::new(),
             base_tables: HashMap::new(),
             derived_views: HashMap::new(),
         }
     }
+    pub fn program(&self) -> &Code {
+        &self.program
+    }
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
-        let mut builder = QueryProgramBuilder::new();
+        let mut builder = QueryProgram::empty();
         for table in &flat_realm.tables {
             builder.table_declaration(table)?;
         }
@@ -772,8 +777,8 @@ mod tests {
     /// A builder with one base table `t` whose columns are given as
     /// `(name, type)` pairs, so [`QueryProgramBuilder::atom`] can be driven
     /// directly.
-    fn builder_with_table(columns: Vec<(&str, ir::ColType)>) -> QueryProgramBuilder {
-        let mut builder = QueryProgramBuilder::new();
+    fn builder_with_table(columns: Vec<(&str, ir::ColType)>) -> QueryProgram {
+        let mut builder = QueryProgram::empty();
         builder
             .table_declaration(&table_entry(columns))
             .expect("A single base table declaration must succeed");
@@ -852,7 +857,7 @@ mod tests {
     fn declaring_the_same_base_table_twice_is_an_error() {
         // `HashMap::insert` returns the previous value, so the check's direction
         // matters: the first declaration must pass and the second must not.
-        let mut builder = QueryProgramBuilder::new();
+        let mut builder = QueryProgram::empty();
         let entry = table_entry(vec![("a", builtin())]);
         builder
             .table_declaration(&entry)
@@ -1014,9 +1019,9 @@ mod tests {
             )],
         };
 
-        let builder = QueryProgramBuilder::from_flat_realm(&realm).expect("The realm lowers");
+        let builder = QueryProgram::from_flat_realm(&realm).expect("The realm lowers");
 
-        assert_eq!(builder.program.len(), 1, "One rule is one statement");
+        assert_eq!(builder.program().len(), 1, "One rule is one statement");
         let schema = &builder
             .derived_views
             .get(&TableRef::from(&ir::Path::from("r")))
@@ -1055,7 +1060,7 @@ mod tests {
                 vec![atom_over_t(None, vec![(0, var_term(0))])],
             )],
         };
-        let builder = QueryProgramBuilder::from_flat_realm(&realm).expect("The realm lowers");
+        let builder = QueryProgram::from_flat_realm(&realm).expect("The realm lowers");
 
         crate::host::resolver::ResolvedCode::from(builder.program)
             .expect("The lowered program must resolve");
@@ -1073,7 +1078,7 @@ mod tests {
             tables: vec![table_entry(vec![("a", builtin())])],
             rules: vec![rule.clone(), rule],
         };
-        assert!(QueryProgramBuilder::from_flat_realm(&realm).is_err());
+        assert!(QueryProgram::from_flat_realm(&realm).is_err());
     }
 
     fn multi_way_join(expr: &Expr) -> &MultiWayEquiJoinExpr {
