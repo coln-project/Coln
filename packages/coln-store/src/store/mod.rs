@@ -29,8 +29,8 @@ use crate::{op::Op, txn::RowHandle};
 
 #[derive(Debug)]
 pub struct Store {
-    pub(crate) next_oid: TableOid,
     path_to_oid: HashMap<ir::Path, TableOid>,
+    /// Oids are dense and tables are never dropped, so the next oid is `tables.len()`.
     tables: HashMap<TableOid, Table>,
     id_packer: IdPacker,
     /// Source rule entries retained for persistence. Compiled form lives in `rules`.
@@ -107,7 +107,6 @@ impl Store {
         })
         .expect("empty root commit should build");
         Self {
-            next_oid: 0,
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
             id_packer: IdPacker::new(),
@@ -211,8 +210,7 @@ impl Store {
         path: ir::Path,
         schema: ir::Schema,
     ) -> Result<TableOid, StoreError> {
-        let oid = self.next_oid;
-        self.next_oid = self.next_oid.saturating_add(1);
+        let oid = self.tables.len();
         self.path_to_oid.insert(path.clone(), oid);
         self.tables.insert(oid, Table::new(path, oid, schema));
 
@@ -255,13 +253,10 @@ impl Store {
             "building store from theory"
         );
 
-        let mut next_oid: TableOid = 0;
         let mut path_to_oid = HashMap::new();
         let mut tables_map = HashMap::new();
 
-        for entry in &ir.tables {
-            let oid = next_oid;
-            next_oid = next_oid.saturating_add(1);
+        for (oid, entry) in ir.tables.iter().enumerate() {
             path_to_oid.insert(entry.path.clone(), oid);
             tables_map.insert(
                 oid,
@@ -273,7 +268,6 @@ impl Store {
         let commits = Self::graph_with_root_commit(&ir)?;
 
         Ok(Self {
-            next_oid,
             path_to_oid,
             tables: tables_map,
             id_packer: IdPacker::new(),

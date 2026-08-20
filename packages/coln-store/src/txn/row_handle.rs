@@ -87,10 +87,7 @@ impl RowHandle {
         }
     }
 
-    pub(crate) fn to_txn_cell_value(
-        &self,
-        current_tx: TxnId,
-    ) -> Result<TxnCellValue, StoreError> {
+    pub(crate) fn to_txn_cell_value(&self, current_tx: TxnId) -> Result<TxnCellValue, StoreError> {
         match &*self.state.borrow() {
             RowHandleState::Existing(row_id) => Ok(TxnCellValue::Id(RowRef::Existing(*row_id))),
             RowHandleState::Pending { tx_id, counter } if *tx_id == current_tx => {
@@ -140,10 +137,7 @@ pub enum TxnValue {
 }
 
 impl TxnValue {
-    pub(crate) fn to_txn_cell_value(
-        &self,
-        current_tx: TxnId,
-    ) -> Result<TxnCellValue, StoreError> {
+    pub(crate) fn to_txn_cell_value(&self, current_tx: TxnId) -> Result<TxnCellValue, StoreError> {
         match self {
             TxnValue::Id(handle) => handle.to_txn_cell_value(current_tx),
             TxnValue::Int(value) => Ok(TxnCellValue::Int(*value)),
