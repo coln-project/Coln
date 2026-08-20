@@ -1,8 +1,8 @@
 module Coln.MIR.Evaluation where
 
 import Coln.Common
-import Coln.MIR.Params
 import Coln.Core.Params
+import Coln.MIR.Params
 
 import Coln.MIR.Syntax qualified as S
 import Coln.MIR.Value qualified as V
@@ -31,9 +31,12 @@ instance Eval (S.Ty l) (V.Ty l) where
     S.LiftTy t -> V.LiftTy LSetTheory (eval vs t)
     S.U u -> V.U u
     S.EltOf tn args -> V.EltOf tn (eval vs <$> args)
-    S.Function ft -> V.Function $
-      V.FunctionType SSetTheory (eval vs ft.dom) (evalAbs vs ft.cod)
-    S.Record rt -> V.Record $
-      V.RecordType vs $ flip eval <$> rt.fieldTypes
+    S.Function ft ->
+      V.Function $
+        V.FunctionType SSetTheory (eval vs ft.dom) (evalAbs vs ft.cod)
+    S.Record rt ->
+      V.Record $
+        V.RecordType vs $
+          flip eval <$> rt.fieldTypes
     S.BuiltinTy t -> V.BuiltinTy t
     S.Eq at lhs rhs -> V.Eq (eval vs at) (eval vs lhs) (eval vs rhs)

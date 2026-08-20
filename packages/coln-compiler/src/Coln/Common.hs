@@ -9,6 +9,7 @@ module Coln.Common (
   module Data.Map.Ordered,
   module Data.Kind,
   module Data.Vector.Strict,
+  module Data.Void,
   module Data.Text,
   module Prettyprinter,
   module Coln.Report,
@@ -58,6 +59,7 @@ import Data.Text (Text)
 import Data.Traversable hiding (for)
 import Data.Vector.Strict (Vector)
 import Data.Vector.Strict qualified as V
+import Data.Void
 import Diagnostician
 import FNotation (Name (..))
 import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty, (<+>))
@@ -107,6 +109,9 @@ class Contains a i | a -> i where
 
 class ToList a e | a -> e where
   toList :: a -> [e]
+
+instance ToList (V.Vector a) a where
+  toList = V.toList
 
 class FromList a e | a -> e where
   fromList :: [e] -> a

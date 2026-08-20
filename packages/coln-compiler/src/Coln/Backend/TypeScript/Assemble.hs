@@ -46,7 +46,7 @@ instance Assemble Ty where
   asm (ListTy a) = asm a <> "[]"
 
 instance Assemble Binding where
-  asm b = asm b.name <> ":" <+> asm b.ty
+  asm b = asm b . name <> ":" <+> asm b . ty
 
 instance Assemble BinOp where
   asm EqualsEquals = "=="
@@ -85,52 +85,62 @@ instance Assemble Statement where
 
 instance Assemble Block where
   asm b =
-    let ret = case b.return of
+    let ret = case b . return of
           Just t -> ["return" <+> asm t <> ";"]
           Nothing -> []
-     in hardBlocked $ (asm <$> b.statements) ++ ret
+     in hardBlocked $ (asm <$> b . statements) ++ ret
 
 instance Assemble Class where
   asm c =
     "class"
-      <+> asm c.name
-      <> maybe mempty (\e -> " extends" <+> asm e) c.extends
-      <> maybe mempty (\i -> " implements" <+> asm i) c.implements
+      <+> asm c
+        . name
+      <> maybe mempty (\e -> " extends" <+> asm e) c . extends
+      <> maybe mempty (\i -> " implements" <+> asm i) c
+        . implements
       <+> hardBlocked
         ( punctuate
             line
-            [ vsep [asm f <> ";" | f <- c.fields]
-            , asm c.constructor
+            [ vsep [asm f <> ";" | f <- c . fields]
+            , asm c . constructor
             ]
         )
 
 instance Assemble Constructor where
   asm c =
     "constructor"
-      <> tupled (asm <$> c.args)
-      <+> asm c.body
+      <> tupled (asm <$> c . args)
+      <+> asm c
+        . body
 
 instance Assemble Interface where
   asm i =
     "interface"
-      <+> asm i.name
-      <+> maybe mempty (\e -> "extends" <+> asm e <> " ") i.extends
-      <> hardBlocked [asm f <> ";" | f <- i.fields]
+      <+> asm i
+        . name
+      <+> maybe mempty (\e -> "extends" <+> asm e <> " ") i
+        . extends
+      <> hardBlocked [asm f <> ";" | f <- i . fields]
 
 instance Assemble FunctionDef where
   asm f =
     "function"
-      <+> asm f.name
-      <> tupled (asm <$> f.args)
-      <> maybe mempty (\ty -> ":" <+> asm ty) f.ret
-      <+> asm f.body
+      <+> asm f
+        . name
+      <> tupled (asm <$> f . args)
+      <> maybe mempty (\ty -> ":" <+> asm ty) f
+        . ret
+      <+> asm f
+        . body
 
 instance Assemble TypeDef where
   asm td =
     "type"
-      <+> asm td.name
+      <+> asm td
+        . name
       <+> "="
-      <+> asm td.body
+      <+> asm td
+        . body
       <> ";"
 
 instance (Assemble a) => Assemble (AccessControlled a) where
@@ -159,7 +169,7 @@ instance Assemble Import where
 instance Assemble Module where
   asm m =
     vsep
-      [ vsep $ asm <$> m.imports
+      [ vsep $ asm <$> m . imports
       , ""
-      , vsep $ punctuate line $ asm <$> m.declarations
+      , vsep $ punctuate line $ asm <$> m . declarations
       ]

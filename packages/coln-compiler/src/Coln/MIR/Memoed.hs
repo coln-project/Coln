@@ -2,11 +2,11 @@ module Coln.MIR.Memoed where
 
 import Coln.Common
 import Coln.Core.Params
+import Coln.MIR.Evaluation
 import Coln.MIR.Params
+import Coln.MIR.Readback
 import Coln.MIR.Syntax qualified as S
 import Coln.MIR.Value qualified as V
-import Coln.MIR.Readback
-import Coln.MIR.Evaluation
 
 data Memoed (s :: MLevel -> Type) (v :: MLevel -> Type) (l :: MLevel) = M
   { stx :: s l

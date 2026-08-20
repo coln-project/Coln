@@ -3,10 +3,10 @@ module Coln.MIR.Interpret where
 -- Interpret Core syntax into MIR values
 import Coln.Common
 
-import Coln.MIR.Value qualified as V
-import Coln.MIR.Params
-import Coln.Core.Syntax qualified as S
 import Coln.Core.Params
+import Coln.Core.Syntax qualified as S
+import Coln.MIR.Params
+import Coln.MIR.Value qualified as V
 
 class Interp a (f :: MLevel -> Type) | a -> f where
   interp :: V.Globals -> V.Locals -> a -> Match SMLevel f

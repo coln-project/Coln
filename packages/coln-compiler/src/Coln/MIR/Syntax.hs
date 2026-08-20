@@ -1,8 +1,8 @@
 module Coln.MIR.Syntax where
 
 import Coln.Common
-import Coln.MIR.Params
 import Coln.Core.Params
+import Coln.MIR.Params
 
 data Abs a = Abs Name a | AbsConst a
 
@@ -16,14 +16,13 @@ data El :: MLevel -> Type where
   Proj :: El l -> Name -> El l
   Lit :: Literal -> El Set
 
-
 data FunctionType = FunctionType
   { dom :: Ty Set
   , cod :: Abs (Ty Theory)
   }
 
 data RecordType l = RecordType
-  { fieldTypes :: Dict (Ty l) }
+  {fieldTypes :: Dict (Ty l)}
 
 data Ty :: MLevel -> Type where
   LiftTy :: Ty Set -> Ty Theory
@@ -33,4 +32,3 @@ data Ty :: MLevel -> Type where
   Record :: RecordType l -> Ty l
   BuiltinTy :: BuiltinTy -> Ty Set
   Eq :: Ty Set -> El Set -> El Set -> Ty Set
-  

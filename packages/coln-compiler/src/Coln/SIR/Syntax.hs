@@ -4,6 +4,8 @@ import Coln.Common
 import Coln.Core.Params
 import Coln.MIR.Params
 
+import GHC.Generics
+
 data El :: MLevel -> Type where
   LiftEl :: El Set -> El Theory
   Var :: BId -> El Set
@@ -19,10 +21,14 @@ data Prop
   | And (Dict Prop)
   | Eq Shape (El Set) (El Set)
 
-data Shape
+data ScalarType
   = RowId TableName
-  | Tuple (Dict Shape)
   | BuiltinTy BuiltinTy
+  deriving (Eq, Show, Generic)
+
+data Shape
+  = Tuple (Dict Shape)
+  | Scalar ScalarType
 
 unitShape :: Shape
 unitShape = Tuple (fromList [])
@@ -38,4 +44,3 @@ data Query = Query
   { shape :: Shape
   , pred :: Abs Prop
   }
-

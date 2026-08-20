@@ -46,7 +46,7 @@ app fv (Lam fv' _ clo) v = case (fv, fv') of
 app _ _ _ = panic "can only apply lambda"
 
 proj :: El l -> Name -> El l
-proj (Neu n) x = Neu $ n { spine = n.spine :> x }
+proj (Neu n) x = Neu $ n{spine = n.spine :> x}
 proj (Cons fields) x = elemAt fields x
 proj _ _ = panic "can only project from neutral or cons"
 
@@ -71,7 +71,6 @@ instance LevelCoerce El where
   levelCoerce STop SSet (LiftEl LTheoryTop (LiftEl LSetTheory v)) = v
   levelCoerce _ _ _ = panic "cannot level coerce"
 
-
 data FunctionType (l0 :: MLevel) (l1 :: MLevel) = FunctionType
   { variant :: SFunctionVariant l0 l1
   , dom :: Ty l0
@@ -91,7 +90,7 @@ data Ty :: MLevel -> Type where
   Record :: RecordType l -> Ty l
   BuiltinTy :: BuiltinTy -> Ty Set
   Eq :: Ty Set -> El Set -> El Set -> Ty Set
-  
+
 instance LevelCoerce Ty where
   levelCoerce SSet SSet v = v
   levelCoerce STheory STheory v = v

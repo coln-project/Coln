@@ -13,10 +13,10 @@ import Coln.Elaborator.Judgment
 
 create :: Span -> Typ N -> Syn D
 create sp t = Syn \e -> do
-  case e.scope.mode of
+  case e . scope . mode of
     Inductive -> pure ()
     Conjunctive -> do
       let msg = "cannot create initial model in conjunctive mode"
-      failWith e.diagEnv sp InitInConjunctive msg
-  a <- t.elab (e{scope = lock e.scope, target = TargetAnonymous})
-  pure (a.val, init a)
+      failWith e . diagEnv sp InitInConjunctive msg
+  a <- t . elab (e{scope = lock e . scope, target = TargetAnonymous})
+  pure (a . val, init a)

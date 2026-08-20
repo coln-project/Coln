@@ -42,15 +42,15 @@ instance Separate (V.El Theory) (S.El Theory) where
 
 shapeOf :: V.Ty Set -> S.Shape
 shapeOf = \case
-  V.EltOf x _ -> S.RowId x
+  V.EltOf x _ -> S.Scalar $ S.RowId x
   V.Record rt -> do
     let go [] _ _ = []
-        go ((x, k):rest) vs v = do
+        go ((x, k) : rest) vs v = do
           let v' = V.proj v x
           (x, shapeOf (k vs)) : (go rest (vs :> Pair SSet v') v)
     let v = V.local (FId 0)
     S.Tuple $ fromList $ go (toList rt.fieldTypes) rt.capture v
-  V.BuiltinTy t -> S.BuiltinTy t
+  V.BuiltinTy t -> S.Scalar $ S.BuiltinTy t
   V.Eq _ _ _ -> S.unitShape
 
 propAt :: CtxLen -> V.Ty Set -> V.El Set -> S.Prop
@@ -59,7 +59,7 @@ propAt n = \case
     S.Atom x (Just (separate n v)) (separate n <$> args)
   V.Record rt -> \v -> do
     let go [] _ = []
-        go ((x, k):rest) vs = do
+        go ((x, k) : rest) vs = do
           let v' = V.proj v x
           (x, propAt n (k vs) v') : (go rest (vs :> Pair SSet v'))
     S.And $ fromList $ go (toList rt.fieldTypes) rt.capture

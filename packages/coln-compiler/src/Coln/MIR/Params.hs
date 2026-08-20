@@ -34,7 +34,7 @@ sDecodesInto = \case
   SSetU -> SSet
   SPropU -> SSet
   STheoryU -> STheory
-  
+
 sCodesInto :: SUniverse l0 l1 -> SMLevel l1
 sCodesInto = \case
   SSetU -> STheory
@@ -69,4 +69,3 @@ withFunctionVariant :: FunctionVariantMLevel -> (forall l0 l1. SFunctionVariant 
 withFunctionVariant fv f = case fv of
   SetTheory -> f SSetTheory
   TheoryTop -> f STheoryTop
-  

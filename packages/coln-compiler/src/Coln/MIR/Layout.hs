@@ -9,14 +9,15 @@ import Data.String (fromString)
 import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
+
 -- import Coln.Core.Globals
 import Coln.Core.Params
+import Coln.MIR.Memoed qualified as M
 import Coln.MIR.Params
 import Coln.MIR.Readback
+import Coln.MIR.Realm
 import Coln.MIR.Syntax qualified as S
 import Coln.MIR.Value qualified as V
-import Coln.MIR.Memoed qualified as M
-import Coln.MIR.Realm
 
 -- Layout is the process of creating a realm from a theory, along with the
 -- universal model of that theory in the realm.
@@ -44,15 +45,16 @@ emptyScope = Scope 0 BwdNil BwdNil BwdNil BwdNil Set.empty
 bind :: Scope -> Name -> V.Ty Set -> (V.El Set, Scope)
 bind sc x a = do
   let v = V.local (FId sc.len)
-      sc' = Scope
-        { len = sc.len + 1
-        , names = sc.names :> x
-        , ctx = sc.ctx :> a
-        , bound = sc.bound :> v
-        , locals = sc.locals :> (Pair SSet v)
-        , usedNames = Set.insert x sc.usedNames
-        , realm = sc.realm
-        }
+      sc' =
+        Scope
+          { len = sc.len + 1
+          , names = sc.names :> x
+          , ctx = sc.ctx :> a
+          , bound = sc.bound :> v
+          , locals = sc.locals :> (Pair SSet v)
+          , usedNames = Set.insert x sc.usedNames
+          , realm = sc.realm
+          }
   (v, sc')
 
 args :: Scope -> [M.El Set]

@@ -3,8 +3,8 @@ module Coln.MIR.Readback where
 import Coln.Common
 import Coln.Core.Params
 import Coln.MIR.Params
-import Coln.MIR.Value qualified as V
 import Coln.MIR.Syntax qualified as S
+import Coln.MIR.Value qualified as V
 
 type CtxLen = Int
 
@@ -35,8 +35,8 @@ instance Readback (V.Ty Set) (S.Ty Set) where
     V.Eq at lhs rhs -> S.Eq (readb n at) (readb n lhs) (readb n rhs)
     V.Record rt -> do
       let go _ _ [] = []
-          go n' vs ((x, k):rest) =
-            (x, readb n' (k vs)):(go (n' + 1) (vs :> Pair SSet (fresh n')) rest)
+          go n' vs ((x, k) : rest) =
+            (x, readb n' (k vs)) : (go (n' + 1) (vs :> Pair SSet (fresh n')) rest)
       let fieldTypes = fromList $ go n rt.capture (toList rt.fieldTypes)
       S.Record $ S.RecordType fieldTypes
 
