@@ -99,7 +99,6 @@ instance (Ord a) => ElemAt (OMap a b) a b where
   elemAt m k = case OMap.lookup k m of
     Just v -> v
     Nothing -> panic "no such key found in map"
-    
 
 class Lookup a i b | a -> i b where
   lookup :: a -> i -> Maybe b

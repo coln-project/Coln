@@ -2,8 +2,8 @@ module Coln.FLIR.Value where
 
 import Coln.Common
 import Coln.Core.Params
-import Coln.SIR.Syntax qualified as SIR
 import Coln.SIR.Realm qualified as SIR
+import Coln.SIR.Syntax qualified as SIR
 
 import GHC.Generics
 
@@ -52,7 +52,6 @@ data Atom e = Atom
 data Prop e
   = PAtom (Atom e)
   | PEq (El e) (El e)
-
 
 data Rule = Rule
   { ruleVariant :: SIR.RuleVariant

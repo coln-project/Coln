@@ -3,15 +3,15 @@ module Coln.FLIR.Flatten where
 import Coln.Common
 import Coln.Core.Params
 import Coln.FLIR.Value qualified as V
-import Coln.SIR.Syntax qualified as S
 import Coln.SIR.Realm qualified as S
+import Coln.SIR.Syntax qualified as S
 
 import Control.Monad (forM)
 import Control.Monad.State
-import Data.Vector.Strict qualified as Vec
 import Data.Set qualified as Set
+import Data.Vector.Strict qualified as Vec
 
-newtype Els e = Els { unEls :: Trie (V.El e) }
+newtype Els e = Els {unEls :: Trie (V.El e)}
 
 leaf :: V.El e -> Els e
 leaf = Els . Leaf
@@ -29,12 +29,12 @@ proj (Els (Leaf _)) _ = panic "tried to project from non-node"
 
 concatEls :: [Els e] -> [V.El e]
 concatEls vs = toList $ go vs BwdNil
-  where
-    go [] vs' = vs'
-    go ((Els (Leaf v)):rest) vs' = go rest (vs' :> v)
-    go ((Els (Node d)):rest) vs' = go rest (go (Els <$> toList d.values) vs')
+ where
+  go [] vs' = vs'
+  go ((Els (Leaf v)) : rest) vs' = go rest (vs' :> v)
+  go ((Els (Node d)) : rest) vs' = go rest (go (Els <$> toList d.values) vs')
 
-newtype Props e = Props { apply :: Bwd (V.Prop e) -> Bwd (V.Prop e) }
+newtype Props e = Props {apply :: Bwd (V.Prop e) -> Bwd (V.Prop e)}
 
 instance Semigroup (Props e) where
   ps0 <> ps1 = Props (ps1.apply . ps0.apply)
@@ -68,7 +68,7 @@ freshAt p = \case
   S.Scalar t -> do
     aux <- get
     let i = aux.length
-    put $ aux { vars = (aux.vars :> (p, t)), length = (i + 1) }
+    put $ aux{vars = (aux.vars :> (p, t)), length = (i + 1)}
     pure $ leaf $ V.LocalVar $ FId i
   S.Tuple fields -> do
     fields' <- forM (toList fields) $ \(x, sh) -> freshAt (p :> x) sh
@@ -81,10 +81,10 @@ fresh mx sh = do
     Nothing -> do
       aux <- get
       let x = freshNameFor aux.usedRoots
-      put $ aux {usedRoots = Set.insert x aux.usedRoots}
+      put $ aux{usedRoots = Set.insert x aux.usedRoots}
       pure x
   freshAt (BwdNil :> x) sh
-    
+
 type Locals e = Bwd (Els e)
 
 class Flatten a (b :: Type -> Type) | a -> b where
@@ -95,7 +95,7 @@ absName (S.Abs mx _) = mx
 absName (S.AbsConst _) = Nothing
 
 assert :: Props e -> FlatM e ()
-assert ps = modify (\aux -> aux { props = aux.props <> ps })
+assert ps = modify (\aux -> aux{props = aux.props <> ps})
 
 app :: (Flatten a b) => Locals e -> S.Abs a -> Els e -> FlatM e (b e)
 app l (S.Abs _ body) v = flatten (l :> v) body
@@ -119,7 +119,7 @@ instance Flatten (S.El Set) Els where
 equate :: S.Shape -> Els e -> Els e -> Props e
 equate (S.Scalar _) v0 v1 = single $ V.PEq (getLeaf v0) (getLeaf v1)
 equate (S.Tuple fs) v0 v1 =
-  mconcat [ equate t (proj v0 x) (proj v1 x) | (x, t) <- toList fs ]
+  mconcat [equate t (proj v0 x) (proj v1 x) | (x, t) <- toList fs]
 
 instance Flatten S.Prop Props where
   flatten l = \case
@@ -144,24 +144,25 @@ flattenColumns = concat . fmap (\(x, sh) -> flattenColumn (BwdNil :> x) sh)
 flattenPrimaryKey :: [S.Shape] -> [Int] -> [Int]
 flattenPrimaryKey shapes cols = do
   let go n [] = [n]
-      go n (sh:rest) = do
+      go n (sh : rest) = do
         let s = S.shapeSize sh
         n : go (n + s) rest
   let offsets = Vec.fromList $ go 0 shapes
-  concat [[(offsets Vec.! i)..(offsets Vec.! (i + 1)) - 1] | i <- cols]
+  concat [[(offsets Vec.! i) .. (offsets Vec.! (i + 1)) - 1] | i <- cols]
 
 flattenEntity :: S.Entity -> V.Entity
-flattenEntity e = V.Entity
-  { V.entityVariant = case e.entityVariant of
-      S.Table -> V.Table
-      S.View -> V.View V.Materialized
-  , V.columns = flattenColumns e.columns
-  , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
-  }
+flattenEntity e =
+  V.Entity
+    { V.entityVariant = case e.entityVariant of
+        S.Table -> V.Table
+        S.View -> V.View V.Materialized
+    , V.columns = flattenColumns e.columns
+    , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
+    }
 
 bindTele :: Locals e -> [(Name, S.Query)] -> FlatM e (Locals e)
 bindTele l [] = pure l
-bindTele l ((x, a):rest) = do
+bindTele l ((x, a) : rest) = do
   v <- fresh (Just x) a.shape
   app l a.pred v >>= assert
   bindTele (l :> v) rest
