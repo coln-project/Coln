@@ -15,7 +15,7 @@ use crate::{
     },
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, MultiWayEquiJoin, OutputExpr, ProjectionExpr, RelExpr,
+        FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr, RelExpr,
         RelExprVisitorMut, SelectionExpr, SourceExpr, UnionExpr,
     },
     util::{Named, Resolvable},
@@ -390,22 +390,20 @@ impl RelExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
 
     fn visit_multi_way_equi_join_expr(
         &mut self,
-        expr: &mut MultiWayEquiJoin,
+        expr: &mut MultiWayEquiJoinExpr,
         ctx: VisitorCtx<'_, '_>,
     ) -> VisitorResult {
-        // TODO: Typecheck: A union is valid if the column types match and
-        // the amount of columns is the same.
-        if expr.relations.len() < 2 {
-            return Err(SyntaxError::new(
-                "A multi way equi join requires at least two relations",
-            ));
-        }
+        // The structural invariants (arity, in-bounds and distinct relation
+        // indices, at least two occurrences per join variable) are checked here
+        // rather than re-derived by every consumer, because the fields are
+        // public and a plan may be assembled or rewritten by hand.
+        expr.validate()?;
 
         expr.relations
             .iter_mut()
             .try_for_each(|relation| self.visit_expr(relation, ctx))
             .and_then(|()| {
-                expr.on.iter_mut().flatten().flatten().try_for_each(|expr| {
+                expr.on_exprs_mut().try_for_each(|expr| {
                     ctx.begin_tuple_context();
                     let ret = self.visit_expr(expr, ctx);
                     ctx.end_tuple_context();

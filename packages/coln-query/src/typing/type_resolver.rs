@@ -16,8 +16,8 @@ use crate::{
     },
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, MultiWayEquiJoin, OutputExpr, ProjectionExpr, RelExpr, RelExprVisitor,
-        SelectionExpr, SourceExpr, UnionExpr,
+        FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr, RelExpr,
+        RelExprVisitor, SelectionExpr, SourceExpr, UnionExpr,
     },
 };
 pub use crate::{
@@ -351,7 +351,7 @@ impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
 
     fn visit_multi_way_equi_join_expr(
         &mut self,
-        expr: &MultiWayEquiJoin,
+        expr: &MultiWayEquiJoinExpr,
         ctx: VisitorCtx<'_, '_>,
     ) -> VisitorResult {
         let mut relations = expr.relations.iter();

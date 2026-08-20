@@ -192,6 +192,10 @@ impl<T, R> Col<T, R> {
     pub fn name(&self) -> &ir::ColName {
         &self.name
     }
+    /// The column's (scalar) type, in whichever engine's view `T` belongs to.
+    pub fn ty(&self) -> &T {
+        &self.ty
+    }
 }
 
 /// Column metadata from the perspective of the compiler.

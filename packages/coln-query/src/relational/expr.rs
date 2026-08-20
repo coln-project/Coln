@@ -11,10 +11,12 @@
 //! preserves relation-valued variables, nested operators, and tuple-of-relations.
 
 use crate::{
+    error::SyntaxError,
     host::{expr::Expr, stmt::BlockStmt},
     relational::RelationSchema,
     util::MemAddr,
 };
+use std::collections::HashSet;
 
 /// Relational-algebra operator = backend-neutral query-plan vocabulary.
 ///
@@ -38,7 +40,7 @@ pub enum RelExpr {
     Projection(Box<ProjectionExpr>),
     CartesianProduct(Box<CartesianProductExpr>),
     EquiJoin(Box<EquiJoinExpr>),
-    MultiWayEquiJoin(Box<MultiWayEquiJoin>),
+    MultiWayEquiJoin(Box<MultiWayEquiJoinExpr>),
     AntiJoin(Box<AntiJoinExpr>),
     FixedPointIter(Box<FixedPointIterExpr>),
 }
@@ -75,7 +77,7 @@ impl_rel_and_expr_from! {
     (RelExpr::Projection, ProjectionExpr),
     (RelExpr::CartesianProduct, CartesianProductExpr),
     (RelExpr::EquiJoin, EquiJoinExpr),
-    (RelExpr::MultiWayEquiJoin, MultiWayEquiJoin),
+    (RelExpr::MultiWayEquiJoin, MultiWayEquiJoinExpr),
     (RelExpr::AntiJoin, AntiJoinExpr),
     (RelExpr::FixedPointIter, FixedPointIterExpr),
 }
@@ -265,28 +267,158 @@ pub struct EquiJoinExpr {
     pub attributes: Option<Vec<(String, Expr)>>,
 }
 
-/// An equijoin involving `N` relations. A better input than a folded sequence
-/// of [binary `EquiJoin`s](EquiJoinExpr) for worst-case optimal join algorithms
-/// (such as the leapfrog triejoin).
+/// The position of a relation within [`MultiWayEquiJoinExpr::relations`].
+pub type RelationIdx = usize;
+
+/// One equality class of a [`MultiWayEquiJoinExpr`]: every listed occurrence
+/// must produce the same value for a tuple to enter the join's output.
+///
+/// A variable bound by only *one* relation is deliberately not representable
+/// here — it constrains nothing, so it is not part of a join condition. Such a
+/// variable still reaches the output, carried by its relation's schema like any
+/// other non-join attribute. Keeping them out is what makes
+/// [`MultiWayEquiJoinExpr::on`]`.is_empty()` an exact test for "nothing to join
+/// on".
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MultiWayEquiJoin {
-    /// The `N` relations which participate in the join. Each [`Expr`] must
+pub struct JoinVariable {
+    /// The name the joined attribute carries in the output schema.
+    ///
+    /// The lowering from coln's FLIR projects every atom onto the names of the
+    /// variables it binds, so there the occurrences are plain column picks that
+    /// already agree on this name, and the schema fold described on
+    /// [`MultiWayEquiJoinExpr::on`] keeps exactly one active copy of it. When
+    /// the occurrences do *not* agree on a name (`l.a = r.b`), producing this
+    /// name is the job of whoever lowers the join.
+    pub name: String,
+    /// Which relations bind this variable, and how: the [`RelationIdx`] indexes
+    /// into [`MultiWayEquiJoinExpr::relations`], and the [`Expr`] is evaluated
+    /// in the context of that relation.
+    ///
+    /// Invariants, enforced by [`MultiWayEquiJoinExpr::new`]: at least two
+    /// occurrences, every index in bounds, indices pairwise distinct, and
+    /// ordered by index.
+    pub occurrences: Vec<(RelationIdx, Expr)>,
+}
+
+/// An equijoin involving `N >= 2` relations. A better input than a folded
+/// sequence of [binary `EquiJoin`s](EquiJoinExpr) for worst-case optimal join
+/// algorithms (such as the leapfrog triejoin), which are variable-oriented:
+/// they iterate a variable ordering, which is what [`on`](Self::on) spells out.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiWayEquiJoinExpr {
+    /// The `N >= 2` relations which participate in the join. Each [`Expr`] must
     /// evaluate to a relation.
     pub relations: Vec<Expr>,
-    /// Each entry in the outer vector corresponds to a variable which must be
-    /// equal among all its occurrences. The inner vector vector tracks the
-    /// occurrences for each variable. The inner vector is _guaranteed_ to have
-    /// the same arity as the [`relations`](Self::relations) vector. An entry
-    /// at index `i` in the inner vector with value `None` indicates that the
-    /// corresponding relation ([`relations[i]`](Self::relations)) does _not_
-    /// bind the variable, whereas a value of [`Some(Expr)`](Expr) binds the
-    /// variable to the value of the `Expr` evaluated in the context of the
-    /// corresponding relation (which is again [`relations[i]`](Self::relations)).
+    /// The join condition, as one [`JoinVariable`] per equality class of
+    /// attributes that have to agree.
     ///
-    /// If `on` is empty, a [`CartesianProduct`](CartesianProductExpr) is computed.
-    pub on: Vec<Vec<Option<Expr>>>,
+    /// If `on` is empty, a [`CartesianProduct`](CartesianProductExpr) over
+    /// [`relations`](Self::relations) is computed. Since a variable bound by a
+    /// single relation cannot be a [`JoinVariable`], that test is exact rather
+    /// than approximate.
+    ///
+    /// **Output schema.** Joining folds
+    /// [`RelationSchema::join`](crate::relational::RelationSchema::join) left to
+    /// right, which deactivates an attribute of a later relation when an earlier
+    /// one already contributes an active attribute of the same name. A join
+    /// variable whose occurrences agree on their name therefore appears **once**
+    /// in the output, carried by the first relation that binds it — no
+    /// de-duplicating projection is required, and no join column is silently
+    /// duplicated.
+    pub on: Vec<JoinVariable>,
     /// An optional projection step. See documentation of [`ProjectionExpr`].
     pub attributes: Option<Vec<(String, Expr)>>,
+}
+
+impl MultiWayEquiJoinExpr {
+    /// The only constructor that cannot produce a malformed join: it normalizes
+    /// each [`JoinVariable`]'s occurrences into relation order and then applies
+    /// [`validate`](Self::validate).
+    pub fn new(
+        relations: Vec<Expr>,
+        on: Vec<JoinVariable>,
+        attributes: Option<Vec<(String, Expr)>>,
+    ) -> Result<Self, SyntaxError> {
+        let mut joined = Self {
+            relations,
+            on,
+            attributes,
+        };
+        for variable in &mut joined.on {
+            variable.occurrences.sort_by_key(|(relation, _)| *relation);
+        }
+        joined.validate()?;
+        Ok(joined)
+    }
+
+    /// Checks the invariants documented on [`Self::relations`] and
+    /// [`JoinVariable::occurrences`]. [`Self::new`] applies this to everything
+    /// it builds; the resolver re-applies it because the fields are public and
+    /// a plan may also be assembled or rewritten by hand.
+    pub fn validate(&self) -> Result<(), SyntaxError> {
+        if self.relations.len() < 2 {
+            return Err(SyntaxError::new(format!(
+                "A multi way equi join requires at least two relations, got {}",
+                self.relations.len()
+            )));
+        }
+        let mut names = HashSet::with_capacity(self.on.len());
+        for variable in &self.on {
+            if !names.insert(&variable.name) {
+                return Err(SyntaxError::new(format!(
+                    "Join variable '{}' is declared twice",
+                    variable.name
+                )));
+            }
+            if variable.occurrences.len() < 2 {
+                return Err(SyntaxError::new(format!(
+                    "Join variable '{}' has {} occurrence(s): below two it constrains \
+                     nothing, and a variable bound by a single relation reaches the \
+                     output through that relation's schema instead",
+                    variable.name,
+                    variable.occurrences.len()
+                )));
+            }
+            let mut relations = HashSet::with_capacity(variable.occurrences.len());
+            for (relation, _) in &variable.occurrences {
+                if *relation >= self.relations.len() {
+                    return Err(SyntaxError::new(format!(
+                        "Join variable '{}' refers to relation {relation} but the join \
+                         has only {} relations",
+                        variable.name,
+                        self.relations.len()
+                    )));
+                }
+                if !relations.insert(relation) {
+                    return Err(SyntaxError::new(format!(
+                        "Join variable '{}' occurs twice in relation {relation}: a \
+                         variable repeated within one relation is a local equality \
+                         condition on that relation, not a join condition",
+                        variable.name
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Every [`Expr`] nested in the join condition, in [`on`](Self::on) order.
+    /// Each one is evaluated in the context of *its own* relation, so a consumer
+    /// that needs to know which relation must iterate [`on`](Self::on) directly.
+    pub fn on_exprs(&self) -> impl Iterator<Item = &Expr> {
+        self.on
+            .iter()
+            .flat_map(|variable| variable.occurrences.iter().map(|(_, expr)| expr))
+    }
+
+    /// The [`on_exprs`](Self::on_exprs) counterpart for rewriting passes.
+    /// Handing out `&mut Expr` cannot break any invariant, as those constrain
+    /// the arity and the relation indices rather than the expressions.
+    pub fn on_exprs_mut(&mut self) -> impl Iterator<Item = &mut Expr> {
+        self.on
+            .iter_mut()
+            .flat_map(|variable| variable.occurrences.iter_mut().map(|(_, expr)| expr))
+    }
 }
 
 /// This is not a commutative operation, that is, swapping the `left` and `right`
@@ -298,9 +430,16 @@ pub struct AntiJoinExpr {
     pub left: Expr,
     /// Must evaluate to a relation.
     pub right: Expr,
-    /// The attributes to _not_ join on. The first element of any pair belongs to the
-    /// left relation, and the second element of any pair belongs to right relation.
-    /// Each attribute pair should produce the same type.
+    /// The attributes the two relations are compared on: a `left` row is
+    /// suppressed exactly when some `right` row agrees with it on all of them.
+    /// The first element of any pair is evaluated in the context of the left
+    /// relation, the second in the context of the right one, and each pair
+    /// should produce the same type.
+    ///
+    /// Note that this is the key to match *on*, in the same sense as
+    /// [`EquiJoinExpr::on`] — the columns that survive into the output are not
+    /// expressed here at all, since the output carries the left relation's
+    /// schema unchanged.
     pub on: Vec<(Expr, Expr)>,
 }
 
@@ -381,7 +520,7 @@ pub trait RelExprVisitor<T, C> {
     fn visit_projection_expr(&mut self, expr: &ProjectionExpr, ctx: C) -> T;
     fn visit_cartesian_product_expr(&mut self, expr: &CartesianProductExpr, ctx: C) -> T;
     fn visit_equi_join_expr(&mut self, expr: &EquiJoinExpr, ctx: C) -> T;
-    fn visit_multi_way_equi_join_expr(&mut self, expr: &MultiWayEquiJoin, ctx: C) -> T;
+    fn visit_multi_way_equi_join_expr(&mut self, expr: &MultiWayEquiJoinExpr, ctx: C) -> T;
     fn visit_anti_join_expr(&mut self, expr: &AntiJoinExpr, ctx: C) -> T;
     fn visit_fixed_point_iter_expr(&mut self, expr: &FixedPointIterExpr, ctx: C) -> T;
 }
@@ -414,7 +553,7 @@ pub trait RelExprVisitorMut<T, C> {
     fn visit_projection_expr(&mut self, expr: &mut ProjectionExpr, ctx: C) -> T;
     fn visit_cartesian_product_expr(&mut self, expr: &mut CartesianProductExpr, ctx: C) -> T;
     fn visit_equi_join_expr(&mut self, expr: &mut EquiJoinExpr, ctx: C) -> T;
-    fn visit_multi_way_equi_join_expr(&mut self, expr: &mut MultiWayEquiJoin, ctx: C) -> T;
+    fn visit_multi_way_equi_join_expr(&mut self, expr: &mut MultiWayEquiJoinExpr, ctx: C) -> T;
     fn visit_anti_join_expr(&mut self, expr: &mut AntiJoinExpr, ctx: C) -> T;
     fn visit_fixed_point_iter_expr(&mut self, expr: &mut FixedPointIterExpr, ctx: C) -> T;
 }
@@ -447,7 +586,7 @@ pub trait RelExprVisitorOwn<T, C> {
     fn visit_projection_expr(&mut self, expr: ProjectionExpr, ctx: C) -> T;
     fn visit_cartesian_product_expr(&mut self, expr: CartesianProductExpr, ctx: C) -> T;
     fn visit_equi_join_expr(&mut self, expr: EquiJoinExpr, ctx: C) -> T;
-    fn visit_multi_way_equi_join_expr(&mut self, expr: MultiWayEquiJoin, ctx: C) -> T;
+    fn visit_multi_way_equi_join_expr(&mut self, expr: MultiWayEquiJoinExpr, ctx: C) -> T;
     fn visit_anti_join_expr(&mut self, expr: AntiJoinExpr, ctx: C) -> T;
     fn visit_fixed_point_iter_expr(&mut self, expr: FixedPointIterExpr, ctx: C) -> T;
 }
@@ -463,7 +602,125 @@ impl MemAddr for SelectionExpr {}
 impl MemAddr for ProjectionExpr {}
 impl MemAddr for CartesianProductExpr {}
 impl MemAddr for EquiJoinExpr {}
-impl MemAddr for MultiWayEquiJoin {}
+impl MemAddr for MultiWayEquiJoinExpr {}
 impl MemAddr for AntiJoinExpr {}
 impl MemAddr for ThetaJoinExpr {}
 impl MemAddr for FixedPointIterExpr {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::expr::VarExpr;
+
+    /// A stand-in relation operand. [`MultiWayEquiJoinExpr::validate`] only ever
+    /// counts these, so their content is irrelevant.
+    fn relations(count: usize) -> Vec<Expr> {
+        (0..count)
+            .map(|idx| Expr::from(VarExpr::new(format!("r{idx}"))))
+            .collect()
+    }
+
+    fn join_variable(name: &str, occurrences: &[RelationIdx]) -> JoinVariable {
+        JoinVariable {
+            name: name.to_string(),
+            occurrences: occurrences
+                .iter()
+                .map(|relation| (*relation, Expr::from(VarExpr::new(name))))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn accepts_a_join_variable_shared_by_two_relations() {
+        let joined =
+            MultiWayEquiJoinExpr::new(relations(2), vec![join_variable("x", &[0, 1])], None)
+                .expect("A variable bound by two relations is a join variable");
+        assert_eq!(joined.on.len(), 1);
+        assert_eq!(joined.on_exprs().count(), 2);
+    }
+
+    #[test]
+    fn accepts_an_empty_join_condition_as_a_cartesian_product() {
+        let joined = MultiWayEquiJoinExpr::new(relations(3), vec![], None)
+            .expect("An empty join condition is a cartesian product, not an error");
+        assert!(joined.on.is_empty());
+    }
+
+    #[test]
+    fn rejects_fewer_than_two_relations() {
+        for count in 0..2 {
+            assert!(
+                MultiWayEquiJoinExpr::new(relations(count), vec![], None).is_err(),
+                "A join over {count} relation(s) should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_a_single_occurrence_because_it_constrains_nothing() {
+        // The whole point of the `on` representation: a variable bound by only
+        // one relation is not an equality class. It reaches the output through
+        // that relation's schema instead, which is why rejecting it here is safe
+        // and keeps `on.is_empty()` an exact cartesian-product test.
+        let error = MultiWayEquiJoinExpr::new(relations(2), vec![join_variable("x", &[0])], None)
+            .expect_err("A single occurrence must not be representable");
+        assert!(error.to_string().contains("occurrence"));
+    }
+
+    #[test]
+    fn rejects_an_out_of_bounds_relation_index() {
+        assert!(
+            MultiWayEquiJoinExpr::new(relations(2), vec![join_variable("x", &[0, 2])], None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_a_variable_occurring_twice_in_one_relation() {
+        // Such a repetition is a local equality condition on that one relation,
+        // so it belongs in a `SelectionExpr` beneath the join.
+        assert!(
+            MultiWayEquiJoinExpr::new(relations(2), vec![join_variable("x", &[0, 0])], None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_two_join_variables_claiming_the_same_output_name() {
+        assert!(
+            MultiWayEquiJoinExpr::new(
+                relations(3),
+                vec![join_variable("x", &[0, 1]), join_variable("x", &[1, 2])],
+                None
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn normalizes_occurrences_into_relation_order() {
+        // Plans have to be reproducible: the occurrence order must not depend on
+        // the order the producer happened to discover the occurrences in.
+        let joined =
+            MultiWayEquiJoinExpr::new(relations(3), vec![join_variable("x", &[2, 0, 1])], None)
+                .expect("Out-of-order occurrences are normalized, not rejected");
+        let order: Vec<RelationIdx> = joined.on[0]
+            .occurrences
+            .iter()
+            .map(|(relation, _)| *relation)
+            .collect();
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn validate_agrees_with_new_on_hand_assembled_joins() {
+        // The fields are public, so a hand-built or rewritten plan can violate
+        // the invariants; the resolver relies on `validate` catching that.
+        let malformed = MultiWayEquiJoinExpr {
+            relations: relations(2),
+            on: vec![join_variable("x", &[0])],
+            attributes: None,
+        };
+        assert!(malformed.validate().is_err());
+    }
+}

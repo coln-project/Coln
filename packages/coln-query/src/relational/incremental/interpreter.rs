@@ -11,7 +11,7 @@ use super::operators::{
     reindex::reindex_helper,
 };
 use crate::relational::RelationSchema;
-use crate::relational::expr::MultiWayEquiJoin;
+use crate::relational::expr::MultiWayEquiJoinExpr;
 use crate::relational::incremental::dbsp::{
     DbspInput, OrdIndexedStreamInputHandle, new_ord_indexed_stream,
 };
@@ -109,11 +109,7 @@ fn collect_source_exprs<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a SourceExpr>) {
             RelExpr::EquiJoin(expr) => walk_equi_join(expr, out),
             RelExpr::MultiWayEquiJoin(expr) => {
                 expr.relations.iter().for_each(|rel| walk_expr(rel, out));
-                expr.on
-                    .iter()
-                    .flatten()
-                    .flatten()
-                    .for_each(|expr| walk_expr(expr, out));
+                expr.on_exprs().for_each(|expr| walk_expr(expr, out));
                 expr.attributes
                     .iter()
                     .flatten()
@@ -604,7 +600,7 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
     fn visit_multi_way_equi_join_expr(
         &mut self,
-        expr: &MultiWayEquiJoin,
+        expr: &MultiWayEquiJoinExpr,
         ctx: VisitorCtx<'_, '_>,
     ) -> ExprVisitorResult {
         unimplemented!(
