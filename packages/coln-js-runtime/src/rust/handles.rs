@@ -30,6 +30,29 @@ pub struct TransactionHandle {
     pending_handles: Vec<(StoreRowHandle, JsValue)>,
 }
 
+/*
+This function turns something like
+{
+  tag: "row_id",
+  value: {
+    pending: {
+      txId: 1,      // u64 from the transaction
+      counter: 0    // u32, first `add` in that txn is typically 0
+    }
+  }
+}
+into something like
+{
+  tag: "row_id",
+  value: {
+    existing: {
+      commit: 0xff,      // u64 from the transaction
+      counter: 0    // u32, first `add` in that txn is typically 0
+    }
+  }
+}
+i.e. it transforms a value that is a `RowRef` from pending to existing
+*/
 fn resolve_value_id(js_value: &JsValue, row_id: RowId) -> Result<(), JsValue> {
     let row_id = Value::existing_id(row_id);
     let row_id_js = serde_wasm_bindgen::to_value(&row_id).map_err(js_error)?;
@@ -111,6 +134,11 @@ impl StoreHandle {
         let store = Store::try_from_ir(theory).map_err(js_error)?;
 
         Ok(Self { store: Some(store) })
+    }
+
+    #[wasm_bindgen(js_name = jsonIR)]
+    pub fn json_ir(&self) -> Result<String, JsValue> {
+        self.store()?.json_ir().map_err(js_error)
     }
 
     #[wasm_bindgen(js_name = scanTable)]
