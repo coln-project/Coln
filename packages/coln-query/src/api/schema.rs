@@ -7,7 +7,7 @@
 
 use std::fmt::Display;
 
-use crate::scalarial::{ScalarType, ScalarTypedValue};
+use crate::{host::expr::Literal, scalarial::ScalarType};
 
 /// An identifier that uniquely identifies a table (globally across the store).
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
@@ -21,10 +21,10 @@ impl Display for TableRef {
     }
 }
 
-impl<T: Into<String>> From<T> for TableRef {
-    fn from(value: T) -> Self {
+impl From<&ir::Path> for TableRef {
+    fn from(value: &ir::Path) -> Self {
         TableRef {
-            inner: value.into(),
+            inner: value.to_string(),
         }
     }
 }
@@ -35,7 +35,7 @@ pub struct TableSchema {
     /// All fields of the table in their physical order.
     columns: Vec<Column>,
     /// The list of (possibly compound) primary keys into the table, specified
-    /// as indices into the [`columns`](Self::columns).
+    /// as indexes into the schema's [`columns`](Self::columns).
     primary_keys: Vec<Vec<usize>>,
 }
 
@@ -58,40 +58,11 @@ pub struct Column {
 
 use coln_flir_rs::ir::{self};
 
-impl From<&ir::ColumnEntry> for Column {
-    fn from(value: &ir::ColumnEntry) -> Self {
-        // For now we use the flattened path representation in the query engine.
-        let name = value.path.to_string();
-        let scalar_type = ScalarType::from(&value.col_type);
-        Column { name, scalar_type }
-    }
-}
-
-impl From<&ir::ColType> for ScalarType {
-    fn from(value: &ir::ColType) -> Self {
-        match value {
-            ir::ColType::BuiltinTy { builtin_ty } => ScalarType::from(*builtin_ty),
-            // We assume that row ids will be sent as unsigned integers by coln-store.
-            ir::ColType::RowId { path } => ScalarType::Uint,
-        }
-    }
-}
-
-impl From<ir::BuiltinTy> for ScalarType {
-    fn from(value: ir::BuiltinTy) -> Self {
-        match value {
-            // TODO: Discuss scalar types and their mappings.
-            ir::BuiltinTy::BuiltinInt => ScalarType::Iint,
-            ir::BuiltinTy::BuiltinStr => ScalarType::String,
-        }
-    }
-}
-
-impl From<&ir::Lit> for ScalarTypedValue {
+impl From<&ir::Lit> for Literal {
     fn from(value: &ir::Lit) -> Self {
         match value {
-            ir::Lit::Int { value } => ScalarTypedValue::Iint(*value),
-            ir::Lit::String { value } => ScalarTypedValue::String(value.clone()),
+            ir::Lit::Int { value } => Literal::Iint(*value),
+            ir::Lit::String { value } => Literal::String(value.clone()),
         }
     }
 }

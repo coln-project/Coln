@@ -75,6 +75,7 @@ impl_rel_and_expr_from! {
     (RelExpr::Projection, ProjectionExpr),
     (RelExpr::CartesianProduct, CartesianProductExpr),
     (RelExpr::EquiJoin, EquiJoinExpr),
+    (RelExpr::MultiWayEquiJoin, MultiWayEquiJoin),
     (RelExpr::AntiJoin, AntiJoinExpr),
     (RelExpr::FixedPointIter, FixedPointIterExpr),
 }

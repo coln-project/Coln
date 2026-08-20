@@ -32,6 +32,12 @@ impl From<Path> for String {
     }
 }
 
+impl From<&Path> for String {
+    fn from(value: &Path) -> Self {
+        value.to_string()
+    }
+}
+
 impl Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, qname) in self.0.iter().enumerate() {

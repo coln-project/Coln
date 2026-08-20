@@ -156,8 +156,6 @@ pub enum Term {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValueEntry {
     pub column: ColumnIdx,
-    /// Note: A [`Term::Lit`] together with a [`ColumnIdx`](Self::column) does
-    /// not make sense, I suppose.
     pub term: Term,
 }
 
@@ -170,7 +168,8 @@ pub struct Atom {
     pub entity: Path,
     /// To bring the `row_id` of the [`Entity`](Self::entity) into scope.
     ///
-    /// Note: A [`Some(Term::Lit)`](Term::Lit) does not make sense, I suppose.
+    /// Note: A [`Some(Term::Lit)`](Term::Lit) does not make sense in this
+    /// context, as we do not support a row id literal at the moment, I suppose.
     pub row_id: Option<Term>,
     /// To bring some columns of the [`Entity`](Self::entity) into scope.
     pub values: Vec<ValueEntry>,
