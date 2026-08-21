@@ -100,7 +100,7 @@ pub fn compile_rule(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
     let antecedent = compile_props(&rule_entry.rule.antecedents, var_count)?;
     let consequent = compile_props(&rule_entry.rule.consequents, var_count)?;
 
-    let rule_variant = rule_entry.rule.rule_variant.clone();
+    let rule_variant = rule_entry.rule.rule_variant;
 
     let mut seen = HashSet::new();
     let mut tables = Vec::new();
