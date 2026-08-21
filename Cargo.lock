@@ -1059,6 +1059,7 @@ dependencies = [
 name = "coln-flir-rs"
 version = "0.1.0"
 dependencies = [
+ "coln-flir-rs",
  "serde",
  "serde_json",
 ]

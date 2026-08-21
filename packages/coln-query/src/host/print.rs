@@ -486,7 +486,7 @@ mod tests {
             Code::from(transitive_closure()).to_tree(),
             "\
 VarStmt edge
-└─ init: Source \"edge\" tuple=| x | y | key=| x |
+└─ init: Source \"edge\" tuple=|x|y| key=|x|
 VarStmt reach
 └─ init: FixedPointIter acc
    ├─ init: Var edge (unresolved)

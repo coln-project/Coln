@@ -398,8 +398,8 @@ impl TupleSchema {
         let fields = fields
             .map(|(_, info)| info.name(&None))
             .collect::<Vec<_>>()
-            .join(" | ");
-        format!("| {fields} |")
+            .join("|");
+        format!("|{fields}|")
     }
 }
 

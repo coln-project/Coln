@@ -12,8 +12,14 @@ exclude = ["/.gitignore"]
 
 [lib]
 
+[features]
+test-utils = []
+
 [dependencies]
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
+# This is a self-referential dev-dependency to have the feature-gated
+# test-utils be available in this crate's integration tests, too.
+coln-flir-rs = { path = ".", features = ["test-utils"] }

@@ -1,3 +1,6 @@
+//! This module expresses the different schema views according to coln-compiler,
+//! coln-store, and coln-query in code.
+
 use crate::ir::{self, Path};
 
 pub struct BaseTableSchema {

@@ -28,7 +28,7 @@ use std::collections::{BTreeMap, HashMap};
 type BaseTableName = TableRef;
 type DerivedViewName = TableRef;
 
-struct QueryProgram {
+pub struct QueryProgram {
     /// The (raw, that is, unresolved, unoptimized) statements themselves.
     code: Code,
     /// The declared base tables.
@@ -1406,5 +1406,23 @@ mod tests {
         let left = vec![binding(0, VarPart::Scalar, "x")];
         let right = vec![binding(1, VarPart::Scalar, "y")];
         assert!(antijoin_key(&left, &right).is_empty());
+    }
+
+    fn translate_json_flir(file_name: &str) -> QueryProgram {
+        let flat_realm = coln_flir_rs::test_utils::load_theory_from_json(file_name);
+        QueryProgram::from_flat_realm(&flat_realm)
+            .unwrap_or_else(|_| panic!("{file_name} is convertible to a query program"))
+    }
+
+    #[test]
+    fn graph_flir() {
+        let program = translate_json_flir("Graph.json");
+        println!("{}", program.code().to_tree());
+    }
+
+    #[test]
+    fn graph_of_graphs_flir() {
+        let program = translate_json_flir("GraphOfGraphs.json");
+        println!("{}", program.code().to_tree());
     }
 }

@@ -30,3 +30,6 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+# Import coln-flir-rs again but with the test-utils feature flag to have
+# its test utils available in this crate's test context.
+coln-flir-rs = { path = "../coln-flir-rs", features = ["test-utils"] }
