@@ -60,7 +60,7 @@ cache p sc v = do
   case v of
     V.LiftEl LSetTheory v -> (emptyNode, emptyNode, S.LiftEl (separate sc.len v))
     V.Code SSetU a -> code SSetU a
-    V.Code SPropU a -> code SSetU a
+    V.Code SPropU a -> code SPropU a
     V.Lam SSetTheory dom clo -> do
       let (x, arg, sc') = bind sc (cloArgName clo) dom
       let (ents, defs, body) = cache p sc' (V.appClo clo arg)
