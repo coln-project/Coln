@@ -11,10 +11,8 @@ use std::ops::{Deref, DerefMut};
 /// any static pass has run over them.
 ///
 /// A newtype rather than an alias for `Vec<Stmt>`, so that the crate's central
-/// type carries its own methods — [`to_tree`](Self::to_tree) needs no trait in
-/// scope — and so that an arbitrary vector of statements cannot be passed where
-/// a whole program is meant. What a program is *about* (its base tables and
-/// their schemas) lives one layer up, next to it, in the api layer's
+/// type carries its own methods. What a program is *about* (its base tables and
+/// their schemas) lives one layer up, next to it, in the API layer's
 /// `QueryProgram`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Code(Vec<Stmt>);
@@ -27,10 +25,9 @@ impl Code {
     /// This program rendered as an indented node tree, e.g.
     /// `println!("{}", code.to_tree())`. See [`super::print`].
     ///
-    /// Inherent rather than a trait method, so that reaching for it costs no
-    /// import. [`print::to_tree`] is the same rendering for a bare `[Stmt]`,
-    /// which is what a sub-forest — a fixed point's step body, a function's
-    /// body — actually is.
+    /// [`print::to_tree`] is the same rendering for a bare `[Stmt]`, which is
+    /// what a sub-forest (a fixed point's step body or a function's body)
+    /// actually is.
     pub fn to_tree(&self) -> String {
         print::to_tree(self)
     }

@@ -68,4 +68,9 @@ impl Runtime for BatchRuntime {
     fn output(&self, _out: &SinkId) -> Result<Snapshot, Self::Error> {
         todo!("eager batch output: read the materialized result")
     }
+
+    fn list_outputs(&self) -> impl Iterator<Item = &'_ SinkId> {
+        // Apparently, todo!() does not work with impl Trait syntax..
+        std::iter::empty()
+    }
 }

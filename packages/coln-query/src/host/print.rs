@@ -32,13 +32,13 @@
 //! A label is a field name, optionally followed by which occurrence in
 //! parentheses:
 //!
-//! | Label | Means |
-//! |---|---|
-//! | `relation` | the field holds a single child |
-//! | `relation(2)` | element 2 of a sequence |
-//! | `select(out)` | the entry the field keys as `out` |
+//! | Label           | Means                                              |
+//! | --------------- | -------------------------------------------------- |
+//! | `relation`      | the field holds a single child                     |
+//! | `relation(2)`   | element 2 of a sequence                            |
+//! | `select(out)`   | the entry the field keys as `out`                  |
 //! | `on(0 in left)` | equality 0, as evaluated against the left relation |
-//! | `on(y in 2)` | join variable `y`, as evaluated against relation 2 |
+//! | `on(y in 2)`    | join variable `y`, as evaluated against relation 2 |
 //!
 //! The last two are the same statement — *which equality*, in *which relation* —
 //! for a binary and an N-ary join respectively.
@@ -89,11 +89,12 @@ pub fn to_tree(code: &[Stmt]) -> String {
     };
     // A program is a forest, so every root starts a fresh tree at column zero
     // rather than hanging off a shared parent.
-    for (index, stmt) in code.iter().enumerate() {
-        if index > 0 {
+    if let Some((first, rest)) = code.split_first() {
+        printer.visit_stmt(first, ());
+        rest.iter().for_each(|stmt| {
             printer.out.push('\n');
-        }
-        printer.visit_stmt(stmt, ());
+            printer.visit_stmt(stmt, ());
+        });
     }
     printer.out
 }

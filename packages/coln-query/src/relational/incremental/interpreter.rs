@@ -578,6 +578,15 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             }
         }
 
+        pre_order(&expr.step.stmts)
+            .filter_map(Node::as_output)
+            .next()
+            .map_or(Ok(()), |_output_expr| {
+                Err(BuildError::new(
+                    "a fix point's step body must not contain output expressions",
+                ))
+            })?;
+
         // A build error raised while walking the step body cannot be returned
         // through `recursive`'s closure (its error channel is DBSP's
         // `SchedulerError`), so stash it here and propagate it once the circuit

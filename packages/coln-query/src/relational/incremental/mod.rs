@@ -171,4 +171,8 @@ impl Runtime for DbspRuntime {
             ))),
         }
     }
+
+    fn list_outputs(&self) -> impl Iterator<Item = &'_ SinkId> {
+        self.outputs.keys()
+    }
 }

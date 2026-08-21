@@ -94,7 +94,7 @@ impl<O: Optimizer, B: Backend> Pipeline<O, B> {
         self.threads = threads;
         self
     }
-    /// Optimize, resolve and evaluate a self-container **query** program
+    /// Optimize, resolve and evaluate a self-contained **query** program
     /// (with relational operators) on the [`Backend`](`Self::backend`) and
     /// with the [`Optimizer`](`Self::optimizer`).
     pub fn runtime(self, plan: impl Into<Code>) -> Result<B::Runtime, QueryEngineError> {

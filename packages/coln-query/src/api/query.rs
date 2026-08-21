@@ -37,9 +37,7 @@ struct QueryProgram {
     ///
     /// This doubles as the set of derived views an [`Atom`] may reference, so
     /// that what [`rule_declaration`](Self::rule_declaration) writes is exactly
-    /// what [`derived_view_var_expr`](Self::derived_view_var_expr) reads. Two
-    /// maps for the two roles previously meant nothing ever populated the one
-    /// being read.
+    /// what [`derived_view_var_expr`](Self::derived_view_var_expr) reads.
     derived_views: HashMap<DerivedViewName, RuleMeta>,
 }
 

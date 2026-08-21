@@ -63,7 +63,7 @@ pub trait Runtime {
     /// The natural result form: [`Delta`] (incremental) or [`Snapshot`] (batch).
     type Output;
     /// A runtime error.
-    type Error: Into<RuntimeError>;
+    type Error: Into<RuntimeError> + std::fmt::Debug;
 
     /// Stage input value tuples (with z-weights) for a named source. The tuple
     /// key is derived from the source schema, so only values are supplied.
@@ -75,8 +75,23 @@ pub trait Runtime {
     /// Advance the computation over everything fed since the last commit.
     fn commit(&mut self) -> Result<(), Self::Error>;
     /// Read a result relation by the name of the [`OutputExpr`](expr::OutputExpr)
-    /// tap that produced it. Errors if no *readable* output carries that name —
+    /// tap that produced it. Errors if no *readable* output carries that name,
     /// e.g. the name is unknown, or it belongs to a print-only
-    /// [`OutputKind::Cli`](expr::OutputKind::Cli) tap.
+    /// [`OutputKind::Cli`](expr::OutputKind::Cli) tap. Contains all changes
+    /// since the last call to [`commit`](Self::commit).
     fn output(&self, out: &SinkId) -> Result<Self::Output, Self::Error>;
+    /// List all [`OutputExpr`](expr::OutputExpr) by their name (a [`SinkId`]).
+    fn list_outputs(&self) -> impl Iterator<Item = &'_ SinkId>;
+    /// Get an iterator over all known [`outputs`](Self::output). A shortcut for
+    /// inquiring all outputs (by calling [`output`](Self::output) for all valid
+    /// [`SinkId`]s) for new results after a call to [`commit`](Self::commit).
+    fn all_outputs(&self) -> impl Iterator<Item = (&'_ SinkId, Self::Output)> {
+        self.list_outputs().map(|sink_id| {
+            (
+                sink_id,
+                self.output(sink_id)
+                    .expect("list_outputs impl must only return valid sink ids"),
+            )
+        })
+    }
 }
