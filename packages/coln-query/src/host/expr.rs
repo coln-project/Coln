@@ -234,6 +234,8 @@ impl Display for Literal {
     }
 }
 
+/// Read-only visitor. See [`ExprVisitorOwn`] for which of the three families a
+/// given pass belongs in.
 pub trait ExprVisitor<T, C> {
     fn visit_expr(&mut self, expr: &Expr, ctx: C) -> T {
         match expr {
@@ -266,6 +268,8 @@ pub trait ExprVisitor<T, C> {
     fn visit_relational_expr(&mut self, expr: &RelExpr, ctx: C) -> T;
 }
 
+/// Annotating visitor. See [`ExprVisitorOwn`] for which of the three families a
+/// given pass belongs in.
 pub trait ExprVisitorMut<T, C> {
     fn visit_expr(&mut self, expr: &mut Expr, ctx: C) -> T {
         match expr {
@@ -296,34 +300,81 @@ pub trait ExprVisitorMut<T, C> {
     fn visit_relational_expr(&mut self, expr: &mut RelExpr, ctx: C) -> T;
 }
 
+/// Restructuring visitor: it consumes the tree and produces a new one.
+///
+/// # Which visitor family a pass belongs in
+///
+/// The three families differ in what a pass is allowed to *do*, not merely in
+/// how it borrows:
+///
+/// - [`ExprVisitor`] (`&`) — **read**. The pass derives something from the tree
+///   and leaves it untouched (type resolution, printing, interpretation).
+/// - [`ExprVisitorMut`] (`&mut`) — **annotate**. The pass fills fields in place
+///   but never changes the tree's *shape*; every node stays the node it was
+///   (the [`Resolver`](crate::host::resolver) filling variable slots).
+/// - [`ExprVisitorOwn`] (owned) — **restructure**. A node may be replaced by a
+///   differently shaped one, or become the child of a node that did not exist
+///   before (lowering a multi-way join into a fold of binary ones).
+///
+/// The rule follows from what Rust permits. Restructuring means moving children
+/// out of their parent and re-parenting them, and one cannot move out of a
+/// `&mut`. A `&mut` pass would have to leave a placeholder behind for every
+/// child it takes, which needs a dummy node the AST does not have, and which
+/// leaves a half-rewritten tree behind when the pass fails part-way through. An
+/// owned pass just moves values, and a failure drops the partial result.
+///
+/// # Why the payloads arrive boxed
+///
+/// Every [`Expr`] variant boxes its payload, so unboxing here would make a pass
+/// pay a deallocation plus an allocation for each node it walks over — including
+/// the overwhelming majority it does not rewrite at all. Handing out the `Box`
+/// instead lets an unchanged node go straight back into its enum
+/// (`Ok(expr.into())`, via the `From<Box<XxxExpr>>` impls) for free, while a
+/// pass that *does* consume a node still writes `let XxxExpr { .. } = *expr;`
+/// exactly as it would have otherwise.
+///
+/// Recursing into a child keeps the box, too, because a field can be moved out
+/// of a `Box`'s contents and written back:
+///
+/// ```ignore
+/// fn visit_grouping_expr(&mut self, mut expr: Box<GroupingExpr>, ctx: C) -> T {
+///     expr.expr = self.visit_expr(expr.expr, ctx)?;
+///     Ok(expr.into())
+/// }
+/// ```
 pub trait ExprVisitorOwn<T, C> {
     fn visit_expr(&mut self, expr: Expr, ctx: C) -> T {
         match expr {
-            Expr::Literal(expr) => self.visit_literal_expr(*expr, ctx),
-            Expr::Tuple(expr) => self.visit_tuple_expr(*expr, ctx),
-            Expr::GetIndex(expr) => self.visit_get_index_expr(*expr, ctx),
-            Expr::Grouping(expr) => self.visit_grouping_expr(*expr, ctx),
-            Expr::Binary(expr) => self.visit_binary_expr(*expr, ctx),
-            Expr::Unary(expr) => self.visit_unary_expr(*expr, ctx),
-            Expr::Var(expr) => self.visit_var_expr(*expr, ctx),
-            Expr::Assign(expr) => self.visit_assign_expr(*expr, ctx),
-            Expr::Function(expr) => self.visit_function_expr(*expr, ctx),
-            Expr::Call(expr) => self.visit_call_expr(*expr, ctx),
-            Expr::Relational(expr) => self.visit_relational_expr(*expr, ctx),
+            Expr::Literal(expr) => self.visit_literal_expr(expr, ctx),
+            Expr::Tuple(expr) => self.visit_tuple_expr(expr, ctx),
+            Expr::GetIndex(expr) => self.visit_get_index_expr(expr, ctx),
+            Expr::Grouping(expr) => self.visit_grouping_expr(expr, ctx),
+            Expr::Binary(expr) => self.visit_binary_expr(expr, ctx),
+            Expr::Unary(expr) => self.visit_unary_expr(expr, ctx),
+            Expr::Var(expr) => self.visit_var_expr(expr, ctx),
+            Expr::Assign(expr) => self.visit_assign_expr(expr, ctx),
+            Expr::Function(expr) => self.visit_function_expr(expr, ctx),
+            Expr::Call(expr) => self.visit_call_expr(expr, ctx),
+            Expr::Relational(expr) => self.visit_relational_expr(expr, ctx),
         }
     }
-    fn visit_literal_expr(&mut self, expr: LiteralExpr, ctx: C) -> T;
-    fn visit_tuple_expr(&mut self, expr: TupleExpr, ctx: C) -> T;
-    fn visit_get_index_expr(&mut self, expr: GetIndexExpr, ctx: C) -> T;
-    fn visit_grouping_expr(&mut self, expr: GroupingExpr, ctx: C) -> T;
-    fn visit_binary_expr(&mut self, expr: BinaryExpr, ctx: C) -> T;
-    fn visit_unary_expr(&mut self, expr: UnaryExpr, ctx: C) -> T;
-    fn visit_var_expr(&mut self, expr: VarExpr, ctx: C) -> T;
-    fn visit_assign_expr(&mut self, expr: AssignExpr, ctx: C) -> T;
-    fn visit_function_expr(&mut self, expr: FunctionExpr, ctx: C) -> T;
-    fn visit_call_expr(&mut self, expr: CallExpr, ctx: C) -> T;
+    fn visit_literal_expr(&mut self, expr: Box<LiteralExpr>, ctx: C) -> T;
+    fn visit_tuple_expr(&mut self, expr: Box<TupleExpr>, ctx: C) -> T;
+    fn visit_get_index_expr(&mut self, expr: Box<GetIndexExpr>, ctx: C) -> T;
+    fn visit_grouping_expr(&mut self, expr: Box<GroupingExpr>, ctx: C) -> T;
+    fn visit_binary_expr(&mut self, expr: Box<BinaryExpr>, ctx: C) -> T;
+    fn visit_unary_expr(&mut self, expr: Box<UnaryExpr>, ctx: C) -> T;
+    fn visit_var_expr(&mut self, expr: Box<VarExpr>, ctx: C) -> T;
+    fn visit_assign_expr(&mut self, expr: Box<AssignExpr>, ctx: C) -> T;
+    fn visit_function_expr(&mut self, expr: Box<FunctionExpr>, ctx: C) -> T;
+    fn visit_call_expr(&mut self, expr: Box<CallExpr>, ctx: C) -> T;
     /// Bridge into the relational layer. See [`ExprVisitor::visit_relational_expr`].
-    fn visit_relational_expr(&mut self, expr: RelExpr, ctx: C) -> T;
+    ///
+    /// A pass that descends unboxes here (`self.visit_rel(*expr, ctx)`), because
+    /// [`RelExprVisitorOwn::visit_rel`](crate::relational::expr::RelExprVisitorOwn::visit_rel)
+    /// has to match on the enum. One that leaves the relational subtree alone
+    /// keeps the allocation.
+    fn visit_relational_expr(&mut self, expr: Box<RelExpr>, ctx: C) -> T;
 }
 
 impl MemAddr for Expr {}

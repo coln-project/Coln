@@ -14,6 +14,10 @@ pub enum QueryEngineError {
     /// An error that occurs during an optimization pass prior to runtime.
     #[error(transparent)]
     Optimization(#[from] OptimizationError),
+    /// An error that occurs while lowering the plan into the operator
+    /// vocabulary of the chosen backend.
+    #[error(transparent)]
+    Lowering(#[from] LoweringError),
     /// An error which occurs during runtime of the circuit constructing,
     /// tree-walk interpreter.
     #[error(transparent)]
@@ -51,6 +55,38 @@ impl OptimizationError {
     pub fn new<T: Into<String>>(message: T) -> Self {
         Self {
             message: message.into(),
+        }
+    }
+}
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("{message}")]
+/// An error that occurs while lowering the plan into the operator vocabulary of
+/// the chosen backend, see [`Backend::lower`](crate::relational::Backend::lower).
+///
+/// Distinct from an [`OptimizationError`] because the two stages fail for
+/// different reasons: an optimization is free to decline (and the pipeline is
+/// just as correct without it), whereas a lowering that cannot proceed leaves
+/// behind a plan the backend has no way to execute.
+pub struct LoweringError {
+    pub message: String,
+}
+
+impl LoweringError {
+    pub fn new<T: Into<String>>(message: T) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+/// A lowering re-checks the invariants of the nodes it rewrites, because a plan
+/// may have been assembled or rewritten by hand. Such a violation is a
+/// [`SyntaxError`] by nature, but it surfaces here.
+impl From<SyntaxError> for LoweringError {
+    fn from(value: SyntaxError) -> Self {
+        Self {
+            message: value.message,
         }
     }
 }

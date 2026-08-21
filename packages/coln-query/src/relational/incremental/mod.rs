@@ -7,10 +7,12 @@
 
 use super::relation::TupleValue;
 use super::{Backend, Runtime};
-use crate::error::{BuildError, RuntimeError};
+use crate::error::{BuildError, LoweringError, RuntimeError};
 use crate::{
     api::deltas::ZWeight,
-    host::{HostInterpreter, InterpreterContext, resolver::ResolvedCode, variable::Environment},
+    host::{
+        Code, HostInterpreter, InterpreterContext, resolver::ResolvedCode, variable::Environment,
+    },
     relational::{
         Delta,
         expr::{OutputKind, SinkId, SourceId},
@@ -26,6 +28,7 @@ use std::{
 
 pub mod dbsp;
 pub mod interpreter;
+pub mod lowering;
 pub mod operators;
 
 /// The incremental backend: compiles the plan into a standing DBSP circuit.
@@ -54,6 +57,14 @@ impl<E: RowScalarEngine + Send> DbspBackend<E> {
 impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
     type Runtime = DbspRuntime;
     type Error = BuildError;
+
+    /// A DBSP circuit joins two streams at a time, so every
+    /// [`MultiWayEquiJoinExpr`](crate::relational::expr::MultiWayEquiJoinExpr)
+    /// has to become a chain of binary ones before
+    /// [`build`](Self::build) walks the plan. See [`lowering`].
+    fn lower(&self, plan: Code) -> Result<Code, LoweringError> {
+        lowering::fold_multi_way_joins(plan)
+    }
 
     fn build(self, threads: NonZeroUsize, plan: ResolvedCode) -> Result<DbspRuntime, Self::Error> {
         let engine = self.scalar_engine;

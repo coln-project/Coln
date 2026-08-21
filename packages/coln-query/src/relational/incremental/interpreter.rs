@@ -496,8 +496,15 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         expr: &MultiWayEquiJoinExpr,
         ctx: VisitorCtx<'_, '_>,
     ) -> ExprVisitorResult {
+        // Unreachable through the pipeline: a DBSP circuit joins two streams at
+        // a time, which is why `DbspBackend::lower` folds every multi way join
+        // into a chain of binary ones before the plan reaches this interpreter.
+        // Getting here means the plan skipped that stage.
         unimplemented!(
-            "Multi way equi joins are not supported by DBSP. Fold it into a sequence of binary equi joins prior to handing off to the DBSP backend."
+            "Multi way equi joins are not supported by DBSP. \
+             `DbspBackend::lower` (see `relational::incremental::lowering`) folds them \
+             into a sequence of binary equi joins; run the plan through `Pipeline` \
+             rather than building a circuit from an unlowered plan."
         )
     }
 

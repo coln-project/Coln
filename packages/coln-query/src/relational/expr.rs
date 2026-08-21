@@ -49,6 +49,10 @@ pub enum RelExpr {
 /// composed `From<XxxExpr> for Expr` (via [`Expr::Relational`]) so that
 /// constructing a host expression from a relational operator stays a single
 /// `Expr::from(..)`/`.into()` call, exactly as before the host/relational split.
+///
+/// Each also comes in a `Box<XxxExpr>` flavour, which reuses the allocation the
+/// caller already holds. That is what an owned rewriting pass rebuilds an
+/// untouched node with — see [`RelExprVisitorOwn`].
 macro_rules! impl_rel_and_expr_from {
     ($(($variant:path, $expr:ty)),* $(,)?) => {
         $(
@@ -57,8 +61,18 @@ macro_rules! impl_rel_and_expr_from {
                     $variant(Box::new(value))
                 }
             }
+            impl From<Box<$expr>> for RelExpr {
+                fn from(value: Box<$expr>) -> Self {
+                    $variant(value)
+                }
+            }
             impl From<$expr> for Expr {
                 fn from(value: $expr) -> Self {
+                    Expr::Relational(Box::new(RelExpr::from(value)))
+                }
+            }
+            impl From<Box<$expr>> for Expr {
+                fn from(value: Box<$expr>) -> Self {
                     Expr::Relational(Box::new(RelExpr::from(value)))
                 }
             }
@@ -87,6 +101,14 @@ impl_rel_and_expr_from! {
 impl From<RelExpr> for Expr {
     fn from(value: RelExpr) -> Self {
         Expr::Relational(Box::new(value))
+    }
+}
+
+/// The same bridge for a relational operator that is already boxed, which is
+/// how an owned pass hands one back without allocating.
+impl From<Box<RelExpr>> for Expr {
+    fn from(value: Box<RelExpr>) -> Self {
+        Expr::Relational(value)
     }
 }
 
@@ -525,6 +547,7 @@ pub trait RelExprVisitor<T, C> {
     fn visit_fixed_point_iter_expr(&mut self, expr: &FixedPointIterExpr, ctx: C) -> T;
 }
 
+/// Annotating visitor. See [`RelExprVisitorOwn`].
 pub trait RelExprVisitorMut<T, C> {
     fn visit_rel(&mut self, expr: &mut RelExpr, ctx: C) -> T {
         match expr {
@@ -558,37 +581,41 @@ pub trait RelExprVisitorMut<T, C> {
     fn visit_fixed_point_iter_expr(&mut self, expr: &mut FixedPointIterExpr, ctx: C) -> T;
 }
 
+/// Restructuring visitor for the relational layer, and the family a
+/// backend-specific *lowering* pass lives in — see
+/// [`ExprVisitorOwn`](crate::host::expr::ExprVisitorOwn) for the rule that
+/// decides between the three families, and for why the payloads arrive boxed.
 pub trait RelExprVisitorOwn<T, C> {
     fn visit_rel(&mut self, expr: RelExpr, ctx: C) -> T {
         match expr {
-            RelExpr::Source(expr) => self.visit_source_expr(*expr, ctx),
-            RelExpr::Output(expr) => self.visit_output_expr(*expr, ctx),
-            RelExpr::Alias(expr) => self.visit_alias_expr(*expr, ctx),
-            RelExpr::Distinct(expr) => self.visit_distinct_expr(*expr, ctx),
-            RelExpr::Union(expr) => self.visit_union_expr(*expr, ctx),
-            RelExpr::Difference(expr) => self.visit_difference_expr(*expr, ctx),
-            RelExpr::Selection(expr) => self.visit_selection_expr(*expr, ctx),
-            RelExpr::Projection(expr) => self.visit_projection_expr(*expr, ctx),
-            RelExpr::CartesianProduct(expr) => self.visit_cartesian_product_expr(*expr, ctx),
-            RelExpr::EquiJoin(expr) => self.visit_equi_join_expr(*expr, ctx),
-            RelExpr::MultiWayEquiJoin(expr) => self.visit_multi_way_equi_join_expr(*expr, ctx),
-            RelExpr::AntiJoin(expr) => self.visit_anti_join_expr(*expr, ctx),
-            RelExpr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(*expr, ctx),
+            RelExpr::Source(expr) => self.visit_source_expr(expr, ctx),
+            RelExpr::Output(expr) => self.visit_output_expr(expr, ctx),
+            RelExpr::Alias(expr) => self.visit_alias_expr(expr, ctx),
+            RelExpr::Distinct(expr) => self.visit_distinct_expr(expr, ctx),
+            RelExpr::Union(expr) => self.visit_union_expr(expr, ctx),
+            RelExpr::Difference(expr) => self.visit_difference_expr(expr, ctx),
+            RelExpr::Selection(expr) => self.visit_selection_expr(expr, ctx),
+            RelExpr::Projection(expr) => self.visit_projection_expr(expr, ctx),
+            RelExpr::CartesianProduct(expr) => self.visit_cartesian_product_expr(expr, ctx),
+            RelExpr::EquiJoin(expr) => self.visit_equi_join_expr(expr, ctx),
+            RelExpr::MultiWayEquiJoin(expr) => self.visit_multi_way_equi_join_expr(expr, ctx),
+            RelExpr::AntiJoin(expr) => self.visit_anti_join_expr(expr, ctx),
+            RelExpr::FixedPointIter(expr) => self.visit_fixed_point_iter_expr(expr, ctx),
         }
     }
-    fn visit_source_expr(&mut self, expr: SourceExpr, ctx: C) -> T;
-    fn visit_output_expr(&mut self, expr: OutputExpr, ctx: C) -> T;
-    fn visit_alias_expr(&mut self, expr: AliasExpr, ctx: C) -> T;
-    fn visit_distinct_expr(&mut self, expr: DistinctExpr, ctx: C) -> T;
-    fn visit_union_expr(&mut self, expr: UnionExpr, ctx: C) -> T;
-    fn visit_difference_expr(&mut self, expr: DifferenceExpr, ctx: C) -> T;
-    fn visit_selection_expr(&mut self, expr: SelectionExpr, ctx: C) -> T;
-    fn visit_projection_expr(&mut self, expr: ProjectionExpr, ctx: C) -> T;
-    fn visit_cartesian_product_expr(&mut self, expr: CartesianProductExpr, ctx: C) -> T;
-    fn visit_equi_join_expr(&mut self, expr: EquiJoinExpr, ctx: C) -> T;
-    fn visit_multi_way_equi_join_expr(&mut self, expr: MultiWayEquiJoinExpr, ctx: C) -> T;
-    fn visit_anti_join_expr(&mut self, expr: AntiJoinExpr, ctx: C) -> T;
-    fn visit_fixed_point_iter_expr(&mut self, expr: FixedPointIterExpr, ctx: C) -> T;
+    fn visit_source_expr(&mut self, expr: Box<SourceExpr>, ctx: C) -> T;
+    fn visit_output_expr(&mut self, expr: Box<OutputExpr>, ctx: C) -> T;
+    fn visit_alias_expr(&mut self, expr: Box<AliasExpr>, ctx: C) -> T;
+    fn visit_distinct_expr(&mut self, expr: Box<DistinctExpr>, ctx: C) -> T;
+    fn visit_union_expr(&mut self, expr: Box<UnionExpr>, ctx: C) -> T;
+    fn visit_difference_expr(&mut self, expr: Box<DifferenceExpr>, ctx: C) -> T;
+    fn visit_selection_expr(&mut self, expr: Box<SelectionExpr>, ctx: C) -> T;
+    fn visit_projection_expr(&mut self, expr: Box<ProjectionExpr>, ctx: C) -> T;
+    fn visit_cartesian_product_expr(&mut self, expr: Box<CartesianProductExpr>, ctx: C) -> T;
+    fn visit_equi_join_expr(&mut self, expr: Box<EquiJoinExpr>, ctx: C) -> T;
+    fn visit_multi_way_equi_join_expr(&mut self, expr: Box<MultiWayEquiJoinExpr>, ctx: C) -> T;
+    fn visit_anti_join_expr(&mut self, expr: Box<AntiJoinExpr>, ctx: C) -> T;
+    fn visit_fixed_point_iter_expr(&mut self, expr: Box<FixedPointIterExpr>, ctx: C) -> T;
 }
 
 impl MemAddr for RelExpr {}

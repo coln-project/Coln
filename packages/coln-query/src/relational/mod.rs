@@ -8,8 +8,9 @@
 //! Two traits split the concern:
 //!
 //! - [`Backend`] — the last *compile* step: a [`ResolvedCode`] plan → a runnable
-//!   artifact. One impl per execution strategy
-//!   ([`DbspBackend`](incremental::DbspBackend) incremental,
+//!   artifact, plus the [`lower`](Backend::lower) pass that first restricts the
+//!   plan to the operators this backend can execute. One impl per execution
+//!   strategy ([`DbspBackend`](incremental::DbspBackend) incremental,
 //!   [`BatchBackend`](batch::BatchBackend) eager).
 //! - [`Runtime`] — the runnable artifact: feed input changes, advance, read
 //!   results. This is where incremental vs batch actually differ — DBSP's
@@ -29,8 +30,8 @@ pub mod relation;
 use std::num::NonZeroUsize;
 
 use crate::{
-    error::{BuildError, RuntimeError},
-    host::resolver::ResolvedCode,
+    error::{BuildError, LoweringError, RuntimeError},
+    host::{Code, resolver::ResolvedCode},
     relational::expr::{SinkId, SourceId},
 };
 use incremental::dbsp::{OrdZSet, ZWeight};
@@ -51,6 +52,28 @@ pub struct Snapshot(pub OrdZSet<TupleValue>);
 pub trait Backend {
     type Runtime: Runtime;
     type Error: Into<BuildError>;
+
+    /// Rewrite the plan into the operator vocabulary this backend can execute.
+    /// The default keeps it as it is, for a backend that supports the full
+    /// [`RelExpr`](expr::RelExpr) vocabulary natively.
+    ///
+    /// Runs after logical optimization and, crucially, *before* resolution, so
+    /// a pass may freely mint nodes: the [`Resolver`](crate::host::resolver)
+    /// has not assigned variable slots yet, and [`ResolvedCode`] exists to
+    /// promise [`build`](Self::build) that they have been.
+    ///
+    /// This is **not** an [`Optimizer`](crate::optimizer::Optimizer), even
+    /// though both are semantics-preserving rewrites of the plan. An optimizer
+    /// is chosen independently of the backend and may always decline to do
+    /// anything; a lowering is mandatory, and skipping it hands the backend a
+    /// node it cannot compile. Correctness must not depend on which optimizer
+    /// the pipeline was configured with.
+    ///
+    /// Takes `&self` rather than `self` so it can run before
+    /// [`build`](Self::build) consumes the backend.
+    fn lower(&self, plan: Code) -> Result<Code, LoweringError> {
+        Ok(plan)
+    }
 
     fn build(self, threads: NonZeroUsize, plan: ResolvedCode)
     -> Result<Self::Runtime, Self::Error>;

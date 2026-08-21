@@ -20,16 +20,24 @@
 //!    _logically_. It can thereby rewrite parts of the queries. As of now,
 //!    there is no logical optimization implemented. Returns a type-checked
 //!    and optimized ASF.
-//! 3. Resolver: Takes a [type-checked and optimized ASF](`Code`).
+//! 3. Lowering: Takes the [type-checked and optimized ASF](Code) and lets the
+//!    [`Backend`] rewrite it into the operator vocabulary it can actually
+//!    execute — see [`Backend::lower`]. Unlike the optimizer this is not
+//!    optional: the [`DbspBackend`] folds every
+//!    [`MultiWayEquiJoinExpr`](crate::relational::expr::MultiWayEquiJoinExpr)
+//!    into a sequence of binary joins here, because it has no other way to
+//!    execute one. It runs *before* the resolver so that the nodes it mints get
+//!    resolved along with everything else.
+//! 4. Resolver: Takes a [type-checked, optimized and lowered ASF](`Code`).
 //!    It resolves all variables (of the host language) to slots in an
 //!    interpretation [`Environment`].
 //!    in a static pass over the ASF, speeding up variable lookup and checking
 //!    for invalid variable access. Returns a [resolved ASF](ResolvedCode).
-//! 4. Build: Takes a [resolved ASF](ResolvedCode) (and maybe type-checked and
+//! 5. Build: Takes a [resolved ASF](ResolvedCode) (and maybe type-checked and
 //!    optimized) and hands it off to the supplied [`Backend`] to prepare
 //!    for execution. A backend can work incrementally or batchwise.
 //!    Returns a [`Runtime`](crate::relational::Runtime).
-//! 5. Run: [`Runtime`](crate::relational::Runtime) is the runnable artifact:
+//! 6. Run: [`Runtime`](crate::relational::Runtime) is the runnable artifact:
 //!    Feed input changes, advance, and output results. This is where
 //!    incremental vs batch actually differ: DBSP's `commit` runs one
 //!    incremental transaction and yields per-commit
@@ -94,13 +102,14 @@ impl<O: Optimizer, B: Backend> Pipeline<O, B> {
         self.threads = threads;
         self
     }
-    /// Optimize, resolve and evaluate a self-contained **query** program
+    /// Optimize, lower, resolve and evaluate a self-contained **query** program
     /// (with relational operators) on the [`Backend`](`Self::backend`) and
     /// with the [`Optimizer`](`Self::optimizer`).
     pub fn runtime(self, plan: impl Into<Code>) -> Result<B::Runtime, QueryEngineError> {
         let type_checked = plan.into(); // Not for now.
         let optimized = self.optimizer.optimize(type_checked)?;
-        let resolved = ResolvedCode::from(optimized)?;
+        let lowered = self.backend.lower(optimized)?;
+        let resolved = ResolvedCode::from(lowered)?;
         self.backend
             .build(self.threads, resolved)
             .map_err(|e| e.into().into())
