@@ -324,8 +324,8 @@ impl ExprVisitorOwn<Lowered<Expr>, ()> for MultiWayJoinFold {
         Ok(expr.into())
     }
 
-    fn visit_relational_expr(&mut self, expr: Box<RelExpr>, _ctx: ()) -> Lowered<Expr> {
-        self.visit_rel(*expr, ())
+    fn visit_relational_expr(&mut self, expr: RelExpr, _ctx: ()) -> Lowered<Expr> {
+        self.visit_rel(expr, ())
     }
 }
 
@@ -461,7 +461,7 @@ mod tests {
 
     fn equi_join(expr: &Expr) -> &EquiJoinExpr {
         match expr {
-            Expr::Relational(rel) => match &**rel {
+            Expr::Relational(rel) => match rel {
                 RelExpr::EquiJoin(join) => join,
                 other => panic!("Expected an equi join, got {other:?}"),
             },
@@ -592,7 +592,7 @@ mod tests {
         let lowered = lower(tapped).expect("Plain column picks are lowerable");
 
         match &lowered {
-            Expr::Relational(rel) => match &**rel {
+            Expr::Relational(rel) => match rel {
                 RelExpr::Output(output) => {
                     assert_eq!(
                         key_names(equi_join(&output.relation)),

@@ -52,7 +52,9 @@ pub enum RelExpr {
 ///
 /// Each also comes in a `Box<XxxExpr>` flavour, which reuses the allocation the
 /// caller already holds. That is what an owned rewriting pass rebuilds an
-/// untouched node with — see [`RelExprVisitorOwn`].
+/// untouched node with — see [`RelExprVisitorOwn`] — and since
+/// [`Expr::Relational`] does not box what it wraps, that route allocates
+/// nothing at all.
 macro_rules! impl_rel_and_expr_from {
     ($(($variant:path, $expr:ty)),* $(,)?) => {
         $(
@@ -68,12 +70,12 @@ macro_rules! impl_rel_and_expr_from {
             }
             impl From<$expr> for Expr {
                 fn from(value: $expr) -> Self {
-                    Expr::Relational(Box::new(RelExpr::from(value)))
+                    Expr::Relational(RelExpr::from(value))
                 }
             }
             impl From<Box<$expr>> for Expr {
                 fn from(value: Box<$expr>) -> Self {
-                    Expr::Relational(Box::new(RelExpr::from(value)))
+                    Expr::Relational(RelExpr::from(value))
                 }
             }
         )*
@@ -97,17 +99,10 @@ impl_rel_and_expr_from! {
 }
 
 /// The single bridge from the relational layer back into the host layer: a
-/// relational operator is *also* a host expression.
+/// relational operator is *also* a host expression. Free of charge, since
+/// [`Expr::Relational`] does not box what it wraps.
 impl From<RelExpr> for Expr {
     fn from(value: RelExpr) -> Self {
-        Expr::Relational(Box::new(value))
-    }
-}
-
-/// The same bridge for a relational operator that is already boxed, which is
-/// how an owned pass hands one back without allocating.
-impl From<Box<RelExpr>> for Expr {
-    fn from(value: Box<RelExpr>) -> Self {
         Expr::Relational(value)
     }
 }

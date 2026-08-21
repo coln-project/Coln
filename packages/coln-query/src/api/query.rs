@@ -824,7 +824,7 @@ mod tests {
     /// Destructures the `Projection(Selection?(Source))` shape an atom lowers to.
     fn projection(expr: &Expr) -> &ProjectionExpr {
         match expr {
-            Expr::Relational(rel) => match rel.as_ref() {
+            Expr::Relational(rel) => match rel {
                 RelExpr::Projection(projection) => projection,
                 other => panic!("Expected an atom to lower to a projection, got {other:?}"),
             },
@@ -835,10 +835,7 @@ mod tests {
     /// The selection an atom's local conditions produce, if it has any.
     fn selection(expr: &Expr) -> Option<&SelectionExpr> {
         match expr {
-            Expr::Relational(rel) => match rel.as_ref() {
-                RelExpr::Selection(selection) => Some(selection),
-                _ => None,
-            },
+            Expr::Relational(RelExpr::Selection(selection)) => Some(selection),
             _ => None,
         }
     }
@@ -1081,7 +1078,7 @@ mod tests {
 
     fn multi_way_join(expr: &Expr) -> &MultiWayEquiJoinExpr {
         match expr {
-            Expr::Relational(rel) => match rel.as_ref() {
+            Expr::Relational(rel) => match rel {
                 RelExpr::MultiWayEquiJoin(join) => join,
                 other => panic!("Expected a multi way equi join, got {other:?}"),
             },

@@ -28,7 +28,13 @@ pub enum Expr {
     Function(Box<FunctionExpr>),
     /// The single bridge into the relational layer: a relational operator is
     /// *also* a host expression (bindable to a var, placeable in a tuple, …).
-    Relational(Box<RelExpr>),
+    ///
+    /// The only variant that does not box its payload, because there is nothing
+    /// to gain by it: [`RelExpr`] boxes each of *its* payloads, so it is already
+    /// a discriminant plus a pointer, and rustc packs this enum's discriminant
+    /// into the unused values of that one. `Expr` is the same size either way,
+    /// while every relational node saves an allocation and an indirection.
+    Relational(RelExpr),
 }
 
 impl_from_auto_box! {
@@ -370,11 +376,9 @@ pub trait ExprVisitorOwn<T, C> {
     fn visit_call_expr(&mut self, expr: Box<CallExpr>, ctx: C) -> T;
     /// Bridge into the relational layer. See [`ExprVisitor::visit_relational_expr`].
     ///
-    /// A pass that descends unboxes here (`self.visit_rel(*expr, ctx)`), because
-    /// [`RelExprVisitorOwn::visit_rel`](crate::relational::expr::RelExprVisitorOwn::visit_rel)
-    /// has to match on the enum. One that leaves the relational subtree alone
-    /// keeps the allocation.
-    fn visit_relational_expr(&mut self, expr: Box<RelExpr>, ctx: C) -> T;
+    /// The one payload that does not arrive boxed, because [`Expr::Relational`]
+    /// does not box it either.
+    fn visit_relational_expr(&mut self, expr: RelExpr, ctx: C) -> T;
 }
 
 impl MemAddr for Expr {}
@@ -387,3 +391,20 @@ impl MemAddr for VarExpr {}
 impl MemAddr for AssignExpr {}
 impl MemAddr for FunctionExpr {}
 impl MemAddr for CallExpr {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapping_a_relational_operator_in_an_expr_is_free() {
+        // Why `Relational` is the one variant that does not box its payload:
+        // `RelExpr` is a discriminant plus a pointer, and rustc packs `Expr`'s
+        // discriminant into the values that one does not use. Inlining it costs
+        // no space and saves an allocation per relational node. If this ever
+        // stops holding, the trade-off is worth revisiting rather than keeping
+        // by habit.
+        assert_eq!(size_of::<Expr>(), size_of::<RelExpr>());
+        assert_eq!(size_of::<Expr>(), size_of::<Box<LiteralExpr>>() * 2);
+    }
+}

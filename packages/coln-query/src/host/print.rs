@@ -519,7 +519,7 @@ ExprStmt
         let Some(Expr::Relational(rel)) = &stmt.initializer else {
             unreachable!("`reach` is bound to a relational expression")
         };
-        let RelExpr::FixedPointIter(fixed_point) = &**rel else {
+        let RelExpr::FixedPointIter(fixed_point) = rel else {
             unreachable!("`reach` is bound to a fixed point")
         };
         assert_eq!(
