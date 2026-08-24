@@ -53,6 +53,10 @@ impl Chunk {
         Ok(chunk)
     }
 
+    pub fn is_root(&self) -> bool {
+        self.chunk_type() == ChunkType::Root
+    }
+
     pub(crate) fn chunk_type(&self) -> ChunkType {
         match self {
             Chunk::Commit { header, .. } | Chunk::Root { header, .. } => header.chunk_type,

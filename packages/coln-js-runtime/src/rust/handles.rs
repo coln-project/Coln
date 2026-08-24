@@ -4,8 +4,11 @@
 
 use coln_flir_rs::ir;
 use coln_store::{
-    commit::hash::CommitHash as StoreCommitHash,
-    store::Store,
+    commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash, pst::decode_commit_chunks},
+    store::{
+        Store,
+        error::{CommitApplyError, StoreIntError},
+    },
     table::RowId as StoreRowId,
     txn::{OwnedTransaction, RowHandle as StoreRowHandle},
 };
@@ -19,7 +22,16 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 pub struct StoreHandle {
-    store: Option<Store>,
+    state: StoreHandleState,
+}
+
+enum StoreHandleState {
+    Uninitialized {
+        chunks: Vec<Vec<u8>>,
+        has_root: bool,
+    },
+    Ready(Box<Store>),
+    Moved,
 }
 
 #[wasm_bindgen]
@@ -94,7 +106,7 @@ impl TransactionHandle {
 
                 Ok(CommitResult {
                     commit: commit.to_string(),
-                    store: Some(StoreHandle { store: Some(store) }),
+                    store: Some(StoreHandle::ready(store)),
                 })
             }
             Err((err, store)) => {
@@ -110,12 +122,15 @@ impl TransactionHandle {
     // after committing
     #[wasm_bindgen(js_name = takeStore)]
     pub fn take_store(&mut self) -> Result<StoreHandle, JsValue> {
+        if let Some(tx) = self.tx.take() {
+            return Ok(StoreHandle::ready(tx.abort()));
+        }
         let store = self
             .recovered_store
             .take()
             .ok_or_else(|| js_error("transaction does not have a recovered store"))?;
 
-        Ok(StoreHandle { store: Some(store) })
+        Ok(StoreHandle::ready(store))
     }
 }
 
@@ -127,13 +142,22 @@ pub struct CommitResult {
 
 #[wasm_bindgen]
 impl StoreHandle {
+    pub fn empty() -> StoreHandle {
+        Self {
+            state: StoreHandleState::Uninitialized {
+                chunks: Vec::new(),
+                has_root: false,
+            },
+        }
+    }
+
     #[wasm_bindgen(js_name = fromTheory)]
     pub fn from_theory(flat_theory_json: String) -> Result<StoreHandle, JsValue> {
         let theory = serde_json::from_str::<ir::FlatRealm>(&flat_theory_json)
             .map_err(|err| js_error(format!("invalid flat theory JSON: {err}")))?;
         let store = Store::try_from_ir(theory).map_err(js_error)?;
 
-        Ok(Self { store: Some(store) })
+        Ok(Self::ready(store))
     }
 
     #[wasm_bindgen(js_name = jsonIR)]
@@ -163,10 +187,19 @@ impl StoreHandle {
 
     #[wasm_bindgen(js_name = beginTransaction)]
     pub fn begin_transaction(&mut self) -> Result<TransactionHandle, JsValue> {
-        let store = self
-            .store
-            .take()
-            .ok_or_else(|| js_error("store handle has already been moved into a transaction"))?;
+        let state = std::mem::replace(&mut self.state, StoreHandleState::Moved);
+        let store = match state {
+            StoreHandleState::Ready(store) => *store,
+            state @ StoreHandleState::Uninitialized { .. } => {
+                self.state = state;
+                return Err(js_error("store handle has not been initialized"));
+            }
+            StoreHandleState::Moved => {
+                return Err(js_error(
+                    "store handle has already been moved into a transaction",
+                ));
+            }
+        };
 
         Ok(TransactionHandle {
             tx: Some(store.into_transaction()),
@@ -182,12 +215,19 @@ impl StoreHandle {
     // For automerge-repo interfacing
 
     pub fn heads(&self) -> Result<Vec<CommitHash>, JsValue> {
-        let heads = self
-            .store()?
-            .heads()
-            .into_iter()
-            .map(CommitHash::from)
-            .collect::<Vec<_>>();
+        let heads = match &self.state {
+            StoreHandleState::Uninitialized { .. } => return Ok(Vec::new()),
+            StoreHandleState::Ready(store) => store,
+            StoreHandleState::Moved => {
+                return Err(js_error(
+                    "store handle has already been moved into a transaction",
+                ));
+            }
+        }
+        .heads()
+        .into_iter()
+        .map(CommitHash::from)
+        .collect::<Vec<_>>();
 
         Ok(heads)
     }
@@ -197,6 +237,9 @@ impl StoreHandle {
         &self,
         have_heads: Vec<CommitHash>,
     ) -> Result<Vec<CommitChunk>, JsValue> {
+        if matches!(self.state, StoreHandleState::Uninitialized { .. }) {
+            return Ok(Vec::new());
+        }
         let have_heads = have_heads
             .into_iter()
             .map(StoreCommitHash::try_from)
@@ -217,10 +260,7 @@ impl StoreHandle {
     pub fn apply_chunk_bytes(&mut self, chunk_bytes: JsValue) -> Result<(), JsValue> {
         let chunk_bytes =
             serde_wasm_bindgen::from_value::<Vec<Vec<u8>>>(chunk_bytes).map_err(js_error)?;
-
-        self.store_mut()?
-            .apply_chunk_bytes(chunk_bytes)
-            .map_err(js_error)
+        self.apply_chunks(chunk_bytes).map_err(js_error)
     }
 }
 
@@ -240,16 +280,58 @@ impl CommitResult {
 }
 
 impl StoreHandle {
-    fn store(&self) -> Result<&Store, JsValue> {
-        self.store
-            .as_ref()
-            .ok_or_else(|| js_error("store handle has been moved into a transaction"))
+    fn ready(store: Store) -> Self {
+        Self {
+            state: StoreHandleState::Ready(Box::new(store)),
+        }
     }
 
-    fn store_mut(&mut self) -> Result<&mut Store, JsValue> {
-        self.store
-            .as_mut()
-            .ok_or_else(|| js_error("store handle has been moved into a transaction"))
+    fn apply_chunks(&mut self, chunk_bytes: Vec<Vec<u8>>) -> Result<(), String> {
+        match &mut self.state {
+            StoreHandleState::Uninitialized { chunks, has_root } => {
+                let decoded = chunk_bytes
+                    .iter()
+                    .map(|bytes| Chunk::decode(bytes))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|error| error.to_string())?;
+                let previous_len = chunks.len();
+                let previously_had_root = *has_root;
+                *has_root |= decoded.iter().any(Chunk::is_root);
+                chunks.extend(chunk_bytes);
+                if *has_root {
+                    match decode_commit_chunks(chunks.iter()) {
+                        Ok(store) => self.state = StoreHandleState::Ready(Box::new(store)),
+                        Err(error) => {
+                            if !matches!(error, StoreIntError::Commit(CommitApplyError::MissingDep))
+                            {
+                                chunks.truncate(previous_len);
+                                *has_root = previously_had_root;
+                            }
+                            return Err(error.to_string());
+                        }
+                    }
+                }
+                Ok(())
+            }
+            StoreHandleState::Ready(store) => store
+                .apply_chunk_bytes(chunk_bytes)
+                .map_err(|error| error.to_string()),
+            StoreHandleState::Moved => {
+                Err("store handle has already been moved into a transaction".into())
+            }
+        }
+    }
+
+    fn store(&self) -> Result<&Store, JsValue> {
+        match &self.state {
+            StoreHandleState::Uninitialized { .. } => {
+                Err(js_error("store handle has not been initialized"))
+            }
+            StoreHandleState::Ready(store) => Ok(store),
+            StoreHandleState::Moved => Err(js_error(
+                "store handle has already been moved into a transaction",
+            )),
+        }
     }
 }
 
@@ -258,5 +340,148 @@ impl TransactionHandle {
         self.tx
             .as_mut()
             .ok_or_else(|| js_error("transaction has already been committed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use coln_flir_rs::ir::{
+        BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
+    };
+
+    use super::*;
+
+    fn source_store() -> Store {
+        let theory = FlatRealm {
+            tables: vec![TableEntry {
+                path: Path::from("T"),
+                table: Schema {
+                    entity_variant: EntityVariant::Table,
+                    columns: vec![ColumnEntry {
+                        path: Path::from("value"),
+                        col_type: ColType::BuiltinTy {
+                            builtin_ty: BuiltinTy::BuiltinInt,
+                        },
+                    }],
+                    primary_key: None,
+                },
+            }],
+            rules: vec![],
+        };
+        let mut store = Store::try_from_theory(theory).expect("store");
+        let mut transaction = store.transaction();
+        transaction
+            .add(&Path::from("T"), vec![42_i64.into()])
+            .expect("add row");
+        transaction.commit().expect("commit");
+        store
+    }
+
+    #[test]
+    fn empty_handle_buffers_data_until_root_arrives() {
+        let source = source_store();
+        let (root, data): (Vec<_>, Vec<_>) = source
+            .commit_chunks_after(&[])
+            .into_iter()
+            .map(|chunk| chunk.bytes)
+            .partition(|bytes| Chunk::decode(bytes).expect("chunk").is_root());
+        let mut handle = StoreHandle::empty();
+
+        handle.apply_chunks(data).expect("buffer data");
+        assert!(matches!(
+            handle.state,
+            StoreHandleState::Uninitialized { .. }
+        ));
+        assert!(handle.heads().expect("heads").is_empty());
+
+        handle.apply_chunks(root).expect("apply root");
+        let store = handle.store().expect("initialized store");
+        let table = store.table_at(&Path::from("T")).expect("table");
+        assert_eq!(table.row_count(), 1);
+    }
+
+    #[test]
+    fn empty_handle_retries_bootstrap_when_missing_parent_arrives() {
+        let mut source = source_store();
+        let mut transaction = source.transaction();
+        transaction
+            .add(&Path::from("T"), vec![84_i64.into()])
+            .expect("add second row");
+        transaction.commit().expect("second commit");
+
+        let mut root = None;
+        let mut data = Vec::new();
+        for chunk in source.commit_chunks_after(&[]) {
+            if Chunk::decode(&chunk.bytes).expect("chunk").is_root() {
+                root = Some(chunk.bytes);
+            } else {
+                data.push(chunk.bytes);
+            }
+        }
+        assert_eq!(data.len(), 2);
+
+        let mut handle = StoreHandle::empty();
+        let child = data.pop().expect("child commit");
+        assert!(
+            handle
+                .apply_chunks(vec![root.expect("root"), child])
+                .is_err()
+        );
+
+        handle.apply_chunks(data).expect("retry with parent");
+        let table = handle
+            .store()
+            .expect("initialized store")
+            .table_at(&Path::from("T"))
+            .expect("table");
+        assert_eq!(table.row_count(), 2);
+    }
+
+    #[test]
+    fn active_transaction_can_return_its_store_without_committing() {
+        let mut handle = StoreHandle::ready(source_store());
+        let mut transaction = handle.begin_transaction().expect("transaction");
+        transaction
+            .tx()
+            .expect("owned transaction")
+            .add(&Path::from("T"), vec![84_i64.into()])
+            .expect("stage row");
+
+        let recovered = transaction.take_store().expect("recover store");
+        let table = recovered
+            .store()
+            .expect("store")
+            .table_at(&Path::from("T"))
+            .expect("table");
+        assert_eq!(table.row_count(), 1);
+    }
+
+    #[test]
+    fn malformed_batch_does_not_poison_later_bootstrap() {
+        let source = source_store();
+        let chunks = source
+            .commit_chunks_after(&[])
+            .into_iter()
+            .map(|chunk| chunk.bytes)
+            .collect::<Vec<_>>();
+        let root = chunks
+            .iter()
+            .find(|bytes| Chunk::decode(bytes).expect("chunk").is_root())
+            .expect("root")
+            .clone();
+        let mut handle = StoreHandle::empty();
+
+        assert!(handle.apply_chunks(vec![root, vec![0xff]]).is_err());
+        handle.apply_chunks(chunks).expect("valid retry");
+
+        assert_eq!(
+            handle
+                .store()
+                .expect("initialized store")
+                .table_at(&Path::from("T"))
+                .expect("table")
+                .row_count(),
+            1
+        );
     }
 }

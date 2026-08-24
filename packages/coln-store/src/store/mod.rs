@@ -277,6 +277,50 @@ impl Store {
             rowing: rowing::Rowing::new(),
         })
     }
+
+    /// Builds a store from individually framed commit chunks received during sync.
+    pub fn try_from_commit_chunks(
+        chunk_bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<Self, StoreError> {
+        let chunks = chunk_bytes
+            .into_iter()
+            .map(|bytes| Chunk::decode(bytes.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        let roots = chunks
+            .iter()
+            .filter(|chunk| chunk.is_root())
+            .collect::<Vec<_>>();
+        let root = match roots.as_slice() {
+            [] => {
+                return Err(
+                    CodecError::DataFormatError("commit graph has no root commit".into()).into(),
+                );
+            }
+            [root] => *root,
+            _ => {
+                return Err(CodecError::DataFormatError(
+                    "commit graph has multiple root commits".into(),
+                )
+                .into());
+            }
+        };
+        let root_commit = Commit::from_chunk(root.clone(), |_| None)?;
+        let mut store = Self::try_from_ir(root_commit.root_payload()?)?;
+        let commits = chunks
+            .into_iter()
+            .filter(|chunk| !chunk.is_root())
+            .map(|chunk| {
+                Commit::from_chunk(chunk, |path| {
+                    store
+                        .resolve_table(path)
+                        .and_then(|oid| store.table_meta(oid))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        store.apply_commits(commits)?;
+
+        Ok(store)
+    }
 }
 
 impl Store {
