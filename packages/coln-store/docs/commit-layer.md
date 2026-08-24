@@ -100,7 +100,7 @@ started with.
 ## Store Serialization
 
 When the whole store is serialized, `commit/pst.rs` writes a store envelope with
-the magic bytes, format version, next table id, and commit count. It then writes
+the magic bytes, format version, and commit count. It then writes
 every commit chunk in commit graph topological order. That means parents are
 written before children, with the root commit first.
 
@@ -109,7 +109,6 @@ The store envelope layout is:
 ```text
 [magic:4 bytes]
 [format_version]
-[next_table_id]
 [chunk_count]
 [chunk_type:u8][payload_len][payload] x chunk_count
 ```

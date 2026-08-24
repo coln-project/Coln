@@ -24,6 +24,6 @@ test("set", () => {
   if (first.done) {
     assert.fail("committed set was empty");
   }
-  assert.deepEqual(first.value, { rowId: value.value, values: [] });
+  assert.deepEqual(first.value, { rowId: value, values: [] });
   assert.equal(values.next().done, true);
 });

@@ -9,7 +9,7 @@ use tracing::info;
 
 use crate::{
     commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
-    store::{Store, error::StoreIntError},
+    store::{Store, error::StoreError},
     table::ValidationError,
     txn::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue, timestamp::Timestamp},
 };
@@ -52,7 +52,7 @@ impl TxnInner {
         store: &Store,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+    ) -> Result<TempRowId, StoreError> {
         let t = store.table_at(table).ok_or(ValidationError::UnknownTable {
             path: table.clone(),
         })?;
@@ -71,7 +71,7 @@ impl TxnInner {
         store: &Store,
         table: &ir::Path,
         values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreIntError> {
+    ) -> Result<RowHandle, StoreError> {
         let txn_values = values
             .into_iter()
             .map(|v| v.to_txn_cell_value(self.tx_id))
@@ -89,7 +89,7 @@ impl TxnInner {
         store: &Store,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+    ) -> Result<TempRowId, StoreError> {
         self.add_cell_values(store, table, values)
     }
 
@@ -108,7 +108,7 @@ impl TxnInner {
         });
     }
 
-    pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreIntError> {
+    pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreError> {
         info!(op_count = self.pending.len(), "commit txn");
         let TxnInner {
             deps,

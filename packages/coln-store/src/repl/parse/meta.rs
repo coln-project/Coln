@@ -8,6 +8,7 @@ pub(crate) enum Command {
     Load { path: String },
     Open { path: String },
     Schema { table: Option<String> },
+    Ir,
     Tables,
     Rules,
     Exit,
@@ -75,6 +76,13 @@ pub(crate) fn parse_meta_command(input: &str) -> anyhow::Result<Command> {
             }),
             _ => anyhow::bail!("usage: .dump <table>"),
         },
+        ".ir" => {
+            if parts.len() == 1 {
+                Ok(Command::Ir)
+            } else {
+                anyhow::bail!("usage: .ir")
+            }
+        }
         _ => anyhow::bail!("unknown meta command: {command}. Type `.help` for commands."),
     }
 }

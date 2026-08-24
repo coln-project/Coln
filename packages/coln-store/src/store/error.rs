@@ -3,14 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::commit::error::CodecError;
+use crate::commit::graph::CommitGraphError;
 use crate::solver::compile::CompileError;
 use crate::solver::validate::RuleViolation;
 use crate::table::ValidationError;
 
-// TODO rename this to just store error
 /// Store integrity error
 #[derive(Debug, thiserror::Error)]
-pub enum StoreIntError {
+pub enum StoreError {
     #[error(transparent)]
     Validation(#[from] ValidationError),
     #[error(transparent)]
@@ -21,6 +21,8 @@ pub enum StoreIntError {
     Encode(#[from] CodecError),
     #[error(transparent)]
     Commit(#[from] CommitApplyError),
+    #[error(transparent)]
+    CommitGraph(#[from] CommitGraphError),
 }
 
 #[derive(Debug, thiserror::Error)]

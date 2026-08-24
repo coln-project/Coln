@@ -98,7 +98,8 @@ jobs:
           wasm-opt --version
 
       - name: Install wasm-bodge
-        run: cargo install wasm-bodge --locked
+        # Keep in sync with the wasm-bodge pin in flake.nix
+        run: cargo install wasm-bodge --version 0.3.1 --locked
 
       - name: Install just
         uses: extractions/setup-just@v3

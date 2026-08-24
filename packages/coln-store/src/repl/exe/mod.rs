@@ -37,6 +37,7 @@ fn help_text(mode: ShellMode) -> String {
         "  .tables",
         "  .rules",
         "  .schema [table]",
+        "  .ir",
         "  .dump <table>",
     ];
 
@@ -120,6 +121,10 @@ pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Resul
                 None => render_schema_summary(schema),
             };
             Ok(Step::Continue(message))
+        }
+        MetaCommand::Ir => {
+            let store = session.loaded.as_ref().map(|loaded| &loaded.store);
+            Ok(Step::Continue(render_ir(store)?))
         }
         MetaCommand::Rules => {
             let store = session.loaded.as_ref().map(|loaded| &loaded.store);
@@ -311,7 +316,7 @@ pub fn load_schema(path: &Path) -> Result<LoadedState> {
     let theory: FlatRealm = serde_json::from_str(&input)
         .with_context(|| format!("failed to parse schema {}", path.display()))?;
     let summary = SchemaSummary::from_theory(path.to_path_buf(), &theory);
-    let store = Store::try_from_theory(theory)?;
+    let store = Store::try_from_ir(theory)?;
     Ok(LoadedState {
         store,
         schema: summary,
@@ -359,7 +364,7 @@ pub fn render_table_schema(schema: Option<&SchemaSummary>, table_name: &str) -> 
     Ok(render_table_schema_summary(table))
 }
 
-pub fn render_rules(store: Option<&Store>) -> Result<String> {
+fn render_rules(store: Option<&Store>) -> Result<String> {
     let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
     if store.rules().is_empty() {
         return Ok("no rules".to_string());
@@ -371,6 +376,11 @@ pub fn render_rules(store: Option<&Store>) -> Result<String> {
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join("\n"))
+}
+
+fn render_ir(store: Option<&Store>) -> Result<String> {
+    let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
+    Ok(store.json_ir()?)
 }
 
 pub fn add_rows(
@@ -556,5 +566,21 @@ mod tests {
         assert_eq!(lines.len(), loaded.store.rules().len());
         assert!(lines[0].contains(" := forall"));
         assert!(lines[0].contains(" |- "));
+    }
+
+    #[test]
+    fn renders_ir_json() {
+        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let rendered = render_ir(Some(&loaded.store)).expect("render ir");
+        assert_eq!(rendered, loaded.store.json_ir().expect("json ir"));
+        let parsed: FlatRealm = serde_json::from_str(&rendered).expect("parse ir json");
+        assert_eq!(parsed.tables.len(), loaded.store.table_count());
+        assert_eq!(parsed.rules.len(), loaded.store.rule_entries().len());
+    }
+
+    #[test]
+    fn renders_ir_requires_loaded_store() {
+        let err = render_ir(None).expect_err("no schema");
+        assert!(err.to_string().contains("no schema loaded"));
     }
 }
