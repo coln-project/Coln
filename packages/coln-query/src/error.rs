@@ -93,6 +93,53 @@ impl From<SyntaxError> for LoweringError {
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[error("{message}")]
+/// What a [transformation rule](crate::optimizer::rewrite::TransformationRule),
+/// or the driver running one, failed with.
+///
+/// Deliberately *not* tied to a pipeline stage: the same rule machinery serves
+/// the optimizer and the backend lowerings, so a rule reports in this shared
+/// currency and each stage converts it into the error its own contract is
+/// phrased in.
+pub struct RewriteError {
+    pub message: String,
+}
+
+impl RewriteError {
+    pub fn new<T: Into<String>>(message: T) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+/// A rule re-checks the invariants of the nodes it rewrites, for the same
+/// reason a lowering does.
+impl From<SyntaxError> for RewriteError {
+    fn from(value: SyntaxError) -> Self {
+        Self {
+            message: value.message,
+        }
+    }
+}
+
+impl From<RewriteError> for LoweringError {
+    fn from(value: RewriteError) -> Self {
+        Self {
+            message: value.message,
+        }
+    }
+}
+
+impl From<RewriteError> for OptimizationError {
+    fn from(value: RewriteError) -> Self {
+        Self {
+            message: value.message,
+        }
+    }
+}
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("{message}")]
 /// An error which occurs during runtime of the circuit constructing,
 /// tree-walk interpreter.
 // TODO: Instead of being general, we could introduce:

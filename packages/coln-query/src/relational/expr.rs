@@ -107,6 +107,71 @@ impl From<RelExpr> for Expr {
     }
 }
 
+/// [`RelExpr`] without the payloads: which *kind* of operator a node is.
+///
+/// This is the vocabulary a rewriting rule declares its interest in, so a
+/// driver can skip offering it nodes it could never fire on — see
+/// [`TransformationRule::interest`](crate::optimizer::rewrite::TransformationRule::interest).
+/// A structural precondition of that shape is worth stating separately from the
+/// rewrite itself; a *semantic* one is not, because checking it means taking
+/// the node apart, which the rewrite then has to do again.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum RelKind {
+    Source,
+    Output,
+    Alias,
+    Distinct,
+    Union,
+    Difference,
+    Selection,
+    Projection,
+    CartesianProduct,
+    EquiJoin,
+    MultiWayEquiJoin,
+    AntiJoin,
+    FixedPointIter,
+}
+
+impl RelKind {
+    /// Every kind, for a rule that has to see the whole plan.
+    pub const ALL: &'static [RelKind] = &[
+        RelKind::Source,
+        RelKind::Output,
+        RelKind::Alias,
+        RelKind::Distinct,
+        RelKind::Union,
+        RelKind::Difference,
+        RelKind::Selection,
+        RelKind::Projection,
+        RelKind::CartesianProduct,
+        RelKind::EquiJoin,
+        RelKind::MultiWayEquiJoin,
+        RelKind::AntiJoin,
+        RelKind::FixedPointIter,
+    ];
+}
+
+impl RelExpr {
+    /// Which operator this node is, without looking at its operands.
+    pub fn kind(&self) -> RelKind {
+        match self {
+            RelExpr::Source(_) => RelKind::Source,
+            RelExpr::Output(_) => RelKind::Output,
+            RelExpr::Alias(_) => RelKind::Alias,
+            RelExpr::Distinct(_) => RelKind::Distinct,
+            RelExpr::Union(_) => RelKind::Union,
+            RelExpr::Difference(_) => RelKind::Difference,
+            RelExpr::Selection(_) => RelKind::Selection,
+            RelExpr::Projection(_) => RelKind::Projection,
+            RelExpr::CartesianProduct(_) => RelKind::CartesianProduct,
+            RelExpr::EquiJoin(_) => RelKind::EquiJoin,
+            RelExpr::MultiWayEquiJoin(_) => RelKind::MultiWayEquiJoin,
+            RelExpr::AntiJoin(_) => RelKind::AntiJoin,
+            RelExpr::FixedPointIter(_) => RelKind::FixedPointIter,
+        }
+    }
+}
+
 /// Backend-neutral identity of a relation source. The tree only ever *names* a
 /// source; the backend maps it to a concrete relation (DBSP stream, batch Z-set,
 /// or SQL table/view) at execution time.

@@ -4,6 +4,8 @@
 
 use crate::{error::OptimizationError, host::Code};
 
+pub mod rewrite;
+
 /// An optimizer does a series of transformations on the relational algebra IR
 /// which retain the semantics of the program but intend to improve performance.
 /// For instance, it could do:
