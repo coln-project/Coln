@@ -14,7 +14,7 @@ import Data.Set qualified as Set
 import Data.String (IsString (..))
 -- import Data.Text.Lazy qualified as TL
 -- import Data.Text.Lazy.IO qualified as TLIO
--- import Prettyprinter
+import Prettyprinter
 -- import Prettyprinter.Render.Text
 -- import System.FilePath
 
@@ -28,7 +28,9 @@ import Coln.Core.Params
 import Coln.Core.Readback
 import Coln.Core.Value qualified as V
 import Coln.Core.Syntax qualified as S
--- import Coln.SIR.Syntax qualified as S
+import Coln.SIR.Syntax qualified as SIR
+import Coln.FLIR.Flatten qualified as FLIR
+import Coln.FLIR.Value qualified as FLIR
 
 mangle :: Name -> TS.Id
 mangle = TS.Id . mangleToDoc
@@ -122,66 +124,116 @@ genEntryModule imports a ev = go 0 a ev
     go (n + 1) (V.appClo ft.cod v) (V.ebind (flip (V.app ft.variant) v) ev')
   go _ _ _ = Nothing
 
-data TSCtxShape = TSCtxShape
-  { len :: CtxLen
-  , names :: Bwd TS.Id
+data TSEnv = TSEnv
+  { locals :: Bwd TS.El
+  , usedNames :: Set.Set Name
   }
 
--- emptyTSCtxShape :: TSCtxShape
--- emptyTSCtxShape = TSCtxShape 0 BwdNil
+instance FLIR.Extern TS.El where
+  eproj v x = TS.Proj v (mangle x)
 
--- bind :: TSCtxShape -> TS.Id -> TSCtxShape
--- bind cs x = TSCtxShape{len = cs.len + 1, names = cs.names :> x}
+tableNameDoc :: TableName -> DDoc
+tableNameDoc tn = concatWith (surround dot) (dpretty <$> (tn.realm : toList tn.path))
 
--- tableNameDoc :: TableName -> DDoc
--- tableNameDoc tn = concatWith (surround dot) (dpretty <$> (tn.realm : toList tn.path))
+tagged :: DDoc -> TS.El -> TS.El
+tagged x v = TS.Object [("tag", TS.String x), ("value", v)]
 
--- genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
--- genTyVal access cs = \case
---   V.EltOf x vs -> do
---     let params = TS.List $ genEl access cs <$> F.toList vs
---     let transactionArg = case access of
---           View -> []
---           Transaction -> [TS.Var "transaction"]
---     let args = [TS.Var "store", TS.String (tableNameDoc x), params] ++ transactionArg
---     TS.New (TS.Const (TS.runtime (RowIdSet access))) args
---   _ -> panic "composite not yet supported"
+stageEl :: FLIR.El TS.El -> TS.El
+stageEl = \case
+  FLIR.Lit l -> tagged "Lit" $ TS.Lit l
+  FLIR.LocalVar (FId i) -> tagged "LocalVar" $ TS.Lit $ LitInt i
+  FLIR.Extern v -> v
 
--- genHead :: Access -> TSCtxShape -> V.Head -> TS.El
--- genHead access cs = \case
---   V.LocalVar (FId i) -> TS.Var $ elemAt cs.names (BId (cs.len - i - 1))
---   V.GlobalVar _ _ -> panic "global var neutral not yet supported"
---   V.Lookup tn vs _ -> do
---     let params = TS.List $ genEl access cs <$> F.toList vs
---     let transactionArg = case access of
---           View -> []
---           Transaction -> [TS.Var "transaction"]
---     let args = [TS.Var "store", TS.String (tableNameDoc tn), params] ++ transactionArg
---     TS.New (TS.Const (TS.runtime (TableCellRef access))) args
+orNull :: (a -> TS.El) -> Maybe a -> TS.El
+orNull f (Just x) = f x
+orNull _ Nothing = TS.Null
 
--- genSp :: TSCtxShape -> V.Spine -> TS.El -> TS.El
--- genSp _cs = \case
---   V.Id -> \t -> t
---   _ -> panic "unsupported spine operation"
+stageAtom :: FLIR.Atom TS.El -> TS.El
+stageAtom a = TS.Object
+  [ ("entity", TS.String $ tableNameDoc a.entity)
+  , ("rowId", orNull stageEl a.rowId)
+  , ("values", TS.List (orNull stageEl <$> a.values))
+  ]
 
--- argName :: TSCtxShape -> V.Clo f c -> TS.Id
--- argName _ (V.Clo x _ _) = mangle x
--- argName _ (V.CloConst _) = panic "closures from the layout process should have argument names"
+stageProp :: FLIR.Prop TS.El -> TS.El
+stageProp = \case
+  FLIR.PAtom a -> tagged "PAtom" $ stageAtom a
+  FLIR.PEq v0 v1 -> tagged "PEq" $ TS.Object [("lhs", stageEl v0), ("rhs", stageEl v1)]
 
--- genEl :: Access -> TSCtxShape -> V.El N -> TS.El
--- genEl access cs = \case
---   V.Neu n -> genSp cs n.spine $ genHead access cs n.head
---   V.InitNeu _ -> panic "can't lower init yet"
---   V.Code a -> genTyVal access cs a
---   V.Lam dom clo -> do
---     let v = V.local (FId cs.len) dom
---     let x = argName cs clo
---     TS.Lam
---       (TS.Binding x (TS.runtime Value))
---       (TS.Block [] (Just (genEl access (bind cs x) (V.appClo clo v))))
---   V.Cons fields -> TS.Object $ for (toList fields) $ \(x, v) ->
---     (mangle x, genEl access cs v)
---   V.Lit l -> TS.Lit l
+builtinDoc :: BuiltinTy -> DDoc
+builtinDoc = \case
+  BuiltinInt -> "Int"
+  BuiltinString -> "String"
+
+genColType :: FLIR.ColType -> TS.El
+genColType = \case
+  SIR.RowId x -> tagged "RowId" $ TS.String $ tableNameDoc x
+  SIR.BuiltinTy ty -> tagged "BuiltinTy" $ TS.String $ builtinDoc ty
+
+reconstructEl :: FLIR.El TS.El -> TS.El
+reconstructEl = \case
+  FLIR.LocalVar (FId i) -> TS.Index (TS.Var "result") i
+  FLIR.Lit l -> TS.Lit l
+  FLIR.Extern x -> x
+
+reconstructEls :: FLIR.Els TS.El -> TS.El
+reconstructEls = \case
+  FLIR.Scalar v -> reconstructEl v
+  FLIR.Cons d -> TS.Object [(mangle x, reconstructEls t) | (x, t) <- toList d]
+  FLIR.Erased -> TS.Null
+
+genQuery :: Access -> TSEnv -> SIR.Query -> TS.El
+genQuery _access e q = do
+  let ((v, mainprops), vars, auxprops) = FLIR.runFlatM $ do
+        v <- FLIR.freshAt (BwdNil :> "result") q.shape
+        mainprops <- FLIR.app (FLIR.extern <$> e.locals) q.pred v
+        pure (v, mainprops)
+  let flir = TS.Object
+        [ ("vars", TS.List $ genColType . snd <$> vars)
+        , ("props", TS.List $ stageProp <$> toList (mainprops <> auxprops))
+        ]
+  -- TODO: should make sure "result" is fresh
+  let reconstruct =
+        TS.Lam
+          (TS.Binding "result" (TS.ListTy (TS.runtime Value)))
+          (TS.Block [] (Just (reconstructEls v)))
+  TS.New (TS.Const (TS.runtime Query)) [flir, reconstruct]
+
+varName :: SIR.Abs a -> Set.Set Name -> Name
+varName (SIR.Abs (Just x) _) xs = case Set.member x xs of
+  True -> freshNameFor xs
+  False -> x
+varName _ xs = freshNameFor xs
+
+genAbs :: Access -> TSEnv -> SIR.Abs (SIR.El l) -> (Name, TS.El)
+genAbs access e (SIR.Abs mx body) = do
+  let x = freshNameWithPref e.usedNames mx
+  let e' = e
+        { locals = e.locals :> TS.Var (mangle x)
+        , usedNames = Set.insert x e.usedNames
+        }
+  (x, genEl access e' body)
+genAbs access e (SIR.AbsConst body) = do
+  let x = freshNameFor e.usedNames
+  let e' = e { usedNames = Set.insert x e.usedNames }
+  (x, genEl access e' body)
+
+genEl :: Access -> TSEnv -> SIR.El l -> TS.El
+genEl access e = \case
+  SIR.LiftEl t -> genEl access e t
+  SIR.Var i -> elemAt e.locals i
+  SIR.Single q -> TS.MethodCall (genQuery access e q) "single" []
+  SIR.Proj t x -> TS.Proj (genEl access e t) (mangle x)
+  SIR.Multi _ q -> TS.MethodCall (genQuery access e q) "multi" []
+  SIR.Lam _dom abs -> do
+    let (x, body) = genAbs access e abs
+    TS.Lam
+      (TS.Binding (mangle x) (TS.runtime Value))
+      (TS.Block [] (Just body))
+  SIR.Cons fields ->
+    TS.Object [(mangle x, genEl access e t) | (x, t) <- toList fields]
+  SIR.Lit l -> TS.Lit l
+  SIR.Erased -> TS.Null
 
 -- genRealmConstructor :: Access -> Realm -> TS.Constructor
 -- genRealmConstructor access r = do

@@ -19,6 +19,7 @@ extends = \case
 
 data RuntimeConst
   = Value
+  | Query
   | ColnSet Access
   | RowIdSet Access
   | ColnRef Access

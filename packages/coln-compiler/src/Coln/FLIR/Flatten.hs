@@ -11,11 +11,21 @@ import Control.Monad.State
 import Data.Set qualified as Set
 import Data.Vector.Strict qualified as Vec
 
+class Extern e where
+  eproj :: e -> Name -> e
+
+
+instance Extern Void where
+  eproj = \case
+
 data Els e
   = Scalar (V.El e)
   | Cons (Dict (Els e))
   | Erased
 
+extern :: e -> Els e
+extern v = Scalar (V.Extern v)
+  
 getScalar :: Els e -> V.El e
 getScalar (Scalar v) = v
 getScalar _ = panic "tried to get leaf value of non-leaf"
@@ -25,10 +35,11 @@ asAtomHead (Scalar v) = Just v
 asAtomHead Erased = Nothing
 asAtomHead _ = panic "tried to get leaf value of non-leaf"
 
-proj :: Els e -> Name -> Els e
+proj :: Extern e => Els e -> Name -> Els e
 proj (Cons fields) x = elemAt fields x
 proj Erased _ = Erased
-proj (Scalar _) _ = panic "tried to project from non-node"
+proj (Scalar (V.Extern v)) x = Scalar (V.Extern (eproj v x))
+proj (Scalar _) _ = panic "tried to project from non-extern scalar"
 
 concatEls :: [Els e] -> [V.El e]
 concatEls vs = toList $ go vs BwdNil
@@ -93,7 +104,7 @@ fresh mx sh = do
 type Locals e = Bwd (Els e)
 
 class Flatten a (b :: Type -> Type) | a -> b where
-  flatten :: Locals e -> a -> FlatM e (b e)
+  flatten :: (Extern e) => Locals e -> a -> FlatM e (b e)
 
 absName :: S.Abs a -> Maybe Name
 absName (S.Abs mx _) = mx
@@ -102,7 +113,7 @@ absName (S.AbsConst _) = Nothing
 assert :: Props e -> FlatM e ()
 assert ps = modify (\aux -> aux{props = aux.props <> ps})
 
-app :: (Flatten a b) => Locals e -> S.Abs a -> Els e -> FlatM e (b e)
+app :: (Flatten a b, Extern e) => Locals e -> S.Abs a -> Els e -> FlatM e (b e)
 app l (S.Abs _ body) v = flatten (l :> v) body
 app l (S.AbsConst body) _ = flatten l body
 
@@ -122,7 +133,7 @@ instance Flatten (S.El Set) Els where
     S.Lit l -> pure $ Scalar $ V.Lit l
     S.Erased -> pure Erased
 
-equate :: S.Shape -> Els e -> Els e -> Props e
+equate :: (Extern e) => S.Shape -> Els e -> Els e -> Props e
 equate (S.Scalar _) v0 v1 = single $ V.PEq (getScalar v0) (getScalar v1)
 equate (S.Tuple fs) v0 v1 =
   mconcat [equate t (proj v0 x) (proj v1 x) | (x, t) <- toList fs]
@@ -168,7 +179,7 @@ flattenEntity e =
     , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
     }
 
-bindTele :: Locals e -> [(Name, S.Query)] -> FlatM e (Locals e)
+bindTele :: (Extern e) => Locals e -> [(Name, S.Query)] -> FlatM e (Locals e)
 bindTele l [] = pure l
 bindTele l ((x, a) : rest) = do
   v <- fresh (Just x) a.shape

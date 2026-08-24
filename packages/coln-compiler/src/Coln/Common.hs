@@ -38,6 +38,7 @@ module Coln.Common (
   alphaNames,
   freshNameFor,
   freshNamesFor,
+  freshNameWithPref,
   Match (..),
   mangleToDoc,
   mangleToString,
@@ -298,6 +299,12 @@ freshNamesFor a = flip filter alphaNames $ flip Set.notMember $ namesIn a
 
 freshNameFor :: (HasNames a) => a -> Name
 freshNameFor = head . freshNamesFor
+
+freshNameWithPref :: (HasNames a) => a -> Maybe Name -> Name
+freshNameWithPref a (Just x) = case Set.member x (namesIn a) of
+  True -> freshNameFor a
+  False -> x
+freshNameWithPref a Nothing = freshNameFor a
 
 -- Any
 --------------------------------------------------------------------------------
