@@ -11,37 +11,17 @@ import Control.Monad.State
 import Data.Set qualified as Set
 import Data.Vector.Strict qualified as Vec
 
-class Extern e where
-  eproj :: e -> Name -> e
-
-
-instance Extern Void where
-  eproj = \case
-
-data Els e
-  = Scalar (V.El e)
-  | Cons (Dict (Els e))
+data Els
+  = Scalar V.El
+  | Cons (Dict Els)
   | Erased
 
-extern :: e -> Els e
-extern v = Scalar (V.Extern v)
-  
-getScalar :: Els e -> V.El e
-getScalar (Scalar v) = v
-getScalar _ = panic "tried to get leaf value of non-leaf"
-
-asAtomHead :: Els e -> Maybe (V.El e)
-asAtomHead (Scalar v) = Just v
-asAtomHead Erased = Nothing
-asAtomHead _ = panic "tried to get leaf value of non-leaf"
-
-proj :: Extern e => Els e -> Name -> Els e
+proj :: Els -> Name -> Els
 proj (Cons fields) x = elemAt fields x
 proj Erased _ = Erased
-proj (Scalar (V.Extern v)) x = Scalar (V.Extern (eproj v x))
 proj (Scalar _) _ = panic "tried to project from non-extern scalar"
 
-concatEls :: [Els e] -> [V.El e]
+concatEls :: [Els] -> [V.El]
 concatEls vs = toList $ go vs BwdNil
  where
   go [] vs' = vs'
@@ -49,48 +29,48 @@ concatEls vs = toList $ go vs BwdNil
   go (Cons d : rest) vs' = go rest (go (toList d.values) vs')
   go (Erased : rest) vs' = go rest vs'
 
-newtype Props e = Props {apply :: Bwd (V.Prop e) -> Bwd (V.Prop e)}
+newtype Props = Props {apply :: Bwd V.Prop -> Bwd V.Prop}
 
-instance Semigroup (Props e) where
+instance Semigroup Props where
   ps0 <> ps1 = Props (ps1.apply . ps0.apply)
 
-instance Monoid (Props e) where
+instance Monoid Props where
   mempty = Props id
 
-instance ToList (Props e) (V.Prop e) where
+instance ToList Props V.Prop where
   toList ps = toList (ps.apply BwdNil)
 
-single :: V.Prop e -> Props e
+single :: V.Prop -> Props
 single p = Props (:> p)
 
-data AuxilaryVars e = AuxilaryVars
+data AuxilaryVars = AuxilaryVars
   { vars :: Bwd (V.ColName, V.ColType)
-  , props :: Props e
-  , length :: Int
+  , numVars :: Int
+  , props :: Props
   , usedRoots :: Set.Set Name
   }
 
-newtype FlatM e a = FlatM {unFlatM :: State (AuxilaryVars e) a}
-  deriving (Functor, Applicative, Monad, MonadState (AuxilaryVars e))
+newtype FlatM a = FlatM {unFlatM :: State AuxilaryVars a}
+  deriving (Functor, Applicative, Monad, MonadState AuxilaryVars)
 
-runFlatM :: FlatM e a -> (a, [(V.ColName, V.ColType)], Props e)
+runFlatM :: FlatM a -> (a, [(V.ColName, V.ColType)], Props)
 runFlatM action = do
-  let (x, aux) = runState action.unFlatM (AuxilaryVars BwdNil mempty 0 Set.empty)
+  let (x, aux) = runState action.unFlatM (AuxilaryVars BwdNil 0 mempty Set.empty)
   (x, toList aux.vars, aux.props)
 
-freshAt :: Path -> S.Shape -> FlatM e (Els e)
+freshAt :: Path -> S.Shape -> FlatM Els
 freshAt p = \case
   S.Scalar t -> do
     aux <- get
-    let i = aux.length
-    put $ aux{vars = (aux.vars :> (p, t)), length = (i + 1)}
+    let i = aux.numVars
+    put $ aux{vars = (aux.vars :> (p, t)), numVars = (i + 1)}
     pure $ Scalar $ V.LocalVar $ FId i
   S.Tuple fields -> do
     fields' <- forM (toList fields) $ \(x, sh) -> freshAt (p :> x) sh
     pure $ Cons $ withHead fields fields'
   S.Unstored -> pure Erased
 
-fresh :: Maybe Name -> S.Shape -> FlatM e (Els e)
+fresh :: Maybe Name -> S.Shape -> FlatM Els
 fresh mx sh = do
   x <- case mx of
     Just x -> pure x
@@ -101,19 +81,28 @@ fresh mx sh = do
       pure x
   freshAt (BwdNil :> x) sh
 
-type Locals e = Bwd (Els e)
+getScalar :: Els -> V.El
+getScalar (Scalar v) = v
+getScalar _ = panic "tried to get leaf value of non-leaf"
 
-class Flatten a (b :: Type -> Type) | a -> b where
-  flatten :: (Extern e) => Locals e -> a -> FlatM e (b e)
+asAtomHead :: Els -> Maybe V.El
+asAtomHead (Scalar v) = Just v
+asAtomHead Erased = Nothing
+asAtomHead _ = panic "tried to get leaf value of non-leaf"
+
+type Locals = Bwd Els
 
 absName :: S.Abs a -> Maybe Name
 absName (S.Abs mx _) = mx
 absName (S.AbsConst _) = Nothing
 
-assert :: Props e -> FlatM e ()
+assert :: Props -> FlatM ()
 assert ps = modify (\aux -> aux{props = aux.props <> ps})
 
-app :: (Flatten a b, Extern e) => Locals e -> S.Abs a -> Els e -> FlatM e (b e)
+class Flatten a b | a -> b where
+  flatten :: Locals -> a -> FlatM b
+
+app :: (Flatten a b) => Locals -> S.Abs a -> Els -> FlatM b
 app l (S.Abs _ body) v = flatten (l :> v) body
 app l (S.AbsConst body) _ = flatten l body
 
@@ -133,7 +122,7 @@ instance Flatten (S.El Set) Els where
     S.Lit l -> pure $ Scalar $ V.Lit l
     S.Erased -> pure Erased
 
-equate :: (Extern e) => S.Shape -> Els e -> Els e -> Props e
+equate :: S.Shape -> Els -> Els -> Props
 equate (S.Scalar _) v0 v1 = single $ V.PEq (getScalar v0) (getScalar v1)
 equate (S.Tuple fs) v0 v1 =
   mconcat [equate t (proj v0 x) (proj v1 x) | (x, t) <- toList fs]
@@ -142,7 +131,7 @@ equate S.Unstored _ _ = mempty
 instance Flatten S.Prop Props where
   flatten l = \case
     S.Atom tn t args -> do
-      mv <- asAtomHead <$> flatten l t
+      mv <- asAtomHead <$> flatten l t 
       argvs <- traverse (flatten l) args
       pure $ single $ V.PAtom (V.Atom tn mv (Just <$> concatEls argvs))
     S.And ps -> mconcat <$> traverse (flatten l) (toList ps.values)
@@ -179,7 +168,7 @@ flattenEntity e =
     , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
     }
 
-bindTele :: (Extern e) => Locals e -> [(Name, S.Query)] -> FlatM e (Locals e)
+bindTele :: Locals -> [(Name, S.Query)] -> FlatM Locals
 bindTele l [] = pure l
 bindTele l ((x, a) : rest) = do
   v <- fresh (Just x) a.shape

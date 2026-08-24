@@ -34,35 +34,38 @@ data Entity = Entity
   }
   deriving (Show, Eq, Generic)
 
--- The type parameter refers to the type of external references In the Realm IR,
--- this is Void, but in the FFI which constructs queries dynamically, this is
--- host-language expressions.
-data El e
+-- Param only shows up in queries, not in the FLIR for a realm
+data El
   = Lit Literal
   | LocalVar FId
-  | Extern e
+  | Param FId
   deriving (Show, Eq, Generic)
 
-data Atom e = Atom
+data Atom = Atom
   { entity :: TableName
-  , rowId :: Maybe (El e)
-  , values :: [Maybe (El e)]
+  , rowId :: Maybe El
+  , values :: [Maybe El]
   }
 
-data Prop e
-  = PAtom (Atom e)
-  | PEq (El e) (El e)
+data Prop
+  = PAtom Atom
+  | PEq El El
 
 data Rule = Rule
   { ruleVariant :: SIR.RuleVariant
   , vars :: [(ColName, ColType)]
-  , antecedents :: [Prop Void]
-  , consequents :: [Prop Void]
+  , antecedents :: [Prop]
+  , consequents :: [Prop]
   }
 
 data Definition = Definition
   { vars :: [(ColName, ColType)]
-  , antecedents :: [Prop Void]
+  , antecedents :: [Prop]
   , definand :: TableName
-  , args :: [El Void]
+  , args :: [El]
+  }
+
+data Query = Query
+  { vars :: [(ColName, ColType)]
+  , props :: [Prop]
   }
