@@ -822,18 +822,15 @@ mod tests {
     }
 
     /// Destructures the `Projection(Selection?(Source))` shape an atom lowers to.
-    fn projection(expr: &Expr) -> &ProjectionExpr {
+    fn assert_projection(expr: &Expr) -> &ProjectionExpr {
         match expr {
-            Expr::Relational(rel) => match rel {
-                RelExpr::Projection(projection) => projection,
-                other => panic!("Expected an atom to lower to a projection, got {other:?}"),
-            },
-            other => panic!("Expected a relational expression, got {other:?}"),
+            Expr::Relational(RelExpr::Projection(projection)) => projection,
+            other => panic!("Expected a relational projection expression, got {other:?}"),
         }
     }
 
     /// The selection an atom's local conditions produce, if it has any.
-    fn selection(expr: &Expr) -> Option<&SelectionExpr> {
+    fn maybe_assert_selection(expr: &Expr) -> Option<&SelectionExpr> {
         match expr {
             Expr::Relational(RelExpr::Selection(selection)) => Some(selection),
             _ => None,
@@ -874,34 +871,26 @@ mod tests {
             )
             .expect("A well-formed atom lowers");
 
-        assert_eq!(attribute_names(projection(&plan.relation)), vec!["x", "y"]);
+        assert_eq!(
+            attribute_names(assert_projection(&plan.relation)),
+            vec!["x", "y"]
+        );
         assert_eq!(plan.bindings.len(), 2);
         // No local conditions, so no selection between projection and source.
-        assert!(selection(&projection(&plan.relation).relation).is_none());
+        assert!(maybe_assert_selection(&assert_projection(&plan.relation).relation).is_none());
     }
 
     #[test]
     fn a_literal_becomes_a_local_condition_rather_than_a_binding() {
         let mut builder = builder_with_table(vec![("a", builtin())]);
         let plan = builder
-            .atom(
-                &atom_over_t(
-                    None,
-                    vec![(
-                        0,
-                        ir::Term::Lit {
-                            lit: ir::Lit::Int { value: 42 },
-                        },
-                    )],
-                ),
-                &[],
-            )
+            .atom(&atom_over_t(None, vec![(0, lit_term(42))]), &[])
             .expect("An atom comparing a column to a literal lowers");
 
         assert!(plan.bindings.is_empty());
-        assert!(attribute_names(projection(&plan.relation)).is_empty());
+        assert!(attribute_names(assert_projection(&plan.relation)).is_empty());
         assert!(
-            selection(&projection(&plan.relation).relation).is_some(),
+            maybe_assert_selection(&assert_projection(&plan.relation).relation).is_some(),
             "The literal must become a selection beneath the projection"
         );
     }
@@ -921,10 +910,13 @@ mod tests {
             )
             .expect("A repeated variable lowers");
 
-        assert_eq!(attribute_names(projection(&plan.relation)), vec!["x"]);
+        assert_eq!(
+            attribute_names(assert_projection(&plan.relation)),
+            vec!["x"]
+        );
         assert_eq!(plan.bindings.len(), 1);
 
-        let selection = selection(&projection(&plan.relation).relation)
+        let selection = maybe_assert_selection(&assert_projection(&plan.relation).relation)
             .expect("The repetition must produce a selection");
         match &selection.condition {
             Expr::Binary(binary) => {
@@ -952,7 +944,7 @@ mod tests {
             .expect("A row id valued column lowers");
 
         assert_eq!(plan.bindings.len(), 2);
-        assert_eq!(attribute_names(projection(&plan.relation)).len(), 2);
+        assert_eq!(attribute_names(assert_projection(&plan.relation)).len(), 2);
         assert_eq!(
             plan.bindings
                 .iter()
@@ -1086,10 +1078,24 @@ mod tests {
         }
     }
 
-    fn conjunctive_query(atoms: Vec<ir::Atom>) -> ConjunctiveQuery {
-        ConjunctiveQuery {
-            atoms,
-            conditions: vec![],
+    fn conjunctive_query(atoms: Vec<ir::Atom>, conditions: Vec<ir::Equality>) -> ConjunctiveQuery {
+        ConjunctiveQuery { atoms, conditions }
+    }
+
+    fn lit_term(value: i64) -> ir::Term {
+        ir::Term::Lit {
+            lit: ir::Lit::Int { value },
+        }
+    }
+
+    fn equality(left: ir::Term, right: ir::Term) -> ir::Equality {
+        ir::Equality { left, right }
+    }
+
+    fn assert_selection(expr: &Expr) -> &SelectionExpr {
+        match maybe_assert_selection(expr) {
+            Some(selection) => selection,
+            None => panic!("Expected a relational selection expression, got {expr:?}"),
         }
     }
 
@@ -1098,12 +1104,12 @@ mod tests {
         // There is nothing to equate across atoms, and the join operators reject
         // fewer than two relations, so the atom must come through as-is.
         let mut builder = builder_with_table(vec![("a", builtin())]);
-        let query = conjunctive_query(vec![atom_over_t(None, vec![(0, var_term(0))])]);
+        let query = conjunctive_query(vec![atom_over_t(None, vec![(0, var_term(0))])], vec![]);
         let (expr, bindings) = builder
             .conjunctive_query(&query, &[scalar_var("x")])
             .expect("A one-atom conjunctive query lowers");
 
-        assert_eq!(attribute_names(projection(&expr)), vec!["x"]);
+        assert_eq!(attribute_names(assert_projection(&expr)), vec!["x"]);
         assert_eq!(bindings.len(), 1);
     }
 
@@ -1111,10 +1117,13 @@ mod tests {
     fn two_atoms_sharing_a_variable_lower_to_a_join_on_that_variable() {
         let mut builder = builder_with_table(vec![("a", builtin()), ("b", builtin())]);
         // t(x, y) and t(x, z): `x` is shared, `y` and `z` are not.
-        let query = conjunctive_query(vec![
-            atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
-            atom_over_t(None, vec![(0, var_term(0)), (1, var_term(2))]),
-        ]);
+        let query = conjunctive_query(
+            vec![
+                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
+                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(2))]),
+            ],
+            vec![],
+        );
         let vars = vec![scalar_var("x"), scalar_var("y"), scalar_var("z")];
         let (expr, bindings) = builder
             .conjunctive_query(&query, &vars)
@@ -1136,10 +1145,13 @@ mod tests {
     #[test]
     fn two_atoms_sharing_nothing_lower_to_a_cartesian_product() {
         let mut builder = builder_with_table(vec![("a", builtin())]);
-        let query = conjunctive_query(vec![
-            atom_over_t(None, vec![(0, var_term(0))]),
-            atom_over_t(None, vec![(0, var_term(1))]),
-        ]);
+        let query = conjunctive_query(
+            vec![
+                atom_over_t(None, vec![(0, var_term(0))]),
+                atom_over_t(None, vec![(0, var_term(1))]),
+            ],
+            vec![],
+        );
         let vars = vec![scalar_var("x"), scalar_var("y")];
         let (expr, _bindings) = builder
             .conjunctive_query(&query, &vars)
@@ -1152,11 +1164,51 @@ mod tests {
     }
 
     #[test]
+    fn several_conditions_lower_to_one_selection_on_top_of_the_join() {
+        // The conditions are ANDed into a single condition, so exactly one
+        // selection sits on top of the join rather than one selection per
+        // condition chained after another.
+        let mut builder = builder_with_table(vec![("a", builtin()), ("b", builtin())]);
+        // t(x, y) and t(x, z), with `y = 1` and `z = 2`.
+        let query = conjunctive_query(
+            vec![
+                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
+                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(2))]),
+            ],
+            vec![
+                equality(var_term(1), lit_term(1)),
+                equality(var_term(2), lit_term(2)),
+            ],
+        );
+        let vars = vec![scalar_var("x"), scalar_var("y"), scalar_var("z")];
+        let (expr, _bindings) = builder
+            .conjunctive_query(&query, &vars)
+            .expect("A conjunctive query with conditions lowers");
+
+        let selection = assert_selection(&expr);
+        // What sits directly beneath the selection is the join itself, and not
+        // another selection carrying the second condition.
+        multi_way_join(&selection.relation);
+        match &selection.condition {
+            Expr::Binary(and) => {
+                assert_eq!(and.operator, Operator::And);
+                for side in [&and.left, &and.right] {
+                    match side {
+                        Expr::Binary(equality) => assert_eq!(equality.operator, Operator::Equal),
+                        other => panic!("Expected an equality condition, got {other:?}"),
+                    }
+                }
+            }
+            other => panic!("Expected the two conditions to be ANDed, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn a_conjunctive_query_without_atoms_is_an_error() {
         let mut builder = builder_with_table(vec![("a", builtin())]);
         assert!(
             builder
-                .conjunctive_query(&conjunctive_query(vec![]), &[])
+                .conjunctive_query(&conjunctive_query(vec![], vec![]), &[])
                 .is_err()
         );
     }
