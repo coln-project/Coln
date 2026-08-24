@@ -65,8 +65,7 @@ use crate::{
 };
 
 /// Rewrite `plan` so that no [`MultiWayEquiJoinExpr`] remains, leaving a plan
-/// the DBSP backend can build a circuit from. See the [module
-/// docs](self).
+/// the DBSP backend can build a circuit from. See the [module docs](self).
 pub fn fold_multi_way_joins(plan: Code) -> Result<Code, LoweringError> {
     let mut fold = MultiWayJoinFold;
     plan.into_iter()
@@ -104,7 +103,7 @@ fn fold(join: MultiWayEquiJoinExpr) -> Result<Expr, LoweringError> {
     let MultiWayEquiJoinExpr {
         relations,
         on,
-        mut attributes,
+        attributes,
     } = join;
     let mut keys = keys_by_relation(on, &position)?;
     // Taken one by one, in fold order, rather than in relation order.
@@ -115,36 +114,39 @@ fn fold(join: MultiWayEquiJoinExpr) -> Result<Expr, LoweringError> {
             .expect("A join order names every relation exactly once")
     };
 
-    let mut order = order.into_iter();
-    let first = order
-        .next()
+    // The last relation is split off rather than folded with the others so that
+    // the projection can operate on the outermost join alone: an inner step that
+    // projected would drop columns a later one still has to join on or include
+    // columns that a later one still has to produce.
+    let folded = order
+        .split_last()
+        .map(|(last, order)| {
+            let mut order = order.iter();
+            let first = order
+                .next()
+                .expect("A validated join has at least two relations");
+            let acc = order.fold(take(*first), |acc, relation| {
+                Expr::from(EquiJoinExpr {
+                    left: acc,
+                    right: take(*relation),
+                    // No keys for this relation makes the step a cartesian
+                    // product, which is what an empty `on` already means for an
+                    // `EquiJoinExpr`. So the chain stays one node kind instead
+                    // of switching to `CartesianProductExpr`, a newtype over it.
+                    on: keys.remove(relation).unwrap_or_default(),
+                    attributes: None,
+                })
+            });
+            Expr::from(EquiJoinExpr {
+                left: acc,
+                right: take(*last),
+                on: keys.remove(last).unwrap_or_default(),
+                attributes,
+            })
+        })
         .expect("A validated join has at least two relations");
-    let mut accumulated = take(first);
-    let steps: Vec<RelationIdx> = order.collect();
-    let step_count = steps.len();
 
-    for (step, relation) in steps.into_iter().enumerate() {
-        accumulated = Expr::from(EquiJoinExpr {
-            left: accumulated,
-            right: take(relation),
-            // Removed rather than read: a relation enters the chain once, so
-            // these keys have no second user to be kept around for.
-            //
-            // An empty condition is a cartesian product, exactly as it is for a
-            // multi-way join with an empty `on`. Emitting an `EquiJoinExpr`
-            // with no pairs rather than a `CartesianProductExpr` keeps the
-            // chain one node kind; the latter is a newtype over the former.
-            on: keys.remove(&relation).unwrap_or_default(),
-            // The projection belongs on the outermost join, where the whole
-            // tuple is available — an inner step would drop columns a later one
-            // still has to join on.
-            attributes: (step + 1 == step_count)
-                .then(|| attributes.take())
-                .flatten(),
-        });
-    }
-
-    Ok(accumulated)
+    Ok(folded)
 }
 
 /// Distributes the join condition over the fold: which key pairs each relation

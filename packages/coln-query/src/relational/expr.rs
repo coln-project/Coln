@@ -291,7 +291,7 @@ pub type RelationIdx = usize;
 /// must produce the same value for a tuple to enter the join's output.
 ///
 /// A variable bound by only *one* relation is deliberately not representable
-/// here — it constrains nothing, so it is not part of a join condition. Such a
+/// here: It constrains nothing, so it is not part of a join condition. Such a
 /// variable still reaches the output, carried by its relation's schema like any
 /// other non-join attribute. Keeping them out is what makes
 /// [`MultiWayEquiJoinExpr::on`]`.is_empty()` an exact test for "nothing to join
