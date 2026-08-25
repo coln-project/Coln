@@ -6,19 +6,18 @@
 //! (FLIR) into a query program expressed in [`Statements`](crate::host::stmt::Stmt),
 //! using [`HostExprs`](crate::host::expr::Expr) and [`RelExprs`](crate::relational::expr::RelExpr).
 
-use crate::api::schema::{Column, TableRef, TableSchema};
 use crate::error::SyntaxError;
 use crate::host::Code;
 use crate::host::expr::{BinaryExpr, Expr, Literal, LiteralExpr, VarExpr};
 use crate::host::operator::Operator;
 use crate::host::stmt::{Stmt, VarStmt};
 use crate::program::QueryProgram;
-use crate::relational::RelationSchema;
 use crate::relational::catalog::Catalog;
 use crate::relational::expr::{
     AntiJoinExpr, JoinVariable, MultiWayEquiJoinExpr, ProjectionExpr, RelationIdx, SelectionExpr,
     SourceExpr, SourceId,
 };
+use crate::relational::schema::{Column, TableRef, TableSchema};
 use crate::scalarial::ScalarType;
 use coln_flir_rs::ir::{
     self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, Term,
@@ -65,20 +64,46 @@ impl RuleMeta {
     }
 }
 
-impl From<&BaseTableSchema> for RelationSchema {
+/// Projects FLIR's per-engine schema down to the one thing the layers below
+/// share: the query engine's columns, and the table's key(s) restated over
+/// them.
+///
+/// Both halves change coordinates on the way. The columns are the *query*
+/// engine's view, where a row id has already flattened into a hash and a
+/// counter column; FLIR states its keys as indices into the *compiler's*
+/// view, so each component of a key travels through
+/// [`resolve_query_col_range`](BaseTableSchema::resolve_query_col_range) to
+/// become the one or two positions it occupies here.
+///
+/// The implicit row id leads the list of keys: it is the only key a base table
+/// is guaranteed to have and to be unique on, so a backend that can index by
+/// just one key (DBSP) picks it by taking the first.
+impl From<&BaseTableSchema> for TableSchema {
     fn from(value: &BaseTableSchema) -> Self {
-        RelationSchema::new(
-            value.name().to_string(),
-            value.query_cols().iter().map(|col| col.name().to_string()),
-            value
-                .query_cols()
-                .iter()
-                // The first two columns are the row id columns and can act as
-                // the key for now.
-                .take(2)
-                .map(|col| col.name().to_string()),
+        let columns = value
+            .query_cols()
+            .iter()
+            .map(|col| Column::new(col.name(), *col.ty()))
+            .collect();
+        let row_id_key = value
+            .resolve_query_col_range(CompilerColIdx::for_row_id())
+            .collect();
+        let declared_keys = value
+            .primary_keys()
+            .iter()
+            // The compiler reports a table without a declared primary key as one
+            // empty key rather than no key at all.
+            .filter(|key| !key.is_empty())
+            .map(|key| {
+                key.iter()
+                    .flat_map(|idx| value.resolve_query_col_range(*idx))
+                    .collect()
+            });
+        TableSchema::new(
+            TableRef::from(value.name()),
+            columns,
+            std::iter::once(row_id_key).chain(declared_keys).collect(),
         )
-        .expect("Actually infallible")
     }
 }
 
@@ -426,17 +451,17 @@ impl FlirProgram {
 }
 
 impl Catalog for FlirProgram {
-    /// Projects FLIR's [`BaseTableSchema`] down to the [`RelationSchema`] a plan
+    /// Projects FLIR's [`BaseTableSchema`] down to the [`TableSchema`] a plan
     /// needs, on demand. [`Cow::Owned`] rather than a borrow precisely so that
-    /// the richer schema stays the only stored copy — see [`FlirProgram`].
+    /// the richer schema stays the only stored copy.
     ///
     /// Only base tables answer here: a rule's output is bound to a host variable
     /// and referenced by [`VarExpr`], never by a [`SourceExpr`], so
     /// [`derived_views`](Self::derived_views) is no part of the catalog.
-    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, RelationSchema>> {
+    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>> {
         self.base_tables
             .get(&BaseTableName::from(id))
-            .map(|base_table_schema| Cow::Owned(RelationSchema::from(base_table_schema)))
+            .map(|base_table_schema| Cow::Owned(TableSchema::from(base_table_schema)))
     }
 }
 

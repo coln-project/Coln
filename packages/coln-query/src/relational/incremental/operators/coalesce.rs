@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use super::super::super::relation::{RelationRef, SchemaTuple, TupleKey, TupleValue, new_relation};
-use super::StreamWrapper;
+use super::super::super::relation::{RelationRef, TupleValue};
+use super::super::dbsp::{AsDbspRelation, new_relation};
+use super::super::schema::{SchemaTuple, TupleKey};
 use std::rc::Rc;
 
 /// If the schema is not coalesced, this helper will compact the tuple key and
@@ -14,22 +15,19 @@ use std::rc::Rc;
 pub fn coalesce_helper(relation: RelationRef) -> RelationRef {
     let relation_ref = relation.borrow();
 
-    if relation_ref.schema.is_coalesced() {
+    if relation_ref.as_dbsp().schema().is_coalesced() {
         drop(relation_ref);
         return relation;
     }
 
-    let schema = relation_ref.schema.coalesce();
-    let coalesced = relation_ref.downcast_ref::<StreamWrapper>().map_index({
+    let schema = relation_ref.as_dbsp().schema().coalesce();
+    let coalesced = relation_ref.as_dbsp().stream().map_index({
         let relation = Rc::clone(&relation);
         move |(key, tuple)| {
             let relation_ref = relation.borrow();
-            let key: TupleKey = SchemaTuple::new(&relation_ref.schema.key, key)
-                .coalesce()
-                .collect();
-            let tuple: TupleValue = SchemaTuple::new(&relation_ref.schema.tuple, tuple)
-                .coalesce()
-                .collect();
+            let schema = relation_ref.as_dbsp().schema();
+            let key: TupleKey = SchemaTuple::new(&schema.key, key).coalesce().collect();
+            let tuple: TupleValue = SchemaTuple::new(&schema.tuple, tuple).coalesce().collect();
             (key, tuple)
         }
     });

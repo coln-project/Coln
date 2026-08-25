@@ -2,11 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::relational::relation::Relation;
-
-use super::super::super::relation::{
-    RelationData, RelationSchema, SchemaTuple, TupleKey, TupleValue,
-};
+use crate::relational::incremental::schema::{SchemaTuple, StreamSchema, TupleKey};
+use crate::relational::relation::{self, Relation, RelationData, RelationRef, TupleValue};
 use cli_table::{Cell, Style, Table, format::Justify};
 pub use dbsp::{
     DBSPHandle as DbspHandle, Error as DbspError, NestedCircuit, RootCircuit, Runtime, ZWeight,
@@ -180,16 +177,71 @@ impl IntoIterator for &'_ StreamWrapper {
     }
 }
 
-/// A DBSP stream is the DBSP backend's concrete relation representation. This is
-/// the single point where the DBSP runtime plugs into the backend-neutral
-/// [`Relation`] envelope.
-impl RelationData for StreamWrapper {
+/// A stream plus the schema its `(TupleKey, TupleValue)` pairs are laid out by:
+/// the DBSP backend's concrete relation representation, and the single point
+/// where the DBSP runtime plugs into the backend-neutral [`Relation`] envelope.
+///
+/// The schema rides *here*, next to the stream, rather than in [`Relation`]:
+/// keying a relation is a DBSP requirement (`OrdIndexedZSet`), and the schema
+/// changes as operators build the circuit, so each derived stream carries the
+/// schema its own rows have. The pair is what every DBSP operator recovers via
+/// [`as_dbsp`](AsDbspRelation::as_dbsp).
+#[derive(Clone)]
+pub struct DbspRelation {
+    schema: StreamSchema,
+    stream: StreamWrapper,
+}
+
+impl DbspRelation {
+    pub fn new(schema: StreamSchema, stream: StreamWrapper) -> Self {
+        Self { schema, stream }
+    }
+    pub fn schema(&self) -> &StreamSchema {
+        &self.schema
+    }
+    pub fn stream(&self) -> &StreamWrapper {
+        &self.stream
+    }
+}
+
+impl RelationData for DbspRelation {
     fn as_any(&self) -> &dyn Any {
         self
     }
     fn clone_box(&self) -> Box<dyn RelationData> {
         Box::new(self.clone())
     }
+}
+
+impl Display for DbspRelation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.schema)
+    }
+}
+
+impl Debug for DbspRelation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.schema)
+    }
+}
+
+/// Recover the DBSP backend's own relation from the type-erased envelope the
+/// host layer passes around. Every DBSP operator starts here.
+pub trait AsDbspRelation {
+    fn as_dbsp(&self) -> &DbspRelation;
+}
+
+impl AsDbspRelation for Relation {
+    fn as_dbsp(&self) -> &DbspRelation {
+        self.downcast_ref::<DbspRelation>()
+    }
+}
+
+/// A fresh [`RelationRef`] over `stream` and the schema its rows have. The DBSP
+/// backend's counterpart to [`relation::new_relation`], which takes the pair
+/// pre-assembled.
+pub fn new_relation(schema: StreamSchema, stream: StreamWrapper) -> RelationRef {
+    relation::new_relation(DbspRelation::new(schema, stream))
 }
 
 #[derive(Default, Debug, Clone)]
@@ -216,12 +268,12 @@ impl DbspInputs {
 
 #[derive(Clone)]
 pub struct DbspInput {
-    schema: RelationSchema,
+    schema: StreamSchema,
     handle: OrdIndexedStreamInputHandle,
 }
 
 impl DbspInput {
-    pub fn new(schema: RelationSchema, handle: OrdIndexedStreamInputHandle) -> Self {
+    pub fn new(schema: StreamSchema, handle: OrdIndexedStreamInputHandle) -> Self {
         Self { schema, handle }
     }
     /// Feed a batch of value tuples (with z-weights) into this input. The tuple
@@ -266,11 +318,11 @@ impl Debug for DbspInput {
 
 pub struct DbspOutput {
     handle: OrdIndexedStreamOutputHandle,
-    schema: RelationSchema,
+    schema: StreamSchema,
 }
 
 impl DbspOutput {
-    pub fn new(schema: RelationSchema, handle: OrdIndexedStreamOutputHandle) -> Self {
+    pub fn new(schema: StreamSchema, handle: OrdIndexedStreamOutputHandle) -> Self {
         Self { schema, handle }
     }
     pub fn to_batch(&self) -> DbspOutputBatch<'_> {
@@ -284,14 +336,16 @@ impl DbspOutput {
 
 impl From<&Relation> for DbspOutput {
     fn from(relation: &Relation) -> Self {
-        let schema = relation.schema.clone();
-        let handle = relation.downcast_ref::<StreamWrapper>().output();
-        Self { schema, handle }
+        let relation = relation.as_dbsp();
+        Self {
+            schema: relation.schema().clone(),
+            handle: relation.stream().output(),
+        }
     }
 }
 
 pub struct DbspOutputBatch<'a> {
-    schema: &'a RelationSchema,
+    schema: &'a StreamSchema,
     inner: Vec<(TupleKey, TupleValue, ZWeight)>,
 }
 

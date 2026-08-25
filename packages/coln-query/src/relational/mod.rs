@@ -30,6 +30,7 @@ pub mod catalog;
 pub mod expr;
 pub mod incremental;
 pub mod relation;
+pub mod schema;
 
 use std::num::NonZeroUsize;
 
@@ -40,7 +41,8 @@ use crate::{
     relational::expr::{SinkId, SourceId},
 };
 use incremental::dbsp::{OrdZSet, ZWeight};
-pub use relation::{RelationRef, RelationSchema, RelationType, TupleKey, TupleValue};
+pub use relation::{RelationRef, RelationType, TupleValue};
+pub use schema::{Column, TableRef, TableSchema};
 
 /// A change to a result relation since the last [`Runtime::commit`] — a Z-set of
 /// ±weighted rows. The natural output of an incremental backend.

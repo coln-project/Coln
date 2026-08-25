@@ -9,15 +9,40 @@ use crate::{
     host::Code,
     program::QueryProgram,
     relational::{
-        RelationSchema, TupleKey, TupleValue,
+        Column, TableRef, TableSchema, TupleValue,
         catalog::{Catalog, SourceSchemas},
         expr::SourceId,
-        incremental::dbsp::ZWeight,
+        incremental::{TupleKey, dbsp::ZWeight},
     },
-    scalarial::ScalarTypedValue,
+    scalarial::{ScalarType, ScalarTypedValue},
 };
 use std::borrow::Cow;
 use std::fmt::Debug;
+
+/// Assemble a [`TableSchema`] the way a test states one: named and typed columns
+/// in physical order, plus the names of the columns forming its primary key
+/// (empty for a relation that declares none).
+pub fn table_schema<'a>(
+    name: &str,
+    columns: impl IntoIterator<Item = (&'a str, ScalarType)>,
+    key: impl IntoIterator<Item = &'a str>,
+) -> TableSchema {
+    let columns: Vec<Column> = columns
+        .into_iter()
+        .map(|(name, scalar_type)| Column::new(name, scalar_type))
+        .collect();
+    let key: Vec<usize> = key
+        .into_iter()
+        .map(|key_column| {
+            columns
+                .iter()
+                .position(|column| column.name() == key_column)
+                .unwrap_or_else(|| panic!("key column '{key_column}' is not a column of '{name}'"))
+        })
+        .collect();
+    let primary_keys = if key.is_empty() { vec![] } else { vec![key] };
+    TableSchema::new(TableRef::from(name), columns, primary_keys)
+}
 
 /// A [`QueryProgram`] assembled by hand: the plan under test, plus the schemas
 /// of the relations its [`SourceExpr`](crate::relational::expr::SourceExpr)
@@ -28,14 +53,15 @@ pub struct TestProgram {
 }
 
 impl TestProgram {
-    /// `schemas` are keyed by their own [`name`](RelationSchema::name), which is
-    /// the name a leaf refers to them by.
-    pub fn new(code: impl Into<Code>, schemas: impl IntoIterator<Item = RelationSchema>) -> Self {
+    /// `schemas` are keyed by their own [`name`](TableSchema::name), which is
+    /// the name a [`SourceExpr` leaf](crate::relational::expr::SourceExpr)
+    /// refers to them.
+    pub fn new(code: impl Into<Code>, schemas: impl IntoIterator<Item = TableSchema>) -> Self {
         Self {
             code: code.into(),
             sources: schemas
                 .into_iter()
-                .map(|schema| (SourceId::from(schema.name.clone()), schema))
+                .map(|schema| (SourceId::from(schema.name().to_string()), schema))
                 .collect(),
         }
     }
@@ -45,7 +71,7 @@ impl TestProgram {
 /// this delegates to [`SourceSchemas`]' own [`Catalog`] impl, the
 /// [`Cow::Borrowed`] side, where a stored schema is lent rather than built.
 impl Catalog for TestProgram {
-    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, RelationSchema>> {
+    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>> {
         self.sources.source_schema(id)
     }
 }
@@ -83,14 +109,14 @@ pub fn rows_with_weight<E: InputEntity>(
 }
 
 pub trait InputEntity: Into<TupleKey> + Into<TupleValue> + Clone + Debug {
-    fn schema() -> RelationSchema;
+    fn schema() -> TableSchema;
 
     /// The name a plan's [`SourceExpr`](crate::relational::expr::SourceExpr)
     /// leaf refers to this relation by. Derived from the schema's name, so a
     /// leaf and the [`TestProgram`] catalog entry describing it cannot drift
     /// apart.
     fn id() -> SourceId {
-        SourceId::from(Self::schema().name)
+        SourceId::from(Self::schema().name().to_string())
     }
 }
 
@@ -103,13 +129,17 @@ pub struct Person {
 }
 
 impl InputEntity for Person {
-    fn schema() -> RelationSchema {
-        RelationSchema::new(
+    fn schema() -> TableSchema {
+        table_schema(
             "person",
-            ["person_id", "name", "age", "profession_id"],
+            [
+                ("person_id", ScalarType::Uint),
+                ("name", ScalarType::String),
+                ("age", ScalarType::Uint),
+                ("profession_id", ScalarType::Uint),
+            ],
             ["person_id"],
         )
-        .expect("Correct schema definition")
     }
 }
 
@@ -141,9 +171,15 @@ pub struct Profession {
 }
 
 impl InputEntity for Profession {
-    fn schema() -> RelationSchema {
-        RelationSchema::new("profession", ["profession_id", "name"], ["profession_id"])
-            .expect("Correct schema definition")
+    fn schema() -> TableSchema {
+        table_schema(
+            "profession",
+            [
+                ("profession_id", ScalarType::Uint),
+                ("name", ScalarType::String),
+            ],
+            ["profession_id"],
+        )
     }
 }
 
@@ -229,8 +265,16 @@ impl PlainRelation {
 }
 
 impl InputEntity for PlainRelation {
-    fn schema() -> RelationSchema {
-        RelationSchema::new("plain", ["a", "b", "c"], []).expect("Correct schema definition")
+    fn schema() -> TableSchema {
+        table_schema(
+            "plain",
+            [
+                ("a", ScalarType::Uint),
+                ("b", ScalarType::Uint),
+                ("c", ScalarType::Uint),
+            ],
+            [],
+        )
     }
 }
 
@@ -272,9 +316,17 @@ impl Edge {
 }
 
 impl InputEntity for Edge {
-    fn schema() -> RelationSchema {
-        RelationSchema::new("edges", ["from", "to", "weight", "active"], ["from", "to"])
-            .expect("Correct schema definition")
+    fn schema() -> TableSchema {
+        table_schema(
+            "edges",
+            [
+                ("from", ScalarType::Uint),
+                ("to", ScalarType::Uint),
+                ("weight", ScalarType::Uint),
+                ("active", ScalarType::Bool),
+            ],
+            ["from", "to"],
+        )
     }
 }
 
@@ -322,9 +374,17 @@ impl SetOp {
 }
 
 impl InputEntity for SetOp {
-    fn schema() -> RelationSchema {
-        RelationSchema::new("set", ["RepId", "Ctr", "Key", "Value"], ["RepId", "Ctr"])
-            .expect("Correct schema definition")
+    fn schema() -> TableSchema {
+        table_schema(
+            "set",
+            [
+                ("RepId", ScalarType::Uint),
+                ("Ctr", ScalarType::Uint),
+                ("Key", ScalarType::Uint),
+                ("Value", ScalarType::Uint),
+            ],
+            ["RepId", "Ctr"],
+        )
     }
 }
 
@@ -360,13 +420,17 @@ impl PredRel {
 }
 
 impl InputEntity for PredRel {
-    fn schema() -> RelationSchema {
-        RelationSchema::new(
+    fn schema() -> TableSchema {
+        table_schema(
             "pred",
-            ["FromRepId", "FromCtr", "ToRepId", "ToCtr"],
+            [
+                ("FromRepId", ScalarType::Uint),
+                ("FromCtr", ScalarType::Uint),
+                ("ToRepId", ScalarType::Uint),
+                ("ToCtr", ScalarType::Uint),
+            ],
             ["FromRepId", "FromCtr", "ToRepId", "ToCtr"],
         )
-        .expect("Correct schema definition")
     }
 }
 

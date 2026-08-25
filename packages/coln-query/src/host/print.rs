@@ -325,12 +325,7 @@ impl RelExprVisitor<(), ()> for TreePrinter<'_> {
         let name = escaped(expr.as_id().as_str());
         match catalog.map(|catalog| catalog.source_schema(&expr.id)) {
             Some(Some(schema)) => {
-                emit!(
-                    self,
-                    "Source \"{name}\" tuple={} key={}",
-                    schema.tuple,
-                    schema.key
-                );
+                emit!(self, "Source \"{name}\" {}", schema.shape());
             }
             // A catalog that does not describe this leaf is worth saying out
             // loud: the plan names a relation nothing will bind, and this is the
@@ -456,13 +451,18 @@ mod tests {
     use crate::host::Code;
     use crate::program::QueryProgram;
     use crate::relational::{
-        RelationSchema,
+        TableSchema,
         expr::{JoinVariable, SinkId},
     };
-    use crate::test_helper::TestProgram;
+    use crate::scalarial::ScalarType;
+    use crate::test_helper::{TestProgram, table_schema};
 
-    fn schema(name: &str) -> RelationSchema {
-        RelationSchema::new(name, ["x", "y"], ["x"]).expect("Correct schema definition")
+    fn schema(name: &str) -> TableSchema {
+        table_schema(
+            name,
+            [("x", ScalarType::Uint), ("y", ScalarType::Uint)],
+            ["x"],
+        )
     }
 
     fn var(name: &str) -> Expr {
@@ -525,7 +525,7 @@ mod tests {
         assert!(
             program
                 .to_tree()
-                .contains("init: Source \"edge\" tuple=|x|y| key=|x|"),
+                .contains("init: Source \"edge\" (x: uint, y: uint) key(x)"),
             "{}",
             program.to_tree()
         );

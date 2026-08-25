@@ -11,8 +11,8 @@ use super::deltas::TableDelta;
 /// counterexamples.
 pub struct Violations {
     /// Contains the counter examples for each unmet constraint. Note that
-    /// [`TableRef`](super::schema::TableRef) refers to a derived view
-    /// (defined through a query) rather than a physical base table here.
+    /// [`TableRef`](crate::relational::schema::TableRef) refers to a derived
+    /// view (defined through a query) rather than a physical base table here.
     inner: Vec<TableDelta>,
 }
 

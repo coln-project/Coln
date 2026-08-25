@@ -5,7 +5,7 @@
 //! An interface for passing deltas of row-oriented data. There is
 //! [RowDelta], [TableDelta], [StoreDelta], and [DerivedDataDelta].
 
-use super::schema::TableRef;
+use crate::relational::schema::TableRef;
 pub use crate::scalarial::ScalarTypedValue;
 
 pub type ZWeight = i64;

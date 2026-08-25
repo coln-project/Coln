@@ -2,6 +2,7 @@
 //! coln-store, and coln-query in code.
 
 use crate::ir::{self, Path};
+use std::ops::Range;
 
 pub struct BaseTableSchema {
     /// The table's unique identifier/name.
@@ -49,7 +50,16 @@ impl BaseTableSchema {
     /// two columns. A (compiler) index to a non row id column results in
     /// exactly one column.
     pub fn resolve_query_cols(&self, idx: CompilerColIdx) -> impl Iterator<Item = &QueryEngineCol> {
-        let range = match idx {
+        self.resolve_query_col_range(idx)
+            .map(|idx| &self.cols_query.0[idx])
+    }
+    /// The same translation as [`resolve_query_cols`](Self::resolve_query_cols),
+    /// but as the *indices* into the query engine's column view rather than the
+    /// columns themselves. What a consumer restating one of this table's
+    /// [`primary_keys`](Self::primary_keys) in the query engine's view needs,
+    /// since a key is a list of column positions.
+    pub fn resolve_query_col_range(&self, idx: CompilerColIdx) -> Range<usize> {
+        match idx {
             CompilerColIdx::RowId => 0..StoreEngineCols::ROW_ID_COLS,
             CompilerColIdx::Column(target_idx) => {
                 assert!(
@@ -77,8 +87,7 @@ impl BaseTableSchema {
                     ir::ColType::RowId { path: _ } => query_idx..query_idx + 2,
                 }
             }
-        };
-        self.cols_query.0[range].iter()
+        }
     }
     /// The list of (compound) primary key(s), given as indexes into the
     /// compiler's column view.

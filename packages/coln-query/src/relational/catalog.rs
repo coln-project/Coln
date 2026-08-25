@@ -6,9 +6,15 @@
 //!
 //! A [`SourceExpr`](crate::relational::expr::SourceExpr) leaf only names an
 //! extensional relation. Everything else about that relation — today its
-//! [`RelationSchema`], tomorrow perhaps cardinality estimates a cost-based
+//! [`TableSchema`], tomorrow perhaps cardinality estimates a cost-based
 //! optimizer would want — is answered by the [`Catalog`] the plan is compiled
 //! against, so that a relation referenced `N` times is still described once.
+//!
+//! What a catalog answers with is the *neutral* schema: columns, types, and the
+//! table's key(s). Turning that into the keyed, positional layout a particular
+//! runtime needs is the backend's job (see
+//! [`StreamSchema`](crate::relational::incremental::StreamSchema) for the
+//! DBSP one).
 
 use crate::{
     error::BuildError,
@@ -16,7 +22,7 @@ use crate::{
         stmt::Stmt,
         walk::{Node, pre_order},
     },
-    relational::{RelationSchema, expr::SourceId},
+    relational::{expr::SourceId, schema::TableSchema},
 };
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -36,12 +42,12 @@ pub trait Catalog {
     ///
     /// Returns a [`Cow`] so that an implementation is free to keep a *richer*
     /// per-relation description of its own, e.g., coln's FLIR frontend stores a
-    /// `BaseTableSchema`, with column indices and store-engine columns a query
-    /// plan has no use for, and project it down on demand
+    /// `BaseTableSchema`, with one column view per engine and the index
+    /// translations between them, and project it down on demand
     /// ([`Cow::Owned`]), instead of being forced to store a parallel
-    /// [`RelationSchema`] just to have one to lend out. An implementation that
+    /// [`TableSchema`] just to have one to lend out. An implementation that
     /// does hold one lends it ([`Cow::Borrowed`]) and allocates nothing.
-    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, RelationSchema>>;
+    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>>;
 }
 
 /// Every source *one plan* names, with the schema its catalog describes it by:
@@ -51,14 +57,14 @@ pub trait Catalog {
 /// This is what a [`Backend`](crate::relational::Backend) is handed, rather than
 /// the catalog itself — see [`resolve_sources`] for why resolving up front is
 /// what makes an incremental circuit buildable at all.
-pub type SourceSchemas = HashMap<SourceId, RelationSchema>;
+pub type SourceSchemas = HashMap<SourceId, TableSchema>;
 
 /// A resolved projection answers the same questions the [`Catalog`] it came from
 /// does, so a consumer that only wants to look a source up — the type resolver,
 /// the tree printer — takes a `&dyn Catalog` and can be handed either. One
 /// vocabulary, whether the schemas are still to be computed or already resolved.
 impl Catalog for SourceSchemas {
-    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, RelationSchema>> {
+    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>> {
         self.get(id).map(Cow::Borrowed)
     }
 }

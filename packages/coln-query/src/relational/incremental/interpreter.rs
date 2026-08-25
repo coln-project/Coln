@@ -2,19 +2,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use super::super::relation::{
-    Relation, RelationRef, SchemaTuple, TupleKey, TupleValue, new_relation,
-};
+use super::super::relation::{Relation, RelationRef, TupleValue};
 use super::operators::{
     coalesce::coalesce_helper,
     projection::{ProjectionStrategy, projection_helper},
     reindex::reindex_helper,
 };
-use crate::relational::RelationSchema;
+use super::schema::{DbspTupleContext, SchemaTuple, StreamSchema, TupleKey};
 use crate::relational::expr::MultiWayEquiJoinExpr;
 use crate::relational::incremental::dbsp::{
-    DbspInput, OrdIndexedStreamInputHandle, new_ord_indexed_stream,
+    AsDbspRelation, DbspInput, DbspRelation, OrdIndexedStreamInputHandle, new_ord_indexed_stream,
+    new_relation,
 };
+use crate::relational::schema::TableSchema;
 use crate::{
     error::BuildError,
     host::variable::{Value, VariableSlot},
@@ -41,19 +41,22 @@ use std::{cell::Ref, rc::Rc};
 type Sources = HashMap<SourceId, Source>;
 
 struct Source {
-    schema: RelationSchema,
+    schema: StreamSchema,
     handle: OrdIndexedStreamInputHandle,
     stream: StreamWrapper,
 }
 
 impl Source {
-    /// Wire a fresh input stream for a relation of `schema`. The schema comes
-    /// from the plan's catalog, since a [`SourceExpr`] leaf only names its
-    /// relation. This is the one place it is turned into a live stream.
-    fn new(schema: RelationSchema, root_circuit: &mut RootCircuit) -> Self {
+    /// Wire a fresh input stream for the relation `table` describes. The table
+    /// schema comes from the plan's catalog, since a [`SourceExpr`] leaf only
+    /// names its relation. This is the one place it is turned into a live
+    /// stream and, with it, the one place a table's declared key(s) become the
+    /// single key this circuit's `OrdIndexedZSet` is indexed by (see
+    /// [`StreamSchema::from`]).
+    fn new(table: &TableSchema, root_circuit: &mut RootCircuit) -> Self {
         let (stream, handle) = new_ord_indexed_stream(root_circuit);
         Source {
-            schema,
+            schema: StreamSchema::from(table),
             handle,
             stream: StreamWrapper::from(stream),
         }
@@ -62,7 +65,10 @@ impl Source {
 
 impl From<&Source> for Relation {
     fn from(source: &Source) -> Self {
-        Relation::new(source.schema.clone(), source.stream.clone())
+        Relation::new(DbspRelation::new(
+            source.schema.clone(),
+            source.stream.clone(),
+        ))
     }
 }
 
@@ -141,8 +147,8 @@ impl<E: RowScalarEngine> DbspInterpreter<E> {
         let mut wired = Sources::with_capacity(sources.len());
         let mut sources: Vec<_> = sources.into_iter().collect();
         sources.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
-        for (id, schema) in sources {
-            wired.insert(id, Source::new(schema, &mut root_circuit));
+        for (id, table) in sources {
+            wired.insert(id, Source::new(&table, &mut root_circuit));
         }
         Self {
             root_circuit,
@@ -159,7 +165,7 @@ impl<E: RowScalarEngine> DbspInterpreter<E> {
     fn bridge_import(
         &mut self,
         key: ImportKey,
-        schema: RelationSchema,
+        schema: StreamSchema,
         root_stream: &StreamWrapper,
     ) -> RelationRef {
         let step = self
@@ -225,20 +231,16 @@ impl<E: RowScalarEngine> HostInterpreter for DbspInterpreter<E> {
             return Ok(value);
         };
         let relation = Rc::clone(relation);
-        let is_root = matches!(
-            relation.borrow().downcast_ref::<StreamWrapper>(),
-            StreamWrapper::Root(_)
-        );
+        let is_root = matches!(relation.borrow().as_dbsp().stream(), StreamWrapper::Root(_));
         if !is_root {
             return Ok(value);
         }
         let borrowed = relation.borrow();
-        let schema = borrowed.schema.clone();
-        let root = borrowed.downcast_ref::<StreamWrapper>();
+        let borrowed = borrowed.as_dbsp();
         Ok(Value::Relation(self.bridge_import(
             ImportKey::Var(resolved),
-            schema,
-            root,
+            borrowed.schema().clone(),
+            borrowed.stream(),
         )))
     }
 }
@@ -294,10 +296,10 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             .map(coalesce_helper)?;
         let relation_ref = relation.borrow();
 
-        let distincted = relation_ref.downcast_ref::<StreamWrapper>().distinct();
+        let distincted = relation_ref.as_dbsp().stream().distinct();
 
         Ok(Value::Relation(new_relation(
-            relation_ref.schema.clone(),
+            relation_ref.as_dbsp().schema().clone(),
             distincted,
         )))
     }
@@ -320,13 +322,15 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             .split_first()
             .expect("Resolver has *not* done its job and ensured that there are at least two operands to a union!");
 
-        let unioned = first.downcast_ref::<StreamWrapper>().sum(
-            others
-                .iter()
-                .map(|relation| relation.downcast_ref::<StreamWrapper>()),
-        );
+        let unioned = first
+            .as_dbsp()
+            .stream()
+            .sum(others.iter().map(|relation| relation.as_dbsp().stream()));
 
-        Ok(Value::Relation(new_relation(first.schema.clone(), unioned)))
+        Ok(Value::Relation(new_relation(
+            first.as_dbsp().schema().clone(),
+            unioned,
+        )))
     }
 
     fn visit_difference_expr(
@@ -346,11 +350,12 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         let left_ref = left.borrow();
 
         let differenced = left_ref
-            .downcast_ref::<StreamWrapper>()
-            .minus(right.borrow().downcast_ref::<StreamWrapper>());
+            .as_dbsp()
+            .stream()
+            .minus(right.borrow().as_dbsp().stream());
 
         Ok(Value::Relation(new_relation(
-            left_ref.schema.clone(),
+            left_ref.as_dbsp().schema().clone(),
             differenced,
         )))
     }
@@ -369,10 +374,12 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             .expect("Condition compilation error");
         let environment = ctx.environment.clone();
         let selected = relation_ref
-            .downcast_ref::<StreamWrapper>()
+            .as_dbsp()
+            .stream()
             .filter(move |(_key, tuple)| {
                 // No need to run resolver here, already resolved!
-                let schema = &relation_clone.borrow().schema;
+                let borrowed = relation_clone.borrow();
+                let schema = borrowed.as_dbsp().schema();
                 let environment = &mut environment.clone();
                 let mut new_ctx = InterpreterContext::new(environment);
                 new_ctx.extend_tuple_ctx(&None, &schema.tuple, tuple);
@@ -383,7 +390,7 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             });
 
         Ok(Value::Relation(new_relation(
-            relation_ref.schema.select(),
+            relation_ref.as_dbsp().schema().select(),
             selected,
         )))
     }
@@ -401,12 +408,13 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         let (schema, projected) = match projection_helper(&expr.attributes) {
             ProjectionStrategy::Projection(projection) => {
                 let (schema, projection) =
-                    projection.prepare(&relation_ref.schema, self.engine.clone());
-                let projected = relation_ref.downcast_ref::<StreamWrapper>().map_index({
+                    projection.prepare(relation_ref.as_dbsp().schema(), self.engine.clone());
+                let projected = relation_ref.as_dbsp().stream().map_index({
                     let relation_clone = Rc::clone(&relation);
                     let environment = ctx.environment.clone();
                     move |(key, tuple)| {
-                        let schema = &relation_clone.borrow().schema;
+                        let borrowed = relation_clone.borrow();
+                        let schema = borrowed.as_dbsp().schema();
                         let environment = &mut environment.clone();
                         let mut new_ctx = InterpreterContext::new(environment);
                         new_ctx.extend_tuple_ctx(&None, &schema.tuple, tuple);
@@ -416,8 +424,8 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
                 (schema, projected)
             }
             ProjectionStrategy::Pick(pick) => {
-                let schema = pick.prepare(&relation_ref.schema);
-                let picked = relation_ref.downcast_ref::<StreamWrapper>().clone();
+                let schema = pick.prepare(relation_ref.as_dbsp().schema());
+                let picked = relation_ref.as_dbsp().stream().clone();
                 (schema, picked)
             }
         };
@@ -465,8 +473,9 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
         let joined_schema = left
             .borrow()
-            .schema
-            .join(&right.borrow().schema, key_fields);
+            .as_dbsp()
+            .schema()
+            .join(right.borrow().as_dbsp().schema(), key_fields);
 
         let (schema, projection) = match expr
             .attributes
@@ -490,8 +499,9 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             let right_rel = Rc::clone(&right);
             let environment = ctx.environment.clone();
             move |key: &TupleKey, left: &TupleValue, right: &TupleValue| {
-                let left_schema = &left_rel.borrow().schema;
-                let right_schema = &right_rel.borrow().schema;
+                let (left_borrow, right_borrow) = (left_rel.borrow(), right_rel.borrow());
+                let left_schema = left_borrow.as_dbsp().schema();
+                let right_schema = right_borrow.as_dbsp().schema();
                 let joined_tuple: TupleValue = SchemaTuple::new(&left_schema.tuple, left)
                     .join(&SchemaTuple::new(&right_schema.tuple, right))
                     .collect();
@@ -555,8 +565,9 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
         let anti_joined_schema = left
             .borrow()
-            .schema
-            .anti_join(&right.borrow().schema, key_fields);
+            .as_dbsp()
+            .schema()
+            .anti_join(right.borrow().as_dbsp().schema(), key_fields);
         let anti_joined = left_indexed.anti_join_index(&right_indexed);
 
         Ok(Value::Relation(new_relation(
@@ -587,10 +598,8 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
         let (accumulator_init, schema) = {
             let accumulator = accumulator.borrow();
-            (
-                accumulator.downcast_ref::<StreamWrapper>().clone(),
-                accumulator.schema.clone(),
-            )
+            let accumulator = accumulator.as_dbsp();
+            (accumulator.stream().clone(), accumulator.schema().clone())
         };
 
         // A source referenced inside the step needs no special handling: DBSP
@@ -631,9 +640,10 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
                     // value `delta0`'d in, plus the recursive feedback. delta0
                     // does not alter the schema.
                     let accumulator = accumulator_rel.borrow();
-                    let schema = accumulator.schema.clone();
+                    let accumulator = accumulator.as_dbsp();
+                    let schema = accumulator.schema().clone();
                     let accumulator = accumulator
-                        .downcast_ref::<StreamWrapper>()
+                        .stream()
                         .delta0(&nested_for_setup)
                         .plus(&acc_for_step.into());
                     environment.define_var(new_relation(schema, accumulator));
@@ -649,11 +659,7 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
                         BuildError::new("Fixed point iteration body did not return a value.")
                     })?;
                     let relation = assert_type!(value, Value::Relation).map(coalesce_helper)?;
-                    Ok(relation
-                        .borrow()
-                        .downcast_ref::<StreamWrapper>()
-                        .expect_nested()
-                        .clone())
+                    Ok(relation.borrow().as_dbsp().stream().expect_nested().clone())
                 });
                 match stream {
                     Ok(stream) => Ok(stream),

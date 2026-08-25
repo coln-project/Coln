@@ -35,12 +35,7 @@ use super::{
     tuple::Tuple,
     variable::{Environment, Value},
 };
-use crate::{
-    error::BuildError,
-    relational::expr::RelExpr,
-    relational::relation::{SchemaTuple, Tuple as TupleTrait, TupleSchema},
-    scalarial::ScalarTypedValue,
-};
+use crate::{error::BuildError, relational::expr::RelExpr, scalarial::ScalarTypedValue};
 use std::collections::HashMap;
 
 pub type EvalResult = Result<Value, BuildError>;
@@ -418,9 +413,11 @@ impl HostInterpreter for ScalarHost {
 #[derive(Debug)]
 pub struct InterpreterContext<'a> {
     pub environment: &'a mut Environment,
-    /// If the interpreter runs within a DBSP context, we store the currently
-    /// processing tuple here for making each of its fields accessible
-    /// as a variable.
+    /// The fields of the row a backend is currently processing, each accessible
+    /// as a variable. The host layer only reads this map; filling it from a row
+    /// is the backend's job, since only the backend knows how its rows are laid
+    /// out (for instance, see
+    /// [`DbspTupleContext`](crate::relational::incremental::schema::DbspTupleContext)).
     // No need to wrap it in an Option because HashMap::new() does not allocate!
     pub tuple_vars: HashMap<String, ScalarTypedValue>,
     /// Stores the most recent alias for a relation.
@@ -440,15 +437,6 @@ impl InterpreterContext<'_> {
     }
     pub fn consume_alias(&mut self) -> Option<String> {
         self.alias.take()
-    }
-    pub fn extend_tuple_ctx<T: TupleTrait>(
-        &mut self,
-        alias: &Option<String>,
-        schema: &TupleSchema,
-        tuple: &T,
-    ) {
-        self.tuple_vars
-            .extend(SchemaTuple::new(schema, tuple).named_fields(alias));
     }
     pub fn clear_tuple_ctx(&mut self) {
         self.tuple_vars.clear();

@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use super::super::super::relation::{RelationRef, SchemaTuple, TupleKey};
+use super::super::super::relation::RelationRef;
+use super::super::dbsp::AsDbspRelation;
+use super::super::schema::{DbspTupleContext, SchemaTuple, TupleKey};
 use super::StreamWrapper;
 use super::projection::is_pickable;
 use crate::{
@@ -30,7 +32,7 @@ pub fn reindex_helper<E: RowScalarEngine>(
             .enumerate()
             .map(|(idx, _)| format!("anonym_field_{idx}"))
             .collect();
-        let indexed = relation_ref.downcast_ref::<StreamWrapper>().map_index({
+        let indexed = relation_ref.as_dbsp().stream().map_index({
             let relation = Rc::clone(relation);
             // Compile each key expression once, off the per-tuple hot path.
             let programs = on
@@ -41,7 +43,8 @@ pub fn reindex_helper<E: RowScalarEngine>(
                 .expect("Key expression compilation error");
             let environment = environment.clone();
             move |(_key, tuple)| {
-                let schema = &relation.borrow().schema;
+                let relation_ref = relation.borrow();
+                let schema = relation_ref.as_dbsp().schema();
                 let environment = &mut environment.clone();
                 let mut new_ctx = InterpreterContext::new(environment);
                 new_ctx.extend_tuple_ctx(&None, &schema.tuple, tuple);
@@ -69,11 +72,12 @@ pub fn reindex_helper<E: RowScalarEngine>(
                     .clone()
             })
             .collect();
-        let indexed = relation_ref.downcast_ref::<StreamWrapper>().map_index({
+        let indexed = relation_ref.as_dbsp().stream().map_index({
             let key_field_picks = key_field_picks.clone();
             let relation = Rc::clone(relation);
             move |(_key, tuple)| {
-                let key: TupleKey = SchemaTuple::new(&relation.borrow().schema.tuple, tuple)
+                let relation_ref = relation.borrow();
+                let key: TupleKey = SchemaTuple::new(&relation_ref.as_dbsp().schema().tuple, tuple)
                     .pick(key_field_picks.as_slice())
                     .collect();
                 (key, tuple.clone())
