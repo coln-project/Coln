@@ -72,13 +72,11 @@ freshAt p = \case
 
 fresh :: Maybe Name -> S.Shape -> FlatM Els
 fresh mx sh = do
-  x <- case mx of
-    Just x -> pure x
-    Nothing -> do
-      aux <- get
-      let x = freshNameFor aux.usedRoots
-      put $ aux{usedRoots = Set.insert x aux.usedRoots}
-      pure x
+  aux <- get
+  let x = case mx of
+        Just x -> freshenFor aux.usedRoots x
+        Nothing -> freshNameFor aux.usedRoots
+  put $ aux{usedRoots = Set.insert x aux.usedRoots}
   freshAt (BwdNil :> x) sh
 
 getScalar :: Els -> V.El

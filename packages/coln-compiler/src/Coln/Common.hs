@@ -39,6 +39,7 @@ module Coln.Common (
   freshNameFor,
   freshNamesFor,
   freshNameWithPref,
+  freshenFor,
   Match (..),
   mangleToDoc,
   mangleToString,
@@ -291,6 +292,9 @@ instance HasNames (Dict a) where
 instance HasNames [Name] where
   namesIn xs = Set.fromList xs
 
+instance HasNames (Bwd Name) where
+  namesIn xs = Set.fromList (toList xs)
+
 instance HasNames (Set.Set Name) where
   namesIn = id
 
@@ -305,6 +309,14 @@ freshNameWithPref a (Just x) = case Set.member x (namesIn a) of
   True -> freshNameFor a
   False -> x
 freshNameWithPref a Nothing = freshNameFor a
+
+freshenBy :: Name -> String -> Name
+freshenBy (Name qual last) s = Name (qual ++ [last]) (fromString s)
+
+freshenFor :: (HasNames a) => a -> Name -> Name
+freshenFor a x = head $ filter
+ (\x -> not $ Set.member x (namesIn a))
+ (x : (freshenBy x <$> alphaStrings))
 
 -- Any
 --------------------------------------------------------------------------------

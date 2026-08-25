@@ -23,7 +23,7 @@ bind :: Scope -> Maybe Name -> V.Ty Set -> (Name, V.El Set, Scope)
 bind sc mx a = do
   let q = separate sc.len a
   let x = case mx of
-        Just x -> x
+        Just x -> freshenFor sc.used x
         Nothing -> freshNameFor sc.used
   let v = V.local (FId sc.len)
   let sc' =

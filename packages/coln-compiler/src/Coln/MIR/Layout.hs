@@ -5,7 +5,6 @@
 module Coln.MIR.Layout where
 
 import Data.Set qualified as Set
-import Data.String (fromString)
 import Data.Vector.Strict qualified as Vector
 
 import Coln.Common
@@ -22,11 +21,8 @@ import Coln.MIR.Value qualified as V
 -- Layout is the process of creating a realm from a theory, along with the
 -- universal model of that theory in the realm.
 
-freshenBy :: Name -> String -> Name
-freshenBy (Name qual last) s = Name (qual ++ [last]) (fromString s)
-
 argName :: Set.Set Name -> V.Clo a b -> Name
-argName _ (V.Clo x _) = x
+argName used (V.Clo x _) = freshenFor used x
 argName used (V.CloConst _) = freshNameFor used
 
 data Scope = Scope
