@@ -180,11 +180,14 @@ flattenRule r = do
         ante <- flatten vs r.antecedent
         cons <- flatten vs r.consequent
         pure (ante, cons)
+  let (ruleAnte, ruleCons) = case r.ctxSide of
+        S.Antecedent -> (ps <> ante, cons)
+        S.Consequent -> (ante, ps <> cons)
   V.Rule
     { V.ruleVariant = r.ruleVariant
     , V.vars = vars
-    , V.antecedents = toList (ps <> ante)
-    , V.consequents = toList cons
+    , V.antecedents = toList ruleAnte
+    , V.consequents = toList ruleCons
     }
 
 flattenDefinition :: S.Definition -> V.Definition
