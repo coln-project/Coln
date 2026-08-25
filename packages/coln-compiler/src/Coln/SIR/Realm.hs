@@ -3,6 +3,7 @@ module Coln.SIR.Realm where
 import Coln.Common
 import Coln.Core.Params
 import Coln.SIR.Syntax
+import Coln.Core.Value qualified as CoreV
 
 data EntityVariant
   = Table
@@ -36,4 +37,6 @@ data Realm = Realm
   { entities :: Trie Entity
   , definitions :: Trie Definition
   , rules :: Trie Rule
+  , root :: El Theory
+  , rootType :: CoreV.Ty N
   }

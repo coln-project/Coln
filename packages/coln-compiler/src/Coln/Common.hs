@@ -5,9 +5,10 @@
 module Coln.Common (
   module Diagnostician,
   module FNotation,
+  module Data.Key,
+  module Data.Kind,
   module Data.Map,
   module Data.Map.Ordered,
-  module Data.Kind,
   module Data.Vector.Strict,
   module Data.Void,
   module Data.Text,
@@ -50,6 +51,7 @@ where
 
 import Coln.Report
 import Data.Foldable qualified as F
+import Data.Key (TraversableWithKey (..), Keyed (..), FoldableWithKey (..), Key)
 import Data.Kind (Constraint, Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -61,7 +63,10 @@ import Data.Text (Text)
 import Data.Traversable hiding (for)
 import Data.Vector.Strict (Vector)
 import Data.Vector.Strict qualified as V
+import Data.Vector.Generic (stream, unstreamM)
+import Data.Vector.Fusion.Bundle qualified as Bundle
 import Data.Void
+
 import Diagnostician
 import FNotation (Name (..))
 import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty, (<+>))
@@ -252,7 +257,32 @@ getKeyIndex :: Dict a -> Name -> KeyIndex
 getKeyIndex d x = KeyIndex $ d.head.byName Map.! x
 
 withHead :: Dict a -> [b] -> Dict b
-withHead d xs = Dict d.head (V.fromList xs)
+withHead d xs = do
+  let n = V.length d.values
+  Dict d.head (V.fromListN n xs)
+
+dstream :: Dict a -> Bundle.Bundle V.Vector (Name, a)
+dstream d = Bundle.zip (stream d.head.keys) (stream d.values)
+
+type instance Key Dict = Name
+
+instance Keyed Dict where
+  mapWithKey f d = Dict d.head $ V.zipWith f d.head.keys d.values
+
+instance FoldableWithKey Dict where
+  toKeyedList = toList
+  foldMapWithKey f = foldlWithKey (\acc x v -> acc <> f x v) mempty
+  foldrWithKey f init =
+    Bundle.foldr (uncurry f) init . dstream
+  foldlWithKey f init =
+    Bundle.foldl (\acc (x, v) -> f acc x v) init . dstream
+
+instance TraversableWithKey Dict where
+  traverseWithKey f d = withHead d <$>
+    traverse (uncurry f) (zip (toList d.head.keys) (toList d.values))
+  mapWithKeyM f d = Dict d.head <$>
+    (unstreamM $ Bundle.mapM (uncurry f) $ dstream d)
+
 
 -- Name-based Tries
 --------------------------------------------------------------------------------
