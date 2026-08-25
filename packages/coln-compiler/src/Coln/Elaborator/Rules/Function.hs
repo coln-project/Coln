@@ -44,7 +44,7 @@ intro sp x body = Chk \e a ->
         body.elab
           (e{scope = scope', target = appTarget ft.variant e.target v})
           (V.appClo ft.cod v)
-      pure $ lam ft.variant e.scope.locals (fromVTy e.scope.len a) (S.Abs x ebody)
+      pure $ lam ft.variant e.scope.locals (fromVTy e.scope.len ft.dom) (S.Abs x ebody)
     _ -> do
       let msg = "tried to check a lambda expression at a non-function type"
       failWith e.diagEnv sp CheckLambdaAtNonFunctionType msg
