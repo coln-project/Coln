@@ -30,7 +30,10 @@ enum StoreHandleState {
         chunks: Vec<Vec<u8>>,
         has_root: bool,
     },
-    Ready(Box<Store>),
+    Ready {
+        store: Box<Store>,
+        pending_chunks: Vec<Vec<u8>>,
+    },
     Moved,
 }
 
@@ -38,6 +41,7 @@ enum StoreHandleState {
 pub struct TransactionHandle {
     tx: Option<OwnedTransaction>,
     recovered_store: Option<Store>,
+    pending_chunks: Vec<Vec<u8>>,
 
     pending_handles: Vec<(StoreRowHandle, JsValue)>,
 }
@@ -106,7 +110,10 @@ impl TransactionHandle {
 
                 Ok(CommitResult {
                     commit: commit.to_string(),
-                    store: Some(StoreHandle::ready(store)),
+                    store: Some(StoreHandle::ready_with_pending(
+                        store,
+                        std::mem::take(&mut self.pending_chunks),
+                    )),
                 })
             }
             Err((err, store)) => {
@@ -123,14 +130,20 @@ impl TransactionHandle {
     #[wasm_bindgen(js_name = takeStore)]
     pub fn take_store(&mut self) -> Result<StoreHandle, JsValue> {
         if let Some(tx) = self.tx.take() {
-            return Ok(StoreHandle::ready(tx.abort()));
+            return Ok(StoreHandle::ready_with_pending(
+                tx.abort(),
+                std::mem::take(&mut self.pending_chunks),
+            ));
         }
         let store = self
             .recovered_store
             .take()
             .ok_or_else(|| js_error("transaction does not have a recovered store"))?;
 
-        Ok(StoreHandle::ready(store))
+        Ok(StoreHandle::ready_with_pending(
+            store,
+            std::mem::take(&mut self.pending_chunks),
+        ))
     }
 }
 
@@ -188,8 +201,11 @@ impl StoreHandle {
     #[wasm_bindgen(js_name = beginTransaction)]
     pub fn begin_transaction(&mut self) -> Result<TransactionHandle, JsValue> {
         let state = std::mem::replace(&mut self.state, StoreHandleState::Moved);
-        let store = match state {
-            StoreHandleState::Ready(store) => *store,
+        let (store, pending_chunks) = match state {
+            StoreHandleState::Ready {
+                store,
+                pending_chunks,
+            } => (*store, pending_chunks),
             state @ StoreHandleState::Uninitialized { .. } => {
                 self.state = state;
                 return Err(js_error("store handle has not been initialized"));
@@ -204,6 +220,7 @@ impl StoreHandle {
         Ok(TransactionHandle {
             tx: Some(store.into_transaction()),
             recovered_store: None,
+            pending_chunks,
 
             pending_handles: Vec::new(),
         })
@@ -217,7 +234,7 @@ impl StoreHandle {
     pub fn heads(&self) -> Result<Vec<CommitHash>, JsValue> {
         let heads = match &self.state {
             StoreHandleState::Uninitialized { .. } => return Ok(Vec::new()),
-            StoreHandleState::Ready(store) => store,
+            StoreHandleState::Ready { store, .. } => store,
             StoreHandleState::Moved => {
                 return Err(js_error(
                     "store handle has already been moved into a transaction",
@@ -281,8 +298,15 @@ impl CommitResult {
 
 impl StoreHandle {
     fn ready(store: Store) -> Self {
+        Self::ready_with_pending(store, Vec::new())
+    }
+
+    fn ready_with_pending(store: Store, pending_chunks: Vec<Vec<u8>>) -> Self {
         Self {
-            state: StoreHandleState::Ready(Box::new(store)),
+            state: StoreHandleState::Ready {
+                store: Box::new(store),
+                pending_chunks,
+            },
         }
     }
 
@@ -300,22 +324,35 @@ impl StoreHandle {
                 chunks.extend(chunk_bytes);
                 if *has_root {
                     match decode_commit_chunks(chunks.iter()) {
-                        Ok(store) => self.state = StoreHandleState::Ready(Box::new(store)),
+                        Ok(store) => self.state = StoreHandle::ready(store).state,
+                        Err(StoreIntError::Commit(CommitApplyError::MissingDep)) => return Ok(()),
                         Err(error) => {
-                            if !matches!(error, StoreIntError::Commit(CommitApplyError::MissingDep))
-                            {
-                                chunks.truncate(previous_len);
-                                *has_root = previously_had_root;
-                            }
+                            chunks.truncate(previous_len);
+                            *has_root = previously_had_root;
                             return Err(error.to_string());
                         }
                     }
                 }
                 Ok(())
             }
-            StoreHandleState::Ready(store) => store
-                .apply_chunk_bytes(chunk_bytes)
-                .map_err(|error| error.to_string()),
+            StoreHandleState::Ready {
+                store,
+                pending_chunks,
+            } => {
+                let previous_len = pending_chunks.len();
+                pending_chunks.extend(chunk_bytes);
+                match store.apply_chunk_bytes(pending_chunks.iter().cloned()) {
+                    Ok(()) => {
+                        pending_chunks.clear();
+                        Ok(())
+                    }
+                    Err(StoreIntError::Commit(CommitApplyError::MissingDep)) => Ok(()),
+                    Err(error) => {
+                        pending_chunks.truncate(previous_len);
+                        Err(error.to_string())
+                    }
+                }
+            }
             StoreHandleState::Moved => {
                 Err("store handle has already been moved into a transaction".into())
             }
@@ -327,7 +364,7 @@ impl StoreHandle {
             StoreHandleState::Uninitialized { .. } => {
                 Err(js_error("store handle has not been initialized"))
             }
-            StoreHandleState::Ready(store) => Ok(store),
+            StoreHandleState::Ready { store, .. } => Ok(store),
             StoreHandleState::Moved => Err(js_error(
                 "store handle has already been moved into a transaction",
             )),
@@ -422,13 +459,51 @@ mod tests {
 
         let mut handle = StoreHandle::empty();
         let child = data.pop().expect("child commit");
-        assert!(
-            handle
-                .apply_chunks(vec![root.expect("root"), child])
-                .is_err()
-        );
+        handle
+            .apply_chunks(vec![root.expect("root"), child])
+            .expect("buffer child");
 
         handle.apply_chunks(data).expect("retry with parent");
+        let table = handle
+            .store()
+            .expect("initialized store")
+            .table_at(&Path::from("T"))
+            .expect("table");
+        assert_eq!(table.row_count(), 2);
+    }
+
+    #[test]
+    fn ready_handle_retries_commit_when_missing_parent_arrives() {
+        let mut source = source_store();
+        let mut transaction = source.transaction();
+        transaction
+            .add(&Path::from("T"), vec![84_i64.into()])
+            .expect("add second row");
+        transaction.commit().expect("second commit");
+
+        let mut root = None;
+        let mut data = Vec::new();
+        for chunk in source.commit_chunks_after(&[]) {
+            if Chunk::decode(&chunk.bytes).expect("chunk").is_root() {
+                root = Some(chunk.bytes);
+            } else {
+                data.push(chunk.bytes);
+            }
+        }
+        assert_eq!(data.len(), 2);
+
+        let mut handle = StoreHandle::empty();
+        handle
+            .apply_chunks(vec![root.expect("root")])
+            .expect("apply root");
+        assert!(matches!(handle.state, StoreHandleState::Ready { .. }));
+
+        let child = data.pop().expect("child commit");
+        handle.apply_chunks(vec![child]).expect("buffer child");
+        let mut transaction = handle.begin_transaction().expect("begin transaction");
+        handle = transaction.take_store().expect("abort transaction");
+        handle.apply_chunks(data).expect("retry with parent");
+
         let table = handle
             .store()
             .expect("initialized store")
