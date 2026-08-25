@@ -4,12 +4,9 @@
 
 import type { StoreHandle, TransactionHandle } from "#wasm-bodge/bindings"
 
-type JsonObject = { readonly [key: string]: JsonValue }
-type JsonValue = null | boolean | number | string | readonly JsonValue[] | JsonObject
-
 export interface ColnSchema {
-  entities: readonly JsonValue[]
-  rules: readonly JsonValue[]
+  entities: readonly unknown[]
+  rules: readonly unknown[]
 }
 
 export interface RealmBindings<ViewRoot = unknown, TransactionRoot = unknown> {
