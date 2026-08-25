@@ -4,10 +4,10 @@
 
 use coln_flir_rs::ir;
 use coln_store::{
-    commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash, pst::decode_commit_chunks},
+    commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash},
     store::{
         Store,
-        error::{CommitApplyError, StoreIntError},
+        error::{CommitApplyError, StoreError},
     },
     table::RowId as StoreRowId,
     txn::{OwnedTransaction, RowHandle as StoreRowHandle},
@@ -323,9 +323,9 @@ impl StoreHandle {
                 *has_root |= decoded.iter().any(Chunk::is_root);
                 chunks.extend(chunk_bytes);
                 if *has_root {
-                    match decode_commit_chunks(chunks.iter()) {
+                    match Store::try_from_commit_chunks(chunks.iter()) {
                         Ok(store) => self.state = StoreHandle::ready(store).state,
-                        Err(StoreIntError::Commit(CommitApplyError::MissingDep)) => return Ok(()),
+                        Err(StoreError::Commit(CommitApplyError::MissingDep)) => return Ok(()),
                         Err(error) => {
                             chunks.truncate(previous_len);
                             *has_root = previously_had_root;
@@ -346,7 +346,7 @@ impl StoreHandle {
                         pending_chunks.clear();
                         Ok(())
                     }
-                    Err(StoreIntError::Commit(CommitApplyError::MissingDep)) => Ok(()),
+                    Err(StoreError::Commit(CommitApplyError::MissingDep)) => Ok(()),
                     Err(error) => {
                         pending_chunks.truncate(previous_len);
                         Err(error.to_string())
@@ -405,7 +405,7 @@ mod tests {
             }],
             rules: vec![],
         };
-        let mut store = Store::try_from_theory(theory).expect("store");
+        let mut store = Store::try_from_ir(theory).expect("store");
         let mut transaction = store.transaction();
         transaction
             .add(&Path::from("T"), vec![42_i64.into()])
