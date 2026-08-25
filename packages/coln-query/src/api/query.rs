@@ -12,26 +12,36 @@ use crate::host::Code;
 use crate::host::expr::{BinaryExpr, Expr, Literal, LiteralExpr, VarExpr};
 use crate::host::operator::Operator;
 use crate::host::stmt::{Stmt, VarStmt};
+use crate::program::QueryProgram;
 use crate::relational::RelationSchema;
+use crate::relational::catalog::Catalog;
 use crate::relational::expr::{
     AntiJoinExpr, JoinVariable, MultiWayEquiJoinExpr, ProjectionExpr, RelationIdx, SelectionExpr,
-    SourceExpr,
+    SourceExpr, SourceId,
 };
 use crate::scalarial::ScalarType;
 use coln_flir_rs::ir::{
     self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, Term,
 };
 use coln_flir_rs::schema::{BaseTableSchema, CompilerColIdx, QueryEngineCol, StoreEngineCols};
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 
 type BaseTableName = TableRef;
 type DerivedViewName = TableRef;
 
-pub struct QueryProgram {
+/// coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to.
+///
+/// The [`Catalog`] half is served straight out of [`base_tables`](Self::base_tables),
+/// which stores FLIR's own richer [`BaseTableSchema`] — column indices, store-engine
+/// columns and all — rather than a second copy of what a query plan needs. That
+/// is exactly the freedom [`Catalog::source_schema`]'s [`Cow`] return buys.
+pub struct FlirProgram {
     /// The (raw, that is, unresolved, unoptimized) statements themselves.
     code: Code,
-    /// The declared base tables.
+    /// The declared base tables. Doubles as this program's [`Catalog`]: every
+    /// [`SourceExpr`] the lowering mints names one of these.
     base_tables: HashMap<BaseTableName, BaseTableSchema>,
     /// The relations the program itself defines, that is, one per declared rule.
     ///
@@ -72,7 +82,7 @@ impl From<&BaseTableSchema> for RelationSchema {
     }
 }
 
-impl QueryProgram {
+impl FlirProgram {
     fn empty() -> Self {
         Self {
             code: Code::default(),
@@ -80,11 +90,8 @@ impl QueryProgram {
             derived_views: HashMap::new(),
         }
     }
-    pub fn code(&self) -> &Code {
-        &self.code
-    }
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
-        let mut builder = QueryProgram::empty();
+        let mut builder = FlirProgram::empty();
         for table in &flat_realm.tables {
             builder.table_declaration(table)?;
         }
@@ -397,10 +404,11 @@ impl QueryProgram {
         self.base_tables
             .get(&BaseTableName::from(name))
             .map(|base_table_schema| {
+                // The leaf names the table; `Catalog::source_schema` below is
+                // what turns that name back into a schema, and both sides go
+                // through `BaseTableSchema::name` so they cannot disagree.
                 (
-                    SourceExpr {
-                        schema: RelationSchema::from(base_table_schema),
-                    },
+                    SourceExpr::new(base_table_schema.name().to_string()),
                     base_table_schema,
                 )
             })
@@ -414,6 +422,31 @@ impl QueryProgram {
         self.derived_views
             .get(&DerivedViewName::from(name))
             .map(|_derived_view_schema| VarExpr::new(name.to_string()))
+    }
+}
+
+impl Catalog for FlirProgram {
+    /// Projects FLIR's [`BaseTableSchema`] down to the [`RelationSchema`] a plan
+    /// needs, on demand. [`Cow::Owned`] rather than a borrow precisely so that
+    /// the richer schema stays the only stored copy — see [`FlirProgram`].
+    ///
+    /// Only base tables answer here: a rule's output is bound to a host variable
+    /// and referenced by [`VarExpr`], never by a [`SourceExpr`], so
+    /// [`derived_views`](Self::derived_views) is no part of the catalog.
+    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, RelationSchema>> {
+        self.base_tables
+            .get(&BaseTableName::from(id))
+            .map(|base_table_schema| Cow::Owned(RelationSchema::from(base_table_schema)))
+    }
+}
+
+impl QueryProgram for FlirProgram {
+    fn code(&self) -> &Code {
+        &self.code
+    }
+
+    fn take_code(&mut self) -> Code {
+        std::mem::take(&mut self.code)
     }
 }
 
@@ -658,7 +691,7 @@ impl AtomBinder {
 /// The schema of the relation a rule evaluates to.
 ///
 /// Its columns are the parts the rule's output binds, in the
-/// `(VarIdx, VarPart)` order [`QueryProgram::conjunctive_query`] reports
+/// `(VarIdx, VarPart)` order [`FlirProgram::conjunctive_query`] reports
 /// them in, and their types come from the query columns those parts resolve to
 /// rather than from the FLIR variables — a row id's two halves reach the query
 /// engine as plain unsigned integers, which the variable's [`ir::ColType`] does
@@ -773,10 +806,10 @@ mod tests {
     use crate::relational::expr::RelExpr;
 
     /// A builder with one base table `t` whose columns are given as
-    /// `(name, type)` pairs, so [`QueryProgramBuilder::atom`] can be driven
+    /// `(name, type)` pairs, so [`FlirProgram::atom`] can be driven
     /// directly.
-    fn builder_with_table(columns: Vec<(&str, ir::ColType)>) -> QueryProgram {
-        let mut builder = QueryProgram::empty();
+    fn builder_with_table(columns: Vec<(&str, ir::ColType)>) -> FlirProgram {
+        let mut builder = FlirProgram::empty();
         builder
             .table_declaration(&table_entry(columns))
             .expect("A single base table declaration must succeed");
@@ -849,7 +882,7 @@ mod tests {
     fn declaring_the_same_base_table_twice_is_an_error() {
         // `HashMap::insert` returns the previous value, so the check's direction
         // matters: the first declaration must pass and the second must not.
-        let mut builder = QueryProgram::empty();
+        let mut builder = FlirProgram::empty();
         let entry = table_entry(vec![("a", builtin())]);
         builder
             .table_declaration(&entry)
@@ -1006,7 +1039,7 @@ mod tests {
             )],
         };
 
-        let builder = QueryProgram::from_flat_realm(&realm).expect("The realm lowers");
+        let builder = FlirProgram::from_flat_realm(&realm).expect("The realm lowers");
 
         assert_eq!(builder.code().len(), 1, "One rule is one statement");
         let schema = &builder
@@ -1047,7 +1080,7 @@ mod tests {
                 vec![atom_over_t(None, vec![(0, var_term(0))])],
             )],
         };
-        let builder = QueryProgram::from_flat_realm(&realm).expect("The realm lowers");
+        let builder = FlirProgram::from_flat_realm(&realm).expect("The realm lowers");
 
         crate::host::resolver::ResolvedCode::from(builder.code)
             .expect("The lowered program must resolve");
@@ -1065,7 +1098,7 @@ mod tests {
             tables: vec![table_entry(vec![("a", builtin())])],
             rules: vec![rule.clone(), rule],
         };
-        assert!(QueryProgram::from_flat_realm(&realm).is_err());
+        assert!(FlirProgram::from_flat_realm(&realm).is_err());
     }
 
     fn multi_way_join(expr: &Expr) -> &MultiWayEquiJoinExpr {
@@ -1457,21 +1490,21 @@ mod tests {
         assert!(antijoin_key(&left, &right).is_empty());
     }
 
-    fn translate_json_flir(file_name: &str) -> QueryProgram {
+    fn translate_json_flir(file_name: &str) -> FlirProgram {
         let flat_realm = coln_flir_rs::test_utils::load_theory_from_json(file_name);
-        QueryProgram::from_flat_realm(&flat_realm)
+        FlirProgram::from_flat_realm(&flat_realm)
             .unwrap_or_else(|_| panic!("{file_name} is convertible to a query program"))
     }
 
     #[test]
     fn graph_flir() {
         let program = translate_json_flir("Graph.json");
-        println!("{}", program.code().to_tree());
+        println!("{}", program.to_tree());
     }
 
     #[test]
     fn graph_of_graphs_flir() {
         let program = translate_json_flir("GraphOfGraphs.json");
-        println!("{}", program.code().to_tree());
+        println!("{}", program.to_tree());
     }
 }

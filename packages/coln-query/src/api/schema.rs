@@ -7,7 +7,7 @@
 
 use std::fmt::Display;
 
-use crate::{host::expr::Literal, scalarial::ScalarType};
+use crate::{host::expr::Literal, relational::expr::SourceId, scalarial::ScalarType};
 
 /// An identifier that uniquely identifies a table (globally across the store).
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
@@ -25,6 +25,20 @@ impl From<&ir::Path> for TableRef {
     fn from(value: &ir::Path) -> Self {
         TableRef {
             inner: value.to_string(),
+        }
+    }
+}
+
+/// The other direction of the same identity: a plan's
+/// [`SourceExpr`](crate::relational::expr::SourceExpr) leaf names its base table
+/// by a [`SourceId`] built from that table's `ir::Path`, so a `SourceId` and the
+/// `TableRef` of the table it names hold the same string. This is what lets a
+/// [`Catalog`](crate::relational::catalog::Catalog) lookup reach a
+/// `TableRef`-keyed map.
+impl From<&SourceId> for TableRef {
+    fn from(value: &SourceId) -> Self {
+        TableRef {
+            inner: value.as_str().to_string(),
         }
     }
 }

@@ -13,6 +13,7 @@ use crate::{
     host::resolver::ResolvedCode,
     relational::{
         Snapshot,
+        catalog::SourceSchemas,
         expr::{SinkId, SourceId},
         relation::TupleValue,
     },
@@ -41,6 +42,7 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
         self,
         _threads: NonZeroUsize,
         _plan: ResolvedCode,
+        _sources: SourceSchemas,
     ) -> Result<BatchRuntime, Self::Error> {
         todo!("eager batch backend: build a RelExprVisitor over Z-sets")
     }

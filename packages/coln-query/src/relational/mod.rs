@@ -18,11 +18,15 @@
 //!   the batch engine recomputes from the accumulated inputs and yields
 //!   [`Snapshot`]s.
 //!
-//! Sources are **not** passed in: the plan is self-describing. Every extensional
-//! input is a [`SourceExpr`](crate::relational::expr::SourceExpr) leaf,
-//! so [`Backend::build`] discovers and wires them from the plan itself.
+//! Which extensional inputs to wire comes from the plan itself, since every one
+//! of them is a [`SourceExpr`](crate::relational::expr::SourceExpr) leaf. What
+//! those leaves *are* arrives alongside as [`SourceSchemas`] — a leaf names its
+//! relation without describing it, so a relation the plan references `N` times
+//! is described once. The pipeline resolves that against the program's
+//! [`Catalog`](catalog::Catalog) before calling [`Backend::build`].
 
 pub mod batch;
+pub mod catalog;
 pub mod expr;
 pub mod incremental;
 pub mod relation;
@@ -32,6 +36,7 @@ use std::num::NonZeroUsize;
 use crate::{
     error::{BuildError, LoweringError, RuntimeError},
     host::{Code, resolver::ResolvedCode},
+    relational::catalog::SourceSchemas,
     relational::expr::{SinkId, SourceId},
 };
 use incremental::dbsp::{OrdZSet, ZWeight};
@@ -75,8 +80,21 @@ pub trait Backend {
         Ok(plan)
     }
 
-    fn build(self, threads: NonZeroUsize, plan: ResolvedCode)
-    -> Result<Self::Runtime, Self::Error>;
+    /// `sources` describes the plan's [`SourceExpr`](expr::SourceExpr) leaves,
+    /// which name their relations without describing them.
+    ///
+    /// A backend receives the *resolved* schemas rather than the
+    /// [`Catalog`](catalog::Catalog) they came from: the pipeline consults the
+    /// catalog once ([`resolve_sources`](catalog::resolve_sources)) and hands
+    /// the result on, so a backend never has to reach back into a frontend's
+    /// data structure — and, for an incremental one, could not, since the owned
+    /// schemas have to cross into a `Send + 'static` circuit constructor.
+    fn build(
+        self,
+        threads: NonZeroUsize,
+        plan: ResolvedCode,
+        sources: SourceSchemas,
+    ) -> Result<Self::Runtime, Self::Error>;
 }
 
 /// A runnable computation. `feed` stages input changes, `commit` advances the

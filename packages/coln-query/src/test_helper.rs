@@ -6,10 +6,59 @@
 //! It provides helpers for testing and benchmarking purposes.
 
 use crate::{
-    relational::{RelationSchema, TupleKey, TupleValue, incremental::dbsp::ZWeight},
+    host::Code,
+    program::QueryProgram,
+    relational::{
+        RelationSchema, TupleKey, TupleValue,
+        catalog::{Catalog, SourceSchemas},
+        expr::SourceId,
+        incremental::dbsp::ZWeight,
+    },
     scalarial::ScalarTypedValue,
 };
+use std::borrow::Cow;
 use std::fmt::Debug;
+
+/// A [`QueryProgram`] assembled by hand: the plan under test, plus the schemas
+/// of the relations its [`SourceExpr`](crate::relational::expr::SourceExpr)
+/// leaves name.
+pub struct TestProgram {
+    code: Code,
+    sources: SourceSchemas,
+}
+
+impl TestProgram {
+    /// `schemas` are keyed by their own [`name`](RelationSchema::name), which is
+    /// the name a leaf refers to them by.
+    pub fn new(code: impl Into<Code>, schemas: impl IntoIterator<Item = RelationSchema>) -> Self {
+        Self {
+            code: code.into(),
+            sources: schemas
+                .into_iter()
+                .map(|schema| (SourceId::from(schema.name.clone()), schema))
+                .collect(),
+        }
+    }
+}
+
+/// A test states its schemas outright, so they are already in resolved form and
+/// this delegates to [`SourceSchemas`]' own [`Catalog`] impl, the
+/// [`Cow::Borrowed`] side, where a stored schema is lent rather than built.
+impl Catalog for TestProgram {
+    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, RelationSchema>> {
+        self.sources.source_schema(id)
+    }
+}
+
+impl QueryProgram for TestProgram {
+    fn code(&self) -> &Code {
+        &self.code
+    }
+
+    fn take_code(&mut self) -> Code {
+        std::mem::take(&mut self.code)
+    }
+}
 
 /// Convenience: turn input entities (with per-row z-weights) into the value rows
 /// that [`crate::relational::Runtime::feed`] expects.
@@ -35,6 +84,14 @@ pub fn rows_with_weight<E: InputEntity>(
 
 pub trait InputEntity: Into<TupleKey> + Into<TupleValue> + Clone + Debug {
     fn schema() -> RelationSchema;
+
+    /// The name a plan's [`SourceExpr`](crate::relational::expr::SourceExpr)
+    /// leaf refers to this relation by. Derived from the schema's name, so a
+    /// leaf and the [`TestProgram`] catalog entry describing it cannot drift
+    /// apart.
+    fn id() -> SourceId {
+        SourceId::from(Self::schema().name)
+    }
 }
 
 #[derive(Clone, Debug)]

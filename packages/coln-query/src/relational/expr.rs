@@ -13,7 +13,6 @@
 use crate::{
     error::SyntaxError,
     host::{expr::Expr, stmt::BlockStmt},
-    relational::RelationSchema,
     util::MemAddr,
 };
 use std::collections::HashSet;
@@ -190,29 +189,50 @@ impl<T: Into<String>> From<T> for SourceId {
     }
 }
 
-/// Backend-neutral relation leaf. Carries a schema but no stream and no table.
-/// Its identity is the schema name, so it is derived rather than stored.
+/// Sources are named in diagnostics and in rendered plans, so the id renders as
+/// the bare name it is.
+impl std::fmt::Display for SourceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// So a `HashMap<SourceId, _>` can be probed with a `&str`, as one keyed by
+/// `String` could. Without it every lookup would have to mint an owned
+/// [`SourceId`] first.
+impl std::borrow::Borrow<str> for SourceId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Backend-neutral relation leaf: it *names* an extensional relation and carries
+/// nothing else — no schema, no stream, no table. What the name means is answered
+/// by the [`Catalog`](crate::relational::catalog::Catalog) the plan is compiled
+/// against, so a relation the plan references `N` times is described once instead
+/// of `N` times.
+///
+/// Naming rather than describing is also what makes the derived [`PartialEq`]
+/// mean what it reads as. [`RelationSchema`](crate::relational::RelationSchema)
+/// compares only its key and tuple, deliberately ignoring its `name` (a
+/// transformation trace rather than an identity) — so back when this leaf held a
+/// schema, two leaves naming *different* relations compared equal whenever their
+/// shapes matched.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceExpr {
-    pub schema: RelationSchema,
+    pub id: SourceId,
 }
 
 impl SourceExpr {
-    /// Build a source leaf from a schema. This is how a (circuit-free) plan names
-    /// an extensional input; the backend later binds its [`id`](Self::to_id) to a
-    /// concrete relation.
-    pub fn new(schema: RelationSchema) -> Self {
-        Self { schema }
+    /// Build a source leaf naming an extensional input. The backend binds the
+    /// [`SourceId`] to a concrete relation at execution time, and the plan's
+    /// [`Catalog`](crate::relational::catalog::Catalog) answers what it is.
+    pub fn new(id: impl Into<SourceId>) -> Self {
+        Self { id: id.into() }
     }
 
-    pub fn as_id(&self) -> &str {
-        &self.schema.name
-    }
-
-    /// The extensional input this leaf names. Derived from the schema name, so it
-    /// can never disagree with the schema.
-    pub fn to_id(&self) -> String {
-        self.schema.name.clone()
+    pub fn as_id(&self) -> &SourceId {
+        &self.id
     }
 }
 

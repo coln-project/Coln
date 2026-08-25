@@ -33,11 +33,18 @@
 //!    interpretation [`Environment`].
 //!    in a static pass over the ASF, speeding up variable lookup and checking
 //!    for invalid variable access. Returns a [resolved ASF](ResolvedCode).
-//! 5. Build: Takes a [resolved ASF](ResolvedCode) (and maybe type-checked and
-//!    optimized) and hands it off to the supplied [`Backend`] to prepare
-//!    for execution. A backend can work incrementally or batchwise.
-//!    Returns a [`Runtime`](crate::relational::Runtime).
-//! 6. Run: [`Runtime`](crate::relational::Runtime) is the runnable artifact:
+//! 5. Source resolution: Looks up every
+//!    [`SourceExpr`](crate::relational::expr::SourceExpr) leaf of the plan in the
+//!    program's [`Catalog`](crate::relational::catalog::Catalog) (see
+//!    [`resolve_sources`]). This is the only stage that touches the catalog so far;
+//!    the [`SourceSchemas`](crate::relational::catalog::SourceSchemas) it
+//!    produces are what the backend gets. A leaf the catalog does not describe
+//!    is rejected here, before anything has been built.
+//! 6. Build: Takes a [resolved ASF](ResolvedCode) (and maybe type-checked and
+//!    optimized) plus those source schemas, and hands them off to the supplied
+//!    [`Backend`] to prepare for execution. A backend can work incrementally or
+//!    batchwise. Returns a [`Runtime`](crate::relational::Runtime).
+//! 7. Run: [`Runtime`](crate::relational::Runtime) is the runnable artifact:
 //!    Feed input changes, advance, and output results. This is where
 //!    incremental vs batch actually differ: DBSP's `commit` runs one
 //!    incremental transaction and yields per-commit
@@ -53,7 +60,10 @@ use crate::{
         variable::{Environment, Value},
     },
     optimizer::{NoOptimizer, Optimizer},
-    relational::{Backend, batch::BatchBackend, incremental::DbspBackend},
+    program::QueryProgram,
+    relational::{
+        Backend, batch::BatchBackend, catalog::resolve_sources, incremental::DbspBackend,
+    },
 };
 
 pub struct Pipeline<O, B> {
@@ -105,13 +115,22 @@ impl<O: Optimizer, B: Backend> Pipeline<O, B> {
     /// Optimize, lower, resolve and evaluate a self-contained **query** program
     /// (with relational operators) on the [`Backend`](`Self::backend`) and
     /// with the [`Optimizer`](`Self::optimizer`).
-    pub fn runtime(self, plan: impl Into<Code>) -> Result<B::Runtime, QueryEngineError> {
-        let type_checked = plan.into(); // Not for now.
+    ///
+    /// The program is taken by value because its code is *moved* through the
+    /// stages: each one consumes a [`Code`] and returns the rewritten one.
+    pub fn runtime(self, mut program: impl QueryProgram) -> Result<B::Runtime, QueryEngineError> {
+        let type_checked = program.take_code(); // Not type checked, for now.
         let optimized = self.optimizer.optimize(type_checked)?;
         let lowered = self.backend.lower(optimized)?;
         let resolved = ResolvedCode::from(lowered)?;
+        // Resolve what the plan's source leaves name against the program's
+        // catalog. This is the *only* place a `Catalog` is consulted: everything
+        // downstream works from the resolved schemas, so no backend has to reach
+        // back into a frontend's data structure. It runs after lowering, so a
+        // source a lowering pass minted is resolved along with the rest.
+        let sources = resolve_sources(resolved.as_code(), &program)?;
         self.backend
-            .build(self.threads, resolved)
+            .build(self.threads, resolved, sources)
             .map_err(|e| e.into().into())
     }
 }

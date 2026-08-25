@@ -23,10 +23,11 @@ use crate::{
         interpreter::{EvalResult, HostInterpreter, InterpreterContext, assert_type, is_truthy},
         walk::{Node, pre_order},
     },
+    relational::catalog::SourceSchemas,
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
         FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr, RelExpr, RelExprVisitor,
-        SelectionExpr, SinkId, SourceExpr, UnionExpr,
+        SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
     },
     relational::incremental::dbsp::{
         DbspError, DbspInputs, DbspOutput, NestedCircuit, OrdIndexedNestedStream, RootCircuit,
@@ -37,7 +38,7 @@ use crate::{
 use std::collections::HashMap;
 use std::{cell::Ref, rc::Rc};
 
-type Sources = HashMap<String, Source>;
+type Sources = HashMap<SourceId, Source>;
 
 struct Source {
     schema: RelationSchema,
@@ -46,10 +47,13 @@ struct Source {
 }
 
 impl Source {
-    fn from_source_expr(source_expr: &SourceExpr, root_circuit: &mut RootCircuit) -> Self {
+    /// Wire a fresh input stream for a relation of `schema`. The schema comes
+    /// from the plan's catalog, since a [`SourceExpr`] leaf only names its
+    /// relation. This is the one place it is turned into a live stream.
+    fn new(schema: RelationSchema, root_circuit: &mut RootCircuit) -> Self {
         let (stream, handle) = new_ord_indexed_stream(root_circuit);
         Source {
-            schema: source_expr.schema.clone(),
+            schema,
             handle,
             stream: StreamWrapper::from(stream),
         }
@@ -69,7 +73,7 @@ impl From<Sources> for DbspInputs {
                 .into_iter()
                 // We drop the stream in `source` because it is !Send to be able
                 // to cross the `DbspRuntime::init_circuit` boundary.
-                .map(|(name, source)| (name, DbspInput::new(source.schema, source.handle))),
+                .map(|(name, source)| (name.0, DbspInput::new(source.schema, source.handle))),
         )
     }
 }
@@ -83,7 +87,7 @@ enum ImportKey {
     /// An outer relation reached by variable, keyed by its resolved slot.
     Var(VariableSlot),
     /// A [`SourceExpr`] leaf, keyed by source name.
-    Source(String),
+    Source(SourceId),
 }
 
 /// State that only exists while walking a [`FixedPointIterExpr`] step body,
@@ -104,9 +108,9 @@ pub struct DbspInterpreter<E: RowScalarEngine = TreeWalk> {
     /// The scalar engine driven on the per-tuple hot path (selection conditions,
     /// projection attributes, join keys).
     engine: E,
-    /// Live input streams by source name, populated lazily the first time each
-    /// [`SourceExpr`] leaf is visited. Serves both deduplication (one stream per
-    /// source, however many leaves reference it) and binding.
+    /// Every input stream the plan needs, keyed by the [`SourceId`] its
+    /// [`SourceExpr`] leaves name it by. Wired once in [`new`](Self::new) from
+    /// the schemas the pipeline resolved, so a leaf is *bound* here.
     sources: Sources,
     /// Output read handles collected while walking the plan, one per
     /// [`OutputExpr`] tap, in plan order. The backend drains these after
@@ -121,11 +125,29 @@ pub struct DbspInterpreter<E: RowScalarEngine = TreeWalk> {
 }
 
 impl<E: RowScalarEngine> DbspInterpreter<E> {
-    pub fn new(root_circuit: RootCircuit, engine: E) -> Self {
+    /// Wires one root input stream per source the plan names, up front.
+    ///
+    /// Eagerly rather than on first visit, because DBSP refuses a root input
+    /// once a nested circuit is under construction: wiring everything before
+    /// interpretation starts is what lets a [`FixedPointIterExpr`] step body
+    /// reach a source at all, without a pre-pass hoisting that body's sources
+    /// out by hand. `sources` came from a walk of this same plan, so the set is
+    /// the same one lazy wiring would have reached.
+    ///
+    /// Sorted by [`SourceId`], so that circuit construction does not inherit the
+    /// iteration order of a [`HashMap`].
+    pub fn new(root_circuit: RootCircuit, engine: E, sources: SourceSchemas) -> Self {
+        let mut root_circuit = root_circuit;
+        let mut wired = Sources::with_capacity(sources.len());
+        let mut sources: Vec<_> = sources.into_iter().collect();
+        sources.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
+        for (id, schema) in sources {
+            wired.insert(id, Source::new(schema, &mut root_circuit));
+        }
         Self {
             root_circuit,
             engine,
-            sources: Sources::new(),
+            sources: wired,
             sinks: Vec::new(),
             step: None,
         }
@@ -225,25 +247,23 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
     for DbspInterpreter<E>
 {
     fn visit_source_expr(&mut self, expr: &SourceExpr, ctx: VisitorCtx) -> ExprVisitorResult {
-        // Wire a fresh root input the first time we meet a source, reusing it
-        // for every later leaf naming the same source.
-        if !self.sources.contains_key(expr.as_id()) {
-            let source = Source::from_source_expr(expr, &mut self.root_circuit);
-            self.sources.insert(expr.to_id(), source);
-        }
-        // Snapshot the root stream + schema, dropping the borrow on `sources`
-        // before any `&mut self` call below.
+        // Every source the plan names was wired in `new`, so this only binds the
+        // leaf to its stream. Exactly one stream per source, however many leaves name
+        // it. Snapshot stream and schema to drop the borrow on `sources` before
+        // any `&mut self` call below.
         let (schema, root_stream) = {
-            let source = self
-                .sources
-                .get(expr.as_id())
-                .expect("source just wired above");
+            let source = self.sources.get(&expr.id).ok_or_else(|| {
+                BuildError::new(format!(
+                    "Source '{}' was not among the sources this plan was resolved to",
+                    expr.id
+                ))
+            })?;
             (source.schema.clone(), source.stream.clone())
         };
         // Inside a fixed-point step the source is an outer relation and must be
         // `delta0`'d into the nested circuit, just like an outer variable.
         let relation = if self.step.is_some() {
-            self.bridge_import(ImportKey::Source(expr.to_id()), schema, &root_stream)
+            self.bridge_import(ImportKey::Source(expr.id.clone()), schema, &root_stream)
         } else {
             new_relation(schema, root_stream)
         };
@@ -573,18 +593,12 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             )
         };
 
-        // Wire the root inputs of any source referenced inside the step *before*
-        // entering `recursive`: DBSP forbids adding a root input once a nested
-        // circuit is under construction (the input node would not belong to the
-        // root scope). Deduped against sources already wired elsewhere; inside
-        // the step each is `delta0`'d like any outer relation.
-        for source_expr in pre_order(&expr.step.stmts).filter_map(Node::as_source) {
-            if !self.sources.contains_key(source_expr.as_id()) {
-                let source = Source::from_source_expr(source_expr, &mut self.root_circuit);
-                self.sources.insert(source_expr.to_id(), source);
-            }
-        }
+        // A source referenced inside the step needs no special handling: DBSP
+        // forbids adding a root input once a nested circuit is under
+        // construction, but `new` wired every one of them before interpretation
+        // began. Inside the step each is `delta0`'d like any outer relation.
 
+        // DBSP does not allow outputting a stream attached to a child circuit.
         pre_order(&expr.step.stmts)
             .filter_map(Node::as_output)
             .next()

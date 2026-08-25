@@ -347,14 +347,7 @@ mod tests {
         operator::Operator,
         stmt::{ExprStmt, VarStmt},
     };
-    use crate::relational::{
-        RelationSchema,
-        expr::{DistinctExpr, EquiJoinExpr, SelectionExpr, UnionExpr},
-    };
-
-    fn schema(name: &str) -> RelationSchema {
-        RelationSchema::new(name, ["a", "b"], ["a"]).expect("Correct schema definition")
-    }
+    use crate::relational::expr::{DistinctExpr, EquiJoinExpr, SelectionExpr, UnionExpr};
 
     /// `1 + 2` as a statement.
     fn arithmetic() -> Vec<Stmt> {
@@ -433,7 +426,7 @@ mod tests {
         // must be two nodes below the statement, not four.
         let code = vec![Stmt::from(ExprStmt {
             expr: Expr::from(DistinctExpr {
-                relation: Expr::from(SourceExpr::new(schema("edge"))),
+                relation: Expr::from(SourceExpr::new("edge")),
             }),
         })];
         assert_eq!(
@@ -450,7 +443,7 @@ mod tests {
             name: "both".to_string(),
             initializer: Some(Expr::from(UnionExpr {
                 relations: vec![
-                    Expr::from(SourceExpr::new(schema("left"))),
+                    Expr::from(SourceExpr::new("left")),
                     Expr::from(VarExpr::new("right")),
                 ],
             })),
@@ -469,8 +462,8 @@ mod tests {
             expr: Expr::from(SelectionExpr {
                 relation: Expr::from(UnionExpr {
                     relations: vec![
-                        Expr::from(SourceExpr::new(schema("left"))),
-                        Expr::from(SourceExpr::new(schema("right"))),
+                        Expr::from(SourceExpr::new("left")),
+                        Expr::from(SourceExpr::new("right")),
                     ],
                 }),
                 condition: Expr::from(VarExpr::new("a")),
@@ -478,7 +471,7 @@ mod tests {
         })];
         let sources: Vec<&str> = pre_order(&code)
             .filter_map(Node::as_source)
-            .map(SourceExpr::as_id)
+            .map(|source| source.as_id().as_str())
             .collect();
         assert_eq!(sources, ["left", "right"]);
     }

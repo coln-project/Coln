@@ -52,6 +52,7 @@ use super::{
     variable::VariableSlot,
     walk::Node,
 };
+use crate::relational::catalog::Catalog;
 use crate::relational::expr::{
     AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
     FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, OutputKind, ProjectionExpr, RelExpr,
@@ -83,9 +84,27 @@ macro_rules! emit {
 /// buffer into a formatter: a second allocation, and a second way to say the
 /// same thing.
 pub fn to_tree(code: &[Stmt]) -> String {
+    render(code, None)
+}
+
+/// [`to_tree`], with each [`SourceExpr`] leaf described by the [`Catalog`] the
+/// code is compiled against — the leaf itself only names its relation.
+///
+/// Reach for this over [`to_tree`] whenever a catalog is at hand, which for a
+/// whole program it always is:
+/// [`QueryProgram::to_tree`](crate::program::QueryProgram::to_tree) is this
+/// function applied to a program and its own catalog. Besides showing the schema
+/// at all, it is what makes a leaf the catalog does *not* describe visible, which
+/// is the one failure mode a name-only leaf introduces.
+pub fn to_tree_with(code: &[Stmt], catalog: &dyn Catalog) -> String {
+    render(code, Some(catalog))
+}
+
+fn render(code: &[Stmt], catalog: Option<&dyn Catalog>) -> String {
     let mut printer = TreePrinter {
         out: String::new(),
         prefix: String::new(),
+        catalog,
     };
     // A program is a forest, so every root starts a fresh tree at column zero
     // rather than hanging off a shared parent.
@@ -103,15 +122,20 @@ pub fn to_tree(code: &[Stmt]) -> String {
 /// visit method, which is the only place that knows how to address them.
 type Branches<'a> = Vec<(String, Node<'a>)>;
 
-struct TreePrinter {
+struct TreePrinter<'a> {
     out: String,
     /// The guide lines every line of the current subtree is prefixed with. Owned
     /// by the printer and pushed/popped around each child, so a node needs to
     /// know nothing about where it sits — hence the `()` visitor context.
     prefix: String,
+    /// What the plan's [`SourceExpr`] leaves name, when the caller has it.
+    /// [`None`] for a rendering of bare code — a sub-forest, or a plan under
+    /// test that was never paired with a catalog — where a leaf can only be
+    /// named, not described.
+    catalog: Option<&'a dyn Catalog>,
 }
 
-impl TreePrinter {
+impl TreePrinter<'_> {
     /// Emit `node` as a child on its own line, then its subtree one level in.
     ///
     /// `last` decides the elbow and whether the guide line continues past this
@@ -199,7 +223,7 @@ fn slot(resolved: Option<VariableSlot>) -> String {
     }
 }
 
-impl StmtVisitor<(), ()> for TreePrinter {
+impl StmtVisitor<(), ()> for TreePrinter<'_> {
     fn visit_var_stmt(&mut self, stmt: &VarStmt, ctx: ()) {
         emit!(self, "VarStmt {}", stmt.name);
         // At most one initializer, so there is no occurrence to name.
@@ -222,7 +246,7 @@ impl StmtVisitor<(), ()> for TreePrinter {
     }
 }
 
-impl ExprVisitor<(), ()> for TreePrinter {
+impl ExprVisitor<(), ()> for TreePrinter<'_> {
     fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: ()) {
         match &expr.value {
             // `Literal`'s own `Display` prints a string bare, which would make
@@ -291,17 +315,30 @@ impl ExprVisitor<(), ()> for TreePrinter {
     }
 }
 
-impl RelExprVisitor<(), ()> for TreePrinter {
+impl RelExprVisitor<(), ()> for TreePrinter<'_> {
     fn visit_source_expr(&mut self, expr: &SourceExpr, ctx: ()) {
-        // A plan leaf: it only *names* an extensional relation, so its schema is
-        // the only thing to show — and the only place it is visible at all.
-        emit!(
-            self,
-            "Source \"{}\" tuple={} key={}",
-            escaped(expr.as_id()),
-            expr.schema.tuple,
-            expr.schema.key
-        );
+        // A plan leaf only *names* an extensional relation, so the schema comes
+        // from the catalog. Copy the reference out of `self` first: the `Cow` it
+        // hands back borrows from the catalog, not from `self`, which is what
+        // lets `emit!` take `&mut self.out` while the schema is still in hand.
+        let catalog = self.catalog;
+        let name = escaped(expr.as_id().as_str());
+        match catalog.map(|catalog| catalog.source_schema(&expr.id)) {
+            Some(Some(schema)) => {
+                emit!(
+                    self,
+                    "Source \"{name}\" tuple={} key={}",
+                    schema.tuple,
+                    schema.key
+                );
+            }
+            // A catalog that does not describe this leaf is worth saying out
+            // loud: the plan names a relation nothing will bind, and this is the
+            // rendering that shows it.
+            Some(None) => emit!(self, "Source \"{name}\" (not in catalog)"),
+            // No catalog to consult — see [`TreePrinter::catalog`].
+            None => emit!(self, "Source \"{name}\""),
+        }
     }
 
     fn visit_output_expr(&mut self, expr: &OutputExpr, ctx: ()) {
@@ -417,10 +454,12 @@ where
 mod tests {
     use super::*;
     use crate::host::Code;
+    use crate::program::QueryProgram;
     use crate::relational::{
         RelationSchema,
         expr::{JoinVariable, SinkId},
     };
+    use crate::test_helper::TestProgram;
 
     fn schema(name: &str) -> RelationSchema {
         RelationSchema::new(name, ["x", "y"], ["x"]).expect("Correct schema definition")
@@ -447,7 +486,7 @@ mod tests {
         vec![
             Stmt::from(VarStmt {
                 name: "edge".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(schema("edge")))),
+                initializer: Some(Expr::from(SourceExpr::new("edge"))),
             }),
             Stmt::from(VarStmt {
                 name: "reach".to_string(),
@@ -479,14 +518,44 @@ mod tests {
     }
 
     #[test]
+    fn a_source_is_described_by_the_catalog_the_program_carries() {
+        // The leaf names `edge` and nothing more, so the schema on this line can
+        // only have come from the program's catalog.
+        let program = TestProgram::new(transitive_closure(), [schema("edge")]);
+        assert!(
+            program
+                .to_tree()
+                .contains("init: Source \"edge\" tuple=|x|y| key=|x|"),
+            "{}",
+            program.to_tree()
+        );
+    }
+
+    #[test]
+    fn a_source_no_catalog_describes_is_rendered_as_such() {
+        // The failure mode a name-only leaf introduces: the plan names a
+        // relation nothing will bind. Rendering is where it becomes visible.
+        let program = TestProgram::new(transitive_closure(), []);
+        assert!(
+            program
+                .to_tree()
+                .contains("init: Source \"edge\" (not in catalog)"),
+            "{}",
+            program.to_tree()
+        );
+    }
+
+    #[test]
     fn renders_a_forest_of_statements_flush_at_column_zero() {
         assert_eq!(
-            // Through the inherent method, which is how a whole program is
-            // rendered: no import, and nothing else in scope to reach for.
+            // Through the inherent method, which is how bare code is rendered:
+            // no import, and no catalog to describe the leaves with — see
+            // `a_source_is_described_by_the_catalog_the_program_carries` for the
+            // same plan rendered against one.
             Code::from(transitive_closure()).to_tree(),
             "\
 VarStmt edge
-└─ init: Source \"edge\" tuple=|x|y| key=|x|
+└─ init: Source \"edge\"
 VarStmt reach
 └─ init: FixedPointIter acc
    ├─ init: Var edge (unresolved)

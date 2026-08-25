@@ -15,6 +15,7 @@ use crate::{
     },
     relational::{
         Delta,
+        catalog::SourceSchemas,
         expr::{OutputKind, SinkId, SourceId},
     },
     scalarial::{RowScalarEngine, TreeWalk},
@@ -66,15 +67,23 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
         lowering::fold_multi_way_joins(plan)
     }
 
-    fn build(self, threads: NonZeroUsize, plan: ResolvedCode) -> Result<DbspRuntime, Self::Error> {
+    fn build(
+        self,
+        threads: NonZeroUsize,
+        plan: ResolvedCode,
+        sources: SourceSchemas,
+    ) -> Result<DbspRuntime, Self::Error> {
         let engine = self.scalar_engine;
         let (handle, (inputs, outputs)) =
             CircuitRuntime::init_circuit(threads, move |root_circuit| {
                 // The plan is already resolved, so we interpret directly (no
-                // resolver pass here) with a fresh environment.
+                // resolver pass here) with a fresh environment. Cloning the
+                // schemas is what makes this closure `Send + 'static`, which
+                // DBSP requires because it runs it once per worker thread.
                 let mut environment = Environment::default();
                 let mut ctx = InterpreterContext::new(&mut environment);
-                let mut interpreter = DbspInterpreter::new(root_circuit.clone(), engine.clone());
+                let mut interpreter =
+                    DbspInterpreter::new(root_circuit.clone(), engine.clone(), sources.clone());
                 // Walk the plan for its side effects: each `SourceExpr` leaf
                 // wires a fresh input stream (deduplicated by name) and each
                 // `OutputExpr` tap wires an output read handle. The plan's final

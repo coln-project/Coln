@@ -14,6 +14,7 @@ use crate::{
         stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
         tuple::TupleType,
     },
+    relational::catalog::Catalog,
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
         FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr, RelExpr,
@@ -39,13 +40,24 @@ macro_rules! assert_type {
 }
 
 /// This is "get me the type of this part of the AST but don't type check it".
-#[derive(Default)]
-pub struct TypeResolver {}
+pub struct TypeResolver<'a> {
+    /// What the plan's [`SourceExpr`] leaves name: a leaf carries only a
+    /// [`SourceId`](crate::relational::expr::SourceId), so this is where the
+    /// type of an extensional relation comes from.
+    ///
+    /// It sits on the resolver rather than in [`TypeResolverContext`] because
+    /// the context is per-traversal scope state, while the catalog is fixed for
+    /// the whole run.
+    catalog: &'a dyn Catalog,
+}
 
-impl TypeResolver {
-    pub fn resolve<'a>(
+impl<'a> TypeResolver<'a> {
+    pub fn new(catalog: &'a dyn Catalog) -> Self {
+        Self { catalog }
+    }
+    pub fn resolve<'b>(
         &mut self,
-        stmts: impl IntoIterator<Item = &'a Stmt>,
+        stmts: impl IntoIterator<Item = &'b Stmt>,
         ctx: VisitorCtx,
     ) -> Result<Option<ExprType>, SyntaxError> {
         // Ensure we have a global scope before resolving.
@@ -64,9 +76,9 @@ impl TypeResolver {
     pub fn resolve_stmt(&mut self, stmt: &Stmt, ctx: VisitorCtx) -> VisitorResult {
         self.visit_stmt(stmt, ctx)
     }
-    fn visit_stmts<'a>(
+    fn visit_stmts<'b>(
         &mut self,
-        stmts: impl IntoIterator<Item = &'a Stmt>,
+        stmts: impl IntoIterator<Item = &'b Stmt>,
         ctx: VisitorCtx,
     ) -> Result<Option<ExprType>, SyntaxError> {
         stmts
@@ -152,7 +164,7 @@ impl TypeResolverContext<'_> {
     }
 }
 
-impl TypeResolver {
+impl TypeResolver<'_> {
     /// A helper method to deal with projections.
     fn visit_projection_attributes(
         &mut self,
@@ -179,7 +191,7 @@ impl TypeResolver {
     }
 }
 
-impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
+impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver<'_> {
     fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: VisitorCtx) -> VisitorResult {
         Ok(ExprType::from(&expr.value))
     }
@@ -286,9 +298,16 @@ impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
     }
 }
 
-impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
+impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver<'_> {
     fn visit_source_expr(&mut self, expr: &SourceExpr, ctx: VisitorCtx) -> VisitorResult {
-        Ok(ExprType::Relation(RelationType::from(&expr.schema)))
+        // The leaf names its relation; the catalog says what that relation is.
+        let schema = self.catalog.source_schema(&expr.id).ok_or_else(|| {
+            SyntaxError::new(format!(
+                "Source '{}' is not described by the catalog this plan is typed against",
+                expr.id
+            ))
+        })?;
+        Ok(ExprType::Relation(RelationType::from(schema.as_ref())))
     }
 
     fn visit_output_expr(&mut self, expr: &OutputExpr, ctx: VisitorCtx) -> VisitorResult {
@@ -397,7 +416,7 @@ impl From<&Literal> for ExprType {
     }
 }
 
-impl StmtVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver {
+impl StmtVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver<'_> {
     fn visit_var_stmt(&mut self, stmt: &VarStmt, ctx: VisitorCtx) -> VisitorResult {
         todo!();
     }

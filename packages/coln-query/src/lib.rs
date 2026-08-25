@@ -9,6 +9,7 @@ pub mod error;
 pub mod host;
 pub mod optimizer;
 pub mod pipeline;
+pub mod program;
 pub mod relational;
 pub mod scalarial;
 pub mod test_helper;
@@ -40,7 +41,7 @@ mod test {
             relation::TupleValue,
         },
         scalarial::ScalarTypedValue,
-        test_helper::{person_profession_data, rows, rows_with_weight},
+        test_helper::{TestProgram, person_profession_data, rows, rows_with_weight},
     };
     use ::dbsp::OrdZSet;
     use test_helper::{Edge, InputEntity, Person, PlainRelation, PredRel, Profession, SetOp};
@@ -196,7 +197,7 @@ mod test {
                             right: Expr::from(LiteralExpr::from(2_u64)),
                         }),
                     }),
-                    relation: Expr::from(SourceExpr::new(Edge::schema())),
+                    relation: Expr::from(SourceExpr::new(Edge::id())),
                 })),
             }),
             output_stmt("selected"),
@@ -221,7 +222,7 @@ mod test {
             }),
             output_stmt("projected"),
         ];
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
 
         const STEPS: usize = 3;
 
@@ -304,7 +305,7 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Edge::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "deduped".to_string(),
@@ -329,7 +330,7 @@ mod test {
             }),
             output_stmt("downstream"),
         ];
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
         rt.feed(
             &SourceId::from("edges"),
             rows_with_weight([Edge::new(0, 1, 5)], 1),
@@ -360,7 +361,7 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Edge::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "deduped".to_string(),
@@ -383,7 +384,8 @@ mod test {
                 }),
             }),
         ];
-        let Err(err) = Pipeline::incremental().runtime(plan) else {
+        let Err(err) = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))
+        else {
             panic!("duplicate output names must be rejected at build time");
         };
         println!("{err}");
@@ -394,15 +396,37 @@ mod test {
     }
 
     #[test]
+    fn source_no_catalog_describes_is_rejected_at_build_time() {
+        // A source leaf only *names* its relation, so a plan can name one the
+        // catalog says nothing about. That is caught up front, before the
+        // backend builds anything, and the error names the offending source
+        // rather than surfacing later as an input that was never wired.
+        let plan = vec![
+            Stmt::from(VarStmt {
+                name: "edges".to_string(),
+                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
+            }),
+            output_stmt("edges"),
+        ];
+        let Err(err) = Pipeline::incremental().runtime(TestProgram::new(plan, [])) else {
+            panic!("a source the catalog does not describe must be rejected");
+        };
+        assert!(
+            err.to_string().contains("edge"),
+            "expected the error to name the unknown source, got: {err}"
+        );
+    }
+
+    #[test]
     fn test_standard_join() -> Result<(), anyhow::Error> {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "person".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Person::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(Person::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "profession".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Profession::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(Profession::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "joined".to_string(),
@@ -444,7 +468,10 @@ mod test {
             }),
             output_stmt("joined"),
         ];
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental().runtime(TestProgram::new(
+            plan,
+            [Person::schema(), Profession::schema()],
+        ))?;
 
         for (person_step, profession_step) in person_profession_data() {
             rt.feed(&SourceId::from("person"), rows_with_weight(person_step, 1))?;
@@ -473,11 +500,11 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "person".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Person::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(Person::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "profession".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Profession::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(Profession::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "joined".to_string(),
@@ -495,7 +522,10 @@ mod test {
             }),
             output_stmt("joined"),
         ];
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental().runtime(TestProgram::new(
+            plan,
+            [Person::schema(), Profession::schema()],
+        ))?;
 
         for (person_step, profession_step) in person_profession_data() {
             rt.feed(&SourceId::from("person"), rows_with_weight(person_step, 1))?;
@@ -527,7 +557,7 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Edge::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "len_1".to_string(),
@@ -694,7 +724,7 @@ mod test {
             }),
             output_stmt("full_closure"),
         ];
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
 
         let init_data = [
             Edge::new(0, 1, 1),
@@ -744,7 +774,7 @@ mod test {
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
                 initializer: Some(Expr::from(ProjectionExpr {
-                    relation: Expr::from(SourceExpr::new(Edge::schema())),
+                    relation: Expr::from(SourceExpr::new(Edge::id())),
                     attributes: ["from", "to", "weight"]
                         .into_iter()
                         .map(|name| (name.to_string(), Expr::from(VarExpr::new(name))))
@@ -830,7 +860,7 @@ mod test {
             }),
             output_stmt("closure"),
         ];
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
 
         let init_data = [
             Edge::new(0, 1, 1),
@@ -875,7 +905,7 @@ mod test {
             Stmt::from(VarStmt {
                 name: "base".to_string(),
                 initializer: Some(Expr::from(ProjectionExpr {
-                    relation: Expr::from(SourceExpr::new(PlainRelation::schema())),
+                    relation: Expr::from(SourceExpr::new(PlainRelation::id())),
                     attributes: vec![("node".to_string(), Expr::from(VarExpr::new("a")))],
                 })),
             }),
@@ -892,7 +922,7 @@ mod test {
                                 }),
                                 // `edges` used inline in the step — its only use.
                                 right: Expr::from(AliasExpr {
-                                    relation: Expr::from(SourceExpr::new(Edge::schema())),
+                                    relation: Expr::from(SourceExpr::new(Edge::id())),
                                     alias: "edge".to_string(),
                                 }),
                                 on: vec![(
@@ -911,7 +941,10 @@ mod test {
             output_stmt("reachable"),
         ];
 
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental().runtime(TestProgram::new(
+            plan,
+            [PlainRelation::schema(), Edge::schema()],
+        ))?;
 
         // Seed node 0; edges 0->1->2->3.
         rt.feed(
@@ -946,11 +979,11 @@ mod test {
             // Inputs start.
             Stmt::from(VarStmt {
                 name: "pred".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(PredRel::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(PredRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "set".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(SetOp::schema()))),
+                initializer: Some(Expr::from(SourceExpr::new(SetOp::id()))),
             }),
             // Inputs end.
             Stmt::from(VarStmt {
@@ -1110,7 +1143,8 @@ mod test {
             }),
             output_stmt("mvrStore"),
         ];
-        let mut rt = Pipeline::incremental().runtime(plan)?;
+        let mut rt = Pipeline::incremental()
+            .runtime(TestProgram::new(plan, [PredRel::schema(), SetOp::schema()]))?;
 
         // The operation history is as follows:
         // In first step (just one root operation setting register with key 1 to
