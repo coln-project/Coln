@@ -17,7 +17,7 @@ instance Separate V.Head (S.El Set) where
   separate n = \case
     V.Var (FId i) -> S.Var (BId (n - i - 1))
     V.Lookup tn args ret -> do
-      let args' = separate n <$> args
+      let args' = separate (n + 1) <$> args
       let pred = S.Atom tn S.Erased (args' ++ [S.Var 0])
       S.Single $ S.Query (shapeOf ret) (S.Abs Nothing pred)
 
