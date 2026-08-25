@@ -87,7 +87,7 @@ separateGenerator tn = \case
     let table = Entity Table (zip names ((.shape) <$> septys)) primaryKey
     let atom = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
     let foreignKey = Rule Enforced Consequent (zip names septys) atom S.trueProp
-    Realm{entities = Leaf table, definitions = Node $ fromList [], rules = Leaf foreignKey}
+    Realm{entities = Leaf table, definitions = Node $ fromList [], rules = Node $ fromList [("foreignKey", Leaf foreignKey)]}
   V.Fun xs tys cod -> case hlevelOf cod of
     HUnit -> Realm{entities = Node $ fromList [], definitions = Node $ fromList [], rules = Node $ fromList []}
     HProp -> do
