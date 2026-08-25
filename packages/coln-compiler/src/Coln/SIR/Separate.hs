@@ -98,14 +98,24 @@ separateGenerator tn = \case
       let rule = Rule Monitored Antecedent (zip names septys) S.trueProp codProp
       Realm{entities = Node $ fromList [], definitions = Node $ fromList [], rules = Leaf rule}
     HSet -> do
-      let names = toList xs
-      let argNum = length names
+      let argNames = toList xs
+      let argNum = length argNames
+
+      let tableNameLast = case tn.path of
+            (_ :> last) -> last
+            BwdNil -> tn.realm
+      let resultName = freshenFor xs tableNameLast
+      let names = argNames ++ [resultName]
+
       let septys = uncurry separate <$> zip [0 ..] (toList (tys :> cod))
       let table = Entity Table (zip names ((.shape) <$> septys)) (Just [0 .. argNum - 1])
-      let foreignKeyAnte = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum]]
+
+      let foreignKeyAnte = S.Atom tn S.Erased [S.Var (BId (argNum - i)) | i <- [0 .. argNum]]
       let foreignKey = Rule Enforced Consequent (zip names septys) foreignKeyAnte S.trueProp
+
       let totalCons = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
       let total = Rule Monitored Antecedent (zip names (take argNum septys)) S.trueProp totalCons
+
       Realm{entities = Leaf table, definitions = Node $ fromList [], rules = Node $ fromList [("foreignKey", Leaf foreignKey), ("total", Leaf total)]}
     _ -> panic "bad h-level of cod"
 
