@@ -5,7 +5,7 @@
 use std::io::Write;
 
 use crate::commit::Commit;
-use crate::commit::chunk::{Chunk, ChunkType};
+use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::leb128 as commit_leb128;
 use crate::store::Store;
@@ -38,7 +38,7 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
 /// Decode a store from bytes produced by [`encode_store`].
 pub fn decode_store(data: &[u8]) -> Result<Store, StoreError> {
     let encoded = read_store_envelope(data)?;
-    decode_store_chunks(encoded.chunks)
+    Store::try_from_chunks(encoded.chunks)
 }
 
 struct EncodedStore {
@@ -81,43 +81,6 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
 
 fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
     Chunk::from(commit).write(buf)
-}
-
-fn decode_store_chunks(chunks: Vec<Chunk>) -> Result<Store, StoreError> {
-    let roots = chunks
-        .iter()
-        .filter(|chunk| chunk.chunk_type() == ChunkType::Root)
-        .collect::<Vec<_>>();
-    if roots.is_empty() {
-        return Err(CodecError::DataFormatError("commit graph has no root commit".into()).into());
-    }
-    if roots.len() > 1 {
-        return Err(
-            CodecError::DataFormatError("commit graph has multiple root commits".into()).into(),
-        );
-    }
-
-    let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
-    let root_payload = root_commit.root_payload()?;
-    let mut store = Store::try_from_ir(root_payload)?;
-
-    let mut commits = Vec::new();
-    for chunk in chunks {
-        if chunk.chunk_type() == ChunkType::Root {
-            continue;
-        }
-
-        let commit = Commit::from_chunk(chunk, |path| {
-            store
-                .resolve_table(path)
-                .and_then(|oid| store.table_meta(oid))
-        })?;
-        commits.push(commit);
-    }
-
-    store.apply_commits(commits)?;
-
-    Ok(store)
 }
 
 #[cfg(test)]

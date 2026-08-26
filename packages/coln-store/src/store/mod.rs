@@ -203,47 +203,6 @@ impl Store {
         Ok(graph)
     }
 
-    #[cfg(feature = "native")]
-    // used in SQL mode only
-    pub(crate) fn create_table(
-        &mut self,
-        path: ir::Path,
-        schema: ir::Schema,
-    ) -> Result<TableOid, StoreError> {
-        let oid = self.tables.len();
-        self.path_to_oid.insert(path.clone(), oid);
-        self.tables.insert(oid, Table::new(path, oid, schema));
-
-        let mut tables: Vec<_> = self
-            .tables
-            .values()
-            .map(|table| {
-                (
-                    table.oid(),
-                    ir::TableEntry {
-                        path: table.path().clone(),
-                        table: table.schema().clone(),
-                    },
-                )
-            })
-            .collect();
-        tables.sort_by_key(|(oid, _)| *oid);
-        let ir = FlatRealm {
-            tables: tables.into_iter().map(|(_, entry)| entry).collect(),
-            rules: self.rule_entries.clone(),
-        };
-        self.commits = Self::graph_with_root_commit(&ir)?;
-        Ok(oid)
-    }
-
-    pub fn transaction(&mut self) -> Transaction<'_> {
-        Transaction::new(self)
-    }
-
-    pub fn into_transaction(self) -> OwnedTransaction {
-        OwnedTransaction::new(self)
-    }
-
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
     pub fn try_from_ir(ir: FlatRealm) -> Result<Self, StoreError> {
@@ -276,6 +235,18 @@ impl Store {
             commits,
             rowing: rowing::Rowing::new(),
         })
+    }
+}
+
+impl Store {
+    // transactions
+
+    pub fn transaction(&mut self) -> Transaction<'_> {
+        Transaction::new(self)
+    }
+
+    pub fn into_transaction(self) -> OwnedTransaction {
+        OwnedTransaction::new(self)
     }
 }
 
@@ -663,10 +634,96 @@ impl Store {
 
         self.apply_commits(commits)
     }
+
+    /// Build a store from commit chunks from scratch, assuming that the input
+    /// `chunk_bytes` contains a valid root commit.
+    pub fn try_from_commit_bytes(
+        chunk_bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<Self, StoreError> {
+        let chunks = chunk_bytes
+            .into_iter()
+            .map(|bytes| Chunk::decode(bytes.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::try_from_chunks(chunks)
+    }
+
+    /// Create a store from the commit chunks, assuming the chunk contains a valid root
+    pub(crate) fn try_from_chunks(chunks: Vec<Chunk>) -> Result<Store, StoreError> {
+        let roots = chunks
+            .iter()
+            .filter(|chunk| chunk.is_root())
+            .collect::<Vec<_>>();
+        if roots.is_empty() {
+            return Err(
+                CodecError::DataFormatError("commit graph has no root commit".into()).into(),
+            );
+        }
+        if roots.len() > 1 {
+            return Err(CodecError::DataFormatError(
+                "commit graph has multiple root commits".into(),
+            )
+            .into());
+        }
+
+        let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
+        let root_payload = root_commit.root_payload()?;
+        let mut store = Store::try_from_ir(root_payload)?;
+
+        let mut commits = Vec::new();
+        for chunk in chunks {
+            if chunk.is_root() {
+                continue;
+            }
+
+            let commit = Commit::from_chunk(chunk, |path| {
+                store
+                    .resolve_table(path)
+                    .and_then(|oid| store.table_meta(oid))
+            })?;
+            commits.push(commit);
+        }
+
+        store.apply_commits(commits)?;
+
+        Ok(store)
+    }
 }
 
 impl Store {
-    // for debugging and testing
+    // for debugging and testing and experiments
+
+    #[cfg(feature = "native")]
+    // used in SQL mode only
+    pub(crate) fn create_table(
+        &mut self,
+        path: ir::Path,
+        schema: ir::Schema,
+    ) -> Result<TableOid, StoreError> {
+        let oid = self.tables.len();
+        self.path_to_oid.insert(path.clone(), oid);
+        self.tables.insert(oid, Table::new(path, oid, schema));
+
+        let mut tables: Vec<_> = self
+            .tables
+            .values()
+            .map(|table| {
+                (
+                    table.oid(),
+                    ir::TableEntry {
+                        path: table.path().clone(),
+                        table: table.schema().clone(),
+                    },
+                )
+            })
+            .collect();
+        tables.sort_by_key(|(oid, _)| *oid);
+        let ir = FlatRealm {
+            tables: tables.into_iter().map(|(_, entry)| entry).collect(),
+            rules: self.rule_entries.clone(),
+        };
+        self.commits = Self::graph_with_root_commit(&ir)?;
+        Ok(oid)
+    }
 
     /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
     /// separated by a blank line.

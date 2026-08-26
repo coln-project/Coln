@@ -827,6 +827,39 @@ mod commits {
     }
 
     #[test]
+    fn commit_chunks_create_empty_store() {
+        let source = Store::new();
+        let chunks = source
+            .commit_chunks_after(&[])
+            .into_iter()
+            .map(|chunk| chunk.bytes)
+            .collect::<Vec<_>>();
+
+        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+
+        assert_eq!(restored.table_count(), 0);
+        assert_eq!(restored.heads(), source.heads());
+    }
+
+    #[test]
+    fn commit_chunks_create_store_from_out_of_order_data() {
+        let mut source = single_int_store();
+        let commit = commit_int(&mut source, 99);
+        let mut chunks = source
+            .commit_chunks_after(&[])
+            .into_iter()
+            .map(|chunk| chunk.bytes)
+            .collect::<Vec<_>>();
+        chunks.reverse();
+
+        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+
+        let table = restored.table_at(&Path::from("T")).expect("table");
+        assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(99)));
+        assert_eq!(restored.heads(), vec![commit]);
+    }
+
+    #[test]
     fn apply_commits_applies_rows_and_updates_heads() {
         let mut source = single_int_store();
         let mut target = single_int_store();
