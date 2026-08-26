@@ -133,9 +133,13 @@ impl TxnInner {
 
         let h = cmt.hash();
         match store.apply_commit(cmt) {
-            Ok(()) => {
+            Ok(None) => {
+                // Everything applied successfully
                 Self::finalize_handles(pending_handles, h, store);
                 Ok(h)
+            }
+            Ok(Some(_)) => {
+                unreachable!("commit a local transaction should always succeed");
             }
             Err(err) => {
                 Self::invalidate_handles(pending_handles, "txn commit failed");

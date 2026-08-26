@@ -38,7 +38,14 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
 /// Decode a store from bytes produced by [`encode_store`].
 pub fn decode_store(data: &[u8]) -> Result<Store, StoreError> {
     let encoded = read_store_envelope(data)?;
-    Store::try_from_chunks(encoded.chunks)
+    let (store, pending) = Store::try_from_chunks(encoded.chunks)?;
+    if !pending.is_empty() {
+        return Err(CodecError::DataContentError(
+            "store snapshot contains commits that could not be applied".into(),
+        )
+        .into());
+    }
+    Ok(store)
 }
 
 struct EncodedStore {
@@ -172,13 +179,13 @@ mod tests {
             .expect("encoded store contains a chunk magic")
     }
 
-    fn is_missing_dep_error(result: Result<Store, StoreError>) -> bool {
+    fn is_data_content_error(result: Result<Store, StoreError>) -> bool {
         matches!(
             result,
             Err(err)
                 if matches!(
                     &err,
-                    StoreError::Commit(crate::store::error::CommitApplyError::MissingDep)
+                    StoreError::Encode(CodecError::DataContentError(_))
                 )
         )
     }
@@ -315,7 +322,7 @@ mod tests {
             frame_chunk(ChunkType::Commit, commit.payload()),
         ]);
 
-        assert!(is_missing_dep_error(decode_store(&bytes)));
+        assert!(is_data_content_error(decode_store(&bytes)));
     }
 
     #[test]

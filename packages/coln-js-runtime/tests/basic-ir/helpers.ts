@@ -2,19 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { StoreHandle, type TransactionHandle } from "@coln-project/runtime";
-
-interface RealmModule<ViewRoot, TransactionRoot> {
-  schema: unknown;
-  View: new (store: StoreHandle) => { root: ViewRoot };
-  Transaction: new (
-    store: StoreHandle,
-    transaction: TransactionHandle,
-  ) => { root: TransactionRoot };
-}
+import { StoreHandle, type RealmBindings } from "@coln-project/runtime";
 
 export function beginRealm<ViewRoot, TransactionRoot>(
-  realm: RealmModule<ViewRoot, TransactionRoot>,
+  realm: RealmBindings<ViewRoot, TransactionRoot>,
 ) {
   let store = StoreHandle.fromTheory(JSON.stringify(realm.schema));
   const transaction = store.beginTransaction();

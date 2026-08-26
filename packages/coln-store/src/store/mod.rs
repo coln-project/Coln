@@ -341,21 +341,31 @@ impl Store {
             .collect()
     }
 
+    /// This will try to merge the `other` store as much as possible into this store
+    // TODO need to rethink `merge` more carefully
     pub fn merge(&mut self, other: &Self) -> Result<Vec<CommitHash>, StoreError> {
         let commits = self.commits_added(other);
         self.apply_commits(commits)?;
         Ok(self.heads())
     }
 
-    pub fn apply_commit(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
+    /// Apply a single commit, respect its dependency.
+    /// Return the commit if it cannot be applied due to missing deps
+    pub fn apply_commit(
+        &mut self,
+        commit: Commit<'static>,
+    ) -> Result<Option<Commit<'static>>, StoreError> {
         // This needs to call apply_commits because it needs to do dependency check
-        self.apply_commits([commit])
+        self.apply_commits([commit]).map(|mut h| h.pop())
     }
 
+    /// Apply as many commits as possible respecting their dependencies. Return the
+    /// commit hashes that are NOT applied, so the caller knows which ones they
+    /// need to retry.
     pub fn apply_commits(
         &mut self,
         commits: impl IntoIterator<Item = Commit<'static>>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Vec<Commit<'static>>, StoreError> {
         let mut pending = HashMap::new();
 
         for commit in commits {
@@ -364,17 +374,21 @@ impl Store {
                 continue;
             }
 
+            // We assume that the root commit has been used to construct the store
+            // and therefore must have been applied
             if commit.is_root() {
-                return Err(CommitApplyError::RootCommit.into());
+                return Err(CommitApplyError::RootCommit(commit.hash()).into());
             }
+
+            // We assume that all commits will have deps
             if commit.deps.is_empty() {
-                return Err(CommitApplyError::MissingDep.into());
+                return Err(CommitApplyError::DanglingCommit(commit.hash()).into());
             }
 
             if let Some(existing) = pending.get(&hash) {
                 let existing: &Commit<'static> = existing;
                 if *existing != commit {
-                    return Err(CommitApplyError::ConflictPayload.into());
+                    return Err(CommitApplyError::ConflictPayload(commit.hash()).into());
                 }
                 continue;
             }
@@ -401,8 +415,12 @@ impl Store {
                     count += 1;
                     waiting_on.entry(*dep).or_default().push(*hash);
                 } else {
-                    // deps is not in pending or applied commits
-                    return Err(CommitApplyError::MissingDep.into());
+                    tracing::info!(
+                        commit_hash = %commit.hash(),
+                        missing_dep = %dep,
+                        "skipping commit with dependency that is neither applied nor pending"
+                    );
+                    count += 1;
                 }
             }
 
@@ -416,14 +434,14 @@ impl Store {
         while let Some(hash) = ready.pop_first() {
             let commit = pending
                 .remove(&hash)
-                .ok_or(CommitApplyError::MissingCommit)?;
+                .expect("hash in ready should also exist in pending");
 
             self.apply_commit_atomic(commit)?;
             if let Some(waitings) = waiting_on.remove(&hash) {
                 for wh in waitings {
                     let count = unsatisfied
                         .get_mut(&wh)
-                        .ok_or(CommitApplyError::MissingCommit)?;
+                        .expect("A commit that is waiting must be in unsatisfied");
                     *count -= 1;
                     if *count == 0 {
                         unsatisfied.remove(&wh).unwrap();
@@ -433,12 +451,7 @@ impl Store {
             }
         }
 
-        // pending is not empty, but there is no commit to apply
-        if !pending.is_empty() {
-            return Err(CommitApplyError::DisconnectedCommit.into());
-        }
-
-        Ok(())
+        Ok(pending.into_values().collect())
     }
 
     fn apply_commit_atomic(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
@@ -615,10 +628,11 @@ impl Store {
     }
 
     /// Apply the bytes received by interpreting them as chunks, for syncing purposes
+    /// Return chunk bytes that cannot be applied yet.
     pub fn apply_chunk_bytes(
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Vec<Vec<u8>>, StoreError> {
         let commits = chunk_bytes
             .into_iter()
             .map(|bytes| Chunk::decode(&bytes))
@@ -632,14 +646,14 @@ impl Store {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        self.apply_commits(commits)
+        Ok(Self::commits_to_chunk_bytes(self.apply_commits(commits)?))
     }
 
     /// Build a store from commit chunks from scratch, assuming that the input
     /// `chunk_bytes` contains a valid root commit.
     pub fn try_from_commit_bytes(
         chunk_bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
-    ) -> Result<Self, StoreError> {
+    ) -> Result<(Self, Vec<Vec<u8>>), StoreError> {
         let chunks = chunk_bytes
             .into_iter()
             .map(|bytes| Chunk::decode(bytes.as_ref()))
@@ -648,7 +662,7 @@ impl Store {
     }
 
     /// Create a store from the commit chunks, assuming the chunk contains a valid root
-    pub(crate) fn try_from_chunks(chunks: Vec<Chunk>) -> Result<Store, StoreError> {
+    pub(crate) fn try_from_chunks(chunks: Vec<Chunk>) -> Result<(Self, Vec<Vec<u8>>), StoreError> {
         let roots = chunks
             .iter()
             .filter(|chunk| chunk.is_root())
@@ -683,9 +697,15 @@ impl Store {
             commits.push(commit);
         }
 
-        store.apply_commits(commits)?;
+        let pending_bytes = Self::commits_to_chunk_bytes(store.apply_commits(commits)?);
+        Ok((store, pending_bytes))
+    }
 
-        Ok(store)
+    fn commits_to_chunk_bytes(commits: Vec<Commit<'static>>) -> Vec<Vec<u8>> {
+        commits
+            .into_iter()
+            .map(|commit| Chunk::from(commit).encoded())
+            .collect()
     }
 }
 
