@@ -31,7 +31,7 @@ pub(crate) struct TxnInner {
 }
 
 impl TxnInner {
-    pub(crate) fn new(deps: Vec<CommitHash>) -> Self {
+    pub(super) fn new(deps: Vec<CommitHash>) -> Self {
         Self {
             deps,
             author: Author::foo(),
@@ -66,7 +66,7 @@ impl TxnInner {
         Ok(temp_id)
     }
 
-    pub(crate) fn add(
+    pub(super) fn add(
         &mut self,
         store: &Store,
         table: &ir::Path,
@@ -108,7 +108,7 @@ impl TxnInner {
         });
     }
 
-    pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreError> {
+    pub(super) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreError> {
         info!(op_count = self.pending.len(), "commit txn");
         let TxnInner {
             deps,
@@ -142,13 +142,9 @@ impl TxnInner {
                 Err(err)
             }
         }
-        // 1. validate full batch (PK conflicts including intra-batch)
-        // 2. compute hash: blake3(deps || timestamp || message || canonical(ops))
-        // 3. resolve: TxnRowId(k) -> RowId { commit: hash, counter: k }
-        //             CellValue::TxnId(k) -> CellValue::Id(RowId { commit: hash, counter: k })
-        // 4. apply resolved Ops to tables via table.insert_row
-        // 5. check_rules
-        // 6. push CommitMeta into store.commit_graph, advance heads
-        // 7. return hash
+    }
+
+    pub(super) fn abort(self) {
+        Self::invalidate_handles(self.pending_handles, "txn abort");
     }
 }

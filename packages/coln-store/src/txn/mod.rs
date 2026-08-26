@@ -55,6 +55,10 @@ impl<'a> Transaction<'a> {
         self.inner.commit(self.store)
     }
     // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreIntError> { ... }
+
+    pub fn abort(self) {
+        self.inner.abort()
+    }
 }
 
 pub struct OwnedTransaction {
@@ -77,6 +81,11 @@ impl OwnedTransaction {
         values: Vec<TxnValue>,
     ) -> Result<RowHandle, StoreError> {
         self.inner.add(&self.store, table, values)
+    }
+
+    pub fn abort(self) -> Store {
+        self.inner.abort();
+        self.store
     }
 
     // We need to return Store to the user for roll back purposes, so the Err variant must be large
@@ -223,6 +232,39 @@ mod tests {
 
         let edge = store.table_at(&edges).expect("Edges");
         assert_eq!(edge.cell_at(0, 0), Some(CellValue::Id(node_id)));
+    }
+
+    #[test]
+    fn abort_invalidates_returned_row_handles() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store
+            .create_table(nodes.clone(), table_schema(vec![], None))
+            .expect("create nodes table");
+        store
+            .create_table(
+                edges.clone(),
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
+            )
+            .expect("create edges table");
+        let mut tx = store.transaction();
+        let node = tx.add(&nodes, vec![]).expect("add node");
+        tx.abort();
+        let err = node.row_id().expect_err("abort invalidates handle");
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
+        let mut tx = store.transaction();
+        let err = tx
+            .add(&edges, vec![node.into()])
+            .expect_err("aborted handle cannot be reused");
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
+        assert_eq!(store.table_at(&nodes).expect("Nodes").row_count(), 0);
     }
 
     #[test]
