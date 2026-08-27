@@ -52,7 +52,6 @@ impl IdColumn {
         self.counters.remove(row);
     }
 
-    // TODO use scope_to_value / seek when supported
     /// Sorted position of `id`: `Ok(row)` when present, `Err(row)` with the
     /// insertion point otherwise. Requires ids sorted by
     /// `(commit_idx, counter)`.
@@ -72,53 +71,21 @@ impl IdColumn {
             Ordering::Greater => {}
         }
 
-        // Binary search the rest of the run. Each `get` probe jumps to the
-        // containing slab through the column index instead of decoding the
-        // run from the start.
-        let mut lo = run.start;
-        let mut hi = run.end - 1;
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            let counter = self.counters.get(mid).expect("run is in bounds");
-            match counter.cmp(&id.counter) {
-                Ordering::Less => lo = mid + 1,
-                Ordering::Equal => return Ok(mid),
-                Ordering::Greater => hi = mid,
-            }
+        let found = self.counters.scope_to_value(id.counter, run);
+        if found.is_empty() {
+            Err(found.start)
+        } else {
+            Ok(found.start)
         }
-        Err(lo)
     }
 
     pub(super) fn len(&self) -> usize {
         self.counters.len()
     }
 
-    // TODO switch to scope_to_value when delta column supports it.
     pub(super) fn scope_to_value(&self, value: PackedRowId, range: Range<usize>) -> Range<usize> {
         let range = self.commit_idxs.scope_to_value(value.commit_idx, range);
-
-        let mut start = range.start;
-        let mut end = range.end;
-        while start < end {
-            let mid = start + (end - start) / 2;
-            if self.counters.get(mid).expect("range is in bounds") < value.counter {
-                start = mid + 1;
-            } else {
-                end = mid;
-            }
-        }
-        let lower = start;
-
-        end = range.end;
-        while start < end {
-            let mid = start + (end - start) / 2;
-            if self.counters.get(mid).expect("range is in bounds") <= value.counter {
-                start = mid + 1;
-            } else {
-                end = mid;
-            }
-        }
-        lower..start
+        self.counters.scope_to_value(value.counter, range)
     }
 }
 
