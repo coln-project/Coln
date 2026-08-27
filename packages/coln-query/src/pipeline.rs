@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The main entrypoint to the query engine. This wires up all stages into one
-//! piece. The input to the [`Pipeline`] is a [(logical) query program](`Code`)
+//! piece. The input to the [`Pipeline`] is a [(logical) query program](`QueryIr`)
 //! which is technically abstract syntax _forest_ (ASF). A _single_ query would
 //! be a tree but a query _program_ can contain multiple queries, hence the name.
 //! Importantly, said query program must be in a valid execution order already,
@@ -14,13 +14,13 @@
 //!
 //! Here's an overview of the stages:
 //!
-//! 1. Typechecker: Takes an [ASF](Code) and type checks it.
+//! 1. Typechecker: Takes an [ASF](QueryIr) and type checks it.
 //!    Currently skipped, as `coln-compiler` already emits type checked FLIR.
-//! 2. Optimizer: Takes the [type-checked ASF](Code) and optimizes it
+//! 2. Optimizer: Takes the [type-checked ASF](QueryIr) and optimizes it
 //!    _logically_. It can thereby rewrite parts of the queries. As of now,
 //!    there is no logical optimization implemented. Returns a type-checked
 //!    and optimized ASF.
-//! 3. Lowering: Takes the [type-checked and optimized ASF](Code) and lets the
+//! 3. Lowering: Takes the [type-checked and optimized ASF](QueryIr) and lets the
 //!    [`Backend`] rewrite it into the operator vocabulary it can actually
 //!    execute — see [`Backend::lower`]. Unlike the optimizer this is not
 //!    optional: the [`DbspBackend`] folds every
@@ -28,7 +28,7 @@
 //!    into a sequence of binary joins here, because it has no other way to
 //!    execute one. It runs *before* the resolver so that the nodes it mints get
 //!    resolved along with everything else.
-//! 4. Resolver: Takes a [type-checked, optimized and lowered ASF](`Code`).
+//! 4. Resolver: Takes a [type-checked, optimized and lowered ASF](`QueryIr`).
 //!    It resolves all variables (of the host language) to slots in an
 //!    interpretation [`Environment`].
 //!    in a static pass over the ASF, speeding up variable lookup and checking
@@ -55,7 +55,7 @@ use std::num::NonZeroUsize;
 use crate::{
     error::QueryEngineError,
     host::{
-        Code, HostInterpreter, InterpreterContext, ScalarHost,
+        HostInterpreter, InterpreterContext, QueryIr, ScalarHost,
         resolver::ResolvedCode,
         variable::{Environment, Value},
     },
@@ -117,7 +117,7 @@ impl<O: Optimizer, B: Backend> Pipeline<O, B> {
     /// with the [`Optimizer`](`Self::optimizer`).
     ///
     /// The program is taken by value because its code is *moved* through the
-    /// stages: each one consumes a [`Code`] and returns the rewritten one.
+    /// stages: each one consumes a [`QueryIr`] and returns the rewritten one.
     pub fn runtime(self, mut program: impl QueryProgram) -> Result<B::Runtime, QueryEngineError> {
         let type_checked = program.take_code(); // Not type checked, for now.
         let optimized = self.optimizer.optimize(type_checked)?;
@@ -139,7 +139,7 @@ impl Pipeline<(), ()> {
     /// Resolve and evaluate a self-contained **host-language** program once (no
     /// relational operators), returning the value of its last statement. For pure
     /// scalar/host tests. Relational programs must go through [`Self::runtime`].
-    pub fn run(host_code: impl Into<Code>) -> Result<Option<Value>, QueryEngineError> {
+    pub fn run(host_code: impl Into<QueryIr>) -> Result<Option<Value>, QueryEngineError> {
         let type_checked = host_code.into(); // Not for now.
         let resolved = ResolvedCode::from(type_checked)?;
 

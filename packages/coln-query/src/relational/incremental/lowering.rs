@@ -55,7 +55,7 @@
 use crate::{
     error::{LoweringError, RewriteError},
     host::{
-        Code,
+        QueryIr,
         expr::{Expr, VarExpr},
         walk::{self, Node},
     },
@@ -68,7 +68,7 @@ use std::collections::HashMap;
 
 /// Rewrite `plan` so that no [`MultiWayEquiJoinExpr`] remains, leaving a plan
 /// the DBSP backend can build a circuit from. See the [module docs](self).
-pub fn fold_multi_way_joins(plan: Code) -> Result<Code, LoweringError> {
+pub fn fold_multi_way_joins(plan: QueryIr) -> Result<QueryIr, LoweringError> {
     let lowered = RewriteDriver::new(vec![Box::new(MultiWayJoinFold)]).run(plan)?;
 
     // Checked, not assumed. What this stage owes the interpreter is a
@@ -266,7 +266,7 @@ mod tests {
     }
 
     fn lower(expr: Expr) -> Result<Expr, LoweringError> {
-        let lowered = fold_multi_way_joins(Code::new(vec![Stmt::from(ExprStmt { expr })]))?;
+        let lowered = fold_multi_way_joins(QueryIr::new(vec![Stmt::from(ExprStmt { expr })]))?;
         match lowered.into_stmts().pop() {
             Some(Stmt::Expr(stmt)) => Ok(stmt.expr),
             other => panic!("Lowering a single expression statement yielded {other:?}"),
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn leaves_a_plan_without_multi_way_joins_untouched() {
-        let plan = Code::new(vec![Stmt::from(VarStmt {
+        let plan = QueryIr::new(vec![Stmt::from(VarStmt {
             name: "joined".to_string(),
             initializer: Some(Expr::from(EquiJoinExpr {
                 left: relation("r0"),

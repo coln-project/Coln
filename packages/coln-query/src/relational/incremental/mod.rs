@@ -11,7 +11,7 @@ use crate::error::{BuildError, LoweringError, RuntimeError};
 use crate::{
     api::deltas::ZWeight,
     host::{
-        Code, HostInterpreter, InterpreterContext, resolver::ResolvedCode, variable::Environment,
+        HostInterpreter, InterpreterContext, QueryIr, resolver::ResolvedCode, variable::Environment,
     },
     relational::{
         Delta,
@@ -66,7 +66,7 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
     /// [`MultiWayEquiJoinExpr`](crate::relational::expr::MultiWayEquiJoinExpr)
     /// has to become a chain of binary ones before
     /// [`build`](Self::build) walks the plan. See [`lowering`].
-    fn lower(&self, plan: Code) -> Result<Code, LoweringError> {
+    fn lower(&self, plan: QueryIr) -> Result<QueryIr, LoweringError> {
         lowering::fold_multi_way_joins(plan)
     }
 

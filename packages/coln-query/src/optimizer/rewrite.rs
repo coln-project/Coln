@@ -60,7 +60,7 @@
 use crate::{
     error::RewriteError,
     host::{
-        Code,
+        QueryIr,
         expr::{
             AssignExpr, BinaryExpr, CallExpr, Expr, ExprVisitorOwn, FunctionExpr, GetIndexExpr,
             GroupingExpr, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
@@ -150,7 +150,7 @@ impl RewriteDriver {
     /// [`max_rounds`](Self::with_max_rounds) walks, naming the ones that were,
     /// since that is what a pair of rules undoing each other looks like from
     /// here.
-    pub fn run(&mut self, plan: Code) -> Result<Code, RewriteError> {
+    pub fn run(&mut self, plan: QueryIr) -> Result<QueryIr, RewriteError> {
         let mut plan = plan;
         let mut fired = Vec::new();
 
@@ -162,7 +162,7 @@ impl RewriteDriver {
             plan = plan
                 .into_iter()
                 .map(|stmt| rewriter.visit_stmt(stmt, ()))
-                .collect::<Result<Code, _>>()?;
+                .collect::<Result<QueryIr, _>>()?;
             if rewriter.fired.is_empty() {
                 return Ok(plan);
             }
@@ -510,11 +510,11 @@ mod tests {
         Expr::from(VarExpr::new(name))
     }
 
-    fn plan(expr: Expr) -> Code {
-        Code::new(vec![Stmt::from(ExprStmt { expr })])
+    fn plan(expr: Expr) -> QueryIr {
+        QueryIr::new(vec![Stmt::from(ExprStmt { expr })])
     }
 
-    fn kinds(plan: &Code) -> Vec<RelKind> {
+    fn kinds(plan: &QueryIr) -> Vec<RelKind> {
         walk::pre_order(plan)
             .filter_map(Node::as_rel)
             .map(RelExpr::kind)

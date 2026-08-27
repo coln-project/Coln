@@ -112,13 +112,11 @@ pub fn new_relation<R: RelationData>(inner: R) -> RelationRef {
     Rc::new(RefCell::new(Relation::new(inner)))
 }
 
-/// The backend-neutral payload of a [`Relation`] — a type-erased envelope over a
-/// backend's concrete relation representation (a DBSP `StreamWrapper`, a batch
-/// Z-set, …).
+/// The backend-neutral payload of a [`Relation`]: A type-erased envelope over a
+/// backend's concrete relation representation (a
+/// [`DbspRelation`](super::incremental::dbsp::DbspRelation), a batch Z-set, …).
 ///
-/// This is layer 3 of the multi-backend split ("the only place `StreamWrapper`
-/// vs a batch Z-set actually differs"). It carries **no algebra**: relational
-/// operations live in each backend's
+/// It carries **no algebra**: relational operations live in each backend's
 /// [`RelExprVisitor`](crate::relational::expr::RelExprVisitor), which recovers
 /// its own concrete type via [`Relation::downcast_ref`]. Keeping this trait
 /// algebra-free is what stops any backend's operator vocabulary from leaking

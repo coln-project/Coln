@@ -5,7 +5,7 @@
 use crate::{
     error::SyntaxError,
     host::{
-        Code,
+        QueryIr,
         expr::{
             AssignExpr, BinaryExpr, CallExpr, Expr, ExprVisitorMut, FunctionExpr, GetIndexExpr,
             GroupingExpr, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
@@ -86,21 +86,21 @@ impl<T> ScopeStack<T> {
 /// [`ResolvedCode::from`] mints one, so a backend cannot be handed an
 /// unprocessed plan.
 #[derive(Clone)]
-pub struct ResolvedCode(Code);
+pub struct ResolvedCode(QueryIr);
 
 impl ResolvedCode {
     /// Run the static pipeline over a raw plan and resolve variable slots.
-    pub fn from(code: impl Into<Code>) -> Result<Self, SyntaxError> {
+    pub fn from(code: impl Into<QueryIr>) -> Result<Self, SyntaxError> {
         let mut code = code.into();
         let mut scopes = ScopeStack::new();
         let mut ctx = ResolverContext::new(&mut scopes);
         Resolver::new().resolve(code.iter_mut(), &mut ctx)?;
         Ok(Self(code))
     }
-    pub fn as_code(&self) -> &Code {
+    pub fn as_code(&self) -> &QueryIr {
         &self.0
     }
-    pub fn into_code(self) -> Code {
+    pub fn into_code(self) -> QueryIr {
         self.0
     }
 }

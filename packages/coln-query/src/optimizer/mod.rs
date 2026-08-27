@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{error::OptimizationError, host::Code};
+use crate::{error::OptimizationError, host::QueryIr};
 
 pub mod rewrite;
 
@@ -18,7 +18,7 @@ pub mod rewrite;
 /// - predicate pushdown
 /// - expression simplification
 pub trait Optimizer: Clone {
-    fn optimize(self, code: Code) -> Result<Code, OptimizationError> {
+    fn optimize(self, code: QueryIr) -> Result<QueryIr, OptimizationError> {
         // The default impl does nothing and simply returns the IR as is.
         Ok(code)
     }

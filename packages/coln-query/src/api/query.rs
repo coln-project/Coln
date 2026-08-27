@@ -7,7 +7,7 @@
 //! using [`HostExprs`](crate::host::expr::Expr) and [`RelExprs`](crate::relational::expr::RelExpr).
 
 use crate::error::SyntaxError;
-use crate::host::Code;
+use crate::host::QueryIr;
 use crate::host::expr::{BinaryExpr, Expr, Literal, LiteralExpr, VarExpr};
 use crate::host::operator::Operator;
 use crate::host::stmt::{Stmt, VarStmt};
@@ -33,12 +33,11 @@ type DerivedViewName = TableRef;
 /// coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to.
 ///
 /// The [`Catalog`] half is served straight out of [`base_tables`](Self::base_tables),
-/// which stores FLIR's own richer [`BaseTableSchema`] — column indices, store-engine
-/// columns and all — rather than a second copy of what a query plan needs. That
-/// is exactly the freedom [`Catalog::source_schema`]'s [`Cow`] return buys.
+/// which stores FLIR's own richer [`BaseTableSchema`] which includes the schema
+/// view according to coln-compiler and coln-store next coln-query's.
 pub struct FlirProgram {
     /// The (raw, that is, unresolved, unoptimized) statements themselves.
-    code: Code,
+    code: QueryIr,
     /// The declared base tables. Doubles as this program's [`Catalog`]: every
     /// [`SourceExpr`] the lowering mints names one of these.
     base_tables: HashMap<BaseTableName, BaseTableSchema>,
@@ -110,7 +109,7 @@ impl From<&BaseTableSchema> for TableSchema {
 impl FlirProgram {
     fn empty() -> Self {
         Self {
-            code: Code::default(),
+            code: QueryIr::default(),
             base_tables: HashMap::new(),
             derived_views: HashMap::new(),
         }
@@ -466,11 +465,11 @@ impl Catalog for FlirProgram {
 }
 
 impl QueryProgram for FlirProgram {
-    fn code(&self) -> &Code {
+    fn code(&self) -> &QueryIr {
         &self.code
     }
 
-    fn take_code(&mut self) -> Code {
+    fn take_code(&mut self) -> QueryIr {
         std::mem::take(&mut self.code)
     }
 }
@@ -525,10 +524,10 @@ impl FriendlyRule {
 }
 
 /// Prepares either a [left-hand side](ir::Rule::antecedents) or a
-/// [right-hand side](ir::Rule::consequents) of a [`ir::Rule`] for inclusion in an
-/// antijoin by partitioning a `Vec<Prop>` into atoms and conditions. This is
-/// useful because applying all atoms first, guarantees that every variable a
-/// condition may refer to is in scope already.
+/// [right-hand side](ir::Rule::consequents) of a [`ir::Rule`] for inclusion
+/// in an antijoin by partitioning a `Vec<Prop>` into atoms and conditions.
+/// This is useful because applying all atoms first, guarantees that every
+/// variable a condition may refer to is in scope already.
 struct ConjunctiveQuery {
     atoms: Vec<ir::Atom>,
     // Currently, only equality conditions are part of the FLIR.

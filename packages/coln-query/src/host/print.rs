@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Rendering a [`Code`](super::Code) program as an indented node tree.
+//! Rendering a [`QueryIr`](super::QueryIr) program as an indented node tree.
 //!
 //! One line per node: how its parent addresses it, its kind, and the payloads
 //! that are *not* children — an operator, a schema, whether a variable has been
@@ -71,11 +71,11 @@ macro_rules! emit {
 /// `code` rendered as an indented node tree.
 ///
 /// A whole program is better reached through
-/// [`Code::to_tree`](super::Code::to_tree), which needs no import. This takes a
-/// bare `[Stmt]` because a *sub*-forest — a fixed point's step body, a
-/// function's body — is a plain `Vec<Stmt>` rather than a
-/// [`Code`](super::Code), and inspecting one of those in isolation is exactly
-/// when a tree rendering earns its keep.
+/// [`QueryIr::to_tree`](super::QueryIr::to_tree), which needs no import.
+/// This takes a bare `[Stmt]` because a *sub*-forest (a fixed point's step body,
+/// a function's body) is a plain `Vec<Stmt>` rather than a
+/// [`QueryIr`](super::QueryIr), and inspecting one of those in isolation is
+/// exactly when a tree rendering earns its keep.
 ///
 /// Named after [`ToString`]: it says what it *returns*, not what it does.
 /// There is deliberately no [`Display`](std::fmt::Display) wrapper — the
@@ -448,7 +448,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::host::Code;
+    use crate::host::QueryIr;
     use crate::program::QueryProgram;
     use crate::relational::{
         TableSchema,
@@ -552,7 +552,7 @@ mod tests {
             // no import, and no catalog to describe the leaves with — see
             // `a_source_is_described_by_the_catalog_the_program_carries` for the
             // same plan rendered against one.
-            Code::from(transitive_closure()).to_tree(),
+            QueryIr::from(transitive_closure()).to_tree(),
             "\
 VarStmt edge
 └─ init: Source \"edge\"

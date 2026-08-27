@@ -6,7 +6,7 @@
 //! It provides helpers for testing and benchmarking purposes.
 
 use crate::{
-    host::Code,
+    host::QueryIr,
     program::QueryProgram,
     relational::{
         Column, TableRef, TableSchema, TupleValue,
@@ -48,7 +48,7 @@ pub fn table_schema<'a>(
 /// of the relations its [`SourceExpr`](crate::relational::expr::SourceExpr)
 /// leaves name.
 pub struct TestProgram {
-    code: Code,
+    code: QueryIr,
     sources: SourceSchemas,
 }
 
@@ -56,7 +56,7 @@ impl TestProgram {
     /// `schemas` are keyed by their own [`name`](TableSchema::name), which is
     /// the name a [`SourceExpr` leaf](crate::relational::expr::SourceExpr)
     /// refers to them.
-    pub fn new(code: impl Into<Code>, schemas: impl IntoIterator<Item = TableSchema>) -> Self {
+    pub fn new(code: impl Into<QueryIr>, schemas: impl IntoIterator<Item = TableSchema>) -> Self {
         Self {
             code: code.into(),
             sources: schemas
@@ -77,11 +77,11 @@ impl Catalog for TestProgram {
 }
 
 impl QueryProgram for TestProgram {
-    fn code(&self) -> &Code {
+    fn code(&self) -> &QueryIr {
         &self.code
     }
 
-    fn take_code(&mut self) -> Code {
+    fn take_code(&mut self) -> QueryIr {
         std::mem::take(&mut self.code)
     }
 }

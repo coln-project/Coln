@@ -19,6 +19,6 @@ pub mod tuple;
 pub mod variable;
 pub mod walk;
 
-pub use code::Code;
+pub use code::QueryIr;
 pub use interpreter::{HostInterpreter, InterpreterContext, ScalarHost};
 pub use walk::{Node, post_order, pre_order, walk};

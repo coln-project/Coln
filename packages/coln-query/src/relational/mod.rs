@@ -36,7 +36,7 @@ use std::num::NonZeroUsize;
 
 use crate::{
     error::{BuildError, LoweringError, RuntimeError},
-    host::{Code, resolver::ResolvedCode},
+    host::{QueryIr, resolver::ResolvedCode},
     relational::catalog::SourceSchemas,
     relational::expr::{SinkId, SourceId},
 };
@@ -78,7 +78,7 @@ pub trait Backend {
     ///
     /// Takes `&self` rather than `self` so it can run before
     /// [`build`](Self::build) consumes the backend.
-    fn lower(&self, plan: Code) -> Result<Code, LoweringError> {
+    fn lower(&self, plan: QueryIr) -> Result<QueryIr, LoweringError> {
         Ok(plan)
     }
 
@@ -115,8 +115,10 @@ pub trait Runtime {
         source: &SourceId,
         rows: impl IntoIterator<Item = (TupleValue, ZWeight)>,
     ) -> Result<(), Self::Error>;
+
     /// Advance the computation over everything fed since the last commit.
     fn commit(&mut self) -> Result<(), Self::Error>;
+
     /// Read a result relation by the name of the [`OutputExpr`](expr::OutputExpr)
     /// tap that produced it. Errors if no *readable* output carries that name,
     /// e.g. the name is unknown, or it belongs to a print-only
@@ -126,14 +128,15 @@ pub trait Runtime {
     /// List all [`OutputExpr`](expr::OutputExpr) by their name (a [`SinkId`]).
     fn list_outputs(&self) -> impl Iterator<Item = &'_ SinkId>;
     /// Get an iterator over all known [`outputs`](Self::output). A shortcut for
-    /// inquiring all outputs (by calling [`output`](Self::output) for all valid
-    /// [`SinkId`]s) for new results after a call to [`commit`](Self::commit).
+    /// inquiring all outputs (through calling [`output`](Self::output) for
+    /// all valid [`SinkId`]s) for new results after a call to
+    /// [`commit`](Self::commit).
     fn all_outputs(&self) -> impl Iterator<Item = (&'_ SinkId, Self::Output)> {
         self.list_outputs().map(|sink_id| {
             (
                 sink_id,
                 self.output(sink_id)
-                    .expect("list_outputs impl must only return valid sink ids"),
+                    .expect("list_outputs() impl must only return valid sink ids"),
             )
         })
     }
