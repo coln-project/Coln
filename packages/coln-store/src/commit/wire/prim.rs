@@ -5,7 +5,7 @@
 use std::io::Write;
 
 use coln_flir_rs::ir::{self, BuiltinTy};
-use hexane::{PackError, lebsize};
+use hexane::{Codec, PackError, lebsize};
 
 use crate::commit::leb128 as commit_leb128;
 use crate::{commit::error::CodecError, txn::TxnCellValue};
@@ -116,17 +116,17 @@ impl ValueMeta {
 }
 
 impl hexane::ColumnValue for ValueMeta {
-    type Encoding = hexane::RleEncoding<ValueMeta>;
+    type Encoding<C: Codec> = hexane::RleEncoding<ValueMeta, C>;
 }
 
 impl hexane::RleValue for ValueMeta {
-    fn try_unpack(data: &[u8]) -> Result<(usize, ValueMeta), PackError> {
+    fn try_unpack<C: Codec>(data: &[u8]) -> Result<(usize, ValueMeta), PackError> {
         let mut buf = data;
         let start = buf.len();
         let v = leb128::read::unsigned(&mut buf)?;
         Ok((start - buf.len(), ValueMeta(v)))
     }
-    fn pack(value: ValueMeta, out: &mut Vec<u8>) -> bool {
+    fn pack<C: Codec>(value: ValueMeta, out: &mut Vec<u8>) -> bool {
         leb128::write::unsigned(out, value.0).unwrap();
         true
     }
