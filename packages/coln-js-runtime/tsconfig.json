@@ -1,12 +1,16 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "strict": true,
-    "noEmit": true,
-    "types": ["node"]
-  },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+    "compilerOptions": {
+        "target": "ESNext",
+        "lib": ["ESNext", "DOM"],
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "libReplacement": true,
+
+        "rootDir": ".",
+        "outDir": "dist",
+
+        "strict": true,
+        "types": ["node"]
+    },
+    "include": ["src", "test"]
 }

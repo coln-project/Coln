@@ -1,0 +1,19 @@
+[package]
+edition = "2021"
+name = "coln-node-bindings"
+version = "0.1.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi-derive = "3"
+napi = { version = "3", features = ["napi6"] }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"

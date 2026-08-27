@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  "packages/coln-js-runtime",
   "packages/coln-flir-rs",
+  "packages/coln-node-bindings",
   "packages/coln-store",
   "packages/coln-query",
   "packages/coln-integrator",
