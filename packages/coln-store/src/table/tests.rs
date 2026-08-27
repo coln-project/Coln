@@ -251,7 +251,7 @@ fn staged_delete_removes_row_and_undo_restores_it() {
 /// scanning the table. Inserts and deletes are the only ways in and out of
 /// storage, so both have to keep it in step.
 #[test]
-#[ignore = "indexing disabled until we need it"]
+#[ignore = "rebuild index disabled until we need it"]
 fn rebuild_index_tracks_rows_referring_to_an_id() {
     let mut tbl = TestTable::new(Path::from("edge"), id_schema(&["left", "right"]));
     let a = row_id_from(1, 0);
@@ -647,6 +647,7 @@ fn invalid_primary_key_name_panics_at_construction() {
 }
 
 /// Manual benchmark for the primary key duplicate check on insert.
+/// Inserting `n` rows of one integer (the primary key) and one row id.
 /// Run with:
 /// cargo test -p coln-store --release pk_insert_benchmark -- --ignored --nocapture
 #[test]
@@ -654,21 +655,30 @@ fn invalid_primary_key_name_panics_at_construction() {
 fn pk_insert_benchmark() {
     let schema = ir::Schema {
         entity_variant: ir::EntityVariant::Table,
-        columns: vec![ir::ColumnEntry {
-            path: Path::from("c0"),
-            col_type: ColType::BuiltinTy {
-                builtin_ty: BuiltinTy::BuiltinInt,
+        columns: vec![
+            ir::ColumnEntry {
+                path: Path::from("rid"),
+                col_type: ColType::RowId {
+                    path: Path::from("T"),
+                },
             },
-        }],
+            ir::ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
+            },
+        ],
         primary_key: Some(vec![Path::from("c0")]),
     };
     let mut tbl = TestTable::new(Path::from("bench"), schema);
     let n = 50_000;
     let start = std::time::Instant::now();
     for i in 0..n {
-        let values = vec![CellValue::Int(i)];
+        let row_id = test_row_id(i as u32);
+        let values = vec![CellValue::Id(row_id), CellValue::Int(i)];
         tbl.validate_insert(&values).expect("keys are unique");
-        tbl.insert_row(values, test_row_id(i as u32));
+        tbl.insert_row(values, row_id);
     }
     println!("inserted {n} rows with pk check in {:?}", start.elapsed());
 }
