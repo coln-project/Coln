@@ -6,7 +6,7 @@ members = [
   "packages/coln-query",
   "packages/coln-integrator",
   "packages/coln-batch"
-]
+, "packages/coln-node-runtime"]
 resolver = "3"
 
 [workspace.package]

@@ -1,0 +1,20 @@
+[package]
+name = "coln-node-runtime"
+edition = "2024"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+coln-store = { path = "../coln-store" }
+coln-flir-rs = { path = "../coln-flir-rs" }
+napi = "3"
+napi-derive = "3"
+
+[build-dependencies]
+napi-build = "1"
+
+[lib]
+crate-type = ["cdylib"]

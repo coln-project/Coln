@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import * as ColnSet from "./ColnSet"
-import { Value, StoreHandle, RowView, TransactionHandle, getRowRef } from "#wasm-bodge/bindings"
+import { Scalar, StoreHandle, RowView, TransactionHandle, getRowRef } from "#wasm-bodge/bindings"
 import { Tuple, tupleEqual } from "./tuple"
 
 export class View implements ColnSet.View {
@@ -17,7 +17,7 @@ export class View implements ColnSet.View {
     this.params = params;
   }
 
-  has(x: Value): boolean {
+  has(x: Scalar): boolean {
     const rowRef = getRowRef(x)
     if (rowRef == undefined) return false;
 
@@ -41,7 +41,7 @@ export class Transaction extends View implements ColnSet.Transaction {
     this.transaction = transaction;
   }
   
-  add(): Value {
+  add(): Scalar {
     return this.transaction.add(this.path, this.params);
   }
 }

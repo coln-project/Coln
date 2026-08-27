@@ -11,7 +11,7 @@ use coln_store::{
 };
 use js_sys::Reflect;
 
-use crate::dto::{CommitChunk, CommitHash, RowId, RowRef, RowView, Value};
+use crate::dto::{CommitChunk, CommitHash, RowId, RowRef, RowView, Scalar};
 use crate::error::js_error;
 
 use wasm_bindgen::JsValue;
@@ -31,7 +31,7 @@ pub struct TransactionHandle {
 }
 
 fn resolve_value_id(js_value: &JsValue, row_id: RowId) -> Result<(), JsValue> {
-    let row_id = Value::existing_id(row_id);
+    let row_id = Scalar::existing_id(row_id);
     let row_id_js = serde_wasm_bindgen::to_value(&row_id).map_err(js_error)?;
 
     let new_row_ref = Reflect::get(&row_id_js, &"value".into())?;
@@ -42,13 +42,13 @@ fn resolve_value_id(js_value: &JsValue, row_id: RowId) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 impl TransactionHandle {
-    pub fn add(&mut self, path: String, values: Vec<Value>) -> Result<JsValue, JsValue> {
+    pub fn add(&mut self, path: String, values: Vec<Scalar>) -> Result<JsValue, JsValue> {
         let path = ir::Path::from(path);
         let values = values.into_iter().map(|v| v.into()).collect::<Vec<_>>();
         let handle = self.tx()?.add(&path, values).map_err(js_error)?;
 
         let (tx_id, counter) = handle.pending_ids().map_err(js_error)?;
-        let temp_id = Value::temp_id(tx_id, counter);
+        let temp_id = Scalar::temp_id(tx_id, counter);
         let js_value = serde_wasm_bindgen::to_value(&temp_id)?;
         self.pending_handles.push((handle, js_value.clone()));
 

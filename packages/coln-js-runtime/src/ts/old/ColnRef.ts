@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { Value, RowView  } from "#wasm-bodge/bindings";
+import { Scalar } from "#wasm-bodge/bindings";
 
 export interface View {
-  has(x: Value): boolean;
-  values(): Iterator<RowView>;
+  get(): Scalar
 }
 
 export interface Transaction extends View {
-  add(): Value;
+  set(v: Scalar): void;
 }

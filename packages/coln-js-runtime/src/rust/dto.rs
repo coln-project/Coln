@@ -110,57 +110,57 @@ impl TryFrom<RowRef> for StoreRowId {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 #[tsify(from_wasm_abi, into_wasm_abi)]
 #[serde(tag = "tag", content = "value", rename_all = "lowercase")]
-pub enum Value {
+pub enum Scalar {
     #[serde(rename = "row_id")]
     Id(RowRef),
     Int(i64),
     String(String),
 }
 
-impl Value {
+impl Scalar {
     pub(crate) fn temp_id(tx_id: u64, counter: u32) -> Self {
         let temp_id = TempRowId { tx_id, counter };
-        Value::Id(RowRef::Pending(temp_id))
+        Scalar::Id(RowRef::Pending(temp_id))
     }
 
     pub(crate) fn existing_id(row_id: RowId) -> Self {
-        Value::Id(RowRef::Existing(row_id))
+        Scalar::Id(RowRef::Existing(row_id))
     }
 
     fn row_ref(&self) -> Option<RowRef> {
         match self {
-            Value::Id(row_ref) => Some(row_ref.clone()),
-            Value::Int(_) => None,
-            Value::String(_) => None,
+            Scalar::Id(row_ref) => Some(row_ref.clone()),
+            Scalar::Int(_) => None,
+            Scalar::String(_) => None,
         }
     }
 }
 
-#[wasm_bindgen(js_name = valueEqual)]
-pub fn value_equal(v0: Value, v1: Value) -> bool {
+#[wasm_bindgen(js_name = scalarEqual)]
+pub fn scalar_equal(v0: Scalar, v1: Scalar) -> bool {
     v0 == v1
 }
 
 #[wasm_bindgen(js_name = getRowRef)]
-pub fn value_row_ref(v: Value) -> Option<RowRef> {
+pub fn scalar_row_ref(v: Scalar) -> Option<RowRef> {
     v.row_ref()
 }
 
 // For reading
-impl From<StoreCellValue> for Value {
+impl From<StoreCellValue> for Scalar {
     fn from(value: StoreCellValue) -> Self {
         match value {
-            StoreCellValue::Id(id) => Value::Id(RowId::from(id).into()),
-            StoreCellValue::Int(i) => Value::Int(i),
-            StoreCellValue::Str(s) => Value::String(s),
+            StoreCellValue::Id(id) => Scalar::Id(RowId::from(id).into()),
+            StoreCellValue::Int(i) => Scalar::Int(i),
+            StoreCellValue::Str(s) => Scalar::String(s),
         }
     }
 }
 
-impl From<Value> for StoreTxnValue {
-    fn from(value: Value) -> Self {
+impl From<Scalar> for StoreTxnValue {
+    fn from(value: Scalar) -> Self {
         match value {
-            Value::Id(row_ref) => {
+            Scalar::Id(row_ref) => {
                 let handle = match row_ref {
                     RowRef::Pending(temp_row_id) => {
                         RowHandle::from_pending(temp_row_id.tx_id.into(), temp_row_id.counter)
@@ -171,8 +171,8 @@ impl From<Value> for StoreTxnValue {
                 };
                 handle.into()
             }
-            Value::Int(i) => StoreTxnValue::Int(i),
-            Value::String(s) => StoreTxnValue::Str(s),
+            Scalar::Int(i) => StoreTxnValue::Int(i),
+            Scalar::String(s) => StoreTxnValue::Str(s),
         }
     }
 }
@@ -182,7 +182,7 @@ impl From<Value> for StoreTxnValue {
 #[serde(rename_all = "camelCase")]
 pub struct RowView {
     pub row_id: RowRef,
-    pub values: Vec<Value>,
+    pub values: Vec<Scalar>,
 }
 
 impl From<StoreRowId> for RowId {
@@ -210,7 +210,7 @@ impl From<StoreRowView> for RowView {
         let row_id: RowId = value.row_id.into();
         Self {
             row_id: row_id.into(),
-            values: value.values.into_iter().map(Value::from).collect(),
+            values: value.values.into_iter().map(Scalar::from).collect(),
         }
     }
 }

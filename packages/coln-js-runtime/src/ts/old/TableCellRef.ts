@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { Value, StoreHandle, TransactionHandle } from "#wasm-bodge/bindings";
+import { Scalar, StoreHandle, TransactionHandle } from "#wasm-bodge/bindings";
 import { Tuple, tupleEqual } from "./tuple"
 import * as ColnRef from "./ColnRef";
 
@@ -21,7 +21,7 @@ export class View implements ColnRef.View {
     this.params = params;
   }
   
-  get(): Value {
+  get(): Scalar {
     const n = this.params.length;
     for (const row of this.store.scanTable(this.path)) {
       if (tupleEqual(row.values.slice(0, n), this.params)) {
@@ -42,7 +42,7 @@ export class Transaction extends View implements ColnRef.Transaction {
 
   // NOTE: this should first check if the value is already set
   // This is incorrect and lazy right now!!!
-  set(v: Value): void {
+  set(v: Scalar): void {
     return this.transaction.add(this.path, [...this.params, v])
   }
 }

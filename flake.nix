@@ -229,7 +229,7 @@
             haskellPackages.cabal-gild
             jq
             just
-            nodejs_24
+            nodejs_26
             pnpm
             packages.wasm-bodge
             rustToolchain
