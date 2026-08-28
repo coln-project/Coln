@@ -1,8 +1,12 @@
 module Coln.MIR.Interpret where
 
 -- Interpret Core syntax into MIR values
+import Data.Map.Ordered qualified as OMap
+
 import Coln.Common
 
+import Coln.Core.Globals qualified as S
+import Coln.Core.Memoed qualified as M
 import Coln.Core.Params
 import Coln.Core.Syntax qualified as S
 import Coln.MIR.Params
@@ -65,3 +69,9 @@ instance Interp (S.Ty c) V.Ty where
     S.BuiltinTy t -> do
       Pair SSet $ V.BuiltinTy t
     S.IsTy t -> interp g e t
+
+interpGlobals :: S.Globals -> V.Globals
+interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions
+ where
+  go :: V.Globals -> (Name, S.Definition Global) -> V.Globals
+  go acc (x, def) = acc OMap.>| (x, interp acc BwdNil def.body.stx)

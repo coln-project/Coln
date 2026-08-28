@@ -72,7 +72,7 @@ compileEqualityType eq = do
 instance Compile S.Ty V.Ty where
   compile = \case
     S.U u -> const $ V.U u
-    S.Decode u t -> do
+    S.Decode _ t -> do
       let k = compile t
       V.ebind V.decode . k
     S.Function ft -> V.Function . compileFunctionType ft

@@ -51,7 +51,7 @@ where
 
 import Coln.Report
 import Data.Foldable qualified as F
-import Data.Key (TraversableWithKey (..), Keyed (..), FoldableWithKey (..), Key)
+import Data.Key (FoldableWithKey (..), Key, Keyed (..), TraversableWithKey (..))
 import Data.Kind (Constraint, Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -61,10 +61,10 @@ import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Traversable hiding (for)
+import Data.Vector.Fusion.Bundle qualified as Bundle
+import Data.Vector.Generic (stream, unstreamM)
 import Data.Vector.Strict (Vector)
 import Data.Vector.Strict qualified as V
-import Data.Vector.Generic (stream, unstreamM)
-import Data.Vector.Fusion.Bundle qualified as Bundle
 import Data.Void
 
 import Diagnostician
@@ -278,11 +278,12 @@ instance FoldableWithKey Dict where
     Bundle.foldl (\acc (x, v) -> f acc x v) init . dstream
 
 instance TraversableWithKey Dict where
-  traverseWithKey f d = withHead d <$>
-    traverse (uncurry f) (zip (toList d.head.keys) (toList d.values))
-  mapWithKeyM f d = Dict d.head <$>
-    (unstreamM $ Bundle.mapM (uncurry f) $ dstream d)
-
+  traverseWithKey f d =
+    withHead d
+      <$> traverse (uncurry f) (zip (toList d.head.keys) (toList d.values))
+  mapWithKeyM f d =
+    Dict d.head
+      <$> (unstreamM $ Bundle.mapM (uncurry f) $ dstream d)
 
 -- Name-based Tries
 --------------------------------------------------------------------------------
@@ -344,9 +345,11 @@ freshenBy :: Name -> String -> Name
 freshenBy (Name qual last) s = Name (qual ++ [last]) (fromString s)
 
 freshenFor :: (HasNames a) => a -> Name -> Name
-freshenFor a x = head $ filter
- (\x -> not $ Set.member x (namesIn a))
- (x : (freshenBy x <$> alphaStrings))
+freshenFor a x =
+  head $
+    filter
+      (\x -> not $ Set.member x (namesIn a))
+      (x : (freshenBy x <$> alphaStrings))
 
 -- Any
 --------------------------------------------------------------------------------

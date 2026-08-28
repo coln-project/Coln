@@ -81,4 +81,4 @@ layout p sc = \case
     (gt, M.cons (Dict rt.fieldTypes.head (Vector.fromList ms)))
 
 layoutTop :: RealmId -> V.Ty Theory -> (Trie Generator, M.El Theory)
-layoutTop x = layout BwdNil (emptyScope x)
+layoutTop x = layout (BwdNil :> "root") (emptyScope x)
