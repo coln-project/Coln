@@ -4,10 +4,11 @@
 
 module Coln.Backend.TypeScript.Generate where
 
-
 import Control.Monad.State
+
 -- import Data.Aeson qualified as AE
 import Data.Foldable (foldlM)
+
 -- import Data.Foldable qualified as F
 -- import Data.Map.Ordered qualified as OMap
 import Data.Set qualified as Set
@@ -25,12 +26,12 @@ import Coln.Common
 
 import Coln.Core.Params
 import Coln.Core.Readback
-import Coln.Core.Value qualified as V
 import Coln.Core.Syntax qualified as S
-import Coln.SIR.Syntax qualified as SIR
-import Coln.SIR.Realm qualified as SIR
+import Coln.Core.Value qualified as V
 import Coln.FLIR.Flatten qualified as FLIR
 import Coln.FLIR.Value qualified as FLIR
+import Coln.SIR.Realm qualified as SIR
+import Coln.SIR.Syntax qualified as SIR
 
 mangle :: Name -> TS.Id
 mangle = TS.Id . mangleToDoc
@@ -67,11 +68,11 @@ genInterface access n = \case
 class TrackGlobals a where
   trackGlobals :: a -> State (Set.Set Name) ()
 
-instance TrackGlobals (f c) => TrackGlobals (S.Abs f c) where
+instance (TrackGlobals (f c)) => TrackGlobals (S.Abs f c) where
   trackGlobals (S.Abs _ body) = trackGlobals body
   trackGlobals (S.AbsConst body) = trackGlobals body
 
-instance TrackGlobals a => TrackGlobals (Name, a) where
+instance (TrackGlobals a) => TrackGlobals (Name, a) where
   trackGlobals (_, t) = trackGlobals t
 
 instance TrackGlobals (S.El c) where
@@ -138,7 +139,7 @@ allocParams v = \case
     FLIR.Cons <$> mapWithKeyM (\x sh -> allocParams (TS.Proj v (mangle x)) sh) d
   SIR.Scalar _ -> state \p ->
     ( FLIR.Scalar (FLIR.Param (FId p.numParams))
-    , p { paramVals = p.paramVals :> v, numParams = p.numParams + 1 }
+    , p{paramVals = p.paramVals :> v, numParams = p.numParams + 1}
     )
   SIR.Unstored -> pure FLIR.Erased
 
@@ -188,14 +189,15 @@ varName _ xs = freshNameFor xs
 genAbs :: Access -> TSEnv -> SIR.Abs (SIR.El l) -> (Name, TS.El)
 genAbs access e (SIR.Abs mx body) = do
   let x = freshNameWithPref e.usedNames mx
-  let e' = e
-        { tsLocals = e.tsLocals :> TS.Var (mangle x)
-        , usedNames = Set.insert x e.usedNames
-        }
+  let e' =
+        e
+          { tsLocals = e.tsLocals :> TS.Var (mangle x)
+          , usedNames = Set.insert x e.usedNames
+          }
   (x, genEl access e' body)
 genAbs access e (SIR.AbsConst body) = do
   let x = freshNameFor e.usedNames
-  let e' = e { usedNames = Set.insert x e.usedNames }
+  let e' = e{usedNames = Set.insert x e.usedNames}
   (x, genEl access e' body)
 
 genEl :: Access -> TSEnv -> SIR.El l -> TS.El

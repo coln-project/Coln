@@ -129,7 +129,7 @@ equate S.Unstored _ _ = mempty
 instance Flatten S.Prop Props where
   flatten l = \case
     S.Atom tn t args -> do
-      mv <- asAtomHead <$> flatten l t 
+      mv <- asAtomHead <$> flatten l t
       argvs <- traverse (flatten l) args
       pure $ single $ V.PAtom (V.Atom tn mv (Just <$> concatEls argvs))
     S.And ps -> mconcat <$> traverse (flatten l) (toList ps.values)

@@ -75,7 +75,7 @@ instance Separate (V.Ty Set) S.Query where
   separate n a =
     S.Query (shapeOf a) (S.Abs Nothing (propAt (n + 1) a (V.local (FId n))))
 
-separateGenerator :: TableName -> V.Generator -> Realm
+separateGenerator :: TableName -> V.Generator -> (Maybe (Trie Entity), Maybe (Trie Definition), Maybe (Trie Rule))
 separateGenerator tn = \case
   V.Rel u xs tys -> do
     let names = toList xs
@@ -87,16 +87,16 @@ separateGenerator tn = \case
     let table = Entity Table (zip names ((.shape) <$> septys)) primaryKey
     let atom = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
     let foreignKey = Rule Enforced Consequent (zip names septys) atom S.trueProp
-    Realm{entities = Leaf table, definitions = Node $ fromList [], rules = Node $ fromList [("foreignKey", Leaf foreignKey)]}
+    (Just $ Leaf table, Nothing, Just $ Node $ fromList [("foreignKey", Leaf foreignKey)])
   V.Fun xs tys cod -> case hlevelOf cod of
-    HUnit -> Realm{entities = Node $ fromList [], definitions = Node $ fromList [], rules = Node $ fromList []}
+    HUnit -> (Nothing, Nothing, Nothing)
     HProp -> do
       let names = toList xs
       let argNum = length names
       let septys = uncurry separate <$> zip [0 ..] (toList tys)
       let codProp = propAt argNum cod V.Erased
       let rule = Rule Monitored Antecedent (zip names septys) S.trueProp codProp
-      Realm{entities = Node $ fromList [], definitions = Node $ fromList [], rules = Leaf rule}
+      (Nothing, Nothing, Just $ Leaf rule)
     HSet -> do
       let argNames = toList xs
       let argNum = length argNames
@@ -116,7 +116,7 @@ separateGenerator tn = \case
       let totalCons = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
       let total = Rule Monitored Antecedent (zip names (take argNum septys)) S.trueProp totalCons
 
-      Realm{entities = Leaf table, definitions = Node $ fromList [], rules = Node $ fromList [("foreignKey", Leaf foreignKey), ("total", Leaf total)]}
+      (Just $ Leaf table, Nothing, Just $ Node $ fromList [("foreignKey", Leaf foreignKey), ("total", Leaf total)])
     _ -> panic "bad h-level of cod"
 
 -- separateRealm :: V.Realm -> Realm

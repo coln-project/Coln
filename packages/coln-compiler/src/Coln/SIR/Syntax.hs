@@ -4,6 +4,9 @@ import Coln.Common
 import Coln.Core.Params
 import Coln.MIR.Params
 
+import Data.Aeson qualified as AE
+import Data.Aeson.Encoding qualified as AE
+import Data.Char (toLower)
 import GHC.Generics
 
 data El :: MLevel -> Type where
@@ -49,3 +52,35 @@ data Query = Query
   { shape :: Shape
   , pred :: Abs Prop
   }
+
+-- JSON
+--------------------------------------------------------------------------------
+
+aeOptions :: AE.Options
+aeOptions =
+  AE.defaultOptions
+    { AE.allNullaryToStringTag = True
+    , AE.constructorTagModifier = \x -> fmap toLower (take 1 x) ++ (drop 1 x)
+    }
+
+class PathLike a where
+  namesOf :: a -> [Name]
+
+encName :: Name -> AE.Encoding
+encName n = AE.list AE.toEncoding $ n.init ++ [n.last]
+
+encPath :: (PathLike a) => a -> AE.Encoding
+encPath = AE.list encName . namesOf
+
+instance PathLike Path where namesOf = toList
+
+instance PathLike TableName where namesOf tn = tn.realm : namesOf tn.path
+
+taggedEncoding :: Text -> AE.Series -> AE.Encoding
+taggedEncoding t v = AE.pairs $ AE.pair "tag" (AE.toEncoding t) <> v
+
+instance AE.ToJSON ScalarType where
+  toJSON = panic "aesons behaving badly"
+  toEncoding = \case
+    RowId e -> taggedEncoding "rowId" $ AE.pair "path" $ encPath e
+    BuiltinTy bt -> taggedEncoding "builtin" $ AE.pair "type" $ AE.genericToEncoding aeOptions bt

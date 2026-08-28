@@ -40,7 +40,7 @@ data FieldSetting c = FieldSetting
 intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Chk c
 intro @c sp fieldSettings = Chk \e a -> do
   let go :: Level -> V.Locals -> [(FieldSetting c, (Name, V.Locals -> V.Ty N))] -> IO [(Name, El c)]
-      go lvl _ [] = pure []
+      go _ _ [] = pure []
       go lvl vs ((fs, (x, fieldTyC)) : rest)
         | fs.name == x = do
             let fieldTy = fieldTyC vs
