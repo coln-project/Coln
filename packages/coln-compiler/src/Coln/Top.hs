@@ -16,8 +16,9 @@ import Data.Foldable (for_)
 import Data.Map.Ordered qualified as OMap
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Prettyprinter.Render.Text (hPutDoc)
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, stderr, withFile, pattern WriteMode)
 
 data ExitException = Exit
   deriving (Show, Eq, Ord)
@@ -62,3 +63,5 @@ writeFLIR fp _ realms = for_ (OMap.assocs realms) $ \(rId, r) -> do
   let flir = sirToFLIR rId r
   let fn = fp </> mangleToString rId <> ".json"
   AE.encodeFile fn flir
+  let pn = fp </> mangleToString rId <> ".pretty"
+  withFile pn WriteMode $ \h -> hPutDoc h $ dpretty flir
