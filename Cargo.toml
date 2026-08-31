@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  "packages/coln-js-runtime",
   "packages/coln-flir-rs",
+  "packages/coln-node-bindings",
   "packages/coln-store",
   "packages/coln-query",
   "packages/coln-integrator",
@@ -25,3 +25,8 @@ serde_json = "1.0.149"
 thiserror = "2.0.18"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"

@@ -14,8 +14,8 @@ use crate::{
 };
 
 use inner::TxnInner;
-pub(crate) use row_handle::{PendingOp, RowRef, TempRowId, TxnCellValue};
-pub use row_handle::{RowHandle, TxnId, TxnValue};
+pub(crate) use row_handle::PendingOp;
+pub use row_handle::{RowHandle, RowRef, TempRowId, TxnCellValue, TxnId, TxnValue};
 
 pub struct Transaction<'a> {
     inner: TxnInner,

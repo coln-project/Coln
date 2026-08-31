@@ -1,124 +1,27 @@
 {
   "name": "@coln-project/runtime",
-  "version": "0.1.0",
-  "private": true,
-  "author": "Coln contributors",
-  "type": "module",
-  "license": "(Apache-2.0 OR MIT)",
-  "engines": {
-    "node": ">=24.14.0"
-  },
-  "files": [
-    "dist",
-    "LICENSES"
-  ],
+  "version": "0.0.1",
+  "description": "",
   "scripts": {
-    "copy-license": "cp -r ../../LICENSES LICENSES",
-    "build": "wasm-bodge build",
-    "test": "npm run test:unit && npm run test:basic-ir",
-    "test:unit": "tsx --test tests/id-resolution.test.ts",
-    "test:basic-ir": "npm run typecheck:basic-ir && npm run test:basic-ir:runtime",
-    "typecheck:basic-ir": "tsx --tsconfig tests/basic-ir/tsconfig.json --test tests/basic-ir/typecheck.ts",
-    "test:basic-ir:runtime": "tsx --tsconfig tests/basic-ir/tsconfig.json --test \"tests/basic-ir/*.test.ts\""
+    "build": "tsc"
   },
-  "wasm-bodge": {
-    "wrapper": {
-      "entry": "./src/ts/index.ts"
+  "keywords": [],
+  "author": "",
+  "license": "Apache-2.0 OR MIT",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.4.0",
+      "onFail": "download"
     }
   },
+  "type": "module",
   "devDependencies": {
-    "@types/node": "^25.9.3",
-    "esbuild": "^0.28.1",
-    "tsx": "^4.23.1",
-    "typescript": "^5.0.0"
+    "@types/node": "^26.3.0",
+    "@typescript/lib-dom": "npm:@types/web@^0.0.354",
+    "typescript": "6"
   },
-  "main": "./dist/wrapper/cjs/node.cjs",
-  "module": "./dist/wrapper/esm/bundler.js",
-  "types": "./dist/wrapper/index.d.ts",
-  "sideEffects": [
-    "./dist/esm/bundler.js",
-    "./dist/esm/node.js",
-    "./dist/esm/web.js",
-    "./dist/esm/workerd.js",
-    "./dist/wrapper/esm/bundler.js",
-    "./dist/wrapper/esm/node.js",
-    "./dist/wrapper/esm/web.js",
-    "./dist/wrapper/esm/workerd.js"
-  ],
-  "exports": {
-    ".": {
-      "types": "./dist/wrapper/index.d.ts",
-      "workerd": {
-        "import": "./dist/wrapper/esm/workerd.js",
-        "require": "./dist/wrapper/cjs/web.cjs"
-      },
-      "node": {
-        "import": "./dist/wrapper/esm/node.js",
-        "require": "./dist/wrapper/cjs/node.cjs"
-      },
-      "browser": {
-        "import": "./dist/wrapper/esm/bundler.js",
-        "require": "./dist/wrapper/cjs/web.cjs"
-      },
-      "import": "./dist/wrapper/esm/web.js",
-      "require": "./dist/wrapper/cjs/web.cjs"
-    },
-    "./slim": {
-      "types": "./dist/wrapper/slim.d.ts",
-      "import": "./dist/wrapper/esm/slim.js",
-      "require": "./dist/wrapper/cjs/slim.cjs"
-    },
-    "./wasm": "./dist/runtime.wasm",
-    "./wasm-base64": {
-      "import": "./dist/esm/wasm-base64.js",
-      "require": "./dist/cjs/wasm-base64.cjs"
-    },
-    "./iife": "./dist/wrapper/iife/index.js",
-    "./bindings": {
-      "types": "./dist/index.d.ts",
-      "workerd": {
-        "import": "./dist/esm/workerd.js",
-        "require": "./dist/cjs/web.cjs"
-      },
-      "node": {
-        "import": "./dist/esm/node.js",
-        "require": "./dist/cjs/node.cjs"
-      },
-      "browser": {
-        "import": "./dist/esm/bundler.js",
-        "require": "./dist/cjs/web.cjs"
-      },
-      "import": "./dist/esm/web.js",
-      "require": "./dist/cjs/web.cjs"
-    },
-    "./bindings/slim": {
-      "types": "./dist/wasm_bindgen/web/coln_js_runtime.d.ts",
-      "import": "./dist/esm/slim.js",
-      "require": "./dist/cjs/slim.cjs"
-    }
-  },
-  "imports": {
-    "#wasm-bodge/bindings": {
-      "types": "./dist/index.d.ts",
-      "workerd": {
-        "import": "./dist/esm/workerd.js",
-        "require": "./dist/cjs/web.cjs"
-      },
-      "node": {
-        "import": "./dist/esm/node.js",
-        "require": "./dist/cjs/node.cjs"
-      },
-      "browser": {
-        "import": "./dist/esm/bundler.js",
-        "require": "./dist/cjs/web.cjs"
-      },
-      "import": "./dist/esm/web.js",
-      "require": "./dist/cjs/web.cjs"
-    },
-    "#wasm-bodge/bindings/slim": {
-      "types": "./dist/wasm_bindgen/web/coln_js_runtime.d.ts",
-      "import": "./dist/esm/slim.js",
-      "require": "./dist/cjs/slim.cjs"
-    }
+  "dependencies": {
+    "@coln-project/node-bindings": "link:../coln-node-bindings"
   }
 }

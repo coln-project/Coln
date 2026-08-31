@@ -1,0 +1,40 @@
+{
+  "name": "@coln-project/node-bindings",
+  "version": "1.1.1",
+  "description": "Template project for writing node package with napi-rs",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "Apache-2.0 OR MIT",
+  "files": [
+    "index.d.ts",
+    "index.js"
+  ],
+  "napi": {
+    "binaryName": "coln-node-bindings",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-unknown-linux-gnu"
+    ],
+    "outputDir": "dist"
+  },
+  "engines": {
+    "node": ">= 10.20.0 < 11 || >= 12.17.0 < 13 || >= 14.0.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "version": "napi version"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.8.6",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "pnpm@11.22.0"
+}
