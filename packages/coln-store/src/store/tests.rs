@@ -827,6 +827,41 @@ mod commits {
     }
 
     #[test]
+    fn commit_chunks_create_empty_store() {
+        let source = Store::new();
+        let chunks = source
+            .commit_chunks_after(&[])
+            .into_iter()
+            .map(|chunk| chunk.bytes)
+            .collect::<Vec<_>>();
+
+        let (restored, pending) = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+
+        assert!(pending.is_empty());
+        assert_eq!(restored.table_count(), 0);
+        assert_eq!(restored.heads(), source.heads());
+    }
+
+    #[test]
+    fn commit_chunks_create_store_from_out_of_order_data() {
+        let mut source = single_int_store();
+        let commit = commit_int(&mut source, 99);
+        let mut chunks = source
+            .commit_chunks_after(&[])
+            .into_iter()
+            .map(|chunk| chunk.bytes)
+            .collect::<Vec<_>>();
+        chunks.reverse();
+
+        let (restored, pending) = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+
+        assert!(pending.is_empty());
+        let table = restored.table_at(&Path::from("T")).expect("table");
+        assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(99)));
+        assert_eq!(restored.heads(), vec![commit]);
+    }
+
+    #[test]
     fn apply_commits_applies_rows_and_updates_heads() {
         let mut source = single_int_store();
         let mut target = single_int_store();
@@ -882,7 +917,7 @@ mod commits {
     }
 
     #[test]
-    fn apply_commits_rejects_missing_dependency_without_changing_store() {
+    fn apply_commits_skips_missing_dependency_without_changing_store() {
         let mut source = single_int_store();
         let mut target = single_int_store();
         commit_int(&mut source, 1);
@@ -892,12 +927,12 @@ mod commits {
             .expect("second commit")
             .clone();
 
-        let err = target.apply_commits([second_commit]).unwrap_err();
+        let leftover = target
+            .apply_commits([second_commit])
+            .expect("skip missing dependency");
+        let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
 
-        assert!(matches!(
-            err,
-            StoreError::Commit(CommitApplyError::MissingDep)
-        ));
+        assert_eq!(leftover_hashes, vec![second]);
         assert_eq!(
             target
                 .table_at(&Path::from("T"))
@@ -905,6 +940,74 @@ mod commits {
                 .row_count(),
             0
         );
+    }
+
+    #[test]
+    fn apply_commits_applies_ready_commits_and_returns_blocked_ones() {
+        let mut source = single_int_store();
+        let mut target = single_int_store();
+        let first = commit_int(&mut source, 1);
+        commit_int(&mut source, 2);
+        let third = commit_int(&mut source, 3);
+        let first_commit = source.commit_by_hash(&first).expect("first commit").clone();
+        let third_commit = source.commit_by_hash(&third).expect("third commit").clone();
+
+        let leftover = target
+            .apply_commits([first_commit, third_commit])
+            .expect("apply ready commits");
+        let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
+
+        assert_eq!(leftover_hashes, vec![third]);
+        assert_eq!(
+            target
+                .table_at(&Path::from("T"))
+                .expect("table")
+                .row_count(),
+            1
+        );
+        assert_eq!(target.heads(), vec![first]);
+    }
+
+    #[test]
+    fn apply_chunk_bytes_retries_leftover_when_missing_parent_arrives() {
+        let mut source = single_int_store();
+        let mut target = single_int_store();
+        commit_int(&mut source, 1);
+        let second = commit_int(&mut source, 2);
+
+        let chunks: Vec<Vec<u8>> = source
+            .commit_chunks_after(&target.heads())
+            .into_iter()
+            .map(|chunk| chunk.bytes)
+            .collect();
+        assert_eq!(chunks.len(), 2);
+
+        let leftover = target
+            .apply_chunk_bytes([chunks[1].clone()])
+            .expect("skip child without parent");
+        assert_eq!(leftover.len(), 1);
+        assert_eq!(
+            target
+                .table_at(&Path::from("T"))
+                .expect("table")
+                .row_count(),
+            0
+        );
+
+        let leftover = target
+            .apply_chunk_bytes(
+                leftover
+                    .into_iter()
+                    .chain(std::iter::once(chunks[0].clone())),
+            )
+            .expect("retry leftover with parent");
+        assert!(leftover.is_empty());
+
+        let table = target.table_at(&Path::from("T")).expect("table");
+        assert_eq!(table.row_count(), 2);
+        assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(1)));
+        assert_eq!(table.cell_at(1, 0), Some(CellValue::Int(2)));
+        assert_eq!(target.heads(), vec![second]);
     }
 }
 

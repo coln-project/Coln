@@ -4,6 +4,7 @@
 
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraphError;
+use crate::commit::hash::CommitHash;
 use crate::solver::compile::CompileError;
 use crate::solver::validate::RuleViolation;
 use crate::table::ValidationError;
@@ -27,15 +28,10 @@ pub enum StoreError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CommitApplyError {
-    #[error("missing commit dependency")]
-    MissingDep,
-    #[error("disconnected commit")]
-    DisconnectedCommit,
-    // A commit that should definitely exist but is missing
-    #[error("missing commit")]
-    MissingCommit,
+    #[error("A commit {0} with no dependency")]
+    DanglingCommit(CommitHash),
     #[error("An existing commit has conflict payload")]
-    ConflictPayload,
-    #[error("Root commit cannot be applied")]
-    RootCommit,
+    ConflictPayload(CommitHash),
+    #[error("Root commit {0} cannot be applied")]
+    RootCommit(CommitHash),
 }
