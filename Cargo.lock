@@ -1077,6 +1077,7 @@ dependencies = [
 name = "coln-node-bindings"
 version = "0.1.0"
 dependencies = [
+ "coln-store",
  "napi",
  "napi-build",
  "napi-derive",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { EncodedTupleWriter, EncodedTupleReader, RowId } from "../src/value.js"
+import { EncodedTupleWriter, EncodedTupleReader, RowId } from "../src/index.js"
 import { randomBytes } from "node:crypto"
 
 function randomHash(): string {

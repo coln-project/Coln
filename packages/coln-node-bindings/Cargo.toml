@@ -9,11 +9,8 @@ crate-type = ["cdylib"]
 [dependencies]
 napi-derive = "3"
 napi = { version = "3", features = ["napi6"] }
+coln-store = { version = "0.1.0", path = "../coln-store", features = ["coln-query"] }
 
 [build-dependencies]
 napi-build = "2"
 
-[profile.release]
-lto = true
-codegen-units = 1
-strip = "symbols"

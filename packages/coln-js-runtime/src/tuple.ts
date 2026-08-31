@@ -35,6 +35,7 @@ export function scalarEqual(v0: Scalar, v1: Scalar): boolean {
 }
 
 const STRING_TAG = 0
+// TODO: support i64
 const INT_TAG = 1
 const EXISTING_ROW_ID_TAG = 2
 const INPROGRESS_ROW_ID_TAG = 3

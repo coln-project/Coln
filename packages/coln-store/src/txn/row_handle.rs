@@ -194,7 +194,7 @@ impl From<CellValue> for TxnValue {
 
 /// A temporary row ID that is valid only within a transaction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TempRowId(pub(crate) u32);
+pub struct TempRowId(pub u32);
 
 impl TempRowId {
     pub(crate) fn resolve(self, commit: CommitHash) -> RowId {
@@ -217,7 +217,7 @@ impl From<u32> for TempRowId {
 
 /// A reference to an existing row or a pending row in the current transaction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum RowRef {
+pub enum RowRef {
     Existing(RowId),
     Pending(TempRowId),
 }
@@ -246,7 +246,7 @@ impl From<TempRowId> for RowRef {
 // TODO should clean this up, who uses txncellvalue and it should have a better name
 /// The internal transaction representation derived from `TxnValue`.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum TxnCellValue {
+pub enum TxnCellValue {
     Id(RowRef),
     Int(i64),
     Str(String),
