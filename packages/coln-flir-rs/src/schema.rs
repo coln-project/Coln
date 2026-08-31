@@ -4,6 +4,7 @@
 use crate::ir::{self, Path};
 use std::ops::Range;
 
+#[derive(Debug)]
 pub struct BaseTableSchema {
     /// The table's unique identifier/name.
     name: ir::Path,
@@ -191,6 +192,7 @@ impl From<StoreEngineScalarType> for QueryEngineScalarType {
 }
 
 /// Generic column metadata representation.
+#[derive(Debug)]
 pub struct Col<T, R> {
     /// The column's name.
     name: ir::ColName,
@@ -237,6 +239,7 @@ impl From<ir::ColumnIdx> for CompilerColIdx {
     }
 }
 
+#[derive(Debug)]
 pub struct CompilerCols(Vec<CompilerCol>);
 
 pub type StoreEngineCol = Col<StoreEngineScalarType, Option<ir::Path>>;
@@ -244,6 +247,7 @@ pub type StoreEngineCol = Col<StoreEngineScalarType, Option<ir::Path>>;
 #[derive(Copy, Clone, Debug)]
 pub struct StoreEngineColIdx(usize);
 
+#[derive(Debug)]
 pub struct StoreEngineCols(Vec<StoreEngineCol>);
 
 impl StoreEngineCols {
@@ -296,6 +300,7 @@ pub type QueryEngineCol = Col<QueryEngineScalarType, Option<ir::Path>>;
 #[derive(Copy, Clone, Debug)]
 pub struct QueryEngineColIdx(usize);
 
+#[derive(Debug)]
 pub struct QueryEngineCols(Vec<QueryEngineCol>);
 
 impl QueryEngineCols {

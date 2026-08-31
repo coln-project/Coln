@@ -11,14 +11,14 @@
 //! becoming [`TableRef`]s, FLIR literals becoming [`Literal`]s, and each
 //! engine's scalar types collapsing into the query engine's [`ScalarType`].
 
-use crate::relational::schema::TableRef;
+use crate::relational::schema::EntityRef;
 use crate::{host::expr::Literal, scalarial::ScalarType};
 use coln_flir_rs::ir::{self};
 use coln_flir_rs::schema::{NativeScalarType, QueryEngineScalarType};
 
-impl From<&ir::Path> for TableRef {
+impl From<&ir::Path> for EntityRef {
     fn from(value: &ir::Path) -> Self {
-        TableRef::from(value.to_string())
+        EntityRef::from(value.to_string())
     }
 }
 

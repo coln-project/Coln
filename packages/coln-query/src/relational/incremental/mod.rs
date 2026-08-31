@@ -5,16 +5,15 @@
 //! A [DBSP](`dbsp`) powered incremental [`Backend`], that is [`DbspBackend`],
 //! and [`Runtime`], which is [`DbspRuntime`].
 
-use super::relation::TupleValue;
 use super::{Backend, Runtime};
+use crate::api::deltas::ZRow;
 use crate::error::{BuildError, LoweringError, RuntimeError};
+use crate::relational::incremental::dbsp::DbspOutputDelta;
 use crate::{
-    api::deltas::ZWeight,
     host::{
         HostInterpreter, InterpreterContext, QueryIr, resolver::ResolvedCode, variable::Environment,
     },
     relational::{
-        Delta,
         catalog::SourceSchemas,
         expr::{OutputKind, SinkId, SourceId},
     },
@@ -130,6 +129,7 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
 
 /// A standing DBSP circuit plus its input feed handles (by [`SourceId`]) and
 /// output read handles (by [`SinkId`]). Yields per-transaction [`Delta`]s.
+#[derive(Debug)]
 pub struct DbspRuntime {
     handle: DbspHandle,
     inputs: DbspInputs,
@@ -143,24 +143,19 @@ pub struct DbspRuntime {
 }
 
 impl Runtime for DbspRuntime {
-    type Output = Delta;
+    type Output = DbspOutputDelta;
     type Error = RuntimeError;
 
     fn feed(
         &mut self,
         source: &SourceId,
-        rows: impl IntoIterator<Item = (TupleValue, ZWeight)>,
-    ) -> Result<(), Self::Error> {
-        self.inputs.get(source.as_str()).map_or_else(
-            || {
-                Err(RuntimeError::new(format!(
-                    "tried to feed unknown source '{}'",
-                    source.as_str()
-                )))
-            },
+        rows: impl IntoIterator<Item = ZRow>,
+    ) -> Result<bool, Self::Error> {
+        self.inputs.get(source).map_or_else(
+            || Ok(false),
             |input| {
-                let _: () = input.feed(rows);
-                Ok(())
+                input.feed(rows);
+                Ok(true)
             },
         )
     }
@@ -171,15 +166,15 @@ impl Runtime for DbspRuntime {
         // debugging. This drains the handle, which is why CLI taps are not
         // readable via `output`.
         for (id, output) in &self.cli_outputs {
-            let batch = output.to_batch();
-            println!("output '{}':\n{}", id.as_str(), batch.as_debug_table());
+            let output = output.drain();
+            println!("output '{}':\n{}", id.as_str(), output.as_debug_table());
         }
         Ok(())
     }
 
-    fn output(&self, out: &SinkId) -> Result<Delta, Self::Error> {
+    fn output(&self, out: &SinkId) -> Result<Self::Output, Self::Error> {
         match self.outputs.get(out) {
-            Some(output) => Ok(Delta(output.to_batch().as_debug_zset())),
+            Some(output) => Ok(output.drain()),
             // Distinguish an unknown name from a print-only CLI tap so the error
             // points at the actual mistake.
             None if self.cli_outputs.iter().any(|(id, _)| id == out) => {

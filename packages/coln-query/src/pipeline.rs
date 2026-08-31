@@ -48,8 +48,9 @@
 //!    Feed input changes, advance, and output results. This is where
 //!    incremental vs batch actually differ: DBSP's `commit` runs one
 //!    incremental transaction and yields per-commit
-//!    [`Delta`](crate::relational::Delta)s; the batch engine recomputes from
-//!    the accumulated inputs and yields [`Snapshot`](crate::relational::Snapshot)s.
+//!    [`Delta`](crate::relational::incremental::dbsp::DbspOutputDelta)s;
+//!    the batch engine recomputes from the accumulated inputs and yields
+//!    [`Snapshot`](crate::relational::batch::Snapshot)s.
 use std::num::NonZeroUsize;
 
 use crate::{
@@ -118,7 +119,7 @@ impl<O: Optimizer, B: Backend> Pipeline<O, B> {
     ///
     /// The program is taken by value because its code is *moved* through the
     /// stages: each one consumes a [`QueryIr`] and returns the rewritten one.
-    pub fn runtime(self, mut program: impl QueryProgram) -> Result<B::Runtime, QueryEngineError> {
+    pub fn runtime(self, program: &mut impl QueryProgram) -> Result<B::Runtime, QueryEngineError> {
         let type_checked = program.take_code(); // Not type checked, for now.
         let optimized = self.optimizer.optimize(type_checked)?;
         let lowered = self.backend.lower(optimized)?;
@@ -128,7 +129,7 @@ impl<O: Optimizer, B: Backend> Pipeline<O, B> {
         // downstream works from the resolved schemas, so no backend has to reach
         // back into a frontend's data structure. It runs after lowering, so a
         // source a lowering pass minted is resolved along with the rest.
-        let sources = resolve_sources(resolved.as_code(), &program)?;
+        let sources = resolve_sources(resolved.as_code(), program)?;
         self.backend
             .build(self.threads, resolved, sources)
             .map_err(|e| e.into().into())

@@ -4,21 +4,18 @@
 
 //! A batch backend optimized for efficient evaluation of non-binary joins.
 
-use std::num::NonZeroUsize;
-
 use super::{Backend, Runtime};
 use crate::{
-    api::deltas::ZWeight,
+    api::deltas::ZRow,
     error::{BuildError, RuntimeError},
     host::resolver::ResolvedCode,
     relational::{
-        Snapshot,
         catalog::SourceSchemas,
         expr::{SinkId, SourceId},
-        relation::TupleValue,
     },
     scalarial::{ColumnScalarEngine, column::VectorizedScalarEngine},
 };
+use std::num::NonZeroUsize;
 
 /// The non-incremental backend: evaluates the plan eagerly over materialized
 /// Z-sets. Bodies are the next slice of work.
@@ -51,6 +48,11 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
 /// Accumulated source Z-sets + the compiled plan; `commit` recomputes the result.
 pub struct BatchRuntime;
 
+/// The full current state of a result relation. The natural output of a batch
+/// backend.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Snapshot; // TBD.
+
 impl Runtime for BatchRuntime {
     type Output = Snapshot;
     type Error = RuntimeError;
@@ -58,8 +60,8 @@ impl Runtime for BatchRuntime {
     fn feed(
         &mut self,
         _source: &SourceId,
-        _rows: impl IntoIterator<Item = (TupleValue, ZWeight)>,
-    ) -> Result<(), Self::Error> {
+        _rows: impl IntoIterator<Item = ZRow>,
+    ) -> Result<bool, Self::Error> {
         todo!("eager batch feed: accumulate into source tables")
     }
 

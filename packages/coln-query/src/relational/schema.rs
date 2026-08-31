@@ -25,45 +25,75 @@
 //! types, and key(s), and a relation may have several candidate keys or none.
 //! Which one — if any — becomes a physical index is layer 3's decision.
 
-use crate::{relational::expr::SourceId, scalarial::ScalarType};
+use crate::{
+    relational::expr::{SinkId, SourceId},
+    scalarial::ScalarType,
+};
 use std::fmt::{self, Display};
 
 /// An identifier that uniquely identifies a table (globally across the store).
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
-pub struct TableRef {
+pub struct EntityRef {
     inner: String,
 }
 
-impl Display for TableRef {
+impl EntityRef {
+    pub fn id(&self) -> &str {
+        &self.inner
+    }
+}
+
+impl Display for EntityRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.inner.fmt(f)
     }
 }
 
 /// The other direction of the same identity: a plan's
-/// [`SourceExpr`](crate::relational::expr::SourceExpr) leaf names its base table
-/// by a [`SourceId`] built from that table's name, so a `SourceId` and the
-/// `TableRef` of the table it names hold the same string. This is what lets a
-/// [`Catalog`](super::catalog::Catalog) lookup reach a `TableRef`-keyed map.
-impl From<&SourceId> for TableRef {
-    fn from(value: &SourceId) -> Self {
-        TableRef {
-            inner: value.as_str().to_string(),
+/// [`OutputExpr`](crate::relational::expr::OutputExpr) leaf names its derived
+/// view by a [`SinkId`] built from that table's name, so a `SinkId`
+/// and the `TableRef` of the table it names hold the same string.
+/// This is what lets a [`Catalog`](super::catalog::Catalog) lookup reach a
+///  `TableRef`-keyed map.
+impl From<&SinkId> for EntityRef {
+    fn from(value: &SinkId) -> Self {
+        EntityRef {
+            inner: value.0.clone(),
         }
     }
 }
 
-impl From<&str> for TableRef {
+/// The other direction of the same identity: a plan's
+/// [`SourceExpr`](crate::relational::expr::SourceExpr) leaf names its base
+/// table by a [`SourceId`] built from that table's name, so a `SourceId`
+/// and the `TableRef` of the table it names hold the same string.
+/// This is what lets a [`Catalog`](super::catalog::Catalog) lookup reach a
+///  `TableRef`-keyed map.
+impl From<&SourceId> for EntityRef {
+    fn from(value: &SourceId) -> Self {
+        EntityRef {
+            inner: value.0.clone(),
+        }
+    }
+}
+
+impl From<&str> for EntityRef {
     fn from(value: &str) -> Self {
-        TableRef {
+        EntityRef {
             inner: value.to_string(),
         }
     }
 }
 
-impl From<String> for TableRef {
+impl From<String> for EntityRef {
     fn from(value: String) -> Self {
-        TableRef { inner: value }
+        EntityRef { inner: value }
+    }
+}
+
+impl From<&EntityRef> for SourceId {
+    fn from(value: &EntityRef) -> Self {
+        SourceId(value.inner.clone())
     }
 }
 
@@ -73,7 +103,7 @@ impl From<String> for TableRef {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableSchema {
     /// The table's unique identifier/name.
-    name: TableRef,
+    name: EntityRef,
     /// All fields of the table in their physical order.
     columns: Vec<Column>,
     /// The list of (possibly compound) primary keys into the table, specified
@@ -85,7 +115,7 @@ pub struct TableSchema {
 }
 
 impl TableSchema {
-    pub fn new(name: TableRef, columns: Vec<Column>, primary_keys: Vec<Vec<usize>>) -> Self {
+    pub fn new(name: EntityRef, columns: Vec<Column>, primary_keys: Vec<Vec<usize>>) -> Self {
         debug_assert!(
             primary_keys
                 .iter()
@@ -99,7 +129,7 @@ impl TableSchema {
             primary_keys,
         }
     }
-    pub fn name(&self) -> &TableRef {
+    pub fn name(&self) -> &EntityRef {
         &self.name
     }
     pub fn columns(&self) -> &[Column] {

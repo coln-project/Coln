@@ -6,10 +6,11 @@
 //! It provides helpers for testing and benchmarking purposes.
 
 use crate::{
+    api::deltas::ZRow,
     host::QueryIr,
     program::QueryProgram,
     relational::{
-        Column, TableRef, TableSchema, TupleValue,
+        Column, EntityRef, TableSchema, TupleValue,
         catalog::{Catalog, SourceSchemas},
         expr::SourceId,
         incremental::{TupleKey, dbsp::ZWeight},
@@ -18,6 +19,197 @@ use crate::{
 };
 use std::borrow::Cow;
 use std::fmt::Debug;
+
+pub mod graph_flir {
+    use crate::{
+        api::deltas::{StoreDelta, TableDelta, ZRow},
+        relational::TupleValue,
+        scalarial::ScalarTypedValue,
+    };
+    use coln_flir_rs::ir;
+
+    pub trait JsonFlir {
+        const FILENAME: &'static str;
+
+        fn load(&self) -> ir::FlatRealm {
+            coln_flir_rs::test_utils::load_theory_from_json(Self::FILENAME)
+        }
+    }
+
+    pub struct GraphFlir {
+        hash: u64,
+        ctr: u64,
+        store_delta: StoreDelta,
+    }
+
+    impl GraphFlir {
+        pub fn init() -> Self {
+            Self {
+                hash: 0,
+                ctr: 0,
+                store_delta: StoreDelta::empty(),
+            }
+        }
+        pub fn epoch(&self) -> u64 {
+            self.hash
+        }
+        pub fn ctr(&self) -> u64 {
+            self.ctr
+        }
+        pub fn next_epoch(&mut self) -> StoreDelta {
+            self.hash += 1;
+            self.ctr = 0;
+            std::mem::take(&mut self.store_delta)
+        }
+        pub fn next_ctr(&mut self) -> u64 {
+            let ctr = self.ctr;
+            self.ctr += 1;
+            ctr
+        }
+        fn with_zweight(zweight: i64, row: TupleValue) -> ZRow {
+            ZRow::new(zweight, row).expect("non-zero zweight")
+        }
+        pub fn insert_vertex(&mut self) -> Vertex {
+            let vertex = Vertex::new(self.hash, self.next_ctr());
+            self.insert_to_table_delta(&vertex);
+            vertex
+        }
+        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
+            let edge = Edge::with_vertices(self.hash, self.next_ctr(), from, to);
+            self.insert_to_table_delta(&edge);
+            edge
+        }
+        pub fn insert_raw_edge(&mut self, edge: Edge) -> Edge {
+            self.insert_to_table_delta(&edge);
+            edge
+        }
+        fn insert_to_table_delta<T: Entity>(&mut self, entry: &T) {
+            // Maybe improve by collecting all vertices of this epoch in a single
+            // table delta but maybe it's good to test this not-so-pretty code
+            // path as well..
+            let table_delta =
+                TableDelta::new(&T::ir_path(), vec![Self::with_zweight(1, entry.to_row())]);
+            self.store_delta.extend(Some(table_delta));
+        }
+    }
+
+    impl JsonFlir for GraphFlir {
+        const FILENAME: &'static str = "Graph.json";
+    }
+
+    pub trait Entity {
+        const NAME: &'static str;
+
+        fn ir_path() -> ir::Path {
+            ir::Path::from(Self::NAME)
+        }
+
+        fn to_row(&self) -> TupleValue;
+
+        fn row_id(&self) -> &RowId;
+    }
+
+    pub struct RowId {
+        hash: u64,
+        ctr: u64,
+    }
+
+    impl RowId {
+        pub fn hash(&self) -> u64 {
+            self.hash
+        }
+        pub fn ctr(&self) -> u64 {
+            self.ctr
+        }
+    }
+
+    pub struct Vertex {
+        row_id: RowId,
+    }
+
+    impl Vertex {
+        fn new(hash: u64, ctr: u64) -> Vertex {
+            Self {
+                row_id: RowId { hash, ctr },
+            }
+        }
+    }
+
+    impl Entity for Vertex {
+        const NAME: &'static str = "Graph.V";
+
+        fn to_row(&self) -> TupleValue {
+            [
+                ScalarTypedValue::from(self.row_id.hash()),
+                ScalarTypedValue::from(self.row_id.ctr()),
+            ]
+            .into_iter()
+            .collect()
+        }
+
+        fn row_id(&self) -> &RowId {
+            &self.row_id
+        }
+    }
+
+    pub struct Edge {
+        row_id: RowId,
+        from_hash: u64,
+        from_ctr: u64,
+        to_hash: u64,
+        to_ctr: u64,
+    }
+
+    impl Edge {
+        pub fn with_vertices(hash: u64, ctr: u64, from: &Vertex, to: &Vertex) -> Edge {
+            Edge::new(
+                hash,
+                ctr,
+                from.row_id.hash(),
+                from.row_id.ctr(),
+                to.row_id.hash(),
+                to.row_id.ctr(),
+            )
+        }
+        pub fn new(
+            hash: u64,
+            ctr: u64,
+            from_hash: u64,
+            from_ctr: u64,
+            to_hash: u64,
+            to_ctr: u64,
+        ) -> Edge {
+            Self {
+                row_id: RowId { hash, ctr },
+                from_hash,
+                from_ctr,
+                to_hash,
+                to_ctr,
+            }
+        }
+    }
+
+    impl Entity for Edge {
+        const NAME: &'static str = "Graph.E";
+
+        fn to_row(&self) -> TupleValue {
+            [
+                ScalarTypedValue::from(self.row_id.hash()),
+                ScalarTypedValue::from(self.row_id.ctr()),
+                ScalarTypedValue::from(self.from_hash),
+                ScalarTypedValue::from(self.from_ctr),
+                ScalarTypedValue::from(self.to_hash),
+                ScalarTypedValue::from(self.to_ctr),
+            ]
+            .into_iter()
+            .collect()
+        }
+
+        fn row_id(&self) -> &RowId {
+            &self.row_id
+        }
+    }
+}
 
 /// Assemble a [`TableSchema`] the way a test states one: named and typed columns
 /// in physical order, plus the names of the columns forming its primary key
@@ -41,7 +233,7 @@ pub fn table_schema<'a>(
         })
         .collect();
     let primary_keys = if key.is_empty() { vec![] } else { vec![key] };
-    TableSchema::new(TableRef::from(name), columns, primary_keys)
+    TableSchema::new(EntityRef::from(name), columns, primary_keys)
 }
 
 /// A [`QueryProgram`] assembled by hand: the plan under test, plus the schemas
@@ -61,7 +253,7 @@ impl TestProgram {
             code: code.into(),
             sources: schemas
                 .into_iter()
-                .map(|schema| (SourceId::from(schema.name().to_string()), schema))
+                .map(|schema| (SourceId::from(schema.name()), schema))
                 .collect(),
         }
     }
@@ -88,27 +280,25 @@ impl QueryProgram for TestProgram {
 
 /// Convenience: turn input entities (with per-row z-weights) into the value rows
 /// that [`crate::relational::Runtime::feed`] expects.
-pub fn rows<E: InputEntity>(
-    entities: impl IntoIterator<Item = (E, ZWeight)>,
-) -> Vec<(TupleValue, ZWeight)> {
+pub fn rows<E: InputRel>(entities: impl IntoIterator<Item = (E, ZWeight)>) -> Vec<ZRow> {
     entities
         .into_iter()
-        .map(|(entity, weight)| (entity.into(), weight))
+        .map(|(entity, weight)| ZRow::new(weight, entity.into()).expect("non-zero zweight"))
         .collect()
 }
 
 /// Convenience: turn input entities into value rows all carrying `weight`.
-pub fn rows_with_weight<E: InputEntity>(
+pub fn rows_with_weight<E: InputRel>(
     entities: impl IntoIterator<Item = E>,
     weight: ZWeight,
-) -> Vec<(TupleValue, ZWeight)> {
+) -> Vec<ZRow> {
     entities
         .into_iter()
-        .map(|entity| (entity.into(), weight))
+        .map(|entity| ZRow::new(weight, entity.into()).expect("non-zero zweight"))
         .collect()
 }
 
-pub trait InputEntity: Into<TupleKey> + Into<TupleValue> + Clone + Debug {
+pub trait InputRel: Into<TupleKey> + Into<TupleValue> + Clone + Debug {
     fn schema() -> TableSchema;
 
     /// The name a plan's [`SourceExpr`](crate::relational::expr::SourceExpr)
@@ -116,19 +306,19 @@ pub trait InputEntity: Into<TupleKey> + Into<TupleValue> + Clone + Debug {
     /// leaf and the [`TestProgram`] catalog entry describing it cannot drift
     /// apart.
     fn id() -> SourceId {
-        SourceId::from(Self::schema().name().to_string())
+        SourceId::from(Self::schema().name())
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Person {
+pub struct PersonRel {
     person_id: u64,
     name: String,
     age: u64,
     profession_id: u64,
 }
 
-impl InputEntity for Person {
+impl InputRel for PersonRel {
     fn schema() -> TableSchema {
         table_schema(
             "person",
@@ -143,16 +333,16 @@ impl InputEntity for Person {
     }
 }
 
-impl From<Person> for TupleKey {
-    fn from(person: Person) -> Self {
+impl From<PersonRel> for TupleKey {
+    fn from(person: PersonRel) -> Self {
         TupleKey {
             data: vec![ScalarTypedValue::Uint(person.person_id)],
         }
     }
 }
 
-impl From<Person> for TupleValue {
-    fn from(person: Person) -> Self {
+impl From<PersonRel> for TupleValue {
+    fn from(person: PersonRel) -> Self {
         TupleValue {
             data: vec![
                 ScalarTypedValue::Uint(person.person_id),
@@ -165,12 +355,12 @@ impl From<Person> for TupleValue {
 }
 
 #[derive(Clone, Debug)]
-pub struct Profession {
+pub struct ProfessionRel {
     profession_id: u64,
     name: String,
 }
 
-impl InputEntity for Profession {
+impl InputRel for ProfessionRel {
     fn schema() -> TableSchema {
         table_schema(
             "profession",
@@ -183,16 +373,16 @@ impl InputEntity for Profession {
     }
 }
 
-impl From<Profession> for TupleKey {
-    fn from(profession: Profession) -> Self {
+impl From<ProfessionRel> for TupleKey {
+    fn from(profession: ProfessionRel) -> Self {
         TupleKey {
             data: vec![ScalarTypedValue::Uint(profession.profession_id)],
         }
     }
 }
 
-impl From<Profession> for TupleValue {
-    fn from(profession: Profession) -> Self {
+impl From<ProfessionRel> for TupleValue {
+    fn from(profession: ProfessionRel) -> Self {
         TupleValue {
             data: vec![
                 ScalarTypedValue::Uint(profession.profession_id),
@@ -202,22 +392,22 @@ impl From<Profession> for TupleValue {
     }
 }
 
-pub fn person_profession_data() -> [(Vec<Person>, Vec<Profession>); 1] {
+pub fn person_profession_data() -> [(Vec<PersonRel>, Vec<ProfessionRel>); 1] {
     [(
         vec![
-            Person {
+            PersonRel {
                 person_id: 0,
                 name: "Alice".to_string(),
                 age: 20,
                 profession_id: 0,
             },
-            Person {
+            PersonRel {
                 person_id: 1,
                 name: "Bob".to_string(),
                 age: 30,
                 profession_id: 1,
             },
-            Person {
+            PersonRel {
                 person_id: 2,
                 name: "Charlie".to_string(),
                 age: 40,
@@ -225,11 +415,11 @@ pub fn person_profession_data() -> [(Vec<Person>, Vec<Profession>); 1] {
             },
         ],
         vec![
-            Profession {
+            ProfessionRel {
                 profession_id: 0,
                 name: "Engineer".to_string(),
             },
-            Profession {
+            ProfessionRel {
                 profession_id: 1,
                 name: "Doctor".to_string(),
             },
@@ -238,33 +428,33 @@ pub fn person_profession_data() -> [(Vec<Person>, Vec<Profession>); 1] {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct PlainRelation {
+pub struct PlainRel {
     a: u64,
     b: u64,
     c: u64,
 }
 
-impl PlainRelation {
+impl PlainRel {
     pub fn new(a: u64, b: u64, c: u64) -> Self {
         Self { a, b, c }
     }
     const STEPS: usize = 1;
-    pub fn test_data_1() -> [Vec<PlainRelation>; Self::STEPS] {
+    pub fn test_data_1() -> [Vec<PlainRel>; Self::STEPS] {
         [vec![
-            PlainRelation::new(1, 2, 3),
-            PlainRelation::new(4, 5, 6),
-            PlainRelation::new(7, 8, 9),
+            PlainRel::new(1, 2, 3),
+            PlainRel::new(4, 5, 6),
+            PlainRel::new(7, 8, 9),
         ]]
     }
-    pub fn test_data_2() -> [Vec<PlainRelation>; Self::STEPS] {
-        [vec![PlainRelation::new(1, 2, 3)]]
+    pub fn test_data_2() -> [Vec<PlainRel>; Self::STEPS] {
+        [vec![PlainRel::new(1, 2, 3)]]
     }
-    pub fn test_data_3() -> [Vec<PlainRelation>; Self::STEPS] {
-        [vec![PlainRelation::new(4, 5, 6)]]
+    pub fn test_data_3() -> [Vec<PlainRel>; Self::STEPS] {
+        [vec![PlainRel::new(4, 5, 6)]]
     }
 }
 
-impl InputEntity for PlainRelation {
+impl InputRel for PlainRel {
     fn schema() -> TableSchema {
         table_schema(
             "plain",
@@ -278,14 +468,14 @@ impl InputEntity for PlainRelation {
     }
 }
 
-impl From<PlainRelation> for TupleKey {
-    fn from(fact: PlainRelation) -> Self {
+impl From<PlainRel> for TupleKey {
+    fn from(fact: PlainRel) -> Self {
         TupleKey { data: vec![] }
     }
 }
 
-impl From<PlainRelation> for TupleValue {
-    fn from(fact: PlainRelation) -> Self {
+impl From<PlainRel> for TupleValue {
+    fn from(fact: PlainRel) -> Self {
         TupleValue {
             data: vec![
                 ScalarTypedValue::Uint(fact.a),
@@ -297,14 +487,14 @@ impl From<PlainRelation> for TupleValue {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Edge {
+pub struct EdgeRel {
     from: u64,
     to: u64,
     weight: u64,
     active: bool,
 }
 
-impl Edge {
+impl EdgeRel {
     pub fn new(from: u64, to: u64, weight: u64) -> Self {
         Self {
             from,
@@ -315,7 +505,7 @@ impl Edge {
     }
 }
 
-impl InputEntity for Edge {
+impl InputRel for EdgeRel {
     fn schema() -> TableSchema {
         table_schema(
             "edges",
@@ -330,8 +520,8 @@ impl InputEntity for Edge {
     }
 }
 
-impl From<Edge> for TupleKey {
-    fn from(edge: Edge) -> Self {
+impl From<EdgeRel> for TupleKey {
+    fn from(edge: EdgeRel) -> Self {
         TupleKey {
             data: vec![
                 ScalarTypedValue::Uint(edge.from),
@@ -341,8 +531,8 @@ impl From<Edge> for TupleKey {
     }
 }
 
-impl From<Edge> for TupleValue {
-    fn from(edge: Edge) -> Self {
+impl From<EdgeRel> for TupleValue {
+    fn from(edge: EdgeRel) -> Self {
         TupleValue {
             data: vec![
                 ScalarTypedValue::Uint(edge.from),
@@ -355,14 +545,14 @@ impl From<Edge> for TupleValue {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SetOp {
+pub struct SetRel {
     rep_id: u64,
     ctr: u64,
     key: u64,
     value: u64,
 }
 
-impl SetOp {
+impl SetRel {
     pub fn new(rep_id: u64, ctr: u64, key: u64, value: u64) -> Self {
         Self {
             rep_id,
@@ -373,7 +563,7 @@ impl SetOp {
     }
 }
 
-impl InputEntity for SetOp {
+impl InputRel for SetRel {
     fn schema() -> TableSchema {
         table_schema(
             "set",
@@ -388,14 +578,14 @@ impl InputEntity for SetOp {
     }
 }
 
-impl From<SetOp> for TupleKey {
-    fn from(set_op: SetOp) -> Self {
+impl From<SetRel> for TupleKey {
+    fn from(set_op: SetRel) -> Self {
         TupleKey::from_iter([set_op.rep_id, set_op.ctr])
     }
 }
 
-impl From<SetOp> for TupleValue {
-    fn from(set_op: SetOp) -> Self {
+impl From<SetRel> for TupleValue {
+    fn from(set_op: SetRel) -> Self {
         TupleValue::from_iter([set_op.rep_id, set_op.ctr, set_op.key, set_op.value])
     }
 }
@@ -419,7 +609,7 @@ impl PredRel {
     }
 }
 
-impl InputEntity for PredRel {
+impl InputRel for PredRel {
     fn schema() -> TableSchema {
         table_schema(
             "pred",
@@ -498,18 +688,24 @@ impl From<PredRel> for TupleValue {
 /// set_0_0(1, 1)                    ---> set_1_2(1, 4) ---> set_0_3(1, 5) ---> set_0_4(1, 6)
 ///               ---> set_1_0(1, 3)
 /// ```
-pub fn mvr_store_operation_history() -> [(Vec<PredRel>, Vec<SetOp>); 5] {
+pub fn mvr_store_operation_history() -> [(Vec<PredRel>, Vec<SetRel>); 5] {
     [
-        (vec![], vec![SetOp::new(0, 0, 1, 1)]),
+        (vec![], vec![SetRel::new(0, 0, 1, 1)]),
         (
             vec![PredRel::new(0, 0, 0, 1), PredRel::new(0, 0, 1, 0)],
-            vec![SetOp::new(0, 1, 1, 2), SetOp::new(1, 0, 1, 3)],
+            vec![SetRel::new(0, 1, 1, 2), SetRel::new(1, 0, 1, 3)],
         ),
         (
             vec![PredRel::new(0, 1, 1, 2), PredRel::new(1, 0, 1, 2)],
-            vec![SetOp::new(1, 2, 1, 4)],
+            vec![SetRel::new(1, 2, 1, 4)],
         ),
-        (vec![PredRel::new(0, 3, 0, 4)], vec![SetOp::new(0, 4, 1, 6)]),
-        (vec![PredRel::new(1, 2, 0, 3)], vec![SetOp::new(0, 3, 1, 5)]),
+        (
+            vec![PredRel::new(0, 3, 0, 4)],
+            vec![SetRel::new(0, 4, 1, 6)],
+        ),
+        (
+            vec![PredRel::new(1, 2, 0, 3)],
+            vec![SetRel::new(0, 3, 1, 5)],
+        ),
     ]
 }

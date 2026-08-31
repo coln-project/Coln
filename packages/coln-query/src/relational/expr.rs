@@ -183,9 +183,21 @@ impl SourceId {
     }
 }
 
-impl<T: Into<String>> From<T> for SourceId {
-    fn from(value: T) -> Self {
-        Self(value.into())
+impl AsRef<str> for SourceId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SourceId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for SourceId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
     }
 }
 
@@ -239,8 +251,7 @@ impl SourceExpr {
 
 /// Backend-neutral identity of a query output. Mirrors [`SourceId`] on the input
 /// side: the plan only ever *names* a sink; the backend maps the name to a live
-/// destination (a read handle, a CLI printer, …) at execution time. Replaces the
-/// old positional `OutputId` so outputs are addressed by name.
+/// destination (a read handle, a CLI printer, …) at execution time.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct SinkId(pub String);
 
@@ -253,6 +264,12 @@ impl SinkId {
 impl<T: Into<String>> From<T> for SinkId {
     fn from(value: T) -> Self {
         Self(value.into())
+    }
+}
+
+impl std::fmt::Display for SinkId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

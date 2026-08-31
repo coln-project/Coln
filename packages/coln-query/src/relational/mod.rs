@@ -35,24 +35,16 @@ pub mod schema;
 use std::num::NonZeroUsize;
 
 use crate::{
+    api::deltas::ZRow,
     error::{BuildError, LoweringError, RuntimeError},
     host::{QueryIr, resolver::ResolvedCode},
-    relational::catalog::SourceSchemas,
-    relational::expr::{SinkId, SourceId},
+    relational::{
+        catalog::SourceSchemas,
+        expr::{SinkId, SourceId},
+    },
 };
-use incremental::dbsp::{OrdZSet, ZWeight};
 pub use relation::{RelationRef, RelationType, TupleValue};
-pub use schema::{Column, TableRef, TableSchema};
-
-/// A change to a result relation since the last [`Runtime::commit`] — a Z-set of
-/// ±weighted rows. The natural output of an incremental backend.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Delta(pub OrdZSet<TupleValue>);
-
-/// The full current state of a result relation. The natural output of a batch
-/// backend.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Snapshot(pub OrdZSet<TupleValue>);
+pub use schema::{Column, EntityRef, TableSchema};
 
 /// The last compile step: a resolved plan → a runnable computation. One impl per
 /// execution strategy; the plan and (row) scalar evaluation are shared.
@@ -108,13 +100,16 @@ pub trait Runtime {
     /// A runtime error.
     type Error: Into<RuntimeError> + std::fmt::Debug;
 
-    /// Stage input value tuples (with z-weights) for a named source. The tuple
-    /// key is derived from the source schema, so only values are supplied.
+    /// Stage input rows (with z-weights) for a named source. The tuple
+    /// key is derived from the source schema, so only the row is supplied.
+    /// Returns `Ok(true)` if the input source is known and data has been fed.
+    /// Otherwise, it returns `Ok(false)`.
+    #[must_use = "Do not miss a missed update"]
     fn feed(
         &mut self,
         source: &SourceId,
-        rows: impl IntoIterator<Item = (TupleValue, ZWeight)>,
-    ) -> Result<(), Self::Error>;
+        rows: impl IntoIterator<Item = ZRow>,
+    ) -> Result<bool, Self::Error>;
 
     /// Advance the computation over everything fed since the last commit.
     fn commit(&mut self) -> Result<(), Self::Error>;

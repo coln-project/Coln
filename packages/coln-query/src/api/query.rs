@@ -14,10 +14,10 @@ use crate::host::stmt::{Stmt, VarStmt};
 use crate::program::QueryProgram;
 use crate::relational::catalog::Catalog;
 use crate::relational::expr::{
-    AntiJoinExpr, JoinVariable, MultiWayEquiJoinExpr, ProjectionExpr, RelationIdx, SelectionExpr,
-    SourceExpr, SourceId,
+    AntiJoinExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr, OutputKind, ProjectionExpr,
+    RelationIdx, SelectionExpr, SinkId, SourceExpr, SourceId,
 };
-use crate::relational::schema::{Column, TableRef, TableSchema};
+use crate::relational::schema::{Column, EntityRef, TableSchema};
 use crate::scalarial::ScalarType;
 use coln_flir_rs::ir::{
     self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, Term,
@@ -27,14 +27,15 @@ use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 
-type BaseTableName = TableRef;
-type DerivedViewName = TableRef;
+type BaseTableName = EntityRef;
+type DerivedViewName = EntityRef;
 
 /// coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to.
 ///
 /// The [`Catalog`] half is served straight out of [`base_tables`](Self::base_tables),
 /// which stores FLIR's own richer [`BaseTableSchema`] which includes the schema
 /// view according to coln-compiler and coln-store next coln-query's.
+#[derive(Debug)]
 pub struct FlirProgram {
     /// The (raw, that is, unresolved, unoptimized) statements themselves.
     code: QueryIr,
@@ -49,7 +50,8 @@ pub struct FlirProgram {
     derived_views: HashMap<DerivedViewName, RuleMeta>,
 }
 
-struct RuleMeta {
+#[derive(Debug)]
+pub struct RuleMeta {
     kind: ir::RuleVariant,
     output_schema: TableSchema,
 }
@@ -60,6 +62,12 @@ impl RuleMeta {
             kind,
             output_schema,
         }
+    }
+    pub fn kind(&self) -> ir::RuleVariant {
+        self.kind
+    }
+    pub fn schema(&self) -> &TableSchema {
+        &self.output_schema
     }
 }
 
@@ -99,7 +107,7 @@ impl From<&BaseTableSchema> for TableSchema {
                     .collect()
             });
         TableSchema::new(
-            TableRef::from(value.name()),
+            EntityRef::from(value.name()),
             columns,
             std::iter::once(row_id_key).chain(declared_keys).collect(),
         )
@@ -128,6 +136,10 @@ impl FlirProgram {
             builder.rule_declaration(rule)?;
         }
         Ok(builder)
+    }
+
+    pub fn sink_meta(&self, sink: &SinkId) -> Option<&RuleMeta> {
+        self.derived_views.get(&EntityRef::from(sink))
     }
 
     fn table_declaration(&mut self, table_entry: &TableEntry) -> Result<(), SyntaxError> {
@@ -163,7 +175,7 @@ impl FlirProgram {
             // The rule is filtered out but not an error case.
             return Ok(());
         };
-        let (stmt, output_bindings) = self.rule(name.to_string(), &rule)?;
+        let (stmt, output_bindings) = self.rule(name.id().to_string(), &rule)?;
         self.code.push(stmt);
         let rule_meta = RuleMeta::new(rule.kind, rule_output_schema(&name, &output_bindings));
         // See `base_table` on the direction of this check.
@@ -185,11 +197,15 @@ impl FlirProgram {
         let (left, left_bindings) = self.conjunctive_query(&rule.lhs, &rule.vars)?;
         let (right, right_bindings) = self.conjunctive_query(&rule.rhs, &rule.vars)?;
         let rule_as_stmt = Stmt::from(VarStmt {
-            name,
-            initializer: Some(Expr::from(AntiJoinExpr {
-                left,
-                right,
-                on: antijoin_key(&left_bindings, &right_bindings),
+            name: name.clone(),
+            initializer: Some(Expr::from(OutputExpr {
+                id: SinkId::from(name),
+                kind: OutputKind::Channel,
+                relation: Expr::from(AntiJoinExpr {
+                    left,
+                    right,
+                    on: antijoin_key(&left_bindings, &right_bindings),
+                }),
             })),
         });
         // An antijoin carries the left relation's tuple through unchanged, so
@@ -720,7 +736,7 @@ impl AtomBinder {
 /// rather than from the FLIR variables — a row id's two halves reach the query
 /// engine as plain unsigned integers, which the variable's [`ir::ColType`] does
 /// not say.
-fn rule_output_schema(name: &TableRef, bindings: &[Binding]) -> TableSchema {
+fn rule_output_schema(name: &EntityRef, bindings: &[Binding]) -> TableSchema {
     TableSchema::new(
         name.clone(),
         bindings
@@ -1068,7 +1084,7 @@ mod tests {
         assert_eq!(builder.code().len(), 1, "One rule is one statement");
         let schema = &builder
             .derived_views
-            .get(&TableRef::from(&ir::Path::from("r")))
+            .get(&EntityRef::from(&ir::Path::from("r")))
             .expect("The rule must be registered under its own name")
             .output_schema;
         // The antecedents bind `x` and `y`, so both are output columns, with the

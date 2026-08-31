@@ -35,7 +35,7 @@ mod test {
             expr::{
                 AliasExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
                 FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr, SelectionExpr, SinkId,
-                SourceExpr, SourceId, UnionExpr,
+                SourceExpr, UnionExpr,
             },
             incremental::dbsp::{ZWeight, zset},
             relation::TupleValue,
@@ -44,7 +44,7 @@ mod test {
         test_helper::{TestProgram, person_profession_data, rows, rows_with_weight},
     };
     use ::dbsp::OrdZSet;
-    use test_helper::{Edge, InputEntity, Person, PlainRelation, PredRel, Profession, SetOp};
+    use test_helper::{EdgeRel, InputRel, PersonRel, PlainRel, PredRel, ProfessionRel, SetRel};
 
     /// Tap the relation held by the variable `name` as a named runtime output,
     /// reusing the variable name as the output's [`SinkId`]. The resulting
@@ -197,7 +197,7 @@ mod test {
                             right: Expr::from(LiteralExpr::from(2_u64)),
                         }),
                     }),
-                    relation: Expr::from(SourceExpr::new(Edge::id())),
+                    relation: Expr::from(SourceExpr::new(EdgeRel::id())),
                 })),
             }),
             output_stmt("selected"),
@@ -222,24 +222,37 @@ mod test {
             }),
             output_stmt("projected"),
         ];
-        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
+        let mut rt =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
 
         const STEPS: usize = 3;
 
         let mut edges_data = ([
-            [Edge::new(0, 1, 1), Edge::new(1, 2, 2), Edge::new(2, 3, 3)]
-                .map(|e| (e, 2))
-                .into_iter()
-                .collect(),
-            [Edge::new(3, 4, 1), Edge::new(4, 5, 2), Edge::new(5, 6, 3)]
-                .map(|e| (e, 1))
-                .into_iter()
-                .collect(),
-            [Edge::new(0, 1, 1), Edge::new(1, 2, 2), Edge::new(2, 3, 3)]
-                .map(|e| (e, -1))
-                .into_iter()
-                .collect(),
-        ] as [Vec<(Edge, ZWeight)>; STEPS])
+            [
+                EdgeRel::new(0, 1, 1),
+                EdgeRel::new(1, 2, 2),
+                EdgeRel::new(2, 3, 3),
+            ]
+            .map(|e| (e, 2))
+            .into_iter()
+            .collect(),
+            [
+                EdgeRel::new(3, 4, 1),
+                EdgeRel::new(4, 5, 2),
+                EdgeRel::new(5, 6, 3),
+            ]
+            .map(|e| (e, 1))
+            .into_iter()
+            .collect(),
+            [
+                EdgeRel::new(0, 1, 1),
+                EdgeRel::new(1, 2, 2),
+                EdgeRel::new(2, 3, 3),
+            ]
+            .map(|e| (e, -1))
+            .into_iter()
+            .collect(),
+        ] as [Vec<(EdgeRel, ZWeight)>; STEPS])
             .into_iter();
 
         let mut selected_output = ([
@@ -275,14 +288,14 @@ mod test {
             .into_iter();
 
         for _ in 1..=STEPS {
-            rt.feed(&SourceId::from("edges"), rows(edges_data.next().unwrap()))?;
+            assert!(rt.feed(&EdgeRel::id(), rows(edges_data.next().unwrap()))?);
             rt.commit()?;
             assert_eq!(
-                rt.output(&SinkId::from("selected"))?.0,
+                rt.output(&SinkId::from("selected"))?.to_debug_zset(),
                 selected_output.next().unwrap()
             );
             assert_eq!(
-                rt.output(&SinkId::from("projected"))?.0,
+                rt.output(&SinkId::from("projected"))?.to_debug_zset(),
                 projected_output.next().unwrap()
             );
         }
@@ -305,7 +318,7 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(EdgeRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "deduped".to_string(),
@@ -330,16 +343,14 @@ mod test {
             }),
             output_stmt("downstream"),
         ];
-        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
-        rt.feed(
-            &SourceId::from("edges"),
-            rows_with_weight([Edge::new(0, 1, 5)], 1),
-        )?;
+        let mut rt =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
+        assert!(rt.feed(&EdgeRel::id(), rows_with_weight([EdgeRel::new(0, 1, 5)], 1),)?);
         rt.commit()?;
         // The Cli tap did not disturb the flow: the downstream channel is correct.
         // `Edge` carries an implicit `active` column (defaults to `true`).
         assert_eq!(
-            rt.output(&SinkId::from("downstream"))?.0,
+            rt.output(&SinkId::from("downstream"))?.to_debug_zset(),
             zset! { tuple!(0_u64, 1_u64, 5_u64, true) => 1 }
         );
         // Reading the Cli tap by name fails loudly instead of returning drained,
@@ -361,7 +372,7 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(EdgeRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "deduped".to_string(),
@@ -384,7 +395,8 @@ mod test {
                 }),
             }),
         ];
-        let Err(err) = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))
+        let Err(err) =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))
         else {
             panic!("duplicate output names must be rejected at build time");
         };
@@ -404,11 +416,11 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(EdgeRel::id()))),
             }),
             output_stmt("edges"),
         ];
-        let Err(err) = Pipeline::incremental().runtime(TestProgram::new(plan, [])) else {
+        let Err(err) = Pipeline::incremental().runtime(&mut TestProgram::new(plan, [])) else {
             panic!("a source the catalog does not describe must be rejected");
         };
         assert!(
@@ -422,11 +434,11 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "person".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Person::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(PersonRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "profession".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Profession::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(ProfessionRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "joined".to_string(),
@@ -468,22 +480,19 @@ mod test {
             }),
             output_stmt("joined"),
         ];
-        let mut rt = Pipeline::incremental().runtime(TestProgram::new(
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
             plan,
-            [Person::schema(), Profession::schema()],
+            [PersonRel::schema(), ProfessionRel::schema()],
         ))?;
 
         for (person_step, profession_step) in person_profession_data() {
-            rt.feed(&SourceId::from("person"), rows_with_weight(person_step, 1))?;
-            rt.feed(
-                &SourceId::from("profession"),
-                rows_with_weight(profession_step, 1),
-            )?;
+            assert!(rt.feed(&PersonRel::id(), rows_with_weight(person_step, 1))?);
+            assert!(rt.feed(&ProfessionRel::id(), rows_with_weight(profession_step, 1),)?);
 
             rt.commit()?;
 
             assert_eq!(
-                rt.output(&SinkId::from("joined"))?.0,
+                rt.output(&SinkId::from("joined"))?.to_debug_zset(),
                 zset! {
                     tuple!(0_u64, "Alice", 20_u64, 0_u64, "Engineer") => 1,
                     tuple!(2_u64, "Charlie", 40_u64, 0_u64, "Engineer") => 1,
@@ -500,11 +509,11 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "person".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Person::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(PersonRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "profession".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Profession::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(ProfessionRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "joined".to_string(),
@@ -522,22 +531,19 @@ mod test {
             }),
             output_stmt("joined"),
         ];
-        let mut rt = Pipeline::incremental().runtime(TestProgram::new(
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
             plan,
-            [Person::schema(), Profession::schema()],
+            [PersonRel::schema(), ProfessionRel::schema()],
         ))?;
 
         for (person_step, profession_step) in person_profession_data() {
-            rt.feed(&SourceId::from("person"), rows_with_weight(person_step, 1))?;
-            rt.feed(
-                &SourceId::from("profession"),
-                rows_with_weight(profession_step, 1),
-            )?;
+            assert!(rt.feed(&PersonRel::id(), rows_with_weight(person_step, 1))?);
+            assert!(rt.feed(&ProfessionRel::id(), rows_with_weight(profession_step, 1),)?);
 
             rt.commit()?;
 
             assert_eq!(
-                rt.output(&SinkId::from("joined"))?.0,
+                rt.output(&SinkId::from("joined"))?.to_debug_zset(),
                 zset! {
                     tuple!(0_u64, "Alice", 20_u64, 0_u64, 0_u64, "Engineer") => 1,
                     tuple!(0_u64, "Alice", 20_u64, 0_u64, 1_u64, "Doctor") => 1,
@@ -557,7 +563,7 @@ mod test {
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(Edge::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(EdgeRel::id()))),
             }),
             Stmt::from(VarStmt {
                 name: "len_1".to_string(),
@@ -724,21 +730,22 @@ mod test {
             }),
             output_stmt("full_closure"),
         ];
-        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
+        let mut rt =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
 
         let init_data = [
-            Edge::new(0, 1, 1),
+            EdgeRel::new(0, 1, 1),
             // This edge is omitted: Edge::new(1, 2, 1),
-            Edge::new(2, 3, 2),
-            Edge::new(3, 4, 2),
+            EdgeRel::new(2, 3, 2),
+            EdgeRel::new(3, 4, 2),
         ];
 
-        rt.feed(&SourceId::from("edges"), rows_with_weight(init_data, 1))?;
+        assert!(rt.feed(&EdgeRel::id(), rows_with_weight(init_data, 1))?);
 
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("full_closure"))?.0,
+            rt.output(&SinkId::from("full_closure"))?.to_debug_zset(),
             zset! {
                 tuple!(0_u64, 1_u64, 1_u64, 1_u64) => 1,
                 tuple!(2_u64, 3_u64, 2_u64, 1_u64) => 1,
@@ -747,14 +754,14 @@ mod test {
             }
         );
 
-        let extra_data = [Edge::new(1, 2, 1)];
+        let extra_data = [EdgeRel::new(1, 2, 1)];
 
-        rt.feed(&SourceId::from("edges"), rows_with_weight(extra_data, 1))?;
+        assert!(rt.feed(&EdgeRel::id(), rows_with_weight(extra_data, 1))?);
 
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("full_closure"))?.0,
+            rt.output(&SinkId::from("full_closure"))?.to_debug_zset(),
             zset! {
                 tuple!(0_u64, 2_u64, 2_u64, 2_u64) => 1,
                 tuple!(1_u64, 2_u64, 1_u64, 1_u64) => 1,
@@ -774,7 +781,7 @@ mod test {
             Stmt::from(VarStmt {
                 name: "edges".to_string(),
                 initializer: Some(Expr::from(ProjectionExpr {
-                    relation: Expr::from(SourceExpr::new(Edge::id())),
+                    relation: Expr::from(SourceExpr::new(EdgeRel::id())),
                     attributes: ["from", "to", "weight"]
                         .into_iter()
                         .map(|name| (name.to_string(), Expr::from(VarExpr::new(name))))
@@ -860,21 +867,22 @@ mod test {
             }),
             output_stmt("closure"),
         ];
-        let mut rt = Pipeline::incremental().runtime(TestProgram::new(plan, [Edge::schema()]))?;
+        let mut rt =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
 
         let init_data = [
-            Edge::new(0, 1, 1),
-            Edge::new(1, 2, 1),
-            Edge::new(2, 3, 2),
-            Edge::new(3, 4, 2),
+            EdgeRel::new(0, 1, 1),
+            EdgeRel::new(1, 2, 1),
+            EdgeRel::new(2, 3, 2),
+            EdgeRel::new(3, 4, 2),
         ];
 
-        rt.feed(&SourceId::from("edges"), rows_with_weight(init_data, 1))?;
+        assert!(rt.feed(&EdgeRel::id(), rows_with_weight(init_data, 1))?);
 
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("closure"))?.0,
+            rt.output(&SinkId::from("closure"))?.to_debug_zset(),
             zset! {
                 tuple!(0_u64, 1_u64, 1_u64, 1_u64) => 1,
                 tuple!(0_u64, 2_u64, 2_u64, 2_u64) => 1,
@@ -905,7 +913,7 @@ mod test {
             Stmt::from(VarStmt {
                 name: "base".to_string(),
                 initializer: Some(Expr::from(ProjectionExpr {
-                    relation: Expr::from(SourceExpr::new(PlainRelation::id())),
+                    relation: Expr::from(SourceExpr::new(PlainRel::id())),
                     attributes: vec![("node".to_string(), Expr::from(VarExpr::new("a")))],
                 })),
             }),
@@ -922,7 +930,7 @@ mod test {
                                 }),
                                 // `edges` used inline in the step — its only use.
                                 right: Expr::from(AliasExpr {
-                                    relation: Expr::from(SourceExpr::new(Edge::id())),
+                                    relation: Expr::from(SourceExpr::new(EdgeRel::id())),
                                     alias: "edge".to_string(),
                                 }),
                                 on: vec![(
@@ -941,27 +949,28 @@ mod test {
             output_stmt("reachable"),
         ];
 
-        let mut rt = Pipeline::incremental().runtime(TestProgram::new(
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
             plan,
-            [PlainRelation::schema(), Edge::schema()],
+            [PlainRel::schema(), EdgeRel::schema()],
         ))?;
 
         // Seed node 0; edges 0->1->2->3.
-        rt.feed(
-            &SourceId::from("plain"),
-            rows([(PlainRelation::new(0, 0, 0), 1)]),
-        )?;
-        rt.feed(
-            &SourceId::from("edges"),
+        assert!(rt.feed(&PlainRel::id(), rows([(PlainRel::new(0, 0, 0), 1)]),)?);
+        assert!(rt.feed(
+            &EdgeRel::id(),
             rows_with_weight(
-                [Edge::new(0, 1, 1), Edge::new(1, 2, 1), Edge::new(2, 3, 1)],
+                [
+                    EdgeRel::new(0, 1, 1),
+                    EdgeRel::new(1, 2, 1),
+                    EdgeRel::new(2, 3, 1)
+                ],
                 1,
             ),
-        )?;
+        )?);
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("reachable"))?.0,
+            rt.output(&SinkId::from("reachable"))?.to_debug_zset(),
             zset! {
                 tuple!(0_u64) => 1,
                 tuple!(1_u64) => 1,
@@ -983,7 +992,7 @@ mod test {
             }),
             Stmt::from(VarStmt {
                 name: "set".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(SetOp::id()))),
+                initializer: Some(Expr::from(SourceExpr::new(SetRel::id()))),
             }),
             // Inputs end.
             Stmt::from(VarStmt {
@@ -1143,8 +1152,10 @@ mod test {
             }),
             output_stmt("mvrStore"),
         ];
-        let mut rt = Pipeline::incremental()
-            .runtime(TestProgram::new(plan, [PredRel::schema(), SetOp::schema()]))?;
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
+            plan,
+            [PredRel::schema(), SetRel::schema()],
+        ))?;
 
         // The operation history is as follows:
         // In first step (just one root operation setting register with key 1 to
@@ -1173,9 +1184,9 @@ mod test {
         ];
 
         let set_op_data = [
-            vec![SetOp::new(0, 0, 1, 1)],
-            vec![SetOp::new(0, 1, 1, 2), SetOp::new(1, 0, 1, 3)],
-            vec![SetOp::new(1, 2, 1, 4)],
+            vec![SetRel::new(0, 0, 1, 1)],
+            vec![SetRel::new(0, 1, 1, 2), SetRel::new(1, 0, 1, 3)],
+            vec![SetRel::new(1, 2, 1, 4)],
         ];
 
         let mut expected = [
@@ -1196,13 +1207,13 @@ mod test {
         .into_iter();
 
         for (pred_rel_step, set_op_step) in pred_rel_data.into_iter().zip(set_op_data) {
-            rt.feed(&SourceId::from("pred"), rows_with_weight(pred_rel_step, 1))?;
-            rt.feed(&SourceId::from("set"), rows_with_weight(set_op_step, 1))?;
+            assert!(rt.feed(&PredRel::id(), rows_with_weight(pred_rel_step, 1))?);
+            assert!(rt.feed(&SetRel::id(), rows_with_weight(set_op_step, 1))?);
 
             rt.commit()?;
 
             assert_eq!(
-                rt.output(&SinkId::from("mvrStore"))?.0,
+                rt.output(&SinkId::from("mvrStore"))?.to_debug_zset(),
                 expected.next().unwrap()
             );
         }
