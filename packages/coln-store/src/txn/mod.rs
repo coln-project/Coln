@@ -10,7 +10,7 @@ use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
-    store::{Store, error::StoreIntError},
+    store::{Store, error::StoreError},
 };
 
 use inner::TxnInner;
@@ -37,7 +37,7 @@ impl<'a> Transaction<'a> {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreIntError> {
+    ) -> Result<RowHandle, StoreError> {
         self.inner.add(self.store, table, values)
     }
 
@@ -47,14 +47,18 @@ impl<'a> Transaction<'a> {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+    ) -> Result<TempRowId, StoreError> {
         self.inner.add_internal(self.store, table, values)
     }
 
-    pub fn commit(self) -> Result<CommitHash, StoreIntError> {
+    pub fn commit(self) -> Result<CommitHash, StoreError> {
         self.inner.commit(self.store)
     }
     // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreIntError> { ... }
+
+    pub fn abort(self) {
+        self.inner.abort()
+    }
 }
 
 pub struct OwnedTransaction {
@@ -75,13 +79,18 @@ impl OwnedTransaction {
         &mut self,
         table: &ir::Path,
         values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreIntError> {
+    ) -> Result<RowHandle, StoreError> {
         self.inner.add(&self.store, table, values)
+    }
+
+    pub fn abort(self) -> Store {
+        self.inner.abort();
+        self.store
     }
 
     // We need to return Store to the user for roll back purposes, so the Err variant must be large
     #[allow(clippy::result_large_err)]
-    pub fn commit(mut self) -> Result<(CommitHash, Store), (StoreIntError, Store)> {
+    pub fn commit(mut self) -> Result<(CommitHash, Store), (StoreError, Store)> {
         match self.inner.commit(&mut self.store) {
             Ok(hash) => Ok((hash, self.store)),
             Err(err) => Err((err, self.store)),
@@ -150,13 +159,13 @@ mod tests {
             .unwrap_err();
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::UnknownTable { .. })
+            StoreError::Validation(ValidationError::UnknownTable { .. })
         ));
 
         let err = tx.add(&path, vec![1_i64.into(), 2_i64.into()]).unwrap_err();
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::ColumnCount { .. })
+            StoreError::Validation(ValidationError::ColumnCount { .. })
         ));
     }
 
@@ -226,6 +235,39 @@ mod tests {
     }
 
     #[test]
+    fn abort_invalidates_returned_row_handles() {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+        let mut store = Store::new();
+        store
+            .create_table(nodes.clone(), table_schema(vec![], None))
+            .expect("create nodes table");
+        store
+            .create_table(
+                edges.clone(),
+                table_schema(vec![row_id_col("node", nodes.clone())], None),
+            )
+            .expect("create edges table");
+        let mut tx = store.transaction();
+        let node = tx.add(&nodes, vec![]).expect("add node");
+        tx.abort();
+        let err = node.row_id().expect_err("abort invalidates handle");
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
+        let mut tx = store.transaction();
+        let err = tx
+            .add(&edges, vec![node.into()])
+            .expect_err("aborted handle cannot be reused");
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+        ));
+        assert_eq!(store.table_at(&nodes).expect("Nodes").row_count(), 0);
+    }
+
+    #[test]
     fn failed_transaction_invalidates_returned_row_handles() {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
@@ -248,13 +290,13 @@ mod tests {
             .expect_err("duplicate singleton row should fail");
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::DuplicatePrimaryKey)
+            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
         ));
 
         let err = node.row_id().expect_err("failed commit invalidates handle");
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
+            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
         ));
 
         let mut tx = store.transaction();
@@ -263,7 +305,7 @@ mod tests {
             .expect_err("invalid handle cannot be reused");
         assert!(matches!(
             err,
-            StoreIntError::Validation(ValidationError::InvalidRowHandle { .. })
+            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
         ));
     }
 

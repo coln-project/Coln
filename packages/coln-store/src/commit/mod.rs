@@ -15,6 +15,8 @@ pub mod wire;
 
 use std::borrow::Cow;
 
+use coln_flir_rs::ir::FlatRealm;
+
 use crate::{
     commit::{
         author::Author,
@@ -22,7 +24,7 @@ use crate::{
         error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
-        wire::{CommitData, root::RootCommitData},
+        wire::CommitData,
     },
     ir::Path,
     op::Op,
@@ -63,7 +65,7 @@ pub struct Commit<'a> {
 
 impl Commit<'static> {
     /// Creating the commit data structure from the deserialized root data
-    pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, CodecError> {
+    pub(crate) fn from_root_data(root: &FlatRealm) -> Result<Self, CodecError> {
         let bytes = wire::serialize_root(root)?;
         Ok(Self::from_root_bytes(bytes))
     }
@@ -169,7 +171,7 @@ impl<'a> Commit<'a> {
         self.chunk_type() == ChunkType::Root
     }
 
-    pub(crate) fn root_payload(&self) -> Result<RootCommitData, CodecError> {
+    pub(crate) fn root_payload(&self) -> Result<FlatRealm, CodecError> {
         if self.chunk_type() != ChunkType::Root {
             return Err(CodecError::ChunkMismatch {
                 expected: ChunkType::Root,
@@ -225,8 +227,7 @@ mod tests {
     use super::*;
     use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::root::{RootCommitData, RootTableEntry};
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, TableEntry};
     use crate::table::{RowId, TableMeta, TableOid};
     use crate::txn::{RowRef, TempRowId};
 
@@ -371,6 +372,16 @@ mod tests {
         }
     }
 
+    fn int_theory() -> FlatRealm {
+        FlatRealm {
+            tables: vec![TableEntry {
+                path: Path::from("T"),
+                table: owned_int_schema(),
+            }],
+            rules: vec![],
+        }
+    }
+
     fn data(
         deps: Vec<CommitHash>,
         author: Author,
@@ -383,15 +394,7 @@ mod tests {
 
     #[test]
     fn decode_root_preserves_payload_and_hash() {
-        let root = RootCommitData {
-            tables: vec![RootTableEntry {
-                path: "T".to_owned(),
-                oid: 0,
-                schema: owned_int_schema(),
-            }],
-            laws: vec![],
-        };
-        let original = Commit::from_root_data(&root).expect("build root");
+        let original = Commit::from_root_data(&int_theory()).expect("build root");
 
         let bytes = Chunk::from(&original).encoded();
         let chunk = Chunk::decode(&bytes).expect("decode root chunk");
@@ -564,15 +567,7 @@ mod tests {
 
     #[test]
     fn root_commit_wraps_and_decodes_root_payload() {
-        let root = RootCommitData {
-            tables: vec![RootTableEntry {
-                path: "T".to_owned(),
-                oid: 0,
-                schema: owned_int_schema(),
-            }],
-            laws: vec![],
-        };
-
+        let root = int_theory();
         let commit = Commit::from_root_data(&root).expect("build root");
 
         assert_eq!(commit.chunk_type(), ChunkType::Root);
@@ -582,14 +577,13 @@ mod tests {
 
         let decoded = commit.root_payload().expect("decode root payload");
         assert_eq!(decoded.tables.len(), 1);
-        assert_eq!(decoded.tables[0].path, "T");
-        assert_eq!(decoded.tables[0].oid, 0);
-        assert_eq!(decoded.tables[0].schema.columns, owned_int_schema().columns);
+        assert_eq!(decoded.tables[0].path, Path::from("T"));
+        assert_eq!(decoded.tables[0].table.columns, owned_int_schema().columns);
         assert_eq!(
-            decoded.tables[0].schema.primary_key,
+            decoded.tables[0].table.primary_key,
             Some(vec![Path::from("c0")])
         );
-        assert!(decoded.laws.is_empty());
+        assert!(decoded.rules.is_empty());
     }
 
     #[test]

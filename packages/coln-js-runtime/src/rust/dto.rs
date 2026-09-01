@@ -177,11 +177,13 @@ impl From<Value> for StoreTxnValue {
     }
 }
 
+// We use Value for both row_id and values to simplify the interface of the app
+// developer
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct RowView {
-    pub row_id: RowRef,
+    pub row_id: Value,
     pub values: Vec<Value>,
 }
 
@@ -207,9 +209,8 @@ impl TryFrom<RowId> for StoreRowId {
 
 impl From<StoreRowView> for RowView {
     fn from(value: StoreRowView) -> Self {
-        let row_id: RowId = value.row_id.into();
         Self {
-            row_id: row_id.into(),
+            row_id: Value::existing_id(value.row_id.into()),
             values: value.values.into_iter().map(Value::from).collect(),
         }
     }
