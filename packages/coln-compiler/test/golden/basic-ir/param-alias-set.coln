@@ -1,0 +1,13 @@
+theory SetAlias := Set
+
+def Box (X : SetAlias) : Set := sig
+  value : X
+end
+
+theory T := sig
+  X : SetAlias
+  boxed : Box X -> Set
+end
+
+realm TRealm @ T
+end

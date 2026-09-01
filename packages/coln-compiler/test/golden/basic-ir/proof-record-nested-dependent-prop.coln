@@ -1,0 +1,16 @@
+def Evidence (P : Prop) : Set := sig
+  proof : P
+end
+
+def Package (P : Int -> Prop) : Set := sig
+  value : Int
+  evidence : Evidence (P value)
+end
+
+theory T := sig
+  P : Int -> Prop
+  package : Package P
+end
+
+realm TRealm @ T
+end

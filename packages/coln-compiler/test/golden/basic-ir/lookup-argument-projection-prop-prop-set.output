@@ -1,0 +1,56 @@
+-- elaborated
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  A : Prop
+  B : A -> Prop
+  E : (x : A) -> B x -> Set
+  next : (x : A) -> B x
+  nextedge : (x : A) -> E x (next x)
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      A = rel []
+      B = rel [a : TRealm.A []]
+      E = rel [x : TRealm.A [], a : TRealm.B [a := x]]
+      next = (fun [x : TRealm.A []] -> TRealm.B [a := x])
+      nextedge = (fun [x : TRealm.A []] -> TRealm.E [
+        x := x,
+        a := TRealm.next [x := x]
+      ])
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.A := []
+    table ℜ.B := [.a : ℜ.A]
+    table ℜ.E := [.x : ℜ.A, .a : ℜ.B]
+    table ℜ.next := [.x : ℜ.A, .a : ℜ.B] primarykey [.x]
+    table ℜ.nextedge := [.x : ℜ.A, .a : ℜ.E] primarykey [.x]
+  end
+  rules
+    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
+    enforced ℜ.B.foreignKey a := ℜ.B [.a ↦ a] ⊢ a ∈ ℜ.A []
+    enforced ℜ.E.foreignKey x a := ℜ.E [.x ↦ x, .a ↦ a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [
+      .a ↦ x
+    ]
+    enforced ℜ.next.foreignKey x a := ℜ.next [
+      .x ↦ x,
+      .a ↦ a
+    ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [.a ↦ x]
+    monitored ℜ.next.total x := x ∈ ℜ.A [] ⊢ ℜ.next [.x ↦ x]
+    enforced ℜ.nextedge.foreignKey x a a.a := ℜ.nextedge [
+      .x ↦ x,
+      .a ↦ a
+    ] ∧ ℜ.next [.x ↦ x, .a ↦ a.a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.x ↦ x, .a ↦ a.a]
+    monitored ℜ.nextedge.total x := x ∈ ℜ.A [] ⊢ ℜ.nextedge [.x ↦ x]
+  end
+end
+
+-- messages

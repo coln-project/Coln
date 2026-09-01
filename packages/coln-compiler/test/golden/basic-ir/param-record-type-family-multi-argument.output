@@ -1,0 +1,59 @@
+-- elaborated
+global entry named Cell
+in mode: Conjunctive
+type: (X : Set) -> (Y : Set) -> (R : X -> Y -> Set) -> (x : X) -> (y : Y) -> Set
+value: X => Y => R => x => y => sig
+  entry : R x y
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  Y : Set
+  R : X -> Y -> Set
+  cells : (x : X) -> (y : Y) -> Cell X Y R x y -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      Y = rel []
+      R = rel [a : TRealm.X [], b : TRealm.Y []]
+      cells = rel [
+        x : TRealm.X [],
+        y : TRealm.Y [],
+        a : Cell (TRealm.X []) (TRealm.Y []) (a => b => TRealm.R [
+          a := a,
+          b := b
+        ]) x y
+      ]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.Y := []
+    table ℜ.R := [.a : ℜ.X, .b : ℜ.Y]
+    table ℜ.cells := [.x : ℜ.X, .y : ℜ.Y, .a.entry : ℜ.R]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.Y.foreignKey := ℜ.Y [] ⊢ ⊤
+    enforced ℜ.R.foreignKey a b := ℜ.R [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.Y []
+    enforced ℜ.cells.foreignKey x y a.entry := ℜ.cells [
+      .x ↦ x,
+      .y ↦ y,
+      .a.entry ↦ a.entry
+    ] ⊢ x ∈ ℜ.X [] ∧ y ∈ ℜ.Y [] ∧ a.entry ∈ ℜ.R [.a ↦ x, .b ↦ y]
+  end
+end
+
+-- messages

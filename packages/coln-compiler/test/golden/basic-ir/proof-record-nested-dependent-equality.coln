@@ -1,0 +1,16 @@
+def Evidence (X : Set) (actual : X) (expected : X) : Set := sig
+  proof : actual = expected
+end
+
+def Result (X : Set) (expected : X) : Set := sig
+  actual : X
+  evidence : Evidence X actual expected
+end
+
+theory T := sig
+  X : Set
+  result : (^c expected : X) -> Result X expected
+end
+
+realm TRealm @ T
+end

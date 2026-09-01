@@ -1,0 +1,19 @@
+theory Model := sig
+  X : Set
+end
+
+theory Alias := Model
+
+def Box (X : Set) (M : Alias) (Y : Set) : Set := sig
+  key : X
+  modelValue : M.X
+  value : Y
+end
+
+theory T := sig
+  model : Alias
+  boxed : Box Int model String -> Set
+end
+
+realm TRealm @ T
+end

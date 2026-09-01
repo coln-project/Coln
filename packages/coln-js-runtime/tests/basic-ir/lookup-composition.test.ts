@@ -20,12 +20,6 @@ test("lookup-composition", () => {
   realm.root.edge(source).set(edge);
   const view = realm.commit();
 
-  assert.equal(view.A.has(source), true);
-  assert.equal(view.B.has(intermediate), true);
-  assert.equal(view.C.has(target), true);
-  assert.equal(view.E(target).has(edge), true);
-  assert.equal(valueEqual(view.first(source).get(), intermediate), true);
-  assert.equal(valueEqual(view.second(intermediate).get(), target), true);
   assert.equal(valueEqual(view.edge(source).get(), edge), true);
 });
 

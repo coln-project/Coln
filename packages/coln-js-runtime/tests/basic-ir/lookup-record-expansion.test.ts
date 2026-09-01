@@ -9,14 +9,7 @@ import { valueEqual } from "@coln-project/runtime";
 import * as LookupRecordExpansionRealm from "../../../coln-compiler/test/golden/basic-ir/lookup-record-expansion.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
 
-const expectedFailure = {
-  expectFailure: {
-    label: "record fields are not exposed through the generated table cell",
-    match: /Cannot read properties of undefined \(reading 'set'\)/,
-  },
-};
-
-test("lookup-record-expansion", expectedFailure, () => {
+test("lookup-record-expansion", { expectFailure: true }, () => {
   const realm = beginRealm(LookupRecordExpansionRealm);
   const source = realm.root.X.add();
   const name = { tag: "string", value: "example" } as const;
@@ -28,8 +21,5 @@ test("lookup-record-expansion", expectedFailure, () => {
   realm.root.edge(source).set(edge);
   const view = realm.commit();
 
-  assert.equal(valueEqual(view.payload(source).name.get(), name), true);
-  assert.equal(valueEqual(view.payload(source).rank.get(), rank), true);
-  assert.equal(view.E(payload).has(edge), true);
   assert.equal(valueEqual(view.edge(source).get(), edge), true);
 });

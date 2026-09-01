@@ -1,0 +1,9 @@
+theory T := sig
+  A : Set
+  B : A -> Prop
+  C : (a : A) -> B a -> Prop
+  f : (a : A) -> (b : B a) -> C a b
+end
+
+realm TRealm @ T
+end

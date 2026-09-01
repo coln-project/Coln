@@ -1,0 +1,13 @@
+def Box (X : Set) (f : X -> X) (Y : Set) : Set := sig
+  key : X
+  value : Y
+end
+
+theory T := sig
+  Key : Set
+  f : Key -> Key
+  boxed : Box Key f String -> Set
+end
+
+realm TRealm @ T
+end
