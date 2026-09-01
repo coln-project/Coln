@@ -7,9 +7,7 @@ import test from "node:test";
 
 import { StoreHandle } from "#wasm-bodge/bindings";
 
-import theory from "../../coln-compiler/test/golden/basic-ir/set.ts.output/TRealm.json" with {
-  type: "json",
-};
+import theory from "../../coln-compiler/test/golden/basic-ir/set.ts.output/TRealm.json" with { type: "json" };
 
 test("resolve pending row id to existing on commit", () => {
   const store = StoreHandle.fromTheory(JSON.stringify(theory), "", "");
