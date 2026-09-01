@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod error;
+pub mod read;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -24,11 +25,12 @@ use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreError};
+use crate::store::read::StoreRead;
 use crate::table::table_handle::WireRowView;
 use crate::table::{
     Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
-use crate::txn::{OwnedTransaction, Transaction};
+use crate::txn::{OwnedTransaction, Transaction, TxnLiveRowId};
 
 #[derive(Debug)]
 pub struct Store {
@@ -169,13 +171,6 @@ impl Store {
         &self.rule_entries
     }
 
-    pub fn scan_table(
-        &self,
-        table_path: &ir::Path,
-    ) -> Option<impl Iterator<Item = WireRowView> + '_> {
-        self.table_at(table_path).map(|table| table.scan())
-    }
-
     pub fn json_ir(&self) -> Result<String, StoreError> {
         let root = self.commits.root_commit()?.root_payload()?;
         Ok(serde_json::to_string(&root.ir).map_err(CodecError::from)?)
@@ -202,6 +197,23 @@ impl Store {
 pub struct ColnDef {
     pub theory: String,
     pub realm: String,
+}
+
+impl StoreRead for Store {
+    fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = WireRowView> + '_> {
+        self.table_at(table_path).map(|table| table.scan())
+    }
+
+    fn row_by_liveid(&self, table: &ir::Path, handle: &TxnLiveRowId) -> Option<WireRowView> {
+        self.table_at(table)?.row_by_handle(handle)
+    }
+
+    // This function will canonicalise the row_id on read, but will not change it
+    // See `row_by_liveid` which will actually canonicalise the handle.
+    // We need both because the TS FFI does not deal with handles.
+    fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
+        self.table_at(table)?.row_by_id(row_id)
+    }
 }
 
 impl Store {

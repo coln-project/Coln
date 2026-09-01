@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod inner;
+mod owned;
 mod row_handle;
 mod timestamp;
 
@@ -10,10 +11,12 @@ use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
-    store::{Store, error::StoreError},
+    store::{Store, error::StoreError, read::StoreRead},
+    table::{WireRowId, table_handle::WireRowView},
 };
 
 use inner::TxnInner;
+pub use owned::OwnedTransaction;
 pub(crate) use row_handle::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue};
 pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, empty_row};
 
@@ -59,40 +62,17 @@ impl<'a> Transaction<'a> {
     }
 }
 
-pub struct OwnedTransaction {
-    inner: TxnInner,
-    store: Store,
-}
-
-impl OwnedTransaction {
-    pub fn new(store: Store) -> Self {
-        let deps = store.commits().heads().copied().collect();
-        Self {
-            inner: TxnInner::new(deps),
-            store,
-        }
+impl StoreRead for Transaction<'_> {
+    fn scan_table(&self, table: &ir::Path) -> Option<impl Iterator<Item = WireRowView> + '_> {
+        self.store.scan_table(table)
     }
 
-    pub fn add<V: Into<TxnLiveValue>>(
-        &mut self,
-        table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError> {
-        self.inner.add(&self.store, table, values)
+    fn row_by_liveid(&self, table: &ir::Path, handle: &TxnLiveRowId) -> Option<WireRowView> {
+        self.store.row_by_liveid(table, handle)
     }
 
-    pub fn abort(self) -> Store {
-        self.inner.abort();
-        self.store
-    }
-
-    // We need to return Store to the user for roll back purposes, so the Err variant must be large
-    #[allow(clippy::result_large_err)]
-    pub fn commit(mut self) -> Result<(CommitHash, Store), (StoreError, Store)> {
-        match self.inner.commit(&mut self.store) {
-            Ok(hash) => Ok((hash, self.store)),
-            Err(err) => Err((err, self.store)),
-        }
+    fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
+        self.store.row_by_id(table, row_id)
     }
 }
 
@@ -126,45 +106,6 @@ mod tests {
             path: Path::from(name),
             col_type: ColType::RowId { path },
         }
-    }
-
-    #[test]
-    fn owned_transaction_commits_and_returns_updated_store() {
-        let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![42_i32]).expect("add");
-
-        let (_hash, committed) = tx.commit().expect("commit");
-        assert_eq!(committed.table_at(&path).expect("T").row_count(), 1);
-    }
-
-    #[test]
-    fn owned_transaction_add_validates_table_and_column_count() {
-        let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut tx = OwnedTransaction::new(store);
-        let err = tx.add(&Path::from("missing"), vec![1_i32]).unwrap_err();
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::UnknownTable { .. })
-        ));
-
-        let err = tx.add(&path, vec![1_i32, 2_i32]).unwrap_err();
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::ColumnCount { .. })
-        ));
     }
 
     #[test]
@@ -314,7 +255,7 @@ mod tests {
     /// finalizes to the id the store actually kept, not to its raw
     /// `(commit, counter)` id, which names no stored row. The first handle
     /// may still go stale when the second commit wins the merge; reading
-    /// through `row_by_handle` resolves and repairs it.
+    /// through `row_by_liveid` resolves and repairs it.
     #[test]
     fn deduplicated_row_handle_finalizes_to_canonical_id() {
         let term = Path::from("Term");
@@ -350,7 +291,7 @@ mod tests {
         let view = store
             .table_at(&term)
             .expect("class row is stored")
-            .row_by_handle(first.clone())
+            .row_by_handle(&first)
             .expect("class row is stored");
         assert_eq!(view.row_id, stored);
         assert_eq!(first.row_id().expect("finalized"), stored);
@@ -389,6 +330,65 @@ mod tests {
         assert_eq!(
             store.commits().heads().copied().collect::<Vec<_>>(),
             vec![second]
+        );
+    }
+
+    /// We provide read-committed isolation guarantee. So uncommitted data will
+    /// not be seen.
+    #[test]
+    fn transaction_store_read_sees_committed_rows_not_pending() {
+        let path = Path::from("T");
+        let schema = table_schema(vec![int_col("c0")], None);
+        let mut store = Store::new();
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
+
+        let mut tx = store.transaction();
+        tx.add(&path, vec![1_i64.into()]).expect("add");
+        tx.commit().expect("commit");
+
+        let mut tx = store.transaction();
+        let rows: Vec<_> = tx.scan_table(&path).expect("T").collect();
+        assert_eq!(rows.len(), 1);
+        assert!(tx.row_by_id(&path, rows[0].row_id).is_some());
+        assert!(
+            tx.row_by_liveid(&path, &TxnLiveRowId::from_existing(rows[0].row_id))
+                .is_some()
+        );
+
+        tx.add(&path, vec![2_i64.into()]).expect("add pending");
+        assert_eq!(tx.scan_table(&path).expect("T").count(), 1);
+        tx.abort();
+    }
+
+    /// Committing an empty transaction does not modify the commit graph
+    #[test]
+    fn txn_empty_commit_not_added() {
+        let mut store = Store::new();
+        let root = store.commits().root_commit().expect("root commit").hash();
+        let heads: Vec<_> = store.commits().heads().copied().collect();
+        let commits: Vec<_> = store
+            .commits()
+            .iter_topological()
+            .map(|c| c.hash())
+            .collect();
+
+        let empty = store.transaction().commit().expect("empty commit");
+
+        assert!(!store.commits().contains(&empty));
+        assert_eq!(
+            store.commits().root_commit().expect("root commit").hash(),
+            root
+        );
+        assert_eq!(store.commits().heads().copied().collect::<Vec<_>>(), heads);
+        assert_eq!(
+            store
+                .commits()
+                .iter_topological()
+                .map(|c| c.hash())
+                .collect::<Vec<_>>(),
+            commits
         );
     }
 }
