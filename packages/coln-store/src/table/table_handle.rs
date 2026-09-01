@@ -66,7 +66,7 @@ impl<'a> TableHandle<'a> {
         self.inner.cols.len() + 1
     }
 
-    pub fn row_by_handle(&self, row_handle: TxnLiveRowId) -> Option<WireRowView> {
+    pub fn row_by_handle(&self, row_handle: &TxnLiveRowId) -> Option<WireRowView> {
         let row_id = row_handle.row_id().ok()?;
         let packed_row_id = self.id_packer.lookup_row_id(&row_id)?;
         let con_rowid = self
