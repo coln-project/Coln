@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{api::violations::Violations, error::QueryEngineError};
+use crate::{api::violations::ViolationsSet, error::QueryEngineError};
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 /// Public error type for the coln frontend.
@@ -17,5 +17,5 @@ pub enum ColnQueryError {
 /// A hard constraint has been violated but this should not have happened.
 /// This usually indicates a bug.
 pub struct UnsafeApplyError {
-    pub violations: Violations,
+    pub violations: ViolationsSet,
 }

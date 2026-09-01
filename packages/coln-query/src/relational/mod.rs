@@ -14,9 +14,10 @@
 //!   [`BatchBackend`](batch::BatchBackend) eager).
 //! - [`Runtime`] — the runnable artifact: feed input changes, advance, read
 //!   results. This is where incremental vs batch actually differ — DBSP's
-//!   `commit` runs one incremental transaction and yields per-step [`Delta`]s;
-//!   the batch engine recomputes from the accumulated inputs and yields
-//!   [`Snapshot`]s.
+//!   `commit` runs one incremental transaction and yields per-step
+//!   [`DbspOutputDelta`](incremental::dbsp::DbspOutputDelta)s; the batch engine
+//!   recomputes from the accumulated inputs and yields
+//!   [`Snapshot`](batch::Snapshot)s.
 //!
 //! Which extensional inputs to wire comes from the plan itself, since every one
 //! of them is a [`SourceExpr`](crate::relational::expr::SourceExpr) leaf. What
@@ -95,7 +96,9 @@ pub trait Backend {
 /// computation, `output` reads a result. Incremental and batch backends differ
 /// only in [`Runtime::Output`] and in how `commit` honors it.
 pub trait Runtime {
-    /// The natural result form: [`Delta`] (incremental) or [`Snapshot`] (batch).
+    /// The natural result form:
+    /// [`DbspOutputDelta`](incremental::dbsp::DbspOutputDelta) (incremental) or
+    /// [`Snapshot`](batch::Snapshot) (batch).
     type Output;
     /// A runtime error.
     type Error: Into<RuntimeError> + std::fmt::Debug;

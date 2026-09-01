@@ -7,27 +7,22 @@
 
 use crate::relational::{TupleValue, schema::EntityRef};
 pub use crate::scalarial::ScalarTypedValue;
+use std::borrow::Borrow;
 
 pub type ZWeight = i64;
 
-/// An update of a row of some base table.
-/// It either represents an insertion or a deletion of a row from a table,
-/// see [`zweight`](`Self::zweight`) documentation.
+/// An update of a row of some table. It either represents an insertion or a
+/// deletion of a row from a table, see [`zweight`](Self::zweight()) documentation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZRow {
-    /// A ZWeight value ...
-    /// - `== 0` behaves as if there was no change happening at all.
-    /// - `n if n > 0` represents an insertion. If `n > 1` it is a duplicated
-    ///   insertion, that is, the row is inserted n-times.
-    /// - `n if n < 0` represents a deletion. If `n < 1` we remove the row
-    ///   n-times.
+    /// See [Self::zweight] documentation.
     zweight: ZWeight,
     /// The row-oriented data.
     row: TupleValue,
 }
 
 impl ZRow {
-    /// Create a new [`RowDelta`] but filters out deltas with a `zweight` of 0
+    /// Create a new [`ZRow`] but filters out deltas with a `zweight` of 0
     /// in which case `None` is returned.
     pub fn new(zweight: ZWeight, row: TupleValue) -> Option<Self> {
         if zweight == 0 {
@@ -36,14 +31,33 @@ impl ZRow {
             Some(Self { zweight, row })
         }
     }
+    /// A ZWeight value ...
+    /// - `== 0` behaves as if there was no change happening at all.
+    /// - `n if n > 0` represents an insertion. If `n > 1` it is a duplicated
+    ///   insertion, that is, the row is inserted n-times.
+    /// - `n if n < 0` represents a deletion. If `n < 1` we remove the row
+    ///   n-times.
     pub fn zweight(&self) -> ZWeight {
         self.zweight
+    }
+    /// Returns `true` if the [`zweight`](Self::zweight) is (strictly) positive.
+    ///
+    /// Can occur for both deltas (changes) or sets (snapshots).
+    pub fn is_assertion(&self) -> bool {
+        self.zweight() > 0
+    }
+    /// Returns `true` if the [`zweight`](Self::zweight) is negative in which
+    /// case a previous assertion of this row is now retracted.
+    ///
+    /// Only occurs if the [`ZRow`] stores a delta (change).
+    pub fn is_retraction(&self) -> bool {
+        self.zweight() < 0
     }
     pub fn into_row(self) -> TupleValue {
         self.row
     }
-    /// Inverses the [ZWeight](Self::zweight) to retract a previously
-    /// fed fact. Useful for rolling back a transaction.
+    /// Flips the [ZWeight](Self::zweight) to retract a previously fed fact.
+    /// Useful for rolling back a transaction.
     fn retract(&mut self) {
         self.zweight = -self.zweight;
     }
@@ -61,31 +75,71 @@ pub struct TableDelta {
     /// A unique identifier of a table.
     entity: EntityRef,
     /// The row-oriented updates of the table.
-    delta: Vec<ZRow>,
+    inner: Vec<ZRow>,
 }
 
 impl TableDelta {
     pub fn new<T: Into<EntityRef>>(for_entity: T, delta: Vec<ZRow>) -> Self {
         Self {
             entity: for_entity.into(),
-            delta,
+            inner: delta,
         }
     }
     pub fn is_empty(&self) -> bool {
-        self.delta.is_empty()
+        self.inner.is_empty()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &ZRow> {
+        self.into_iter()
     }
     pub fn for_entity(&self) -> &EntityRef {
         &self.entity
     }
     pub fn delta(&self) -> &[ZRow] {
-        &self.delta
+        &self.inner
     }
     pub fn into_delta(self) -> Vec<ZRow> {
-        self.delta
+        self.inner
     }
-    /// Retracts all contained [`RowDelta`]s.
+    /// Retracts all contained [`ZRow`]s.
     fn retract(&mut self) {
-        self.delta.iter_mut().for_each(|delta| delta.retract());
+        self.inner.iter_mut().for_each(|delta| delta.retract());
+    }
+}
+
+impl IntoIterator for TableDelta {
+    type Item = ZRow;
+    type IntoIter = std::vec::IntoIter<ZRow>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a TableDelta {
+    type Item = &'a ZRow;
+    type IntoIter = std::slice::Iter<'a, ZRow>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+pub trait ZRowIterExt: Iterator + Sized {
+    fn assertions(self) -> impl Iterator<Item = Self::Item>;
+    fn retractions(self) -> impl Iterator<Item = Self::Item>;
+}
+
+impl<I> ZRowIterExt for I
+where
+    I: Iterator + Sized,
+    I::Item: Borrow<ZRow>,
+{
+    fn assertions(self) -> impl Iterator<Item = Self::Item> {
+        self.filter(|row| row.borrow().is_assertion())
+    }
+
+    fn retractions(self) -> impl Iterator<Item = Self::Item> {
+        self.filter(|row| row.borrow().is_retraction())
     }
 }
 

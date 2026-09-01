@@ -20,6 +20,178 @@ use crate::{
 use std::borrow::Cow;
 use std::fmt::Debug;
 
+/// Builders for FLIR by hand, for the realms no `.json` fixture covers — a
+/// monitored rule today, since coln-compiler does not emit one yet.
+///
+/// These are the [`ir`](coln_flir_rs::ir) halves only. A caller that also needs
+/// the *lowering's*
+/// own vocabulary (`FriendlyVar` and friends, to drive
+/// [`FlirProgram`](crate::api::query::FlirProgram) internals directly) keeps that
+/// next to those tests; what lives here is the part every such test states the
+/// same way.
+pub mod flir {
+    use coln_flir_rs::ir;
+
+    /// A base table `name` whose columns are given as `(name, type)` pairs, in
+    /// order, and which declares no primary key of its own.
+    pub fn table_entry(name: &str, columns: Vec<(&str, ir::ColType)>) -> ir::TableEntry {
+        ir::TableEntry {
+            path: ir::Path::from(name),
+            table: ir::Schema {
+                entity_variant: ir::EntityVariant::Table,
+                columns: columns
+                    .into_iter()
+                    .map(|(name, col_type)| ir::ColumnEntry {
+                        path: ir::Path::from(name),
+                        col_type,
+                    })
+                    .collect(),
+                primary_key: None,
+            },
+        }
+    }
+
+    /// A rule `antecedents => consequents` of the given [variant](ir::RuleVariant),
+    /// over the given variables.
+    ///
+    /// Both sides are [`Prop`](ir::Prop)s rather than [`Atom`](ir::Atom)s, so a
+    /// side may carry conditions as well as atoms — which is what a rule needs to
+    /// say anything more interesting than "these relations join". See
+    /// [`atom_props`] for the atoms-only case.
+    pub fn rule_entry<'a>(
+        name: &str,
+        variant: ir::RuleVariant,
+        vars: impl IntoIterator<Item = (&'a str, ir::ColType)>,
+        antecedents: Vec<ir::Prop>,
+        consequents: Vec<ir::Prop>,
+    ) -> ir::RuleEntry {
+        let (var_names, var_types) = vars
+            .into_iter()
+            .map(|(name, col_type)| (ir::Path::from(name), col_type))
+            .unzip();
+        ir::RuleEntry {
+            path: ir::Path::from(name),
+            rule: ir::Rule {
+                rule_variant: variant,
+                var_names,
+                var_types,
+                antecedents,
+                consequents,
+            },
+        }
+    }
+
+    /// One side of a rule that is nothing but atoms.
+    pub fn atom_props(atoms: Vec<ir::Atom>) -> Vec<ir::Prop> {
+        atoms.into_iter().map(atom_prop).collect()
+    }
+
+    pub fn atom_prop(atom: ir::Atom) -> ir::Prop {
+        ir::Prop::Atom { atom }
+    }
+
+    /// A condition as one side of a rule sees it. [`equality`] on its own is
+    /// what [`ConjunctiveQuery`](crate::api::query) holds, before the split into
+    /// atoms and conditions has happened.
+    pub fn eq_prop(equality: ir::Equality) -> ir::Prop {
+        ir::Prop::Eq { equality }
+    }
+
+    /// An atom over `entity`, optionally binding its row id, and binding or
+    /// constraining the columns named by index in `values`.
+    pub fn atom(
+        entity: &str,
+        row_id: Option<ir::Term>,
+        values: Vec<(ir::ColumnIdx, ir::Term)>,
+    ) -> ir::Atom {
+        ir::Atom {
+            entity: ir::Path::from(entity),
+            row_id,
+            values: values
+                .into_iter()
+                .map(|(column, term)| ir::ValueEntry { column, term })
+                .collect(),
+        }
+    }
+
+    pub fn builtin_int() -> ir::ColType {
+        ir::ColType::BuiltinTy {
+            builtin_ty: ir::BuiltinTy::BuiltinInt,
+        }
+    }
+
+    pub fn row_id_of(entity: &str) -> ir::ColType {
+        ir::ColType::RowId {
+            path: ir::Path::from(entity),
+        }
+    }
+
+    pub fn var_term(index: ir::VarIdx) -> ir::Term {
+        ir::Term::Var { index }
+    }
+
+    pub fn lit_term(value: i64) -> ir::Term {
+        ir::Term::Lit {
+            lit: ir::Lit::Int { value },
+        }
+    }
+
+    pub fn equality(left: ir::Term, right: ir::Term) -> ir::Equality {
+        ir::Equality { left, right }
+    }
+}
+
+/// A realm with a single *monitored* rule, so that the one path
+/// [`TxOutcome::SoftViolationsDelta`](crate::api::transaction::TxOutcome::SoftViolationsDelta)
+/// describes can actually be driven.
+///
+/// The rule reads `t(a = x) => t(a = x) and x == 1`, which the lowering turns
+/// into `AntiJoin(t(x), σ(x == 1) t(x))`: its violations are exactly the rows of
+/// `t` whose `a` is not `1`. Trivial to violate, and trivial to repair again,
+/// which is the pair of transactions the monitored semantics turn on.
+pub mod monitored_flir {
+    use super::flir;
+    use crate::{relational::TupleValue, scalarial::ScalarTypedValue};
+    use coln_flir_rs::ir;
+
+    /// The one base table.
+    pub const TABLE: &str = "t";
+    /// The monitored rule, and so also the sink its violations arrive on.
+    pub const RULE: &str = "m";
+    /// The only value of `a` the rule tolerates.
+    pub const PERMITTED: i64 = 1;
+
+    pub fn realm() -> ir::FlatRealm {
+        // The single variable `x`, bound to column 0 (`a`) on both sides.
+        let x = || vec![(0, flir::var_term(0))];
+        ir::FlatRealm {
+            tables: vec![flir::table_entry(TABLE, vec![("a", flir::builtin_int())])],
+            rules: vec![flir::rule_entry(
+                RULE,
+                ir::RuleVariant::Monitored,
+                [("x", flir::builtin_int())],
+                flir::atom_props(vec![flir::atom(TABLE, None, x())]),
+                vec![
+                    flir::atom_prop(flir::atom(TABLE, None, x())),
+                    flir::eq_prop(flir::equality(flir::var_term(0), flir::lit_term(PERMITTED))),
+                ],
+            )],
+        }
+    }
+
+    /// One row of [`TABLE`]: the implicit row id, which reaches the query engine
+    /// as its two halves, followed by the declared column `a`.
+    pub fn row(row_id_hash: u64, row_id_ctr: u64, a: i64) -> TupleValue {
+        [
+            ScalarTypedValue::from(row_id_hash),
+            ScalarTypedValue::from(row_id_ctr),
+            ScalarTypedValue::from(a),
+        ]
+        .into_iter()
+        .collect()
+    }
+}
+
 pub mod graph_flir {
     use crate::{
         api::deltas::{StoreDelta, TableDelta, ZRow},

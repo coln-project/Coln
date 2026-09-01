@@ -8,7 +8,7 @@
 //! [`relational::schema`](crate::relational::schema), one layer down, because
 //! [`Catalog`](crate::relational::catalog::Catalog) answers in them. What
 //! belongs here is only the frontend half of the translation: FLIR paths
-//! becoming [`TableRef`]s, FLIR literals becoming [`Literal`]s, and each
+//! becoming [`EntityRef`]s, FLIR literals becoming [`Literal`]s, and each
 //! engine's scalar types collapsing into the query engine's [`ScalarType`].
 
 use crate::relational::schema::EntityRef;

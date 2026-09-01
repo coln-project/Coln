@@ -7,11 +7,11 @@
 
 use crate::{
     api::{
-        deltas::{DerivedDataDelta, StoreDelta, TableDelta},
+        deltas::{DerivedDataDelta, StoreDelta, TableDelta, ZRowIterExt},
         error::ColnQueryError,
         store::TxStore,
         transaction::{TxOutcome, UnsafeTxOutcome},
-        violations::Violations,
+        violations::{ViolationsDelta, ViolationsSet},
     },
     error::{QueryEngineError, RuntimeError},
     pipeline::Pipeline,
@@ -133,8 +133,8 @@ impl ColnQuery {
         for (_sink_id, _delta) in self.incremental_runtime.all_outputs() {}
     }
     fn interpret_outputs(&mut self) -> Result<TxOutcome, QueryEngineError> {
-        let mut hard_violations = Violations::empty();
-        let mut soft_violations = Violations::empty();
+        let mut hard_violations = ViolationsSet::empty();
+        let mut soft_violations = ViolationsDelta::empty();
         let mut derived_data_delta = DerivedDataDelta::empty();
         // We must drain all outputs first, so upon short-circuiting due to an
         // error while processing below, we have absorbed all effects of the
@@ -157,6 +157,18 @@ impl ColnQuery {
                 // latter view, while coln-store may want to store it in its
                 // view. Looks like we need transformations in all directions...
                 ir::RuleVariant::Enforced => {
+                    // An enforced rule's violation set is empty after every
+                    // committed transaction, because any transaction that violates
+                    // one is rolled back. So there is never a hard violation
+                    // for a transaction to retract, and a negative zweight here
+                    // means that an invariant broke, that is, some path fed the
+                    // circuit without checking: `unsafe_apply` returning an
+                    // `UnsafeApplyError` is the one that can.
+                    debug_assert!(
+                        delta.iter().retractions().next().is_none(),
+                        "enforced rule {} retracts a violation it never reported",
+                        delta.for_entity()
+                    );
                     hard_violations.extend(Some(delta));
                 }
                 ir::RuleVariant::Monitored => {
@@ -167,11 +179,17 @@ impl ColnQuery {
                 }
             }
         }
+        // Both guards are the same emptiness check, but they answer different
+        // questions, and [`TxOutcome`] documents why: for an enforced rule the
+        // circuit reports against an empty set, so a non-empty delta *is* the
+        // violation set; for a monitored one it reports against what previous
+        // transactions left behind, so a non-empty delta means the set changed.
+        // Which is why the retractions are passed on rather than filtered out.
         if !hard_violations.is_empty() {
-            return Ok(TxOutcome::HardViolations(hard_violations));
+            return Ok(TxOutcome::HardViolationsSet(hard_violations));
         }
         if !soft_violations.is_empty() {
-            return Ok(TxOutcome::SoftViolations(
+            return Ok(TxOutcome::SoftViolationsDelta(
                 derived_data_delta,
                 soft_violations,
             ));
@@ -212,7 +230,7 @@ mod test {
     use super::*;
     use crate::{
         api::{
-            deltas::TableDelta,
+            deltas::{TableDelta, ZRow},
             transaction::{TryCommitErr, TryCommitOk, Tx},
         },
         test_helper::{
@@ -291,7 +309,7 @@ mod test {
             Ok(UnsafeTxOutcome::DerivedDataDelta(derived_data_delta)) => {
                 // Update coln-store with the derived delta.
             }
-            Ok(UnsafeTxOutcome::SoftViolations(derived_data_delta, soft_violations)) => {
+            Ok(UnsafeTxOutcome::SoftViolationsDelta(derived_data_delta, soft_violations)) => {
                 // Update coln-store with the derived delta and report back the
                 // soft violations of monitored rules.
             }
@@ -330,6 +348,9 @@ mod test {
         assert!(tx1.take_soft_violations().is_empty());
 
         let mut tx2 = Tx::empty();
+        // Just some ints which haven't been used yet for sure.
+        let dangling_hash = 999;
+        let dangling_ctr = 999;
         // Although the vertex does not violate a contraint, this vertex must be
         // rolled back because tx3 is invalid due to the other inserts.
         let v_rollback = graph_flir.insert_vertex();
@@ -338,24 +359,24 @@ mod test {
             graph_flir.next_ctr(),
             v0.row_id().hash(),
             v0.row_id().ctr(),
-            888,
-            888,
+            dangling_hash,
+            dangling_ctr,
         );
         let invalid_edge_from = graph_flir::Edge::new(
             graph_flir.epoch(),
             graph_flir.next_ctr(),
-            888,
-            888,
+            dangling_hash,
+            dangling_ctr,
             v1.row_id().hash(),
             v1.row_id().ctr(),
         );
         let invalid_edge = graph_flir::Edge::new(
             graph_flir.epoch(),
             graph_flir.next_ctr(),
-            888,
-            888,
-            999,
-            999,
+            dangling_hash,
+            dangling_ctr,
+            dangling_hash + 1,
+            dangling_ctr + 1,
         );
         graph_flir.insert_raw_edge(invalid_edge_to);
         graph_flir.insert_raw_edge(invalid_edge_from);
@@ -383,6 +404,72 @@ mod test {
         let violation = &violations[0];
         assert_eq!(violation.for_entity().id(), "Graph.E.foreignKey");
         assert_eq!(violation.delta().len(), 1);
+
+        Ok(())
+    }
+
+    /// One transaction to break a monitored rule, one to repair it. The point of
+    /// the pair is the *second* one: it changes the monitored violations without
+    /// introducing any, which is the only case where the delta a monitored sink
+    /// reports and the set of violations that exist come apart.
+    #[test]
+    fn a_transaction_repairing_a_monitored_violation_reports_it_as_resolved() -> Result<()> {
+        use test_helper::monitored_flir::{self as monitored, PERMITTED, RULE, TABLE};
+
+        let mut coln_query = ColnQuery::init(&monitored::realm())?;
+        // `PERMITTED` is the only value of `a` the rule tolerates, so this row
+        // violates it and no other.
+        let offending = monitored::row(0, 0, PERMITTED + 1);
+        let tx_with = |zweight| {
+            let mut tx = Tx::empty();
+            tx.insert(Some(TableDelta::new(
+                TABLE,
+                vec![ZRow::new(zweight, offending.clone()).expect("non-zero zweight")],
+            )));
+            tx
+        };
+
+        // Inserting it makes the violation appear. Monitored, so the transaction
+        // still commits.
+        let mut committed = tx_with(1)
+            .try_commit(&mut coln_query)?
+            .expect_pending_and_commit();
+        let appeared = committed.take_soft_violations();
+        assert_eq!(
+            appeared
+                .iter()
+                .map(|delta| delta.for_entity().id())
+                .collect::<Vec<_>>(),
+            vec![RULE],
+            "the monitored rule must report on its own sink"
+        );
+        assert!(
+            appeared
+                .iter()
+                .all(|table| table.iter().all(ZRow::is_assertion)),
+            "a violation that appeared is asserted, not retracted: {appeared}"
+        );
+
+        // Retracting the same row repairs it.
+        let mut committed = tx_with(-1)
+            .try_commit(&mut coln_query)?
+            .expect_pending_and_commit();
+        let resolved = committed.take_soft_violations();
+        assert_eq!(
+            appeared
+                .iter()
+                .map(|delta| delta.for_entity().id())
+                .collect::<Vec<_>>(),
+            vec![RULE],
+            "the monitored rule must report on its own sink and a retraction of \
+            a monitored violation must not be swallowed"
+        );
+        assert!(
+            resolved
+                .iter()
+                .all(|table| table.iter().all(ZRow::is_retraction)),
+            "repairing a violation must not read as introducing one: {resolved}"
+        );
 
         Ok(())
     }

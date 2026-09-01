@@ -10,7 +10,7 @@ use crate::api::error::{ColnQueryError, UnsafeApplyError};
 use super::{
     deltas::{DerivedDataDelta, StoreDelta, TableDelta},
     store::TxStore,
-    violations::Violations,
+    violations::{ViolationsDelta, ViolationsSet},
 };
 
 /// We use the Typestate-Pattern for compile-time enforced transaction states
@@ -36,7 +36,7 @@ pub struct Prepare {
 pub struct Pending<'a, Store: TxStore> {
     store: RollbackGuard<'a, Store>,
     derived_data_delta: DerivedDataDelta,
-    soft_violations: Violations,
+    soft_violations: ViolationsDelta,
 }
 
 /// Rolls the store back when dropped, unless it has been
@@ -87,7 +87,7 @@ impl<Store: TxStore> Drop for RollbackGuard<'_, Store> {
 #[derive(Debug)]
 pub struct Committed {
     derived_data_delta: DerivedDataDelta,
-    soft_violations: Violations,
+    soft_violations: ViolationsDelta,
 }
 
 /// The transaction is committable in theory, that is, it does _not_ violate any
@@ -100,41 +100,64 @@ pub struct Aborted {}
 /// violated. Any state caused by the transaction is already rolled back.
 #[derive(Debug)]
 pub struct Rejected {
-    violations: Violations,
+    violations: ViolationsSet,
 }
 
 /// The outcomes that can happen if updates are applied to the store:
 ///
 /// 1. [`Self::DerivedDataDelta`], if no constraints are violated.
-/// 2. [`Self::HardViolations`], if mandatory constraints are violated.
-/// 3. [`Self::SoftViolations`], if monitored constraints are violated.
+/// 2. [`Self::HardViolationsSet`], if mandatory constraints are violated.
+/// 3. [`Self::SoftViolationsDelta`], if monitored constraints are violated.
 ///
 /// We treat constraint violations as perfectly normal use and report them back
 /// as part of the `Ok` case of a `Result` and reserve the `Err` case for hard
 /// engine errors.
+///
+/// # A set on one arm, a delta on the other
+///
+/// [`HardViolationsSet`](Self::HardViolationsSet) reports the violations that
+/// *exist*. [`SoftViolationsDelta`](Self::SoftViolationsDelta) reports how the
+/// monitored violations *changed*. The rows are the same shape either way, which
+/// is why they are [two types](super::violations) rather than one — and which of
+/// the two a rule's violations carry follows from what the engine does when one
+/// occurs:
+///
+/// A transaction violating a mandatory constraint is rolled back, so the set of
+/// those violations is empty after every committed transaction. Whatever the
+/// engine reports is therefore measured against nothing, which makes it the
+/// whole set.
+///
+/// A monitored violation is tolerated and committed, so *that* set accumulates
+/// across transactions, and the engine reports it relative to what was already
+/// there: a positive [`ZWeight`](super::deltas::ZWeight) is a violation that
+/// appeared, a negative one a violation this transaction resolved. Which is the
+/// right shape, because the engine does not keep the set — the caller does, and
+/// a caller can only maintain one if the retractions reach it. To know whether
+/// any monitored violation is currently outstanding, apply these deltas to your
+/// own set and ask *it*; the absence of a `SoftViolationsDelta` outcome means
+/// nothing changed, not that nothing is violated.
 pub enum TxOutcome {
     /// All constraints are met and updates in derived data are communicated
     /// back.
     DerivedDataDelta(DerivedDataDelta),
-    /// Mandatory constraints are violated.
-    HardViolations(Violations),
-    /// Monitored constraints are violated. Since they only issue a warning but
-    /// are tolerated in general, we nevertheless apply the transaction, obtain
-    /// the derived data delta, and report back about the violations.
-    SoftViolations(DerivedDataDelta, Violations),
+    /// Mandatory constraints are violated. The violations, in full, as a set.
+    HardViolationsSet(ViolationsSet),
+    /// The monitored violations changed. Since they only issue a warning but are
+    /// tolerated in general, we nevertheless apply the transaction, obtain the
+    /// derived data delta, and report the change back, including violations.
+    SoftViolationsDelta(DerivedDataDelta, ViolationsDelta),
 }
 
-/// Unlike [`TxOutcome`] this omits the case of [`TxOutcome::HardViolations`]
+/// Unlike [`TxOutcome`] this omits the case of [`TxOutcome::HardViolationsSet`]
 /// because the transaction data is assumed to have been validated in some
-/// previous applications.
+/// previous run(s).
 pub enum UnsafeTxOutcome {
     /// All constraints are met and updates in derived data are communicated
     /// back.
     DerivedDataDelta(DerivedDataDelta),
-    /// Monitored constraints are violated. Since they only issue a warning but
-    /// are tolerated in general, we nevertheless apply the transaction, obtain
-    /// the derived data delta, and report back about the violations.
-    SoftViolations(DerivedDataDelta, Violations),
+    /// The monitored violations changed. A delta, not a set (see
+    /// [`TxOutcome::SoftViolationsDelta`]).
+    SoftViolationsDelta(DerivedDataDelta, ViolationsDelta),
 }
 
 impl TryFrom<TxOutcome> for UnsafeTxOutcome {
@@ -142,11 +165,11 @@ impl TryFrom<TxOutcome> for UnsafeTxOutcome {
 
     fn try_from(value: TxOutcome) -> Result<Self, Self::Error> {
         match value {
-            TxOutcome::HardViolations(violations) => {
+            TxOutcome::HardViolationsSet(violations) => {
                 Err(ColnQueryError::UnsafeApply(UnsafeApplyError { violations }))
             }
-            TxOutcome::SoftViolations(derived_data_delta, soft_violations) => Ok(
-                UnsafeTxOutcome::SoftViolations(derived_data_delta, soft_violations),
+            TxOutcome::SoftViolationsDelta(derived_data_delta, soft_violations) => Ok(
+                UnsafeTxOutcome::SoftViolationsDelta(derived_data_delta, soft_violations),
             ),
             TxOutcome::DerivedDataDelta(derived_data_delta) => {
                 Ok(UnsafeTxOutcome::DerivedDataDelta(derived_data_delta))
@@ -229,16 +252,16 @@ impl Tx<Prepare> {
                 state: Pending {
                     store: RollbackGuard::armed(store),
                     derived_data_delta: delta,
-                    soft_violations: Violations::empty(),
+                    soft_violations: ViolationsDelta::empty(),
                 },
             })),
-            TxOutcome::HardViolations(violations) => {
+            TxOutcome::HardViolationsSet(violations) => {
                 store.rollback().map_err(TryCommitErr::RollbackError)?;
                 Ok(TryCommitOk::Rejected(Tx {
                     state: Rejected { violations },
                 }))
             }
-            TxOutcome::SoftViolations(delta, violations) => Ok(TryCommitOk::Pending(Tx {
+            TxOutcome::SoftViolationsDelta(delta, violations) => Ok(TryCommitOk::Pending(Tx {
                 state: Pending {
                     store: RollbackGuard::armed(store),
                     derived_data_delta: delta,
@@ -289,13 +312,13 @@ impl Tx<Committed> {
     pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta {
         std::mem::take(&mut self.state.derived_data_delta)
     }
-    pub fn take_soft_violations(&mut self) -> Violations {
+    pub fn take_soft_violations(&mut self) -> ViolationsDelta {
         std::mem::take(&mut self.state.soft_violations)
     }
 }
 
 impl Tx<Rejected> {
-    pub fn take_hard_violations(&mut self) -> Violations {
+    pub fn take_hard_violations(&mut self) -> ViolationsSet {
         std::mem::take(&mut self.state.violations)
     }
 }

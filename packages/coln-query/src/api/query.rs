@@ -844,6 +844,13 @@ impl<I, T, E> TryReduce<T, E> for I where I: Iterator<Item = Result<T, E>> {}
 mod tests {
     use super::*;
     use crate::relational::expr::RelExpr;
+    use crate::test_helper::flir::{
+        atom, atom_props, builtin_int, equality, lit_term, rule_entry, table_entry, var_term,
+    };
+
+    /// The one base table these tests declare, and the entity every atom here is
+    /// over. The shared builders are told a name; this is the only one needed.
+    const T: &str = "t";
 
     /// A builder with one base table `t` whose columns are given as
     /// `(name, type)` pairs, so [`FlirProgram::atom`] can be driven
@@ -851,47 +858,9 @@ mod tests {
     fn builder_with_table(columns: Vec<(&str, ir::ColType)>) -> FlirProgram {
         let mut builder = FlirProgram::empty();
         builder
-            .table_declaration(&table_entry(columns))
+            .table_declaration(&table_entry(T, columns))
             .expect("A single base table declaration must succeed");
         builder
-    }
-
-    fn table_entry(columns: Vec<(&str, ir::ColType)>) -> ir::TableEntry {
-        ir::TableEntry {
-            path: ir::Path::from("t"),
-            table: ir::Schema {
-                entity_variant: ir::EntityVariant::Table,
-                columns: columns
-                    .into_iter()
-                    .map(|(name, col_type)| ir::ColumnEntry {
-                        path: ir::Path::from(name),
-                        col_type,
-                    })
-                    .collect(),
-                primary_key: None,
-            },
-        }
-    }
-
-    fn builtin() -> ir::ColType {
-        ir::ColType::BuiltinTy {
-            builtin_ty: ir::BuiltinTy::BuiltinInt,
-        }
-    }
-
-    fn atom_over_t(row_id: Option<ir::Term>, values: Vec<(ir::ColumnIdx, ir::Term)>) -> ir::Atom {
-        ir::Atom {
-            entity: ir::Path::from("t"),
-            row_id,
-            values: values
-                .into_iter()
-                .map(|(column, term)| ir::ValueEntry { column, term })
-                .collect(),
-        }
-    }
-
-    fn var_term(index: ir::VarIdx) -> ir::Term {
-        ir::Term::Var { index }
     }
 
     /// Destructures the `Projection(Selection?(Source))` shape an atom lowers to.
@@ -923,7 +892,7 @@ mod tests {
         // `HashMap::insert` returns the previous value, so the check's direction
         // matters: the first declaration must pass and the second must not.
         let mut builder = FlirProgram::empty();
-        let entry = table_entry(vec![("a", builtin())]);
+        let entry = table_entry(T, vec![("a", builtin_int())]);
         builder
             .table_declaration(&entry)
             .expect("The first declaration of a base table must succeed");
@@ -935,11 +904,11 @@ mod tests {
 
     #[test]
     fn an_atom_projects_each_bound_variable_onto_its_column() {
-        let mut builder = builder_with_table(vec![("a", builtin()), ("b", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
         let vars = vec![scalar_var("x"), scalar_var("y")];
         let plan = builder
             .atom(
-                &atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
+                &atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
                 &vars,
             )
             .expect("A well-formed atom lowers");
@@ -955,9 +924,9 @@ mod tests {
 
     #[test]
     fn a_literal_becomes_a_local_condition_rather_than_a_binding() {
-        let mut builder = builder_with_table(vec![("a", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int())]);
         let plan = builder
-            .atom(&atom_over_t(None, vec![(0, lit_term(42))]), &[])
+            .atom(&atom(T, None, vec![(0, lit_term(42))]), &[])
             .expect("An atom comparing a column to a literal lowers");
 
         assert!(plan.bindings.is_empty());
@@ -974,11 +943,11 @@ mod tests {
         // collide in the projected schema. The repetition is a local equality
         // condition on this one relation instead, which is also what keeps the
         // join's relation indices distinct per variable.
-        let mut builder = builder_with_table(vec![("a", builtin()), ("b", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
         let vars = vec![scalar_var("x")];
         let plan = builder
             .atom(
-                &atom_over_t(None, vec![(0, var_term(0)), (1, var_term(0))]),
+                &atom(T, None, vec![(0, var_term(0)), (1, var_term(0))]),
                 &vars,
             )
             .expect("A repeated variable lowers");
@@ -1013,7 +982,7 @@ mod tests {
         )]);
         let vars = vec![row_id_var("x")];
         let plan = builder
-            .atom(&atom_over_t(None, vec![(0, var_term(0))]), &vars)
+            .atom(&atom(T, None, vec![(0, var_term(0))]), &vars)
             .expect("A row id valued column lowers");
 
         assert_eq!(plan.bindings.len(), 2);
@@ -1029,53 +998,50 @@ mod tests {
 
     #[test]
     fn binding_a_row_id_to_a_scalar_variable_is_an_error() {
-        let mut builder = builder_with_table(vec![("a", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int())]);
         let vars = vec![scalar_var("x")];
         assert!(
             builder
-                .atom(&atom_over_t(Some(var_term(0)), vec![]), &vars)
+                .atom(&atom(T, Some(var_term(0)), vec![]), &vars)
                 .is_err()
         );
     }
 
-    /// A rule `antecedents => consequents` over the given variables.
-    fn rule_entry(
+    /// An enforced rule `antecedents => consequents` over the given variables,
+    /// both sides being nothing but atoms. Every rule these tests state has that
+    /// shape; [`flir::rule_entry`](crate::test_helper::flir::rule_entry) is the
+    /// general form.
+    fn enforced_rule<'a>(
         name: &str,
-        vars: Vec<FriendlyVar>,
+        vars: impl IntoIterator<Item = (&'a str, ir::ColType)>,
         antecedents: Vec<ir::Atom>,
         consequents: Vec<ir::Atom>,
     ) -> ir::RuleEntry {
-        let atoms = |atoms: Vec<ir::Atom>| {
-            atoms
-                .into_iter()
-                .map(|atom| ir::Prop::Atom { atom })
-                .collect()
-        };
-        ir::RuleEntry {
-            path: ir::Path::from(name),
-            rule: ir::Rule {
-                rule_variant: ir::RuleVariant::Enforced,
-                var_names: vars.iter().map(|var| var.name.clone()).collect(),
-                var_types: vars.iter().map(|var| var.ty.clone()).collect(),
-                antecedents: atoms(antecedents),
-                consequents: atoms(consequents),
-            },
-        }
+        rule_entry(
+            name,
+            ir::RuleVariant::Enforced,
+            vars,
+            atom_props(antecedents),
+            atom_props(consequents),
+        )
     }
 
     #[test]
     fn a_flat_realm_lowers_into_a_program() {
         let realm = FlatRealm {
-            tables: vec![table_entry(vec![("a", builtin()), ("b", builtin())])],
-            rules: vec![rule_entry(
+            tables: vec![table_entry(
+                T,
+                vec![("a", builtin_int()), ("b", builtin_int())],
+            )],
+            rules: vec![enforced_rule(
                 "r",
-                vec![scalar_var("x"), scalar_var("y")],
+                [("x", builtin_int()), ("y", builtin_int())],
                 // t(x, y) and t(x, _) share `x`, so the body is a real join.
                 vec![
-                    atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
-                    atom_over_t(None, vec![(0, var_term(0))]),
+                    atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
+                    atom(T, None, vec![(0, var_term(0))]),
                 ],
-                vec![atom_over_t(None, vec![(0, var_term(0))])],
+                vec![atom(T, None, vec![(0, var_term(0))])],
             )],
         };
 
@@ -1109,15 +1075,18 @@ mod tests {
         // DBSP circuit and hit the backend's `unimplemented!` for multi way
         // joins — that needs the fold-into-binary-joins pass.
         let realm = FlatRealm {
-            tables: vec![table_entry(vec![("a", builtin()), ("b", builtin())])],
-            rules: vec![rule_entry(
+            tables: vec![table_entry(
+                T,
+                vec![("a", builtin_int()), ("b", builtin_int())],
+            )],
+            rules: vec![enforced_rule(
                 "r",
-                vec![scalar_var("x"), scalar_var("y")],
+                [("x", builtin_int()), ("y", builtin_int())],
                 vec![
-                    atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
-                    atom_over_t(None, vec![(0, var_term(0))]),
+                    atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
+                    atom(T, None, vec![(0, var_term(0))]),
                 ],
-                vec![atom_over_t(None, vec![(0, var_term(0))])],
+                vec![atom(T, None, vec![(0, var_term(0))])],
             )],
         };
         let builder = FlirProgram::from_flat_realm(&realm).expect("The realm lowers");
@@ -1128,14 +1097,14 @@ mod tests {
 
     #[test]
     fn declaring_the_same_rule_twice_is_an_error() {
-        let rule = rule_entry(
+        let rule = enforced_rule(
             "r",
-            vec![scalar_var("x")],
-            vec![atom_over_t(None, vec![(0, var_term(0))])],
-            vec![atom_over_t(None, vec![(0, var_term(0))])],
+            [("x", builtin_int())],
+            vec![atom(T, None, vec![(0, var_term(0))])],
+            vec![atom(T, None, vec![(0, var_term(0))])],
         );
         let realm = FlatRealm {
-            tables: vec![table_entry(vec![("a", builtin())])],
+            tables: vec![table_entry(T, vec![("a", builtin_int())])],
             rules: vec![rule.clone(), rule],
         };
         assert!(FlirProgram::from_flat_realm(&realm).is_err());
@@ -1155,16 +1124,6 @@ mod tests {
         ConjunctiveQuery { atoms, conditions }
     }
 
-    fn lit_term(value: i64) -> ir::Term {
-        ir::Term::Lit {
-            lit: ir::Lit::Int { value },
-        }
-    }
-
-    fn equality(left: ir::Term, right: ir::Term) -> ir::Equality {
-        ir::Equality { left, right }
-    }
-
     fn assert_selection(expr: &Expr) -> &SelectionExpr {
         match maybe_assert_selection(expr) {
             Some(selection) => selection,
@@ -1176,8 +1135,8 @@ mod tests {
     fn a_single_atom_conjunctive_query_needs_no_join() {
         // There is nothing to equate across atoms, and the join operators reject
         // fewer than two relations, so the atom must come through as-is.
-        let mut builder = builder_with_table(vec![("a", builtin())]);
-        let query = conjunctive_query(vec![atom_over_t(None, vec![(0, var_term(0))])], vec![]);
+        let mut builder = builder_with_table(vec![("a", builtin_int())]);
+        let query = conjunctive_query(vec![atom(T, None, vec![(0, var_term(0))])], vec![]);
         let (expr, bindings) = builder
             .conjunctive_query(&query, &[scalar_var("x")])
             .expect("A one-atom conjunctive query lowers");
@@ -1188,12 +1147,12 @@ mod tests {
 
     #[test]
     fn two_atoms_sharing_a_variable_lower_to_a_join_on_that_variable() {
-        let mut builder = builder_with_table(vec![("a", builtin()), ("b", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
         // t(x, y) and t(x, z): `x` is shared, `y` and `z` are not.
         let query = conjunctive_query(
             vec![
-                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
-                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(2))]),
+                atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
+                atom(T, None, vec![(0, var_term(0)), (1, var_term(2))]),
             ],
             vec![],
         );
@@ -1217,11 +1176,11 @@ mod tests {
 
     #[test]
     fn two_atoms_sharing_nothing_lower_to_a_cartesian_product() {
-        let mut builder = builder_with_table(vec![("a", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int())]);
         let query = conjunctive_query(
             vec![
-                atom_over_t(None, vec![(0, var_term(0))]),
-                atom_over_t(None, vec![(0, var_term(1))]),
+                atom(T, None, vec![(0, var_term(0))]),
+                atom(T, None, vec![(0, var_term(1))]),
             ],
             vec![],
         );
@@ -1241,12 +1200,12 @@ mod tests {
         // The conditions are ANDed into a single condition, so exactly one
         // selection sits on top of the join rather than one selection per
         // condition chained after another.
-        let mut builder = builder_with_table(vec![("a", builtin()), ("b", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
         // t(x, y) and t(x, z), with `y = 1` and `z = 2`.
         let query = conjunctive_query(
             vec![
-                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(1))]),
-                atom_over_t(None, vec![(0, var_term(0)), (1, var_term(2))]),
+                atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
+                atom(T, None, vec![(0, var_term(0)), (1, var_term(2))]),
             ],
             vec![
                 equality(var_term(1), lit_term(1)),
@@ -1278,7 +1237,7 @@ mod tests {
 
     #[test]
     fn a_conjunctive_query_without_atoms_is_an_error() {
-        let mut builder = builder_with_table(vec![("a", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int())]);
         assert!(
             builder
                 .conjunctive_query(&conjunctive_query(vec![], vec![]), &[])
@@ -1288,7 +1247,7 @@ mod tests {
 
     #[test]
     fn an_atom_over_an_undeclared_entity_is_an_error() {
-        let mut builder = builder_with_table(vec![("a", builtin())]);
+        let mut builder = builder_with_table(vec![("a", builtin_int())]);
         let atom = ir::Atom {
             entity: ir::Path::from("nonexistent"),
             row_id: None,

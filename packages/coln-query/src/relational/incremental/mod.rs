@@ -128,7 +128,8 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
 }
 
 /// A standing DBSP circuit plus its input feed handles (by [`SourceId`]) and
-/// output read handles (by [`SinkId`]). Yields per-transaction [`Delta`]s.
+/// output read handles (by [`SinkId`]). Yields per-transaction
+/// [`DbspOutputDelta`]s.
 #[derive(Debug)]
 pub struct DbspRuntime {
     handle: DbspHandle,

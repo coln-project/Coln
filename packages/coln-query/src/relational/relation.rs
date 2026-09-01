@@ -27,8 +27,8 @@ pub trait Tuple: FromIterator<ScalarTypedValue> {
             .data()
             .map(|field| field.to_string())
             .collect::<Vec<_>>()
-            .join(" | ");
-        format!("| {fields} |")
+            .join("|");
+        format!("[{fields}]")
     }
 }
 
