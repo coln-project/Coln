@@ -2,9 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import * as ColnSet from "./ColnSet"
-import { Value, StoreHandle, RowView, TransactionHandle, getRowRef } from "#wasm-bodge/bindings"
-import { Tuple, tupleEqual } from "./tuple"
+import * as ColnSet from "./ColnSet";
+import {
+  Value,
+  StoreHandle,
+  RowView,
+  TransactionHandle,
+  getRowRef,
+} from "#wasm-bodge/bindings";
+import { Tuple, tupleEqual } from "./tuple";
 
 export class View implements ColnSet.View {
   store: StoreHandle;
@@ -18,7 +24,7 @@ export class View implements ColnSet.View {
   }
 
   has(x: Value): boolean {
-    const rowRef = getRowRef(x)
+    const rowRef = getRowRef(x);
     if (rowRef == undefined) return false;
 
     const row = this.store.rowById(this.path, rowRef);
@@ -36,12 +42,36 @@ export class View implements ColnSet.View {
 export class Transaction extends View implements ColnSet.Transaction {
   transaction: TransactionHandle;
 
-  constructor(store_handle: StoreHandle, path: string, params: Tuple, transaction: TransactionHandle) {
+  constructor(
+    store_handle: StoreHandle,
+    path: string,
+    params: Tuple,
+    transaction: TransactionHandle,
+  ) {
     super(store_handle, path, params);
     this.transaction = transaction;
   }
-  
+
   add(): Value {
     return this.transaction.add(this.path, this.params);
+  }
+
+  // TODO DUP CODE, but a transaction needs to have its own `rowById`, rather than
+  // calling on the store 
+  // TODO will redesign the RW interface
+  has(x: Value): boolean {
+    const rowRef = getRowRef(x);
+    if (rowRef == undefined) return false;
+
+    const row = this.transaction.rowById(this.path, rowRef);
+
+    return row !== undefined && tupleEqual(row.values, this.params);
+  }
+
+  // TODO DUP CODE
+  values(): Iterator<RowView> {
+    const rows = this.transaction.scanTable(this.path);
+
+    return rows.filter((row) => tupleEqual(row.values, this.params)).values();
   }
 }

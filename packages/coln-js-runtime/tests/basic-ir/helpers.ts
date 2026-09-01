@@ -8,7 +8,7 @@ export function beginRealm<ViewRoot, TransactionRoot>(
   realm: RealmBindings<ViewRoot, TransactionRoot>,
 ) {
   let store = StoreHandle.fromTheory(JSON.stringify(realm.schema));
-  const transaction = store.beginTransaction();
+  const transaction = store.transaction();
   const root = new realm.Transaction(store, transaction).root;
 
   return {

@@ -11,7 +11,7 @@ import theory from "../../coln-compiler/test/golden/graph.ts.output/GraphRealm.j
 
 test("Add vertices and edges to a store", () => {
   let store = StoreHandle.fromTheory(JSON.stringify(theory));
-  let txn = store.beginTransaction();
+  let txn = store.transaction();
 
   // adding two vertices
   let v1 = txn.add("GraphRealm.V", []);
@@ -26,13 +26,14 @@ test("Add vertices and edges to a store", () => {
     store = txn.takeStore();
     throw e;
   }
-  let vs = store.scanTable("GraphRealm.V");
-  let es = store.scanTable("GraphRealm.E");
-  // We have two vertices and one edge
+
+  txn = store.transaction();
+  let vs = txn.scanTable("GraphRealm.V");
+  let es = txn.scanTable("GraphRealm.E");
+  // Committed rows are visible on a later transaction
   assert.equal(vs.length, 2);
   assert.equal(es.length, 1);
 
-  txn = store.beginTransaction();
   let v3 = txn.add("GraphRealm.V", []);
   let v4 = txn.add("GraphRealm.V", []);
 
@@ -72,5 +73,5 @@ test("Add vertices and edges to a store", () => {
   }
 
   const expected_edges = [e1, e3];
-  assert.deepStrictEqual([...v1v2_edges].sort(), [...expected_edges].sort())
+  assert.deepStrictEqual([...v1v2_edges].sort(), [...expected_edges].sort());
 });
