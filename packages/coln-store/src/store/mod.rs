@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod error;
+pub mod read;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -21,6 +22,7 @@ use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreError};
+use crate::store::read::StoreRead;
 use crate::table::{
     CellValue, RowId, RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError,
 };
@@ -159,10 +161,6 @@ impl Store {
         &self.rule_entries
     }
 
-    pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
-        self.table_at(table_path).map(|table| table.table_scan())
-    }
-
     pub fn json_ir(&self) -> Result<String, StoreError> {
         let realm = self.commits.root_commit()?.root_payload()?;
         Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
@@ -173,8 +171,14 @@ impl Store {
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
     }
+}
 
-    pub fn row_by_handle(&self, table: &ir::Path, row_handle: RowHandle) -> Option<RowView> {
+impl StoreRead for Store {
+    fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
+        self.table_at(table_path).map(|table| table.table_scan())
+    }
+
+    fn row_by_handle(&self, table: &ir::Path, row_handle: &RowHandle) -> Option<RowView> {
         let row_id = row_handle.row_id().ok()?;
         let con_rowid = self.canonical_row_id(row_id)?;
         // replace the rowid in the row_handle so it stays canonical
@@ -187,7 +191,7 @@ impl Store {
     // This function will canonicalise the row_id on read, but will not change it
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
-    pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
         let row_id = self.canonical_row_id(row_id)?;
         self.table_at(table)
             .and_then(|table| table.row_at(table.row_position(row_id)?))

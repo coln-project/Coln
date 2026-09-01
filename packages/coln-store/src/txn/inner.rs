@@ -8,7 +8,12 @@ use coln_flir_rs::ir;
 use tracing::info;
 
 use crate::{
-    commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
+    commit::{
+        Commit,
+        author::Author,
+        hash::{self, CommitHash},
+        wire::CommitData,
+    },
     store::{Store, error::StoreError},
     table::ValidationError,
     txn::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue, timestamp::Timestamp},
@@ -119,6 +124,13 @@ impl TxnInner {
             pending_handles,
             ..
         } = self;
+
+        // If we received an empty commit, then do nothing, return a all-zero hash
+        // TODO we could add an option to allow empty commit
+        if pending.is_empty() {
+            return Ok(hash::ALL_ZERO_HASH);
+        }
+
         let cmt = Commit::from_commit_data(
             CommitData::new(deps, author, *timestamp.as_ref(), message, pending),
             |oid| store.table_meta(oid),
