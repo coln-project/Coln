@@ -12,6 +12,7 @@ pub mod pipeline;
 pub mod program;
 pub mod relational;
 pub mod scalarial;
+#[cfg(feature = "test-utils")]
 pub mod test_helper;
 mod typing;
 mod util;

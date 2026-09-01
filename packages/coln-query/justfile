@@ -57,6 +57,11 @@ ci: check
 coverage:
     cargo llvm-cov -p {{ crate }} --cobertura --output-path cobertura.xml
 
+alias b := build
+# Build the crate with all features and targets.
+build:
+    cargo build -p {{ crate }} --all-targets --all-features
+
 # Run the crate.
 run:
     cargo run -p {{ crate }}
