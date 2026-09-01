@@ -3,12 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::operator::Operator;
+use super::resolver::{Named, Resolvable};
 use crate::{
-    host::stmt::BlockStmt,
-    host::variable::VariableSlot,
-    impl_from_auto_box,
+    host::stmt::BlockStmt, host::variable::VariableSlot, impl_from_auto_box,
     relational::expr::RelExpr,
-    util::{MemAddr, Named, Resolvable},
 };
 use std::fmt::{self, Debug, Display};
 
@@ -380,17 +378,6 @@ pub trait ExprVisitorOwn<T, C> {
     /// does not box it either.
     fn visit_relational_expr(&mut self, expr: RelExpr, ctx: C) -> T;
 }
-
-impl MemAddr for Expr {}
-impl MemAddr for LiteralExpr {}
-impl MemAddr for TupleExpr {}
-impl MemAddr for GroupingExpr {}
-impl MemAddr for BinaryExpr {}
-impl MemAddr for UnaryExpr {}
-impl MemAddr for VarExpr {}
-impl MemAddr for AssignExpr {}
-impl MemAddr for FunctionExpr {}
-impl MemAddr for CallExpr {}
 
 #[cfg(test)]
 mod tests {

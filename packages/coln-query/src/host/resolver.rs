@@ -18,9 +18,16 @@ use crate::{
         FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr, RelExpr,
         RelExprVisitorMut, SelectionExpr, SourceExpr, UnionExpr,
     },
-    util::{Named, Resolvable},
 };
 use std::collections::HashMap;
+
+pub trait Resolvable {
+    fn set_resolved(&mut self, resolved: super::variable::VariableSlot);
+}
+
+pub trait Named {
+    fn name(&self) -> &str;
+}
 
 #[derive(Clone, Copy, Debug)]
 struct VariableMeta {

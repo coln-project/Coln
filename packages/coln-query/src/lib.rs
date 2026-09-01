@@ -15,7 +15,7 @@ mod scalarial;
 #[cfg(feature = "test-utils")]
 mod test_utils;
 mod typing;
-mod util;
+mod utils;
 
 #[cfg(test)]
 mod test {

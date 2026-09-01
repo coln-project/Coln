@@ -13,7 +13,6 @@
 use crate::{
     error::SyntaxError,
     host::{expr::Expr, stmt::BlockStmt},
-    util::MemAddr,
 };
 use std::collections::HashSet;
 
@@ -715,22 +714,6 @@ pub trait RelExprVisitorOwn<T, C> {
     fn visit_anti_join_expr(&mut self, expr: Box<AntiJoinExpr>, ctx: C) -> T;
     fn visit_fixed_point_iter_expr(&mut self, expr: Box<FixedPointIterExpr>, ctx: C) -> T;
 }
-
-impl MemAddr for RelExpr {}
-impl MemAddr for SourceExpr {}
-impl MemAddr for OutputExpr {}
-impl MemAddr for AliasExpr {}
-impl MemAddr for DistinctExpr {}
-impl MemAddr for UnionExpr {}
-impl MemAddr for DifferenceExpr {}
-impl MemAddr for SelectionExpr {}
-impl MemAddr for ProjectionExpr {}
-impl MemAddr for CartesianProductExpr {}
-impl MemAddr for EquiJoinExpr {}
-impl MemAddr for MultiWayEquiJoinExpr {}
-impl MemAddr for AntiJoinExpr {}
-impl MemAddr for ThetaJoinExpr {}
-impl MemAddr for FixedPointIterExpr {}
 
 #[cfg(test)]
 mod tests {

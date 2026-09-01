@@ -23,7 +23,6 @@ use query::FlirProgram;
 pub mod deltas;
 pub mod error;
 pub mod query;
-pub mod schema;
 mod store;
 pub mod transaction;
 pub mod violations;

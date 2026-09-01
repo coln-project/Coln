@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! This module converts coln's flattened lowered intermediate representation
-//! (FLIR) into a query program expressed in [`Statements`](crate::host::stmt::Stmt),
-//! using [`HostExprs`](crate::host::expr::Expr) and [`RelExprs`](crate::relational::expr::RelExpr).
+//! (FLIR) into a query program expressed in
+//! [`Statements`](crate::host::stmt::Stmt),
+//! using [`HostExprs`](crate::host::expr::Expr) and
+//! [`RelExprs`](crate::relational::expr::RelExpr).
 
 use crate::error::SyntaxError;
 use crate::host::QueryIr;
@@ -22,7 +24,10 @@ use crate::scalarial::ScalarType;
 use coln_flir_rs::ir::{
     self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, Term,
 };
-use coln_flir_rs::schema::{BaseTableSchema, CompilerColIdx, QueryEngineCol, StoreEngineCols};
+use coln_flir_rs::schema::{
+    BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
+    StoreEngineCols,
+};
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -839,6 +844,42 @@ pub trait TryReduce<T, E>: Iterator<Item = Result<T, E>> {
 }
 
 impl<I, T, E> TryReduce<T, E> for I where I: Iterator<Item = Result<T, E>> {}
+
+impl From<&ir::Path> for EntityRef {
+    fn from(value: &ir::Path) -> Self {
+        EntityRef::from(value.to_string())
+    }
+}
+
+impl From<&ir::Lit> for Literal {
+    fn from(value: &ir::Lit) -> Self {
+        match value {
+            ir::Lit::Int { value } => Literal::Iint(*value),
+            ir::Lit::String { value } => Literal::String(value.clone()),
+        }
+    }
+}
+
+impl From<NativeScalarType> for ScalarType {
+    fn from(value: NativeScalarType) -> Self {
+        match value {
+            NativeScalarType::Iint => ScalarType::Iint,
+            NativeScalarType::Uint => ScalarType::Uint,
+            NativeScalarType::String => ScalarType::String,
+        }
+    }
+}
+
+impl From<QueryEngineScalarType> for ScalarType {
+    fn from(value: QueryEngineScalarType) -> Self {
+        match value {
+            // A row id's two halves reach the query engine as plain unsigned
+            // integers, so every query-engine type is a native one by this
+            // point.
+            QueryEngineScalarType::Native(native) => ScalarType::from(native),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

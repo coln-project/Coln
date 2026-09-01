@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::expr::Expr;
-use crate::{impl_from_auto_box, util::MemAddr};
+use crate::impl_from_auto_box;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Stmt {
@@ -79,8 +79,3 @@ pub trait StmtVisitorOwn<T, C> {
     fn visit_expr_stmt(&mut self, stmt: Box<ExprStmt>, ctx: C) -> T;
     fn visit_block_stmt(&mut self, stmt: Box<BlockStmt>, ctx: C) -> T;
 }
-
-impl MemAddr for Stmt {}
-impl MemAddr for VarStmt {}
-impl MemAddr for ExprStmt {}
-impl MemAddr for BlockStmt {}
