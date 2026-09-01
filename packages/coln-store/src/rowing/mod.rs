@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Structural row identity (hashcons) and canonical row ids.
+//! Structural row identity and canonical row ids.
 //!
 //! Why is it called rowing? Because it is comparing rows for equivalence by
 //! looking at each value of the row one by one. And it sounds cool. Anyway it
@@ -80,6 +80,7 @@ impl Rowing {
     // This is equivalent in egglog terms with a union(a, c), except don't allow
     // arbitrary union, but only identify structurally identical terms.
     pub(crate) fn stage_union(&mut self, table: TableOid, rid1: PackedRowId, rid2: PackedRowId) {
+        tracing::debug!(table_id = %table, rid1 = ?rid1, rid2 = ?rid2, "staging unions");
         self.pending_unions.push((table, rid1, rid2));
     }
 

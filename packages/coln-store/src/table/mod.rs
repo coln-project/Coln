@@ -5,6 +5,7 @@
 mod cell;
 mod col;
 pub(crate) mod index;
+pub mod sorted;
 pub mod table_ref;
 mod undo;
 
@@ -123,8 +124,8 @@ pub struct Table {
     path: ir::Path,
     schema: Schema,
     col_name_map: HashMap<ColName, usize>,
-    /// Structural (all-columns) index used for hashcons lookup, when enabled.
-    hashcons_index: Option<IndexId>,
+    /// Structural (all-columns) index used for structural identification, when enabled.
+    structural_index: Option<IndexId>,
     indexes: Vec<TableIndex>,
     row_ids: IdColumn,
     cols: Vec<Column>,
@@ -175,18 +176,18 @@ impl Table {
             }
         };
 
-        // TODO if hashcons, then create another index.
-        let hashcons_cols: Vec<usize> = (0..schema.columns.len()).collect();
-        indexes.push(TableIndex::new(&hashcons_cols, &schema));
-        // let hashcons_index = Some(indexes.len() - 1);
-        let hashcons_index = None;
+        // TODO if structural identity is enabled, then create another index.
+        let structural_cols: Vec<usize> = (0..schema.columns.len()).collect();
+        indexes.push(TableIndex::new(&structural_cols, &schema));
+        // let structural_index = Some(indexes.len() - 1);
+        let structural_index = None;
 
         Self {
             oid,
             path,
             col_name_map,
             schema,
-            hashcons_index,
+            structural_index,
             row_ids: IdColumn::new(),
             cols,
             indexes,
@@ -222,6 +223,7 @@ impl Table {
     }
 
     /// Cell at `(row_idx, col_idx)` in columnar storage.
+    /// O(1) to locate the column, roughly O(log S) to find by index in a slab.
     pub(crate) fn cell_at(
         &self,
         row_idx: usize,
@@ -718,11 +720,11 @@ impl Table {
 
         // A structurally identical row is stored anyway: rowing unions the two
         // ids and a later rebuild pass collapses them.
-        if let Some(index) = self.hashcons_index {
+        if let Some(index) = self.structural_index {
             let key = Self::project_index_key(&self.indexes[index], &values);
             if let Some(old) = self
                 .index_seek_packed(index, &key)
-                .expect("valid hashcons index and key structure")
+                .expect("valid structural index and key structure")
                 .next()
             {
                 rowing.stage_union(self.oid, old, row_id);
@@ -746,7 +748,7 @@ impl Table {
             let key = Self::project_index_key(index, &values);
             index.insert(key, row_id);
         }
-        // TODO this should only be maintained when a table needs rebuild, i.e. a hahscons table.
+        // TODO this should only be maintained when a table needs rebuild, i.e. a structural table.
         // for child in Self::referenced_ids(&values) {
         //     self.rebuild_index.entry(child).or_default().push(row_id);
         // }
@@ -807,12 +809,12 @@ impl Table {
 impl Table {
     // For debugging for testing
 
-    // TODO remove this when we have schema level hashcons
+    // TODO remove this when we have schema level structural identity
     #[cfg(test)]
-    pub(crate) fn set_hashcons_for_test(&mut self, hashcons: bool) {
+    pub(crate) fn set_structural_index_for_test(&mut self, enabled: bool) {
         // `Table::new` always appends the all-columns index last; enable
-        // hashcons by pointing at that slot.
-        self.hashcons_index = hashcons.then_some(self.indexes.len() - 1);
+        // structural identity by pointing at that slot.
+        self.structural_index = enabled.then_some(self.indexes.len() - 1);
     }
 
     /// Dump table contents row by row for debugging.

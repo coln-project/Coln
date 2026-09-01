@@ -309,7 +309,7 @@ mod tests {
         ));
     }
 
-    /// A handle whose row deduplicates into an existing hashcons class
+    /// A handle whose row deduplicates into an existing structural class
     /// finalizes to the id the store actually kept, not to its raw
     /// `(commit, counter)` id, which names no stored row. The first handle
     /// may still go stale when the second commit wins the merge; reading
@@ -321,7 +321,7 @@ mod tests {
         store
             .create_table(term.clone(), table_schema(vec![int_col("value")], None))
             .expect("create term table");
-        store.set_hashcons_for_test(&term, true);
+        store.set_structural_index_for_test(&term, true);
 
         let mut tx = store.transaction();
         let first = tx.add(&term, vec![7_i64.into()]).expect("add first term");

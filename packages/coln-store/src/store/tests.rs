@@ -413,10 +413,10 @@ mod rowing {
         }
     }
 
-    /// Store with a hashcons `Term` table (one int column), a hashcons
-    /// `Plus` table (two id columns), and a non-hashcons `Note` table (one
+    /// Store with a structural `Term` table (one int column), a structural
+    /// `Plus` table (two id columns), and a non-structural `Note` table (one
     /// id column).
-    fn hashcons_store() -> Store {
+    fn structural_store() -> Store {
         let int_col = |name: &str| ColumnEntry {
             path: Path::from(name),
             col_type: ColType::BuiltinTy {
@@ -436,7 +436,7 @@ mod rowing {
         };
 
         let mut store = Store::new();
-        for (path, table_schema, hashcons) in [
+        for (path, table_schema, structural) in [
             ("Term", schema(vec![int_col("value")]), true),
             (
                 "Plus",
@@ -453,14 +453,14 @@ mod rowing {
             store
                 .create_table(Path::from(path), table_schema)
                 .expect("create table");
-            store.set_hashcons_for_test(&Path::from(path), hashcons);
+            store.set_structural_index_for_test(&Path::from(path), structural);
         }
         store
     }
 
-    /// `Term(value)` and `F(x, y)` are both hashcons. `F` keys on `x`, so each `x`
+    /// `Term(value)` and `F(x, y)` are both structural. `F` keys on `x`, so each `x`
     /// maps to at most one `y`.
-    fn hashcons_pk_store() -> Store {
+    fn structural_pk_store() -> Store {
         let int_col = |name: &str| ColumnEntry {
             path: Path::from(name),
             col_type: ColType::BuiltinTy {
@@ -496,7 +496,7 @@ mod rowing {
             store
                 .create_table(Path::from(path), table_schema)
                 .expect("create table");
-            store.set_hashcons_for_test(&Path::from(path), true);
+            store.set_structural_index_for_test(&Path::from(path), true);
         }
         store
     }
@@ -516,7 +516,7 @@ mod rowing {
     /// every table that references it.
     #[test]
     fn swap_rewrites_referencing_table_cells() {
-        let mut store = hashcons_store();
+        let mut store = structural_store();
 
         let t_high = row_id_from(2, 0);
         store
@@ -587,7 +587,7 @@ mod rowing {
     /// canonical one should be keep) AND referring to a stale rowid (t_high).
     #[test]
     fn row_stale_by_its_own_id_and_by_its_cells() {
-        let mut store = hashcons_store();
+        let mut store = structural_store();
 
         let t_low = row_id_from(1, 0);
         let t_high = row_id_from(2, 0);
@@ -633,7 +633,7 @@ mod rowing {
     /// once, with every cell canonicalised in the same replacement.
     #[test]
     fn row_referring_to_two_displaced_ids() {
-        let mut store = hashcons_store();
+        let mut store = structural_store();
 
         let t_low = row_id_from(1, 0);
         let u_low = row_id_from(1, 1);
@@ -668,8 +668,8 @@ mod rowing {
 
     /// Store can deduplicate identical commits correctly, up to three levels up.
     #[test]
-    fn add_duplicate_commits_on_hashcons_tables() {
-        let mut store = hashcons_store();
+    fn add_duplicate_commits_on_structural_tables() {
+        let mut store = structural_store();
         let term_path: Path = Path::from("Term");
         let plus_path = Path::from("Plus");
         let mult_path = Path::from("Mult");
@@ -724,16 +724,16 @@ mod rowing {
         );
     }
 
-    /// Tests hashcons tables with primary key constraints
+    /// Tests structural tables with primary key constraints
     #[test]
-    fn hashcons_with_primary_key() {
-        // Suppose we have table Term(value: Int) and F(X: Id, Y: Id), both hashcons
+    fn structural_with_primary_key() {
+        // Suppose we have table Term(value: Int) and F(X: Id, Y: Id), both structural
         // there is a primary key constraint on F, so each X can only map to single Y
         // The first commit creates Term(1), Term(2), Term(3), F(Term1, Term2)
         // Second commit creates Term(1), Term(4) F(Term1, Term4)
         // So two of the Term1 will have different ids initially, but will canonicalise to the same
         // And this will cause a primary key violation when we add the second commit
-        let mut store = hashcons_pk_store();
+        let mut store = structural_pk_store();
         let term = Path::from("Term");
         let f = Path::from("F");
 

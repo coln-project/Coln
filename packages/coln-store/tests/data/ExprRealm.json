@@ -1,0 +1,830 @@
+{
+  "entities": [
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "v0"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "plus"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "c"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "t"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "vars"
+        ]
+      ],
+      "value": {
+        "entityVariant": {
+          "tag": "table"
+        },
+        "columns": [
+          {
+            "path": [
+              [
+                "a"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "v0"
+                ]
+              ]
+            }
+          },
+          {
+            "path": [
+              [
+                "b"
+              ]
+            ],
+            "type": {
+              "tag": "rowId",
+              "path": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ]
+            }
+          }
+        ],
+        "primaryKey": [
+          [
+            [
+              "a"
+            ]
+          ]
+        ]
+      }
+    }
+  ],
+  "rules": [
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "v0"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [],
+        "varTypes": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "v0"
+                ]
+              ],
+              "rowId": null,
+              "values": []
+            }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "plus"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ],
+          [
+            [
+              "c"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "exprs"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "exprs"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "exprs"
+              ],
+              [
+                "t"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "plus"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                },
+                {
+                  "column": 2,
+                  "term": {
+                    "tag": "var",
+                    "index": 2
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 2
+              },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "plus"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "exprs"
+              ],
+              [
+                "t"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "exprs"
+              ],
+              [
+                "t"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": []
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "plus"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "t"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [],
+        "varTypes": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": null,
+              "values": []
+            }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "vars"
+        ],
+        [
+          "foreignKey"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ],
+          [
+            [
+              "b"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "v0"
+              ]
+            ]
+          },
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "exprs"
+              ],
+              [
+                "t"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "vars"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "v0"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "t"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        [
+          "ExprRealm"
+        ],
+        [
+          "exprs"
+        ],
+        [
+          "vars"
+        ],
+        [
+          "total"
+        ]
+      ],
+      "value": {
+        "ruleVariant": "monitored",
+        "varNames": [
+          [
+            [
+              "a"
+            ]
+          ]
+        ],
+        "varTypes": [
+          {
+            "tag": "rowId",
+            "path": [
+              [
+                "ExprRealm"
+              ],
+              [
+                "v0"
+              ]
+            ]
+          }
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "v0"
+                ]
+              ],
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
+              "values": []
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [
+                [
+                  "ExprRealm"
+                ],
+                [
+                  "exprs"
+                ],
+                [
+                  "vars"
+                ]
+              ],
+              "rowId": null,
+              "values": [
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
