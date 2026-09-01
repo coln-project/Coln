@@ -235,7 +235,7 @@ mod test {
             deltas::{TableDelta, ZRow},
             transaction::{TryCommitErr, TryCommitOk, Tx},
         },
-        test_helper::{
+        test_utils::{
             self,
             graph_flir::{self, Entity, JsonFlir},
         },
@@ -327,7 +327,7 @@ mod test {
 
     #[test]
     fn graph_flir() -> Result<()> {
-        let mut graph_flir = test_helper::graph_flir::GraphFlir::init();
+        let mut graph_flir = test_utils::graph_flir::GraphFlir::init();
         let flat_realm = graph_flir.load();
         let flir_program = FlirProgram::from_flat_realm(&flat_realm)?;
         let mut coln_query = ColnQuery::with_flir_program(flir_program)?;
@@ -416,7 +416,7 @@ mod test {
     /// reports and the set of violations that exist come apart.
     #[test]
     fn a_transaction_repairing_a_monitored_violation_reports_it_as_resolved() -> Result<()> {
-        use test_helper::monitored_flir::{self as monitored, PERMITTED, RULE, TABLE};
+        use test_utils::monitored_flir::{self as monitored, PERMITTED, RULE, TABLE};
 
         let mut coln_query = ColnQuery::init(&monitored::realm())?;
         // `PERMITTED` is the only value of `a` the rule tolerates, so this row

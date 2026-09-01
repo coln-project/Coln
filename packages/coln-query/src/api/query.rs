@@ -844,7 +844,7 @@ impl<I, T, E> TryReduce<T, E> for I where I: Iterator<Item = Result<T, E>> {}
 mod tests {
     use super::*;
     use crate::relational::expr::RelExpr;
-    use crate::test_helper::flir::{
+    use crate::test_utils::flir::{
         atom, atom_props, builtin_int, equality, lit_term, rule_entry, table_entry, var_term,
     };
 

@@ -13,7 +13,7 @@ pub mod program;
 pub mod relational;
 pub mod scalarial;
 #[cfg(feature = "test-utils")]
-pub mod test_helper;
+pub mod test_utils;
 mod typing;
 mod util;
 
@@ -42,10 +42,10 @@ mod test {
             relation::TupleValue,
         },
         scalarial::ScalarTypedValue,
-        test_helper::{TestProgram, person_profession_data, rows, rows_with_weight},
+        test_utils::{TestProgram, person_profession_data, rows, rows_with_weight},
     };
     use ::dbsp::OrdZSet;
-    use test_helper::{EdgeRel, InputRel, PersonRel, PlainRel, PredRel, ProfessionRel, SetRel};
+    use test_utils::{EdgeRel, InputRel, PersonRel, PlainRel, PredRel, ProfessionRel, SetRel};
 
     /// Tap the relation held by the variable `name` as a named runtime output,
     /// reusing the variable name as the output's [`SinkId`]. The resulting

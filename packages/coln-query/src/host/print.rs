@@ -455,7 +455,7 @@ mod tests {
         expr::{JoinVariable, SinkId},
     };
     use crate::scalarial::ScalarType;
-    use crate::test_helper::{TestProgram, table_schema};
+    use crate::test_utils::{TestProgram, table_schema};
 
     fn schema(name: &str) -> TableSchema {
         table_schema(
