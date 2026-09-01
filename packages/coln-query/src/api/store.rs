@@ -17,11 +17,11 @@
 //!
 //! # Why this module is private
 //!
-//! [`Tx`](super::transaction::Tx) is the only thing that may drive a
-//! [`TxStore`]: calling [`apply`](TxStore::apply) on a
-//! [`ColnQuery`](super::ColnQuery) directly would step the circuit behind the
-//! typestate machine's back, leaving a transaction half-applied with no
-//! rollback guard to undo it.
+//! [`Tx`](crate::api::transaction::Tx) is the only thing that may drive a
+//! [`TxStore`]: calling [`apply`](TxStore::apply) on an implementor (such as
+//! [`ColnQuery`](crate::api::ColnQuery)) directly would step the circuit
+//! behind the typestate machine's back, leaving a transaction half-applied
+//! with no rollback guard to undo it.
 //!
 //! `pub(crate)` is not an option, because the trait appears in the bounds of
 //! public items and must stay reachable to the type system. But *reachable* and
