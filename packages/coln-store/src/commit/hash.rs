@@ -8,6 +8,7 @@ use std::fmt;
 
 /// The number of bytes in a commit hash.
 pub(crate) const HASH_SIZE: usize = 32;
+pub(crate) static ALL_ZERO_HASH: CommitHash = CommitHash([0; HASH_SIZE]);
 
 #[derive(
     Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize, Type,
