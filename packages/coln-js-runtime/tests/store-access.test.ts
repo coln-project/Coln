@@ -36,13 +36,14 @@ test("Add vertices and edges to a store", () => {
     store = txn.takeStore();
     throw e;
   }
-  let vs = store.scanTable("GraphRealm.V");
-  let es = store.scanTable("GraphRealm.E");
-  // We have two vertices and one edge
+
+  txn = store.transaction();
+  let vs = txn.scanTable("GraphRealm.V");
+  let es = txn.scanTable("GraphRealm.E");
+  // Committed rows are visible on a later transaction
   assert.equal(vs.length, 2);
   assert.equal(es.length, 1);
 
-  txn = store.beginTransaction();
   let v3 = txn.add("GraphRealm.V", []);
   let v4 = txn.add("GraphRealm.V", []);
 

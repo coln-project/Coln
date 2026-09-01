@@ -26,10 +26,10 @@ impl OwnedTransaction {
         }
     }
 
-    pub fn add(
+    pub fn add<V: Into<TxnLiveValue>>(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnLiveValue>,
+        values: Vec<V>,
     ) -> Result<TxnLiveRowId, StoreError> {
         self.inner.add(&self.store, table, values)
     }
