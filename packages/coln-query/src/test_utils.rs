@@ -10,10 +10,11 @@ use crate::{
     host::QueryIr,
     program::QueryProgram,
     relational::{
-        Column, EntityRef, TableSchema, TupleValue,
+        TupleValue,
         catalog::{Catalog, SourceSchemas},
         expr::SourceId,
-        incremental::{TupleKey, dbsp::ZWeight},
+        incremental::{dbsp::ZWeight, schema::TupleKey},
+        schema::{Column, EntityRef, TableSchema},
     },
     scalarial::{ScalarType, ScalarTypedValue},
 };

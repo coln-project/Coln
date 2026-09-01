@@ -5,7 +5,11 @@
 //! An interface for passing deltas of row-oriented data. There is
 //! [ZRow], [TableDelta], [StoreDelta], and [DerivedDataDelta].
 
-use crate::relational::{TupleValue, schema::EntityRef};
+use crate::relational::schema::EntityRef;
+// Re-exported, not merely imported: [`ZRow::new`] takes a [`TupleValue`] built
+// from [`ScalarTypedValue`]s, so a caller outside this crate cannot construct
+// one of the deltas this module is about without both names in reach.
+pub use crate::relational::TupleValue;
 pub use crate::scalarial::ScalarTypedValue;
 use std::borrow::Borrow;
 
@@ -186,9 +190,9 @@ impl StoreDelta {
     /// the original state, that is:
     ///
     /// ```
-    /// # use coln_query::api::deltas::{ZRow, TableDelta, StoreDelta};
-    /// # use coln_query::relational::TupleValue;
-    /// # use coln_query::scalarial::ScalarTypedValue;
+    /// # use coln_query::api::deltas::{
+    /// #     ScalarTypedValue, StoreDelta, TableDelta, TupleValue, ZRow,
+    /// # };
     /// #
     /// # let row: TupleValue = [ScalarTypedValue::from(9_i64)].into_iter().collect();
     /// # let row_delta = ZRow::new(1, row).unwrap();

@@ -451,8 +451,8 @@ mod tests {
     use crate::host::QueryIr;
     use crate::program::QueryProgram;
     use crate::relational::{
-        TableSchema,
         expr::{JoinVariable, SinkId},
+        schema::TableSchema,
     };
     use crate::scalarial::ScalarType;
     use crate::test_utils::{TestProgram, table_schema};

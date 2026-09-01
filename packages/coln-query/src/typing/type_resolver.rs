@@ -9,20 +9,22 @@ use crate::{
             AssignExpr, BinaryExpr, CallExpr, Expr, ExprVisitor, FunctionExpr, GetIndexExpr,
             GroupingExpr, Literal, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
         },
+        function::FunctionType,
         operator::Operator,
         resolver::ScopeStack,
         stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
         tuple::TupleType,
     },
-    relational::catalog::Catalog,
-    relational::expr::{
-        AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr, RelExpr,
-        RelExprVisitor, SelectionExpr, SourceExpr, UnionExpr,
+    relational::{
+        catalog::Catalog,
+        expr::{
+            AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr,
+            EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr,
+            RelExpr, RelExprVisitor, SelectionExpr, SourceExpr, UnionExpr,
+        },
+        relation::RelationType,
     },
-};
-pub use crate::{
-    host::function::FunctionType, relational::relation::RelationType, scalarial::ScalarType,
+    scalarial::ScalarType,
 };
 use std::collections::HashMap;
 use std::fmt;

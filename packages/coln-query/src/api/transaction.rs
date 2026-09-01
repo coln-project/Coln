@@ -13,21 +13,66 @@ use super::{
     violations::{ViolationsDelta, ViolationsSet},
 };
 
-/// We use the Typestate-Pattern for compile-time enforced transaction states
-/// and their transitions to provide a hard-to-abuse API.
+/// The query engine's primary API is a transaction represented as a state
+/// machine with the following five states:
+///
+/// 1. [`Prepare`]: Data can be fed into the base tables (EDPs) in
+///    row-oriented format.
+/// 2. [`Pending`]: The query processing finished and all hard (enforced)
+///    constraints are met. The **caller still has to explicitly call
+///    [`commit`](Tx<Pending>::commit) to avoid a rollback**, or can call
+///    [`abort`](Tx<Pending>::abort) to rollback the transaction for some
+///    reason (maybe an end-user requested an abort).
+/// 3. [`Committed`]: The transaction cannot be rolled back anymore and has
+///    been committed. Any query results (derived views, monitored constraint
+///    violations) can now be obtained.
+/// 4. [`Aborted`]: For some reason the caller decided to abort.
+///    The query engine's state has been rolled back as if the transaction
+///    never happened.
+/// 5. [`Rejected`]: The transaction could not commit because of some violations
+///    of hard (enforced) constraints. Any state caused by the transaction
+///    is already rolled back within the query engine. Any violation can be
+///    reported back.
+///
+/// ```text
+/// +------------+
+/// |   Prepare  |
+/// +------+-----+
+///        |
+///        | try_commit()
+///        | (runs query engine and checks hard constraints)
+///        |
+///        +----------------+
+///        |                |
+///        met              violated
+///        |                |
+///        v                v
+/// +------------+    +------------+
+/// |  Pending   |    |  Rejected  |
+/// +------+-----+    +------------+
+///        |
+///        +----------------+
+///        |                |
+///        commit()        abort()
+///        |                |
+///        v                v
+/// +------------+    +------------+
+/// | Committed  |    |  Aborted   |
+/// +------------+    +------------+
+/// ```
 #[derive(Debug)]
 pub struct Tx<State> {
     state: State,
 }
 
-/// This is the initial state of a Transaction and it is open to receive table
-/// deltas.
+/// This is the initial state of a [transaction](Tx) and it is open to receive
+/// table deltas.
 #[derive(Debug)]
 pub struct Prepare {
     delta: StoreDelta,
 }
 
-/// The transaction is ready to apply in theory, that is, all _mandatory_
+/// The transaction is ready to apply in theory, that is, all _enforced_
 /// constraints are met (although some _monitored_ constraints may be violated).
 /// Yet, the transaction awaits either an approval or an end user abort. Without
 /// an explicit approval, any state change caused by the transaction will be
@@ -82,8 +127,8 @@ impl<Store: TxStore> Drop for RollbackGuard<'_, Store> {
     }
 }
 
-/// The transaction is finalized and applied to both the storage and query
-/// engine. Any state caused by the transaction is already committed.
+/// The transaction is done and fully applied to the query engine. No rollback
+/// is possible anymore.
 #[derive(Debug)]
 pub struct Committed {
     derived_data_delta: DerivedDataDelta,
@@ -91,13 +136,13 @@ pub struct Committed {
 }
 
 /// The transaction is committable in theory, that is, it does _not_ violate any
-/// constraint but the end user decided to abort regardless. Any state caused by
-/// the transaction is already rolled back.
+/// constraint, _but the caller decided to abort regardless_.
+/// Any state caused by the transaction is already rolled back.
 #[derive(Debug)]
 pub struct Aborted {}
 
-/// The transaction _must be_ rejected because some _mandatory_ constraints are
-/// violated. Any state caused by the transaction is already rolled back.
+/// The transaction _must be_ rejected because some hard (enforced) constraints
+/// are violated. Any state caused by the transaction is already rolled back.
 #[derive(Debug)]
 pub struct Rejected {
     violations: ViolationsSet,
@@ -106,7 +151,7 @@ pub struct Rejected {
 /// The outcomes that can happen if updates are applied to the store:
 ///
 /// 1. [`Self::DerivedDataDelta`], if no constraints are violated.
-/// 2. [`Self::HardViolationsSet`], if mandatory constraints are violated.
+/// 2. [`Self::HardViolationsSet`], if hard constraints are violated.
 /// 3. [`Self::SoftViolationsDelta`], if monitored constraints are violated.
 ///
 /// We treat constraint violations as perfectly normal use and report them back
@@ -122,7 +167,7 @@ pub struct Rejected {
 /// the two a rule's violations carry follows from what the engine does when one
 /// occurs:
 ///
-/// A transaction violating a mandatory constraint is rolled back, so the set of
+/// A transaction violating an enforced constraint is rolled back, so the set of
 /// those violations is empty after every committed transaction. Whatever the
 /// engine reports is therefore measured against nothing, which makes it the
 /// whole set.
@@ -140,7 +185,7 @@ pub enum TxOutcome {
     /// All constraints are met and updates in derived data are communicated
     /// back.
     DerivedDataDelta(DerivedDataDelta),
-    /// Mandatory constraints are violated. The violations, in full, as a set.
+    /// Enforced constraints are violated. The violations, in full, as a set.
     HardViolationsSet(ViolationsSet),
     /// The monitored violations changed. Since they only issue a warning but are
     /// tolerated in general, we nevertheless apply the transaction, obtain the

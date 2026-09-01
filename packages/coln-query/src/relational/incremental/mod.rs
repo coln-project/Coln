@@ -32,8 +32,6 @@ pub mod lowering;
 pub mod operators;
 pub mod schema;
 
-pub use schema::{DbspTupleContext, SchemaTuple, StreamSchema, TupleKey, TupleSchema};
-
 /// The incremental backend: compiles the plan into a standing DBSP circuit.
 ///
 /// Generic over the row scalar engine `E` it drives on the hot path — `TreeWalk`

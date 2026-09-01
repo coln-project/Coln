@@ -334,8 +334,9 @@ impl Display for TupleSchema {
 /// The physical schema of a keyed DBSP relation: which fields make up its
 /// `TupleKey`, which make up its `TupleValue`, and at which index each sits.
 ///
-/// Unlike a [`RelationType`](crate::relational::RelationType), this exists at
-/// runtime: An operator needs it to read a field of the row in hand by name.
+/// Unlike a [`RelationType`](crate::relational::relation::RelationType),
+/// this exists at runtime: An operator needs it to read a field of the row
+/// in hand by name.
 /// Unlike a [`TableSchema`], it describes one *stream* rather than one table:
 /// every operator that reshapes rows derives a new one (see
 /// [`select`](Self::select), [`join`](Self::join), …), so its

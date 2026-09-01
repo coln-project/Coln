@@ -16,7 +16,7 @@
 //!    reads, and what a [`Backend`](super::Backend) is handed.
 //! 3. A **backend** schema knows how the table is physically laid out for
 //!    execution. The DBSP backend has
-//!    [`StreamSchema`](super::incremental::StreamSchema), whose keyed
+//!    [`StreamSchema`](super::incremental::schema::StreamSchema), whose keyed
 //!    `(TupleKey, TupleValue)` shape follows from `OrdIndexedZSet` rather than
 //!    from anything about the table itself. Each backend converts the neutral
 //!    schema into its own and keeps it inside its own relation representation.

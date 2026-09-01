@@ -33,8 +33,6 @@ pub mod incremental;
 pub mod relation;
 pub mod schema;
 
-use std::num::NonZeroUsize;
-
 use crate::{
     api::deltas::ZRow,
     error::{BuildError, LoweringError, RuntimeError},
@@ -44,8 +42,8 @@ use crate::{
         expr::{SinkId, SourceId},
     },
 };
-pub use relation::{RelationRef, RelationType, TupleValue};
-pub use schema::{Column, EntityRef, TableSchema};
+pub use relation::{RelationRef, TupleValue};
+use std::num::NonZeroUsize;
 
 /// The last compile step: a resolved plan → a runnable computation. One impl per
 /// execution strategy; the plan and (row) scalar evaluation are shared.

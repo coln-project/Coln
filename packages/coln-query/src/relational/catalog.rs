@@ -13,8 +13,8 @@
 //! What a catalog answers with is the *neutral* schema: columns, types, and the
 //! table's key(s). Turning that into the keyed, positional layout a particular
 //! runtime needs is the backend's job (see
-//! [`StreamSchema`](crate::relational::incremental::StreamSchema) for the
-//! DBSP one).
+//! [`StreamSchema`](crate::relational::incremental::schema::StreamSchema)
+//! for the DBSP one).
 
 use crate::{
     error::BuildError,

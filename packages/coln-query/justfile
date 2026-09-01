@@ -44,6 +44,7 @@ doc:
 doc-check:
     cargo doc -p {{ crate }} --no-deps --document-private-items --config 'build.rustdocflags=["-D", "warnings"]'
 
+alias c := check
 # Run all code checks. Global command referenced by the root justfile.
 check: fmt-check lint-check test doc-check
 

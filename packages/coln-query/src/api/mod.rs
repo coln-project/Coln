@@ -24,8 +24,6 @@ pub mod deltas;
 pub mod error;
 pub mod query;
 pub mod schema;
-/// Private on purpose, and *not* an oversight to be corrected: it is what keeps
-/// [`TxStore`]'s methods out of a caller's reach. See the module's docs.
 mod store;
 pub mod transaction;
 pub mod violations;

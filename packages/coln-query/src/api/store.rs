@@ -17,9 +17,12 @@
 //!
 //! # Why this module is private
 //!
-//! [`Tx`](crate::api::transaction::Tx) is the only thing that may drive a
+//! Deliberately so, and *not* an oversight to be corrected by a `pub`: the
+//! module's privacy is what keeps [`TxStore`]'s methods out of a caller's reach.
+//!
+//! [`Tx`](super::transaction::Tx) is the only thing that may drive a
 //! [`TxStore`]: calling [`apply`](TxStore::apply) on an implementor (such as
-//! [`ColnQuery`](crate::api::ColnQuery)) directly would step the circuit
+//! [`ColnQuery`](super::ColnQuery)) directly would step the circuit
 //! behind the typestate machine's back, leaving a transaction half-applied
 //! with no rollback guard to undo it.
 //!

@@ -5,15 +5,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod api;
-pub mod error;
-pub mod host;
-pub mod optimizer;
-pub mod pipeline;
-pub mod program;
-pub mod relational;
-pub mod scalarial;
+mod error;
+mod host;
+mod optimizer;
+mod pipeline;
+mod program;
+mod relational;
+mod scalarial;
 #[cfg(feature = "test-utils")]
-pub mod test_utils;
+mod test_utils;
 mod typing;
 mod util;
 

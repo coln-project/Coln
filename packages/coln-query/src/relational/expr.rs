@@ -226,7 +226,7 @@ impl std::borrow::Borrow<str> for SourceId {
 ///
 /// Naming rather than describing is also what makes the derived [`PartialEq`]
 /// mean what it reads as. A backend's physical schema
-/// (say a [`StreamSchema`](crate::relational::incremental::StreamSchema))
+/// (say a [`StreamSchema`](crate::relational::incremental::schema::StreamSchema))
 /// compares only its key and tuple, deliberately ignoring its `name` (a
 /// transformation trace rather than an identity) — so back when this leaf held a
 /// schema, two leaves naming *different* relations compared equal whenever their
@@ -438,7 +438,7 @@ pub struct MultiWayEquiJoinExpr {
     /// than approximate.
     ///
     /// **Output schema.** Joining folds
-    /// [`StreamSchema::join`](crate::relational::incremental::StreamSchema::join)
+    /// [`StreamSchema::join`](crate::relational::incremental::schema::StreamSchema::join)
     /// left to right, which deactivates an attribute of a later relation when
     /// an earlier one already contributes an active attribute of the same name.
     /// A join variable whose occurrences agree on their name therefore appears

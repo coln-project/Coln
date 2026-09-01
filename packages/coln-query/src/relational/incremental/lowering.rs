@@ -39,7 +39,7 @@
 //! some relation already in the accumulator, the pair is
 //! `(VarExpr(variable.name), <the incoming relation's occurrence>)`: the left
 //! side addresses the accumulator's single surviving copy of that column, which
-//! [`StreamSchema::join`](super::StreamSchema::join) guarantees
+//! [`StreamSchema::join`](super::schema::StreamSchema::join) guarantees
 //! is the one contributed by the first relation to bind it.
 //!
 //! That copy is only addressable by [`JoinVariable::name`] if the *first*
