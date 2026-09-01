@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! This module expresses the different schema views according to coln-compiler,
 //! coln-store, and coln-query in code.
 
