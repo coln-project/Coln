@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+pub mod value;
 mod column_map;
 pub mod commit;
 mod id_packer;

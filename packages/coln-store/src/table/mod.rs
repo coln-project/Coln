@@ -9,7 +9,7 @@ pub mod sorted;
 pub mod table_ref;
 mod undo;
 
-pub use cell::{CellKind, CellValue, RowId};
+pub use cell::{CellKind, WireValue, WireRowId};
 pub use table_ref::TableRef;
 
 use std::collections::{HashMap, HashSet};
@@ -24,7 +24,7 @@ use crate::table::index::{IndexId, IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 use crate::txn::TxnId;
 
-pub(crate) use self::cell::{PackedCell, PackedRowId};
+pub(crate) use self::cell::{PackedValue, PackedRowId};
 use self::col::{Column, IdColumn};
 
 pub type TableOid = usize;
@@ -42,7 +42,7 @@ pub(crate) struct TableMeta<'a> {
 pub(crate) enum PackedOp {
     Add {
         row_id: PackedRowId,
-        values: Vec<PackedCell>,
+        values: Vec<PackedValue>,
     },
     Delete {
         row_id: PackedRowId,
@@ -75,7 +75,7 @@ pub enum ValidationError {
     #[error("row handle belongs to a different transaction: current {current:?}, got {got:?}")]
     TxnIdMismatch { current: TxnId, got: TxnId },
     #[error("invalid row handle: {reason}")]
-    InvalidRowHandle { reason: String },
+    InvalidTxnLiveRowId { reason: String },
     #[error("invalid index id passed {index}")]
     InvalidIndex { index: u64 },
     #[error("invalid index key for index {index}: expected {expected} values, got {got}")]
@@ -91,8 +91,8 @@ pub enum ValidationError {
 /// Public facing row value
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowView {
-    pub row_id: RowId,
-    pub values: Vec<CellValue>,
+    pub row_id: WireRowId,
+    pub values: Vec<WireValue>,
 }
 
 type ColName = ir::Path;
@@ -216,7 +216,7 @@ impl Table {
     }
 
     /// Row id at a given physical row index.
-    pub(crate) fn row_id_at(&self, row_idx: usize, packer: &IdPacker) -> Option<RowId> {
+    pub(crate) fn row_id_at(&self, row_idx: usize, packer: &IdPacker) -> Option<WireRowId> {
         self.row_ids
             .get(row_idx)
             .map(|packed| packer.unpack_row_id(packed))
@@ -229,7 +229,7 @@ impl Table {
         row_idx: usize,
         col_idx: usize,
         packer: &IdPacker,
-    ) -> Option<CellValue> {
+    ) -> Option<WireValue> {
         self.cols
             .get(col_idx)
             .and_then(|col| col.get(row_idx, packer))
@@ -262,7 +262,7 @@ impl Table {
 #[derive(Debug, PartialEq, Eq)]
 pub struct SeekKey {
     pub(crate) column: usize,
-    pub(crate) value: CellValue,
+    pub(crate) value: WireValue,
 }
 
 impl Table {
@@ -279,7 +279,7 @@ impl Table {
 
     /// O(N * log S) as first find out the index from the row_id, and then do a
     /// lookup on each column
-    pub(crate) fn packed_row_at(&self, row_id: PackedRowId) -> Option<Vec<PackedCell>> {
+    pub(crate) fn packed_row_at(&self, row_id: PackedRowId) -> Option<Vec<PackedValue>> {
         let row_idx = self.row_ids.position(row_id).ok()?;
         (0..self.schema.columns.len())
             .map(|col_idx| {
@@ -298,7 +298,7 @@ impl Table {
         &self,
         key: &[SeekKey],
         id_packer: &IdPacker,
-    ) -> Result<impl Iterator<Item = RowId>, ValidationError> {
+    ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
         if let Some(column) = key
             .iter()
             .map(|part| part.column)
@@ -325,9 +325,9 @@ impl Table {
     pub(crate) fn index_seek(
         &self,
         index: IndexId,
-        key: &[CellValue],
+        key: &[WireValue],
         id_packer: &IdPacker,
-    ) -> Result<impl Iterator<Item = RowId>, ValidationError> {
+    ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
         let table_index = self
             .indexes
             .get(index)
@@ -359,7 +359,7 @@ impl Table {
     pub(crate) fn index_seek_packed(
         &self,
         index: IndexId,
-        key: &[PackedCell],
+        key: &[PackedValue],
     ) -> Result<impl Iterator<Item = PackedRowId>, ValidationError> {
         let table_index = self
             .indexes
@@ -388,7 +388,7 @@ impl Table {
     pub(crate) fn index_lookup(
         &self,
         index: IndexId,
-        key: &[CellValue],
+        key: &[WireValue],
         id_packer: &IdPacker,
     ) -> Result<bool, ValidationError> {
         Ok(self.index_seek(index, key, id_packer)?.next().is_some())
@@ -412,7 +412,7 @@ impl Table {
     /// Checks schema and primary-key constraints against rows already stored.
     pub(crate) fn validate_insert(
         &self,
-        values: &[CellValue],
+        values: &[WireValue],
         dict: &IdPacker,
     ) -> Result<(), ValidationError> {
         // duplicated as txn::add(), but this is cheap enough we can afford to
@@ -454,7 +454,7 @@ impl Table {
     /// Values at primary-key columns for this row.
     /// A primary key definition would occur in tables that do not end up in Query
     /// An empty primary key means the table would have at most one row.
-    pub fn primary_key_values(&self, values: &[CellValue]) -> Option<Vec<CellValue>> {
+    pub fn primary_key_values(&self, values: &[WireValue]) -> Option<Vec<WireValue>> {
         self.schema.primary_key.as_ref().and_then(|pk| {
             if pk.is_empty() {
                 Some(Vec::new())
@@ -627,7 +627,7 @@ impl Table {
             }
 
             let new_row_id = rowing.canonical_id(&old_row_id, id_packer);
-            let old_cells: Vec<PackedCell> = self
+            let old_cells: Vec<PackedValue> = self
                 .cols
                 .iter()
                 .map(|column| {
@@ -663,14 +663,14 @@ impl Table {
 
     /// Rewrite every id cell to its canonical id, leaving other cells alone.
     fn canonicalise_cells(
-        values: &[PackedCell],
+        values: &[PackedValue],
         rowing: &Rowing,
         id_packer: &IdPacker,
-    ) -> Vec<PackedCell> {
+    ) -> Vec<PackedValue> {
         values
             .iter()
             .map(|cell| match cell {
-                PackedCell::Id(id) => PackedCell::Id(rowing.canonical_id(id, id_packer)),
+                PackedValue::Id(id) => PackedValue::Id(rowing.canonical_id(id, id_packer)),
                 other => other.clone(),
             })
             .collect()
@@ -678,12 +678,12 @@ impl Table {
 
     /// ids referred by this row.
     #[expect(dead_code)]
-    fn referenced_ids(values: &[PackedCell]) -> impl Iterator<Item = PackedRowId> {
+    fn referenced_ids(values: &[PackedValue]) -> impl Iterator<Item = PackedRowId> {
         values
             .iter()
             .enumerate()
             .filter_map(|(i, cell)| match cell {
-                PackedCell::Id(id) if !values[..i].contains(cell) => Some(*id),
+                PackedValue::Id(id) if !values[..i].contains(cell) => Some(*id),
                 _ => None,
             })
     }
@@ -697,7 +697,7 @@ impl Table {
     /// Only does primary key check, but no other validation.
     pub(super) fn insert_row(
         &mut self,
-        values: Vec<PackedCell>,
+        values: Vec<PackedValue>,
         row_id: PackedRowId,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
@@ -741,7 +741,7 @@ impl Table {
     }
 
     /// Place a row in columnar storage and every index, with no validation
-    fn insert_packed(&mut self, values: Vec<PackedCell>, row_id: PackedRowId) {
+    fn insert_packed(&mut self, values: Vec<PackedValue>, row_id: PackedRowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
         for index in &mut self.indexes {
@@ -763,7 +763,7 @@ impl Table {
     }
 
     /// Take a row out of columnar storage and every index, returning its cells
-    fn remove_packed(&mut self, row_id: PackedRowId) -> Vec<PackedCell> {
+    fn remove_packed(&mut self, row_id: PackedRowId) -> Vec<PackedValue> {
         let row_idx = self
             .row_ids
             .position(row_id)
@@ -797,7 +797,7 @@ impl Table {
         values
     }
 
-    fn project_index_key(index: &TableIndex, values: &[PackedCell]) -> Vec<PackedCell> {
+    fn project_index_key(index: &TableIndex, values: &[PackedValue]) -> Vec<PackedValue> {
         index
             .key_cols()
             .iter()

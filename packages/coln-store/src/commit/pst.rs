@@ -100,7 +100,7 @@ mod tests {
     use crate::commit::hash::{CommitHash, HASH_SIZE};
     use crate::commit::wire::CommitData;
     use crate::ir::{FlatRealm, Path, Schema, TableEntry};
-    use crate::table::CellValue;
+    use crate::table::WireValue;
 
     fn int_schema() -> Schema {
         Schema {
@@ -207,7 +207,7 @@ mod tests {
         let mut store = Store::try_from_ir(int_theory()).expect("store");
         let table = Path::from("T");
         let mut txn = store.transaction();
-        txn.add(&table, vec![99_i64.into()]).expect("add row");
+        txn.add(&table, vec![99_i32.into()]).expect("add row");
         txn.commit().expect("commit");
 
         let expected = store
@@ -347,7 +347,7 @@ mod tests {
         let root = store.commits().root_commit().expect("root").hash();
         let table = Path::from("T");
         let mut txn = store.transaction();
-        txn.add(&table, vec![99_i64.into()]).expect("add row");
+        txn.add(&table, vec![99_i32.into()]).expect("add row");
         let commit = txn.commit().expect("commit");
 
         let bytes = encode_store(&store).unwrap();
@@ -355,7 +355,7 @@ mod tests {
 
         let restored_table = restored.table_at(&table).expect("table");
         assert_eq!(restored_table.row_count(), 1);
-        assert_eq!(restored_table.cell_at(0, 0), Some(CellValue::Int(99)));
+        assert_eq!(restored_table.cell_at(0, 0), Some(WireValue::Int(99)));
         assert_eq!(restored_table.row_id_at(0).expect("row id").commit, commit);
         assert_eq!(
             restored.commits().parents_of(&commit),

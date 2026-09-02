@@ -146,12 +146,12 @@ impl Rowing {
 #[cfg(test)]
 mod tests {
     use crate::commit::hash::CommitHash;
-    use crate::table::RowId;
+    use crate::table::WireRowId;
 
     use super::*;
 
-    fn row_id(byte: u8) -> RowId {
-        RowId {
+    fn row_id(byte: u8) -> WireRowId {
+        WireRowId {
             commit: CommitHash([byte; 32]),
             counter: 0,
         }

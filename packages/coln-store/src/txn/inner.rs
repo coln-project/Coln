@@ -11,7 +11,7 @@ use crate::{
     commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
     store::{Store, error::StoreError},
     table::ValidationError,
-    txn::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue, timestamp::Timestamp},
+    txn::{PendingOp, TxnLiveRowId, TempRowId, TxnWireValue, TxnId, TxnLiveValue, timestamp::Timestamp},
 };
 
 static NEXT_TX_ID: AtomicU64 = AtomicU64::new(1);
@@ -27,7 +27,7 @@ pub(crate) struct TxnInner {
     timestamp: Timestamp,
     message: Option<String>,
     tx_id: TxnId,
-    pending_handles: Vec<RowHandle>,
+    pending_handles: Vec<TxnLiveRowId>,
 }
 
 impl TxnInner {
@@ -51,7 +51,7 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnCellValue>,
+        values: Vec<TxnWireValue>,
     ) -> Result<TempRowId, StoreError> {
         let t = store.table_at(table).ok_or(ValidationError::UnknownTable {
             path: table.clone(),
@@ -70,14 +70,14 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreError> {
+        values: Vec<TxnLiveValue>,
+    ) -> Result<TxnLiveRowId, StoreError> {
         let txn_values = values
             .into_iter()
             .map(|v| v.to_txn_cell_value(self.tx_id))
-            .collect::<Result<Vec<TxnCellValue>, _>>()?;
+            .collect::<Result<Vec<TxnWireValue>, _>>()?;
         let temp_id = self.add_cell_values(store, table, txn_values)?;
-        let handle = RowHandle::from_pending(self.tx_id, temp_id.0);
+        let handle = TxnLiveRowId::from_pending(self.tx_id, temp_id.0);
         self.pending_handles.push(handle.clone());
         Ok(handle)
     }
@@ -88,12 +88,12 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnCellValue>,
+        values: Vec<TxnWireValue>,
     ) -> Result<TempRowId, StoreError> {
         self.add_cell_values(store, table, values)
     }
 
-    fn invalidate_handles(pending_handles: Vec<RowHandle>, reason: &str) {
+    fn invalidate_handles(pending_handles: Vec<TxnLiveRowId>, reason: &str) {
         pending_handles
             .into_iter()
             .for_each(|h| h.invalidate(reason));
@@ -102,7 +102,7 @@ impl TxnInner {
     /// Finalize handles to the id the store actually kept: a row that was
     /// deduplicated against an existing class finalizes to that class's
     /// canonical id, not to the never-stored raw id.
-    fn finalize_handles(pending_handles: Vec<RowHandle>, h: CommitHash, store: &Store) {
+    fn finalize_handles(pending_handles: Vec<TxnLiveRowId>, h: CommitHash, store: &Store) {
         pending_handles.into_iter().for_each(|handle| {
             handle.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
         });

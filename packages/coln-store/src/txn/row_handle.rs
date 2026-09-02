@@ -8,7 +8,8 @@ use crate::{
     commit::hash::CommitHash,
     op::Op,
     store::error::StoreError,
-    table::{CellValue, RowId, TableOid, ValidationError},
+    table::{WireValue, WireRowId, TableOid, ValidationError},
+    value::Value
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -31,30 +32,36 @@ impl From<u64> for TxnId {
 }
 
 #[derive(Clone, Debug)]
-enum RowHandleState {
+enum TxnLiveRowIdState {
     Pending { tx_id: TxnId, counter: u32 },
-    Existing(RowId),
+    Existing(WireRowId),
     Invalid(String),
 }
 
-/// A RowHandle abstracts away the difference between a pending id and an existing
+/// A TxnLiveRowId abstracts away the difference between a pending id and an existing
 /// rowid. It is a reference counted handle that can be shared and will be automatically
 /// converted from a temp rowid to a rowid on successful commit.
 #[derive(Clone, Debug)]
-pub struct RowHandle {
+pub struct TxnLiveRowId {
     // ? Arc
-    state: Rc<RefCell<RowHandleState>>,
+    state: Rc<RefCell<TxnLiveRowIdState>>,
 }
 
-impl RowHandle {
-    pub fn row_id(&self) -> Result<RowId, StoreError> {
+impl Into<TxnLiveValue> for TxnLiveRowId {
+    fn into(self) -> TxnLiveValue {
+        TxnLiveValue::Id(self)
+    }
+}
+
+impl TxnLiveRowId {
+    pub fn row_id(&self) -> Result<WireRowId, StoreError> {
         match &*self.state.borrow() {
-            RowHandleState::Existing(row_id) => Ok(*row_id),
-            RowHandleState::Pending { .. } => Err(ValidationError::InvalidRowHandle {
+            TxnLiveRowIdState::Existing(row_id) => Ok(*row_id),
+            TxnLiveRowIdState::Pending { .. } => Err(ValidationError::InvalidTxnLiveRowId {
                 reason: "row handle is still pending".to_string(),
             }
             .into()),
-            RowHandleState::Invalid(reason) => Err(ValidationError::InvalidRowHandle {
+            TxnLiveRowIdState::Invalid(reason) => Err(ValidationError::InvalidTxnLiveRowId {
                 reason: reason.clone(),
             }
             .into()),
@@ -65,125 +72,89 @@ impl RowHandle {
     #[doc(hidden)]
     pub fn pending_ids(&self) -> Result<(u64, u32), StoreError> {
         match *self.state.borrow() {
-            RowHandleState::Pending { tx_id, counter } => Ok((tx_id.as_u64(), counter)),
-            _ => Err(ValidationError::InvalidRowHandle {
+            TxnLiveRowIdState::Pending { tx_id, counter } => Ok((tx_id.as_u64(), counter)),
+            _ => Err(ValidationError::InvalidTxnLiveRowId {
                 reason: "not txn id on existing ids or invalid handles".to_string(),
             }
             .into()),
         }
     }
 
-    pub(crate) fn canonicalise(&self, new_row_id: RowId) -> Result<(), StoreError> {
+    pub(crate) fn canonicalise(&self, new_row_id: WireRowId) -> Result<(), StoreError> {
         let mut state = self.state.borrow_mut();
         match &*state {
-            RowHandleState::Existing(..) => {
-                *state = RowHandleState::Existing(new_row_id);
+            TxnLiveRowIdState::Existing(..) => {
+                *state = TxnLiveRowIdState::Existing(new_row_id);
                 Ok(())
             }
-            _ => Err(ValidationError::InvalidRowHandle {
+            _ => Err(ValidationError::InvalidTxnLiveRowId {
                 reason: "cannot replace row id on a non finalised rowhandle".to_string(),
             }
             .into()),
         }
     }
 
-    pub(crate) fn to_txn_cell_value(&self, current_tx: TxnId) -> Result<TxnCellValue, StoreError> {
+    pub(crate) fn to_txn_cell_value(&self, current_tx: TxnId) -> Result<TxnWireValue, StoreError> {
         match &*self.state.borrow() {
-            RowHandleState::Existing(row_id) => Ok(TxnCellValue::Id(RowRef::Existing(*row_id))),
-            RowHandleState::Pending { tx_id, counter } if *tx_id == current_tx => {
-                Ok(TxnCellValue::Id(RowRef::Pending(TempRowId::from(*counter))))
+            TxnLiveRowIdState::Existing(row_id) => Ok(TxnWireValue::Id(TxnWireRowId::Existing(*row_id))),
+            TxnLiveRowIdState::Pending { tx_id, counter } if *tx_id == current_tx => {
+                Ok(TxnWireValue::Id(TxnWireRowId::Pending(TempRowId::from(*counter))))
             }
-            RowHandleState::Pending { tx_id, .. } => Err(ValidationError::TxnIdMismatch {
+            TxnLiveRowIdState::Pending { tx_id, .. } => Err(ValidationError::TxnIdMismatch {
                 current: current_tx,
                 got: *tx_id,
             }
             .into()),
-            RowHandleState::Invalid(reason) => Err(ValidationError::InvalidRowHandle {
+            TxnLiveRowIdState::Invalid(reason) => Err(ValidationError::InvalidTxnLiveRowId {
                 reason: reason.clone(),
             }
             .into()),
         }
     }
 
-    pub(crate) fn finalize(&self, commit: CommitHash, resolve: impl Fn(RowId) -> RowId) {
+    pub(crate) fn finalize(&self, commit: CommitHash, resolve: impl Fn(WireRowId) -> WireRowId) {
         let mut state = self.state.borrow_mut();
-        if let RowHandleState::Pending { counter, .. } = *state {
-            *state = RowHandleState::Existing(resolve(RowId { commit, counter }));
+        if let TxnLiveRowIdState::Pending { counter, .. } = *state {
+            *state = TxnLiveRowIdState::Existing(resolve(WireRowId { commit, counter }));
         }
     }
 
     pub(crate) fn invalidate(&self, reason: &str) {
-        *self.state.borrow_mut() = RowHandleState::Invalid(reason.into());
+        *self.state.borrow_mut() = TxnLiveRowIdState::Invalid(reason.into());
     }
 
     #[doc(hidden)]
     pub fn from_pending(tx_id: TxnId, counter: u32) -> Self {
-        let state = Rc::new(RefCell::new(RowHandleState::Pending { tx_id, counter }));
-        RowHandle { state }
+        let state = Rc::new(RefCell::new(TxnLiveRowIdState::Pending { tx_id, counter }));
+        TxnLiveRowId { state }
     }
 
     #[doc(hidden)]
-    pub fn from_existing(row_id: RowId) -> Self {
-        let state = Rc::new(RefCell::new(RowHandleState::Existing(row_id)));
-        RowHandle { state }
+    pub fn from_existing(row_id: WireRowId) -> Self {
+        let state = Rc::new(RefCell::new(TxnLiveRowIdState::Existing(row_id)));
+        TxnLiveRowId { state }
     }
 }
 
-#[derive(Clone)]
-pub enum TxnValue {
-    Id(RowHandle),
-    Int(i64),
-    Str(String),
-}
 
-impl TxnValue {
-    pub(crate) fn to_txn_cell_value(&self, current_tx: TxnId) -> Result<TxnCellValue, StoreError> {
+pub type TxnLiveValue = Value<TxnLiveRowId>;
+
+impl TxnLiveValue {
+    pub(crate) fn to_txn_cell_value(&self, current_tx: TxnId) -> Result<TxnWireValue, StoreError> {
         match self {
-            TxnValue::Id(handle) => handle.to_txn_cell_value(current_tx),
-            TxnValue::Int(value) => Ok(TxnCellValue::Int(*value)),
-            TxnValue::Str(value) => Ok(TxnCellValue::Str(value.clone())),
+            TxnLiveValue::Id(handle) => handle.to_txn_cell_value(current_tx),
+            TxnLiveValue::Int(value) => Ok(TxnWireValue::Int(*value)),
+            TxnLiveValue::Str(value) => Ok(TxnWireValue::Str(value.clone())),
         }
     }
 }
 
-impl From<RowHandle> for TxnValue {
-    fn from(value: RowHandle) -> Self {
-        TxnValue::Id(value)
-    }
+pub fn liven(v: WireValue) -> TxnLiveValue {
+    v.map_owned(TxnLiveRowId::from_existing)
 }
 
-impl From<RowId> for TxnValue {
-    fn from(value: RowId) -> Self {
-        TxnValue::Id(RowHandle::from_existing(value))
-    }
-}
-
-impl From<i64> for TxnValue {
-    fn from(value: i64) -> Self {
-        TxnValue::Int(value)
-    }
-}
-
-impl From<String> for TxnValue {
-    fn from(value: String) -> Self {
-        TxnValue::Str(value)
-    }
-}
-
-impl From<&str> for TxnValue {
-    fn from(value: &str) -> Self {
-        TxnValue::Str(value.to_owned())
-    }
-}
-
-impl From<CellValue> for TxnValue {
-    fn from(value: CellValue) -> Self {
-        match value {
-            CellValue::Id(id) => TxnValue::Id(RowHandle::from_existing(id)),
-            CellValue::Int(value) => TxnValue::Int(value),
-            CellValue::Str(value) => TxnValue::Str(value),
-        }
-    }
+pub fn liven_all(vs: Vec<WireValue>) -> Vec<TxnLiveValue> {
+    vs.into_iter().map(liven).collect()
 }
 
 /// A temporary row ID that is valid only within a transaction.
@@ -191,8 +162,8 @@ impl From<CellValue> for TxnValue {
 pub(crate) struct TempRowId(pub(crate) u32);
 
 impl TempRowId {
-    pub(crate) fn resolve(self, commit: CommitHash) -> RowId {
-        RowId {
+    pub(crate) fn resolve(self, commit: CommitHash) -> WireRowId {
+        WireRowId {
             commit,
             counter: self.0,
         }
@@ -211,96 +182,34 @@ impl From<u32> for TempRowId {
 
 /// A reference to an existing row or a pending row in the current transaction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum RowRef {
-    Existing(RowId),
+pub(crate) enum TxnWireRowId {
+    Existing(WireRowId),
     Pending(TempRowId),
 }
 
-impl RowRef {
-    fn resolve(&self, commit: CommitHash) -> RowId {
+impl TxnWireRowId {
+    fn resolve(&self, commit: CommitHash) -> WireRowId {
         match self {
-            RowRef::Existing(row_id) => *row_id,
-            RowRef::Pending(temp_id) => temp_id.resolve(commit),
+            TxnWireRowId::Existing(row_id) => *row_id,
+            TxnWireRowId::Pending(temp_id) => temp_id.resolve(commit),
         }
     }
 }
 
-impl From<RowId> for RowRef {
-    fn from(value: RowId) -> Self {
-        RowRef::Existing(value)
+impl From<WireRowId> for TxnWireRowId {
+    fn from(value: WireRowId) -> Self {
+        TxnWireRowId::Existing(value)
     }
 }
 
-impl From<TempRowId> for RowRef {
+impl From<TempRowId> for TxnWireRowId {
     fn from(value: TempRowId) -> Self {
-        RowRef::Pending(value)
+        TxnWireRowId::Pending(value)
     }
 }
 
-// TODO should clean this up, who uses txncellvalue and it should have a better name
-/// The internal transaction representation derived from `TxnValue`.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum TxnCellValue {
-    Id(RowRef),
-    Int(i64),
-    Str(String),
-}
 
-impl TxnCellValue {
-    fn resolve(&self, commit: CommitHash) -> CellValue {
-        match self {
-            TxnCellValue::Id(row_ref) => CellValue::Id(row_ref.resolve(commit)),
-            TxnCellValue::Int(value) => CellValue::Int(*value),
-            TxnCellValue::Str(value) => CellValue::Str(value.clone()),
-        }
-    }
-}
-
-impl From<RowRef> for TxnCellValue {
-    fn from(value: RowRef) -> Self {
-        TxnCellValue::Id(value)
-    }
-}
-
-impl From<RowId> for TxnCellValue {
-    fn from(value: RowId) -> Self {
-        TxnCellValue::Id(RowRef::Existing(value))
-    }
-}
-
-impl From<TempRowId> for TxnCellValue {
-    fn from(value: TempRowId) -> Self {
-        TxnCellValue::Id(RowRef::Pending(value))
-    }
-}
-
-impl From<i64> for TxnCellValue {
-    fn from(value: i64) -> Self {
-        TxnCellValue::Int(value)
-    }
-}
-
-impl From<String> for TxnCellValue {
-    fn from(value: String) -> Self {
-        TxnCellValue::Str(value)
-    }
-}
-
-impl From<&str> for TxnCellValue {
-    fn from(value: &str) -> Self {
-        TxnCellValue::Str(value.to_owned())
-    }
-}
-
-impl From<CellValue> for TxnCellValue {
-    fn from(value: CellValue) -> Self {
-        match value {
-            CellValue::Id(id) => TxnCellValue::Id(RowRef::Existing(id)),
-            CellValue::Int(value) => TxnCellValue::Int(value),
-            CellValue::Str(value) => TxnCellValue::Str(value),
-        }
-    }
-}
+pub type TxnWireValue = Value<TxnWireRowId>;
 
 /// An operation staged within a transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -308,7 +217,7 @@ pub(crate) enum PendingOp {
     Add {
         row_id: TempRowId,
         table: TableOid,
-        values: Vec<TxnCellValue>,
+        values: Vec<TxnWireValue>,
     },
 }
 
@@ -322,7 +231,7 @@ impl PendingOp {
             } => Op::Add {
                 row_id: row_id.resolve(commit),
                 table: *table,
-                values: values.iter().map(|value| value.resolve(commit)).collect(),
+                values: values.iter().map(|value| value.map(|i| i.resolve(commit))).collect(),
             },
         }
     }

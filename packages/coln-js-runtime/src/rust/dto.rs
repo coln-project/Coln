@@ -10,8 +10,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::CommitChunk as StoreCommitChunk,
-    table::{CellValue as StoreCellValue, RowId as StoreRowId, RowView as StoreRowView},
-    txn::{RowHandle, TxnValue as StoreTxnValue},
+    table::{CellValue as StoreCellValue, WireRowId as StoreRowId, RowView as StoreRowView},
+    txn::{TxnLiveRowId, TxnLiveValue as StoreTxnValue},
 };
 
 use crate::error::BoundaryError;
@@ -163,9 +163,9 @@ impl From<Value> for StoreTxnValue {
             Value::Id(row_ref) => {
                 let handle = match row_ref {
                     RowRef::Pending(temp_row_id) => {
-                        RowHandle::from_pending(temp_row_id.tx_id.into(), temp_row_id.counter)
+                        TxnLiveRowId::from_pending(temp_row_id.tx_id.into(), temp_row_id.counter)
                     }
-                    RowRef::Existing(row_id) => RowHandle::from_existing(
+                    RowRef::Existing(row_id) => TxnLiveRowId::from_existing(
                         row_id.try_into().expect("commit hash not messed up"),
                     ),
                 };

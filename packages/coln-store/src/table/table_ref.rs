@@ -6,7 +6,7 @@ use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
 use crate::table::index::{IndexId, IndexMeta};
-use crate::table::{CellValue, RowId, RowView, SeekKey, Table, TableOid, ValidationError};
+use crate::table::{WireValue, WireRowId, RowView, SeekKey, Table, TableOid, ValidationError};
 
 /// A [`Table`] together with the store-wide hash dictionary, for read-only
 /// access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -42,11 +42,11 @@ impl<'a> TableRef<'a> {
         self.table.cols.len() + 1
     }
 
-    pub fn row_id_at(self, row_idx: usize) -> Option<RowId> {
+    pub fn row_id_at(self, row_idx: usize) -> Option<WireRowId> {
         self.table.row_id_at(row_idx, self.id_packer)
     }
 
-    pub fn cell_at(self, row_idx: usize, col_idx: usize) -> Option<CellValue> {
+    pub fn cell_at(self, row_idx: usize, col_idx: usize) -> Option<WireValue> {
         self.table.cell_at(row_idx, col_idx, self.id_packer)
     }
 
@@ -54,7 +54,7 @@ impl<'a> TableRef<'a> {
         self.table.row_at(row_idx, self.id_packer)
     }
 
-    pub fn row_position(self, row_id: RowId) -> Option<usize> {
+    pub fn row_position(self, row_id: WireRowId) -> Option<usize> {
         let row_id = self.id_packer.lookup_row_id(row_id)?;
         self.table.row_idx(row_id)
     }
@@ -67,15 +67,15 @@ impl<'a> TableRef<'a> {
         self.table.indexes_meta()
     }
 
-    pub fn seek(self, key: &[SeekKey]) -> Result<impl Iterator<Item = RowId>, ValidationError> {
+    pub fn seek(self, key: &[SeekKey]) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
         self.table.seek(key, self.id_packer)
     }
 
     pub fn index_seek(
         self,
         index: IndexId,
-        key: &[CellValue],
-    ) -> Result<impl Iterator<Item = RowId>, ValidationError> {
+        key: &[WireValue],
+    ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
         self.table.index_seek(index, key, self.id_packer)
     }
 
@@ -83,7 +83,7 @@ impl<'a> TableRef<'a> {
         self.table.lookup(key, self.id_packer)
     }
 
-    pub fn index_lookup(self, index: IndexId, key: &[CellValue]) -> Result<bool, ValidationError> {
+    pub fn index_lookup(self, index: IndexId, key: &[WireValue]) -> Result<bool, ValidationError> {
         self.table.index_lookup(index, key, self.id_packer)
     }
 
@@ -95,11 +95,11 @@ impl<'a> TableRef<'a> {
         self.table.validate_column_count(got)
     }
 
-    pub fn validate_insert(self, values: &[CellValue]) -> Result<(), ValidationError> {
+    pub fn validate_insert(self, values: &[WireValue]) -> Result<(), ValidationError> {
         self.table.validate_insert(values, self.id_packer)
     }
 
-    pub fn primary_key_values(self, values: &[CellValue]) -> Option<Vec<CellValue>> {
+    pub fn primary_key_values(self, values: &[WireValue]) -> Option<Vec<WireValue>> {
         self.table.primary_key_values(values)
     }
 }

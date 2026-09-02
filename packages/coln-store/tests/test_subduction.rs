@@ -7,7 +7,7 @@ use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time:
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
-use coln_store::{commit::hash::CommitHash, store::Store, table::CellValue};
+use coln_store::{commit::hash::CommitHash, store::Store, table::WireValue};
 use future_form::Sendable;
 use sedimentree_core::{
     blob::{Blob, verified::VerifiedBlobMeta},
@@ -65,13 +65,13 @@ fn sedimentree_id(store: &Store) -> SedimentreeId {
     SedimentreeId::new(root_hash(store).0)
 }
 
-fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i64)> {
+fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i32)> {
     let table = store.table_at(&Path::from("T")).expect("T table");
     (0..table.row_count())
         .map(|row| {
             let id = table.row_id_at(row).expect("row id");
             let value = match table.cell_at(row, 0).expect("cell") {
-                CellValue::Int(value) => value,
+                WireValue::Int(value) => value,
                 other => panic!("expected int cell, got {other:?}"),
             };
             (id.commit, id.counter, value)
@@ -79,7 +79,7 @@ fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i64)> {
         .collect()
 }
 
-fn add_row(store: &mut Store, value: i64) -> Result<CommitHash, Box<dyn Error>> {
+fn add_row(store: &mut Store, value: i32) -> Result<CommitHash, Box<dyn Error>> {
     let mut tx = store.transaction();
     tx.add(&Path::from("T"), vec![value.into()])?;
     tx.commit().map_err(Into::into)

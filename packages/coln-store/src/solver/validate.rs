@@ -14,7 +14,7 @@ use crate::{
         matcher::term_matches,
     },
     store::Store,
-    table::CellValue,
+    table::WireValue,
 };
 
 /// Why a rule was violated at a given binding.
@@ -93,8 +93,8 @@ pub fn consequent_eq_holds(binding: &Binding, eq: &CompEq) -> bool {
     };
     match (&l, &r) {
         // Row ids and entity cells refer to the same identity when equal.
-        (BoundValue::RId(a), BoundValue::Cell(CellValue::Id(b)))
-        | (BoundValue::Cell(CellValue::Id(a)), BoundValue::RId(b)) => a == b,
+        (BoundValue::RId(a), BoundValue::Cell(WireValue::Id(b)))
+        | (BoundValue::Cell(WireValue::Id(a)), BoundValue::RId(b)) => a == b,
         _ => l == r,
     }
 }
@@ -157,7 +157,7 @@ mod tests {
             RuleVariant, Schema,
         },
         solver::compile::compile_rule,
-        table::CellValue,
+        table::WireValue,
     };
 
     fn int_ty() -> ColType {
@@ -246,9 +246,9 @@ mod tests {
             .expect("create target table");
 
         let mut txn = store.transaction();
-        txn.add(&source, vec![CellValue::Int(7).into()])
+        txn.add(&source, vec![7i32.into()])
             .expect("insert source row");
-        txn.add(&target, vec![CellValue::Int(7).into()])
+        txn.add(&target, vec![7i32.into()])
             .expect("insert target row");
         txn.commit().expect("commit matching rows");
 
@@ -345,7 +345,7 @@ mod tests {
         let mut txn = store.transaction();
         txn.add(
             &link,
-            vec![CellValue::Int(10).into(), CellValue::Int(20).into()],
+            vec![10i32.into(), 20i32.into()],
         )
         .expect("insert referencing row");
         txn.commit().expect("commit referencing row");
@@ -359,15 +359,15 @@ mod tests {
         assert_eq!(
             violation.binding,
             vec![
-                Some(BoundValue::Cell(CellValue::Int(10))),
-                Some(BoundValue::Cell(CellValue::Int(20))),
+                Some(BoundValue::Cell(WireValue::Int(10))),
+                Some(BoundValue::Cell(WireValue::Int(20))),
             ]
         );
 
         let mut txn = store.transaction();
-        txn.add(&left, vec![CellValue::Int(10).into()])
+        txn.add(&left, vec![10i32.into()])
             .expect("insert left row");
-        txn.add(&right, vec![CellValue::Int(20).into()])
+        txn.add(&right, vec![20i32.into()])
             .expect("insert right row");
         txn.commit().expect("commit referenced rows");
 
@@ -382,7 +382,7 @@ mod tests {
             .create_table(t.clone(), int_schema(&["c0", "c1"]))
             .expect("create table");
         let mut txn = store.transaction();
-        txn.add(&t, vec![CellValue::Int(5).into(), CellValue::Int(5).into()])
+        txn.add(&t, vec![5i32.into(), 5i32.into()])
             .expect("insert row");
         txn.commit().expect("commit row");
 
@@ -425,7 +425,7 @@ mod tests {
             .create_table(t.clone(), int_schema(&["c0", "c1"]))
             .expect("create table");
         let mut txn = store.transaction();
-        txn.add(&t, vec![CellValue::Int(1).into(), CellValue::Int(2).into()])
+        txn.add(&t, vec![1i32.into(), 2i32.into()])
             .expect("insert row");
         txn.commit().expect("commit row");
 

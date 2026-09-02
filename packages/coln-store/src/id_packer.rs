@@ -5,7 +5,7 @@
 use crate::commit::hash_dict::HashMapper;
 use crate::op::Op;
 use crate::rollback::Rollback;
-use crate::table::{CellValue, PackedCell, PackedOp, PackedRowId, RowId};
+use crate::table::{WireValue, PackedValue, PackedOp, PackedRowId, WireRowId};
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]
@@ -26,7 +26,7 @@ impl IdPacker {
     }
 
     /// Packs `id`, interning its commit hash if it is new.
-    pub(crate) fn pack_row_id(&mut self, id: RowId) -> PackedRowId {
+    pub(crate) fn pack_row_id(&mut self, id: WireRowId) -> PackedRowId {
         PackedRowId {
             commit_idx: self.dict.insert(id.commit),
             counter: id.counter,
@@ -36,15 +36,15 @@ impl IdPacker {
     /// Packs `id` without interning its commit hash.
     ///
     /// Returns `None` when the commit hash has not already been interned.
-    pub(crate) fn lookup_row_id(&self, id: RowId) -> Option<PackedRowId> {
+    pub(crate) fn lookup_row_id(&self, id: WireRowId) -> Option<PackedRowId> {
         Some(PackedRowId {
             commit_idx: self.dict.index(id.commit)?,
             counter: id.counter,
         })
     }
 
-    pub(crate) fn unpack_row_id(&self, id: PackedRowId) -> RowId {
-        RowId {
+    pub(crate) fn unpack_row_id(&self, id: PackedRowId) -> WireRowId {
+        WireRowId {
             commit: self
                 .dict
                 .hash_at(id.commit_idx)
@@ -53,11 +53,11 @@ impl IdPacker {
         }
     }
 
-    pub(crate) fn pack_cell(&mut self, value: CellValue) -> PackedCell {
+    pub(crate) fn pack_cell(&mut self, value: WireValue) -> PackedValue {
         match value {
-            CellValue::Id(id) => PackedCell::Id(self.pack_row_id(id)),
-            CellValue::Int(value) => PackedCell::Int(value),
-            CellValue::Str(value) => PackedCell::Str(value),
+            WireValue::Id(id) => PackedValue::Id(self.pack_row_id(id)),
+            WireValue::Int(value) => PackedValue::Int(value),
+            WireValue::Str(value) => PackedValue::Str(value),
         }
     }
 
@@ -77,11 +77,11 @@ impl IdPacker {
     /// Packs a cell without modifying the dictionary.
     ///
     /// Returns `None` when an ID cell's commit hash has not been interned.
-    pub(crate) fn try_pack_cell(&self, value: &CellValue) -> Option<PackedCell> {
+    pub(crate) fn try_pack_cell(&self, value: &WireValue) -> Option<PackedValue> {
         Some(match value {
-            CellValue::Id(id) => PackedCell::Id(self.lookup_row_id(*id)?),
-            CellValue::Int(value) => PackedCell::Int(*value),
-            CellValue::Str(value) => PackedCell::Str(value.clone()),
+            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(*id)?),
+            WireValue::Int(value) => PackedValue::Int(*value),
+            WireValue::Str(value) => PackedValue::Str(value.clone()),
         })
     }
 
@@ -122,8 +122,8 @@ mod tests {
     use super::*;
     use crate::commit::hash::CommitHash;
 
-    fn row_id(byte: u8, counter: u32) -> RowId {
-        RowId {
+    fn row_id(byte: u8, counter: u32) -> WireRowId {
+        WireRowId {
             commit: CommitHash([byte; 32]),
             counter,
         }

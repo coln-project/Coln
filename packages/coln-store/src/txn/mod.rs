@@ -14,8 +14,8 @@ use crate::{
 };
 
 use inner::TxnInner;
-pub(crate) use row_handle::{PendingOp, RowRef, TempRowId, TxnCellValue};
-pub use row_handle::{RowHandle, TxnId, TxnValue};
+pub(crate) use row_handle::{PendingOp, TxnWireRowId, TempRowId, TxnWireValue};
+pub use row_handle::{TxnLiveRowId, TxnId, TxnLiveValue, liven, liven_all};
 
 pub struct Transaction<'a> {
     inner: TxnInner,
@@ -36,8 +36,8 @@ impl<'a> Transaction<'a> {
     pub fn add(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreError> {
+        values: Vec<TxnLiveValue>,
+    ) -> Result<TxnLiveRowId, StoreError> {
         self.inner.add(self.store, table, values)
     }
 
@@ -46,7 +46,7 @@ impl<'a> Transaction<'a> {
     pub(crate) fn add_internal(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnCellValue>,
+        values: Vec<TxnWireValue>,
     ) -> Result<TempRowId, StoreError> {
         self.inner.add_internal(self.store, table, values)
     }
@@ -78,8 +78,8 @@ impl OwnedTransaction {
     pub fn add(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreError> {
+        values: Vec<TxnLiveValue>,
+    ) -> Result<TxnLiveRowId, StoreError> {
         self.inner.add(&self.store, table, values)
     }
 
@@ -102,7 +102,7 @@ impl OwnedTransaction {
 mod tests {
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
-    use crate::table::{CellValue, ValidationError};
+    use crate::table::{WireValue, ValidationError};
 
     fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
         Schema {
@@ -138,7 +138,7 @@ mod tests {
             .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![42_i64.into()]).expect("add");
+        tx.add(&path, vec![42_i32.into()]).expect("add");
 
         let (_hash, committed) = tx.commit().expect("commit");
         assert_eq!(committed.table_at(&path).expect("T").row_count(), 1);
@@ -155,14 +155,14 @@ mod tests {
 
         let mut tx = OwnedTransaction::new(store);
         let err = tx
-            .add(&Path::from("missing"), vec![1_i64.into()])
+            .add(&Path::from("missing"), vec![1_i32.into()])
             .unwrap_err();
         assert!(matches!(
             err,
             StoreError::Validation(ValidationError::UnknownTable { .. })
         ));
 
-        let err = tx.add(&path, vec![1_i64.into(), 2_i64.into()]).unwrap_err();
+        let err = tx.add(&path, vec![1_i32.into(), 2_i32.into()]).unwrap_err();
         assert!(matches!(
             err,
             StoreError::Validation(ValidationError::ColumnCount { .. })
@@ -186,7 +186,7 @@ mod tests {
 
         let mut tx = store.transaction();
         let node_temp = tx.add(&nodes, vec![]).expect("add node");
-        tx.add(&edges, vec![node_temp.into()]).expect("add edge");
+        tx.add(&edges, vec![TxnLiveValue::Id(node_temp)]).expect("add edge");
         let commit = tx.commit().expect("commit");
 
         let node_id = store
@@ -201,7 +201,7 @@ mod tests {
         assert_eq!(node_id.counter, 0);
         assert_eq!(edge_id.commit, commit);
         assert_eq!(edge_id.counter, 1);
-        assert_eq!(edge.cell_at(0, 0), Some(CellValue::Id(node_id)));
+        assert_eq!(edge.cell_at(0, 0), Some(WireValue::Id(node_id)));
     }
 
     #[test]
@@ -227,11 +227,11 @@ mod tests {
         assert_eq!(node_id.commit, first_commit);
 
         let mut tx = store.transaction();
-        tx.add(&edges, vec![node.into()]).expect("add edge");
+        tx.add(&edges, vec![TxnLiveValue::Id(node)]).expect("add edge");
         tx.commit().expect("commit edge");
 
         let edge = store.table_at(&edges).expect("Edges");
-        assert_eq!(edge.cell_at(0, 0), Some(CellValue::Id(node_id)));
+        assert_eq!(edge.cell_at(0, 0), Some(WireValue::Id(node_id)));
     }
 
     #[test]
@@ -254,15 +254,15 @@ mod tests {
         let err = node.row_id().expect_err("abort invalidates handle");
         assert!(matches!(
             err,
-            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
         ));
         let mut tx = store.transaction();
         let err = tx
-            .add(&edges, vec![node.into()])
+            .add(&edges, vec![TxnLiveValue::Id(node)])
             .expect_err("aborted handle cannot be reused");
         assert!(matches!(
             err,
-            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
         ));
         assert_eq!(store.table_at(&nodes).expect("Nodes").row_count(), 0);
     }
@@ -296,16 +296,16 @@ mod tests {
         let err = node.row_id().expect_err("failed commit invalidates handle");
         assert!(matches!(
             err,
-            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
         ));
 
         let mut tx = store.transaction();
         let err = tx
-            .add(&edges, vec![node.into()])
+            .add(&edges, vec![TxnLiveValue::Id(node)])
             .expect_err("invalid handle cannot be reused");
         assert!(matches!(
             err,
-            StoreError::Validation(ValidationError::InvalidRowHandle { .. })
+            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
         ));
     }
 
@@ -324,13 +324,13 @@ mod tests {
         store.set_structural_index_for_test(&term, true);
 
         let mut tx = store.transaction();
-        let first = tx.add(&term, vec![7_i64.into()]).expect("add first term");
+        let first = tx.add(&term, vec![7_i32.into()]).expect("add first term");
         tx.commit().expect("commit first term");
 
         // Structurally equal row: deduplicates into the first row's class.
         // Which id wins the merge depends on the commit hash ordering.
         let mut tx = store.transaction();
-        let second = tx.add(&term, vec![7_i64.into()]).expect("add equal term");
+        let second = tx.add(&term, vec![7_i32.into()]).expect("add equal term");
         tx.commit().expect("commit equal term");
 
         let stored = store
@@ -364,7 +364,7 @@ mod tests {
         let root = store.commits().root_commit().expect("root commit").hash();
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![CellValue::Int(1).into()])
+        tx.add(&path, liven_all(vec![WireValue::Int(1)]))
             .expect("add first row");
         let first = tx.commit().expect("first commit");
 
@@ -376,7 +376,7 @@ mod tests {
         );
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![CellValue::Int(2).into()])
+        tx.add(&path, liven_all(vec![WireValue::Int(2).into()]))
             .expect("add second row");
         let second = tx.commit().expect("second commit");
 
