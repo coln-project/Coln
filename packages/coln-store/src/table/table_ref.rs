@@ -6,7 +6,7 @@ use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
 use crate::table::index::{IndexId, IndexMeta};
-use crate::table::{WireValue, WireRowId, RowView, SeekKey, Table, TableOid, ValidationError};
+use crate::table::{RowView, SeekKey, Table, TableOid, ValidationError, WireRowId, WireValue};
 
 /// A [`Table`] together with the store-wide hash dictionary, for read-only
 /// access. This is what [`Store`](crate::store::Store) accessors hand out, so

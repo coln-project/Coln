@@ -9,7 +9,7 @@ pub mod sorted;
 pub mod table_ref;
 mod undo;
 
-pub use cell::{CellKind, WireValue, WireRowId};
+pub use cell::{CellKind, WireRowId, WireValue};
 pub use table_ref::TableRef;
 
 use std::collections::{HashMap, HashSet};
@@ -24,7 +24,7 @@ use crate::table::index::{IndexId, IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 use crate::txn::TxnId;
 
-pub(crate) use self::cell::{PackedValue, PackedRowId};
+pub(crate) use self::cell::{PackedRowId, PackedValue};
 use self::col::{Column, IdColumn};
 
 pub type TableOid = usize;

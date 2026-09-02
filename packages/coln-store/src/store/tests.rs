@@ -211,10 +211,8 @@ mod transactions {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, vec![1i32.into()])
-            .expect("first add");
-        txn.add(&path, vec![2i32.into()])
-            .expect("second add");
+        txn.add(&path, vec![1i32.into()]).expect("first add");
+        txn.add(&path, vec![2i32.into()]).expect("second add");
 
         txn.commit().expect("commit");
 
@@ -243,8 +241,7 @@ mod transactions {
 
         let err = {
             let mut txn = store.transaction();
-            txn.add(&path, vec![1i32.into()])
-                .expect("first add");
+            txn.add(&path, vec![1i32.into()]).expect("first add");
             txn.add(&Path::from("missing"), vec![2i32.into()])
                 .unwrap_err()
         };
@@ -275,10 +272,8 @@ mod transactions {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, vec![1i32.into()])
-            .expect("first add");
-        txn.add(&path, vec![1i32.into()])
-            .expect("second add");
+        txn.add(&path, vec![1i32.into()]).expect("first add");
+        txn.add(&path, vec![1i32.into()]).expect("second add");
         let err = txn.commit().unwrap_err();
 
         assert!(matches!(
@@ -307,8 +302,7 @@ mod transactions {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, vec![42i32.into()])
-            .expect("add");
+        txn.add(&path, vec![42i32.into()]).expect("add");
         txn.commit().expect("commit");
 
         let t = store.table_at(&path).expect("T");
@@ -324,11 +318,8 @@ mod transactions {
         let packed_id_count = store.id_packer.len();
 
         let mut txn = store.transaction();
-        txn.add(
-            &link,
-            vec![10i32.into(), 20i32.into()],
-        )
-        .expect("add");
+        txn.add(&link, vec![10i32.into(), 20i32.into()])
+            .expect("add");
         let err = txn.commit().unwrap_err();
 
         assert!(matches!(err, StoreError::Rule(_)));
@@ -397,7 +388,10 @@ mod query {
                 values: vec![42i32.into()],
             })
         );
-        assert_eq!(store.row_by_id(&path, WireRowId { commit, counter: 1 }), None);
+        assert_eq!(
+            store.row_by_id(&path, WireRowId { commit, counter: 1 }),
+            None
+        );
         assert_eq!(store.row_by_id(&Path::from("missing"), row_id), None);
     }
 }
@@ -680,8 +674,11 @@ mod rowing {
         let tp = txn
             .add(&plus_path, vec![TxnLiveValue::Id(t7), TxnLiveValue::Id(t8)])
             .unwrap();
-        txn.add(&mult_path, vec![TxnLiveValue::Id(tp.clone()), TxnLiveValue::Id(tp)])
-            .unwrap();
+        txn.add(
+            &mult_path,
+            vec![TxnLiveValue::Id(tp.clone()), TxnLiveValue::Id(tp)],
+        )
+        .unwrap();
         txn.commit().unwrap();
 
         let mut txn2 = store.transaction();
@@ -690,8 +687,11 @@ mod rowing {
         let tp = txn2
             .add(&plus_path, vec![TxnLiveValue::Id(t7), TxnLiveValue::Id(t8)])
             .unwrap();
-        txn2.add(&mult_path, vec![TxnLiveValue::Id(tp.clone()), TxnLiveValue::Id(tp)])
-            .unwrap();
+        txn2.add(
+            &mult_path,
+            vec![TxnLiveValue::Id(tp.clone()), TxnLiveValue::Id(tp)],
+        )
+        .unwrap();
         txn2.commit().unwrap();
 
         let terms: Vec<RowView> = store.scan_table(&term_path).unwrap().collect();
@@ -738,9 +738,15 @@ mod rowing {
         let f = Path::from("F");
 
         let mut first = store.transaction();
-        let t1 = first.add(&term, vec![TxnLiveValue::Int(1)]).expect("Term(1)");
-        let t2 = first.add(&term, vec![TxnLiveValue::Int(2)]).expect("Term(2)");
-        first.add(&term, vec![TxnLiveValue::Int(3)]).expect("Term(3)");
+        let t1 = first
+            .add(&term, vec![TxnLiveValue::Int(1)])
+            .expect("Term(1)");
+        let t2 = first
+            .add(&term, vec![TxnLiveValue::Int(2)])
+            .expect("Term(2)");
+        first
+            .add(&term, vec![TxnLiveValue::Int(3)])
+            .expect("Term(3)");
         first
             .add(&f, vec![TxnLiveValue::Id(t1), TxnLiveValue::Id(t2)])
             .expect("F(Term1, Term2)");
@@ -756,8 +762,12 @@ mod rowing {
         // the two Term(1) rows canonicalise onto one id and F's x cell is
         // rewritten, which is why the check cannot live in the pre-apply pass.
         let mut second = store.transaction();
-        let t1_again = second.add(&term, vec![TxnLiveValue::Int(1)]).expect("Term(1)");
-        let t4 = second.add(&term, vec![TxnLiveValue::Int(4)]).expect("Term(4)");
+        let t1_again = second
+            .add(&term, vec![TxnLiveValue::Int(1)])
+            .expect("Term(1)");
+        let t4 = second
+            .add(&term, vec![TxnLiveValue::Int(4)])
+            .expect("Term(4)");
         second
             .add(&f, vec![TxnLiveValue::Id(t1_again), TxnLiveValue::Id(t4)])
             .expect("F(Term1, Term4)");

@@ -7,7 +7,7 @@ use std::ops::Range;
 
 use crate::id_packer::IdPacker;
 
-use super::{CellKind, WireValue, PackedValue, PackedRowId};
+use super::{CellKind, PackedRowId, PackedValue, WireValue};
 
 /// Columnar storage for [`PackedRowId`]s, split into two parallel columns.
 ///
@@ -89,7 +89,6 @@ impl IdColumn {
     }
 }
 
-
 /// One column of typed storage. The variant is fixed by the schema column type.
 /// Each id is 8 bytes instead of a 40-byte [`WireValue`].
 #[derive(Debug, Clone)]
@@ -153,7 +152,9 @@ impl Column {
     pub(super) fn scope_to_value(&self, value: &PackedValue, range: Range<usize>) -> Range<usize> {
         match (self, value) {
             (Column::Id(column), PackedValue::Id(value)) => column.scope_to_value(*value, range),
-            (Column::Int(column), PackedValue::Int(value)) => column.scope_to_value(*value as i64, range),
+            (Column::Int(column), PackedValue::Int(value)) => {
+                column.scope_to_value(*value as i64, range)
+            }
             (Column::Str(column), PackedValue::Str(value)) => {
                 column.scope_to_value(value.as_str(), range)
             }

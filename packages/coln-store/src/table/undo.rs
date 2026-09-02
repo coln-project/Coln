@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::table::{PackedValue, PackedRowId};
+use crate::table::{PackedRowId, PackedValue};
 
 // Undo operations for each variant in the `Op` enum.
 #[derive(Debug)]

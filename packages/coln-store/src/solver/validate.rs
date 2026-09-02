@@ -343,11 +343,8 @@ mod tests {
         let compiled = compile_rule(&rule).expect("compile rule");
 
         let mut txn = store.transaction();
-        txn.add(
-            &link,
-            vec![10i32.into(), 20i32.into()],
-        )
-        .expect("insert referencing row");
+        txn.add(&link, vec![10i32.into(), 20i32.into()])
+            .expect("insert referencing row");
         txn.commit().expect("commit referencing row");
 
         let violation = check_rule(&store, &compiled).expect_err("missing referenced rows");
@@ -365,8 +362,7 @@ mod tests {
         );
 
         let mut txn = store.transaction();
-        txn.add(&left, vec![10i32.into()])
-            .expect("insert left row");
+        txn.add(&left, vec![10i32.into()]).expect("insert left row");
         txn.add(&right, vec![20i32.into()])
             .expect("insert right row");
         txn.commit().expect("commit referenced rows");

@@ -5,7 +5,7 @@
 use crate::commit::hash_dict::HashMapper;
 use crate::op::Op;
 use crate::rollback::Rollback;
-use crate::table::{WireValue, PackedValue, PackedOp, PackedRowId, WireRowId};
+use crate::table::{PackedOp, PackedRowId, PackedValue, WireRowId, WireValue};
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]

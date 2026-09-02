@@ -228,8 +228,8 @@ mod tests {
     use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, TableEntry};
-    use crate::table::{WireRowId, TableMeta, TableOid};
-    use crate::txn::{TxnWireRowId, TempRowId};
+    use crate::table::{TableMeta, TableOid, WireRowId};
+    use crate::txn::{TempRowId, TxnWireRowId};
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])

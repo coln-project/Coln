@@ -14,8 +14,8 @@ use crate::{
 };
 
 use inner::TxnInner;
-pub(crate) use row_handle::{PendingOp, TxnWireRowId, TempRowId, TxnWireValue};
-pub use row_handle::{TxnLiveRowId, TxnId, TxnLiveValue, liven, liven_all};
+pub(crate) use row_handle::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue};
+pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, liven, liven_all};
 
 pub struct Transaction<'a> {
     inner: TxnInner,
@@ -102,7 +102,7 @@ impl OwnedTransaction {
 mod tests {
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
-    use crate::table::{WireValue, ValidationError};
+    use crate::table::{ValidationError, WireValue};
 
     fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
         Schema {
@@ -186,7 +186,8 @@ mod tests {
 
         let mut tx = store.transaction();
         let node_temp = tx.add(&nodes, vec![]).expect("add node");
-        tx.add(&edges, vec![TxnLiveValue::Id(node_temp)]).expect("add edge");
+        tx.add(&edges, vec![TxnLiveValue::Id(node_temp)])
+            .expect("add edge");
         let commit = tx.commit().expect("commit");
 
         let node_id = store
@@ -227,7 +228,8 @@ mod tests {
         assert_eq!(node_id.commit, first_commit);
 
         let mut tx = store.transaction();
-        tx.add(&edges, vec![TxnLiveValue::Id(node)]).expect("add edge");
+        tx.add(&edges, vec![TxnLiveValue::Id(node)])
+            .expect("add edge");
         tx.commit().expect("commit edge");
 
         let edge = store.table_at(&edges).expect("Edges");

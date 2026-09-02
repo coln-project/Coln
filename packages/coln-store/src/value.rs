@@ -2,7 +2,7 @@
 pub enum Value<I> {
     Id(I),
     Int(i32),
-    Str(String)
+    Str(String),
 }
 
 impl<I> Value<I> {
@@ -10,7 +10,7 @@ impl<I> Value<I> {
         match self {
             Value::Id(i) => Value::Id(f(i)),
             Value::Int(i) => Value::Int(*i),
-            Value::Str(s) => Value::Str(s.clone())
+            Value::Str(s) => Value::Str(s.clone()),
         }
     }
 
@@ -18,7 +18,7 @@ impl<I> Value<I> {
         match self {
             Value::Id(i) => Value::Id(f(i)),
             Value::Int(i) => Value::Int(i),
-            Value::Str(s) => Value::Str(s)
+            Value::Str(s) => Value::Str(s),
         }
     }
 }

@@ -11,7 +11,7 @@ use crate::{
         matcher::term_matches,
     },
     store::Store,
-    table::{WireValue, WireRowId, TableRef},
+    table::{TableRef, WireRowId, WireValue},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -152,7 +152,8 @@ mod tests {
             RuleVariant, Schema,
         },
         solver::compile::compile_rule,
-        table::WireValue, txn::liven_all,
+        table::WireValue,
+        txn::liven_all,
     };
 
     fn int_ty() -> ColType {
@@ -205,21 +206,12 @@ mod tests {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(
-            &path,
-            liven_all(vec![WireValue::Int(1), WireValue::Int(2)]),
-        )
-        .expect("insert row");
-        txn.add(
-            &path,
-            liven_all(vec![WireValue::Int(2), WireValue::Int(3)]),
-        )
-        .expect("insert row");
-        txn.add(
-            &path,
-            liven_all(vec![WireValue::Int(9), WireValue::Int(4)]),
-        )
-        .expect("insert row");
+        txn.add(&path, liven_all(vec![WireValue::Int(1), WireValue::Int(2)]))
+            .expect("insert row");
+        txn.add(&path, liven_all(vec![WireValue::Int(2), WireValue::Int(3)]))
+            .expect("insert row");
+        txn.add(&path, liven_all(vec![WireValue::Int(9), WireValue::Int(4)]))
+            .expect("insert row");
         txn.commit().expect("commit rows");
 
         let rule = enforced_rule(

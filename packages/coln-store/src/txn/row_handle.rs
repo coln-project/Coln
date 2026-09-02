@@ -8,8 +8,8 @@ use crate::{
     commit::hash::CommitHash,
     op::Op,
     store::error::StoreError,
-    table::{WireValue, WireRowId, TableOid, ValidationError},
-    value::Value
+    table::{TableOid, ValidationError, WireRowId, WireValue},
+    value::Value,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -96,10 +96,12 @@ impl TxnLiveRowId {
 
     pub(crate) fn to_txn_cell_value(&self, current_tx: TxnId) -> Result<TxnWireValue, StoreError> {
         match &*self.state.borrow() {
-            TxnLiveRowIdState::Existing(row_id) => Ok(TxnWireValue::Id(TxnWireRowId::Existing(*row_id))),
-            TxnLiveRowIdState::Pending { tx_id, counter } if *tx_id == current_tx => {
-                Ok(TxnWireValue::Id(TxnWireRowId::Pending(TempRowId::from(*counter))))
+            TxnLiveRowIdState::Existing(row_id) => {
+                Ok(TxnWireValue::Id(TxnWireRowId::Existing(*row_id)))
             }
+            TxnLiveRowIdState::Pending { tx_id, counter } if *tx_id == current_tx => Ok(
+                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId::from(*counter))),
+            ),
             TxnLiveRowIdState::Pending { tx_id, .. } => Err(ValidationError::TxnIdMismatch {
                 current: current_tx,
                 got: *tx_id,
@@ -135,7 +137,6 @@ impl TxnLiveRowId {
         TxnLiveRowId { state }
     }
 }
-
 
 pub type TxnLiveValue = Value<TxnLiveRowId>;
 
@@ -208,7 +209,6 @@ impl From<TempRowId> for TxnWireRowId {
     }
 }
 
-
 pub type TxnWireValue = Value<TxnWireRowId>;
 
 /// An operation staged within a transaction.
@@ -231,7 +231,10 @@ impl PendingOp {
             } => Op::Add {
                 row_id: row_id.resolve(commit),
                 table: *table,
-                values: values.iter().map(|value| value.map(|i| i.resolve(commit))).collect(),
+                values: values
+                    .iter()
+                    .map(|value| value.map(|i| i.resolve(commit)))
+                    .collect(),
             },
         }
     }

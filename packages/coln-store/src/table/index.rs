@@ -15,7 +15,7 @@ use std::ops::Range;
 
 use crate::ir::Schema;
 
-use super::{CellKind, Column, IdColumn, PackedValue, PackedRowId};
+use super::{CellKind, Column, IdColumn, PackedRowId, PackedValue};
 
 pub(crate) type IndexId = usize;
 

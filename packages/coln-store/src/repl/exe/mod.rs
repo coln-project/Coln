@@ -12,16 +12,22 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 
-use crate::{repl::{
-    Session, ShellMode, Step,
-    parse::{ColnCommand, MetaCommand, SqlCommand, coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch}},
-}, txn::{TxnWireRowId, liven}};
 use crate::{
     commit::pst::{decode_store, encode_store},
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
     store::Store,
-    table::{WireRowId, TableRef},
+    table::{TableRef, WireRowId},
     txn::{TempRowId, TxnWireValue},
+};
+use crate::{
+    repl::{
+        Session, ShellMode, Step,
+        parse::{
+            ColnCommand, MetaCommand, SqlCommand,
+            coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
+        },
+    },
+    txn::{TxnWireRowId, liven},
 };
 
 fn help_text(mode: ShellMode) -> String {

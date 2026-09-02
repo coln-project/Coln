@@ -22,7 +22,8 @@ use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreError};
 use crate::table::{
-    WireValue, WireRowId, RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError,
+    RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError, WireRowId,
+    WireValue,
 };
 use crate::txn::{OwnedTransaction, Transaction};
 use crate::{op::Op, txn::TxnLiveRowId};

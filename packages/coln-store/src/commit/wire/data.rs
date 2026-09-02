@@ -20,8 +20,8 @@ use crate::{
     },
     ir::{BuiltinTy, ColType, Path, Schema},
     op::OP_KIND_ADD,
-    table::{WireRowId, TableMeta, TableOid},
-    txn::{PendingOp, TxnWireRowId, TempRowId, TxnWireValue},
+    table::{TableMeta, TableOid, WireRowId},
+    txn::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue},
 };
 
 // TODO change this to i32 when we support it as a column type
@@ -642,7 +642,7 @@ mod tests {
     use crate::commit::wire::prim::ValueType;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::WireRowId;
-    use crate::txn::{TxnWireRowId, TempRowId};
+    use crate::txn::{TempRowId, TxnWireRowId};
 
     #[test]
     fn txn_row_ref_column_round_trips_existing_and_pending_refs() {

@@ -8,7 +8,9 @@ use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_store::{
     commit::{hash::CommitHash, pst},
     store::{Store, error::StoreError},
-    table::{WireRowId, WireValue}, txn::liven_all, value::Value,
+    table::{WireRowId, WireValue},
+    txn::liven_all,
+    value::Value,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -62,11 +64,13 @@ fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreError> {
 fn add_vertex_to_graph(store: &mut Store, graph_row: usize) -> Result<CommitHash, StoreError> {
     let graphs = Path::from("Path.Graphs");
     let gv = Path::from("Path.G.V");
-    let graph = Value::Id(store
-        .table_at(&graphs)
-        .expect("Path.Graphs table")
-        .row_id_at(graph_row)
-        .expect("graph row"));
+    let graph = Value::Id(
+        store
+            .table_at(&graphs)
+            .expect("Path.Graphs table")
+            .row_id_at(graph_row)
+            .expect("graph row"),
+    );
 
     let mut tx = store.transaction();
     tx.add(&gv, liven_all(vec![graph]))?;
@@ -81,11 +85,13 @@ fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, StoreE
     let tv = store.table_at(&gv).expect("Path.G.V table");
     let v1 = Value::Id(tv.row_id_at(0).expect("vertex 1"));
     let v2 = Value::Id(tv.row_id_at(1).expect("vertex 2"));
-    let graph = Value::Id(store
-        .table_at(&graphs)
-        .expect("Path.Graphs table")
-        .row_id_at(0)
-        .expect("first graph row"));
+    let graph = Value::Id(
+        store
+            .table_at(&graphs)
+            .expect("Path.Graphs table")
+            .row_id_at(0)
+            .expect("first graph row"),
+    );
 
     let mut txn = store.transaction();
     txn.add(&ge, liven_all(vec![graph, v1, v2]))?;
@@ -259,16 +265,20 @@ fn test_fk() {
     let ge = Path::from("Path.G.E");
 
     add_basic_data_to_path(&mut store).expect("add valid baseline data");
-    let gid = Value::Id(store
-        .table_at(&graphs)
-        .expect("Path.Graphs table")
-        .row_id_at(0)
-        .expect("graph row"));
-    let vid = Value::Id(store
-        .table_at(&gv)
-        .expect("Path.G.V table")
-        .row_id_at(0)
-        .expect("vertex row"));
+    let gid = Value::Id(
+        store
+            .table_at(&graphs)
+            .expect("Path.Graphs table")
+            .row_id_at(0)
+            .expect("graph row"),
+    );
+    let vid = Value::Id(
+        store
+            .table_at(&gv)
+            .expect("Path.G.V table")
+            .row_id_at(0)
+            .expect("vertex row"),
+    );
 
     let dummy_vid = Value::Id(WireRowId {
         commit: CommitHash([0xff; 32]),
