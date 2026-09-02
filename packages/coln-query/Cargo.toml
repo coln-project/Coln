@@ -44,6 +44,10 @@ size-of = {
   ]
 }
 thiserror = { workspace = true }
+# The batch backend lowers plans into coln-batch Datalog programs and
+# executes them with its engine. Data flows store -> pipeline -> batch,
+# so this direction creates no cycle.
+coln-batch = { path = "../coln-batch" }
 
 [dev-dependencies]
 # Import coln-flir-rs again but with the test-utils feature flag to have
@@ -52,11 +56,6 @@ coln-flir-rs = { path = "../coln-flir-rs", features = ["test-utils"] }
 # This is a self-referential dev-dependency to have the feature-gated
 # test-utils be available in this crate's integration tests, too.
 coln-query = { path = ".", features = ["test-utils"] }
-# Dev-only for now: the production dependency direction between
-# coln-query and coln-batch is still to be settled (real data
-# reaches coln-query through coln-integrator and coln-store, so a
-# regular dependency here would be a cycle).
-coln-batch = { path = "../coln-batch" }
 criterion = { workspace = true }
 
 [features]
