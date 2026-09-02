@@ -22,6 +22,12 @@ impl Author {
     }
 }
 
+impl Default for Author {
+    fn default() -> Self {
+        Author::foo()
+    }
+}
+
 impl fmt::Display for Author {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_hex_string())

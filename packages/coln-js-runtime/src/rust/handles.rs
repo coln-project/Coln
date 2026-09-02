@@ -5,9 +5,12 @@
 use coln_flir_rs::ir;
 use coln_store::{
     commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash},
-    store::{ColnDef, Store, read::StoreRead},
+    store::{ColnDef, Store},
     table::WireRowId as StoreRowId,
-    txn::{OwnedTransaction, TxnLiveRowId as StoreRowHandle},
+    txn::{
+        OwnedTransaction, TxnLiveRowId as StoreRowHandle,
+        rw::{StoreRead, StoreWrite},
+    },
 };
 use js_sys::Reflect;
 
@@ -103,7 +106,7 @@ impl TransactionHandle {
         let rows = self
             .read_tx()?
             .scan_table(&path)
-            .map(|rows| rows.map(RowView::from).collect::<Vec<_>>())
+            .map(|rows| rows.into_iter().map(RowView::from).collect::<Vec<_>>())
             .unwrap_or_default();
         rows.iter()
             .map(|row| row.into_ts())
@@ -242,14 +245,14 @@ impl StoreHandle {
         })
     }
 
-    // TODO DUPLICATE CODE! Remove after redesigning the RW interface
+    /// This is a convenience method that will start a transaction, do a scan and immediately close it
     #[wasm_bindgen(js_name = scanTable)]
     pub fn scan_table(&self, path: String) -> Result<Vec<Ts<RowView>>, JsValue> {
         let path = ir::Path::from(path);
         let rows = self
             .store()?
             .scan_table(&path)
-            .map(|rows| rows.map(RowView::from).collect::<Vec<_>>())
+            .map(|rows| rows.into_iter().map(RowView::from).collect::<Vec<_>>())
             .unwrap_or_default();
 
         rows.iter()
@@ -258,7 +261,6 @@ impl StoreHandle {
             .map_err(js_error)
     }
 
-    // TODO DUPLICATE CODE! Remove after redesigning the RW interface
     #[wasm_bindgen(js_name = rowById)]
     pub fn row_by_id(
         &self,
@@ -280,8 +282,36 @@ impl StoreHandle {
         }
     }
 
+    pub fn add(&mut self, path: String, values: Vec<Ts<Value>>) -> Result<JsValue, JsValue> {
+        let path = ir::Path::from(path);
+        let values = values
+            .iter()
+            .map(|value| value.to_rust().map(coln_store::txn::TxnLiveValue::from))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(js_error)?;
+        let handle = self.store_mut()?.add(&path, values).map_err(js_error)?;
+
+        let rid = handle.row_id().map_err(js_error)?;
+        let existing_id = Value::existing_id(rid.into());
+        let js_value = serde_wasm_bindgen::to_value(&existing_id)?;
+
+        Ok(js_value)
+    }
+
     fn store(&self) -> Result<&Store, JsValue> {
         match &self.state {
+            StoreHandleState::Uninitialized { .. } => {
+                Err(js_error("store handle has not been initialized"))
+            }
+            StoreHandleState::Ready { store, .. } => Ok(store),
+            StoreHandleState::Moved => Err(js_error(
+                "store handle has already been moved into a transaction",
+            )),
+        }
+    }
+
+    fn store_mut(&mut self) -> Result<&mut Store, JsValue> {
+        match &mut self.state {
             StoreHandleState::Uninitialized { .. } => {
                 Err(js_error("store handle has not been initialized"))
             }

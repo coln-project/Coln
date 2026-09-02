@@ -21,6 +21,7 @@ Priorities, in order:
 - Add comments only when they clarify non-obvious behaviour.
 - This is a research prototype, so do not worry about backwards compatibility issues, prioritise cleaner design & implementation.
 - When making technical decisions, don't give too much weight to development cost.
+- If asked to do something that you think is not good for the codebase, feel free to ask clarifying questions, or push back.
 
 Quick examples:
 

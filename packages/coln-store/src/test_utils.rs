@@ -12,6 +12,7 @@ use crate::{
     commit::{hash::CommitHash, wire::root::RootCommitData},
     store::{ColnDef, Store},
     table::WireRowId,
+    txn::rw::StoreWrite,
 };
 
 mod rowid {

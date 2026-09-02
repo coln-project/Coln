@@ -6,8 +6,9 @@ use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
-    store::{Store, error::StoreError, read::StoreRead},
+    store::{Store, error::StoreError},
     table::{WireRowId, table_handle::WireRowView},
+    txn::rw::{StoreRead, StoreWrite},
 };
 
 use super::{TxnInner, TxnLiveRowId, TxnLiveValue};
@@ -34,7 +35,7 @@ impl OwnedTransaction {
         self.inner.add(&self.store, table, values)
     }
 
-    pub fn abort(self) -> Store {
+    pub fn abort(mut self) -> Store {
         self.inner.abort();
         self.store
     }
@@ -50,16 +51,26 @@ impl OwnedTransaction {
 }
 
 impl StoreRead for OwnedTransaction {
-    fn scan_table(&self, table: &ir::Path) -> Option<impl Iterator<Item = WireRowView> + '_> {
-        self.store.scan_table(table)
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
+        self.store.scan_table_iter(table).map(|rows| rows.collect())
     }
 
-    fn row_by_liveid(&self, table: &ir::Path, handle: &TxnLiveRowId) -> Option<WireRowView> {
-        self.store.row_by_liveid(table, handle)
+    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView> {
+        self.store.row_by_liveid_inner(table, live_id)
     }
 
     fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
-        self.store.row_by_id(table, row_id)
+        self.store.row_by_id_inner(table, row_id)
+    }
+}
+
+impl StoreWrite for OwnedTransaction {
+    fn add<V: Into<TxnLiveValue>>(
+        &mut self,
+        table: &ir::Path,
+        values: Vec<V>,
+    ) -> Result<TxnLiveRowId, StoreError> {
+        self.inner.add(&self.store, table, values)
     }
 }
 
@@ -96,7 +107,7 @@ mod tests {
             .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![42_i64.into()]).expect("add");
+        tx.add(&path, vec![42i32]).expect("add");
 
         let (_hash, committed) = tx.commit().expect("commit");
         assert_eq!(committed.table_at(&path).expect("T").row_count(), 1);
@@ -112,15 +123,13 @@ mod tests {
             .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
-        let err = tx
-            .add(&Path::from("missing"), vec![1_i64.into()])
-            .unwrap_err();
+        let err = tx.add(&Path::from("missing"), vec![1i32]).unwrap_err();
         assert!(matches!(
             err,
             StoreError::Validation(ValidationError::UnknownTable { .. })
         ));
 
-        let err = tx.add(&path, vec![1_i64.into(), 2_i64.into()]).unwrap_err();
+        let err = tx.add(&path, vec![1i32, 2i32]).unwrap_err();
         assert!(matches!(
             err,
             StoreError::Validation(ValidationError::ColumnCount { .. })
@@ -137,16 +146,16 @@ mod tests {
             .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![1_i64.into()]).expect("add");
+        tx.add(&path, vec![1i32]).expect("add");
         let (_hash, store) = tx.commit().expect("commit");
 
         let mut tx = OwnedTransaction::new(store);
-        let rows: Vec<_> = tx.scan_table(&path).expect("T").collect();
+        let rows = tx.scan_table(&path).expect("T");
         assert_eq!(rows.len(), 1);
         assert!(tx.row_by_id(&path, rows[0].row_id).is_some());
 
-        tx.add(&path, vec![2_i64.into()]).expect("add pending");
-        assert_eq!(tx.scan_table(&path).expect("T").count(), 1);
+        tx.add(&path, vec![2i32]).expect("add pending");
+        assert_eq!(tx.scan_table(&path).expect("T").len(), 1);
         let _store = tx.abort();
     }
 }

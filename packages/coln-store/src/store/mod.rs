@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod error;
-pub mod read;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -29,12 +28,12 @@ use crate::pack::{IdPacker, IdPackerSnapshot};
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
 use crate::store::error::{CommitApplyError, StoreError};
-use crate::store::read::StoreRead;
 use crate::table::table_handle::WireRowView;
 use crate::table::{
     Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
-use crate::txn::{OwnedTransaction, Transaction, TxnLiveRowId};
+use crate::txn::rw::{StoreRead, StoreWrite};
+use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnLiveRowId, TxnLiveValue};
 
 #[derive(Debug)]
 pub struct Store {
@@ -184,6 +183,32 @@ impl Store {
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
     }
+
+    pub(crate) fn scan_table_iter(
+        &self,
+        table_path: &ir::Path,
+    ) -> Option<impl Iterator<Item = WireRowView> + '_> {
+        self.table_at(table_path).map(|table| table.scan())
+    }
+
+    pub(crate) fn row_by_liveid_inner(
+        &self,
+        table: &ir::Path,
+        live_id: &TxnLiveRowId,
+    ) -> Option<WireRowView> {
+        self.table_at(table)?.row_by_handle(live_id)
+    }
+
+    // This function will canonicalise the row_id on read, but will not change it
+    // See `row_by_liveid` which will actually canonicalise the handle.
+    // We need both because the TS FFI does not deal with handles.
+    pub(crate) fn row_by_id_inner(
+        &self,
+        table: &ir::Path,
+        row_id: WireRowId,
+    ) -> Option<WireRowView> {
+        self.table_at(table)?.row_by_id(row_id)
+    }
 }
 
 /// A Coln theory source file contains theory definitions and (multiple) realm definitions
@@ -196,20 +221,34 @@ pub struct ColnDef {
     pub realm: String,
 }
 
+// Autocommit method that opens up a txn, does a single operations
+// then immediately closes the txn
 impl StoreRead for Store {
-    fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = WireRowView> + '_> {
-        self.table_at(table_path).map(|table| table.scan())
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
+        let txn = self.ro_transaction();
+        txn.scan_table(table)
     }
 
-    fn row_by_liveid(&self, table: &ir::Path, handle: &TxnLiveRowId) -> Option<WireRowView> {
-        self.table_at(table)?.row_by_handle(handle)
+    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView> {
+        self.ro_transaction().row_by_liveid(table, live_id)
     }
 
-    // This function will canonicalise the row_id on read, but will not change it
-    // See `row_by_liveid` which will actually canonicalise the handle.
-    // We need both because the TS FFI does not deal with handles.
     fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
-        self.table_at(table)?.row_by_id(row_id)
+        self.ro_transaction().row_by_id(table, row_id)
+    }
+}
+
+impl StoreWrite for Store {
+    // Opens a single transaction and hands back the live row id, does not return hash
+    fn add<V: Into<TxnLiveValue>>(
+        &mut self,
+        table: &ir::Path,
+        values: Vec<V>,
+    ) -> Result<TxnLiveRowId, StoreError> {
+        let mut txn = self.transaction();
+        let h = txn.add(table, values);
+        txn.commit()?;
+        h
     }
 }
 
@@ -261,8 +300,12 @@ impl Store {
 impl Store {
     // transactions
 
-    pub fn transaction(&mut self) -> Transaction<'_> {
-        Transaction::new(self)
+    pub fn ro_transaction(&self) -> Transaction<ReadOnly<'_>> {
+        Transaction::<ReadOnly<'_>>::new(self)
+    }
+
+    pub fn transaction(&mut self) -> Transaction<ReadWrite<'_>> {
+        Transaction::<ReadWrite<'_>>::new(self)
     }
 
     pub fn into_transaction(self) -> OwnedTransaction {
