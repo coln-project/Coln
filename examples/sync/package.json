@@ -1,0 +1,42 @@
+{
+  "name": "coln-sync",
+  "private": true,
+  "type": "module",
+  "license": "(Apache-2.0 OR MIT)",
+  "scripts": {
+    "dev": "node server/with-server.mjs vite --host 127.0.0.1",
+    "cli": "node server/with-server.mjs tsx src/cli/main.tsx",
+    "server": "node server/server.mjs",
+    "compile": "bash ./compile.sh",
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
+    "build": "pnpm run compile && pnpm run check && vite build",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@automerge/automerge-repo": "github:automerge/automerge-repo#doctypes&path:packages/automerge-repo",
+    "@automerge/automerge-subduction": "0.16.1",
+    "@coln-project/repo": "link:../../packages/coln-repo",
+    "@coln-project/runtime": "link:../../packages/coln-js-runtime",
+    "ink": "^6.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.0.0",
+    "svelte": "^5.7.0",
+    "typescript": "^6.0.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.0.0",
+    "@vitest/browser-playwright": "^4.1.11",
+    "svelte-check": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.0",
+    "vite": "^8.0.0",
+    "vite-plugin-wasm": "^3.6.0",
+    "vitest": "^4.1.11"
+  }
+}

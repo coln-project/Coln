@@ -1,0 +1,30 @@
+{
+  "name": "coln-cli-demo",
+  "private": true,
+  "type": "module",
+  "license": "(Apache-2.0 OR MIT)",
+  "bin": {
+    "coln-repo": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "cli": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
+    "test:unit": "tsx --test \"tests/cli/**/*.test.ts\"",
+    "test:e2e": "pnpm run build && playwright test"
+  },
+  "dependencies": {
+    "@automerge/automerge-repo": "github:automerge/automerge-repo#doctypes&path:packages/automerge-repo",
+    "@coln-project/repo": "link:../../packages/coln-repo"
+  },
+  "devDependencies": {
+    "@automerge/automerge-subduction": "0.16.1",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^25.9.5",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "ws": "^8.21.3"
+  }
+}

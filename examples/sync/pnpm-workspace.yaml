@@ -1,0 +1,7 @@
+allowBuilds:
+  cbor-extract: false
+  esbuild: true
+  '@automerge/automerge-repo@git+https://github.com/automerge/automerge-repo.git': true
+overrides:
+  "@automerge/automerge": 3.3.2
+  "@automerge/automerge-subduction": 0.16.1
