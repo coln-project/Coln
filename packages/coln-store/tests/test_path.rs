@@ -10,6 +10,7 @@ use coln_store::{
     commit::pst,
     store::{Store, error::StoreError},
     table::{CellValue, RowId},
+    txn::rw::StoreWrite,
 };
 use tracing_subscriber::EnvFilter;
 

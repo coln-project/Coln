@@ -7,7 +7,7 @@ use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time:
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
-use coln_store::{commit::hash::CommitHash, store::Store, table::CellValue};
+use coln_store::{commit::hash::CommitHash, store::Store, table::CellValue, txn::rw::StoreWrite};
 use future_form::Sendable;
 use sedimentree_core::{
     blob::{Blob, verified::VerifiedBlobMeta},

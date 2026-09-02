@@ -6,8 +6,9 @@ use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
-    store::{Store, error::StoreError, read::StoreRead},
+    store::{Store, error::StoreError},
     table::{RowId, RowView},
+    txn::rw::{StoreRead, StoreWrite},
 };
 
 use super::{RowHandle, TxnInner, TxnValue};
@@ -26,15 +27,7 @@ impl OwnedTransaction {
         }
     }
 
-    pub fn add(
-        &mut self,
-        table: &ir::Path,
-        values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreError> {
-        self.inner.add(&self.store, table, values)
-    }
-
-    pub fn abort(self) -> Store {
+    pub fn abort(mut self) -> Store {
         self.inner.abort();
         self.store
     }
@@ -50,16 +43,22 @@ impl OwnedTransaction {
 }
 
 impl StoreRead for OwnedTransaction {
-    fn scan_table(&self, table: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
-        self.store.scan_table(table)
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<RowView>> {
+        self.store.scan_table_iter(table).map(|rows| rows.collect())
     }
 
     fn row_by_handle(&self, table: &ir::Path, handle: &RowHandle) -> Option<RowView> {
-        self.store.row_by_handle(table, handle)
+        self.store.row_by_handle_inner(table, handle)
     }
 
     fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
-        self.store.row_by_id(table, row_id)
+        self.store.row_by_id_inner(table, row_id)
+    }
+}
+
+impl StoreWrite for OwnedTransaction {
+    fn add(&mut self, table: &ir::Path, values: Vec<TxnValue>) -> Result<RowHandle, StoreError> {
+        self.inner.add(&self.store, table, values)
     }
 }
 
@@ -141,12 +140,12 @@ mod tests {
         let (_hash, store) = tx.commit().expect("commit");
 
         let mut tx = OwnedTransaction::new(store);
-        let rows: Vec<_> = tx.scan_table(&path).expect("T").collect();
+        let rows = tx.scan_table(&path).expect("T");
         assert_eq!(rows.len(), 1);
         assert!(tx.row_by_id(&path, rows[0].row_id).is_some());
 
         tx.add(&path, vec![2_i64.into()]).expect("add pending");
-        assert_eq!(tx.scan_table(&path).expect("T").count(), 1);
+        assert_eq!(tx.scan_table(&path).expect("T").len(), 1);
         let _store = tx.abort();
     }
 }

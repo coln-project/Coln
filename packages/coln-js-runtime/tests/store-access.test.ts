@@ -75,3 +75,55 @@ test("Add vertices and edges to a store", () => {
   const expected_edges = [e1, e3];
   assert.deepStrictEqual([...v1v2_edges].sort(), [...expected_edges].sort());
 });
+
+// Do everything the same, but directly on the store
+test("Change store directly", () => {
+  let store = StoreHandle.fromTheory(JSON.stringify(theory));
+
+  // adding two vertices
+  let v1 = store.add("GraphRealm.V", []);
+  let v2 = store.add("GraphRealm.V", []);
+
+  // add an edge between them
+  let e1 = store.add("GraphRealm.E", [v1, v2]);
+
+  let vs = store.scanTable("GraphRealm.V");
+  let es = store.scanTable("GraphRealm.E");
+  // Committed rows are visible on a later transaction
+  assert.equal(vs.length, 2);
+  assert.equal(es.length, 1);
+
+  let v3 = store.add("GraphRealm.V", []);
+  let v4 = store.add("GraphRealm.V", []);
+
+  let e2 = store.add("GraphRealm.E", [v3, v4]);
+  // Add a second edge between v1 and v2
+  let e3 = store.add("GraphRealm.E", [v1, v2]);
+
+  // Now find out all vertices connected to e2
+  const e2_vs = [];
+  es = store.scanTable("GraphRealm.E");
+  for (let e of es) {
+    if (valueEqual(e.rowId, e2)) {
+      e2_vs.push(e.values[0]);
+      e2_vs.push(e.values[1]);
+    }
+  }
+
+  const expected = [v3, v4];
+  assert.deepStrictEqual([...e2_vs].sort(), [...expected].sort());
+
+  // Find out all edges between v1 and v2
+  const v1v2_edges = [];
+  for (let e of es) {
+    if (
+      (valueEqual(e.values[0], v1) && valueEqual(e.values[1], v2)) ||
+      (valueEqual(e.values[0], v2) && valueEqual(e.values[1], v1))
+    ) {
+      v1v2_edges.push(e.rowId);
+    }
+  }
+
+  const expected_edges = [e1, e3];
+  assert.deepStrictEqual([...v1v2_edges].sort(), [...expected_edges].sort());
+});

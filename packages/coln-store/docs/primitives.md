@@ -54,13 +54,12 @@ struct RowView {
     values: Vec<CellValue>,
 }
 
-Store::scan_table(table_path) -> Option<impl Iterator<Item = RowView>>
+Store::scan_table(table_path) -> Option<Vec<RowView>>
 Store::row_by_id(table_path, row_id: RowId) -> Option<RowView>
 ```
 
-The first one `scan` gives an iterator to the underlying table rows. A known
-empty table returns `Some` with an empty iterator, while an unknown table returns
-`None`. The second one is a member query scoped to a table path and indexed by
+The first one `scan` returns the underlying table rows. A known empty table
+returns `Some` with an empty vector, while an unknown table returns `None`. The second one is a member query scoped to a table path and indexed by
 the row_id. Note this `row_by_id` is only intended to support the most
 straightforward lookup right now, i.e. a table storing edb. Although I have not
 thought about this in detail, it is not intended for derived tables that might

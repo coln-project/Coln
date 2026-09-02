@@ -5,9 +5,12 @@
 use coln_flir_rs::ir;
 use coln_store::{
     commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash},
-    store::{Store, read::StoreRead},
+    store::Store,
     table::RowId as StoreRowId,
-    txn::{OwnedTransaction, RowHandle as StoreRowHandle},
+    txn::{
+        OwnedTransaction, RowHandle as StoreRowHandle,
+        rw::{StoreRead, StoreWrite},
+    },
 };
 use js_sys::Reflect;
 
@@ -102,7 +105,7 @@ impl TransactionHandle {
         let rows = self
             .read_tx()?
             .scan_table(&path)
-            .map(|rows| rows.map(RowView::from).collect::<Vec<_>>())
+            .map(|rows| rows.into_iter().map(RowView::from).collect::<Vec<_>>())
             .unwrap_or_default();
 
         Ok(rows)
@@ -223,20 +226,19 @@ impl StoreHandle {
         })
     }
 
-    // TODO DUPLICATE CODE! Remove after redesigning the RW interface
+    /// This is a convenience method that will start a transaction, do a scan and immediately close it
     #[wasm_bindgen(js_name = scanTable)]
     pub fn scan_table(&self, path: String) -> Result<Vec<RowView>, JsValue> {
         let path = ir::Path::from(path);
         let rows = self
             .store()?
             .scan_table(&path)
-            .map(|rows| rows.map(RowView::from).collect::<Vec<_>>())
+            .map(|rows| rows.into_iter().map(RowView::from).collect::<Vec<_>>())
             .unwrap_or_default();
 
         Ok(rows)
     }
 
-    // TODO DUPLICATE CODE! Remove after redesigning the RW interface
     #[wasm_bindgen(js_name = rowById)]
     pub fn row_by_id(&self, path: String, row_id: RowRef) -> Result<Option<RowView>, JsValue> {
         let path = ir::Path::from(path);
@@ -245,8 +247,32 @@ impl StoreHandle {
         Ok(self.store()?.row_by_id(&path, row_id).map(RowView::from))
     }
 
+    pub fn add(&mut self, path: String, values: Vec<Value>) -> Result<JsValue, JsValue> {
+        let path = ir::Path::from(path);
+        let values = values.into_iter().map(|v| v.into()).collect::<Vec<_>>();
+        let handle = self.store_mut()?.add(&path, values).map_err(js_error)?;
+
+        let rid = handle.row_id().map_err(js_error)?;
+        let existing_id = Value::existing_id(rid.into());
+        let js_value = serde_wasm_bindgen::to_value(&existing_id)?;
+
+        Ok(js_value)
+    }
+
     fn store(&self) -> Result<&Store, JsValue> {
         match &self.state {
+            StoreHandleState::Uninitialized { .. } => {
+                Err(js_error("store handle has not been initialized"))
+            }
+            StoreHandleState::Ready { store, .. } => Ok(store),
+            StoreHandleState::Moved => Err(js_error(
+                "store handle has already been moved into a transaction",
+            )),
+        }
+    }
+
+    fn store_mut(&mut self) -> Result<&mut Store, JsValue> {
+        match &mut self.state {
             StoreHandleState::Uninitialized { .. } => {
                 Err(js_error("store handle has not been initialized"))
             }
@@ -276,6 +302,60 @@ impl StoreHandle {
         };
 
         Ok((store, pending_chunks))
+    }
+}
+
+#[wasm_bindgen]
+impl StoreHandle {
+    // For automerge-repo interfacing
+
+    pub fn heads(&self) -> Result<Vec<CommitHash>, JsValue> {
+        let heads = match &self.state {
+            StoreHandleState::Uninitialized { .. } => return Ok(Vec::new()),
+            StoreHandleState::Ready { store, .. } => store,
+            StoreHandleState::Moved => {
+                return Err(js_error(
+                    "store handle has already been moved into a transaction",
+                ));
+            }
+        }
+        .heads()
+        .into_iter()
+        .map(CommitHash::from)
+        .collect::<Vec<_>>();
+
+        Ok(heads)
+    }
+
+    #[wasm_bindgen(js_name = commitChunksAfter)]
+    pub fn commit_chunks_after(
+        &self,
+        have_heads: Vec<CommitHash>,
+    ) -> Result<Vec<CommitChunk>, JsValue> {
+        if matches!(self.state, StoreHandleState::Uninitialized { .. }) {
+            return Ok(Vec::new());
+        }
+        let have_heads = have_heads
+            .into_iter()
+            .map(StoreCommitHash::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(js_error)?;
+
+        let chunks = self
+            .store()?
+            .commit_chunks_after(&have_heads)
+            .into_iter()
+            .map(CommitChunk::from)
+            .collect::<Vec<_>>();
+
+        Ok(chunks)
+    }
+
+    #[wasm_bindgen(js_name = applyChunkBytes)]
+    pub fn apply_chunk_bytes(&mut self, chunk_bytes: JsValue) -> Result<(), JsValue> {
+        let chunk_bytes =
+            serde_wasm_bindgen::from_value::<Vec<Vec<u8>>>(chunk_bytes).map_err(js_error)?;
+        self.apply_chunks(chunk_bytes).map_err(js_error)
     }
 }
 
@@ -338,60 +418,6 @@ impl StoreHandle {
                 Err("store handle has already been moved into a transaction".into())
             }
         }
-    }
-}
-
-#[wasm_bindgen]
-impl StoreHandle {
-    // For automerge-repo interfacing
-
-    pub fn heads(&self) -> Result<Vec<CommitHash>, JsValue> {
-        let heads = match &self.state {
-            StoreHandleState::Uninitialized { .. } => return Ok(Vec::new()),
-            StoreHandleState::Ready { store, .. } => store,
-            StoreHandleState::Moved => {
-                return Err(js_error(
-                    "store handle has already been moved into a transaction",
-                ));
-            }
-        }
-        .heads()
-        .into_iter()
-        .map(CommitHash::from)
-        .collect::<Vec<_>>();
-
-        Ok(heads)
-    }
-
-    #[wasm_bindgen(js_name = commitChunksAfter)]
-    pub fn commit_chunks_after(
-        &self,
-        have_heads: Vec<CommitHash>,
-    ) -> Result<Vec<CommitChunk>, JsValue> {
-        if matches!(self.state, StoreHandleState::Uninitialized { .. }) {
-            return Ok(Vec::new());
-        }
-        let have_heads = have_heads
-            .into_iter()
-            .map(StoreCommitHash::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(js_error)?;
-
-        let chunks = self
-            .store()?
-            .commit_chunks_after(&have_heads)
-            .into_iter()
-            .map(CommitChunk::from)
-            .collect::<Vec<_>>();
-
-        Ok(chunks)
-    }
-
-    #[wasm_bindgen(js_name = applyChunkBytes)]
-    pub fn apply_chunk_bytes(&mut self, chunk_bytes: JsValue) -> Result<(), JsValue> {
-        let chunk_bytes =
-            serde_wasm_bindgen::from_value::<Vec<Vec<u8>>>(chunk_bytes).map_err(js_error)?;
-        self.apply_chunks(chunk_bytes).map_err(js_error)
     }
 }
 
