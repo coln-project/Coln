@@ -94,7 +94,7 @@ impl TxnInner {
 
     // Used by the REPL only
     #[cfg(feature = "native")]
-    pub(crate) fn add_internal(
+    pub(super) fn add_internal(
         &mut self,
         store: &Store,
         table: &ir::Path,
@@ -103,32 +103,32 @@ impl TxnInner {
         self.add_cell_values(store, table, values)
     }
 
-    fn invalidate_live_ids(pending_handles: Vec<TxnLiveRowId>, reason: &str) {
-        pending_handles
-            .into_iter()
+    fn invalidate_live_ids(&mut self, reason: &str) {
+        self.pending_handles
+            .iter()
             .for_each(|h| h.invalidate(reason));
     }
 
     /// Finalise live ids to the id the store actually kept: a row that was
     /// deduplicated against an existing class finalises to that class's
     /// canonical id, not to the never-stored raw id.
-    fn finalise_live_ids(pending_handles: Vec<TxnLiveRowId>, h: CommitHash, store: &Store) {
-        pending_handles.into_iter().for_each(|live_id| {
-            live_id.finalize(h, |rid| store.canonical_row_id(&rid).unwrap_or(rid))
+    fn finalize_live_ids(&mut self, h: CommitHash, store: &Store) {
+        self.pending_handles.iter().for_each(|handle| {
+            handle.finalize(h, |rid| store.canonical_row_id(&rid).unwrap_or(rid))
         });
     }
 
-    pub(super) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreError> {
-        info!(op_count = self.pending.len(), "commit txn");
+    pub(super) fn commit(&mut self, store: &mut Store) -> Result<CommitHash, StoreError> {
         let TxnInner {
             deps,
             author,
             pending,
             timestamp,
             message,
-            pending_handles,
             ..
         } = self;
+
+        info!(op_count = pending.len(), "commit txn");
 
         // If we received an empty commit, then do nothing, return a all-zero hash
         // TODO we could add an option to allow empty commit
@@ -137,13 +137,19 @@ impl TxnInner {
         }
 
         let cmt = Commit::from_commit_data(
-            CommitData::new(deps, author, *timestamp.as_ref(), message, pending),
+            CommitData::new(
+                std::mem::take(deps),
+                std::mem::take(author),
+                *timestamp.as_ref(),
+                message.take(),
+                std::mem::take(pending),
+            ),
             |oid| store.table_meta(oid),
         );
         let cmt = match cmt {
             Ok(cmt) => cmt,
             Err(err) => {
-                Self::invalidate_live_ids(pending_handles, "txn commit encoding failed");
+                self.invalidate_live_ids("txn commit encoding failed");
                 return Err(err.into());
             }
         };
@@ -152,20 +158,20 @@ impl TxnInner {
         match store.apply_commit(cmt) {
             Ok(None) => {
                 // Everything applied successfully
-                Self::finalise_live_ids(pending_handles, h, store);
+                self.finalize_live_ids(h, store);
                 Ok(h)
             }
             Ok(Some(_)) => {
                 unreachable!("commit a local transaction should always succeed");
             }
             Err(err) => {
-                Self::invalidate_live_ids(pending_handles, "txn commit failed");
+                self.invalidate_live_ids("txn commit failed");
                 Err(err)
             }
         }
     }
 
-    pub(super) fn abort(self) {
-        Self::invalidate_live_ids(self.pending_handles, "txn abort");
+    pub(super) fn abort(&mut self) {
+        self.invalidate_live_ids("txn abort");
     }
 }
