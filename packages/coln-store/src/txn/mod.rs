@@ -5,14 +5,16 @@
 mod inner;
 mod owned;
 mod row_handle;
+pub mod rw;
 mod timestamp;
 
 use coln_flir_rs::ir;
 
 use crate::{
     commit::hash::CommitHash,
-    store::{Store, error::StoreError, read::StoreRead},
+    store::{Store, error::StoreError},
     table::{WireRowId, table_handle::WireRowView},
+    txn::rw::{StoreRead, StoreWrite},
 };
 
 use inner::TxnInner;
@@ -20,26 +22,57 @@ pub use owned::OwnedTransaction;
 pub(crate) use row_handle::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue};
 pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, empty_row};
 
-pub struct Transaction<'a> {
-    inner: TxnInner,
+pub struct ReadOnly<'a> {
+    store: &'a Store,
+}
+pub struct ReadWrite<'a> {
     store: &'a mut Store,
 }
 
-impl<'a> Transaction<'a> {
-    pub fn new(store: &'a mut Store) -> Self {
+pub trait Mode {
+    fn store(&self) -> &Store;
+}
+
+impl<'a> Mode for ReadOnly<'a> {
+    fn store(&self) -> &Store {
+        self.store
+    }
+}
+
+impl<'a> Mode for ReadWrite<'a> {
+    fn store(&self) -> &Store {
+        self.store
+    }
+}
+
+pub struct Transaction<M> {
+    inner: TxnInner,
+    mode: M,
+    // Need to know if txn is still open to implement Drop
+    // but not checking this in every txn because the type system ensures
+    // that no method can be called on a closed txn
+    open: bool,
+}
+
+impl<'a> Transaction<ReadOnly<'a>> {
+    pub(crate) fn new(store: &'a Store) -> Self {
         let deps = store.commits().heads().copied().collect();
         Self {
             inner: TxnInner::new(deps),
-            store,
+            mode: ReadOnly { store },
+            open: true,
         }
     }
+}
 
-    pub fn add<V: Into<TxnLiveValue>>(
-        &mut self,
-        table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError> {
-        self.inner.add(self.store, table, values)
+impl<'a> Transaction<ReadWrite<'a>> {
+    pub(crate) fn new(store: &'a mut Store) -> Self {
+        let deps = store.commits().heads().copied().collect();
+        Self {
+            inner: TxnInner::new(deps),
+            mode: ReadWrite { store },
+            open: true,
+        }
     }
 
     // Used by the REPL only
@@ -49,30 +82,56 @@ impl<'a> Transaction<'a> {
         table: &ir::Path,
         values: Vec<TxnWireValue>,
     ) -> Result<TempRowId, StoreError> {
-        self.inner.add_internal(self.store, table, values)
+        self.inner.add_internal(self.mode.store, table, values)
     }
 
-    pub fn commit(self) -> Result<CommitHash, StoreError> {
-        self.inner.commit(self.store)
+    pub fn commit(mut self) -> Result<CommitHash, StoreError> {
+        let h = self.inner.commit(self.mode.store);
+        self.open = false;
+        h
     }
+
     // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreIntError> { ... }
 
-    pub fn abort(self) {
+    pub fn abort(mut self) {
+        self.open = false;
         self.inner.abort()
     }
 }
 
-impl StoreRead for Transaction<'_> {
-    fn scan_table(&self, table: &ir::Path) -> Option<impl Iterator<Item = WireRowView> + '_> {
-        self.store.scan_table(table)
+impl<M: Mode> StoreRead for Transaction<M> {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
+        self.mode
+            .store()
+            .scan_table_iter(table)
+            .map(|rows| rows.collect())
     }
 
-    fn row_by_liveid(&self, table: &ir::Path, handle: &TxnLiveRowId) -> Option<WireRowView> {
-        self.store.row_by_liveid(table, handle)
+    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView> {
+        self.mode.store().row_by_liveid_inner(table, live_id)
     }
 
     fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
-        self.store.row_by_id(table, row_id)
+        self.mode.store().row_by_id_inner(table, row_id)
+    }
+}
+
+impl StoreWrite for Transaction<ReadWrite<'_>> {
+    fn add<V: Into<TxnLiveValue>>(
+        &mut self,
+        table: &ir::Path,
+        values: Vec<V>,
+    ) -> Result<TxnLiveRowId, StoreError> {
+        self.inner.add(self.mode.store(), table, values)
+    }
+}
+
+impl<M> Drop for Transaction<M> {
+    fn drop(&mut self) {
+        if self.open {
+            // This is fine for RO txn, because there will be no handles
+            self.inner.abort();
+        }
     }
 }
 
@@ -205,6 +264,7 @@ mod tests {
             err,
             StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
         ));
+        tx.abort();
         assert_eq!(store.table_at(&nodes).expect("Nodes").row_count(), 0);
     }
 
@@ -345,11 +405,11 @@ mod tests {
             .expect("create table");
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![1_i64.into()]).expect("add");
+        tx.add(&path, vec![1i32]).expect("add");
         tx.commit().expect("commit");
 
         let mut tx = store.transaction();
-        let rows: Vec<_> = tx.scan_table(&path).expect("T").collect();
+        let rows = tx.scan_table(&path).expect("T");
         assert_eq!(rows.len(), 1);
         assert!(tx.row_by_id(&path, rows[0].row_id).is_some());
         assert!(
@@ -357,8 +417,8 @@ mod tests {
                 .is_some()
         );
 
-        tx.add(&path, vec![2_i64.into()]).expect("add pending");
-        assert_eq!(tx.scan_table(&path).expect("T").count(), 1);
+        tx.add(&path, vec![2i32]).expect("add pending");
+        assert_eq!(tx.scan_table(&path).expect("T").len(), 1);
         tx.abort();
     }
 

@@ -5,7 +5,11 @@
 use rstest::rstest;
 
 use super::*;
-use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema};
+use crate::{
+    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema},
+    table::table_handle::WireRowView,
+    txn::rw::{StoreRead, StoreWrite},
+};
 
 mod tables {
     use super::*;
@@ -176,6 +180,15 @@ mod transactions {
     }
 
     #[rstest]
+    fn store_add_inserts_row(#[from(single_int_store)] mut store: Store) {
+        let path = Path::from("T");
+
+        store.add(&path, vec![42i32]).expect("add row");
+
+        assert_eq!(store.table_at(&path).expect("T").row_count(), 1);
+    }
+
+    #[rstest]
     fn leaves_store_unchanged_when_rules_fail(link_foreign_key_root_commit_data: RootCommitData) {
         let link = Path::from("Link");
         let root = link_foreign_key_root_commit_data;
@@ -217,13 +230,7 @@ mod query {
     fn empty_store_returns_empty_scan(#[from(single_int_store)] store: Store) {
         let path = Path::from("T");
 
-        assert_eq!(
-            store
-                .scan_table(&path)
-                .expect("known table")
-                .collect::<Vec<_>>(),
-            vec![]
-        );
+        assert_eq!(store.scan_table(&path).expect("known table"), vec![]);
         assert!(store.scan_table(&Path::from("missing")).is_none());
     }
 
@@ -233,10 +240,7 @@ mod query {
         let (store, commit) = commit_int_store;
 
         assert_eq!(
-            store
-                .scan_table(&path)
-                .expect("known table")
-                .collect::<Vec<_>>(),
+            store.scan_table(&path).expect("known table"),
             vec![WireRowView {
                 row_id: WireRowId { commit, counter: 0 },
                 values: vec![42i32.into()],
@@ -456,8 +460,8 @@ mod rowing {
             ])
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
-        let plus: Vec<WireRowView> = store.scan_table(&Path::from("Plus")).unwrap().collect();
+        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap();
+        let plus: Vec<WireRowView> = store.scan_table(&Path::from("Plus")).unwrap();
         assert_eq!(terms.len(), 1);
         assert_eq!(plus.len(), 1);
 
@@ -496,7 +500,7 @@ mod rowing {
             ])
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
+        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap();
         assert_eq!(terms.len(), 2);
         assert_eq!(
             store
@@ -544,9 +548,9 @@ mod rowing {
         .unwrap();
         txn2.commit().unwrap();
 
-        let terms: Vec<WireRowView> = store.scan_table(&term_path).unwrap().collect();
-        let plus: Vec<WireRowView> = store.scan_table(&plus_path).unwrap().collect();
-        let mult: Vec<WireRowView> = store.scan_table(&mult_path).unwrap().collect();
+        let terms: Vec<WireRowView> = store.scan_table(&term_path).unwrap();
+        let plus: Vec<WireRowView> = store.scan_table(&plus_path).unwrap();
+        let mult: Vec<WireRowView> = store.scan_table(&mult_path).unwrap();
 
         // The second commit adds no rows: every row it names is structurally
         // identical to one the first commit already stored.
@@ -602,11 +606,8 @@ mod rowing {
             .expect("F(Term1, Term2)");
         first.commit().expect("x is mapped only once");
 
-        let terms_before = store.scan_table(&term).expect("Term").count();
-        let f_before = store
-            .scan_table(&f)
-            .expect("F")
-            .collect::<Vec<WireRowView>>();
+        let terms_before = store.scan_table(&term).expect("Term").len();
+        let f_before = store.scan_table(&f).expect("F");
         assert_eq!(terms_before, 3);
         assert_eq!(f_before.len(), 1);
 
@@ -633,14 +634,8 @@ mod rowing {
 
         // The rejected commit rolls back whole, including Term(4), which was
         // legal on its own.
-        assert_eq!(store.scan_table(&term).expect("Term").count(), terms_before);
-        assert_eq!(
-            store
-                .scan_table(&f)
-                .expect("F")
-                .collect::<Vec<WireRowView>>(),
-            f_before
-        );
+        assert_eq!(store.scan_table(&term).expect("Term").len(), terms_before);
+        assert_eq!(store.scan_table(&f).expect("F"), f_before);
     }
 }
 

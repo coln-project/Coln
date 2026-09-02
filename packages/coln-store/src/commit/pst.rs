@@ -102,6 +102,7 @@ mod tests {
     use crate::ir::Path;
     use crate::table::WireValue;
     use crate::test_utils::non_empty_root_commit_data;
+    use crate::txn::rw::StoreWrite;
 
     #[fixture]
     fn int_store(non_empty_root_commit_data: RootCommitData) -> Store {

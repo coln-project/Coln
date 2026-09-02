@@ -9,7 +9,7 @@ use coln_store::{
     commit::{hash::CommitHash, pst},
     store::{ColnDef, Store, error::StoreError},
     table::{WireRowId, WireValue},
-    txn::empty_row,
+    txn::{empty_row, rw::StoreWrite},
     value::Value,
 };
 use rstest::{fixture, rstest};

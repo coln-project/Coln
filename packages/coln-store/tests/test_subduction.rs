@@ -11,6 +11,7 @@ use coln_store::{
     commit::hash::CommitHash,
     store::{ColnDef, Store},
     table::WireValue,
+    txn::rw::StoreWrite,
 };
 use future_form::Sendable;
 use rstest::{fixture, rstest};
