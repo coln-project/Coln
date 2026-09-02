@@ -47,9 +47,9 @@ pub struct TxnLiveRowId {
     state: Rc<RefCell<TxnLiveRowIdState>>,
 }
 
-impl Into<TxnLiveValue> for TxnLiveRowId {
-    fn into(self) -> TxnLiveValue {
-        TxnLiveValue::Id(self)
+impl From<TxnLiveRowId> for TxnLiveValue {
+    fn from(i: TxnLiveRowId) -> TxnLiveValue {
+        TxnLiveValue::Id(i)
     }
 }
 

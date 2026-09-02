@@ -27,7 +27,7 @@ use crate::{
             coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
         },
     },
-    txn::{TxnWireRowId, liven},
+    txn::TxnWireRowId,
 };
 
 fn help_text(mode: ShellMode) -> String {
