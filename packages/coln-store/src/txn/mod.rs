@@ -378,7 +378,7 @@ mod tests {
         );
 
         let mut tx = store.transaction();
-        tx.add(&path, liven_all(vec![WireValue::Int(2).into()]))
+        tx.add(&path, liven_all(vec![WireValue::Int(2)]))
             .expect("add second row");
         let second = tx.commit().expect("second commit");
 
