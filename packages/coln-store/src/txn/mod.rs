@@ -15,7 +15,7 @@ use crate::{
 
 use inner::TxnInner;
 pub(crate) use row_handle::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue};
-pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, liven, liven_all};
+pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, liven_all};
 
 pub struct Transaction<'a> {
     inner: TxnInner,
@@ -366,7 +366,7 @@ mod tests {
         let root = store.commits().root_commit().expect("root commit").hash();
 
         let mut tx = store.transaction();
-        tx.add(&path, liven_all(vec![WireValue::Int(1)]))
+        tx.add(&path, vec![1i32.into()])
             .expect("add first row");
         let first = tx.commit().expect("first commit");
 
@@ -378,7 +378,7 @@ mod tests {
         );
 
         let mut tx = store.transaction();
-        tx.add(&path, liven_all(vec![WireValue::Int(2)]))
+        tx.add(&path, vec![2i32.into()])
             .expect("add second row");
         let second = tx.commit().expect("second commit");
 

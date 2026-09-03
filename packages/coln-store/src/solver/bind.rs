@@ -153,7 +153,6 @@ mod tests {
         },
         solver::compile::compile_rule,
         table::WireValue,
-        txn::liven_all,
     };
 
     fn int_ty() -> ColType {
@@ -206,11 +205,11 @@ mod tests {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, liven_all(vec![WireValue::Int(1), WireValue::Int(2)]))
+        txn.add(&path, vec![1i32.into(), 2i32.into()])
             .expect("insert row");
-        txn.add(&path, liven_all(vec![WireValue::Int(2), WireValue::Int(3)]))
+        txn.add(&path, vec![2i32.into(), 3i32.into()])
             .expect("insert row");
-        txn.add(&path, liven_all(vec![WireValue::Int(9), WireValue::Int(4)]))
+        txn.add(&path, vec![9i32.into(), 4i32.into()])
             .expect("insert row");
         txn.commit().expect("commit rows");
 
@@ -282,7 +281,7 @@ mod tests {
             .expect("create table");
         let mut txn = store.transaction();
         for value in values {
-            txn.add(&path, liven_all(vec![WireValue::Int(*value)]))
+            txn.add(&path, vec![(*value).into()])
                 .expect("insert row");
         }
         txn.commit().expect("commit rows");
