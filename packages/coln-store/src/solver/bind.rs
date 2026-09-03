@@ -281,8 +281,7 @@ mod tests {
             .expect("create table");
         let mut txn = store.transaction();
         for value in values {
-            txn.add(&path, vec![(*value).into()])
-                .expect("insert row");
+            txn.add(&path, vec![(*value).into()]).expect("insert row");
         }
         txn.commit().expect("commit rows");
         (store, path)

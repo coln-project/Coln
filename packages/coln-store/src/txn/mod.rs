@@ -366,8 +366,7 @@ mod tests {
         let root = store.commits().root_commit().expect("root commit").hash();
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![1i32.into()])
-            .expect("add first row");
+        tx.add(&path, vec![1i32.into()]).expect("add first row");
         let first = tx.commit().expect("first commit");
 
         assert!(store.commits().contains(&first));
@@ -378,8 +377,7 @@ mod tests {
         );
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![2i32.into()])
-            .expect("add second row");
+        tx.add(&path, vec![2i32.into()]).expect("add second row");
         let second = tx.commit().expect("second commit");
 
         assert!(store.commits().contains(&second));
