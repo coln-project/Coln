@@ -403,6 +403,8 @@ mod query {
 }
 
 mod rowing {
+    use rstest::{fixture, rstest};
+
     use super::*;
     use crate::txn::TxnValue;
 
@@ -416,6 +418,7 @@ mod rowing {
     /// Store with a structural `Term` table (one int column), a structural
     /// `Plus` table (two id columns), and a non-structural `Note` table (one
     /// id column).
+    #[fixture]
     fn structural_store() -> Store {
         let int_col = |name: &str| ColumnEntry {
             path: Path::from(name),
