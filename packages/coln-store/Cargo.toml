@@ -43,7 +43,7 @@ tracing-subscriber = { workspace = true, features = [
     "fmt",
 ], optional = true }
 specta.workspace = true
-
+rstest = "0.26.1"
 
 [dev-dependencies]
 future_form = "0.3.1"
@@ -71,9 +71,13 @@ tokio = { version = "1.52.3", features = [
 
 [features]
 default = ["native"]
-native = ["dep:rustyline", "dep:tracing-subscriber", "dep:clap"]
+native = [
+    "dep:rustyline",
+    "dep:tracing-subscriber",
+    "dep:clap",
+    "dep:coln-query",
+]
 wasm = ["dep:js-sys"]
-coln-query = ["dep:rustyline", "dep:tracing-subscriber", "dep:clap", "dep:coln-query"]
 
 [[bin]]
 name = "coln-store"
