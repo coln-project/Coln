@@ -14,6 +14,7 @@ use js_sys::Reflect;
 use crate::dto::{CommitChunk, CommitHash, RowId, RowRef, RowView, Value};
 use crate::error::js_error;
 
+use tsify::{Ts, Tsify};
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -78,9 +79,13 @@ fn resolve_value_id(js_value: &JsValue, row_id: RowId) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 impl TransactionHandle {
-    pub fn add(&mut self, path: String, values: Vec<Value>) -> Result<JsValue, JsValue> {
+    pub fn add(&mut self, path: String, values: Vec<Ts<Value>>) -> Result<JsValue, JsValue> {
         let path = ir::Path::from(path);
-        let values = values.into_iter().map(|v| v.into()).collect::<Vec<_>>();
+        let values = values
+            .iter()
+            .map(|value| value.to_rust())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(js_error)?;
         let handle = self.tx()?.add(&path, values).map_err(js_error)?;
 
         let (tx_id, counter) = handle.pending_ids().map_err(js_error)?;
@@ -176,7 +181,7 @@ impl StoreHandle {
     }
 
     #[wasm_bindgen(js_name = scanTable)]
-    pub fn scan_table(&self, path: String) -> Result<Vec<RowView>, JsValue> {
+    pub fn scan_table(&self, path: String) -> Result<Vec<Ts<RowView>>, JsValue> {
         let path = ir::Path::from(path);
         let rows = self
             .store()?
@@ -184,15 +189,26 @@ impl StoreHandle {
             .map(|rows| rows.map(RowView::from).collect::<Vec<_>>())
             .unwrap_or_default();
 
-        Ok(rows)
+        rows.iter()
+            .map(|row| row.into_ts())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(js_error)
     }
 
     #[wasm_bindgen(js_name = rowById)]
-    pub fn row_by_id(&self, path: String, row_id: RowRef) -> Result<Option<RowView>, JsValue> {
+    pub fn row_by_id(
+        &self,
+        path: String,
+        row_id: Ts<RowRef>,
+    ) -> Result<Option<Ts<RowView>>, JsValue> {
         let path = ir::Path::from(path);
+        let row_id = row_id.to_rust().map_err(js_error)?;
         let row_id = StoreRowId::try_from(row_id).map_err(js_error)?;
 
-        Ok(self.store()?.row_by_id(&path, row_id).map(RowView::from))
+        match self.store()?.row_by_id(&path, row_id) {
+            Some(row) => RowView::from(row).into_ts().map(Some).map_err(js_error),
+            None => Ok(None),
+        }
     }
 
     #[wasm_bindgen(js_name = beginTransaction)]
@@ -228,7 +244,7 @@ impl StoreHandle {
 impl StoreHandle {
     // For automerge-repo interfacing
 
-    pub fn heads(&self) -> Result<Vec<CommitHash>, JsValue> {
+    pub fn heads(&self) -> Result<Vec<Ts<CommitHash>>, JsValue> {
         let heads = match &self.state {
             StoreHandleState::Uninitialized { .. } => return Ok(Vec::new()),
             StoreHandleState::Ready { store, .. } => store,
@@ -243,31 +259,37 @@ impl StoreHandle {
         .map(CommitHash::from)
         .collect::<Vec<_>>();
 
-        Ok(heads)
+        heads
+            .iter()
+            .map(|hash| hash.into_ts())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(js_error)
     }
 
     #[wasm_bindgen(js_name = commitChunksAfter)]
     pub fn commit_chunks_after(
         &self,
-        have_heads: Vec<CommitHash>,
-    ) -> Result<Vec<CommitChunk>, JsValue> {
+        have_heads: Vec<Ts<CommitHash>>,
+    ) -> Result<Vec<Ts<CommitChunk>>, JsValue> {
         if matches!(self.state, StoreHandleState::Uninitialized { .. }) {
             return Ok(Vec::new());
         }
         let have_heads = have_heads
+            .iter()
+            .map(|hash| hash.to_rust())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(js_error)?
             .into_iter()
             .map(StoreCommitHash::try_from)
             .collect::<Result<Vec<_>, _>>()
             .map_err(js_error)?;
 
-        let chunks = self
-            .store()?
+        self.store()?
             .commit_chunks_after(&have_heads)
             .into_iter()
-            .map(CommitChunk::from)
-            .collect::<Vec<_>>();
-
-        Ok(chunks)
+            .map(|chunk| CommitChunk::from(chunk).into_ts())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(js_error)
     }
 
     #[wasm_bindgen(js_name = applyChunkBytes)]
@@ -403,7 +425,7 @@ mod tests {
         let mut store = Store::try_from_ir(theory).expect("store");
         let mut transaction = store.transaction();
         transaction
-            .add(&Path::from("T"), vec![42_i32.into()])
+            .add(&Path::from("T"), vec![42_i32])
             .expect("add row");
         transaction.commit().expect("commit");
         store
@@ -437,7 +459,7 @@ mod tests {
         let mut source = source_store();
         let mut transaction = source.transaction();
         transaction
-            .add(&Path::from("T"), vec![84_i32.into()])
+            .add(&Path::from("T"), vec![84_i32])
             .expect("add second row");
         transaction.commit().expect("second commit");
 
@@ -472,7 +494,7 @@ mod tests {
         let mut source = source_store();
         let mut transaction = source.transaction();
         transaction
-            .add(&Path::from("T"), vec![84_i32.into()])
+            .add(&Path::from("T"), vec![84_i32])
             .expect("add second row");
         transaction.commit().expect("second commit");
 
@@ -514,7 +536,7 @@ mod tests {
         transaction
             .tx()
             .expect("owned transaction")
-            .add(&Path::from("T"), vec![84_i32.into()])
+            .add(&Path::from("T"), vec![84_i32])
             .expect("stage row");
 
         let recovered = transaction.take_store().expect("recover store");
