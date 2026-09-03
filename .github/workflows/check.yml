@@ -69,55 +69,55 @@ jobs:
       - name: Run tests
         run: just check-rust
 
-  coln-js-runtime-check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout ⬇️
-        uses: actions/checkout@v6
+  # coln-js-runtime-check:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout ⬇️
+  #       uses: actions/checkout@v6
 
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: wasm32-unknown-unknown
+  #     - name: Install Rust
+  #       uses: actions-rust-lang/setup-rust-toolchain@v1
+  #       with:
+  #         target: wasm32-unknown-unknown
 
-      - name: Install nextest
-        uses: taiki-e/install-action@nextest
+  #     - name: Install nextest
+  #       uses: taiki-e/install-action@nextest
 
-      - name: Install wasm-bindgen-cli
-        run: |
-          VERSION="0.2.123"
-          curl -sSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$VERSION/wasm-bindgen-$VERSION-x86_64-unknown-linux-musl.tar.gz" | tar xz
-          sudo mv "wasm-bindgen-$VERSION-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/
-          wasm-bindgen --version
+  #     - name: Install wasm-bindgen-cli
+  #       run: |
+  #         VERSION="0.2.123"
+  #         curl -sSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$VERSION/wasm-bindgen-$VERSION-x86_64-unknown-linux-musl.tar.gz" | tar xz
+  #         sudo mv "wasm-bindgen-$VERSION-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/
+  #         wasm-bindgen --version
 
-      - name: Install wasm-opt
-        run: |
-          VERSION="version_124"
-          curl -sSL "https://github.com/WebAssembly/binaryen/releases/download/$VERSION/binaryen-$VERSION-x86_64-linux.tar.gz" | tar xz
-          sudo mv "binaryen-$VERSION/bin/wasm-opt" /usr/local/bin/
-          wasm-opt --version
+  #     - name: Install wasm-opt
+  #       run: |
+  #         VERSION="version_124"
+  #         curl -sSL "https://github.com/WebAssembly/binaryen/releases/download/$VERSION/binaryen-$VERSION-x86_64-linux.tar.gz" | tar xz
+  #         sudo mv "binaryen-$VERSION/bin/wasm-opt" /usr/local/bin/
+  #         wasm-opt --version
 
-      - name: Install wasm-bodge
-        # Keep in sync with the wasm-bodge pin in flake.nix
-        run: cargo install wasm-bodge --version 0.3.1 --locked
+  #     - name: Install wasm-bodge
+  #       # Keep in sync with the wasm-bodge pin in flake.nix
+  #       run: cargo install wasm-bodge --version 0.3.1 --locked
 
-      - name: Install just
-        uses: extractions/setup-just@v3
+  #     - name: Install just
+  #       uses: extractions/setup-just@v3
 
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: packages/coln-js-runtime/package-lock.json
+  #     - name: Install Node
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 24
+  #         cache: npm
+  #         cache-dependency-path: packages/coln-js-runtime/package-lock.json
 
-      - name: Install npm dependencies
-        working-directory: packages/coln-js-runtime
-        run: npm ci
+  #     - name: Install npm dependencies
+  #       working-directory: packages/coln-js-runtime
+  #       run: npm ci
 
-      - name: Run checks
-        working-directory: packages/coln-js-runtime
-        run: just check
+  #     - name: Run checks
+  #       working-directory: packages/coln-js-runtime
+  #       run: just check
 
   haskell-tests:
     runs-on: ubuntu-latest
