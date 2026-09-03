@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fmt;
 
+use coln_query::api::deltas::{ScalarTypedValue, TupleValue};
+
 use crate::column_map::ColIndex;
 use crate::commit::hash::CommitHash;
 use crate::ir::{BuiltinTy, ColType};
@@ -166,3 +168,17 @@ impl ColIndex for PackedRowId {
 }
 
 pub type PackedValue = Value<PackedRowId>;
+
+pub(crate) fn packedvalue_to_tuple(rid: PackedRowId, pc: Vec<PackedValue>) -> TupleValue {
+    std::iter::once(PackedValue::Id(rid))
+        .chain(pc)
+        .flat_map(|pc| match pc {
+            PackedValue::Id(prid) => vec![
+                ScalarTypedValue::Uint(prid.commit_idx as u64),
+                ScalarTypedValue::Uint(prid.counter as u64),
+            ],
+            PackedValue::Int(i) => vec![ScalarTypedValue::Iint(i as i64)],
+            PackedValue::Str(s) => vec![ScalarTypedValue::String(s)],
+        })
+        .collect()
+}
