@@ -53,11 +53,11 @@ impl Rollback for Rowing {
         }
     }
 
-    fn commit_snapshot(&mut self, snapshot: Self::Snapshot) {
+    fn commit(&mut self, snapshot: Self::Snapshot) {
         self.uf.get_mut().commit(snapshot.uf_snapshot);
     }
 
-    fn rollback(&mut self, snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, snapshot: Self::Snapshot) {
         self.uf.get_mut().rollback_to(snapshot.uf_snapshot);
         self.keys = snapshot.keys;
         self.displaced.truncate(snapshot.displaced_len);
@@ -205,7 +205,7 @@ mod tests {
 
         rowing.stage_union(0, high, low);
         rowing.apply_unions(&packer);
-        rowing.rollback(snapshot);
+        rowing.rollback_to(snapshot);
 
         assert_eq!(rowing.canonical_id(&high, &packer), high);
         assert_eq!(rowing.canonical_id(&low, &packer), low);

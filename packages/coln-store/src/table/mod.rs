@@ -493,7 +493,7 @@ impl Rollback for Table {
         TableSnapshot
     }
 
-    fn commit_snapshot(&mut self, _snapshot: Self::Snapshot) {
+    fn commit(&mut self, _snapshot: Self::Snapshot) {
         assert!(
             self.pending_updates.is_empty(),
             "cannot commit a snapshot with staged updates"
@@ -501,7 +501,7 @@ impl Rollback for Table {
         self.undo_log.take().expect("table has no active snapshot");
     }
 
-    fn rollback(&mut self, _snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, _snapshot: Self::Snapshot) {
         self.pending_updates.clear();
 
         let undo_ops = self.undo_log.take().expect("table has no active snapshot");

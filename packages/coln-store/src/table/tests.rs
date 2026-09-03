@@ -199,7 +199,7 @@ fn rollback_removes_applied_rows_and_index_entries() {
         Err(ValidationError::DuplicatePrimaryKey)
     );
 
-    tbl.table.rollback(snapshot);
+    tbl.table.rollback_to(snapshot);
 
     assert_eq!(tbl.row_count(), 1);
     assert_eq!(tbl.row_id_at(0), Some(existing));
@@ -234,7 +234,7 @@ fn staged_delete_removes_row_and_undo_restores_it() {
     // The primary key index gave up the key, so it is free to reuse.
     assert!(tbl.validate_insert(&[CellValue::Int(2)]).is_ok());
 
-    tbl.table.rollback(snapshot);
+    tbl.table.rollback_to(snapshot);
 
     assert_eq!(tbl.row_count(), 2);
     assert_eq!(tbl.row_position(kept), Some(0));
@@ -340,7 +340,7 @@ fn rollback_restores_rebuild_index_entries() {
         .expect("a delete cannot duplicate a key");
     assert!(tbl.table.rebuild_index.is_empty());
 
-    tbl.table.rollback(snapshot);
+    tbl.table.rollback_to(snapshot);
 
     assert_eq!(tbl.referring_rows(a), vec![row]);
     assert_eq!(tbl.referring_rows(b), vec![row]);
@@ -360,7 +360,7 @@ fn commit_snapshot_keeps_rows_and_discards_undo_log() {
     });
     tbl.apply_staged_ops()
         .expect("a table without a primary key accepts the row");
-    tbl.table.commit_snapshot(snapshot);
+    tbl.table.commit(snapshot);
 
     assert_eq!(tbl.row_count(), 1);
     assert_eq!(tbl.row_id_at(0), Some(row_id));
@@ -378,7 +378,7 @@ fn rollback_discards_updates_staged_after_snapshot() {
         table: 0,
         values: vec![CellValue::Int(7)],
     });
-    tbl.table.rollback(snapshot);
+    tbl.table.rollback_to(snapshot);
 
     assert_eq!(tbl.row_count(), 0);
     assert!(tbl.table.pending_updates.is_empty());

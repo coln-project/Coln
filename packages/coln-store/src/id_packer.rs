@@ -102,13 +102,13 @@ impl Rollback for IdPacker {
         IdPackerSnapshot
     }
 
-    fn commit_snapshot(&mut self, _snapshot: Self::Snapshot) {
+    fn commit(&mut self, _snapshot: Self::Snapshot) {
         self.snapshot_len
             .take()
             .expect("ID packer has no active snapshot");
     }
 
-    fn rollback(&mut self, _snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, _snapshot: Self::Snapshot) {
         let snapshot_len = self
             .snapshot_len
             .take()
@@ -137,7 +137,7 @@ mod tests {
 
         assert_eq!(packer.pack_row_id(row_id(2, 0)).commit_idx, 1);
         assert_eq!(packer.pack_row_id(row_id(1, 1)).commit_idx, 0);
-        packer.rollback(snapshot);
+        packer.rollback_to(snapshot);
 
         assert_eq!(
             packer.lookup_row_id(row_id(1, 0)).map(|id| id.commit_idx),
@@ -153,7 +153,7 @@ mod tests {
         let snapshot = packer.snapshot();
         assert_eq!(packer.pack_row_id(row_id(1, 0)).commit_idx, 0);
 
-        packer.commit_snapshot(snapshot);
+        packer.commit(snapshot);
 
         assert_eq!(
             packer.lookup_row_id(row_id(1, 0)).map(|id| id.commit_idx),
