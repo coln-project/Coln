@@ -6,8 +6,8 @@ use coln_flir_rs::ir;
 use coln_store::{
     commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash},
     store::Store,
-    table::RowId as StoreRowId,
-    txn::{OwnedTransaction, RowHandle as StoreRowHandle},
+    table::WireRowId as StoreRowId,
+    txn::{OwnedTransaction, TxnLiveRowId as StoreRowHandle},
 };
 use js_sys::Reflect;
 

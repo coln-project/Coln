@@ -10,7 +10,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::CommitChunk as StoreCommitChunk,
-    table::{CellValue as StoreCellValue, WireRowId as StoreRowId, RowView as StoreRowView},
+    table::{WireValue as StoreCellValue, WireRowId as StoreRowId, RowView as StoreRowView},
     txn::{TxnLiveRowId, TxnLiveValue as StoreTxnValue},
 };
 
@@ -113,7 +113,7 @@ impl TryFrom<RowRef> for StoreRowId {
 pub enum Value {
     #[serde(rename = "row_id")]
     Id(RowRef),
-    Int(i64),
+    Int(i32),
     String(String),
 }
 
