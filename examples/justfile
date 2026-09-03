@@ -1,6 +1,7 @@
 mod coln-compiler-wasm '../packages/coln-compiler-wasm'
 
 build_dir := "../_build/web/compiler"
+compiler_app_dir := "compiler"
 
 build-web-compiler: coln-compiler-wasm::build
     #!/usr/bin/env bash
@@ -14,3 +15,22 @@ build-web-compiler: coln-compiler-wasm::build
 
 serve-web-compiler port="8000": build-web-compiler
     simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
+
+stage-web-compiler-app:
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    if [[ ! -f "{{ build_dir }}/dist/coln.wasm" || ! -f "{{ build_dir }}/dist/ghc_wasm_jsffi.js" || ! -f "{{ build_dir }}/dist/loadHaskellWasm.js" || ! -f "{{ build_dir }}/examples/index.json" ]] || ! compgen -G "{{ build_dir }}/examples/*.coln" > /dev/null; then
+      just build-web-compiler
+    fi
+    mkdir -p "{{ compiler_app_dir }}/public/dist" "{{ compiler_app_dir }}/public/examples"
+    cp "{{ build_dir }}/dist/coln.wasm" "{{ compiler_app_dir }}/public/dist/coln.wasm"
+    cp "{{ build_dir }}/dist/ghc_wasm_jsffi.js" "{{ compiler_app_dir }}/public/dist/ghc_wasm_jsffi.js"
+    cp "{{ build_dir }}/dist/loadHaskellWasm.js" "{{ compiler_app_dir }}/public/dist/loadHaskellWasm.js"
+    cp "{{ build_dir }}/examples/index.json" "{{ compiler_app_dir }}/public/examples/index.json"
+    cp "{{ build_dir }}"/examples/*.coln "{{ compiler_app_dir }}/public/examples/"
+
+build-web-compiler-app: stage-web-compiler-app
+    pnpm --dir {{ compiler_app_dir }} build
+
+dev-web-compiler-app: stage-web-compiler-app
+    pnpm --dir {{ compiler_app_dir }} dev

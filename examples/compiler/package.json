@@ -1,0 +1,23 @@
+{
+  "name": "coln-compiler-example",
+  "private": true,
+  "type": "module",
+  "license": "(Apache-2.0 OR MIT)",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
+    "build": "pnpm run check && vite build"
+  },
+  "dependencies": {
+    "svelte": "^5.57.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.4.1",
+    "svelte-check": "^4.7.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2"
+  }
+}
