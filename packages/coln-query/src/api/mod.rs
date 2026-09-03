@@ -46,9 +46,10 @@ pub struct ColnQuery {
 }
 
 impl ColnQuery {
-    pub fn init(realm: &FlatRealm) -> Result<Self, QueryEngineError> {
-        let flir_program = FlirProgram::from_flat_realm(realm)?;
-        Self::with_flir_program(flir_program)
+    pub fn init(realm: &FlatRealm) -> Result<Self, ColnQueryError> {
+        Ok(FlirProgram::from_flat_realm(realm)
+            .map_err(QueryEngineError::from)
+            .and_then(Self::with_flir_program)?)
     }
     fn with_flir_program(mut flir_program: FlirProgram) -> Result<Self, QueryEngineError> {
         let incremental_runtime = Pipeline::incremental().runtime(&mut flir_program)?;
@@ -381,7 +382,6 @@ mod test {
         graph_flir.insert_raw_edge(invalid_edge_from);
         graph_flir.insert_raw_edge(invalid_edge);
         tx2.insert(graph_flir.next_epoch().into_table_deltas());
-        // println!("{tx2:#?}");
         let mut tx2 = tx2.try_commit(&mut coln_query)?.expect_rejected();
         let violations = tx2.take_hard_violations();
         println!("{}", violations);
@@ -394,7 +394,6 @@ mod test {
         let mut tx3 = Tx::empty();
         let e0 = graph_flir.insert_edge(&v0, &v_rollback);
         tx3.insert(graph_flir.next_epoch().into_table_deltas());
-        // println!("{tx3:#?}");
         let mut tx3 = tx3.try_commit(&mut coln_query)?.expect_rejected();
         let violations = tx3.take_hard_violations();
         println!("{}", violations);
