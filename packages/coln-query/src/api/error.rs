@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use crate::api::violations::ViolationsSet;
+pub use crate::error::QueryEngineError;
 use thiserror::Error;
-
-use crate::{api::violations::ViolationsSet, error::QueryEngineError};
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 /// Public error type for the coln frontend.
