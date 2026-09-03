@@ -15,8 +15,8 @@ use rustyline::{Context, Helper};
 use crate::repl::ShellMode;
 
 const COMMANDS: &[&str] = &[
-    ".help", ".exit", ".quit", ".load", ".open", ".save", ".tables", ".rules", ".schema", ".dump",
-    "add", "begin", "ir",
+    ".help", ".exit", ".quit", ".load", ".open", ".save", ".tables", ".schema", ".dump", "add",
+    "begin", "ir",
 ];
 
 const PATH_COMMANDS: &[&str] = &[".load", ".open", ".save"];

@@ -128,10 +128,6 @@ mod tests {
             Command::Meta(MetaCommand::Tables)
         );
         assert_eq!(
-            parse_command(ShellMode::Coln, ".rules").unwrap(),
-            Command::Meta(MetaCommand::Rules)
-        );
-        assert_eq!(
             parse_command(ShellMode::Coln, ".schema Path.G.V").unwrap(),
             Command::Meta(MetaCommand::Schema {
                 table: Some("Path.G.V".to_string())
