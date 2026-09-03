@@ -16,8 +16,9 @@ exclude = ["/.gitignore"]
 test-utils = []
 
 [dependencies]
-serde = { workspace = true }
-serde_json = { workspace = true }
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
 
 [dev-dependencies]
 # This is a self-referential dev-dependency to have the feature-gated
