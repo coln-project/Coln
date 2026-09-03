@@ -5,14 +5,16 @@
 //! A [DBSP](`dbsp`) powered incremental [`Backend`], that is [`DbspBackend`],
 //! and [`Runtime`], which is [`DbspRuntime`].
 
-use super::relation::TupleValue;
 use super::{Backend, Runtime};
-use crate::error::{BuildError, RuntimeError};
+use crate::api::deltas::ZRow;
+use crate::error::{BuildError, LoweringError, RuntimeError};
+use crate::relational::incremental::dbsp::DbspOutputDelta;
 use crate::{
-    api::deltas::ZWeight,
-    host::{HostInterpreter, InterpreterContext, resolver::ResolvedCode, variable::Environment},
+    host::{
+        HostInterpreter, InterpreterContext, QueryIr, resolver::ResolvedCode, variable::Environment,
+    },
     relational::{
-        Delta,
+        catalog::SourceSchemas,
         expr::{OutputKind, SinkId, SourceId},
     },
     scalarial::{RowScalarEngine, TreeWalk},
@@ -26,7 +28,9 @@ use std::{
 
 pub mod dbsp;
 pub mod interpreter;
+pub mod lowering;
 pub mod operators;
+pub mod schema;
 
 /// The incremental backend: compiles the plan into a standing DBSP circuit.
 ///
@@ -55,15 +59,31 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
     type Runtime = DbspRuntime;
     type Error = BuildError;
 
-    fn build(self, threads: NonZeroUsize, plan: ResolvedCode) -> Result<DbspRuntime, Self::Error> {
+    /// A DBSP circuit joins two streams at a time, so every
+    /// [`MultiWayEquiJoinExpr`](crate::relational::expr::MultiWayEquiJoinExpr)
+    /// has to become a chain of binary ones before
+    /// [`build`](Self::build) walks the plan. See [`lowering`].
+    fn lower(&self, plan: QueryIr) -> Result<QueryIr, LoweringError> {
+        lowering::fold_multi_way_joins(plan)
+    }
+
+    fn build(
+        self,
+        threads: NonZeroUsize,
+        plan: ResolvedCode,
+        sources: SourceSchemas,
+    ) -> Result<DbspRuntime, Self::Error> {
         let engine = self.scalar_engine;
         let (handle, (inputs, outputs)) =
             CircuitRuntime::init_circuit(threads, move |root_circuit| {
                 // The plan is already resolved, so we interpret directly (no
-                // resolver pass here) with a fresh environment.
+                // resolver pass here) with a fresh environment. Cloning the
+                // schemas is what makes this closure `Send + 'static`, which
+                // DBSP requires because it runs it once per worker thread.
                 let mut environment = Environment::default();
                 let mut ctx = InterpreterContext::new(&mut environment);
-                let mut interpreter = DbspInterpreter::new(root_circuit.clone(), engine.clone());
+                let mut interpreter =
+                    DbspInterpreter::new(root_circuit.clone(), engine.clone(), sources.clone());
                 // Walk the plan for its side effects: each `SourceExpr` leaf
                 // wires a fresh input stream (deduplicated by name) and each
                 // `OutputExpr` tap wires an output read handle. The plan's final
@@ -106,7 +126,9 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
 }
 
 /// A standing DBSP circuit plus its input feed handles (by [`SourceId`]) and
-/// output read handles (by [`SinkId`]). Yields per-transaction [`Delta`]s.
+/// output read handles (by [`SinkId`]). Yields per-transaction
+/// [`DbspOutputDelta`]s.
+#[derive(Debug)]
 pub struct DbspRuntime {
     handle: DbspHandle,
     inputs: DbspInputs,
@@ -120,24 +142,19 @@ pub struct DbspRuntime {
 }
 
 impl Runtime for DbspRuntime {
-    type Output = Delta;
+    type Output = DbspOutputDelta;
     type Error = RuntimeError;
 
     fn feed(
         &mut self,
         source: &SourceId,
-        rows: impl IntoIterator<Item = (TupleValue, ZWeight)>,
-    ) -> Result<(), Self::Error> {
-        self.inputs.get(source.as_str()).map_or_else(
-            || {
-                Err(RuntimeError::new(format!(
-                    "tried to feed unknown source '{}'",
-                    source.as_str()
-                )))
-            },
+        rows: impl IntoIterator<Item = ZRow>,
+    ) -> Result<bool, Self::Error> {
+        self.inputs.get(source).map_or_else(
+            || Ok(false),
             |input| {
-                let _: () = input.feed(rows);
-                Ok(())
+                input.feed(rows);
+                Ok(true)
             },
         )
     }
@@ -148,15 +165,15 @@ impl Runtime for DbspRuntime {
         // debugging. This drains the handle, which is why CLI taps are not
         // readable via `output`.
         for (id, output) in &self.cli_outputs {
-            let batch = output.to_batch();
-            println!("output '{}':\n{}", id.as_str(), batch.as_debug_table());
+            let output = output.drain();
+            println!("output '{}':\n{}", id.as_str(), output.as_debug_table());
         }
         Ok(())
     }
 
-    fn output(&self, out: &SinkId) -> Result<Delta, Self::Error> {
+    fn output(&self, out: &SinkId) -> Result<Self::Output, Self::Error> {
         match self.outputs.get(out) {
-            Some(output) => Ok(Delta(output.to_batch().as_debug_zset())),
+            Some(output) => Ok(output.drain()),
             // Distinguish an unknown name from a print-only CLI tap so the error
             // points at the actual mistake.
             None if self.cli_outputs.iter().any(|(id, _)| id == out) => {
@@ -170,5 +187,9 @@ impl Runtime for DbspRuntime {
                 out.as_str()
             ))),
         }
+    }
+
+    fn list_outputs(&self) -> impl Iterator<Item = &'_ SinkId> {
+        self.outputs.keys()
     }
 }

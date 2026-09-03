@@ -14,9 +14,9 @@ pub enum CompileError {
     #[error("unsupported term")]
     UnsupportedTerm,
     #[error("invalid var index: {index} var_count {var_count}")]
-    InvalidVarIndex { index: i64, var_count: usize },
+    InvalidVarIndex { index: u64, var_count: usize },
     #[error("invalid column index {column}")]
-    InvalidColumnIndex { column: i64 },
+    InvalidColumnIndex { column: u64 },
 }
 
 /// A rule lowered into a small execution-oriented rule form.
@@ -100,7 +100,7 @@ pub fn compile_rule(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
     let antecedent = compile_props(&rule_entry.rule.antecedents, var_count)?;
     let consequent = compile_props(&rule_entry.rule.consequents, var_count)?;
 
-    let rule_variant = rule_entry.rule.rule_variant.clone();
+    let rule_variant = rule_entry.rule.rule_variant;
 
     let mut seen = HashSet::new();
     let mut tables = Vec::new();
@@ -148,9 +148,9 @@ fn compile_props(props: &[Prop], var_count: usize) -> Result<CompProp, CompileEr
 fn compile_prop(prop: &Prop, var_count: usize) -> Result<CompProp, CompileError> {
     match prop {
         Prop::Atom { atom } => Ok(CompProp::Atom(compile_atom(atom, var_count)?)),
-        Prop::Eq { left, right } => Ok(CompProp::Eq(CompEq {
-            left: compile_term(left, var_count)?,
-            right: compile_term(right, var_count)?,
+        Prop::Eq { equality } => Ok(CompProp::Eq(CompEq {
+            left: compile_term(&equality.left, var_count)?,
+            right: compile_term(&equality.right, var_count)?,
         })),
     }
 }
@@ -188,17 +188,13 @@ fn compile_atom(atom: &Atom, var_count: usize) -> Result<CompAtom, CompileError>
 fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError> {
     match term {
         Term::Var { index } => {
-            let index = usize::try_from(*index).map_err(|_| CompileError::InvalidVarIndex {
-                index: *index,
-                var_count,
-            })?;
-            if index >= var_count {
+            if *index >= var_count as u64 {
                 return Err(CompileError::InvalidVarIndex {
-                    index: index as i64,
+                    index: *index,
                     var_count,
                 });
             }
-            Ok(CompTerm::Var(index))
+            Ok(CompTerm::Var(*index as usize))
         }
         Term::Lit { lit } => Ok(CompTerm::Lit(lit.clone())),
     }
@@ -336,6 +332,8 @@ fn var_name(index: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::ir::Equality;
+
     use super::*;
     use crate::ir::{BuiltinTy, ColType, Path, Rule, RuleEntry, RuleVariant};
 
@@ -527,8 +525,10 @@ mod tests {
             "T.eq_antecedent",
             vec![int_ty(), int_ty()],
             vec![Prop::Eq {
-                left: Term::Var { index: 0 },
-                right: Term::Var { index: 1 },
+                equality: Equality {
+                    left: Term::Var { index: 0 },
+                    right: Term::Var { index: 1 },
+                },
             }],
             vec![Prop::Atom {
                 atom: Atom {
@@ -567,8 +567,10 @@ mod tests {
                 },
             }],
             vec![Prop::Eq {
-                left: Term::Var { index: 0 },
-                right: Term::Var { index: 1 },
+                equality: Equality {
+                    left: Term::Var { index: 0 },
+                    right: Term::Var { index: 1 },
+                },
             }],
         );
 
@@ -621,8 +623,10 @@ mod tests {
                     },
                 },
                 Prop::Eq {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
+                    equality: Equality {
+                        left: Term::Var { index: 0 },
+                        right: Term::Var { index: 1 },
+                    },
                 },
             ],
         );

@@ -2,31 +2,57 @@
 name = "coln-query"
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
 description = "The query engine of the Coln language."
-repository = "https://github.com/coln-project/Coln"
 readme = "README.md"
+repository = "https://github.com/coln-project/Coln"
+license = "MIT OR Apache-2.0"
 exclude = [
-    "/.editorconfig",
-    "/.gitattributes",
-    "/.gitignore",
-    "/AGENTS.md",
-    "/flake.nix",
-    "/justfile",
-    "/scripts/",
+  "/.editorconfig",
+  "/.gitattributes",
+  "/.gitignore",
+  "/AGENTS.md",
+  "/flake.nix",
+  "/justfile",
+  "/scripts/",
 ]
-
-[features]
-test = []
 
 [dependencies]
 anyhow = { workspace = true }
 cli-table = "0.4.9"
 coln-flir-rs = { path = "../coln-flir-rs" }
 dbsp = "0.305.0"
-rkyv = { version = "0.7.46", default-features = false, features = [ "std", "size_64", "validation", "uuid", ] }
-size-of = { version = "0.1.7", package = "feldera-size-of", features = [ "hashbrown", "time-std", "xxhash-xxh3", "arcstr", "chrono", "ordered-float", ] }
+rkyv = {
+  version = "0.7.46",
+  default-features = false,
+  features = [
+    "size_64",
+    "std",
+    "uuid",
+    "validation",
+  ]
+}
+size-of = {
+  package = "feldera-size-of",
+  version = "0.1.7",
+  features = [
+    "arcstr",
+    "chrono",
+    "hashbrown",
+    "ordered-float",
+    "time-std",
+    "xxhash-xxh3",
+  ]
+}
 thiserror = { workspace = true }
 
 [dev-dependencies]
+# Import coln-flir-rs again but with the test-utils feature flag to have
+# its test utils available in this crate's test context.
+coln-flir-rs = { path = "../coln-flir-rs", features = ["test-utils"] }
+# This is a self-referential dev-dependency to have the feature-gated
+# test-utils be available in this crate's integration tests, too.
+coln-query = { path = ".", features = ["test-utils"] }
 criterion = { workspace = true }
+
+[features]
+test-utils = ["coln-flir-rs/test-utils"]

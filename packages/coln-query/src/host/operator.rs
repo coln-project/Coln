@@ -36,3 +36,29 @@ pub enum Operator {
     /// Eagerly-evaluated binary operation.
     Division,
 }
+
+impl Operator {
+    pub fn symbol(self) -> &'static str {
+        match self {
+            Operator::Equal => "==",
+            Operator::NotEqual => "!=",
+            Operator::Less => "<",
+            Operator::LessEqual => "<=",
+            Operator::Greater => ">",
+            Operator::GreaterEqual => ">=",
+            Operator::And => "&&",
+            Operator::Or => "||",
+            Operator::Not => "!",
+            Operator::Addition => "+",
+            Operator::Subtraction => "-",
+            Operator::Multiplication => "*",
+            Operator::Division => "/",
+        }
+    }
+}
+
+impl std::fmt::Display for Operator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.symbol())
+    }
+}

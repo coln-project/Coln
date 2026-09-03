@@ -148,6 +148,8 @@ pub fn check_rule(store: &Store, rule: &CompRule) -> Result<(), Box<RuleViolatio
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::ir::Equality;
+
     use super::*;
     use crate::{
         ir::{
@@ -404,8 +406,10 @@ mod tests {
                 },
             }],
             vec![ir::Prop::Eq {
-                left: ir::Term::Var { index: 0 },
-                right: ir::Term::Var { index: 1 },
+                equality: Equality {
+                    left: ir::Term::Var { index: 0 },
+                    right: ir::Term::Var { index: 1 },
+                },
             }],
         );
 
@@ -445,8 +449,10 @@ mod tests {
                 },
             }],
             vec![ir::Prop::Eq {
-                left: ir::Term::Var { index: 0 },
-                right: ir::Term::Var { index: 1 },
+                equality: Equality {
+                    left: ir::Term::Var { index: 0 },
+                    right: ir::Term::Var { index: 1 },
+                },
             }],
         );
 

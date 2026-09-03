@@ -7,15 +7,17 @@
 //! The latter is important because `coln-flir` rarely emits just a single
 //! query but an entire program of queries.
 
+pub mod code;
 pub mod expr;
 pub mod function;
 pub mod interpreter;
 pub mod operator;
+pub mod print;
 pub mod resolver;
 pub mod stmt;
 pub mod tuple;
 pub mod variable;
+pub mod walk;
 
+pub use code::QueryIr;
 pub use interpreter::{HostInterpreter, InterpreterContext, ScalarHost};
-
-pub type Code = Vec<stmt::Stmt>;

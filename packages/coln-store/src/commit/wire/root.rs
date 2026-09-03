@@ -16,6 +16,8 @@ pub(crate) fn deserialize_root(data: &[u8]) -> Result<FlatRealm, CodecError> {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::ir::Equality;
+
     use super::*;
     use crate::ir::{
         Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Prop, Rule, RuleEntry,
@@ -76,8 +78,10 @@ mod tests {
                     },
                 }],
                 consequents: vec![Prop::Eq {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 0 },
+                    equality: Equality {
+                        left: Term::Var { index: 0 },
+                        right: Term::Var { index: 0 },
+                    },
                 }],
             },
         }

@@ -2,11 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::relational::relation::Relation;
-
-use super::super::super::relation::{
-    RelationData, RelationSchema, SchemaTuple, TupleKey, TupleValue,
-};
+use crate::api::deltas::ZRow;
+use crate::relational::incremental::schema::{SchemaTuple, StreamSchema, TupleKey};
+use crate::relational::relation::{self, Relation, RelationData, RelationRef, TupleValue};
 use cli_table::{Cell, Style, Table, format::Justify};
 pub use dbsp::{
     DBSPHandle as DbspHandle, Error as DbspError, NestedCircuit, RootCircuit, Runtime, ZWeight,
@@ -180,16 +178,71 @@ impl IntoIterator for &'_ StreamWrapper {
     }
 }
 
-/// A DBSP stream is the DBSP backend's concrete relation representation. This is
-/// the single point where the DBSP runtime plugs into the backend-neutral
-/// [`Relation`] envelope.
-impl RelationData for StreamWrapper {
+/// A stream plus the schema its `(TupleKey, TupleValue)` pairs are laid out by:
+/// the DBSP backend's concrete relation representation, and the single point
+/// where the DBSP runtime plugs into the backend-neutral [`Relation`] envelope.
+///
+/// The schema rides *here*, next to the stream, rather than in [`Relation`]:
+/// keying a relation is a DBSP requirement (`OrdIndexedZSet`), and the schema
+/// changes as operators build the circuit, so each derived stream carries the
+/// schema its own rows have. The pair is what every DBSP operator recovers via
+/// [`as_dbsp`](AsDbspRelation::as_dbsp).
+#[derive(Clone)]
+pub struct DbspRelation {
+    schema: StreamSchema,
+    stream: StreamWrapper,
+}
+
+impl DbspRelation {
+    pub fn new(schema: StreamSchema, stream: StreamWrapper) -> Self {
+        Self { schema, stream }
+    }
+    pub fn schema(&self) -> &StreamSchema {
+        &self.schema
+    }
+    pub fn stream(&self) -> &StreamWrapper {
+        &self.stream
+    }
+}
+
+impl RelationData for DbspRelation {
     fn as_any(&self) -> &dyn Any {
         self
     }
     fn clone_box(&self) -> Box<dyn RelationData> {
         Box::new(self.clone())
     }
+}
+
+impl Display for DbspRelation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.schema)
+    }
+}
+
+impl Debug for DbspRelation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.schema)
+    }
+}
+
+/// Recover the DBSP backend's own relation from the type-erased envelope the
+/// host layer passes around. Every DBSP operator starts here.
+pub trait AsDbspRelation {
+    fn as_dbsp(&self) -> &DbspRelation;
+}
+
+impl AsDbspRelation for Relation {
+    fn as_dbsp(&self) -> &DbspRelation {
+        self.downcast_ref::<DbspRelation>()
+    }
+}
+
+/// A fresh [`RelationRef`] over `stream` and the schema its rows have. The DBSP
+/// backend's counterpart to [`relation::new_relation`], which takes the pair
+/// pre-assembled.
+pub fn new_relation(schema: StreamSchema, stream: StreamWrapper) -> RelationRef {
+    relation::new_relation(DbspRelation::new(schema, stream))
 }
 
 #[derive(Default, Debug, Clone)]
@@ -203,8 +256,8 @@ impl DbspInputs {
             inputs: HashMap::from_iter(inputs),
         }
     }
-    pub fn get(&self, name: &str) -> Option<&DbspInput> {
-        self.inputs.get(name)
+    pub fn get<Q: AsRef<str>>(&self, name: Q) -> Option<&DbspInput> {
+        self.inputs.get(name.as_ref())
     }
     pub fn take(&mut self, name: &str) -> Option<DbspInput> {
         self.inputs.remove(name)
@@ -216,18 +269,18 @@ impl DbspInputs {
 
 #[derive(Clone)]
 pub struct DbspInput {
-    schema: RelationSchema,
+    schema: StreamSchema,
     handle: OrdIndexedStreamInputHandle,
 }
 
 impl DbspInput {
-    pub fn new(schema: RelationSchema, handle: OrdIndexedStreamInputHandle) -> Self {
+    pub fn new(schema: StreamSchema, handle: OrdIndexedStreamInputHandle) -> Self {
         Self { schema, handle }
     }
     /// Feed a batch of value tuples (with z-weights) into this input. The tuple
     /// key is derived from the value by picking the schema's key fields, so
     /// callers only supply the value — matching the neutral `Runtime::feed`.
-    pub fn feed(&self, rows: impl IntoIterator<Item = (TupleValue, ZWeight)>) {
+    pub fn feed(&self, rows: impl IntoIterator<Item = ZRow>) {
         let tuple_names: Vec<String> = self.schema.tuple.field_names(&None).collect();
         let key_indices: Vec<usize> = self
             .schema
@@ -242,11 +295,13 @@ impl DbspInput {
             .collect();
         let mut batch = rows
             .into_iter()
-            .map(|(value, weight)| {
+            .map(|row_delta| {
+                let zweight = row_delta.zweight();
+                let row = row_delta.into_row();
                 let key = TupleKey {
-                    data: key_indices.iter().map(|&i| value.data[i].clone()).collect(),
+                    data: key_indices.iter().map(|&i| row.data[i].clone()).collect(),
                 };
-                Tup2(key, Tup2(value, weight))
+                Tup2(key, Tup2(row, zweight))
             })
             .collect();
         self.handle.append(&mut batch);
@@ -266,44 +321,65 @@ impl Debug for DbspInput {
 
 pub struct DbspOutput {
     handle: OrdIndexedStreamOutputHandle,
-    schema: RelationSchema,
+    schema: StreamSchema,
 }
 
 impl DbspOutput {
-    pub fn new(schema: RelationSchema, handle: OrdIndexedStreamOutputHandle) -> Self {
-        Self { schema, handle }
-    }
-    pub fn to_batch(&self) -> DbspOutputBatch<'_> {
-        let inner = self.handle.concat().iter().collect::<Vec<_>>();
-        DbspOutputBatch {
-            schema: &self.schema,
-            inner,
+    pub fn drain(&self) -> DbspOutputDelta {
+        // This can already be iterated and saved into a collection, e.g., a Vector.
+        // Yet, I believe this does not guarantee that each (TupleKey, TupleValue)
+        // pair is unique but instead could appear multiple times with different
+        // zweights which would need to be accumulated for each
+        // (TupleKey, TupleValue) pair.
+        let delta: SpineSnapshot<OrdIndexedZSet<TupleKey, TupleValue>> = self.handle.concat();
+        // Therefore, we play it safe and consolidate here, which guarantees that
+        // each (TupleKey, TupleValue) pair is unique with its accumulated zweight.
+        // If at some point, the accumulation should happen through a custom data
+        // structure, this step may be omitted for performance reasons.
+        let delta: OrdIndexedZSet<TupleKey, TupleValue> = delta.consolidate();
+        DbspOutputDelta {
+            schema: self.schema.clone(),
+            delta,
         }
+    }
+}
+
+impl std::fmt::Debug for DbspOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DbspOutput")
+            .field("schema", &self.schema)
+            .finish_non_exhaustive()
     }
 }
 
 impl From<&Relation> for DbspOutput {
     fn from(relation: &Relation) -> Self {
-        let schema = relation.schema.clone();
-        let handle = relation.downcast_ref::<StreamWrapper>().output();
-        Self { schema, handle }
+        let relation = relation.as_dbsp();
+        Self {
+            schema: relation.schema().clone(),
+            handle: relation.stream().output(),
+        }
     }
 }
 
-pub struct DbspOutputBatch<'a> {
-    schema: &'a RelationSchema,
-    inner: Vec<(TupleKey, TupleValue, ZWeight)>,
+#[derive(Debug, Clone)]
+pub struct DbspOutputDelta {
+    schema: StreamSchema,
+    delta: OrdIndexedZSet<TupleKey, TupleValue>,
 }
 
-impl DbspOutputBatch<'_> {
+impl DbspOutputDelta {
     const JUSTIFICATION: Justify = Justify::Right;
 
+    pub fn schema(&self) -> &StreamSchema {
+        &self.schema
+    }
     pub fn as_table(&self) -> impl Display {
-        self.inner
+        self.delta
             .iter()
             .map(|(key, tuple, weight)| {
                 iter::once(weight.to_string().cell().justify(Self::JUSTIFICATION)).chain(
-                    SchemaTuple::new(&self.schema.tuple, tuple)
+                    SchemaTuple::new(&self.schema.tuple, &tuple)
                         .fields()
                         .map(|attribute| attribute.to_string().cell().justify(Self::JUSTIFICATION))
                         .collect::<Vec<_>>(),
@@ -319,7 +395,7 @@ impl DbspOutputBatch<'_> {
             .expect("Table error")
     }
     pub fn as_debug_table(&self) -> impl Display {
-        self.inner
+        self.delta
             .iter()
             .map(|(key, tuple, weight)| {
                 // We ensure that the key and tuple data lengths match the
@@ -328,7 +404,7 @@ impl DbspOutputBatch<'_> {
                 debug_assert!(tuple.data.len() == self.schema.tuple.full_len());
                 iter::once(weight.to_string().cell().justify(Self::JUSTIFICATION))
                     .chain(
-                        SchemaTuple::new(&self.schema.key, key)
+                        SchemaTuple::new(&self.schema.key, &key)
                             .all_fields()
                             .map(|attribute| {
                                 attribute.to_string().cell().justify(Self::JUSTIFICATION)
@@ -336,7 +412,7 @@ impl DbspOutputBatch<'_> {
                             .collect::<Vec<_>>(),
                     )
                     .chain(
-                        SchemaTuple::new(&self.schema.tuple, tuple)
+                        SchemaTuple::new(&self.schema.tuple, &tuple)
                             .all_fields()
                             .map(|attribute| {
                                 attribute.to_string().cell().justify(Self::JUSTIFICATION)
@@ -364,30 +440,42 @@ impl DbspOutputBatch<'_> {
             .display()
             .expect("Table error")
     }
-    pub fn as_data(&self) -> impl Iterator<Item = (ZWeight, &TupleValue)> {
-        self.inner
-            .iter()
-            .map(|(_key, tuple, weight)| (*weight, tuple))
+    /// Outputs only the visible columns of the output.
+    fn as_data(&self) -> impl Iterator<Item = (ZWeight, TupleValue)> {
+        self.delta.iter().map(|(_key, tuple, zweight)| {
+            let tuple: TupleValue = SchemaTuple::new(&self.schema.tuple, &tuple)
+                .fields()
+                .cloned()
+                .collect();
+            (zweight, tuple)
+        })
     }
-    pub fn as_zset(&self) -> OrdZSet<TupleValue> {
-        let keys = self
-            .inner
+    /// Unlike [`as_data`](Self::as_data), this Includes hidden/inactive
+    /// columns in its output.
+    fn as_debug_data(&self) -> impl Iterator<Item = (ZWeight, TupleValue)> {
+        self.delta
             .iter()
-            .map(|(_key, tuple, weight)| {
-                let tuple: TupleValue = SchemaTuple::new(&self.schema.tuple, tuple)
-                    .fields()
-                    .cloned()
-                    .collect();
-                Tup2(tuple, *weight)
-            })
+            .map(|(_key, tuple, zweight)| (zweight, tuple))
+    }
+    pub fn as_zrows(&self) -> impl Iterator<Item = ZRow> {
+        self.as_data()
+            .filter_map(|(zweight, tuple)| ZRow::new(zweight, tuple))
+    }
+    pub fn as_debug_zrows(&self) -> impl Iterator<Item = ZRow> {
+        self.as_debug_data()
+            .filter_map(|(zweight, tuple)| ZRow::new(zweight, tuple))
+    }
+    pub fn to_zset(&self) -> OrdZSet<TupleValue> {
+        let keys = self
+            .as_data()
+            .map(|(zweight, tuple)| Tup2(tuple, zweight))
             .collect::<Vec<_>>();
         OrdZSet::from_keys((), keys)
     }
-    pub fn as_debug_zset(&self) -> OrdZSet<TupleValue> {
+    pub fn to_debug_zset(&self) -> OrdZSet<TupleValue> {
         let keys = self
-            .inner
-            .iter()
-            .map(|(_key, tuple, weight)| Tup2(tuple.clone(), *weight))
+            .as_debug_data()
+            .map(|(zweight, tuple)| Tup2(tuple, zweight))
             .collect::<Vec<_>>();
         OrdZSet::from_keys((), keys)
     }
