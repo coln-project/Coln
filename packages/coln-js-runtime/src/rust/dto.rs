@@ -10,7 +10,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::CommitChunk as StoreCommitChunk,
-    table::{WireValue as StoreCellValue, WireRowId as StoreRowId, RowView as StoreRowView},
+    table::{RowView as StoreRowView, WireRowId as StoreRowId, WireValue as StoreCellValue},
     txn::{TxnLiveRowId, TxnLiveValue as StoreTxnValue},
 };
 

@@ -403,7 +403,7 @@ mod tests {
         let mut store = Store::try_from_ir(theory).expect("store");
         let mut transaction = store.transaction();
         transaction
-            .add(&Path::from("T"), vec![42_i64.into()])
+            .add(&Path::from("T"), vec![42_i32.into()])
             .expect("add row");
         transaction.commit().expect("commit");
         store
@@ -437,7 +437,7 @@ mod tests {
         let mut source = source_store();
         let mut transaction = source.transaction();
         transaction
-            .add(&Path::from("T"), vec![84_i64.into()])
+            .add(&Path::from("T"), vec![84_i32.into()])
             .expect("add second row");
         transaction.commit().expect("second commit");
 
@@ -472,7 +472,7 @@ mod tests {
         let mut source = source_store();
         let mut transaction = source.transaction();
         transaction
-            .add(&Path::from("T"), vec![84_i64.into()])
+            .add(&Path::from("T"), vec![84_i32.into()])
             .expect("add second row");
         transaction.commit().expect("second commit");
 
@@ -514,7 +514,7 @@ mod tests {
         transaction
             .tx()
             .expect("owned transaction")
-            .add(&Path::from("T"), vec![84_i64.into()])
+            .add(&Path::from("T"), vec![84_i32.into()])
             .expect("stage row");
 
         let recovered = transaction.take_store().expect("recover store");
