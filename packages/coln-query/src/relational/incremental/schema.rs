@@ -27,6 +27,7 @@ use crate::{
     host::interpreter::InterpreterContext,
     relational::schema::{Column, TableSchema},
     scalarial::ScalarTypedValue,
+    utils::cli_table::{Cell, CellStruct, CliTableHeader},
 };
 use dbsp::{never_none, never_roaring_filter};
 use std::{
@@ -79,6 +80,16 @@ impl Display for TupleKey {
     }
 }
 
+/// Which columns of a schema to look at: only the ones a query still exposes,
+/// or every column that is physically there, including the ones eliminated by,
+/// e.g., a projection. This is the difference between the regular and the
+/// debug view of a relation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColumnSelector {
+    Visible,
+    All,
+}
+
 pub struct SchemaTuple<'a, T> {
     schema: &'a TupleSchema,
     tuple: &'a T,
@@ -88,14 +99,9 @@ impl<'a, T: Tuple> SchemaTuple<'a, T> {
     pub fn new(schema: &'a TupleSchema, tuple: &'a T) -> Self {
         Self { schema, tuple }
     }
-    pub fn fields(&self) -> impl Iterator<Item = &'a ScalarTypedValue> {
+    pub fn fields(&self, columns: ColumnSelector) -> impl Iterator<Item = &'a ScalarTypedValue> {
         self.schema
-            .active_fields()
-            .map(|(index, info)| self.tuple.data_at(index))
-    }
-    pub fn all_fields(&self) -> impl Iterator<Item = &'a ScalarTypedValue> {
-        self.schema
-            .all_fields()
+            .fields_of(columns)
             .map(|(index, _info)| self.tuple.data_at(index))
     }
     pub fn named_fields(
@@ -103,34 +109,42 @@ impl<'a, T: Tuple> SchemaTuple<'a, T> {
         alias: &Option<String>,
     ) -> impl Iterator<Item = (String, ScalarTypedValue)> {
         self.schema
-            .active_fields()
+            .fields_of(ColumnSelector::Visible)
             .map(|(index, info)| (info.name(alias), self.tuple.data_at(index).clone()))
     }
     pub fn coalesce(&self) -> impl Iterator<Item = ScalarTypedValue> {
         self.schema
-            .active_fields()
+            .fields_of(ColumnSelector::Visible)
             .map(|(index, info)| self.tuple.data_at(index).clone())
     }
     pub fn pick(&self, fields: &[String]) -> impl Iterator<Item = ScalarTypedValue> {
-        self.schema.active_fields().filter_map(|(index, info)| {
-            if fields.contains(&info.name) {
-                Some(self.tuple.data_at(index).clone())
-            } else {
-                None
-            }
-        })
+        self.schema
+            .fields_of(ColumnSelector::Visible)
+            .filter_map(|(index, info)| {
+                if fields.contains(&info.name) {
+                    Some(self.tuple.data_at(index).clone())
+                } else {
+                    None
+                }
+            })
     }
     pub fn join(&self, other: &Self) -> impl Iterator<Item = ScalarTypedValue> {
-        self.fields().chain(other.fields()).cloned()
+        self.fields(ColumnSelector::Visible)
+            .chain(other.fields(ColumnSelector::Visible))
+            .cloned()
     }
 }
 
 impl Debug for SchemaTuple<'_, TupleValue> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list()
-            .entries(self.schema.active_fields().map(|(index, info)| {
-                format!("{}: {}", info.name(&None), self.tuple.data_at(index))
-            }))
+            .entries(
+                self.schema
+                    .fields_of(ColumnSelector::Visible)
+                    .map(|(index, info)| {
+                        format!("{}: {}", info.name(&None), self.tuple.data_at(index))
+                    }),
+            )
             .finish()
     }
 }
@@ -192,7 +206,7 @@ impl TupleSchema {
     pub fn full_len(&self) -> usize {
         self.fields.len()
     }
-    fn is_coalesced(&self) -> bool {
+    pub fn is_coalesced(&self) -> bool {
         !self.fields.iter().any(|info| !info.active)
     }
     fn coalesce(&self) -> Self {
@@ -202,20 +216,19 @@ impl TupleSchema {
             .cloned()
             .collect()
     }
-    fn active_fields(&self) -> impl Iterator<Item = (Index, &FieldInfo)> {
+    fn fields_of(&self, columns: ColumnSelector) -> impl Iterator<Item = (Index, &FieldInfo)> {
         self.fields
             .iter()
             .enumerate()
-            .filter(|(_index, info)| info.active)
+            .filter(move |(_index, info)| columns == ColumnSelector::All || info.active)
     }
-    fn all_fields(&self) -> impl Iterator<Item = (Index, &FieldInfo)> {
-        self.fields.iter().enumerate()
-    }
-    pub fn field_names(&self, alias: &Option<String>) -> impl Iterator<Item = String> {
-        self.active_fields().map(|(_index, info)| info.name(alias))
-    }
-    pub fn all_field_names(&self, alias: &Option<String>) -> impl Iterator<Item = String> {
-        self.all_fields().map(|(_index, info)| info.name(alias))
+    pub fn field_names(
+        &self,
+        columns: ColumnSelector,
+        alias: &Option<String>,
+    ) -> impl Iterator<Item = String> {
+        self.fields_of(columns)
+            .map(|(_index, info)| info.name(alias))
     }
     fn select(&self) -> Self {
         self.clone()
@@ -237,9 +250,9 @@ impl TupleSchema {
     fn pick(&self, fields: &Vec<(&String, Option<&String>)>) -> Self {
         // For keeping track of duplicated field names.
         let mut active = HashSet::with_capacity(fields.len());
-        // Don't use active_fields() here because the tuple is not coalesced
+        // Don't use fields_of(Columns::Visible) here because the tuple is not coalesced
         // but we only allow picking from the set of active fields though.
-        self.all_fields()
+        self.fields_of(ColumnSelector::All)
             .map(|(_index, info)| {
                 // We do not reactivate already inactive fields.
                 if !info.active {
@@ -274,18 +287,20 @@ impl TupleSchema {
         fields.into_iter().collect()
     }
     fn join(&self, other: &Self) -> Self {
-        let self_active_field_table: HashSet<&String> =
-            self.active_fields().map(|(_, info)| &info.name).collect();
+        let self_active_field_table: HashSet<&String> = self
+            .fields_of(ColumnSelector::Visible)
+            .map(|(_, info)| &info.name)
+            .collect();
         // We mark every active field of `other` as inactive if it is
         // shadowed by an active field of `self` with the same name.
-        let other_fields = other.active_fields().map(|(_, info)| {
+        let other_fields = other.fields_of(ColumnSelector::Visible).map(|(_, info)| {
             let mut info = info.clone();
             if self_active_field_table.contains(&info.name) {
                 info.active = false;
             }
             info
         });
-        self.active_fields()
+        self.fields_of(ColumnSelector::Visible)
             .map(|(_index, info)| info.clone())
             .chain(other_fields)
             .collect()
@@ -321,13 +336,21 @@ impl FromIterator<String> for TupleSchema {
 
 impl Debug for TupleSchema {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.fields_to_string(self.all_fields(), true))
+        write!(
+            f,
+            "{}",
+            self.fields_to_string(self.fields_of(ColumnSelector::All), true)
+        )
     }
 }
 
 impl Display for TupleSchema {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.fields_to_string(self.active_fields(), false))
+        write!(
+            f,
+            "{}",
+            self.fields_to_string(self.fields_of(ColumnSelector::Visible), false)
+        )
     }
 }
 
@@ -464,5 +487,43 @@ impl DbspTupleContext for InterpreterContext<'_> {
     ) {
         self.tuple_vars
             .extend(SchemaTuple::new(schema, tuple).named_fields(alias));
+    }
+}
+
+/// Names the columns of a [`TupleSchema`], optionally tagged with where they
+/// come from (key or value part) to disambiguate.
+pub struct SchemaHeader<'a> {
+    schema: &'a TupleSchema,
+    columns: ColumnSelector,
+    tag: Option<&'static str>,
+}
+
+impl<'a> SchemaHeader<'a> {
+    pub fn tagged(self, tag: &'static str) -> Self {
+        Self {
+            tag: Some(tag),
+            ..self
+        }
+    }
+}
+
+impl CliTableHeader for SchemaHeader<'_> {
+    fn cli_table_header(&self) -> impl Iterator<Item = CellStruct> {
+        self.schema
+            .field_names(self.columns, &None)
+            .map(|name| match self.tag {
+                Some(tag) => format!("[{tag}] {name}").cell(),
+                None => name.cell(),
+            })
+    }
+}
+
+impl TupleSchema {
+    pub fn header(&self, columns: ColumnSelector) -> SchemaHeader<'_> {
+        SchemaHeader {
+            schema: self,
+            columns,
+            tag: None,
+        }
     }
 }

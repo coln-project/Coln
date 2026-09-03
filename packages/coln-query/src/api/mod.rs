@@ -147,7 +147,7 @@ impl ColnQuery {
                     sink_id
                 ))
             })?;
-            let delta = TableDelta::new(sink_id, delta.as_zrows().collect());
+            let delta = TableDelta::new(sink_id, delta.view().to_zrows());
             if delta.is_empty() {
                 continue;
             }
@@ -228,7 +228,7 @@ mod test {
     use crate::{
         api::{
             deltas::{TableDelta, ZRow},
-            transaction::{TryCommitErr, TryCommitOk, Tx},
+            transaction::{ToCliReport, TryCommitErr, TryCommitOk, Tx},
         },
         test_utils::{
             self,
@@ -247,7 +247,7 @@ mod test {
 
         let mut tx = Tx::new(StoreDelta::empty());
         // You can add deltas for tables until you call try_commit() on the tx.
-        tx.insert(std::iter::once(TableDelta::new("SomeTable", vec![])));
+        tx.insert(std::iter::once(TableDelta::new("SomeTable", [])));
 
         // If you are ready, try committing the transaction and pass in the handle:
         match tx.try_commit(&mut coln_query) {
@@ -331,7 +331,9 @@ mod test {
         let v1 = graph_flir.insert_vertex();
         let v2 = graph_flir.insert_vertex();
         tx0.insert(graph_flir.next_epoch().into_table_deltas());
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
         let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
         assert!(tx0.take_derived_data_delta().is_empty());
         assert!(tx0.take_soft_violations().is_empty());
 
@@ -339,7 +341,9 @@ mod test {
         let e0 = graph_flir.insert_edge(&v0, &v1);
         let e1 = graph_flir.insert_edge(&v1, &v2);
         tx1.insert(graph_flir.next_epoch().into_table_deltas());
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
         let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
         assert!(tx1.take_derived_data_delta().is_empty());
         assert!(tx1.take_soft_violations().is_empty());
 
@@ -378,9 +382,10 @@ mod test {
         graph_flir.insert_raw_edge(invalid_edge_from);
         graph_flir.insert_raw_edge(invalid_edge);
         tx2.insert(graph_flir.next_epoch().into_table_deltas());
+        println!("> Tx2\n{}", tx2.to_cli_report()?);
         let mut tx2 = tx2.try_commit(&mut coln_query)?.expect_rejected();
+        println!("> Tx2\n{}", tx2.to_cli_report()?);
         let violations = tx2.take_hard_violations();
-        println!("{}", violations);
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
@@ -390,9 +395,10 @@ mod test {
         let mut tx3 = Tx::empty();
         let e0 = graph_flir.insert_edge(&v0, &v_rollback);
         tx3.insert(graph_flir.next_epoch().into_table_deltas());
+        println!("> Tx3\n{}", tx3.to_cli_report()?);
         let mut tx3 = tx3.try_commit(&mut coln_query)?.expect_rejected();
+        println!("> Tx3\n{}", tx3.to_cli_report()?);
         let violations = tx3.take_hard_violations();
-        println!("{}", violations);
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
@@ -418,7 +424,7 @@ mod test {
             let mut tx = Tx::empty();
             tx.insert(Some(TableDelta::new(
                 TABLE,
-                vec![ZRow::new(zweight, offending.clone()).expect("non-zero zweight")],
+                [ZRow::new(zweight, offending.clone()).expect("non-zero zweight")],
             )));
             tx
         };

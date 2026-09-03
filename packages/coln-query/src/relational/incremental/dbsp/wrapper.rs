@@ -3,9 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::api::deltas::ZRow;
-use crate::relational::incremental::schema::{SchemaTuple, StreamSchema, TupleKey};
+use crate::relational::incremental::schema::{ColumnSelector, SchemaTuple, StreamSchema, TupleKey};
 use crate::relational::relation::{self, Relation, RelationData, RelationRef, TupleValue};
-use cli_table::{Cell, Style, Table, format::Justify};
+use crate::scalarial::ScalarTypedValue;
+use crate::utils::cli_table::{
+    ChainedHeader, CliReport, CliTableHeader, TableDisplay, ToCliReport, ToCliTableIterExt,
+    ZWeightedHeader,
+};
 pub use dbsp::{
     DBSPHandle as DbspHandle, Error as DbspError, NestedCircuit, RootCircuit, Runtime, ZWeight,
 };
@@ -19,7 +23,6 @@ use std::{
     any::Any,
     collections::HashMap,
     fmt::{Debug, Display},
-    iter,
 };
 
 type OrdStream = Stream<RootCircuit, OrdZSet<TupleValue>>;
@@ -281,11 +284,15 @@ impl DbspInput {
     /// key is derived from the value by picking the schema's key fields, so
     /// callers only supply the value — matching the neutral `Runtime::feed`.
     pub fn feed(&self, rows: impl IntoIterator<Item = ZRow>) {
-        let tuple_names: Vec<String> = self.schema.tuple.field_names(&None).collect();
+        let tuple_names: Vec<String> = self
+            .schema
+            .tuple
+            .field_names(ColumnSelector::Visible, &None)
+            .collect();
         let key_indices: Vec<usize> = self
             .schema
             .key
-            .field_names(&None)
+            .field_names(ColumnSelector::Visible, &None)
             .map(|key_field| {
                 tuple_names
                     .iter()
@@ -369,114 +376,106 @@ pub struct DbspOutputDelta {
 }
 
 impl DbspOutputDelta {
-    const JUSTIFICATION: Justify = Justify::Right;
-
     pub fn schema(&self) -> &StreamSchema {
         &self.schema
     }
-    pub fn as_table(&self) -> impl Display {
-        self.delta
-            .iter()
-            .map(|(key, tuple, weight)| {
-                iter::once(weight.to_string().cell().justify(Self::JUSTIFICATION)).chain(
-                    SchemaTuple::new(&self.schema.tuple, &tuple)
-                        .fields()
-                        .map(|attribute| attribute.to_string().cell().justify(Self::JUSTIFICATION))
-                        .collect::<Vec<_>>(),
+    /// The delta as a query sees it: the columns the schema still exposes.
+    pub fn view(&self) -> OutputView<'_> {
+        OutputView {
+            delta: self,
+            columns: ColumnSelector::Visible,
+            with_key: false,
+        }
+    }
+    /// The delta as it is physically stored: every column, including the ones
+    /// eliminated by, e.g., a projection, and the key columns alongside the
+    /// values.
+    pub fn debug_view(&self, with_key: bool) -> OutputView<'_> {
+        OutputView {
+            delta: self,
+            columns: ColumnSelector::All,
+            with_key,
+        }
+    }
+}
+
+/// One of the two ways of looking at a [`DbspOutputDelta`], see
+/// [`view`](DbspOutputDelta::view) and
+/// [`debug_view`](DbspOutputDelta::debug_view). Each accessor reports the
+/// columns its view selects, so both views share one implementation of each.
+#[derive(Clone, Copy)]
+pub struct OutputView<'a> {
+    delta: &'a DbspOutputDelta,
+    columns: ColumnSelector,
+    with_key: bool,
+}
+
+impl<'a> OutputView<'a> {
+    fn rows(self) -> impl Iterator<Item = (ZWeight, Vec<ScalarTypedValue>)> + 'a {
+        let columns = self.columns;
+        let key_schema = &self.delta.schema.key;
+        let tuple_schema = &self.delta.schema.tuple;
+        self.delta.delta.iter().map(move |(key, tuple, zweight)| {
+            // If the key is requested, too, we include _all_ key columns.
+            let mut row = if self.with_key { key.data } else { vec![] };
+            if columns == ColumnSelector::All || !tuple_schema.is_coalesced() {
+                // If there is no need to filter columns, we pass them through.
+                row.extend(tuple.data);
+            } else {
+                // Otherwise, we filter.
+                row.extend(
+                    SchemaTuple::new(tuple_schema, &tuple)
+                        .fields(columns)
+                        .cloned(),
                 )
-            })
-            .table()
-            .title(
-                iter::once("z-weight".cell())
-                    .chain(self.schema.tuple.field_names(&None).map(|name| name.cell())),
-            )
-            .bold(true)
-            .display()
-            .expect("Table error")
-    }
-    pub fn as_debug_table(&self) -> impl Display {
-        self.delta
-            .iter()
-            .map(|(key, tuple, weight)| {
-                // We ensure that the key and tuple data lengths match the
-                // respective schema field lengths.
-                debug_assert!(key.data.len() == self.schema.key.full_len());
-                debug_assert!(tuple.data.len() == self.schema.tuple.full_len());
-                iter::once(weight.to_string().cell().justify(Self::JUSTIFICATION))
-                    .chain(
-                        SchemaTuple::new(&self.schema.key, &key)
-                            .all_fields()
-                            .map(|attribute| {
-                                attribute.to_string().cell().justify(Self::JUSTIFICATION)
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                    .chain(
-                        SchemaTuple::new(&self.schema.tuple, &tuple)
-                            .all_fields()
-                            .map(|attribute| {
-                                attribute.to_string().cell().justify(Self::JUSTIFICATION)
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-            })
-            .table()
-            .title(
-                iter::once("z-weight".cell())
-                    .chain(
-                        self.schema
-                            .key
-                            .all_field_names(&None)
-                            .map(|name| format!("[key] {name}").cell()),
-                    )
-                    .chain(
-                        self.schema
-                            .tuple
-                            .all_field_names(&None)
-                            .map(|name| format!("[value] {name}").cell()),
-                    ),
-            )
-            .bold(true)
-            .display()
-            .expect("Table error")
-    }
-    /// Outputs only the visible columns of the output.
-    fn as_data(&self) -> impl Iterator<Item = (ZWeight, TupleValue)> {
-        self.delta.iter().map(|(_key, tuple, zweight)| {
-            let tuple: TupleValue = SchemaTuple::new(&self.schema.tuple, &tuple)
-                .fields()
-                .cloned()
-                .collect();
-            (zweight, tuple)
+            };
+            (zweight, row)
         })
     }
-    /// Unlike [`as_data`](Self::as_data), this Includes hidden/inactive
-    /// columns in its output.
-    fn as_debug_data(&self) -> impl Iterator<Item = (ZWeight, TupleValue)> {
-        self.delta
-            .iter()
-            .map(|(_key, tuple, zweight)| (zweight, tuple))
+    pub fn to_zrows(self) -> impl Iterator<Item = ZRow> + 'a {
+        self.rows()
+            .filter_map(|(zweight, row)| ZRow::new(zweight, TupleValue::new(row)))
     }
-    pub fn as_zrows(&self) -> impl Iterator<Item = ZRow> {
-        self.as_data()
-            .filter_map(|(zweight, tuple)| ZRow::new(zweight, tuple))
+    fn to_zrows_unchecked(self) -> impl Iterator<Item = ZRow> + 'a {
+        self.rows()
+            .map(|(zweight, row)| ZRow::new_unchecked(zweight, TupleValue::new(row)))
     }
-    pub fn as_debug_zrows(&self) -> impl Iterator<Item = ZRow> {
-        self.as_debug_data()
-            .filter_map(|(zweight, tuple)| ZRow::new(zweight, tuple))
-    }
-    pub fn to_zset(&self) -> OrdZSet<TupleValue> {
+    pub fn to_zset(self) -> OrdZSet<TupleValue> {
         let keys = self
-            .as_data()
-            .map(|(zweight, tuple)| Tup2(tuple, zweight))
+            .rows()
+            .map(|(zweight, row)| Tup2(TupleValue::new(row), zweight))
             .collect::<Vec<_>>();
         OrdZSet::from_keys((), keys)
     }
-    pub fn to_debug_zset(&self) -> OrdZSet<TupleValue> {
-        let keys = self
-            .as_debug_data()
-            .map(|(zweight, tuple)| Tup2(tuple, zweight))
-            .collect::<Vec<_>>();
-        OrdZSet::from_keys((), keys)
+    pub fn to_cli_table(self) -> std::io::Result<TableDisplay> {
+        self.to_zrows_unchecked().to_cli_table_with(self.header())
+    }
+    fn header(self) -> impl CliTableHeader + 'a {
+        let key = self.with_key.then(|| {
+            self.delta
+                .schema
+                .key
+                // We include _all_ key columns.
+                .header(ColumnSelector::All)
+                .tagged("key")
+        });
+        let tuple = self.delta.schema.tuple.header(self.columns);
+        let tuple = match key {
+            Some(_) => tuple.tagged("value"),
+            None => tuple,
+        };
+        ZWeightedHeader(ChainedHeader(key, tuple))
+    }
+}
+
+impl ToCliReport for OutputView<'_> {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::untitled();
+        report.section(
+            self.delta.schema.name.clone(),
+            self.header(),
+            self.to_zrows_unchecked(),
+        )?;
+        Ok(report)
     }
 }

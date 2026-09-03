@@ -292,11 +292,15 @@ mod test {
             assert!(rt.feed(&EdgeRel::id(), rows(edges_data.next().unwrap()))?);
             rt.commit()?;
             assert_eq!(
-                rt.output(&SinkId::from("selected"))?.to_debug_zset(),
+                rt.output(&SinkId::from("selected"))?
+                    .debug_view(false)
+                    .to_zset(),
                 selected_output.next().unwrap()
             );
             assert_eq!(
-                rt.output(&SinkId::from("projected"))?.to_debug_zset(),
+                rt.output(&SinkId::from("projected"))?
+                    .debug_view(false)
+                    .to_zset(),
                 projected_output.next().unwrap()
             );
         }
@@ -351,7 +355,9 @@ mod test {
         // The Cli tap did not disturb the flow: the downstream channel is correct.
         // `Edge` carries an implicit `active` column (defaults to `true`).
         assert_eq!(
-            rt.output(&SinkId::from("downstream"))?.to_debug_zset(),
+            rt.output(&SinkId::from("downstream"))?
+                .debug_view(false)
+                .to_zset(),
             zset! { tuple!(0_u64, 1_u64, 5_u64, true) => 1 }
         );
         // Reading the Cli tap by name fails loudly instead of returning drained,
@@ -363,6 +369,37 @@ mod test {
             err.to_string().contains("print-only"),
             "expected a print-only error, got: {err}"
         );
+        Ok(())
+    }
+
+    /// The two views of an output agree on the rows and differ in what they
+    /// show: the debug view puts the key columns next to the values, the
+    /// regular one reports the columns a query sees.
+    #[test]
+    fn test_output_views() -> Result<(), anyhow::Error> {
+        let plan = vec![
+            Stmt::from(VarStmt {
+                name: "edges".to_string(),
+                initializer: Some(Expr::from(SourceExpr::new(EdgeRel::id()))),
+            }),
+            output_stmt("edges"),
+        ];
+        let mut rt =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
+        assert!(rt.feed(&EdgeRel::id(), rows_with_weight([EdgeRel::new(0, 1, 5)], 1))?);
+        rt.commit()?;
+        let output = rt.output(&SinkId::from("edges"))?;
+
+        // Nothing is hidden in this relation, so both views carry the same rows.
+        assert_eq!(output.view().to_zrows().count(), 1);
+        assert_eq!(output.view().to_zset(), output.debug_view(false).to_zset());
+
+        // Only the debug table names the key columns.
+        let table = output.view().to_cli_table()?.to_string();
+        let debug_table = output.debug_view(true).to_cli_table()?.to_string();
+        assert!(table.contains("zweight") && !table.contains("[key]"));
+        assert!(debug_table.contains("[key] from") && debug_table.contains("[value] weight"));
+
         Ok(())
     }
 
@@ -493,7 +530,9 @@ mod test {
             rt.commit()?;
 
             assert_eq!(
-                rt.output(&SinkId::from("joined"))?.to_debug_zset(),
+                rt.output(&SinkId::from("joined"))?
+                    .debug_view(false)
+                    .to_zset(),
                 zset! {
                     tuple!(0_u64, "Alice", 20_u64, 0_u64, "Engineer") => 1,
                     tuple!(2_u64, "Charlie", 40_u64, 0_u64, "Engineer") => 1,
@@ -544,7 +583,9 @@ mod test {
             rt.commit()?;
 
             assert_eq!(
-                rt.output(&SinkId::from("joined"))?.to_debug_zset(),
+                rt.output(&SinkId::from("joined"))?
+                    .debug_view(false)
+                    .to_zset(),
                 zset! {
                     tuple!(0_u64, "Alice", 20_u64, 0_u64, 0_u64, "Engineer") => 1,
                     tuple!(0_u64, "Alice", 20_u64, 0_u64, 1_u64, "Doctor") => 1,
@@ -746,7 +787,9 @@ mod test {
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("full_closure"))?.to_debug_zset(),
+            rt.output(&SinkId::from("full_closure"))?
+                .debug_view(false)
+                .to_zset(),
             zset! {
                 tuple!(0_u64, 1_u64, 1_u64, 1_u64) => 1,
                 tuple!(2_u64, 3_u64, 2_u64, 1_u64) => 1,
@@ -762,7 +805,9 @@ mod test {
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("full_closure"))?.to_debug_zset(),
+            rt.output(&SinkId::from("full_closure"))?
+                .debug_view(false)
+                .to_zset(),
             zset! {
                 tuple!(0_u64, 2_u64, 2_u64, 2_u64) => 1,
                 tuple!(1_u64, 2_u64, 1_u64, 1_u64) => 1,
@@ -883,7 +928,9 @@ mod test {
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("closure"))?.to_debug_zset(),
+            rt.output(&SinkId::from("closure"))?
+                .debug_view(false)
+                .to_zset(),
             zset! {
                 tuple!(0_u64, 1_u64, 1_u64, 1_u64) => 1,
                 tuple!(0_u64, 2_u64, 2_u64, 2_u64) => 1,
@@ -978,7 +1025,9 @@ mod test {
         rt.commit()?;
 
         assert_eq!(
-            rt.output(&SinkId::from("reachable"))?.to_debug_zset(),
+            rt.output(&SinkId::from("reachable"))?
+                .debug_view(false)
+                .to_zset(),
             zset! {
                 tuple!(0_u64) => 1,
                 tuple!(1_u64) => 1,
@@ -1032,7 +1081,8 @@ mod test {
         assert_eq!(
             incremental
                 .output(&SinkId::from("reachable"))?
-                .to_debug_zset(),
+                .view()
+                .to_zset(),
             expected
         );
         Ok(())
@@ -1099,7 +1149,8 @@ mod test {
         assert_eq!(
             incremental
                 .output(&SinkId::from("two_hops"))?
-                .to_debug_zset(),
+                .view()
+                .to_zset(),
             expected
         );
         Ok(())
@@ -1392,7 +1443,9 @@ mod test {
             rt.commit()?;
 
             assert_eq!(
-                rt.output(&SinkId::from("mvrStore"))?.to_debug_zset(),
+                rt.output(&SinkId::from("mvrStore"))?
+                    .debug_view(false)
+                    .to_zset(),
                 expected.next().unwrap()
             );
         }

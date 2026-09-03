@@ -57,6 +57,12 @@ pub struct TupleValue {
     pub data: Vec<ScalarTypedValue>,
 }
 
+impl TupleValue {
+    pub fn new(data: Vec<ScalarTypedValue>) -> Self {
+        Self { data }
+    }
+}
+
 never_none!(TupleValue);
 never_roaring_filter!(TupleValue);
 
