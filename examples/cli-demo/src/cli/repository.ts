@@ -6,6 +6,8 @@ import {
   initSubduction,
   isValidAutomergeUrl,
   Repo,
+  setLoggerFactory,
+  setSubductionLogLevel,
   type AutomergeUrl,
 } from "@automerge/automerge-repo"
 import { find, type ColnHandle } from "@coln-project/repo"
@@ -28,7 +30,11 @@ export async function openDocument(
   if (verbose) console.error(`Connecting to ${endpoint}`)
 
   await initSubduction()
+  configureLogging(verbose)
   const repo = new Repo({ subductionWebsocketEndpoints: [endpoint] })
+  // Repo construction resets this to warn. Subduction tracing writes to stdout,
+  // so keep it at error; CLI-owned verbose progress uses stderr.
+  setSubductionLogLevel("error")
   try {
     await withTimeout(waitForConnection(repo), `Timed out connecting to ${endpoint}`)
     if (verbose) console.error(`Connected to ${endpoint}`)
@@ -41,6 +47,21 @@ export async function openDocument(
     await repo.shutdown()
     throw error
   }
+}
+
+function configureLogging(verbose: boolean): void {
+  setLoggerFactory(namespace => {
+    const write = (message: string, ...args: unknown[]) => {
+      console.error(`[${namespace}]`, message, ...args)
+    }
+    const quiet = () => {}
+    return {
+      debug: verbose ? write : quiet,
+      info: verbose ? write : quiet,
+      warn: verbose ? write : quiet,
+      error: write,
+    }
+  })
 }
 
 export async function flush(repo: Repo, endpoint: string, verbose: boolean): Promise<void> {

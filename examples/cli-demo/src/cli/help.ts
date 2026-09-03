@@ -7,64 +7,98 @@ import type { Command } from "./arguments.js"
 const overview = `coln-repo reads and updates synchronized Coln documents.
 
 A Coln theory describes the entities and rules in a document. The compiler lowers
-that theory to JSON IR. The runtime Store uses IR table paths and tagged values;
-use "ir" first to discover those paths and column types.
+that theory to JSON IR. Read the IR, confirm inferred domain meanings with the
+user, then query or execute a transaction.
 
 Usage:
-  coln-repo <automerge-url> ir [-v]
-  coln-repo <automerge-url> query <javascript|-> [-v]
-  coln-repo <automerge-url> exec <javascript|-> [-v]
+  coln-repo ir --document <automerge-url> [--endpoint <url>] [-v]
+  coln-repo query --document <automerge-url> [--endpoint <url>] [-v]
+  coln-repo exec --document <automerge-url> [--endpoint <url>] [-v]
+  coln-repo guide
+  coln-repo install-skill [--dir <skills-root>]
   coln-repo help [command]
 
 Commands:
-  ir      Print compiled IR as formatted JSON
-  query   Evaluate a read-only expression and print its result as JSON
-  exec    Run a synchronous script in one change transaction
+  ir             Return the full compiled JSON IR
+  query          Read a JavaScript expression from stdin and evaluate it
+  exec           Read a JavaScript body from stdin and run one change transaction
+  guide          Print the agent workflow for this tool (the coln-repo skill)
+  install-skill  Install or update the coln-repo skill for agent harnesses
 
 Options:
-  -v, --verbose  Print connection and sync progress to stderr
-  -h, --help     Print command help
+      --endpoint <url>  Sync server WebSocket URL, overriding SUBDUCTION_ENDPOINT
+      --dir <path>      Skills root for install-skill (default ~/.agents/skills)
+  -v, --verbose         Print connection and sync progress to stderr
+  -h, --help            Print command help
 
 Environment:
-  SUBDUCTION_ENDPOINT  Sync server WebSocket URL
+  SUBDUCTION_ENDPOINT   Sync server WebSocket URL, used when --endpoint is absent
 
-JavaScript is trusted code and runs with this Node process's capabilities.`
+The endpoint defaults to wss://subduction.sync.inkandswitch.com. A document held
+by a local relay is only reachable by pointing at that relay, for example
+--endpoint ws://127.0.0.1:3030.
+
+Agents: run "coln-repo guide" first. It explains how to read the IR, confirm
+inferred meanings with the user, and interpret responses.
+
+Every result, including an error, is JSON on stdout. JavaScript is trusted code
+and runs with this Node process's capabilities.`
 
 const commandHelp: Record<Command, string> = {
-  ir: `Usage: coln-repo <automerge-url> ir [-v]
+  guide: `Usage: coln-repo guide
 
-Print the document's compiled Coln IR as formatted JSON.`,
-  query: `Usage: coln-repo <automerge-url> query <expression|-> [-v]
+Print the coln-repo skill body: the step-by-step workflow an agent should follow
+to read a document's IR, confirm its interpretation, query, write, and read the
+response. The same text is what install-skill installs.`,
+  "install-skill": `Usage: coln-repo install-skill [--dir <skills-root>]
+
+Copy the coln-repo skill directory to <skills-root>/coln-repo, creating it or
+replacing it when the installed copy differs. The default root is
+~/.agents/skills, which OpenCode reads. Other harnesses use their own root, for
+example --dir ~/.claude/skills for Claude Code.
+
+The response reports status "installed", "updated", or "unchanged".`,
+  ir: `Usage: coln-repo ir --document <automerge-url> [--endpoint <url>] [-v]
+
+Return the document's compiled JSON IR without interpreting its schema.`,
+  query: `Usage: coln-repo query --document <automerge-url> [--endpoint <url>] [-v]
 
 Evaluate a synchronous JavaScript expression with a read-only store in scope.
-The result is JSON-encoded on stdout. Use - to read the expression from stdin.
+Read the expression from stdin and return its value in the JSON response.
 
 Store methods:
   store.jsonIR()                 Return the IR JSON string
   store.scanTable(path)          Return all rows in an IR table
-  store.rowById(path, rowRef)    Return one row, or undefined
+  store.rowById(path, rowRef)    Return one row, or undefined (rowRef = row.rowId.value)
   store.heads()                  Return current commit hashes
 
 Example:
-  coln-repo automerge:... query 'store.scanTable("GraphRealm.V")'`,
-  exec: `Usage: coln-repo <automerge-url> exec <script|-> [-v]
+  printf 'store.scanTable("Records.Documents")' | coln-repo query --document automerge:...`,
+  exec: `Usage: coln-repo exec --document <automerge-url> [--endpoint <url>] [-v]
 
 Run a synchronous JavaScript script in one atomic Coln Repo change. The script
-receives an add-only transaction named txn. Use - to read the script from stdin.
-Successful execution writes no stdout.
+is read from stdin and receives the current transaction API as txn. Return a
+JSON-serializable value to include it in the response.
 
 Available operations:
   txn.add(path, values)          Add a row and return its tagged row reference
 
+Values are tagged: { tag: "int", value } | { tag: "string", value } |
+{ tag: "row_id", value: rowRef }.
+txn.add returns a complete tagged row_id value; pass it directly to later adds.
+
 Example:
-  coln-repo automerge:... exec '
-    const a = txn.add("GraphRealm.V", [])
-    const b = txn.add("GraphRealm.V", [])
-    txn.add("GraphRealm.E", [a, b])
-  '
+  coln-repo exec --document automerge:... <<'JS'
+  const folder = txn.add("Records.Folders", [{ tag: "string", value: "Inbox" }])
+  const document = txn.add("Records.Documents", [
+    folder,
+    { tag: "string", value: "Notes" },
+  ])
+  return { folder, document }
+JS
 
 The change is committed only if the script returns synchronously without error.
-The CLI waits for the connected server to flush it before exiting successfully.`,
+The CLI waits for the connected server to flush it before reporting success.`,
 }
 
 export function helpText(command?: Command): string {

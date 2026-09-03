@@ -4,6 +4,6 @@
 
 import type { ColnHandle } from "@coln-project/repo"
 
-export function runIr(handle: ColnHandle): void {
-  console.log(JSON.stringify(JSON.parse(handle.doc().jsonIR()), null, 2))
+export function runIr(handle: ColnHandle): unknown {
+  return JSON.parse(handle.doc().jsonIR())
 }

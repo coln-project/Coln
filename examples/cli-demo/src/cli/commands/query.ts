@@ -5,9 +5,6 @@
 import { evaluateQuery } from "../evaluation.js"
 import type { ColnHandle } from "@coln-project/repo"
 
-export function runQuery(handle: ColnHandle, source: string): void {
-  const result = evaluateQuery(handle.doc(), source)
-  const json = JSON.stringify(result, null, 2)
-  if (json === undefined) throw new TypeError("Query result is not JSON-serializable")
-  console.log(json)
+export function runQuery(handle: ColnHandle, source: string): unknown {
+  return evaluateQuery(handle.doc(), source)
 }

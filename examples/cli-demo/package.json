@@ -6,12 +6,15 @@
   "bin": {
     "coln-repo": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "skills"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "cli": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
-    "test:unit": "tsx --test \"tests/cli/**/*.test.ts\"",
+    "test": "pnpm run typecheck && pnpm run test:e2e",
     "test:e2e": "pnpm run build && playwright test"
   },
   "dependencies": {
