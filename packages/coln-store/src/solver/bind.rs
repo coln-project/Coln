@@ -205,12 +205,9 @@ mod tests {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, vec![1i32.into(), 2i32.into()])
-            .expect("insert row");
-        txn.add(&path, vec![2i32.into(), 3i32.into()])
-            .expect("insert row");
-        txn.add(&path, vec![9i32.into(), 4i32.into()])
-            .expect("insert row");
+        txn.add(&path, vec![1i32, 2i32]).expect("insert row");
+        txn.add(&path, vec![2i32, 3i32]).expect("insert row");
+        txn.add(&path, vec![9i32, 4i32]).expect("insert row");
         txn.commit().expect("commit rows");
 
         let rule = enforced_rule(
@@ -281,7 +278,7 @@ mod tests {
             .expect("create table");
         let mut txn = store.transaction();
         for value in values {
-            txn.add(&path, vec![(*value).into()]).expect("insert row");
+            txn.add(&path, vec![(*value)]).expect("insert row");
         }
         txn.commit().expect("commit rows");
         (store, path)

@@ -150,12 +150,14 @@ impl TxnLiveValue {
     }
 }
 
-pub fn liven(v: WireValue) -> TxnLiveValue {
-    v.map_owned(TxnLiveRowId::from_existing)
+impl From<WireValue> for TxnLiveValue {
+    fn from(value: WireValue) -> Self {
+        value.map_owned(TxnLiveRowId::from_existing)
+    }
 }
 
-pub fn liven_all(vs: Vec<WireValue>) -> Vec<TxnLiveValue> {
-    vs.into_iter().map(liven).collect()
+pub fn empty_row() -> Vec<TxnLiveValue> {
+    Vec::new()
 }
 
 /// A temporary row ID that is valid only within a transaction.

@@ -81,7 +81,7 @@ fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i32)> {
 
 fn add_row(store: &mut Store, value: i32) -> Result<CommitHash, Box<dyn Error>> {
     let mut tx = store.transaction();
-    tx.add(&Path::from("T"), vec![value.into()])?;
+    tx.add(&Path::from("T"), vec![value])?;
     tx.commit().map_err(Into::into)
 }
 
@@ -197,7 +197,7 @@ async fn subduction_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
     type TestTransport = MessageTransport<ChannelTransport>;
 
     let (left_sd, _left_handler, left_listener, left_manager) =
-        SubductionBuilder::<_, _, _, _, _, 256>::new()
+        SubductionBuilder::<_, _, _, _, _>::new()
             .signer(MemorySigner::from_bytes(&[1; 32]))
             .storage(MemoryStorage::new(), Arc::new(OpenPolicy))
             .spawner(ChannelTokioSpawn)
@@ -205,7 +205,7 @@ async fn subduction_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
             .build::<Sendable, TestTransport>();
 
     let (right_sd, _right_handler, right_listener, right_manager) =
-        SubductionBuilder::<_, _, _, _, _, 256>::new()
+        SubductionBuilder::<_, _, _, _, _>::new()
             .signer(MemorySigner::from_bytes(&[2; 32]))
             .storage(MemoryStorage::new(), Arc::new(OpenPolicy))
             .spawner(ChannelTokioSpawn)
@@ -330,7 +330,7 @@ async fn subduction_websocket_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
     let server_peer_id = PeerId::from(server_signer.verifying_key());
 
     let (server_sd, _server_handler, server_listener, server_manager) =
-        SubductionBuilder::<_, _, _, _, _, 256>::new()
+        SubductionBuilder::<_, _, _, _, _>::new()
             .signer(server_signer)
             .storage(MemoryStorage::new(), Arc::new(OpenPolicy))
             .spawner(TrackedTokioSpawn::default())
@@ -352,7 +352,7 @@ async fn subduction_websocket_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
 
     let left_signer = MemorySigner::from_bytes(&[11; 32]);
     let (left_sd, _left_handler, left_listener, left_manager) =
-        SubductionBuilder::<_, _, _, _, _, 256>::new()
+        SubductionBuilder::<_, _, _, _, _>::new()
             .signer(left_signer.clone())
             .storage(MemoryStorage::new(), Arc::new(OpenPolicy))
             .spawner(WebSocketTokioSpawn)
@@ -364,7 +364,7 @@ async fn subduction_websocket_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
 
     let right_signer = MemorySigner::from_bytes(&[12; 32]);
     let (right_sd, _right_handler, right_listener, right_manager) =
-        SubductionBuilder::<_, _, _, _, _, 256>::new()
+        SubductionBuilder::<_, _, _, _, _>::new()
             .signer(right_signer.clone())
             .storage(MemoryStorage::new(), Arc::new(OpenPolicy))
             .spawner(WebSocketTokioSpawn)

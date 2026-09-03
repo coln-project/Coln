@@ -246,10 +246,8 @@ mod tests {
             .expect("create target table");
 
         let mut txn = store.transaction();
-        txn.add(&source, vec![7i32.into()])
-            .expect("insert source row");
-        txn.add(&target, vec![7i32.into()])
-            .expect("insert target row");
+        txn.add(&source, vec![7i32]).expect("insert source row");
+        txn.add(&target, vec![7i32]).expect("insert target row");
         txn.commit().expect("commit matching rows");
 
         let rule = enforced_rule(
@@ -343,7 +341,7 @@ mod tests {
         let compiled = compile_rule(&rule).expect("compile rule");
 
         let mut txn = store.transaction();
-        txn.add(&link, vec![10i32.into(), 20i32.into()])
+        txn.add(&link, vec![10i32, 20i32])
             .expect("insert referencing row");
         txn.commit().expect("commit referencing row");
 
@@ -362,9 +360,8 @@ mod tests {
         );
 
         let mut txn = store.transaction();
-        txn.add(&left, vec![10i32.into()]).expect("insert left row");
-        txn.add(&right, vec![20i32.into()])
-            .expect("insert right row");
+        txn.add(&left, vec![10i32]).expect("insert left row");
+        txn.add(&right, vec![20i32]).expect("insert right row");
         txn.commit().expect("commit referenced rows");
 
         assert!(check_rule(&store, &compiled).is_ok());
@@ -378,8 +375,7 @@ mod tests {
             .create_table(t.clone(), int_schema(&["c0", "c1"]))
             .expect("create table");
         let mut txn = store.transaction();
-        txn.add(&t, vec![5i32.into(), 5i32.into()])
-            .expect("insert row");
+        txn.add(&t, vec![5i32, 5i32]).expect("insert row");
         txn.commit().expect("commit row");
 
         let rule = enforced_rule(
@@ -421,8 +417,7 @@ mod tests {
             .create_table(t.clone(), int_schema(&["c0", "c1"]))
             .expect("create table");
         let mut txn = store.transaction();
-        txn.add(&t, vec![1i32.into(), 2i32.into()])
-            .expect("insert row");
+        txn.add(&t, vec![1i32, 2i32]).expect("insert row");
         txn.commit().expect("commit row");
 
         let rule = enforced_rule(

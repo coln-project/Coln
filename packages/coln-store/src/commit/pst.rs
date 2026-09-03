@@ -207,7 +207,7 @@ mod tests {
         let mut store = Store::try_from_ir(int_theory()).expect("store");
         let table = Path::from("T");
         let mut txn = store.transaction();
-        txn.add(&table, vec![99_i32.into()]).expect("add row");
+        txn.add(&table, vec![99_i32]).expect("add row");
         txn.commit().expect("commit");
 
         let expected = store
@@ -347,7 +347,7 @@ mod tests {
         let root = store.commits().root_commit().expect("root").hash();
         let table = Path::from("T");
         let mut txn = store.transaction();
-        txn.add(&table, vec![99_i32.into()]).expect("add row");
+        txn.add(&table, vec![99_i32]).expect("add row");
         let commit = txn.commit().expect("commit");
 
         let bytes = encode_store(&store).unwrap();

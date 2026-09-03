@@ -15,7 +15,7 @@ use crate::{
 
 use inner::TxnInner;
 pub(crate) use row_handle::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue};
-pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, liven_all};
+pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, empty_row};
 
 pub struct Transaction<'a> {
     inner: TxnInner,
@@ -33,10 +33,10 @@ impl<'a> Transaction<'a> {
 
     // TODO this API is a bit awkward to use, clients have to call .into() all
     // the time on their values
-    pub fn add(
+    pub fn add<V: Into<TxnLiveValue>>(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnLiveValue>,
+        values: Vec<V>,
     ) -> Result<TxnLiveRowId, StoreError> {
         self.inner.add(self.store, table, values)
     }
@@ -75,10 +75,10 @@ impl OwnedTransaction {
         }
     }
 
-    pub fn add(
+    pub fn add<V: Into<TxnLiveValue>>(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnLiveValue>,
+        values: Vec<V>,
     ) -> Result<TxnLiveRowId, StoreError> {
         self.inner.add(&self.store, table, values)
     }
@@ -100,9 +100,11 @@ impl OwnedTransaction {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::{ValidationError, WireValue};
+    use crate::txn::row_handle::empty_row;
 
     fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
         Schema {
@@ -138,7 +140,7 @@ mod tests {
             .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![42_i32.into()]).expect("add");
+        tx.add(&path, vec![42_i32]).expect("add");
 
         let (_hash, committed) = tx.commit().expect("commit");
         assert_eq!(committed.table_at(&path).expect("T").row_count(), 1);
@@ -154,15 +156,13 @@ mod tests {
             .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
-        let err = tx
-            .add(&Path::from("missing"), vec![1_i32.into()])
-            .unwrap_err();
+        let err = tx.add(&Path::from("missing"), vec![1_i32]).unwrap_err();
         assert!(matches!(
             err,
             StoreError::Validation(ValidationError::UnknownTable { .. })
         ));
 
-        let err = tx.add(&path, vec![1_i32.into(), 2_i32.into()]).unwrap_err();
+        let err = tx.add(&path, vec![1_i32, 2_i32]).unwrap_err();
         assert!(matches!(
             err,
             StoreError::Validation(ValidationError::ColumnCount { .. })
@@ -185,7 +185,7 @@ mod tests {
             .expect("create edges table");
 
         let mut tx = store.transaction();
-        let node_temp = tx.add(&nodes, vec![]).expect("add node");
+        let node_temp = tx.add(&nodes, empty_row()).expect("add node");
         tx.add(&edges, vec![TxnLiveValue::Id(node_temp)])
             .expect("add edge");
         let commit = tx.commit().expect("commit");
@@ -221,7 +221,7 @@ mod tests {
             .expect("create edges table");
 
         let mut tx = store.transaction();
-        let node = tx.add(&nodes, vec![]).expect("add node");
+        let node = tx.add(&nodes, empty_row()).expect("add node");
         let first_commit = tx.commit().expect("commit node");
 
         let node_id = node.row_id().expect("node handle finalized");
@@ -251,7 +251,7 @@ mod tests {
             )
             .expect("create edges table");
         let mut tx = store.transaction();
-        let node = tx.add(&nodes, vec![]).expect("add node");
+        let node = tx.add(&nodes, empty_row()).expect("add node");
         tx.abort();
         let err = node.row_id().expect_err("abort invalidates handle");
         assert!(matches!(
@@ -285,8 +285,9 @@ mod tests {
             .expect("create edges table");
 
         let mut tx = store.transaction();
-        let node = tx.add(&nodes, vec![]).expect("add first node");
-        tx.add(&nodes, vec![]).expect("add duplicate singleton row");
+        let node = tx.add(&nodes, empty_row()).expect("add first node");
+        tx.add(&nodes, empty_row())
+            .expect("add duplicate singleton row");
         let err = tx
             .commit()
             .expect_err("duplicate singleton row should fail");
@@ -326,13 +327,13 @@ mod tests {
         store.set_structural_index_for_test(&term, true);
 
         let mut tx = store.transaction();
-        let first = tx.add(&term, vec![7_i32.into()]).expect("add first term");
+        let first = tx.add(&term, vec![7_i32]).expect("add first term");
         tx.commit().expect("commit first term");
 
         // Structurally equal row: deduplicates into the first row's class.
         // Which id wins the merge depends on the commit hash ordering.
         let mut tx = store.transaction();
-        let second = tx.add(&term, vec![7_i32.into()]).expect("add equal term");
+        let second = tx.add(&term, vec![7_i32]).expect("add equal term");
         tx.commit().expect("commit equal term");
 
         let stored = store
@@ -366,7 +367,7 @@ mod tests {
         let root = store.commits().root_commit().expect("root commit").hash();
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![1i32.into()]).expect("add first row");
+        tx.add(&path, vec![1i32]).expect("add first row");
         let first = tx.commit().expect("first commit");
 
         assert!(store.commits().contains(&first));
@@ -377,7 +378,7 @@ mod tests {
         );
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![2i32.into()]).expect("add second row");
+        tx.add(&path, vec![2i32]).expect("add second row");
         let second = tx.commit().expect("second commit");
 
         assert!(store.commits().contains(&second));

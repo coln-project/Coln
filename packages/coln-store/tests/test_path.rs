@@ -9,7 +9,7 @@ use coln_store::{
     commit::{hash::CommitHash, pst},
     store::{Store, error::StoreError},
     table::{WireRowId, WireValue},
-    txn::liven_all,
+    txn::empty_row,
     value::Value,
 };
 use tracing_subscriber::EnvFilter;
@@ -49,13 +49,13 @@ fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreError> {
     let ge = Path::from("Path.G.E");
 
     let mut tx = store.transaction();
-    let gid1 = tx.add(&graphs, vec![])?;
-    let gid2 = tx.add(&graphs, vec![])?;
-    tx.add(&g0, vec![gid2.clone().into()])?;
-    tx.add(&g1, vec![gid2.clone().into()])?;
-    let v1 = tx.add(&gv, vec![gid1.clone().into()])?;
-    let v2 = tx.add(&gv, vec![gid1.clone().into()])?;
-    tx.add(&ge, vec![gid1.into(), v1.into(), v2.into()])?;
+    let gid1 = tx.add(&graphs, empty_row())?;
+    let gid2 = tx.add(&graphs, empty_row())?;
+    tx.add(&g0, vec![gid2.clone()])?;
+    tx.add(&g1, vec![gid2.clone()])?;
+    let v1 = tx.add(&gv, vec![gid1.clone()])?;
+    let v2 = tx.add(&gv, vec![gid1.clone()])?;
+    tx.add(&ge, vec![gid1, v1, v2])?;
     tx.commit()?;
 
     Ok(())
@@ -73,7 +73,7 @@ fn add_vertex_to_graph(store: &mut Store, graph_row: usize) -> Result<CommitHash
     );
 
     let mut tx = store.transaction();
-    tx.add(&gv, liven_all(vec![graph]))?;
+    tx.add(&gv, vec![graph])?;
     tx.commit()
 }
 
@@ -94,7 +94,7 @@ fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, StoreE
     );
 
     let mut txn = store.transaction();
-    txn.add(&ge, liven_all(vec![graph, v1, v2]))?;
+    txn.add(&ge, vec![graph, v1, v2])?;
     txn.commit()
 }
 
@@ -233,7 +233,7 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     assert_eq!(g1.row_count(), 0);
 
     let mut tx = store.transaction();
-    tx.add(&Path::from("Path.Graphs"), vec![])
+    tx.add(&Path::from("Path.Graphs"), empty_row())
         .expect("add graph row");
     let err = tx.commit().expect_err("missing g0 and g1");
     assert!(matches!(err, StoreError::Rule(_)));
@@ -285,8 +285,7 @@ fn test_fk() {
         counter: u32::MAX,
     });
     let mut tx = store.transaction();
-    tx.add(&ge, liven_all(vec![gid, vid, dummy_vid]))
-        .expect("add edge");
+    tx.add(&ge, vec![gid, vid, dummy_vid]).expect("add edge");
     let err = tx.commit().expect_err("missing v2");
 
     assert!(matches!(err, StoreError::Rule(_)));
@@ -325,7 +324,7 @@ fn test_divergent_commits_merge_between_stores() {
     // make two commits different
     {
         let mut tx = base.transaction();
-        tx.add(&Path::from("Path.Graphs"), vec![])
+        tx.add(&Path::from("Path.Graphs"), empty_row())
             .expect("add a graph");
         tx.commit().expect("commit second graph");
     }

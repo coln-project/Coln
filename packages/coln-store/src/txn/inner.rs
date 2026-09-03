@@ -68,15 +68,15 @@ impl TxnInner {
         Ok(temp_id)
     }
 
-    pub(super) fn add(
+    pub(super) fn add<V: Into<TxnLiveValue>>(
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnLiveValue>,
+        values: Vec<V>,
     ) -> Result<TxnLiveRowId, StoreError> {
         let txn_values = values
             .into_iter()
-            .map(|v| v.to_txn_cell_value(self.tx_id))
+            .map(|v| v.into().to_txn_cell_value(self.tx_id))
             .collect::<Result<Vec<TxnWireValue>, _>>()?;
         let temp_id = self.add_cell_values(store, table, txn_values)?;
         let handle = TxnLiveRowId::from_pending(self.tx_id, temp_id.0);

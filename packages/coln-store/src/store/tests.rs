@@ -121,7 +121,7 @@ fn single_int_store() -> Store {
 fn commit_int(store: &mut Store, value: i32) -> CommitHash {
     let path = Path::from("T");
     let mut tx = store.transaction();
-    tx.add(&path, vec![value.into()]).expect("add row");
+    tx.add(&path, vec![value]).expect("add row");
     tx.commit().expect("commit row")
 }
 
@@ -211,8 +211,8 @@ mod transactions {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, vec![1i32.into()]).expect("first add");
-        txn.add(&path, vec![2i32.into()]).expect("second add");
+        txn.add(&path, vec![1i32]).expect("first add");
+        txn.add(&path, vec![2i32]).expect("second add");
 
         txn.commit().expect("commit");
 
@@ -241,9 +241,8 @@ mod transactions {
 
         let err = {
             let mut txn = store.transaction();
-            txn.add(&path, vec![1i32.into()]).expect("first add");
-            txn.add(&Path::from("missing"), vec![2i32.into()])
-                .unwrap_err()
+            txn.add(&path, vec![1i32]).expect("first add");
+            txn.add(&Path::from("missing"), vec![2i32]).unwrap_err()
         };
 
         assert!(matches!(
@@ -272,8 +271,8 @@ mod transactions {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, vec![1i32.into()]).expect("first add");
-        txn.add(&path, vec![1i32.into()]).expect("second add");
+        txn.add(&path, vec![1i32]).expect("first add");
+        txn.add(&path, vec![1i32]).expect("second add");
         let err = txn.commit().unwrap_err();
 
         assert!(matches!(
@@ -302,7 +301,7 @@ mod transactions {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(&path, vec![42i32.into()]).expect("add");
+        txn.add(&path, vec![42i32]).expect("add");
         txn.commit().expect("commit");
 
         let t = store.table_at(&path).expect("T");
@@ -318,8 +317,7 @@ mod transactions {
         let packed_id_count = store.id_packer.len();
 
         let mut txn = store.transaction();
-        txn.add(&link, vec![10i32.into(), 20i32.into()])
-            .expect("add");
+        txn.add(&link, vec![10i32, 20i32]).expect("add");
         let err = txn.commit().unwrap_err();
 
         assert!(matches!(err, StoreError::Rule(_)));
@@ -334,8 +332,7 @@ mod transactions {
         let store = Store::try_from_ir(theory).expect("theory");
 
         let mut tx = OwnedTransaction::new(store);
-        tx.add(&link, vec![10_i32.into(), 20_i32.into()])
-            .expect("add");
+        tx.add(&link, vec![10_i32, 20_i32]).expect("add");
 
         let (err, recovered) = tx.commit().unwrap_err();
         assert!(matches!(err, StoreError::Rule(_)));
