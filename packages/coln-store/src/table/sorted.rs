@@ -16,7 +16,7 @@ pub type ColIdx = usize;
 // this interface which coln-integrator provides for you no matter if the data
 // your queries operate upon comes from coln-store or from coln-query.
 /// A read API for some snapshot of _sorted_, _column-oriented_ data.
-pub trait SortedTableSnapshot {
+pub trait SortedTable {
     type Value: PartialOrd;
 
     /// Number of columns.
@@ -103,7 +103,7 @@ pub trait SortedTableSnapshot {
     }
 }
 
-pub struct SortedTable<'a> {
+pub struct SortedCopy<'a> {
     table: TableRef<'a>,
     sort_order: &'a [usize],
 }
@@ -111,17 +111,17 @@ pub struct SortedTable<'a> {
 impl Store {
     /// Returns all the ways a table could be sorted by as a SortedTable
     /// which implements the `SortedTable` trait
-    pub fn sorted_snapshot_of(&self, oid: TableOid) -> Vec<SortedTable<'_>> {
+    pub fn sorted_snapshot_of(&self, oid: TableOid) -> Vec<SortedCopy<'_>> {
         let mut sorted_snapshots = vec![];
         if let Some(tr) = self.table(oid) {
-            let sort_by_rid = SortedTable {
+            let sort_by_rid = SortedCopy {
                 table: tr,
                 sort_order: &[0],
             };
             sorted_snapshots.push(sort_by_rid);
 
             for index_info in tr.indexes_meta() {
-                let sort_by_idnex = SortedTable {
+                let sort_by_idnex = SortedCopy {
                     table: tr,
                     sort_order: index_info.key_cols,
                 };
@@ -132,7 +132,7 @@ impl Store {
     }
 }
 
-impl<'a> SortedTableSnapshot for SortedTable<'a> {
+impl<'a> SortedTable for SortedCopy<'a> {
     type Value = table::CellValue;
 
     /// Number of columns, including rowid column
@@ -157,7 +157,7 @@ impl<'a> SortedTableSnapshot for SortedTable<'a> {
 mod tests {
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::store::Store;
-    use crate::table::sorted::SortedTableSnapshot;
+    use crate::table::sorted::SortedTable;
 
     // TODO: once we can distinguish tables that need rebuild from those that
     // do not, assert that only rebuild tables expose the structural index
