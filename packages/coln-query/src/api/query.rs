@@ -854,7 +854,7 @@ impl From<&ir::Path> for EntityRef {
 impl From<&ir::Lit> for Literal {
     fn from(value: &ir::Lit) -> Self {
         match value {
-            ir::Lit::Int { value } => Literal::Iint(*value),
+            ir::Lit::Int { value } => Literal::Iint((*value).into()),
             ir::Lit::String { value } => Literal::String(value.clone()),
         }
     }
