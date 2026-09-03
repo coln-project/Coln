@@ -10,7 +10,6 @@ pub(crate) enum Command {
     Schema { table: Option<String> },
     Ir,
     Tables,
-    Rules,
     Exit,
     Dump { table: String },
     Save { path: String },
@@ -54,13 +53,6 @@ pub(crate) fn parse_meta_command(input: &str) -> anyhow::Result<Command> {
                 Ok(Command::Tables)
             } else {
                 anyhow::bail!("usage: .tables")
-            }
-        }
-        ".rules" => {
-            if parts.len() == 1 {
-                Ok(Command::Rules)
-            } else {
-                anyhow::bail!("usage: .rules")
             }
         }
         ".schema" => match parts.as_slice() {

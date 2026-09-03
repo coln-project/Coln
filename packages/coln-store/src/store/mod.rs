@@ -6,7 +6,13 @@ pub mod error;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use tracing::{debug, info};
+use coln_query::api::{
+    ColnQuery,
+    deltas::StoreDelta,
+    transaction::{Prepare, TryCommitErr, TryCommitOk, Tx as QueryTx},
+    violations::ViolationsDelta,
+};
+use tracing::info;
 
 use crate::commit::Commit;
 use crate::commit::chunk::Chunk;
@@ -14,12 +20,9 @@ use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::id_packer::{IdPacker, IdPackerSnapshot};
-use crate::ir::{self, FlatRealm, RuleEntry};
+use crate::ir::{self, FlatRealm};
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
-use crate::solver::compile::{CompRule, CompileError};
-use crate::solver::validate::RuleViolation;
-use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreError};
 use crate::table::{
     CellValue, RowId, RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError,
@@ -34,11 +37,10 @@ pub struct Store {
     tables: HashMap<TableOid, Table>,
     id_packer: IdPacker,
     /// Source rule entries retained for persistence. Compiled form lives in `rules`.
-    rule_entries: Vec<ir::RuleEntry>,
-    /// Compiled rule for this instance; table schemas live only on each [`Table`].
-    rules: Vec<CompRule>,
+    ir: FlatRealm,
     commits: CommitGraph,
     rowing: rowing::Rowing,
+    cq: ColnQuery,
 }
 
 pub(crate) struct StoreSnapshot {
@@ -100,20 +102,25 @@ impl Rollback for Store {
 
 impl Store {
     // Constructors and basic accessors
+
+    /// # Panics
+    ///
+    /// If we fail to start Coln Query, which is probably a fatal problem
     pub fn new() -> Self {
-        let commits = Self::graph_with_root_commit(&FlatRealm {
+        let ir = FlatRealm {
             tables: Vec::new(),
             rules: Vec::new(),
-        })
-        .expect("empty root commit should build");
+        };
+        let commits = Self::graph_with_root_commit(&ir).expect("empty root commit should build");
+        let cq = ColnQuery::init(&ir).expect("start coln-query");
         Self {
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
             id_packer: IdPacker::new(),
-            rule_entries: vec![],
-            rules: vec![],
+            ir,
             commits,
             rowing: rowing::Rowing::new(),
+            cq,
         }
     }
 
@@ -147,16 +154,12 @@ impl Store {
         self.resolve_table(path).and_then(|oid| self.table(oid))
     }
 
-    pub fn rules(&self) -> &[CompRule] {
-        &self.rules
-    }
-
     pub fn table_count(&self) -> usize {
         self.tables.len()
     }
 
     pub fn rule_entries(&self) -> &[ir::RuleEntry] {
-        &self.rule_entries
+        &self.ir.rules
     }
 
     pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
@@ -223,17 +226,17 @@ impl Store {
             );
         }
 
-        let comp_rules = Store::compile_rules(&ir.rules)?;
+        let cq = ColnQuery::init(&ir)?;
         let commits = Self::graph_with_root_commit(&ir)?;
 
         Ok(Self {
             path_to_oid,
             tables: tables_map,
             id_packer: IdPacker::new(),
-            rule_entries: ir.rules,
-            rules: comp_rules,
+            ir,
             commits,
             rowing: rowing::Rowing::new(),
+            cq,
         })
     }
 }
@@ -251,25 +254,29 @@ impl Store {
 }
 
 impl Store {
-    // Dealing with rules
-    fn compile_rules(rules: &[RuleEntry]) -> Result<Vec<CompRule>, CompileError> {
-        debug!(rule_count = rules.len(), "compiling rules");
-        let comp = rules
-            .iter()
-            .map(solver::compile::compile_rule)
-            .collect::<Result<Vec<_>, CompileError>>()?;
-        debug!(compiled_rule_count = comp.len(), "compiled rules");
-        Ok(comp)
-    }
+    // Dealing with rules (by asking coln-query to do it)
 
-    pub fn check_rules(&self) -> Result<(), StoreError> {
-        debug!(rule_count = self.rules.len(), "checking rules");
-        self.rules()
-            .iter()
-            .map(|rule| solver::validate::check_rule(self, rule))
-            .collect::<Result<Vec<_>, Box<RuleViolation>>>()?;
-        debug!(rule_count = self.rules.len(), "all rules satisfied");
-        Ok(())
+    pub fn check_rules(
+        &mut self,
+        query_tx: QueryTx<Prepare>,
+    ) -> Result<ViolationsDelta, StoreError> {
+        match query_tx.try_commit(&mut self.cq) {
+            Ok(TryCommitOk::Pending(pending)) => {
+                let mut committed = pending.commit()?;
+                let monitored_constraints = committed.take_soft_violations();
+                if !monitored_constraints.is_empty() {
+                    tracing::warn!("monitored constraint violation {}", monitored_constraints);
+                }
+                Ok(monitored_constraints)
+            }
+            Ok(TryCommitOk::Rejected(mut rejected)) => {
+                let violations = rejected.take_hard_violations();
+                Err(error::RuleViolation::HardViolation(violations).into())
+            }
+            Err(TryCommitErr::TxApplyError(err)) | Err(TryCommitErr::RollbackError(err)) => {
+                Err(err.into())
+            }
+        }
     }
 }
 
@@ -471,24 +478,25 @@ impl Store {
     // Apply a commit + and fixpoint rebuilding + rule checking
     // This function is doing the actual work, after a dozen levels of indirection.
     fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
-        let commit = self.apply_commit_ready(commit)?;
-        self.rebuild_to_fixpoint()?;
-        self.check_rules()?;
+        let mut query_tx = QueryTx::new(StoreDelta::empty());
+        let commit = self.apply_commit_ready(commit, &mut query_tx)?;
+        self.rebuild_to_fixpoint(&mut query_tx)?;
+        self.check_rules(query_tx)?;
         self.record_in_commit_graph(commit);
         Ok(())
     }
 
     /// Rebuild until a pass displaces no further ids, so a commit that merged
     /// nothing does no rebuild work at all.
-    fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreError> {
+    fn rebuild_to_fixpoint(&mut self, query_tx: &mut QueryTx<Prepare>) -> Result<(), StoreError> {
         while self.rowing.has_displaced() {
-            self.rebuild_one()?;
+            self.rebuild_one(query_tx)?;
             tracing::debug!("finished one iteration of rebuilding");
         }
         Ok(())
     }
 
-    fn rebuild_one(&mut self) -> Result<(), StoreError> {
+    fn rebuild_one(&mut self, query_tx: &mut QueryTx<Prepare>) -> Result<(), StoreError> {
         for tbl in self.tables.values_mut() {
             tbl.rebuild(&self.rowing, &self.id_packer);
         }
@@ -496,13 +504,17 @@ impl Store {
         // clear up the displaced table because the changes have all been staged.
         self.rowing.clear_displaced();
         let affected: Vec<TableOid> = self.tables.keys().copied().collect();
-        self.apply_staged_ops(&affected)?;
+        self.apply_staged_ops(&affected, query_tx)?;
         Ok(())
     }
 
     // Apply a commit with its deps checked to be satisfied
     // The commit data itself might still violate rules, primary key constraints, etc
-    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<Commit<'static>, StoreError> {
+    fn apply_commit_ready(
+        &mut self,
+        cmt: Commit<'static>,
+        query_tx: &mut QueryTx<Prepare>,
+    ) -> Result<Commit<'static>, StoreError> {
         // TODO resolved_ops need to decode data, there is code path which decodes
         // to get ops immediately after a commit has been encoded. Consider optimise this.
 
@@ -514,7 +526,7 @@ impl Store {
         // applying one of the concurrent commits.
 
         let PrecheckedCommit { ops, original } = self.precheck_commit(cmt)?;
-        self.apply_commit_ops(ops)?;
+        self.apply_commit_ops(ops, query_tx)?;
         Ok(original)
     }
 
@@ -522,10 +534,14 @@ impl Store {
     /// the data conforms the the schema type definitions.
     /// But it might not follow all the rule definitions, it might also violate
     /// primary key constraints after hashconsing
-    fn apply_commit_ops(&mut self, ops: Vec<Op>) -> Result<(), StoreError> {
+    fn apply_commit_ops(
+        &mut self,
+        ops: Vec<Op>,
+        query_tx: &mut QueryTx<Prepare>,
+    ) -> Result<(), StoreError> {
         let op_count = ops.len();
         let affected = self.stage_commit_ops(ops);
-        self.apply_staged_ops(&affected)?;
+        self.apply_staged_ops(&affected, query_tx)?;
 
         info!(op_count, "applied batch");
         Ok(())
@@ -546,12 +562,18 @@ impl Store {
         affected.into_iter().collect()
     }
 
-    fn apply_staged_ops(&mut self, tables: &[TableOid]) -> Result<(), StoreError> {
+    fn apply_staged_ops(
+        &mut self,
+        tables: &[TableOid],
+        query_tx: &mut QueryTx<Prepare>,
+    ) -> Result<(), StoreError> {
         for oid in tables {
-            self.tables
+            let ops = self
+                .tables
                 .get_mut(oid)
                 .expect("staged table exists")
                 .apply_staged_ops(&mut self.rowing)?;
+            query_tx.insert(std::iter::once(ops));
         }
         self.rowing.apply_unions(&self.id_packer);
         Ok(())
@@ -740,7 +762,7 @@ impl Store {
         tables.sort_by_key(|(oid, _)| *oid);
         let ir = FlatRealm {
             tables: tables.into_iter().map(|(_, entry)| entry).collect(),
-            rules: self.rule_entries.clone(),
+            rules: self.rule_entries().to_vec(),
         };
         self.commits = Self::graph_with_root_commit(&ir)?;
         Ok(oid)
@@ -755,12 +777,6 @@ impl Store {
             .map(|oid| self.tables[&oid].dump(&self.id_packer))
             .collect::<Vec<_>>()
             .join("\n\n")
-    }
-
-    #[cfg(test)]
-    fn apply_ops_and_rebuild(&mut self, ops: Vec<Op>) -> Result<(), StoreError> {
-        self.apply_commit_ops(ops)?;
-        self.rebuild_to_fixpoint()
     }
 
     // TODO remove this when we have schema level structural identity

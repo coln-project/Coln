@@ -99,7 +99,7 @@ pub(crate) mod test_support {
 }
 
 use super::*;
-use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema};
+use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
 
 fn single_int_store() -> Store {
     let path = Path::from("T");
@@ -514,42 +514,48 @@ mod rowing {
         }
     }
 
+    fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<Op>) -> Result<(), StoreError> {
+        let mut query_tx = QueryTx::new(StoreDelta::empty());
+        store.apply_commit_ops(ops, &mut query_tx)?;
+        store.rebuild_to_fixpoint(&mut query_tx)
+    }
+
     /// When a smaller structurally equal row swaps a class's canonical id, the
     /// rebuild renames the row in its own table and rewrites the id cells of
     /// every table that references it.
-    #[test]
-    fn swap_rewrites_referencing_table_cells() {
-        let mut store = structural_store();
-
+    #[rstest]
+    fn swap_rewrites_referencing_table_cells(mut structural_store: Store) {
         let t_high = row_id_from(2, 0);
-        store
-            .apply_ops_and_rebuild(vec![add_op(
-                &store,
-                "Term",
-                t_high,
-                vec![CellValue::Int(7)],
-            )])
-            .unwrap();
+        let ops = vec![add_op(
+            &structural_store,
+            "Term",
+            t_high,
+            vec![CellValue::Int(7)],
+        )];
+        apply_ops_and_rebuild(&mut structural_store, ops).unwrap();
 
         let plus = row_id_from(3, 0);
         let note = row_id_from(4, 0);
-        store
-            .apply_ops_and_rebuild(vec![
-                add_op(
-                    &store,
-                    "Plus",
-                    plus,
-                    vec![CellValue::Id(t_high), CellValue::Id(t_high)],
-                ),
-                add_op(&store, "Note", note, vec![CellValue::Id(t_high)]),
-            ])
-            .unwrap();
+        let ops = vec![
+            add_op(
+                &structural_store,
+                "Plus",
+                plus,
+                vec![CellValue::Id(t_high), CellValue::Id(t_high)],
+            ),
+            add_op(&structural_store, "Note", note, vec![CellValue::Id(t_high)]),
+        ];
+        apply_ops_and_rebuild(&mut structural_store, ops).unwrap();
 
         // A smaller equal term swaps the class canonical from t_high to t_low.
         let t_low = row_id_from(1, 0);
-        store
-            .apply_ops_and_rebuild(vec![add_op(&store, "Term", t_low, vec![CellValue::Int(7)])])
-            .unwrap();
+        let ops = vec![add_op(
+            &structural_store,
+            "Term",
+            t_low,
+            vec![CellValue::Int(7)],
+        )];
+        apply_ops_and_rebuild(&mut structural_store, ops).unwrap();
 
         // The stored row is now t_low; the stale id t_high resolves to it.
         let term_path = Path::from("Term");
@@ -557,21 +563,24 @@ mod rowing {
             row_id: t_low,
             values: vec![CellValue::Int(7)],
         });
-        assert_eq!(store.row_by_id(&term_path, t_low), term_view);
-        assert_eq!(store.row_by_id(&term_path, t_high), term_view);
+        assert_eq!(structural_store.row_by_id(&term_path, t_low), term_view);
+        assert_eq!(structural_store.row_by_id(&term_path, t_high), term_view);
         // An id that was never observed still misses.
-        assert_eq!(store.row_by_id(&term_path, row_id_from(9, 0)), None);
+        assert_eq!(
+            structural_store.row_by_id(&term_path, row_id_from(9, 0)),
+            None
+        );
 
         // Both referencing tables now name the new canonical id.
         assert_eq!(
-            store.row_by_id(&Path::from("Plus"), plus),
+            structural_store.row_by_id(&Path::from("Plus"), plus),
             Some(RowView {
                 row_id: plus,
                 values: vec![CellValue::Id(t_low), CellValue::Id(t_low)],
             })
         );
         assert_eq!(
-            store.row_by_id(&Path::from("Note"), note),
+            structural_store.row_by_id(&Path::from("Note"), note),
             Some(RowView {
                 row_id: note,
                 values: vec![CellValue::Id(t_low)],
@@ -596,23 +605,23 @@ mod rowing {
         let t_high = row_id_from(2, 0);
         let keep = row_id_from(3, 0);
         let dup = row_id_from(4, 0);
-        store
-            .apply_ops_and_rebuild(vec![
-                add_op(&store, "Term", t_low, vec![CellValue::Int(7)]),
-                add_op(&store, "Term", t_high, vec![CellValue::Int(7)]),
-                add_op(
-                    &store,
-                    "Plus",
-                    keep,
-                    vec![CellValue::Id(t_high), CellValue::Id(t_high)],
-                ),
-                add_op(
-                    &store,
-                    "Plus",
-                    dup,
-                    vec![CellValue::Id(t_high), CellValue::Id(t_high)],
-                ),
-            ])
+        let ops = vec![
+            add_op(&store, "Term", t_low, vec![CellValue::Int(7)]),
+            add_op(&store, "Term", t_high, vec![CellValue::Int(7)]),
+            add_op(
+                &store,
+                "Plus",
+                keep,
+                vec![CellValue::Id(t_high), CellValue::Id(t_high)],
+            ),
+            add_op(
+                &store,
+                "Plus",
+                dup,
+                vec![CellValue::Id(t_high), CellValue::Id(t_high)],
+            ),
+        ];
+        apply_ops_and_rebuild(&mut store, ops)
             .expect("duplicates merge rather than failing the commit");
 
         let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
@@ -643,19 +652,19 @@ mod rowing {
         let t_high = row_id_from(2, 0);
         let u_high = row_id_from(2, 1);
         let plus = row_id_from(3, 0);
-        store
-            .apply_ops_and_rebuild(vec![
-                add_op(&store, "Term", t_low, vec![CellValue::Int(7)]),
-                add_op(&store, "Term", u_low, vec![CellValue::Int(8)]),
-                add_op(&store, "Term", t_high, vec![CellValue::Int(7)]),
-                add_op(&store, "Term", u_high, vec![CellValue::Int(8)]),
-                add_op(
-                    &store,
-                    "Plus",
-                    plus,
-                    vec![CellValue::Id(t_high), CellValue::Id(u_high)],
-                ),
-            ])
+        let ops = vec![
+            add_op(&store, "Term", t_low, vec![CellValue::Int(7)]),
+            add_op(&store, "Term", u_low, vec![CellValue::Int(8)]),
+            add_op(&store, "Term", t_high, vec![CellValue::Int(7)]),
+            add_op(&store, "Term", u_high, vec![CellValue::Int(8)]),
+            add_op(
+                &store,
+                "Plus",
+                plus,
+                vec![CellValue::Id(t_high), CellValue::Id(u_high)],
+            ),
+        ];
+        apply_ops_and_rebuild(&mut store, ops)
             .expect("duplicates merge rather than failing the commit");
 
         let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
@@ -1011,44 +1020,5 @@ mod commits {
         assert_eq!(table.cell_at(0, 0), Some(CellValue::Int(1)));
         assert_eq!(table.cell_at(1, 0), Some(CellValue::Int(2)));
         assert_eq!(target.heads(), vec![second]);
-    }
-}
-
-mod errors {
-    use super::*;
-
-    #[test]
-    fn apply_error_from_inner_errors() {
-        let validation = StoreError::from(ValidationError::DuplicatePrimaryKey);
-        assert!(matches!(
-            validation,
-            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
-        ));
-
-        let compile = StoreError::from(CompileError::UnsupportedTerm);
-        assert!(matches!(
-            compile,
-            StoreError::Compile(CompileError::UnsupportedTerm)
-        ));
-
-        let compiled_rule = solver::compile::CompRule {
-            path: Path::from("T.total"),
-            rule_variant: RuleVariant::Enforced,
-            vars: vec![],
-            antecedent: solver::compile::CompProp::And(vec![]),
-            consequent: solver::compile::CompProp::And(vec![]),
-            tables: vec![Path::from("T")],
-        };
-        let violation = RuleViolation {
-            rule: compiled_rule,
-            cause: solver::validate::ViolationCause::MissingAtom(solver::compile::CompAtom {
-                table: Path::from("T"),
-                row_id: None,
-                values: vec![],
-            }),
-            binding: vec![],
-        };
-        let rule = StoreError::from(Box::new(violation));
-        assert!(matches!(rule, StoreError::Rule(_)));
     }
 }
