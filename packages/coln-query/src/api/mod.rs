@@ -10,7 +10,7 @@ use crate::{
         deltas::{DerivedDataDelta, StoreDelta, TableDelta, ZRowIterExt},
         error::ColnQueryError,
         store::TxStore,
-        transaction::{TxOutcome, UnsafeTxOutcome},
+        transaction::{DataDelta, TxOutcome},
         violations::{ViolationsDelta, ViolationsSet},
     },
     error::{QueryEngineError, RuntimeError},
@@ -110,9 +110,9 @@ impl ColnQuery {
     /// violated without notice. If this returns an `Err`, the engine is in
     /// an unrecoverable state and it indicates a genuine bug. [`ColnQuery`]
     /// has to be recreated to recover from this.
-    pub fn unsafe_apply(&mut self, delta: StoreDelta) -> Result<UnsafeTxOutcome, ColnQueryError> {
+    pub fn unsafe_apply(&mut self, delta: StoreDelta) -> Result<DataDelta, ColnQueryError> {
         self.internal_apply(delta)?;
-        UnsafeTxOutcome::try_from(self.interpret_outputs()?)
+        Ok(DataDelta::try_from(self.interpret_outputs()?)?)
     }
     fn internal_apply(&mut self, delta: StoreDelta) -> Result<(), QueryEngineError> {
         for delta in delta.into_table_deltas() {
@@ -188,13 +188,10 @@ impl ColnQuery {
         if !hard_violations.is_empty() {
             return Ok(TxOutcome::HardViolationsSet(hard_violations));
         }
-        if !soft_violations.is_empty() {
-            return Ok(TxOutcome::SoftViolationsDelta(
-                derived_data_delta,
-                soft_violations,
-            ));
-        }
-        Ok(TxOutcome::DerivedDataDelta(derived_data_delta))
+        Ok(TxOutcome::DerivedDataDelta(DataDelta::new(
+            derived_data_delta,
+            soft_violations,
+        )))
     }
 }
 
@@ -306,12 +303,11 @@ mod test {
         let trusted_history = StoreDelta::empty();
 
         match coln_query.unsafe_apply(trusted_history) {
-            Ok(UnsafeTxOutcome::DerivedDataDelta(derived_data_delta)) => {
-                // Update coln-store with the derived delta.
-            }
-            Ok(UnsafeTxOutcome::SoftViolationsDelta(derived_data_delta, soft_violations)) => {
+            Ok(mut data_delta) => {
                 // Update coln-store with the derived delta and report back the
-                // soft violations of monitored rules.
+                // delta of soft violations caused by monitored rules.
+                let derived_data_delta = data_delta.take_derived_data_delta();
+                let soft_violations_delta = data_delta.take_soft_violations();
             }
             Err(err) => {
                 // This is bad: If it is an UnsafeApplyError, a hard constraint

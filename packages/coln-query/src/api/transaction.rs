@@ -5,10 +5,9 @@
 //! An interface for a [Transaction](Tx). A transaction can be in exactly one
 //! state of [Prepare], [Pending], [Committed], [Aborted], [Rejected].
 
-use crate::api::error::{ColnQueryError, UnsafeApplyError};
-
 use super::{
     deltas::{DerivedDataDelta, StoreDelta, TableDelta},
+    error::UnsafeApplyError,
     store::TxStore,
     violations::{ViolationsDelta, ViolationsSet},
 };
@@ -80,8 +79,7 @@ pub struct Prepare {
 #[derive(Debug)]
 pub struct Pending<'a, Store: TxStore> {
     store: RollbackGuard<'a, Store>,
-    derived_data_delta: DerivedDataDelta,
-    soft_violations: ViolationsDelta,
+    delta: DataDelta,
 }
 
 /// Rolls the store back when dropped, unless it has been
@@ -131,8 +129,7 @@ impl<Store: TxStore> Drop for RollbackGuard<'_, Store> {
 /// is possible anymore.
 #[derive(Debug)]
 pub struct Committed {
-    derived_data_delta: DerivedDataDelta,
-    soft_violations: ViolationsDelta,
+    delta: DataDelta,
 }
 
 /// The transaction is committable in theory, that is, it does _not_ violate any
@@ -150,75 +147,73 @@ pub struct Rejected {
 
 /// The outcomes that can happen if updates are applied to the store:
 ///
-/// 1. [`Self::DerivedDataDelta`], if no constraints are violated.
+/// 1. [`Self::DerivedDataDelta`], if no hard constraints are violated (but
+///    possibly soft constraints).
 /// 2. [`Self::HardViolationsSet`], if hard constraints are violated.
-/// 3. [`Self::SoftViolationsDelta`], if monitored constraints are violated.
 ///
-/// We treat constraint violations as perfectly normal use and report them back
-/// as part of the `Ok` case of a `Result` and reserve the `Err` case for hard
-/// engine errors.
+/// We treat hard constraint violations as perfectly normal use and report them
+/// back as part of the `Ok` case of a `Result` and reserve the `Err` case
+/// for hard engine errors.
 ///
 /// # A set on one arm, a delta on the other
 ///
 /// [`HardViolationsSet`](Self::HardViolationsSet) reports the violations that
-/// *exist*. [`SoftViolationsDelta`](Self::SoftViolationsDelta) reports how the
-/// monitored violations *changed*. The rows are the same shape either way, which
-/// is why they are [two types](super::violations) rather than one — and which of
-/// the two a rule's violations carry follows from what the engine does when one
-/// occurs:
+/// *exist*. [`DataDelta`](Self::DerivedDataDelta) reports how the monitored
+/// violations *changed*. The rows are the same shape either way, which
+/// is why they are [two types](super::violations) rather than one.
+/// Which of the two a rule's violations carry follows from what the engine
+/// does when one occurs:
 ///
-/// A transaction violating an enforced constraint is rolled back, so the set of
-/// those violations is empty after every committed transaction. Whatever the
-/// engine reports is therefore measured against nothing, which makes it the
-/// whole set.
+/// A transaction violating an enforced (hard) constraint is rolled back,
+/// so the set of those violations is empty after every committed transaction.
+/// Whatever the engine reports is therefore measured against nothing,
+/// which makes it the whole set.
 ///
-/// A monitored violation is tolerated and committed, so *that* set accumulates
-/// across transactions, and the engine reports it relative to what was already
-/// there: a positive [`ZWeight`](super::deltas::ZWeight) is a violation that
-/// appeared, a negative one a violation this transaction resolved. Which is the
-/// right shape, because the engine does not keep the set — the caller does, and
-/// a caller can only maintain one if the retractions reach it. To know whether
-/// any monitored violation is currently outstanding, apply these deltas to your
-/// own set and ask *it*; the absence of a `SoftViolationsDelta` outcome means
-/// nothing changed, not that nothing is violated.
+/// A monitored (soft) violation is tolerated and committed, so *that* set
+/// accumulates across transactions, and the engine reports it relative to what
+/// was already there: a positive [`ZWeight`](super::deltas::ZWeight) is a
+/// violation that appeared, a negative one a violation this transaction resolved.
+/// Which is the right shape, because the engine does not keep the set
+/// (the caller does, and a caller can only maintain one if needed).
+/// To know whether any monitored violation is currently outstanding,
+/// apply these deltas to your own set and ask *it* by integrating over the
+/// respective `zweight`s.
 pub enum TxOutcome {
     /// All constraints are met and updates in derived data are communicated
-    /// back.
-    DerivedDataDelta(DerivedDataDelta),
+    /// back next to updates in the soft violations produced by monitored rules.
+    DerivedDataDelta(DataDelta),
     /// Enforced constraints are violated. The violations, in full, as a set.
     HardViolationsSet(ViolationsSet),
-    /// The monitored violations changed. Since they only issue a warning but are
-    /// tolerated in general, we nevertheless apply the transaction, obtain the
-    /// derived data delta, and report the change back, including violations.
-    SoftViolationsDelta(DerivedDataDelta, ViolationsDelta),
 }
 
-/// Unlike [`TxOutcome`] this omits the case of [`TxOutcome::HardViolationsSet`]
-/// because the transaction data is assumed to have been validated in some
-/// previous run(s).
-pub enum UnsafeTxOutcome {
-    /// All constraints are met and updates in derived data are communicated
-    /// back.
-    DerivedDataDelta(DerivedDataDelta),
-    /// The monitored violations changed. A delta, not a set (see
-    /// [`TxOutcome::SoftViolationsDelta`]).
-    SoftViolationsDelta(DerivedDataDelta, ViolationsDelta),
+#[derive(Debug, Clone)]
+pub struct DataDelta {
+    derived: DerivedDataDelta,
+    soft_violations: ViolationsDelta,
 }
 
-impl TryFrom<TxOutcome> for UnsafeTxOutcome {
-    type Error = ColnQueryError;
+impl DataDelta {
+    pub fn new(derived: DerivedDataDelta, soft_violations: ViolationsDelta) -> Self {
+        Self {
+            derived,
+            soft_violations,
+        }
+    }
+    pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta {
+        std::mem::take(&mut self.derived)
+    }
+    pub fn take_soft_violations(&mut self) -> ViolationsDelta {
+        std::mem::take(&mut self.soft_violations)
+    }
+}
 
-    fn try_from(value: TxOutcome) -> Result<Self, Self::Error> {
-        match value {
-            TxOutcome::HardViolationsSet(violations) => {
-                Err(ColnQueryError::UnsafeApply(UnsafeApplyError { violations }))
-            }
-            TxOutcome::SoftViolationsDelta(derived_data_delta, soft_violations) => Ok(
-                UnsafeTxOutcome::SoftViolationsDelta(derived_data_delta, soft_violations),
-            ),
-            TxOutcome::DerivedDataDelta(derived_data_delta) => {
-                Ok(UnsafeTxOutcome::DerivedDataDelta(derived_data_delta))
-            }
+impl TryFrom<TxOutcome> for DataDelta {
+    type Error = UnsafeApplyError;
+
+    fn try_from(outcome: TxOutcome) -> Result<Self, Self::Error> {
+        match outcome {
+            TxOutcome::DerivedDataDelta(delta) => Ok(delta),
+            TxOutcome::HardViolationsSet(violations) => Err(UnsafeApplyError { violations }),
         }
     }
 }
@@ -228,8 +223,8 @@ pub enum TryCommitOk<'a, Store: TxStore> {
     Rejected(Tx<Rejected>),
 }
 
+#[cfg(test)]
 impl<'a, Store: TxStore + std::fmt::Debug> TryCommitOk<'a, Store> {
-    #[cfg(test)]
     pub fn expect_pending_and_commit(self) -> Tx<Committed> {
         match self {
             TryCommitOk::Pending(pending) => pending.commit().expect("valid tx"),
@@ -241,7 +236,6 @@ impl<'a, Store: TxStore + std::fmt::Debug> TryCommitOk<'a, Store> {
             }
         }
     }
-    #[cfg(test)]
     pub fn expect_rejected(self) -> Tx<Rejected> {
         match self {
             TryCommitOk::Rejected(rejected) => rejected,
@@ -296,8 +290,7 @@ impl Tx<Prepare> {
             TxOutcome::DerivedDataDelta(delta) => Ok(TryCommitOk::Pending(Tx {
                 state: Pending {
                     store: RollbackGuard::armed(store),
-                    derived_data_delta: delta,
-                    soft_violations: ViolationsDelta::empty(),
+                    delta,
                 },
             })),
             TxOutcome::HardViolationsSet(violations) => {
@@ -306,13 +299,6 @@ impl Tx<Prepare> {
                     state: Rejected { violations },
                 }))
             }
-            TxOutcome::SoftViolationsDelta(delta, violations) => Ok(TryCommitOk::Pending(Tx {
-                state: Pending {
-                    store: RollbackGuard::armed(store),
-                    derived_data_delta: delta,
-                    soft_violations: violations,
-                },
-            })),
         }
     }
 }
@@ -321,11 +307,7 @@ impl<Store: TxStore> Tx<Pending<'_, Store>> {
     pub fn commit(self) -> Result<Tx<Committed>, Store::Error> {
         // Plain destructuring: `Pending` has no `Drop` of its own, only its
         // guard field has.
-        let Pending {
-            mut store,
-            derived_data_delta,
-            soft_violations,
-        } = self.state;
+        let Pending { mut store, delta } = self.state;
         // The guard stays armed across the commit, so a commit that fails is
         // undone when the guard drops on the way out — a half-committed
         // transaction is never left behind. Only a commit that succeeded has
@@ -333,10 +315,7 @@ impl<Store: TxStore> Tx<Pending<'_, Store>> {
         store.store().commit()?;
         store.disarm();
         Ok(Tx {
-            state: Committed {
-                derived_data_delta,
-                soft_violations,
-            },
+            state: Committed { delta },
         })
     }
     pub fn abort(self) -> Result<Tx<Aborted>, Store::Error> {
@@ -355,10 +334,10 @@ impl<Store: TxStore> Tx<Pending<'_, Store>> {
 
 impl Tx<Committed> {
     pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta {
-        std::mem::take(&mut self.state.derived_data_delta)
+        self.state.delta.take_derived_data_delta()
     }
     pub fn take_soft_violations(&mut self) -> ViolationsDelta {
-        std::mem::take(&mut self.state.soft_violations)
+        self.state.delta.take_soft_violations()
     }
 }
 
