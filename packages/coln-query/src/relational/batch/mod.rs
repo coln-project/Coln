@@ -4,6 +4,11 @@
 
 //! A batch backend optimized for efficient evaluation of non-binary joins.
 
+// Test-only until the production dependency direction between coln-query
+// and coln-batch is settled (see the dev-dependency note in Cargo.toml).
+#[cfg(test)]
+mod lowering;
+
 use super::{Backend, Runtime};
 use crate::{
     api::deltas::ZRow,
