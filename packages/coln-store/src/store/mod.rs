@@ -177,7 +177,7 @@ impl Store {
         Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
     }
 
-    // TODO delete this
+    // Used by txn to finalise live ids
     pub(crate) fn canonical_row_id(&self, row_id: WireRowId) -> Option<WireRowId> {
         let packed = self.id_packer.lookup_row_id(row_id)?;
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
