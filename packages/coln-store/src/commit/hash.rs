@@ -12,6 +12,7 @@ pub(crate) const HASH_SIZE: usize = 32;
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize, Type)]
 pub struct CommitHash(
     #[serde(with = "hex::serde")]
+    #[specta(type = String)]
     pub [u8; HASH_SIZE]
 );
 
