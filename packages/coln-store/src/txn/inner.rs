@@ -55,9 +55,11 @@ impl TxnInner {
         table: &ir::Path,
         values: Vec<TxnWireValue>,
     ) -> Result<TempRowId, StoreError> {
-        let t = store.table_at(table).ok_or(ValidationError::UnknownTable {
-            path: table.clone(),
-        })?;
+        let t = store
+            .table_at_inner(table)
+            .ok_or(ValidationError::UnknownTable {
+                path: table.clone(),
+            })?;
         t.validate_column_count(values.len())?;
         let temp_id = self.next_id();
         self.pending.push(PendingOp::Add {

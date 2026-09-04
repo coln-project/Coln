@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use crate::{
     store::Store,
-    table::{self, TableOid, TableRef},
+    table::{self, TableHandle, TableOid},
 };
 
 pub type RowIdx = usize;
@@ -104,7 +104,7 @@ pub trait SortedTableSnapshot {
 }
 
 pub struct SortedTable<'a> {
-    table: TableRef<'a>,
+    table: TableHandle<'a>,
     sort_order: &'a [usize],
 }
 

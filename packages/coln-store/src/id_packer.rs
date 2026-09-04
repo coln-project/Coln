@@ -88,6 +88,9 @@ impl IdPacker {
     pub(crate) fn len(&self) -> usize {
         self.dict.hashes().len()
     }
+
+    // TODO we should have a method to remove a hash from dictionary? For example
+    // when we remove something from the table
 }
 
 impl Rollback for IdPacker {

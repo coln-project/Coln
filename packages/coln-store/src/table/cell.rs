@@ -116,9 +116,9 @@ impl fmt::Display for WireValue {
 /// which depends on dictionary insertion order. Deterministic ordering across
 /// stores must compare unpacked [`RowId`]s.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
-pub(crate) struct PackedRowId {
-    pub(crate) commit_idx: u32,
-    pub(crate) counter: u32,
+pub struct PackedRowId {
+    pub commit_idx: u32,
+    pub counter: u32,
 }
 
 impl ColIndex for PackedRowId {

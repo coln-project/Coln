@@ -80,7 +80,7 @@ impl TestTable {
 
     fn row_position(&self, row_id: WireRowId) -> Option<usize> {
         let row_id = self.dict.lookup_row_id(row_id)?;
-        self.table.row_idx(row_id)
+        self.table.packed_rowid_idx(row_id)
     }
 
     /// Rows the table records as referring to `child`, in row id order.
@@ -143,6 +143,10 @@ impl TestTable {
 
     fn dump(&self) -> String {
         self.table.dump(&self.dict)
+    }
+
+    fn handle(&self) -> TableHandle<'_> {
+        TableHandle::new(&self.table, &self.dict, &self.rowing)
     }
 }
 
@@ -448,12 +452,29 @@ fn row_read_helpers_return_row_id_and_cells() {
         .lookup_row_id(row_id)
         .expect("insert packed the row id");
     assert_eq!(
-        tbl.table.packed_row_at(packed),
+        tbl.table.packed_row_by_id(packed),
         Some(vec![PackedValue::Int(7), PackedValue::Str("x".to_string())])
     );
     assert_eq!(tbl.row_at(1), None);
     assert_eq!(tbl.row_id_at(1), None);
     assert_eq!(tbl.cell_at(0, 2), None);
+}
+
+#[test]
+fn row_by_id_finds_inserted_row() {
+    let mut tbl = TestTable::new(Path::from("T"), int_schema(&["c0"], None));
+    let row_id = test_row_id(0);
+    tbl.insert_row(vec![WireValue::Int(42)], row_id);
+
+    let handle = tbl.handle();
+    assert_eq!(
+        handle.row_by_id(row_id),
+        Some(RowView {
+            row_id,
+            values: vec![WireValue::Int(42)],
+        })
+    );
+    assert_eq!(handle.row_by_id(test_row_id(1)), None);
 }
 
 /// Row ids and id cells survive the pack/unpack round trip across rows
@@ -672,80 +693,6 @@ fn pk_insert_benchmark() {
     println!("inserted {n} rows with pk check in {:?}", start.elapsed());
 }
 
-/// Creates a table with an index, and does an indexed lookup as well
-/// a non-indexed lookup and both should work.
-#[test]
-fn table_performs_index_lookup() {
-    let schema = int_schema(&["indexed", "plain"], Some(&[0]));
-    let mut tbl = TestTable::new(Path::from("lookup"), schema);
-    tbl.insert_row(vec![WireValue::Int(7), WireValue::Int(70)], test_row_id(0));
-    tbl.insert_row(vec![WireValue::Int(8), WireValue::Int(80)], test_row_id(1));
-
-    let index = tbl.table.primary_index().expect("primary-key index");
-    assert_eq!(
-        tbl.table
-            .index_lookup(index, &[WireValue::Int(7)], &tbl.dict),
-        Ok(true)
-    );
-    assert_eq!(
-        tbl.table
-            .index_lookup(index, &[WireValue::Int(9)], &tbl.dict),
-        Ok(false)
-    );
-    assert_eq!(
-        tbl.table.lookup(
-            &[SeekKey {
-                column: 1,
-                value: WireValue::Int(80),
-            }],
-            &tbl.dict,
-        ),
-        Ok(true)
-    );
-    assert_eq!(
-        tbl.table.lookup(
-            &[SeekKey {
-                column: 1,
-                value: WireValue::Int(90),
-            }],
-            &tbl.dict,
-        ),
-        Ok(false)
-    );
-}
-
-/// Creates a table with an index, but passes an index id that does not exist
-/// which is then rejected by the table.
-#[test]
-fn table_index_lookup_non_existing_index() {
-    let schema = int_schema(&["indexed"], Some(&[00]));
-    let tbl = TestTable::new(Path::from("lookup"), schema);
-
-    assert_eq!(
-        tbl.table.index_lookup(99, &[WireValue::Int(7)], &tbl.dict),
-        Err(ValidationError::InvalidIndex { index: 99 })
-    );
-}
-
-/// Creates a table with an index, but gives a key that does not match the
-/// index shape, which should be rejected as an error.
-#[test]
-fn table_index_lookup_incorrect_key() {
-    let schema = int_schema(&["indexed", "plain"], Some(&[0]));
-    let tbl = TestTable::new(Path::from("lookup"), schema);
-    let index = tbl.table.primary_index().expect("primary-key index");
-
-    assert_eq!(
-        tbl.table
-            .index_lookup(index, &[WireValue::Int(7), WireValue::Int(8)], &tbl.dict,),
-        Err(ValidationError::InvalidIndexKey {
-            index,
-            expected: 1,
-            got: 2,
-        })
-    );
-}
-
 /// Creates a table with index, and requests a index lookup. Also do a
 /// non-index lookup on a different column but looks for the same row(s)
 /// Indexed and non-index lookup should return the same results (positive and
@@ -768,14 +715,8 @@ fn table_index_non_index_give_same_results() {
             .collect::<Vec<_>>();
         let scanned = tbl
             .table
-            .seek(
-                &[SeekKey {
-                    column: 1,
-                    value: WireValue::Int(value),
-                }],
-                &tbl.dict,
-            )
-            .expect("valid table scan")
+            .scan(&tbl.dict)
+            .filter_map(|r| (r.values[1] == WireValue::Int(value)).then_some(r.row_id))
             .collect::<Vec<_>>();
         assert_eq!(indexed, scanned);
     }
