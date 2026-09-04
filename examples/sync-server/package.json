@@ -1,0 +1,14 @@
+{
+  "name": "@coln-project/demo-sync-server",
+  "private": true,
+  "type": "module",
+  "license": "(Apache-2.0 OR MIT)",
+  "bin": {
+    "coln-sync-server": "./server.mjs",
+    "coln-with-sync-server": "./with-server.mjs"
+  },
+  "dependencies": {
+    "@automerge/automerge-subduction": "0.16.1",
+    "ws": "^8.21.0"
+  }
+}

@@ -5,10 +5,11 @@
 import { defineConfig } from "vite"
 import { svelte } from "@sveltejs/vite-plugin-svelte"
 import tailwindcss from "@tailwindcss/vite"
+import wasm from "vite-plugin-wasm"
 
 export default defineConfig({
   base: process.env.VITE_BASE || "/",
-  plugins: [tailwindcss(), svelte()],
+  plugins: [tailwindcss(), wasm(), svelte()],
   build: {
     emptyOutDir: true,
     outDir: "../../_build/web/compiler-app",

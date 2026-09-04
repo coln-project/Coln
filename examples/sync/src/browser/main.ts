@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { Repo, isValidAutomergeUrl } from "@automerge/automerge-repo"
+import { IndexedDBStorageAdapter } from "@automerge/automerge-repo-storage-indexeddb"
 import { create, find } from "@coln-project/repo"
 // @ts-expect-error initSync is exported at runtime but absent from declarations
 import { initSync } from "@automerge/automerge-subduction/slim"
@@ -28,7 +29,10 @@ if (hashUrl && !documentUrl) {
     props: { documentUrl: hashUrl, kind: "invalid" },
   })
 } else {
-  const repo = new Repo({ subductionWebsocketEndpoints: [endpoint] })
+  const repo = new Repo({
+    storage: new IndexedDBStorageAdapter("coln-sync"),
+    subductionWebsocketEndpoints: [endpoint],
+  })
 
   try {
     const handle = documentUrl

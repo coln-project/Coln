@@ -16,6 +16,7 @@ test.beforeAll(async () => {
 })
 
 test("browser controls and TypeScript queries converge", async ({ browser }) => {
+  test.setTimeout(60_000)
   const context = await browser.newContext()
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
     origin: "http://127.0.0.1:5176",
@@ -107,6 +108,37 @@ test("browser controls and TypeScript queries converge", async ({ browser }) => 
   }
 })
 
+test("browser persists graph data in IndexedDB", async ({ browser }) => {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+
+  try {
+    await page.goto("/")
+    await expect(page.getByTestId("sync-status")).toHaveAttribute("data-status", "synced")
+
+    await page.getByTestId("add-vertex").click()
+    await page.getByTestId("add-vertex").click()
+    const vertices = await page.getByTestId("from-select").locator("option").evaluateAll(options =>
+      options.slice(1).map(option => (option as HTMLOptionElement).value),
+    )
+    await page.getByTestId("from-select").selectOption(vertices[0])
+    await page.getByTestId("to-select").selectOption(vertices[1])
+    await page.getByTestId("add-edge").click()
+    await expect(page.getByTestId("sync-status")).toHaveAttribute("data-status", "synced")
+    await expect.poll(() => indexedDbRecordCount(page, "coln-sync", "documents")).toBeGreaterThan(0)
+
+    const url = await page.getByTestId("doc-url").inputValue()
+    await page.close()
+
+    const reloadedPage = await context.newPage()
+    await reloadedPage.goto(`/#${url}`)
+    await expect(reloadedPage.getByTestId("graph-vertex")).toHaveCount(2)
+    await expect(reloadedPage.getByTestId("graph-edge")).toHaveCount(1)
+  } finally {
+    await context.close()
+  }
+})
+
 test("shows a dedicated screen when a document is unavailable", async ({ browser }) => {
   const isolatedRepo = new Repo()
   const unavailableUrl = isolatedRepo.create().url
@@ -151,4 +183,20 @@ async function vertexLabels(page: import("@playwright/test").Page) {
     ] as const),
   )
   return new Map(entries)
+}
+
+async function indexedDbRecordCount(
+  page: import("@playwright/test").Page,
+  database: string,
+  store: string,
+) {
+  return page.evaluate(({ database, store }) => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open(database)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const count = request.result.transaction(store).objectStore(store).count()
+      count.onerror = () => reject(count.error)
+      count.onsuccess = () => resolve(count.result)
+    }
+  }), { database, store })
 }

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // SPDX-FileCopyrightText: 2026 Coln contributors
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
@@ -100,7 +101,7 @@ const subduction = new Subduction({
 const wss = new WebSocketServer({ host, port })
 const leases = new Set()
 const clients = new Set()
-let managed = process.env.COLN_SYNC_MANAGED === "1"
+const managed = process.env.COLN_SYNC_MANAGED === "1"
 let shutdownTimer
 let shuttingDown = false
 
@@ -111,7 +112,6 @@ wss.on("connection", (ws, request) => {
   }
   if (request.url === "/.coln-sync/lease") {
     clearTimeout(shutdownTimer)
-    managed = true
     leases.add(ws)
     ws.send(JSON.stringify({ protocol: "coln-sync-relay", pid: process.pid }))
     ws.once("close", () => {

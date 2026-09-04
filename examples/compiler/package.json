@@ -4,11 +4,15 @@
   "type": "module",
   "license": "(Apache-2.0 OR MIT)",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "coln-with-sync-server vite --host 127.0.0.1",
     "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
     "build": "pnpm run check && vite build"
   },
   "dependencies": {
+    "@automerge/automerge-codemirror": "0.2.0",
+    "@automerge/automerge-repo": "2.6.0-subduction.47",
+    "@automerge/automerge-repo-storage-indexeddb": "2.6.0-subduction.47",
+    "@automerge/automerge-subduction": "0.16.1",
     "@codemirror/state": "^6.7.2",
     "@codemirror/view": "^6.43.10",
     "codemirror": "^6.0.2",
@@ -16,12 +20,14 @@
     "svelte": "^5.57.0"
   },
   "devDependencies": {
+    "@coln-project/demo-sync-server": "file:../sync-server",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vite-plugin-wasm": "^3.6.0"
   }
 }

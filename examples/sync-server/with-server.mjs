@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // SPDX-FileCopyrightText: 2026 Coln contributors
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
@@ -9,7 +10,7 @@ import WebSocket from "ws"
 const [, , command, ...args] = process.argv
 
 if (!command) {
-  console.error("Usage: node server/with-server.mjs <command> [args...]")
+  console.error("Usage: coln-with-sync-server <command> [args...]")
   process.exit(1)
 }
 

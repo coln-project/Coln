@@ -2,26 +2,15 @@
 <!-- SPDX-License-Identifier: Apache-2.0 OR MIT -->
 
 <script lang="ts">
+  import { automergeSyncPlugin } from "@automerge/automerge-codemirror"
   import { basicSetup } from "codemirror"
-  import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state"
   import { EditorView, placeholder } from "@codemirror/view"
   import { onMount } from "svelte"
+  import type { TheoryDocumentHandle } from "../lib/theory-document.ts"
 
-  let {
-    value,
-    disabled = false,
-    oninput,
-  }: {
-    value: string
-    disabled?: boolean
-    oninput: (value: string) => void
-  } = $props()
+  let { handle }: { handle: TheoryDocumentHandle } = $props()
 
   let host: HTMLDivElement
-  let view = $state.raw<EditorView>()
-  let appliedDisabled: boolean | undefined
-  const editable = new Compartment()
-  const externalUpdate = Annotation.define<boolean>()
 
   const colnTheme = EditorView.theme({
     "&": {
@@ -111,21 +100,13 @@
     },
   }, { dark: true })
 
-  function editability(disabled: boolean) {
-    return [
-      EditorState.readOnly.of(disabled),
-      EditorView.editable.of(!disabled),
-      EditorView.contentAttributes.of({ "aria-disabled": String(disabled) }),
-    ]
-  }
-
   onMount(() => {
-    appliedDisabled = disabled
-    view = new EditorView({
-      doc: value,
+    const view = new EditorView({
+      doc: handle.doc().source,
       parent: host,
       extensions: [
         basicSetup,
+        automergeSyncPlugin({ handle, path: ["source"] }),
         colnTheme,
         EditorView.lineWrapping,
         placeholder("Write Coln source here"),
@@ -134,15 +115,6 @@
           autocapitalize: "off",
           autocomplete: "off",
           spellcheck: "false",
-        }),
-        editable.of(editability(disabled)),
-        EditorView.updateListener.of(update => {
-          if (
-            update.docChanged
-            && !update.transactions.some(transaction => transaction.annotation(externalUpdate))
-          ) {
-            oninput(update.state.doc.toString())
-          }
         }),
       ],
     })
@@ -157,37 +129,12 @@
     return () => {
       mounted = false
       document.fonts.removeEventListener("loadingdone", refreshMeasurements)
-      view?.destroy()
+      view.destroy()
     }
-  })
-
-  $effect(() => {
-    if (!view) return
-
-    const currentValue = view.state.doc.toString()
-    const valueChanged = currentValue !== value
-    const disabledChanged = appliedDisabled !== disabled
-    if (!valueChanged && !disabledChanged) return
-
-    appliedDisabled = disabled
-    view.dispatch({
-      changes: valueChanged
-        ? { from: 0, to: view.state.doc.length, insert: value }
-        : undefined,
-      effects: disabledChanged
-        ? editable.reconfigure(editability(disabled))
-        : undefined,
-      annotations: [
-        externalUpdate.of(true),
-        Transaction.addToHistory.of(false),
-      ],
-    })
   })
 </script>
 
 <div
-  class:cursor-wait={disabled}
-  class:opacity-60={disabled}
   class="min-h-[420px] w-full flex-1 overflow-hidden bg-[#0b1112] min-[761px]:min-h-0"
   bind:this={host}
 ></div>

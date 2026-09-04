@@ -24,9 +24,15 @@ pnpm --dir examples/sync install
 pnpm --dir examples/sync dev
 ```
 
+The development command starts or reuses the shared relay from
+`examples/sync-server`. Other current demos use the same managed relay, which
+stays alive until the last demo exits.
+
 Open the Vite URL. A URL without an Automerge document in its hash creates a
 new document. Use the document URL shown in the inspector to open the same graph
-in another browser or the CLI.
+in another browser or the CLI. The browser persists graph and synchronization
+data in IndexedDB so it survives page reloads. The current custom-document Repo
+still requires a successful relay connection before hydrating cached graph data.
 
 ## CLI
 
@@ -91,6 +97,6 @@ pnpm --dir examples/sync exec playwright install chromium # first time only
 pnpm --dir examples/sync test:e2e
 ```
 
-The end-to-end scenario exercises browser mutations, Node-side TypeScript query
-execution, synchronization in both directions, and loading the resulting graph
-in a second browser.
+The end-to-end scenarios exercise browser mutations, Node-side TypeScript query
+execution, synchronization in both directions, loading the resulting graph in a
+second browser, and writing durable browser data to IndexedDB.

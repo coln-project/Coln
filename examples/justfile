@@ -19,15 +19,13 @@ serve-web-compiler port="8000": build-web-compiler
 stage-web-compiler-app:
     #!/usr/bin/env bash
     set -euxo pipefail
-    if [[ ! -f "{{ build_dir }}/dist/coln.wasm" || ! -f "{{ build_dir }}/dist/ghc_wasm_jsffi.js" || ! -f "{{ build_dir }}/dist/loadHaskellWasm.js" || ! -f "{{ build_dir }}/examples/index.json" ]] || ! compgen -G "{{ build_dir }}/examples/*.coln" > /dev/null; then
+    if [[ ! -f "{{ build_dir }}/dist/coln.wasm" || ! -f "{{ build_dir }}/dist/ghc_wasm_jsffi.js" || ! -f "{{ build_dir }}/dist/loadHaskellWasm.js" ]]; then
       just build-web-compiler
     fi
-    mkdir -p "{{ compiler_app_dir }}/public/dist" "{{ compiler_app_dir }}/public/examples"
+    mkdir -p "{{ compiler_app_dir }}/public/dist"
     cp "{{ build_dir }}/dist/coln.wasm" "{{ compiler_app_dir }}/public/dist/coln.wasm"
     cp "{{ build_dir }}/dist/ghc_wasm_jsffi.js" "{{ compiler_app_dir }}/public/dist/ghc_wasm_jsffi.js"
     cp "{{ build_dir }}/dist/loadHaskellWasm.js" "{{ compiler_app_dir }}/public/dist/loadHaskellWasm.js"
-    cp "{{ build_dir }}/examples/index.json" "{{ compiler_app_dir }}/public/examples/index.json"
-    cp "{{ build_dir }}"/examples/*.coln "{{ compiler_app_dir }}/public/examples/"
 
 build-web-compiler-app: stage-web-compiler-app
     pnpm --dir {{ compiler_app_dir }} build

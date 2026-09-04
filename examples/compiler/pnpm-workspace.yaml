@@ -1,2 +1,7 @@
 allowBuilds:
+  cbor-extract: false
   esbuild: true
+overrides:
+  "@automerge/automerge": 3.3.2
+  "@automerge/automerge-repo": 2.6.0-subduction.47
+  "@automerge/automerge-subduction": 0.16.1

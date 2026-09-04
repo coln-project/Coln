@@ -16,7 +16,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "SUBDUCTION_SERVICE_NAME=127.0.0.1:3031 PORT=3031 node server/server.mjs",
+      command: "SUBDUCTION_SERVICE_NAME=127.0.0.1:3031 PORT=3031 coln-sync-server",
       port: 3031,
       reuseExistingServer: false,
       stdout: "pipe",
