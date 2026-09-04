@@ -97,18 +97,18 @@ impl TxnInner {
         self.add_cell_values(store, table, values)
     }
 
-    fn invalidate_handles(pending_handles: Vec<TxnLiveRowId>, reason: &str) {
+    fn invalidate_live_ids(pending_handles: Vec<TxnLiveRowId>, reason: &str) {
         pending_handles
             .into_iter()
             .for_each(|h| h.invalidate(reason));
     }
 
-    /// Finalize handles to the id the store actually kept: a row that was
-    /// deduplicated against an existing class finalizes to that class's
+    /// Finalise live ids to the id the store actually kept: a row that was
+    /// deduplicated against an existing class finalises to that class's
     /// canonical id, not to the never-stored raw id.
-    fn finalize_handles(pending_handles: Vec<TxnLiveRowId>, h: CommitHash, store: &Store) {
-        pending_handles.into_iter().for_each(|handle| {
-            handle.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
+    fn finalise_live_ids(pending_handles: Vec<TxnLiveRowId>, h: CommitHash, store: &Store) {
+        pending_handles.into_iter().for_each(|live_id| {
+            live_id.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
         });
     }
 
@@ -130,7 +130,7 @@ impl TxnInner {
         let cmt = match cmt {
             Ok(cmt) => cmt,
             Err(err) => {
-                Self::invalidate_handles(pending_handles, "txn commit encoding failed");
+                Self::invalidate_live_ids(pending_handles, "txn commit encoding failed");
                 return Err(err.into());
             }
         };
@@ -139,20 +139,20 @@ impl TxnInner {
         match store.apply_commit(cmt) {
             Ok(None) => {
                 // Everything applied successfully
-                Self::finalize_handles(pending_handles, h, store);
+                Self::finalise_live_ids(pending_handles, h, store);
                 Ok(h)
             }
             Ok(Some(_)) => {
                 unreachable!("commit a local transaction should always succeed");
             }
             Err(err) => {
-                Self::invalidate_handles(pending_handles, "txn commit failed");
+                Self::invalidate_live_ids(pending_handles, "txn commit failed");
                 Err(err)
             }
         }
     }
 
     pub(super) fn abort(self) {
-        Self::invalidate_handles(self.pending_handles, "txn abort");
+        Self::invalidate_live_ids(self.pending_handles, "txn abort");
     }
 }

@@ -140,7 +140,7 @@ pub struct Table {
 impl Table {
     // Basic accessors
 
-    pub(crate) fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
+    pub(crate) fn new<P: Into<ir::Path>>(path: P, oid: TableOid, schema: Schema) -> Self {
         let col_name_map: HashMap<ColName, usize> = schema
             .columns
             .iter()
@@ -184,7 +184,7 @@ impl Table {
 
         Self {
             oid,
-            path,
+            path: path.into(),
             col_name_map,
             schema,
             structural_index,
