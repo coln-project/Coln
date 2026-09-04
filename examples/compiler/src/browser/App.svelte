@@ -5,6 +5,7 @@
   import { onMount } from "svelte"
   import { loadCompiler, type Compilation, type Compiler } from "../lib/compiler.ts"
   import { loadExample, loadExampleNames } from "../lib/examples.ts"
+  import JsonViewer from "./JsonViewer.svelte"
   import OutputPanel from "./OutputPanel.svelte"
   import SourceEditor from "./SourceEditor.svelte"
 
@@ -211,7 +212,7 @@
         {#if compilation.irJson === ""}
           <p class="m-0 text-[#667576]">No JSON output</p>
         {:else}
-          <pre class="m-0 whitespace-pre-wrap wrap-break-word">{compilation.irJson}</pre>
+          <JsonViewer value={compilation.irJson} />
         {/if}
       </OutputPanel>
     </section>
