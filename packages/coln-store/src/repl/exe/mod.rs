@@ -12,17 +12,22 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 
-use crate::repl::{
-    Session, ShellMode, Step,
-    parse::coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
-    parse::{ColnCommand, MetaCommand, SqlCommand},
-};
 use crate::{
     commit::pst::{decode_store, encode_store},
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
     store::Store,
-    table::{RowId, TableRef},
-    txn::{TempRowId, TxnCellValue},
+    table::{TableRef, WireRowId},
+    txn::{TempRowId, TxnWireValue},
+};
+use crate::{
+    repl::{
+        Session, ShellMode, Step,
+        parse::{
+            ColnCommand, MetaCommand, SqlCommand,
+            coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
+        },
+    },
+    txn::TxnWireRowId,
 };
 
 fn help_text(mode: ShellMode) -> String {
@@ -387,7 +392,7 @@ pub fn add_rows(
     store: &mut Store,
     table_name: &str,
     raw_rows: &[Vec<String>],
-) -> Result<Vec<RowId>> {
+) -> Result<Vec<WireRowId>> {
     let table_path = crate::ir::Path::from(table_name);
     let oid = store
         .resolve_table(&table_path)
@@ -474,7 +479,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<TxnCellValue>> {
+fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<TxnWireValue>> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         bail!(
@@ -488,10 +493,10 @@ fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<Tx
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, column)| -> Result<TxnCellValue> {
+        .map(|(idx, column)| -> Result<TxnWireValue> {
             let raw = &raw_values[idx];
             parse_cell_value(&column.col_type, raw)
-                .map(Into::into)
+                .map(|v| v.map_owned(TxnWireRowId::Existing))
                 .map_err(|message| anyhow!("column {idx}: {message}"))
         })
         .collect()

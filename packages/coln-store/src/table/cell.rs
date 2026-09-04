@@ -7,6 +7,7 @@ use std::fmt;
 use crate::column_map::ColIndex;
 use crate::commit::hash::CommitHash;
 use crate::ir::{BuiltinTy, ColType};
+use crate::value::Value;
 
 use super::ValidationError;
 
@@ -14,12 +15,12 @@ use super::ValidationError;
 ///
 /// It is managed by the database and read-only for the user.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
-pub struct RowId {
+pub struct WireRowId {
     pub commit: CommitHash,
     pub counter: u32,
 }
 
-impl fmt::Display for RowId {
+impl fmt::Display for WireRowId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in &self.commit.0[..6] {
             write!(f, "{byte:02x}")?;
@@ -28,13 +29,7 @@ impl fmt::Display for RowId {
     }
 }
 
-/// One cell in columnar storage: an entity id or a primitive value.
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Hash)]
-pub enum CellValue {
-    Id(RowId),
-    Int(i64),
-    Str(String),
-}
+pub type WireValue = Value<WireRowId>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CellKind {
@@ -57,12 +52,12 @@ impl From<&ColType> for CellKind {
     }
 }
 
-impl From<&CellValue> for CellKind {
-    fn from(value: &CellValue) -> Self {
+impl From<&WireValue> for CellKind {
+    fn from(value: &WireValue) -> Self {
         match value {
-            CellValue::Id(_) => CellKind::RowId,
-            CellValue::Int(_) => CellKind::Int,
-            CellValue::Str(_) => CellKind::Str,
+            WireValue::Id(_) => CellKind::RowId,
+            WireValue::Int(_) => CellKind::Int,
+            WireValue::Str(_) => CellKind::Str,
         }
     }
 }
@@ -77,7 +72,7 @@ impl fmt::Display for CellKind {
     }
 }
 
-impl CellValue {
+impl WireValue {
     pub(super) fn matches_schema(
         &self,
         col_type: &ColType,
@@ -97,12 +92,12 @@ impl CellValue {
     }
 }
 
-impl fmt::Display for CellValue {
+impl fmt::Display for WireValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CellValue::Id(id) => write!(f, "#{id}"),
-            CellValue::Int(value) => write!(f, "{value}"),
-            CellValue::Str(value) => write!(f, "{value:?}"),
+            WireValue::Id(id) => write!(f, "#{id}"),
+            WireValue::Int(value) => write!(f, "{value}"),
+            WireValue::Str(value) => write!(f, "{value:?}"),
         }
     }
 }
@@ -166,9 +161,4 @@ impl ColIndex for PackedRowId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PackedCell {
-    Id(PackedRowId),
-    Int(i64),
-    Str(String),
-}
+pub type PackedValue = Value<PackedRowId>;

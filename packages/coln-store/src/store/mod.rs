@@ -22,10 +22,11 @@ use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreError};
 use crate::table::{
-    CellValue, RowId, RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError,
+    RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError, WireRowId,
+    WireValue,
 };
 use crate::txn::{OwnedTransaction, Transaction};
-use crate::{op::Op, txn::RowHandle};
+use crate::{op::Op, txn::TxnLiveRowId};
 
 #[derive(Debug)]
 pub struct Store {
@@ -168,13 +169,13 @@ impl Store {
         Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
     }
 
-    pub(crate) fn canonical_row_id(&self, row_id: RowId) -> Option<RowId> {
+    pub(crate) fn canonical_row_id(&self, row_id: WireRowId) -> Option<WireRowId> {
         let packed = self.id_packer.lookup_row_id(row_id)?;
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
     }
 
-    pub fn row_by_handle(&self, table: &ir::Path, row_handle: RowHandle) -> Option<RowView> {
+    pub fn row_by_handle(&self, table: &ir::Path, row_handle: TxnLiveRowId) -> Option<RowView> {
         let row_id = row_handle.row_id().ok()?;
         let con_rowid = self.canonical_row_id(row_id)?;
         // replace the rowid in the row_handle so it stays canonical
@@ -187,7 +188,7 @@ impl Store {
     // This function will canonicalise the row_id on read, but will not change it
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
-    pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
+    pub fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<RowView> {
         let row_id = self.canonical_row_id(row_id)?;
         self.table_at(table)
             .and_then(|table| table.row_at(table.row_position(row_id)?))
@@ -574,7 +575,7 @@ impl Store {
 
     // TODO also need to validate that ids in op is referring to an existing id
     fn validate_commit_ops(&self, ops: &[Op]) -> Result<(), StoreError> {
-        let mut pending_pk: HashMap<TableOid, Vec<Vec<CellValue>>> = HashMap::new();
+        let mut pending_pk: HashMap<TableOid, Vec<Vec<WireValue>>> = HashMap::new();
 
         for op in ops {
             let Op::Add { table, values, .. } = op;

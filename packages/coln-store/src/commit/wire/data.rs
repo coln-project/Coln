@@ -20,8 +20,8 @@ use crate::{
     },
     ir::{BuiltinTy, ColType, Path, Schema},
     op::OP_KIND_ADD,
-    table::{RowId, TableMeta, TableOid},
-    txn::{PendingOp, RowRef, TempRowId, TxnCellValue},
+    table::{TableMeta, TableOid, WireRowId},
+    txn::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue},
 };
 
 // TODO change this to i32 when we support it as a column type
@@ -205,28 +205,28 @@ where
 
 /// encode the row_ref column, which might be a pending id or a already resolved id
 fn encode_txn_row_ref_column(
-    values: &[TxnCellValue],
+    values: &[TxnWireValue],
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
     let mut hash_indices: Vec<i64> = Vec::with_capacity(values.len());
     let mut counters = Vec::with_capacity(values.len());
 
     for value in values {
-        let TxnCellValue::Id(row_ref) = value else {
+        let TxnWireValue::Id(row_ref) = value else {
             return Err(CodecError::SchemaError(format!(
                 "expected row reference, got {value:?}"
             )));
         };
 
         match row_ref {
-            RowRef::Existing(RowId { commit, counter }) => {
+            TxnWireRowId::Existing(WireRowId { commit, counter }) => {
                 let hash_index = hash_mapper.index(*commit).ok_or_else(|| {
                     CodecError::SchemaError(format!("missing commit hash in dictionary: {commit}"))
                 })? as i64;
                 hash_indices.push(hash_index);
                 counters.push(*counter);
             }
-            RowRef::Pending(temp_id) => {
+            TxnWireRowId::Pending(temp_id) => {
                 hash_indices.push(LOCAL_COMMIT_HASH_INDEX);
                 counters.push(temp_id.counter());
             }
@@ -243,7 +243,7 @@ fn encode_txn_row_ref_column(
 }
 
 fn encode_txn_prim_value_column(
-    values: &[TxnCellValue],
+    values: &[TxnWireValue],
     prim: &BuiltinTy,
 ) -> Result<Vec<u8>, CodecError> {
     let mut value_bytes = Vec::new();
@@ -268,7 +268,7 @@ fn encode_txn_prim_value_column(
 
 /// Columnar encode for one schema column of transaction cell values.
 fn encode_txn_value_column(
-    values: &[TxnCellValue],
+    values: &[TxnWireValue],
     col_type: &ColType,
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
@@ -290,7 +290,7 @@ fn encode_op_group(
     ops: &[&PendingOp],
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
-    let mut rows: Vec<&[TxnCellValue]> = Vec::with_capacity(ops.len());
+    let mut rows: Vec<&[TxnWireValue]> = Vec::with_capacity(ops.len());
     for op in ops {
         let PendingOp::Add {
             table: op_table,
@@ -462,7 +462,7 @@ where
 
 struct DecodedOpGroup {
     table: TableOid,
-    rows: Vec<Vec<TxnCellValue>>,
+    rows: Vec<Vec<TxnWireValue>>,
 }
 
 fn decode_op_group<'s, F>(
@@ -534,7 +534,7 @@ fn decode_txn_value_column(
     data: &[u8],
     col_type: &ColType,
     hashes: &[CommitHash],
-) -> Result<Vec<TxnCellValue>, CodecError> {
+) -> Result<Vec<TxnWireValue>, CodecError> {
     match col_type {
         ColType::RowId { .. } => decode_txn_row_ref_column(data, hashes),
         ColType::BuiltinTy { builtin_ty } => decode_txn_prim_value_column(data, builtin_ty),
@@ -544,7 +544,7 @@ fn decode_txn_value_column(
 fn decode_txn_row_ref_column(
     data: &[u8],
     hashes: &[CommitHash],
-) -> Result<Vec<TxnCellValue>, CodecError> {
+) -> Result<Vec<TxnWireValue>, CodecError> {
     let mut pos = 0usize;
     let hash_index_blob =
         commit_leb128::read_len_prefixed_bytes(data, &mut pos, "txn row-ref hash-index column")?;
@@ -572,14 +572,14 @@ fn decode_txn_row_ref_column(
         .zip(counters)
         .map(|(hash_index, counter)| {
             if hash_index == LOCAL_COMMIT_HASH_INDEX {
-                Ok(TxnCellValue::Id(RowRef::Pending(TempRowId(counter))))
+                Ok(TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(counter))))
             } else {
                 let commit = hashes.get(hash_index as usize).copied().ok_or_else(|| {
                     CodecError::DataFormatError(format!(
                         "txn row-ref hash index {hash_index} out of bounds"
                     ))
                 })?;
-                Ok(TxnCellValue::Id(RowRef::Existing(RowId {
+                Ok(TxnWireValue::Id(TxnWireRowId::Existing(WireRowId {
                     commit,
                     counter,
                 })))
@@ -591,7 +591,7 @@ fn decode_txn_row_ref_column(
 fn decode_txn_prim_value_column(
     data: &[u8],
     prim: &BuiltinTy,
-) -> Result<Vec<TxnCellValue>, CodecError> {
+) -> Result<Vec<TxnWireValue>, CodecError> {
     let mut pos = 0usize;
     let meta_blob =
         commit_leb128::read_len_prefixed_bytes(data, &mut pos, "txn prim value meta column")?;
@@ -641,8 +641,8 @@ mod tests {
     use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::prim::ValueType;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
-    use crate::table::RowId;
-    use crate::txn::{RowRef, TempRowId};
+    use crate::table::WireRowId;
+    use crate::txn::{TempRowId, TxnWireRowId};
 
     #[test]
     fn txn_row_ref_column_round_trips_existing_and_pending_refs() {
@@ -652,16 +652,16 @@ mod tests {
         hash_mapper.insert(ha);
         hash_mapper.insert(hb);
         let values = vec![
-            TxnCellValue::Id(RowRef::Existing(RowId {
+            TxnWireValue::Id(TxnWireRowId::Existing(WireRowId {
                 commit: ha,
                 counter: 7,
             })),
-            TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
-            TxnCellValue::Id(RowRef::Existing(RowId {
+            TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
+            TxnWireValue::Id(TxnWireRowId::Existing(WireRowId {
                 commit: hb,
                 counter: 11,
             })),
-            TxnCellValue::Id(RowRef::Pending(TempRowId(2))),
+            TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(2))),
         ];
 
         let encoded = encode_txn_row_ref_column(&values, &hash_mapper).expect("encode row refs");
@@ -673,7 +673,7 @@ mod tests {
 
     #[test]
     fn txn_row_ref_column_rejects_non_ref_values() {
-        let err = encode_txn_row_ref_column(&[TxnCellValue::Int(42)], &HashMapper::new())
+        let err = encode_txn_row_ref_column(&[TxnWireValue::Int(42)], &HashMapper::new())
             .expect_err("int is not a row ref");
 
         assert!(matches!(err, CodecError::SchemaError(_)));
@@ -681,7 +681,7 @@ mod tests {
 
     #[test]
     fn txn_row_ref_column_rejects_unmapped_existing_hashes() {
-        let value = TxnCellValue::Id(RowRef::Existing(RowId {
+        let value = TxnWireValue::Id(TxnWireRowId::Existing(WireRowId {
             commit: CommitHash([9u8; HASH_SIZE]),
             counter: 1,
         }));
@@ -696,7 +696,7 @@ mod tests {
         let col = ColType::BuiltinTy {
             builtin_ty: BuiltinTy::BuiltinInt,
         };
-        let values = vec![1i64.into(), 2i64.into(), (-3i64).into()];
+        let values = vec![1i32.into(), 2i32.into(), (-3i32).into()];
         let encoded =
             encode_txn_value_column(&values, &col, &HashMapper::new()).expect("encode int col");
         let decoded = decode_txn_value_column(&encoded, &col, &[]).expect("decode int col");
@@ -722,15 +722,15 @@ mod tests {
         };
         // Span every leb byte-length boundary, including the signed extremes,
         // so the declared meta length must agree with the signed-leb encoding.
-        let values: Vec<TxnCellValue> = vec![
-            0i64.into(),
-            (-1i64).into(),
-            1i64.into(),
-            127i64.into(),
-            128i64.into(),
-            (-128i64).into(),
-            i64::MIN.into(),
-            i64::MAX.into(),
+        let values: Vec<TxnWireValue> = vec![
+            0i32.into(),
+            (-1i32).into(),
+            1i32.into(),
+            127i32.into(),
+            128i32.into(),
+            (-128i32).into(),
+            i32::MIN.into(),
+            i32::MAX.into(),
         ];
         let encoded =
             encode_txn_value_column(&values, &col, &HashMapper::new()).expect("encode int col");
@@ -746,14 +746,14 @@ mod tests {
 
         // Zero-length values interleaved with non-empty ones: the value blob
         // is shorter than the row count, so offsets must advance by zero.
-        let values: Vec<TxnCellValue> = vec!["".into(), "x".into(), "".into()];
+        let values: Vec<TxnWireValue> = vec!["".into(), "x".into(), "".into()];
         let encoded =
             encode_txn_value_column(&values, &col, &HashMapper::new()).expect("encode str col");
         let decoded = decode_txn_value_column(&encoded, &col, &[]).expect("decode str col");
         assert_eq!(decoded, values);
 
         // Zero rows: empty meta and value blobs must round-trip to an empty column.
-        let empty: Vec<TxnCellValue> = vec![];
+        let empty: Vec<TxnWireValue> = vec![];
         let encoded =
             encode_txn_value_column(&empty, &col, &HashMapper::new()).expect("encode empty col");
         let decoded = decode_txn_value_column(&encoded, &col, &[]).expect("decode empty col");
@@ -786,11 +786,11 @@ mod tests {
             path: Path::from("T.E"),
         };
         let values = vec![
-            TxnCellValue::Id(RowRef::Existing(RowId {
+            TxnWireValue::Id(TxnWireRowId::Existing(WireRowId {
                 commit: ha,
                 counter: 1,
             })),
-            TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
+            TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
         ];
         let encoded =
             encode_txn_value_column(&values, &col, &hash_mapper).expect("encode entity col");
@@ -805,7 +805,7 @@ mod tests {
             builtin_ty: BuiltinTy::BuiltinInt,
         };
         let err = encode_txn_value_column(
-            &[TxnCellValue::Str("nope".into())],
+            &[TxnWireValue::Str("nope".into())],
             &col,
             &HashMapper::new(),
         )
@@ -848,9 +848,9 @@ mod tests {
                 row_id: TempRowId(0),
                 table: table_oid,
                 values: vec![
-                    1i64.into(),
+                    1i32.into(),
                     "a".into(),
-                    TxnCellValue::Id(RowRef::Existing(RowId {
+                    TxnWireValue::Id(TxnWireRowId::Existing(WireRowId {
                         commit: ha,
                         counter: 7,
                     })),
@@ -860,9 +860,9 @@ mod tests {
                 row_id: TempRowId(1),
                 table: table_oid,
                 values: vec![
-                    2i64.into(),
+                    2i32.into(),
                     "b".into(),
-                    TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
+                    TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
                 ],
             },
         ];
@@ -888,16 +888,16 @@ mod tests {
             let decoded = decode_txn_value_column(blob, &col_entry.col_type, hash_mapper.hashes())
                 .expect("decode col");
             match index {
-                0 => assert_eq!(decoded, vec![1i64.into(), 2i64.into()]),
+                0 => assert_eq!(decoded, vec![1i32.into(), 2i32.into()]),
                 1 => assert_eq!(decoded, vec!["a".into(), "b".into()]),
                 2 => assert_eq!(
                     decoded,
                     vec![
-                        TxnCellValue::Id(RowRef::Existing(RowId {
+                        TxnWireValue::Id(TxnWireRowId::Existing(WireRowId {
                             commit: ha,
                             counter: 7,
                         })),
-                        TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
+                        TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
                     ]
                 ),
                 _ => unreachable!(),
@@ -986,7 +986,7 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(0),
                 table: 0,
-                values: vec![1i64.into()],
+                values: vec![1i32.into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
@@ -996,7 +996,7 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(2),
                 table: 0,
-                values: vec![2i64.into()],
+                values: vec![2i32.into()],
             },
         ];
 
@@ -1099,7 +1099,7 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(0),
                 table: 0,
-                values: vec![1i64.into()],
+                values: vec![1i32.into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
@@ -1109,7 +1109,7 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(2),
                 table: 0,
-                values: vec![2i64.into()],
+                values: vec![2i32.into()],
             },
         ];
 

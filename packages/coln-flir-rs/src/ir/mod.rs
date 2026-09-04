@@ -141,7 +141,7 @@ pub struct Schema {
 #[serde(tag = "tag", rename_all = "lowercase")]
 pub enum Lit {
     #[serde(rename = "int")]
-    Int { value: i64 },
+    Int { value: i32 },
     #[serde(rename = "string")]
     String { value: String },
 }

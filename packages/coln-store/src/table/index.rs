@@ -15,7 +15,7 @@ use std::ops::Range;
 
 use crate::ir::Schema;
 
-use super::{CellKind, Column, IdColumn, PackedCell, PackedRowId};
+use super::{CellKind, Column, IdColumn, PackedRowId, PackedValue};
 
 pub(crate) type IndexId = usize;
 
@@ -57,7 +57,7 @@ impl TableIndex {
         }
     }
 
-    pub(super) fn insert(&mut self, key: Vec<PackedCell>, value: PackedRowId) {
+    pub(super) fn insert(&mut self, key: Vec<PackedValue>, value: PackedRowId) {
         let key_range = self.scope_key(&key);
         let value_range = self.values.scope_to_value(value, key_range);
         let position = value_range.end;
@@ -68,7 +68,7 @@ impl TableIndex {
         self.values.insert(position, value);
     }
 
-    pub(super) fn remove(&mut self, key: &[PackedCell], value: PackedRowId) {
+    pub(super) fn remove(&mut self, key: &[PackedValue], value: PackedRowId) {
         let key_range = self.scope_key(key);
         let value_range = self.values.scope_to_value(value, key_range);
         for position in value_range.rev() {
@@ -79,15 +79,15 @@ impl TableIndex {
         }
     }
 
-    pub(super) fn get(&self, key: &[PackedCell]) -> impl Iterator<Item = PackedRowId> {
+    pub(super) fn get(&self, key: &[PackedValue]) -> impl Iterator<Item = PackedRowId> {
         self.scope_key(key).map(|position| self.values.at(position))
     }
 
-    pub(super) fn contains_key(&self, key: &[PackedCell]) -> bool {
+    pub(super) fn contains_key(&self, key: &[PackedValue]) -> bool {
         self.get(key).next().is_some()
     }
 
-    fn scope_key(&self, key: &[PackedCell]) -> Range<usize> {
+    fn scope_key(&self, key: &[PackedValue]) -> Range<usize> {
         debug_assert_eq!(
             key.len(),
             self.keys.len(),
@@ -136,16 +136,16 @@ mod tests {
 
         let rows = [(5, packed(1)), (1, packed(2)), (9, packed(3))];
         for (key, row_id) in rows {
-            index.insert(vec![PackedCell::Int(key)], row_id);
+            index.insert(vec![PackedValue::Int(key)], row_id);
         }
 
         for (key, row_id) in rows {
             assert_eq!(
-                index.get(&[PackedCell::Int(key)]).collect::<Vec<_>>(),
+                index.get(&[PackedValue::Int(key)]).collect::<Vec<_>>(),
                 vec![row_id]
             );
         }
-        assert!(!index.contains_key(&[PackedCell::Int(3)]));
+        assert!(!index.contains_key(&[PackedValue::Int(3)]));
     }
 
     /// If there are multiple keys of the same value, then `get` returns an iterator
@@ -156,13 +156,13 @@ mod tests {
         let first = packed(1);
         let second = packed(2);
         let third = packed(3);
-        index.insert(vec![PackedCell::Int(5)], third);
-        index.insert(vec![PackedCell::Int(7)], packed(4));
-        index.insert(vec![PackedCell::Int(5)], first);
-        index.insert(vec![PackedCell::Int(5)], second);
+        index.insert(vec![PackedValue::Int(5)], third);
+        index.insert(vec![PackedValue::Int(7)], packed(4));
+        index.insert(vec![PackedValue::Int(5)], first);
+        index.insert(vec![PackedValue::Int(5)], second);
 
         assert_eq!(
-            index.get(&[PackedCell::Int(5)]).collect::<Vec<_>>(),
+            index.get(&[PackedValue::Int(5)]).collect::<Vec<_>>(),
             vec![first, second, third]
         );
     }
@@ -175,16 +175,16 @@ mod tests {
         let first = packed(1);
         let second = packed(2);
         let other = packed(3);
-        index.insert(vec![PackedCell::Int(5)], second);
-        index.insert(vec![PackedCell::Int(7)], other);
-        index.insert(vec![PackedCell::Int(5)], first);
+        index.insert(vec![PackedValue::Int(5)], second);
+        index.insert(vec![PackedValue::Int(7)], other);
+        index.insert(vec![PackedValue::Int(5)], first);
 
-        index.remove(&[PackedCell::Int(5)], first);
-        index.remove(&[PackedCell::Int(5)], second);
+        index.remove(&[PackedValue::Int(5)], first);
+        index.remove(&[PackedValue::Int(5)], second);
 
-        assert_eq!(index.get(&[PackedCell::Int(5)]).next(), None);
+        assert_eq!(index.get(&[PackedValue::Int(5)]).next(), None);
         assert_eq!(
-            index.get(&[PackedCell::Int(7)]).collect::<Vec<_>>(),
+            index.get(&[PackedValue::Int(7)]).collect::<Vec<_>>(),
             vec![other]
         );
     }
@@ -196,20 +196,20 @@ mod tests {
         let first = packed(1);
         let second = packed(2);
         let other = packed(3);
-        index.insert(vec![PackedCell::Int(5)], second);
-        index.insert(vec![PackedCell::Int(7)], other);
-        index.insert(vec![PackedCell::Int(5)], first);
+        index.insert(vec![PackedValue::Int(5)], second);
+        index.insert(vec![PackedValue::Int(7)], other);
+        index.insert(vec![PackedValue::Int(5)], first);
 
-        index.remove(&[PackedCell::Int(4)], first);
-        index.remove(&[PackedCell::Int(5)], packed(9));
-        index.remove(&[PackedCell::Int(4)], first);
+        index.remove(&[PackedValue::Int(4)], first);
+        index.remove(&[PackedValue::Int(5)], packed(9));
+        index.remove(&[PackedValue::Int(4)], first);
 
         assert_eq!(
-            index.get(&[PackedCell::Int(5)]).collect::<Vec<_>>(),
+            index.get(&[PackedValue::Int(5)]).collect::<Vec<_>>(),
             vec![first, second]
         );
         assert_eq!(
-            index.get(&[PackedCell::Int(7)]).collect::<Vec<_>>(),
+            index.get(&[PackedValue::Int(7)]).collect::<Vec<_>>(),
             vec![other]
         );
         assert_eq!(index.values.len(), 3);
@@ -242,7 +242,7 @@ mod tests {
         ];
 
         for ((c1, c0), row_id) in entries {
-            index.insert(vec![PackedCell::Int(c1), PackedCell::Int(c0)], row_id);
+            index.insert(vec![PackedValue::Int(c1), PackedValue::Int(c0)], row_id);
         }
 
         let stored = (0..index.values.len())
@@ -257,11 +257,11 @@ mod tests {
         assert_eq!(
             stored,
             vec![
-                (PackedCell::Int(0), PackedCell::Int(9), packed(5)),
-                (PackedCell::Int(1), PackedCell::Int(1), packed(1)),
-                (PackedCell::Int(1), PackedCell::Int(1), packed(2)),
-                (PackedCell::Int(1), PackedCell::Int(2), packed(4)),
-                (PackedCell::Int(2), PackedCell::Int(0), packed(3)),
+                (PackedValue::Int(0), PackedValue::Int(9), packed(5)),
+                (PackedValue::Int(1), PackedValue::Int(1), packed(1)),
+                (PackedValue::Int(1), PackedValue::Int(1), packed(2)),
+                (PackedValue::Int(1), PackedValue::Int(2), packed(4)),
+                (PackedValue::Int(2), PackedValue::Int(0), packed(3)),
             ]
         );
     }

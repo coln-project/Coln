@@ -5,7 +5,7 @@ members = [
   "packages/coln-store",
   "packages/coln-query",
   "packages/coln-integrator",
-  "packages/coln-batch"
+  "packages/coln-batch",
 ]
 resolver = "3"
 

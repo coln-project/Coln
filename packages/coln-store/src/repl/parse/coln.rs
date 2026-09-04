@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use crate::{
     commit::hash::{CommitHash, HASH_SIZE},
     ir::{BuiltinTy, ColType},
-    table::{CellValue, RowId},
-    txn::{TempRowId, TxnCellValue},
+    table::{WireRowId, WireValue},
+    txn::{TempRowId, TxnWireRowId, TxnWireValue},
 };
 
 /// Parse failure for a single cell inside a `begin batch` block (before column index is known).
@@ -94,24 +94,24 @@ pub(crate) fn parse_cell_value_batch(
     col_type: &ColType,
     raw: &str,
     bindings: &HashMap<String, TempRowId>,
-) -> Result<TxnCellValue, ParserError> {
+) -> Result<TxnWireValue, ParserError> {
     match col_type {
         ColType::RowId { .. } => {
             if raw.starts_with('#') {
-                parse_cell_value(col_type, raw).map(Into::into)
+                parse_cell_value(col_type, raw).map(|v| v.map_owned(TxnWireRowId::Existing))
             } else if is_binding_ident(raw) {
                 let id = bindings
                     .get(raw)
                     .copied()
                     .ok_or_else(|| ParserError::UnknownBinding(raw.to_string()))?;
-                Ok(TxnCellValue::from(id))
+                Ok(TxnWireValue::Id(TxnWireRowId::Pending(id)))
             } else {
                 Err(ParserError::InvalidValue(format!(
                     "expected entity id like #<commit>:<counter> or a binding name, got {raw}"
                 )))
             }
         }
-        _ => parse_cell_value(col_type, raw).map(Into::into),
+        _ => parse_cell_value(col_type, raw).map(|v| v.map_owned(TxnWireRowId::Existing)),
     }
 }
 
@@ -308,20 +308,20 @@ fn split_add_row_tokens(row_src: &str) -> Vec<String> {
     out
 }
 
-pub(crate) fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<CellValue, ParserError> {
+pub(crate) fn parse_cell_value(col_type: &ColType, raw: &str) -> Result<WireValue, ParserError> {
     match col_type {
-        ColType::RowId { .. } => parse_row_id(raw).map(CellValue::Id),
+        ColType::RowId { .. } => parse_row_id(raw).map(WireValue::Id),
         ColType::BuiltinTy { builtin_ty } => match builtin_ty {
             BuiltinTy::BuiltinInt => raw
-                .parse::<i64>()
-                .map(CellValue::Int)
+                .parse::<i32>()
+                .map(WireValue::Int)
                 .map_err(|_| ParserError::InvalidValue(format!("invalid int: {raw}"))),
-            BuiltinTy::BuiltinStr => Ok(CellValue::Str(raw.to_string())),
+            BuiltinTy::BuiltinStr => Ok(WireValue::Str(raw.to_string())),
         },
     }
 }
 
-fn parse_row_id(raw: &str) -> Result<RowId, ParserError> {
+fn parse_row_id(raw: &str) -> Result<WireRowId, ParserError> {
     let Some(rest) = raw.strip_prefix('#') else {
         return invalid_input_err("expected entity id like #<commit>:<counter>");
     };
@@ -339,7 +339,7 @@ fn parse_row_id(raw: &str) -> Result<RowId, ParserError> {
     let counter = counter_raw
         .parse::<u32>()
         .map_err(|_| ParserError::InvalidValue(format!("invalid entity id: {raw}")))?;
-    Ok(RowId {
+    Ok(WireRowId {
         commit: CommitHash(hash),
         counter,
     })

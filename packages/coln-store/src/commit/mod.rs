@@ -29,7 +29,7 @@ use crate::{
     ir::Path,
     op::Op,
     table::{TableMeta, TableOid},
-    txn::{PendingOp, RowRef, TxnCellValue},
+    txn::{PendingOp, TxnWireRowId, TxnWireValue},
 };
 
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
@@ -211,7 +211,7 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
     for op in pending {
         let PendingOp::Add { values, .. } = op;
         for value in values {
-            if let TxnCellValue::Id(RowRef::Existing(row_id)) = value {
+            if let TxnWireValue::Id(TxnWireRowId::Existing(row_id)) = value {
                 hash_mapper.insert(row_id.commit);
             }
         }
@@ -228,8 +228,8 @@ mod tests {
     use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, TableEntry};
-    use crate::table::{RowId, TableMeta, TableOid};
-    use crate::txn::{RowRef, TempRowId};
+    use crate::table::{TableMeta, TableOid, WireRowId};
+    use crate::txn::{TempRowId, TxnWireRowId};
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])
@@ -415,7 +415,7 @@ mod tests {
     fn decode_data_preserves_payload_metadata_and_ops() {
         let dep = zero_hash();
         let deps = vec![dep];
-        let rid = RowId {
+        let rid = WireRowId {
             commit: dep,
             counter: 7,
         };
@@ -423,15 +423,15 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(0),
                 table: 0,
-                values: vec![1i64.into()],
+                values: vec![1i32.into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
                 table: 1,
                 values: vec![
-                    TxnCellValue::Id(RowRef::Existing(rid)),
-                    TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
-                    TxnCellValue::Str("x".into()),
+                    TxnWireValue::Id(TxnWireRowId::Existing(rid)),
+                    TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
+                    TxnWireValue::Str("x".into()),
                 ],
             },
         ];
@@ -606,22 +606,22 @@ mod tests {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = RowId {
+        let rid = WireRowId {
             commit: dep,
             counter: 7,
         };
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![1i64.into()],
+            values: vec![1i32.into()],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
             table: 1,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid)),
-                TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
-                TxnCellValue::Str("x".into()),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
+                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
+                TxnWireValue::Str("x".into()),
             ],
         };
         let pending = vec![op0, op1];
@@ -650,22 +650,22 @@ mod tests {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = RowId {
+        let rid = WireRowId {
             commit: dep,
             counter: 7,
         };
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![1i64.into()],
+            values: vec![1i32.into()],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
             table: 1,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid)),
-                TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
-                TxnCellValue::Str("x".into()),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
+                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
+                TxnWireValue::Str("x".into()),
             ],
         };
         let pending = vec![op0, op1];
@@ -689,16 +689,16 @@ mod tests {
     fn other_hashes_contain_right_hashes() {
         let ha = CommitHash([1u8; HASH_SIZE]);
         let hb = CommitHash([2u8; HASH_SIZE]);
-        let rid_a = RowId {
+        let rid_a = WireRowId {
             commit: ha,
             counter: 0,
         };
-        let rid_b = RowId {
+        let rid_b = WireRowId {
             commit: hb,
             counter: 3,
         };
         // also point to ha
-        let rid_a_later = RowId {
+        let rid_a_later = WireRowId {
             commit: ha,
             counter: 99,
         };
@@ -707,16 +707,16 @@ mod tests {
             row_id: TempRowId(0),
             table: 0,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid_a)),
-                TxnCellValue::Id(RowRef::Existing(rid_a)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a)),
             ],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
             table: 0,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid_b)),
-                TxnCellValue::Id(RowRef::Existing(rid_a_later)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_b)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a_later)),
             ],
         };
         let commit = Commit::from_commit_data(
