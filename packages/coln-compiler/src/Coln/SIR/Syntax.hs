@@ -9,12 +9,16 @@ import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
 import GHC.Generics
 
+data PrimQuery
+  = PrimaryKey TableName [El Set]
+
 data El :: MLevel -> Type where
   LiftEl :: El Set -> El Theory
   Var :: BId -> El Set
-  Single :: Query -> El Set
+  Lookup :: TableName -> [El Set] -> Shape -> El Set
   Proj :: El Set -> Name -> El Set
-  Multi :: SUniverse Set Theory -> Query -> El Theory
+  SelectRowId :: SUniverse Set Theory -> TableName -> [El Set] -> El Theory
+  SelectLast :: SUniverse Set Theory -> TableName -> [El Set] -> Shape -> El Theory
   Lam :: Query -> Abs (El Theory) -> El Theory
   Cons :: Dict (El l) -> El l
   Lit :: Literal -> El Set

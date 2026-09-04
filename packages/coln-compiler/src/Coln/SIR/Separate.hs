@@ -19,10 +19,7 @@ class Separate a b | a -> b where
 instance Separate V.Head (S.El Set) where
   separate n = \case
     V.Var (FId i) -> S.Var (BId (n - i - 1))
-    V.Lookup tn args ret -> do
-      let args' = separate (n + 1) <$> args
-      let pred = S.Atom tn S.Erased (args' ++ [S.Var 0])
-      S.Single $ S.Query (shapeOf ret) (S.Abs Nothing pred)
+    V.Lookup tn args ret -> S.Lookup tn (separate n <$> args) (shapeOf ret)
 
 instance Separate (V.El N Set) (S.El Set) where
   separate n = \case
@@ -38,13 +35,13 @@ separateClo :: (Separate a b) => CtxLen -> V.Clo (V.El N Set) a -> S.Abs b
 separateClo n (V.Clo x body) = S.Abs (Just x) (separate (n + 1) (body (V.local (FId n))))
 separateClo n (V.CloConst body) = S.AbsConst (separate n body)
 
-instance Separate (V.El N Theory) (S.El Theory) where
-  separate n = \case
-    V.LiftEl LSetTheory v -> S.LiftEl (separate n v)
-    V.Code SSetU a -> S.Multi SSetU (separate n a)
-    V.Code SPropU a -> S.Multi SPropU (separate n a)
-    V.Lam SSetTheory dom clo -> S.Lam (separate n dom) (separateClo n clo)
-    V.Cons fields -> S.Cons $ separate n <$> fields
+-- instance Separate (V.El N Theory) (S.El Theory) where
+--   separate n = \case
+--     V.LiftEl LSetTheory v -> S.LiftEl (separate n v)
+--     V.Code SSetU a -> S.Multi SSetU (separate n a)
+--     V.Code SPropU a -> S.Multi SPropU (separate n a)
+--     V.Lam SSetTheory dom clo -> S.Lam (separate n dom) (separateClo n clo)
+--     V.Cons fields -> S.Cons $ separate n <$> fields
 
 shapeOf :: V.Ty N Set -> S.Shape
 shapeOf = \case

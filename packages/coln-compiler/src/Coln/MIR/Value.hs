@@ -31,6 +31,7 @@ data El :: Case -> MLevel -> Type where
   Neu :: Neutral -> El N Set
   Init :: Ty N Theory -> El D Theory
   Code :: SUniverse l0 l1 -> Ty N l0 -> El N l1
+  PrimCode :: SUniverse Set Theory -> TableName -> [El N Set] -> El N Theory
   Lam :: SMFunctionVariant l0 l1 -> Ty N l0 -> Clo (El N l0) (Evaluation El c l1) -> El c l1
   Cons :: Dict (Evaluation El c l) -> El c l
   Lit :: Literal -> El N Set
@@ -61,6 +62,11 @@ decode su (Code su' a) = case (su, su') of
   (SSetU, SSetU) -> a
   (SPropU, SSetU) -> panic "tried to decode a set into a proposition"
   (STheoryU, STheoryU) -> a
+decode su (PrimCode su' tn args) = case (su, su') of
+  (SPropU, SPropU) -> EltOf su' tn args
+  (SSetU, SSetU) -> EltOf su' tn args
+  (SSetU, SPropU) -> EltOf su' tn args
+  (SPropU, SSetU) -> panic "tried to decode a set into a proposition"
 decode _ _ = panic "tried to decode a non-code"
 
 instance LevelCoerce (El c) where

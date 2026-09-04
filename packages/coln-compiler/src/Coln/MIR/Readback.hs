@@ -6,7 +6,7 @@ import Coln.MIR.Params
 import Coln.MIR.Syntax qualified as S
 import Coln.MIR.Value qualified as V
 
-import Data.Traversable (mapAccumL)
+-- import Data.Traversable (mapAccumL)
 
 type CtxLen = Int
 
@@ -52,7 +52,7 @@ instance Readback (V.Ty N Set) (S.Ty N Set) where
 --     V.Function ft -> case ft.variant.mlevel of
 --       SSetTheory -> S.Function (S.FunctionType ft.variant (readb n ft.dom) (readbClo n ft.cod))
 --     V.Record rt -> S.Record (S.RecordType rt.hlevel (readbTele n rt.capture rt.fieldTypes))
--- 
+--
 -- readbTele :: (Traversable f, Readback a b) => CtxLen -> V.Locals -> f (V.Locals -> a) -> f b
 -- readbTele n l = snd . mapAccumL (\(n', l') k -> ((n' + 1, l' :> Pair SSet (V.local (FId n'))), readb n' $ k l')) (n, l)
 
@@ -65,5 +65,6 @@ instance Readback (V.El N Theory) (S.El N Theory) where
     V.LiftEl LSetTheory v -> S.LiftEl (readb n v)
     V.Code SPropU a -> S.Code SPropU (readb n a)
     V.Code SSetU a -> S.Code SSetU (readb n a)
+    V.PrimCode u tn args -> S.PrimCode u tn (readb n <$> args)
     V.Lam SSetTheory dom clo -> S.Lam (readb n dom) (readbClo n clo)
     V.Cons fields -> S.Cons $ readb n <$> fields

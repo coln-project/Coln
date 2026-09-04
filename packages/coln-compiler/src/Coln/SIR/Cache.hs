@@ -70,13 +70,13 @@ cache x p sc v = do
         let ent = Entity (View Materialized) (second (.shape) <$> cols) (Just [0 .. sc.len])
         let tn = TableName sc.realm p
         let def = Definition cols tn boundStx
-        let prop = S.Atom tn S.Erased boundStx
-        let elt = S.Multi u $ S.Query sa.shape (S.Abs Nothing prop)
+        let elt = S.SelectLast u tn (separate sc.len <$> toList sc.bound) (shapeOf a)
         (Leaf ent, Node (fromList [("definition", Leaf def)]), elt)
   case v of
     V.LiftEl LSetTheory v -> (emptyNode, emptyNode, S.LiftEl (separate sc.len v))
     V.Code SSetU a -> code SSetU a
     V.Code SPropU a -> code SPropU a
+    V.PrimCode u tn args -> (emptyNode, emptyNode, S.SelectRowId u tn (separate sc.len <$> args))
     V.Lam SSetTheory dom clo -> do
       let (x', arg, sc') = bind sc (cloArgName clo) dom
       let (ents, defs, body) = cache x p sc' (V.appClo clo arg)

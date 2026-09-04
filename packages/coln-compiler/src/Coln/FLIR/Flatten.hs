@@ -107,9 +107,10 @@ app l (S.AbsConst body) _ = flatten l body
 instance Flatten (S.El Set) Els where
   flatten l = \case
     S.Var i -> pure $ elemAt l i
-    S.Single q -> do
-      v <- fresh (absName q.pred) q.shape
-      app l q.pred v >>= assert
+    S.Lookup tn args shape -> do
+      v <- fresh Nothing shape
+      args' <- traverse (flatten l) args
+      assert $ single $ V.PAtom $ V.Atom tn Nothing (Just <$> concatEls (args' ++ [v]))
       pure v
     S.Proj t x -> do
       v <- flatten l t

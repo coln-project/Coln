@@ -62,7 +62,7 @@ layout p pr sc = \case
     (gt, M.liftEl $ M.lookup (TableName sc.realm p) (args sc) (M.fromV sc.len a))
   V.U (inferSetCodes -> u) -> do
     let gt = Leaf (Generator pr sc.names sc.ctx (GenU u))
-    (gt, M.code u $ M.eltOf u (TableName sc.realm p) (args sc))
+    (gt, M.primCode u (TableName sc.realm p) (args sc))
   V.Function ft -> case ft.variant.mlevel of
     SSetTheory -> do
       let x = argName sc.usedNames ft.cod

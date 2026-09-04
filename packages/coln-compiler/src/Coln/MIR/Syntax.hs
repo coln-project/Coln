@@ -11,6 +11,7 @@ data El :: Case -> MLevel -> Type where
   Var :: BId -> El N Set
   Lookup :: TableName -> [El N Set] -> Ty N Set -> El N Set
   Code :: SUniverse Set Theory -> Ty N Set -> El N Theory
+  PrimCode :: SUniverse Set Theory -> TableName -> [El N Set] -> El N Theory
   Lam :: Ty N Set -> Abs (El c Theory) -> El c Theory
   Cons :: Dict (El c l) -> El c l
   Proj :: El N l -> Name -> El N l

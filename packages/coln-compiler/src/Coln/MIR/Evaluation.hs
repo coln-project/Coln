@@ -21,6 +21,7 @@ instance Eval S.El V.El where
     S.Lookup tn args a ->
       V.Neu $ V.Neutral (V.Lookup tn (eval vs <$> args) (eval vs a)) BwdNil
     S.Code u a -> V.Code u (eval vs a)
+    S.PrimCode u tn args -> V.PrimCode u tn (eval vs <$> args)
     S.Lam dom abs -> V.epure $ V.Lam SSetTheory (eval vs dom) (evalAbs vs abs)
     S.Cons fields -> V.epure $ V.Cons (eval vs <$> fields)
     S.Proj t x -> V.proj (eval vs t) x
