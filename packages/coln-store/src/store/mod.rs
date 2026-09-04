@@ -66,7 +66,7 @@ impl Rollback for Store {
         }
     }
 
-    fn commit_snapshot(&mut self, snapshot: Self::Snapshot) {
+    fn commit(&mut self, snapshot: Self::Snapshot) {
         let StoreSnapshot {
             tables,
             id_packer,
@@ -76,13 +76,13 @@ impl Rollback for Store {
             self.tables
                 .get_mut(&oid)
                 .expect("snapshotted table should still exist")
-                .commit_snapshot(snapshot);
+                .commit(snapshot);
         }
-        self.id_packer.commit_snapshot(id_packer);
-        self.rowing.commit_snapshot(rowing);
+        self.id_packer.commit(id_packer);
+        self.rowing.commit(rowing);
     }
 
-    fn rollback(&mut self, snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, snapshot: Self::Snapshot) {
         let StoreSnapshot {
             tables,
             id_packer,
@@ -92,10 +92,10 @@ impl Rollback for Store {
             self.tables
                 .get_mut(&oid)
                 .expect("snapshotted table should still exist")
-                .rollback(snapshot);
+                .rollback_to(snapshot);
         }
-        self.id_packer.rollback(id_packer);
-        self.rowing.rollback(rowing);
+        self.id_packer.rollback_to(id_packer);
+        self.rowing.rollback_to(rowing);
     }
 }
 
@@ -449,11 +449,11 @@ impl Store {
         let snapshot = self.snapshot();
         match self.apply_atomic_inner(commit) {
             Ok(()) => {
-                self.commit_snapshot(snapshot);
+                self.commit(snapshot);
                 Ok(())
             }
             Err(e) => {
-                self.rollback(snapshot);
+                self.rollback_to(snapshot);
                 Err(e)
             }
         }

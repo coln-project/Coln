@@ -61,6 +61,10 @@ impl IdPacker {
         }
     }
 
+    pub(crate) fn unpack_cell(&self, value: PackedValue) -> WireValue {
+        value.map_owned(|id| self.unpack_row_id(id))
+    }
+
     pub(crate) fn pack_op(&mut self, op: Op) -> PackedOp {
         match op {
             Op::Add { row_id, values, .. } => {
@@ -105,13 +109,13 @@ impl Rollback for IdPacker {
         IdPackerSnapshot
     }
 
-    fn commit_snapshot(&mut self, _snapshot: Self::Snapshot) {
+    fn commit(&mut self, _snapshot: Self::Snapshot) {
         self.snapshot_len
             .take()
             .expect("ID packer has no active snapshot");
     }
 
-    fn rollback(&mut self, _snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, _snapshot: Self::Snapshot) {
         let snapshot_len = self
             .snapshot_len
             .take()
@@ -133,7 +137,7 @@ mod tests {
 
         assert_eq!(packer.pack_row_id(row_id_from(2, 0)).commit_idx, 1);
         assert_eq!(packer.pack_row_id(row_id_from(1, 1)).commit_idx, 0);
-        packer.rollback(snapshot);
+        packer.rollback_to(snapshot);
 
         assert_eq!(
             packer
@@ -151,7 +155,7 @@ mod tests {
         let snapshot = packer.snapshot();
         assert_eq!(packer.pack_row_id(row_id_from(1, 0)).commit_idx, 0);
 
-        packer.commit_snapshot(snapshot);
+        packer.commit(snapshot);
 
         assert_eq!(
             packer

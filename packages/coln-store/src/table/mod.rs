@@ -253,7 +253,10 @@ impl Table {
     pub(crate) fn row_at(&self, row_idx: usize, id_packer: &IdPacker) -> Option<RowView> {
         let row_id = self.row_id_at(row_idx, id_packer)?;
         let values = (0..self.schema.columns.len())
-            .map(|col_idx| self.cell_at(row_idx, col_idx, id_packer))
+            .map(|col_idx| {
+                self.cell_at(row_idx, col_idx)
+                    .map(|value| id_packer.unpack_cell(value))
+            })
             .collect::<Option<Vec<_>>>()?;
 
         Some(RowView { row_id, values })
@@ -268,15 +271,10 @@ impl Table {
 
     /// Cell at `(row_idx, col_idx)` in columnar storage.
     /// O(1) to locate the column, roughly O(log S) to find by index in a slab.
-    pub(crate) fn cell_at(
-        &self,
-        row_idx: usize,
-        col_idx: usize,
-        packer: &IdPacker,
-    ) -> Option<WireValue> {
+    pub(crate) fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<PackedValue> {
         self.cols
             .get(col_idx)
-            .and_then(|col| col.get(row_idx, packer))
+            .and_then(|col| col.get_packed(row_idx))
     }
 
     /// Find the index of the row given a `row_id`. Internal API only.
@@ -442,7 +440,7 @@ impl Rollback for Table {
         TableSnapshot
     }
 
-    fn commit_snapshot(&mut self, _snapshot: Self::Snapshot) {
+    fn commit(&mut self, _snapshot: Self::Snapshot) {
         assert!(
             self.pending_updates.is_empty(),
             "cannot commit a snapshot with staged updates"
@@ -450,7 +448,7 @@ impl Rollback for Table {
         self.undo_log.take().expect("table has no active snapshot");
     }
 
-    fn rollback(&mut self, _snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, _snapshot: Self::Snapshot) {
         self.pending_updates.clear();
 
         let undo_ops = self.undo_log.take().expect("table has no active snapshot");
