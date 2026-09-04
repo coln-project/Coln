@@ -80,7 +80,7 @@ impl TxnLiveRowId {
         }
     }
 
-    pub(crate) fn canonicalise(&self, new_row_id: WireRowId) -> Result<(), StoreError> {
+    pub(crate) fn canonicalise_to(&self, new_row_id: WireRowId) -> Result<(), StoreError> {
         let mut state = self.state.borrow_mut();
         match &*state {
             TxnLiveRowIdState::Existing(..) => {

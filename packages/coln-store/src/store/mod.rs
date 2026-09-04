@@ -15,6 +15,7 @@ use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::id_packer::{IdPacker, IdPackerSnapshot};
 use crate::ir::{self, FlatRealm, RuleEntry};
+use crate::op::Op;
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
 use crate::solver::compile::{CompRule, CompileError};
@@ -22,11 +23,10 @@ use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreError};
 use crate::table::{
-    RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError, WireRowId,
+    RowView, Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId,
     WireValue,
 };
 use crate::txn::{OwnedTransaction, Transaction};
-use crate::{op::Op, txn::TxnLiveRowId};
 
 #[derive(Debug)]
 pub struct Store {
@@ -118,10 +118,10 @@ impl Store {
         }
     }
 
-    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, TableRef<'_>)> {
+    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, TableHandle<'_>)> {
         self.tables
             .iter()
-            .map(|(oid, table)| (oid, TableRef::new(table, &self.id_packer)))
+            .map(|(oid, table)| (oid, TableHandle::new(table, &self.id_packer, &self.rowing)))
     }
 
     pub fn commits(&self) -> &CommitGraph {
@@ -138,14 +138,22 @@ impl Store {
         self.path_to_oid.get(path).copied()
     }
 
-    pub fn table(&self, oid: TableOid) -> Option<TableRef<'_>> {
-        self.tables
-            .get(&oid)
-            .map(|table| TableRef::new(table, &self.id_packer))
+    pub fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
+        self.table_inner(oid)
+            .map(|table| TableHandle::new(table, &self.id_packer, &self.rowing))
     }
 
-    pub fn table_at(&self, path: &ir::Path) -> Option<TableRef<'_>> {
+    pub fn table_inner(&self, oid: TableOid) -> Option<&Table> {
+        self.tables.get(&oid)
+    }
+
+    pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
         self.resolve_table(path).and_then(|oid| self.table(oid))
+    }
+
+    pub fn table_at_inner(&self, path: &ir::Path) -> Option<&Table> {
+        self.resolve_table(path)
+            .and_then(|oid| self.table_inner(oid))
     }
 
     pub fn rules(&self) -> &[CompRule] {
@@ -161,7 +169,7 @@ impl Store {
     }
 
     pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
-        self.table_at(table_path).map(|table| table.table_scan())
+        self.table_at(table_path).map(|table| table.scan())
     }
 
     pub fn json_ir(&self) -> Result<String, StoreError> {
@@ -169,29 +177,11 @@ impl Store {
         Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
     }
 
+    // TODO delete this
     pub(crate) fn canonical_row_id(&self, row_id: WireRowId) -> Option<WireRowId> {
         let packed = self.id_packer.lookup_row_id(row_id)?;
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
-    }
-
-    pub fn row_by_handle(&self, table: &ir::Path, row_handle: TxnLiveRowId) -> Option<RowView> {
-        let row_id = row_handle.row_id().ok()?;
-        let con_rowid = self.canonical_row_id(row_id)?;
-        // replace the rowid in the row_handle so it stays canonical
-        if row_id != con_rowid {
-            row_handle.canonicalise(con_rowid).ok()?
-        }
-        self.row_by_id(table, con_rowid)
-    }
-
-    // This function will canonicalise the row_id on read, but will not change it
-    // See `row_by_handle` which will actually canonicalise the handle.
-    // We need both because the TS FFI does not deal with handles.
-    pub fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<RowView> {
-        let row_id = self.canonical_row_id(row_id)?;
-        self.table_at(table)
-            .and_then(|table| table.row_at(table.row_position(row_id)?))
     }
 }
 
@@ -580,9 +570,9 @@ impl Store {
         for op in ops {
             let Op::Add { table, values, .. } = op;
             let t = self
-                .table(*table)
+                .table_inner(*table)
                 .ok_or(ValidationError::UnknownTableOid { oid: *table })?;
-            t.validate_insert(values)?;
+            t.validate_insert(values, &self.id_packer)?;
 
             // Check primary key conflicts within ops batch
             if let Some(key) = t.primary_key_values(values) {

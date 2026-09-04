@@ -42,6 +42,7 @@ tracing-subscriber = { workspace = true, features = [
     "env-filter",
     "fmt",
 ], optional = true }
+rstest = "0.26.1"
 
 
 [dev-dependencies]
