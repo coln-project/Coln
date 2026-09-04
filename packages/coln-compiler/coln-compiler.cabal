@@ -40,6 +40,7 @@ library
     Coln.Elaborator.Rules.Universe
     Coln.Elaborator.Rules.Variable
     Coln.FLIR.Flatten
+    Coln.FLIR.Top
     Coln.FLIR.Value
     Coln.Frontend.Diagnostics
     Coln.Frontend.Notation
@@ -54,12 +55,15 @@ library
     Coln.MIR.Readback
     Coln.MIR.Realm
     Coln.MIR.Syntax
+    Coln.MIR.Top
     Coln.MIR.Value
     Coln.Report
     Coln.SIR.Cache
     Coln.SIR.Realm
     Coln.SIR.Separate
     Coln.SIR.Syntax
+    Coln.SIR.Top
+    Coln.Top
 
   hs-source-dirs: src
   default-language: GHC2024
@@ -155,7 +159,7 @@ test-suite coln-compiler-test
     fnotation,
     ordered-containers,
     prettyprinter,
-    tasty,
+    tasty ^>=1.5.4,
     tasty-expected-failure,
     tasty-golden,
     tasty-hunit,

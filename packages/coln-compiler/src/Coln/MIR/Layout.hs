@@ -80,7 +80,7 @@ layout p pr sc = \case
     (gt, M.cons (Dict rt.fieldTypes.head (Vector.fromList ms)))
 
 layoutTop :: RealmId -> V.Ty N Theory -> (Trie Generator, M.El N Theory)
-layoutTop x = layout BwdNil Profane (emptyScope x)
+layoutTop x = layout (BwdNil :> "root") Profane (emptyScope x)
 
 asNominative :: V.El D Set -> V.El N Set
 asNominative = \case
@@ -109,4 +109,3 @@ declare p sc = \case
           declareEvaluation (p :> x) sc v
     (Node $ withHead fields gts, M.cons $ withHead fields ms)
   V.Init a -> layout p Holy sc a
-    

@@ -6,6 +6,8 @@ import Coln.MIR.Params
 import Coln.MIR.Syntax qualified as S
 import Coln.MIR.Value qualified as V
 
+import Data.Traversable (mapAccumL)
+
 type CtxLen = Int
 
 class Readback a b | a -> b where
@@ -47,6 +49,12 @@ instance Readback (V.Ty N Set) (S.Ty N Set) where
 --     V.U SPropU -> S.U SPropU
 --     V.U SSetU -> S.U SSetU
 --     V.Function ft -> undefined
+--     V.Function ft -> case ft.variant.mlevel of
+--       SSetTheory -> S.Function (S.FunctionType ft.variant (readb n ft.dom) (readbClo n ft.cod))
+--     V.Record rt -> S.Record (S.RecordType rt.hlevel (readbTele n rt.capture rt.fieldTypes))
+-- 
+-- readbTele :: (Traversable f, Readback a b) => CtxLen -> V.Locals -> f (V.Locals -> a) -> f b
+-- readbTele n l = snd . mapAccumL (\(n', l') k -> ((n' + 1, l' :> Pair SSet (V.local (FId n'))), readb n' $ k l')) (n, l)
 
 readbClo :: (Readback a b) => CtxLen -> V.Clo (V.El N Set) a -> S.Abs b
 readbClo n (V.Clo x f) = S.Abs x (readb (n + 1) (f (fresh n)))

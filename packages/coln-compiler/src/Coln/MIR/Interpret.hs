@@ -25,12 +25,18 @@ interpAt l0 g e t = case interp g e t of
 -- Should this also be "compile"?
 
 instance Interp S.El V.El where
-  interp g e = \case
+  interp @c g e = \case
     S.LocalVar i -> elemAt e i
     S.GlobalVar x _ -> elemAt g x
     S.Code u a -> withUniverse u $ \su -> do
       let (l0, l1) = (sDecodesInto su, sCodesInto su)
-      Pair l1 (V.emap (V.Code su) (interpAt l0 g e a))
+      case V.scase @c of
+        SNominative -> Pair l1 (V.Code su $ interpAt l0 g e a)
+        SDescriptive -> case interpAt l0 g e a of
+          V.Become a' -> Pair l1 (V.Become $ V.Code su a')
+          V.Describe a' -> case a' of
+            V.LiftTy x _ -> case x of
+              LTheoryTop -> case su of
     S.Lam fv dom abs -> withFunctionVariant fv.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
       let clo = case abs of

@@ -129,7 +129,7 @@ equate S.Unstored _ _ = mempty
 instance Flatten S.Prop Props where
   flatten l = \case
     S.Atom tn t args -> do
-      mv <- asAtomHead <$> flatten l t 
+      mv <- asAtomHead <$> flatten l t
       argvs <- traverse (flatten l) args
       pure $ single $ V.PAtom (V.Atom tn mv (Just <$> concatEls argvs))
     S.And ps -> mconcat <$> traverse (flatten l) (toList ps.values)
@@ -161,7 +161,9 @@ flattenEntity e =
   V.Entity
     { V.entityVariant = case e.entityVariant of
         S.Table -> V.Table
-        S.View -> V.View V.Materialized
+        S.View S.Memoized -> V.View V.Memoized
+        S.View S.Materialized -> V.View V.Materialized
+        S.View S.Recomputed -> V.View V.Recomputed
     , V.columns = flattenColumns e.columns
     , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
     }

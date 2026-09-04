@@ -2,12 +2,20 @@ module Coln.SIR.Realm where
 
 import Coln.Common
 import Coln.Core.Params
-import Coln.SIR.Syntax
 import Coln.Core.Value qualified as CoreV
+import Coln.SIR.Syntax
+
+import Data.Aeson qualified as AE
+import GHC.Generics
+
+data Materialization
+  = Recomputed
+  | Memoized
+  | Materialized
 
 data EntityVariant
   = Table
-  | View
+  | View Materialization
 
 data Entity = Entity
   { entityVariant :: EntityVariant
@@ -22,6 +30,7 @@ data Definition = Definition
   }
 
 data RuleVariant = Enforced | Monitored
+  deriving (Show, Eq, Generic)
 
 data RuleContextSide = Antecedent | Consequent
 
@@ -40,3 +49,9 @@ data Realm = Realm
   , root :: El Theory
   , rootType :: CoreV.Ty N
   }
+
+-- JSON
+--------------------------------------------------------------------------------
+
+instance AE.ToJSON RuleVariant where
+  toEncoding = AE.genericToEncoding aeOptions
