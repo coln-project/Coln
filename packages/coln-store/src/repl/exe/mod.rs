@@ -16,7 +16,7 @@ use crate::{
     commit::pst::{decode_store, encode_store},
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
     store::Store,
-    table::{TableRef, WireRowId},
+    table::{TableHandle, WireRowId},
     txn::{TempRowId, TxnWireValue},
 };
 use crate::{
@@ -459,7 +459,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<TxnWireValue>> {
+fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<Vec<TxnWireValue>> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         bail!(

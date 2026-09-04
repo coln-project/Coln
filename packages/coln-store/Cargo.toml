@@ -78,6 +78,12 @@ native = [
     "dep:coln-query",
 ]
 wasm = ["dep:js-sys"]
+coln-query = [
+    "dep:rustyline",
+    "dep:tracing-subscriber",
+    "dep:clap",
+    "dep:coln-query",
+]
 
 [[bin]]
 name = "coln-store"

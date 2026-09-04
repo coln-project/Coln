@@ -347,7 +347,9 @@ mod tests {
         // The first handle resolves through the store even if its id went
         // stale, and the read writes the canonical id back into the handle.
         let view = store
-            .row_by_handle(&term, first.clone())
+            .table_at(&term)
+            .expect("class row is stored")
+            .row_by_handle(first.clone())
             .expect("class row is stored");
         assert_eq!(view.row_id, stored);
         assert_eq!(first.row_id().expect("finalized"), stored);
