@@ -145,24 +145,29 @@ impl Rowing {
 
 #[cfg(test)]
 mod tests {
-    use crate::commit::hash::CommitHash;
+    use rstest::rstest;
+
     use crate::table::WireRowId;
+    use crate::test_utils::zerocounter_row_id;
 
     use super::*;
 
-    fn row_id(byte: u8) -> WireRowId {
-        WireRowId {
-            commit: CommitHash([byte; 32]),
-            counter: 0,
-        }
-    }
-
-    #[test]
-    fn union_uses_unpacked_order_and_records_displaced_id() {
+    #[rstest]
+    fn union_uses_unpacked_order_and_records_displaced_id(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        low_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        high_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(3)]
+        unseen_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let low = packer.pack_row_id(row_id(1));
-        let high = packer.pack_row_id(row_id(2));
-        let unseen = packer.pack_row_id(row_id(3));
+        let low = packer.pack_row_id(low_id);
+        let high = packer.pack_row_id(high_id);
+        let unseen = packer.pack_row_id(unseen_id);
         let mut rowing = Rowing::new();
 
         rowing.stage_union(0, high, low);
@@ -178,12 +183,22 @@ mod tests {
         assert_eq!(rowing.displaced().collect::<Vec<_>>(), [high]);
     }
 
-    #[test]
-    fn transitive_union_displaces_each_previous_canonical_id() {
+    #[rstest]
+    fn transitive_union_displaces_each_previous_canonical_id(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        low_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        middle_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(3)]
+        high_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let low = packer.pack_row_id(row_id(1));
-        let middle = packer.pack_row_id(row_id(2));
-        let high = packer.pack_row_id(row_id(3));
+        let low = packer.pack_row_id(low_id);
+        let middle = packer.pack_row_id(middle_id);
+        let high = packer.pack_row_id(high_id);
         let mut rowing = Rowing::new();
 
         rowing.stage_union(0, high, middle);
@@ -195,11 +210,18 @@ mod tests {
         assert_eq!(rowing.displaced().collect::<Vec<_>>(), [high, middle]);
     }
 
-    #[test]
-    fn rollback_restores_union_state() {
+    #[rstest]
+    fn rollback_restores_union_state(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        low_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        high_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let low = packer.pack_row_id(row_id(1));
-        let high = packer.pack_row_id(row_id(2));
+        let low = packer.pack_row_id(low_id);
+        let high = packer.pack_row_id(high_id);
         let mut rowing = Rowing::new();
         let snapshot = rowing.snapshot();
 
@@ -212,13 +234,26 @@ mod tests {
         assert!(!rowing.has_displaced());
     }
 
-    #[test]
-    fn clearing_displaced_keeps_canonical_ids_and_empties_the_worklist() {
+    #[rstest]
+    fn clearing_displaced_keeps_canonical_ids_and_empties_the_worklist(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        first_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        second_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(3)]
+        third_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(4)]
+        fourth_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let first = packer.pack_row_id(row_id(1));
-        let second = packer.pack_row_id(row_id(2));
-        let third = packer.pack_row_id(row_id(3));
-        let fourth = packer.pack_row_id(row_id(4));
+        let first = packer.pack_row_id(first_id);
+        let second = packer.pack_row_id(second_id);
+        let third = packer.pack_row_id(third_id);
+        let fourth = packer.pack_row_id(fourth_id);
         let mut rowing = Rowing::new();
 
         rowing.stage_union(0, second, first);
