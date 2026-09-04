@@ -2,109 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-/// Shared theory fixtures for unit tests (`store`, `transaction`, etc.).
-pub(crate) mod test_support {
-    use crate::ir::{
-        Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, FlatRealm, Path, Prop, Rule,
-        RuleEntry, RuleVariant, Schema, TableEntry, ValueEntry,
-    };
-
-    fn int_col_type() -> ColType {
-        ColType::BuiltinTy {
-            builtin_ty: BuiltinTy::BuiltinInt,
-        }
-    }
-
-    fn int_entity(col_names: &[&str]) -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns: col_names
-                .iter()
-                .map(|name| ColumnEntry {
-                    path: Path::from(*name),
-                    col_type: int_col_type(),
-                })
-                .collect(),
-            primary_key: None,
-        }
-    }
-
-    pub fn link_foreign_key_theory() -> FlatRealm {
-        let left = Path::from("Left");
-        let right = Path::from("Right");
-        let link = Path::from("Link");
-        FlatRealm {
-            tables: vec![
-                TableEntry {
-                    path: left.clone(),
-                    table: int_entity(&["x"]),
-                },
-                TableEntry {
-                    path: right.clone(),
-                    table: int_entity(&["x"]),
-                },
-                TableEntry {
-                    path: link.clone(),
-                    table: int_entity(&["a", "b"]),
-                },
-            ],
-            definitions: Vec::new(),
-            rules: vec![RuleEntry {
-                path: Path::from("Link.foreignKeys"),
-                rule: Rule {
-                    rule_variant: RuleVariant::Enforced,
-                    vars: vec![
-                        (Path::from("a"), int_col_type()),
-                        (Path::from("b"), int_col_type()),
-                    ],
-                    antecedents: vec![Prop::Atom {
-                        atom: Atom {
-                            entity: link.clone(),
-                            row_id: None,
-                            values: vec![
-                                ValueEntry {
-                                    column: 0,
-                                    term: El::Var { index: 0 },
-                                },
-                                ValueEntry {
-                                    column: 1,
-                                    term: El::Var { index: 1 },
-                                },
-                            ],
-                        },
-                    }],
-                    consequents: vec![
-                        Prop::Atom {
-                            atom: Atom {
-                                entity: left.clone(),
-                                row_id: None,
-                                values: vec![ValueEntry {
-                                    column: 0,
-                                    term: El::Var { index: 0 },
-                                }],
-                            },
-                        },
-                        Prop::Atom {
-                            atom: Atom {
-                                entity: right.clone(),
-                                row_id: None,
-                                values: vec![ValueEntry {
-                                    column: 0,
-                                    term: El::Var { index: 1 },
-                                }],
-                            },
-                        },
-                    ],
-                },
-            }],
-        }
-    }
-}
-
 use rstest::rstest;
 
 use super::*;
-use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
+use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema};
 
 mod tables {
     use super::*;
@@ -170,9 +71,8 @@ mod tables {
 }
 
 mod transactions {
-    use super::test_support::link_foreign_key_theory;
     use super::*;
-    use crate::test_utils::single_int_store;
+    use crate::test_utils::{link_foreign_key_theory, single_int_store};
 
     #[rstest]
     fn validates_then_applies(#[from(single_int_store)] mut store: Store) {
@@ -249,9 +149,8 @@ mod transactions {
         assert_eq!(t.cell_at(0, 0), Some(42i32.into()));
     }
 
-    #[test]
-    fn leaves_store_unchanged_when_rules_fail() {
-        let theory = link_foreign_key_theory();
+    #[rstest]
+    fn leaves_store_unchanged_when_rules_fail(#[from(link_foreign_key_theory)] theory: FlatRealm) {
         let link = Path::from("Link");
         let mut store = Store::try_from_ir(theory).expect("theory");
         let packed_id_count = store.id_packer.len();
@@ -265,9 +164,10 @@ mod transactions {
         assert_eq!(store.id_packer.len(), packed_id_count);
     }
 
-    #[test]
-    fn owned_transaction_commit_err_returns_original_store() {
-        let theory = link_foreign_key_theory();
+    #[rstest]
+    fn owned_transaction_commit_err_returns_original_store(
+        #[from(link_foreign_key_theory)] theory: FlatRealm,
+    ) {
         let link = Path::from("Link");
         let store = Store::try_from_ir(theory).expect("theory");
 
@@ -321,14 +221,8 @@ mod rowing {
     use rstest::{fixture, rstest};
 
     use super::*;
+    use crate::test_utils::row_id_from;
     use crate::txn::TxnLiveValue;
-
-    fn row_id_from(commit_byte: u8, counter: u32) -> WireRowId {
-        WireRowId {
-            commit: CommitHash([commit_byte; 32]),
-            counter,
-        }
-    }
 
     /// Store with a structural `Term` table (one int column), a structural
     /// `Plus` table (two id columns), and a non-structural `Note` table (one

@@ -2,41 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use rstest::rstest;
+
 use super::*;
-use crate::commit::hash::CommitHash;
 use crate::ir::{self, Path};
 use crate::ir::{BuiltinTy, ColType};
 use crate::op::Op;
-
-fn test_row_id(counter: u32) -> WireRowId {
-    WireRowId {
-        commit: CommitHash([0; 32]),
-        counter,
-    }
-}
-
-fn row_id_from(commit_byte: u8, counter: u32) -> WireRowId {
-    WireRowId {
-        commit: CommitHash([commit_byte; 32]),
-        counter,
-    }
-}
-
-fn id_schema(columns: &[&str]) -> ir::Schema {
-    ir::Schema {
-        entity_variant: ir::EntityVariant::Table,
-        columns: columns
-            .iter()
-            .map(|name| ir::ColumnEntry {
-                path: Path::from(*name),
-                col_type: ColType::RowId {
-                    path: Path::from("T"),
-                },
-            })
-            .collect(),
-        primary_key: None,
-    }
-}
+use crate::test_utils::{id_schema, row_id_from, zerohash_row_id};
 
 /// A [`Table`] paired with its own dictionary, packing mutations at the
 /// same boundary as [`Store`](crate::store::Store).
@@ -163,12 +135,12 @@ fn row_count_matches_inserts_when_schema_has_no_columns() {
     assert!(tbl.table.cols.is_empty());
     assert_eq!(tbl.row_count(), 0);
 
-    let r0 = test_row_id(0);
+    let r0 = zerohash_row_id(0);
     tbl.insert_row(vec![], r0);
     assert_eq!(tbl.row_count(), 1);
     assert_eq!(tbl.row_id_at(0), Some(r0));
 
-    let r1 = test_row_id(1);
+    let r1 = zerohash_row_id(1);
     tbl.insert_row(vec![], r1);
     assert_eq!(tbl.row_count(), 2);
     assert_eq!(tbl.row_id_at(1), Some(r1));
@@ -177,10 +149,10 @@ fn row_count_matches_inserts_when_schema_has_no_columns() {
 #[test]
 fn rollback_removes_applied_rows_and_index_entries() {
     let path = Path::from("rollback");
-    let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], Some(&[0])));
-    let existing = test_row_id(0);
-    let first_added = test_row_id(1);
-    let second_added = test_row_id(2);
+    let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], Some(&["value"])));
+    let existing = zerohash_row_id(0);
+    let first_added = zerohash_row_id(1);
+    let second_added = zerohash_row_id(2);
     tbl.insert_row(vec![WireValue::Int(1)], existing);
 
     let snapshot = tbl.table.snapshot();
@@ -220,8 +192,8 @@ fn rollback_removes_applied_rows_and_index_entries() {
 #[test]
 fn staged_delete_removes_row_and_undo_restores_it() {
     let mut tbl = TestTable::new(Path::from("deleting"), int_schema(&["value"], Some(&[0])));
-    let kept = test_row_id(0);
-    let removed = test_row_id(1);
+    let kept = zerohash_row_id(0);
+    let removed = zerohash_row_id(1);
     tbl.insert_row(vec![WireValue::Int(1)], kept);
     tbl.insert_row(vec![WireValue::Int(2)], removed);
 
@@ -251,14 +223,18 @@ fn staged_delete_removes_row_and_undo_restores_it() {
 /// canonicalisation pass can find the rows it has to rewrite without
 /// scanning the table. Inserts and deletes are the only ways in and out of
 /// storage, so both have to keep it in step.
-#[test]
+#[rstest]
 #[ignore = "rebuild index disabled until we need it"]
-fn rebuild_index_tracks_rows_referring_to_an_id() {
-    let mut tbl = TestTable::new(Path::from("edge"), id_schema(&["left", "right"]));
+fn rebuild_index_tracks_rows_referring_to_an_id(
+    #[from(id_schema)]
+    #[with(vec!["left", "right"])]
+    schema: ir::Schema,
+) {
+    let mut tbl = TestTable::new(Path::from("edge"), schema);
     let a = row_id_from(1, 0);
     let b = row_id_from(1, 1);
-    let pair = test_row_id(0);
-    let doubled = test_row_id(1);
+    let pair = zerohash_row_id(0);
+    let doubled = zerohash_row_id(1);
 
     tbl.insert_row(vec![WireValue::Id(a), WireValue::Id(b)], pair);
     tbl.insert_row(vec![WireValue::Id(a), WireValue::Id(a)], doubled);
@@ -285,12 +261,16 @@ fn rebuild_index_tracks_rows_referring_to_an_id() {
     );
 }
 
-#[test]
-fn full_rebuild_rewrites_stale_id_cells() {
-    let mut tbl = TestTable::new(Path::from("edge"), id_schema(&["child"]));
+#[rstest]
+fn full_rebuild_rewrites_stale_id_cells(
+    #[from(id_schema)]
+    #[with(vec!["child"])]
+    schema: ir::Schema,
+) {
+    let mut tbl = TestTable::new(Path::from("edge"), schema);
     let canonical_child = row_id_from(1, 0);
     let stale_child = row_id_from(2, 0);
-    let owner = test_row_id(0);
+    let owner = zerohash_row_id(0);
     tbl.insert_row(vec![WireValue::Id(stale_child)], owner);
 
     let stale_child = tbl.dict.lookup_row_id(stale_child).unwrap();
@@ -326,13 +306,17 @@ fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row() {
 
 /// Rollback replays the undo log through the same insert path, so the
 /// rebuild index has to come back with the rows it restores.
-#[test]
+#[rstest]
 #[ignore = "rebuild index disabled until we need it"]
-fn rollback_restores_rebuild_index_entries() {
-    let mut tbl = TestTable::new(Path::from("edge"), id_schema(&["left", "right"]));
+fn rollback_restores_rebuild_index_entries(
+    #[from(id_schema)]
+    #[with(vec!["left", "right"])]
+    schema: ir::Schema,
+) {
+    let mut tbl = TestTable::new(Path::from("edge"), schema);
     let a = row_id_from(1, 0);
     let b = row_id_from(1, 1);
-    let row = test_row_id(0);
+    let row = zerohash_row_id(0);
     tbl.insert_row(vec![WireValue::Id(a), WireValue::Id(b)], row);
 
     let snapshot = tbl.table.snapshot();
@@ -351,7 +335,7 @@ fn rollback_restores_rebuild_index_entries() {
 fn commit_snapshot_keeps_rows_and_discards_undo_log() {
     let path = Path::from("commit_snapshot");
     let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], None));
-    let row_id = test_row_id(0);
+    let row_id = zerohash_row_id(0);
 
     let snapshot = tbl.table.snapshot();
     tbl.stage_update(Op::Add {
@@ -375,7 +359,7 @@ fn rollback_discards_updates_staged_after_snapshot() {
 
     let snapshot = tbl.table.snapshot();
     tbl.stage_update(Op::Add {
-        row_id: test_row_id(0),
+        row_id: zerohash_row_id(0),
         table: 0,
         values: vec![WireValue::Int(7)],
     });
@@ -400,7 +384,7 @@ fn empty_primary_key_rejects_second_row() {
     };
     let mut tbl = TestTable::new(Path::from("singleton"), schema);
 
-    tbl.insert_row(vec![WireValue::Int(0)], test_row_id(0));
+    tbl.insert_row(vec![WireValue::Int(0)], zerohash_row_id(0));
     assert_eq!(tbl.row_count(), 1);
 
     let values1 = vec![WireValue::Int(1)];
@@ -431,7 +415,7 @@ fn row_read_helpers_return_row_id_and_cells() {
     };
     let mut tbl = TestTable::new(Path::from("readable"), schema);
 
-    let row_id = test_row_id(0);
+    let row_id = zerohash_row_id(0);
     tbl.insert_row(
         vec![WireValue::Int(7), WireValue::Str("x".to_string())],
         row_id,
@@ -463,7 +447,7 @@ fn row_read_helpers_return_row_id_and_cells() {
 #[test]
 fn row_by_id_finds_inserted_row() {
     let mut tbl = TestTable::new(Path::from("T"), int_schema(&["c0"], None));
-    let row_id = test_row_id(0);
+    let row_id = zerohash_row_id(0);
     tbl.insert_row(vec![WireValue::Int(42)], row_id);
 
     let handle = tbl.handle();
@@ -474,14 +458,18 @@ fn row_by_id_finds_inserted_row() {
             values: vec![WireValue::Int(42)],
         })
     );
-    assert_eq!(handle.row_by_id(test_row_id(1)), None);
+    assert_eq!(handle.row_by_id(zerohash_row_id(1)), None);
 }
 
 /// Row ids and id cells survive the pack/unpack round trip across rows
 /// from different commits.
-#[test]
-fn packed_row_ids_round_trip_across_commits() {
-    let mut tbl = TestTable::new(Path::from("edges"), id_schema(&["src", "dst"]));
+#[rstest]
+fn packed_row_ids_round_trip_across_commits(
+    #[from(id_schema)]
+    #[with(vec!["src", "dst"])]
+    schema: ir::Schema,
+) {
+    let mut tbl = TestTable::new(Path::from("edges"), schema);
 
     let rows = [
         (row_id_from(1, 0), row_id_from(3, 7), row_id_from(4, 8)),
@@ -559,10 +547,14 @@ fn rows_stay_sorted_by_row_id() {
 
 /// Primary key comparison works on dictionary-encoded id columns, and an
 /// id with an unseen commit hash never collides.
-#[test]
-fn primary_key_detects_duplicates_in_id_columns() {
-    let mut schema = id_schema(&["src", "dst"]);
+#[rstest]
+fn primary_key_detects_duplicates_in_id_columns(
+    #[from(id_schema)]
+    #[with(vec!["src", "dst"])]
+    mut schema: ir::Schema,
+) {
     schema.primary_key = Some(vec![0]);
+
     let mut tbl = TestTable::new(Path::from("edges"), schema);
 
     let src = row_id_from(3, 7);
@@ -611,7 +603,7 @@ fn multi_column_primary_key_checks_all_columns() {
     for (i, (a, b)) in rows.into_iter().enumerate() {
         let values = vec![WireValue::Int(a), WireValue::Int(b), WireValue::Int(0)];
         tbl.validate_insert(&values).expect("unique pair");
-        tbl.insert_row(values, test_row_id(i as u32));
+        tbl.insert_row(values, zerohash_row_id(i as u32));
     }
 
     for (a, b) in rows {
@@ -643,7 +635,7 @@ fn string_primary_key_detects_duplicates() {
     for (i, name) in ["b", "a", "c"].into_iter().enumerate() {
         let values = vec![WireValue::Str(name.to_string())];
         tbl.validate_insert(&values).expect("unique name");
-        tbl.insert_row(values, test_row_id(i as u32));
+        tbl.insert_row(values, zerohash_row_id(i as u32));
     }
 
     assert_eq!(
@@ -685,7 +677,7 @@ fn pk_insert_benchmark() {
     let n = 50_000;
     let start = std::time::Instant::now();
     for i in 0..n {
-        let row_id = test_row_id(i as u32);
+        let row_id = zerohash_row_id(i as u32);
         let values = vec![WireValue::Id(row_id), WireValue::Int(i)];
         tbl.validate_insert(&values).expect("keys are unique");
         tbl.insert_row(values, row_id);
@@ -702,7 +694,7 @@ fn table_index_non_index_give_same_results() {
     let schema = int_schema(&["indexed", "plain"], Some(&[0]));
     let mut tbl = TestTable::new(Path::from("lookup"), schema);
     for value in [7, 8] {
-        let row_id = test_row_id(tbl.row_count() as u32);
+        let row_id = zerohash_row_id(tbl.row_count() as u32);
         tbl.insert_row(vec![WireValue::Int(value), WireValue::Int(value)], row_id);
     }
     let index = tbl.table.primary_index().expect("primary-key index");
@@ -746,11 +738,11 @@ fn debug_dumps_rows() {
 
     tbl.insert_row(
         vec![WireValue::Int(7), WireValue::Str("x".to_string())],
-        test_row_id(0),
+        zerohash_row_id(0),
     );
     tbl.insert_row(
         vec![WireValue::Int(8), WireValue::Str("y".to_string())],
-        test_row_id(1),
+        zerohash_row_id(1),
     );
 
     assert_eq!(
@@ -761,8 +753,8 @@ fn debug_dumps_rows() {
                 "[0] row_id={} | c0=7 | c1=\"x\"\n",
                 "[1] row_id={} | c0=8 | c1=\"y\"\n",
             ),
-            test_row_id(0),
-            test_row_id(1),
+            zerohash_row_id(0),
+            zerohash_row_id(1),
         )
     );
 }
