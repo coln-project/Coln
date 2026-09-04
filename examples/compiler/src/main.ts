@@ -36,7 +36,7 @@ if (hashUrl && !isValidAutomergeUrl(hashUrl)) {
   const endpoint = import.meta.env.VITE_SUBDUCTION_ENDPOINT
     ?? "wss://subduction.sync.inkandswitch.com"
   const repo = new Repo({
-    storage: new IndexedDBStorageAdapter("coln-compiler", "documents"),
+    storage: new IndexedDBStorageAdapter("coln-lab", "documents"),
     subductionWebsocketEndpoints: [endpoint],
   })
 

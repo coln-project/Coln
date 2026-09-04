@@ -36,4 +36,24 @@ export function isTheoryDocument(value: unknown): value is TheoryDocument {
   return document.version === 1
     && typeof document.source === "string"
     && Array.isArray(document.stores)
+    && document.stores.every(isStoreRecord)
+}
+
+export function isRealmSchema(value: unknown): value is RealmSchema {
+  if (typeof value !== "object" || value === null) return false
+  const schema = value as Partial<RealmSchema>
+  return Array.isArray(schema.entities) && Array.isArray(schema.rules)
+}
+
+function isStoreRecord(value: unknown): value is StoreRecord {
+  if (typeof value !== "object" || value === null) return false
+  const store = value as Partial<StoreRecord>
+  return typeof store.url === "string"
+    && typeof store.createdAt === "number"
+    && Number.isFinite(store.createdAt)
+    && Array.isArray(store.sourceHeads)
+    && store.sourceHeads.every(head => typeof head === "string")
+    && Number.isInteger(store.realmIndex)
+    && typeof store.realmName === "string"
+    && isRealmSchema(store.ir)
 }

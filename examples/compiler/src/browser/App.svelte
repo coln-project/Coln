@@ -4,13 +4,16 @@
 <script lang="ts">
   import type { Repo } from "@automerge/automerge-repo"
   import { onMount } from "svelte"
+  import { parseCompiledRealms, type CompiledRealm } from "../lib/compiled-realms.ts"
   import { loadCompiler, type Compilation, type Compiler } from "../lib/compiler.ts"
+  import { createStore } from "../lib/stores.ts"
   import { TheoryHandle } from "../lib/theory-handle.svelte.ts"
   import { TheorySync } from "../lib/theory-sync.svelte.ts"
   import type { TheoryDocumentHandle } from "../lib/theory-document.ts"
   import JsonViewer from "./JsonViewer.svelte"
   import OutputPanel from "./OutputPanel.svelte"
   import SourceEditor from "./SourceEditor.svelte"
+  import StoresPanel from "./StoresPanel.svelte"
 
   let { repo, handle, endpoint }: {
     repo: Repo
@@ -31,6 +34,11 @@
   let status = $state<"loading" | "ready" | "compiling" | "error">("loading")
   let error = $state("")
   let compiler = $state<Compiler>()
+  let compiledSource = $state("")
+  let realms = $state<CompiledRealm[]>([])
+  let selectedRealmName = $state("")
+  let creatingStore = $state(false)
+  let storeError = $state("")
   let feedback = $state("")
   let copyPending = $state(false)
   let compileTimer: ReturnType<typeof setTimeout> | undefined
@@ -55,6 +63,26 @@
   const statusDot = $derived(status === "error" ? "bg-[#ff7657]" : status === "ready" ? "bg-[#d8ff57] shadow-[0_0_12px_#d8ff5788]" : "bg-[#819091]")
   const syncColor = $derived(syncStatus === "error" ? "text-[#ff9a86]" : syncStatus === "synced" ? "text-[#d8ff57]" : "text-[#819091]")
   const syncDot = $derived(syncStatus === "error" ? "bg-[#ff7657]" : syncStatus === "synced" ? "bg-[#d8ff57]" : "bg-[#819091]")
+  const selectedRealm = $derived(realms.find(realm => realm.name === selectedRealmName))
+  const stores = $derived([...theory.stores].reverse())
+  const canCreateStore = $derived(
+    status === "ready"
+      && compilation.diagnosticsHtml.length === 0
+      && compiledSource === theory.source
+      && selectedRealm !== undefined
+      && !creatingStore,
+  )
+  const createStoreHint = $derived(
+    creatingStore
+      ? "Flushing store before adding it to this theory."
+      : status === "compiling" || compiledSource !== theory.source
+        ? "Waiting for the current source to compile."
+        : compilation.diagnosticsHtml.length > 0
+          ? "Resolve diagnostics before creating a store."
+          : realms.length > 1 && !selectedRealm
+            ? "Choose a realm to create."
+            : "",
+  )
 
   onMount(() => {
     let currentSource = handle.doc().source
@@ -89,9 +117,13 @@
     clearTimeout(compileTimer)
     const version = ++compileVersion
     error = ""
+    storeError = ""
+    compiledSource = ""
+    realms = []
 
     if (source === "") {
       compilation = emptyCompilation
+      selectedRealmName = ""
       status = compiler ? "ready" : "loading"
       return
     }
@@ -109,7 +141,15 @@
     try {
       const nextCompilation = await compiler.compile(source)
       if (destroyed || version !== compileVersion) return
+      const nextRealms = parseCompiledRealms(nextCompilation.irJson)
       compilation = nextCompilation
+      compiledSource = source
+      realms = nextRealms
+      if (nextRealms.length === 1) {
+        selectedRealmName = nextRealms[0].name
+      } else if (!nextRealms.some(realm => realm.name === selectedRealmName)) {
+        selectedRealmName = ""
+      }
       status = "ready"
     } catch (cause) {
       if (version === compileVersion) showError(cause)
@@ -126,15 +166,51 @@
     if (copyPending) return
     copyPending = true
     try {
-      await navigator.clipboard.writeText(location.href)
-      feedback = "Project URL copied"
-      clearTimeout(feedbackTimer)
-      feedbackTimer = setTimeout(() => feedback = "", 2_000)
+      await copyText(location.href, "Project URL copied")
     } catch (cause) {
       showError(cause)
     } finally {
       copyPending = false
     }
+  }
+
+  async function createSelectedStore() {
+    if (!canCreateStore || !selectedRealm) return
+    creatingStore = true
+    storeError = ""
+    try {
+      const { record, theoryFlushError } = await createStore(repo, theoryHandle, selectedRealm)
+      showFeedback(`${record.realmName} store created`)
+      if (theoryFlushError) {
+        const detail = theoryFlushError instanceof Error
+          ? theoryFlushError.message
+          : String(theoryFlushError)
+        storeError = `Store created, but its theory record was not flushed: ${detail}`
+      }
+    } catch (cause) {
+      storeError = cause instanceof Error ? cause.message : String(cause)
+    } finally {
+      creatingStore = false
+    }
+  }
+
+  async function copyStoreUrl(url: string) {
+    try {
+      await copyText(url, "Store URL copied")
+    } catch (cause) {
+      storeError = cause instanceof Error ? cause.message : String(cause)
+    }
+  }
+
+  async function copyText(value: string, message: string) {
+    await navigator.clipboard.writeText(value)
+    showFeedback(message)
+  }
+
+  function showFeedback(message: string) {
+    feedback = message
+    clearTimeout(feedbackTimer)
+    feedbackTimer = setTimeout(() => feedback = "", 2_000)
   }
 
   function createNewTheory(event: MouseEvent) {
@@ -176,7 +252,7 @@
     </div>
   </header>
 
-  <div class="grid min-h-0 min-[761px]:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+  <div class="grid min-h-0 min-[761px]:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)] min-[1100px]:grid-cols-[minmax(320px,0.8fr)_minmax(320px,1fr)_300px]">
     <section class="flex min-h-0 flex-col border-b border-[#304041] bg-[#101718] min-[761px]:border-r min-[761px]:border-b-0">
       <div class="flex min-h-16 items-center justify-between gap-4 border-b border-[#304041] px-4 min-[761px]:px-5">
         <div>
@@ -232,5 +308,18 @@
         {/if}
       </OutputPanel>
     </section>
+
+    <StoresPanel
+      {stores}
+      {realms}
+      {selectedRealmName}
+      canCreate={canCreateStore}
+      creating={creatingStore}
+      error={storeError}
+      hint={createStoreHint}
+      onselect={name => selectedRealmName = name}
+      oncreate={createSelectedStore}
+      oncopy={url => void copyStoreUrl(url)}
+    />
   </div>
 </main>
