@@ -67,11 +67,12 @@ fn sedimentree_id(store: &Store) -> SedimentreeId {
 
 fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i32)> {
     let table = store.table_at(&Path::from("T")).expect("T table");
-    (0..table.row_count())
+    table
+        .scan()
         .map(|row| {
-            let id = table.row_id_at(row).expect("row id");
-            let value = match table.cell_at(row, 0).expect("cell") {
-                WireValue::Int(value) => value,
+            let id = row.row_id;
+            let value = match &row.values[0] {
+                WireValue::Int(value) => *value,
                 other => panic!("expected int cell, got {other:?}"),
             };
             (id.commit, id.counter, value)

@@ -13,6 +13,8 @@ mod rowing;
 pub mod solver;
 pub mod store;
 pub mod table;
+#[cfg(test)]
+mod test_utils;
 pub mod txn;
 pub mod value;
 
