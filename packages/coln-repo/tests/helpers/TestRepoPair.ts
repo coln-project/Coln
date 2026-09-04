@@ -2,10 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import {
-  initSubduction,
-  Repo,
-} from "@automerge/automerge-repo"
+import { initSubduction, Repo } from "@automerge/automerge-repo"
 import { setTimeout as delay } from "node:timers/promises"
 import { TestNetworkAdapter } from "./TestNetworkAdapter"
 
@@ -17,9 +14,12 @@ export interface TestRepoPair {
 
 export async function createTestRepoPair(): Promise<TestRepoPair> {
   await initSubduction()
-  const [sourceAdapter, replicaAdapter] = TestNetworkAdapter.createConnectedPair()
+  const [sourceAdapter, replicaAdapter] =
+    TestNetworkAdapter.createConnectedPair()
   const source = new Repo({
-    subductionAdapters: [{ adapter: sourceAdapter, serviceName: "test", role: "connect" }],
+    subductionAdapters: [
+      { adapter: sourceAdapter, serviceName: "test", role: "connect" },
+    ],
     subductionTimeouts: { healMaxAttempts: 0, syncMs: 1_000 },
   })
   const replica = new Repo({
@@ -41,8 +41,8 @@ export async function createTestRepoPair(): Promise<TestRepoPair> {
     async shutdown() {
       await Promise.all([source.flush(), replica.flush()])
       await Promise.all([
-        source.subduction.then(subduction => subduction.disconnectAll()),
-        replica.subduction.then(subduction => subduction.disconnectAll()),
+        source.subduction.then((subduction) => subduction.disconnectAll()),
+        replica.subduction.then((subduction) => subduction.disconnectAll()),
       ])
       await Promise.all([source.shutdown(), replica.shutdown()])
     },
@@ -53,7 +53,7 @@ export function waitForChange(handle: {
   once(event: "change", listener: () => void): unknown
 }): Promise<void> {
   return withTimeout(
-    new Promise(resolve => handle.once("change", () => resolve())),
+    new Promise((resolve) => handle.once("change", () => resolve())),
     "handle change",
   )
 }
@@ -61,7 +61,7 @@ export function waitForChange(handle: {
 function waitForConnection(repo: Repo): Promise<void> {
   if (repo.isSubductionConnected()) return Promise.resolve()
   return withTimeout(
-    new Promise(resolve => {
+    new Promise((resolve) => {
       const onConnection = ({ connected }: { connected: boolean }) => {
         if (!connected) return
         repo.off("subduction-connection", onConnection)

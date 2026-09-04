@@ -16,8 +16,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
+    "test": "pnpm run format:check && pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
     "test:unit": "tsx --test \"tests/**/*.test.ts\"",
     "test:package": "pnpm run build && tsc -p tsconfig.package.json && node --input-type=module --eval \"const pkg = await import('@coln-project/repo'); if (typeof pkg.find !== 'function') throw new Error('missing find export')\"",
     "test:e2e": "pnpm run test:package && playwright test"
@@ -31,6 +33,7 @@
     "@playwright/test": "^1.62.1",
     "@types/node": "^25.9.5",
     "@types/ws": "^8.18.1",
+    "oxfmt": "0.66.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",

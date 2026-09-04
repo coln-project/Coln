@@ -15,7 +15,9 @@ import {
 } from "@coln-project/repo"
 
 type Equal<Left, Right> =
-  (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right ? 1 : 2
+  (<Type>() => Type extends Left ? 1 : 2) extends <Type>() => Type extends Right
+    ? 1
+    : 2
     ? true
     : false
 type Expect<Type extends true> = Type
@@ -30,24 +32,24 @@ const explicitUndefined = find(repo, url, undefined)
 const typed = find(repo, url, bindings)
 const optional = find(repo, url, optionalBindings)
 
-void raw.then(handle => {
+void raw.then((handle) => {
   handle.doc().scanTable("Example.Items")
   handle.fullDoc().store.heads()
 })
 
-void typed.then(handle => {
+void typed.then((handle) => {
   handle.doc().root
-  handle.on("change", payload => {
+  handle.on("change", (payload) => {
     payload.doc?.root
     payload.handle.doc().root
   })
-  handle.addListener("change", payload => payload.doc?.root)
-  handle.listeners("change").forEach(listener => listener)
-  handle.on("heads-changed", payload => {
+  handle.addListener("change", (payload) => payload.doc?.root)
+  handle.listeners("change").forEach((listener) => listener)
+  handle.on("heads-changed", (payload) => {
     payload.doc.store
     payload.handle.doc().root
   })
-  handle.change(transaction => {
+  handle.change((transaction) => {
     const value: Value = transaction.add("Example.Items", [])
     value
     transaction.root
@@ -60,14 +62,31 @@ export type TypeChecks = [
   Expect<Equal<typeof raw, Promise<ColnHandle>>>,
   Expect<Equal<typeof explicitUndefined, Promise<ColnHandle>>>,
   Expect<Equal<typeof typed, Promise<ColnHandle<typeof bindings>>>>,
-  Expect<Equal<typeof optional, Promise<ColnHandle | ColnHandle<typeof bindings>>>>,
-  Expect<Equal<ReturnType<ColnHandle<typeof bindings>["doc"]>, ColnDocument<typeof bindings>>>,
   Expect<
-    Equal<Parameters<ColnHandle<typeof bindings>["change"]>[0], ColnChange<typeof bindings>>
+    Equal<typeof optional, Promise<ColnHandle | ColnHandle<typeof bindings>>>
   >,
-  Expect<Equal<Parameters<ColnChange<typeof bindings>>[0], ColnTransaction<typeof bindings>>>,
+  Expect<
+    Equal<
+      ReturnType<ColnHandle<typeof bindings>["doc"]>,
+      ColnDocument<typeof bindings>
+    >
+  >,
+  Expect<
+    Equal<
+      Parameters<ColnHandle<typeof bindings>["change"]>[0],
+      ColnChange<typeof bindings>
+    >
+  >,
+  Expect<
+    Equal<
+      Parameters<ColnChange<typeof bindings>>[0],
+      ColnTransaction<typeof bindings>
+    >
+  >,
   Expect<Equal<keyof ColnDocument, DocumentOperation>>,
-  Expect<Equal<keyof ColnDocument<typeof bindings>, DocumentOperation | "root">>,
+  Expect<
+    Equal<keyof ColnDocument<typeof bindings>, DocumentOperation | "root">
+  >,
   Expect<Equal<keyof ColnTransaction, "add">>,
   Expect<Equal<keyof ColnTransaction<typeof bindings>, "add" | "root">>,
 ]

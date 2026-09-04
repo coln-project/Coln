@@ -9,7 +9,10 @@ import {
   type RealmBindings,
   type TransactionHandle,
 } from "@coln-project/runtime"
-import { defineDocumentType, type SedimentreeMeta } from "@automerge/automerge-repo/slim"
+import {
+  defineDocumentType,
+  type SedimentreeMeta,
+} from "@automerge/automerge-repo/slim"
 
 export type { ColnSchema, RealmBindings } from "@coln-project/runtime"
 
@@ -18,22 +21,26 @@ export type ColnState = {
   bindings?: RealmBindings
 }
 
-type ColnDocumentBase = Pick<StoreHandle, "heads" | "jsonIR" | "rowById" | "scanTable">
+type ColnDocumentBase = Pick<
+  StoreHandle,
+  "heads" | "jsonIR" | "rowById" | "scanTable"
+>
 type ColnTransactionBase = Pick<TransactionHandle, "add">
 
-export type ColnDocument<Bindings extends RealmBindings | undefined = undefined> =
-  Bindings extends RealmBindings
-    ? ColnDocumentBase & Pick<InstanceType<Bindings["View"]>, "root">
-    : ColnDocumentBase
+export type ColnDocument<
+  Bindings extends RealmBindings | undefined = undefined,
+> = Bindings extends RealmBindings
+  ? ColnDocumentBase & Pick<InstanceType<Bindings["View"]>, "root">
+  : ColnDocumentBase
 
-export type ColnTransaction<Bindings extends RealmBindings | undefined = undefined> =
-  Bindings extends RealmBindings
-    ? ColnTransactionBase & Pick<InstanceType<Bindings["Transaction"]>, "root">
-    : ColnTransactionBase
+export type ColnTransaction<
+  Bindings extends RealmBindings | undefined = undefined,
+> = Bindings extends RealmBindings
+  ? ColnTransactionBase & Pick<InstanceType<Bindings["Transaction"]>, "root">
+  : ColnTransactionBase
 
-export type ColnChange<Bindings extends RealmBindings | undefined = undefined> = (
-  transaction: ColnTransaction<Bindings>,
-) => void
+export type ColnChange<Bindings extends RealmBindings | undefined = undefined> =
+  (transaction: ColnTransaction<Bindings>) => void
 
 export const colnDocType = defineDocumentType<
   ColnState,
@@ -43,19 +50,24 @@ export const colnDocType = defineDocumentType<
 >({
   name: "coln",
   empty: () => ({ store: StoreHandle.empty() }),
-  init: schema => ({ store: StoreHandle.fromTheory(serializeSchema(schema)) }),
+  init: (schema) => ({
+    store: StoreHandle.fromTheory(serializeSchema(schema)),
+  }),
   view: createDocument,
   change: (state, change) => runTransaction(state, change),
-  heads: state => state.store.heads(),
-  hasData: state => state.store.heads().length > 0,
+  heads: (state) => state.store.heads(),
+  hasData: (state) => state.store.heads().length > 0,
   sedimentree: {
-    metadata: state => commitChunks(state).map(commitMetadata),
+    metadata: (state) => commitChunks(state).map(commitMetadata),
     materialize: (state, metadata) => {
-      const wantedHeads = new Set(metadata.map(entry => entry.head))
+      const wantedHeads = new Set(metadata.map((entry) => entry.head))
       // TODO: Add a runtime commitChunksByHash API if full-history scans become costly.
       return commitChunks(state)
-        .filter(chunk => wantedHeads.has(chunk.hash))
-        .map(chunk => ({ ...commitMetadata(chunk), bytes: new Uint8Array(chunk.bytes) }))
+        .filter((chunk) => wantedHeads.has(chunk.hash))
+        .map((chunk) => ({
+          ...commitMetadata(chunk),
+          bytes: new Uint8Array(chunk.bytes),
+        }))
     },
     apply: (state, blobs) => {
       if (blobs.length > 0) {
@@ -65,7 +77,7 @@ export const colnDocType = defineDocumentType<
       }
       return state
     },
-    liveHashes: state => commitChunks(state).map(chunk => chunk.hash),
+    liveHashes: (state) => commitChunks(state).map((chunk) => chunk.hash),
   },
 })
 
@@ -75,7 +87,7 @@ function createDocument(state: ColnState): ColnDocumentBase {
     heads: () => store.heads(),
     jsonIR: () => store.jsonIR(),
     rowById: (path, rowId) => store.rowById(path, rowId),
-    scanTable: path => store.scanTable(path),
+    scanTable: (path) => store.scanTable(path),
   }
   if (bindings) document.root = new bindings.View(store).root
   return Object.freeze(document)
@@ -115,7 +127,8 @@ function runTransaction(document: ColnState, change: ColnChange): ColnState {
 
 function serializeSchema(schema: ColnSchema): string {
   const serialized = JSON.stringify(schema)
-  if (serialized === undefined) throw new Error("creating a Coln store requires a schema")
+  if (serialized === undefined)
+    throw new Error("creating a Coln store requires a schema")
   return serialized
 }
 

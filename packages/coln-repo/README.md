@@ -9,10 +9,10 @@ Coln Repo currently requires the experimental [doctypes](https://github.com/auto
 Create a Coln store using generated bindings.
 
 ```ts
-import * as Bindings from "./ExampleRealm.js";
-import { create } from "@coln-project/repo";
+import * as Bindings from "./ExampleRealm.js"
+import { create } from "@coln-project/repo"
 
-const handle = create(repo, Bindings);
+const handle = create(repo, Bindings)
 ```
 
 ## Find
@@ -20,20 +20,20 @@ const handle = create(repo, Bindings);
 Find a Coln store by Automerge URL. Bindings are optional and must match the document schema when supplied.
 
 ```ts
-import * as Bindings from "./ExampleRealm.js";
-import { find } from "@coln-project/repo";
+import * as Bindings from "./ExampleRealm.js"
+import { find } from "@coln-project/repo"
 
-const handle = await find(repo, url, Bindings);
+const handle = await find(repo, url, Bindings)
 ```
 
 Apply bindings to a raw handle later if needed:
 
 ```ts
-import * as Bindings from "./ExampleRealm.js";
-import { applyBindings, find } from "@coln-project/repo";
+import * as Bindings from "./ExampleRealm.js"
+import { applyBindings, find } from "@coln-project/repo"
 
-const rawHandle = await find(repo, url);
-const handle = applyBindings(rawHandle, Bindings);
+const rawHandle = await find(repo, url)
+const handle = applyBindings(rawHandle, Bindings)
 ```
 
 > [!IMPORTANT]
@@ -44,14 +44,14 @@ const handle = applyBindings(rawHandle, Bindings);
 Read the current document synchronously or subscribe to changes.
 
 ```ts
-const doc = handle.doc();
-doc.scanTable("Example.Items");
-doc.root.Items.values();
+const doc = handle.doc()
+doc.scanTable("Example.Items")
+doc.root.Items.values()
 
 handle.on("change", ({ doc }) => {
-  doc?.scanTable("Example.Items");
-  doc?.root.Items.values();
-});
+  doc?.scanTable("Example.Items")
+  doc?.root.Items.values()
+})
 ```
 
 Documents expose `heads()`, `jsonIR()`, `rowById()`, and `scanTable()`.
@@ -62,8 +62,8 @@ Changes are synchronous and atomic. A thrown error aborts the transaction.
 
 ```ts
 handle.change((tx) => {
-  tx.root.Items.add();
-});
+  tx.root.Items.add()
+})
 ```
 
 Transactions expose `add(path, values)`; bound transactions also expose `root`.

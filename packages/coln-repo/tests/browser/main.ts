@@ -18,7 +18,9 @@ import {
 } from "../../src/index.js"
 import * as itemFfi from "../fixtures/itemFfi"
 
-initSync({ module: Uint8Array.from(atob(wasmBase64), char => char.charCodeAt(0)) })
+initSync({
+  module: Uint8Array.from(atob(wasmBase64), (char) => char.charCodeAt(0)),
+})
 
 type RawHandle = CrdtDocHandle<typeof colnDocType>
 type ItemHandle = ColnHandle<typeof itemFfi>
@@ -51,7 +53,7 @@ const api = {
   },
 
   add(path: string, values: Value[]): void {
-    currentHandle().change(transaction => transaction.add(path, values))
+    currentHandle().change((transaction) => transaction.add(path, values))
   },
 
   rows(path: string): RowView[] {
@@ -59,13 +61,16 @@ const api = {
   },
 
   addTyped(value: string): void {
-    currentTypedHandle().change(transaction => {
+    currentTypedHandle().change((transaction) => {
       transaction.root.Items(stringValue(value)).add()
     })
   },
 
   typedCount(value: string): number {
-    const rows = currentTypedHandle().doc().root.Items(stringValue(value)).values()
+    const rows = currentTypedHandle()
+      .doc()
+      .root.Items(stringValue(value))
+      .values()
     let count = 0
     for (let next = rows.next(); !next.done; next = rows.next()) count += 1
     return count

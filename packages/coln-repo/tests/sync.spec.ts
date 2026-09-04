@@ -15,7 +15,9 @@ import { itemSchema } from "./fixtures/schema"
 const table = "Test.Items"
 type RawHandle = CrdtDocHandle<typeof colnDocType>
 
-test("browser and Node repos create, find, and update each other's stores", async ({ browser }) => {
+test("browser and Node repos create, find, and update each other's stores", async ({
+  browser,
+}) => {
   await initSubduction()
   const context = await browser.newContext()
   const pages: Page[] = []
@@ -28,7 +30,7 @@ test("browser and Node repos create, find, and update each other's stores", asyn
     const browserCreator = await openPage(context.newPage())
     pages.push(browserCreator)
     const browserUrl = await browserCreator.evaluate(
-      schema => window.colnTest.create(schema),
+      (schema) => window.colnTest.create(schema),
       itemSchema,
     )
     await add(browserCreator, "browser-one")
@@ -49,7 +51,7 @@ test("browser and Node repos create, find, and update each other's stores", asyn
     const browserFinder = await openPage(context.newPage())
     pages.push(browserFinder)
     await browserFinder.evaluate(
-      url => window.colnTest.find(url),
+      (url) => window.colnTest.find(url),
       nodeCreator.url as AutomergeUrl,
     )
     await expectRows(browserFinder, ["node-one"])
@@ -71,7 +73,9 @@ test("browser and Node repos create, find, and update each other's stores", asyn
   }
 })
 
-test("reloads without schema and applies typed bindings", async ({ browser }) => {
+test("reloads without schema and applies typed bindings", async ({
+  browser,
+}) => {
   const context = await browser.newContext()
   const pages: Page[] = []
 
@@ -85,7 +89,7 @@ test("reloads without schema and applies typed bindings", async ({ browser }) =>
 
     const finder = await openPage(context.newPage())
     pages.push(finder)
-    await finder.evaluate(url => window.colnTest.find(url), url)
+    await finder.evaluate((url) => window.colnTest.find(url), url)
     await expectRows(finder, ["one"])
     await finder.evaluate(() => window.colnTest.applyTypedBindings())
     await expectTypedCount(finder, "one", 1)
@@ -100,7 +104,7 @@ test("reloads without schema and applies typed bindings", async ({ browser }) =>
 
     const reloaded = await openPage(context.newPage())
     pages.push(reloaded)
-    await reloaded.evaluate(url => window.colnTest.find(url), url)
+    await reloaded.evaluate((url) => window.colnTest.find(url), url)
     await expectRows(reloaded, ["one", "two"])
     await reloaded.evaluate(() => window.colnTest.applyTypedBindings())
     await expectTypedCount(reloaded, "one", 1)
@@ -124,14 +128,17 @@ async function openPage(pagePromise: Promise<Page>): Promise<Page> {
 async function shutdownPages(pages: Page[]): Promise<void> {
   await Promise.all(
     pages
-      .filter(page => !page.isClosed())
-      .map(page => page.evaluate(() => window.colnTest.shutdown()).catch(() => undefined)),
+      .filter((page) => !page.isClosed())
+      .map((page) =>
+        page.evaluate(() => window.colnTest.shutdown()).catch(() => undefined),
+      ),
   )
 }
 
 async function add(page: Page, value: string) {
   await page.evaluate(
-    ({ table, value }) => window.colnTest.add(table, [{ tag: "string", value }]),
+    ({ table, value }) =>
+      window.colnTest.add(table, [{ tag: "string", value }]),
     { table, value },
   )
 }
@@ -140,12 +147,12 @@ async function expectRows(page: Page, values: string[]) {
   await expect
     .poll(() =>
       page.evaluate(
-        table =>
+        (table) =>
           window.colnTest
             .rows(table)
-            .map(row => row.values[0])
-            .filter(value => value?.tag === "string")
-            .map(value => value.value)
+            .map((row) => row.values[0])
+            .filter((value) => value?.tag === "string")
+            .map((value) => value.value)
             .sort(),
         table,
       ),
@@ -154,7 +161,9 @@ async function expectRows(page: Page, values: string[]) {
 }
 
 function addInNode(handle: RawHandle, value: string) {
-  handle.change(transaction => transaction.add(table, [{ tag: "string", value }]))
+  handle.change((transaction) =>
+    transaction.add(table, [{ tag: "string", value }]),
+  )
 }
 
 async function expectNodeRows(handle: RawHandle, values: string[]) {
@@ -163,9 +172,9 @@ async function expectNodeRows(handle: RawHandle, values: string[]) {
       handle
         .doc()
         .scanTable(table)
-        .map(row => row.values[0])
-        .filter(value => value?.tag === "string")
-        .map(value => value.value)
+        .map((row) => row.values[0])
+        .filter((value) => value?.tag === "string")
+        .map((value) => value.value)
         .sort(),
     )
     .toEqual([...values].sort())
@@ -174,7 +183,9 @@ async function expectNodeRows(handle: RawHandle, values: string[]) {
 async function expectSameHeads(page: Page, handle: RawHandle) {
   await expect
     .poll(async () => {
-      const browserHeads = (await page.evaluate(() => window.colnTest.heads())).sort()
+      const browserHeads = (
+        await page.evaluate(() => window.colnTest.heads())
+      ).sort()
       const nodeHeads = handle.doc().heads().sort()
       return browserHeads.join(",") === nodeHeads.join(",")
         ? "equal"
@@ -185,6 +196,8 @@ async function expectSameHeads(page: Page, handle: RawHandle) {
 
 async function expectTypedCount(page: Page, value: string, count: number) {
   await expect
-    .poll(() => page.evaluate(value => window.colnTest.typedCount(value), value))
+    .poll(() =>
+      page.evaluate((value) => window.colnTest.typedCount(value), value),
+    )
     .toBe(count)
 }

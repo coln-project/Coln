@@ -19,7 +19,7 @@ export class View {
 
   constructor(store: StoreHandle) {
     this.root = {
-      Items: value => new RowIdSet.View(store, "Test.Items", [value]),
+      Items: (value) => new RowIdSet.View(store, "Test.Items", [value]),
     }
   }
 }
@@ -30,7 +30,8 @@ export class Transaction extends View {
   constructor(store: StoreHandle, transaction: TransactionHandle) {
     super(store)
     this.root = {
-      Items: value => new RowIdSet.Transaction(store, "Test.Items", [value], transaction),
+      Items: (value) =>
+        new RowIdSet.Transaction(store, "Test.Items", [value], transaction),
     }
   }
 }

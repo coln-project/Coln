@@ -21,11 +21,11 @@ class WebSocketTransport {
 
   constructor(socket) {
     this.#socket = socket
-    this.#closedPromise = new Promise(resolve => {
+    this.#closedPromise = new Promise((resolve) => {
       this.#resolveClosed = resolve
     })
 
-    socket.on("message", data => {
+    socket.on("message", (data) => {
       const bytes = toUint8Array(data)
       const waiter = this.#waiters.shift()
       if (waiter) {
@@ -36,7 +36,7 @@ class WebSocketTransport {
       }
     })
     socket.on("close", () => this.#markClosed(new Error("WebSocket closed")))
-    socket.on("error", error => this.#markClosed(error))
+    socket.on("error", (error) => this.#markClosed(error))
   }
 
   onDisconnect(callback) {
@@ -46,7 +46,9 @@ class WebSocketTransport {
   async sendBytes(bytes) {
     if (this.#closed) throw new Error("WebSocket closed")
     await new Promise((resolve, reject) => {
-      this.#socket.send(Buffer.from(bytes), error => (error ? reject(error) : resolve()))
+      this.#socket.send(Buffer.from(bytes), (error) =>
+        error ? reject(error) : resolve(),
+      )
     })
   }
 
@@ -97,10 +99,13 @@ const subduction = new Subduction({
 })
 const server = new WebSocketServer({ port })
 
-server.on("connection", socket => {
-  subduction.acceptTransport(new WebSocketTransport(socket), serviceName).catch(error => {
-    if (!String(error?.message ?? error).includes("closed")) console.error(error)
-  })
+server.on("connection", (socket) => {
+  subduction
+    .acceptTransport(new WebSocketTransport(socket), serviceName)
+    .catch((error) => {
+      if (!String(error?.message ?? error).includes("closed"))
+        console.error(error)
+    })
 })
 
 async function shutdown() {

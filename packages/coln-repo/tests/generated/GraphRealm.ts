@@ -25,13 +25,26 @@ export class View {
 export class Transaction extends View {
   root: Graph.Transaction
 
-  constructor(store: runtime.StoreHandle, transaction: runtime.TransactionHandle) {
+  constructor(
+    store: runtime.StoreHandle,
+    transaction: runtime.TransactionHandle,
+  ) {
     super(store)
     this.root = {
-      V: new runtime.RowIdSet.Transaction(store, "GraphRealm.V", [], transaction),
+      V: new runtime.RowIdSet.Transaction(
+        store,
+        "GraphRealm.V",
+        [],
+        transaction,
+      ),
       E: (a: runtime.Value) => {
         return (b: runtime.Value) => {
-          return new runtime.RowIdSet.Transaction(store, "GraphRealm.E", [a, b], transaction)
+          return new runtime.RowIdSet.Transaction(
+            store,
+            "GraphRealm.E",
+            [a, b],
+            transaction,
+          )
         }
       },
     }
