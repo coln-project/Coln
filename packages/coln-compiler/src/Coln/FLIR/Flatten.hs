@@ -107,9 +107,10 @@ app l (S.AbsConst body) _ = flatten l body
 instance Flatten (S.El Set) Els where
   flatten l = \case
     S.Var i -> pure $ elemAt l i
-    S.Single q -> do
-      v <- fresh (absName q.pred) q.shape
-      app l q.pred v >>= assert
+    S.Lookup tn args shape -> do
+      v <- fresh Nothing shape
+      args' <- traverse (flatten l) args
+      assert $ single $ V.PAtom $ V.Atom tn Nothing (Just <$> concatEls (args' ++ [v]))
       pure v
     S.Proj t x -> do
       v <- flatten l t
@@ -161,7 +162,9 @@ flattenEntity e =
   V.Entity
     { V.entityVariant = case e.entityVariant of
         S.Table -> V.Table
-        S.View -> V.View V.Materialized
+        S.View S.Memoized -> V.View V.Memoized
+        S.View S.Materialized -> V.View V.Materialized
+        S.View S.Recomputed -> V.View V.Recomputed
     , V.columns = flattenColumns e.columns
     , V.primaryKey = fmap (flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
     }

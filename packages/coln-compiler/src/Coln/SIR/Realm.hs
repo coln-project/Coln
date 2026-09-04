@@ -8,9 +8,14 @@ import Coln.SIR.Syntax
 import Data.Aeson qualified as AE
 import GHC.Generics
 
+data Materialization
+  = Recomputed
+  | Memoized
+  | Materialized
+
 data EntityVariant
   = Table
-  | View
+  | View Materialization
 
 data Entity = Entity
   { entityVariant :: EntityVariant
