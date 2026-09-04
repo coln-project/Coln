@@ -24,7 +24,8 @@ use crate::store::error::{CommitApplyError, StoreError};
 use crate::table::{
     CellValue, RowId, RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError,
 };
-use crate::txn::{OwnedTransaction, Transaction};
+use crate::txn::rw::{StoreRead, StoreWrite};
+use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction};
 use crate::{op::Op, txn::RowHandle};
 
 #[derive(Debug)]
@@ -159,10 +160,6 @@ impl Store {
         &self.rule_entries
     }
 
-    pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
-        self.table_at(table_path).map(|table| table.table_scan())
-    }
-
     pub fn json_ir(&self) -> Result<String, StoreError> {
         let realm = self.commits.root_commit()?.root_payload()?;
         Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
@@ -174,7 +171,18 @@ impl Store {
         Some(self.id_packer.unpack_row_id(canonical))
     }
 
-    pub fn row_by_handle(&self, table: &ir::Path, row_handle: RowHandle) -> Option<RowView> {
+    pub(crate) fn scan_table_iter(
+        &self,
+        table_path: &ir::Path,
+    ) -> Option<impl Iterator<Item = RowView> + '_> {
+        self.table_at(table_path).map(|table| table.table_scan())
+    }
+
+    pub(crate) fn row_by_handle_inner(
+        &self,
+        table: &ir::Path,
+        row_handle: &RowHandle,
+    ) -> Option<RowView> {
         let row_id = row_handle.row_id().ok()?;
         let con_rowid = self.canonical_row_id(row_id)?;
         // replace the rowid in the row_handle so it stays canonical
@@ -187,10 +195,41 @@ impl Store {
     // This function will canonicalise the row_id on read, but will not change it
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
-    pub fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
+    pub(crate) fn row_by_id_inner(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
         let row_id = self.canonical_row_id(row_id)?;
         self.table_at(table)
             .and_then(|table| table.row_at(table.row_position(row_id)?))
+    }
+}
+
+// Autocommit method that opens up a txn, does a single operations
+// then immediately closes the txn
+impl StoreRead for Store {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<RowView>> {
+        let txn = self.ro_transaction();
+        txn.scan_table(table)
+    }
+
+    fn row_by_handle(&self, table: &ir::Path, handle: &RowHandle) -> Option<RowView> {
+        self.ro_transaction().row_by_handle(table, handle)
+    }
+
+    fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
+        self.ro_transaction().row_by_id(table, row_id)
+    }
+}
+
+impl StoreWrite for Store {
+    // Opens a single transaction and hands back the RowHandle, does not return hash
+    fn add(
+        &mut self,
+        table: &ir::Path,
+        values: Vec<crate::txn::TxnValue>,
+    ) -> Result<RowHandle, StoreError> {
+        let mut txn = self.transaction();
+        let h = txn.add(table, values);
+        txn.commit()?;
+        h
     }
 }
 
@@ -241,8 +280,12 @@ impl Store {
 impl Store {
     // transactions
 
-    pub fn transaction(&mut self) -> Transaction<'_> {
-        Transaction::new(self)
+    pub fn ro_transaction(&self) -> Transaction<ReadOnly<'_>> {
+        Transaction::<ReadOnly<'_>>::new(self)
+    }
+
+    pub fn transaction(&mut self) -> Transaction<ReadWrite<'_>> {
+        Transaction::<ReadWrite<'_>>::new(self)
     }
 
     pub fn into_transaction(self) -> OwnedTransaction {

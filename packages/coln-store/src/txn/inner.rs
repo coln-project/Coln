@@ -8,7 +8,12 @@ use coln_flir_rs::ir;
 use tracing::info;
 
 use crate::{
-    commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
+    commit::{
+        Commit,
+        author::Author,
+        hash::{self, CommitHash},
+        wire::CommitData,
+    },
     store::{Store, error::StoreError},
     table::ValidationError,
     txn::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue, timestamp::Timestamp},
@@ -93,40 +98,53 @@ impl TxnInner {
         self.add_cell_values(store, table, values)
     }
 
-    fn invalidate_handles(pending_handles: Vec<RowHandle>, reason: &str) {
-        pending_handles
-            .into_iter()
+    fn invalidate_handles(&mut self, reason: &str) {
+        self.pending_handles
+            .iter()
             .for_each(|h| h.invalidate(reason));
     }
 
     /// Finalize handles to the id the store actually kept: a row that was
     /// deduplicated against an existing class finalizes to that class's
     /// canonical id, not to the never-stored raw id.
-    fn finalize_handles(pending_handles: Vec<RowHandle>, h: CommitHash, store: &Store) {
-        pending_handles.into_iter().for_each(|handle| {
+    fn finalize_handles(&mut self, h: CommitHash, store: &Store) {
+        self.pending_handles.iter().for_each(|handle| {
             handle.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
         });
     }
 
-    pub(super) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreError> {
-        info!(op_count = self.pending.len(), "commit txn");
+    pub(super) fn commit(&mut self, store: &mut Store) -> Result<CommitHash, StoreError> {
         let TxnInner {
             deps,
             author,
             pending,
             timestamp,
             message,
-            pending_handles,
             ..
         } = self;
+
+        info!(op_count = pending.len(), "commit txn");
+
+        // If we received an empty commit, then do nothing, return a all-zero hash
+        // TODO we could add an option to allow empty commit
+        if pending.is_empty() {
+            return Ok(hash::ALL_ZERO_HASH);
+        }
+
         let cmt = Commit::from_commit_data(
-            CommitData::new(deps, author, *timestamp.as_ref(), message, pending),
+            CommitData::new(
+                std::mem::take(deps),
+                std::mem::take(author),
+                *timestamp.as_ref(),
+                message.take(),
+                std::mem::take(pending),
+            ),
             |oid| store.table_meta(oid),
         );
         let cmt = match cmt {
             Ok(cmt) => cmt,
             Err(err) => {
-                Self::invalidate_handles(pending_handles, "txn commit encoding failed");
+                self.invalidate_handles("txn commit encoding failed");
                 return Err(err.into());
             }
         };
@@ -135,20 +153,20 @@ impl TxnInner {
         match store.apply_commit(cmt) {
             Ok(None) => {
                 // Everything applied successfully
-                Self::finalize_handles(pending_handles, h, store);
+                self.finalize_handles(h, store);
                 Ok(h)
             }
             Ok(Some(_)) => {
                 unreachable!("commit a local transaction should always succeed");
             }
             Err(err) => {
-                Self::invalidate_handles(pending_handles, "txn commit failed");
+                self.invalidate_handles("txn commit failed");
                 Err(err)
             }
         }
     }
 
-    pub(super) fn abort(self) {
-        Self::invalidate_handles(self.pending_handles, "txn abort");
+    pub(super) fn abort(&mut self) {
+        self.invalidate_handles("txn abort");
     }
 }

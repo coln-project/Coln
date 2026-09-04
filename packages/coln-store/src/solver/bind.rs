@@ -153,6 +153,7 @@ mod tests {
         },
         solver::compile::compile_rule,
         table::CellValue,
+        txn::rw::StoreWrite,
     };
 
     fn int_ty() -> ColType {

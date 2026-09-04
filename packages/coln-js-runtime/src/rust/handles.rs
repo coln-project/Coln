@@ -7,7 +7,10 @@ use coln_store::{
     commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash},
     store::Store,
     table::RowId as StoreRowId,
-    txn::{OwnedTransaction, RowHandle as StoreRowHandle},
+    txn::{
+        OwnedTransaction, RowHandle as StoreRowHandle,
+        rw::{StoreRead, StoreWrite},
+    },
 };
 use js_sys::Reflect;
 
@@ -43,6 +46,20 @@ pub struct TransactionHandle {
     pending_handles: Vec<(StoreRowHandle, JsValue)>,
 }
 
+impl TransactionHandle {
+    fn read_tx(&self) -> Result<&OwnedTransaction, JsValue> {
+        self.tx
+            .as_ref()
+            .ok_or_else(|| js_error("txn has been committed"))
+    }
+
+    fn write_tx(&mut self) -> Result<&mut OwnedTransaction, JsValue> {
+        self.tx
+            .as_mut()
+            .ok_or_else(|| js_error("txn has been committed"))
+    }
+}
+
 /*
 This function turns something like
 {
@@ -76,12 +93,37 @@ fn resolve_value_id(js_value: &JsValue, row_id: RowId) -> Result<(), JsValue> {
     Ok(())
 }
 
+// TODO we might want to distinguish between read and write txns
+// This is tricky because read transaction also needs an OwnedTransaction, which
+// does not make much sense.
 #[wasm_bindgen]
 impl TransactionHandle {
+    // read methods
+    #[wasm_bindgen(js_name = scanTable)]
+    pub fn scan_table(&self, path: String) -> Result<Vec<RowView>, JsValue> {
+        let path = ir::Path::from(path);
+        let rows = self
+            .read_tx()?
+            .scan_table(&path)
+            .map(|rows| rows.into_iter().map(RowView::from).collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        Ok(rows)
+    }
+
+    #[wasm_bindgen(js_name = rowById)]
+    pub fn row_by_id(&self, path: String, row_id: RowRef) -> Result<Option<RowView>, JsValue> {
+        let path = ir::Path::from(path);
+        let row_id = StoreRowId::try_from(row_id).map_err(js_error)?;
+
+        Ok(self.read_tx()?.row_by_id(&path, row_id).map(RowView::from))
+    }
+
+    // Write methods
     pub fn add(&mut self, path: String, values: Vec<Value>) -> Result<JsValue, JsValue> {
         let path = ir::Path::from(path);
         let values = values.into_iter().map(|v| v.into()).collect::<Vec<_>>();
-        let handle = self.tx()?.add(&path, values).map_err(js_error)?;
+        let handle = self.write_tx()?.add(&path, values).map_err(js_error)?;
 
         let (tx_id, counter) = handle.pending_ids().map_err(js_error)?;
         let temp_id = Value::temp_id(tx_id, counter);
@@ -116,14 +158,12 @@ impl TransactionHandle {
             Err((err, store)) => {
                 self.recovered_store = Some(store);
                 Err(js_error(format!(
-                    "{err}; recover the store with TransactionHandle.takeStore()"
+                    "{err}; recover the store with the read/write handle.take_store()"
                 )))
             }
         }
     }
 
-    // TODO adjust this API to not use take_store to recover but return the store
-    // after committing
     #[wasm_bindgen(js_name = takeStore)]
     pub fn take_store(&mut self) -> Result<StoreHandle, JsValue> {
         if let Some(tx) = self.tx.take() {
@@ -175,13 +215,25 @@ impl StoreHandle {
         self.store()?.json_ir().map_err(js_error)
     }
 
+    pub fn transaction(&mut self) -> Result<TransactionHandle, JsValue> {
+        let (store, pending_chunks) = self.owned_store()?;
+        Ok(TransactionHandle {
+            tx: Some(store.into_transaction()),
+            recovered_store: None,
+            pending_chunks,
+
+            pending_handles: Vec::new(),
+        })
+    }
+
+    /// This is a convenience method that will start a transaction, do a scan and immediately close it
     #[wasm_bindgen(js_name = scanTable)]
     pub fn scan_table(&self, path: String) -> Result<Vec<RowView>, JsValue> {
         let path = ir::Path::from(path);
         let rows = self
             .store()?
             .scan_table(&path)
-            .map(|rows| rows.map(RowView::from).collect::<Vec<_>>())
+            .map(|rows| rows.into_iter().map(RowView::from).collect::<Vec<_>>())
             .unwrap_or_default();
 
         Ok(rows)
@@ -195,8 +247,43 @@ impl StoreHandle {
         Ok(self.store()?.row_by_id(&path, row_id).map(RowView::from))
     }
 
-    #[wasm_bindgen(js_name = beginTransaction)]
-    pub fn begin_transaction(&mut self) -> Result<TransactionHandle, JsValue> {
+    pub fn add(&mut self, path: String, values: Vec<Value>) -> Result<JsValue, JsValue> {
+        let path = ir::Path::from(path);
+        let values = values.into_iter().map(|v| v.into()).collect::<Vec<_>>();
+        let handle = self.store_mut()?.add(&path, values).map_err(js_error)?;
+
+        let rid = handle.row_id().map_err(js_error)?;
+        let existing_id = Value::existing_id(rid.into());
+        let js_value = serde_wasm_bindgen::to_value(&existing_id)?;
+
+        Ok(js_value)
+    }
+
+    fn store(&self) -> Result<&Store, JsValue> {
+        match &self.state {
+            StoreHandleState::Uninitialized { .. } => {
+                Err(js_error("store handle has not been initialized"))
+            }
+            StoreHandleState::Ready { store, .. } => Ok(store),
+            StoreHandleState::Moved => Err(js_error(
+                "store handle has already been moved into a transaction",
+            )),
+        }
+    }
+
+    fn store_mut(&mut self) -> Result<&mut Store, JsValue> {
+        match &mut self.state {
+            StoreHandleState::Uninitialized { .. } => {
+                Err(js_error("store handle has not been initialized"))
+            }
+            StoreHandleState::Ready { store, .. } => Ok(store),
+            StoreHandleState::Moved => Err(js_error(
+                "store handle has already been moved into a transaction",
+            )),
+        }
+    }
+
+    fn owned_store(&mut self) -> Result<(Store, Vec<Vec<u8>>), JsValue> {
         let state = std::mem::replace(&mut self.state, StoreHandleState::Moved);
         let (store, pending_chunks) = match state {
             StoreHandleState::Ready {
@@ -214,13 +301,7 @@ impl StoreHandle {
             }
         };
 
-        Ok(TransactionHandle {
-            tx: Some(store.into_transaction()),
-            recovered_store: None,
-            pending_chunks,
-
-            pending_handles: Vec::new(),
-        })
+        Ok((store, pending_chunks))
     }
 }
 
@@ -275,21 +356,6 @@ impl StoreHandle {
         let chunk_bytes =
             serde_wasm_bindgen::from_value::<Vec<Vec<u8>>>(chunk_bytes).map_err(js_error)?;
         self.apply_chunks(chunk_bytes).map_err(js_error)
-    }
-}
-
-#[wasm_bindgen]
-impl CommitResult {
-    #[wasm_bindgen(getter)]
-    pub fn commit(&self) -> String {
-        self.commit.clone()
-    }
-
-    #[wasm_bindgen(js_name = takeStore)]
-    pub fn take_store(&mut self) -> Result<StoreHandle, JsValue> {
-        self.store
-            .take()
-            .ok_or_else(|| js_error("commit result store has already been taken"))
     }
 }
 
@@ -353,28 +419,22 @@ impl StoreHandle {
             }
         }
     }
-
-    fn store(&self) -> Result<&Store, JsValue> {
-        match &self.state {
-            StoreHandleState::Uninitialized { .. } => {
-                Err(js_error("store handle has not been initialized"))
-            }
-            StoreHandleState::Ready { store, .. } => Ok(store),
-            StoreHandleState::Moved => Err(js_error(
-                "store handle has already been moved into a transaction",
-            )),
-        }
-    }
 }
 
-impl TransactionHandle {
-    fn tx(&mut self) -> Result<&mut OwnedTransaction, JsValue> {
-        self.tx
-            .as_mut()
-            .ok_or_else(|| js_error("transaction has already been committed"))
+#[wasm_bindgen]
+impl CommitResult {
+    #[wasm_bindgen(getter)]
+    pub fn commit(&self) -> String {
+        self.commit.clone()
+    }
+
+    #[wasm_bindgen(js_name = takeStore)]
+    pub fn take_store(&mut self) -> Result<StoreHandle, JsValue> {
+        self.store
+            .take()
+            .ok_or_else(|| js_error("commit result store has already been taken"))
     }
 }
-
 #[cfg(test)]
 mod tests {
     use coln_flir_rs::ir::{
@@ -495,8 +555,12 @@ mod tests {
 
         let child = data.pop().expect("child commit");
         handle.apply_chunks(vec![child]).expect("buffer child");
-        let mut transaction = handle.begin_transaction().expect("begin transaction");
-        handle = transaction.take_store().expect("abort transaction");
+        let mut transaction = handle.transaction().expect("transaction");
+        handle = transaction
+            .commit()
+            .expect("empty commit")
+            .take_store()
+            .expect("store");
         handle.apply_chunks(data).expect("retry with parent");
 
         let table = handle
@@ -510,9 +574,9 @@ mod tests {
     #[test]
     fn active_transaction_can_return_its_store_without_committing() {
         let mut handle = StoreHandle::ready(source_store());
-        let mut transaction = handle.begin_transaction().expect("transaction");
+        let mut transaction = handle.transaction().expect("transaction");
         transaction
-            .tx()
+            .write_tx()
             .expect("owned transaction")
             .add(&Path::from("T"), vec![84_i64.into()])
             .expect("stage row");

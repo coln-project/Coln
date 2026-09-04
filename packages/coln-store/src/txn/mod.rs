@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod inner;
+mod owned;
 mod row_handle;
+pub mod rw;
 mod timestamp;
 
 use coln_flir_rs::ir;
@@ -11,34 +13,66 @@ use coln_flir_rs::ir;
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreError},
+    table::{RowId, RowView},
+    txn::rw::{StoreRead, StoreWrite},
 };
 
 use inner::TxnInner;
+pub use owned::OwnedTransaction;
 pub(crate) use row_handle::{PendingOp, RowRef, TempRowId, TxnCellValue};
 pub use row_handle::{RowHandle, TxnId, TxnValue};
 
-pub struct Transaction<'a> {
-    inner: TxnInner,
+pub struct ReadOnly<'a> {
+    store: &'a Store,
+}
+pub struct ReadWrite<'a> {
     store: &'a mut Store,
 }
 
-impl<'a> Transaction<'a> {
-    pub fn new(store: &'a mut Store) -> Self {
+pub trait Mode {
+    fn store(&self) -> &Store;
+}
+
+impl<'a> Mode for ReadOnly<'a> {
+    fn store(&self) -> &Store {
+        self.store
+    }
+}
+
+impl<'a> Mode for ReadWrite<'a> {
+    fn store(&self) -> &Store {
+        self.store
+    }
+}
+
+pub struct Transaction<M> {
+    inner: TxnInner,
+    mode: M,
+    // Need to know if txn is still open to implement Drop
+    // but not checking this in every txn because the type system ensures
+    // that no method can be called on a closed txn
+    open: bool,
+}
+
+impl<'a> Transaction<ReadOnly<'a>> {
+    pub(crate) fn new(store: &'a Store) -> Self {
         let deps = store.commits().heads().copied().collect();
         Self {
             inner: TxnInner::new(deps),
-            store,
+            mode: ReadOnly { store },
+            open: true,
         }
     }
+}
 
-    // TODO this API is a bit awkward to use, clients have to call .into() all
-    // the time on their values
-    pub fn add(
-        &mut self,
-        table: &ir::Path,
-        values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreError> {
-        self.inner.add(self.store, table, values)
+impl<'a> Transaction<ReadWrite<'a>> {
+    pub(crate) fn new(store: &'a mut Store) -> Self {
+        let deps = store.commits().heads().copied().collect();
+        Self {
+            inner: TxnInner::new(deps),
+            mode: ReadWrite { store },
+            open: true,
+        }
     }
 
     // Used by the REPL only
@@ -48,52 +82,51 @@ impl<'a> Transaction<'a> {
         table: &ir::Path,
         values: Vec<TxnCellValue>,
     ) -> Result<TempRowId, StoreError> {
-        self.inner.add_internal(self.store, table, values)
+        self.inner.add_internal(self.mode.store, table, values)
     }
 
-    pub fn commit(self) -> Result<CommitHash, StoreError> {
-        self.inner.commit(self.store)
+    pub fn commit(mut self) -> Result<CommitHash, StoreError> {
+        let h = self.inner.commit(self.mode.store);
+        self.open = false;
+        h
     }
+
     // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreIntError> { ... }
 
-    pub fn abort(self) {
+    pub fn abort(mut self) {
+        self.open = false;
         self.inner.abort()
     }
 }
 
-pub struct OwnedTransaction {
-    inner: TxnInner,
-    store: Store,
+impl<M: Mode> StoreRead for Transaction<M> {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<RowView>> {
+        self.mode
+            .store()
+            .scan_table_iter(table)
+            .map(|rows| rows.collect())
+    }
+
+    fn row_by_handle(&self, table: &ir::Path, handle: &RowHandle) -> Option<RowView> {
+        self.mode.store().row_by_handle_inner(table, handle)
+    }
+
+    fn row_by_id(&self, table: &ir::Path, row_id: RowId) -> Option<RowView> {
+        self.mode.store().row_by_id_inner(table, row_id)
+    }
 }
 
-impl OwnedTransaction {
-    pub fn new(store: Store) -> Self {
-        let deps = store.commits().heads().copied().collect();
-        Self {
-            inner: TxnInner::new(deps),
-            store,
-        }
+impl StoreWrite for Transaction<ReadWrite<'_>> {
+    fn add(&mut self, table: &ir::Path, values: Vec<TxnValue>) -> Result<RowHandle, StoreError> {
+        self.inner.add(self.mode.store, table, values)
     }
+}
 
-    pub fn add(
-        &mut self,
-        table: &ir::Path,
-        values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreError> {
-        self.inner.add(&self.store, table, values)
-    }
-
-    pub fn abort(self) -> Store {
-        self.inner.abort();
-        self.store
-    }
-
-    // We need to return Store to the user for roll back purposes, so the Err variant must be large
-    #[allow(clippy::result_large_err)]
-    pub fn commit(mut self) -> Result<(CommitHash, Store), (StoreError, Store)> {
-        match self.inner.commit(&mut self.store) {
-            Ok(hash) => Ok((hash, self.store)),
-            Err(err) => Err((err, self.store)),
+impl<M> Drop for Transaction<M> {
+    fn drop(&mut self) {
+        if self.open {
+            // This is fine for RO txn, because there will be no handles
+            self.inner.abort();
         }
     }
 }
@@ -126,47 +159,6 @@ mod tests {
             path: Path::from(name),
             col_type: ColType::RowId { path },
         }
-    }
-
-    #[test]
-    fn owned_transaction_commits_and_returns_updated_store() {
-        let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![42_i64.into()]).expect("add");
-
-        let (_hash, committed) = tx.commit().expect("commit");
-        assert_eq!(committed.table_at(&path).expect("T").row_count(), 1);
-    }
-
-    #[test]
-    fn owned_transaction_add_validates_table_and_column_count() {
-        let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut tx = OwnedTransaction::new(store);
-        let err = tx
-            .add(&Path::from("missing"), vec![1_i64.into()])
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::UnknownTable { .. })
-        ));
-
-        let err = tx.add(&path, vec![1_i64.into(), 2_i64.into()]).unwrap_err();
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::ColumnCount { .. })
-        ));
     }
 
     #[test]
@@ -264,6 +256,7 @@ mod tests {
             err,
             StoreError::Validation(ValidationError::InvalidRowHandle { .. })
         ));
+        tx.abort();
         assert_eq!(store.table_at(&nodes).expect("Nodes").row_count(), 0);
     }
 
@@ -347,7 +340,7 @@ mod tests {
         // The first handle resolves through the store even if its id went
         // stale, and the read writes the canonical id back into the handle.
         let view = store
-            .row_by_handle(&term, first.clone())
+            .row_by_handle(&term, &first)
             .expect("class row is stored");
         assert_eq!(view.row_id, stored);
         assert_eq!(first.row_id().expect("finalized"), stored);
@@ -388,6 +381,65 @@ mod tests {
         assert_eq!(
             store.commits().heads().copied().collect::<Vec<_>>(),
             vec![second]
+        );
+    }
+
+    /// We provide read-committed isolation guarantee. So uncommitted data will
+    /// not be seen.
+    #[test]
+    fn transaction_store_read_sees_committed_rows_not_pending() {
+        let path = Path::from("T");
+        let schema = table_schema(vec![int_col("c0")], None);
+        let mut store = Store::new();
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
+
+        let mut tx = store.transaction();
+        tx.add(&path, vec![1_i64.into()]).expect("add");
+        tx.commit().expect("commit");
+
+        let mut tx = store.transaction();
+        let rows = tx.scan_table(&path).expect("T");
+        assert_eq!(rows.len(), 1);
+        assert!(tx.row_by_id(&path, rows[0].row_id).is_some());
+        assert!(
+            tx.row_by_handle(&path, &RowHandle::from_existing(rows[0].row_id))
+                .is_some()
+        );
+
+        tx.add(&path, vec![2_i64.into()]).expect("add pending");
+        assert_eq!(tx.scan_table(&path).expect("T").len(), 1);
+        tx.abort();
+    }
+
+    /// Committing an empty transaction does not modify the commit graph
+    #[test]
+    fn txn_empty_commit_not_added() {
+        let mut store = Store::new();
+        let root = store.commits().root_commit().expect("root commit").hash();
+        let heads: Vec<_> = store.commits().heads().copied().collect();
+        let commits: Vec<_> = store
+            .commits()
+            .iter_topological()
+            .map(|c| c.hash())
+            .collect();
+
+        let empty = store.transaction().commit().expect("empty commit");
+
+        assert!(!store.commits().contains(&empty));
+        assert_eq!(
+            store.commits().root_commit().expect("root commit").hash(),
+            root
+        );
+        assert_eq!(store.commits().heads().copied().collect::<Vec<_>>(), heads);
+        assert_eq!(
+            store
+                .commits()
+                .iter_topological()
+                .map(|c| c.hash())
+                .collect::<Vec<_>>(),
+            commits
         );
     }
 }

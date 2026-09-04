@@ -101,6 +101,7 @@ mod tests {
     use crate::commit::wire::CommitData;
     use crate::ir::{FlatRealm, Path, Schema, TableEntry};
     use crate::table::CellValue;
+    use crate::txn::rw::StoreWrite;
 
     fn int_schema() -> Schema {
         Schema {

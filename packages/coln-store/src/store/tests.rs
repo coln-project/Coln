@@ -99,7 +99,10 @@ pub(crate) mod test_support {
 }
 
 use super::*;
-use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema};
+use crate::{
+    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, RuleVariant, Schema},
+    txn::rw::StoreWrite,
+};
 
 fn single_int_store() -> Store {
     let path = Path::from("T");
@@ -317,6 +320,16 @@ mod transactions {
     }
 
     #[test]
+    fn store_add_inserts_row() {
+        let path = Path::from("T");
+        let mut store = single_int_store();
+
+        store.add(&path, vec![42_i64.into()]).expect("add row");
+
+        assert_eq!(store.table_at(&path).expect("T").row_count(), 1);
+    }
+
+    #[test]
     fn leaves_store_unchanged_when_rules_fail() {
         let theory = link_foreign_key_theory();
         let link = Path::from("Link");
@@ -360,22 +373,13 @@ mod query {
         let path = Path::from("T");
         let mut store = single_int_store();
 
-        assert_eq!(
-            store
-                .scan_table(&path)
-                .expect("known table")
-                .collect::<Vec<_>>(),
-            vec![]
-        );
+        assert_eq!(store.scan_table(&path).expect("known table"), vec![]);
         assert!(store.scan_table(&Path::from("missing")).is_none());
 
         let commit = commit_int(&mut store, 42);
 
         assert_eq!(
-            store
-                .scan_table(&path)
-                .expect("known table")
-                .collect::<Vec<_>>(),
+            store.scan_table(&path).expect("known table"),
             vec![RowView {
                 row_id: RowId { commit, counter: 0 },
                 values: vec![CellValue::Int(42)],
@@ -612,8 +616,8 @@ mod rowing {
             ])
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
-        let plus: Vec<RowView> = store.scan_table(&Path::from("Plus")).unwrap().collect();
+        let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap();
+        let plus: Vec<RowView> = store.scan_table(&Path::from("Plus")).unwrap();
         assert_eq!(terms.len(), 1);
         assert_eq!(plus.len(), 1);
 
@@ -655,7 +659,7 @@ mod rowing {
             ])
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
+        let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap();
         assert_eq!(terms.len(), 2);
         assert_eq!(
             store.row_by_id(&Path::from("Plus"), plus),
@@ -694,9 +698,9 @@ mod rowing {
             .unwrap();
         txn2.commit().unwrap();
 
-        let terms: Vec<RowView> = store.scan_table(&term_path).unwrap().collect();
-        let plus: Vec<RowView> = store.scan_table(&plus_path).unwrap().collect();
-        let mult: Vec<RowView> = store.scan_table(&mult_path).unwrap().collect();
+        let terms: Vec<RowView> = store.scan_table(&term_path).unwrap();
+        let plus: Vec<RowView> = store.scan_table(&plus_path).unwrap();
+        let mult: Vec<RowView> = store.scan_table(&mult_path).unwrap();
 
         // The second commit adds no rows: every row it names is structurally
         // identical to one the first commit already stored.
@@ -746,8 +750,8 @@ mod rowing {
             .expect("F(Term1, Term2)");
         first.commit().expect("x is mapped only once");
 
-        let terms_before = store.scan_table(&term).expect("Term").count();
-        let f_before = store.scan_table(&f).expect("F").collect::<Vec<RowView>>();
+        let terms_before = store.scan_table(&term).expect("Term").len();
+        let f_before = store.scan_table(&f).expect("F");
         assert_eq!(terms_before, 3);
         assert_eq!(f_before.len(), 1);
 
@@ -770,11 +774,8 @@ mod rowing {
 
         // The rejected commit rolls back whole, including Term(4), which was
         // legal on its own.
-        assert_eq!(store.scan_table(&term).expect("Term").count(), terms_before);
-        assert_eq!(
-            store.scan_table(&f).expect("F").collect::<Vec<RowView>>(),
-            f_before
-        );
+        assert_eq!(store.scan_table(&term).expect("Term").len(), terms_before);
+        assert_eq!(store.scan_table(&f).expect("F"), f_before);
     }
 }
 
