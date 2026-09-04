@@ -901,15 +901,11 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn source_leaf_inside_fixed_point_step_is_bridged() -> Result<(), anyhow::Error> {
-        // A `SourceExpr` referenced *only* inside a step body is legal: the
-        // backend wires its root input and `delta0`s it into the nested circuit,
-        // exactly as it would an outer variable — no explicit imports needed.
-        // This computes reachability: starting from the seed nodes in `plain`,
-        // follow `edges` transitively. `edges` appears nowhere but the step, so
-        // this exercises wiring a source's root input for a step-only source.
-        let plan = vec![
+    /// Reachability from the seed nodes in `plain` over `edges`,
+    /// arithmetic-free. Shared between the incremental run and its
+    /// batch twin below.
+    fn reachability_plan() -> Vec<Stmt> {
+        vec![
             // base = the seed node ids from `plain`, as a single `node` column.
             Stmt::from(VarStmt {
                 name: "base".to_string(),
@@ -948,7 +944,18 @@ mod test {
                 })),
             }),
             output_stmt("reachable"),
-        ];
+        ]
+    }
+
+    #[test]
+    fn source_leaf_inside_fixed_point_step_is_bridged() -> Result<(), anyhow::Error> {
+        // A `SourceExpr` referenced *only* inside a step body is legal: the
+        // backend wires its root input and `delta0`s it into the nested circuit,
+        // exactly as it would an outer variable — no explicit imports needed.
+        // This computes reachability: starting from the seed nodes in `plain`,
+        // follow `edges` transitively. `edges` appears nowhere but the step, so
+        // this exercises wiring a source's root input for a step-only source.
+        let plan = reachability_plan();
 
         let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
             plan,
@@ -980,6 +987,177 @@ mod test {
             }
         );
 
+        Ok(())
+    }
+
+    /// The reachability plan on the batch backend, cross-checked against
+    /// the incremental run. The first commit from empty state makes the
+    /// incremental delta equal the full state, so both engines must
+    /// produce exactly the same rows.
+    #[test]
+    fn batch_reachability_matches_incremental() -> Result<(), anyhow::Error> {
+        let seed = || [(PlainRel::new(0, 0, 0), 1)];
+        let edges = || {
+            [
+                EdgeRel::new(0, 1, 1),
+                EdgeRel::new(1, 2, 1),
+                EdgeRel::new(2, 3, 1),
+            ]
+        };
+        let schemas = || [PlainRel::schema(), EdgeRel::schema()];
+
+        let mut batch =
+            Pipeline::batch().runtime(&mut TestProgram::new(reachability_plan(), schemas()))?;
+        assert!(batch.feed(&PlainRel::id(), rows(seed()))?);
+        assert!(batch.feed(&EdgeRel::id(), rows_with_weight(edges(), 1))?);
+        batch.commit()?;
+        let snapshot = batch.output(&SinkId::from("reachable"))?;
+        assert_eq!(snapshot.columns(), ["node"]);
+        assert_eq!(snapshot.len(), 4);
+        assert!(!snapshot.is_empty());
+
+        let mut incremental = Pipeline::incremental()
+            .runtime(&mut TestProgram::new(reachability_plan(), schemas()))?;
+        assert!(incremental.feed(&PlainRel::id(), rows(seed()))?);
+        assert!(incremental.feed(&EdgeRel::id(), rows_with_weight(edges(), 1))?);
+        incremental.commit()?;
+
+        let expected = zset! {
+            tuple!(0_u64) => 1,
+            tuple!(1_u64) => 1,
+            tuple!(2_u64) => 1,
+            tuple!(3_u64) => 1,
+        };
+        assert_eq!(snapshot.to_debug_zset(), expected);
+        assert_eq!(
+            incremental
+                .output(&SinkId::from("reachable"))?
+                .to_debug_zset(),
+            expected
+        );
+        Ok(())
+    }
+
+    /// A plain u64 join through the whole batch pipeline, cross-checked
+    /// against the incremental backend.
+    #[test]
+    fn batch_join_matches_incremental() -> Result<(), anyhow::Error> {
+        let plan = || {
+            vec![
+                Stmt::from(VarStmt {
+                    name: "edges".to_string(),
+                    initializer: Some(Expr::from(SourceExpr::new(EdgeRel::id()))),
+                }),
+                Stmt::from(VarStmt {
+                    name: "two_hops".to_string(),
+                    initializer: Some(Expr::from(EquiJoinExpr {
+                        left: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("edges")),
+                            alias: "h1".to_string(),
+                        }),
+                        right: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("edges")),
+                            alias: "h2".to_string(),
+                        }),
+                        on: vec![(
+                            Expr::from(VarExpr::new("to")),
+                            Expr::from(VarExpr::new("from")),
+                        )],
+                        attributes: Some(vec![
+                            ("start".to_string(), Expr::from(VarExpr::new("h1.from"))),
+                            ("mid".to_string(), Expr::from(VarExpr::new("h1.to"))),
+                            ("end".to_string(), Expr::from(VarExpr::new("h2.to"))),
+                        ]),
+                    })),
+                }),
+                output_stmt("two_hops"),
+            ]
+        };
+        let data = || {
+            [
+                EdgeRel::new(0, 1, 1),
+                EdgeRel::new(1, 2, 1),
+                EdgeRel::new(5, 6, 1),
+            ]
+        };
+
+        let mut batch =
+            Pipeline::batch().runtime(&mut TestProgram::new(plan(), [EdgeRel::schema()]))?;
+        assert!(batch.feed(&EdgeRel::id(), rows_with_weight(data(), 1))?);
+        batch.commit()?;
+
+        let mut incremental =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan(), [EdgeRel::schema()]))?;
+        assert!(incremental.feed(&EdgeRel::id(), rows_with_weight(data(), 1))?);
+        incremental.commit()?;
+
+        let expected = zset! { tuple!(0_u64, 1_u64, 2_u64) => 1 };
+        assert_eq!(
+            batch.output(&SinkId::from("two_hops"))?.to_debug_zset(),
+            expected
+        );
+        assert_eq!(
+            incremental
+                .output(&SinkId::from("two_hops"))?
+                .to_debug_zset(),
+            expected
+        );
+        Ok(())
+    }
+
+    /// The batch backend's value slice is unsigned integers and booleans.
+    /// Rows carrying strings fail loudly instead of computing something
+    /// wrong.
+    // TODO(Jan): support the remaining scalar types (strings first, via
+    // dictionary encoding) after the end-to-end slice is complete; then
+    // `test_standard_join` gets its batch twin, too.
+    #[test]
+    fn batch_feed_rejects_strings_for_now() -> Result<(), anyhow::Error> {
+        use crate::api::deltas::ZRow;
+        use crate::relational::relation::TupleValue;
+        use crate::scalarial::ScalarTypedValue;
+
+        let plan = vec![
+            Stmt::from(VarStmt {
+                name: "people".to_string(),
+                initializer: Some(Expr::from(SourceExpr::new(PersonRel::id()))),
+            }),
+            output_stmt("people"),
+        ];
+        let mut rt =
+            Pipeline::batch().runtime(&mut TestProgram::new(plan, [PersonRel::schema()]))?;
+        let alice = ZRow::new(
+            1,
+            TupleValue {
+                data: vec![
+                    ScalarTypedValue::Uint(0),
+                    ScalarTypedValue::String("Alice".to_string()),
+                    ScalarTypedValue::Uint(20),
+                    ScalarTypedValue::Uint(0),
+                ],
+            },
+        )
+        .expect("non-zero zweight");
+        let err = rt.feed(&PersonRel::id(), [alice]).unwrap_err();
+        assert!(err.to_string().contains("unsigned integer"), "got: {err}");
+        Ok(())
+    }
+
+    /// Reading an output before any commit is an error, and feeding a
+    /// source the plan does not use reports `false` instead of failing.
+    #[test]
+    fn batch_output_requires_commit() -> Result<(), anyhow::Error> {
+        let plan = vec![
+            Stmt::from(VarStmt {
+                name: "edges".to_string(),
+                initializer: Some(Expr::from(SourceExpr::new(EdgeRel::id()))),
+            }),
+            output_stmt("edges"),
+        ];
+        let mut rt = Pipeline::batch().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
+        assert!(!rt.feed(&PlainRel::id(), rows([(PlainRel::new(0, 0, 0), 1)]))?);
+        let err = rt.output(&SinkId::from("edges")).unwrap_err();
+        assert!(err.to_string().contains("commit"), "got: {err}");
         Ok(())
     }
 
