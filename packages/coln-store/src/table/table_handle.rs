@@ -115,12 +115,15 @@ impl<'a> TableHandle<'a> {
         self.inner.row_id_at(row_idx, self.id_packer)
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn dump(self) -> String {
         self.inner.dump(self.id_packer)
     }
 
     pub(crate) fn cell_at(self, row_idx: usize, col_idx: usize) -> Option<WireValue> {
-        self.inner.cell_at(row_idx, col_idx, self.id_packer)
+        self.inner
+            .cell_at(row_idx, col_idx)
+            .map(|value| self.id_packer.unpack_cell(value))
     }
 }
 
