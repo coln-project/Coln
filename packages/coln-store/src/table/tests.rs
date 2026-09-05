@@ -137,7 +137,7 @@ impl TestTable {
         self.table.stage_update(PackedOp::Delete { row_id });
     }
 
-    fn apply_staged_ops(&mut self) -> Result<(), ValidationError> {
+    fn apply_staged_ops(&mut self) -> Result<TableDelta, ValidationError> {
         self.table.apply_staged_ops(&mut self.rowing)
     }
 

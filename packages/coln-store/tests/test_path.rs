@@ -135,16 +135,6 @@ fn test_read_path_coln() {
 }
 
 #[test]
-fn test_compile_path_rules() {
-    let theory = fixture_theory(PATHS_IR);
-    let expected_law_count = theory.rules.len();
-    let store = Store::try_from_ir(theory).expect("valid theory");
-
-    assert!(expected_law_count > 0, "fixture should contain rules");
-    assert_eq!(store.rules().len(), expected_law_count);
-}
-
-#[test]
 // Builds a minimal valid graph dataset from the fixture, including the witness
 // rows required by the fixture's totality rules before inserting vertices/edges.
 fn test_add_data_and_law_enforce() {
@@ -155,7 +145,7 @@ fn test_add_data_and_law_enforce() {
     let mut store = Store::try_from_ir(theory).expect("valid theory");
 
     assert_eq!(store.table_count(), n_tables);
-    assert_eq!(store.rules().len(), n_rules);
+    assert_eq!(store.rule_entries().len(), n_rules);
     assert!(store.resolve_table(&Path::from("Path.Graphs")).is_some());
 
     // One explicit column (Graphs); row id will be assigned by the db.

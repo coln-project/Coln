@@ -10,7 +10,6 @@ pub mod op;
 pub mod repl;
 mod rollback;
 mod rowing;
-pub mod solver;
 pub mod store;
 pub mod table;
 pub mod txn;

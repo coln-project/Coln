@@ -35,7 +35,6 @@ fn help_text(mode: ShellMode) -> String {
         "  .open <store-path>",
         "  .save <store-path>",
         "  .tables",
-        "  .rules",
         "  .schema [table]",
         "  .ir",
         "  .dump <table>",
@@ -50,7 +49,6 @@ fn help_text(mode: ShellMode) -> String {
             "  .help",
             "  .load tests/data/paths.json",
             "  .schema",
-            "  .rules",
             "  .dump T",
             "  add T values (7 \"alice\"), (8 \"bob\");",
             "  begin transact; g = add Graphs values (); e = add G0 values (g); commit;",
@@ -125,10 +123,6 @@ pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Resul
         MetaCommand::Ir => {
             let store = session.loaded.as_ref().map(|loaded| &loaded.store);
             Ok(Step::Continue(render_ir(store)?))
-        }
-        MetaCommand::Rules => {
-            let store = session.loaded.as_ref().map(|loaded| &loaded.store);
-            Ok(Step::Continue(render_rules(store)?))
         }
         MetaCommand::Dump { table } => {
             let loaded = session
@@ -364,20 +358,6 @@ pub fn render_table_schema(schema: Option<&SchemaSummary>, table_name: &str) -> 
     Ok(render_table_schema_summary(table))
 }
 
-fn render_rules(store: Option<&Store>) -> Result<String> {
-    let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
-    if store.rules().is_empty() {
-        return Ok("no rules".to_string());
-    }
-
-    Ok(store
-        .rules()
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("\n"))
-}
-
 fn render_ir(store: Option<&Store>) -> Result<String> {
     let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
     Ok(store.json_ir()?)
@@ -556,16 +536,6 @@ mod tests {
         assert!(rendered.contains("table: Path.G.V"));
         assert!(rendered.contains("primary key:"));
         assert!(rendered.contains("- a: entity(Path.Graphs)"));
-    }
-
-    #[test]
-    fn renders_rules_one_per_line() {
-        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
-        let rendered = render_rules(Some(&loaded.store)).expect("render rules");
-        let lines = rendered.lines().collect::<Vec<_>>();
-        assert_eq!(lines.len(), loaded.store.rules().len());
-        assert!(lines[0].contains(" := forall"));
-        assert!(lines[0].contains(" |- "));
     }
 
     #[test]

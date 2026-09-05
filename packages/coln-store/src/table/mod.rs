@@ -9,11 +9,12 @@ pub mod sorted;
 pub mod table_ref;
 mod undo;
 
-pub use cell::{CellKind, CellValue, RowId};
-pub use table_ref::TableRef;
-
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
+
+pub use cell::{CellKind, CellValue, RowId};
+use coln_query::api::deltas::{TableDelta, ZRow};
+pub use table_ref::TableRef;
 
 use crate::id_packer::IdPacker;
 use crate::ir;
@@ -38,7 +39,7 @@ pub(crate) struct TableMeta<'a> {
 }
 
 /// Packed representation of an operation staged for a table.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum PackedOp {
     Add {
         row_id: PackedRowId,
@@ -519,15 +520,40 @@ impl Table {
 
     // Apply the staged updates to the table. Rollback support will record
     // inverse operations separately before these operations are consumed.
-    pub(crate) fn apply_staged_ops(&mut self, rowing: &mut Rowing) -> Result<(), ValidationError> {
+    pub(crate) fn apply_staged_ops(
+        &mut self,
+        rowing: &mut Rowing,
+    ) -> Result<TableDelta, ValidationError> {
         let ops = std::mem::take(&mut self.pending_updates);
+        let delta = self.table_delta_from_ops(ops.clone());
         for op in ops {
             let undo_op = self.apply_op(op, rowing)?;
             if let Some(undo_log) = &mut self.undo_log {
                 undo_log.push(undo_op);
             }
         }
-        Ok(())
+        Ok(delta)
+    }
+
+    fn table_delta_from_ops(&self, ops: impl IntoIterator<Item = PackedOp>) -> TableDelta {
+        let zrows: Vec<ZRow> = ops
+            .into_iter()
+            .map(|op| match op {
+                PackedOp::Add { row_id, values } => {
+                    let tuple = cell::packedcells_to_tuple(row_id, values);
+                    ZRow::new(1, tuple).unwrap()
+                }
+                PackedOp::Delete { row_id } => {
+                    let values = self
+                        .packed_row_at(row_id)
+                        .expect("element to delete should exist");
+                    let tuple = cell::packedcells_to_tuple(row_id, values);
+                    ZRow::new(-1, tuple).unwrap()
+                }
+            })
+            .collect();
+
+        TableDelta::new(self.path().to_string(), zrows)
     }
 
     fn apply_op(&mut self, op: PackedOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
