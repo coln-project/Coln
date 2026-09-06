@@ -133,7 +133,9 @@ pub mod flir {
 
     pub fn lit_term(value: i64) -> ir::Term {
         ir::Term::Lit {
-            lit: ir::Lit::Int { value },
+            lit: ir::Lit::Int {
+                value: value.try_into().unwrap(),
+            },
         }
     }
 

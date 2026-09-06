@@ -133,7 +133,7 @@ impl Store {
 }
 
 impl<'a> SortedTableSnapshot for SortedTable<'a> {
-    type Value = table::CellValue;
+    type Value = table::WireValue;
 
     /// Number of columns, including rowid column
     fn arity(&self) -> usize {

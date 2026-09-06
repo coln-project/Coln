@@ -51,7 +51,7 @@ binding
 ```rust
 struct RowView {
     row_id: RowId,
-    values: Vec<CellValue>,
+    values: Vec<WireValue>,
 }
 
 Store::scan_table(table_path) -> Option<impl Iterator<Item = RowView>>

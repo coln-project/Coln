@@ -8,7 +8,7 @@ use coln_flir_rs::ir::{self, BuiltinTy};
 use hexane::{Codec, PackError, lebsize};
 
 use crate::commit::leb128 as commit_leb128;
-use crate::{commit::error::CodecError, txn::TxnCellValue};
+use crate::{commit::error::CodecError, txn::TxnWireValue};
 
 /// Number of low bits reserved for the [`ValueType`] code in a [`ValueMeta`].
 const TYPE_CODE_BITS: u32 = 5;
@@ -145,25 +145,25 @@ impl hexane::PrefixValue for ValueMeta {
 /// Writes to the buffer `out` the encoded data, and returns the corresponding
 /// `ValueMeta` representation
 pub(crate) fn encode_prim_value(
-    value: &TxnCellValue,
+    value: &TxnWireValue,
     prim: &BuiltinTy,
     out: &mut Vec<u8>,
 ) -> Result<ValueMeta, CodecError> {
     match prim {
         BuiltinTy::BuiltinInt => {
-            let TxnCellValue::Int(i) = value else {
+            let TxnWireValue::Int(i) = value else {
                 return Err(CodecError::SchemaError(format!(
                     "expected int, got {value:?}"
                 )));
             };
 
-            leb128::write::signed(out, *i)
+            leb128::write::signed(out, *i as i64)
                 .map_err(|e| CodecError::DataFormatError(e.to_string()))?;
 
-            Ok(ValueMeta::new(ValueType::Leb, lebsize(*i) as usize))
+            Ok(ValueMeta::new(ValueType::Leb, lebsize(*i as i64) as usize))
         }
         BuiltinTy::BuiltinStr => {
-            let TxnCellValue::Str(s) = value else {
+            let TxnWireValue::Str(s) = value else {
                 return Err(CodecError::SchemaError(format!(
                     "expected string, got {value:?}"
                 )));
@@ -180,7 +180,7 @@ pub(crate) fn decode_prim_value(
     meta: ValueMeta,
     prim: &BuiltinTy,
     bytes: &[u8],
-) -> Result<TxnCellValue, CodecError> {
+) -> Result<TxnWireValue, CodecError> {
     let ty = meta.type_code();
     if !ty.is_valid_for(prim) {
         return Err(CodecError::SchemaError(format!(
@@ -198,12 +198,12 @@ pub(crate) fn decode_prim_value(
                     "trailing bytes in leb value".into(),
                 ));
             }
-            Ok(TxnCellValue::Int(i))
+            Ok(TxnWireValue::Int(i as i32))
         }
         ValueType::String => {
             let s = std::str::from_utf8(bytes)
                 .map_err(|_| CodecError::DataFormatError("value column: invalid utf-8".into()))?;
-            Ok(TxnCellValue::Str(s.to_owned()))
+            Ok(TxnWireValue::Str(s.to_owned()))
         }
         other => Err(CodecError::DataFormatError(format!(
             "unsupported value type code {other:?}"

@@ -14,7 +14,7 @@ use crate::{
         matcher::term_matches,
     },
     store::Store,
-    table::CellValue,
+    table::WireValue,
 };
 
 /// Why a rule was violated at a given binding.
@@ -93,8 +93,8 @@ pub fn consequent_eq_holds(binding: &Binding, eq: &CompEq) -> bool {
     };
     match (&l, &r) {
         // Row ids and entity cells refer to the same identity when equal.
-        (BoundValue::RId(a), BoundValue::Cell(CellValue::Id(b)))
-        | (BoundValue::Cell(CellValue::Id(a)), BoundValue::RId(b)) => a == b,
+        (BoundValue::RId(a), BoundValue::Cell(WireValue::Id(b)))
+        | (BoundValue::Cell(WireValue::Id(a)), BoundValue::RId(b)) => a == b,
         _ => l == r,
     }
 }
@@ -157,7 +157,7 @@ mod tests {
             RuleVariant, Schema,
         },
         solver::compile::compile_rule,
-        table::CellValue,
+        table::WireValue,
     };
 
     fn int_ty() -> ColType {
@@ -246,10 +246,8 @@ mod tests {
             .expect("create target table");
 
         let mut txn = store.transaction();
-        txn.add(&source, vec![CellValue::Int(7).into()])
-            .expect("insert source row");
-        txn.add(&target, vec![CellValue::Int(7).into()])
-            .expect("insert target row");
+        txn.add(&source, vec![7i32]).expect("insert source row");
+        txn.add(&target, vec![7i32]).expect("insert target row");
         txn.commit().expect("commit matching rows");
 
         let rule = enforced_rule(
@@ -343,11 +341,8 @@ mod tests {
         let compiled = compile_rule(&rule).expect("compile rule");
 
         let mut txn = store.transaction();
-        txn.add(
-            &link,
-            vec![CellValue::Int(10).into(), CellValue::Int(20).into()],
-        )
-        .expect("insert referencing row");
+        txn.add(&link, vec![10i32, 20i32])
+            .expect("insert referencing row");
         txn.commit().expect("commit referencing row");
 
         let violation = check_rule(&store, &compiled).expect_err("missing referenced rows");
@@ -359,16 +354,14 @@ mod tests {
         assert_eq!(
             violation.binding,
             vec![
-                Some(BoundValue::Cell(CellValue::Int(10))),
-                Some(BoundValue::Cell(CellValue::Int(20))),
+                Some(BoundValue::Cell(WireValue::Int(10))),
+                Some(BoundValue::Cell(WireValue::Int(20))),
             ]
         );
 
         let mut txn = store.transaction();
-        txn.add(&left, vec![CellValue::Int(10).into()])
-            .expect("insert left row");
-        txn.add(&right, vec![CellValue::Int(20).into()])
-            .expect("insert right row");
+        txn.add(&left, vec![10i32]).expect("insert left row");
+        txn.add(&right, vec![20i32]).expect("insert right row");
         txn.commit().expect("commit referenced rows");
 
         assert!(check_rule(&store, &compiled).is_ok());
@@ -382,8 +375,7 @@ mod tests {
             .create_table(t.clone(), int_schema(&["c0", "c1"]))
             .expect("create table");
         let mut txn = store.transaction();
-        txn.add(&t, vec![CellValue::Int(5).into(), CellValue::Int(5).into()])
-            .expect("insert row");
+        txn.add(&t, vec![5i32, 5i32]).expect("insert row");
         txn.commit().expect("commit row");
 
         let rule = enforced_rule(
@@ -425,8 +417,7 @@ mod tests {
             .create_table(t.clone(), int_schema(&["c0", "c1"]))
             .expect("create table");
         let mut txn = store.transaction();
-        txn.add(&t, vec![CellValue::Int(1).into(), CellValue::Int(2).into()])
-            .expect("insert row");
+        txn.add(&t, vec![1i32, 2i32]).expect("insert row");
         txn.commit().expect("commit row");
 
         let rule = enforced_rule(

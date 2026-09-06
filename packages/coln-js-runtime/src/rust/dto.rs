@@ -4,20 +4,20 @@
 
 use serde::{Deserialize, Serialize};
 use std::array::TryFromSliceError;
-use tsify::Tsify;
+use tsify::{Ts, Tsify};
+use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::CommitChunk as StoreCommitChunk,
-    table::{CellValue as StoreCellValue, RowId as StoreRowId, RowView as StoreRowView},
-    txn::{RowHandle, TxnValue as StoreTxnValue},
+    table::{RowView as StoreRowView, WireRowId as StoreRowId, WireValue as StoreCellValue},
+    txn::{TxnLiveRowId, TxnLiveValue as StoreTxnValue},
 };
 
-use crate::error::BoundaryError;
+use crate::error::{BoundaryError, js_error};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitChunk {
     pub hash: CommitHash,
@@ -36,7 +36,6 @@ impl From<StoreCommitChunk> for CommitChunk {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(transparent)]
 pub struct CommitHash {
     value: String,
@@ -60,7 +59,6 @@ impl TryFrom<CommitHash> for StoreCommitHash {
 
 /// TempRowId for JS runtime, different from TempRowId in coln-store
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct TempRowId {
     pub tx_id: u64,
@@ -68,7 +66,6 @@ pub struct TempRowId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct RowId {
     pub commit: CommitHash,
@@ -76,7 +73,6 @@ pub struct RowId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub enum RowRef {
     Pending(TempRowId),
@@ -108,12 +104,11 @@ impl TryFrom<RowRef> for StoreRowId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
-#[tsify(from_wasm_abi, into_wasm_abi)]
 #[serde(tag = "tag", content = "value", rename_all = "lowercase")]
 pub enum Value {
     #[serde(rename = "row_id")]
     Id(RowRef),
-    Int(i64),
+    Int(i32),
     String(String),
 }
 
@@ -137,13 +132,19 @@ impl Value {
 }
 
 #[wasm_bindgen(js_name = valueEqual)]
-pub fn value_equal(v0: Value, v1: Value) -> bool {
-    v0 == v1
+pub fn value_equal(v0: Ts<Value>, v1: Ts<Value>) -> Result<bool, JsValue> {
+    let v0 = v0.to_rust().map_err(js_error)?;
+    let v1 = v1.to_rust().map_err(js_error)?;
+
+    Ok(v0 == v1)
 }
 
 #[wasm_bindgen(js_name = getRowRef)]
-pub fn value_row_ref(v: Value) -> Option<RowRef> {
-    v.row_ref()
+pub fn value_row_ref(v: Ts<Value>) -> Result<Option<Ts<RowRef>>, JsValue> {
+    match v.to_rust().map_err(js_error)?.row_ref() {
+        Some(row_ref) => row_ref.into_ts().map(Some).map_err(js_error),
+        None => Ok(None),
+    }
 }
 
 // For reading
@@ -163,9 +164,9 @@ impl From<Value> for StoreTxnValue {
             Value::Id(row_ref) => {
                 let handle = match row_ref {
                     RowRef::Pending(temp_row_id) => {
-                        RowHandle::from_pending(temp_row_id.tx_id.into(), temp_row_id.counter)
+                        TxnLiveRowId::from_pending(temp_row_id.tx_id.into(), temp_row_id.counter)
                     }
-                    RowRef::Existing(row_id) => RowHandle::from_existing(
+                    RowRef::Existing(row_id) => TxnLiveRowId::from_existing(
                         row_id.try_into().expect("commit hash not messed up"),
                     ),
                 };
@@ -180,7 +181,6 @@ impl From<Value> for StoreTxnValue {
 // We use Value for both row_id and values to simplify the interface of the app
 // developer
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct RowView {
     pub row_id: Value,
