@@ -1,34 +1,21 @@
 mod coln-compiler-wasm '../packages/coln-compiler-wasm'
 
 build_dir := "../_build/web/compiler"
-compiler_app_dir := "compiler"
+lab_app_dir := "lab"
 
-build-web-compiler: coln-compiler-wasm::build
-    #!/usr/bin/env bash
-    set -euxo pipefail
-    cp compiler-demo/index.html {{ build_dir }}/index.html
-    cp style.css {{ build_dir }}/style.css
-    examples_dir="{{ build_dir }}/examples"
-    mkdir -p "$examples_dir"
-    cp ../packages/coln-compiler/test/golden/*.coln "$examples_dir/"
-    ls -1 "$examples_dir"/*.coln | xargs -n1 basename | jq -nR '[inputs]' > "$examples_dir/index.json"
-
-serve-web-compiler port="8000": build-web-compiler
-    simple-http-server --nocache --index --open --port {{ port }} {{ build_dir }}
-
-stage-web-compiler-app:
+stage-web-lab:
     #!/usr/bin/env bash
     set -euxo pipefail
     if [[ ! -f "{{ build_dir }}/dist/coln.wasm" || ! -f "{{ build_dir }}/dist/ghc_wasm_jsffi.js" || ! -f "{{ build_dir }}/dist/loadHaskellWasm.js" ]]; then
-      just build-web-compiler
+      just coln-compiler-wasm::build
     fi
-    mkdir -p "{{ compiler_app_dir }}/public/dist"
-    cp "{{ build_dir }}/dist/coln.wasm" "{{ compiler_app_dir }}/public/dist/coln.wasm"
-    cp "{{ build_dir }}/dist/ghc_wasm_jsffi.js" "{{ compiler_app_dir }}/public/dist/ghc_wasm_jsffi.js"
-    cp "{{ build_dir }}/dist/loadHaskellWasm.js" "{{ compiler_app_dir }}/public/dist/loadHaskellWasm.js"
+    mkdir -p "{{ lab_app_dir }}/public/dist"
+    cp "{{ build_dir }}/dist/coln.wasm" "{{ lab_app_dir }}/public/dist/coln.wasm"
+    cp "{{ build_dir }}/dist/ghc_wasm_jsffi.js" "{{ lab_app_dir }}/public/dist/ghc_wasm_jsffi.js"
+    cp "{{ build_dir }}/dist/loadHaskellWasm.js" "{{ lab_app_dir }}/public/dist/loadHaskellWasm.js"
 
-build-web-compiler-app: stage-web-compiler-app
-    pnpm --dir {{ compiler_app_dir }} build
+build-web-lab: stage-web-lab
+    pnpm --dir {{ lab_app_dir }} build
 
-dev-web-compiler-app: stage-web-compiler-app
-    pnpm --dir {{ compiler_app_dir }} dev
+dev-web-lab: stage-web-lab
+    pnpm --dir {{ lab_app_dir }} dev

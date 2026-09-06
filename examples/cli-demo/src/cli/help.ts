@@ -34,7 +34,7 @@ Options:
 Environment:
   SUBDUCTION_ENDPOINT   Sync server WebSocket URL, used when --endpoint is absent
 
-The endpoint defaults to wss://subduction.sync.inkandswitch.com. A document held
+The endpoint defaults to wss://coln.sync.inkandswitch.com. A document held
 by a local relay is only reachable by pointing at that relay, for example
 --endpoint ws://127.0.0.1:3030.
 

@@ -12,7 +12,7 @@ import {
 } from "@automerge/automerge-repo"
 import { find, type ColnHandle } from "@coln-project/repo"
 
-export const defaultEndpoint = "wss://subduction.sync.inkandswitch.com"
+export const defaultEndpoint = "wss://coln.sync.inkandswitch.com"
 export const operationTimeoutMs = 10_000
 
 export interface OpenDocument {

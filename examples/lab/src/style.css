@@ -1,0 +1,27 @@
+/* SPDX-FileCopyrightText: 2026 Coln contributors */
+/* SPDX-License-Identifier: Apache-2.0 OR MIT */
+
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700&display=swap");
+@import "tailwindcss";
+
+:root { color-scheme: dark; font-variant-numeric: tabular-nums; }
+html { background: #0d1211; }
+body { margin: 0; }
+button, input, select { font: inherit; }
+::selection { background: #657a32; color: #f0f1e8; }
+
+.ledger-field {
+  background-color: #0f1513;
+  background-image:
+    linear-gradient(#26312d66 1px, transparent 1px),
+    linear-gradient(90deg, #26312d33 1px, transparent 1px);
+  background-size: 100% 32px, 32px 100%;
+}
+
+.diagnostics pre { margin: 0; overflow-x: auto; white-space: pre-wrap; }
+.diagnostics > :not(:last-child) { border-bottom: 1px solid #304041; padding-bottom: 1rem; }
+.diag-debug { --diagnostic-color: #aab6b7; }
+.diag-info { --diagnostic-color: #77b7ff; }
+.diag-warning { --diagnostic-color: #ffd166; }
+.diag-error { --diagnostic-color: #ff9a86; }
+[class^="ann-"] { color: var(--diagnostic-color); font-weight: 500; }

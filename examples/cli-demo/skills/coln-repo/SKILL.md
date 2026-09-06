@@ -16,7 +16,7 @@ JSON object on stdout, including errors. Run `coln-repo help` for usage and
 ### 1. Resolve the sync endpoint
 
 Pass `--endpoint <ws-url>` when the user names a relay. Otherwise the CLI uses
-`SUBDUCTION_ENDPOINT`, then the public relay `wss://subduction.sync.inkandswitch.com`.
+`SUBDUCTION_ENDPOINT`, then the public relay `wss://coln.sync.inkandswitch.com`.
 A document held by a local relay is only reachable there; do not invent one. If
 the response is `DOCUMENT_OPEN_FAILED`, report which endpoint you tried and ask.
 

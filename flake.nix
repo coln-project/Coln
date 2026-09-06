@@ -107,35 +107,6 @@
             doCheck = false;
           };
 
-          build-sync-demo = pkgs.writeShellApplication {
-            name = "build-sync-demo";
-            runtimeInputs = [
-              coln-cli
-              pkgs.binaryen
-              pkgs.esbuild
-              pkgs.nodejs_24
-              pkgs.pnpm
-              rustToolchain
-              wasm-bindgen-cli
-              wasm-bodge
-            ];
-            text = ''
-              repo_root="''${1:-$PWD}"
-              cd "$repo_root"
-
-              export CI="''${CI:-1}"
-              pnpm_store_dir="''${PNPM_STORE_DIR:-$repo_root/.pnpm-store}"
-
-              npm ci --prefix packages/coln-js-runtime
-              npm run --prefix packages/coln-js-runtime build
-
-              pnpm --dir examples/sync-demo install --frozen-lockfile --store-dir "$pnpm_store_dir"
-              pnpm --dir examples/sync-demo build
-
-              echo "Built sync demo at $repo_root/examples/sync-demo/dist"
-            '';
-          };
-
           format-hs = nuShellCheck [pkgs.fourmolu] ./nix/checks/format-hs.nu;
           format-cabal = nuShellCheck [pkgs.haskellPackages.cabal-gild] ./nix/checks/format-cabal.nu;
 
@@ -202,15 +173,6 @@
       in
       {
         inherit packages;
-        apps = let
-          buildSyncDemo = {
-            type = "app";
-            program = "${pkgs.lib.getExe packages.build-sync-demo}";
-          };
-        in {
-          build-sync-demo = buildSyncDemo;
-          sync-demo = buildSyncDemo;
-        };
         devShells.default = pkgs.mkShell {
           name = "coln";
           buildInputs = with pkgs; [

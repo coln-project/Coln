@@ -1,7 +1,0 @@
-theory Graph := sig
-  V : Set
-  E : V -> V -> Set
-end
-
-realm GraphRealm @ Graph
-end
