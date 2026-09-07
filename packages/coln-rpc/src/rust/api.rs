@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use coln_flir_rs::ir;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 // use coln_store::id_packer::IdPacker;
-use coln_store::{table::{WireValue}, txn::TxnWireRowId};
+use coln_store::{table::WireValue, txn::TxnWireRowId};
 
 #[derive(Type, Serialize, Deserialize)]
 #[serde(tag = "type")]
