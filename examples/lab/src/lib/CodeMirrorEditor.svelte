@@ -62,7 +62,7 @@
         editable.of(EditorView.editable.of(!disabled)),
         placeholder(placeholderText),
         ...(onrun ? [keymap.of([{
-          key: "Mod-Enter",
+          key: "Ctrl-Enter",
           run: () => {
             if (!disabled) onrun()
             return true

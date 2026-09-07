@@ -3,14 +3,6 @@
 
 import { expect, test, type Locator } from "@playwright/test"
 
-const graphTheory = `theory Graph := sig
-  V : Set
-  E : V -> V -> Set
-end
-
-realm GraphRealm @ Graph
-end`
-
 async function expectActiveLineHighlight(editor: Locator): Promise<void> {
   await editor.click()
   const activeLine = editor.locator(".cm-activeLine")
@@ -212,7 +204,8 @@ test("uses the graph demo and moves from theories into their stores", async ({
   await expect(page).toHaveURL(graphUrl)
   await expect(page.getByTestId("store-repl")).toBeVisible()
   await expectActiveLineHighlight(page.getByTestId("repl-editor"))
-  await page.getByTestId("run-program").click()
+  await expect(page.getByTestId("run-program")).toHaveText("Run Ctrl+Enter")
+  await page.keyboard.press("Control+Enter")
   await expect(page.getByTestId("repl-result")).toBeVisible()
   await page.getByRole("tab", { name: "Graph" }).click()
   await expect(page.getByTestId("graph-edge")).toHaveCount(1)
@@ -247,9 +240,12 @@ test("uses the graph demo and moves from theories into their stores", async ({
   await expectMinimumTextSize(page)
   await page.setViewportSize({ width: 1280, height: 800 })
   const editor = page.locator(".cm-content")
-  await editor.click()
-  await page.keyboard.press("ControlOrMeta+A")
-  await page.keyboard.insertText(graphTheory)
+  const graphExample = page.getByRole("button", { name: "Use basic graph example" })
+  await expect(graphExample).toBeVisible()
+  await graphExample.click()
+  await expect(editor).toContainText("theory Graph")
+  await expect(editor).toContainText("realm GraphRealm")
+  await expect(graphExample).toHaveCount(0)
   const createStore = page.getByRole("button", { name: /Create store/ })
   await expect(createStore).toBeEnabled({ timeout: 60_000 })
   const sourcePanelBox = await page

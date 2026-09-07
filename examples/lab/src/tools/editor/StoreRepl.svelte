@@ -47,7 +47,7 @@
       <p class="m-0 font-['DM_Mono'] text-xs tracking-[.16em] text-[#748284]" data-small-detail>JAVASCRIPT REPL</p>
       <p class="mt-1 mb-0 text-sm text-[#91a0a1]">Run only code you trust / handle is in scope / use return for the result</p>
     </div>
-    <button class="lab-primary-action lab-pending-action h-9 shrink-0 px-4 font-['DM_Mono'] text-sm font-medium tracking-[.12em] uppercase" disabled={running} onclick={runProgram} data-testid="run-program">{running ? "Running…" : "Run ⌘↵"}</button>
+    <button class="lab-primary-action lab-pending-action h-9 shrink-0 px-4 font-['DM_Mono'] text-sm font-medium tracking-[.12em] uppercase" disabled={running} onclick={runProgram} data-testid="run-program">{running ? "Running…" : "Run Ctrl+Enter"}</button>
   </div>
   <PaneGroup class="lab-repl-pane-group min-h-0 flex-1" direction="vertical" autoSaveId={layoutId}>
     <Pane id={`${layoutId}-editor-pane`} class="flex min-h-0 flex-col" defaultSize={72} minSize={45} maxSize={85}>

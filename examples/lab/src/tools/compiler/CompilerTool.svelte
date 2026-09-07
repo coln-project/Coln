@@ -36,6 +36,7 @@
   import DocumentLoadError from "../../app/components/DocumentLoadError.svelte"
   import FeedbackNotice from "../../app/components/FeedbackNotice.svelte"
   import SyncStatus from "../../app/components/SyncStatus.svelte"
+  import basicGraphTheory from "../graph/graph.coln?raw"
 
   type LoadError = "invalid" | "unavailable" | "incompatible"
 
@@ -262,6 +263,13 @@
     }
   }
 
+  function loadBasicGraphTheory(): void {
+    if (!handle || handle.doc().source !== "") return
+    handle.change((document) => {
+      if (document.source === "") document.source = basicGraphTheory
+    })
+  }
+
   async function copyText(value: string, message: string): Promise<void> {
     await navigator.clipboard.writeText(value)
     showFeedback(message)
@@ -303,8 +311,13 @@
              <SyncStatus status={syncStatus} compact detail={`${sourceLines} ${sourceLines === 1 ? "line" : "lines"}`} title={syncStatus === "error" ? syncError : endpoint} />
            </div>
          </div>
-         <SourceEditor {handle} />
-       </section>
+          <div class="relative flex min-h-0 flex-1">
+            <SourceEditor {handle} />
+            {#if theory.source === ""}
+              <button class="lab-secondary-action absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2" type="button" onclick={loadBasicGraphTheory}>Use basic graph example</button>
+            {/if}
+          </div>
+        </section>
       </Pane>
       <LabPaneResizer label="Resize theory source and compilation output" orientation="vertical" testId="theory-source-resizer" />
       <Pane id="theory-output-pane" class="theory-output-pane min-h-0" defaultSize={43} minSize={30} maxSize={60}>
