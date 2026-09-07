@@ -15,10 +15,10 @@ use std::{cell::RefCell, collections::HashMap};
 use ena::unify::{InPlace, Snapshot};
 
 use crate::{
-    id_packer::IdPacker,
+    pack::{IdPacker, PackedRowId},
     rollback::Rollback,
     rowing::uf::{NodeId, UnionFind},
-    table::{PackedRowId, TableOid},
+    table::TableOid,
 };
 
 #[derive(Debug)]
