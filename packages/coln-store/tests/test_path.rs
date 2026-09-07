@@ -7,7 +7,7 @@ use std::{collections::BTreeSet, path::PathBuf, sync::Once};
 use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_store::{
     commit::{hash::CommitHash, pst},
-    store::{Store, error::StoreError},
+    store::{ColnDef, Store, error::StoreError},
     table::{WireRowId, WireValue},
     txn::empty_row,
     value::Value,
@@ -16,6 +16,7 @@ use rstest::{fixture, rstest};
 use tracing_subscriber::EnvFilter;
 
 static PATHS_IR: &str = "Path.json";
+static PATH_COLN: &str = "path.coln";
 
 // For testing only
 #[allow(dead_code)]
@@ -35,13 +36,27 @@ fn init_test_logging() {
 
 #[fixture]
 #[once]
-fn path_theory() -> FlatRealm {
+fn path_ir() -> FlatRealm {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data")
         .join(PATHS_IR);
 
     let json = std::fs::read_to_string(p).expect("read tests/data/paths.json");
     serde_json::from_str(&json).expect("parse FlatRealm from JSON")
+}
+
+#[fixture]
+#[once]
+fn path_dot_coln() -> ColnDef {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data")
+        .join(PATH_COLN);
+
+    let theory = std::fs::read_to_string(p).expect("read tests/data/path.coln");
+    ColnDef {
+        theory,
+        realm: String::from("Path"),
+    }
 }
 
 struct PathData {
@@ -120,7 +135,7 @@ fn add_extra_edge(
 }
 
 #[rstest]
-fn test_read_path_coln(#[from(path_theory)] theory: &FlatRealm) {
+fn test_read_path_coln(#[from(path_ir)] theory: &FlatRealm) {
     assert_eq!(
         theory.tables.len(),
         16,
@@ -159,9 +174,12 @@ fn test_read_path_coln(#[from(path_theory)] theory: &FlatRealm) {
 }
 
 #[rstest]
-fn test_compile_path_rules(#[from(path_theory)] theory: &FlatRealm) {
+fn test_compile_path_rules(
+    #[from(path_ir)] theory: &FlatRealm,
+    #[from(path_dot_coln)] coln_def: &ColnDef,
+) {
     let expected_law_count = theory.rules.len();
-    let store = Store::try_from_ir(theory.clone()).expect("valid theory");
+    let store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
     assert!(expected_law_count > 0, "fixture should contain rules");
     assert_eq!(store.rules().len(), expected_law_count);
@@ -170,11 +188,14 @@ fn test_compile_path_rules(#[from(path_theory)] theory: &FlatRealm) {
 #[rstest]
 // Builds a minimal valid graph dataset from the fixture, including the witness
 // rows required by the fixture's totality rules before inserting vertices/edges.
-fn test_add_data_and_law_enforce(#[from(path_theory)] theory: &FlatRealm) {
+fn test_add_data_and_law_enforce(
+    #[from(path_ir)] theory: &FlatRealm,
+    #[from(path_dot_coln)] coln_def: &ColnDef,
+) {
     let n_tables = theory.tables.len();
     let n_rules = theory.rules.len();
 
-    let mut store = Store::try_from_ir(theory.clone()).expect("valid theory");
+    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
     assert_eq!(store.table_count(), n_tables);
     assert_eq!(store.rules().len(), n_rules);
@@ -193,9 +214,10 @@ fn test_add_data_and_law_enforce(#[from(path_theory)] theory: &FlatRealm) {
 
 #[rstest]
 fn test_add_edge_referencing_vertices_from_previous_commit(
-    #[from(path_theory)] theory: &FlatRealm,
+    #[from(path_ir)] theory: &FlatRealm,
+    #[from(path_dot_coln)] coln_def: &ColnDef,
 ) {
-    let mut store = Store::try_from_ir(theory.clone()).expect("valid theory");
+    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
     let data = add_basic_data_to_path(&mut store).expect("add basic data");
 
@@ -226,9 +248,10 @@ fn test_add_edge_referencing_vertices_from_previous_commit(
 // Rejects a graph insert when the corresponding witness rows are missing and
 // confirms the failed batch leaves the store unchanged.
 fn test_missing_graph_witness_rejects_batch_without_mutation(
-    #[from(path_theory)] theory: &FlatRealm,
+    #[from(path_ir)] theory: &FlatRealm,
+    #[from(path_dot_coln)] coln_def: &ColnDef,
 ) {
-    let mut store = Store::try_from_ir(theory.clone()).expect("valid theory");
+    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
     let graphs = store
         .table_at(&Path::from("Path.Graphs"))
@@ -268,8 +291,8 @@ fn test_missing_graph_witness_rejects_batch_without_mutation(
 }
 
 #[rstest]
-fn test_fk(#[from(path_theory)] theory: &FlatRealm) {
-    let mut store = Store::try_from_ir(theory.clone()).expect("valid theory");
+fn test_fk(#[from(path_ir)] theory: &FlatRealm, #[from(path_dot_coln)] coln_def: &ColnDef) {
+    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
     let ge = Path::from("Path.G.E");
 
@@ -290,8 +313,11 @@ fn test_fk(#[from(path_theory)] theory: &FlatRealm) {
 }
 
 #[rstest]
-fn test_persist_roundtrip(#[from(path_theory)] theory: &FlatRealm) {
-    let mut store = Store::try_from_ir(theory.clone()).expect("valid theory");
+fn test_persist_roundtrip(
+    #[from(path_ir)] theory: &FlatRealm,
+    #[from(path_dot_coln)] coln_def: &ColnDef,
+) {
+    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
     let r = add_basic_data_to_path(&mut store);
     assert!(r.is_ok());
@@ -311,8 +337,11 @@ fn test_persist_roundtrip(#[from(path_theory)] theory: &FlatRealm) {
 }
 
 #[rstest]
-fn test_divergent_commits_merge_between_stores(#[from(path_theory)] theory: &FlatRealm) {
-    let mut base = Store::try_from_ir(theory.clone()).expect("valid theory");
+fn test_divergent_commits_merge_between_stores(
+    #[from(path_ir)] theory: &FlatRealm,
+    #[from(path_dot_coln)] coln_def: &ColnDef,
+) {
+    let mut base = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
     let data = add_basic_data_to_path(&mut base).expect("add shared baseline data");
 
     // Add a second rule-free graph so we can add vertices to different graphs to
@@ -326,8 +355,10 @@ fn test_divergent_commits_merge_between_stores(#[from(path_theory)] theory: &Fla
         handle.row_id().expect("extra graph row id")
     };
 
-    let mut left = Store::try_from_ir(theory.clone()).expect("valid left-hand theory");
-    let mut right = Store::try_from_ir(theory.clone()).expect("valid right-hand theory");
+    let mut left =
+        Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid left-hand theory");
+    let mut right =
+        Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid right-hand theory");
     let baseline_commits = base.commits_after(&left.heads());
     left.apply_commits(baseline_commits.clone())
         .expect("apply shared baseline to left");

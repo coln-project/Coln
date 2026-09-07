@@ -5,13 +5,13 @@
 use coln_flir_rs::ir;
 use coln_store::{
     commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash},
-    store::Store,
+    store::{ColnDef as StoreColnDef, Store},
     table::WireRowId as StoreRowId,
     txn::{OwnedTransaction, TxnLiveRowId as StoreRowHandle},
 };
 use js_sys::Reflect;
 
-use crate::dto::{CommitChunk, CommitHash, RowId, RowRef, RowView, Value};
+use crate::dto::{ColnDef, CommitChunk, CommitHash, RowId, RowRef, RowView, Value};
 use crate::error::js_error;
 
 use tsify::{Ts, Tsify};
@@ -167,10 +167,15 @@ impl StoreHandle {
     }
 
     #[wasm_bindgen(js_name = fromTheory)]
-    pub fn from_theory(flat_theory_json: String) -> Result<StoreHandle, JsValue> {
-        let theory = serde_json::from_str::<ir::FlatRealm>(&flat_theory_json)
+    pub fn from_theory(
+        flat_realm_json: String,
+        theory: String,
+        realm: String,
+    ) -> Result<StoreHandle, JsValue> {
+        let ir = serde_json::from_str::<ir::FlatRealm>(&flat_realm_json)
             .map_err(|err| js_error(format!("invalid flat theory JSON: {err}")))?;
-        let store = Store::try_from_ir(theory).map_err(js_error)?;
+        let cd = StoreColnDef { theory, realm };
+        let store = Store::try_from_ir(ir, cd).map_err(js_error)?;
 
         Ok(Self::ready(store))
     }
@@ -178,6 +183,13 @@ impl StoreHandle {
     #[wasm_bindgen(js_name = jsonIR)]
     pub fn json_ir(&self) -> Result<String, JsValue> {
         self.store()?.json_ir().map_err(js_error)
+    }
+
+    #[wasm_bindgen(js_name = colnDef)]
+    pub fn coln_def(&self) -> Result<Ts<ColnDef>, JsValue> {
+        ColnDef::from(self.store()?.coln_def().map_err(js_error)?)
+            .into_ts()
+            .map_err(js_error)
     }
 
     #[wasm_bindgen(js_name = scanTable)]
@@ -205,7 +217,12 @@ impl StoreHandle {
         let row_id = row_id.to_rust().map_err(js_error)?;
         let row_id = StoreRowId::try_from(row_id).map_err(js_error)?;
 
-        match self.store()?.row_by_id(&path, row_id) {
+        match self
+            .store()?
+            .table_at(&path)
+            .ok_or(js_error("unknown table"))?
+            .row_by_id(row_id)
+        {
             Some(row) => RowView::from(row).into_ts().map(Some).map_err(js_error),
             None => Ok(None),
         }
@@ -422,7 +439,11 @@ mod tests {
             }],
             rules: vec![],
         };
-        let mut store = Store::try_from_ir(theory).expect("store");
+        let cd = StoreColnDef {
+            theory: String::new(),
+            realm: String::new(),
+        };
+        let mut store = Store::try_from_ir(theory, cd).expect("store");
         let mut transaction = store.transaction();
         transaction
             .add(&Path::from("T"), vec![42_i32])

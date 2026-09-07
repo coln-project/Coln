@@ -3,12 +3,16 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_flir_rs::ir::{
-    Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Prop, Rule, RuleEntry,
-    RuleVariant, Schema, TableEntry, Term, ValueEntry,
+    Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, Equality, FlatRealm, Path, Prop, Rule,
+    RuleEntry, RuleVariant, Schema, TableEntry, Term, ValueEntry,
 };
 use rstest::fixture;
 
-use crate::{commit::hash::CommitHash, store::Store, table::WireRowId};
+use crate::{
+    commit::{hash::CommitHash, wire::root::RootCommitData},
+    store::{ColnDef, Store},
+    table::WireRowId,
+};
 
 mod rowid {
     use super::*;
@@ -82,6 +86,20 @@ mod schema {
     }
 
     #[fixture]
+    pub(crate) fn string_schema(
+        #[default(vec!["x"])] col_names: Vec<&'static str>,
+        #[default(None)] primary_key: Option<Vec<&'static str>>,
+    ) -> Schema {
+        table_schema(
+            col_names,
+            ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinStr,
+            },
+            primary_key,
+        )
+    }
+
+    #[fixture]
     pub(crate) fn id_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
         #[default(None)] primary_key: Option<Vec<&'static str>>,
@@ -91,7 +109,90 @@ mod schema {
     }
 }
 
+mod root {
+    use super::*;
+
+    #[fixture]
+    pub(crate) fn empty_colndef() -> ColnDef {
+        ColnDef {
+            theory: String::new(),
+            realm: String::new(),
+        }
+    }
+
+    #[fixture]
+    pub(crate) fn non_empty_colndef() -> ColnDef {
+        ColnDef {
+            theory: "theory T".into(),
+            realm: "realm R".into(),
+        }
+    }
+
+    #[fixture]
+    pub(crate) fn simple_rule() -> RuleEntry {
+        let table = Path::from("T");
+        RuleEntry {
+            path: Path::from("T.non_negative"),
+            rule: Rule {
+                rule_variant: RuleVariant::Enforced,
+                var_names: vec![Path::from("x")],
+                var_types: vec![ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                }],
+                antecedents: vec![Prop::Atom {
+                    atom: Atom {
+                        entity: table,
+                        row_id: None,
+                        values: vec![ValueEntry {
+                            column: 0,
+                            term: Term::Var { index: 0 },
+                        }],
+                    },
+                }],
+                consequents: vec![Prop::Eq {
+                    equality: Equality {
+                        left: Term::Var { index: 0 },
+                        right: Term::Var { index: 0 },
+                    },
+                }],
+            },
+        }
+    }
+
+    #[fixture]
+    pub(crate) fn root_commit_data(empty_colndef: ColnDef) -> RootCommitData {
+        RootCommitData::new(
+            FlatRealm {
+                tables: vec![],
+                rules: vec![],
+            },
+            empty_colndef,
+        )
+    }
+
+    #[fixture]
+    pub(crate) fn non_empty_root_commit_data(
+        non_empty_colndef: ColnDef,
+        simple_rule: RuleEntry,
+        #[from(int_schema)]
+        #[with(vec!["c0"], Some(vec!["c0"]))]
+        schema: Schema,
+    ) -> RootCommitData {
+        RootCommitData::new(
+            FlatRealm {
+                tables: vec![TableEntry {
+                    path: Path::from("T"),
+                    table: schema,
+                }],
+                rules: vec![simple_rule],
+            },
+            non_empty_colndef,
+        )
+    }
+}
+
 mod store {
+    use super::root::empty_colndef;
     use super::schema::{int_col_type, int_schema};
     use super::*;
 
@@ -202,6 +303,14 @@ mod store {
         }
     }
 
+    #[fixture]
+    pub(crate) fn link_foreign_key_root_commit_data(
+        link_foreign_key_theory: FlatRealm,
+        empty_colndef: ColnDef,
+    ) -> RootCommitData {
+        RootCommitData::new(link_foreign_key_theory, empty_colndef)
+    }
+
     pub(crate) fn commit_int(store: &mut Store, value: i32) -> CommitHash {
         let path = Path::from("T");
 
@@ -211,6 +320,7 @@ mod store {
     }
 }
 
+pub(crate) use root::*;
 pub(crate) use rowid::*;
 pub(crate) use schema::*;
 pub(crate) use store::*;
