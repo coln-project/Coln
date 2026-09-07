@@ -4,8 +4,8 @@
 
 mod column_map;
 pub mod commit;
-mod id_packer;
 pub mod op;
+mod pack;
 #[cfg(feature = "native")]
 pub mod repl;
 mod rollback;

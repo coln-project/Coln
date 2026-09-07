@@ -22,6 +22,7 @@ use crate::commit::hash::CommitHash;
 use crate::id_packer::{IdPacker, IdPackerSnapshot};
 use crate::ir::{self, FlatRealm};
 use crate::op::Op;
+use crate::pack::{IdPacker, IdPackerSnapshot};
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
 use crate::store::error::{CommitApplyError, StoreError};
