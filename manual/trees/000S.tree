@@ -7,7 +7,7 @@
   \taxon{Slogan}
   \title{Theories are schemas, models are instances}
 
-  \p{In Coln, we use the word \defcase{theory} to mean a type used as a database schema, and we say \defcase{model} to refer to an element of a theory, which you might also think of as a database instance on the schema described by that theory.}
+  \p{In Coln, we use the word \defcase{theory} to mean a type used as a database schema, and we say \defcase{model} to refer to an element of a theory, which you might also think of as a database instance of the schema described by that theory.}
 }
 
 \p{We now show how to build up progressively more complex theories via different type formers. In order to give an intuition for what each of these type formers means, we also describe how to interact with models of those theories via the TypeScript FFI (note: the TypeScript FFI is a work in progress at the moment).}

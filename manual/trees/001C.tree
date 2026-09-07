@@ -1,7 +1,7 @@
 \title{Record types as theories}
 \import{prelude}
 
-\p{Records types are a way of composing multiple theories into one theory. A record type has multiple \em{fields}, each of which is declared to be a model of another theory. For instance:}
+\p{Records types compose multiple theories into into a single theory, whose models consist of a model of each of its individual pieces. A record type declaration consists of a list of \em{fields}, each of which is declared to be a model of another theory. For instance:}
 
 \pre{%
 \kw{theory} SantaList := \kw{sig}

@@ -1,6 +1,12 @@
 \import{prelude}
 \title{Type formers}
 
-\p{One of the nice things about categorical semantics is that once we have fixed the basic structure (the category with families), the type theory essentially writes itself, in the sense that we may just look through various standard type formers and ask whether or not the semantics has the relevant universal property or not.}
+\p{One of the nice things about categorical semantics is that once we have fixed the basic structure (the category with families), the type theory essentially writes itself, in the sense that we may just look through the various standard type formers and ask whether or not the semantics supports the constructions relevant universal property or not.}
 
 \transclude{002V}
+
+\transclude{002X}
+
+\transclude{002Y}
+
+\transclude{002Z}

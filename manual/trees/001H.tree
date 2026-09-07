@@ -4,7 +4,7 @@
 \p{Just like we have record types as the theory-level, we also have record types at the set-level. We can use this to define a set in the context of a model of a given theory; this is how to “natively query” an instance of a Coln theory.\todo}
 
 \pre{%
-\kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
+\kw{def} jealousy-triangle (m : Drama) : Set := \kw{sig}
   a : m.person
   b : m.person
   c : m.person
@@ -21,7 +21,7 @@
 \p{This query can be written more compactly in the following way.\todo}
 
 \pre{%
-\kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
+\kw{def} jealousy-triangle (m : Drama) : Set := \kw{sig}
   a b c : m.person
   m.jealous-of a b
   m.jealous-of b c
@@ -34,7 +34,7 @@
 \p{As a variation on the same theme, we could look for length-3 cycles in a state machine with}
 
 \pre{%
-\kw{def} next-triangle (m : StateMachine) : Set := \kw{tuple}
+\kw{def} next-triangle (m : StateMachine) : Set := \kw{sig}
   a b c : m.state
   m.next a = b
   m.next b = c
