@@ -17,12 +17,15 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/target
       CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
       PNPM_STORE_DIR: ${{ github.workspace }}/.pnpm-store
-      VITE_BASE: /coln/
       VITE_SUBDUCTION_ENDPOINT: wss://coln.sync.inkandswitch.com
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
@@ -73,12 +76,11 @@ jobs:
 
       - name: Build Lab
         run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab build
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+        env:
+          VITE_BASE: ${{ steps.pages.outputs.base_path }}/
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: _build/web/lab-app
 
@@ -95,4 +97,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
