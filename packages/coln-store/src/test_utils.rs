@@ -50,7 +50,11 @@ mod schema {
         ColType::RowId { path: table }
     }
 
-    fn table_schema(col_names: Vec<&'static str>, col_type: ColType) -> Schema {
+    fn table_schema(
+        col_names: Vec<&'static str>,
+        col_type: ColType,
+        primary_key: Option<Vec<&'static str>>,
+    ) -> Schema {
         Schema {
             entity_variant: EntityVariant::Table,
             columns: col_names
@@ -60,24 +64,30 @@ mod schema {
                     col_type: col_type.clone(),
                 })
                 .collect(),
-            primary_key: None,
+            primary_key: primary_key.map(|pk| pk.into_iter().map(Path::from).collect()),
         }
+    }
+
+    #[fixture]
+    pub(crate) fn idonly_schema(id_col_type: ColType) -> Schema {
+        table_schema(vec![], id_col_type, None)
     }
 
     #[fixture]
     pub(crate) fn int_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
-        int_col_type: ColType,
+        #[default(None)] primary_key: Option<Vec<&'static str>>,
     ) -> Schema {
-        table_schema(col_names, int_col_type)
+        table_schema(col_names, int_col_type(), primary_key)
     }
 
     #[fixture]
     pub(crate) fn id_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
+        #[default(None)] primary_key: Option<Vec<&'static str>>,
         id_col_type: ColType,
     ) -> Schema {
-        table_schema(col_names, id_col_type)
+        table_schema(col_names, id_col_type, primary_key)
     }
 }
 

@@ -2,13 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use rstest::rstest;
+use rstest::{fixture, rstest};
 
 use super::*;
 use crate::ir::{self, Path};
 use crate::ir::{BuiltinTy, ColType};
 use crate::op::Op;
-use crate::test_utils::{id_schema, row_id_from, zerohash_row_id};
+use crate::table::table_handle::{TableMut, WireRowView};
+use crate::test_utils::{
+    id_col_type, id_schema, idonly_schema, int_schema, row_id_from, zerohash_row_id,
+};
 
 /// A [`Table`] paired with its own dictionary, packing mutations at the
 /// same boundary as [`Store`](crate::store::Store).
@@ -19,102 +22,8 @@ struct TestTable {
 }
 
 impl TestTable {
-    fn new(path: Path, schema: ir::Schema) -> Self {
-        Self {
-            table: Table::new(path, 0, schema),
-            dict: IdPacker::new(),
-            rowing: Rowing::new(),
-        }
-    }
-
-    /// A table that unions structurally identical rows on insert.
-    fn with_structural_index(path: Path, schema: ir::Schema) -> Self {
-        let mut tbl = Self::new(path, schema);
-        tbl.table.set_structural_index_for_test(true);
-        tbl
-    }
-
-    fn row_count(&self) -> usize {
-        self.table.row_count()
-    }
-
-    fn row_id_at(&self, row_idx: usize) -> Option<WireRowId> {
-        self.table.row_id_at(row_idx, &self.dict)
-    }
-
-    fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<WireValue> {
-        TableHandle::new(&self.table, &self.dict, &self.rowing).cell_at(row_idx, col_idx)
-    }
-
-    fn row_at(&self, row_idx: usize) -> Option<RowView> {
-        self.table.row_at(row_idx, &self.dict)
-    }
-
-    fn row_position(&self, row_id: WireRowId) -> Option<usize> {
-        let row_id = self.dict.lookup_row_id(row_id)?;
-        self.table.packed_rowid_idx(row_id)
-    }
-
-    /// Rows the table records as referring to `child`, in row id order.
-    fn referring_rows(&self, child: WireRowId) -> Vec<WireRowId> {
-        let Some(child) = self.dict.lookup_row_id(child) else {
-            return Vec::new();
-        };
-        let mut rows: Vec<WireRowId> = self
-            .table
-            .rebuild_index
-            .get(&child)
-            .map(|rows| {
-                rows.iter()
-                    .map(|rid| self.dict.unpack_row_id(*rid))
-                    .collect()
-            })
-            .unwrap_or_default();
-        rows.sort_unstable();
-        rows
-    }
-
-    fn validate_insert(&self, values: &[WireValue]) -> Result<(), ValidationError> {
-        self.table.validate_insert(values, &self.dict)
-    }
-
-    fn insert_row(&mut self, values: Vec<WireValue>, row_id: WireRowId) {
-        let row_id = self.dict.pack_row_id(row_id);
-        let values = values
-            .into_iter()
-            .map(|value| self.dict.pack_cell(value))
-            .collect();
-        self.table
-            .insert_row(values, row_id, &mut self.rowing)
-            .expect("test row satisfies the primary key")
-    }
-
-    fn stage_update(&mut self, op: Op) {
-        let Op::Add {
-            row_id,
-            table,
-            values,
-        } = op;
-        debug_assert_eq!(table, self.table.oid());
-        let row_id = self.dict.pack_row_id(row_id);
-        let values = values
-            .into_iter()
-            .map(|value| self.dict.pack_cell(value))
-            .collect();
-        self.table.stage_update(PackedOp::Add { row_id, values });
-    }
-
-    fn stage_delete(&mut self, row_id: WireRowId) {
-        let row_id = self.dict.pack_row_id(row_id);
-        self.table.stage_update(PackedOp::Delete { row_id });
-    }
-
-    fn apply_staged_ops(&mut self) -> Result<(), ValidationError> {
-        self.table.apply_staged_ops(&mut self.rowing)
-    }
-
-    fn dump(&self) -> String {
-        self.table.dump(&self.dict)
+    fn as_mut(&mut self) -> TableMut<'_> {
+        TableMut::new(&mut self.table, &mut self.dict, &mut self.rowing)
     }
 
     fn handle(&self) -> TableHandle<'_> {
@@ -122,102 +31,170 @@ impl TestTable {
     }
 }
 
-/// Tables with no data columns still allocate row ids on insert; `row_count` must reflect
-/// those rows (it cannot use column length when `cols` is empty).
-#[test]
-fn row_count_matches_inserts_when_schema_has_no_columns() {
-    let schema = ir::Schema {
-        entity_variant: ir::EntityVariant::Table,
-        columns: vec![],
-        primary_key: None,
-    };
-    let mut tbl = TestTable::new(Path::from("id_only"), schema);
-    assert!(tbl.table.cols.is_empty());
-    assert_eq!(tbl.row_count(), 0);
-
-    let r0 = zerohash_row_id(0);
-    tbl.insert_row(vec![], r0);
-    assert_eq!(tbl.row_count(), 1);
-    assert_eq!(tbl.row_id_at(0), Some(r0));
-
-    let r1 = zerohash_row_id(1);
-    tbl.insert_row(vec![], r1);
-    assert_eq!(tbl.row_count(), 2);
-    assert_eq!(tbl.row_id_at(1), Some(r1));
+#[fixture]
+fn test_table(
+    #[default("foo")] path: impl Into<Path>,
+    #[default(idonly_schema(id_col_type(Path::from("T"))))] schema: ir::Schema,
+) -> TestTable {
+    TestTable {
+        table: Table::new(path, 0, schema),
+        dict: IdPacker::new(),
+        rowing: Rowing::new(),
+    }
 }
 
-#[test]
-fn rollback_removes_applied_rows_and_index_entries() {
-    let path = Path::from("rollback");
-    let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], Some(&["value"])));
+/// Rows recorded in the packed rebuild index, converted for assertions.
+fn referring_rows(test_table: &TestTable, child: WireRowId) -> Vec<WireRowId> {
+    let Some(child) = test_table.dict.lookup_row_id(&child) else {
+        return Vec::new();
+    };
+    let mut rows = test_table
+        .table
+        .rebuild_index
+        .get(&child)
+        .into_iter()
+        .flatten()
+        .map(|row_id| test_table.dict.unpack_row_id(*row_id))
+        .collect::<Vec<_>>();
+    rows.sort_unstable();
+    rows
+}
+
+/// Tables with no data columns still allocate row ids on insert; `row_count` must reflect
+/// those rows (it cannot use column length when `cols` is empty).
+#[rstest]
+fn row_count_matches_inserts_when_schema_has_no_columns(
+    #[with("id_only")] mut test_table: TestTable,
+) {
+    assert!(test_table.table.cols.is_empty());
+    assert_eq!(test_table.handle().row_count(), 0);
+
+    let r0 = zerohash_row_id(0);
+    test_table
+        .as_mut()
+        .insert_row(vec![], r0)
+        .expect("id-only row is valid");
+    assert_eq!(test_table.handle().row_count(), 1);
+    assert_eq!(test_table.handle().row_id_at(0), Some(r0));
+
+    let r1 = zerohash_row_id(1);
+    test_table
+        .as_mut()
+        .insert_row(vec![], r1)
+        .expect("id-only row is valid");
+    assert_eq!(test_table.handle().row_count(), 2);
+    assert_eq!(test_table.handle().row_id_at(1), Some(r1));
+}
+
+#[rstest]
+fn rollback_removes_applied_rows_and_index_entries(
+    #[with("rollback", int_schema(vec!["value"], Some(vec!["value"])))] mut test_table: TestTable,
+) {
     let existing = zerohash_row_id(0);
     let first_added = zerohash_row_id(1);
     let second_added = zerohash_row_id(2);
-    tbl.insert_row(vec![WireValue::Int(1)], existing);
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Int(1)], existing)
+        .expect("existing row is valid");
 
-    let snapshot = tbl.table.snapshot();
-    tbl.stage_update(Op::Add {
+    let snapshot = test_table.table.snapshot();
+    test_table.as_mut().stage(Op::Add {
         row_id: first_added,
         table: 0,
         values: vec![WireValue::Int(2)],
     });
-    tbl.stage_update(Op::Add {
+    test_table.as_mut().stage(Op::Add {
         row_id: second_added,
         table: 0,
         values: vec![WireValue::Int(3)],
     });
-    tbl.apply_staged_ops()
+    test_table
+        .as_mut()
+        .apply_staged()
         .expect("the added rows have distinct keys");
 
-    assert_eq!(tbl.row_count(), 3);
+    assert_eq!(test_table.handle().row_count(), 3);
     assert_eq!(
-        tbl.validate_insert(&[WireValue::Int(2)]),
+        test_table
+            .table
+            .validate_insert(&[WireValue::Int(2)], &test_table.dict),
         Err(ValidationError::DuplicatePrimaryKey)
     );
 
-    tbl.table.rollback_to(snapshot);
+    test_table.table.rollback_to(snapshot);
 
-    assert_eq!(tbl.row_count(), 1);
-    assert_eq!(tbl.row_id_at(0), Some(existing));
-    assert_eq!(tbl.row_position(first_added), None);
-    assert_eq!(tbl.row_position(second_added), None);
-    assert!(tbl.validate_insert(&[WireValue::Int(2)]).is_ok());
-    assert!(tbl.validate_insert(&[WireValue::Int(3)]).is_ok());
-    assert!(tbl.table.undo_log.is_none());
+    let handle = test_table.handle();
+    assert_eq!(handle.row_count(), 1);
+    assert_eq!(handle.row_id_at(0), Some(existing));
+    assert_eq!(handle.row_by_id(first_added), None);
+    assert_eq!(handle.row_by_id(second_added), None);
+    assert!(
+        test_table
+            .table
+            .validate_insert(&[WireValue::Int(2)], &test_table.dict)
+            .is_ok()
+    );
+    assert!(
+        test_table
+            .table
+            .validate_insert(&[WireValue::Int(3)], &test_table.dict)
+            .is_ok()
+    );
+    assert!(test_table.table.undo_log.is_none());
 }
 
 /// A staged delete drops the row and its index entries, and undoing it
 /// restores the cells the delete returned. This is the pair canonicalisation
 /// stages to move a row, so both directions have to keep indexes in step.
-#[test]
-fn staged_delete_removes_row_and_undo_restores_it() {
-    let mut tbl = TestTable::new(
-        Path::from("deleting"),
-        int_schema(&["value"], Some(&["value"])),
-    );
+#[rstest]
+fn staged_delete_removes_row_and_undo_restores_it(
+    #[with("deleting", int_schema(vec!["value"], Some(vec!["value"])))] mut test_table: TestTable,
+) {
     let kept = zerohash_row_id(0);
     let removed = zerohash_row_id(1);
-    tbl.insert_row(vec![WireValue::Int(1)], kept);
-    tbl.insert_row(vec![WireValue::Int(2)], removed);
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Int(1)], kept)
+        .expect("kept row is valid");
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Int(2)], removed)
+        .expect("removed row is valid");
 
-    let snapshot = tbl.table.snapshot();
-    tbl.stage_delete(removed);
-    tbl.apply_staged_ops()
+    let snapshot = test_table.table.snapshot();
+    test_table.as_mut().stage_delete(removed);
+    test_table
+        .as_mut()
+        .apply_staged()
         .expect("a delete cannot duplicate a key");
 
-    assert_eq!(tbl.row_count(), 1);
-    assert_eq!(tbl.row_position(removed), None);
+    assert_eq!(test_table.handle().row_count(), 1);
+    assert_eq!(test_table.handle().row_by_id(removed), None);
     // The primary key index gave up the key, so it is free to reuse.
-    assert!(tbl.validate_insert(&[WireValue::Int(2)]).is_ok());
+    assert!(
+        test_table
+            .table
+            .validate_insert(&[WireValue::Int(2)], &test_table.dict)
+            .is_ok()
+    );
 
-    tbl.table.rollback_to(snapshot);
+    test_table.table.rollback_to(snapshot);
 
-    assert_eq!(tbl.row_count(), 2);
-    assert_eq!(tbl.row_position(kept), Some(0));
-    let idx = tbl.row_position(removed).expect("row is restored");
-    assert_eq!(tbl.cell_at(idx, 0), Some(WireValue::Int(2)));
+    let handle = test_table.handle();
+    assert_eq!(handle.row_count(), 2);
+    assert!(handle.row_by_id(kept).is_some());
     assert_eq!(
-        tbl.validate_insert(&[WireValue::Int(2)]),
+        handle.row_by_id(removed),
+        Some(WireRowView {
+            row_id: removed,
+            values: vec![WireValue::Int(2)],
+        })
+    );
+    assert_eq!(
+        test_table
+            .table
+            .validate_insert(&[WireValue::Int(2)], &test_table.dict),
         Err(ValidationError::DuplicatePrimaryKey)
     );
 }
@@ -229,82 +206,102 @@ fn staged_delete_removes_row_and_undo_restores_it() {
 #[rstest]
 #[ignore = "rebuild index disabled until we need it"]
 fn rebuild_index_tracks_rows_referring_to_an_id(
-    #[from(id_schema)]
-    #[with(vec!["left", "right"])]
-    schema: ir::Schema,
+    #[with("edge", id_schema(vec!["left", "right"], None, id_col_type(Path::from("T"))))]
+    mut test_table: TestTable,
 ) {
-    let mut tbl = TestTable::new(Path::from("edge"), schema);
     let a = row_id_from(1, 0);
     let b = row_id_from(1, 1);
     let pair = zerohash_row_id(0);
     let doubled = zerohash_row_id(1);
 
-    tbl.insert_row(vec![WireValue::Id(a), WireValue::Id(b)], pair);
-    tbl.insert_row(vec![WireValue::Id(a), WireValue::Id(a)], doubled);
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Id(a), WireValue::Id(b)], pair)
+        .expect("pair row is valid");
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Id(a), WireValue::Id(a)], doubled)
+        .expect("doubled row is valid");
 
     // `doubled` refers to `a` twice but is recorded against it once, so a
     // rebuild pass restages it once rather than deleting it twice.
-    assert_eq!(tbl.referring_rows(a), vec![pair, doubled]);
-    assert_eq!(tbl.referring_rows(b), vec![pair]);
+    assert_eq!(referring_rows(&test_table, a), vec![pair, doubled]);
+    assert_eq!(referring_rows(&test_table, b), vec![pair]);
 
-    tbl.stage_delete(pair);
-    tbl.apply_staged_ops()
+    test_table.as_mut().stage_delete(pair);
+    test_table
+        .as_mut()
+        .apply_staged()
         .expect("a delete cannot duplicate a key");
 
-    assert_eq!(tbl.referring_rows(a), vec![doubled]);
-    assert!(tbl.referring_rows(b).is_empty());
+    assert_eq!(referring_rows(&test_table, a), vec![doubled]);
+    assert!(referring_rows(&test_table, b).is_empty());
 
-    tbl.stage_delete(doubled);
-    tbl.apply_staged_ops()
+    test_table.as_mut().stage_delete(doubled);
+    test_table
+        .as_mut()
+        .apply_staged()
         .expect("a delete cannot duplicate a key");
 
     assert!(
-        tbl.table.rebuild_index.is_empty(),
+        test_table.table.rebuild_index.is_empty(),
         "index entries outlived the rows that held them"
     );
 }
 
 #[rstest]
 fn full_rebuild_rewrites_stale_id_cells(
-    #[from(id_schema)]
-    #[with(vec!["child"])]
-    schema: ir::Schema,
+    #[with("edge", id_schema(vec!["child"], None, id_col_type(Path::from("T"))))]
+    mut test_table: TestTable,
 ) {
-    let mut tbl = TestTable::new(Path::from("edge"), schema);
     let canonical_child = row_id_from(1, 0);
     let stale_child = row_id_from(2, 0);
     let owner = zerohash_row_id(0);
-    tbl.insert_row(vec![WireValue::Id(stale_child)], owner);
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Id(stale_child)], owner)
+        .expect("owner row is valid");
 
-    let stale_child = tbl.dict.lookup_row_id(stale_child).unwrap();
-    let canonical_child = tbl.dict.pack_row_id(canonical_child);
-    tbl.rowing.stage_union(0, stale_child, canonical_child);
-    tbl.rowing.apply_unions(&tbl.dict);
+    let stale_child = test_table.dict.lookup_row_id(&stale_child).unwrap();
+    let canonical_child = test_table.dict.pack_row_id(canonical_child);
+    test_table
+        .rowing
+        .stage_union(0, stale_child, canonical_child);
+    test_table.rowing.apply_unions(&test_table.dict);
 
-    tbl.table.rebuild_full(&tbl.rowing, &tbl.dict);
-    tbl.apply_staged_ops().unwrap();
+    test_table.as_mut().rebuild();
+    test_table.as_mut().apply_staged().unwrap();
 
-    assert_eq!(tbl.row_count(), 1);
-    assert_eq!(tbl.row_id_at(0), Some(owner));
-    assert_eq!(tbl.cell_at(0, 0), Some(WireValue::Id(row_id_from(1, 0))));
+    let handle = test_table.handle();
+    assert_eq!(handle.row_count(), 1);
+    assert_eq!(handle.row_id_at(0), Some(owner));
+    assert_eq!(handle.cell_at(0, 0), Some(WireValue::Id(row_id_from(1, 0))));
 }
 
-#[test]
-fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row() {
-    let mut tbl =
-        TestTable::with_structural_index(Path::from("term"), int_schema(&["value"], None));
+#[rstest]
+fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row(
+    #[with("term", int_schema(vec!["value"], None))] mut test_table: TestTable,
+) {
+    test_table.table.set_structural_index_for_test(true);
     let canonical = row_id_from(1, 0);
     let displaced = row_id_from(2, 0);
-    tbl.insert_row(vec![WireValue::Int(7)], displaced);
-    tbl.insert_row(vec![WireValue::Int(7)], canonical);
-    tbl.rowing.apply_unions(&tbl.dict);
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Int(7)], displaced)
+        .expect("displaced row is valid");
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Int(7)], canonical)
+        .expect("canonical row is valid");
+    test_table.rowing.apply_unions(&test_table.dict);
 
-    tbl.table.rebuild_full(&tbl.rowing, &tbl.dict);
-    tbl.apply_staged_ops().unwrap();
+    test_table.as_mut().rebuild();
+    test_table.as_mut().apply_staged().unwrap();
 
-    assert_eq!(tbl.row_count(), 1);
-    assert_eq!(tbl.row_id_at(0), Some(canonical));
-    assert_eq!(tbl.cell_at(0, 0), Some(WireValue::Int(7)));
+    let handle = test_table.handle();
+    assert_eq!(handle.row_count(), 1);
+    assert_eq!(handle.row_id_at(0), Some(canonical));
+    assert_eq!(handle.cell_at(0, 0), Some(WireValue::Int(7)));
 }
 
 /// Rollback replays the undo log through the same insert path, so the
@@ -312,93 +309,93 @@ fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row() {
 #[rstest]
 #[ignore = "rebuild index disabled until we need it"]
 fn rollback_restores_rebuild_index_entries(
-    #[from(id_schema)]
-    #[with(vec!["left", "right"])]
-    schema: ir::Schema,
+    #[with("edge", id_schema(vec!["left", "right"], None, id_col_type(Path::from("T"))))]
+    mut test_table: TestTable,
 ) {
-    let mut tbl = TestTable::new(Path::from("edge"), schema);
     let a = row_id_from(1, 0);
     let b = row_id_from(1, 1);
     let row = zerohash_row_id(0);
-    tbl.insert_row(vec![WireValue::Id(a), WireValue::Id(b)], row);
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Id(a), WireValue::Id(b)], row)
+        .expect("row is valid");
 
-    let snapshot = tbl.table.snapshot();
-    tbl.stage_delete(row);
-    tbl.apply_staged_ops()
+    let snapshot = test_table.table.snapshot();
+    test_table.as_mut().stage_delete(row);
+    test_table
+        .as_mut()
+        .apply_staged()
         .expect("a delete cannot duplicate a key");
-    assert!(tbl.table.rebuild_index.is_empty());
+    assert!(test_table.table.rebuild_index.is_empty());
 
-    tbl.table.rollback_to(snapshot);
+    test_table.table.rollback_to(snapshot);
 
-    assert_eq!(tbl.referring_rows(a), vec![row]);
-    assert_eq!(tbl.referring_rows(b), vec![row]);
+    assert_eq!(referring_rows(&test_table, a), vec![row]);
+    assert_eq!(referring_rows(&test_table, b), vec![row]);
 }
 
-#[test]
-fn commit_snapshot_keeps_rows_and_discards_undo_log() {
-    let path = Path::from("commit_snapshot");
-    let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], None));
+#[rstest]
+fn commit_snapshot_keeps_rows_and_discards_undo_log(
+    #[with("commit_snapshot", int_schema(vec!["value"], None))] mut test_table: TestTable,
+) {
     let row_id = zerohash_row_id(0);
 
-    let snapshot = tbl.table.snapshot();
-    tbl.stage_update(Op::Add {
+    let snapshot = test_table.table.snapshot();
+    test_table.as_mut().stage(Op::Add {
         row_id,
         table: 0,
         values: vec![WireValue::Int(7)],
     });
-    tbl.apply_staged_ops()
+    test_table
+        .as_mut()
+        .apply_staged()
         .expect("a table without a primary key accepts the row");
-    tbl.table.commit(snapshot);
+    test_table.table.commit(snapshot);
 
-    assert_eq!(tbl.row_count(), 1);
-    assert_eq!(tbl.row_id_at(0), Some(row_id));
-    assert!(tbl.table.undo_log.is_none());
+    assert_eq!(test_table.handle().row_count(), 1);
+    assert_eq!(test_table.handle().row_id_at(0), Some(row_id));
+    assert!(test_table.table.undo_log.is_none());
 }
 
-#[test]
-fn rollback_discards_updates_staged_after_snapshot() {
-    let path = Path::from("staged_rollback");
-    let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], None));
-
-    let snapshot = tbl.table.snapshot();
-    tbl.stage_update(Op::Add {
+#[rstest]
+fn rollback_discards_updates_staged_after_snapshot(
+    #[with("staged_rollback", int_schema(vec!["value"], None))] mut test_table: TestTable,
+) {
+    let snapshot = test_table.table.snapshot();
+    test_table.as_mut().stage(Op::Add {
         row_id: zerohash_row_id(0),
         table: 0,
         values: vec![WireValue::Int(7)],
     });
-    tbl.table.rollback_to(snapshot);
+    test_table.table.rollback_to(snapshot);
 
-    assert_eq!(tbl.row_count(), 0);
-    assert!(tbl.table.pending_updates.is_empty());
+    assert_eq!(test_table.handle().row_count(), 0);
+    assert!(test_table.table.pending_updates.is_empty());
 }
 
 /// `primary_key: Some([])` marks a singleton table (at most one row).
-#[test]
-fn empty_primary_key_rejects_second_row() {
-    let schema = ir::Schema {
-        entity_variant: ir::EntityVariant::Table,
-        columns: vec![ir::ColumnEntry {
-            path: Path::from("c0"),
-            col_type: ColType::BuiltinTy {
-                builtin_ty: BuiltinTy::BuiltinInt,
-            },
-        }],
-        primary_key: Some(vec![]),
-    };
-    let mut tbl = TestTable::new(Path::from("singleton"), schema);
-
-    tbl.insert_row(vec![WireValue::Int(0)], zerohash_row_id(0));
-    assert_eq!(tbl.row_count(), 1);
+#[rstest]
+fn empty_primary_key_rejects_second_row(
+    #[with("singleton", int_schema(vec!["c0"], Some(vec![])))] mut test_table: TestTable,
+) {
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Int(0)], zerohash_row_id(0))
+        .expect("first singleton row is valid");
+    assert_eq!(test_table.handle().row_count(), 1);
 
     let values1 = vec![WireValue::Int(1)];
-    let err = tbl.validate_insert(&values1).unwrap_err();
+    let err = test_table
+        .table
+        .validate_insert(&values1, &test_table.dict)
+        .unwrap_err();
     assert_eq!(err, ValidationError::DuplicatePrimaryKey);
-    assert_eq!(tbl.row_count(), 1);
+    assert_eq!(test_table.handle().row_count(), 1);
 }
 
-#[test]
-fn row_read_helpers_return_row_id_and_cells() {
-    let schema = ir::Schema {
+#[rstest]
+fn row_read_helpers_return_row_id_and_cells(
+    #[with("readable", ir::Schema {
         entity_variant: ir::EntityVariant::Table,
         columns: vec![
             ir::ColumnEntry {
@@ -415,48 +412,56 @@ fn row_read_helpers_return_row_id_and_cells() {
             },
         ],
         primary_key: None,
-    };
-    let mut tbl = TestTable::new(Path::from("readable"), schema);
-
+    })]
+    mut test_table: TestTable,
+) {
     let row_id = zerohash_row_id(0);
-    tbl.insert_row(
-        vec![WireValue::Int(7), WireValue::Str("x".to_string())],
-        row_id,
-    );
+    test_table
+        .as_mut()
+        .insert_row(
+            vec![WireValue::Int(7), WireValue::Str("x".to_string())],
+            row_id,
+        )
+        .expect("row is valid");
 
+    let handle = test_table.handle();
     assert_eq!(
-        tbl.row_at(0),
-        Some(RowView {
+        handle.row_by_id(row_id),
+        Some(WireRowView {
             row_id,
             values: vec![WireValue::Int(7), WireValue::Str("x".to_string())],
         })
     );
-    assert_eq!(tbl.row_id_at(0), Some(row_id));
-    assert_eq!(tbl.cell_at(0, 0), Some(WireValue::Int(7)));
-    assert_eq!(tbl.cell_at(0, 1), Some(WireValue::Str("x".to_string())));
-    let packed = tbl
+    assert_eq!(handle.row_id_at(0), Some(row_id));
+    assert_eq!(handle.cell_at(0, 0), Some(WireValue::Int(7)));
+    assert_eq!(handle.cell_at(0, 1), Some(WireValue::Str("x".to_string())));
+    let packed = test_table
         .dict
-        .lookup_row_id(row_id)
+        .lookup_row_id(&row_id)
         .expect("insert packed the row id");
     assert_eq!(
-        tbl.table.packed_row_by_id(packed),
+        test_table.table.packed_row_by_id(packed),
         Some(vec![PackedValue::Int(7), PackedValue::Str("x".to_string())])
     );
-    assert_eq!(tbl.row_at(1), None);
-    assert_eq!(tbl.row_id_at(1), None);
-    assert_eq!(tbl.cell_at(0, 2), None);
+    assert!(test_table.table.row_at(1).is_none());
+    assert_eq!(handle.row_id_at(1), None);
+    assert_eq!(handle.cell_at(0, 2), None);
 }
 
-#[test]
-fn row_by_id_finds_inserted_row() {
-    let mut tbl = TestTable::new(Path::from("T"), int_schema(&["c0"], None));
+#[rstest]
+fn row_by_id_finds_inserted_row(
+    #[with("T", int_schema(vec!["c0"], None))] mut test_table: TestTable,
+) {
     let row_id = zerohash_row_id(0);
-    tbl.insert_row(vec![WireValue::Int(42)], row_id);
+    test_table
+        .as_mut()
+        .insert_row(vec![WireValue::Int(42)], row_id)
+        .expect("row is valid");
 
-    let handle = tbl.handle();
+    let handle = test_table.handle();
     assert_eq!(
         handle.row_by_id(row_id),
-        Some(RowView {
+        Some(WireRowView {
             row_id,
             values: vec![WireValue::Int(42)],
         })
@@ -468,48 +473,42 @@ fn row_by_id_finds_inserted_row() {
 /// from different commits.
 #[rstest]
 fn packed_row_ids_round_trip_across_commits(
-    #[from(id_schema)]
-    #[with(vec!["src", "dst"])]
-    schema: ir::Schema,
+    #[with("edges", id_schema(vec!["src", "dst"], None, id_col_type(Path::from("T"))))]
+    mut test_table: TestTable,
 ) {
-    let mut tbl = TestTable::new(Path::from("edges"), schema);
-
     let rows = [
         (row_id_from(1, 0), row_id_from(3, 7), row_id_from(4, 8)),
         (row_id_from(2, 1), row_id_from(3, 9), row_id_from(1, 0)),
         (row_id_from(1, 2), row_id_from(2, 1), row_id_from(3, 7)),
     ];
     for (rid, src, dst) in rows {
-        tbl.insert_row(vec![WireValue::Id(src), WireValue::Id(dst)], rid);
+        test_table
+            .as_mut()
+            .insert_row(vec![WireValue::Id(src), WireValue::Id(dst)], rid)
+            .expect("row is valid");
     }
 
+    let handle = test_table.handle();
     for (rid, src, dst) in rows {
-        let idx = tbl.row_position(rid).expect("row is stored");
-        assert_eq!(tbl.row_id_at(idx), Some(rid));
-        assert_eq!(tbl.cell_at(idx, 0), Some(WireValue::Id(src)));
-        assert_eq!(tbl.cell_at(idx, 1), Some(WireValue::Id(dst)));
+        assert_eq!(
+            handle.row_by_id(rid),
+            Some(WireRowView {
+                row_id: rid,
+                values: vec![WireValue::Id(src), WireValue::Id(dst)],
+            })
+        );
     }
 
     // Four distinct commit hashes, each interned exactly once.
-    assert_eq!(tbl.dict.len(), 4);
+    assert_eq!(test_table.dict.len(), 4);
 }
 
 /// Rows are stored sorted by packed row id regardless of insertion order,
 /// and `row_position` reports presence and absence accordingly.
-#[test]
-fn rows_stay_sorted_by_row_id() {
-    let schema = ir::Schema {
-        entity_variant: ir::EntityVariant::Table,
-        columns: vec![ir::ColumnEntry {
-            path: Path::from("c0"),
-            col_type: ColType::BuiltinTy {
-                builtin_ty: BuiltinTy::BuiltinInt,
-            },
-        }],
-        primary_key: None,
-    };
-    let mut tbl = TestTable::new(Path::from("sorted"), schema);
-
+#[rstest]
+fn rows_stay_sorted_by_row_id(
+    #[with("sorted", int_schema(vec!["c0"], None))] mut test_table: TestTable,
+) {
     // Commit A is interned first, so its rows sort before commit B's, and
     // counters order rows within a commit.
     let rows = [
@@ -520,12 +519,14 @@ fn rows_stay_sorted_by_row_id() {
         (row_id_from(1, 2), 4),
     ];
     for (rid, v) in rows {
-        tbl.insert_row(vec![WireValue::Int(v)], rid);
+        test_table
+            .as_mut()
+            .insert_row(vec![WireValue::Int(v)], rid)
+            .expect("row is valid");
     }
 
-    let stored: Vec<WireRowId> = (0..tbl.row_count())
-        .map(|idx| tbl.row_id_at(idx).expect("row id"))
-        .collect();
+    let handle = test_table.handle();
+    let stored: Vec<WireRowId> = handle.scan().map(|row| row.row_id).collect();
     assert_eq!(
         stored,
         vec![
@@ -539,35 +540,44 @@ fn rows_stay_sorted_by_row_id() {
 
     // Cells moved together with their row ids.
     for (rid, v) in rows {
-        let idx = tbl.row_position(rid).expect("row is stored");
-        assert_eq!(tbl.cell_at(idx, 0), Some(WireValue::Int(v)));
+        assert_eq!(
+            handle.row_by_id(rid),
+            Some(WireRowView {
+                row_id: rid,
+                values: vec![WireValue::Int(v)],
+            })
+        );
     }
 
     // Absent ids: known commit with unused counter, and unknown commit.
-    assert_eq!(tbl.row_position(row_id_from(1, 3)), None);
-    assert_eq!(tbl.row_position(row_id_from(9, 0)), None);
+    assert_eq!(handle.row_by_id(row_id_from(1, 3)), None);
+    assert_eq!(handle.row_by_id(row_id_from(9, 0)), None);
 }
 
 /// Primary key comparison works on dictionary-encoded id columns, and an
 /// id with an unseen commit hash never collides.
 #[rstest]
 fn primary_key_detects_duplicates_in_id_columns(
-    #[from(id_schema)]
-    #[with(vec!["src", "dst"])]
-    mut schema: ir::Schema,
+    #[with(
+        "edges",
+        id_schema(vec!["src", "dst"], Some(vec!["src"]), id_col_type(Path::from("T")))
+    )]
+    mut test_table: TestTable,
 ) {
-    schema.primary_key = Some(vec![Path::from("src")]);
-    let mut tbl = TestTable::new(Path::from("edges"), schema);
-
     let src = row_id_from(3, 7);
-    tbl.insert_row(
-        vec![WireValue::Id(src), WireValue::Id(row_id_from(4, 8))],
-        row_id_from(1, 0),
-    );
+    test_table
+        .as_mut()
+        .insert_row(
+            vec![WireValue::Id(src), WireValue::Id(row_id_from(4, 8))],
+            row_id_from(1, 0),
+        )
+        .expect("row is valid");
 
     let duplicate = vec![WireValue::Id(src), WireValue::Id(row_id_from(4, 9))];
     assert_eq!(
-        tbl.validate_insert(&duplicate),
+        test_table
+            .table
+            .validate_insert(&duplicate, &test_table.dict),
         Err(ValidationError::DuplicatePrimaryKey)
     );
 
@@ -575,54 +585,54 @@ fn primary_key_detects_duplicates_in_id_columns(
         WireValue::Id(row_id_from(9, 7)),
         WireValue::Id(row_id_from(4, 8)),
     ];
-    assert!(tbl.validate_insert(&unseen_commit).is_ok());
-}
-
-fn int_schema(columns: &[&str], primary_key: Option<&[&str]>) -> ir::Schema {
-    ir::Schema {
-        entity_variant: ir::EntityVariant::Table,
-        columns: columns
-            .iter()
-            .map(|name| ir::ColumnEntry {
-                path: Path::from(*name),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            })
-            .collect(),
-        primary_key: primary_key.map(|pk| pk.iter().map(|name| Path::from(*name)).collect()),
-    }
+    assert!(
+        test_table
+            .table
+            .validate_insert(&unseen_commit, &test_table.dict)
+            .is_ok()
+    );
 }
 
 /// Multi-column primary keys reject a duplicate pair but accept rows
 /// sharing only one key column, regardless of insert order.
-#[test]
-fn multi_column_primary_key_checks_all_columns() {
-    let schema = int_schema(&["c0", "c1", "c2"], Some(&["c0", "c1"]));
-    let mut tbl = TestTable::new(Path::from("pairs"), schema);
-
+#[rstest]
+fn multi_column_primary_key_checks_all_columns(
+    #[with("pairs", int_schema(vec!["c0", "c1", "c2"], Some(vec!["c0", "c1"])))]
+    mut test_table: TestTable,
+) {
     let rows = [(3, 1), (1, 2), (1, 1), (2, 1), (2, 2)];
     for (i, (a, b)) in rows.into_iter().enumerate() {
         let values = vec![WireValue::Int(a), WireValue::Int(b), WireValue::Int(0)];
-        tbl.validate_insert(&values).expect("unique pair");
-        tbl.insert_row(values, zerohash_row_id(i as u32));
+        test_table
+            .table
+            .validate_insert(&values, &test_table.dict)
+            .expect("unique pair");
+        test_table
+            .as_mut()
+            .insert_row(values, zerohash_row_id(i as u32))
+            .expect("row is valid");
     }
 
     for (a, b) in rows {
         let dup = vec![WireValue::Int(a), WireValue::Int(b), WireValue::Int(9)];
         assert_eq!(
-            tbl.validate_insert(&dup),
+            test_table.table.validate_insert(&dup, &test_table.dict),
             Err(ValidationError::DuplicatePrimaryKey)
         );
     }
     let fresh = vec![WireValue::Int(3), WireValue::Int(2), WireValue::Int(0)];
-    assert!(tbl.validate_insert(&fresh).is_ok());
+    assert!(
+        test_table
+            .table
+            .validate_insert(&fresh, &test_table.dict)
+            .is_ok()
+    );
 }
 
 /// String primary keys go through the sorted index as well.
-#[test]
-fn string_primary_key_detects_duplicates() {
-    let schema = ir::Schema {
+#[rstest]
+fn string_primary_key_detects_duplicates(
+    #[with("named", ir::Schema {
         entity_variant: ir::EntityVariant::Table,
         columns: vec![ir::ColumnEntry {
             path: Path::from("name"),
@@ -631,21 +641,31 @@ fn string_primary_key_detects_duplicates() {
             },
         }],
         primary_key: Some(vec![Path::from("name")]),
-    };
-    let mut tbl = TestTable::new(Path::from("named"), schema);
-
+    })]
+    mut test_table: TestTable,
+) {
     for (i, name) in ["b", "a", "c"].into_iter().enumerate() {
         let values = vec![WireValue::Str(name.to_string())];
-        tbl.validate_insert(&values).expect("unique name");
-        tbl.insert_row(values, zerohash_row_id(i as u32));
+        test_table
+            .table
+            .validate_insert(&values, &test_table.dict)
+            .expect("unique name");
+        test_table
+            .as_mut()
+            .insert_row(values, zerohash_row_id(i as u32))
+            .expect("row is valid");
     }
 
     assert_eq!(
-        tbl.validate_insert(&[WireValue::Str("a".to_string())]),
+        test_table
+            .table
+            .validate_insert(&[WireValue::Str("a".to_string())], &test_table.dict),
         Err(ValidationError::DuplicatePrimaryKey)
     );
     assert!(
-        tbl.validate_insert(&[WireValue::Str("d".to_string())])
+        test_table
+            .table
+            .validate_insert(&[WireValue::Str("d".to_string())], &test_table.dict)
             .is_ok()
     );
 }
@@ -655,7 +675,7 @@ fn string_primary_key_detects_duplicates() {
 #[test]
 #[should_panic(expected = "schema pk spec is correct")]
 fn invalid_primary_key_name_panics_at_construction() {
-    let schema = int_schema(&["c0"], Some(&["missing"]));
+    let schema = int_schema(vec!["c0"], Some(vec!["missing"]));
     Table::new(Path::from("broken"), 0, schema);
 }
 
@@ -663,10 +683,10 @@ fn invalid_primary_key_name_panics_at_construction() {
 /// Inserting `n` rows of one integer (the primary key) and one row id.
 /// Run with:
 /// cargo test -p coln-store --release pk_insert_benchmark -- --ignored --nocapture
-#[test]
+#[rstest]
 #[ignore = "manual benchmark"]
-fn pk_insert_benchmark() {
-    let schema = ir::Schema {
+fn pk_insert_benchmark(
+    #[with("bench", ir::Schema {
         entity_variant: ir::EntityVariant::Table,
         columns: vec![
             ir::ColumnEntry {
@@ -683,15 +703,22 @@ fn pk_insert_benchmark() {
             },
         ],
         primary_key: Some(vec![Path::from("c0")]),
-    };
-    let mut tbl = TestTable::new(Path::from("bench"), schema);
+    })]
+    mut test_table: TestTable,
+) {
     let n = 50_000;
     let start = std::time::Instant::now();
     for i in 0..n {
         let row_id = zerohash_row_id(i as u32);
         let values = vec![WireValue::Id(row_id), WireValue::Int(i)];
-        tbl.validate_insert(&values).expect("keys are unique");
-        tbl.insert_row(values, row_id);
+        test_table
+            .table
+            .validate_insert(&values, &test_table.dict)
+            .expect("keys are unique");
+        test_table
+            .as_mut()
+            .insert_row(values, row_id)
+            .expect("row is valid");
     }
     println!("inserted {n} rows with pk check in {:?}", start.elapsed());
 }
@@ -700,34 +727,41 @@ fn pk_insert_benchmark() {
 /// non-index lookup on a different column but looks for the same row(s)
 /// Indexed and non-index lookup should return the same results (positive and
 /// negative)
-#[test]
-fn table_index_non_index_give_same_results() {
-    let schema = int_schema(&["indexed", "plain"], Some(&["indexed"]));
-    let mut tbl = TestTable::new(Path::from("lookup"), schema);
+#[rstest]
+fn table_index_non_index_give_same_results(
+    #[with("lookup", int_schema(vec!["indexed", "plain"], Some(vec!["indexed"])))]
+    mut test_table: TestTable,
+) {
     for value in [7, 8] {
-        let row_id = zerohash_row_id(tbl.row_count() as u32);
-        tbl.insert_row(vec![WireValue::Int(value), WireValue::Int(value)], row_id);
+        let row_id = zerohash_row_id(test_table.handle().row_count() as u32);
+        test_table
+            .as_mut()
+            .insert_row(vec![WireValue::Int(value), WireValue::Int(value)], row_id)
+            .expect("row is valid");
     }
-    let index = tbl.table.primary_index().expect("primary-key index");
+    let index = test_table
+        .handle()
+        .primary_index()
+        .expect("primary-key index");
 
     for value in [7, 9] {
-        let indexed = tbl
-            .table
-            .index_seek(index, &[WireValue::Int(value)], &tbl.dict)
+        let indexed = test_table
+            .handle()
+            .index_seek(index, &[WireValue::Int(value)])
             .expect("valid index lookup")
             .collect::<Vec<_>>();
-        let scanned = tbl
-            .table
-            .scan(&tbl.dict)
+        let scanned = test_table
+            .handle()
+            .scan()
             .filter_map(|r| (r.values[1] == WireValue::Int(value)).then_some(r.row_id))
             .collect::<Vec<_>>();
         assert_eq!(indexed, scanned);
     }
 }
 
-#[test]
-fn debug_dumps_rows() {
-    let schema = ir::Schema {
+#[rstest]
+fn debug_dumps_rows(
+    #[with("debug.table", ir::Schema {
         entity_variant: ir::EntityVariant::Table,
         columns: vec![
             ir::ColumnEntry {
@@ -744,20 +778,26 @@ fn debug_dumps_rows() {
             },
         ],
         primary_key: None,
-    };
-    let mut tbl = TestTable::new(Path::from("debug.table"), schema);
-
-    tbl.insert_row(
-        vec![WireValue::Int(7), WireValue::Str("x".to_string())],
-        zerohash_row_id(0),
-    );
-    tbl.insert_row(
-        vec![WireValue::Int(8), WireValue::Str("y".to_string())],
-        zerohash_row_id(1),
-    );
+    })]
+    mut test_table: TestTable,
+) {
+    test_table
+        .as_mut()
+        .insert_row(
+            vec![WireValue::Int(7), WireValue::Str("x".to_string())],
+            zerohash_row_id(0),
+        )
+        .expect("first row is valid");
+    test_table
+        .as_mut()
+        .insert_row(
+            vec![WireValue::Int(8), WireValue::Str("y".to_string())],
+            zerohash_row_id(1),
+        )
+        .expect("second row is valid");
 
     assert_eq!(
-        tbl.dump(),
+        test_table.handle().dump(),
         format!(
             concat!(
                 "table debug.table (rows: 2, cols: 2)\n",
