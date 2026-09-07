@@ -2,53 +2,40 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::commit::error::CodecError;
+use crate::{commit::error::CodecError, store::ColnDef};
 use coln_flir_rs::ir::FlatRealm;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct RootCommitData {
+    pub(crate) ir: FlatRealm,
+    pub(crate) coln_def: ColnDef,
+}
+
+impl RootCommitData {
+    pub(crate) fn new(ir: FlatRealm, coln_def: ColnDef) -> Self {
+        Self { ir, coln_def }
+    }
+}
 
 /// Encode root store metadata as compact JSON of a [`FlatRealm`].
-pub(crate) fn serialize_root(root: &FlatRealm) -> Result<Vec<u8>, CodecError> {
+pub(crate) fn serialize_root(root: &RootCommitData) -> Result<Vec<u8>, CodecError> {
     Ok(serde_json::to_vec(root)?)
 }
 
-pub(crate) fn deserialize_root(data: &[u8]) -> Result<FlatRealm, CodecError> {
+pub(crate) fn deserialize_root(data: &[u8]) -> Result<RootCommitData, CodecError> {
     Ok(serde_json::from_slice(data)?)
 }
 
 #[cfg(test)]
 mod tests {
-    use coln_flir_rs::ir::Equality;
+    use rstest::rstest;
 
     use super::*;
-    use crate::ir::{
-        Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Prop, Rule, RuleEntry,
-        RuleVariant, Schema, TableEntry, Term, ValueEntry,
+    use crate::ir::{Path, Schema, TableEntry};
+    use crate::test_utils::{
+        int_schema, non_empty_root_commit_data, root_commit_data, string_schema,
     };
-
-    fn int_schema() -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: Some(vec![Path::from("c0")]),
-        }
-    }
-
-    fn string_schema() -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinStr,
-                },
-            }],
-            primary_key: None,
-        }
-    }
 
     fn table_entry(path: &str, schema: Schema) -> TableEntry {
         TableEntry {
@@ -57,70 +44,43 @@ mod tests {
         }
     }
 
-    fn simple_rule() -> RuleEntry {
-        let table = Path::from("T");
-        RuleEntry {
-            path: Path::from("T.non_negative"),
-            rule: Rule {
-                rule_variant: RuleVariant::Enforced,
-                var_names: vec![Path::from("x")],
-                var_types: vec![ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                }],
-                antecedents: vec![Prop::Atom {
-                    atom: Atom {
-                        entity: table.clone(),
-                        row_id: None,
-                        values: vec![ValueEntry {
-                            column: 0,
-                            term: Term::Var { index: 0 },
-                        }],
-                    },
-                }],
-                consequents: vec![Prop::Eq {
-                    equality: Equality {
-                        left: Term::Var { index: 0 },
-                        right: Term::Var { index: 0 },
-                    },
-                }],
-            },
-        }
-    }
-
-    #[test]
-    fn root_payload_round_trips() {
-        let root = FlatRealm {
-            tables: vec![table_entry("T", int_schema())],
-            rules: vec![simple_rule()],
-        };
-
+    #[rstest]
+    fn root_payload_round_trips(non_empty_root_commit_data: RootCommitData) {
+        let root = non_empty_root_commit_data;
         let bytes = serialize_root(&root).expect("encode root");
         let decoded = deserialize_root(&bytes).expect("decode root");
 
-        assert_eq!(decoded.tables.len(), 1);
-        assert_eq!(decoded.tables[0].path, Path::from("T"));
-        assert_eq!(decoded.tables[0].table.columns, int_schema().columns);
+        assert_eq!(decoded.ir.tables.len(), 1);
+        assert_eq!(decoded.ir.tables[0].path, Path::from("T"));
         assert_eq!(
-            decoded.tables[0].table.primary_key,
+            decoded.ir.tables[0].table.columns,
+            int_schema(vec!["c0"], Some(vec!["c0"])).columns
+        );
+        assert_eq!(
+            decoded.ir.tables[0].table.primary_key,
             Some(vec![Path::from("c0")])
         );
-        assert_eq!(decoded.rules.len(), 1);
-        assert_eq!(decoded.rules[0].path, Path::from("T.non_negative"));
+        assert_eq!(decoded.ir.rules.len(), 1);
+        assert_eq!(decoded.ir.rules[0].path, Path::from("T.non_negative"));
+        assert_eq!(decoded.coln_def.theory, "theory T");
+        assert_eq!(decoded.coln_def.realm, "realm R");
     }
 
-    #[test]
-    fn root_payload_preserves_entity_order() {
-        let a = table_entry("A", int_schema());
-        let b = table_entry("B", string_schema());
-
-        let left = FlatRealm {
-            tables: vec![b.clone(), a.clone()],
-            rules: vec![],
-        };
-        let right = FlatRealm {
-            tables: vec![a, b],
-            rules: vec![],
-        };
+    #[rstest]
+    fn root_payload_preserves_entity_order(
+        #[from(root_commit_data)] mut left: RootCommitData,
+        #[from(root_commit_data)] mut right: RootCommitData,
+        #[from(int_schema)]
+        #[with(vec!["c0"], Some(vec!["c0"]))]
+        int_schema: Schema,
+        #[from(string_schema)]
+        #[with(vec!["c0"], None)]
+        string_schema: Schema,
+    ) {
+        let a = table_entry("A", int_schema);
+        let b = table_entry("B", string_schema);
+        left.ir.tables = vec![b.clone(), a.clone()];
+        right.ir.tables = vec![a, b];
 
         assert_ne!(
             serialize_root(&left).expect("encode left"),
@@ -128,13 +88,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn root_payload_rejects_trailing_bytes() {
-        let root = FlatRealm {
-            tables: vec![],
-            rules: vec![],
-        };
-
+    #[rstest]
+    fn root_payload_rejects_trailing_bytes(root_commit_data: RootCommitData) {
+        let root = root_commit_data;
         let mut bytes = serialize_root(&root).expect("encode root");
         bytes.push(0);
 

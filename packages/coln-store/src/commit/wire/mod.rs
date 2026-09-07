@@ -7,4 +7,4 @@ pub mod prim;
 pub mod root;
 
 pub(crate) use data::{CommitData, deserialize, serialize};
-pub(crate) use root::{deserialize_root, serialize_root};
+pub(crate) use root::{RootCommitData, deserialize_root, serialize_root};

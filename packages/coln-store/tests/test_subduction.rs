@@ -7,8 +7,13 @@ use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time:
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
-use coln_store::{commit::hash::CommitHash, store::Store, table::WireValue};
+use coln_store::{
+    commit::hash::CommitHash,
+    store::{ColnDef, Store},
+    table::WireValue,
+};
 use future_form::Sendable;
+use rstest::{fixture, rstest};
 use sedimentree_core::{
     blob::{Blob, verified::VerifiedBlobMeta},
     id::SedimentreeId,
@@ -34,6 +39,7 @@ use subduction_websocket::{
     },
 };
 
+#[fixture]
 fn int_theory() -> FlatRealm {
     FlatRealm {
         tables: vec![TableEntry {
@@ -50,6 +56,14 @@ fn int_theory() -> FlatRealm {
             },
         }],
         rules: vec![],
+    }
+}
+
+#[fixture]
+fn empty_coln_def() -> ColnDef {
+    ColnDef {
+        theory: String::new(),
+        realm: String::new(),
     }
 }
 
@@ -143,10 +157,14 @@ async fn load_coln_chunk_bytes(
     Ok(chunks)
 }
 
+#[rstest]
 #[tokio::test]
-async fn subduction_storage_can_exchange_coln_commit_chunks() -> Result<(), Box<dyn Error>> {
-    let mut left = Store::try_from_ir(int_theory())?;
-    let mut right = Store::try_from_ir(int_theory())?;
+async fn subduction_storage_can_exchange_coln_commit_chunks(
+    int_theory: FlatRealm,
+    empty_coln_def: ColnDef,
+) -> Result<(), Box<dyn Error>> {
+    let mut left = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
+    let mut right = Store::try_from_ir(int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left);
 
     let left_commit = add_row(&mut left, 1)?;
@@ -186,10 +204,14 @@ async fn subduction_storage_can_exchange_coln_commit_chunks() -> Result<(), Box<
     Ok(())
 }
 
+#[rstest]
 #[tokio::test]
-async fn subduction_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory())?;
-    let mut right_store = Store::try_from_ir(int_theory())?;
+async fn subduction_sync_coln_chunks(
+    int_theory: FlatRealm,
+    empty_coln_def: ColnDef,
+) -> Result<(), Box<dyn Error>> {
+    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
 
     let left_commit = add_row(&mut left_store, 1)?;
@@ -317,10 +339,14 @@ async fn subduction_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
 }
 
 #[ignore = "opens localhost sockets and exercises the experimental Subduction WebSocket transport"]
+#[rstest]
 #[tokio::test(flavor = "multi_thread")]
-async fn subduction_websocket_sync_coln_chunks() -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory())?;
-    let mut right_store = Store::try_from_ir(int_theory())?;
+async fn subduction_websocket_sync_coln_chunks(
+    int_theory: FlatRealm,
+    empty_coln_def: ColnDef,
+) -> Result<(), Box<dyn Error>> {
+    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
     assert_eq!(root_hash(&left_store).0, root_hash(&right_store).0);
 

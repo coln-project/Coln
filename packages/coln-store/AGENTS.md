@@ -68,6 +68,8 @@ Quick examples:
 - Law compilation and validation logic belongs under `solver`.
 - REPL code should stay presentation-oriented: parse commands, call store APIs, and format results.
 - Public docs and interfaces should reflect the implemented state of the repository accurately.
+- When writing tests, before you introducing a helper, consider whether there is something that
+can be reused in test_utils.rs
 
 ## Rust Conventions
 
