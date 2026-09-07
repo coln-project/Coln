@@ -1,4 +1,4 @@
-\title{Coln as a database}
+\title{Coln as a database language}
 \import{prelude}
 
 \p{Coln can work as a little proof assistant which is restricted to positive types, but the real point of this restriction is to enable a translation to the database world. \mvrnote{This is the first occurrence of the word "positive"}}
