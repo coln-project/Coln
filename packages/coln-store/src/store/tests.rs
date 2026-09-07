@@ -209,7 +209,7 @@ mod query {
                 .scan_table(&path)
                 .expect("known table")
                 .collect::<Vec<_>>(),
-            vec![RowView {
+            vec![WireRowView {
                 row_id: WireRowId { commit, counter: 0 },
                 values: vec![42i32.into()],
             }]
@@ -368,7 +368,7 @@ mod rowing {
 
         // The stored row is now t_low; the stale id t_high resolves to it.
         let term_path = Path::from("Term");
-        let term_view = Some(RowView {
+        let term_view = Some(WireRowView {
             row_id: t_low,
             values: vec![WireValue::Int(7)],
         });
@@ -384,7 +384,7 @@ mod rowing {
                 .table_at(&Path::from("Plus"))
                 .expect("Plus")
                 .row_by_id(plus),
-            Some(RowView {
+            Some(WireRowView {
                 row_id: plus,
                 values: vec![WireValue::Id(t_low), WireValue::Id(t_low)],
             })
@@ -394,7 +394,7 @@ mod rowing {
                 .table_at(&Path::from("Note"))
                 .expect("Note")
                 .row_by_id(note),
-            Some(RowView {
+            Some(WireRowView {
                 row_id: note,
                 values: vec![WireValue::Id(t_low)],
             })
@@ -437,8 +437,8 @@ mod rowing {
         apply_ops_and_rebuild(&mut store, ops)
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
-        let plus: Vec<RowView> = store.scan_table(&Path::from("Plus")).unwrap().collect();
+        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
+        let plus: Vec<WireRowView> = store.scan_table(&Path::from("Plus")).unwrap().collect();
         assert_eq!(terms.len(), 1);
         assert_eq!(plus.len(), 1);
 
@@ -477,14 +477,14 @@ mod rowing {
         apply_ops_and_rebuild(&mut store, ops)
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<RowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
+        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap().collect();
         assert_eq!(terms.len(), 2);
         assert_eq!(
             store
                 .table_at(&Path::from("Plus"))
                 .expect("Plus")
                 .row_by_id(plus),
-            Some(RowView {
+            Some(WireRowView {
                 row_id: plus,
                 values: vec![WireValue::Id(t_low), WireValue::Id(u_low)],
             })
@@ -525,9 +525,9 @@ mod rowing {
         .unwrap();
         txn2.commit().unwrap();
 
-        let terms: Vec<RowView> = store.scan_table(&term_path).unwrap().collect();
-        let plus: Vec<RowView> = store.scan_table(&plus_path).unwrap().collect();
-        let mult: Vec<RowView> = store.scan_table(&mult_path).unwrap().collect();
+        let terms: Vec<WireRowView> = store.scan_table(&term_path).unwrap().collect();
+        let plus: Vec<WireRowView> = store.scan_table(&plus_path).unwrap().collect();
+        let mult: Vec<WireRowView> = store.scan_table(&mult_path).unwrap().collect();
 
         // The second commit adds no rows: every row it names is structurally
         // identical to one the first commit already stored.
@@ -536,7 +536,7 @@ mod rowing {
         assert_eq!(mult.len(), 1);
 
         let term_id = |value: i32| {
-            let matching: Vec<&RowView> = terms
+            let matching: Vec<&WireRowView> = terms
                 .iter()
                 .filter(|row| row.values == [value.into()])
                 .collect();
@@ -584,7 +584,10 @@ mod rowing {
         first.commit().expect("x is mapped only once");
 
         let terms_before = store.scan_table(&term).expect("Term").count();
-        let f_before = store.scan_table(&f).expect("F").collect::<Vec<RowView>>();
+        let f_before = store
+            .scan_table(&f)
+            .expect("F")
+            .collect::<Vec<WireRowView>>();
         assert_eq!(terms_before, 3);
         assert_eq!(f_before.len(), 1);
 
@@ -613,7 +616,10 @@ mod rowing {
         // legal on its own.
         assert_eq!(store.scan_table(&term).expect("Term").count(), terms_before);
         assert_eq!(
-            store.scan_table(&f).expect("F").collect::<Vec<RowView>>(),
+            store
+                .scan_table(&f)
+                .expect("F")
+                .collect::<Vec<WireRowView>>(),
             f_before
         );
     }

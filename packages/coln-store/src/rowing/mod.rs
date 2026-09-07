@@ -107,7 +107,7 @@ impl Rowing {
             let displaced = canonical1.max(canonical2);
             self.displaced.push(
                 id_packer
-                    .lookup_row_id(displaced)
+                    .lookup_row_id(&displaced)
                     .expect("displaced row id was packed before union"),
             );
         }
@@ -121,7 +121,7 @@ impl Rowing {
         };
         let canonical = self.uf.borrow_mut().probe_value(key);
         id_packer
-            .lookup_row_id(canonical)
+            .lookup_row_id(&canonical)
             .expect("canonical row id was packed before union")
     }
 

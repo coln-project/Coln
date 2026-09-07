@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_flir_rs::ir::{
-    Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Prop, Rule, RuleEntry,
-    RuleVariant, Schema, TableEntry, Term, ValueEntry,
+    Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, FlatRealm, Path, Prop, Rule,
+    RuleEntry, RuleVariant, Schema, TableEntry, ValueEntry,
 };
 use rstest::fixture;
 
@@ -50,7 +50,11 @@ mod schema {
         ColType::RowId { path: table }
     }
 
-    fn table_schema(col_names: Vec<&'static str>, col_type: ColType) -> Schema {
+    fn table_schema(
+        col_names: Vec<&'static str>,
+        col_type: ColType,
+        primary_key: Option<Vec<u64>>,
+    ) -> Schema {
         Schema {
             entity_variant: EntityVariant::Table,
             columns: col_names
@@ -60,24 +64,30 @@ mod schema {
                     col_type: col_type.clone(),
                 })
                 .collect(),
-            primary_key: None,
+            primary_key,
         }
+    }
+
+    #[fixture]
+    pub(crate) fn idonly_schema(id_col_type: ColType) -> Schema {
+        table_schema(vec![], id_col_type, None)
     }
 
     #[fixture]
     pub(crate) fn int_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
-        int_col_type: ColType,
+        #[default(None)] primary_key: Option<Vec<u64>>,
     ) -> Schema {
-        table_schema(col_names, int_col_type)
+        table_schema(col_names, int_col_type(), primary_key)
     }
 
     #[fixture]
     pub(crate) fn id_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
+        #[default(None)] primary_key: Option<Vec<u64>>,
         id_col_type: ColType,
     ) -> Schema {
-        table_schema(col_names, id_col_type)
+        table_schema(col_names, id_col_type, primary_key)
     }
 }
 
@@ -143,12 +153,15 @@ mod store {
                     table: link_table,
                 },
             ],
+            definitions: vec![],
             rules: vec![RuleEntry {
                 path: Path::from("Link.foreignKeys"),
                 rule: Rule {
                     rule_variant: RuleVariant::Enforced,
-                    var_names: vec![Path::from("a"), Path::from("b")],
-                    var_types: vec![int_col_type.clone(), int_col_type],
+                    vars: vec![
+                        (Path::from("a"), int_col_type.clone()),
+                        (Path::from("b"), int_col_type),
+                    ],
                     antecedents: vec![Prop::Atom {
                         atom: Atom {
                             entity: link.clone(),
@@ -156,11 +169,11 @@ mod store {
                             values: vec![
                                 ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 },
                                 ValueEntry {
                                     column: 1,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 },
                             ],
                         },
@@ -172,7 +185,7 @@ mod store {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 }],
                             },
                         },
@@ -182,7 +195,7 @@ mod store {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 }],
                             },
                         },

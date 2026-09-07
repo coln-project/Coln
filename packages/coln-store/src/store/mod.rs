@@ -25,9 +25,9 @@ use crate::op::Op;
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
 use crate::store::error::{CommitApplyError, StoreError};
+use crate::table::table_handle::WireRowView;
 use crate::table::{
-    RowView, Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId,
-    WireValue,
+    Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
 use crate::txn::{OwnedTransaction, Transaction};
 
@@ -147,12 +147,9 @@ impl Store {
     }
 
     pub fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
-        self.table_inner(oid)
+        self.tables
+            .get(&oid)
             .map(|table| TableHandle::new(table, &self.id_packer, &self.rowing))
-    }
-
-    pub fn table_inner(&self, oid: TableOid) -> Option<&Table> {
-        self.tables.get(&oid)
     }
 
     pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
@@ -167,7 +164,10 @@ impl Store {
         &self.ir.rules
     }
 
-    pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
+    pub fn scan_table(
+        &self,
+        table_path: &ir::Path,
+    ) -> Option<impl Iterator<Item = WireRowView> + '_> {
         self.table_at(table_path).map(|table| table.scan())
     }
 
@@ -177,7 +177,7 @@ impl Store {
     }
 
     // Used by txn to finalise live ids
-    pub(crate) fn canonical_row_id(&self, row_id: WireRowId) -> Option<WireRowId> {
+    pub(crate) fn canonical_row_id(&self, row_id: &WireRowId) -> Option<WireRowId> {
         let packed = self.id_packer.lookup_row_id(row_id)?;
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
@@ -588,12 +588,12 @@ impl Store {
         for op in ops {
             let Op::Add { table, values, .. } = op;
             let t = self
-                .table_inner(*table)
+                .table(*table)
                 .ok_or(ValidationError::UnknownTableOid { oid: *table })?;
-            t.validate_insert(values, &self.id_packer)?;
+            t.inner().validate_insert(values, &self.id_packer)?;
 
             // Check primary key conflicts within ops batch
-            if let Some(key) = t.primary_key_values(values) {
+            if let Some(key) = t.inner().primary_key_values(values) {
                 let keys = pending_pk.entry(*table).or_default();
                 if keys.iter().any(|k| k == &key) {
                     return Err(ValidationError::DuplicatePrimaryKey.into());
