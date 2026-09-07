@@ -4,8 +4,9 @@
 
 use crate::commit::hash_dict::HashMapper;
 use crate::op::Op;
+use crate::pack::{PackedOp, PackedRowId, PackedValue};
 use crate::rollback::Rollback;
-use crate::table::{PackedOp, PackedRowId, PackedValue, WireRowId, WireValue};
+use crate::table::{WireRowId, WireValue};
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]
@@ -53,6 +54,7 @@ impl IdPacker {
         }
     }
 
+    // TODO rename this
     pub(crate) fn pack_cell(&mut self, value: WireValue) -> PackedValue {
         match value {
             WireValue::Id(id) => PackedValue::Id(self.pack_row_id(id)),
