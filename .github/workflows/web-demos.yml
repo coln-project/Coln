@@ -43,6 +43,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.ghc-wasm/.cabal
+            ~/.cache/ms-playwright
             target
             dist-newstyle
           key: lab-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'cabal.project', 'packages/**/*.cabal', 'packages/coln-js-runtime/package-lock.json', 'packages/coln-repo/pnpm-lock.yaml', 'examples/lab/pnpm-lock.yaml') }}
@@ -58,6 +59,9 @@ jobs:
 
       - name: Install Lab dependencies
         run: nix develop --accept-flake-config --command pnpm --dir examples/lab install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
+
+      - name: Install Chromium
+        run: nix develop --accept-flake-config --command pnpm --dir examples/lab exec playwright install --with-deps chromium
 
       - name: Build compiler WASM
         run: |
