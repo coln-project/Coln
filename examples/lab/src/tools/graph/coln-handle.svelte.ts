@@ -16,9 +16,11 @@ export class ColnHandle<Bindings extends RealmBindings> {
   constructor(private readonly handle: RepoColnHandle<Bindings>) {
     this.#subscribe = createSubscriber((update) => {
       handle.on("change", update);
+      handle.on("heads-changed", update);
 
       return () => {
         handle.off("change", update);
+        handle.off("heads-changed", update);
       };
     });
   }

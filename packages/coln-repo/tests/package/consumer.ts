@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import type { AutomergeUrl, Repo } from "@automerge/automerge-repo"
+import type { DocumentUrl, Repo } from "@automerge/automerge-repo"
 import type { Value } from "@coln-project/runtime"
 import {
   colnDocType,
@@ -11,6 +11,7 @@ import {
   type ColnDocument,
   type ColnHandle,
   type ColnTransaction,
+  type ColnUrl,
   type RealmBindings,
 } from "@coln-project/repo"
 
@@ -23,7 +24,7 @@ type Equal<Left, Right> =
 type Expect<Type extends true> = Type
 
 declare const repo: Repo
-declare const url: AutomergeUrl
+declare const url: ColnUrl
 declare const bindings: RealmBindings
 declare const optionalBindings: RealmBindings | undefined
 
@@ -59,6 +60,7 @@ void typed.then((handle) => {
 type DocumentOperation = "heads" | "jsonIR" | "rowById" | "scanTable"
 
 export type TypeChecks = [
+  Expect<Equal<ColnUrl, DocumentUrl<"coln">>>,
   Expect<Equal<typeof raw, Promise<ColnHandle>>>,
   Expect<Equal<typeof explicitUndefined, Promise<ColnHandle>>>,
   Expect<Equal<typeof typed, Promise<ColnHandle<typeof bindings>>>>,

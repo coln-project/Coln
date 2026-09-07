@@ -35,21 +35,20 @@
   }
 </script>
 
-<aside class="flex flex-col gap-[22px] bg-[#182122] p-[18px] min-[761px]:p-6">
+<div class="flex flex-col gap-4 bg-[#182122] p-4">
   <div class="flex justify-between border-b border-[#304041] pb-3">
-    <p class="m-0 font-['DM_Mono'] text-[10px] tracking-[.16em] text-[#748284]">BUILD</p>
-    <span class="font-['DM_Mono'] text-[10px] text-[#748284]">01</span>
+    <p class="m-0 font-['DM_Mono'] text-xs tracking-[.16em] text-[#748284]" data-small-detail>EDIT GRAPH</p>
   </div>
 
-  <button class="flex h-[52px] cursor-pointer items-center justify-between border-0 bg-[#d8ff57] px-4 font-bold text-[#101718]" onclick={onaddvertex} data-testid="add-vertex">
+  <button class="lab-primary-action flex h-[52px] items-center justify-between border-0 px-4 font-bold" onclick={onaddvertex} data-testid="add-vertex">
     <span>Add vertex</span><b class="font-['DM_Mono'] text-2xl">+</b>
   </button>
 
   <div class="grid gap-2.5">
     <div class="grid gap-[7px]">
-      <label class="font-['DM_Mono'] text-[10px] tracking-[.12em] text-[#91a0a1] uppercase" for="from">Source</label>
+      <label class="font-['DM_Mono'] text-sm tracking-[.12em] text-[#91a0a1] uppercase" for="from">Source vertex</label>
       <select class="h-11 w-full rounded-none border border-[#304041] bg-[#101718] px-2.5 text-[#e8ece8]" id="from" value={from?.id ?? ""} onchange={event => onfromchange(event.currentTarget.value)} data-testid="from-select">
-        <option value="">Choose vertex</option>
+        <option value="">Choose a source vertex</option>
         {#each graph.vertices as vertex}
           <option value={vertex.id}>{vertex.label}</option>
         {/each}
@@ -57,39 +56,33 @@
     </div>
     <div class="pl-3 font-['DM_Mono'] text-lg text-[#6d7b7d]">↓</div>
     <div class="grid gap-[7px]">
-      <label class="font-['DM_Mono'] text-[10px] tracking-[.12em] text-[#91a0a1] uppercase" for="to">Target</label>
+      <label class="font-['DM_Mono'] text-sm tracking-[.12em] text-[#91a0a1] uppercase" for="to">Target vertex</label>
       <select class="h-11 w-full rounded-none border border-[#304041] bg-[#101718] px-2.5 text-[#e8ece8]" id="to" value={to?.id ?? ""} onchange={event => ontochange(event.currentTarget.value)} data-testid="to-select">
-        <option value="">Choose vertex</option>
+        <option value="">Choose a target vertex</option>
         {#each graph.vertices as vertex}
           <option value={vertex.id}>{vertex.label}</option>
         {/each}
       </select>
     </div>
-    <button class="mt-1 flex h-[46px] cursor-pointer items-center justify-between border border-[#6b7a7b] bg-transparent px-[13px] font-bold text-[#e8ece8] disabled:cursor-not-allowed disabled:opacity-35" disabled={!from || !to} onclick={onaddedge} data-testid="add-edge">
-      Draw directed edge <span class="text-xl text-[#d8ff57]">→</span>
+    <button class={`${from && to ? "lab-primary-action" : "lab-outlined-action"} mt-1 flex h-[46px] w-full items-center justify-between px-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-35`} disabled={!from || !to} onclick={onaddedge} data-testid="add-edge">
+      Add directed edge <span class="text-xl text-[#d8ff57]">→</span>
     </button>
   </div>
 
   {#if selectedEdge}
     <div class="grid gap-1.5 border-l-3 border-[#d8ff57] bg-[#101718] p-3.5" data-testid="selected-edge-details">
-      <small class="font-['DM_Mono'] text-[9px] tracking-[.12em] text-[#839193]">SELECTED EDGE</small>
+      <small class="font-['DM_Mono'] text-xs tracking-[.12em] text-[#839193]" data-small-detail>SELECTED EDGE</small>
       <strong class="font-['DM_Mono'] text-base font-medium">{vertexLabel(selectedEdge.fromId)} → {vertexLabel(selectedEdge.toId)}</strong>
-      <code class="font-['DM_Mono'] text-[10px] text-[#697879]">{shortId(selectedEdge.id)}</code>
+      <code class="font-['DM_Mono'] text-sm text-[#697879]">{shortId(selectedEdge.id)}</code>
     </div>
   {:else if from}
     <div class="grid gap-1.5 border-l-3 border-[#d8ff57] bg-[#101718] p-3.5">
-      <small class="font-['DM_Mono'] text-[9px] tracking-[.12em] text-[#839193]">{to ? "EDGE READY" : "SOURCE SELECTED"}</small>
+      <small class="font-['DM_Mono'] text-xs tracking-[.12em] text-[#839193]" data-small-detail>{to ? "EDGE READY TO ADD" : "SOURCE SELECTED"}</small>
       <strong class="font-['DM_Mono'] text-base font-medium">{from.label}{to ? ` → ${to.label}` : ""}</strong>
-      <code class="font-['DM_Mono'] text-[10px] text-[#697879]">{shortId(from.id)}</code>
+      <code class="font-['DM_Mono'] text-sm text-[#697879]">{shortId(from.id)}</code>
     </div>
   {/if}
 
-  {#if error}<p class="m-0 font-['DM_Mono'] text-[11px] leading-normal text-[#ff9a86]" role="alert">{error}</p>{/if}
+  {#if error}<p class="m-0 font-['DM_Mono'] text-sm leading-normal text-[#ff9a86]" role="alert">{error}</p>{/if}
 
-  <div class="mt-auto grid min-w-0 gap-2 border-t border-[#304041] pt-[18px]">
-    <small class="font-['DM_Mono'] text-[9px] tracking-[.12em] text-[#839193]">LIVE DOCUMENT</small>
-    <strong class="font-['DM_Mono'] text-sm font-medium text-[#d8ff57]" data-testid="graph-counts">
-      {graph.vertices.length} {graph.vertices.length === 1 ? "VERTEX" : "VERTICES"} / {graph.edges.length} {graph.edges.length === 1 ? "EDGE" : "EDGES"}
-    </strong>
-  </div>
-</aside>
+</div>

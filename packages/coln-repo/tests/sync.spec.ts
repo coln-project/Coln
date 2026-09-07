@@ -6,10 +6,9 @@ import { expect, test, type Page } from "@playwright/test"
 import {
   initSubduction,
   Repo,
-  type AutomergeUrl,
   type CrdtDocHandle,
 } from "@automerge/automerge-repo"
-import { colnDocType } from "../src/index.js"
+import { colnDocType, type ColnUrl } from "../src/index.js"
 import { itemSchema } from "./fixtures/schema"
 
 const table = "Test.Items"
@@ -52,7 +51,7 @@ test("browser and Node repos create, find, and update each other's stores", asyn
     pages.push(browserFinder)
     await browserFinder.evaluate(
       (url) => window.colnTest.find(url),
-      nodeCreator.url as AutomergeUrl,
+      nodeCreator.url as ColnUrl,
     )
     await expectRows(browserFinder, ["node-one"])
 

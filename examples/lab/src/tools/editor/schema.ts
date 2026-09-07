@@ -5,6 +5,7 @@ export interface StoreColumn {
   name: string
   type: string
   primary: boolean
+  referenceTable?: string
 }
 
 export interface StoreTable {
@@ -59,10 +60,12 @@ function readTable(entry: unknown, index: number): StoreTable {
         `Column ${columnIndex} in ${pathName(path)}`,
       )
       const name = pathName(columnPath)
+      const referenceTable = referenceTableName(column.type)
       return {
         name,
         type: typeName(column.type),
         primary: primaryPaths.includes(name),
+        ...(referenceTable ? { referenceTable } : {}),
       }
     }),
   }
@@ -102,6 +105,15 @@ function typeName(value: unknown): string {
     }
   }
   return value.tag
+}
+
+function referenceTableName(value: unknown): string | undefined {
+  if (!isObject(value) || value.tag !== "rowId") return undefined
+  try {
+    return pathName(readPath(value.path, "Row reference path"))
+  } catch {
+    return undefined
+  }
 }
 
 function isObject(value: unknown): value is JsonObject {

@@ -25,12 +25,12 @@
     "test:e2e": "pnpm run test:package && playwright test"
   },
   "dependencies": {
-    "@automerge/automerge-repo": "github:automerge/automerge-repo#doctypes&path:packages/automerge-repo",
+    "@automerge/automerge-repo": "github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo",
     "@coln-project/runtime": "link:../coln-js-runtime"
   },
   "devDependencies": {
     "@automerge/automerge-subduction": "0.16.1",
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^25.9.5",
     "@types/ws": "^8.18.1",
     "oxfmt": "0.66.0",

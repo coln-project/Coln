@@ -2,7 +2,7 @@
 
 Coln Repo exposes Coln stores as [Automerge Repo](https://github.com/automerge/automerge-repo) document handles. Use them to create or find stores, read the current typed view, make atomic changes, and subscribe to changes to update application state or UI. Automerge Repo provides persistence and synchronization.
 
-Coln Repo currently requires the experimental [doctypes](https://github.com/automerge/automerge-repo/tree/doctypes) branch.
+Coln Repo currently requires an experimental Automerge Repo branch with document types and custom URL schemes.
 
 ## Create
 
@@ -17,7 +17,7 @@ const handle = create(repo, Bindings)
 
 ## Find
 
-Find a Coln store by Automerge URL. Bindings are optional and must match the document schema when supplied.
+Find a Coln store by its `coln:` URL. Bindings are optional and must match the document schema when supplied.
 
 ```ts
 import * as Bindings from "./ExampleRealm.js"

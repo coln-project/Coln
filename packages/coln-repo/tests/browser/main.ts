@@ -2,11 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import {
-  Repo,
-  type AutomergeUrl,
-  type CrdtDocHandle,
-} from "@automerge/automerge-repo"
+import { Repo, type CrdtDocHandle } from "@automerge/automerge-repo"
 import { initSync } from "@automerge/automerge-subduction/slim"
 import { wasmBase64 } from "@automerge/automerge-subduction/wasm-base64"
 import type { RowView, Value } from "@coln-project/runtime"
@@ -15,6 +11,7 @@ import {
   applyBindings,
   type ColnHandle,
   type ColnSchema,
+  type ColnUrl,
 } from "../../src/index.js"
 import * as itemFfi from "../fixtures/itemFfi"
 
@@ -32,16 +29,16 @@ let handle: RawHandle | undefined
 let typedHandle: ItemHandle | undefined
 
 const api = {
-  create(schema: ColnSchema): AutomergeUrl {
+  create(schema: ColnSchema): ColnUrl {
     handle = repo.create(schema, colnDocType)
     return handle.url
   },
 
-  async find(url: AutomergeUrl): Promise<void> {
+  async find(url: ColnUrl): Promise<void> {
     handle = await repo.find(url, colnDocType)
   },
 
-  createTyped(): AutomergeUrl {
+  createTyped(): ColnUrl {
     const rawHandle = repo.create(itemFfi.schema, colnDocType)
     handle = rawHandle
     typedHandle = applyBindings(rawHandle, itemFfi)

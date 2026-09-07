@@ -3,12 +3,13 @@
 
 <script lang="ts">
   import {
-    isValidAutomergeUrl,
-    type AutomergeUrl,
+    isValidDocumentUrl,
     type Repo,
   } from "@automerge/automerge-repo"
-  import { create, find } from "@coln-project/repo"
+  import { create, find, type ColnUrl } from "@coln-project/repo"
+  import { Pane, PaneGroup } from "paneforge"
   import { onDestroy, onMount } from "svelte"
+  import LabPaneResizer from "../../lib/LabPaneResizer.svelte"
   import GraphCanvas from "./GraphCanvas.svelte"
   import GraphControls from "./GraphControls.svelte"
   import * as GraphRealm from "./generated/GraphRealm.ts"
@@ -23,8 +24,15 @@
   } from "./graph.ts"
   import { DocumentSync } from "../../lib/document-sync.svelte.ts"
   import type { Router } from "../../lib/router.svelte.ts"
+  import DocumentLoadError from "../../app/components/DocumentLoadError.svelte"
+  import FeedbackNotice from "../../app/components/FeedbackNotice.svelte"
+  import SyncStatus from "../../app/components/SyncStatus.svelte"
+  import StoreRepl from "../editor/StoreRepl.svelte"
+  import StoreSummary from "../editor/StoreSummary.svelte"
+  import { readTables } from "../editor/schema.ts"
 
   type LoadError = "invalid" | "unavailable" | "incompatible"
+  type GraphPanel = "graph" | "repl"
 
   let { repo, endpoint, router, documentUrl, trackDocument }: {
     repo: Repo
@@ -35,6 +43,11 @@
   } = $props()
 
   const emptyGraph: Graph = { vertices: [], edges: [], heads: [] }
+  const storeTables = readTables(JSON.stringify(GraphRealm.schema))
+  const panels: Array<{ id: GraphPanel; label: string }> = [
+    { id: "graph", label: "Graph" },
+    { id: "repl", label: "Store REPL" },
+  ]
 
   let handle = $state<GraphHandle>()
   let loadError = $state<LoadError>()
@@ -47,6 +60,7 @@
   let feedbackId = 0
   let feedbackTimeout: ReturnType<typeof setTimeout> | undefined
   let destroyed = false
+  let activePanel = $state<GraphPanel>("graph")
 
   const colnHandle = $derived(handle ? new ColnHandle(handle) : undefined)
   const sync = $derived(handle ? new DocumentSync(repo, handle) : undefined)
@@ -55,9 +69,15 @@
   const from = $derived(graph.vertices.find(vertex => vertex.id === fromId))
   const to = $derived(graph.vertices.find(vertex => vertex.id === toId))
   const selectedEdge = $derived(graph.edges.find(edge => edge.id === selectedEdgeId))
+  const tableSummaries = $derived(
+    storeTables.map(table => ({
+      ...table,
+      rowCount: colnHandle?.state.scanTable(table.name).length ?? 0,
+    })),
+  )
 
   onMount(() => {
-    if (documentUrl && !isValidAutomergeUrl(documentUrl)) {
+    if (documentUrl && !isValidDocumentUrl(documentUrl, "coln")) {
       loadError = "invalid"
       return
     }
@@ -73,7 +93,7 @@
   async function loadDocument() {
     try {
       const loaded = documentUrl
-        ? await find(repo, documentUrl as AutomergeUrl, GraphRealm)
+        ? await find(repo, documentUrl as ColnUrl, GraphRealm)
         : create(repo, GraphRealm)
       if (destroyed) return
 
@@ -113,7 +133,7 @@
   function createEdge() {
     if (!colnHandle) return
     run("Edge added", () => {
-      if (!from || !to) throw new Error("Choose both edge endpoints")
+      if (!from || !to) throw new Error("Choose both a source and a target vertex.")
       addEdge(colnHandle, from, to)
       fromId = ""
       toId = ""
@@ -132,7 +152,7 @@
     error = ""
     try {
       await navigator.clipboard.writeText(handle.url)
-      if (!destroyed) showFeedback("URL copied")
+      if (!destroyed) showFeedback("Graph document URL copied")
     } catch (cause) {
       if (!destroyed) {
         feedback = undefined
@@ -163,99 +183,105 @@
     }, 2_000)
   }
 
+  function selectPanel(panel: GraphPanel, focus = false) {
+    activePanel = panel
+    if (focus) requestAnimationFrame(() => document.getElementById(`graph-${panel}-tab`)?.focus())
+  }
+
+  function handleTabKey(event: KeyboardEvent, index: number) {
+    let nextIndex: number | undefined
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % panels.length
+    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + panels.length) % panels.length
+    else if (event.key === "Home") nextIndex = 0
+    else if (event.key === "End") nextIndex = panels.length - 1
+    if (nextIndex === undefined) return
+    event.preventDefault()
+    selectPanel(panels[nextIndex].id, true)
+  }
+
   const errorCopy = {
     invalid: {
-      label: "DOCUMENT URL INVALID",
-      heading: "This is not a valid Automerge document URL.",
-      detail: "Check the URL and try again, or create a new graph.",
+      label: "INVALID GRAPH URL",
+      heading: "This is not a valid Graph Demo document URL.",
+      detail: "Check the URL and try again, or start a new Graph Demo document.",
     },
     unavailable: {
-      label: "DOCUMENT UNAVAILABLE",
+      label: "GRAPH UNAVAILABLE",
       heading: "This graph could not be found.",
-      detail: "It may not have been synchronized yet, or the URL may point to a document that no longer exists.",
+      detail: "The sync server may be unreachable, or the document may no longer exist.",
     },
     incompatible: {
-      label: "DOCUMENT INCOMPATIBLE",
+      label: "INCOMPATIBLE GRAPH",
       heading: "This document is not a supported Coln graph.",
-      detail: "The document uses a schema incompatible with GraphRealm.",
+      detail: "The document does not use the schema required by Graph Demo.",
     },
   } satisfies Record<LoadError, { label: string; heading: string; detail: string }>
 </script>
 
 {#if loadError}
-  <section class="grid h-full min-h-[520px] place-items-center bg-[#101718] p-6" data-testid="document-load-error" data-error-kind={loadError}>
-    <div class="grid w-full max-w-xl gap-6 border border-[#304041] bg-[#182122] p-6 min-[601px]:p-10">
-      <div class="grid gap-3 border-l-3 border-[#ff7657] pl-5">
-        <p class="m-0 font-['DM_Mono'] text-xs tracking-[.14em] text-[#ff9a86]">{errorCopy[loadError].label}</p>
-        <h1 class="m-0 text-3xl font-semibold tracking-[-.03em]">{errorCopy[loadError].heading}</h1>
-        <p class="m-0 leading-7 text-[#aab6b6]">{errorCopy[loadError].detail}</p>
-      </div>
-      {#if documentUrl}
-        <code class="overflow-hidden text-ellipsis border border-[#304041] bg-[#101718] p-3 font-['DM_Mono'] text-xs text-[#839193]" data-testid="failed-document-url">{documentUrl}</code>
-      {/if}
-      <button class="flex h-12 cursor-pointer items-center justify-between border-0 bg-[#d8ff57] px-4 font-bold text-[#101718]" type="button" onclick={createNewGraph}>
-        Create a new graph <span class="font-['DM_Mono'] text-xl">+</span>
-      </button>
-    </div>
-  </section>
+  <DocumentLoadError label={errorCopy[loadError].label} heading={errorCopy[loadError].heading} detail={errorCopy[loadError].detail} {documentUrl} errorKind={loadError} action="Start a new Graph Demo" onaction={createNewGraph} />
 {:else if handle}
-  {@const currentGraphUrl = handle.url}
-  <section class="relative grid h-full min-h-0 grid-rows-[56px_auto] bg-[#101718] text-[#e8ece8] min-[761px]:grid-rows-[64px_1fr]">
+  <section class="lab-tool relative flex h-full min-h-0 flex-col">
     {#if feedback}
       {#key feedback.id}
-        <p class="absolute top-16 left-1/2 z-20 m-0 -translate-x-1/2 border border-[#d8ff57] bg-[#182122] px-4 py-2 font-['DM_Mono'] text-xs font-medium text-[#d8ff57] shadow-[0_8px_24px_#0008]" role="status">
-          {feedback.message}
-        </p>
+        <FeedbackNotice message={feedback.message} />
       {/key}
     {/if}
 
-    <header class="flex min-w-0 items-center justify-between gap-3 border-b border-[#304041] px-3.5 min-[761px]:px-6">
-      <button class="flex shrink-0 cursor-pointer items-center gap-3 border-0 bg-transparent p-0 font-['DM_Mono'] text-xs font-medium tracking-[.08em] text-[#e8ece8] min-[761px]:tracking-[.13em]" type="button" aria-label="Create a new graph" onclick={createNewGraph}>
-        <span class="grid size-7.5 place-items-center border border-[#d8ff57] text-base text-[#d8ff57]">C</span>
-        <span class="hidden min-[470px]:inline">COLN / GRAPH LAB</span>
-      </button>
-      <div class="flex min-w-0 items-center gap-3">
-        <a class="shrink-0 font-['DM_Mono'] text-[9px] tracking-[.08em] text-[#d8ff57] uppercase no-underline" href={router.href("editor", currentGraphUrl)} onclick={(event) => router.follow(event, "editor", currentGraphUrl)}>Open in Store</a>
-        <div class="grid min-w-0 justify-items-end gap-1 font-['DM_Mono']">
-          <div class={`flex items-center gap-2 text-[11px] uppercase ${syncStatus === "synced" ? "text-[#d8ff57]" : syncStatus === "error" ? "text-[#ff9a86]" : "text-[#819091]"}`} data-testid="sync-status" data-status={syncStatus}>
-            <span class={`size-1.75 rounded-full ${syncStatus === "synced" ? "bg-[#d8ff57] shadow-[0_0_12px_#d8ff5788]" : syncStatus === "error" ? "bg-[#ff7657]" : "bg-[#819091]"}`}></span>{syncStatus === "error" ? "sync error" : syncStatus}
-          </div>
-          <div class="flex max-w-[40vw] items-center gap-3 text-[9px] text-[#667576]">
-            <span class="shrink-0" data-testid="head-count">{graph.heads.length} {graph.heads.length === 1 ? "head" : "heads"}</span>
-            <code class="hidden truncate min-[760px]:block" data-testid="subduction-url">{endpoint}</code>
+    <PaneGroup class="lab-desktop-pane-group min-h-0 flex-1" direction="horizontal" autoSaveId="coln-lab-graph-workspace">
+      <Pane id="graph-canvas-pane" class="min-h-0" defaultSize={67} minSize={45} maxSize={80}>
+        <GraphCanvas
+          {graph}
+          {from}
+          {to}
+          {selectedEdgeId}
+          documentUrl={handle.url}
+          {copyPending}
+          oncopydocumenturl={copyDocumentUrl}
+          onaddvertex={createVertex}
+          onselectedge={id => selectedEdgeId = id}
+          onselectvertex={selectVertex}
+        />
+      </Pane>
+      <LabPaneResizer label="Resize graph canvas and sidebar" orientation="vertical" testId="graph-workspace-resizer" />
+      <Pane id="graph-sidebar-pane" class="min-h-0" defaultSize={33} minSize={20} maxSize={55}>
+      <aside class="flex h-full min-h-0 flex-col bg-[#182122]" data-testid="graph-sidebar">
+        <div class="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b border-[#304041] px-4 font-['DM_Mono']">
+          <SyncStatus status={syncStatus} compact title={syncStatus === "error" ? String(sync?.error ?? "") : `Sync server: ${endpoint}`} />
+          <span class="shrink-0 text-sm text-[#667576]" data-testid="head-count">{graph.heads.length} {graph.heads.length === 1 ? "head" : "heads"}</span>
+        </div>
+        <div class="grid h-12 shrink-0 grid-cols-2 border-b border-[#304041]" role="tablist" aria-label="Graph Demo workspace">
+          {#each panels as panel, index}
+            <button class={`cursor-pointer border-0 border-r border-[#304041] font-['DM_Mono'] text-sm tracking-[.08em] uppercase last:border-r-0 ${activePanel === panel.id ? "bg-[#d8ff57] text-[#101718]" : "bg-[#131b1c] text-[#91a0a1] hover:text-[#d8ff57]"}`} id={`graph-${panel.id}-tab`} type="button" role="tab" aria-selected={activePanel === panel.id} aria-controls={`graph-${panel.id}-panel`} tabindex={activePanel === panel.id ? 0 : -1} onclick={() => selectPanel(panel.id)} onkeydown={(event) => handleTabKey(event, index)}>{panel.label}</button>
+          {/each}
+        </div>
+
+        <div class="min-h-0 flex-1 flex-col overflow-auto" class:flex={activePanel === "graph"} id="graph-graph-panel" role="tabpanel" aria-labelledby="graph-graph-tab" hidden={activePanel !== "graph"}>
+          <GraphControls
+            {graph}
+            {from}
+            {to}
+            {selectedEdge}
+            {error}
+            onaddvertex={createVertex}
+            onaddedge={createEdge}
+            onfromchange={id => fromId = id}
+            ontochange={id => toId = id}
+          />
+          <div class="mt-auto shrink-0">
+            <StoreSummary tables={tableSummaries} headCount={graph.heads.length} />
           </div>
         </div>
-      </div>
-    </header>
 
-    <div class="flex min-h-0 flex-col min-[761px]:grid min-[761px]:grid-cols-[minmax(0,1fr)_320px]">
-      <GraphCanvas
-        {graph}
-        {from}
-        {to}
-        {selectedEdgeId}
-        documentUrl={handle.url}
-        {copyPending}
-        oncopydocumenturl={copyDocumentUrl}
-        onaddvertex={createVertex}
-        onselectedge={id => selectedEdgeId = id}
-        onselectvertex={selectVertex}
-      />
-      <GraphControls
-        {graph}
-        {from}
-        {to}
-        {selectedEdge}
-        {error}
-        onaddvertex={createVertex}
-        onaddedge={createEdge}
-        onfromchange={id => fromId = id}
-        ontochange={id => toId = id}
-      />
-    </div>
+        <div class="min-h-0 flex-1 flex-col" class:flex={activePanel === "repl"} id="graph-repl-panel" role="tabpanel" aria-labelledby="graph-repl-tab" hidden={activePanel !== "repl"}>
+          <StoreRepl {handle} active={activePanel === "repl"} compact layoutId="coln-lab-graph-repl" />
+        </div>
+      </aside>
+      </Pane>
+    </PaneGroup>
   </section>
 {:else}
-  <section class="grid h-full min-h-[520px] place-items-center bg-[#101718]" aria-live="polite">
-    <p class="font-['DM_Mono'] text-[10px] tracking-[.18em] text-[#d8ff57]">LOADING GRAPH</p>
+  <section class="lab-loading min-h-[520px]" aria-live="polite">
+    <p>LOADING GRAPH DEMO</p>
   </section>
 {/if}

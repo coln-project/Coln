@@ -9,7 +9,7 @@
   let { value }: { value: Snapshot } = $props()
 
   let formatter: JSONFormatter | undefined
-  let copyLabel = $state("Copy")
+  let copyLabel = $state("Copy value")
   let copyTimer: ReturnType<typeof setTimeout> | undefined
 
   const structured = $derived(value !== null && typeof value === "object")
@@ -34,24 +34,24 @@
   async function copyValue(): Promise<void> {
     try {
       await navigator.clipboard.writeText(JSON.stringify(value, null, 2))
-      copyLabel = "Copied"
+      copyLabel = "Value copied"
     } catch {
       copyLabel = "Copy failed"
     }
     clearTimeout(copyTimer)
-    copyTimer = setTimeout(() => (copyLabel = "Copy"), 2_000)
+    copyTimer = setTimeout(() => (copyLabel = "Copy value"), 2_000)
   }
 
   onDestroy(() => clearTimeout(copyTimer))
 </script>
 
-<div class="value-inspector min-w-0" data-testid="value-inspector">
+<div class="lab-json min-w-0" data-testid="value-inspector">
   <div class="mb-1 flex items-center justify-end gap-2">
     {#if structured}
-      <button class="cursor-pointer border-0 bg-transparent p-0 text-[9px] text-[#839193] hover:text-[#d8ff57]" type="button" onclick={() => formatter?.openAtDepth(Infinity)}>Expand all</button>
-      <button class="cursor-pointer border-0 bg-transparent p-0 text-[9px] text-[#839193] hover:text-[#d8ff57]" type="button" onclick={() => formatter?.openAtDepth(0)}>Collapse all</button>
+      <button class="cursor-pointer border-0 bg-transparent p-0 text-sm text-[#839193] hover:text-[#d8ff57]" type="button" onclick={() => formatter?.openAtDepth(Infinity)}>Expand all</button>
+      <button class="cursor-pointer border-0 bg-transparent p-0 text-sm text-[#839193] hover:text-[#d8ff57]" type="button" onclick={() => formatter?.openAtDepth(0)}>Collapse all</button>
     {/if}
-    <button class="cursor-pointer border-0 bg-transparent p-0 text-[9px] text-[#839193] hover:text-[#d8ff57]" type="button" onclick={copyValue}>{copyLabel}</button>
+    <button class="cursor-pointer border-0 bg-transparent p-0 text-sm text-[#839193] hover:text-[#d8ff57]" type="button" onclick={copyValue}>{copyLabel}</button>
   </div>
 
   {#if structured}
@@ -60,45 +60,3 @@
     <code class={typeof value === "string" ? "text-[#d8ff57]" : typeof value === "number" ? "text-[#ffd166]" : typeof value === "boolean" ? "text-[#ff9a86]" : "text-[#bba4ff]"}>{primitive}</code>
   {/if}
 </div>
-
-<style>
-  :global(.value-inspector .json-formatter-row) {
-    font-family: "DM Mono", monospace;
-    line-height: 1.65;
-  }
-
-  :global(.value-inspector .json-formatter-row),
-  :global(.value-inspector .json-formatter-row a),
-  :global(.value-inspector .json-formatter-row a:hover) {
-    color: #91a0a1;
-  }
-
-  :global(.value-inspector .json-formatter-key) {
-    color: #77b7ff;
-  }
-
-  :global(.value-inspector .json-formatter-string),
-  :global(.value-inspector .json-formatter-stringifiable) {
-    color: #d8ff57;
-  }
-
-  :global(.value-inspector .json-formatter-number) {
-    color: #ffd166;
-  }
-
-  :global(.value-inspector .json-formatter-boolean) {
-    color: #ff9a86;
-  }
-
-  :global(.value-inspector .json-formatter-null) {
-    color: #bba4ff;
-  }
-
-  :global(.value-inspector .json-formatter-bracket) {
-    color: #667576;
-  }
-
-  :global(.value-inspector .json-formatter-toggler) {
-    color: #d8ff57;
-  }
-</style>

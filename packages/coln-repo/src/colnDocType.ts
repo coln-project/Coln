@@ -46,9 +46,11 @@ export const colnDocType = defineDocumentType<
   ColnState,
   ColnDocumentBase,
   ColnChange,
-  ColnSchema
+  ColnSchema,
+  "coln"
 >({
   name: "coln",
+  urlScheme: "coln",
   empty: () => ({ store: StoreHandle.empty() }),
   init: (schema) => ({
     store: StoreHandle.fromTheory(serializeSchema(schema)),

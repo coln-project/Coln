@@ -35,7 +35,7 @@ export function parseArguments(arguments_: string[]): ParsedArguments {
     else if (argument.startsWith("--document=")) {
       documentUrl = argument.slice("--document=".length)
     } else if (argument === "--document") {
-      documentUrl = optionValue(arguments_, ++index, "--document requires an Automerge URL")
+      documentUrl = optionValue(arguments_, ++index, "--document requires a Coln URL")
     } else if (argument.startsWith("--endpoint=")) {
       endpoint = argument.slice("--endpoint=".length)
       if (endpoint === "") throw new Error("--endpoint requires a WebSocket URL")
@@ -76,7 +76,7 @@ export function parseArguments(arguments_: string[]): ParsedArguments {
 
   if (directory !== undefined) throw new Error(`--dir is not used by ${command}`)
   if (documentUrl === undefined || documentUrl === "") {
-    throw new Error("--document requires an Automerge URL")
+    throw new Error("--document requires a Coln URL")
   }
 
   return { kind: "command", command, documentUrl, verbose, endpoint }

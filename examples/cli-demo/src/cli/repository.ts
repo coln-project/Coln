@@ -4,11 +4,10 @@
 
 import {
   initSubduction,
-  isValidAutomergeUrl,
+  isValidDocumentUrl,
   Repo,
   setLoggerFactory,
   setSubductionLogLevel,
-  type AutomergeUrl,
 } from "@automerge/automerge-repo"
 import { find, type ColnHandle } from "@coln-project/repo"
 
@@ -25,7 +24,7 @@ export async function openDocument(
   endpoint: string,
   verbose: boolean,
 ): Promise<OpenDocument> {
-  if (!isValidAutomergeUrl(documentUrl)) throw new Error(`Invalid Automerge URL: ${documentUrl}`)
+  if (!isValidDocumentUrl(documentUrl, "coln")) throw new Error(`Invalid Coln URL: ${documentUrl}`)
   validateEndpoint(endpoint)
   if (verbose) console.error(`Connecting to ${endpoint}`)
 
@@ -39,7 +38,7 @@ export async function openDocument(
     await withTimeout(waitForConnection(repo), `Timed out connecting to ${endpoint}`)
     if (verbose) console.error(`Connected to ${endpoint}`)
     const handle = await withTimeout(
-      find(repo, documentUrl as AutomergeUrl),
+      find(repo, documentUrl),
       `Timed out loading ${documentUrl}`,
     )
     return { repo, handle }

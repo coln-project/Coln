@@ -22,10 +22,10 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe("source storage", () => {
   it("stores source independently by document URL", () => {
-    expect(loadSource("automerge:one")).toBe(starterSource)
-    saveSource("automerge:one", "return 1")
-    saveSource("automerge:two", "return 2")
-    expect(loadSource("automerge:one")).toBe("return 1")
-    expect(loadSource("automerge:two")).toBe("return 2")
+    expect(loadSource("coln:one")).toBe(starterSource)
+    saveSource("coln:one", "return 1")
+    saveSource("coln:two", "return 2")
+    expect(loadSource("coln:one")).toBe("return 1")
+    expect(loadSource("coln:two")).toBe("return 2")
   })
 })

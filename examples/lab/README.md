@@ -1,6 +1,6 @@
 # Coln Lab
 
-One local workbench for Coln theories, stores, and synchronized graphs.
+Coln Lab combines editors for theories and stores with an interactive Graph Demo.
 
 From the repository root:
 
@@ -13,8 +13,8 @@ Subduction relay. Build-time browser configuration can be placed in
 `examples/lab/.env`; exported shell variables take precedence. See
 `examples/lab/.env.example` for available settings.
 
-The Store tool executes trusted JavaScript on the browser main thread. Do not
-run programs from untrusted sources.
+Store Editor and Graph Demo can execute JavaScript directly on the browser main
+thread. Run only code you trust.
 
 Lab owns its complete browser implementation, relay scripts, and graph schema.
 Regenerate the checked-in graph bindings after changing `src/tools/graph/graph.coln`:

@@ -1,11 +1,11 @@
 ---
 name: coln-repo
-description: Read and update a synchronized Coln store from an automerge: URL with the coln-repo CLI. Use whenever a request names an automerge: document, a Coln store, realm, or theory, or asks to add, list, count, or connect records or table entries in one.
+description: Read and update a synchronized Coln store from a coln: URL with the coln-repo CLI. Use whenever a request names a coln: document, a Coln store, realm, or theory, or asks to add, list, count, or connect records or table entries in one.
 ---
 
 # Working With a Coln Store
 
-A Coln document is addressed by an `automerge:` URL and holds a store: a set of
+A Coln document is addressed by a `coln:` URL and holds a store: a set of
 tables whose paths come from a compiled theory, such as `Records.Documents`. The
 `coln-repo` CLI reads and updates one such document. Every response is a single
 JSON object on stdout, including errors. Run `coln-repo help` for usage and
@@ -23,7 +23,7 @@ the response is `DOCUMENT_OPEN_FAILED`, report which endpoint you tried and ask.
 ### 2. Read the IR
 
 ```bash
-coln-repo ir --document <automerge-url> [--endpoint <ws-url>]
+coln-repo ir --document <coln-url> [--endpoint <ws-url>]
 ```
 
 The `ir` field is the compiled JSON IR, unchanged. Each entity has a `path`
@@ -52,7 +52,7 @@ entity paths exactly from the IR.
 ### 4. Query before writing when the request refers to existing rows
 
 ```bash
-coln-repo query --document <automerge-url> <<'JS'
+coln-repo query --document <coln-url> <<'JS'
 store.scanTable("Records.Folders")
 JS
 ```
@@ -67,7 +67,7 @@ large tables in the expression rather than returning everything.
 ### 5. Write in one transaction
 
 ```bash
-coln-repo exec --document <automerge-url> <<'JS'
+coln-repo exec --document <coln-url> <<'JS'
 const folder = txn.add("Records.Folders", [{ tag: "string", value: "Inbox" }])
 const document = txn.add("Records.Documents", [
   folder,
