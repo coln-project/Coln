@@ -73,7 +73,21 @@ fn wants_path_completion(line: &str, pos: usize) -> bool {
     let Some(command) = prefix.split_whitespace().next() else {
         return false;
     };
-    PATH_COMMANDS.contains(&command) && prefix.len() > command.len()
+    if !PATH_COMMANDS.contains(&command) || prefix.len() == command.len() {
+        return false;
+    }
+    if command != ".load" {
+        return true;
+    }
+
+    let arguments = &prefix[command.len()..];
+    let argument_count = arguments.split_whitespace().count();
+    let current_argument = if arguments.trim_end().len() < arguments.len() {
+        argument_count
+    } else {
+        argument_count.saturating_sub(1)
+    };
+    current_argument < 2
 }
 
 fn complete_command(line: &str, pos: usize) -> (usize, Vec<Pair>) {
@@ -152,6 +166,10 @@ mod tests {
     fn path_completion_applies_after_path_command() {
         assert!(wants_path_completion(".load ", ".load ".len()));
         assert!(wants_path_completion(
+            ".load tests/data/Path.json tests/data/pa",
+            ".load tests/data/Path.json tests/data/pa".len()
+        ));
+        assert!(wants_path_completion(
             ".open tests/da",
             ".open tests/da".len()
         ));
@@ -164,6 +182,10 @@ mod tests {
     #[test]
     fn path_completion_does_not_apply_elsewhere() {
         assert!(!wants_path_completion(".load", ".load".len()));
+        assert!(!wants_path_completion(
+            ".load tests/data/Path.json tests/data/path.coln Path",
+            ".load tests/data/Path.json tests/data/path.coln Path".len()
+        ));
         assert!(!wants_path_completion(".dump te", ".dump te".len()));
         assert!(!wants_path_completion("add T 7", "add T 7".len()));
         assert!(!wants_path_completion("", 0));

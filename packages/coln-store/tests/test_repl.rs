@@ -10,10 +10,12 @@ use std::path::PathBuf;
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::{
     repl::{exe::run_transact, parse::coln::BatchAssignment},
-    store::Store,
+    store::{ColnDef, Store},
 };
 
 static PATHS_IR: &str = "Path.json";
+static PATH_COLN: &str = "path.coln";
+static PATH_REALM: &str = "Path";
 
 fn fixture_theory(name: &str) -> FlatRealm {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -23,10 +25,22 @@ fn fixture_theory(name: &str) -> FlatRealm {
     serde_json::from_str(&json).expect("parse FlatRealm")
 }
 
+fn fixture_coln_def(name: &str, realm: &str) -> ColnDef {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/data")
+        .join(name);
+    let theory = std::fs::read_to_string(p).expect("read Coln theory");
+    ColnDef {
+        theory,
+        realm: realm.to_owned(),
+    }
+}
+
 #[test]
 fn batch_block_matches_apply_batch_for_paths_fixture() {
     let theory = fixture_theory(PATHS_IR);
-    let mut store = Store::try_from_ir(theory).expect("valid theory");
+    let coln_def = fixture_coln_def(PATH_COLN, PATH_REALM);
+    let mut store = Store::try_from_ir(theory, coln_def).expect("valid theory");
 
     let assignments = vec![
         BatchAssignment {

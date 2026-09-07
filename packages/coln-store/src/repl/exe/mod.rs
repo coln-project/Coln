@@ -15,7 +15,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use crate::{
     commit::pst::{decode_store, encode_store},
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
-    store::Store,
+    store::{ColnDef, Store},
     table::{TableHandle, WireRowId},
     txn::{TempRowId, TxnWireValue},
 };
@@ -36,7 +36,7 @@ fn help_text(mode: ShellMode) -> String {
         "  .help",
         "  .exit",
         "  .quit",
-        "  .load <schema-json-path>",
+        "  .load <ir-json-path> [<coln-path> [<realm>]]",
         "  .open <store-path>",
         "  .save <store-path>",
         "  .tables",
@@ -52,7 +52,7 @@ fn help_text(mode: ShellMode) -> String {
             "",
             "Examples:",
             "  .help",
-            "  .load tests/data/paths.json",
+            "  .load tests/data/Path.json tests/data/path.coln Path",
             "  .schema",
             "  .dump T",
             "  add T values (7 \"alice\"), (8 \"bob\");",
@@ -83,8 +83,16 @@ pub(super) fn execute_sql(session: &mut Session, command: SqlCommand) -> Result<
 pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Result<Step> {
     match command {
         MetaCommand::Help => Ok(Step::Continue(help_text(session.shell_mode))),
-        MetaCommand::Load { path } => {
-            let loaded = load_schema(std::path::Path::new(&path))?;
+        MetaCommand::Load {
+            ir_path,
+            coln_path,
+            realm,
+        } => {
+            let loaded = load_schema(
+                std::path::Path::new(&ir_path),
+                std::path::Path::new(&coln_path),
+                &realm,
+            )?;
             tracing::info!(
                 source = %loaded.schema.source.display(),
                 table_count = loaded.store.table_count(),
@@ -309,13 +317,25 @@ pub fn load_store(path: &Path) -> Result<LoadedState> {
     Ok(LoadedState { store, schema })
 }
 
-pub fn load_schema(path: &Path) -> Result<LoadedState> {
-    let input = fs::read_to_string(path)
-        .with_context(|| format!("failed to read schema {}", path.display()))?;
-    let theory: FlatRealm = serde_json::from_str(&input)
-        .with_context(|| format!("failed to parse schema {}", path.display()))?;
-    let summary = SchemaSummary::from_theory(path.to_path_buf(), &theory);
-    let store = Store::try_from_ir(theory)?;
+pub fn load_schema(ir_path: &Path, coln_path: &Path, realm: &str) -> Result<LoadedState> {
+    let ir_input = fs::read_to_string(ir_path)
+        .with_context(|| format!("failed to read schema {}", ir_path.display()))?;
+    let theory: FlatRealm = serde_json::from_str(&ir_input)
+        .with_context(|| format!("failed to parse schema {}", ir_path.display()))?;
+    let coln_source = if coln_path.as_os_str().is_empty() {
+        String::new()
+    } else {
+        fs::read_to_string(coln_path)
+            .with_context(|| format!("failed to read Coln source {}", coln_path.display()))?
+    };
+    let summary = SchemaSummary::from_theory(ir_path.to_path_buf(), &theory);
+    let store = Store::try_from_ir(
+        theory,
+        ColnDef {
+            theory: coln_source,
+            realm: realm.to_owned(),
+        },
+    )?;
     Ok(LoadedState {
         store,
         schema: summary,
@@ -487,6 +507,13 @@ mod tests {
     use super::*;
 
     static PATHS_IR: &str = "Path.json";
+    static PATHS_COLN: &str = "path.coln";
+    static PATHS_REALM: &str = "Path";
+
+    fn load_paths_schema() -> LoadedState {
+        let data = Path::new("tests/data/");
+        load_schema(&data.join(PATHS_IR), &data.join(PATHS_COLN), PATHS_REALM).expect("load schema")
+    }
 
     #[test]
     fn lists_no_schema_message() {
@@ -496,7 +523,7 @@ mod tests {
     #[test]
     fn coln_help_lists_only_coln_statements() {
         let help = help_text(ShellMode::Coln);
-        assert!(help.contains(".load <schema-json-path>"));
+        assert!(help.contains(".load <ir-json-path> [<coln-path> [<realm>]]"));
         assert!(help.contains("add <table> values"));
         assert!(help.contains("begin transact;"));
         assert!(!help.contains("create table"));
@@ -506,7 +533,7 @@ mod tests {
     #[test]
     fn sql_help_lists_only_sql_statements() {
         let help = help_text(ShellMode::Sql);
-        assert!(help.contains(".load <schema-json-path>"));
+        assert!(help.contains(".load <ir-json-path> [<coln-path> [<realm>]]"));
         assert!(help.contains("create table <table>"));
         assert!(help.contains("copy <table> from '<file.csv>' with (format csv, header true);"));
         assert!(!help.contains("add <table> values"));
@@ -515,7 +542,7 @@ mod tests {
 
     #[test]
     fn renders_all_table_schemas() {
-        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let loaded = load_paths_schema();
         let rendered = render_schema_summary(Some(&loaded.schema));
         assert!(rendered.contains("source: tests/data/Path.json"));
         assert!(rendered.contains("table: Path.G.V"));
@@ -526,16 +553,44 @@ mod tests {
 
     #[test]
     fn loads_schema_summary_from_fixture() {
-        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let loaded = load_paths_schema();
         assert_eq!(loaded.store.table_count(), 16);
         assert_eq!(loaded.schema.table_count, 16);
         assert_eq!(loaded.schema.law_count, 27);
         assert_eq!(loaded.schema.tables[0].path, "Path.G0");
+        let root = loaded
+            .store
+            .commits()
+            .root_commit()
+            .expect("root commit")
+            .root_payload()
+            .expect("root payload");
+        assert_eq!(
+            root.coln_def.theory,
+            include_str!("../../../tests/data/path.coln")
+        );
+        assert_eq!(root.coln_def.realm, PATHS_REALM);
+    }
+
+    #[test]
+    fn loads_schema_without_coln_metadata() {
+        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR), Path::new(""), "")
+            .expect("load schema");
+        let root = loaded
+            .store
+            .commits()
+            .root_commit()
+            .expect("root commit")
+            .root_payload()
+            .expect("root payload");
+
+        assert!(root.coln_def.theory.is_empty());
+        assert!(root.coln_def.realm.is_empty());
     }
 
     #[test]
     fn renders_single_table_schema() {
-        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let loaded = load_paths_schema();
         let rendered =
             render_table_schema(Some(&loaded.schema), "Path.G.V").expect("render table schema");
         assert!(rendered.contains("table: Path.G.V"));
@@ -545,7 +600,7 @@ mod tests {
 
     #[test]
     fn renders_ir_json() {
-        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let loaded = load_paths_schema();
         let rendered = render_ir(Some(&loaded.store)).expect("render ir");
         assert_eq!(rendered, loaded.store.json_ir().expect("json ir"));
         let parsed: FlatRealm = serde_json::from_str(&rendered).expect("parse ir json");

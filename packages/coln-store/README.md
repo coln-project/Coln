@@ -32,7 +32,7 @@ After `commit`, inspect what landed with `.dump <table>`. For example,
 table with `.tables`, or print all compiled rules with `.rules`.
 
 ```text
-coln-store> .load tests/data/Path.json
+coln-store> .load tests/data/Path.json tests/data/path.coln Path
 begin transact;
   g0 = add Path.Graphs values ();
   g1 = add Path.Graphs values ();
@@ -50,7 +50,7 @@ commit;
 .save paths.bin
 .open paths.bin
 
-.load tests/data/ExprRealm.json
+.load tests/data/ExprRealm.json tests/data/expr.coln ExprRealm
 begin transact;
     t0 = add ExprRealm.exprs.t values ();
     t1 = add ExprRealm.exprs.t values ();
