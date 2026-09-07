@@ -166,7 +166,14 @@ impl Runtime for DbspRuntime {
         // readable via `output`.
         for (id, output) in &self.cli_outputs {
             let output = output.drain();
-            println!("output '{}':\n{}", id.as_str(), output.as_debug_table());
+            println!(
+                "output '{}':\n{}",
+                id.as_str(),
+                output
+                    .debug_view(true)
+                    .to_cli_table()
+                    .expect("Table renders")
+            );
         }
         Ok(())
     }

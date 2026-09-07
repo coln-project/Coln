@@ -6,8 +6,10 @@
 //! and experiments without any wrappers from our end.
 
 mod utils {
+    use crate::utils::cli_table::{Cell, CellStruct, CliTableRow, Justify};
     use dbsp::ZWeight;
     use dbsp::utils::Tup2;
+    use std::fmt::Debug;
     use std::io::{self, IsTerminal, Write};
     use std::num::NonZeroUsize;
 
@@ -199,9 +201,50 @@ mod utils {
     pub type ZWeightIndexElement<K, V> = Tup2<K, Tup2<V, ZWeight>>;
     pub type Batch<K> = Vec<ZWeightElement<K>>;
     pub type IndexBatch<K, V> = Vec<ZWeightIndexElement<K, V>>;
+
+    /// Header for `Tup2<K, ZWeight>` rows, as found in an input batch of a `ZSet`.
+    pub const KEY_HEADER: [&str; 2] = ["z-weight", "key"];
+
+    /// Header for `(K, V, ZWeight)` rows, as yielded when iterating a batch read
+    /// from an output handle. For a `ZSet` the value column is the unit type.
+    pub const KEY_VALUE_HEADER: [&str; 3] = ["z-weight", "key", "value"];
+
+    /// Drops the unit value column of a `ZSet` batch, so that its rows render as
+    /// `Tup2<K, ZWeight>` under [`KEY_HEADER`] instead of carrying a `()` column.
+    pub trait KeysOnlyIterExt: Iterator + Sized {
+        fn keys_only<K, W>(self) -> impl Iterator<Item = Tup2<K, W>>
+        where
+            Self: Iterator<Item = (K, (), W)>,
+        {
+            self.map(|(key, (), weight)| Tup2(key, weight))
+        }
+    }
+
+    impl<Iter: Iterator> KeysOnlyIterExt for Iter {}
+
+    impl<K: Debug, V: Debug, ZWeight: Debug> CliTableRow for (K, V, ZWeight) {
+        fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<K, V, ZWeight> {
+            [
+                format!("{:?}", self.2).cell().justify(Justify::Right),
+                format!("{:?}", self.0).cell().justify(Justify::Left),
+                format!("{:?}", self.1).cell().justify(Justify::Left),
+            ]
+            .into_iter()
+        }
+    }
+
+    impl<K: Debug> CliTableRow for Tup2<K, ZWeight> {
+        fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<K> {
+            [
+                format!("{:?}", self.1).cell().justify(Justify::Right),
+                format!("{:?}", self.0).cell().justify(Justify::Left),
+            ]
+            .into_iter()
+        }
+    }
 }
 
-use super::cli_table::ToCliTable;
+use crate::utils::cli_table::ToCliTableIterExt;
 use dbsp::{
     Circuit, IndexedZSetReader, NestedCircuit, OrdZSet, Runtime, Stream, ZWeight, indexed_zset,
     operator::{Generator, Z1},
@@ -209,8 +252,10 @@ use dbsp::{
     zset,
 };
 use std::{cell::RefCell, rc::Rc};
-use utils::{Batch, IndexBatch, worker_threads};
-use utils::{ConfirmIterExt, ProgressIterExt};
+use utils::{
+    Batch, ConfirmIterExt, IndexBatch, KEY_HEADER, KEY_VALUE_HEADER, KeysOnlyIterExt,
+    ProgressIterExt, worker_threads,
+};
 
 // Adapted from the [DBSP docs](https://docs.rs/dbsp/latest/dbsp/circuit/circuit_builder/struct.ChildCircuit.html#method.recursive).
 #[test]
@@ -301,7 +346,13 @@ fn test_recursive() -> Result<(), anyhow::Error> {
         init_labels_input.append(&mut init_labels_inputs.next().unwrap());
         circuit.transaction()?;
         let labels_output = labels_output.concat();
-        print!("Labels\n{}", labels_output.iter().to_cli_table());
+        print!(
+            "Labels\n{}",
+            labels_output
+                .iter()
+                .keys_only()
+                .to_cli_table_with(KEY_HEADER)?
+        );
         assert_eq!(
             labels_output.consolidate(),
             label_expected_outputs.next().unwrap()
@@ -364,7 +415,7 @@ fn test_not_operator() -> Result<(), anyhow::Error> {
         right_input.append(&mut right_data.next().unwrap());
         circuit.transaction()?;
         let output = output.concat();
-        print!("{}", output.iter().to_cli_table());
+        print!("{}", output.iter().to_cli_table_with(KEY_VALUE_HEADER)?);
         assert_eq!(output.consolidate(), expected_outputs.next().unwrap());
     }
 
@@ -438,7 +489,7 @@ fn test_cartesian_product() -> Result<(), anyhow::Error> {
         right_input.append(&mut right_data.next().unwrap());
         circuit.transaction()?;
         let output = output.concat();
-        print!("{}", output.iter().to_cli_table());
+        print!("{}", output.iter().to_cli_table_with(KEY_VALUE_HEADER)?);
         assert_eq!(output.consolidate(), expected_outputs.next().unwrap());
     }
 
@@ -518,7 +569,7 @@ fn negative_zweight_behavior() -> Result<(), anyhow::Error> {
         right_input.append(&mut right_data.next().unwrap());
         circuit.transaction()?;
         let output = output.concat();
-        print!("{}", output.iter().to_cli_table());
+        print!("{}", output.iter().to_cli_table_with(KEY_VALUE_HEADER)?);
         assert_eq!(output.consolidate(), expected_outputs.next().unwrap());
     }
 
@@ -603,13 +654,19 @@ fn multiple_outputs() -> Result<(), anyhow::Error> {
         right_input.append(&mut right_data.next().unwrap());
         circuit.transaction()?;
         let filter_output = filter_output.concat();
-        print!("Filter\n{}", filter_output.iter().to_cli_table());
+        print!(
+            "Filter\n{}",
+            filter_output.iter().to_cli_table_with(KEY_VALUE_HEADER)?
+        );
         assert_eq!(
             filter_output.consolidate(),
             expected_filter_outputs.next().unwrap()
         );
         let join_output = join_output.concat();
-        print!("Join\n{}", join_output.iter().to_cli_table());
+        print!(
+            "Join\n{}",
+            join_output.iter().to_cli_table_with(KEY_VALUE_HEADER)?
+        );
         assert_eq!(
             join_output.consolidate(),
             expected_join_outputs.next().unwrap()
@@ -695,7 +752,7 @@ fn rollback_test() -> Result<(), anyhow::Error> {
         right_input.append(&mut right_data.next().unwrap());
         circuit.transaction()?;
         let output = output.concat();
-        print!("{}", output.iter().to_cli_table());
+        print!("{}", output.iter().to_cli_table_with(KEY_VALUE_HEADER)?);
         assert_eq!(output.consolidate(), expected_outputs.next().unwrap());
     }
 
@@ -939,14 +996,17 @@ fn test_self_rec_trans_closure_iterate() -> Result<(), anyhow::Error> {
     for i in (0..STEPS).confirm_each_auto().progress().with_bound() {
         println!("====== Inputs ======");
         let mut input = edges_data.next().unwrap();
-        println!("Edges\n{}", input.iter().to_cli_table());
+        println!("Edges\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         edges_input.append(&mut input);
 
         circuit_handle.transaction()?;
 
         println!("====== Outputs ======");
         let output = output_handle.concat();
-        println!("Transitive Closure\n{}", output.iter().to_cli_table());
+        println!(
+            "Transitive Closure\n{}",
+            output.iter().keys_only().to_cli_table_with(KEY_HEADER)?
+        );
         assert_eq!(output.consolidate(), expected_output.next().unwrap(),);
     }
 
@@ -1083,20 +1143,26 @@ fn test_mutual_rec_graph_color_recursive() -> Result<(), anyhow::Error> {
     for i in (0..STEPS).confirm_each_auto().progress().with_bound() {
         println!("====== Inputs ======");
         let mut input = init_data.next().unwrap();
-        println!("Init\n{}", input.iter().to_cli_table());
+        println!("Init\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         init_input.append(&mut input);
         let mut input = edges_data.next().unwrap();
-        println!("Edges\n{}", input.iter().to_cli_table());
+        println!("Edges\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         edges_input.append(&mut input);
 
         circuit_handle.transaction()?;
 
         println!("====== Outputs ======");
         let output = red_output.concat();
-        println!("Red\n{}", output.iter().to_cli_table());
+        println!(
+            "Red\n{}",
+            output.iter().keys_only().to_cli_table_with(KEY_HEADER)?
+        );
         assert_eq!(output.consolidate(), expected_red_output.next().unwrap(),);
         let output = blue_output.concat();
-        println!("Blue\n{}", output.iter().to_cli_table());
+        println!(
+            "Blue\n{}",
+            output.iter().keys_only().to_cli_table_with(KEY_HEADER)?
+        );
         assert_eq!(output.consolidate(), expected_blue_output.next().unwrap(),);
     }
 
@@ -1184,20 +1250,40 @@ fn test_mutual_rec_graph_color_iterate() {
     for i in (0..STEPS).confirm_each_auto().progress().with_bound() {
         println!("====== Inputs ======");
         let mut input = init_data.next().unwrap();
-        println!("Init\n{}", input.iter().to_cli_table());
+        println!(
+            "Init\n{}",
+            input.iter().to_cli_table_with(KEY_HEADER).unwrap()
+        );
         init_input.append(&mut input);
         let mut input = edges_data.next().unwrap();
-        println!("Edges\n{}", input.iter().to_cli_table());
+        println!(
+            "Edges\n{}",
+            input.iter().to_cli_table_with(KEY_HEADER).unwrap()
+        );
         edges_input.append(&mut input);
 
         circuit_handle.transaction().expect("Transaction succeeds");
 
         println!("====== Outputs ======");
         let output = red_output.concat();
-        println!("Red\n{}", output.iter().to_cli_table());
+        println!(
+            "Red\n{}",
+            output
+                .iter()
+                .keys_only()
+                .to_cli_table_with(KEY_HEADER)
+                .unwrap()
+        );
         assert_eq!(output.consolidate(), expected_red_output.next().unwrap(),);
         let output = blue_output.concat();
-        println!("Blue\n{}", output.iter().to_cli_table());
+        println!(
+            "Blue\n{}",
+            output
+                .iter()
+                .keys_only()
+                .to_cli_table_with(KEY_HEADER)
+                .unwrap()
+        );
         assert_eq!(output.consolidate(), expected_blue_output.next().unwrap(),);
     }
 }
@@ -1515,31 +1601,37 @@ fn test_mutual_recursion() -> Result<(), anyhow::Error> {
         println!("====== Inputs ======");
 
         let mut input = alloc_inputs.next().unwrap();
-        println!("Alloc\n{}", input.iter().to_cli_table());
+        println!("Alloc\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         alloc_input.append(&mut input);
 
         let mut input = assign_inputs.next().unwrap();
-        println!("Assign\n{}", input.iter().to_cli_table());
+        println!("Assign\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         assign_input.append(&mut input);
 
         let mut input = virtual_call_inputs.next().unwrap();
-        println!("VirtualCall\n{}", input.iter().to_cli_table());
+        println!(
+            "VirtualCall\n{}",
+            input.iter().to_cli_table_with(KEY_HEADER)?
+        );
         virtual_call_input.append(&mut input);
 
         let mut input = heap_type_inputs.next().unwrap();
-        println!("HeapType\n{}", input.iter().to_cli_table());
+        println!("HeapType\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         heap_type_input.append(&mut input);
 
         let mut input = dispatch_inputs.next().unwrap();
-        println!("Dispatch\n{}", input.iter().to_cli_table());
+        println!("Dispatch\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         dispatch_input.append(&mut input);
 
         let mut input = actual_arg_inputs.next().unwrap();
-        println!("ActualArg\n{}", input.iter().to_cli_table());
+        println!("ActualArg\n{}", input.iter().to_cli_table_with(KEY_HEADER)?);
         actual_arg_input.append(&mut input);
 
         let mut input = formal_param_inputs.next().unwrap();
-        println!("FormalParam\n{}", input.iter().to_cli_table());
+        println!(
+            "FormalParam\n{}",
+            input.iter().to_cli_table_with(KEY_HEADER)?
+        );
         formal_param_input.append(&mut input);
 
         circuit.transaction()?;
@@ -1548,14 +1640,23 @@ fn test_mutual_recursion() -> Result<(), anyhow::Error> {
         let var_points_to_output = var_points_to_output.concat();
         println!(
             "VarPointsTo\n{}",
-            var_points_to_output.iter().to_cli_table()
+            var_points_to_output
+                .iter()
+                .keys_only()
+                .to_cli_table_with(KEY_HEADER)?
         );
         assert_eq!(
             var_points_to_output.consolidate(),
             var_points_to_expected_outputs.next().unwrap(),
         );
         let call_graph_output = call_graph_output.concat();
-        println!("CallGraph\n{}", call_graph_output.iter().to_cli_table());
+        println!(
+            "CallGraph\n{}",
+            call_graph_output
+                .iter()
+                .keys_only()
+                .to_cli_table_with(KEY_HEADER)?
+        );
         assert_eq!(
             call_graph_output.consolidate(),
             call_graph_expected_outputs.next().unwrap(),

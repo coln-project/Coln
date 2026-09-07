@@ -11,6 +11,8 @@ use super::{
     store::TxStore,
     violations::{ViolationsDelta, ViolationsSet},
 };
+pub use crate::utils::cli_table::{CliReport, ToCliReport};
+use std::io;
 
 /// The query engine's primary API is a transaction represented as a state
 /// machine with the following five states:
@@ -276,7 +278,7 @@ impl Tx<Prepare> {
         }
     }
     /// Convenience method to add data beyond initialization.
-    pub fn insert<I: IntoIterator<Item = TableDelta>>(&mut self, deltas: I) {
+    pub fn insert(&mut self, deltas: impl IntoIterator<Item = TableDelta>) {
         self.state.delta.extend(deltas);
     }
     pub fn try_commit<'a, Store: TxStore>(
@@ -344,5 +346,56 @@ impl Tx<Committed> {
 impl Tx<Rejected> {
     pub fn take_hard_violations(&mut self) -> ViolationsSet {
         std::mem::take(&mut self.state.violations)
+    }
+}
+
+impl<State: ToCliReport> ToCliReport for Tx<State> {
+    /// [`Tx`] deliberately does not implement `Display` because pretty printing
+    /// as a table may cause an error, and `Display`'s `fmt` should be kept
+    /// error-free. Hence, use the `Display` of the resulting [`CliReport`]
+    /// instead.
+    fn to_cli_report(&self) -> io::Result<CliReport> {
+        self.state.to_cli_report()
+    }
+}
+
+impl ToCliReport for Prepare {
+    fn to_cli_report(&self) -> io::Result<CliReport> {
+        let mut report = CliReport::new("Prepare");
+        report.nest(self.delta.to_cli_report()?);
+        Ok(report)
+    }
+}
+
+impl<'a, Store: TxStore> ToCliReport for Pending<'a, Store> {
+    fn to_cli_report(&self) -> io::Result<CliReport> {
+        let mut report = CliReport::new("Pending");
+        report.nest(self.delta.to_cli_report()?);
+        Ok(report)
+    }
+}
+
+impl ToCliReport for Committed {
+    fn to_cli_report(&self) -> io::Result<CliReport> {
+        let mut report = CliReport::new("Committed");
+        report.nest(self.delta.to_cli_report()?);
+        Ok(report)
+    }
+}
+
+impl ToCliReport for Rejected {
+    fn to_cli_report(&self) -> io::Result<CliReport> {
+        let mut report = CliReport::new("Rejected");
+        report.nest(self.violations.to_cli_report()?);
+        Ok(report)
+    }
+}
+
+impl ToCliReport for DataDelta {
+    fn to_cli_report(&self) -> io::Result<CliReport> {
+        let mut report = CliReport::untitled();
+        report.nest(self.derived.to_cli_report()?);
+        report.nest(self.soft_violations.to_cli_report()?);
+        Ok(report)
     }
 }

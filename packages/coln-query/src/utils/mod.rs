@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+pub mod cli_table;
+
 /// Generates the two ways of putting a node payload into its enum: from the
 /// bare payload (which has to allocate) and from an already boxed one (which
 /// reuses that allocation).

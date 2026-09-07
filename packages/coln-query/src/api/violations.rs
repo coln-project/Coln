@@ -18,8 +18,10 @@
 //! [`TxOutcome`](super::transaction::TxOutcome), whose two violation arms are
 //! where this distinction comes from.
 
+use crate::utils::cli_table::{CliReport, ToCliReport};
+
 use super::deltas::TableDelta;
-use std::marker::PhantomData;
+use std::{io, marker::PhantomData};
 
 /// Violations that exist: the whole set of them, as of now.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -59,9 +61,10 @@ pub type ViolationsDelta = Violations<Delta>;
 /// [module docs](self).
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Violations<I: Interpretation> {
-    /// Contains the counter examples for each unmet constraint. Note that
-    /// [`EntityRef`](crate::relational::schema::EntityRef) refers to a derived
-    /// view (defined through a query) rather than a physical base table here.
+    /// Contains the counter examples for each unmet constraint. Note that each
+    /// [`TableDelta`]s [`EntityRef`](crate::relational::schema::EntityRef)
+    /// refers to a derived view (defined through a query) rather than a
+    /// physical base table here.
     inner: Vec<TableDelta>,
     interpretation: PhantomData<I>,
 }
@@ -106,17 +109,21 @@ impl<'a, I: Interpretation> IntoIterator for &'a Violations<I> {
     }
 }
 
+impl<I: Interpretation> ToCliReport for Violations<I> {
+    fn to_cli_report(&self) -> io::Result<CliReport> {
+        let mut report = CliReport::new(I::LABEL);
+        report.extend(
+            self.inner
+                .iter()
+                .map(|violation| violation.to_cli_report())
+                .collect::<io::Result<Vec<_>>>()?,
+        );
+        Ok(report)
+    }
+}
+
 impl<I: Interpretation> std::fmt::Display for Violations<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}{}",
-            I::LABEL,
-            if self.is_empty() { " <empty>" } else { "\n" }
-        )?;
-        for violation in &self.inner {
-            write!(f, "{}", violation)?;
-        }
-        Ok(())
+        write!(f, "{}", self.to_cli_report().expect("cli report"))
     }
 }
