@@ -6,13 +6,14 @@ pub mod path;
 
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use specta::Type;
 
 // A QName is a vec of string, potentially separated by a forward slash /
 pub type QName = Vec<String>;
 
 // For example a G.V would become [["G"], ["V"]], this is at a higher level than
 // QName because V would be a query inside a theory G
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(transparent)]
 pub struct Path(pub Vec<QName>);
 
