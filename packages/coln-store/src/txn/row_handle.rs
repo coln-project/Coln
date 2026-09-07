@@ -189,7 +189,7 @@ impl From<u32> for TempRowId {
 
 /// A reference to an existing row or a pending row in the current transaction.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
-#[serde(tag = "type")]
+#[serde(tag = "type", content = "value")]
 pub enum TxnWireRowId {
     Existing(WireRowId),
     Pending(TempRowId),
