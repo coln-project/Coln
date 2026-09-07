@@ -36,7 +36,7 @@ impl IdPacker {
     /// Packs `id` without interning its commit hash.
     ///
     /// Returns `None` when the commit hash has not already been interned.
-    pub(crate) fn lookup_row_id(&self, id: WireRowId) -> Option<PackedRowId> {
+    pub(crate) fn lookup_row_id(&self, id: &WireRowId) -> Option<PackedRowId> {
         Some(PackedRowId {
             commit_idx: self.dict.index(id.commit)?,
             counter: id.counter,
@@ -83,7 +83,7 @@ impl IdPacker {
     /// Returns `None` when an ID cell's commit hash has not been interned.
     pub(crate) fn try_pack_cell(&self, value: &WireValue) -> Option<PackedValue> {
         Some(match value {
-            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(*id)?),
+            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(id)?),
             WireValue::Int(value) => PackedValue::Int(*value),
             WireValue::Str(value) => PackedValue::Str(value.clone()),
         })
@@ -141,11 +141,11 @@ mod tests {
 
         assert_eq!(
             packer
-                .lookup_row_id(row_id_from(1, 0))
+                .lookup_row_id(&row_id_from(1, 0))
                 .map(|id| id.commit_idx),
             Some(0)
         );
-        assert_eq!(packer.lookup_row_id(row_id_from(2, 0)), None);
+        assert_eq!(packer.lookup_row_id(&row_id_from(2, 0)), None);
         assert_eq!(packer.pack_row_id(row_id_from(3, 0)).commit_idx, 1);
     }
 
@@ -159,7 +159,7 @@ mod tests {
 
         assert_eq!(
             packer
-                .lookup_row_id(row_id_from(1, 0))
+                .lookup_row_id(&row_id_from(1, 0))
                 .map(|id| id.commit_idx),
             Some(0)
         );

@@ -56,7 +56,8 @@ impl TxnInner {
         values: Vec<TxnWireValue>,
     ) -> Result<TempRowId, StoreError> {
         let t = store
-            .table_at_inner(table)
+            .table_at(table)
+            .map(|t| t.inner())
             .ok_or(ValidationError::UnknownTable {
                 path: table.clone(),
             })?;
@@ -108,7 +109,7 @@ impl TxnInner {
     /// canonical id, not to the never-stored raw id.
     fn finalise_live_ids(pending_handles: Vec<TxnLiveRowId>, h: CommitHash, store: &Store) {
         pending_handles.into_iter().for_each(|live_id| {
-            live_id.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
+            live_id.finalize(h, |rid| store.canonical_row_id(&rid).unwrap_or(rid))
         });
     }
 
