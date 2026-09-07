@@ -15,16 +15,15 @@ pub use table_handle::TableHandle;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
+use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedValue};
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
 use crate::table::index::{IndexId, IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 use crate::txn::TxnId;
 
-pub(crate) use self::cell::{PackedRowId, PackedValue};
 use self::col::{Column, IdColumn};
 
 pub type TableOid = usize;
@@ -35,23 +34,6 @@ pub(crate) struct TableMeta<'a> {
     pub path: &'a ir::Path,
     pub oid: TableOid,
     pub schema: &'a Schema,
-}
-
-/// Packed representation of an operation staged for a table.
-#[derive(Debug)]
-pub(crate) enum PackedOp {
-    Add {
-        row_id: PackedRowId,
-        values: Vec<PackedValue>,
-    },
-    Delete {
-        row_id: PackedRowId,
-    },
-}
-
-pub(crate) struct PackedRowView {
-    pub row_id: PackedRowId,
-    pub values: Vec<PackedValue>,
 }
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]

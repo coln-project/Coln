@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
 #[cfg(test)]
 use crate::op::Op;
+use crate::pack::IdPacker;
 use crate::rowing::Rowing;
 #[cfg(test)]
 use crate::table::PackedOp;
