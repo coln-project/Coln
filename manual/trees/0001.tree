@@ -1,10 +1,20 @@
 \title{Coln manual}
+\import{prelude}
 
-\ol{
-  \li{[[002H]]}
-  \li{[[0002]]}
-  \li{[[000K]]}
-  \li{[[000L]]}
-  \li{[[000M]]}
-  \li{[[0003]]}
-}
+\p{\mvrnote{clean up TOC to not include examples, etc.}}
+
+\transclude{002H}
+% Coln as a type theory
+\transclude{000L}
+% Coln as a database language
+\transclude{000M}
+% Coln in practice
+\transclude{0032}
+% Theoretical foundations
+\transclude{000K}
+% f-notation
+\transclude{000R}
+% Meta
+\transclude{0002}
+% Glossary
+\transclude{0003}

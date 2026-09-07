@@ -1,0 +1,6 @@
+\title{Base types}
+\import{prelude}
+
+\p{We could simply put in \code{String} and \code{Int} in as “base sets”. However, this would permit functions \code{String -> String}, and we cannot store a function like that in a database because the set of strings is infinite and the function must be total, so storing the value of the function at every string would take infinite storage. We could say that \code{String} was a theory and not a set, which would prevent it from being used in the domain of a function, but it is perfectly sensible to have the theory \code{String -> Prop} (which denotes a subset of the set of all strings), and making \code{String} a theory would prevent us from forming that.}
+
+\p{The solution to this problem requires building up a little more theory, so we do not address it right now, and instead continue on to give a full account of the “purely combinatorial” fragment of Coln.}

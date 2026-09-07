@@ -1,11 +1,9 @@
-\title{Coln as a language}
+\title{Coln as a type theory}
 \import{prelude}
 
 \transclude{000N}
 
 \transclude{000O}
-
-\transclude{000R}
 
 \transclude{000S}
 
