@@ -52,27 +52,27 @@ jobs:
 
       - name: Build linked packages
         run: |
-          nix develop --accept-flake-config --command npm ci --prefix packages/coln-js-runtime
-          nix develop --accept-flake-config --command npm run --prefix packages/coln-js-runtime build
-          nix develop --accept-flake-config --command pnpm --dir packages/coln-repo install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
-          nix develop --accept-flake-config --command pnpm --dir packages/coln-repo build
+          nix develop --accept-flake-config .#web --command npm ci --prefix packages/coln-js-runtime
+          nix develop --accept-flake-config .#web --command npm run --prefix packages/coln-js-runtime build
+          nix develop --accept-flake-config .#web --command pnpm --dir packages/coln-repo install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
+          nix develop --accept-flake-config .#web --command pnpm --dir packages/coln-repo build
 
       - name: Install Lab dependencies
-        run: nix develop --accept-flake-config --command pnpm --dir examples/lab install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
 
       - name: Install Chromium
-        run: nix develop --accept-flake-config --command pnpm --dir examples/lab exec playwright install --with-deps chromium
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab exec playwright install --with-deps chromium
 
       - name: Build compiler WASM
         run: |
-          nix develop --accept-flake-config --command wasm32-wasi-cabal update 'hackage.haskell.org,2026-07-15T17:07:49Z'
-          nix develop --accept-flake-config --command just examples/stage-web-lab
+          nix develop --accept-flake-config .#web --command wasm32-wasi-cabal update 'hackage.haskell.org,2026-07-15T17:07:49Z'
+          nix develop --accept-flake-config .#web --command just examples/stage-web-lab
 
       - name: Test Lab
-        run: nix develop --accept-flake-config --command pnpm --dir examples/lab test
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab test
 
       - name: Build Lab
-        run: nix develop --accept-flake-config --command pnpm --dir examples/lab build
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab build
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

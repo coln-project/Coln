@@ -12,7 +12,7 @@
       rust-overlay,
       ...
     }:
-    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" ] (
+    inputs.flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-darwin" "x86_64-darwin" ] (
       system:
       let
         pkgs = import nixpkgs {
@@ -173,6 +173,28 @@
       in
       {
         inherit packages;
+        devShells.web = pkgs.mkShell {
+          name = "coln-web";
+          buildInputs = with pkgs; [
+            binaryen
+            esbuild
+            haskell-wasm.wasm32-wasi-ghc-9_14
+            haskell-wasm.wasm32-wasi-cabal-9_14
+            just
+            nodejs_24
+            openssl
+            packages.wasm-bindgen-cli
+            packages.wasm-bodge
+            pkg-config
+            pnpm
+            rustToolchain
+            zlib
+            zlib.dev
+          ];
+          shellHook = ''
+            export CFLAGS="''${CFLAGS:+$CFLAGS }-std=gnu17"
+          '';
+        };
         devShells.default = pkgs.mkShell {
           name = "coln";
           buildInputs = with pkgs; [
