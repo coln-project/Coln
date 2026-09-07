@@ -90,4 +90,4 @@ cache x p sc v = do
         )
 
 cacheTop :: RealmId -> Name -> V.RealmDefinition -> (Trie Entity, Trie Definition, S.El Theory)
-cacheTop rId x def = cache x (BwdNil :> x) (emptyScope rId) def.body.val
+cacheTop rId x def = cache x (BwdNil :> "view" :> x) (emptyScope rId) def.body.val

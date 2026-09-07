@@ -42,16 +42,23 @@ cleanTrie (Node d) = case [(x, y) | (x, Just y) <- toList $ fmap cleanTrie d] of
   [] -> Nothing
   pairs -> Just $ Node $ fromList pairs
 
+fromNode :: Maybe (Trie a) -> [(Name, Trie a)]
+fromNode Nothing = []
+fromNode (Just Leaf{}) = panic "leaf at top of generator trie"
+fromNode (Just (Node d)) = toList d
+
 mirToSIR :: RealmId -> MIR.Realm -> SIR.Realm
 mirToSIR rId r = do
-  let root = separate 0 r.root
-  let (rootE, rootD, rootR) = aggregate3 separateGenerator (TableName rId $ BwdNil :> "root") r.generators
+  let (_, _, root) = cache "root" (BwdNil :> "root") (emptyScope rId) r.root
+  let (rootE, rootD, rootR) = aggregate3 separateGenerator (TableName rId $ BwdNil) r.generators
   let (names, cached) = unzip $ map (fst &&& uncurry (cacheTop rId)) $ OMap.assocs r.realmDefinitions
   let (cachedE, cachedD, _) = unzip3 cached
+  let viewE = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedE)]
+  let viewD = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedD)]
   SIR.Realm
-    { entities = Node $ fromList [(x, y) | (x, Just y) <- ("root", rootE) : zip names (map cleanTrie cachedE)]
-    , definitions = Node $ fromList [(x, y) | (x, Just y) <- ("root", rootD) : zip names (map cleanTrie cachedD)]
-    , rules = Node $ fromList [("root", fromMaybe emptyNode rootR)]
+    { entities = Node $ fromList $ fromNode rootE ++ [("view", viewE)]
+    , definitions = Node $ fromList $ fromNode rootD ++ [("view", viewD)]
+    , rules = fromMaybe emptyNode rootR
     , root = root
     , rootType = r.rootType
     }

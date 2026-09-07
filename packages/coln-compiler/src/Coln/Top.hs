@@ -5,7 +5,6 @@ import Coln.Core.Globals
 import Coln.Diagnostics (ColnCode)
 import Coln.FLIR.Top
 import Coln.Frontend.Parser
-import Coln.MIR.Interpret qualified as MIR
 import Coln.MIR.Top
 import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Top
@@ -46,7 +45,7 @@ loadRealms :: FilePath -> IO (Reporter ColnCode, OMap Name SIR.Realm)
 loadRealms fp = do
   (rep, g) <- loadFile fp
   let realmsCore = OMap.assocs g.realms
-  let globalsMIR = MIR.interpGlobals g
+  let globalsMIR = interpGlobals g
   let realmsMIR = [(rId, coreToMIR globalsMIR rId r) | (rId, r) <- realmsCore]
   let realmsSIR = [(rId, mirToSIR rId r) | (rId, r) <- realmsMIR]
   pure (rep, OMap.fromList realmsSIR)

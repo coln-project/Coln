@@ -4,6 +4,7 @@
 
 module Coln.MIR.Top where
 
+import Control.Arrow ((***))
 import Data.Map.Ordered qualified as OMap
 import Data.Traversable (mapAccumL)
 
@@ -25,8 +26,8 @@ interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions
   interp' :: V.Globals -> Name -> Core.Definition Global -> Match SMLevel (V.El N)
   interp' acc x def = case interp acc BwdNil def.body.stx of 
     Pair l decl -> do
-      let declT = levelCoerce l STheory decl
-      let nomT = snd $ declare (BwdNil :> x) (emptyScope "shouldNeverBeUsed") declT
+      let declT = V.emap (levelCoerce l STheory) decl
+      let nomT = snd $ declareEvaluation (BwdNil :> x) (emptyScope "shouldNeverBeUsed") declT
       let nom = levelCoerce STheory l nomT.val
       Pair l nom
   go :: V.Globals -> (Name, Core.Definition Global) -> V.Globals
@@ -35,22 +36,23 @@ interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions
 coreToMIR :: V.Globals -> RealmId -> Core.Realm -> MIR.Realm
 coreToMIR g rId r = do
   let rTy = interpAt STheory g BwdNil r.rootType.stx
-  let (gens, root) = layoutTop rId rTy
-  let go :: (Int, V.Locals) -> Core.Definition Local -> ((Int, V.Locals), RealmDefinition)
-      go (n, ls) def = do
+  let (rootgens, rootbody) = layoutTop rId rTy
+  let go :: (Int, V.Locals) -> (Name, Core.Definition Local) -> ((Int, V.Locals), (Name, (Trie Generator, RealmDefinition)))
+      go (n, ls) (x, def) = do
         let ty = interpAt STheory g ls $ readb n def.ty
-        let body = interpAt STheory g ls def.body.stx
-        let l' = Pair STheory body
+        let bodyD = interpAt STheory g ls def.body.stx
+        let (gens, body) = declareEvaluation (BwdNil :> "init" :> x) (emptyScope rId) bodyD
+        let l' = Pair STheory body.val
         let def' =
               RealmDefinition
-                { body = M.fromV n body
+                { body = body
                 , ty = ty
                 }
-        ((n + 1, ls :> l'), def')
-  let (_, defs) = mapAccumL go (1, BwdNil :> Pair STheory root.val) r.realmDefinitions
+        ((n + 1, ls :> l'), (x, (gens, def')))
+  let (gens, defs) = fromList *** OMap.fromList $ unzip $ fmap (\(x,(y,z)) -> ((x,y),(x,z))) $ snd $ mapAccumL go (1, BwdNil :> Pair STheory rootbody.val) $ OMap.assocs r.realmDefinitions
   MIR.Realm
-    { root = root.val
+    { root = rootbody.val
     , rootType = r.rootType.val
-    , generators = gens
+    , generators = Node $ fromList $ [("root", rootgens), ("init", Node gens)]
     , realmDefinitions = defs
     }
