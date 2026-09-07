@@ -29,11 +29,11 @@ split3 d = do
   (d1, d2, d3)
 
 aggregate3 ::
-  (TableName -> a -> (Maybe (Trie x), Maybe (Trie y), Maybe (Trie z))) ->
-  (TableName -> Trie a -> (Maybe (Trie x), Maybe (Trie y), Maybe (Trie z)))
-aggregate3 f t (Leaf a) = f t a
-aggregate3 f t (Node d) = do
-  let (d1, d2, d3) = split3 $ aggregate3 f t <$> d
+  (Path -> a -> (Maybe (Trie x), Maybe (Trie y), Maybe (Trie z))) ->
+  (Path -> Trie a -> (Maybe (Trie x), Maybe (Trie y), Maybe (Trie z)))
+aggregate3 f p (Leaf a) = f p a
+aggregate3 f p (Node d) = do
+  let (d1, d2, d3) = split3 $ mapWithKey (\x -> aggregate3 f (p :> x)) d
   (Node <$> d1, Node <$> d2, Node <$> d3)
 
 cleanTrie :: Trie a -> Maybe (Trie a)
@@ -50,7 +50,7 @@ fromNode (Just (Node d)) = toList d
 mirToSIR :: RealmId -> MIR.Realm -> SIR.Realm
 mirToSIR rId r = do
   let (_, _, root) = cache "root" (BwdNil :> "root") (emptyScope rId) r.root
-  let (rootE, rootD, rootR) = aggregate3 separateGenerator (TableName rId $ BwdNil) r.generators
+  let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (TableName rId p)) BwdNil r.generators
   let (names, cached) = unzip $ map (fst &&& uncurry (cacheTop rId)) $ OMap.assocs r.realmDefinitions
   let (cachedE, cachedD, _) = unzip3 cached
   let viewE = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedE)]

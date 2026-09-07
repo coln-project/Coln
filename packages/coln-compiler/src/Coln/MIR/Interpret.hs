@@ -52,7 +52,7 @@ instance Interp S.El V.El where
     S.Proj l t0 x -> withLevel l.mlevel $ \sl -> do
       let v = interpAt sl g e t0
       Pair sl (V.proj v x)
-    S.Init _ -> panic "cannot interpret init yet"
+    S.Init a -> Pair STheory $ V.Describe $ V.Init (interpAt STheory g e a)
     S.Lit l -> Pair SSet (V.Lit l)
     S.Is t -> case interp g e t of
       Pair l v -> Pair l (V.Become v)

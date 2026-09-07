@@ -79,7 +79,7 @@ instance LevelCoerce (El c) where
   levelCoerce STheory SSet (LiftEl LSetTheory v) = v
   levelCoerce STop STheory (LiftEl LTheoryTop v) = v
   levelCoerce STop SSet (LiftEl LTheoryTop (LiftEl LSetTheory v)) = v
-  levelCoerce _ _ _ = panic "cannot level coerce"
+  levelCoerce sl0 sl1 _ = panic $ "cannot level coerce from " ++ show sl0 ++ " to " ++ show sl1
 
 data FunctionType (l0 :: MLevel) (l1 :: MLevel) = FunctionType
   { variant :: SFunctionVariant l0 l1

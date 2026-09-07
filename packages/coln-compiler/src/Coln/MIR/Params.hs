@@ -8,6 +8,12 @@ data SMLevel :: MLevel -> Type where
   STheory :: SMLevel Theory
   STop :: SMLevel Top
 
+instance Show (SMLevel l) where
+  show = \case
+    SSet -> "SSet"
+    STheory -> "STheory"
+    STop -> "STop"
+
 withLevel :: MLevel -> (forall l. SMLevel l -> a) -> a
 withLevel l f = case l of
   Set -> f SSet

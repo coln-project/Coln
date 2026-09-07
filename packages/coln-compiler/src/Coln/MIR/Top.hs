@@ -16,20 +16,32 @@ import Coln.Core.Readback
 import Coln.MIR.Interpret
 import Coln.MIR.Layout
 import Coln.MIR.Memoed qualified as M
-import Coln.MIR.Params (SMLevel (..), levelCoerce)
+import Coln.MIR.Params (SMLevel (..))
 import Coln.MIR.Realm as MIR
 import Coln.MIR.Value qualified as V
+
+evalToNominative :: V.Description V.El l -> V.El N l
+evalToNominative = \case
+  V.Describe v -> toNominative v
+  V.Become v -> v
+
+toNominative :: V.El D l -> V.El N l
+toNominative = \case
+  V.LiftEl l v -> V.LiftEl l (toNominative v)
+  V.Init _ -> panic "init not allowed in globals"
+  V.Lam fv a clo -> do
+    let clo' = case clo of
+         V.Clo x f -> V.Clo x (evalToNominative . f)
+         V.CloConst v -> V.CloConst (evalToNominative v)
+    V.Lam fv a clo'
+  V.Cons fields -> V.Cons $ evalToNominative <$> fields
 
 interpGlobals :: Core.Globals -> V.Globals
 interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions
  where
   interp' :: V.Globals -> Name -> Core.Definition Global -> Match SMLevel (V.El N)
-  interp' acc x def = case interp acc BwdNil def.body.stx of 
-    Pair l decl -> do
-      let declT = V.emap (levelCoerce l STheory) decl
-      let nomT = snd $ declareEvaluation (BwdNil :> x) (emptyScope "shouldNeverBeUsed") declT
-      let nom = levelCoerce STheory l nomT.val
-      Pair l nom
+  interp' acc _ def = case interp acc BwdNil def.body.stx of 
+    Pair l v -> Pair l (evalToNominative v)
   go :: V.Globals -> (Name, Core.Definition Global) -> V.Globals
   go acc (x, def) = acc OMap.>| (x, interp' acc x def)
 

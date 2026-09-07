@@ -204,9 +204,9 @@ genEl :: Access -> TSEnv -> SIR.El l -> TS.El
 genEl access e = \case
   SIR.LiftEl t -> genEl access e t
   SIR.Var i -> elemAt e.tsLocals i
-  SIR.Single q -> TS.MethodCall (genQuery access e q) "single" []
+  -- SIR.Single q -> TS.MethodCall (genQuery access e q) "single" []
   SIR.Proj t x -> TS.Proj (genEl access e t) (mangle x)
-  SIR.Multi _ q -> TS.MethodCall (genQuery access e q) "multi" []
+  -- SIR.Multi _ q -> TS.MethodCall (genQuery access e q) "multi" []
   SIR.Lam _dom abs -> do
     let (x, body) = genAbs access e abs
     TS.Lam

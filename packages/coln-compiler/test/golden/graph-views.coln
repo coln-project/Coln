@@ -1,0 +1,23 @@
+theory Graph := sig
+  V : Set
+  E : V -> V -> Set
+end
+
+theory TransExt (^i G : Graph) := sig
+  connected : G.V -> G.V -> Prop
+  refl : (v : G.V) -> connected v v
+  snoc : (v0 : G.V) -> (v1 : G.V) -> (v2 : G.V) -> connected v0 v1 -> G.E v1 v2 -> connected v0 v2
+end
+
+realm GraphRealm @ Graph
+  def triangle : Set := sig
+    a : root.V
+    b : root.V
+    c : root.V
+    f : root.E a b
+    g : root.E b c
+    h : root.E a c
+  end
+
+  ind def trans-closure : TransExt root := init (TransExt root)
+end

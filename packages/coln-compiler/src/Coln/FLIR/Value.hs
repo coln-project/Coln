@@ -231,7 +231,9 @@ toNotationTerm _ (Param (FId _)) = panic "param"
 toNotationAtom :: OMap TableName [ColName] -> [ColName] -> Atom -> N.Ntn0
 toNotationAtom columnNames cs a = do
   let entity = toNotationTop a.entity
-  let cols = fromJust (OMap.lookup a.entity columnNames)
+  let cols = case OMap.lookup a.entity columnNames of
+        Just cols -> cols
+        Nothing -> panic $ show a.entity ++ " not found"
   let field (i, t) = N.Infix (toNotationColName (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
   let body = N.Juxt entity $ N.Tuple (map field . mapMaybe sequence $ zip [0 ..] a.values) ()
   case a.rowId of
