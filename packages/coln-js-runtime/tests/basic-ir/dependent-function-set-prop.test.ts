@@ -1,0 +1,20 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { valueEqual } from "@coln-project/runtime";
+import * as DependentFunctionSetPropRealm from "../../../coln-compiler/test/golden/basic-ir/dependent-function-set-prop.ts.output/TRealm.ts";
+import { beginRealm } from "./helpers.ts";
+
+test("dependent-function-set-prop", () => {
+  const realm = beginRealm(DependentFunctionSetPropRealm);
+  const a = realm.root.A.add();
+  const b = realm.root.B(a).add();
+  realm.root.f(a).set(b);
+  const view = realm.commit();
+
+  assert.equal(valueEqual(view.f(a).get(), b), true);
+});

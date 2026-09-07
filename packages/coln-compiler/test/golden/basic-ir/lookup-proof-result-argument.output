@@ -1,0 +1,56 @@
+-- elaborated
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  P : X -> Prop
+  witness : (x : X) -> P x
+  R : (x : X) -> P x -> Prop
+  use : (x : X) -> R x (witness x)
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      P = rel [a : TRealm.X []]
+      witness = (fun [x : TRealm.X []] -> TRealm.P [a := x])
+      R = rel [x : TRealm.X [], a : TRealm.P [a := x]]
+      use = (fun [x : TRealm.X []] -> TRealm.R [
+        x := x,
+        a := TRealm.witness [x := x]
+      ])
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.P := [.a : ℜ.X]
+    table ℜ.witness := [.x : ℜ.X, .a : ℜ.P] primarykey [.x]
+    table ℜ.R := [.x : ℜ.X, .a : ℜ.P]
+    table ℜ.use := [.x : ℜ.X, .a : ℜ.R] primarykey [.x]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ a ∈ ℜ.X []
+    enforced ℜ.witness.foreignKey x a := ℜ.witness [
+      .x ↦ x,
+      .a ↦ a
+    ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.P [.a ↦ x]
+    monitored ℜ.witness.total x := x ∈ ℜ.X [] ⊢ ℜ.witness [.x ↦ x]
+    enforced ℜ.R.foreignKey x a := ℜ.R [.x ↦ x, .a ↦ a] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.P [
+      .a ↦ x
+    ]
+    enforced ℜ.use.foreignKey x a a.a := ℜ.use [.x ↦ x, .a ↦ a] ∧ ℜ.witness [
+      .x ↦ x,
+      .a ↦ a.a
+    ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.R [.x ↦ x, .a ↦ a.a]
+    monitored ℜ.use.total x := x ∈ ℜ.X [] ⊢ ℜ.use [.x ↦ x]
+  end
+end
+
+-- messages

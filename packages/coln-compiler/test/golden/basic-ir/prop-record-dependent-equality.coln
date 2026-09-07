@@ -1,0 +1,13 @@
+def Witness (P : Prop) : Prop := sig
+  first : P
+  second : P
+  same : first = second
+end
+
+theory T := sig
+  P : Prop
+  witness : Witness P
+end
+
+realm TRealm @ T
+end

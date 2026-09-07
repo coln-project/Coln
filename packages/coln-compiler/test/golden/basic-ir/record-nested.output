@@ -1,0 +1,44 @@
+-- elaborated
+global entry named Inner
+in mode: Conjunctive
+type: Set
+value: sig
+  rank : Int
+end
+global entry named Outer
+in mode: Conjunctive
+type: Set
+value: sig
+  name : String
+  inner : Inner
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  payload : Outer
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      payload = (fun [] -> Outer)
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.payload := [.a.name : String, .a.inner.rank : Int] primarykey []
+  end
+  rules
+    enforced ℜ.payload.foreignKey a.name a.inner.rank := ℜ.payload [
+      .a.name ↦ a.name,
+      .a.inner.rank ↦ a.inner.rank
+    ] ⊢ ⊤
+    monitored ℜ.payload.total := ⊤ ⊢ ℜ.payload []
+  end
+end
+
+-- messages

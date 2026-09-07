@@ -1,0 +1,12 @@
+def Shadowed (X : Set) (X : Set) : Set := sig
+  value : X
+end
+
+theory T := sig
+  A : Set
+  B : Set
+  shadowed : Shadowed A B -> Set
+end
+
+realm TRealm @ T
+end

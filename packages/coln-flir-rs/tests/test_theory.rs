@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-mod common;
-
 use coln_flir_rs::ir::Path;
+use coln_flir_rs::test_utils;
 
 // TODO add more theory json files
 const THEORY_FIXTURES: &[&str] = &["Graph.json", "Prim.json"];
@@ -12,13 +11,13 @@ const THEORY_FIXTURES: &[&str] = &["Graph.json", "Prim.json"];
 #[test]
 fn deserialises_all_theory_fixtures() {
     for name in THEORY_FIXTURES {
-        common::load_theory(name);
+        test_utils::load_theory_from_json(name);
     }
 }
 
 #[test]
 fn deserialises_graph_theory() {
-    let theory = common::load_theory("Graph.json");
+    let theory = test_utils::load_theory_from_json("Graph.json");
 
     assert_eq!(theory.tables.len(), 2);
     assert_eq!(theory.rules.len(), 2);

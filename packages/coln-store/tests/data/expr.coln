@@ -1,0 +1,13 @@
+theory Expr (V: Set) := sig
+  t: Set
+  vars: V -> t
+  plus: t -> t -> t
+end
+
+theory Main := sig
+  v0: Set
+  exprs: Expr v0
+end
+
+realm ExprRealm @ Main
+end

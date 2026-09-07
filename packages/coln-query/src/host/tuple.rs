@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::host::variable::Value;
-use crate::typing::ExprType;
+use crate::typing::type_resolver::ExprType;
 use std::fmt;
 use std::rc::Rc;
 

@@ -2,10 +2,6 @@ theory Model := sig
   X : Set
 end
 
-def Payload : Set := sig
-  name : String
-end
-
 def Box (M : Model) (Y : Set) : Set := sig
   modelValue : M.X
   value : Y
@@ -13,7 +9,7 @@ end
 
 theory T := sig
   model : Model
-  boxed : Box model Payload -> Set
+  boxed : Box model String -> Set
 end
 
 realm TRealm @ T

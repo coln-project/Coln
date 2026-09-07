@@ -5,7 +5,7 @@
 use crate::{
     error::SyntaxError,
     host::{
-        Code,
+        QueryIr,
         expr::{
             AssignExpr, BinaryExpr, CallExpr, Expr, ExprVisitorMut, FunctionExpr, GetIndexExpr,
             GroupingExpr, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
@@ -15,12 +15,19 @@ use crate::{
     },
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, OutputExpr, ProjectionExpr, RelExpr, RelExprVisitorMut, SelectionExpr,
-        SourceExpr, UnionExpr,
+        FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr, RelExpr,
+        RelExprVisitorMut, SelectionExpr, SourceExpr, UnionExpr,
     },
-    util::{Named, Resolvable},
 };
 use std::collections::HashMap;
+
+pub trait Resolvable {
+    fn set_resolved(&mut self, resolved: super::variable::VariableSlot);
+}
+
+pub trait Named {
+    fn name(&self) -> &str;
+}
 
 #[derive(Clone, Copy, Debug)]
 struct VariableMeta {
@@ -86,20 +93,21 @@ impl<T> ScopeStack<T> {
 /// [`ResolvedCode::from`] mints one, so a backend cannot be handed an
 /// unprocessed plan.
 #[derive(Clone)]
-pub struct ResolvedCode(Code);
+pub struct ResolvedCode(QueryIr);
 
 impl ResolvedCode {
     /// Run the static pipeline over a raw plan and resolve variable slots.
-    pub fn from(mut code: Code) -> Result<Self, SyntaxError> {
+    pub fn from(code: impl Into<QueryIr>) -> Result<Self, SyntaxError> {
+        let mut code = code.into();
         let mut scopes = ScopeStack::new();
         let mut ctx = ResolverContext::new(&mut scopes);
         Resolver::new().resolve(code.iter_mut(), &mut ctx)?;
         Ok(Self(code))
     }
-    pub fn as_code(&self) -> &Code {
+    pub fn as_code(&self) -> &QueryIr {
         &self.0
     }
-    pub fn into_code(self) -> Code {
+    pub fn into_code(self) -> QueryIr {
         self.0
     }
 }
@@ -381,6 +389,31 @@ impl RelExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
                     let ret = self
                         .visit_expr(left, ctx)
                         .and_then(|()| self.visit_expr(right, ctx));
+                    ctx.end_tuple_context();
+                    ret
+                })
+            })
+            .and_then(|()| self.visit_projection_attributes(expr.attributes.as_mut(), ctx))
+    }
+
+    fn visit_multi_way_equi_join_expr(
+        &mut self,
+        expr: &mut MultiWayEquiJoinExpr,
+        ctx: VisitorCtx<'_, '_>,
+    ) -> VisitorResult {
+        // The structural invariants (arity, in-bounds and distinct relation
+        // indices, at least two occurrences per join variable) are checked here
+        // rather than re-derived by every consumer, because the fields are
+        // public and a plan may be assembled or rewritten by hand.
+        expr.validate()?;
+
+        expr.relations
+            .iter_mut()
+            .try_for_each(|relation| self.visit_expr(relation, ctx))
+            .and_then(|()| {
+                expr.on_exprs_mut().try_for_each(|expr| {
+                    ctx.begin_tuple_context();
+                    let ret = self.visit_expr(expr, ctx);
                     ctx.end_tuple_context();
                     ret
                 })

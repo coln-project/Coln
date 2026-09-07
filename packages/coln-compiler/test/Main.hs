@@ -35,7 +35,13 @@ knownFailingElaboratorTests :: [String]
 knownFailingElaboratorTests = []
 
 knownFailingTypeScriptTests :: [String]
-knownFailingTypeScriptTests = ["equality", "equality-prop", "rule-literals"]
+knownFailingTypeScriptTests =
+  [ "equality"
+  , "equality-prop"
+  , "equality-record"
+  , "equality-record-nested"
+  , "rule-literals"
+  ]
 
 main :: IO ()
 main = defaultMain =<< goldenTests

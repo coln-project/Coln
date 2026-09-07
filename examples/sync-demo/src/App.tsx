@@ -214,12 +214,16 @@ export function App({ handle }: Props) {
 
 function projectGraph(doc: GraphDoc): UiGraphProjection {
   const vertexRows = iteratorToArray(doc.realm.root.V.values())
-  const vertices = vertexRows.map(row => ({
-    id: refId(row.rowId),
-    ref: row.rowId,
-    graphId: SYNTHETIC_GRAPH_ID,
-    graph: null,
-  }))
+  const vertices = vertexRows.map(row => {
+    const ref = valueRef(row.rowId)
+    if (!ref) throw new Error("vertex row is missing a row id")
+    return {
+      id: refId(ref),
+      ref,
+      graphId: SYNTHETIC_GRAPH_ID,
+      graph: null,
+    }
+  })
   const visibleVertexIds = new Set(vertices.map(vertex => vertex.id))
 
   return {
@@ -241,10 +245,13 @@ function projectEdge(row: RowView, visibleVertexIds: Set<string>): UiEdge[] {
   const toId = refId(to)
   if (!visibleVertexIds.has(fromId) || !visibleVertexIds.has(toId)) return []
 
+  const ref = valueRef(row.rowId)
+  if (!ref) return []
+
   return [
     {
-      id: refId(row.rowId),
-      ref: row.rowId,
+      id: refId(ref),
+      ref,
       graphId: SYNTHETIC_GRAPH_ID,
       graph: null,
       fromId,

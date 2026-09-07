@@ -1,0 +1,24 @@
+def Unit : Set := sig
+end
+
+def Inner (X : Set) (P : Prop) : Set := sig
+  value : X
+  evidence : P
+end
+
+def Outer (X : Set) (P : Prop) : Set := sig
+  unit : Unit
+  inner : Inner X P
+  trailing : X
+end
+
+theory T := sig
+  X : Set
+  P : Prop
+  first : Outer X P
+  second : Outer X P
+  same : first = second
+end
+
+realm TRealm @ T
+end

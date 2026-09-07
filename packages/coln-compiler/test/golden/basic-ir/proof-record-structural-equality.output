@@ -1,0 +1,57 @@
+-- elaborated
+global entry named Pair
+in mode: Conjunctive
+type: (X : Set) -> Set
+value: X => sig
+  left : X
+  right : X
+end
+global entry named Comparison
+in mode: Conjunctive
+type: (X : Set) -> Set
+value: X => sig
+  first : Pair X
+  second : Pair X
+  same : first = second
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  comparison : Comparison X
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      comparison = (fun [] -> Comparison (TRealm.X []))
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.comparison := [
+      .a.first.left : ℜ.X,
+      .a.first.right : ℜ.X,
+      .a.second.left : ℜ.X,
+      .a.second.right : ℜ.X
+    ] primarykey []
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.comparison.foreignKey a.first.left a.first.right a.second.left a.second.right := ℜ.comparison [
+      .a.first.left ↦ a.first.left,
+      .a.first.right ↦ a.first.right,
+      .a.second.left ↦ a.second.left,
+      .a.second.right ↦ a.second.right
+    ] ⊢ a.first.left ∈ ℜ.X [] ∧ a.first.right ∈ ℜ.X [] ∧ a.second.left ∈ ℜ.X [] ∧ a.second.right ∈ ℜ.X [] ∧ a.first.left = a.second.left ∧ a.first.right = a.second.right
+    monitored ℜ.comparison.total := ⊤ ⊢ ℜ.comparison []
+  end
+end
+
+-- messages

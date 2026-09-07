@@ -1,0 +1,47 @@
+-- elaborated
+global entry named Evidence
+in mode: Conjunctive
+type: (X : Set) -> (P : X -> Prop) -> (x : X) -> Set
+value: X => P => x => sig
+  proof : P x
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  P : X -> Prop
+  evidence : (x : X) -> Evidence X P x -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      P = rel [a : TRealm.X []]
+      evidence = rel [
+        x : TRealm.X [],
+        a : Evidence (TRealm.X []) (a => TRealm.P [a := a]) x
+      ]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.P := [.a : ℜ.X]
+    table ℜ.evidence := [.x : ℜ.X, .a.proof : ℜ.P]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ a ∈ ℜ.X []
+    enforced ℜ.evidence.foreignKey x a.proof := ℜ.evidence [
+      .x ↦ x,
+      .a.proof ↦ a.proof
+    ] ⊢ x ∈ ℜ.X [] ∧ a.proof ∈ ℜ.P [.a ↦ x]
+  end
+end
+
+-- messages

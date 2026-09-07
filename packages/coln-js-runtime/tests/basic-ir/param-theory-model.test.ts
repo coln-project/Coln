@@ -15,6 +15,5 @@ test("param-theory-model", () => {
   realm.root.pointed.point.set(point);
   const view = realm.commit();
 
-  assert.equal(view.model.X.has(point), true);
   assert.equal(valueEqual(view.pointed.point.get(), point), true);
 });

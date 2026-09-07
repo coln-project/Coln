@@ -15,6 +15,8 @@ pub mod wire;
 
 use std::borrow::Cow;
 
+use coln_flir_rs::ir::FlatRealm;
+
 use crate::{
     commit::{
         author::Author,
@@ -22,12 +24,12 @@ use crate::{
         error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
-        wire::{CommitData, root::RootCommitData},
+        wire::CommitData,
     },
     ir::Path,
     op::Op,
     table::{TableMeta, TableOid},
-    txn::{PendingOp, RowRef, TxnCellValue},
+    txn::{PendingOp, TxnWireRowId, TxnWireValue},
 };
 
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
@@ -63,7 +65,7 @@ pub struct Commit<'a> {
 
 impl Commit<'static> {
     /// Creating the commit data structure from the deserialized root data
-    pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, CodecError> {
+    pub(crate) fn from_root_data(root: &FlatRealm) -> Result<Self, CodecError> {
         let bytes = wire::serialize_root(root)?;
         Ok(Self::from_root_bytes(bytes))
     }
@@ -169,7 +171,7 @@ impl<'a> Commit<'a> {
         self.chunk_type() == ChunkType::Root
     }
 
-    pub(crate) fn root_payload(&self) -> Result<RootCommitData, CodecError> {
+    pub(crate) fn root_payload(&self) -> Result<FlatRealm, CodecError> {
         if self.chunk_type() != ChunkType::Root {
             return Err(CodecError::ChunkMismatch {
                 expected: ChunkType::Root,
@@ -209,7 +211,7 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
     for op in pending {
         let PendingOp::Add { values, .. } = op;
         for value in values {
-            if let TxnCellValue::Id(RowRef::Existing(row_id)) = value {
+            if let TxnWireValue::Id(TxnWireRowId::Existing(row_id)) = value {
                 hash_mapper.insert(row_id.commit);
             }
         }
@@ -225,10 +227,9 @@ mod tests {
     use super::*;
     use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
-    use crate::commit::wire::root::{RootCommitData, RootTableEntry};
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path};
-    use crate::table::{RowId, TableMeta, TableOid};
-    use crate::txn::{RowRef, TempRowId};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, TableEntry};
+    use crate::table::{TableMeta, TableOid, WireRowId};
+    use crate::txn::{TempRowId, TxnWireRowId};
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])
@@ -371,6 +372,16 @@ mod tests {
         }
     }
 
+    fn int_theory() -> FlatRealm {
+        FlatRealm {
+            tables: vec![TableEntry {
+                path: Path::from("T"),
+                table: owned_int_schema(),
+            }],
+            rules: vec![],
+        }
+    }
+
     fn data(
         deps: Vec<CommitHash>,
         author: Author,
@@ -383,15 +394,7 @@ mod tests {
 
     #[test]
     fn decode_root_preserves_payload_and_hash() {
-        let root = RootCommitData {
-            tables: vec![RootTableEntry {
-                path: "T".to_owned(),
-                oid: 0,
-                schema: owned_int_schema(),
-            }],
-            laws: vec![],
-        };
-        let original = Commit::from_root_data(&root).expect("build root");
+        let original = Commit::from_root_data(&int_theory()).expect("build root");
 
         let bytes = Chunk::from(&original).encoded();
         let chunk = Chunk::decode(&bytes).expect("decode root chunk");
@@ -412,7 +415,7 @@ mod tests {
     fn decode_data_preserves_payload_metadata_and_ops() {
         let dep = zero_hash();
         let deps = vec![dep];
-        let rid = RowId {
+        let rid = WireRowId {
             commit: dep,
             counter: 7,
         };
@@ -420,15 +423,15 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(0),
                 table: 0,
-                values: vec![1i64.into()],
+                values: vec![1i32.into()],
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
                 table: 1,
                 values: vec![
-                    TxnCellValue::Id(RowRef::Existing(rid)),
-                    TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
-                    TxnCellValue::Str("x".into()),
+                    TxnWireValue::Id(TxnWireRowId::Existing(rid)),
+                    TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
+                    TxnWireValue::Str("x".into()),
                 ],
             },
         ];
@@ -564,15 +567,7 @@ mod tests {
 
     #[test]
     fn root_commit_wraps_and_decodes_root_payload() {
-        let root = RootCommitData {
-            tables: vec![RootTableEntry {
-                path: "T".to_owned(),
-                oid: 0,
-                schema: owned_int_schema(),
-            }],
-            laws: vec![],
-        };
-
+        let root = int_theory();
         let commit = Commit::from_root_data(&root).expect("build root");
 
         assert_eq!(commit.chunk_type(), ChunkType::Root);
@@ -582,14 +577,13 @@ mod tests {
 
         let decoded = commit.root_payload().expect("decode root payload");
         assert_eq!(decoded.tables.len(), 1);
-        assert_eq!(decoded.tables[0].path, "T");
-        assert_eq!(decoded.tables[0].oid, 0);
-        assert_eq!(decoded.tables[0].schema.columns, owned_int_schema().columns);
+        assert_eq!(decoded.tables[0].path, Path::from("T"));
+        assert_eq!(decoded.tables[0].table.columns, owned_int_schema().columns);
         assert_eq!(
-            decoded.tables[0].schema.primary_key,
+            decoded.tables[0].table.primary_key,
             Some(vec![Path::from("c0")])
         );
-        assert!(decoded.laws.is_empty());
+        assert!(decoded.rules.is_empty());
     }
 
     #[test]
@@ -612,22 +606,22 @@ mod tests {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = RowId {
+        let rid = WireRowId {
             commit: dep,
             counter: 7,
         };
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![1i64.into()],
+            values: vec![1i32.into()],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
             table: 1,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid)),
-                TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
-                TxnCellValue::Str("x".into()),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
+                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
+                TxnWireValue::Str("x".into()),
             ],
         };
         let pending = vec![op0, op1];
@@ -656,22 +650,22 @@ mod tests {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = RowId {
+        let rid = WireRowId {
             commit: dep,
             counter: 7,
         };
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![1i64.into()],
+            values: vec![1i32.into()],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
             table: 1,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid)),
-                TxnCellValue::Id(RowRef::Pending(TempRowId(0))),
-                TxnCellValue::Str("x".into()),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
+                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
+                TxnWireValue::Str("x".into()),
             ],
         };
         let pending = vec![op0, op1];
@@ -695,16 +689,16 @@ mod tests {
     fn other_hashes_contain_right_hashes() {
         let ha = CommitHash([1u8; HASH_SIZE]);
         let hb = CommitHash([2u8; HASH_SIZE]);
-        let rid_a = RowId {
+        let rid_a = WireRowId {
             commit: ha,
             counter: 0,
         };
-        let rid_b = RowId {
+        let rid_b = WireRowId {
             commit: hb,
             counter: 3,
         };
         // also point to ha
-        let rid_a_later = RowId {
+        let rid_a_later = WireRowId {
             commit: ha,
             counter: 99,
         };
@@ -713,16 +707,16 @@ mod tests {
             row_id: TempRowId(0),
             table: 0,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid_a)),
-                TxnCellValue::Id(RowRef::Existing(rid_a)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a)),
             ],
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
             table: 0,
             values: vec![
-                TxnCellValue::Id(RowRef::Existing(rid_b)),
-                TxnCellValue::Id(RowRef::Existing(rid_a_later)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_b)),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a_later)),
             ],
         };
         let commit = Commit::from_commit_data(

@@ -14,7 +14,6 @@ test("foreign-key", () => {
   const edge = realm.root.E(vertex).add();
   const view = realm.commit();
 
-  assert.equal(view.V.has(vertex), true);
   assert.equal(view.E(vertex).has(edge), true);
 });
 

@@ -1,0 +1,31 @@
+-- elaborated
+global entry named PropAlias
+in mode: Conjunctive
+type: Theory
+value: Prop
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  V : PropAlias
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      V = rel []
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.V := []
+  end
+  rules
+    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+  end
+end
+
+-- messages

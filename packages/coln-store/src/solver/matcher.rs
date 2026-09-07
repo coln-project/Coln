@@ -10,15 +10,15 @@ use crate::{
         bind::{Binding, BoundValue},
         compile::CompTerm,
     },
-    table::CellValue,
+    table::WireValue,
 };
 
 /// Check if an _already_ bound variable slot matches value.
 pub(crate) fn boundvar_matches(binding: &Binding, slot: usize, value: &BoundValue) -> bool {
     match binding.get(slot) {
         Some(Some(bound)) => match (bound, value) {
-            (BoundValue::RId(a), BoundValue::Cell(CellValue::Id(b)))
-            | (BoundValue::Cell(CellValue::Id(a)), BoundValue::RId(b)) => {
+            (BoundValue::RId(a), BoundValue::Cell(WireValue::Id(b)))
+            | (BoundValue::Cell(WireValue::Id(a)), BoundValue::RId(b)) => {
                 debug!(bound=?bound, value = ?value, "matching");
                 a == b
             }
@@ -36,10 +36,10 @@ pub(crate) fn term_matches(binding: &Binding, term: &CompTerm, value: &BoundValu
     match term {
         CompTerm::Var(slot) => boundvar_matches(binding, *slot, value),
         CompTerm::Lit(ir::Lit::Int { value: expected }) => {
-            *value == BoundValue::Cell(CellValue::Int(*expected))
+            *value == BoundValue::Cell(WireValue::Int(*expected))
         }
         CompTerm::Lit(ir::Lit::String { value: expected }) => {
-            *value == BoundValue::Cell(CellValue::Str(expected.clone()))
+            *value == BoundValue::Cell(WireValue::Str(expected.clone()))
         }
     }
 }

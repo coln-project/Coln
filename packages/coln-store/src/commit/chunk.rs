@@ -27,6 +27,8 @@ impl From<ChunkType> for u8 {
     }
 }
 
+/// A chunk what the external world sees as a "chunk" of data, right now it is
+/// just a commit, but in the future it might be a sedimemtree fragment.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Chunk {
     Commit { header: Header, payload: Vec<u8> },
@@ -51,6 +53,10 @@ impl Chunk {
             )));
         }
         Ok(chunk)
+    }
+
+    pub fn is_root(&self) -> bool {
+        self.chunk_type() == ChunkType::Root
     }
 
     pub(crate) fn chunk_type(&self) -> ChunkType {

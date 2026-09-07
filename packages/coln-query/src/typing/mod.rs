@@ -5,4 +5,3 @@
 //! A future/potential type checking pass. Mostly unused today.
 
 pub mod type_resolver;
-pub use type_resolver::ExprType;

@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{host::expr::FunctionExpr, host::variable::Environment, typing::ExprType};
+use crate::{
+    host::expr::FunctionExpr, host::variable::Environment, typing::type_resolver::ExprType,
+};
 use std::{
     cell::RefCell,
     fmt::{self, Debug, Display},

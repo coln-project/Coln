@@ -6,10 +6,11 @@ use std::{collections::BTreeSet, path::PathBuf, sync::Once};
 
 use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_store::{
-    commit::hash::CommitHash,
-    commit::pst,
-    store::{Store, error::StoreIntError},
-    table::{CellValue, RowId},
+    commit::{hash::CommitHash, pst},
+    store::{Store, error::StoreError},
+    table::{WireRowId, WireValue},
+    txn::empty_row,
+    value::Value,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -40,7 +41,7 @@ fn fixture_theory(name: &str) -> FlatRealm {
     serde_json::from_str(&json).expect("parse FlatRealm from JSON")
 }
 
-fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
+fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreError> {
     let graphs = Path::from("Path.Graphs");
     let g0 = Path::from("Path.G0");
     let g1 = Path::from("Path.G1");
@@ -48,48 +49,52 @@ fn add_basic_data_to_path(store: &mut Store) -> Result<(), StoreIntError> {
     let ge = Path::from("Path.G.E");
 
     let mut tx = store.transaction();
-    let gid1 = tx.add(&graphs, vec![])?;
-    let gid2 = tx.add(&graphs, vec![])?;
-    tx.add(&g0, vec![gid2.clone().into()])?;
-    tx.add(&g1, vec![gid2.clone().into()])?;
-    let v1 = tx.add(&gv, vec![gid1.clone().into()])?;
-    let v2 = tx.add(&gv, vec![gid1.clone().into()])?;
-    tx.add(&ge, vec![gid1.into(), v1.into(), v2.into()])?;
+    let gid1 = tx.add(&graphs, empty_row())?;
+    let gid2 = tx.add(&graphs, empty_row())?;
+    tx.add(&g0, vec![gid2.clone()])?;
+    tx.add(&g1, vec![gid2.clone()])?;
+    let v1 = tx.add(&gv, vec![gid1.clone()])?;
+    let v2 = tx.add(&gv, vec![gid1.clone()])?;
+    tx.add(&ge, vec![gid1, v1, v2])?;
     tx.commit()?;
 
     Ok(())
 }
 
-fn add_vertex_to_graph(store: &mut Store, graph_row: usize) -> Result<CommitHash, StoreIntError> {
+fn add_vertex_to_graph(store: &mut Store, graph_row: usize) -> Result<CommitHash, StoreError> {
     let graphs = Path::from("Path.Graphs");
     let gv = Path::from("Path.G.V");
-    let graph = store
-        .table_at(&graphs)
-        .expect("Path.Graphs table")
-        .row_id_at(graph_row)
-        .expect("graph row");
+    let graph = Value::Id(
+        store
+            .table_at(&graphs)
+            .expect("Path.Graphs table")
+            .row_id_at(graph_row)
+            .expect("graph row"),
+    );
 
     let mut tx = store.transaction();
-    tx.add(&gv, vec![graph.into()])?;
+    tx.add(&gv, vec![graph])?;
     tx.commit()
 }
 
-fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, StoreIntError> {
+fn add_extra_edge_to_first_graph(store: &mut Store) -> Result<CommitHash, StoreError> {
     let graphs = Path::from("Path.Graphs");
     let gv = Path::from("Path.G.V");
     let ge = Path::from("Path.G.E");
 
     let tv = store.table_at(&gv).expect("Path.G.V table");
-    let v1 = tv.row_id_at(0).expect("vertex 1");
-    let v2 = tv.row_id_at(1).expect("vertex 2");
-    let graph = store
-        .table_at(&graphs)
-        .expect("Path.Graphs table")
-        .row_id_at(0)
-        .expect("first graph row");
+    let v1 = Value::Id(tv.row_id_at(0).expect("vertex 1"));
+    let v2 = Value::Id(tv.row_id_at(1).expect("vertex 2"));
+    let graph = Value::Id(
+        store
+            .table_at(&graphs)
+            .expect("Path.Graphs table")
+            .row_id_at(0)
+            .expect("first graph row"),
+    );
 
     let mut txn = store.transaction();
-    txn.add(&ge, vec![graph.into(), v1.into(), v2.into()])?;
+    txn.add(&ge, vec![graph, v1, v2])?;
     txn.commit()
 }
 
@@ -138,7 +143,7 @@ fn test_read_path_coln() {
 fn test_compile_path_rules() {
     let theory = fixture_theory(PATHS_IR);
     let expected_law_count = theory.rules.len();
-    let store = Store::try_from_theory(theory).expect("valid theory");
+    let store = Store::try_from_ir(theory).expect("valid theory");
 
     assert!(expected_law_count > 0, "fixture should contain rules");
     assert_eq!(store.rules().len(), expected_law_count);
@@ -152,7 +157,7 @@ fn test_add_data_and_law_enforce() {
     let n_tables = theory.tables.len();
     let n_rules = theory.rules.len();
 
-    let mut store = Store::try_from_theory(theory).expect("valid theory");
+    let mut store = Store::try_from_ir(theory).expect("valid theory");
 
     assert_eq!(store.table_count(), n_tables);
     assert_eq!(store.rules().len(), n_rules);
@@ -172,7 +177,7 @@ fn test_add_data_and_law_enforce() {
 #[test]
 fn test_add_edge_referencing_vertices_from_previous_commit() {
     let theory = fixture_theory(PATHS_IR);
-    let mut store = Store::try_from_theory(theory).expect("valid theory");
+    let mut store = Store::try_from_ir(theory).expect("valid theory");
 
     add_basic_data_to_path(&mut store).expect("add basic data");
 
@@ -196,14 +201,14 @@ fn test_add_edge_referencing_vertices_from_previous_commit() {
     assert_eq!(edges.row_count(), 2);
     assert_eq!(
         edges.row_id_at(1).expect("second edge row"),
-        RowId {
+        WireRowId {
             commit: edge_commit,
             counter: 0,
         }
     );
-    assert_eq!(edges.cell_at(1, 0), Some(CellValue::Id(graph)));
-    assert_eq!(edges.cell_at(1, 1), Some(CellValue::Id(v1)));
-    assert_eq!(edges.cell_at(1, 2), Some(CellValue::Id(v2)));
+    assert_eq!(edges.cell_at(1, 0), Some(WireValue::Id(graph)));
+    assert_eq!(edges.cell_at(1, 1), Some(WireValue::Id(v1)));
+    assert_eq!(edges.cell_at(1, 2), Some(WireValue::Id(v2)));
 }
 
 #[test]
@@ -211,7 +216,7 @@ fn test_add_edge_referencing_vertices_from_previous_commit() {
 // confirms the failed batch leaves the store unchanged.
 fn test_missing_graph_witness_rejects_batch_without_mutation() {
     let theory = fixture_theory(PATHS_IR);
-    let mut store = Store::try_from_theory(theory).expect("valid theory");
+    let mut store = Store::try_from_ir(theory).expect("valid theory");
 
     let graphs = store
         .table_at(&Path::from("Path.Graphs"))
@@ -228,10 +233,10 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
     assert_eq!(g1.row_count(), 0);
 
     let mut tx = store.transaction();
-    tx.add(&Path::from("Path.Graphs"), vec![])
+    tx.add(&Path::from("Path.Graphs"), empty_row())
         .expect("add graph row");
     let err = tx.commit().expect_err("missing g0 and g1");
-    assert!(matches!(err, StoreIntError::Rule(_)));
+    assert!(matches!(err, StoreError::Rule(_)));
 
     assert_eq!(
         store
@@ -253,41 +258,44 @@ fn test_missing_graph_witness_rejects_batch_without_mutation() {
 #[test]
 fn test_fk() {
     let theory = fixture_theory(PATHS_IR);
-    let mut store = Store::try_from_theory(theory).expect("valid theory");
+    let mut store = Store::try_from_ir(theory).expect("valid theory");
 
     let graphs = Path::from("Path.Graphs");
     let gv = Path::from("Path.G.V");
     let ge = Path::from("Path.G.E");
 
     add_basic_data_to_path(&mut store).expect("add valid baseline data");
-    let gid = store
-        .table_at(&graphs)
-        .expect("Path.Graphs table")
-        .row_id_at(0)
-        .expect("graph row");
-    let vid = store
-        .table_at(&gv)
-        .expect("Path.G.V table")
-        .row_id_at(0)
-        .expect("vertex row");
+    let gid = Value::Id(
+        store
+            .table_at(&graphs)
+            .expect("Path.Graphs table")
+            .row_id_at(0)
+            .expect("graph row"),
+    );
+    let vid = Value::Id(
+        store
+            .table_at(&gv)
+            .expect("Path.G.V table")
+            .row_id_at(0)
+            .expect("vertex row"),
+    );
 
-    let dummy_vid = RowId {
+    let dummy_vid = Value::Id(WireRowId {
         commit: CommitHash([0xff; 32]),
         counter: u32::MAX,
-    };
+    });
     let mut tx = store.transaction();
-    tx.add(&ge, vec![gid.into(), vid.into(), dummy_vid.into()])
-        .expect("add edge");
+    tx.add(&ge, vec![gid, vid, dummy_vid]).expect("add edge");
     let err = tx.commit().expect_err("missing v2");
 
-    assert!(matches!(err, StoreIntError::Rule(_)));
+    assert!(matches!(err, StoreError::Rule(_)));
 }
 
 #[test]
 fn test_persist_roundtrip() {
     let theory = fixture_theory(PATHS_IR);
 
-    let mut store = Store::try_from_theory(theory).expect("valid theory");
+    let mut store = Store::try_from_ir(theory).expect("valid theory");
 
     let r = add_basic_data_to_path(&mut store);
     assert!(r.is_ok());
@@ -309,22 +317,20 @@ fn test_persist_roundtrip() {
 #[test]
 fn test_divergent_commits_merge_between_stores() {
     let theory = fixture_theory(PATHS_IR);
-    let mut base = Store::try_from_theory(theory).expect("valid theory");
+    let mut base = Store::try_from_ir(theory).expect("valid theory");
     add_basic_data_to_path(&mut base).expect("add shared baseline data");
 
     // Add a second rule-free graph so we can add vertices to different graphs to
     // make two commits different
     {
         let mut tx = base.transaction();
-        tx.add(&Path::from("Path.Graphs"), vec![])
+        tx.add(&Path::from("Path.Graphs"), empty_row())
             .expect("add a graph");
         tx.commit().expect("commit second graph");
     }
 
-    let mut left =
-        Store::try_from_theory(fixture_theory(PATHS_IR)).expect("valid left-hand theory");
-    let mut right =
-        Store::try_from_theory(fixture_theory(PATHS_IR)).expect("valid right-hand theory");
+    let mut left = Store::try_from_ir(fixture_theory(PATHS_IR)).expect("valid left-hand theory");
+    let mut right = Store::try_from_ir(fixture_theory(PATHS_IR)).expect("valid right-hand theory");
     let baseline_commits = base.commits_after(&left.heads());
     left.apply_commits(baseline_commits.clone())
         .expect("apply shared baseline to left");

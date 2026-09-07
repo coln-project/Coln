@@ -11,13 +11,13 @@ use crate::{
         matcher::term_matches,
     },
     store::Store,
-    table::{CellValue, RowId, TableRef},
+    table::{TableRef, WireRowId, WireValue},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum BoundValue {
-    RId(RowId),
-    Cell(CellValue),
+    RId(WireRowId),
+    Cell(WireValue),
 }
 
 pub type Binding = Vec<Option<BoundValue>>;
@@ -72,9 +72,9 @@ fn match_atom_row(
 pub fn eval_term(binding: &Binding, term: &CompTerm) -> Option<BoundValue> {
     match term {
         CompTerm::Var(slot) => binding.get(*slot).and_then(|v| v.clone()),
-        CompTerm::Lit(ir::Lit::Int { value }) => Some(BoundValue::Cell(CellValue::Int(*value))),
+        CompTerm::Lit(ir::Lit::Int { value }) => Some(BoundValue::Cell(WireValue::Int(*value))),
         CompTerm::Lit(ir::Lit::String { value }) => {
-            Some(BoundValue::Cell(CellValue::Str(value.clone())))
+            Some(BoundValue::Cell(WireValue::Str(value.clone())))
         }
     }
 }
@@ -143,6 +143,8 @@ pub fn bind_rule(store: &Store, rule: &CompRule) -> Vec<Binding> {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::ir::Equality;
+
     use super::*;
     use crate::{
         ir::{
@@ -150,7 +152,7 @@ mod tests {
             RuleVariant, Schema,
         },
         solver::compile::compile_rule,
-        table::CellValue,
+        table::WireValue,
     };
 
     fn int_ty() -> ColType {
@@ -203,21 +205,9 @@ mod tests {
             .expect("create table");
 
         let mut txn = store.transaction();
-        txn.add(
-            &path,
-            vec![CellValue::Int(1).into(), CellValue::Int(2).into()],
-        )
-        .expect("insert row");
-        txn.add(
-            &path,
-            vec![CellValue::Int(2).into(), CellValue::Int(3).into()],
-        )
-        .expect("insert row");
-        txn.add(
-            &path,
-            vec![CellValue::Int(9).into(), CellValue::Int(4).into()],
-        )
-        .expect("insert row");
+        txn.add(&path, vec![1i32, 2i32]).expect("insert row");
+        txn.add(&path, vec![2i32, 3i32]).expect("insert row");
+        txn.add(&path, vec![9i32, 4i32]).expect("insert row");
         txn.commit().expect("commit rows");
 
         let rule = enforced_rule(
@@ -273,14 +263,14 @@ mod tests {
         let bindings = bind_rule(&store, &compiled);
 
         assert_eq!(bindings.len(), 1);
-        assert_eq!(bindings[0][0], Some(BoundValue::Cell(CellValue::Int(1))));
-        assert_eq!(bindings[0][1], Some(BoundValue::Cell(CellValue::Int(2))));
-        assert_eq!(bindings[0][2], Some(BoundValue::Cell(CellValue::Int(3))));
+        assert_eq!(bindings[0][0], Some(BoundValue::Cell(WireValue::Int(1))));
+        assert_eq!(bindings[0][1], Some(BoundValue::Cell(WireValue::Int(2))));
+        assert_eq!(bindings[0][2], Some(BoundValue::Cell(WireValue::Int(3))));
     }
 
     /// Build a single-column `Int` table `T` populated with the supplied
     /// values, returning the store.
-    fn store_with_int_column(values: &[i64]) -> (Store, Path) {
+    fn store_with_int_column(values: &[i32]) -> (Store, Path) {
         let path = Path::from("T");
         let mut store = Store::new();
         store
@@ -288,8 +278,7 @@ mod tests {
             .expect("create table");
         let mut txn = store.transaction();
         for value in values {
-            txn.add(&path, vec![CellValue::Int(*value).into()])
-                .expect("insert row");
+            txn.add(&path, vec![(*value)]).expect("insert row");
         }
         txn.commit().expect("commit rows");
         (store, path)
@@ -324,8 +313,10 @@ mod tests {
                     },
                 },
                 ir::Prop::Eq {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Var { index: 1 },
+                    equality: Equality {
+                        left: ir::Term::Var { index: 0 },
+                        right: ir::Term::Var { index: 1 },
+                    },
                 },
             ],
             vec![ir::Prop::Atom {
@@ -368,9 +359,11 @@ mod tests {
                     },
                 },
                 ir::Prop::Eq {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Lit {
-                        lit: ir::Lit::Int { value: 2 },
+                    equality: Equality {
+                        left: ir::Term::Var { index: 0 },
+                        right: ir::Term::Lit {
+                            lit: ir::Lit::Int { value: 2 },
+                        },
                     },
                 },
             ],
@@ -390,6 +383,6 @@ mod tests {
         let bindings = bind_rule(&store, &compiled);
 
         assert_eq!(bindings.len(), 1);
-        assert_eq!(bindings[0][0], Some(BoundValue::Cell(CellValue::Int(2))));
+        assert_eq!(bindings[0][0], Some(BoundValue::Cell(WireValue::Int(2))));
     }
 }

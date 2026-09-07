@@ -9,9 +9,11 @@ use tracing::info;
 
 use crate::{
     commit::{Commit, author::Author, hash::CommitHash, wire::CommitData},
-    store::{Store, error::StoreIntError},
+    store::{Store, error::StoreError},
     table::ValidationError,
-    txn::{PendingOp, RowHandle, TempRowId, TxnCellValue, TxnId, TxnValue, timestamp::Timestamp},
+    txn::{
+        PendingOp, TempRowId, TxnId, TxnLiveRowId, TxnLiveValue, TxnWireValue, timestamp::Timestamp,
+    },
 };
 
 static NEXT_TX_ID: AtomicU64 = AtomicU64::new(1);
@@ -27,11 +29,11 @@ pub(crate) struct TxnInner {
     timestamp: Timestamp,
     message: Option<String>,
     tx_id: TxnId,
-    pending_handles: Vec<RowHandle>,
+    pending_handles: Vec<TxnLiveRowId>,
 }
 
 impl TxnInner {
-    pub(crate) fn new(deps: Vec<CommitHash>) -> Self {
+    pub(super) fn new(deps: Vec<CommitHash>) -> Self {
         Self {
             deps,
             author: Author::foo(),
@@ -51,8 +53,8 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+        values: Vec<TxnWireValue>,
+    ) -> Result<TempRowId, StoreError> {
         let t = store.table_at(table).ok_or(ValidationError::UnknownTable {
             path: table.clone(),
         })?;
@@ -66,18 +68,18 @@ impl TxnInner {
         Ok(temp_id)
     }
 
-    pub(crate) fn add(
+    pub(super) fn add<V: Into<TxnLiveValue>>(
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnValue>,
-    ) -> Result<RowHandle, StoreIntError> {
+        values: Vec<V>,
+    ) -> Result<TxnLiveRowId, StoreError> {
         let txn_values = values
             .into_iter()
-            .map(|v| v.to_txn_cell_value(self.tx_id))
-            .collect::<Result<Vec<TxnCellValue>, _>>()?;
+            .map(|v| v.into().to_txn_cell_value(self.tx_id))
+            .collect::<Result<Vec<TxnWireValue>, _>>()?;
         let temp_id = self.add_cell_values(store, table, txn_values)?;
-        let handle = RowHandle::from_pending(self.tx_id, temp_id.0);
+        let handle = TxnLiveRowId::from_pending(self.tx_id, temp_id.0);
         self.pending_handles.push(handle.clone());
         Ok(handle)
     }
@@ -88,12 +90,12 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnCellValue>,
-    ) -> Result<TempRowId, StoreIntError> {
+        values: Vec<TxnWireValue>,
+    ) -> Result<TempRowId, StoreError> {
         self.add_cell_values(store, table, values)
     }
 
-    fn invalidate_handles(pending_handles: Vec<RowHandle>, reason: &str) {
+    fn invalidate_handles(pending_handles: Vec<TxnLiveRowId>, reason: &str) {
         pending_handles
             .into_iter()
             .for_each(|h| h.invalidate(reason));
@@ -102,13 +104,13 @@ impl TxnInner {
     /// Finalize handles to the id the store actually kept: a row that was
     /// deduplicated against an existing class finalizes to that class's
     /// canonical id, not to the never-stored raw id.
-    fn finalize_handles(pending_handles: Vec<RowHandle>, h: CommitHash, store: &Store) {
+    fn finalize_handles(pending_handles: Vec<TxnLiveRowId>, h: CommitHash, store: &Store) {
         pending_handles.into_iter().for_each(|handle| {
             handle.finalize(h, |rid| store.canonical_row_id(rid).unwrap_or(rid))
         });
     }
 
-    pub(crate) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreIntError> {
+    pub(super) fn commit(self, store: &mut Store) -> Result<CommitHash, StoreError> {
         info!(op_count = self.pending.len(), "commit txn");
         let TxnInner {
             deps,
@@ -133,22 +135,22 @@ impl TxnInner {
 
         let h = cmt.hash();
         match store.apply_commit(cmt) {
-            Ok(()) => {
+            Ok(None) => {
+                // Everything applied successfully
                 Self::finalize_handles(pending_handles, h, store);
                 Ok(h)
+            }
+            Ok(Some(_)) => {
+                unreachable!("commit a local transaction should always succeed");
             }
             Err(err) => {
                 Self::invalidate_handles(pending_handles, "txn commit failed");
                 Err(err)
             }
         }
-        // 1. validate full batch (PK conflicts including intra-batch)
-        // 2. compute hash: blake3(deps || timestamp || message || canonical(ops))
-        // 3. resolve: TxnRowId(k) -> RowId { commit: hash, counter: k }
-        //             CellValue::TxnId(k) -> CellValue::Id(RowId { commit: hash, counter: k })
-        // 4. apply resolved Ops to tables via table.insert_row
-        // 5. check_rules
-        // 6. push CommitMeta into store.commit_graph, advance heads
-        // 7. return hash
+    }
+
+    pub(super) fn abort(self) {
+        Self::invalidate_handles(self.pending_handles, "txn abort");
     }
 }

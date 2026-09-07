@@ -12,17 +12,22 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 
-use crate::repl::{
-    Session, ShellMode, Step,
-    parse::coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
-    parse::{ColnCommand, MetaCommand, SqlCommand},
-};
 use crate::{
     commit::pst::{decode_store, encode_store},
     ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
     store::Store,
-    table::{RowId, TableRef},
-    txn::{TempRowId, TxnCellValue},
+    table::{TableRef, WireRowId},
+    txn::{TempRowId, TxnWireValue},
+};
+use crate::{
+    repl::{
+        Session, ShellMode, Step,
+        parse::{
+            ColnCommand, MetaCommand, SqlCommand,
+            coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
+        },
+    },
+    txn::TxnWireRowId,
 };
 
 fn help_text(mode: ShellMode) -> String {
@@ -37,6 +42,7 @@ fn help_text(mode: ShellMode) -> String {
         "  .tables",
         "  .rules",
         "  .schema [table]",
+        "  .ir",
         "  .dump <table>",
     ];
 
@@ -120,6 +126,10 @@ pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Resul
                 None => render_schema_summary(schema),
             };
             Ok(Step::Continue(message))
+        }
+        MetaCommand::Ir => {
+            let store = session.loaded.as_ref().map(|loaded| &loaded.store);
+            Ok(Step::Continue(render_ir(store)?))
         }
         MetaCommand::Rules => {
             let store = session.loaded.as_ref().map(|loaded| &loaded.store);
@@ -311,7 +321,7 @@ pub fn load_schema(path: &Path) -> Result<LoadedState> {
     let theory: FlatRealm = serde_json::from_str(&input)
         .with_context(|| format!("failed to parse schema {}", path.display()))?;
     let summary = SchemaSummary::from_theory(path.to_path_buf(), &theory);
-    let store = Store::try_from_theory(theory)?;
+    let store = Store::try_from_ir(theory)?;
     Ok(LoadedState {
         store,
         schema: summary,
@@ -359,7 +369,7 @@ pub fn render_table_schema(schema: Option<&SchemaSummary>, table_name: &str) -> 
     Ok(render_table_schema_summary(table))
 }
 
-pub fn render_rules(store: Option<&Store>) -> Result<String> {
+fn render_rules(store: Option<&Store>) -> Result<String> {
     let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
     if store.rules().is_empty() {
         return Ok("no rules".to_string());
@@ -373,11 +383,16 @@ pub fn render_rules(store: Option<&Store>) -> Result<String> {
         .join("\n"))
 }
 
+fn render_ir(store: Option<&Store>) -> Result<String> {
+    let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
+    Ok(store.json_ir()?)
+}
+
 pub fn add_rows(
     store: &mut Store,
     table_name: &str,
     raw_rows: &[Vec<String>],
-) -> Result<Vec<RowId>> {
+) -> Result<Vec<WireRowId>> {
     let table_path = crate::ir::Path::from(table_name);
     let oid = store
         .resolve_table(&table_path)
@@ -464,7 +479,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<TxnCellValue>> {
+fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<TxnWireValue>> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         bail!(
@@ -478,10 +493,10 @@ fn parse_txn_values(table: TableRef<'_>, raw_values: &[String]) -> Result<Vec<Tx
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, column)| -> Result<TxnCellValue> {
+        .map(|(idx, column)| -> Result<TxnWireValue> {
             let raw = &raw_values[idx];
             parse_cell_value(&column.col_type, raw)
-                .map(Into::into)
+                .map(|v| v.map_owned(TxnWireRowId::Existing))
                 .map_err(|message| anyhow!("column {idx}: {message}"))
         })
         .collect()
@@ -556,5 +571,21 @@ mod tests {
         assert_eq!(lines.len(), loaded.store.rules().len());
         assert!(lines[0].contains(" := forall"));
         assert!(lines[0].contains(" |- "));
+    }
+
+    #[test]
+    fn renders_ir_json() {
+        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR)).expect("load schema");
+        let rendered = render_ir(Some(&loaded.store)).expect("render ir");
+        assert_eq!(rendered, loaded.store.json_ir().expect("json ir"));
+        let parsed: FlatRealm = serde_json::from_str(&rendered).expect("parse ir json");
+        assert_eq!(parsed.tables.len(), loaded.store.table_count());
+        assert_eq!(parsed.rules.len(), loaded.store.rule_entries().len());
+    }
+
+    #[test]
+    fn renders_ir_requires_loaded_store() {
+        let err = render_ir(None).expect_err("no schema");
+        assert!(err.to_string().contains("no schema loaded"));
     }
 }

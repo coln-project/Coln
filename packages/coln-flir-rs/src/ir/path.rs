@@ -19,6 +19,25 @@ impl Deref for Path {
     }
 }
 
+impl Path {
+    pub fn append(mut self, name: &str) -> Self {
+        self.0.push(vec![name.to_string()]);
+        self
+    }
+}
+
+impl From<Path> for String {
+    fn from(value: Path) -> Self {
+        value.to_string()
+    }
+}
+
+impl From<&Path> for String {
+    fn from(value: &Path) -> Self {
+        value.to_string()
+    }
+}
+
 impl Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, qname) in self.0.iter().enumerate() {

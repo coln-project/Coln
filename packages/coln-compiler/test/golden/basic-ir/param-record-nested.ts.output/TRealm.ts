@@ -11,9 +11,6 @@ export class View {
       X: (new runtime.RowIdSet.View(store, "TRealm.X", [])),
       nested: (a: runtime.Value) => {
         return (new runtime.RowIdSet.View(store, "TRealm.nested", [a]));
-      },
-      selected: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.selected", [a]));
       }
     };
   }
@@ -33,14 +30,6 @@ export class Transaction extends View {
         return (new runtime.RowIdSet.Transaction(
           store,
           "TRealm.nested",
-          [a],
-          transaction
-        ));
-      },
-      selected: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.selected",
           [a],
           transaction
         ));

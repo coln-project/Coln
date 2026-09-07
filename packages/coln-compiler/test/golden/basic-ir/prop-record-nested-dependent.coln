@@ -1,0 +1,18 @@
+def Inner (P : Prop) : Prop := sig
+  proof : P
+end
+
+def Outer (P : Prop) (Q : Prop) : Prop := sig
+  nested : Inner P
+  direct : Q
+end
+
+theory T := sig
+  X : Set
+  P : X -> Prop
+  Q : X -> Prop
+  make : (x : X) -> Outer (P x) (Q x)
+end
+
+realm TRealm @ T
+end

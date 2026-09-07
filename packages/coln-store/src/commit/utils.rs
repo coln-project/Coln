@@ -2,16 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::io::Write;
-
 use crate::commit::error::CodecError;
-
-// ── Write helpers ───────────────────────────────────────────────────────────
-
-pub(crate) fn write_u8(buf: &mut Vec<u8>, value: u8) -> Result<(), CodecError> {
-    buf.write_all(&[value])?;
-    Ok(())
-}
 
 // ── Read helpers ────────────────────────────────────────────────────────────
 

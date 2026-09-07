@@ -3,7 +3,7 @@ type E: V -> V -> Type
 
 theory Graph := sig
   V : Set
-  E : V -> V -> Set
+  E : V -> V -> Prop
   Q : E -> E -> Set
 end
 

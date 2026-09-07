@@ -1,0 +1,45 @@
+theory Level := sig
+  node : Set
+  zero : node
+  succ : node -> node
+  max  : node -> node -> node
+  imax : node -> node -> node
+  param : String -> node
+  mvar : ??? -> node  # there's a constructor argument, but it's left out by the script
+end
+
+# This is meant to be an enum of 4 possible values
+theory BinderInfo := sig
+  val : Set
+  default : val
+  implicit : val
+  strictImplicit : val
+  instImplicit : val
+end
+
+theory Expr := sig
+  node : Set
+  bvar : Int -> node    # bound variable with its de bruijn index?
+  fvar : String -> node # no occurrences in mathlib
+  mvar : String -> node # metavariable? no occurrences in mathlib
+  sort : (init Level .node) -> node
+  const : String -> node
+  const_level : ??? # not sure how to model this
+  app  : node -> node -> node
+  lam  : String -> node -> node -> (init BinderInfo .val) -> node
+  forall : String -> node -> node -> (init BinderInfo .val) -> node
+  let  : String -> node -> node -> node -> node // 5th constructor argument ignored?
+  lit_nat : Int -> node
+  lit_str : String -> node
+  mdata : node -> node // 1st constructor argument ignored?
+  proj : String -> Int -> node -> node
+end
+
+ind theory LeanConst := sig
+  decl_value : String -> (init Expr .node)
+end
+
+realm LeanImport @ LeanConst
+end
+
+

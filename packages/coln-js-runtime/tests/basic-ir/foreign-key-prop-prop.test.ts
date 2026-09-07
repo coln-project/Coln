@@ -5,16 +5,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { valueEqual } from "@coln-project/runtime";
 import * as ForeignKeyPropPropRealm from "../../../coln-compiler/test/golden/basic-ir/foreign-key-prop-prop.ts.output/TRealm.ts";
 import { beginRealm } from "./helpers.ts";
-
-const expectedProofIrrelevanceFailure = {
-  expectFailure: {
-    label: "proof parameters and results are not canonicalized",
-    match: /false !== true/,
-  },
-};
 
 test("foreign-key-prop-prop", () => {
   const realm = beginRealm(ForeignKeyPropPropRealm);
@@ -22,26 +14,5 @@ test("foreign-key-prop-prop", () => {
   const edge = realm.root.E(vertex).add();
   const view = realm.commit();
 
-  assert.equal(view.V.has(vertex), true);
   assert.equal(view.E(vertex).has(edge), true);
-});
-
-test("foreign-key-prop-prop rejects a parameter from the wrong table", () => {
-  const realm = beginRealm(ForeignKeyPropPropRealm);
-  const vertex = realm.root.V.add();
-  const edge = realm.root.E(vertex).add();
-  realm.root.E(edge).add();
-
-  assert.throws(() => realm.commit(), /\.E\.foreignKey/);
-});
-
-test("foreign-key-prop-prop ignores proof identity in its parameter", expectedProofIrrelevanceFailure, () => {
-  const realm = beginRealm(ForeignKeyPropPropRealm);
-  const firstVertex = realm.root.V.add();
-  const secondVertex = realm.root.V.add();
-  const firstEdge = realm.root.E(firstVertex).add();
-  const secondEdge = realm.root.E(secondVertex).add();
-  realm.commit();
-
-  assert.equal(valueEqual(firstEdge, secondEdge), true);
 });

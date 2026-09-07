@@ -2,30 +2,32 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use super::super::relation::{
-    Relation, RelationRef, SchemaTuple, TupleKey, TupleValue, new_relation,
-};
+use super::super::relation::{Relation, RelationRef, TupleValue};
 use super::operators::{
     coalesce::coalesce_helper,
     projection::{ProjectionStrategy, projection_helper},
     reindex::reindex_helper,
 };
-use crate::relational::RelationSchema;
+use super::schema::{DbspTupleContext, SchemaTuple, StreamSchema, TupleKey};
+use crate::relational::expr::MultiWayEquiJoinExpr;
 use crate::relational::incremental::dbsp::{
-    DbspInput, OrdIndexedStreamInputHandle, new_ord_indexed_stream,
+    AsDbspRelation, DbspInput, DbspRelation, OrdIndexedStreamInputHandle, new_ord_indexed_stream,
+    new_relation,
 };
+use crate::relational::schema::TableSchema;
 use crate::{
     error::BuildError,
     host::variable::{Value, VariableSlot},
     host::{
         expr::{Expr, VarExpr},
         interpreter::{EvalResult, HostInterpreter, InterpreterContext, assert_type, is_truthy},
-        stmt::Stmt,
+        walk::{Node, pre_order},
     },
+    relational::catalog::SourceSchemas,
     relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
         FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr, RelExpr, RelExprVisitor,
-        SelectionExpr, SinkId, SourceExpr, UnionExpr,
+        SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
     },
     relational::incremental::dbsp::{
         DbspError, DbspInputs, DbspOutput, NestedCircuit, OrdIndexedNestedStream, RootCircuit,
@@ -36,115 +38,25 @@ use crate::{
 use std::collections::HashMap;
 use std::{cell::Ref, rc::Rc};
 
-// TODO: As I expect such traversals to be more common, implement iterators in
-// at least execution order (post-order traversal), and possibly other orderings,
-// and simply filter on the iterator..
-
-/// Collect every [`SourceExpr`] reachable from `stmts`.
-///
-/// The DBSP backend uses this to wire the root inputs of sources referenced
-/// inside a [`FixedPointIterExpr`] step *before* entering the `recursive`
-/// block: DBSP forbids adding a root input once a nested circuit is under
-/// construction (the input node would not belong to the root scope). Unlike the
-/// main interpretation walk this only inspects the tree, so keeping it separate
-/// is cheap and avoids threading circuit state through a discovery pass.
-fn collect_source_exprs<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a SourceExpr>) {
-    fn walk_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<&'a SourceExpr>) {
-        match stmt {
-            Stmt::Var(stmt) => {
-                if let Some(expr) = &stmt.initializer {
-                    walk_expr(expr, out);
-                }
-            }
-            Stmt::Expr(stmt) => walk_expr(&stmt.expr, out),
-            Stmt::Block(stmt) => stmt.stmts.iter().for_each(|stmt| walk_stmt(stmt, out)),
-        }
-    }
-    fn walk_expr<'a>(expr: &'a Expr, out: &mut Vec<&'a SourceExpr>) {
-        match expr {
-            Expr::Literal(_) | Expr::Var(_) => {}
-            Expr::Tuple(expr) => expr.elements.iter().for_each(|expr| walk_expr(expr, out)),
-            Expr::GetIndex(expr) => {
-                walk_expr(&expr.target, out);
-                walk_expr(&expr.index, out);
-            }
-            Expr::Grouping(expr) => walk_expr(&expr.expr, out),
-            Expr::Binary(expr) => {
-                walk_expr(&expr.left, out);
-                walk_expr(&expr.right, out);
-            }
-            Expr::Unary(expr) => walk_expr(&expr.operand, out),
-            Expr::Assign(expr) => walk_expr(&expr.value, out),
-            Expr::Call(expr) => {
-                walk_expr(&expr.callee, out);
-                expr.arguments.iter().for_each(|arg| walk_expr(arg, out));
-            }
-            Expr::Function(expr) => expr.body.stmts.iter().for_each(|stmt| walk_stmt(stmt, out)),
-            Expr::Relational(expr) => walk_rel(expr, out),
-        }
-    }
-    fn walk_rel<'a>(rel: &'a RelExpr, out: &mut Vec<&'a SourceExpr>) {
-        match rel {
-            RelExpr::Source(source) => out.push(source),
-            RelExpr::Output(expr) => walk_expr(&expr.relation, out),
-            RelExpr::Alias(expr) => walk_expr(&expr.relation, out),
-            RelExpr::Distinct(expr) => walk_expr(&expr.relation, out),
-            RelExpr::Union(expr) => expr.relations.iter().for_each(|rel| walk_expr(rel, out)),
-            RelExpr::Difference(expr) => {
-                walk_expr(&expr.left, out);
-                walk_expr(&expr.right, out);
-            }
-            RelExpr::Selection(expr) => {
-                walk_expr(&expr.relation, out);
-                walk_expr(&expr.condition, out);
-            }
-            RelExpr::Projection(expr) => {
-                walk_expr(&expr.relation, out);
-                expr.attributes.iter().for_each(|(_, e)| walk_expr(e, out));
-            }
-            RelExpr::CartesianProduct(expr) => walk_equi_join(&expr.inner, out),
-            RelExpr::EquiJoin(expr) => walk_equi_join(expr, out),
-            RelExpr::AntiJoin(expr) => {
-                walk_expr(&expr.left, out);
-                walk_expr(&expr.right, out);
-                expr.on.iter().for_each(|(l, r)| {
-                    walk_expr(l, out);
-                    walk_expr(r, out);
-                });
-            }
-            RelExpr::FixedPointIter(expr) => {
-                walk_expr(&expr.accumulator.1, out);
-                expr.step.stmts.iter().for_each(|stmt| walk_stmt(stmt, out));
-            }
-        }
-    }
-    fn walk_equi_join<'a>(expr: &'a EquiJoinExpr, out: &mut Vec<&'a SourceExpr>) {
-        walk_expr(&expr.left, out);
-        walk_expr(&expr.right, out);
-        expr.on.iter().for_each(|(l, r)| {
-            walk_expr(l, out);
-            walk_expr(r, out);
-        });
-        if let Some(attributes) = &expr.attributes {
-            attributes.iter().for_each(|(_, e)| walk_expr(e, out));
-        }
-    }
-    stmts.iter().for_each(|stmt| walk_stmt(stmt, out));
-}
-
-type Sources = HashMap<String, Source>;
+type Sources = HashMap<SourceId, Source>;
 
 struct Source {
-    schema: RelationSchema,
+    schema: StreamSchema,
     handle: OrdIndexedStreamInputHandle,
     stream: StreamWrapper,
 }
 
 impl Source {
-    fn from_source_expr(source_expr: &SourceExpr, root_circuit: &mut RootCircuit) -> Self {
+    /// Wire a fresh input stream for the relation `table` describes. The table
+    /// schema comes from the plan's catalog, since a [`SourceExpr`] leaf only
+    /// names its relation. This is the one place it is turned into a live
+    /// stream and, with it, the one place a table's declared key(s) become the
+    /// single key this circuit's `OrdIndexedZSet` is indexed by (see
+    /// [`StreamSchema::from`]).
+    fn new(table: &TableSchema, root_circuit: &mut RootCircuit) -> Self {
         let (stream, handle) = new_ord_indexed_stream(root_circuit);
         Source {
-            schema: source_expr.schema.clone(),
+            schema: StreamSchema::from(table),
             handle,
             stream: StreamWrapper::from(stream),
         }
@@ -153,7 +65,10 @@ impl Source {
 
 impl From<&Source> for Relation {
     fn from(source: &Source) -> Self {
-        Relation::new(source.schema.clone(), source.stream.clone())
+        Relation::new(DbspRelation::new(
+            source.schema.clone(),
+            source.stream.clone(),
+        ))
     }
 }
 
@@ -164,7 +79,7 @@ impl From<Sources> for DbspInputs {
                 .into_iter()
                 // We drop the stream in `source` because it is !Send to be able
                 // to cross the `DbspRuntime::init_circuit` boundary.
-                .map(|(name, source)| (name, DbspInput::new(source.schema, source.handle))),
+                .map(|(name, source)| (name.0, DbspInput::new(source.schema, source.handle))),
         )
     }
 }
@@ -178,7 +93,7 @@ enum ImportKey {
     /// An outer relation reached by variable, keyed by its resolved slot.
     Var(VariableSlot),
     /// A [`SourceExpr`] leaf, keyed by source name.
-    Source(String),
+    Source(SourceId),
 }
 
 /// State that only exists while walking a [`FixedPointIterExpr`] step body,
@@ -199,9 +114,9 @@ pub struct DbspInterpreter<E: RowScalarEngine = TreeWalk> {
     /// The scalar engine driven on the per-tuple hot path (selection conditions,
     /// projection attributes, join keys).
     engine: E,
-    /// Live input streams by source name, populated lazily the first time each
-    /// [`SourceExpr`] leaf is visited. Serves both deduplication (one stream per
-    /// source, however many leaves reference it) and binding.
+    /// Every input stream the plan needs, keyed by the [`SourceId`] its
+    /// [`SourceExpr`] leaves name it by. Wired once in [`new`](Self::new) from
+    /// the schemas the pipeline resolved, so a leaf is *bound* here.
     sources: Sources,
     /// Output read handles collected while walking the plan, one per
     /// [`OutputExpr`] tap, in plan order. The backend drains these after
@@ -216,11 +131,29 @@ pub struct DbspInterpreter<E: RowScalarEngine = TreeWalk> {
 }
 
 impl<E: RowScalarEngine> DbspInterpreter<E> {
-    pub fn new(root_circuit: RootCircuit, engine: E) -> Self {
+    /// Wires one root input stream per source the plan names, up front.
+    ///
+    /// Eagerly rather than on first visit, because DBSP refuses a root input
+    /// once a nested circuit is under construction: wiring everything before
+    /// interpretation starts is what lets a [`FixedPointIterExpr`] step body
+    /// reach a source at all, without a pre-pass hoisting that body's sources
+    /// out by hand. `sources` came from a walk of this same plan, so the set is
+    /// the same one lazy wiring would have reached.
+    ///
+    /// Sorted by [`SourceId`], so that circuit construction does not inherit the
+    /// iteration order of a [`HashMap`].
+    pub fn new(root_circuit: RootCircuit, engine: E, sources: SourceSchemas) -> Self {
+        let mut root_circuit = root_circuit;
+        let mut wired = Sources::with_capacity(sources.len());
+        let mut sources: Vec<_> = sources.into_iter().collect();
+        sources.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
+        for (id, table) in sources {
+            wired.insert(id, Source::new(&table, &mut root_circuit));
+        }
         Self {
             root_circuit,
             engine,
-            sources: Sources::new(),
+            sources: wired,
             sinks: Vec::new(),
             step: None,
         }
@@ -232,7 +165,7 @@ impl<E: RowScalarEngine> DbspInterpreter<E> {
     fn bridge_import(
         &mut self,
         key: ImportKey,
-        schema: RelationSchema,
+        schema: StreamSchema,
         root_stream: &StreamWrapper,
     ) -> RelationRef {
         let step = self
@@ -298,20 +231,16 @@ impl<E: RowScalarEngine> HostInterpreter for DbspInterpreter<E> {
             return Ok(value);
         };
         let relation = Rc::clone(relation);
-        let is_root = matches!(
-            relation.borrow().downcast_ref::<StreamWrapper>(),
-            StreamWrapper::Root(_)
-        );
+        let is_root = matches!(relation.borrow().as_dbsp().stream(), StreamWrapper::Root(_));
         if !is_root {
             return Ok(value);
         }
         let borrowed = relation.borrow();
-        let schema = borrowed.schema.clone();
-        let root = borrowed.downcast_ref::<StreamWrapper>();
+        let borrowed = borrowed.as_dbsp();
         Ok(Value::Relation(self.bridge_import(
             ImportKey::Var(resolved),
-            schema,
-            root,
+            borrowed.schema().clone(),
+            borrowed.stream(),
         )))
     }
 }
@@ -320,25 +249,23 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
     for DbspInterpreter<E>
 {
     fn visit_source_expr(&mut self, expr: &SourceExpr, ctx: VisitorCtx) -> ExprVisitorResult {
-        // Wire a fresh root input the first time we meet a source, reusing it
-        // for every later leaf naming the same source.
-        if !self.sources.contains_key(expr.as_id()) {
-            let source = Source::from_source_expr(expr, &mut self.root_circuit);
-            self.sources.insert(expr.to_id(), source);
-        }
-        // Snapshot the root stream + schema, dropping the borrow on `sources`
-        // before any `&mut self` call below.
+        // Every source the plan names was wired in `new`, so this only binds the
+        // leaf to its stream. Exactly one stream per source, however many leaves name
+        // it. Snapshot stream and schema to drop the borrow on `sources` before
+        // any `&mut self` call below.
         let (schema, root_stream) = {
-            let source = self
-                .sources
-                .get(expr.as_id())
-                .expect("source just wired above");
+            let source = self.sources.get(&expr.id).ok_or_else(|| {
+                BuildError::new(format!(
+                    "Source '{}' was not among the sources this plan was resolved to",
+                    expr.id
+                ))
+            })?;
             (source.schema.clone(), source.stream.clone())
         };
         // Inside a fixed-point step the source is an outer relation and must be
         // `delta0`'d into the nested circuit, just like an outer variable.
         let relation = if self.step.is_some() {
-            self.bridge_import(ImportKey::Source(expr.to_id()), schema, &root_stream)
+            self.bridge_import(ImportKey::Source(expr.id.clone()), schema, &root_stream)
         } else {
             new_relation(schema, root_stream)
         };
@@ -369,10 +296,10 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             .map(coalesce_helper)?;
         let relation_ref = relation.borrow();
 
-        let distincted = relation_ref.downcast_ref::<StreamWrapper>().distinct();
+        let distincted = relation_ref.as_dbsp().stream().distinct();
 
         Ok(Value::Relation(new_relation(
-            relation_ref.schema.clone(),
+            relation_ref.as_dbsp().schema().clone(),
             distincted,
         )))
     }
@@ -395,13 +322,15 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             .split_first()
             .expect("Resolver has *not* done its job and ensured that there are at least two operands to a union!");
 
-        let unioned = first.downcast_ref::<StreamWrapper>().sum(
-            others
-                .iter()
-                .map(|relation| relation.downcast_ref::<StreamWrapper>()),
-        );
+        let unioned = first
+            .as_dbsp()
+            .stream()
+            .sum(others.iter().map(|relation| relation.as_dbsp().stream()));
 
-        Ok(Value::Relation(new_relation(first.schema.clone(), unioned)))
+        Ok(Value::Relation(new_relation(
+            first.as_dbsp().schema().clone(),
+            unioned,
+        )))
     }
 
     fn visit_difference_expr(
@@ -421,11 +350,12 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         let left_ref = left.borrow();
 
         let differenced = left_ref
-            .downcast_ref::<StreamWrapper>()
-            .minus(right.borrow().downcast_ref::<StreamWrapper>());
+            .as_dbsp()
+            .stream()
+            .minus(right.borrow().as_dbsp().stream());
 
         Ok(Value::Relation(new_relation(
-            left_ref.schema.clone(),
+            left_ref.as_dbsp().schema().clone(),
             differenced,
         )))
     }
@@ -444,10 +374,12 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             .expect("Condition compilation error");
         let environment = ctx.environment.clone();
         let selected = relation_ref
-            .downcast_ref::<StreamWrapper>()
+            .as_dbsp()
+            .stream()
             .filter(move |(_key, tuple)| {
                 // No need to run resolver here, already resolved!
-                let schema = &relation_clone.borrow().schema;
+                let borrowed = relation_clone.borrow();
+                let schema = borrowed.as_dbsp().schema();
                 let environment = &mut environment.clone();
                 let mut new_ctx = InterpreterContext::new(environment);
                 new_ctx.extend_tuple_ctx(&None, &schema.tuple, tuple);
@@ -458,7 +390,7 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             });
 
         Ok(Value::Relation(new_relation(
-            relation_ref.schema.select(),
+            relation_ref.as_dbsp().schema().select(),
             selected,
         )))
     }
@@ -476,12 +408,13 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         let (schema, projected) = match projection_helper(&expr.attributes) {
             ProjectionStrategy::Projection(projection) => {
                 let (schema, projection) =
-                    projection.prepare(&relation_ref.schema, self.engine.clone());
-                let projected = relation_ref.downcast_ref::<StreamWrapper>().map_index({
+                    projection.prepare(relation_ref.as_dbsp().schema(), self.engine.clone());
+                let projected = relation_ref.as_dbsp().stream().map_index({
                     let relation_clone = Rc::clone(&relation);
                     let environment = ctx.environment.clone();
                     move |(key, tuple)| {
-                        let schema = &relation_clone.borrow().schema;
+                        let borrowed = relation_clone.borrow();
+                        let schema = borrowed.as_dbsp().schema();
                         let environment = &mut environment.clone();
                         let mut new_ctx = InterpreterContext::new(environment);
                         new_ctx.extend_tuple_ctx(&None, &schema.tuple, tuple);
@@ -491,8 +424,8 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
                 (schema, projected)
             }
             ProjectionStrategy::Pick(pick) => {
-                let schema = pick.prepare(&relation_ref.schema);
-                let picked = relation_ref.downcast_ref::<StreamWrapper>().clone();
+                let schema = pick.prepare(relation_ref.as_dbsp().schema());
+                let picked = relation_ref.as_dbsp().stream().clone();
                 (schema, picked)
             }
         };
@@ -540,8 +473,9 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
         let joined_schema = left
             .borrow()
-            .schema
-            .join(&right.borrow().schema, key_fields);
+            .as_dbsp()
+            .schema()
+            .join(right.borrow().as_dbsp().schema(), key_fields);
 
         let (schema, projection) = match expr
             .attributes
@@ -565,8 +499,9 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             let right_rel = Rc::clone(&right);
             let environment = ctx.environment.clone();
             move |key: &TupleKey, left: &TupleValue, right: &TupleValue| {
-                let left_schema = &left_rel.borrow().schema;
-                let right_schema = &right_rel.borrow().schema;
+                let (left_borrow, right_borrow) = (left_rel.borrow(), right_rel.borrow());
+                let left_schema = left_borrow.as_dbsp().schema();
+                let right_schema = right_borrow.as_dbsp().schema();
                 let joined_tuple: TupleValue = SchemaTuple::new(&left_schema.tuple, left)
                     .join(&SchemaTuple::new(&right_schema.tuple, right))
                     .collect();
@@ -584,6 +519,23 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         });
 
         Ok(Value::Relation(new_relation(schema, joined)))
+    }
+
+    fn visit_multi_way_equi_join_expr(
+        &mut self,
+        expr: &MultiWayEquiJoinExpr,
+        ctx: VisitorCtx<'_, '_>,
+    ) -> ExprVisitorResult {
+        // Unreachable through the pipeline: a DBSP circuit joins two streams at
+        // a time, which is why `DbspBackend::lower` folds every multi way join
+        // into a chain of binary ones before the plan reaches this interpreter.
+        // Getting here means the plan skipped that stage.
+        unimplemented!(
+            "Multi way equi joins are not supported by DBSP. \
+             `DbspBackend::lower` (see `relational::incremental::lowering`) folds them \
+             into a sequence of binary equi joins; run the plan through `Pipeline` \
+             rather than building a circuit from an unlowered plan."
+        )
     }
 
     fn visit_anti_join_expr(&mut self, expr: &AntiJoinExpr, ctx: VisitorCtx) -> ExprVisitorResult {
@@ -613,8 +565,9 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
         let anti_joined_schema = left
             .borrow()
-            .schema
-            .anti_join(&right.borrow().schema, key_fields);
+            .as_dbsp()
+            .schema()
+            .anti_join(right.borrow().as_dbsp().schema(), key_fields);
         let anti_joined = left_indexed.anti_join_index(&right_indexed);
 
         Ok(Value::Relation(new_relation(
@@ -645,24 +598,24 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 
         let (accumulator_init, schema) = {
             let accumulator = accumulator.borrow();
-            (
-                accumulator.downcast_ref::<StreamWrapper>().clone(),
-                accumulator.schema.clone(),
-            )
+            let accumulator = accumulator.as_dbsp();
+            (accumulator.stream().clone(), accumulator.schema().clone())
         };
 
-        // Wire the root inputs of any source referenced inside the step *before*
-        // entering `recursive`: DBSP forbids adding a root input once a nested
-        // circuit is under construction. Deduped against sources already wired
-        // elsewhere; inside the step each is `delta0`'d like any outer relation.
-        let mut step_sources = Vec::new();
-        collect_source_exprs(&expr.step.stmts, &mut step_sources);
-        for source_expr in step_sources {
-            if !self.sources.contains_key(source_expr.as_id()) {
-                let source = Source::from_source_expr(source_expr, &mut self.root_circuit);
-                self.sources.insert(source_expr.to_id(), source);
-            }
-        }
+        // A source referenced inside the step needs no special handling: DBSP
+        // forbids adding a root input once a nested circuit is under
+        // construction, but `new` wired every one of them before interpretation
+        // began. Inside the step each is `delta0`'d like any outer relation.
+
+        // DBSP does not allow outputting a stream attached to a child circuit.
+        pre_order(&expr.step.stmts)
+            .filter_map(Node::as_output)
+            .next()
+            .map_or(Ok(()), |_output_expr| {
+                Err(BuildError::new(
+                    "a fix point's step body must not contain output expressions",
+                ))
+            })?;
 
         // A build error raised while walking the step body cannot be returned
         // through `recursive`'s closure (its error channel is DBSP's
@@ -687,9 +640,10 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
                     // value `delta0`'d in, plus the recursive feedback. delta0
                     // does not alter the schema.
                     let accumulator = accumulator_rel.borrow();
-                    let schema = accumulator.schema.clone();
+                    let accumulator = accumulator.as_dbsp();
+                    let schema = accumulator.schema().clone();
                     let accumulator = accumulator
-                        .downcast_ref::<StreamWrapper>()
+                        .stream()
                         .delta0(&nested_for_setup)
                         .plus(&acc_for_step.into());
                     environment.define_var(new_relation(schema, accumulator));
@@ -705,11 +659,7 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
                         BuildError::new("Fixed point iteration body did not return a value.")
                     })?;
                     let relation = assert_type!(value, Value::Relation).map(coalesce_helper)?;
-                    Ok(relation
-                        .borrow()
-                        .downcast_ref::<StreamWrapper>()
-                        .expect_nested()
-                        .clone())
+                    Ok(relation.borrow().as_dbsp().stream().expect_nested().clone())
                 });
                 match stream {
                     Ok(stream) => Ok(stream),

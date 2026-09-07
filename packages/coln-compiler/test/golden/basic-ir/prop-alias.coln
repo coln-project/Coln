@@ -1,0 +1,8 @@
+theory PropAlias := Prop
+
+theory T := sig
+  V : PropAlias
+end
+
+realm TRealm @ T
+end

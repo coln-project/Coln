@@ -1,0 +1,13 @@
+def Cell (X : Set) (Y : Set) (R : X -> Y -> Set) (x : X) (y : Y) : Set := sig
+  entry : R x y
+end
+
+theory T := sig
+  X : Set
+  Y : Set
+  R : X -> Y -> Set
+  cells : (x : X) -> (y : Y) -> Cell X Y R x y -> Set
+end
+
+realm TRealm @ T
+end

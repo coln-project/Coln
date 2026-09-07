@@ -26,7 +26,7 @@ fn fixture_theory(name: &str) -> FlatRealm {
 #[test]
 fn batch_block_matches_apply_batch_for_paths_fixture() {
     let theory = fixture_theory(PATHS_IR);
-    let mut store = Store::try_from_theory(theory).expect("valid theory");
+    let mut store = Store::try_from_ir(theory).expect("valid theory");
 
     let assignments = vec![
         BatchAssignment {

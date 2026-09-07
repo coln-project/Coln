@@ -1,0 +1,37 @@
+-- elaborated
+global entry named Truth
+in mode: Conjunctive
+type: Prop
+value: sig
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  trivial : (x : X) -> Truth
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      trivial = (fun [x : TRealm.X []] -> Truth)
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.trivial := [.x : ℜ.X] primarykey [.x]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.trivial.foreignKey x := ℜ.trivial [.x ↦ x] ⊢ x ∈ ℜ.X []
+    monitored ℜ.trivial.total x := x ∈ ℜ.X [] ⊢ ℜ.trivial [.x ↦ x]
+  end
+end
+
+-- messages

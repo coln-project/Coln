@@ -2,7 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use super::super::super::relation::{RelationSchema, Tuple, TupleKey, TupleValue};
+use super::super::super::relation::{Tuple, TupleValue};
+use super::super::schema::{StreamSchema, TupleKey};
 use crate::{
     host::InterpreterContext,
     host::expr::Expr,
@@ -41,10 +42,10 @@ impl ProjectionHelper {
     }
     pub fn prepare<E: RowScalarEngine>(
         self,
-        schema: &RelationSchema,
+        schema: &StreamSchema,
         engine: E,
     ) -> (
-        RelationSchema,
+        StreamSchema,
         impl Fn(InterpreterContext) -> (TupleKey, TupleValue) + Clone + use<E>,
     ) {
         let schema = schema.project(self.attributes);
@@ -93,7 +94,7 @@ impl<'a> PickHelper<'a> {
             .collect();
         Self { attributes }
     }
-    pub fn prepare(&self, schema: &RelationSchema) -> RelationSchema {
+    pub fn prepare(&self, schema: &StreamSchema) -> StreamSchema {
         schema.pick(&self.attributes)
     }
 }

@@ -7,7 +7,7 @@ use std::ops::Range;
 
 use crate::id_packer::IdPacker;
 
-use super::{CellKind, CellValue, PackedCell, PackedRowId};
+use super::{CellKind, PackedRowId, PackedValue, WireValue};
 
 /// Columnar storage for [`PackedRowId`]s, split into two parallel columns.
 ///
@@ -52,7 +52,6 @@ impl IdColumn {
         self.counters.remove(row);
     }
 
-    // TODO use scope_to_value / seek when supported
     /// Sorted position of `id`: `Ok(row)` when present, `Err(row)` with the
     /// insertion point otherwise. Requires ids sorted by
     /// `(commit_idx, counter)`.
@@ -72,62 +71,30 @@ impl IdColumn {
             Ordering::Greater => {}
         }
 
-        // Binary search the rest of the run. Each `get` probe jumps to the
-        // containing slab through the column index instead of decoding the
-        // run from the start.
-        let mut lo = run.start;
-        let mut hi = run.end - 1;
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            let counter = self.counters.get(mid).expect("run is in bounds");
-            match counter.cmp(&id.counter) {
-                Ordering::Less => lo = mid + 1,
-                Ordering::Equal => return Ok(mid),
-                Ordering::Greater => hi = mid,
-            }
+        let found = self.counters.scope_to_value(id.counter, run);
+        if found.is_empty() {
+            Err(found.start)
+        } else {
+            Ok(found.start)
         }
-        Err(lo)
     }
 
     pub(super) fn len(&self) -> usize {
         self.counters.len()
     }
 
-    // TODO switch to scope_to_value when delta column supports it.
     pub(super) fn scope_to_value(&self, value: PackedRowId, range: Range<usize>) -> Range<usize> {
         let range = self.commit_idxs.scope_to_value(value.commit_idx, range);
-
-        let mut start = range.start;
-        let mut end = range.end;
-        while start < end {
-            let mid = start + (end - start) / 2;
-            if self.counters.get(mid).expect("range is in bounds") < value.counter {
-                start = mid + 1;
-            } else {
-                end = mid;
-            }
-        }
-        let lower = start;
-
-        end = range.end;
-        while start < end {
-            let mid = start + (end - start) / 2;
-            if self.counters.get(mid).expect("range is in bounds") <= value.counter {
-                start = mid + 1;
-            } else {
-                end = mid;
-            }
-        }
-        lower..start
+        self.counters.scope_to_value(value.counter, range)
     }
 }
 
 /// One column of typed storage. The variant is fixed by the schema column type.
-/// Each id is 8 bytes instead of a 40-byte [`CellValue`].
+/// Each id is 8 bytes instead of a 40-byte [`WireValue`].
 #[derive(Debug, Clone)]
 pub(super) enum Column {
     Id(IdColumn),
-    Int(hexane::Column<i64>),
+    Int(hexane::Column<i64>), // TODO: change to i32
     Str(hexane::Column<String>),
 }
 
@@ -144,11 +111,11 @@ impl Column {
     ///
     /// Panics on a type mismatch, which `Table::validate_insert` rules out
     /// before rows reach storage.
-    pub(super) fn insert(&mut self, row: usize, value: PackedCell) {
+    pub(super) fn insert(&mut self, row: usize, value: PackedValue) {
         match (self, value) {
-            (Column::Id(cells), PackedCell::Id(id)) => cells.insert(row, id),
-            (Column::Int(cells), PackedCell::Int(value)) => cells.insert(row, value),
-            (Column::Str(cells), PackedCell::Str(value)) => cells.insert(row, value),
+            (Column::Id(cells), PackedValue::Id(id)) => cells.insert(row, id),
+            (Column::Int(cells), PackedValue::Int(value)) => cells.insert(row, value as i64),
+            (Column::Str(cells), PackedValue::Str(value)) => cells.insert(row, value),
             (column, value) => panic!(
                 "cell type mismatch: column stores {:?}, got {value:?}",
                 CellKind::from(&*column)
@@ -164,29 +131,31 @@ impl Column {
         }
     }
 
-    pub(super) fn get(&self, row: usize, packer: &IdPacker) -> Option<CellValue> {
+    pub(super) fn get(&self, row: usize, packer: &IdPacker) -> Option<WireValue> {
         match self {
             Column::Id(cells) => cells
                 .get(row)
-                .map(|id| CellValue::Id(packer.unpack_row_id(id))),
-            Column::Int(cells) => cells.get(row).map(CellValue::Int),
-            Column::Str(cells) => cells.get(row).map(|s| CellValue::Str(s.to_owned())),
+                .map(|id| WireValue::Id(packer.unpack_row_id(id))),
+            Column::Int(cells) => cells.get(row).map(|i| WireValue::Int(i as i32)),
+            Column::Str(cells) => cells.get(row).map(|s| WireValue::Str(s.to_owned())),
         }
     }
 
-    pub(super) fn get_packed(&self, row: usize) -> Option<PackedCell> {
+    pub(super) fn get_packed(&self, row: usize) -> Option<PackedValue> {
         match self {
-            Column::Id(cells) => cells.get(row).map(PackedCell::Id),
-            Column::Int(cells) => cells.get(row).map(PackedCell::Int),
-            Column::Str(cells) => cells.get(row).map(|s| PackedCell::Str(s.to_owned())),
+            Column::Id(cells) => cells.get(row).map(PackedValue::Id),
+            Column::Int(cells) => cells.get(row).map(|i| PackedValue::Int(i as i32)),
+            Column::Str(cells) => cells.get(row).map(|s| PackedValue::Str(s.to_owned())),
         }
     }
 
-    pub(super) fn scope_to_value(&self, value: &PackedCell, range: Range<usize>) -> Range<usize> {
+    pub(super) fn scope_to_value(&self, value: &PackedValue, range: Range<usize>) -> Range<usize> {
         match (self, value) {
-            (Column::Id(column), PackedCell::Id(value)) => column.scope_to_value(*value, range),
-            (Column::Int(column), PackedCell::Int(value)) => column.scope_to_value(*value, range),
-            (Column::Str(column), PackedCell::Str(value)) => {
+            (Column::Id(column), PackedValue::Id(value)) => column.scope_to_value(*value, range),
+            (Column::Int(column), PackedValue::Int(value)) => {
+                column.scope_to_value(*value as i64, range)
+            }
+            (Column::Str(column), PackedValue::Str(value)) => {
                 column.scope_to_value(value.as_str(), range)
             }
             (column, value) => panic!(

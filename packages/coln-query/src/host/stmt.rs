@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::expr::Expr;
-use crate::{impl_from_auto_box, util::MemAddr};
+use crate::impl_from_auto_box;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Stmt {
@@ -36,6 +36,7 @@ pub struct BlockStmt {
     pub stmts: Vec<Stmt>,
 }
 
+/// Read-only visitor. See [`StmtVisitorOwn`].
 pub trait StmtVisitor<T, C> {
     fn visit_stmt(&mut self, stmt: &Stmt, ctx: C) -> T {
         match stmt {
@@ -49,6 +50,7 @@ pub trait StmtVisitor<T, C> {
     fn visit_block_stmt(&mut self, stmt: &BlockStmt, ctx: C) -> T;
 }
 
+/// Annotating visitor. See [`StmtVisitorOwn`].
 pub trait StmtVisitorMut<T, C> {
     fn visit_stmt(&mut self, stmt: &mut Stmt, ctx: C) -> T {
         match stmt {
@@ -62,20 +64,18 @@ pub trait StmtVisitorMut<T, C> {
     fn visit_block_stmt(&mut self, stmt: &mut BlockStmt, ctx: C) -> T;
 }
 
+/// Restructuring visitor. See
+/// [`ExprVisitorOwn`](crate::host::expr::ExprVisitorOwn) for which of the three
+/// families a given pass belongs in, and why the payloads arrive boxed.
 pub trait StmtVisitorOwn<T, C> {
     fn visit_stmt(&mut self, stmt: Stmt, ctx: C) -> T {
         match stmt {
-            Stmt::Var(stmt) => self.visit_var_stmt(*stmt, ctx),
-            Stmt::Expr(stmt) => self.visit_expr_stmt(*stmt, ctx),
-            Stmt::Block(stmt) => self.visit_block_stmt(*stmt, ctx),
+            Stmt::Var(stmt) => self.visit_var_stmt(stmt, ctx),
+            Stmt::Expr(stmt) => self.visit_expr_stmt(stmt, ctx),
+            Stmt::Block(stmt) => self.visit_block_stmt(stmt, ctx),
         }
     }
-    fn visit_var_stmt(&mut self, stmt: VarStmt, ctx: C) -> T;
-    fn visit_expr_stmt(&mut self, stmt: ExprStmt, ctx: C) -> T;
-    fn visit_block_stmt(&mut self, stmt: BlockStmt, ctx: C) -> T;
+    fn visit_var_stmt(&mut self, stmt: Box<VarStmt>, ctx: C) -> T;
+    fn visit_expr_stmt(&mut self, stmt: Box<ExprStmt>, ctx: C) -> T;
+    fn visit_block_stmt(&mut self, stmt: Box<BlockStmt>, ctx: C) -> T;
 }
-
-impl MemAddr for Stmt {}
-impl MemAddr for VarStmt {}
-impl MemAddr for ExprStmt {}
-impl MemAddr for BlockStmt {}

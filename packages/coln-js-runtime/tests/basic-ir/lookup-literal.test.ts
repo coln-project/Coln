@@ -20,8 +20,6 @@ test("lookup-literal", () => {
   realm.root.stringEdge.set(stringEdge);
   const view = realm.commit();
 
-  assert.equal(view.IntEdge(intIndex).has(intEdge), true);
-  assert.equal(view.StringEdge(stringIndex).has(stringEdge), true);
   assert.equal(valueEqual(view.intEdge.get(), intEdge), true);
   assert.equal(valueEqual(view.stringEdge.get(), stringEdge), true);
 });

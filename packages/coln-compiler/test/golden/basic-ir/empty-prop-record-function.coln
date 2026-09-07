@@ -1,0 +1,10 @@
+def Truth : Prop := sig
+end
+
+theory T := sig
+  X : Set
+  trivial : (x : X) -> Truth
+end
+
+realm TRealm @ T
+end

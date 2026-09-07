@@ -4,7 +4,7 @@
 
 use ena::unify::{InPlaceUnificationTable, UnifyKey, UnifyValue};
 
-use crate::table::RowId;
+use crate::table::WireRowId;
 
 pub(super) type UnionFind = InPlaceUnificationTable<NodeId>;
 
@@ -12,7 +12,7 @@ pub(super) type UnionFind = InPlaceUnificationTable<NodeId>;
 pub(super) struct NodeId(u32);
 
 impl UnifyKey for NodeId {
-    type Value = RowId;
+    type Value = WireRowId;
 
     fn index(&self) -> u32 {
         self.0
@@ -27,7 +27,7 @@ impl UnifyKey for NodeId {
     }
 }
 
-impl UnifyValue for RowId {
+impl UnifyValue for WireRowId {
     type Error = ena::unify::NoError;
 
     fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {

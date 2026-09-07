@@ -1,0 +1,72 @@
+-- elaborated
+global entry named PointAt
+in mode: Conjunctive
+type: (X : Set) -> (x : X) -> Set
+value: X => x => sig
+end
+global entry named Box
+in mode: Conjunctive
+type: (X : Set) -> (x : X) -> (E : X -> Set) -> (f : (x : X) -> E x) -> (p : PointAt (E x) (f x)) -> Set
+value: X => x => E => f => p => sig
+  image : E x
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  Key : Set
+  key : Key
+  E : Key -> Set
+  f : (x : Key) -> E x
+  point : PointAt (E key) (f key)
+  boxed : Box Key key E f point -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      Key = rel []
+      key = (fun [] -> TRealm.Key [])
+      E = rel [a : TRealm.Key []]
+      f = (fun [x : TRealm.Key []] -> TRealm.E [a := x])
+      point = (fun [] -> PointAt (TRealm.E [a := TRealm.key []]) (TRealm.f [
+        x := TRealm.key []
+      ]))
+      boxed = rel [
+        a : Box (TRealm.Key []) (TRealm.key []) (a => TRealm.E [
+          a := a
+        ]) (x => TRealm.f [x := x]) (TRealm.point [])
+      ]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.Key := []
+    table ℜ.key := [.a : ℜ.Key] primarykey []
+    table ℜ.E := [.a : ℜ.Key]
+    table ℜ.f := [.x : ℜ.Key, .a : ℜ.E] primarykey [.x]
+    table ℜ.point := [] primarykey []
+    table ℜ.boxed := [.a.image : ℜ.E]
+  end
+  rules
+    enforced ℜ.Key.foreignKey := ℜ.Key [] ⊢ ⊤
+    enforced ℜ.key.foreignKey a := ℜ.key [.a ↦ a] ⊢ a ∈ ℜ.Key []
+    monitored ℜ.key.total := ⊤ ⊢ ℜ.key []
+    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.Key []
+    enforced ℜ.f.foreignKey x a := ℜ.f [
+      .x ↦ x,
+      .a ↦ a
+    ] ⊢ x ∈ ℜ.Key [] ∧ a ∈ ℜ.E [.a ↦ x]
+    monitored ℜ.f.total x := x ∈ ℜ.Key [] ⊢ ℜ.f [.x ↦ x]
+    enforced ℜ.point.foreignKey := ℜ.point [] ⊢ ⊤
+    monitored ℜ.point.total := ⊤ ⊢ ℜ.point []
+    enforced ℜ.boxed.foreignKey a.image a.image.a := ℜ.boxed [
+      .a.image ↦ a.image
+    ] ∧ ℜ.key [.a ↦ a.image.a] ⊢ a.image ∈ ℜ.E [.a ↦ a.image.a]
+  end
+end
+
+-- messages

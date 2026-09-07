@@ -1,0 +1,63 @@
+-- elaborated
+global entry named Inner
+in mode: Conjunctive
+type: (P : Prop) -> Prop
+value: P => sig
+  proof : P
+end
+global entry named Outer
+in mode: Conjunctive
+type: (P : Prop) -> (Q : Prop) -> Prop
+value: P => Q => sig
+  nested : Inner P
+  direct : Q
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  X : Set
+  P : X -> Prop
+  Q : X -> Prop
+  make : (x : X) -> Outer (P x) (Q x)
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      X = rel []
+      P = rel [a : TRealm.X []]
+      Q = rel [a : TRealm.X []]
+      make = (fun [x : TRealm.X []] -> Outer (TRealm.P [a := x]) (TRealm.Q [
+        a := x
+      ]))
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.X := []
+    table ℜ.P := [.a : ℜ.X]
+    table ℜ.Q := [.a : ℜ.X]
+    table ℜ.make := [
+      .x : ℜ.X,
+      .a.nested.proof : ℜ.P,
+      .a.direct : ℜ.Q
+    ] primarykey [.x]
+  end
+  rules
+    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
+    enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ a ∈ ℜ.X []
+    enforced ℜ.Q.foreignKey a := ℜ.Q [.a ↦ a] ⊢ a ∈ ℜ.X []
+    enforced ℜ.make.foreignKey x a.nested.proof a.direct := ℜ.make [
+      .x ↦ x,
+      .a.nested.proof ↦ a.nested.proof,
+      .a.direct ↦ a.direct
+    ] ⊢ x ∈ ℜ.X [] ∧ a.nested.proof ∈ ℜ.P [.a ↦ x] ∧ a.direct ∈ ℜ.Q [.a ↦ x]
+    monitored ℜ.make.total x := x ∈ ℜ.X [] ⊢ ℜ.make [.x ↦ x]
+  end
+end
+
+-- messages

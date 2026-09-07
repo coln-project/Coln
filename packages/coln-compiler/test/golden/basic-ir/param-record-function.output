@@ -1,0 +1,49 @@
+-- elaborated
+global entry named Box
+in mode: Conjunctive
+type: (X : Set) -> (f : X -> X) -> (Y : Set) -> Set
+value: X => f => Y => sig
+  key : X
+  value : Y
+end
+global entry named T
+in mode: Conjunctive
+type: Theory
+value: sig
+  Key : Set
+  f : Key -> Key
+  boxed : Box Key f String -> Set
+end
+realm named TRealm
+elaborated: realm
+  generators
+    node
+      Key = rel []
+      f = (fun [a : TRealm.Key []] -> TRealm.Key [])
+      boxed = rel [a : Box (TRealm.Key []) (a => TRealm.f [a := a]) String]
+    end
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ.Key := []
+    table ℜ.f := [.a : ℜ.Key, .b : ℜ.Key] primarykey [.a]
+    table ℜ.boxed := [.a.key : ℜ.Key, .a.value : String]
+  end
+  rules
+    enforced ℜ.Key.foreignKey := ℜ.Key [] ⊢ ⊤
+    enforced ℜ.f.foreignKey a b := ℜ.f [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.Key [] ∧ b ∈ ℜ.Key []
+    monitored ℜ.f.total a := a ∈ ℜ.Key [] ⊢ ℜ.f [.a ↦ a]
+    enforced ℜ.boxed.foreignKey a.key a.value := ℜ.boxed [
+      .a.key ↦ a.key,
+      .a.value ↦ a.value
+    ] ⊢ a.key ∈ ℜ.Key []
+  end
+end
+
+-- messages

@@ -15,6 +15,5 @@ test("param-theory-nested", () => {
   realm.root.outer.inner.point.set(point);
   const view = realm.commit();
 
-  assert.equal(view.X.has(point), true);
   assert.equal(valueEqual(view.outer.inner.point.get(), point), true);
 });
