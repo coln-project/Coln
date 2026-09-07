@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Coln contributors
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+use serde::{Deserialize, Serialize};
+use specta::Type;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord, Serialize, Deserialize, Type)]
+#[serde(untagged)]
 pub enum Value<I> {
     Id(I),
     Int(i32),

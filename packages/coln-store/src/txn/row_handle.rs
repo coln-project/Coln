@@ -4,6 +4,9 @@
 
 use std::{cell::RefCell, rc::Rc};
 
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
 use crate::{
     commit::hash::CommitHash,
     op::Op,
@@ -161,8 +164,9 @@ pub fn empty_row() -> Vec<TxnLiveValue> {
 }
 
 /// A temporary row ID that is valid only within a transaction.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) struct TempRowId(pub(crate) u32);
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
+#[serde(transparent)]
+pub struct TempRowId(pub u32);
 
 impl TempRowId {
     pub(crate) fn resolve(self, commit: CommitHash) -> WireRowId {
@@ -184,8 +188,9 @@ impl From<u32> for TempRowId {
 }
 
 /// A reference to an existing row or a pending row in the current transaction.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) enum TxnWireRowId {
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
+#[serde(tag = "type")]
+pub enum TxnWireRowId {
     Existing(WireRowId),
     Pending(TempRowId),
 }

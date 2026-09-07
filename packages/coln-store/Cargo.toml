@@ -25,7 +25,7 @@ coln-flir-rs = { path = "../coln-flir-rs" }
 csv = "1.4.0"
 coln-query = { path = "../coln-query", optional = true }
 ena = "0.14.4"
-hex = "0.4.3"
+hex = { version = "0.4.3", features = ["serde"] }
 hexane = "1.0.0-alpha.5"
 js-sys = { version = "0.3.83", optional = true }
 leb128 = "0.2.6"
@@ -42,6 +42,7 @@ tracing-subscriber = { workspace = true, features = [
     "env-filter",
     "fmt",
 ], optional = true }
+specta.workspace = true
 
 
 [dev-dependencies]
