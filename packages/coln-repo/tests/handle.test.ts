@@ -4,6 +4,10 @@
 
 import assert from "node:assert/strict"
 import { afterEach, beforeEach, test } from "node:test"
+import {
+  isValidAutomergeUrl,
+  isValidDocumentUrl,
+} from "@automerge/automerge-repo"
 import type { Value } from "@coln-project/runtime"
 import {
   applyBindings,
@@ -35,6 +39,9 @@ test("create returns a bound, initialized handle", () => {
   const handle = create(repos.source, GraphRealm)
   const document = handle.doc()
 
+  assert.match(handle.url, /^coln:/)
+  assert(isValidDocumentUrl(handle.url, "coln"))
+  assert.equal(isValidAutomergeUrl(handle.url), false)
   assert.deepEqual(Object.keys(document).sort(), [
     "heads",
     "jsonIR",

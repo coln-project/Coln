@@ -11,4 +11,10 @@ export {
   type ColnTransaction,
 } from "./colnDocType.js"
 
-export { applyBindings, create, find, type ColnHandle } from "./colnHandle.js"
+export {
+  applyBindings,
+  create,
+  find,
+  type ColnHandle,
+  type ColnUrl,
+} from "./colnHandle.js"

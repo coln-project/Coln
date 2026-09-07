@@ -52,7 +52,7 @@ Every command takes the document as a named flag. `--endpoint` overrides
 `SUBDUCTION_ENDPOINT`; otherwise the public Subduction relay is used.
 
 ```bash
-coln-repo ir --document <automerge-url> [--endpoint <ws-url>]
+coln-repo ir --document <coln-url> [--endpoint <ws-url>]
 ```
 
 `ir` returns the compiled JSON IR unchanged inside the response's `ir` field.
@@ -62,7 +62,7 @@ Agents should use it as structural evidence, not domain documentation.
 scope with `jsonIR()`, `scanTable(path)`, `rowById(path, rowRef)`, and `heads()`.
 
 ```bash
-coln-repo query --document automerge:... <<'JS'
+coln-repo query --document coln:... <<'JS'
 store.scanTable("Records.Documents")
 JS
 ```
@@ -72,7 +72,7 @@ is in scope as `txn`; today it exposes `txn.add(path, values)`. Return a
 JSON-serializable value to include it in the response.
 
 ```bash
-coln-repo exec --document automerge:... <<'JS'
+coln-repo exec --document coln:... <<'JS'
 const folder = txn.add("Records.Folders", [{ tag: "string", value: "Inbox" }])
 const document = txn.add("Records.Documents", [
   folder,

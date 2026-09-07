@@ -35,7 +35,12 @@ describe("readTables", () => {
       {
         name: "Realm.profile",
         columns: [
-          { name: "owner", type: "ref Realm.Person", primary: true },
+          {
+            name: "owner",
+            type: "ref Realm.Person",
+            primary: true,
+            referenceTable: "Realm.Person",
+          },
           { name: "details.name", type: "string", primary: false },
         ],
       },

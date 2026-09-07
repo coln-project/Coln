@@ -9,12 +9,12 @@ describe("Coln Lab routes", () => {
     expect(
       routeFromUrl(
         new URL(
-          "https://lab.example/editor/?theory=automerge%3Atheory#automerge:store",
+          "https://lab.example/editor/?theory=automerge%3Atheory#coln:store",
         ),
       ),
     ).toEqual({
       tool: "editor",
-      documentUrl: "automerge:store",
+      documentUrl: "coln:store",
       theoryUrl: "automerge:theory",
       pathname: "/editor/",
     })
@@ -23,10 +23,10 @@ describe("Coln Lab routes", () => {
   it("supports a static deployment base", () => {
     expect(
       routeFromUrl(
-        new URL("https://example.test/lab/sync/#automerge:graph"),
+        new URL("https://example.test/lab/sync/#coln:graph"),
         "/lab/",
       ),
-    ).toMatchObject({ tool: "sync", documentUrl: "automerge:graph" })
+    ).toMatchObject({ tool: "sync", documentUrl: "coln:graph" })
   })
 
   it("reports unknown instruments", () => {

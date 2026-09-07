@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Coln contributors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import type { ColnHandle } from "@coln-project/repo"
+import type { ColnHandle, RealmBindings } from "@coln-project/repo"
 import { snapshot, type Snapshot } from "./snapshot.ts"
 
 export type ConsoleLevel = "debug" | "info" | "log" | "warn" | "error"
@@ -29,16 +29,16 @@ export interface EvaluationFailure {
 export type Evaluation = EvaluationSuccess | EvaluationFailure
 
 type AsyncProgram = (
-  handle: ColnHandle,
+  handle: unknown,
   console: Pick<Console, ConsoleLevel>,
 ) => Promise<unknown>
 
 const AsyncFunction = Object.getPrototypeOf(async function () {})
   .constructor as new (...parameters: string[]) => AsyncProgram
 
-export async function evaluate(
+export async function evaluate<Bindings extends RealmBindings | undefined>(
   source: string,
-  handle: ColnHandle,
+  handle: ColnHandle<Bindings>,
 ): Promise<Evaluation> {
   const entries: ConsoleEntry[] = []
   let active = true

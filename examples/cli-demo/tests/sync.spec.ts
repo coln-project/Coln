@@ -164,6 +164,30 @@ test("CLI reads a store's IR and rows", async () => {
   }
 })
 
+test("CLI rejects legacy Automerge store URLs", async () => {
+  await initSubduction()
+  const creator = new Repo()
+
+  try {
+    const handle = creator.create(schema, colnDocType)
+    const legacyUrl = handle.url.replace(/^coln:/, "automerge:")
+    const result = await runCli(documentArguments("ir", legacyUrl))
+
+    expect(result.exitCode).toBe(3)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      command: "ir",
+      error: {
+        code: "DOCUMENT_OPEN_FAILED",
+        message: `Invalid Coln URL: ${legacyUrl}`,
+        mutationState: "not_applied",
+      },
+    })
+  } finally {
+    await creator.shutdown()
+  }
+})
+
 test("CLI commits dependent rows in one transaction", async () => {
   await initSubduction()
   const creator = new Repo({ subductionWebsocketEndpoints: [endpoint] })

@@ -1,7 +1,8 @@
 allowBuilds:
   cbor-extract: false
-  '@automerge/automerge-repo@git+https://github.com/automerge/automerge-repo.git': true
+  "@automerge/automerge-repo@https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8#path:packages/automerge-repo": true
   esbuild: true
 overrides:
   "@automerge/automerge": 3.3.2
+  "@automerge/automerge-repo": github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo
   "@automerge/automerge-subduction": 0.16.1

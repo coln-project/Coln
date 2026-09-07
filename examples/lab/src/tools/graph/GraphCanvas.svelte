@@ -31,6 +31,8 @@
     onselectvertex: (vertex: Vertex) => void
   } = $props()
 
+  let canvas: HTMLDivElement
+
   const points = $derived(layoutVertices(graph.vertices))
   const pointById = $derived(new Map(points.map(point => [point.id, point])))
   const drawableEdges = $derived(layoutEdges(graph.edges, pointById))
@@ -117,28 +119,34 @@
     const middleY = (startY + endY) / 2 + ux * offset
     return `M ${startX} ${startY} Q ${middleX} ${middleY}, ${endX} ${endY}`
   }
+
+  function clearSelectedEdge(event: MouseEvent) {
+    if (event.target instanceof Node && canvas.contains(event.target)) {
+      onselectedge("")
+    }
+  }
 </script>
 
-<svelte:window onclick={() => onselectedge("")} />
+<svelte:window onclick={clearSelectedEdge} />
 
-<div class="relative min-h-[500px] overflow-hidden border-b border-[#304041] min-[761px]:min-h-[680px] min-[761px]:border-r min-[761px]:border-b-0">
+<div class="relative min-h-[500px] overflow-hidden border-b border-[#304041] min-[761px]:h-full min-[761px]:min-h-[680px] min-[761px]:border-r min-[761px]:border-b-0" bind:this={canvas}>
   <div class="absolute top-0 right-0 left-2 z-2 grid min-w-0 max-w-[480px] gap-3 bg-[#101718e6] p-4">
-    <small class="font-['DM_Mono'] text-xs tracking-[.12em] text-[#aab6b6]">DOCUMENT URL</small>
+    <small class="font-['DM_Mono'] text-xs tracking-[.12em] text-[#aab6b6]" data-small-detail>GRAPH DOCUMENT URL</small>
     <div class="flex min-w-0">
-      <input class="min-w-0 flex-1 border border-r-0 border-[#405152] bg-[#101718] p-3 font-['DM_Mono'] text-xs text-[#d2dada]" readonly value={documentUrl} onfocus={(event) => event.currentTarget.select()} data-testid="doc-url" />
-      <button class="shrink-0 cursor-pointer border border-[#405152] bg-[#182122] px-4 font-['DM_Mono'] text-xs font-medium text-[#d8ff57] hover:bg-[#243031] disabled:cursor-wait disabled:opacity-50" type="button" aria-label="Copy document URL" disabled={copyPending} onclick={oncopydocumenturl} data-testid="copy-document-url">{copyPending ? "copying" : "copy"}</button>
+      <input class="min-w-0 flex-1 border border-r-0 border-[#405152] bg-[#101718] p-3 font-['DM_Mono'] text-sm text-[#d2dada]" readonly value={documentUrl} onfocus={(event) => event.currentTarget.select()} data-testid="doc-url" />
+      <button class="shrink-0 cursor-pointer border border-[#405152] bg-[#182122] px-4 font-['DM_Mono'] text-sm font-medium text-[#d8ff57] hover:bg-[#243031] disabled:cursor-wait disabled:opacity-50" type="button" aria-label="Copy graph document URL" disabled={copyPending} onclick={oncopydocumenturl} data-testid="copy-document-url">{copyPending ? "Copying…" : "Copy"}</button>
     </div>
   </div>
 
   {#if graph.vertices.length === 0}
     <button class="absolute top-1/2 left-1/2 z-3 grid w-[220px] -translate-1/2 cursor-pointer justify-items-center gap-2 border border-dashed border-[#536263] bg-[#101718d9] px-5 py-[30px] text-[#e8ece8]" onclick={onaddvertex} data-testid="empty-add-vertex">
       <span class="font-['DM_Mono'] text-[42px] font-light text-[#d8ff57]">+</span>
-      <strong class="text-sm">Place the first vertex</strong>
-      <small class="font-['DM_Mono'] text-[11px] text-[#748284]">The graph is empty</small>
+      <strong class="text-sm">Add the first vertex</strong>
+      <small class="font-['DM_Mono'] text-sm text-[#748284]">This graph has no vertices.</small>
     </button>
   {/if}
 
-  <svg class="block min-h-[500px] w-full min-[761px]:min-h-[680px] min-[761px]:h-full" viewBox="0 0 1000 660" role="img" aria-label="Directed graph" data-testid="graph-canvas">
+  <svg class="block min-h-[500px] w-full min-[761px]:min-h-[680px] min-[761px]:h-full" viewBox="0 0 1000 660" role="img" aria-label="Graph Demo directed graph" data-testid="graph-canvas">
     <defs>
       <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
         <path class="fill-[#738486]" d="M 0 0 L 10 5 L 0 10 z"></path>
@@ -164,7 +172,7 @@
         onkeydown={(event) => event.key === "Enter" && onselectedge(edge.id)}
         role="button"
         tabindex="0"
-        aria-label={`Edge from ${vertexLabel(edge.fromId)} to ${vertexLabel(edge.toId)}`}
+        aria-label={`Directed edge from ${vertexLabel(edge.fromId)} to ${vertexLabel(edge.toId)}`}
         data-testid="graph-edge"
       ></path>
     {/each}
@@ -188,18 +196,18 @@
         tabindex="0"
         data-testid="graph-vertex"
       >
-        <title>{vertex.id}</title>
+        <title>{vertex.label}: {vertex.id}</title>
         <circle
           class={`transition-[fill,stroke,stroke-width] duration-150 group-hover:stroke-[#e8ece8] group-hover:stroke-3 group-focus:stroke-[#e8ece8] group-focus:stroke-3 ${vertex.id === to?.id ? "fill-[#17383d] stroke-[#65d9e7] stroke-4" : vertex.id === from?.id ? "fill-[#43301d] stroke-[#ff7657] stroke-4" : "fill-[#172021] stroke-[#839193] stroke-2"}`}
           r="38"
         ></circle>
-        <text class="pointer-events-none fill-[#e8ece8] font-['DM_Mono'] text-base font-semibold" text-anchor="middle" dominant-baseline="central">{vertex.label}</text>
+        <text class="pointer-events-none fill-[#e8ece8] font-['DM_Mono'] text-[44px] font-semibold min-[761px]:text-[42px] min-[1100px]:text-[30px]" text-anchor="middle" dominant-baseline="central">{vertex.label}</text>
       </g>
     {/each}
   </svg>
 
   <div class="absolute bottom-5 left-6 flex gap-4 font-['DM_Mono'] text-[16px] text-[#829092]">
-    <span class="flex items-center gap-1.5"><i class="size-2 rounded-full bg-[#ff7657]"></i>source</span>
-    <span class="flex items-center gap-1.5"><i class="size-2 rounded-full bg-[#65d9e7]"></i>target</span>
+    <span class="flex items-center gap-1.5"><i class="size-2 rounded-full bg-[#ff7657]"></i>edge source</span>
+    <span class="flex items-center gap-1.5"><i class="size-2 rounded-full bg-[#65d9e7]"></i>edge target</span>
   </div>
 </div>

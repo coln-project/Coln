@@ -11,9 +11,9 @@ that theory to JSON IR. Read the IR, confirm inferred domain meanings with the
 user, then query or execute a transaction.
 
 Usage:
-  coln-repo ir --document <automerge-url> [--endpoint <url>] [-v]
-  coln-repo query --document <automerge-url> [--endpoint <url>] [-v]
-  coln-repo exec --document <automerge-url> [--endpoint <url>] [-v]
+  coln-repo ir --document <coln-url> [--endpoint <url>] [-v]
+  coln-repo query --document <coln-url> [--endpoint <url>] [-v]
+  coln-repo exec --document <coln-url> [--endpoint <url>] [-v]
   coln-repo guide
   coln-repo install-skill [--dir <skills-root>]
   coln-repo help [command]
@@ -58,10 +58,10 @@ replacing it when the installed copy differs. The default root is
 example --dir ~/.claude/skills for Claude Code.
 
 The response reports status "installed", "updated", or "unchanged".`,
-  ir: `Usage: coln-repo ir --document <automerge-url> [--endpoint <url>] [-v]
+  ir: `Usage: coln-repo ir --document <coln-url> [--endpoint <url>] [-v]
 
 Return the document's compiled JSON IR without interpreting its schema.`,
-  query: `Usage: coln-repo query --document <automerge-url> [--endpoint <url>] [-v]
+  query: `Usage: coln-repo query --document <coln-url> [--endpoint <url>] [-v]
 
 Evaluate a synchronous JavaScript expression with a read-only store in scope.
 Read the expression from stdin and return its value in the JSON response.
@@ -73,8 +73,8 @@ Store methods:
   store.heads()                  Return current commit hashes
 
 Example:
-  printf 'store.scanTable("Records.Documents")' | coln-repo query --document automerge:...`,
-  exec: `Usage: coln-repo exec --document <automerge-url> [--endpoint <url>] [-v]
+  printf 'store.scanTable("Records.Documents")' | coln-repo query --document coln:...`,
+  exec: `Usage: coln-repo exec --document <coln-url> [--endpoint <url>] [-v]
 
 Run a synchronous JavaScript script in one atomic Coln Repo change. The script
 is read from stdin and receives the current transaction API as txn. Return a
@@ -88,7 +88,7 @@ Values are tagged: { tag: "int", value } | { tag: "string", value } |
 txn.add returns a complete tagged row_id value; pass it directly to later adds.
 
 Example:
-  coln-repo exec --document automerge:... <<'JS'
+  coln-repo exec --document coln:... <<'JS'
   const folder = txn.add("Records.Folders", [{ tag: "string", value: "Inbox" }])
   const document = txn.add("Records.Documents", [
     folder,

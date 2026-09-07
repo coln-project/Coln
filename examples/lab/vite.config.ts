@@ -39,6 +39,7 @@ export default defineConfig({
       "@automerge/automerge",
       "@automerge/automerge-codemirror",
       "@automerge/automerge-repo",
+      "@automerge/automerge-subduction",
       "@codemirror/state",
       "@codemirror/view",
       "codemirror",

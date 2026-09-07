@@ -18,7 +18,7 @@
     "test:e2e": "pnpm run build && playwright test"
   },
   "dependencies": {
-    "@automerge/automerge-repo": "github:automerge/automerge-repo#doctypes&path:packages/automerge-repo",
+    "@automerge/automerge-repo": "github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo",
     "@coln-project/repo": "link:../../packages/coln-repo"
   },
   "devDependencies": {

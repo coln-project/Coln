@@ -6,6 +6,7 @@ settings:
 
 overrides:
   '@automerge/automerge': 3.3.2
+  '@automerge/automerge-repo': github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo
   '@automerge/automerge-subduction': 0.16.1
 
 importers:
@@ -13,8 +14,8 @@ importers:
   .:
     dependencies:
       '@automerge/automerge-repo':
-        specifier: github:automerge/automerge-repo#doctypes&path:packages/automerge-repo
-        version: https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5#path:packages/automerge-repo
+        specifier: github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo
+        version: https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8#path:packages/automerge-repo
       '@coln-project/repo':
         specifier: link:../../packages/coln-repo
         version: link:../../packages/coln-repo
@@ -43,8 +44,8 @@ importers:
 
 packages:
 
-  '@automerge/automerge-repo@https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5#path:packages/automerge-repo':
-    resolution: {gitHosted: true, path: packages/automerge-repo, tarball: https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5}
+  '@automerge/automerge-repo@https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8#path:packages/automerge-repo':
+    resolution: {gitHosted: true, integrity: sha512-6OS6f5Jo1ZuZLy2G43c74SHh1/a0fIO8QB7OsX4jJZSu7fMYjCoDWTZ2rX/MMzOU2Ywjg9CLCjy9YV2w5gvmxg==, path: packages/automerge-repo, tarball: https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8}
     version: 2.6.0-subduction.47
     engines: {node: '>=22.13'}
 
@@ -361,7 +362,7 @@ packages:
 
 snapshots:
 
-  '@automerge/automerge-repo@https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5#path:packages/automerge-repo':
+  '@automerge/automerge-repo@https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8#path:packages/automerge-repo':
     dependencies:
       '@automerge/automerge': 3.3.2
       '@automerge/automerge-subduction': 0.16.1

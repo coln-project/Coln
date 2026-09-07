@@ -13,6 +13,7 @@ type GraphHandle = RepoColnHandle<typeof GraphRealm>
 type GraphDocument = ColnDocument<typeof GraphRealm>
 type Change = ColnChange<typeof GraphRealm>
 type ChangePayload = { doc: GraphDocument }
+type Event = "change" | "heads-changed"
 
 describe("ColnHandle", () => {
   test("returns the current document", () => {
@@ -47,40 +48,49 @@ describe("ColnHandle", () => {
 
     expect(observed).toBe(handle.document)
     expect(handle.listenerCount("change")).toBe(1)
+    expect(handle.listenerCount("heads-changed")).toBe(1)
     handle.document = fakeDocument()
     handle.emit("change", { doc: handle.document })
+    flushSync()
+    expect(observed).toBe(handle.document)
+    handle.document = fakeDocument()
+    handle.emit("heads-changed", { doc: handle.document })
     flushSync()
     expect(observed).toBe(handle.document)
 
     stop()
     await Promise.resolve()
     expect(handle.listenerCount("change")).toBe(0)
+    expect(handle.listenerCount("heads-changed")).toBe(0)
   })
 })
 
 class FakeHandle {
   document = fakeDocument()
   readonly change = vi.fn((_change: Change) => {})
-  readonly #listeners = new Set<(payload: ChangePayload) => void>()
+  readonly #listeners: Record<Event, Set<(payload: ChangePayload) => void>> = {
+    change: new Set(),
+    "heads-changed": new Set(),
+  }
 
   doc(): GraphDocument {
     return this.document
   }
 
-  on(_event: "change", listener: (payload: ChangePayload) => void): void {
-    this.#listeners.add(listener)
+  on(event: Event, listener: (payload: ChangePayload) => void): void {
+    this.#listeners[event].add(listener)
   }
 
-  off(_event: "change", listener: (payload: ChangePayload) => void): void {
-    this.#listeners.delete(listener)
+  off(event: Event, listener: (payload: ChangePayload) => void): void {
+    this.#listeners[event].delete(listener)
   }
 
-  emit(_event: "change", payload: ChangePayload): void {
-    for (const listener of this.#listeners) listener(payload)
+  emit(event: Event, payload: ChangePayload): void {
+    for (const listener of this.#listeners[event]) listener(payload)
   }
 
-  listenerCount(_event: "change"): number {
-    return this.#listeners.size
+  listenerCount(event: Event): number {
+    return this.#listeners[event].size
   }
 }
 

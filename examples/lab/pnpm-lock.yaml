@@ -16,8 +16,8 @@ importers:
         specifier: 0.2.0
         version: 0.2.0
       '@automerge/automerge-repo':
-        specifier: github:automerge/automerge-repo#doctypes&path:packages/automerge-repo
-        version: https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5#path:packages/automerge-repo
+        specifier: github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo
+        version: https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8#path:packages/automerge-repo
       '@automerge/automerge-repo-storage-indexeddb':
         specifier: 2.6.0-subduction.47
         version: 2.6.0-subduction.47
@@ -45,6 +45,9 @@ importers:
       json-formatter-js:
         specifier: ^2.5.23
         version: 2.5.23
+      paneforge:
+        specifier: ^1.0.2
+        version: 1.0.2(svelte@5.57.0)
       svelte:
         specifier: ^5.57.0
         version: 5.57.0
@@ -99,8 +102,8 @@ packages:
     resolution: {integrity: sha512-NGBQUjGH67Kyrc8a6zoafvDKT1+pnFi2/yiMgULS7l+apWQT2QkgQZ3vQGms/ngdrmM6ye1fhcwHwBn/DGJ6tA==}
     engines: {node: '>=22.13'}
 
-  '@automerge/automerge-repo@https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5#path:packages/automerge-repo':
-    resolution: {gitHosted: true, path: packages/automerge-repo, tarball: https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5}
+  '@automerge/automerge-repo@https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8#path:packages/automerge-repo':
+    resolution: {gitHosted: true, path: packages/automerge-repo, tarball: https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8}
     version: 2.6.0-subduction.47
     engines: {node: '>=22.13'}
 
@@ -604,6 +607,9 @@ packages:
   graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
 
+  inline-style-parser@0.2.7:
+    resolution: {integrity: sha512-Nb2ctOyNR8DqQoR0OwRG95uNWIC0C1lCgf5Naz5H6Ji72KZ8OcFZLz2P5sNgwlyoJ8Yif11oMuYs5pBQa86csA==}
+
   is-reference@3.0.3:
     resolution: {integrity: sha512-ixkJoqQvAP88E6wLydLGGqCJsrFUnqoH6HnaczB8XmDH1oaWU+xxdptvikTgaEhtZ53Ky6YXiBuUI2WXLMCwjw==}
 
@@ -800,6 +806,11 @@ packages:
     resolution: {integrity: sha512-4a+OsYv9UktOJKE+l1A4OufDgdRF9PifWj+tJnHURo/P+WOxpG4GzUFL9qCalmWauao6ogiG+QvnCovwPoyAWA==}
     engines: {node: '>=12.20.0'}
 
+  paneforge@1.0.2:
+    resolution: {integrity: sha512-KzmIXQH1wCfwZ4RsMohD/IUtEjVhteR+c+ulb/CHYJHX8SuDXoJmChtsc/Xs5Wl8NHS4L5Q7cxL8MG40gSU1bA==}
+    peerDependencies:
+      svelte: ^5.29.0
+
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
@@ -837,6 +848,16 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
+  runed@0.23.4:
+    resolution: {integrity: sha512-9q8oUiBYeXIDLWNK5DfCWlkL0EW3oGbk845VdKlPeia28l751VpfesaB/+7pI6rnbx1I6rqoZ2fZxptOJLxILA==}
+    peerDependencies:
+      svelte: ^5.7.0
+
+  runed@0.29.2:
+    resolution: {integrity: sha512-0cq6cA6sYGZwl/FvVqjx9YN+1xEBu9sDDyuWdDW1yWX7JF2wmvmVKfH+hVCZs+csW+P3ARH92MjI3H9QTagOQA==}
+    peerDependencies:
+      svelte: ^5.7.0
+
   sade@1.8.1:
     resolution: {integrity: sha512-xal3CZX1Xlo/k4ApwCFrHVACi9fBqJ7V+mwhBsuf/1IOKbBy098Fex+Wa/5QMubw09pSZ/u8EY8PWgevJsXp1A==}
     engines: {node: '>=6'}
@@ -861,6 +882,9 @@ packages:
   style-mod@4.1.3:
     resolution: {integrity: sha512-i/n8VsZydrugj3Iuzll8+x/00GH2vnYsk1eomD8QiRrSAeW6ItbCQDtfXCeJHd0iwiNagqjQkvpvREEPtW3IoQ==}
 
+  style-to-object@1.0.14:
+    resolution: {integrity: sha512-LIN7rULI0jBscWQYaSswptyderlarFkjQ+t79nzty8tcIAceVomEVlLzH5VP4Cmsv6MtKhs7qaAiwlcp+Mgaxw==}
+
   svelte-check@4.7.6:
     resolution: {integrity: sha512-t2scM//ZuVbSY/T2w6FSBw1v9s2NEmh/g+sy1lqtosW5ylBV5AF4wFb1Ts9Kf3MbfPDUDJDZ9L436YT0SPTdvw==}
     engines: {node: '>= 18.0.0'}
@@ -868,6 +892,12 @@ packages:
     peerDependencies:
       svelte: ^4.0.0 || ^5.0.0-next.0
       typescript: ^5.0.0 || ^6.0.0
+
+  svelte-toolbelt@0.9.3:
+    resolution: {integrity: sha512-HCSWxCtVmv+c6g1ACb8LTwHVbDqLKJvHpo6J8TaqwUme2hj9ATJCpjCPNISR1OCq2Q4U1KT41if9ON0isINQZw==}
+    engines: {node: '>=18', pnpm: '>=8.7.0'}
+    peerDependencies:
+      svelte: ^5.30.2
 
   svelte@5.57.0:
     resolution: {integrity: sha512-NdbDn7fl4be1ViUG0oq/lvG6OZy3oENolV2ONjiqqsfVoeAfzaQAKUcEX3MrQod/Bebv1PgwET9rfXhgn9s4Kg==}
@@ -1069,7 +1099,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@automerge/automerge-repo@https://codeload.github.com/automerge/automerge-repo/tar.gz/7a8dbfe020aaeb73c7146d4b2b508212d37b71f5#path:packages/automerge-repo':
+  '@automerge/automerge-repo@https://codeload.github.com/onsetsoftware/automerge-repo/tar.gz/b39d94c5624a3497150e08ba18546f29222289d8#path:packages/automerge-repo':
     dependencies:
       '@automerge/automerge': 3.3.2
       '@automerge/automerge-subduction': 0.16.1
@@ -1532,6 +1562,8 @@ snapshots:
 
   graceful-fs@4.2.11: {}
 
+  inline-style-parser@0.2.7: {}
+
   is-reference@3.0.3:
     dependencies:
       '@types/estree': 1.0.9
@@ -1667,6 +1699,12 @@ snapshots:
 
   obug@2.1.4: {}
 
+  paneforge@1.0.2(svelte@5.57.0):
+    dependencies:
+      runed: 0.23.4(svelte@5.57.0)
+      svelte: 5.57.0
+      svelte-toolbelt: 0.9.3(svelte@5.57.0)
+
   pathe@2.0.3: {}
 
   picocolors@1.1.1: {}
@@ -1712,6 +1750,16 @@ snapshots:
       '@rolldown/binding-win32-arm64-msvc': 1.2.7
       '@rolldown/binding-win32-x64-msvc': 1.2.7
 
+  runed@0.23.4(svelte@5.57.0):
+    dependencies:
+      esm-env: 1.2.2
+      svelte: 5.57.0
+
+  runed@0.29.2(svelte@5.57.0):
+    dependencies:
+      esm-env: 1.2.2
+      svelte: 5.57.0
+
   sade@1.8.1:
     dependencies:
       mri: 1.2.0
@@ -1732,6 +1780,10 @@ snapshots:
 
   style-mod@4.1.3: {}
 
+  style-to-object@1.0.14:
+    dependencies:
+      inline-style-parser: 0.2.7
+
   svelte-check@4.7.6(picomatch@4.0.7)(svelte@5.57.0)(typescript@6.0.3):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
@@ -1744,6 +1796,13 @@ snapshots:
       typescript: 6.0.3
     transitivePeerDependencies:
       - picomatch
+
+  svelte-toolbelt@0.9.3(svelte@5.57.0):
+    dependencies:
+      clsx: 2.1.1
+      runed: 0.29.2(svelte@5.57.0)
+      style-to-object: 1.0.14
+      svelte: 5.57.0
 
   svelte@5.57.0:
     dependencies:

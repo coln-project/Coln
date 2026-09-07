@@ -8,14 +8,14 @@
     "server": "node scripts/server.mjs",
     "graph:generate": "bash src/tools/graph/compile.sh",
     "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
-    "build": "pnpm run check && vite build",
+    "build": "pnpm run check && vite build && node scripts/check-static-build.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:dev": "PLAYWRIGHT_DEV=1 playwright test"
   },
   "dependencies": {
     "@automerge/automerge-codemirror": "0.2.0",
-    "@automerge/automerge-repo": "github:automerge/automerge-repo#doctypes&path:packages/automerge-repo",
+    "@automerge/automerge-repo": "github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo",
     "@automerge/automerge-repo-storage-indexeddb": "2.6.0-subduction.47",
     "@automerge/automerge-subduction": "0.16.1",
     "@codemirror/lang-javascript": "^6.2.5",
@@ -25,6 +25,7 @@
     "@coln-project/runtime": "link:../../packages/coln-js-runtime",
     "codemirror": "^6.0.2",
     "json-formatter-js": "^2.5.23",
+    "paneforge": "^1.0.2",
     "svelte": "^5.57.0",
     "ws": "^8.21.0"
   },

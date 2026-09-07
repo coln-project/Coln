@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import type {
-  AutomergeUrl,
   CrdtDocHandle,
+  DocumentUrl,
   DocumentType,
   Repo,
 } from "@automerge/automerge-repo"
@@ -20,13 +20,16 @@ import {
 type FoundColnHandle<Bindings extends RealmBindings | undefined> =
   Bindings extends RealmBindings ? ColnHandle<Bindings> : ColnHandle
 
+export type ColnUrl = DocumentUrl<"coln">
+
 export type ColnHandle<Bindings extends RealmBindings | undefined = undefined> =
   CrdtDocHandle<
     DocumentType<
       ColnState,
       ColnDocument<Bindings>,
       ColnChange<Bindings>,
-      ColnSchema
+      ColnSchema,
+      "coln"
     >
   >
 
@@ -70,7 +73,7 @@ export async function find<
   Bindings extends RealmBindings | undefined = undefined,
 >(
   repo: Repo,
-  url: AutomergeUrl,
+  url: ColnUrl,
   // a rest tuple (rather than an optional parameter) keeps `undefined` in the
   // inferred Bindings, so maybe-undefined arguments produce a union return type
   ...rest: [bindings: Bindings] | []
