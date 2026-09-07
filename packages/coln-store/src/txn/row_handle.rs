@@ -4,7 +4,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::{

@@ -1,6 +1,6 @@
+use coln_rpc::api::*;
 use specta::Types;
 use specta_typescript::Typescript;
-use coln_rpc::api::*;
 
 fn main() {
     let mut types = Types::default();

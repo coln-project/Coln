@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Coln contributors
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use specta::Type;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord, Serialize, Deserialize, Type)]

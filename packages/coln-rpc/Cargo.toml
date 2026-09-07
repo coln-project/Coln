@@ -16,6 +16,9 @@ specta.workspace = true
 specta-serde = "0.0.12"
 specta-typescript = { version = "0.0.12", features = ["serde"] }
 
+[lib]
+path = "src/rust/lib.rs"
+
 [[bin]]
 name = "export"
 path = "scripts/export.rs"
