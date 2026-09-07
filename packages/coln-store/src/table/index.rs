@@ -79,7 +79,10 @@ impl TableIndex {
         }
     }
 
-    pub(super) fn get(&self, key: &[PackedValue]) -> impl Iterator<Item = PackedRowId> {
+    pub(super) fn get<'s>(
+        &'s self,
+        key: &[PackedValue],
+    ) -> impl Iterator<Item = PackedRowId> + use<'s> {
         self.scope_key(key).map(|position| self.values.at(position))
     }
 

@@ -54,6 +54,11 @@ pub(crate) enum PackedOp {
     },
 }
 
+pub(crate) struct PackedRowView {
+    pub row_id: PackedRowId,
+    pub values: Vec<PackedValue>,
+}
+
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ValidationError {
     #[error("column count mismatch: expected {expected}, got {got}")]
@@ -91,13 +96,8 @@ pub enum ValidationError {
     },
     #[error("lookup column {column} is outside the table's {column_count} columns")]
     InvalidLookupColumn { column: usize, column_count: usize },
-}
-
-/// Public facing row value
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RowView {
-    pub row_id: WireRowId,
-    pub values: Vec<WireValue>,
+    #[error("passed in row id is not valid {wire_id}")]
+    InvalidRowId { wire_id: WireRowId },
 }
 
 /// How the primary key constraint is checked on insert. Resolved once at
@@ -240,23 +240,18 @@ impl Table {
             .collect()
     }
 
-    pub(crate) fn row_at(&self, row_idx: usize, id_packer: &IdPacker) -> Option<RowView> {
-        let row_id = self.row_id_at(row_idx, id_packer)?;
+    pub(crate) fn row_at(&self, row_idx: usize) -> Option<PackedRowView> {
+        let row_id = self.row_id_at(row_idx)?;
         let values = (0..self.schema.columns.len())
-            .map(|col_idx| {
-                self.cell_at(row_idx, col_idx)
-                    .map(|value| id_packer.unpack_cell(value))
-            })
+            .map(|col_idx| self.cell_at(row_idx, col_idx))
             .collect::<Option<Vec<_>>>()?;
 
-        Some(RowView { row_id, values })
+        Some(PackedRowView { row_id, values })
     }
 
     /// Row id at a given physical row index.
-    pub(crate) fn row_id_at(&self, row_idx: usize, packer: &IdPacker) -> Option<WireRowId> {
-        self.row_ids
-            .get(row_idx)
-            .map(|packed| packer.unpack_row_id(packed))
+    pub(crate) fn row_id_at(&self, row_idx: usize) -> Option<PackedRowId> {
+        self.row_ids.get(row_idx)
     }
 
     /// Cell at `(row_idx, col_idx)` in columnar storage.
@@ -272,49 +267,15 @@ impl Table {
         self.row_ids.position(row_id).ok()
     }
 
-    pub(crate) fn scan(&self, id_packer: &IdPacker) -> impl Iterator<Item = RowView> {
-        (0..self.row_count()).filter_map(move |row_idx| self.row_at(row_idx, id_packer))
+    pub(crate) fn scan(&self) -> impl Iterator<Item = PackedRowView> {
+        (0..self.row_count()).filter_map(move |row_idx| self.row_at(row_idx))
     }
 
-    pub(crate) fn index_seek(
-        &self,
-        index: IndexId,
-        key: &[WireValue],
-        id_packer: &IdPacker,
-    ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
-        let table_index = self
-            .indexes
-            .get(index)
-            .ok_or(ValidationError::InvalidIndex {
-                index: index as u64,
-            })?;
-        if key.len() != table_index.key_cols().len() {
-            return Err(ValidationError::InvalidIndexKey {
-                index,
-                expected: table_index.key_cols().len(),
-                got: key.len(),
-            });
-        }
-
-        let rows = key
-            .iter()
-            .map(|value| id_packer.try_pack_cell(value))
-            .collect::<Option<Vec<_>>>()
-            .map(|key| {
-                table_index
-                    .get(&key)
-                    .map(|row_id| id_packer.unpack_row_id(row_id))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        Ok(rows.into_iter())
-    }
-
-    pub(crate) fn index_seek_packed(
-        &self,
+    pub(crate) fn index_seek<'s>(
+        &'s self,
         index: IndexId,
         key: &[PackedValue],
-    ) -> Result<impl Iterator<Item = PackedRowId>, ValidationError> {
+    ) -> Result<impl Iterator<Item = PackedRowId> + use<'s>, ValidationError> {
         let table_index = self
             .indexes
             .get(index)
@@ -682,7 +643,7 @@ impl Table {
         if let Some(index) = self.structural_index {
             let key = Self::project_index_key(&self.indexes[index], &values);
             if let Some(old) = self
-                .index_seek_packed(index, &key)
+                .index_seek(index, &key)
                 .expect("valid structural index and key structure")
                 .next()
             {

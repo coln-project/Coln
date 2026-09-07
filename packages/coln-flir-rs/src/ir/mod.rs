@@ -156,9 +156,9 @@ pub struct Schema {
     /// The columns of the table in their physical order.
     pub columns: Vec<ColumnEntry>,
     /// A `None` indicates that there is no primary key. `Some(vec![])` means
-    /// that there is at most one row in the table. `Some(vec![ColA, ColB])`
-    /// encodes a compound primary key consisting of the columns `ColA` and
-    ///  `ColB`.
+    /// that there is at most one row in the table. `Some(vec![0, 3])`
+    /// encodes a compound primary key consisting of the columns at those
+    /// physical indexes.
     ///
     /// At the moment there is only support for a single (compound) primary key.
     pub primary_key: Option<Vec<ColumnIdx>>,
