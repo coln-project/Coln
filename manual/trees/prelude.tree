@@ -24,3 +24,5 @@
 \def\check{✅}
 
 \def\To{\Rightarrow}
+
+\def\mvrnote[~body]{\<html:span>[style]{color: blue;}{MVRNOTE: \body{}}}

@@ -1,7 +1,7 @@
 \title{Sets as theories}
 \import{prelude}
 
-\p{A model \code{A : Set} may itself be used as a theory. A model of \code{A} is just an element of \code{A} (remember that a model of \code{Set} is a collection of things). For example, consider the following theory.}
+\p{A model \code{A : Set} may itself be used as a theory. A model of \code{A} as a theory is just an element of \code{A} (remember that a model of \code{Set} is a collection of things). For example, consider the following theory.}
 
 \pre{%
 \kw{theory} PopulatedSantaList := \kw{sig}
@@ -11,7 +11,7 @@
 \kw{end}
 }
 
-\p{A model \code{m} of \code{PopulatedSantaList} consists of a model \code{m.list} of \code{SantaList}, along with specific elements \code{m.john} in \code{m.list.nice} and \code{m.mary} in \code{m.list.naughty}.}
+\p{A model \code{m} of \code{PopulatedSantaList} consists of a model \code{m.list} of \code{SantaList}, along with specific elements \code{m.john} in the collection \code{m.list.nice} and \code{m.mary} in the collection \code{m.list.naughty}.}
 
 \p{In TypeScript, an element of a set comes along with a getter, and if it is read-write, also a setter. So if \code{m} is a TypeScript variable accessing a model of \code{PopulatedSantaList}, then we should have:} 
 

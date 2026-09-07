@@ -10,4 +10,4 @@
 
 \p{\code{\kw{def}} is in fact a much more general construct; any theory can replace \code{Set} on the right, and we can take in multiple arguments.}
 
-\p{In general, this allows one to create a \em{view} of a model one theory, in the form of a model of another theory.}
+\p{In general, this allows one to create a \em{view} of a model of one theory, in the form of a model of another theory.}

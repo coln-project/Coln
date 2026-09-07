@@ -1,6 +1,7 @@
 \title{Coln as a database}
+\import{prelude}
 
-\p{Coln can work as a little proof assistant which is restricted to positive types, but the real point of this restriction is to enable a translation to the database world.}
+\p{Coln can work as a little proof assistant which is restricted to positive types, but the real point of this restriction is to enable a translation to the database world. \mvrnote{This is the first occurrence of the word "positive"}}
 
 \p{One could look at this in two ways, depending on whether you think of the language or the database as “primary.”}
 

@@ -56,7 +56,7 @@ m.list(y2026).naughty(john).makeTrue()
 m.jealous_of(john)(mary).makeTrue()
 }
 
-\p{Note that because names in fnotation can contain characters like \code{-} that are not allowed in TypeScript, we have to \em{mangle} the Coln name to create the TypeScript API. As \code{person_of} is also a valid name in Coln, a theory could have both \code{person-of} and \code{person_of} fields. In this case, emitting the TypeScript FFI would emit an error. The suggested fix is to not have fields that differ only by choice of hyphen/underscore, because that is bad and confusing in any case.}
+\p{Note that because names in f-notation can contain characters like \code{-} that are not allowed in TypeScript, we have to \em{mangle} the Coln name to create the TypeScript API. As \code{person_of} is also a valid name in Coln, a theory could have both \code{person-of} and \code{person_of} fields. In this case, emitting the TypeScript FFI would emit an error. The suggested fix is to not have fields that differ only by choice of hyphen/underscore, because that is bad and confusing in any case.}
 
 \p{Just like a set is a theory, a proposition is also a theory; a model of the proposition can be thought of as a witness that the proposition is true. We can use this to put \em{laws} in our database. For instance, we can make jealousy be transitive.}
 

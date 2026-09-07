@@ -1,7 +1,7 @@
 \title{Sets}
 \import{prelude}
 
-\p{We introduce a judgment on types capturing when an elephant theory is a [geometric construct](002F). We call such types \defcase{sets}.}
+\p{We introduce a judgment on types capturing when an elephant theory is a [geometric construct](002F). We call types for whom this judgment holds \defcase{sets}.}
 
 ##{\ms{IsSet} \colon \{\Gamma \colon \ms{Con}\} \to \ms{Ty}\,\Gamma \to \ms{Prop}}
 

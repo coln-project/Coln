@@ -7,9 +7,15 @@
 
 \p{The categorical way to define “2-section” would be as a strict 2-functor #{a \colon \groth \Gamma \to \groth A} that is a strict section of the projection. A more type-theoretic way to define “2-section” would be to say a 2-section is a map #{a \colon \left((\mc{E},M) \colon \groth \Gamma\right) \to A(\mc{E},M)} such that #{a(\mc{E},M)} is 2-functorial in #{\mc{E}} and #{M}.}
 
-\p{Given #{\gamma \colon \Delta \To \Gamma}, we may define #{a[\gamma] \colon \ms{Tm}\,\Delta\,(A[\gamma])} by}
+\p{Given #{\gamma \colon \Delta \To \Gamma}, we may define #{a[\gamma] \colon \ms{Tm}\,\Delta\,(A[\gamma])} by
 
-##{a[\gamma]\,\left((\mc{E}, M) \colon \groth \Delta \right) = a(\mc{E}, \gamma_{\mc{E}}(M)) \colon ({A[\gamma]}(\mc{E}, M) = A(\mc{E}, \gamma_{\mc{E}}(M)))}
+##{
+\begin{align*}
+&a[\gamma] : \left((\mc{E}, M) \colon \groth \Delta\right) \to {A[\gamma]}(\mc{E}, M) \\
+&a[\gamma] (\mc{E}, M) = a(\mc{E}, \gamma_{\mc{E}}(M))
+\end{align*}
+}
+which is well-typed, because #{{A[\gamma]}(\mc{E}, M) = A(\mc{E}, \gamma_{\mc{E}}(M))}}
 
 \p{This turns #{\ms{Tm}} into an indexed presheaf over #{\ms{Ty}}.}
 

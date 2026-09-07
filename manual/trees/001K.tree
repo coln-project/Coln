@@ -16,9 +16,9 @@
 
 \pre{%
 \kw{def} list-for (m : SantaLists) (y : m.year) : SantaList := \kw{struct}
-  naughty := \kw{tuple} { child : m.person; m.list y .naughty child }
-  nice := \kw{tuple} { child : m.person; m.list y .nice child }
+  naughty := \kw{sig} { child : m.person; m.list y .naughty child }
+  nice := \kw{sig} { child : m.person; m.list y .nice child }
 \kw{end}
 }
 
-\p{Intuitively, this assigns \code{naughty} to the set of children naughty in that year, and similarly with \code{nice}. The \code{\kw{tuple}} syntax is just as in [[001H]], using the curly-brace inline syntax. And \code{m.list y .naughty child} is just a sequence of function applications and field projection. Walking through the types, we have \code{m.list : m.person -> SantaListOver m.person}, so \code{m .list y : SantaListOver m.person} and then \code{m.list y .naughty : m.person -> Prop} and finally \code{m.list y .naughty child : Prop}.}
+\p{Intuitively, this assigns \code{naughty} to the set of children naughty in that year, and similarly with \code{nice}. The \code{\kw{sig}} syntax is just as in [[001H]], using the curly-brace inline syntax. And \code{m.list y .naughty child} is just a sequence of function applications and field projection. Walking through the types, we have \code{m.list : m.person -> SantaListOver m.person}, so \code{m .list y : SantaListOver m.person} and then \code{m.list y .naughty : m.person -> Prop} and finally \code{m.list y .naughty child : Prop}.}

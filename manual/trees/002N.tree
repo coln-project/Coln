@@ -3,7 +3,7 @@
 
 \p{In this section, we build a [category with families](cwf) #{\mb{E}} out of elephant theories, which gives the semantics of types and terms in our type theory.}
 
-\p{Categories with families have many parts; we build up the structure in sections. We follow [Kovacs](kovacs-2022-typetheoretic) in presenting a category with families as a model of a GAT. As we give the semantics for each part of the GAT, we write out the relevant part of the signature with a \check next to it to signify that that part of the GAT is defined.}
+\p{Categories with families have many parts; we build up the structure in sections. We follow [Kovács](kovacs-2022-typetheoretic) in presenting a category with families as a model of a GAT. As we give the semantics for each part of the GAT, we write out the relevant part of the signature with a \check next to it to signify that this part of the model is now defined.}
 
 \transclude{002O}
 
@@ -13,3 +13,4 @@
 
 \transclude{002R}
 
+\p{This completes the description of the bare category-with-families structure of the model, before the addition of any type formers capturing constructions in this model that possess universal properties.}

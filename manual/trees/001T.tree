@@ -20,7 +20,7 @@
 
 \transclude{001X}
 
-\p{In this way, although when writing down \code{BagOfGraphs} it appears as if we would store a separate graph database for each graph id, in fact all of the graphs are stored in the same pair of tables. In particular, allocating a new graph id does not imply allocating a whole new graph structure.}
+\p{In this way, although when writing down \code{BagOfGraphs} it appears as if we would store a separate graph database for each \code{graph-id}, in fact all of the graphs are stored in the same pair of tables. In particular, allocating a new \code{graph-id} does not imply allocating a whole new set of tables for the new graph.}
 
 \p{There is a fairly straightforward algorithm to take a general theory to a theory in #{\Sigma\Pi}-normal form, producing the \code{from-normal} and \code{to-normal} migrations simultaneously, but describing it here would involve a conceptual framework around the [elaborator](000O) which would take a while to get off the ground. Thus, we ask the reader to take as given that we have access to such an algorithm, and we continue on assuming that we are working with theories in #{\Sigma\Pi}-normal form.}
 
