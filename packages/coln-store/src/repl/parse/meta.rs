@@ -5,14 +5,26 @@
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Command {
     Help,
-    Load { path: String },
-    Open { path: String },
-    Schema { table: Option<String> },
+    Load {
+        ir_path: String,
+        coln_path: String,
+        realm: String,
+    },
+    Open {
+        path: String,
+    },
+    Schema {
+        table: Option<String>,
+    },
     Ir,
     Tables,
     Exit,
-    Dump { table: String },
-    Save { path: String },
+    Dump {
+        table: String,
+    },
+    Save {
+        path: String,
+    },
 }
 
 pub(crate) fn parse_meta_command(input: &str) -> anyhow::Result<Command> {
@@ -37,8 +49,22 @@ pub(crate) fn parse_meta_command(input: &str) -> anyhow::Result<Command> {
             }
         }
         ".load" => match parts.as_slice() {
-            [_, path] => Ok(Command::Load { path: path.clone() }),
-            _ => anyhow::bail!("usage: .load <schema-json-path>"),
+            [_, ir_path] => Ok(Command::Load {
+                ir_path: ir_path.clone(),
+                coln_path: String::new(),
+                realm: String::new(),
+            }),
+            [_, ir_path, coln_path] => Ok(Command::Load {
+                ir_path: ir_path.clone(),
+                coln_path: coln_path.clone(),
+                realm: String::new(),
+            }),
+            [_, ir_path, coln_path, realm] => Ok(Command::Load {
+                ir_path: ir_path.clone(),
+                coln_path: coln_path.clone(),
+                realm: realm.clone(),
+            }),
+            _ => anyhow::bail!("usage: .load <ir-json-path> [<coln-path> [<realm>]]"),
         },
         ".open" => match parts.as_slice() {
             [_, path] => Ok(Command::Open { path: path.clone() }),

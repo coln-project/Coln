@@ -70,9 +70,35 @@ mod tables {
     }
 }
 
+mod root_metadata {
+    use super::*;
+    use crate::test_utils::non_empty_root_commit_data;
+
+    #[rstest]
+    fn json_ir_serializes_root_ir(non_empty_root_commit_data: RootCommitData) {
+        let root = non_empty_root_commit_data;
+        let expected = serde_json::to_string(&root.ir).expect("serialize expected IR");
+        let store = Store::try_from_ir(root.ir, root.coln_def).expect("build store");
+
+        assert_eq!(store.json_ir().expect("serialize store IR"), expected);
+    }
+
+    #[rstest]
+    fn coln_def_returns_root_coln_def(non_empty_root_commit_data: RootCommitData) {
+        let root = non_empty_root_commit_data;
+        let expected_theory = root.coln_def.theory.clone();
+        let expected_realm = root.coln_def.realm.clone();
+        let store = Store::try_from_ir(root.ir, root.coln_def).expect("build store");
+
+        let actual = store.coln_def().expect("read Coln definition");
+        assert_eq!(actual.theory, expected_theory);
+        assert_eq!(actual.realm, expected_realm);
+    }
+}
+
 mod transactions {
     use super::*;
-    use crate::test_utils::{link_foreign_key_theory, single_int_store};
+    use crate::test_utils::{link_foreign_key_root_commit_data, single_int_store};
 
     #[rstest]
     fn validates_then_applies(#[from(single_int_store)] mut store: Store) {
@@ -150,9 +176,10 @@ mod transactions {
     }
 
     #[rstest]
-    fn leaves_store_unchanged_when_rules_fail(#[from(link_foreign_key_theory)] theory: FlatRealm) {
+    fn leaves_store_unchanged_when_rules_fail(link_foreign_key_root_commit_data: RootCommitData) {
         let link = Path::from("Link");
-        let mut store = Store::try_from_ir(theory).expect("theory");
+        let root = link_foreign_key_root_commit_data;
+        let mut store = Store::try_from_ir(root.ir, root.coln_def).expect("theory");
         let packed_id_count = store.id_packer.len();
 
         let mut txn = store.transaction();
@@ -166,10 +193,11 @@ mod transactions {
 
     #[rstest]
     fn owned_transaction_commit_err_returns_original_store(
-        #[from(link_foreign_key_theory)] theory: FlatRealm,
+        link_foreign_key_root_commit_data: RootCommitData,
     ) {
         let link = Path::from("Link");
-        let store = Store::try_from_ir(theory).expect("theory");
+        let root = link_foreign_key_root_commit_data;
+        let store = Store::try_from_ir(root.ir, root.coln_def).expect("theory");
 
         let mut tx = OwnedTransaction::new(store);
         tx.add(&link, vec![10_i32, 20_i32]).expect("add");

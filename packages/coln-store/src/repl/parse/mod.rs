@@ -57,9 +57,27 @@ mod tests {
     #[test]
     fn parses_load_with_quotes() {
         assert_eq!(
-            parse_command(ShellMode::Coln, ".load \"tests/data/paths.json\"").unwrap(),
+            parse_command(
+                ShellMode::Coln,
+                ".load \"tests/data/Path.json\" \"tests/data/path.coln\" Path"
+            )
+            .unwrap(),
             Command::Meta(MetaCommand::Load {
-                path: "tests/data/paths.json".to_string()
+                ir_path: "tests/data/Path.json".to_string(),
+                coln_path: "tests/data/path.coln".to_string(),
+                realm: "Path".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn parses_load_without_coln_metadata() {
+        assert_eq!(
+            parse_command(ShellMode::Coln, ".load \"tests/data/Path.json\"").unwrap(),
+            Command::Meta(MetaCommand::Load {
+                ir_path: "tests/data/Path.json".to_string(),
+                coln_path: String::new(),
+                realm: String::new(),
             })
         );
     }

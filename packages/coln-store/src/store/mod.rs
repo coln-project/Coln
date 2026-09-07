@@ -12,6 +12,7 @@ use coln_query::api::{
     transaction::{Prepare, TryCommitErr, TryCommitOk, Tx as QueryTx},
     violations::ViolationsDelta,
 };
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::commit::Commit;
@@ -19,6 +20,7 @@ use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
+use crate::commit::wire::RootCommitData;
 use crate::id_packer::{IdPacker, IdPackerSnapshot};
 use crate::ir::{self, FlatRealm};
 use crate::op::Op;
@@ -115,7 +117,6 @@ impl Store {
             rules: Vec::new(),
         };
         let commits = Self::graph_with_root_commit(&ir).expect("empty root commit should build");
-        let cq = ColnQuery::init(&ir).expect("start coln-query");
         Self {
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
@@ -173,8 +174,13 @@ impl Store {
     }
 
     pub fn json_ir(&self) -> Result<String, StoreError> {
-        let realm = self.commits.root_commit()?.root_payload()?;
-        Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
+        let root = self.commits.root_commit()?.root_payload()?;
+        Ok(serde_json::to_string(&root.ir).map_err(CodecError::from)?)
+    }
+
+    pub fn coln_def(&self) -> Result<ColnDef, StoreError> {
+        let root = self.commits.root_commit()?.root_payload()?;
+        Ok(root.coln_def)
     }
 
     // Used by txn to finalise live ids
@@ -185,18 +191,28 @@ impl Store {
     }
 }
 
+/// A Coln theory source file contains theory definitions and (multiple) realm definitions
+/// Each realm corresponds will be compiled to one IR file, this struct stores
+/// which realm the IR is referring to
+/// It is stored as literal string and uninterpreted in the root commit of the store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColnDef {
+    pub theory: String,
+    pub realm: String,
+}
+
 impl Store {
     // create stores from theory and transactions on stores
 
-    fn graph_with_root_commit(ir: &FlatRealm) -> Result<CommitGraph, CodecError> {
+    fn graph_with_root_commit(root_commit: RootCommitData) -> Result<CommitGraph, CodecError> {
         let mut graph = CommitGraph::new();
-        graph.add_commit(Commit::from_root_data(ir)?);
+        graph.add_commit(Commit::from_root_data(&root_commit)?);
         Ok(graph)
     }
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
-    pub fn try_from_ir(ir: FlatRealm) -> Result<Self, StoreError> {
+    pub fn try_from_ir(ir: FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
         info!(
             table_count = ir.tables.len(),
             rule_count = ir.rules.len(),
@@ -215,7 +231,8 @@ impl Store {
         }
 
         let cq = ColnQuery::init(&ir)?;
-        let commits = Self::graph_with_root_commit(&ir)?;
+        let comp_rules = Store::compile_rules(&ir.rules)?;
+        let commits = Self::graph_with_root_commit(RootCommitData::new(ir.clone(), coln_def))?;
 
         Ok(Self {
             path_to_oid,
@@ -692,7 +709,7 @@ impl Store {
 
         let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
         let root_payload = root_commit.root_payload()?;
-        let mut store = Store::try_from_ir(root_payload)?;
+        let mut store = Store::try_from_ir(root_payload.ir, root_payload.coln_def)?;
 
         let mut commits = Vec::new();
         for chunk in chunks {
@@ -753,7 +770,14 @@ impl Store {
             definitions: Vec::new(),
             rules: self.rule_entries().to_vec(),
         };
-        self.commits = Self::graph_with_root_commit(&ir)?;
+        let root_commit = RootCommitData::new(
+            ir,
+            ColnDef {
+                theory: String::new(),
+                realm: String::new(),
+            },
+        );
+        self.commits = Self::graph_with_root_commit(root_commit)?;
         Ok(oid)
     }
 
