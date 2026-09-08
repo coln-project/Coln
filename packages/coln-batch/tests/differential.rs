@@ -7,6 +7,7 @@
 
 use coln_batch::query::{Atom, Catalog, Query, Term};
 use coln_batch::relation::Relation;
+use coln_batch::types::{Column, ScalarType, Schema, Value};
 use coln_batch::{binary_join, fixtures, generic_join, reference};
 
 /// Run all three executors and require identical results.
@@ -71,7 +72,7 @@ fn hand_cases() {
     // Literal filter: Q(y) ← R(1, y)
     let lit = Query {
         var_names: vec!["y".into()],
-        atoms: vec![atom("R", vec![Term::Lit(1), Term::Var(0)])],
+        atoms: vec![atom("R", vec![Term::lit(1u64), Term::Var(0)])],
         head: vec![0],
     };
     let r = agree_with_oracle(&lit, &cat);
@@ -80,7 +81,7 @@ fn hand_cases() {
     // Literal miss: Q(y) ← R(9, y)
     let miss = Query {
         var_names: vec!["y".into()],
-        atoms: vec![atom("R", vec![Term::Lit(9), Term::Var(0)])],
+        atoms: vec![atom("R", vec![Term::lit(9u64), Term::Var(0)])],
         head: vec![0],
     };
     assert_eq!(agree_with_oracle(&miss, &cat).len(), 0);
@@ -108,7 +109,7 @@ fn hand_cases() {
         var_names: vec!["x".into()],
         atoms: vec![
             atom("U", vec![Term::Var(0)]),
-            atom("S", vec![Term::Lit(9), Term::Lit(9)]),
+            atom("S", vec![Term::lit(9u64), Term::lit(9u64)]),
         ],
         head: vec![0],
     };
@@ -117,7 +118,7 @@ fn hand_cases() {
         var_names: vec!["x".into()],
         atoms: vec![
             atom("U", vec![Term::Var(0)]),
-            atom("S", vec![Term::Lit(9), Term::Lit(8)]),
+            atom("S", vec![Term::lit(9u64), Term::lit(8u64)]),
         ],
         head: vec![0],
     };
@@ -239,6 +240,199 @@ fn fixtures_large_executors_agree() {
         eprintln!(
             "{name}: {} rows, binary join {t_binary:.2?}, generic join {t_generic:.2?}",
             binary.len()
+        );
+    }
+}
+
+/// Decoded rows of a result, sorted by value for order-independent
+/// comparison.
+fn decoded(result: &Relation, catalog: &Catalog) -> Vec<Vec<Value>> {
+    let mut rows: Vec<Vec<Value>> = (0..result.len())
+        .map(|i| result.row_values(i, catalog.dictionary()).unwrap())
+        .collect();
+    rows.sort();
+    rows
+}
+
+fn typed_catalog() -> Catalog {
+    let mut cat = Catalog::new();
+    cat.insert_rows(
+        "person",
+        Schema::new([
+            Column::new("id", ScalarType::Uint),
+            Column::new("name", ScalarType::String),
+            Column::new("age", ScalarType::Iint),
+            Column::new("active", ScalarType::Bool),
+            Column::new("initial", ScalarType::Char),
+        ]),
+        vec![
+            vec![
+                1u64.into(),
+                "ann".into(),
+                (-5i64).into(),
+                true.into(),
+                'a'.into(),
+            ],
+            vec![
+                2u64.into(),
+                "bob".into(),
+                30i64.into(),
+                false.into(),
+                'b'.into(),
+            ],
+            vec![
+                3u64.into(),
+                "ann".into(),
+                7i64.into(),
+                true.into(),
+                'a'.into(),
+            ],
+        ],
+    )
+    .unwrap();
+    cat.insert_rows(
+        "likes",
+        Schema::new([
+            Column::new("who", ScalarType::String),
+            Column::new("what", ScalarType::String),
+        ]),
+        vec![
+            vec!["ann".into(), "tea".into()],
+            vec!["bob".into(), "tea".into()],
+            vec!["ann".into(), "jazz".into()],
+        ],
+    )
+    .unwrap();
+    cat
+}
+
+#[test]
+fn typed_hand_cases() {
+    let cat = typed_catalog();
+    let (id, name, age, active, initial, what) = (0, 1, 2, 3, 4, 5);
+    let person = |terms: Vec<Term>| atom("person", terms);
+    let all_vars = || {
+        vec![
+            Term::Var(id),
+            Term::Var(name),
+            Term::Var(age),
+            Term::Var(active),
+            Term::Var(initial),
+        ]
+    };
+
+    // Join on a string column: Q(id, what) ← person(id, name, …), likes(name, what)
+    let join = Query {
+        var_names: ["id", "name", "age", "active", "initial", "what"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        atoms: vec![
+            person(all_vars()),
+            atom("likes", vec![Term::Var(name), Term::Var(what)]),
+        ],
+        head: vec![id, what],
+    };
+    let r = agree_with_oracle(&join, &cat);
+    assert_eq!(r.schema.types(), vec![ScalarType::Uint, ScalarType::String]);
+    let mut expected: Vec<Vec<Value>> = vec![
+        vec![1u64.into(), "tea".into()],
+        vec![1u64.into(), "jazz".into()],
+        vec![2u64.into(), "tea".into()],
+        vec![3u64.into(), "tea".into()],
+        vec![3u64.into(), "jazz".into()],
+    ];
+    expected.sort();
+    assert_eq!(decoded(&r, &cat), expected);
+
+    // Literals of every type, one per column of person; all other
+    // columns are distinct variables, the head is the id.
+    let with_literal = |col: usize, lit: Term| -> Query {
+        let mut next = 0;
+        let terms: Vec<Term> = (0..5)
+            .map(|c| {
+                if c == col {
+                    lit.clone()
+                } else {
+                    next += 1;
+                    Term::Var(next - 1)
+                }
+            })
+            .collect();
+        Query {
+            var_names: (0..next).map(|v| format!("v{v}")).collect(),
+            atoms: vec![person(terms)],
+            head: vec![0],
+        }
+    };
+    let ids = |q: &Query| decoded(&agree_with_oracle(q, &cat), &cat);
+    assert_eq!(
+        ids(&with_literal(2, Term::lit(-5i64))),
+        vec![vec![1u64.into()]]
+    );
+    assert_eq!(
+        ids(&with_literal(3, Term::lit(true))),
+        vec![vec![1u64.into()], vec![3u64.into()]]
+    );
+    assert_eq!(
+        ids(&with_literal(4, Term::lit('b'))),
+        vec![vec![2u64.into()]]
+    );
+    assert_eq!(
+        ids(&with_literal(1, Term::lit("ann"))),
+        vec![vec![1u64.into()], vec![3u64.into()]]
+    );
+
+    // A string the dictionary has never seen matches nothing.
+    let r = agree_with_oracle(&with_literal(1, Term::lit("zed")), &cat);
+    assert!(r.is_empty());
+    assert_eq!(r.schema.types(), vec![ScalarType::Uint]);
+}
+
+#[test]
+fn typed_errors_are_reported_by_every_executor() {
+    let cat = typed_catalog();
+    // x stands in a uint column and a string column.
+    let mixed = Query {
+        var_names: vec!["x".into(), "a".into(), "b".into(), "c".into()],
+        atoms: vec![atom(
+            "person",
+            vec![
+                Term::Var(0),
+                Term::Var(0),
+                Term::Var(1),
+                Term::Var(2),
+                Term::Var(3),
+            ],
+        )],
+        head: vec![0],
+    };
+    // A literal of the wrong type.
+    let bad_lit = Query {
+        var_names: vec!["who".into()],
+        atoms: vec![atom("likes", vec![Term::Var(0), Term::lit(3u64)])],
+        head: vec![0],
+    };
+    for query in [&mixed, &bad_lit] {
+        assert!(reference::execute(query, &cat).is_err());
+        assert!(binary_join::execute(query, &cat).is_err());
+        assert!(generic_join::execute(query, &cat).is_err());
+    }
+}
+
+#[test]
+fn labeled_fixture_vs_oracle() {
+    let cat = fixtures::labeled_catalog(12, 80, &["road", "rail", "sea"], 3);
+    let r = agree_with_oracle(&fixtures::labeled_two_hop_query(), &cat);
+    assert!(!r.is_empty(), "two hops with equal labels should exist");
+    assert_eq!(
+        r.schema.types(),
+        vec![ScalarType::Uint, ScalarType::Uint, ScalarType::String]
+    );
+    // Every result row decodes, and its label is one of the generator's.
+    for row in decoded(&r, &cat) {
+        assert!(
+            matches!(&row[2], Value::String(s) if ["road", "rail", "sea"].contains(&s.as_str()))
         );
     }
 }
