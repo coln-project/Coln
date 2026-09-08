@@ -1,0 +1,5 @@
+# The Haskell compiler is a multi-megabyte immutable build product: store it as
+# an opaque blob rather than a merge-able CRDT document. Same for the JSFFI glue
+# GHC generates beside it, which is machine-written and never merged.
+dist/**/*.wasm artifact
+dist/**/ghc_wasm_jsffi*.js artifact

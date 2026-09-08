@@ -1,0 +1,5 @@
+# Tests, the browser probe and the lockfile are for building and checking the
+# tool, not for running it.
+tests
+probe
+pnpm-lock.yaml

@@ -19,3 +19,20 @@ build-web-lab: stage-web-lab
 
 dev-web-lab: stage-web-lab
     pnpm --dir {{ lab_app_dir }} dev
+
+patchwork_dir := "patchwork"
+
+stage-web-patchwork:
+    #!/usr/bin/env bash
+    set -euxo pipefail
+    if [[ ! -f "{{ build_dir }}/dist/coln.wasm" || ! -f "{{ build_dir }}/dist/ghc_wasm_jsffi.js" ]]; then
+      just coln-compiler-wasm::build
+    fi
+    pnpm --dir {{ patchwork_dir }} run stage
+
+build-web-patchwork: stage-web-patchwork
+    pnpm --dir {{ patchwork_dir }} build
+
+check-web-patchwork:
+    pnpm --dir {{ patchwork_dir }} test
+    pnpm --dir {{ patchwork_dir }} check
