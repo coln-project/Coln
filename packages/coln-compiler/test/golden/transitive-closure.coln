@@ -10,14 +10,5 @@ theory TransExt (^i G : Graph) := sig
 end
 
 realm GraphRealm @ Graph
-  def triangle : Set := sig
-    a : root.V
-    b : root.V
-    c : root.V
-    f : root.E a b
-    g : root.E b c
-    h : root.E a c
-  end
-
   ind def trans-closure : TransExt root := init (TransExt root)
 end

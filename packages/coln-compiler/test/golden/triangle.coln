@@ -1,0 +1,15 @@
+theory Graph := sig
+  V : Set
+  E : V -> V -> Set
+end
+
+realm GraphRealm @ Graph
+  def triangle : Set := sig
+    a : root.V
+    b : root.V
+    c : root.V
+    f : root.E a b
+    g : root.E b c
+    h : root.E a c
+  end
+end
