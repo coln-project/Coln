@@ -54,8 +54,7 @@ impl IdPacker {
         }
     }
 
-    // TODO rename this
-    pub(crate) fn pack_cell(&mut self, value: WireValue) -> PackedValue {
+    pub(crate) fn pack_value(&mut self, value: WireValue) -> PackedValue {
         match value {
             WireValue::Id(id) => PackedValue::Id(self.pack_row_id(id)),
             WireValue::Int(value) => PackedValue::Int(value),
@@ -63,7 +62,18 @@ impl IdPacker {
         }
     }
 
-    pub(crate) fn unpack_cell(&self, value: PackedValue) -> WireValue {
+    /// Packs a cell without modifying the dictionary.
+    ///
+    /// Returns `None` when an ID cell's commit hash has not been interned.
+    pub(crate) fn try_pack_value(&self, value: &WireValue) -> Option<PackedValue> {
+        Some(match value {
+            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(id)?),
+            WireValue::Int(value) => PackedValue::Int(*value),
+            WireValue::Str(value) => PackedValue::Str(value.clone()),
+        })
+    }
+
+    pub(crate) fn unpack_value(&self, value: PackedValue) -> WireValue {
         value.map_owned(|id| self.unpack_row_id(id))
     }
 
@@ -73,30 +83,20 @@ impl IdPacker {
                 let row_id = self.pack_row_id(row_id);
                 let values = values
                     .into_iter()
-                    .map(|value| self.pack_cell(value))
+                    .map(|value| self.pack_value(value))
                     .collect();
                 PackedOp::Add { row_id, values }
             }
         }
     }
 
-    /// Packs a cell without modifying the dictionary.
-    ///
-    /// Returns `None` when an ID cell's commit hash has not been interned.
-    pub(crate) fn try_pack_cell(&self, value: &WireValue) -> Option<PackedValue> {
-        Some(match value {
-            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(id)?),
-            WireValue::Int(value) => PackedValue::Int(*value),
-            WireValue::Str(value) => PackedValue::Str(value.clone()),
-        })
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.dict.hashes().len()
     }
 
-    // TODO we should have a method to remove a hash from dictionary? For example
-    // when we remove something from the table
+    // TODO we should have a method to remove a hash from dictionary?
+    // Perhaps we could do mark and sweep, as we are doing a full rebuild of a
+    // table because we need to scan the table anyway.
 }
 
 impl Rollback for IdPacker {

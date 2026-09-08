@@ -327,7 +327,7 @@ impl Table {
                 let Some(key) = index
                     .key_cols()
                     .iter()
-                    .map(|&ci| dict.try_pack_cell(&values[ci]))
+                    .map(|&ci| dict.try_pack_value(&values[ci]))
                     .collect::<Option<Vec<_>>>()
                 else {
                     // If we cannot pack, then the primary key should be absent, so noneed to check
