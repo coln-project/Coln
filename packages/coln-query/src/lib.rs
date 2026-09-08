@@ -1156,17 +1156,515 @@ mod test {
         Ok(())
     }
 
-    /// The batch backend's value slice is unsigned integers and booleans.
-    /// Rows carrying strings fail loudly instead of computing something
-    /// wrong.
-    // TODO(Jan): support the remaining scalar types (strings first, via
-    // dictionary encoding) after the end-to-end slice is complete; then
-    // `test_standard_join` gets its batch twin, too.
+    /// The standard join, persons and professions with string names, on
+    /// the batch backend. After every step the full state must equal the
+    /// incremental output.
     #[test]
-    fn batch_feed_rejects_strings_for_now() -> Result<(), anyhow::Error> {
+    fn batch_standard_join_matches_incremental() -> Result<(), anyhow::Error> {
+        let plan = || {
+            vec![
+                Stmt::from(VarStmt {
+                    name: "person".to_string(),
+                    initializer: Some(Expr::from(SourceExpr::new(PersonRel::id()))),
+                }),
+                Stmt::from(VarStmt {
+                    name: "profession".to_string(),
+                    initializer: Some(Expr::from(SourceExpr::new(ProfessionRel::id()))),
+                }),
+                Stmt::from(VarStmt {
+                    name: "joined".to_string(),
+                    initializer: Some(Expr::from(EquiJoinExpr {
+                        left: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("person")),
+                            alias: "pers".to_string(),
+                        }),
+                        right: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("profession")),
+                            alias: "prof".to_string(),
+                        }),
+                        on: vec![(
+                            Expr::from(VarExpr::new("profession_id")),
+                            Expr::from(VarExpr::new("profession_id")),
+                        )],
+                        attributes: Some(
+                            [
+                                ("person_id", "pers.person_id"),
+                                ("person_name", "pers.name"),
+                                ("age", "pers.age"),
+                                ("profession_id", "prof.profession_id"),
+                                ("profession_name", "prof.name"),
+                            ]
+                            .into_iter()
+                            .map(|(name, identifier)| {
+                                (name.to_string(), Expr::from(VarExpr::new(identifier)))
+                            })
+                            .collect(),
+                        ),
+                    })),
+                }),
+                output_stmt("joined"),
+            ]
+        };
+        let schemas = || [PersonRel::schema(), ProfessionRel::schema()];
+        let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(plan(), schemas()))?;
+        let mut incremental =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan(), schemas()))?;
+
+        let steps = person_profession_data()
+            .into_iter()
+            .zip(person_profession_data());
+        for ((persons, professions), (persons_again, professions_again)) in steps {
+            assert!(batch.feed(&PersonRel::id(), rows_with_weight(persons, 1))?);
+            assert!(batch.feed(&ProfessionRel::id(), rows_with_weight(professions, 1))?);
+            batch.commit()?;
+            assert!(incremental.feed(&PersonRel::id(), rows_with_weight(persons_again, 1))?);
+            assert!(
+                incremental.feed(&ProfessionRel::id(), rows_with_weight(professions_again, 1))?
+            );
+            incremental.commit()?;
+
+            let snapshot = batch.output(&SinkId::from("joined"))?;
+            assert_eq!(
+                snapshot.columns(),
+                [
+                    "person_id",
+                    "person_name",
+                    "age",
+                    "profession_id",
+                    "profession_name"
+                ]
+            );
+            let expected = zset! {
+                tuple!(0_u64, "Alice", 20_u64, 0_u64, "Engineer") => 1,
+                tuple!(2_u64, "Charlie", 40_u64, 0_u64, "Engineer") => 1,
+                tuple!(1_u64, "Bob", 30_u64, 1_u64, "Doctor") => 1,
+            };
+            assert_eq!(snapshot.to_debug_zset(), expected);
+            assert_eq!(
+                incremental
+                    .output(&SinkId::from("joined"))?
+                    .debug_view(false)
+                    .to_zset(),
+                expected
+            );
+        }
+        Ok(())
+    }
+
+    /// Every scalar type the plan knows, except null, flows through feed,
+    /// a selection on a string literal, and output unchanged, on both
+    /// backends.
+    #[test]
+    fn batch_carries_every_scalar_type() -> Result<(), anyhow::Error> {
         use crate::api::deltas::ZRow;
-        use crate::relational::relation::TupleValue;
-        use crate::scalarial::ScalarTypedValue;
+        use crate::host::expr::{BinaryExpr, Literal, LiteralExpr};
+        use crate::host::operator::Operator;
+        use crate::relational::expr::{SelectionExpr, SourceId};
+        use crate::relational::schema::{Column, EntityRef, TableSchema};
+        use crate::scalarial::ScalarType;
+
+        let schema = || {
+            TableSchema::new(
+                EntityRef::from("cells"),
+                vec![
+                    Column::new("id", ScalarType::Uint),
+                    Column::new("delta", ScalarType::Iint),
+                    Column::new("label", ScalarType::String),
+                    Column::new("flag", ScalarType::Bool),
+                    Column::new("initial", ScalarType::Char),
+                ],
+                vec![],
+            )
+        };
+        let plan = || {
+            vec![
+                Stmt::from(VarStmt {
+                    name: "cells".to_string(),
+                    initializer: Some(Expr::from(SourceExpr::new(SourceId::from("cells")))),
+                }),
+                Stmt::from(VarStmt {
+                    name: "picked".to_string(),
+                    initializer: Some(Expr::from(SelectionExpr {
+                        relation: Expr::from(VarExpr::new("cells")),
+                        condition: Expr::from(BinaryExpr {
+                            operator: Operator::Equal,
+                            left: Expr::from(VarExpr::new("label")),
+                            right: Expr::from(LiteralExpr {
+                                value: Literal::String("b".to_string()),
+                            }),
+                        }),
+                    })),
+                }),
+                output_stmt("picked"),
+            ]
+        };
+        let data = || {
+            [
+                tuple!(1_u64, -5_i64, "a", true, 'x'),
+                tuple!(2_u64, 7_i64, "b", false, 'y'),
+                tuple!(3_u64, -1_i64, "b", true, 'z'),
+            ]
+            .into_iter()
+            .map(|row| ZRow::new(1, row).expect("non-zero zweight"))
+            .collect::<Vec<_>>()
+        };
+        let expected = zset! {
+            tuple!(2_u64, 7_i64, "b", false, 'y') => 1,
+            tuple!(3_u64, -1_i64, "b", true, 'z') => 1,
+        };
+
+        let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(plan(), [schema()]))?;
+        assert!(batch.feed(&SourceId::from("cells"), data())?);
+        batch.commit()?;
+        let snapshot = batch.output(&SinkId::from("picked"))?;
+        assert_eq!(
+            snapshot.columns(),
+            ["id", "delta", "label", "flag", "initial"]
+        );
+        assert_eq!(snapshot.to_debug_zset(), expected);
+
+        let mut incremental =
+            Pipeline::incremental().runtime(&mut TestProgram::new(plan(), [schema()]))?;
+        assert!(incremental.feed(&SourceId::from("cells"), data())?);
+        incremental.commit()?;
+        assert_eq!(
+            incremental
+                .output(&SinkId::from("picked"))?
+                .debug_view(false)
+                .to_zset(),
+            expected
+        );
+        Ok(())
+    }
+
+    /// Null is the one plan type the batch backend refuses: a null column
+    /// fails at build time, a null cell at feed time.
+    #[test]
+    fn batch_rejects_null() -> Result<(), anyhow::Error> {
+        use crate::api::deltas::ZRow;
+        use crate::relational::expr::SourceId;
+        use crate::relational::schema::{Column, EntityRef, TableSchema};
+        use crate::scalarial::{ScalarType, ScalarTypedValue};
+
+        let plan = || {
+            vec![
+                Stmt::from(VarStmt {
+                    name: "t".to_string(),
+                    initializer: Some(Expr::from(SourceExpr::new(SourceId::from("t")))),
+                }),
+                output_stmt("t"),
+            ]
+        };
+        let with_null_column = TableSchema::new(
+            EntityRef::from("t"),
+            vec![Column::new("n", ScalarType::Null)],
+            vec![],
+        );
+        let err = Pipeline::batch()
+            .runtime(&mut TestProgram::new(plan(), [with_null_column]))
+            .err()
+            .expect("a null column cannot be built");
+        assert!(err.to_string().contains("null"), "got: {err}");
+
+        let uint_column = TableSchema::new(
+            EntityRef::from("t"),
+            vec![Column::new("n", ScalarType::Uint)],
+            vec![],
+        );
+        let mut rt = Pipeline::batch().runtime(&mut TestProgram::new(plan(), [uint_column]))?;
+        let null_cell = ZRow::new(1, tuple!(())).expect("non-zero zweight");
+        let err = rt.feed(&SourceId::from("t"), [null_cell]).unwrap_err();
+        assert!(err.to_string().contains("null"), "got: {err}");
+        let _ = ScalarTypedValue::Null(());
+        Ok(())
+    }
+
+    /// One cell of plan type `ty` for the small integer `x`, injective on
+    /// the values these tests use (booleans get `0..2`). Not the identity
+    /// for any type, so encoding and decoding are both exercised.
+    fn typed_cell(ty: crate::scalarial::ScalarType, x: u64) -> ScalarTypedValue {
+        use crate::scalarial::ScalarType;
+        match ty {
+            ScalarType::Uint => ScalarTypedValue::Uint(u64::MAX - x),
+            ScalarType::Iint => ScalarTypedValue::Iint(x as i64 - 5),
+            ScalarType::Bool => {
+                assert!(x < 2, "boolean instances use the domain 0..2");
+                ScalarTypedValue::Bool(x == 1)
+            }
+            ScalarType::Char => {
+                ScalarTypedValue::Char(char::from_u32(0x1F600 + x as u32).expect("emoji range"))
+            }
+            ScalarType::String => ScalarTypedValue::String(format!("wert {x} ß")),
+            ScalarType::Null => unreachable!("null is not a stored type"),
+        }
+    }
+
+    const STORED_TYPES: [crate::scalarial::ScalarType; 5] = [
+        crate::scalarial::ScalarType::Uint,
+        crate::scalarial::ScalarType::Iint,
+        crate::scalarial::ScalarType::Bool,
+        crate::scalarial::ScalarType::Char,
+        crate::scalarial::ScalarType::String,
+    ];
+
+    /// The table `edge(from: ty, to: ty)`.
+    fn typed_edge_schema(
+        ty: crate::scalarial::ScalarType,
+    ) -> crate::relational::schema::TableSchema {
+        use crate::relational::schema::{Column, EntityRef, TableSchema};
+        TableSchema::new(
+            EntityRef::from("edge"),
+            vec![Column::new("from", ty), Column::new("to", ty)],
+            vec![],
+        )
+    }
+
+    fn typed_edges(
+        ty: crate::scalarial::ScalarType,
+        pairs: &[(u64, u64)],
+    ) -> Vec<crate::api::deltas::ZRow> {
+        pairs
+            .iter()
+            .map(|&(a, b)| {
+                crate::api::deltas::ZRow::new(
+                    1,
+                    TupleValue {
+                        data: vec![typed_cell(ty, a), typed_cell(ty, b)],
+                    },
+                )
+                .expect("non-zero zweight")
+            })
+            .collect()
+    }
+
+    fn typed_pairs_zset(
+        ty: crate::scalarial::ScalarType,
+        pairs: &[(u64, u64)],
+    ) -> OrdZSet<TupleValue> {
+        OrdZSet::from_keys(
+            (),
+            pairs
+                .iter()
+                .map(|&(a, b)| {
+                    ::dbsp::utils::Tup2(
+                        TupleValue {
+                            data: vec![typed_cell(ty, a), typed_cell(ty, b)],
+                        },
+                        1,
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn edge_source() -> Expr {
+        use crate::relational::expr::SourceId;
+        Expr::from(SourceExpr::new(SourceId::from("edge")))
+    }
+
+    fn edge_id() -> crate::relational::expr::SourceId {
+        crate::relational::expr::SourceId::from("edge")
+    }
+
+    /// Two hops along `edge`: `two_hops(start, end)`.
+    fn two_hop_plan() -> Vec<Stmt> {
+        vec![
+            Stmt::from(VarStmt {
+                name: "edges".to_string(),
+                initializer: Some(edge_source()),
+            }),
+            Stmt::from(VarStmt {
+                name: "two_hops".to_string(),
+                initializer: Some(Expr::from(EquiJoinExpr {
+                    left: Expr::from(AliasExpr {
+                        relation: Expr::from(VarExpr::new("edges")),
+                        alias: "h1".to_string(),
+                    }),
+                    right: Expr::from(AliasExpr {
+                        relation: Expr::from(VarExpr::new("edges")),
+                        alias: "h2".to_string(),
+                    }),
+                    on: vec![(
+                        Expr::from(VarExpr::new("to")),
+                        Expr::from(VarExpr::new("from")),
+                    )],
+                    attributes: Some(vec![
+                        ("start".to_string(), Expr::from(VarExpr::new("h1.from"))),
+                        ("end".to_string(), Expr::from(VarExpr::new("h2.to"))),
+                    ]),
+                })),
+            }),
+            output_stmt("two_hops"),
+        ]
+    }
+
+    /// The transitive closure of `edge` as a fixed point, read through a
+    /// distinct so both backends report a set: the batch backend always
+    /// does, the incremental one counts derivations otherwise.
+    fn closure_plan() -> Vec<Stmt> {
+        vec![
+            Stmt::from(VarStmt {
+                name: "edges".to_string(),
+                initializer: Some(edge_source()),
+            }),
+            Stmt::from(VarStmt {
+                name: "closure".to_string(),
+                initializer: Some(Expr::from(FixedPointIterExpr {
+                    accumulator: ("cur".to_string(), Expr::from(VarExpr::new("edges"))),
+                    step: BlockStmt {
+                        stmts: vec![Stmt::from(ExprStmt {
+                            expr: Expr::from(DistinctExpr {
+                                relation: Expr::from(EquiJoinExpr {
+                                    left: Expr::from(AliasExpr {
+                                        relation: Expr::from(VarExpr::new("cur")),
+                                        alias: "walk".to_string(),
+                                    }),
+                                    right: Expr::from(AliasExpr {
+                                        relation: Expr::from(VarExpr::new("edges")),
+                                        alias: "step".to_string(),
+                                    }),
+                                    on: vec![(
+                                        Expr::from(VarExpr::new("to")),
+                                        Expr::from(VarExpr::new("from")),
+                                    )],
+                                    attributes: Some(vec![
+                                        ("from".to_string(), Expr::from(VarExpr::new("walk.from"))),
+                                        ("to".to_string(), Expr::from(VarExpr::new("step.to"))),
+                                    ]),
+                                }),
+                            }),
+                        })],
+                    },
+                })),
+            }),
+            Stmt::from(VarStmt {
+                name: "closure_set".to_string(),
+                initializer: Some(Expr::from(DistinctExpr {
+                    relation: Expr::from(VarExpr::new("closure")),
+                })),
+            }),
+            output_stmt("closure_set"),
+        ]
+    }
+
+    fn two_hops_of(pairs: &[(u64, u64)]) -> Vec<(u64, u64)> {
+        let mut out: Vec<(u64, u64)> = pairs
+            .iter()
+            .flat_map(|&(a, b)| {
+                pairs
+                    .iter()
+                    .filter(move |&&(c, _)| c == b)
+                    .map(move |&(_, d)| (a, d))
+            })
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    fn closure_of(pairs: &[(u64, u64)]) -> Vec<(u64, u64)> {
+        let mut closure: Vec<(u64, u64)> = pairs.to_vec();
+        loop {
+            let mut next = closure.clone();
+            next.extend(two_hops_of(&closure));
+            next.sort_unstable();
+            next.dedup();
+            if next.len() == closure.len() {
+                return closure;
+            }
+            closure = next;
+        }
+    }
+
+    /// The same two-hop plan over every stored type: the batch state and
+    /// the incremental output must both equal the expected pairs.
+    #[test]
+    fn batch_join_every_type_matches_incremental() -> Result<(), anyhow::Error> {
+        for ty in STORED_TYPES {
+            let pairs: &[(u64, u64)] = if ty == crate::scalarial::ScalarType::Bool {
+                &[(0, 1), (1, 1)]
+            } else {
+                &[(0, 1), (1, 2), (2, 3), (3, 1), (4, 4)]
+            };
+            let expected = typed_pairs_zset(ty, &two_hops_of(pairs));
+            assert!(!expected.is_empty());
+
+            let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(
+                two_hop_plan(),
+                [typed_edge_schema(ty)],
+            ))?;
+            assert!(batch.feed(&edge_id(), typed_edges(ty, pairs))?);
+            batch.commit()?;
+            let snapshot = batch.output(&SinkId::from("two_hops"))?;
+            assert_eq!(snapshot.columns(), ["start", "end"]);
+            assert_eq!(snapshot.to_debug_zset(), expected, "batch over {ty}");
+
+            let mut incremental = Pipeline::incremental().runtime(&mut TestProgram::new(
+                two_hop_plan(),
+                [typed_edge_schema(ty)],
+            ))?;
+            assert!(incremental.feed(&edge_id(), typed_edges(ty, pairs))?);
+            incremental.commit()?;
+            assert_eq!(
+                incremental
+                    .output(&SinkId::from("two_hops"))?
+                    .debug_view(false)
+                    .to_zset(),
+                expected,
+                "incremental over {ty}"
+            );
+        }
+        Ok(())
+    }
+
+    /// The same fixed point over every stored type, on both backends.
+    #[test]
+    fn batch_fixed_point_every_type_matches_incremental() -> Result<(), anyhow::Error> {
+        for ty in STORED_TYPES {
+            // A fork (0 → 2 directly and via 1) and a self loop: pairs with
+            // several derivations, which only a set semantics reports once.
+            let pairs: &[(u64, u64)] = if ty == crate::scalarial::ScalarType::Bool {
+                &[(0, 1), (1, 1)]
+            } else {
+                &[(0, 1), (1, 2), (0, 2), (2, 3), (3, 3)]
+            };
+            let expected = typed_pairs_zset(ty, &closure_of(pairs));
+
+            let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(
+                closure_plan(),
+                [typed_edge_schema(ty)],
+            ))?;
+            assert!(batch.feed(&edge_id(), typed_edges(ty, pairs))?);
+            batch.commit()?;
+            assert_eq!(
+                batch.output(&SinkId::from("closure_set"))?.to_debug_zset(),
+                expected,
+                "batch over {ty}"
+            );
+
+            let mut incremental = Pipeline::incremental().runtime(&mut TestProgram::new(
+                closure_plan(),
+                [typed_edge_schema(ty)],
+            ))?;
+            assert!(incremental.feed(&edge_id(), typed_edges(ty, pairs))?);
+            incremental.commit()?;
+            assert_eq!(
+                incremental
+                    .output(&SinkId::from("closure_set"))?
+                    .debug_view(false)
+                    .to_zset(),
+                expected,
+                "incremental over {ty}"
+            );
+        }
+        Ok(())
+    }
+
+    /// A fed cell must have its column's type, and a row its schema's
+    /// arity; both mismatches fail at feed time, naming the source.
+    #[test]
+    fn batch_feed_checks_cell_types() -> Result<(), anyhow::Error> {
+        use crate::api::deltas::ZRow;
 
         let plan = vec![
             Stmt::from(VarStmt {
@@ -1177,20 +1675,15 @@ mod test {
         ];
         let mut rt =
             Pipeline::batch().runtime(&mut TestProgram::new(plan, [PersonRel::schema()]))?;
-        let alice = ZRow::new(
-            1,
-            TupleValue {
-                data: vec![
-                    ScalarTypedValue::Uint(0),
-                    ScalarTypedValue::String("Alice".to_string()),
-                    ScalarTypedValue::Uint(20),
-                    ScalarTypedValue::Uint(0),
-                ],
-            },
-        )
-        .expect("non-zero zweight");
-        let err = rt.feed(&PersonRel::id(), [alice]).unwrap_err();
-        assert!(err.to_string().contains("unsigned integer"), "got: {err}");
+
+        let wrong_type = ZRow::new(1, tuple!("zero", "Alice", 20_u64, 0_u64)).expect("non-zero");
+        let err = rt.feed(&PersonRel::id(), [wrong_type]).unwrap_err();
+        assert!(err.to_string().contains("expected uint"), "got: {err}");
+        assert!(err.to_string().contains("person"), "got: {err}");
+
+        let wrong_arity = ZRow::new(1, tuple!(0_u64, "Alice")).expect("non-zero");
+        let err = rt.feed(&PersonRel::id(), [wrong_arity]).unwrap_err();
+        assert!(err.to_string().contains("columns"), "got: {err}");
         Ok(())
     }
 
