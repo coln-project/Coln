@@ -102,8 +102,8 @@ pub mod flir {
     /// constraining the columns named by index in `values`.
     pub fn atom(
         entity: &str,
-        row_id: Option<ir::Term>,
-        values: Vec<(ir::ColumnIdx, ir::Term)>,
+        row_id: Option<ir::El>,
+        values: Vec<(ir::ColumnIdx, ir::El)>,
     ) -> ir::Atom {
         ir::Atom {
             entity: ir::Path::from(entity),
@@ -127,19 +127,19 @@ pub mod flir {
         }
     }
 
-    pub fn var_term(index: ir::VarIdx) -> ir::Term {
-        ir::Term::Var { index }
+    pub fn var_term(index: ir::VarIdx) -> ir::El {
+        ir::El::Var { index }
     }
 
-    pub fn lit_term(value: i64) -> ir::Term {
-        ir::Term::Lit {
+    pub fn lit_term(value: i64) -> ir::El {
+        ir::El::Lit {
             lit: ir::Lit::Int {
                 value: value.try_into().unwrap(),
             },
         }
     }
 
-    pub fn equality(left: ir::Term, right: ir::Term) -> ir::Equality {
+    pub fn equality(left: ir::El, right: ir::El) -> ir::Equality {
         ir::Equality { left, right }
     }
 }

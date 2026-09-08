@@ -221,11 +221,11 @@ mod tests {
                         values: vec![
                             ir::ValueEntry {
                                 column: 0,
-                                term: ir::Term::Var { index: 0 },
+                                term: ir::El::Var { index: 0 },
                             },
                             ir::ValueEntry {
                                 column: 1,
-                                term: ir::Term::Var { index: 1 },
+                                term: ir::El::Var { index: 1 },
                             },
                         ],
                     },
@@ -237,11 +237,11 @@ mod tests {
                         values: vec![
                             ir::ValueEntry {
                                 column: 0,
-                                term: ir::Term::Var { index: 1 },
+                                term: ir::El::Var { index: 1 },
                             },
                             ir::ValueEntry {
                                 column: 1,
-                                term: ir::Term::Var { index: 2 },
+                                term: ir::El::Var { index: 2 },
                             },
                         ],
                     },
@@ -253,7 +253,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: ir::Term::Var { index: 0 },
+                        term: ir::El::Var { index: 0 },
                     }],
                 },
             }],
@@ -298,7 +298,7 @@ mod tests {
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 0 },
+                            term: ir::El::Var { index: 0 },
                         }],
                     },
                 },
@@ -308,14 +308,14 @@ mod tests {
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 1 },
+                            term: ir::El::Var { index: 1 },
                         }],
                     },
                 },
                 ir::Prop::Eq {
                     equality: Equality {
-                        left: ir::Term::Var { index: 0 },
-                        right: ir::Term::Var { index: 1 },
+                        left: ir::El::Var { index: 0 },
+                        right: ir::El::Var { index: 1 },
                     },
                 },
             ],
@@ -325,7 +325,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: ir::Term::Var { index: 0 },
+                        term: ir::El::Var { index: 0 },
                     }],
                 },
             }],
@@ -354,14 +354,14 @@ mod tests {
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 0 },
+                            term: ir::El::Var { index: 0 },
                         }],
                     },
                 },
                 ir::Prop::Eq {
                     equality: Equality {
-                        left: ir::Term::Var { index: 0 },
-                        right: ir::Term::Lit {
+                        left: ir::El::Var { index: 0 },
+                        right: ir::El::Lit {
                             lit: ir::Lit::Int { value: 2 },
                         },
                     },
@@ -373,7 +373,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: ir::Term::Var { index: 0 },
+                        term: ir::El::Var { index: 0 },
                     }],
                 },
             }],

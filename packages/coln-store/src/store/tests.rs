@@ -6,7 +6,7 @@
 pub(crate) mod test_support {
     use crate::ir::{
         Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Prop, Rule,
-        RuleEntry, RuleVariant, Schema, TableEntry, Term, ValueEntry,
+        RuleEntry, RuleVariant, Schema, TableEntry, El, ValueEntry,
     };
 
     fn int_col_type() -> ColType {
@@ -52,8 +52,7 @@ pub(crate) mod test_support {
                 path: Path::from("Link.foreignKeys"),
                 rule: Rule {
                     rule_variant: RuleVariant::Enforced,
-                    var_names: vec![Path::from("a"), Path::from("b")],
-                    var_types: vec![int_col_type(), int_col_type()],
+                    vars: vec![(Path::from("a"), int_col_type()), (Path::from("b"), int_col_type())],
                     antecedents: vec![Prop::Atom {
                         atom: Atom {
                             entity: link.clone(),
@@ -61,11 +60,11 @@ pub(crate) mod test_support {
                             values: vec![
                                 ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 },
                                 ValueEntry {
                                     column: 1,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 },
                             ],
                         },
@@ -77,7 +76,7 @@ pub(crate) mod test_support {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 }],
                             },
                         },
@@ -87,7 +86,7 @@ pub(crate) mod test_support {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 }],
                             },
                         },

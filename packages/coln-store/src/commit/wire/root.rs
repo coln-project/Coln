@@ -21,7 +21,7 @@ mod tests {
     use super::*;
     use crate::ir::{
         Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Prop, Rule, RuleEntry,
-        RuleVariant, Schema, TableEntry, Term, ValueEntry,
+        RuleVariant, Schema, TableEntry, El, ValueEntry,
     };
 
     fn int_schema() -> Schema {
@@ -73,14 +73,14 @@ mod tests {
                         row_id: None,
                         values: vec![ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         }],
                     },
                 }],
                 consequents: vec![Prop::Eq {
                     equality: Equality {
-                        left: Term::Var { index: 0 },
-                        right: Term::Var { index: 0 },
+                        left: El::Var { index: 0 },
+                        right: El::Var { index: 0 },
                     },
                 }],
             },

@@ -4,7 +4,7 @@
 
 use std::{collections::HashSet, fmt};
 
-use crate::ir::{self, Atom, Prop, RuleEntry, Term};
+use crate::ir::{self, Atom, Prop, RuleEntry, El};
 
 /// Errors raised while lowering an `ir::Rule` into the restricted solver form.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -185,9 +185,9 @@ fn compile_atom(atom: &Atom, var_count: usize) -> Result<CompAtom, CompileError>
     })
 }
 
-fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError> {
+fn compile_term(term: &El, var_count: usize) -> Result<CompTerm, CompileError> {
     match term {
-        Term::Var { index } => {
+        El::Var { index } => {
             if *index >= var_count as u64 {
                 return Err(CompileError::InvalidVarIndex {
                     index: *index,
@@ -196,7 +196,7 @@ fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError>
             }
             Ok(CompTerm::Var(*index as usize))
         }
-        Term::Lit { lit } => Ok(CompTerm::Lit(lit.clone())),
+        El::Lit { lit } => Ok(CompTerm::Lit(lit.clone())),
     }
 }
 
@@ -380,7 +380,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: Term::Var { index: 0 },
+                        term: El::Var { index: 0 },
                     }],
                 },
             }],
@@ -390,7 +390,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: Term::Var { index: 0 },
+                        term: El::Var { index: 0 },
                     }],
                 },
             }],
@@ -526,8 +526,8 @@ mod tests {
             vec![int_ty(), int_ty()],
             vec![Prop::Eq {
                 equality: Equality {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
+                    left: El::Var { index: 0 },
+                    right: El::Var { index: 1 },
                 },
             }],
             vec![Prop::Atom {
@@ -557,19 +557,19 @@ mod tests {
                     values: vec![
                         ir::ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         },
                         ir::ValueEntry {
                             column: 1,
-                            term: Term::Var { index: 1 },
+                            term: El::Var { index: 1 },
                         },
                     ],
                 },
             }],
             vec![Prop::Eq {
                 equality: Equality {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
+                    left: El::Var { index: 0 },
+                    right: El::Var { index: 1 },
                 },
             }],
         );
@@ -602,11 +602,11 @@ mod tests {
                     values: vec![
                         ir::ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         },
                         ir::ValueEntry {
                             column: 1,
-                            term: Term::Var { index: 1 },
+                            term: El::Var { index: 1 },
                         },
                     ],
                 },
@@ -618,14 +618,14 @@ mod tests {
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         }],
                     },
                 },
                 Prop::Eq {
                     equality: Equality {
-                        left: Term::Var { index: 0 },
-                        right: Term::Var { index: 1 },
+                        left: El::Var { index: 0 },
+                        right: El::Var { index: 1 },
                     },
                 },
             ],

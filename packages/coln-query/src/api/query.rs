@@ -22,7 +22,7 @@ use crate::relational::expr::{
 use crate::relational::schema::{Column, EntityRef, TableSchema};
 use crate::scalarial::ScalarType;
 use coln_flir_rs::ir::{
-    self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, Term,
+    self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, El,
 };
 use coln_flir_rs::schema::{
     BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
@@ -362,7 +362,7 @@ impl FlirProgram {
         // The row id, if this atom brings it into scope.
         if let Some(row_id) = &atom.row_id {
             match row_id {
-                ir::Term::Var { index } => {
+                ir::El::Var { index } => {
                     let var = friendly_var(vars, *index)?;
                     if !var.is_row_id() {
                         return Err(SyntaxError::new(
@@ -375,7 +375,7 @@ impl FlirProgram {
                         schema.resolve_query_cols(CompilerColIdx::for_row_id()),
                     )?;
                 }
-                ir::Term::Lit { lit: _ } => {
+                ir::El::Lit { lit: _ } => {
                     // Matching [`ir::Atom::row_id`]'s own note: a literal row id
                     // is not something we can express.
                     return Err(SyntaxError::new(
@@ -389,7 +389,7 @@ impl FlirProgram {
         for value in &atom.values {
             let mut columns = schema.resolve_query_cols(CompilerColIdx::from(value.column));
             match &value.term {
-                ir::Term::Lit { lit } => {
+                ir::El::Lit { lit } => {
                     let column = columns.next().ok_or_else(|| {
                         SyntaxError::new("FLIR compares a literal against a column that does not resolve to any query column")
                     })?;
@@ -399,7 +399,7 @@ impl FlirProgram {
                         right: Expr::from(LiteralExpr::from(Literal::from(lit))),
                     }));
                 }
-                ir::Term::Var { index } => {
+                ir::El::Var { index } => {
                     binder.bind(*index, friendly_var(vars, *index)?, columns)?;
                 }
             }
@@ -433,10 +433,10 @@ impl FlirProgram {
             bindings: binder.bindings,
         })
     }
-    fn term(&mut self, term: &Term, vars: &[FriendlyVar]) -> Result<Vec<Expr>, SyntaxError> {
+    fn term(&mut self, term: &El, vars: &[FriendlyVar]) -> Result<Vec<Expr>, SyntaxError> {
         match term {
-            Term::Lit { lit } => Ok(vec![Expr::from(LiteralExpr::from(Literal::from(lit)))]),
-            Term::Var { index } => Ok(friendly_var(vars, *index)?
+            El::Lit { lit } => Ok(vec![Expr::from(LiteralExpr::from(Literal::from(lit)))]),
+            El::Var { index } => Ok(friendly_var(vars, *index)?
                 .parts()
                 .map(|(_part, name)| Expr::from(VarExpr::new(name)))
                 .collect()),
