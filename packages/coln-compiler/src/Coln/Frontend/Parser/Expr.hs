@@ -73,7 +73,7 @@ recordFields e parseField = go []
       N.Infix (N.Ident x sp) _ _ -> do
         when (x `elem` seen) $
           failWith e sp DuplicateDefinition ("duplicate record field" <+> dpretty x)
-        pure (x:seen)
+        pure (x : seen)
       _ -> pure seen
     (field :) <$> go seen' rest
 
