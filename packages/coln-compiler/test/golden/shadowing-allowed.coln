@@ -1,0 +1,28 @@
+def parameter_shadowing (x : Int) (x : Int) : Int := x
+
+def lambda_shadowing (x : Int) : (^c y : Int) -> Int := x => x
+
+theory PiShadowing := (x : Int) -> (x : Int) -> Set
+
+theory FieldArgumentShadowing (x : Int) := sig
+  x : Int
+end
+
+def top : Int := 19
+
+def param_top_shadowing (top : Int) : Int := 34
+
+theory ParamTopTheory (top : Int) := sig
+end
+
+def Pair : Set := sig
+  x : Int
+  y : Int
+end
+
+realm PairRealm @ Pair
+  def root_arg (root : Int) : Int := 41
+
+  def realm_def : Int := 38
+  def def_arg (realm_def : Int) : Int := 23
+end

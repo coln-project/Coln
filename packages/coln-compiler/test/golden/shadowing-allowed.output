@@ -1,0 +1,61 @@
+-- elaborated
+global entry named parameter_shadowing
+in mode: Conjunctive
+type: (x : Int) -> (x : Int) -> Int
+value: x => x => x
+global entry named lambda_shadowing
+in mode: Conjunctive
+type: (x : Int) -> (y : Int) -> Int
+value: x => x => x
+global entry named PiShadowing
+in mode: Conjunctive
+type: Theory
+value: (x : Int) -> (x : Int) -> Set
+global entry named FieldArgumentShadowing
+in mode: Conjunctive
+type: (x : Int) -> Theory
+value: x => sig
+  x : Int
+end
+global entry named top
+in mode: Conjunctive
+type: Int
+value: 19
+global entry named param_top_shadowing
+in mode: Conjunctive
+type: (top : Int) -> Int
+value: top => 34
+global entry named ParamTopTheory
+in mode: Conjunctive
+type: (top : Int) -> Theory
+value: top => sig
+end
+global entry named Pair
+in mode: Conjunctive
+type: Set
+value: sig
+  x : Int
+  y : Int
+end
+realm named PairRealm
+elaborated: realm
+  generators
+    fun [] -> Pair
+  end
+  definitions
+    def root_arg : (root : Int) -> Int := root => 41
+    def realm_def : Int := 38
+    def def_arg : (realm_def : Int) -> Int := realm_def => 23
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ := [.a.x : Int, .a.y : Int] primarykey []
+  end
+  rules
+    enforced ℜ.foreignKey a.x a.y := ℜ [.a.x ↦ a.x, .a.y ↦ a.y] ⊢ ⊤
+    monitored ℜ.total := ⊤ ⊢ ℜ []
+  end
+end
+
+-- messages
