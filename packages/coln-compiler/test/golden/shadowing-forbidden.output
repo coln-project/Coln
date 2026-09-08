@@ -28,13 +28,7 @@ end
 
 error[E0207]: duplicate definition of Pair
 6 | def Pair : Set := sig
-6 | ^^^^^^^^^^^^^^^^^^^^^
-7 |   x : String
-7 | ^^^^^^^^^^^^
-8 |   y : String
-8 | ^^^^^^^^^^^^
-9 | end
-9 | ^^^
+6 |     ^^^^
 
 error[E0207]: duplicate record field x
 13 |   x : String
@@ -42,26 +36,12 @@ error[E0207]: duplicate record field x
 
 error[E0207]: duplicate definition of ShadowRealm
 20 | realm ShadowRealm @ Pair
-20 | ^^^^^^^^^^^^^^^^^^^^^^^^
-21 | end
-21 | ^^^
+20 |       ^^^^^^^^^^^
 
 error[E0207]: duplicate definition of root
 24 |   def root : Pair := struct
-24 |   ^^^^^^^^^^^^^^^^^^^^^^^^^
-25 |     x := 1
-25 | ^^^^^^^^^^
-26 |     y := 2
-26 | ^^^^^^^^^^
-27 |   end
-27 | ^^^^^
+24 |       ^^^^
 
 error[E0207]: duplicate definition of thing
 36 |   def thing : Pair := struct
-36 |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
-37 |     x := 3
-37 | ^^^^^^^^^^
-38 |     y := 4
-38 | ^^^^^^^^^^
-39 |   end
-39 | ^^^^^
+36 |       ^^^^^

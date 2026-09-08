@@ -43,11 +43,11 @@ argBinding e n@(N.Infix n0 (N.Keyword ":" _) n1) = do
   pure (N.span n, m, x, a)
 argBinding e n = unexpectedNotation e n "argument binding of the form `<name> : <type>`"
 
-unpackArgs :: ParserEnv -> Ntn -> IO (Name, [(Span, Mode, Name, Typ N)])
+unpackArgs :: ParserEnv -> Ntn -> IO (Name, Span, [(Span, Mode, Name, Typ N)])
 unpackArgs e (N.Group (xN :| argsN)) = do
   x <- ident e xN
   args <- mapM (argBinding e) argsN
-  pure (x, args)
+  pure (x, N.span xN, args)
 
 withArgs :: (V.HasEvaluation c) => [(Span, Mode, Name, Typ N)] -> (Typ N, Chk c) -> (Typ N, Chk c)
 withArgs args base = foldr go base args
@@ -58,23 +58,23 @@ withArgs args base = foldr go base args
     , Function.intro sp name c
     )
 
-theory :: ParserEnv -> Ntn -> IO (Name, Typ N, Chk D)
+theory :: ParserEnv -> Ntn -> IO (Name, Span, Typ N, Chk D)
 theory e n = do
   (pat_n, body_n) <- definition e n
-  (name, args) <- unpackArgs e pat_n
+  (name, nameSpan, args) <- unpackArgs e pat_n
   body <- chk e body_n
   let (ty, tm) = withArgs args (Typ $ \_ -> pure $ M.univ TheoryU, body)
-  pure $ (name, ty, tm)
+  pure (name, nameSpan, ty, tm)
 
-def :: ParserEnv -> Ntn -> IO (Name, Typ N, Chk D)
+def :: ParserEnv -> Ntn -> IO (Name, Span, Typ N, Chk D)
 def e n = do
   (head_n, body_n) <- definition e n
   (pat_n, ty_n) <- annot e head_n
-  (name, args) <- unpackArgs e pat_n
+  (name, nameSpan, args) <- unpackArgs e pat_n
   returnTyp <- typ e ty_n
   body <- chk e body_n
   let (ty, tm) = withArgs args (returnTyp, body)
-  pure (name, ty, tm)
+  pure (name, nameSpan, ty, tm)
 
 elabDefinition :: DiagnosticEnv ElaboratorCode -> Globals -> Mode -> (Name, Typ N, Chk D) -> IO (Definition Global)
 elabDefinition e g m (x, ty, tm) = do
@@ -96,37 +96,37 @@ mode e sp ms = do
 decl :: DiagnosticEnv ColnCode -> Globals -> Ntn -> IO Globals
 decl e g (N.MDecl ms "theory" n sp) = do
   m <- mode (contramap ParserCode e) sp ms
-  (x, t, c) <- theory (contramap ParserCode e) n
+  (x, xsp, t, c) <- theory (contramap ParserCode e) n
   when (x `OMap.member` g.definitions) $
-    failWith (contramap ParserCode e) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+    failWith (contramap ParserCode e) xsp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   ge <- elabDefinition (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addDefinition x ge g
 decl e g (N.MDecl ms "def" n sp) = do
   m <- mode (contramap ParserCode e) sp ms
-  (x, t, c) <- def (contramap ParserCode e) n
+  (x, xsp, t, c) <- def (contramap ParserCode e) n
   when (x `OMap.member` g.definitions) $
-    failWith (contramap ParserCode e) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+    failWith (contramap ParserCode e) xsp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   ge <- elabDefinition (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addDefinition x ge g
-decl e g (N.Block "realm" (Just head) body sp) = do
-  (x, r) <- realm e g head body
+decl e g (N.Block "realm" (Just head) body _) = do
+  (x, xsp, r) <- realm e g head body
   when (x `OMap.member` g.realms) $
-    failWith (contramap ParserCode e) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+    failWith (contramap ParserCode e) xsp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   pure $ addRealm x r g
 decl e _ n = unexpectedNotation (contramap ParserCode e) n "top-level declaration"
 
-realmHead :: ParserEnv -> Ntn -> IO (Name, Ntn)
-realmHead _ (N.Infix (N.Ident x _) (N.Keyword "@" _) n) = pure (x, n)
+realmHead :: ParserEnv -> Ntn -> IO (Name, Span, Ntn)
+realmHead _ (N.Infix (N.Ident x sp) (N.Keyword "@" _) n) = pure (x, sp, n)
 realmHead e n = unexpectedNotation e n "realm head"
 
-realm :: DiagnosticEnv ColnCode -> Globals -> Ntn -> [Ntn] -> IO (Name, Realm)
+realm :: DiagnosticEnv ColnCode -> Globals -> Ntn -> [Ntn] -> IO (Name, Span, Realm)
 realm e g head def_ns = do
-  (x, theory_n) <- realmHead (contramap ParserCode e) head
+  (x, xsp, theory_n) <- realmHead (contramap ParserCode e) head
   theory_typ <- typ (contramap ParserCode e) theory_n
   theory <- theory_typ.elab (emptyElabEnv (contramap ElaboratorCode e) g Inductive)
   let (gt, root) = layoutTop x theory.val
   defs <- realmDecls e g theory.val root.val def_ns
-  pure (x, Realm gt root.val theory.val defs)
+  pure (x, xsp, Realm gt root.val theory.val defs)
 
 elabRealmDefinition :: ElabEnv N -> Mode -> (Typ N, Chk D) -> IO (Definition Local)
 elabRealmDefinition e m (ty, tm) = do
@@ -141,9 +141,9 @@ elabRealmDefinition e m (ty, tm) = do
 realmDecl :: DiagnosticEnv ColnCode -> ElabEnv N -> Ntn -> IO (Name, Definition Local)
 realmDecl de e (N.MDecl ms "def" n sp) = do
   m <- mode (contramap ParserCode de) sp ms
-  (x, t, c) <- def (contramap ParserCode de) n
+  (x, xsp, t, c) <- def (contramap ParserCode de) n
   when (x `elem` e.scope.names) $
-    failWith (contramap ParserCode de) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+    failWith (contramap ParserCode de) xsp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   d <- elabRealmDefinition e m (t, c)
   pure (x, d)
 realmDecl de _ n = unexpectedNotation (contramap ParserCode de) n "realm declaration"
