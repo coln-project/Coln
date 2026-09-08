@@ -166,7 +166,7 @@ impl<'a> TableHandle<'a> {
     pub(crate) fn cell_at(self, row_idx: usize, col_idx: usize) -> Option<WireValue> {
         self.inner
             .cell_at(row_idx, col_idx)
-            .map(|value| self.id_packer.unpack_cell(value))
+            .map(|value| self.id_packer.unpack_value(value))
     }
 }
 
@@ -214,7 +214,7 @@ impl<'a> TableMut<'a> {
         let row_id = self.id_packer.pack_row_id(row_id);
         let values = values
             .into_iter()
-            .map(|value| self.id_packer.pack_cell(value))
+            .map(|value| self.id_packer.pack_value(value))
             .collect();
         self.inner.insert_row(values, row_id, self.rowing)
     }
