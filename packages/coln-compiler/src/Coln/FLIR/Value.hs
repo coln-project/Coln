@@ -156,7 +156,7 @@ instance AE.ToJSON Definition where
         [ AE.pair "vars" $ AE.list (AE.list id . (\(x, y) -> [x, y]) . (SIR.encPath *** AE.toEncoding)) $ r.vars
         , AE.pair "antecedents" $ AE.toEncoding r.antecedents
         , AE.pair "definand" $ SIR.encPath r.definand
-        , AE.pair "antecedents" $ AE.toEncoding r.args
+        , AE.pair "arguments" $ AE.toEncoding r.args
         ]
 
 instance AE.ToJSON Rule where
