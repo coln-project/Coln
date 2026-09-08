@@ -117,7 +117,7 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
             }
         }
         Ok(DbspRuntime {
-            handle,
+            handle: Some(handle),
             inputs,
             outputs: outputs_by_name,
             cli_outputs,
@@ -130,7 +130,7 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
 /// [`DbspOutputDelta`]s.
 #[derive(Debug)]
 pub struct DbspRuntime {
-    handle: DbspHandle,
+    handle: Option<DbspHandle>,
     inputs: DbspInputs,
     /// Read handles for the [`OutputKind::Channel`] taps, keyed by name. These
     /// are the outputs [`output`](Runtime::output) can read.
@@ -139,6 +139,20 @@ pub struct DbspRuntime {
     /// plan order. Kept separate from `outputs`: printing drains a handle, so
     /// these are print-only and never readable via [`output`](Runtime::output).
     cli_outputs: Vec<(SinkId, DbspOutput)>,
+}
+
+impl Drop for DbspRuntime {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            // DBSP synchronously shuts down its own Tokio runtime. Its destructor
+            // must run outside a caller's async context, including current-thread
+            // runtimes where block_in_place is unavailable. Join before returning
+            // so destroying the query still releases all of its workers.
+            std::thread::spawn(move || drop(handle))
+                .join()
+                .expect("DBSP shutdown thread panicked");
+        }
+    }
 }
 
 impl Runtime for DbspRuntime {
@@ -160,7 +174,10 @@ impl Runtime for DbspRuntime {
     }
 
     fn commit(&mut self) -> Result<(), Self::Error> {
-        self.handle.transaction()?;
+        self.handle
+            .as_mut()
+            .expect("runtime is alive")
+            .transaction()?;
         // Flush CLI taps: print each flagged output's current batch for
         // debugging. This drains the handle, which is why CLI taps are not
         // readable via `output`.

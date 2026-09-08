@@ -36,6 +36,11 @@ pub mod violations;
 /// and what schema to rebuild a [`TableDelta`] by.
 /// It doubles as the [`Catalog`](crate::relational::catalog::Catalog)
 /// an ad-hoc query is compiled against.
+///
+/// # Shutdown
+///
+/// Dropping a query waits for its DBSP workers to shut down. Queries can be
+/// dropped inside either current-thread or multi-thread Tokio runtimes.
 #[derive(Debug)]
 pub struct ColnQuery {
     flir_program: FlirProgram,
