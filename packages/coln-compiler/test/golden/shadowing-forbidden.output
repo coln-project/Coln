@@ -3,15 +3,8 @@ global entry named Pair
 in mode: Conjunctive
 type: Set
 value: sig
-  x : String
-  y : String
-end
-global entry named ShadowField
-in mode: Conjunctive
-type: Set
-value: sig
   x : Int
-  x : String
+  y : Int
 end
 realm named ShadowRealm
 elaborated: realm
@@ -23,7 +16,7 @@ elaborated: realm
 end
 lowered: flatrealm
   entities
-    table ℜ := [.a.x : String, .a.y : String] primarykey []
+    table ℜ := [.a.x : Int, .a.y : Int] primarykey []
   end
   rules
     enforced ℜ.foreignKey a.x a.y := ℜ [.a.x ↦ a.x, .a.y ↦ a.y] ⊢ ⊤
@@ -33,12 +26,42 @@ end
 
 -- messages
 
-error[E0300]: expected type String, but got type Int
-25 |     x := 1
-25 |          ^
-types String and Int are not equal because unequal builtin types
+error[E0207]: duplicate definition of Pair
+6 | def Pair : Set := sig
+6 | ^^^^^^^^^^^^^^^^^^^^^
+7 |   x : String
+7 | ^^^^^^^^^^^^
+8 |   y : String
+8 | ^^^^^^^^^^^^
+9 | end
+9 | ^^^
 
-error[E0300]: expected type String, but got type Int
-32 |     x := 1
-32 |          ^
-types String and Int are not equal because unequal builtin types
+error[E0207]: duplicate record field x
+13 |   x : String
+13 |   ^
+
+error[E0207]: duplicate definition of ShadowRealm
+20 | realm ShadowRealm @ Pair
+20 | ^^^^^^^^^^^^^^^^^^^^^^^^
+21 | end
+21 | ^^^
+
+error[E0207]: duplicate definition of root
+24 |   def root : Pair := struct
+24 |   ^^^^^^^^^^^^^^^^^^^^^^^^^
+25 |     x := 1
+25 | ^^^^^^^^^^
+26 |     y := 2
+26 | ^^^^^^^^^^
+27 |   end
+27 | ^^^^^
+
+error[E0207]: duplicate definition of thing
+36 |   def thing : Pair := struct
+36 |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+37 |     x := 3
+37 | ^^^^^^^^^^
+38 |     y := 4
+38 | ^^^^^^^^^^
+39 |   end
+39 | ^^^^^
