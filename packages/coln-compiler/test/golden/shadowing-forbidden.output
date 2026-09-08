@@ -1,0 +1,44 @@
+-- elaborated
+global entry named Pair
+in mode: Conjunctive
+type: Set
+value: sig
+  x : String
+  y : String
+end
+global entry named ShadowField
+in mode: Conjunctive
+type: Set
+value: sig
+  x : Int
+  x : String
+end
+realm named ShadowRealm
+elaborated: realm
+  generators
+    fun [] -> Pair
+  end
+  definitions
+  end
+end
+lowered: flatrealm
+  entities
+    table ℜ := [.a.x : String, .a.y : String] primarykey []
+  end
+  rules
+    enforced ℜ.foreignKey a.x a.y := ℜ [.a.x ↦ a.x, .a.y ↦ a.y] ⊢ ⊤
+    monitored ℜ.total := ⊤ ⊢ ℜ []
+  end
+end
+
+-- messages
+
+error[E0300]: expected type String, but got type Int
+25 |     x := 1
+25 |          ^
+types String and Int are not equal because unequal builtin types
+
+error[E0300]: expected type String, but got type Int
+32 |     x := 1
+32 |          ^
+types String and Int are not equal because unequal builtin types
