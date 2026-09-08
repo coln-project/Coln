@@ -5,6 +5,7 @@
 module Coln.Frontend.Parser.Top where
 
 import Control.Exception (try)
+import Control.Monad (when)
 import Data.Foldable
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -96,15 +97,21 @@ decl :: DiagnosticEnv ColnCode -> Globals -> Ntn -> IO Globals
 decl e g (N.MDecl ms "theory" n sp) = do
   m <- mode (contramap ParserCode e) sp ms
   (x, t, c) <- theory (contramap ParserCode e) n
+  when (x `OMap.member` g.definitions) $
+    failWith (contramap ParserCode e) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   ge <- elabDefinition (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addDefinition x ge g
 decl e g (N.MDecl ms "def" n sp) = do
   m <- mode (contramap ParserCode e) sp ms
   (x, t, c) <- def (contramap ParserCode e) n
+  when (x `OMap.member` g.definitions) $
+    failWith (contramap ParserCode e) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   ge <- elabDefinition (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addDefinition x ge g
-decl e g (N.Block "realm" (Just head) body _) = do
+decl e g (N.Block "realm" (Just head) body sp) = do
   (x, r) <- realm e g head body
+  when (x `OMap.member` g.realms) $
+    failWith (contramap ParserCode e) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   pure $ addRealm x r g
 decl e _ n = unexpectedNotation (contramap ParserCode e) n "top-level declaration"
 
@@ -135,6 +142,8 @@ realmDecl :: DiagnosticEnv ColnCode -> ElabEnv N -> Ntn -> IO (Name, Definition 
 realmDecl de e (N.MDecl ms "def" n sp) = do
   m <- mode (contramap ParserCode de) sp ms
   (x, t, c) <- def (contramap ParserCode de) n
+  when (x `elem` e.scope.names) $
+    failWith (contramap ParserCode de) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
   d <- elabRealmDefinition e m (t, c)
   pure (x, d)
 realmDecl de _ n = unexpectedNotation (contramap ParserCode de) n "realm declaration"
