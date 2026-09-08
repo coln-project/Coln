@@ -20,8 +20,7 @@ pub struct Path(pub Vec<QName>);
 /// A column name is given by a [`Path`].
 pub type ColName = Path;
 
-/// An index into the [`varNames`](Rule::var_names) and
-/// [`varTypes`](Rule::var_types) arrays of a [`Rule`].
+/// An index into the [`vars`](Rule::vars) array of a [`Rule`].
 ///
 /// Note: An `FId` in `coln-compiler`.
 pub type VarIdx = u64;
@@ -134,7 +133,7 @@ pub struct Schema {
     ///  `ColB`.
     ///
     /// At the moment there is only support for a single (compound) primary key.
-    pub primary_key: Option<Vec<ColName>>,
+    pub primary_key: Option<Vec<ColumnIdx>>,
 }
 
 /// A literal expression.
@@ -169,8 +168,8 @@ pub struct Atom {
     pub entity: Path,
     /// To bring the `row_id` of the [`Entity`](Self::entity) into scope.
     ///
-    /// Note: A [`Some(Term::Lit)`](Term::Lit) does not make sense in this
-    /// context, as we do not support a row id literal at the moment, I suppose.
+    /// Note: A [`Some(El::Lit)`](El::Lit) does not make sense in this context,
+    /// as we do not support a row id literal at the moment, I suppose.
     pub row_id: Option<El>,
     /// To bring some columns of the [`Entity`](Self::entity) into scope.
     pub values: Vec<ValueEntry>,
@@ -229,7 +228,7 @@ pub struct Definition {
     pub vars: Vec<(ColName, ColType)>,
     pub antecedents: Vec<Prop>,
     pub definand: Path,
-    pub args: Vec<El>
+    pub args: Vec<El>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,7 +239,6 @@ pub struct TableEntry {
     pub table: Schema,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleEntry {
     /// The "name" of the rule.
@@ -250,9 +248,7 @@ pub struct RuleEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DefinitionEntry {
-    
-}
+pub struct DefinitionEntry {}
 
 /// The top-level type of a flattened realm and the starting point of the FLIR.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,6 +256,8 @@ pub struct FlatRealm {
     /// The tables of the flattened realm.
     #[serde(rename = "entities")]
     pub tables: Vec<TableEntry>,
+    /// How derived views are computed. These contain the chased laws.
+    pub definitions: Vec<Definition>,
     /// The rules (laws) of the flattened realm.
     pub rules: Vec<RuleEntry>,
 }

@@ -241,6 +241,7 @@ mod test {
     fn main_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
+            definitions: vec![],
             rules: vec![],
         };
         let mut coln_query = ColnQuery::init(&flat_realm)?;
@@ -293,6 +294,7 @@ mod test {
     fn restart_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
+            definitions: vec![],
             rules: vec![],
         };
         let mut coln_query = ColnQuery::init(&flat_realm)?;

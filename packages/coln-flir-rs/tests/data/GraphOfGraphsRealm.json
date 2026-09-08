@@ -1,0 +1,899 @@
+{
+  "entities": [
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]],
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          {
+            "path": [["a"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          },
+          {
+            "path": [["b"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          {
+            "path": [["a"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]],
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          {
+            "path": [["a"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          },
+          {
+            "path": [["b"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          },
+          {
+            "path": [["c"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["action"], ["V"]],
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          {
+            "path": [["v0"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          },
+          {
+            "path": [["v1"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          },
+          {
+            "path": [["a"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]]
+            }
+          },
+          {
+            "path": [["b"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          },
+          {
+            "path": [["V"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          }
+        ],
+        "primaryKey": [0, 1, 2, 3]
+      }
+    },
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["action"], ["E"]],
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          {
+            "path": [["v0"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          },
+          {
+            "path": [["v1"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          },
+          {
+            "path": [["a"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]]
+            }
+          },
+          {
+            "path": [["v0", "a"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          },
+          {
+            "path": [["v1", "a"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          },
+          {
+            "path": [["b"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]]
+            }
+          },
+          {
+            "path": [["E"]],
+            "type": {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]]
+            }
+          }
+        ],
+        "primaryKey": [0, 1, 2, 3, 4, 5]
+      }
+    }
+  ],
+  "definitions": [],
+  "rules": [
+    {
+      "path": [
+        ["GraphOfGraphsRealm"],
+        ["root"],
+        ["base"],
+        ["V"],
+        ["foreignKey"]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": null,
+              "values": []
+            }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": [
+        ["GraphOfGraphsRealm"],
+        ["root"],
+        ["base"],
+        ["E"],
+        ["foreignKey"]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          [
+            [["a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["b"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        ["GraphOfGraphsRealm"],
+        ["root"],
+        ["fiber"],
+        ["V"],
+        ["foreignKey"]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          [
+            [["a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": null,
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        ["GraphOfGraphsRealm"],
+        ["root"],
+        ["fiber"],
+        ["E"],
+        ["foreignKey"]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          [
+            [["a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["b"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ],
+          [
+            [["c"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 2 }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 2 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        ["GraphOfGraphsRealm"],
+        ["root"],
+        ["action"],
+        ["V"],
+        ["foreignKey"]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          [
+            [["v0"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["v1"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]]
+            }
+          ],
+          [
+            [["b"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ],
+          [
+            [["V"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["action"], ["V"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 2 },
+                { "tag": "var", "index": 3 },
+                { "tag": "var", "index": 4 }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]],
+              "rowId": { "tag": "var", "index": 2 },
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [{ "tag": "var", "index": 1 }]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["action"], ["V"], ["total"]],
+      "value": {
+        "ruleVariant": "monitored",
+        "vars": [
+          [
+            [["v0"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["v1"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]]
+            }
+          ],
+          [
+            [["b"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]],
+              "rowId": { "tag": "var", "index": 2 },
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["action"], ["V"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 2 },
+                { "tag": "var", "index": 3 }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [
+        ["GraphOfGraphsRealm"],
+        ["root"],
+        ["action"],
+        ["E"],
+        ["foreignKey"]
+      ],
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          [
+            [["v0"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["v1"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]]
+            }
+          ],
+          [
+            [["v0", "a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ],
+          [
+            [["v1", "a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ],
+          [
+            [["b"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]]
+            }
+          ],
+          [
+            [["E"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]]
+            }
+          ],
+          [
+            [["c"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ],
+          [
+            [["d"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["action"], ["E"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 2 },
+                { "tag": "var", "index": 3 },
+                { "tag": "var", "index": 4 },
+                { "tag": "var", "index": 5 },
+                { "tag": "var", "index": 6 }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]],
+              "rowId": { "tag": "var", "index": 2 },
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]],
+              "rowId": { "tag": "var", "index": 5 },
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 3 },
+                { "tag": "var", "index": 4 }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["action"], ["V"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 2 },
+                { "tag": "var", "index": 3 },
+                { "tag": "var", "index": 7 }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["action"], ["V"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 2 },
+                { "tag": "var", "index": 4 },
+                { "tag": "var", "index": 8 }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]],
+              "rowId": { "tag": "var", "index": 6 },
+              "values": [
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 7 },
+                { "tag": "var", "index": 8 }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": [["GraphOfGraphsRealm"], ["root"], ["action"], ["E"], ["total"]],
+      "value": {
+        "ruleVariant": "monitored",
+        "vars": [
+          [
+            [["v0"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["v1"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]]
+            }
+          ],
+          [
+            [["a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]]
+            }
+          ],
+          [
+            [["v0", "a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ],
+          [
+            [["v1", "a"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]]
+            }
+          ],
+          [
+            [["b"]],
+            {
+              "tag": "rowId",
+              "path": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]]
+            }
+          ]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["V"]],
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["base"], ["E"]],
+              "rowId": { "tag": "var", "index": 2 },
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["V"]],
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [{ "tag": "var", "index": 0 }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["fiber"], ["E"]],
+              "rowId": { "tag": "var", "index": 5 },
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 3 },
+                { "tag": "var", "index": 4 }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": [["GraphOfGraphsRealm"], ["root"], ["action"], ["E"]],
+              "rowId": null,
+              "values": [
+                { "tag": "var", "index": 0 },
+                { "tag": "var", "index": 1 },
+                { "tag": "var", "index": 2 },
+                { "tag": "var", "index": 3 },
+                { "tag": "var", "index": 4 },
+                { "tag": "var", "index": 5 }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

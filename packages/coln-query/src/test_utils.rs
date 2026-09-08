@@ -66,16 +66,14 @@ pub mod flir {
         antecedents: Vec<ir::Prop>,
         consequents: Vec<ir::Prop>,
     ) -> ir::RuleEntry {
-        let (var_names, var_types) = vars
-            .into_iter()
-            .map(|(name, col_type)| (ir::Path::from(name), col_type))
-            .unzip();
         ir::RuleEntry {
             path: ir::Path::from(name),
             rule: ir::Rule {
                 rule_variant: variant,
-                var_names,
-                var_types,
+                vars: vars
+                    .into_iter()
+                    .map(|(name, col_type)| (ir::Path::from(name), col_type))
+                    .collect(),
                 antecedents,
                 consequents,
             },
@@ -169,6 +167,7 @@ pub mod monitored_flir {
         let x = || vec![(0, flir::var_term(0))];
         ir::FlatRealm {
             tables: vec![flir::table_entry(TABLE, vec![("a", flir::builtin_int())])],
+            definitions: vec![],
             rules: vec![flir::rule_entry(
                 RULE,
                 ir::RuleVariant::Monitored,

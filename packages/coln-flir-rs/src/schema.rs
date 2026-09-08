@@ -121,14 +121,7 @@ impl From<&ir::TableEntry> for Option<BaseTableSchema> {
             .map_or(Vec::new(), |compound_primary_key| {
                 compound_primary_key
                     .iter()
-                    .map(|primary_key_column| {
-                        schema
-                            .columns
-                            .iter()
-                            .position(|column| column.path == *primary_key_column)
-                            .map(|idx| CompilerColIdx::Column(idx as u64))
-                            .unwrap_or_else(|| panic!("Primary key column {primary_key_column} not found in base table {path}"))
-                    })
+                    .map(|primary_key_column| CompilerColIdx::Column(*primary_key_column))
                     .collect::<Vec<_>>()
             });
         // Currently, the compiler supports only a single primary key.

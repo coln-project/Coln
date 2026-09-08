@@ -22,7 +22,7 @@ use crate::relational::expr::{
 use crate::relational::schema::{Column, EntityRef, TableSchema};
 use crate::scalarial::ScalarType;
 use coln_flir_rs::ir::{
-    self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, El,
+    self, Atom, El, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry,
 };
 use coln_flir_rs::schema::{
     BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
@@ -499,10 +499,10 @@ impl QueryProgram for FlirProgram {
 ///
 /// 1. Meaningless rules with an empty [consequent](ir::Rule::consequents) are
 ///    skipped and chased rules panic at the moment due to open questions.
-/// 2. It zips the [`ir::Rule::var_names`] and the [`ir::Rule::var_types`] into one
-///    array of [`FriendlyVar`]s.
-/// 3. It converts [`ir::Rule::antecedents`] and [`ir::Rule::consequents`] into a
-///    [`ConjunctiveQuery`], each.
+/// 2. It creates the wrapper type [`FriendlyVar`]s for a rule's
+///    [`ir::Rule::vars`].
+/// 3. It converts [`ir::Rule::antecedents`] and [`ir::Rule::consequents`] into
+///    a [`ConjunctiveQuery`], each.
 struct FriendlyRule {
     kind: ir::RuleVariant,
     vars: Vec<FriendlyVar>,
@@ -520,14 +520,9 @@ impl FriendlyRule {
                 "[Unclear] Chased rules produce a materialized view; how are they different from a materialized view defined in the table/entities section?"
             );
         }
-        assert!(
-            rule.var_names.len() == rule.var_types.len(),
-            "var_names and var_types arrays do not size match"
-        );
         let vars = rule
-            .var_names
+            .vars
             .iter()
-            .zip(rule.var_types.iter())
             .map(|(path, col_type)| FriendlyVar {
                 name: path.clone(),
                 ty: col_type.clone(),
@@ -571,8 +566,7 @@ impl ConjunctiveQuery {
     }
 }
 
-/// All information from [`ir::Rule::var_names`] and [`ir::Rule::var_types`] but
-/// _zipped_.
+/// A wrapper type around ([`ir::Path`], [`ir::ColType`]).
 struct FriendlyVar {
     name: ir::Path,
     ty: ir::ColType, // either a row id or a builtin type
@@ -1074,6 +1068,7 @@ mod tests {
                 T,
                 vec![("a", builtin_int()), ("b", builtin_int())],
             )],
+            definitions: vec![],
             rules: vec![enforced_rule(
                 "r",
                 [("x", builtin_int()), ("y", builtin_int())],
@@ -1120,6 +1115,7 @@ mod tests {
                 T,
                 vec![("a", builtin_int()), ("b", builtin_int())],
             )],
+            definitions: vec![],
             rules: vec![enforced_rule(
                 "r",
                 [("x", builtin_int()), ("y", builtin_int())],
@@ -1146,6 +1142,7 @@ mod tests {
         );
         let realm = FlatRealm {
             tables: vec![table_entry(T, vec![("a", builtin_int())])],
+            definitions: vec![],
             rules: vec![rule.clone(), rule],
         };
         assert!(FlirProgram::from_flat_realm(&realm).is_err());
