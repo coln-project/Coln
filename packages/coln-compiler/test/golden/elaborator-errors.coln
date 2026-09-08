@@ -18,9 +18,9 @@ def dependent : Dependent := struct
   value := 1
 end
 
-def identity : Int -> Int := x => x
+def identity : (^c x : Int) -> Int := x => x
 
-def shadow (x : String) : Int -> Int := x => x
+def shadow (x : String) : (^c x : Int) -> Int := x => x
 
 def projectionOfNonRecord : Int := (1).missing
 
