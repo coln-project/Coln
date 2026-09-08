@@ -93,25 +93,27 @@ mode e sp ms = do
   let msg = "unknown modifiers" <+> hsep (dpretty <$> ms)
   failWith e sp UnknownModifiers msg
 
+checkDuplicateIn :: DiagnosticEnv ColnCode -> OMap Name a -> Name -> Span -> IO ()
+checkDuplicateIn e entries x sp =
+  when (x `OMap.member` entries) $
+    failWith (contramap ParserCode e) sp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+
 decl :: DiagnosticEnv ColnCode -> Globals -> Ntn -> IO Globals
 decl e g (N.MDecl ms "theory" n sp) = do
   m <- mode (contramap ParserCode e) sp ms
   (x, xsp, t, c) <- theory (contramap ParserCode e) n
-  when (x `OMap.member` g.definitions) $
-    failWith (contramap ParserCode e) xsp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+  checkDuplicateIn e g.definitions x xsp
   ge <- elabDefinition (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addDefinition x ge g
 decl e g (N.MDecl ms "def" n sp) = do
   m <- mode (contramap ParserCode e) sp ms
   (x, xsp, t, c) <- def (contramap ParserCode e) n
-  when (x `OMap.member` g.definitions) $
-    failWith (contramap ParserCode e) xsp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+  checkDuplicateIn e g.definitions x xsp
   ge <- elabDefinition (contramap ElaboratorCode e) g m (x, t, c)
   pure $ addDefinition x ge g
 decl e g (N.Block "realm" (Just head) body _) = do
   (x, xsp, r) <- realm e g head body
-  when (x `OMap.member` g.realms) $
-    failWith (contramap ParserCode e) xsp DuplicateDefinition ("duplicate definition of" <+> dpretty x)
+  checkDuplicateIn e g.realms x xsp
   pure $ addRealm x r g
 decl e _ n = unexpectedNotation (contramap ParserCode e) n "top-level declaration"
 
