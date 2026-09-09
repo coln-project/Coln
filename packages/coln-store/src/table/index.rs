@@ -13,9 +13,12 @@
 
 use std::ops::Range;
 
-use crate::ir::Schema;
+use crate::{
+    ir::Schema,
+    pack::{PackedRowId, PackedValue},
+};
 
-use super::{CellKind, Column, IdColumn, PackedRowId, PackedValue};
+use super::{CellKind, Column, IdColumn};
 
 pub(crate) type IndexId = usize;
 
@@ -79,7 +82,10 @@ impl TableIndex {
         }
     }
 
-    pub(super) fn get(&self, key: &[PackedValue]) -> impl Iterator<Item = PackedRowId> {
+    pub(super) fn get<'s>(
+        &'s self,
+        key: &[PackedValue],
+    ) -> impl Iterator<Item = PackedRowId> + use<'s> {
         self.scope_key(key).map(|position| self.values.at(position))
     }
 
@@ -106,7 +112,10 @@ impl TableIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{self, BuiltinTy, ColType, Path};
+    use crate::{
+        ir::{self, BuiltinTy, ColType, Path},
+        pack::{PackedRowId, PackedValue},
+    };
 
     fn one_int_index() -> TableIndex {
         let schema = Schema {

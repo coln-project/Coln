@@ -5,9 +5,9 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use crate::id_packer::IdPacker;
+use crate::pack::{IdPacker, PackedRowId, PackedValue};
 
-use super::{CellKind, PackedRowId, PackedValue, WireValue};
+use super::{CellKind, WireValue};
 
 /// Columnar storage for [`PackedRowId`]s, split into two parallel columns.
 ///

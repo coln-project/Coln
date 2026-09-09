@@ -92,37 +92,22 @@ fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
 
 #[cfg(test)]
 mod tests {
-    use coln_flir_rs::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant};
+    use rstest::{fixture, rstest};
 
     use super::*;
     use crate::commit::author::Author;
     use crate::commit::chunk::{ChunkType, Header};
     use crate::commit::hash::{CommitHash, HASH_SIZE};
-    use crate::commit::wire::CommitData;
-    use crate::ir::{FlatRealm, Path, Schema, TableEntry};
+    use crate::commit::wire::{CommitData, RootCommitData};
+    use crate::ir::Path;
     use crate::table::WireValue;
+    use crate::test_utils::non_empty_root_commit_data;
+    use crate::txn::rw::StoreWrite;
 
-    fn int_schema() -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        }
-    }
-
-    fn int_theory() -> FlatRealm {
-        FlatRealm {
-            tables: vec![TableEntry {
-                path: Path::from("T"),
-                table: int_schema(),
-            }],
-            rules: vec![],
-        }
+    #[fixture]
+    fn int_store(non_empty_root_commit_data: RootCommitData) -> Store {
+        let RootCommitData { ir, coln_def } = non_empty_root_commit_data;
+        Store::try_from_ir(ir, coln_def).expect("store")
     }
 
     fn store_envelope(framed_chunks: &[Vec<u8>]) -> Vec<u8> {
@@ -202,9 +187,8 @@ mod tests {
         assert_eq!(chunks[0].1, root.payload());
     }
 
-    #[test]
-    fn encode_store_writes_topological_commit_chunks() {
-        let mut store = Store::try_from_ir(int_theory()).expect("store");
+    #[rstest]
+    fn encode_store_writes_topological_commit_chunks(#[from(int_store)] mut store: Store) {
         let table = Path::from("T");
         let mut txn = store.transaction();
         txn.add(&table, vec![99_i32]).expect("add row");
@@ -341,9 +325,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn store_round_trip_replays_commits_and_preserves_graph() {
-        let mut store = Store::try_from_ir(int_theory()).expect("store");
+    #[rstest]
+    fn store_round_trip_replays_commits_and_preserves_graph(#[from(int_store)] mut store: Store) {
         let root = store.commits().root_commit().expect("root").hash();
         let table = Path::from("T");
         let mut txn = store.transaction();

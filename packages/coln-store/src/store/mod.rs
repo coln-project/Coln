@@ -6,6 +6,7 @@ pub mod error;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
 use crate::commit::Commit;
@@ -13,20 +14,22 @@ use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
-use crate::id_packer::{IdPacker, IdPackerSnapshot};
+use crate::commit::wire::RootCommitData;
 use crate::ir::{self, FlatRealm, RuleEntry};
+use crate::op::Op;
+use crate::pack::{IdPacker, IdPackerSnapshot};
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
 use crate::solver::compile::{CompRule, CompileError};
 use crate::solver::validate::RuleViolation;
 use crate::solver::{self};
 use crate::store::error::{CommitApplyError, StoreError};
+use crate::table::table_handle::WireRowView;
 use crate::table::{
-    RowView, Table, TableMeta, TableOid, TableRef, TableSnapshot, ValidationError, WireRowId,
-    WireValue,
+    Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
-use crate::txn::{OwnedTransaction, Transaction};
-use crate::{op::Op, txn::TxnLiveRowId};
+use crate::txn::rw::{StoreRead, StoreWrite};
+use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnLiveRowId, TxnLiveValue};
 
 #[derive(Debug)]
 pub struct Store {
@@ -66,7 +69,7 @@ impl Rollback for Store {
         }
     }
 
-    fn commit_snapshot(&mut self, snapshot: Self::Snapshot) {
+    fn commit(&mut self, snapshot: Self::Snapshot) {
         let StoreSnapshot {
             tables,
             id_packer,
@@ -76,13 +79,13 @@ impl Rollback for Store {
             self.tables
                 .get_mut(&oid)
                 .expect("snapshotted table should still exist")
-                .commit_snapshot(snapshot);
+                .commit(snapshot);
         }
-        self.id_packer.commit_snapshot(id_packer);
-        self.rowing.commit_snapshot(rowing);
+        self.id_packer.commit(id_packer);
+        self.rowing.commit(rowing);
     }
 
-    fn rollback(&mut self, snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, snapshot: Self::Snapshot) {
         let StoreSnapshot {
             tables,
             id_packer,
@@ -92,21 +95,28 @@ impl Rollback for Store {
             self.tables
                 .get_mut(&oid)
                 .expect("snapshotted table should still exist")
-                .rollback(snapshot);
+                .rollback_to(snapshot);
         }
-        self.id_packer.rollback(id_packer);
-        self.rowing.rollback(rowing);
+        self.id_packer.rollback_to(id_packer);
+        self.rowing.rollback_to(rowing);
     }
 }
 
 impl Store {
     // Constructors and basic accessors
     pub fn new() -> Self {
-        let commits = Self::graph_with_root_commit(&FlatRealm {
-            tables: Vec::new(),
-            rules: Vec::new(),
-        })
-        .expect("empty root commit should build");
+        let empty_def = RootCommitData::new(
+            FlatRealm {
+                tables: Vec::new(),
+                rules: Vec::new(),
+            },
+            ColnDef {
+                theory: String::new(),
+                realm: String::new(),
+            },
+        );
+        let commits =
+            Self::graph_with_root_commit(empty_def).expect("empty root commit should build");
         Self {
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
@@ -118,10 +128,10 @@ impl Store {
         }
     }
 
-    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, TableRef<'_>)> {
+    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, TableHandle<'_>)> {
         self.tables
             .iter()
-            .map(|(oid, table)| (oid, TableRef::new(table, &self.id_packer)))
+            .map(|(oid, table)| (oid, TableHandle::new(table, &self.id_packer, &self.rowing)))
     }
 
     pub fn commits(&self) -> &CommitGraph {
@@ -138,13 +148,13 @@ impl Store {
         self.path_to_oid.get(path).copied()
     }
 
-    pub fn table(&self, oid: TableOid) -> Option<TableRef<'_>> {
+    pub fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
         self.tables
             .get(&oid)
-            .map(|table| TableRef::new(table, &self.id_packer))
+            .map(|table| TableHandle::new(table, &self.id_packer, &self.rowing))
     }
 
-    pub fn table_at(&self, path: &ir::Path) -> Option<TableRef<'_>> {
+    pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
         self.resolve_table(path).and_then(|oid| self.table(oid))
     }
 
@@ -160,53 +170,103 @@ impl Store {
         &self.rule_entries
     }
 
-    pub fn scan_table(&self, table_path: &ir::Path) -> Option<impl Iterator<Item = RowView> + '_> {
-        self.table_at(table_path).map(|table| table.table_scan())
-    }
-
     pub fn json_ir(&self) -> Result<String, StoreError> {
-        let realm = self.commits.root_commit()?.root_payload()?;
-        Ok(serde_json::to_string(&realm).map_err(CodecError::from)?)
+        let root = self.commits.root_commit()?.root_payload()?;
+        Ok(serde_json::to_string(&root.ir).map_err(CodecError::from)?)
     }
 
-    pub(crate) fn canonical_row_id(&self, row_id: WireRowId) -> Option<WireRowId> {
+    pub fn coln_def(&self) -> Result<ColnDef, StoreError> {
+        let root = self.commits.root_commit()?.root_payload()?;
+        Ok(root.coln_def)
+    }
+
+    // Used by txn to finalise live ids
+    pub(crate) fn canonical_row_id(&self, row_id: &WireRowId) -> Option<WireRowId> {
         let packed = self.id_packer.lookup_row_id(row_id)?;
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
     }
 
-    pub fn row_by_handle(&self, table: &ir::Path, row_handle: TxnLiveRowId) -> Option<RowView> {
-        let row_id = row_handle.row_id().ok()?;
-        let con_rowid = self.canonical_row_id(row_id)?;
-        // replace the rowid in the row_handle so it stays canonical
-        if row_id != con_rowid {
-            row_handle.canonicalise(con_rowid).ok()?
-        }
-        self.row_by_id(table, con_rowid)
+    pub(crate) fn scan_table_iter(
+        &self,
+        table_path: &ir::Path,
+    ) -> Option<impl Iterator<Item = WireRowView> + '_> {
+        self.table_at(table_path).map(|table| table.scan())
+    }
+
+    pub(crate) fn row_by_liveid_inner(
+        &self,
+        table: &ir::Path,
+        live_id: &TxnLiveRowId,
+    ) -> Option<WireRowView> {
+        self.table_at(table)?.row_by_handle(live_id)
     }
 
     // This function will canonicalise the row_id on read, but will not change it
-    // See `row_by_handle` which will actually canonicalise the handle.
+    // See `row_by_liveid` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
-    pub fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<RowView> {
-        let row_id = self.canonical_row_id(row_id)?;
-        self.table_at(table)
-            .and_then(|table| table.row_at(table.row_position(row_id)?))
+    pub(crate) fn row_by_id_inner(
+        &self,
+        table: &ir::Path,
+        row_id: WireRowId,
+    ) -> Option<WireRowView> {
+        self.table_at(table)?.row_by_id(row_id)
+    }
+}
+
+/// A Coln theory source file contains theory definitions and (multiple) realm definitions
+/// Each realm corresponds will be compiled to one IR file, this struct stores
+/// which realm the IR is referring to
+/// It is stored as literal string and uninterpreted in the root commit of the store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColnDef {
+    pub theory: String,
+    pub realm: String,
+}
+
+// Autocommit method that opens up a txn, does a single operations
+// then immediately closes the txn
+impl StoreRead for Store {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
+        let txn = self.ro_transaction();
+        txn.scan_table(table)
+    }
+
+    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView> {
+        self.ro_transaction().row_by_liveid(table, live_id)
+    }
+
+    fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
+        self.ro_transaction().row_by_id(table, row_id)
+    }
+}
+
+impl StoreWrite for Store {
+    // Opens a single transaction and hands back the live row id, does not return hash
+    fn add<V: Into<TxnLiveValue>>(
+        &mut self,
+        table: &ir::Path,
+        values: Vec<V>,
+    ) -> Result<TxnLiveRowId, StoreError> {
+        let mut txn = self.transaction();
+        let h = txn.add(table, values);
+        txn.commit()?;
+        h
     }
 }
 
 impl Store {
     // create stores from theory and transactions on stores
 
-    fn graph_with_root_commit(ir: &FlatRealm) -> Result<CommitGraph, CodecError> {
+    fn graph_with_root_commit(root_commit: RootCommitData) -> Result<CommitGraph, CodecError> {
         let mut graph = CommitGraph::new();
-        graph.add_commit(Commit::from_root_data(ir)?);
+        graph.add_commit(Commit::from_root_data(&root_commit)?);
         Ok(graph)
     }
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
-    pub fn try_from_ir(ir: FlatRealm) -> Result<Self, StoreError> {
+    pub fn try_from_ir(ir: FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
         info!(
             table_count = ir.tables.len(),
             rule_count = ir.rules.len(),
@@ -225,7 +285,7 @@ impl Store {
         }
 
         let comp_rules = Store::compile_rules(&ir.rules)?;
-        let commits = Self::graph_with_root_commit(&ir)?;
+        let commits = Self::graph_with_root_commit(RootCommitData::new(ir.clone(), coln_def))?;
 
         Ok(Self {
             path_to_oid,
@@ -242,8 +302,12 @@ impl Store {
 impl Store {
     // transactions
 
-    pub fn transaction(&mut self) -> Transaction<'_> {
-        Transaction::new(self)
+    pub fn ro_transaction(&self) -> Transaction<ReadOnly<'_>> {
+        Transaction::<ReadOnly<'_>>::new(self)
+    }
+
+    pub fn transaction(&mut self) -> Transaction<ReadWrite<'_>> {
+        Transaction::<ReadWrite<'_>>::new(self)
     }
 
     pub fn into_transaction(self) -> OwnedTransaction {
@@ -459,11 +523,11 @@ impl Store {
         let snapshot = self.snapshot();
         match self.apply_atomic_inner(commit) {
             Ok(()) => {
-                self.commit_snapshot(snapshot);
+                self.commit(snapshot);
                 Ok(())
             }
             Err(e) => {
-                self.rollback(snapshot);
+                self.rollback_to(snapshot);
                 Err(e)
             }
         }
@@ -582,10 +646,10 @@ impl Store {
             let t = self
                 .table(*table)
                 .ok_or(ValidationError::UnknownTableOid { oid: *table })?;
-            t.validate_insert(values)?;
+            t.inner().validate_insert(values, &self.id_packer)?;
 
             // Check primary key conflicts within ops batch
-            if let Some(key) = t.primary_key_values(values) {
+            if let Some(key) = t.inner().primary_key_values(values) {
                 let keys = pending_pk.entry(*table).or_default();
                 if keys.iter().any(|k| k == &key) {
                     return Err(ValidationError::DuplicatePrimaryKey.into());
@@ -683,7 +747,7 @@ impl Store {
 
         let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
         let root_payload = root_commit.root_payload()?;
-        let mut store = Store::try_from_ir(root_payload)?;
+        let mut store = Store::try_from_ir(root_payload.ir, root_payload.coln_def)?;
 
         let mut commits = Vec::new();
         for chunk in chunks {
@@ -743,7 +807,14 @@ impl Store {
             tables: tables.into_iter().map(|(_, entry)| entry).collect(),
             rules: self.rule_entries.clone(),
         };
-        self.commits = Self::graph_with_root_commit(&ir)?;
+        let root_commit = RootCommitData::new(
+            ir,
+            ColnDef {
+                theory: String::new(),
+                realm: String::new(),
+            },
+        );
+        self.commits = Self::graph_with_root_commit(root_commit)?;
         Ok(oid)
     }
 
