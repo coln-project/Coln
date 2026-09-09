@@ -54,9 +54,9 @@ use super::{
 };
 use crate::relational::catalog::Catalog;
 use crate::relational::expr::{
-    AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-    FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, OutputKind, ProjectionExpr, RelExpr,
-    RelExprVisitor, SelectionExpr, SourceExpr, UnionExpr,
+    AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr, DistinctExpr,
+    EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, OutputKind, ProjectionExpr,
+    RelExpr, RelExprVisitor, SelectionExpr, SourceExpr, UnionExpr,
 };
 use std::fmt::Write;
 
@@ -336,6 +336,13 @@ impl RelExprVisitor<(), ()> for TreePrinter<'_> {
         }
     }
 
+    fn visit_constant_expr(&mut self, expr: &ConstantExpr, ctx: ()) {
+        // Renders itself entirely: it carries its schema and its rows,
+        // so there is no catalog to consult and nothing to look up.
+        // Long constants elide their tail, see `ConstantExpr`'s `Display`.
+        emit!(self, "Constant {expr}");
+    }
+
     fn visit_output_expr(&mut self, expr: &OutputExpr, ctx: ()) {
         let kind = match expr.kind {
             OutputKind::Cli => "cli",
@@ -451,10 +458,11 @@ mod tests {
     use crate::host::QueryIr;
     use crate::program::QueryProgram;
     use crate::relational::{
-        expr::{JoinVariable, SinkId},
+        expr::{JoinVariable, Multiplicity, SinkId},
+        relation::TupleValue,
         schema::TableSchema,
     };
-    use crate::scalarial::ScalarType;
+    use crate::scalarial::{ScalarType, ScalarTypedValue};
     use crate::test_utils::{TestProgram, table_schema};
 
     fn schema(name: &str) -> TableSchema {
@@ -542,6 +550,32 @@ mod tests {
                 .contains("init: Source \"edge\" (not in catalog)"),
             "{}",
             program.to_tree()
+        );
+    }
+
+    #[test]
+    fn a_constant_renders_its_own_shape_and_rows() {
+        // The counterpart of the two tests above: this leaf needs no catalog,
+        // because the rows and the schema are in the node. Copies are shown
+        // where they are not one, so a bag is distinguishable from a set.
+        let constant = ConstantExpr::new(
+            table_schema("digits", [("d", ScalarType::Uint)], []),
+            [
+                (
+                    TupleValue::new(vec![ScalarTypedValue::Uint(1)]),
+                    Multiplicity::new(2).expect("two copies"),
+                ),
+                (
+                    TupleValue::new(vec![ScalarTypedValue::Uint(2)]),
+                    Multiplicity::ONE,
+                ),
+            ],
+        )
+        .expect("valid rows");
+        let code = QueryIr::new(vec![expr_stmt(Expr::from(constant))]);
+        assert_eq!(
+            code.to_tree(),
+            "ExprStmt\n└─ expr: Constant (d: uint) [[1]×2, [2]]"
         );
     }
 

@@ -145,6 +145,15 @@ impl TableSchema {
             })
         })
     }
+    /// The (compound) primary key(s) as indexes into [`columns`](Self::columns).
+    ///
+    /// The positional counterpart of [`primary_keys`](Self::primary_keys): a
+    /// consumer that has to *project a row* onto a key — checking that the key
+    /// determines the row, deriving the key of a tuple — needs the positions,
+    /// not the columns they name.
+    pub fn primary_key_indices(&self) -> impl Iterator<Item = &[usize]> {
+        self.primary_keys.iter().map(Vec::as_slice)
+    }
     /// Everything but the name: the typed columns and the key(s) over them, as
     /// `(a: uint, b: iint) key(a)`. What a plan printer wants, since a source
     /// leaf has already named the relation by the time its schema is rendered.

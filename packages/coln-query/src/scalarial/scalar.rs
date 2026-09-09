@@ -55,6 +55,19 @@ macro_rules! expect_data {
 }
 
 impl ScalarTypedValue {
+    /// Which [`ScalarType`] this value is of. The value side of the same
+    /// distinction the type side spells out, so a consumer holding data and a
+    /// schema can check one against the other.
+    pub fn scalar_type(&self) -> ScalarType {
+        match self {
+            ScalarTypedValue::String(_) => ScalarType::String,
+            ScalarTypedValue::Uint(_) => ScalarType::Uint,
+            ScalarTypedValue::Iint(_) => ScalarType::Iint,
+            ScalarTypedValue::Bool(_) => ScalarType::Bool,
+            ScalarTypedValue::Char(_) => ScalarType::Char,
+            ScalarTypedValue::Null(()) => ScalarType::Null,
+        }
+    }
     pub fn unwrap_into_string(&self) -> String {
         expect_data!(self, ScalarTypedValue::String).clone()
     }

@@ -18,9 +18,9 @@ use crate::{
     relational::{
         catalog::Catalog,
         expr::{
-            AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr,
-            EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr,
-            RelExpr, RelExprVisitor, SelectionExpr, SourceExpr, UnionExpr,
+            AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr,
+            DistinctExpr, EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr,
+            ProjectionExpr, RelExpr, RelExprVisitor, SelectionExpr, SourceExpr, UnionExpr,
         },
         relation::RelationType,
     },
@@ -310,6 +310,11 @@ impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver<'_> {
             ))
         })?;
         Ok(ExprType::Relation(RelationType::from(schema.as_ref())))
+    }
+
+    fn visit_constant_expr(&mut self, expr: &ConstantExpr, ctx: VisitorCtx) -> VisitorResult {
+        // The leaf carries its own schema, so no catalog is consulted.
+        Ok(ExprType::Relation(RelationType::from(expr.schema())))
     }
 
     fn visit_output_expr(&mut self, expr: &OutputExpr, ctx: VisitorCtx) -> VisitorResult {

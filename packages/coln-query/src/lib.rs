@@ -34,15 +34,17 @@ mod test {
         relational::{
             Runtime,
             expr::{
-                AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr,
-                EquiJoinExpr, FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr,
-                SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
+                AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr,
+                DistinctExpr, EquiJoinExpr, FixedPointIterExpr, Multiplicity, OutputExpr,
+                OutputKind, ProjectionExpr, SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
             },
             incremental::dbsp::{ZWeight, zset},
             relation::TupleValue,
         },
-        scalarial::ScalarTypedValue,
-        test_utils::{TestProgram, UnitRel, person_profession_data, rows, rows_with_weight},
+        scalarial::{ScalarType, ScalarTypedValue},
+        test_utils::{
+            TestProgram, UnitRel, person_profession_data, rows, rows_with_weight, table_schema,
+        },
     };
     use ::dbsp::OrdZSet;
     use test_utils::{EdgeRel, InputRel, PersonRel, PlainRel, PredRel, ProfessionRel, SetRel};
@@ -467,16 +469,19 @@ mod test {
         );
     }
 
+    /// This simulates checking a rule with an empty antecedent. For the empty
+    /// antecedent, a relation containing only one unit tuple (a 0-tuple with no
+    /// fields) is used ("unit"). This unit relation behavee exactly like a
+    /// source that was fed the unit tuple once and never touched again.
     #[test]
-    fn empty_tuple_behavior_with_dbsp() -> anyhow::Result<()> {
-        const UNIT_REL: &'static str = "unit_rel";
-        const CONS_REL_1: &'static str = "cons_rel_1";
-        const CONS_REL_2: &'static str = "cons_rel_2";
+    fn empty_tuple_behavior_with_a_constant_unit_relation() -> anyhow::Result<()> {
+        const CONS_REL_1: &str = "cons_rel_1";
+        const CONS_REL_2: &str = "cons_rel_2";
 
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "unit".to_string(),
-                initializer: Some(Expr::from(SourceExpr::new(UNIT_REL))),
+                initializer: Some(Expr::from(ConstantExpr::unit())),
             }),
             Stmt::from(VarStmt {
                 name: "cons_rel_1".to_string(),
@@ -512,20 +517,10 @@ mod test {
         let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
             plan,
             [
-                UnitRel::named_schema(UNIT_REL),
                 UnitRel::named_schema(CONS_REL_1),
                 UnitRel::named_schema(CONS_REL_2),
             ],
         ))?;
-
-        let unit_rel_data = [
-            vec![(UnitRel::new_unit_tuple(), 1)],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-            vec![],
-        ];
 
         let cons_rel_1_data = [
             vec![
@@ -558,15 +553,12 @@ mod test {
             zset! {tuple!() => -1}, // violation retracted
         ];
 
-        for (step, (((unit_rel_data, cons_rel_1_data), cons_rel_2_data), expected_output)) in
-            unit_rel_data
-                .into_iter()
-                .zip(cons_rel_1_data.into_iter())
-                .zip(cons_rel_2_data.into_iter())
-                .zip(expected_antijoin_output.into_iter())
-                .enumerate()
+        for (step, ((cons_rel_1_data, cons_rel_2_data), expected_output)) in cons_rel_1_data
+            .into_iter()
+            .zip(cons_rel_2_data)
+            .zip(expected_antijoin_output)
+            .enumerate()
         {
-            assert!(rt.feed(&SourceId::from(UNIT_REL), rows(unit_rel_data))?);
             assert!(rt.feed(&SourceId::from(CONS_REL_1), rows(cons_rel_1_data))?);
             assert!(rt.feed(&SourceId::from(CONS_REL_2), rows(cons_rel_2_data))?);
 
@@ -579,6 +571,54 @@ mod test {
             );
             assert_eq!(antijoin.debug_view(false).to_zset(), expected_output);
         }
+        Ok(())
+    }
+
+    /// This tests what "static bag" means to an incremental backend:
+    /// The multiplicities arrive as one delta in the first transaction,
+    /// and every later transaction reports no change. This is truthful to the
+    /// definition, as the relation's *contents* stay what the plan says,
+    /// so its *changes* are empty from then on.
+    ///
+    /// A plan with no sources at all, incidentally: a constant needs nothing
+    /// bound to it.
+    #[test]
+    fn a_constant_relation_delivers_its_multiplicities_once() -> anyhow::Result<()> {
+        let constant = ConstantExpr::new(
+            table_schema("digits", [("d", ScalarType::Uint)], []),
+            [
+                (tuple!(1u64), Multiplicity::new(2).expect("two copies")),
+                (tuple!(2u64), Multiplicity::ONE),
+            ],
+        )?;
+
+        let plan = vec![Stmt::from(VarStmt {
+            name: "digits".to_string(),
+            initializer: Some(Expr::from(OutputExpr {
+                id: SinkId::from("digits"),
+                kind: OutputKind::Channel,
+                relation: Expr::from(constant),
+            })),
+        })];
+
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(plan, []))?;
+        rt.commit()?;
+
+        assert_eq!(
+            rt.output(&SinkId::from("digits"))?
+                .debug_view(false)
+                .to_zset(),
+            zset! {tuple!(1u64) => 2, tuple!(2u64) => 1},
+        );
+
+        rt.commit()?;
+        assert_eq!(
+            rt.output(&SinkId::from("digits"))?
+                .debug_view(false)
+                .to_zset(),
+            zset! {},
+            "a constant relation never changes, so it has no further deltas"
+        );
         Ok(())
     }
 
@@ -1107,6 +1147,86 @@ mod test {
             }),
             output_stmt("reachable"),
         ]
+    }
+
+    #[test]
+    fn constant_leaf_inside_fixed_point_step_is_bridged() -> anyhow::Result<()> {
+        // The same reachability as `source_leaf_inside_fixed_point_step_is_bridged`,
+        // with both relations carried by the plan instead of fed: the seed
+        // outside the step, the edges *only* inside it. A constant is
+        // loop-invariant, so it is wired at the root and `delta0`'d into the
+        // nested circuit exactly as a source or an outer variable is.
+        //
+        // A plan with no sources at all, hence nothing to feed before the commit.
+        let seed = ConstantExpr::set(
+            table_schema("seed", [("node", ScalarType::Uint)], []),
+            [tuple!(0_u64)],
+        )?;
+        let edges = ConstantExpr::set(
+            table_schema(
+                "edges",
+                [("from", ScalarType::Uint), ("to", ScalarType::Uint)],
+                [],
+            ),
+            [
+                tuple!(0_u64, 1_u64),
+                tuple!(1_u64, 2_u64),
+                tuple!(2_u64, 3_u64),
+            ],
+        )?;
+
+        let plan = vec![
+            Stmt::from(VarStmt {
+                name: "base".to_string(),
+                initializer: Some(Expr::from(seed)),
+            }),
+            Stmt::from(VarStmt {
+                name: "reachable".to_string(),
+                initializer: Some(Expr::from(FixedPointIterExpr {
+                    accumulator: ("reachable".to_string(), Expr::from(VarExpr::new("base"))),
+                    step: BlockStmt {
+                        stmts: vec![Stmt::from(ExprStmt {
+                            expr: Expr::from(EquiJoinExpr {
+                                left: Expr::from(AliasExpr {
+                                    relation: Expr::from(VarExpr::new("reachable")),
+                                    alias: "cur".to_string(),
+                                }),
+                                right: Expr::from(AliasExpr {
+                                    relation: Expr::from(edges),
+                                    alias: "edge".to_string(),
+                                }),
+                                on: vec![(
+                                    Expr::from(VarExpr::new("node")),
+                                    Expr::from(VarExpr::new("from")),
+                                )],
+                                attributes: Some(vec![(
+                                    "node".to_string(),
+                                    Expr::from(VarExpr::new("edge.to")),
+                                )]),
+                            }),
+                        })],
+                    },
+                })),
+            }),
+            output_stmt("reachable"),
+        ];
+
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(plan, []))?;
+        rt.commit()?;
+
+        assert_eq!(
+            rt.output(&SinkId::from("reachable"))?
+                .debug_view(false)
+                .to_zset(),
+            zset! {
+                tuple!(0_u64) => 1,
+                tuple!(1_u64) => 1,
+                tuple!(2_u64) => 1,
+                tuple!(3_u64) => 1,
+            }
+        );
+
+        Ok(())
     }
 
     #[test]
