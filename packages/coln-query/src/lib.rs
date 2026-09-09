@@ -34,15 +34,15 @@ mod test {
         relational::{
             Runtime,
             expr::{
-                AliasExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-                FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr, SelectionExpr, SinkId,
-                SourceExpr, UnionExpr,
+                AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr,
+                EquiJoinExpr, FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr,
+                SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
             },
             incremental::dbsp::{ZWeight, zset},
             relation::TupleValue,
         },
         scalarial::ScalarTypedValue,
-        test_utils::{TestProgram, person_profession_data, rows, rows_with_weight},
+        test_utils::{TestProgram, UnitRel, person_profession_data, rows, rows_with_weight},
     };
     use ::dbsp::OrdZSet;
     use test_utils::{EdgeRel, InputRel, PersonRel, PlainRel, PredRel, ProfessionRel, SetRel};
@@ -465,6 +465,121 @@ mod test {
             err.to_string().contains("edge"),
             "expected the error to name the unknown source, got: {err}"
         );
+    }
+
+    #[test]
+    fn empty_tuple_behavior_with_dbsp() -> anyhow::Result<()> {
+        const UNIT_REL: &'static str = "unit_rel";
+        const CONS_REL_1: &'static str = "cons_rel_1";
+        const CONS_REL_2: &'static str = "cons_rel_2";
+
+        let plan = vec![
+            Stmt::from(VarStmt {
+                name: "unit".to_string(),
+                initializer: Some(Expr::from(SourceExpr::new(UNIT_REL))),
+            }),
+            Stmt::from(VarStmt {
+                name: "cons_rel_1".to_string(),
+                initializer: Some(Expr::from(SourceExpr::new(CONS_REL_1))),
+            }),
+            Stmt::from(VarStmt {
+                name: "cons_rel_2".to_string(),
+                initializer: Some(Expr::from(SourceExpr::new(CONS_REL_2))),
+            }),
+            Stmt::from(VarStmt {
+                name: "joined".to_string(),
+                initializer: Some(Expr::from(EquiJoinExpr {
+                    left: Expr::from(VarExpr::new("cons_rel_1")),
+                    right: Expr::from(VarExpr::new("cons_rel_2")),
+                    on: vec![],
+                    attributes: None,
+                })),
+            }),
+            Stmt::from(VarStmt {
+                name: "antijoin".to_string(),
+                initializer: Some(Expr::from(OutputExpr {
+                    id: SinkId::from("antijoin"),
+                    kind: OutputKind::Channel,
+                    relation: Expr::from(AntiJoinExpr {
+                        left: Expr::from(VarExpr::new("unit")),
+                        right: Expr::from(VarExpr::new("joined")),
+                        on: vec![],
+                    }),
+                })),
+            }),
+        ];
+
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
+            plan,
+            [
+                UnitRel::named_schema(UNIT_REL),
+                UnitRel::named_schema(CONS_REL_1),
+                UnitRel::named_schema(CONS_REL_2),
+            ],
+        ))?;
+
+        let unit_rel_data = [
+            vec![(UnitRel::new_unit_tuple(), 1)],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        ];
+
+        let cons_rel_1_data = [
+            vec![
+                (UnitRel::new_unit_tuple(), 1),
+                (UnitRel::new_unit_tuple(), 1),
+                (UnitRel::new_unit_tuple(), 1),
+            ], // 3 entries
+            vec![(UnitRel::new_unit_tuple(), -3)], // 0 entries
+            vec![(UnitRel::new_unit_tuple(), 1)],  // 1 entry
+            vec![],                                // 1 entry
+            vec![],                                // 1 entry
+            vec![],                                // 1 entry
+        ];
+
+        let cons_rel_2_data = [
+            vec![(UnitRel::new_unit_tuple(), 1)],  // 1 entry
+            vec![],                                // 1 entry
+            vec![(UnitRel::new_unit_tuple(), 1)],  // 2 entries
+            vec![(UnitRel::new_unit_tuple(), -3)], // -1 entries
+            vec![(UnitRel::new_unit_tuple(), 1)],  // 0 entries
+            vec![(UnitRel::new_unit_tuple(), 1)],  // 1 entry
+        ];
+
+        let expected_antijoin_output = [
+            zset! {},               // no violation
+            zset! {tuple!() => 1},  // a violation
+            zset! {tuple!() => -1}, // violation retracted
+            zset! {tuple!() => 1},  // a new violation
+            zset! {},               // still a violation
+            zset! {tuple!() => -1}, // violation retracted
+        ];
+
+        for (step, (((unit_rel_data, cons_rel_1_data), cons_rel_2_data), expected_output)) in
+            unit_rel_data
+                .into_iter()
+                .zip(cons_rel_1_data.into_iter())
+                .zip(cons_rel_2_data.into_iter())
+                .zip(expected_antijoin_output.into_iter())
+                .enumerate()
+        {
+            assert!(rt.feed(&SourceId::from(UNIT_REL), rows(unit_rel_data))?);
+            assert!(rt.feed(&SourceId::from(CONS_REL_1), rows(cons_rel_1_data))?);
+            assert!(rt.feed(&SourceId::from(CONS_REL_2), rows(cons_rel_2_data))?);
+
+            rt.commit()?;
+
+            let antijoin = rt.output(&SinkId::from("antijoin"))?;
+            print!(
+                "ANTIJOIN in {step}\n{}",
+                antijoin.debug_view(true).to_cli_table()?
+            );
+            assert_eq!(antijoin.debug_view(false).to_zset(), expected_output);
+        }
+        Ok(())
     }
 
     #[test]
