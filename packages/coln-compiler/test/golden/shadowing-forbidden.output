@@ -26,22 +26,22 @@ end
 
 -- messages
 
-error[E0207]: duplicate definition of Pair
+error[E0208]: duplicate definition of Pair
 6 | def Pair : Set := sig
 6 |     ^^^^
 
-error[E0207]: duplicate record field x
+error[E0209]: duplicate record field x
 13 |   x : String
 13 |   ^
 
-error[E0207]: duplicate definition of ShadowRealm
+error[E0208]: duplicate definition of ShadowRealm
 20 | realm ShadowRealm @ Pair
 20 |       ^^^^^^^^^^^
 
-error[E0207]: duplicate definition of root
+error[E0208]: duplicate definition of root
 24 |   def root : Pair := struct
 24 |       ^^^^
 
-error[E0207]: duplicate definition of thing
+error[E0208]: duplicate definition of thing
 36 |   def thing : Pair := struct
 36 |       ^^^^^
