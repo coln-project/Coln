@@ -368,7 +368,7 @@ mod tests {
                     builtin_ty: BuiltinTy::BuiltinInt,
                 },
             }],
-            primary_key: Some(vec![Path::from("c0")]),
+            primary_key: Some(vec![0]),
         }
     }
 
@@ -378,6 +378,7 @@ mod tests {
                 path: Path::from("T"),
                 table: owned_int_schema(),
             }],
+            definitions: vec![],
             rules: vec![],
         }
     }
@@ -579,10 +580,7 @@ mod tests {
         assert_eq!(decoded.tables.len(), 1);
         assert_eq!(decoded.tables[0].path, Path::from("T"));
         assert_eq!(decoded.tables[0].table.columns, owned_int_schema().columns);
-        assert_eq!(
-            decoded.tables[0].table.primary_key,
-            Some(vec![Path::from("c0")])
-        );
+        assert_eq!(decoded.tables[0].table.primary_key, Some(vec![0]));
         assert!(decoded.rules.is_empty());
     }
 

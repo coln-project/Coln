@@ -48,6 +48,7 @@ pub(crate) mod test_support {
                     table: int_entity(&["a", "b"]),
                 },
             ],
+            definitions: Vec::new(),
             rules: vec![RuleEntry {
                 path: Path::from("Link.foreignKeys"),
                 rule: Rule {
@@ -262,7 +263,7 @@ mod transactions {
                     builtin_ty: BuiltinTy::BuiltinInt,
                 },
             }],
-            primary_key: Some(vec![Path::from("c0")]),
+            primary_key: Some(vec![0u64]),
         };
         let mut store = Store::new();
         store
@@ -479,7 +480,7 @@ mod rowing {
                 Schema {
                     entity_variant: EntityVariant::Table,
                     columns: vec![id_col("x", "Term"), id_col("y", "Term")],
-                    primary_key: Some(vec![Path::from("x")]),
+                    primary_key: Some(vec![0u64]),
                 },
             ),
         ] {

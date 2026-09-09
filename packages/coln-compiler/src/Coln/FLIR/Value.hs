@@ -54,7 +54,7 @@ data El
 data Atom = Atom
   { entity :: TableName
   , rowId :: Maybe El
-  , values :: [Maybe El]
+  , values :: [(Int, El)]
   }
   deriving (Show, Eq, Generic)
 
@@ -140,7 +140,7 @@ instance AE.ToJSON Atom where
       mconcat
         [ AE.pair "entity" $ SIR.encPath a.entity
         , AE.pair "rowId" $ AE.toEncoding a.rowId
-        , AE.pair "values" $ AE.toEncoding a.values
+        , AE.pair "values" $ AE.list (\(i, t) -> AE.pairs $ mconcat [ AE.pair "column" (AE.toEncoding i), AE.pair "term" (AE.toEncoding t) ]) a.values
         ]
 
 instance AE.ToJSON Prop where
@@ -235,7 +235,7 @@ toNotationAtom columnNames cs a = do
         Just cols -> cols
         Nothing -> panic $ show a.entity ++ " not found"
   let field (i, t) = N.Infix (toNotationColName (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
-  let body = N.Juxt entity $ N.Tuple (map field . mapMaybe sequence $ zip [0 ..] a.values) ()
+  let body = N.Juxt entity $ N.Tuple (map field a.values) ()
   case a.rowId of
     Nothing -> body
     Just r -> N.Infix (toNotationTerm cs r) (N.Keyword "∈" ()) body
@@ -254,7 +254,7 @@ toNotationDefinition columnNames (tn, r) = do
   let keyword = "chased"
   let head = foldl' N.Juxt (toNotationTop tn) (fmap toNotationTop (map fst r.vars))
   let ante = toNotationConjunction $ fmap (toNotationProp columnNames $ map fst r.vars) r.antecedents
-  let cons = toNotationAtom columnNames (map fst r.vars) $ Atom r.definand Nothing $ map Just r.args
+  let cons = toNotationAtom columnNames (map fst r.vars) $ Atom r.definand Nothing $ zip [0..] r.args
   let seq = N.Infix ante (N.Keyword "⊢" ()) cons
   N.Decl keyword (N.Infix head (N.Keyword ":=" ()) seq) ()
 

@@ -104,7 +104,7 @@ mod tests {
     use crate::table::{ValidationError, WireValue};
     use crate::txn::row_handle::empty_row;
 
-    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
+    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<u64>>) -> Schema {
         Schema {
             entity_variant: EntityVariant::Table,
             columns,

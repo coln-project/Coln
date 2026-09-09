@@ -155,6 +155,7 @@ mod tests {
                     primary_key: None,
                 },
             }],
+            definitions: vec![],
             rules: vec![],
         })
         .expect("build root commit")

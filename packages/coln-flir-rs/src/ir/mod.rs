@@ -83,7 +83,7 @@ pub enum ColType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "tag", rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub enum Materialization {
     Recomputed,
     Memoized,
@@ -102,7 +102,7 @@ pub enum EntityVariant {
     /// A base table of the extensional database (EDB).
     Table,
     /// A derived view of the intensional database (IDB).
-    View(Materialization),
+    View { materialization: Materialization },
     /// Tell `coln-store` to create an index and possibly hint to `coln-query`.
     Index {
         method: IndexMethod,
@@ -228,7 +228,7 @@ pub struct Definition {
     pub vars: Vec<(ColName, ColType)>,
     pub antecedents: Vec<Prop>,
     pub definand: Path,
-    pub args: Vec<El>,
+    pub arguments: Vec<El>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,7 +248,11 @@ pub struct RuleEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DefinitionEntry {}
+pub struct DefinitionEntry {
+    pub path: Path,
+    #[serde(rename = "value")]
+    pub definition: Definition,
+}
 
 /// The top-level type of a flattened realm and the starting point of the FLIR.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,7 +261,7 @@ pub struct FlatRealm {
     #[serde(rename = "entities")]
     pub tables: Vec<TableEntry>,
     /// How derived views are computed. These contain the chased laws.
-    pub definitions: Vec<Definition>,
+    pub definitions: Vec<DefinitionEntry>,
     /// The rules (laws) of the flattened realm.
     pub rules: Vec<RuleEntry>,
 }

@@ -123,7 +123,6 @@ pub struct Table {
     oid: TableOid,
     path: ir::Path,
     schema: Schema,
-    col_name_map: HashMap<ColName, usize>,
     /// Structural (all-columns) index used for structural identification, when enabled.
     structural_index: Option<IndexId>,
     indexes: Vec<TableIndex>,
@@ -141,12 +140,6 @@ impl Table {
     // Basic accessors
 
     pub fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
-        let col_name_map: HashMap<ColName, usize> = schema
-            .columns
-            .iter()
-            .enumerate()
-            .map(|(i, column)| (column.path.clone(), i))
-            .collect();
         let cols = schema
             .columns
             .iter()
@@ -163,12 +156,7 @@ impl Table {
                 let key_cols: Vec<usize> = pk
                     .iter()
                     // we can expect the schema to contain right information
-                    .map(|name| {
-                        col_name_map
-                            .get(name)
-                            .copied()
-                            .expect("schema pk spec is correct")
-                    })
+                    .map(|n| *n as usize)
                     .collect();
                 indexes.push(TableIndex::new(&key_cols, &schema));
                 // ? Is referring to the index id the right thing to do?
@@ -185,7 +173,6 @@ impl Table {
         Self {
             oid,
             path,
-            col_name_map,
             schema,
             structural_index,
             row_ids: IdColumn::new(),
@@ -459,12 +446,7 @@ impl Table {
             if pk.is_empty() {
                 Some(Vec::new())
             } else {
-                pk.iter()
-                    .map(|name| {
-                        let i = self.col_name_map.get(name).copied()?;
-                        Some(values[i].clone())
-                    })
-                    .collect()
+                pk.iter().map(|i| Some(values[*i as usize].clone())).collect()
             }
         })
     }

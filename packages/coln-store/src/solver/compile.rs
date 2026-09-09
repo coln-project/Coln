@@ -4,7 +4,7 @@
 
 use std::{collections::HashSet, fmt};
 
-use crate::ir::{self, Atom, Prop, RuleEntry, El};
+use crate::ir::{self, Atom, El, Prop, RuleEntry};
 
 /// Errors raised while lowering an `ir::Rule` into the restricted solver form.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -89,11 +89,11 @@ pub fn compile_rule(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
     let path = rule_entry.path.clone();
     let vars = rule_entry
         .rule
-        .var_types
+        .vars
         .clone()
         .into_iter()
         .enumerate()
-        .map(|(index, ty)| VarSpec { index, ty })
+        .map(|(index, (_, ty))| VarSpec { index, ty })
         .collect::<Vec<_>>();
 
     let var_count = vars.len();
@@ -359,10 +359,11 @@ mod tests {
             path: Path::from(path),
             rule: Rule {
                 rule_variant: RuleVariant::Enforced,
-                var_names: (0..var_types.len())
-                    .map(|index| Path::from(format!("v{index}")))
+                vars: var_types
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, ty)| (Path::from(format!("v{i}")), ty))
                     .collect(),
-                var_types,
                 antecedents,
                 consequents,
             },

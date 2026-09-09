@@ -219,7 +219,7 @@ pub struct TableSummary {
 pub enum PrimaryKeySummary {
     None,
     Singleton,
-    Columns(Vec<crate::ir::Path>),
+    Columns(Vec<u64>),
 }
 
 pub struct LoadedState {

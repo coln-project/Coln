@@ -191,10 +191,11 @@ mod tests {
             path: Path::from(path),
             rule: Rule {
                 rule_variant: RuleVariant::Enforced,
-                var_names: (0..var_types.len())
-                    .map(|index| Path::from(format!("v{index}")))
+                vars: var_types
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, ty)| (Path::from(format!("v{i}")), ty))
                     .collect(),
-                var_types,
                 antecedents,
                 consequents,
             },

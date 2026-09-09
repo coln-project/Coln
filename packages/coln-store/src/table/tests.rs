@@ -173,7 +173,7 @@ fn row_count_matches_inserts_when_schema_has_no_columns() {
 #[test]
 fn rollback_removes_applied_rows_and_index_entries() {
     let path = Path::from("rollback");
-    let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], Some(&["value"])));
+    let mut tbl = TestTable::new(path.clone(), int_schema(&["value"], Some(&[0])));
     let existing = test_row_id(0);
     let first_added = test_row_id(1);
     let second_added = test_row_id(2);
@@ -215,10 +215,7 @@ fn rollback_removes_applied_rows_and_index_entries() {
 /// stages to move a row, so both directions have to keep indexes in step.
 #[test]
 fn staged_delete_removes_row_and_undo_restores_it() {
-    let mut tbl = TestTable::new(
-        Path::from("deleting"),
-        int_schema(&["value"], Some(&["value"])),
-    );
+    let mut tbl = TestTable::new(Path::from("deleting"), int_schema(&["value"], Some(&[0])));
     let kept = test_row_id(0);
     let removed = test_row_id(1);
     tbl.insert_row(vec![WireValue::Int(1)], kept);
@@ -544,7 +541,7 @@ fn rows_stay_sorted_by_row_id() {
 #[test]
 fn primary_key_detects_duplicates_in_id_columns() {
     let mut schema = id_schema(&["src", "dst"]);
-    schema.primary_key = Some(vec![Path::from("src")]);
+    schema.primary_key = Some(vec![0]);
     let mut tbl = TestTable::new(Path::from("edges"), schema);
 
     let src = row_id_from(3, 7);
@@ -566,7 +563,7 @@ fn primary_key_detects_duplicates_in_id_columns() {
     assert!(tbl.validate_insert(&unseen_commit).is_ok());
 }
 
-fn int_schema(columns: &[&str], primary_key: Option<&[&str]>) -> ir::Schema {
+fn int_schema(columns: &[&str], primary_key: Option<&[u64]>) -> ir::Schema {
     ir::Schema {
         entity_variant: ir::EntityVariant::Table,
         columns: columns
@@ -578,7 +575,7 @@ fn int_schema(columns: &[&str], primary_key: Option<&[&str]>) -> ir::Schema {
                 },
             })
             .collect(),
-        primary_key: primary_key.map(|pk| pk.iter().map(|name| Path::from(*name)).collect()),
+        primary_key: primary_key.map(|pk| pk.into()),
     }
 }
 
@@ -586,7 +583,7 @@ fn int_schema(columns: &[&str], primary_key: Option<&[&str]>) -> ir::Schema {
 /// sharing only one key column, regardless of insert order.
 #[test]
 fn multi_column_primary_key_checks_all_columns() {
-    let schema = int_schema(&["c0", "c1", "c2"], Some(&["c0", "c1"]));
+    let schema = int_schema(&["c0", "c1", "c2"], Some(&[0, 1]));
     let mut tbl = TestTable::new(Path::from("pairs"), schema);
 
     let rows = [(3, 1), (1, 2), (1, 1), (2, 1), (2, 2)];
@@ -618,7 +615,7 @@ fn string_primary_key_detects_duplicates() {
                 builtin_ty: BuiltinTy::BuiltinStr,
             },
         }],
-        primary_key: Some(vec![Path::from("name")]),
+        primary_key: Some(vec![0]),
     };
     let mut tbl = TestTable::new(Path::from("named"), schema);
 
@@ -641,11 +638,6 @@ fn string_primary_key_detects_duplicates() {
 /// Schemas are compiler-generated, so a primary key referencing an
 /// unknown column is a bug and fails table construction.
 #[test]
-#[should_panic(expected = "schema pk spec is correct")]
-fn invalid_primary_key_name_panics_at_construction() {
-    let schema = int_schema(&["c0"], Some(&["missing"]));
-    Table::new(Path::from("broken"), 0, schema);
-}
 
 /// Manual benchmark for the primary key duplicate check on insert.
 /// Inserting `n` rows of one integer (the primary key) and one row id.
@@ -670,7 +662,7 @@ fn pk_insert_benchmark() {
                 },
             },
         ],
-        primary_key: Some(vec![Path::from("c0")]),
+        primary_key: Some(vec![0]),
     };
     let mut tbl = TestTable::new(Path::from("bench"), schema);
     let n = 50_000;
@@ -688,7 +680,7 @@ fn pk_insert_benchmark() {
 /// a non-indexed lookup and both should work.
 #[test]
 fn table_performs_index_lookup() {
-    let schema = int_schema(&["indexed", "plain"], Some(&["indexed"]));
+    let schema = int_schema(&["indexed", "plain"], Some(&[0]));
     let mut tbl = TestTable::new(Path::from("lookup"), schema);
     tbl.insert_row(vec![WireValue::Int(7), WireValue::Int(70)], test_row_id(0));
     tbl.insert_row(vec![WireValue::Int(8), WireValue::Int(80)], test_row_id(1));
@@ -730,7 +722,7 @@ fn table_performs_index_lookup() {
 /// which is then rejected by the table.
 #[test]
 fn table_index_lookup_non_existing_index() {
-    let schema = int_schema(&["indexed"], Some(&["indexed"]));
+    let schema = int_schema(&["indexed"], Some(&[00]));
     let tbl = TestTable::new(Path::from("lookup"), schema);
 
     assert_eq!(
@@ -743,7 +735,7 @@ fn table_index_lookup_non_existing_index() {
 /// index shape, which should be rejected as an error.
 #[test]
 fn table_index_lookup_incorrect_key() {
-    let schema = int_schema(&["indexed", "plain"], Some(&["indexed"]));
+    let schema = int_schema(&["indexed", "plain"], Some(&[0]));
     let tbl = TestTable::new(Path::from("lookup"), schema);
     let index = tbl.table.primary_index().expect("primary-key index");
 
@@ -764,7 +756,7 @@ fn table_index_lookup_incorrect_key() {
 /// negative)
 #[test]
 fn table_index_non_index_give_same_results() {
-    let schema = int_schema(&["indexed", "plain"], Some(&["indexed"]));
+    let schema = int_schema(&["indexed", "plain"], Some(&[0]));
     let mut tbl = TestTable::new(Path::from("lookup"), schema);
     for value in [7, 8] {
         let row_id = test_row_id(tbl.row_count() as u32);

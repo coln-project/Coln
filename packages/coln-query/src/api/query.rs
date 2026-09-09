@@ -150,7 +150,7 @@ impl FlirProgram {
     fn table_declaration(&mut self, table_entry: &TableEntry) -> Result<(), SyntaxError> {
         match &table_entry.table.entity_variant {
             EntityVariant::Table => self.base_table(table_entry),
-            EntityVariant::View(materialization) => {
+            EntityVariant::View { materialization } => {
                 unimplemented!("[Initial models] Materialized views defined through a query");
             }
             EntityVariant::Index { method, columns } => {

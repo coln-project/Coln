@@ -134,7 +134,7 @@ fn test_read_path_coln() {
         .find(|e| e.path == Path::from("Path.Hom.E.foreignKey"))
         .expect("Path.Hom.E.foreignKey law path");
     assert!(
-        !hom_e_fk.rule.var_names.is_empty(),
+        !hom_e_fk.rule.vars.is_empty(),
         "Hom,E foreignKeys law should bind variables"
     );
 }

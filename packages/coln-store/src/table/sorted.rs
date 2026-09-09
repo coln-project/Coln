@@ -183,7 +183,7 @@ mod tests {
                     },
                 },
             ],
-            primary_key: Some(vec![Path::from("c0")]),
+            primary_key: Some(vec![0]),
         };
         let mut store = Store::new();
         let oid = store.create_table(path, schema).expect("create test table");

@@ -110,7 +110,7 @@ instance Flatten (S.El Set) Els where
     S.Lookup tn args shape -> do
       v <- fresh Nothing shape
       args' <- traverse (flatten l) args
-      assert $ single $ V.PAtom $ V.Atom tn Nothing (Just <$> concatEls (args' ++ [v]))
+      assert $ single $ V.PAtom $ V.Atom tn Nothing (zip [0..] $ concatEls (args' ++ [v]))
       pure v
     S.Proj t x -> do
       v <- flatten l t
@@ -132,7 +132,7 @@ instance Flatten S.Prop Props where
     S.Atom tn t args -> do
       mv <- asAtomHead <$> flatten l t
       argvs <- traverse (flatten l) args
-      pure $ single $ V.PAtom (V.Atom tn mv (Just <$> concatEls argvs))
+      pure $ single $ V.PAtom (V.Atom tn mv (zip [0..] $ concatEls argvs))
     S.And ps -> mconcat <$> traverse (flatten l) (toList ps.values)
     S.Eq sh t0 t1 -> do
       v0 <- flatten l t0
