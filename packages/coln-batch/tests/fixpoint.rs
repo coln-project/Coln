@@ -10,7 +10,8 @@ use coln_batch::fixpoint::{self, Exec};
 use coln_batch::query::{Atom, Catalog, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rule::{Program, Rule};
-use coln_batch::{binary_join, fixtures, generic_join, reference};
+use coln_batch::types::Value;
+use coln_batch::{binary_join, fixtures, generate, generic_join, reference};
 
 /// Run the program under every (strategy × executor) combination and
 /// require identical IDB results; returns the semi-naive/generic one.
@@ -140,7 +141,7 @@ fn head_literals_work() {
             var_names: vec!["x".into(), "y".into()],
             head: Atom {
                 relation: "flagged".into(),
-                terms: vec![Term::Var(0), Term::Lit(1)],
+                terms: vec![Term::Var(0), Term::lit(1u64)],
             },
             body: vec![Atom {
                 relation: "parent".into(),
@@ -395,4 +396,64 @@ fn long_chain_exact_closure() {
     assert_eq!(result.stats.rounds as u64, k);
 
     agree(&program, &edb, &["ancestor"]);
+}
+
+#[test]
+fn labeled_reachability_is_typed() {
+    // Reachability along edges of one label; derived rows carry the
+    // label as a string column.
+    let mut edb = Catalog::new();
+    edb.insert_rows(
+        "edge",
+        generate::labeled_edges_schema(),
+        vec![
+            vec![0u64.into(), 1u64.into(), "road".into(), 1i64.into()],
+            vec![1u64.into(), 2u64.into(), "road".into(), (-2i64).into()],
+            vec![2u64.into(), 3u64.into(), "rail".into(), 5i64.into()],
+            vec![1u64.into(), 3u64.into(), "rail".into(), 0i64.into()],
+        ],
+    )
+    .unwrap();
+    let program = fixtures::labeled_reach_program();
+    let result = agree(&program, &edb, &["reach"]);
+
+    let mut got = result.rows_of("reach").unwrap();
+    got.sort();
+    let mut expected: Vec<Vec<Value>> = vec![
+        vec![0u64.into(), 1u64.into(), "road".into()],
+        vec![1u64.into(), 2u64.into(), "road".into()],
+        vec![0u64.into(), 2u64.into(), "road".into()],
+        vec![2u64.into(), 3u64.into(), "rail".into()],
+        vec![1u64.into(), 3u64.into(), "rail".into()],
+    ];
+    expected.sort();
+    assert_eq!(got, expected);
+}
+
+#[test]
+fn head_literals_can_be_strings() {
+    // tagged(x, "seen") ← parent(x, y): the head literal enters the
+    // dictionary at compile time and decodes on the way out.
+    let program = Program {
+        rules: vec![Rule {
+            var_names: vec!["x".into(), "y".into()],
+            head: Atom {
+                relation: "tagged".into(),
+                terms: vec![Term::Var(0), Term::lit("seen")],
+            },
+            body: vec![Atom {
+                relation: "parent".into(),
+                terms: vec![Term::Var(0), Term::Var(1)],
+            }],
+        }],
+    };
+    let edb = fixtures::ancestor_chain_catalog(3);
+    let result = agree(&program, &edb, &["tagged"]);
+    assert_eq!(
+        result.rows_of("tagged").unwrap(),
+        vec![
+            vec![Value::Uint(0), "seen".into()],
+            vec![Value::Uint(1), "seen".into()],
+        ]
+    );
 }

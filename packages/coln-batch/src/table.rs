@@ -10,6 +10,11 @@
 //! Anything that can answer its four required methods — the in-memory
 //! [`ArrowSortedTable`] below today, a Hexane-backed B-tree index later —
 //! can back the engine unchanged.
+//!
+//! Cells are exposed as **keys** (see [`crate::types`]): a `u64` per cell
+//! whose order is the natural order of the column's type, with strings
+//! standing in by dictionary code. The executors compare keys only; a
+//! back end serving typed values maps them to keys the same way.
 
 use std::cmp::Ordering;
 use std::ops::Range;
@@ -18,6 +23,7 @@ use anyhow::{Result, bail};
 use arrow::record_batch::RecordBatch;
 
 use crate::relation::Relation;
+use crate::types::{Dictionary, Key, Schema};
 
 /// Column id, in *schema* order (position in the relation's column list).
 pub type ColId = usize;
@@ -48,9 +54,9 @@ pub trait SortedTable {
         &[]
     }
 
-    /// Cell access. `row` is a position in *sorted* order (`0..len()`);
-    /// `col` is a column id in *schema* order.
-    fn value(&self, row: RowIdx, col: ColId) -> u64;
+    /// Cell access, as a key. `row` is a position in *sorted* order
+    /// (`0..len()`); `col` is a column id in *schema* order.
+    fn value(&self, row: RowIdx, col: ColId) -> Key;
 
     /// First position in `lo..hi` whose value in sort column `depth`
     /// (i.e. schema column `sort_order()[depth]`) is `>= v`.
@@ -62,7 +68,7 @@ pub trait SortedTable {
     /// The default is a binary search over [`Self::value`]; back ends with
     /// better means (galloping search, block statistics, B-tree descent)
     /// should override it.
-    fn lower_bound(&self, depth: usize, v: u64, lo: RowIdx, hi: RowIdx) -> RowIdx {
+    fn lower_bound(&self, depth: usize, v: Key, lo: RowIdx, hi: RowIdx) -> RowIdx {
         let col = self.sort_order()[depth];
         let (mut lo, mut hi) = (lo, hi);
         while lo < hi {
@@ -78,7 +84,7 @@ pub trait SortedTable {
 
     /// First position in `lo..hi` whose value in sort column `depth` is
     /// `> v`. Same precondition as [`Self::lower_bound`].
-    fn upper_bound(&self, depth: usize, v: u64, lo: RowIdx, hi: RowIdx) -> RowIdx {
+    fn upper_bound(&self, depth: usize, v: Key, lo: RowIdx, hi: RowIdx) -> RowIdx {
         let col = self.sort_order()[depth];
         let (mut lo, mut hi) = (lo, hi);
         while lo < hi {
@@ -95,7 +101,7 @@ pub trait SortedTable {
     /// The contiguous range of positions in `lo..hi` whose sort column
     /// `depth` equals `v` (empty, positioned at the insertion point, if
     /// `v` is absent). Same precondition as [`Self::lower_bound`].
-    fn equal_range(&self, depth: usize, v: u64, lo: RowIdx, hi: RowIdx) -> Range<RowIdx> {
+    fn equal_range(&self, depth: usize, v: Key, lo: RowIdx, hi: RowIdx) -> Range<RowIdx> {
         let start = self.lower_bound(depth, v, lo, hi);
         let end = self.upper_bound(depth, v, start, hi);
         start..end
@@ -103,13 +109,14 @@ pub trait SortedTable {
 }
 
 /// In-memory [`SortedTable`] built from Arrow data: sorts once at
-/// construction, then serves reads from plain `u64` column vectors.
+/// construction, then serves reads from plain key column vectors.
 #[derive(Clone, Debug)]
 pub struct ArrowSortedTable {
     name: String,
+    schema: Schema,
     sort_order: Vec<ColId>,
     /// Schema-ordered columns; rows are in sorted order.
-    cols: Vec<Vec<u64>>,
+    cols: Vec<Vec<Key>>,
 }
 
 impl ArrowSortedTable {
@@ -150,24 +157,32 @@ impl ArrowSortedTable {
             .collect();
         Ok(Self {
             name: rel.name.clone(),
+            schema: rel.schema.clone(),
             sort_order,
             cols,
         })
     }
 
-    /// Build directly from an Arrow batch (all columns non-nullable
-    /// `UInt64`).
+    /// Build directly from an Arrow batch (the column types
+    /// [`Relation::from_record_batch`] accepts); strings are interned
+    /// into `dict`.
     pub fn from_record_batch(
         name: impl Into<String>,
         batch: &RecordBatch,
         sort_order: Vec<ColId>,
+        dict: &mut Dictionary,
     ) -> Result<Self> {
-        let rel = Relation::from_record_batch(name, batch)?;
+        let rel = Relation::from_record_batch(name, batch, dict)?;
         Self::from_relation(&rel, sort_order)
     }
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The column names and types, in schema order.
+    pub fn schema(&self) -> &Schema {
+        &self.schema
     }
 }
 
@@ -184,7 +199,7 @@ impl SortedTable for ArrowSortedTable {
         &self.sort_order
     }
 
-    fn value(&self, row: RowIdx, col: ColId) -> u64 {
+    fn value(&self, row: RowIdx, col: ColId) -> Key {
         self.cols[col][row]
     }
 }
@@ -214,7 +229,7 @@ pub fn check_contract<T: SortedTable>(t: &T) {
         for &c in key {
             assert!(c < arity, "primary key column {c} out of range");
         }
-        let mut tuples: Vec<Vec<u64>> = (0..t.len())
+        let mut tuples: Vec<Vec<Key>> = (0..t.len())
             .map(|r| key.iter().map(|&c| t.value(r, c)).collect())
             .collect();
         tuples.sort_unstable();
@@ -225,7 +240,7 @@ pub fn check_contract<T: SortedTable>(t: &T) {
             "rows must be unique under a declared primary key"
         );
     }
-    let sort_key = |row: RowIdx| -> Vec<u64> { order.iter().map(|&c| t.value(row, c)).collect() };
+    let sort_key = |row: RowIdx| -> Vec<Key> { order.iter().map(|&c| t.value(row, c)).collect() };
     for r in 1..t.len() {
         assert!(
             sort_key(r - 1) <= sort_key(r),
@@ -342,6 +357,17 @@ mod tests {
             check_contract(&ArrowSortedTable::from_relation(&rf, order).unwrap());
         }
         check_contract(&ArrowSortedTable::from_relation(&rg, vec![1, 0]).unwrap());
+    }
+
+    #[test]
+    fn contract_holds_on_typed_data() {
+        let mut dict = Dictionary::new();
+        let e = generate::labeled_edges(15, 120, &["road", "rail", "sea"], 13, &mut dict);
+        for order in [vec![0, 1, 2, 3], vec![2, 3, 0, 1], vec![3, 2, 1, 0]] {
+            let t = ArrowSortedTable::from_relation(&e, order).unwrap();
+            assert_eq!(t.schema(), &e.schema);
+            check_contract(&t);
+        }
     }
 
     #[test]

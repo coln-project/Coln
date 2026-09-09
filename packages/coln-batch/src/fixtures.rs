@@ -79,6 +79,43 @@ pub fn triangle_catalog(nodes: u64, noise_edges: usize, planted: usize, seed: u6
     cat
 }
 
+/// Two hops along edges with the same label, a typed join on a string
+/// column:
+///
+/// ```text
+/// Q(x, z, l) ← edge(x, y, l, w1), edge(y, z, l, w2)
+/// ```
+///
+/// Variable order: l, y, x, z, w1, w2.
+pub fn labeled_two_hop_query() -> Query {
+    let (l, y, x, z, w1, w2) = (0, 1, 2, 3, 4, 5);
+    Query {
+        var_names: ["l", "y", "x", "z", "w1", "w2"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        atoms: vec![
+            Atom {
+                relation: "edge".into(),
+                terms: vec![Term::Var(x), Term::Var(y), Term::Var(l), Term::Var(w1)],
+            },
+            Atom {
+                relation: "edge".into(),
+                terms: vec![Term::Var(y), Term::Var(z), Term::Var(l), Term::Var(w2)],
+            },
+        ],
+        head: vec![x, z, l],
+    }
+}
+
+/// Catalog with generated data for [`labeled_two_hop_query`].
+pub fn labeled_catalog(nodes: u64, edges: usize, labels: &[&str], seed: u64) -> Catalog {
+    let mut cat = Catalog::new();
+    let rel = generate::labeled_edges(nodes, edges, labels, seed, cat.dictionary_mut());
+    cat.insert(rel);
+    cat
+}
+
 /// The classic recursive program:
 ///
 /// ```text
@@ -136,6 +173,51 @@ pub fn ancestor_dag_catalog(nodes: u64, edges: usize, seed: u64) -> Catalog {
     cat
 }
 
+/// Reachability along edges of one label, a typed recursive program:
+///
+/// ```text
+/// reach(x, y, l) ← edge(x, y, l, w)
+/// reach(x, z, l) ← reach(x, y, l), edge(y, z, l, w)
+/// ```
+pub fn labeled_reach_program() -> Program {
+    let (x, y, z, l, w) = (0, 1, 2, 3, 4);
+    Program {
+        rules: vec![
+            Rule {
+                var_names: vec!["x".into(), "y".into(), "l".into(), "w".into()],
+                head: Atom {
+                    relation: "reach".into(),
+                    terms: vec![Term::Var(0), Term::Var(1), Term::Var(2)],
+                },
+                body: vec![Atom {
+                    relation: "edge".into(),
+                    terms: vec![Term::Var(0), Term::Var(1), Term::Var(2), Term::Var(3)],
+                }],
+            },
+            Rule {
+                var_names: ["x", "y", "z", "l", "w"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                head: Atom {
+                    relation: "reach".into(),
+                    terms: vec![Term::Var(x), Term::Var(z), Term::Var(l)],
+                },
+                body: vec![
+                    Atom {
+                        relation: "reach".into(),
+                        terms: vec![Term::Var(x), Term::Var(y), Term::Var(l)],
+                    },
+                    Atom {
+                        relation: "edge".into(),
+                        terms: vec![Term::Var(y), Term::Var(z), Term::Var(l), Term::Var(w)],
+                    },
+                ],
+            },
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +229,16 @@ mod tests {
 
         let cat = triangle_catalog(50, 100, 5, 1);
         cat.check(&triangle_query()).unwrap();
+
+        let cat = labeled_catalog(20, 60, &["road", "rail"], 1);
+        let typing = cat.check(&labeled_two_hop_query()).unwrap();
+        assert_eq!(
+            typing.head_schema(&labeled_two_hop_query()).types(),
+            vec![
+                crate::types::ScalarType::Uint,
+                crate::types::ScalarType::Uint,
+                crate::types::ScalarType::String
+            ]
+        );
     }
 }

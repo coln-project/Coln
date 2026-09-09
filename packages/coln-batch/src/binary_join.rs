@@ -13,31 +13,34 @@
 //!
 //! Data is read exclusively through the [`SortedTable`] trait (a plain
 //! scan here — hash joins need no ordering), so any storage back end works.
+//! Like every executor it works on keys (see [`crate::types`]).
 
 use std::collections::HashMap;
 
 use anyhow::Result;
 
-use crate::query::{Catalog, Query, Term, VarId};
+use crate::query::{Catalog, KeyTerm, Query, VarId};
 use crate::relation::Relation;
 use crate::table::{ArrowSortedTable, SortedTable};
+use crate::types::Key;
 
 /// Evaluate `query` against `catalog` with a chain of hash joins. Returns
 /// the projected result, sorted and deduplicated (set semantics).
 pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
-    catalog.check(query)?;
-    let empty = |query: &Query| {
-        Relation::from_flat_rows("result", query.head_names(), query.head.len(), &[])
+    let prepared = catalog.prepare(query)?;
+    let Some(key_atoms) = prepared.atoms else {
+        return Ok(Relation::empty("result", prepared.schema));
     };
+    let schema = prepared.schema;
 
-    // Intermediate result: `n_rows` rows of `width` values; `bound[v]`
+    // Intermediate result: `n_rows` rows of `width` keys; `bound[v]`
     // gives the column of variable v. Starts as a single zero-width row.
     let mut bound: Vec<Option<usize>> = vec![None; query.num_vars()];
     let mut width = 0usize;
     let mut n_rows = 1usize;
-    let mut data: Vec<u64> = Vec::new();
+    let mut data: Vec<Key> = Vec::new();
 
-    for atom in &query.atoms {
+    for atom in &key_atoms {
         let rel = catalog.get(&atom.relation)?;
         let identity: Vec<usize> = (0..rel.arity()).collect();
         // TODO(perf): from_relation sorts O(N log N) even though the hash
@@ -46,15 +49,15 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         let table = ArrowSortedTable::from_relation(rel, identity)?;
 
         // Classify the atom's columns.
-        let mut lit_checks: Vec<(usize, u64)> = Vec::new(); // (atom col, value)
+        let mut lit_checks: Vec<(usize, Key)> = Vec::new(); // (atom col, key)
         let mut key_pairs: Vec<(usize, usize)> = Vec::new(); // (interm. col, atom col)
         let mut new_vars: Vec<(VarId, usize)> = Vec::new(); // (var, atom col)
         let mut intra_eq: Vec<(usize, usize)> = Vec::new(); // repeated var in atom
         let mut first_col: HashMap<VarId, usize> = HashMap::new();
         for (c, term) in atom.terms.iter().enumerate() {
             match term {
-                Term::Lit(x) => lit_checks.push((c, *x)),
-                Term::Var(v) => {
+                KeyTerm::Lit(x) => lit_checks.push((c, *x)),
+                KeyTerm::Var(v) => {
                     if let Some(&c0) = first_col.get(v) {
                         intra_eq.push((c0, c));
                     } else {
@@ -72,7 +75,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         // TODO(perf): the per-row `key` Vecs here and in the probe loop
         // below are hot-loop allocations; reuse one buffer when
         // performance work starts.
-        let mut index: HashMap<Vec<u64>, Vec<usize>> = HashMap::new();
+        let mut index: HashMap<Vec<Key>, Vec<usize>> = HashMap::new();
         for r in 0..table.len() {
             if lit_checks.iter().any(|&(c, x)| table.value(r, c) != x) {
                 continue;
@@ -83,7 +86,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
             {
                 continue;
             }
-            let key: Vec<u64> = key_pairs.iter().map(|&(_, c)| table.value(r, c)).collect();
+            let key: Vec<Key> = key_pairs.iter().map(|&(_, c)| table.value(r, c)).collect();
             index.entry(key).or_default().push(r);
         }
 
@@ -91,17 +94,17 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         // pure existence filter.
         if key_pairs.is_empty() && new_vars.is_empty() {
             if index.is_empty() {
-                return Ok(empty(query));
+                return Ok(Relation::empty("result", schema));
             }
             continue;
         }
 
         // Probe.
         let new_width = width + new_vars.len();
-        let mut out: Vec<u64> = Vec::new();
+        let mut out: Vec<Key> = Vec::new();
         for i in 0..n_rows {
             let row = &data[i * width..(i + 1) * width];
-            let key: Vec<u64> = key_pairs.iter().map(|&(icol, _)| row[icol]).collect();
+            let key: Vec<Key> = key_pairs.iter().map(|&(icol, _)| row[icol]).collect();
             if let Some(matches) = index.get(&key) {
                 for &r in matches {
                     out.extend_from_slice(row);
@@ -119,7 +122,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         data = out;
         n_rows = data.len() / width;
         if n_rows == 0 {
-            return Ok(empty(query));
+            return Ok(Relation::empty("result", schema));
         }
     }
 
@@ -129,23 +132,20 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         .iter()
         .map(|&v| bound[v].expect("head variable bound (validated)"))
         .collect();
-    let mut out: Vec<u64> = Vec::with_capacity(n_rows * head_cols.len());
+    let mut out: Vec<Key> = Vec::with_capacity(n_rows * head_cols.len());
     for i in 0..n_rows {
         let row = &data[i * width..(i + 1) * width];
         for &c in &head_cols {
             out.push(row[c]);
         }
     }
-    Ok(
-        Relation::from_flat_rows("result", query.head_names(), query.head.len(), &out)
-            .sorted_dedup(),
-    )
+    Ok(Relation::from_flat_rows("result", schema, &out).sorted_dedup())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query::Atom;
+    use crate::query::{Atom, Term};
 
     #[test]
     fn two_atom_chain() {

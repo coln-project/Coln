@@ -8,47 +8,49 @@
 //! Exponential in the number of atoms; intended only for small inputs,
 //! where it establishes ground truth for the real executors. The
 //! implementation is deliberately minimal so that its correctness can be
-//! verified by inspection.
+//! verified by inspection. It compares keys like the real executors;
+//! key equality is value equality within a column type.
 
 use anyhow::Result;
 
-use crate::query::{Catalog, Query, Term};
+use crate::query::{Catalog, KeyAtom, KeyTerm, Query};
 use crate::relation::Relation;
+use crate::types::Key;
 
 /// Evaluate `query` against `catalog` by exhaustive search. Returns the
 /// projected result, sorted and deduplicated (set semantics).
 pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
-    catalog.check(query)?;
-    let tables: Vec<&Relation> = query
-        .atoms
+    let prepared = catalog.prepare(query)?;
+    let Some(atoms) = prepared.atoms else {
+        return Ok(Relation::empty("result", prepared.schema));
+    };
+    let tables: Vec<&Relation> = atoms
         .iter()
         .map(|a| catalog.get(&a.relation))
         .collect::<Result<_>>()?;
 
-    let mut binding: Vec<Option<u64>> = vec![None; query.num_vars()];
-    let mut out: Vec<u64> = Vec::new();
-    search(query, &tables, 0, &mut binding, &mut out);
+    let mut binding: Vec<Option<Key>> = vec![None; query.num_vars()];
+    let mut out: Vec<Key> = Vec::new();
+    search(query, &atoms, &tables, 0, &mut binding, &mut out);
 
-    Ok(
-        Relation::from_flat_rows("result", query.head_names(), query.head.len(), &out)
-            .sorted_dedup(),
-    )
+    Ok(Relation::from_flat_rows("result", prepared.schema, &out).sorted_dedup())
 }
 
 fn search(
     query: &Query,
+    atoms: &[KeyAtom],
     tables: &[&Relation],
     atom_idx: usize,
-    binding: &mut Vec<Option<u64>>,
-    out: &mut Vec<u64>,
+    binding: &mut Vec<Option<Key>>,
+    out: &mut Vec<Key>,
 ) {
-    if atom_idx == query.atoms.len() {
+    if atom_idx == atoms.len() {
         for &v in &query.head {
             out.push(binding[v].expect("head variable bound (validated)"));
         }
         return;
     }
-    let atom = &query.atoms[atom_idx];
+    let atom = &atoms[atom_idx];
     let table = tables[atom_idx];
     'rows: for r in 0..table.len() {
         // Try to unify this row with the atom's terms.
@@ -56,13 +58,13 @@ fn search(
         for (c, term) in atom.terms.iter().enumerate() {
             let value = table.cols[c][r];
             match term {
-                Term::Lit(l) => {
+                KeyTerm::Lit(l) => {
                     if value != *l {
                         undo(binding, &newly_bound);
                         continue 'rows;
                     }
                 }
-                Term::Var(v) => match binding[*v] {
+                KeyTerm::Var(v) => match binding[*v] {
                     Some(bound) => {
                         if value != bound {
                             undo(binding, &newly_bound);
@@ -76,12 +78,12 @@ fn search(
                 },
             }
         }
-        search(query, tables, atom_idx + 1, binding, out);
+        search(query, atoms, tables, atom_idx + 1, binding, out);
         undo(binding, &newly_bound);
     }
 }
 
-fn undo(binding: &mut [Option<u64>], newly_bound: &[usize]) {
+fn undo(binding: &mut [Option<Key>], newly_bound: &[usize]) {
     for &v in newly_bound {
         binding[v] = None;
     }

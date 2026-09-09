@@ -15,6 +15,7 @@
 
 use crate::relation::Relation;
 use crate::rng::SplitMix64;
+use crate::types::{Column, Dictionary, ScalarType, Schema, Value};
 
 /// Triangle workload — the canonical *cyclic* join:
 ///
@@ -119,6 +120,46 @@ pub fn dag(nodes: u64, edges: usize, seed: u64) -> Relation {
     Relation::new("parent", ["parent", "child"], vec![src, dst]).sorted_dedup()
 }
 
+/// The schema of [`labeled_edges`]: `edge(src: uint, dst: uint,
+/// label: string, weight: iint)`.
+pub fn labeled_edges_schema() -> Schema {
+    Schema::new([
+        Column::new("src", ScalarType::Uint),
+        Column::new("dst", ScalarType::Uint),
+        Column::new("label", ScalarType::String),
+        Column::new("weight", ScalarType::Iint),
+    ])
+}
+
+/// A typed workload: `edges` random edges over `nodes` vertices, each
+/// carrying one of `labels` and a signed weight in `-9..=9`. Exercises
+/// every kind of key at once: identity (uint), sign-flipped (iint) and
+/// dictionary (string). Strings are interned into `dict`.
+pub fn labeled_edges(
+    nodes: u64,
+    edges: usize,
+    labels: &[&str],
+    seed: u64,
+    dict: &mut Dictionary,
+) -> Relation {
+    assert!(nodes >= 1, "labeled_edges needs at least one node");
+    assert!(!labels.is_empty(), "labeled_edges needs at least one label");
+    let mut rng = SplitMix64::new(seed);
+    let rows = (0..edges).map(|_| {
+        let label = labels[rng.below(labels.len() as u64) as usize];
+        let weight = rng.below(19) as i64 - 9;
+        vec![
+            Value::Uint(rng.below(nodes)),
+            Value::Uint(rng.below(nodes)),
+            Value::from(label),
+            Value::Iint(weight),
+        ]
+    });
+    Relation::from_rows("edge", labeled_edges_schema(), rows, dict)
+        .expect("generated rows match the schema")
+        .sorted_dedup()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,5 +226,21 @@ mod tests {
             }
         }
         assert!(found >= 3, "got {found}");
+    }
+
+    #[test]
+    fn labeled_edges_are_typed_and_deterministic() {
+        let mut dict = Dictionary::new();
+        let e = labeled_edges(10, 50, &["road", "rail"], 4, &mut dict);
+        assert_eq!(e.schema, labeled_edges_schema());
+        assert!(!e.is_empty() && e.len() <= 50);
+        assert_eq!(dict.len(), 2);
+        for i in 0..e.len() {
+            let row = e.row_values(i, &dict).unwrap();
+            assert!(matches!(row[2], Value::String(ref s) if s == "road" || s == "rail"));
+            assert!(matches!(row[3], Value::Iint(w) if (-9..=9).contains(&w)));
+        }
+        let mut again = Dictionary::new();
+        assert_eq!(e, labeled_edges(10, 50, &["road", "rail"], 4, &mut again));
     }
 }
