@@ -100,9 +100,26 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
         let LoweredPlan {
             program,
             sources: used_sources,
+            constants,
             outputs,
             schemas,
         } = lower(plan.as_code(), &sources)
+            .map_err(|error| BuildError::new(format!("{error:#}")))?;
+        // The constants' string codes have to come from the same dictionary the
+        // fed rows use, and that one belongs to the runtime — so lowering hands
+        // over typed rows and the encoding happens here, once.
+        let mut dictionary = Dictionary::new();
+        let constants = constants
+            .into_iter()
+            .map(|constant| {
+                Relation::from_rows(
+                    constant.name,
+                    constant.schema,
+                    constant.rows,
+                    &mut dictionary,
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|error| BuildError::new(format!("{error:#}")))?;
         let inputs = used_sources
             .into_keys()
@@ -116,8 +133,9 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
             program,
             outputs,
             schemas,
-            dictionary: Dictionary::new(),
+            dictionary,
             inputs,
+            constants,
             sinks,
             results: None,
         })
@@ -140,6 +158,11 @@ pub struct BatchRuntime {
     /// keys. This is the interim snapshot store described in the module
     /// docs; the pull API replaces it.
     inputs: HashMap<String, HashMap<Vec<Key>, ZWeight>>,
+    /// The base tables the plan's constants *are*. Unlike `inputs` these need
+    /// no integration and never change: the plan states them, so they were
+    /// encoded once at build time (see [`LoweredPlan::constants`]), against
+    /// `dictionary`, which is why every commit's catalog decodes them.
+    constants: Vec<Relation>,
     sinks: Vec<SinkId>,
     /// The relations of the last commit, with the dictionary that decodes
     /// them.
@@ -237,6 +260,11 @@ impl BatchRuntime {
                 }
             }
             edb.insert(Relation::with_schema(source.clone(), schema, data));
+        }
+        // A constant is a base table like any other; it just came from the plan
+        // rather than through `feed`, so there are no deltas to integrate.
+        for constant in &self.constants {
+            edb.insert(constant.clone());
         }
         Ok(edb)
     }
