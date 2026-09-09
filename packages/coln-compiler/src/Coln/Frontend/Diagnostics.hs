@@ -17,6 +17,7 @@ data ParserCode
   | UnknownModifiers
   | UnknownMode
   | DuplicateDefinition
+  | DuplicateField
   | ExpectedErrorNotReached
   deriving (Eq, Ord)
 
@@ -32,5 +33,6 @@ parserCodeTable =
     , (UnknownModifiers, CodeMeta 6 SError Nothing)
     , (UnknownMode, CodeMeta 7 SError Nothing)
     , (DuplicateDefinition, CodeMeta 8 SError Nothing)
-    , (ExpectedErrorNotReached, CodeMeta 9 SError Nothing)
+    , (DuplicateField, CodeMeta 9 SError Nothing)
+    , (ExpectedErrorNotReached, CodeMeta 10 SError Nothing)
     ]
