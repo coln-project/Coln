@@ -620,6 +620,61 @@ mod test {
         Ok(())
     }
 
+    /// The whole way down from a FLIR file: `GraphTwoHops.json` is the graph
+    /// realm with a chased two-hop rule written in FLIR. Init keeps the
+    /// enforced rules on the incremental circuit and the chased rule for the
+    /// batch backend; transactions go through Leo's wrapper as usual; the
+    /// rule from the file is then evaluated on the batch backend by name.
+    #[test]
+    fn chased_rule_from_flir_file_runs_on_batch() -> Result<()> {
+        let realm = coln_flir_rs::test_utils::load_theory_from_json("GraphTwoHops.json");
+        let mut coln_query = ColnQuery::init(&realm)?;
+        let batch_rules: Vec<ir::Path> = coln_query
+            .flir_program
+            .batch_rules()
+            .map(|(name, _)| path(&name.id().split('.').collect::<Vec<_>>()))
+            .collect();
+        assert_eq!(batch_rules, vec![path(&["Graph", "twoHops"])]);
+
+        // Same graph as above: v0 -> v1 -> v2 and v1 -> v3, two transactions.
+        let mut graph_flir = graph_flir::GraphFlir::init();
+        let v0 = graph_flir.insert_vertex();
+        let v1 = graph_flir.insert_vertex();
+        let v2 = graph_flir.insert_vertex();
+        let v3 = graph_flir.insert_vertex();
+        let mut tx0 = Tx::empty();
+        tx0.insert(graph_flir.next_epoch().into_table_deltas());
+        tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        graph_flir.insert_edge(&v0, &v1);
+        graph_flir.insert_edge(&v1, &v2);
+        graph_flir.insert_edge(&v1, &v3);
+        let mut tx1 = Tx::empty();
+        tx1.insert(graph_flir.next_epoch().into_table_deltas());
+        tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+
+        let matches = coln_query.batch_rule_matches(&batch_rules[0])?;
+        assert_eq!(matches.len(), 2, "{matches:?}");
+        assert_eq!(matches.columns().len(), 6);
+
+        // The enforced rules of the file still guard transactions: an edge to
+        // a vertex that does not exist is rejected.
+        let dangling = graph_flir::Edge::new(
+            graph_flir.epoch(),
+            graph_flir.next_ctr(),
+            v0.row_id().hash(),
+            v0.row_id().ctr(),
+            999,
+            999,
+        );
+        graph_flir.insert_raw_edge(dangling);
+        let mut tx2 = Tx::empty();
+        tx2.insert(graph_flir.next_epoch().into_table_deltas());
+        tx2.try_commit(&mut coln_query)?.expect_rejected();
+        // The rolled back edge never reaches the batch evaluation.
+        assert_eq!(coln_query.batch_rule_matches(&batch_rules[0])?.len(), 2);
+        Ok(())
+    }
+
     /// One transaction to break a monitored rule, one to repair it. The point of
     /// the pair is the *second* one: it changes the monitored violations without
     /// introducing any, which is the only case where the delta a monitored sink
