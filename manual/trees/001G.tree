@@ -1,17 +1,7 @@
 \title{Propositions and relations}
 \import{prelude}
 
-\p{There is a theory \code{Prop} which is even more boring than \code{Set}; it is the theory of a set with at most one element. One could think of it also as a truth value: inhabited means true and empty means false. From TypeScript, we have the interface}
-
-\pre{%
-\kw{interface} ReadonlyProp {
-  isTrue(): boolean;
-}
-
-\kw{interface} ReadWriteProp \kw{extends} ReadonlyProp {
-  makeTrue(): void;
-}
-}
+\p{There is a theory \code{Prop} which is even more boring than \code{Set}; it is the theory of a set with at most one element. One could think of it also as a truth value: inhabited means true and empty means false}
 
 \p{While on its own \code{Prop} is boring, we can combine it with function types to make it more interesting. For instance, we can now rewrite \code{SantaLists} so that the same person may appear on lists in different years.}
 

@@ -1,0 +1,24 @@
+\title{Levels}
+\import{prelude}
+
+\p{This is not to say that all types are treated identically. Every type in a Coln program has a \defcase{level}, which dictates the positions in a Coln program it may appear. Types at all levels use the same syntax, but some operations will only work with types of a given level. That is, to be valid a Coln program must be both type-correct (types line up wherever they are used together) and level-correct (inputs to constructions have the allowed levels). This is checked by the compiler, and issues will produce an error during [elaboration](000O).}
+
+\p{
+There are four levels in which a type may live:
+##{
+\lvl{prop} \subset \lvl{set} \subset \lvl{theory} \subset \lvl{top}
+}
+Each is included in the next, so a type with level #{\lvl{prop}} may be silently used as a type of level #{\lvl{theory}}, and so on.
+
+To a first approximation (and slightly out of order), a type at each level has the following interpretation:
+\ul{
+  \li{#{\lvl{set}}: A \defcase{set}, i.e. type with level #{\lvl{set}}, is [plain old data](https://en.wikipedia.org/wiki/Passive_data_structure), a record type with a collection of fields. A set can ultimately be compiled down to an individual database table, with each element of the set captured by a single row.}
+  \li{#{\lvl{prop}}: A \defcase{proposition}, i.e. type with level #{\lvl{prop}}, is a set with at most one element; whose existence we interpret as the proof of the proposition. A proposition may ultimately be represented by a row in a database, or as constraints on the database, depending on the exact form of the proposition.}
+  \li{#{\lvl{theory}}: A \defcase{theory}, i.e. type with level #{\lvl{theory}}, represents a database schema, possibly including many tables, constraints and rules. We will sometimes refer to an element of a theory as a \defcase{model}, which you can think of as a specific database instance of the schema described by that theory.}
+  \li{#{\lvl{top}}: A \defcase{top-level type}, i.e. type with level #{\lvl{top}} is the type of a overall Coln source file, mixing definitions with all of the above levels. This is a catchall level for any type, including those that have no sensible interpretation in database. In particular, this includes theories parameterised by models of another theory, which must wait for a concrete argument before they can be given a database meaning.}
+}
+}
+
+\p{\mvrnote{TODO, something like:} some of the above have alternative useful interpretations. A set, described in the context of a model, is a construction that might mention pieces of the model. This can be interpreted as a \defcase{query} over the database instance described by that model, so that the result of the query is the collection of occurrences of the construction in the model, see [TODO](TODO). Similarly a proposition in the context of a model can be interpreted as \mvrnote{something something datalog}.}
+
+\p{We go into much more detail about the database interpretation of types in a [later section](000M).}
