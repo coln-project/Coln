@@ -197,10 +197,11 @@ pub mod monitored_flir {
 pub mod graph_flir {
     use crate::{
         api::deltas::{StoreDelta, TableDelta, ZRow},
-        relational::TupleValue,
+        relational::{TupleValue, schema::EntityRef},
         scalarial::ScalarTypedValue,
     };
     use coln_flir_rs::ir;
+    use std::collections::HashMap;
 
     pub trait JsonFlir {
         const FILENAME: &'static str;
@@ -213,7 +214,7 @@ pub mod graph_flir {
     pub struct GraphFlir {
         hash: u64,
         ctr: u64,
-        store_delta: StoreDelta,
+        base_tables: HashMap<EntityRef, TableDelta>,
     }
 
     impl GraphFlir {
@@ -221,7 +222,7 @@ pub mod graph_flir {
             Self {
                 hash: 0,
                 ctr: 0,
-                store_delta: StoreDelta::empty(),
+                base_tables: HashMap::new(),
             }
         }
         pub fn epoch(&self) -> u64 {
@@ -233,7 +234,9 @@ pub mod graph_flir {
         pub fn next_epoch(&mut self) -> StoreDelta {
             self.hash += 1;
             self.ctr = 0;
-            std::mem::take(&mut self.store_delta)
+            let store_delta: StoreDelta = self.base_tables.drain().collect();
+            debug_assert!(self.base_tables.is_empty());
+            store_delta
         }
         pub fn next_ctr(&mut self) -> u64 {
             let ctr = self.ctr;
@@ -261,9 +264,14 @@ pub mod graph_flir {
             // Maybe improve by collecting all vertices of this epoch in a single
             // table delta but maybe it's good to test this not-so-pretty code
             // path as well..
-            let table_delta =
-                TableDelta::new(&T::ir_path(), vec![Self::with_zweight(1, entry.to_row())]);
-            self.store_delta.extend(Some(table_delta));
+            self.base_tables
+                .entry(EntityRef::from(&T::ir_path()))
+                .and_modify(|table_delta| {
+                    table_delta.extend([Self::with_zweight(1, entry.to_row())])
+                })
+                .or_insert_with(|| {
+                    TableDelta::new(&T::ir_path(), [Self::with_zweight(1, entry.to_row())])
+                });
         }
     }
 

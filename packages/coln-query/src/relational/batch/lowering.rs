@@ -107,7 +107,7 @@ impl Bind {
                 .get(&v)
                 .map(|nv| Term::Var(*nv))
                 .context("head column refers to a variable that does not occur in the body"),
-            Bind::Lit(x) => Ok(Term::Lit(x)),
+            Bind::Lit(x) => Ok(Term::lit(x)),
         }
     }
 }
@@ -160,12 +160,12 @@ impl Frame {
     fn substitute(&mut self, from: usize, to: Bind) {
         let to = match to {
             Bind::Var(v) => Term::Var(v),
-            Bind::Lit(x) => Term::Lit(x),
+            Bind::Lit(x) => Term::lit(x),
         };
         for atom in &mut self.atoms {
             for term in &mut atom.terms {
                 if *term == Term::Var(from) {
-                    *term = to;
+                    *term = to.clone();
                 }
             }
         }
@@ -925,7 +925,7 @@ mod tests {
         .unwrap();
 
         let head = &plan.program.rules[1].head;
-        assert_eq!(head.terms[1], Term::Lit(7));
+        assert_eq!(head.terms[1], Term::lit(7u64));
 
         let result = run(&plan, {
             let mut edb = Catalog::new();
@@ -984,7 +984,7 @@ mod tests {
         .unwrap();
 
         let body_atom = &plan.program.rules[0].body[0];
-        assert_eq!(body_atom.terms[0], Term::Lit(3));
+        assert_eq!(body_atom.terms[0], Term::lit(3u64));
 
         let result = run(&plan, {
             let mut edb = Catalog::new();

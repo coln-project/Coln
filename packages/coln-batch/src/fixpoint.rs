@@ -33,6 +33,7 @@ use anyhow::Result;
 use crate::query::{Catalog, Query};
 use crate::relation::Relation;
 use crate::rule::{CompiledProgram, Program, delta_name};
+use crate::types::Schema;
 
 /// A query executor, e.g. `generic_join::execute` or
 /// `binary_join::execute`.
@@ -55,7 +56,7 @@ impl FixpointStats {
 
 pub struct FixpointResult {
     /// The input EDB plus the final IDB relations — ready for follow-up
-    /// queries.
+    /// queries. Its dictionary also holds the program's string literals.
     pub catalog: Catalog,
     pub stats: FixpointStats,
 }
@@ -71,24 +72,22 @@ pub fn naive(program: &Program, edb: &Catalog, exec: Exec) -> Result<FixpointRes
 }
 
 fn evaluate(program: &Program, edb: &Catalog, exec: Exec, semi: bool) -> Result<FixpointResult> {
-    let compiled = program.compile(edb)?;
+    // The working catalog: the EDB, the totals of every derived relation
+    // and, for semi-naive rounds, their deltas. Compiling interns the
+    // program's literals into its dictionary.
+    let mut work = edb.clone();
+    let compiled = program.compile(&mut work)?;
 
     // Initial totals: existing facts for IDB relations count as already
     // derived; otherwise start empty.
     let mut totals: BTreeMap<String, Relation> = BTreeMap::new();
-    for (name, col_names) in &compiled.idb_schemas {
+    for (name, schema) in &compiled.idb_schemas {
         let rel = match edb.get(name) {
             Ok(initial) => initial.clone().sorted_dedup(),
-            Err(_) => Relation::new(
-                name.clone(),
-                col_names.clone(),
-                vec![Vec::new(); col_names.len()],
-            ),
+            Err(_) => Relation::empty(name.clone(), schema.clone()),
         };
         totals.insert(name.clone(), rel);
     }
-
-    let mut work = edb.clone();
     for rel in totals.values() {
         work.insert(rel.clone());
     }
@@ -128,6 +127,7 @@ fn evaluate(program: &Program, edb: &Catalog, exec: Exec, semi: bool) -> Result<
     }
 
     let mut catalog = edb.clone();
+    *catalog.dictionary_mut() = work.dictionary().clone();
     for rel in totals.values() {
         catalog.insert(rel.clone());
     }
@@ -145,8 +145,7 @@ fn derive_full(
         let result = exec(&rule.query, work)?;
         accumulate(
             &mut staging,
-            compiled,
-            rule.materialize_head(&result, cols(compiled, rule)),
+            rule.materialize_head(&result, schema(compiled, rule)),
         );
     }
     Ok(staging)
@@ -165,15 +164,14 @@ fn derive_from_deltas(
             let result = exec(&query, work)?;
             accumulate(
                 &mut staging,
-                compiled,
-                rule.materialize_head(&result, cols(compiled, rule)),
+                rule.materialize_head(&result, schema(compiled, rule)),
             );
         }
     }
     Ok(staging)
 }
 
-fn cols<'a>(compiled: &'a CompiledProgram, rule: &crate::rule::LoweredRule) -> &'a [String] {
+fn schema<'a>(compiled: &'a CompiledProgram, rule: &crate::rule::LoweredRule) -> &'a Schema {
     &compiled.idb_schemas[&rule.head_relation]
 }
 
@@ -181,24 +179,11 @@ fn empty_staging(compiled: &CompiledProgram) -> BTreeMap<String, Relation> {
     compiled
         .idb_schemas
         .iter()
-        .map(|(name, col_names)| {
-            (
-                name.clone(),
-                Relation::new(
-                    name.clone(),
-                    col_names.clone(),
-                    vec![Vec::new(); col_names.len()],
-                ),
-            )
-        })
+        .map(|(name, schema)| (name.clone(), Relation::empty(name.clone(), schema.clone())))
         .collect()
 }
 
-fn accumulate(
-    staging: &mut BTreeMap<String, Relation>,
-    _compiled: &CompiledProgram,
-    derived: Relation,
-) {
+fn accumulate(staging: &mut BTreeMap<String, Relation>, derived: Relation) {
     let entry = staging
         .get_mut(&derived.name)
         .expect("head relation is a known IDB relation");

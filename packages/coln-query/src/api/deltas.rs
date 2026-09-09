@@ -11,7 +11,11 @@ use crate::relational::schema::EntityRef;
 // one of the deltas this module is about without both names in reach.
 pub use crate::relational::TupleValue;
 pub use crate::scalarial::ScalarTypedValue;
-use std::borrow::Borrow;
+use crate::utils::cli_table::{
+    Cell, CellStruct, CliReport, CliTableRow, Justify, PositionalHeader, ToCliReport,
+    ZWeightedHeader,
+};
+use std::{borrow::Borrow, iter};
 
 pub type ZWeight = i64;
 
@@ -26,13 +30,17 @@ pub struct ZRow {
 }
 
 impl ZRow {
+    /// Allows [`ZRow`]s  with a `zweight` of 0. For internal use only.
+    pub(crate) fn new_unchecked(zweight: ZWeight, row: TupleValue) -> Self {
+        Self { zweight, row }
+    }
     /// Create a new [`ZRow`] but filters out deltas with a `zweight` of 0
     /// in which case `None` is returned.
     pub fn new(zweight: ZWeight, row: TupleValue) -> Option<Self> {
         if zweight == 0 {
             None
         } else {
-            Some(Self { zweight, row })
+            Some(Self::new_unchecked(zweight, row))
         }
     }
     /// A ZWeight value ...
@@ -67,6 +75,24 @@ impl ZRow {
     }
 }
 
+impl CliTableRow for ZRow {
+    /// The `zweight` is prepended to the `row`.
+    fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<> {
+        iter::once(self.zweight().to_string().cell().justify(Justify::Right))
+            .chain(self.row.data.iter().map(|field| {
+                let justification = match field {
+                    ScalarTypedValue::String(_) => Justify::Left,
+                    _ => Justify::Right,
+                };
+                field.to_string().cell().justify(justification)
+            }))
+            // Collected so that the iterator owns its cells instead of
+            // borrowing the row it was built from.
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
 impl std::fmt::Display for ZRow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "zweight: {:02}, row: {}", self.zweight(), self.row)
@@ -83,11 +109,14 @@ pub struct TableDelta {
 }
 
 impl TableDelta {
-    pub fn new<T: Into<EntityRef>>(for_entity: T, delta: Vec<ZRow>) -> Self {
+    pub fn new(for_entity: impl Into<EntityRef>, delta: impl IntoIterator<Item = ZRow>) -> Self {
         Self {
             entity: for_entity.into(),
-            inner: delta,
+            inner: delta.into_iter().collect(),
         }
+    }
+    pub fn extend(&mut self, rows: impl IntoIterator<Item = ZRow>) {
+        self.inner.extend(rows);
     }
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
@@ -107,6 +136,12 @@ impl TableDelta {
     /// Retracts all contained [`ZRow`]s.
     fn retract(&mut self) {
         self.inner.iter_mut().for_each(|delta| delta.retract());
+    }
+    /// A base table delta carries no schema, so its columns are numbered by
+    /// position, with the arity taken from the first row.
+    fn cli_table_header(&self) -> ZWeightedHeader<PositionalHeader> {
+        let columns = self.inner.first().map_or(0, |row| row.row.data.len());
+        ZWeightedHeader(PositionalHeader::new(columns))
     }
 }
 
@@ -147,20 +182,15 @@ where
     }
 }
 
-// TODO: Offer proper cli-table based formatting, for anything that implements
-// AsRef<Vec<TableDelta>>.
-impl std::fmt::Display for TableDelta {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Entity {}{}",
-            self.for_entity(),
-            if self.is_empty() { " <empty>" } else { "\n" }
+impl ToCliReport for TableDelta {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::untitled();
+        report.section(
+            self.for_entity().to_string(),
+            self.cli_table_header(),
+            self.delta(),
         )?;
-        for delta in self.delta() {
-            writeln!(f, "{}", delta)?;
-        }
-        Ok(())
+        Ok(report)
     }
 }
 
@@ -176,10 +206,12 @@ impl StoreDelta {
     pub fn empty() -> Self {
         Self { inner: Vec::new() }
     }
-    pub fn with_deltas(deltas: Vec<TableDelta>) -> Self {
-        Self { inner: deltas }
+    pub fn new(deltas: impl IntoIterator<Item = TableDelta>) -> Self {
+        Self {
+            inner: deltas.into_iter().collect(),
+        }
     }
-    pub fn extend<I: IntoIterator<Item = TableDelta>>(&mut self, deltas: I) {
+    pub fn extend(&mut self, deltas: impl IntoIterator<Item = TableDelta>) {
         self.inner.extend(deltas);
     }
     pub fn into_table_deltas(self) -> Vec<TableDelta> {
@@ -196,14 +228,41 @@ impl StoreDelta {
     /// #
     /// # let row: TupleValue = [ScalarTypedValue::from(9_i64)].into_iter().collect();
     /// # let row_delta = ZRow::new(1, row).unwrap();
-    /// # let row_deltas = vec![row_delta.clone(), row_delta.clone()];
+    /// # let row_deltas = [row_delta.clone(), row_delta.clone()];
     /// # let table_delta = TableDelta::new("SomeTable", row_deltas);
-    /// # let store_delta = StoreDelta::with_deltas(vec![table_delta]);
+    /// # let store_delta = StoreDelta::new([table_delta]);
     /// assert_eq!(store_delta, store_delta.clone().retract().retract());
     /// ```
     pub fn retract(mut self) -> Self {
         self.inner.iter_mut().for_each(|table| table.retract());
         self
+    }
+}
+
+impl FromIterator<TableDelta> for StoreDelta {
+    fn from_iter<T: IntoIterator<Item = TableDelta>>(iter: T) -> Self {
+        Self::new(iter)
+    }
+}
+
+/// This is useful if keying the TableDeltas in a [`std::collections::HashMap`]
+/// to avoid duplicate [`TableDelta`]s per [`EntityRef`].
+impl<U> FromIterator<(U, TableDelta)> for StoreDelta {
+    fn from_iter<T: IntoIterator<Item = (U, TableDelta)>>(iter: T) -> Self {
+        Self::new(iter.into_iter().map(|(_, table_delta)| table_delta))
+    }
+}
+
+impl ToCliReport for StoreDelta {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::new("StoreDelta");
+        report.extend(
+            self.inner
+                .iter()
+                .map(|delta| delta.to_cli_report())
+                .collect::<std::io::Result<Vec<_>>>()?,
+        );
+        Ok(report)
     }
 }
 
@@ -222,10 +281,12 @@ impl DerivedDataDelta {
     pub fn is_empty(&self) -> bool {
         self.inner.iter().all(|table_delta| table_delta.is_empty())
     }
-    pub fn with_deltas(deltas: Vec<TableDelta>) -> Self {
-        Self { inner: deltas }
+    pub fn new(deltas: impl IntoIterator<Item = TableDelta>) -> Self {
+        Self {
+            inner: deltas.into_iter().collect(),
+        }
     }
-    pub fn extend<I: IntoIterator<Item = TableDelta>>(&mut self, deltas: I) {
+    pub fn extend(&mut self, deltas: impl IntoIterator<Item = TableDelta>) {
         self.inner.extend(deltas);
     }
     pub fn into_table_deltas(self) -> Vec<TableDelta> {
@@ -233,21 +294,18 @@ impl DerivedDataDelta {
     }
 }
 
-impl std::fmt::Display for DerivedDataDelta {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "DerivedDataDelta{}",
-            if self.is_empty() { " <empty>" } else { "\n" }
-        )?;
-        for delta in &self.inner {
-            write!(f, "{}", delta)?;
-        }
-        Ok(())
+impl ToCliReport for DerivedDataDelta {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::new("DerivedDataDelta");
+        report.extend(
+            self.inner
+                .iter()
+                .map(|delta| delta.to_cli_report())
+                .collect::<std::io::Result<Vec<_>>>()?,
+        );
+        Ok(report)
     }
 }
-
-// TODO: Snapshot with row and column views.
 
 #[cfg(test)]
 mod test {
@@ -263,18 +321,61 @@ mod test {
             .into_iter()
             .collect(),
         )
-        .expect("non-zero z-weight")
+        .expect("non-zero zweight")
     }
 
-    fn table_delta<T: Into<EntityRef>>(name: T) -> TableDelta {
-        TableDelta::new(name.into(), vec![row_delta(), row_delta()])
+    fn table_delta(name: impl Into<EntityRef>) -> TableDelta {
+        TableDelta::new(name.into(), [row_delta(), row_delta()])
     }
 
     #[test]
     fn retracting_twice_restores_the_original_state() {
-        let store_delta =
-            StoreDelta::with_deltas(vec![table_delta("BaseTable1"), table_delta("BaseTable2")]);
+        let store_delta = StoreDelta::new([table_delta("BaseTable1"), table_delta("BaseTable2")]);
 
         assert_eq!(store_delta, store_delta.clone().retract().retract());
+    }
+
+    #[test]
+    fn report_titles_one_table_per_delta() {
+        let store_delta =
+            StoreDelta::new([table_delta("BaseTable1"), TableDelta::new("BaseTable2", [])]);
+
+        let report = store_delta
+            .to_cli_report()
+            .expect("report renders")
+            .to_string();
+
+        println!("{report}");
+
+        assert!(report.starts_with("====== StoreDelta ======\n"));
+        assert!(report.contains("BaseTable1\n"));
+        assert!(report.contains("zweight"));
+        // The columns of a base table delta are numbered, as it carries no
+        // schema to name them by.
+        assert!(report.contains("field 0"));
+        assert!(report.contains("field 1"));
+        assert!(report.contains("String"));
+        // A delta without rows says so instead of rendering an empty table.
+        assert!(report.contains("BaseTable2 <empty>"));
+    }
+
+    #[test]
+    fn nested_reports_are_sub_headings() {
+        let store_delta = StoreDelta::new([table_delta("BaseTable1")]);
+        let derived_delta = DerivedDataDelta::new([table_delta("DerivedTable1")]);
+
+        let mut transaction = CliReport::new("Transaction");
+        transaction
+            .nest(store_delta.to_cli_report().expect("report renders"))
+            .nest(derived_delta.to_cli_report().expect("report renders"));
+        let report = transaction.to_string();
+
+        println!("{report}");
+
+        assert!(report.starts_with("====== Transaction ======\n"));
+        assert!(report.contains("------ StoreDelta ------"));
+        assert!(report.contains("------ DerivedDataDelta ------"));
+        assert!(report.contains("BaseTable1\n"));
+        assert!(report.contains("DerivedTable1\n"));
     }
 }

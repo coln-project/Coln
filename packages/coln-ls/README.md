@@ -4,9 +4,9 @@ A Language Server Protocol implementation for the coln language.
 ## Installing the vscode Extension
 Currently the extension is not published to the vscode marketplace. In order to install the extension you will need to manually install the `.vsix` by selecting "Install from VSIX" on the extensions pane, then selecting the extension package. This can be retrieved as an artefact from any passing `vscode` pipeline. Alternatively if you wish to build the extension from source you can run the following from the project root:
 ```sh
-./shake vsce
+nix build .#vscode-extension -o bin/coln-vscode-extension.vsix
 ```
-And select the package produced in `coln-ls/client`
+Then select the package `coln-vscode-extension.vsix` produced in the root `bin` folder.
 
 ## Capabilities
 Currently the server supports the following:

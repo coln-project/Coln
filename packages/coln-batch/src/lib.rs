@@ -6,19 +6,22 @@
 //!
 //! This crate is built bottom-up:
 //!
-//! 1. deterministic test-data generators for e-matching-style join
+//! 1. the value types ([`types`]): typed schemas and values at the
+//!    boundary, normalized `u64` keys inside, strings through a
+//!    dictionary,
+//! 2. deterministic test-data generators for e-matching-style join
 //!    workloads ([`generate`]),
-//! 2. Arrow IPC persistence for that test data ([`io`]),
-//! 3. the [`table::SortedTable`] interface through which the engine reads
+//! 3. Arrow IPC persistence for that test data ([`io`]),
+//! 4. the [`table::SortedTable`] interface through which the engine reads
 //!    relations, with an in-memory implementation built from Arrow data
 //!    ([`table::ArrowSortedTable`]),
-//! 4. conjunctive queries as data ([`query`], fixtures in [`fixtures`],
+//! 5. conjunctive queries as data ([`query`], fixtures in [`fixtures`],
 //!    a brute-force test oracle in [`reference`]),
-//! 5. two executors over the same query representation: a binary
+//! 6. two executors over the same query representation: a binary
 //!    hash-join chain ([`binary_join`]) and a worst-case-optimal generic
 //!    join ([`generic_join`]), differential-tested against each other and
 //!    against the oracle,
-//! 6. recursive Datalog: rules and programs ([`rule`]) evaluated to the
+//! 7. recursive Datalog: rules and programs ([`rule`]) evaluated to the
 //!    least fixpoint with semi-naive iteration ([`fixpoint`]), again
 //!    differential-tested (semi-naive vs. naive, per executor).
 
@@ -34,3 +37,4 @@ pub mod relation;
 pub mod rng;
 pub mod rule;
 pub mod table;
+pub mod types;

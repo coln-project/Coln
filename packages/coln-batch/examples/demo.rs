@@ -20,6 +20,7 @@ use std::time::Instant;
 use anyhow::Result;
 use coln_batch::query::{Catalog, Query};
 use coln_batch::relation::Relation;
+use coln_batch::types::Dictionary;
 use coln_batch::{binary_join, fixtures, generate, generic_join, io};
 
 fn main() -> Result<()> {
@@ -85,8 +86,8 @@ fn demo(
     let mut catalog = Catalog::new();
     for rel in &relations {
         let path = dir.join(format!("{}.arrow", rel.name));
-        io::save_relation(rel, &path)?;
-        let loaded = io::load_relation(&rel.name, &path)?;
+        io::save_relation(rel, &Dictionary::new(), &path)?;
+        let loaded = io::load_relation(&rel.name, &path, catalog.dictionary_mut())?;
         anyhow::ensure!(&loaded == rel, "{}: reloaded relation differs", rel.name);
         println!("      {:<4} saved and reloaded, identical", loaded.name);
         catalog.insert(loaded);
@@ -101,7 +102,10 @@ fn demo(
         generic.len()
     );
     for i in 0..generic.len().min(3) {
-        println!("      sample row: {:?}", generic.row(i));
+        println!(
+            "      sample row: {:?}",
+            generic.row_values(i, catalog.dictionary())?
+        );
     }
 
     println!("[4] cross-checks:");

@@ -19,42 +19,49 @@
 //! variable columns in elimination order. [`execute`] builds those indexes
 //! in memory ([`ArrowSortedTable`]); a storage layer can serve them
 //! instead without touching this module's search logic.
+//!
+//! The search runs on keys (see [`crate::types`]); literals are encoded
+//! once up front and the result carries the typed schema of the head.
 
 use std::ops::Range;
 
 use anyhow::Result;
 
-use crate::query::{Catalog, Query, Term, VarId};
+use crate::query::{Catalog, KeyTerm, Query, VarId};
 use crate::relation::Relation;
 use crate::table::{ArrowSortedTable, SortedTable};
+use crate::types::Key;
 
 /// Evaluate `query` against `catalog` with the generic join. Returns the
 /// projected result, sorted and deduplicated (set semantics).
 pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
-    catalog.check(query)?;
+    let prepared = catalog.prepare(query)?;
+    let Some(key_atoms) = prepared.atoms else {
+        return Ok(Relation::empty("result", prepared.schema));
+    };
 
     // Build one suitably-sorted index per atom.
     // TODO(perf): sorting happens here, per query. Once the storage layer
     // serves SortedTable directly (pre-built indexes), this block becomes
     // a lookup instead of an O(N log N) build.
-    let mut atoms: Vec<AtomExec<ArrowSortedTable>> = Vec::with_capacity(query.atoms.len());
-    for atom in &query.atoms {
+    let mut atoms: Vec<AtomExec<ArrowSortedTable>> = Vec::with_capacity(key_atoms.len());
+    for atom in &key_atoms {
         let rel = catalog.get(&atom.relation)?;
 
         // Column order: literal columns first, then variable columns in
         // elimination (VarId) order; a variable's columns end up adjacent.
         let mut order: Vec<usize> = (0..atom.terms.len()).collect();
         order.sort_by_key(|&c| match atom.terms[c] {
-            Term::Lit(_) => (0, 0, c),
-            Term::Var(v) => (1, v, c),
+            KeyTerm::Lit(_) => (0, 0, c),
+            KeyTerm::Var(v) => (1, v, c),
         });
 
-        let mut lit_prefix: Vec<u64> = Vec::new();
+        let mut lit_prefix: Vec<Key> = Vec::new();
         let mut var_depths: Vec<Vec<usize>> = vec![Vec::new(); query.num_vars()];
         for (depth, &c) in order.iter().enumerate() {
             match atom.terms[c] {
-                Term::Lit(x) => lit_prefix.push(x),
-                Term::Var(v) => var_depths[v].push(depth),
+                KeyTerm::Lit(x) => lit_prefix.push(x),
+                KeyTerm::Var(v) => var_depths[v].push(depth),
             }
         }
 
@@ -75,12 +82,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
             r = a.table.equal_range(depth, x, r.start, r.end);
         }
         if r.is_empty() {
-            return Ok(Relation::from_flat_rows(
-                "result",
-                query.head_names(),
-                query.head.len(),
-                &[],
-            ));
+            return Ok(Relation::empty("result", prepared.schema));
         }
         ranges.push(r);
     }
@@ -99,22 +101,19 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         participants: &participants,
         query,
     };
-    let mut binding = vec![0u64; query.num_vars()];
-    let mut out: Vec<u64> = Vec::new();
+    let mut binding = vec![0 as Key; query.num_vars()];
+    let mut out: Vec<Key> = Vec::new();
     solver.solve(0, &mut ranges, &mut binding, &mut out);
 
-    Ok(
-        Relation::from_flat_rows("result", query.head_names(), query.head.len(), &out)
-            .sorted_dedup(),
-    )
+    Ok(Relation::from_flat_rows("result", prepared.schema, &out).sorted_dedup())
 }
 
 /// One atom, ready for execution: its sorted index plus the mapping from
 /// query variables to the index's sort depths.
 struct AtomExec<T: SortedTable> {
     table: T,
-    /// Values of the literal columns, by depth `0..lit_prefix.len()`.
-    lit_prefix: Vec<u64>,
+    /// Keys of the literal columns, by depth `0..lit_prefix.len()`.
+    lit_prefix: Vec<Key>,
     /// For each variable: the sort depths of its columns in this atom
     /// (adjacent by construction; empty if the variable does not occur).
     var_depths: Vec<Vec<usize>>,
@@ -133,8 +132,8 @@ impl<T: SortedTable> Solver<'_, T> {
         &self,
         v: VarId,
         ranges: &mut [Range<usize>],
-        binding: &mut [u64],
-        out: &mut Vec<u64>,
+        binding: &mut [Key],
+        out: &mut Vec<Key>,
     ) {
         if v == self.query.num_vars() {
             for &h in &self.query.head {
@@ -145,7 +144,7 @@ impl<T: SortedTable> Solver<'_, T> {
         let parts = &self.participants[v];
         debug_assert!(!parts.is_empty(), "validated: every var occurs somewhere");
 
-        let mut cand: u64 = 0;
+        let mut cand: Key = 0;
         loop {
             // Leapfrog: advance `cand` until every participating atom
             // contains it.
@@ -193,10 +192,12 @@ impl<T: SortedTable> Solver<'_, T> {
                 for (p, r) in saved {
                     ranges[p] = r;
                 }
-                if cand == u64::MAX {
+                // The key space is exhausted after the largest key, which
+                // a signed integer can legitimately encode to.
+                let Some(next) = cand.checked_add(1) else {
                     return;
-                }
-                cand += 1;
+                };
+                cand = next;
             }
         }
     }
@@ -205,7 +206,7 @@ impl<T: SortedTable> Solver<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query::Atom;
+    use crate::query::{Atom, Term};
 
     #[test]
     fn triangle_on_hand_built_graph() {
@@ -245,5 +246,36 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert_eq!(result.row(0), vec![4]);
         assert_eq!(result.row(1), vec![7]);
+    }
+
+    #[test]
+    fn largest_key_terminates() {
+        // i64::MAX encodes to u64::MAX; the search must stop after it
+        // instead of wrapping around.
+        let mut cat = Catalog::new();
+        cat.insert_rows(
+            "T",
+            crate::types::Schema::new([crate::types::Column::new(
+                "a",
+                crate::types::ScalarType::Iint,
+            )]),
+            vec![vec![i64::MAX.into()], vec![i64::MIN.into()]],
+        )
+        .unwrap();
+        let q = Query {
+            var_names: vec!["x".into()],
+            atoms: vec![Atom {
+                relation: "T".into(),
+                terms: vec![Term::Var(0)],
+            }],
+            head: vec![0],
+        };
+        let result = execute(&q, &cat).unwrap();
+        assert_eq!(
+            (0..result.len())
+                .map(|i| result.value(i, 0, cat.dictionary()).unwrap())
+                .collect::<Vec<_>>(),
+            vec![i64::MIN.into(), i64::MAX.into()]
+        );
     }
 }

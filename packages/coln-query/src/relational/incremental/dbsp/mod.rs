@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-mod cli_table;
 #[cfg(test)]
 mod playground;
 mod wrapper;
