@@ -12,7 +12,7 @@ use crate::error::SyntaxError;
 use crate::host::QueryIr;
 use crate::host::expr::{BinaryExpr, Expr, Literal, LiteralExpr, VarExpr};
 use crate::host::operator::Operator;
-use crate::host::stmt::{Stmt, VarStmt};
+use crate::host::stmt::{ExprStmt, Stmt, VarStmt};
 use crate::program::QueryProgram;
 use crate::relational::catalog::Catalog;
 use crate::relational::expr::{
@@ -53,6 +53,11 @@ pub struct FlirProgram {
     /// that what [`rule_declaration`](Self::rule_declaration) writes is exactly
     /// what [`derived_view_var_expr`](Self::derived_view_var_expr) reads.
     derived_views: HashMap<DerivedViewName, RuleMeta>,
+    /// The chased rules of the realm, by name. They are not part of the
+    /// incremental circuit; the batch backend evaluates them on demand
+    /// through [`ColnQuery::rule_matches`](crate::api::ColnQuery::rule_matches).
+    /// Interim, until chased rules have a place in the circuit.
+    batch_rules: HashMap<DerivedViewName, ir::Rule>,
 }
 
 #[derive(Debug)]
@@ -125,6 +130,7 @@ impl FlirProgram {
             code: QueryIr::default(),
             base_tables: HashMap::new(),
             derived_views: HashMap::new(),
+            batch_rules: HashMap::new(),
         }
     }
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
@@ -145,6 +151,45 @@ impl FlirProgram {
 
     pub fn sink_meta(&self, sink: &SinkId) -> Option<&RuleMeta> {
         self.derived_views.get(&EntityRef::from(sink))
+    }
+
+    /// A chased rule of the realm, kept for on-demand evaluation on the
+    /// batch backend.
+    pub fn batch_rule(&self, name: &Path) -> Option<&ir::Rule> {
+        self.batch_rules.get(&DerivedViewName::from(name))
+    }
+
+    /// Every chased rule of the realm, by name.
+    pub fn batch_rules(&self) -> impl Iterator<Item = (&DerivedViewName, &ir::Rule)> {
+        self.batch_rules.iter()
+    }
+
+    /// Lowers a rule's antecedents into a program that outputs every match
+    /// of the rule body under `sink`: one row per binding of the rule's
+    /// variables, columns named after the bindings. Also reports the
+    /// schema of that output.
+    pub(crate) fn rule_body_program(
+        &mut self,
+        rule: &ir::Rule,
+        sink: &str,
+    ) -> Result<(QueryIr, TableSchema), SyntaxError> {
+        let rule = FriendlyRule::new(rule);
+        let (body, bindings) = self.conjunctive_query(&rule.lhs, &rule.vars)?;
+        let schema = rule_output_schema(&EntityRef::from(sink), &bindings);
+        let code = QueryIr::new(vec![
+            Stmt::from(VarStmt {
+                name: sink.to_string(),
+                initializer: Some(body),
+            }),
+            Stmt::from(ExprStmt {
+                expr: Expr::from(OutputExpr {
+                    id: SinkId::from(sink),
+                    kind: OutputKind::Channel,
+                    relation: Expr::from(VarExpr::new(sink)),
+                }),
+            }),
+        ]);
+        Ok((code, schema))
     }
 
     fn table_declaration(&mut self, table_entry: &TableEntry) -> Result<(), SyntaxError> {
@@ -176,6 +221,21 @@ impl FlirProgram {
 
     fn rule_declaration(&mut self, rule_entry: &RuleEntry) -> Result<(), SyntaxError> {
         let name = DerivedViewName::from(&rule_entry.path);
+        if matches!(rule_entry.rule.rule_variant, ir::RuleVariant::Chased) {
+            // Interim: chased rules have no place in the incremental circuit
+            // yet (see `FriendlyRule`); they are kept for on-demand
+            // evaluation on the batch backend.
+            if self
+                .batch_rules
+                .insert(name.clone(), rule_entry.rule.clone())
+                .is_some()
+            {
+                return Err(SyntaxError::new(format!(
+                    "Rule {name} defined multiple times"
+                )));
+            }
+            return Ok(());
+        }
         let Some(rule) = FriendlyRule::from(&rule_entry.rule) else {
             // The rule is filtered out but not an error case.
             return Ok(());
@@ -498,7 +558,8 @@ impl QueryProgram for FlirProgram {
 /// Just like [`ir::Rule`] but friendlier because:
 ///
 /// 1. Meaningless rules with an empty [consequent](ir::Rule::consequents) are
-///    skipped and chased rules panic at the moment due to open questions.
+///    skipped; chased rules never reach it, [`FlirProgram::rule_declaration`]
+///    keeps them aside for the batch backend.
 /// 2. It zips the [`ir::Rule::var_names`] and the [`ir::Rule::var_types`] into one
 ///    array of [`FriendlyVar`]s.
 /// 3. It converts [`ir::Rule::antecedents`] and [`ir::Rule::consequents`] into a
@@ -515,11 +576,11 @@ impl FriendlyRule {
         if rule.consequents.is_empty() {
             return None;
         }
-        if matches!(rule.rule_variant, ir::RuleVariant::Chased) {
-            unimplemented!(
-                "[Unclear] Chased rules produce a materialized view; how are they different from a materialized view defined in the table/entities section?"
-            );
-        }
+        Some(Self::new(rule))
+    }
+
+    /// The rule as is, consequents or not, for evaluating its body alone.
+    fn new(rule: &ir::Rule) -> FriendlyRule {
         assert!(
             rule.var_names.len() == rule.var_types.len(),
             "var_names and var_types arrays do not size match"
@@ -535,12 +596,12 @@ impl FriendlyRule {
             .collect();
         let lhs = ConjunctiveQuery::from(&rule.antecedents);
         let rhs = ConjunctiveQuery::from(&rule.consequents);
-        Some(FriendlyRule {
+        FriendlyRule {
             kind: rule.rule_variant,
             vars,
             lhs,
             rhs,
-        })
+        }
     }
 }
 

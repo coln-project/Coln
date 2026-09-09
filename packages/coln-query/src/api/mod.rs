@@ -14,11 +14,21 @@ use crate::{
         violations::{ViolationsDelta, ViolationsSet},
     },
     error::{QueryEngineError, RuntimeError},
+    host::QueryIr,
     pipeline::Pipeline,
-    relational::{Runtime, expr::SourceId, incremental::DbspRuntime},
+    program::QueryProgram,
+    relational::{
+        Runtime,
+        batch::Snapshot,
+        catalog::Catalog,
+        expr::{SinkId, SourceId},
+        incremental::DbspRuntime,
+        schema::TableSchema,
+    },
 };
 use coln_flir_rs::ir::{self, FlatRealm};
 use query::FlirProgram;
+use std::borrow::Cow;
 
 pub mod deltas;
 pub mod error;
@@ -43,6 +53,11 @@ pub struct ColnQuery {
     incremental_runtime: DbspRuntime,
     /// If a transaction is currently being applied, this is `Some(StoreDelta)`.
     ongoing_tx: Option<StoreDelta>,
+    /// Every delta applied so far, in order, retractions included. Interim:
+    /// the batch backend cannot read the store, so an on-demand evaluation
+    /// replays these to rebuild the tables it needs. See
+    /// [`Self::rule_matches`].
+    applied_deltas: Vec<StoreDelta>,
 }
 
 impl ColnQuery {
@@ -57,6 +72,7 @@ impl ColnQuery {
             flir_program,
             incremental_runtime,
             ongoing_tx: None,
+            applied_deltas: Vec::new(),
         })
     }
     /// Compile one ad-hoc query and evaluate it on the batch backend.
@@ -100,6 +116,51 @@ impl ColnQuery {
         // are separate, ambiguous the moment one catalog answers from both.
         todo!("Run adhoc query on batch query engine");
     }
+    /// Every match of a rule's antecedents over the data applied so far,
+    /// evaluated on the batch backend: one row per binding of the rule's
+    /// variables, columns named after the bindings.
+    ///
+    /// Interim. The batch backend has no way to read the store, so the
+    /// tables it needs are rebuilt by replaying every delta this engine has
+    /// applied. Each call is one feed-commit-output cycle over that replay;
+    /// nothing is kept between calls. Only base tables are visible to the
+    /// rule, not the outputs of other rules.
+    pub fn rule_matches(&mut self, rule: &ir::Rule) -> Result<Snapshot, ColnQueryError> {
+        const SINK: &str = "matches";
+        let (code, _schema) = self
+            .flir_program
+            .rule_body_program(rule, SINK)
+            .map_err(QueryEngineError::from)?;
+        let mut program = BatchProgram {
+            code,
+            catalog: &self.flir_program,
+        };
+        let mut runtime = Pipeline::batch().runtime(&mut program)?;
+        for delta in &self.applied_deltas {
+            for table in delta.clone().into_table_deltas() {
+                let source = SourceId::from(table.for_entity());
+                runtime
+                    .feed(&source, table.into_delta())
+                    .map_err(QueryEngineError::from)?;
+            }
+        }
+        runtime.commit().map_err(QueryEngineError::from)?;
+        let snapshot = runtime
+            .output(&SinkId::from(SINK))
+            .map_err(QueryEngineError::from)?;
+        Ok(snapshot)
+    }
+
+    /// [`Self::rule_matches`] for a chased rule of the realm, by name.
+    pub fn batch_rule_matches(&mut self, name: &ir::Path) -> Result<Snapshot, ColnQueryError> {
+        let rule = self.flir_program.batch_rule(name).cloned().ok_or_else(|| {
+            QueryEngineError::from(RuntimeError::new(format!(
+                "the realm has no chased rule named {name:?}"
+            )))
+        })?;
+        self.rule_matches(&rule)
+    }
+
     /// This intended for use during restarts. We already know that the data
     /// we are feeding in fulfills all constraints, so the bookkeeping to
     /// potentially undo a transaction can be skipped.
@@ -115,6 +176,7 @@ impl ColnQuery {
         Ok(DataDelta::try_from(self.interpret_outputs()?)?)
     }
     fn internal_apply(&mut self, delta: StoreDelta) -> Result<(), QueryEngineError> {
+        self.applied_deltas.push(delta.clone());
         for delta in delta.into_table_deltas() {
             let source_id = SourceId::from(delta.for_entity());
             let delta = delta.into_delta().into_iter();
@@ -192,6 +254,29 @@ impl ColnQuery {
             derived_data_delta,
             soft_violations,
         )))
+    }
+}
+
+/// The program of one on-demand evaluation: a plan of its own, with the
+/// realm's FLIR program answering for the sources it names.
+struct BatchProgram<'a> {
+    code: QueryIr,
+    catalog: &'a FlirProgram,
+}
+
+impl Catalog for BatchProgram<'_> {
+    fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>> {
+        self.catalog.source_schema(id)
+    }
+}
+
+impl QueryProgram for BatchProgram<'_> {
+    fn code(&self) -> &QueryIr {
+        &self.code
+    }
+
+    fn take_code(&mut self) -> QueryIr {
+        std::mem::take(&mut self.code)
     }
 }
 
@@ -405,6 +490,133 @@ mod test {
         assert_eq!(violation.for_entity().id(), "Graph.E.foreignKey");
         assert_eq!(violation.delta().len(), 1);
 
+        Ok(())
+    }
+
+    fn path(parts: &[&str]) -> ir::Path {
+        ir::Path(parts.iter().map(|part| vec![part.to_string()]).collect())
+    }
+
+    /// `twoHops(a, c) <- E(a, b), E(b, c)` as a chased rule over the graph
+    /// realm: every pair of vertices joined by a path of two edges.
+    fn two_hops_rule() -> ir::Rule {
+        let var = |index: ir::VarIdx| ir::Term::Var { index };
+        let edge = |from: ir::VarIdx, to: ir::VarIdx| ir::Prop::Atom {
+            atom: ir::Atom {
+                entity: path(&["Graph", "E"]),
+                row_id: None,
+                values: vec![
+                    ir::ValueEntry {
+                        column: 0,
+                        term: var(from),
+                    },
+                    ir::ValueEntry {
+                        column: 1,
+                        term: var(to),
+                    },
+                ],
+            },
+        };
+        let vertex = ir::ColType::RowId {
+            path: path(&["Graph", "V"]),
+        };
+        ir::Rule {
+            rule_variant: ir::RuleVariant::Chased,
+            var_names: vec![path(&["a"]), path(&["b"]), path(&["c"])],
+            var_types: vec![vertex.clone(), vertex.clone(), vertex],
+            antecedents: vec![edge(0, 1), edge(1, 2)],
+            consequents: vec![ir::Prop::Atom {
+                atom: ir::Atom {
+                    entity: path(&["Graph", "V"]),
+                    row_id: Some(var(0)),
+                    values: vec![],
+                },
+            }],
+        }
+    }
+
+    /// A chased rule in the realm no longer breaks init, and its body can
+    /// be evaluated on the batch backend over the transactions applied so
+    /// far: the two-hop pairs of a three-vertex path.
+    #[test]
+    fn chased_rule_matches_on_batch() -> Result<()> {
+        use crate::scalarial::ScalarTypedValue;
+
+        let mut graph_flir = graph_flir::GraphFlir::init();
+        let mut realm = graph_flir.load();
+        realm.rules.push(ir::RuleEntry {
+            path: path(&["Graph", "twoHops"]),
+            rule: two_hops_rule(),
+        });
+        let mut coln_query = ColnQuery::init(&realm)?;
+        assert!(
+            coln_query
+                .flir_program
+                .batch_rule(&path(&["Graph", "twoHops"]))
+                .is_some(),
+            "the chased rule is kept for the batch backend"
+        );
+
+        // v0 -> v1 -> v2, plus a dead end v1 -> v3, over two transactions.
+        let v0 = graph_flir.insert_vertex();
+        let v1 = graph_flir.insert_vertex();
+        let v2 = graph_flir.insert_vertex();
+        let v3 = graph_flir.insert_vertex();
+        let mut tx0 = Tx::empty();
+        tx0.insert(graph_flir.next_epoch().into_table_deltas());
+        tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        graph_flir.insert_edge(&v0, &v1);
+        graph_flir.insert_edge(&v1, &v2);
+        graph_flir.insert_edge(&v1, &v3);
+        let mut tx1 = Tx::empty();
+        tx1.insert(graph_flir.next_epoch().into_table_deltas());
+        tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+
+        // Both entry points, the rule itself and its name in the realm.
+        let by_rule = coln_query.rule_matches(&two_hops_rule())?;
+        let by_name = coln_query.batch_rule_matches(&path(&["Graph", "twoHops"]))?;
+        assert_eq!(by_rule, by_name);
+
+        // Two paths of two edges: v0-v1-v2 and v0-v1-v3. Each row binds a, b
+        // and c as row ids, that is, six unsigned integers.
+        assert_eq!(by_rule.len(), 2, "{by_rule:?}");
+        assert_eq!(by_rule.columns().len(), 6, "{:?}", by_rule.columns());
+        let mut ends: Vec<Vec<u64>> = by_rule
+            .rows()
+            .iter()
+            .map(|row| {
+                row.data
+                    .iter()
+                    .map(|cell| match cell {
+                        ScalarTypedValue::Uint(u) => *u,
+                        other => panic!("row ids reach the engine as uint, got {other:?}"),
+                    })
+                    .collect()
+            })
+            .collect();
+        ends.sort();
+        let ids = |v: &graph_flir::Vertex| vec![v.row_id().hash(), v.row_id().ctr()];
+        for row in &ends {
+            let (a, b) = (&row[..2], &row[2..4]);
+            assert_eq!(a, ids(&v0).as_slice(), "a is always v0");
+            assert_eq!(b, ids(&v1).as_slice(), "b is always v1");
+        }
+        let mut cs: Vec<Vec<u64>> = ends.iter().map(|row| row[4..].to_vec()).collect();
+        cs.sort();
+        let mut expected = vec![ids(&v2), ids(&v3)];
+        expected.sort();
+        assert_eq!(cs, expected);
+
+        // A third transaction extends the path; the next evaluation sees it.
+        let v4 = graph_flir.insert_vertex();
+        let mut tx2 = Tx::empty();
+        tx2.insert(graph_flir.next_epoch().into_table_deltas());
+        tx2.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        graph_flir.insert_edge(&v2, &v4);
+        let mut tx3 = Tx::empty();
+        tx3.insert(graph_flir.next_epoch().into_table_deltas());
+        tx3.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        assert_eq!(coln_query.rule_matches(&two_hops_rule())?.len(), 3);
         Ok(())
     }
 
