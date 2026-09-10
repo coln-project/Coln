@@ -1535,13 +1535,13 @@ mod tests {
 
     #[test]
     fn graph_flir() {
-        let program = translate_json_flir("Graph.json");
+        let program = translate_json_flir("GraphRealm.json");
         println!("{}", program.to_tree());
     }
 
     #[test]
     fn graph_of_graphs_flir() {
-        let program = translate_json_flir("GraphOfGraphs.json");
+        let program = translate_json_flir("GraphOfGraphsRealm.json");
         println!("{}", program.to_tree());
     }
 }

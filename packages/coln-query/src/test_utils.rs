@@ -276,7 +276,7 @@ pub mod graph_flir {
     }
 
     impl JsonFlir for GraphFlir {
-        const FILENAME: &'static str = "Graph.json";
+        const FILENAME: &'static str = "GraphRealm.json";
     }
 
     pub trait Entity {
@@ -318,7 +318,7 @@ pub mod graph_flir {
     }
 
     impl Entity for Vertex {
-        const NAME: &'static str = "Graph.V";
+        const NAME: &'static str = "GraphRealm.root.V";
 
         fn to_row(&self) -> TupleValue {
             [
@@ -372,7 +372,7 @@ pub mod graph_flir {
     }
 
     impl Entity for Edge {
-        const NAME: &'static str = "Graph.E";
+        const NAME: &'static str = "GraphRealm.root.E";
 
         fn to_row(&self) -> TupleValue {
             [
