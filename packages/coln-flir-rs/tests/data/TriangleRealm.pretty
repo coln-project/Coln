@@ -1,0 +1,47 @@
+flatrealm
+  entities
+    table ℜ.root.V := []
+    table ℜ.root.E := [.a : ℜ.root.V, .b : ℜ.root.V]
+    view ℜ.`view`.triangle := [
+      .triangle.a : ℜ.root.V,
+      .triangle.b : ℜ.root.V,
+      .triangle.c : ℜ.root.V,
+      .triangle.f : ℜ.root.E,
+      .triangle.g : ℜ.root.E,
+      .triangle.h : ℜ.root.E
+    ] primarykey [
+      .triangle.a,
+      .triangle.b,
+      .triangle.c,
+      .triangle.f,
+      .triangle.g,
+      .triangle.h
+    ]
+  end
+  definitions
+    chased ℜ.`view`.triangle.definition triangle.a triangle.b triangle.c triangle.f triangle.g triangle.h := triangle.a ∈ ℜ.root.V [] ∧ triangle.b ∈ ℜ.root.V [] ∧ triangle.c ∈ ℜ.root.V [] ∧ triangle.f ∈ ℜ.root.E [
+      .a ↦ triangle.a,
+      .b ↦ triangle.b
+    ] ∧ triangle.g ∈ ℜ.root.E [
+      .a ↦ triangle.b,
+      .b ↦ triangle.c
+    ] ∧ triangle.h ∈ ℜ.root.E [
+      .a ↦ triangle.a,
+      .b ↦ triangle.c
+    ] ⊢ ℜ.`view`.triangle [
+      .triangle.a ↦ triangle.a,
+      .triangle.b ↦ triangle.b,
+      .triangle.c ↦ triangle.c,
+      .triangle.f ↦ triangle.f,
+      .triangle.g ↦ triangle.g,
+      .triangle.h ↦ triangle.h
+    ]
+  end
+  rules
+    enforced ℜ.root.V.foreignKey := ℜ.root.V [] ⊢ ⊤
+    enforced ℜ.root.E.foreignKey a b := ℜ.root.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.root.V [] ∧ b ∈ ℜ.root.V []
+  end
+end

@@ -6,7 +6,12 @@ use coln_flir_rs::ir::Path;
 use coln_flir_rs::test_utils;
 
 // TODO add more theory json files
-const THEORY_FIXTURES: &[&str] = &["GraphOfGraphsRealm.json", "GraphRealm.json"];
+const THEORY_FIXTURES: &[&str] = &[
+    "GraphRealm.json",
+    "GraphOfGraphsRealm.json",
+    "TriangleRealm.json",
+    "TransitiveClosureRealm.json",
+];
 
 #[test]
 fn deserialises_all_theory_fixtures() {

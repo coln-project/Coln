@@ -3,7 +3,7 @@ theory Graph := sig
   E : V -> V -> Set
 end
 
-realm GraphRealm @ Graph
+realm TriangleRealm @ Graph
   def triangle : Set := sig
     a : root.V
     b : root.V
