@@ -1,0 +1,19 @@
+theory BipartiteGraph := sig
+  red : Set
+  blue : Set
+  red-blue : red -> blue -> Set
+  blue-red : blue -> red -> Set
+end
+
+theory BipartiteConnection (^i G : BipartiteGraph) := sig
+  red-red : G.red -> G.red -> Prop
+  blue-blue : G.blue -> G.blue -> Prop
+  red/refl : (v : G.red) -> red-red v v
+  blue/refl : (v : G.blue) -> blue-blue v v
+  red/trans : (v0 : G.red) -> (v1 : G.red) -> (w0 : G.blue) -> (w1 : G.blue) -> G.red-blue v0 w0 -> blue-blue w0 w1 -> G.blue-red w1 v1 -> red-red v0 v1
+  blue/trans : (v0 : G.blue) -> (v1 : G.blue) -> (w0 : G.red) -> (w1 : G.red) -> G.blue-red v0 w0 -> red-red w0 w1 -> G.red-blue w1 v1 -> blue-blue v0 v1
+end
+
+realm BipartiteGraphRealm @ BipartiteGraph
+  ind def connection-info : BipartiteConnection root := init (BipartiteConnection root)
+end
