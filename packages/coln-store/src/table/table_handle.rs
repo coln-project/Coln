@@ -10,7 +10,7 @@ use crate::pack::IdPacker;
 use crate::rowing::Rowing;
 #[cfg(test)]
 use crate::table::PackedOp;
-use crate::table::index::{IndexId, IndexMeta};
+use crate::table::index::IndexMeta;
 use crate::table::{
     PackedRowView, PackedValue, Table, TableOid, ValidationError, WireRowId, WireValue,
 };
@@ -111,13 +111,12 @@ impl<'a> TableHandle<'a> {
         }
     }
 
-    pub fn indexes_meta(self) -> Vec<IndexMeta<'a>> {
-        self.inner.indexes_meta()
+    pub fn index_meta(self) -> IndexMeta<'a> {
+        self.inner.index_meta()
     }
 
     pub fn index_seek(
         self,
-        index: IndexId,
         key: &[WireValue],
     ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
         let packed_key = key
@@ -136,12 +135,12 @@ impl<'a> TableHandle<'a> {
             .collect::<Result<Vec<PackedValue>, _>>()?;
         Ok(self
             .inner
-            .index_seek(index, &packed_key)?
+            .index_seek(&packed_key)?
             .map(|packed_id| self.id_packer.unpack_row_id(packed_id)))
     }
 
-    pub fn primary_index(&self) -> Option<IndexId> {
-        self.inner.primary_index()
+    pub fn unique_columns(self) -> Option<usize> {
+        self.inner.unique_columns()
     }
 
     // For internal convenience

@@ -11,6 +11,7 @@
 //! Indexes are derived data: they are rebuilt by replaying commits. They might
 //! be persisted for performance reasons in the future.
 
+use core::panic;
 use std::ops::Range;
 
 use crate::{
@@ -20,10 +21,7 @@ use crate::{
 
 use super::{CellKind, Column, IdColumn};
 
-pub(crate) type IndexId = usize;
-
 pub struct IndexMeta<'a> {
-    pub id: IndexId,
     pub key_cols: &'a [usize],
 }
 
@@ -60,7 +58,12 @@ impl TableIndex {
         }
     }
 
+    /// insert assumes that the key as the same number of columns as the
     pub(super) fn insert(&mut self, key: Vec<PackedValue>, value: PackedRowId) {
+        if key.len() != self.key_cols.len() {
+            panic!("insertion key length must be the same as the index length");
+        }
+
         let key_range = self.scope_key(&key);
         let value_range = self.values.scope_to_value(value, key_range);
         let position = value_range.end;
@@ -72,6 +75,10 @@ impl TableIndex {
     }
 
     pub(super) fn remove(&mut self, key: &[PackedValue], value: PackedRowId) {
+        if key.len() != self.key_cols.len() {
+            panic!("removing key length must be the same as the index length");
+        }
+
         let key_range = self.scope_key(key);
         let value_range = self.values.scope_to_value(value, key_range);
         for position in value_range.rev() {
@@ -82,10 +89,16 @@ impl TableIndex {
         }
     }
 
+    /// Get does not require the key to be the same length as declared by the index
+    /// if the key is shorter, we just return all the rows that matches the key
     pub(super) fn get<'s>(
         &'s self,
         key: &[PackedValue],
     ) -> impl Iterator<Item = PackedRowId> + use<'s> {
+        if key.len() > self.key_cols().len() {
+            panic!("get must be on a key that is smaller/equal to the actual index column length");
+        }
+
         self.scope_key(key).map(|position| self.values.at(position))
     }
 
@@ -94,11 +107,11 @@ impl TableIndex {
     }
 
     fn scope_key(&self, key: &[PackedValue]) -> Range<usize> {
-        debug_assert_eq!(
-            key.len(),
-            self.keys.len(),
-            "index key has the wrong column count"
-        );
+        if key.len() > self.key_cols().len() {
+            panic!(
+                "scope_key must be on a key that is smaller/equal to the actual index column length"
+            );
+        }
 
         self.keys
             .iter()

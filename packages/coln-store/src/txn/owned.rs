@@ -84,9 +84,7 @@ mod tests {
     use crate::test_utils::single_int_store;
 
     #[rstest]
-    fn owned_transaction_commits_and_returns_updated_store(
-        #[from(single_int_store)] store: Store,
-    ) {
+    fn owned_transaction_commits_and_returns_updated_store(#[from(single_int_store)] store: Store) {
         let path = Path::from("T");
 
         let mut tx = OwnedTransaction::new(store);

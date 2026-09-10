@@ -4,10 +4,7 @@
 
 use std::ops::Range;
 
-use crate::{
-    store::Store,
-    table::{self, TableHandle, TableOid},
-};
+use crate::table::{self, TableHandle};
 
 pub type RowIdx = usize;
 pub type ColIdx = usize;
@@ -105,30 +102,20 @@ pub trait SortedTable {
 
 pub struct SortedCopy<'a> {
     table: TableHandle<'a>,
-    sort_order: &'a [usize],
+    sort_order: Vec<ColIdx>,
 }
 
-impl Store {
-    /// Returns all the ways a table could be sorted by as a SortedOneTable
-    /// which implements the `SortedTable` trait
-    pub fn sorted_snapshot_of(&self, oid: TableOid) -> Vec<SortedCopy<'_>> {
-        let mut sorted_snapshots = vec![];
-        if let Some(tr) = self.table(oid) {
-            let sort_by_rid = SortedCopy {
-                table: tr,
-                sort_order: &[0],
-            };
-            sorted_snapshots.push(sort_by_rid);
-
-            for index_info in tr.indexes_meta() {
-                let sort_by_idnex = SortedCopy {
-                    table: tr,
-                    sort_order: index_info.key_cols,
-                };
-                sorted_snapshots.push(sort_by_idnex);
-            }
-        }
-        sorted_snapshots
+impl<'a> TableHandle<'a> {
+    pub fn sorted_copies(self) -> Vec<SortedCopy<'a>> {
+        let s1 = SortedCopy {
+            table: self,
+            sort_order: vec![0],
+        };
+        let s2 = SortedCopy {
+            table: self,
+            sort_order: (1..self.inner().schema().columns.len() + 1).collect(),
+        };
+        vec![s1, s2]
     }
 }
 
@@ -145,7 +132,7 @@ impl<'a> SortedTable for SortedCopy<'a> {
     }
 
     fn sort_order(&self) -> &[ColIdx] {
-        self.sort_order
+        &self.sort_order
     }
 
     fn value(&self, row: RowIdx, col: ColIdx) -> Option<Self::Value> {
@@ -213,11 +200,9 @@ mod tests {
         let mut store = Store::new();
         let oid = store.create_table(path, schema).expect("create test table");
 
-        let snapshots = store.sorted_snapshot_of(oid);
-        assert_eq!(snapshots.len(), 3);
-        // rid-order placeholder, then primary-key index, then all-columns structural index
-        assert_eq!(snapshots[0].sort_order(), &[0]);
-        assert_eq!(snapshots[1].sort_order(), &[0]);
-        assert_eq!(snapshots[2].sort_order(), &[0, 1]);
+        let t = store.table(oid).expect("table exists").sorted_copies();
+        assert_eq!(t.len(), 2);
+        assert_eq!(t[0].sort_order(), &[0]);
+        assert_eq!(t[1].sort_order(), &[1, 2]);
     }
 }
