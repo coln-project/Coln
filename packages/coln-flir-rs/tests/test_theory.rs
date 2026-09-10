@@ -22,10 +22,13 @@ fn deserialises_graph_theory() {
     assert_eq!(theory.tables.len(), 2);
     assert_eq!(theory.rules.len(), 2);
 
-    assert_eq!(theory.tables[0].path, Path::from("Graph.E"));
-    assert_eq!(theory.tables[1].path, Path::from("Graph.V"));
+    assert_eq!(theory.tables[0].path, Path::from("GraphRealm.root.V"));
+    assert_eq!(theory.tables[1].path, Path::from("GraphRealm.root.E"));
 
-    let rules = &theory.rules[0];
-    assert_eq!(rules.path, Path::from("Graph.E.foreignKey"));
-    assert_eq!(rules.rule.vars.len(), 2);
+    let e_foreign_key_rule = &theory.rules[1];
+    assert_eq!(
+        e_foreign_key_rule.path,
+        Path::from("GraphRealm.root.E.foreignKey")
+    );
+    assert_eq!(e_foreign_key_rule.rule.vars.len(), 2);
 }
