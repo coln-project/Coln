@@ -56,10 +56,7 @@ mod tests {
             decoded.ir.tables[0].table.columns,
             int_schema(vec!["c0"], Some(vec![0])).columns
         );
-        assert_eq!(
-            decoded.ir.tables[0].table.primary_key,
-            Some(vec![Path::from("c0")])
-        );
+        assert_eq!(decoded.ir.tables[0].table.primary_key, Some(vec![0]));
         assert_eq!(decoded.ir.rules.len(), 1);
         assert_eq!(decoded.ir.rules[0].path, Path::from("T.non_negative"));
         assert_eq!(decoded.coln_def.theory, "theory T");
