@@ -11,15 +11,22 @@
 //! coln-batch's semi-naive fixpoint then computes the entire plan,
 //! including the dependencies between statements, in one run.
 //!
-//! Scope of this first slice: purely relational plans. Sources, equi
-//! joins on columns (chains are flattened into one n-ary rule body),
-//! multi-way equi joins (FLIR's native n-ary node, consumed directly),
-//! cartesian products, projections onto columns and literals, equality
-//! selections against literals, unions, distinct, and fixed points whose
-//! step is a single relational expression. Everything that needs the
-//! scalar engine (computed columns, general conditions) and the
-//! remaining operators (anti join, difference) fail with a clear error
-//! instead of a wrong answer.
+//! Types travel with the columns. A source column has the type its
+//! schema declares, a rule variable the type of the column it was created
+//! for, and a derived relation the types of its head. Unifying two
+//! columns of different types (a join, a selection against a literal of
+//! the wrong type) is a lowering error, so the engine never sees an
+//! ill-typed program.
+//!
+//! Scope of this slice: purely relational plans. Sources, equi joins on
+//! columns (chains are flattened into one n-ary rule body), multi-way
+//! equi joins (FLIR's native n-ary node, consumed directly), cartesian
+//! products, projections onto columns and literals, equality selections
+//! against literals, unions, distinct, and fixed points whose step is a
+//! single relational expression. Everything that needs the scalar engine
+//! (computed columns, general conditions) and the remaining operators
+//! (anti join, difference) fail with a clear error instead of a wrong
+//! answer.
 //!
 //! The tests at the bottom build up in difficulty and double as a guided
 //! tour of the translation.
@@ -29,9 +36,11 @@ use std::collections::HashMap;
 use anyhow::{Context, Result, bail};
 use coln_batch::query::{Atom, Term};
 use coln_batch::rule::{Program, Rule};
+use coln_batch::types::{Column, ScalarType, Schema, Value};
 
+use super::values::{batch_schema, literal_value};
 use crate::host::QueryIr;
-use crate::host::expr::{Expr, Literal};
+use crate::host::expr::Expr;
 use crate::host::operator::Operator;
 use crate::host::stmt::{Stmt, VarStmt};
 use crate::relational::catalog::SourceSchemas;
@@ -44,12 +53,12 @@ use crate::relational::expr::{
 pub struct LoweredPlan {
     /// One Datalog program covering every statement of the plan.
     pub program: Program,
-    /// Source id (schema name) to column names, in tuple order.
-    pub sources: HashMap<String, Vec<String>>,
+    /// Source id (schema name) to its schema, in tuple order.
+    pub sources: HashMap<String, Schema>,
     /// Sink id to the derived relation `output` reads.
     pub outputs: HashMap<String, String>,
-    /// Column names per relation, sources and derived alike.
-    pub schemas: HashMap<String, Vec<String>>,
+    /// Schema per relation, sources and derived alike.
+    pub schemas: HashMap<String, Schema>,
 }
 
 /// Lower a plan (its statement list) into a [`LoweredPlan`]. `sources`
@@ -59,22 +68,19 @@ pub fn lower(ir: &QueryIr, sources: &SourceSchemas) -> Result<LoweredPlan> {
     let available_sources = sources
         .iter()
         .map(|(id, schema)| {
-            let columns = schema
-                .columns()
-                .iter()
-                .map(|column| column.name().to_string())
-                .collect();
-            (id.as_str().to_string(), columns)
+            let schema = batch_schema(schema)
+                .with_context(|| format!("in the schema of source {}", id.as_str()))?;
+            Ok((id.as_str().to_string(), schema))
         })
-        .collect();
+        .collect::<Result<HashMap<_, _>>>()?;
     let mut lowerer = Lowerer {
         available_sources,
         ..Lowerer::default()
     };
     lowerer.lower_stmts(ir)?;
-    let mut schemas: HashMap<String, Vec<String>> = lowerer.sources.clone();
+    let mut schemas: HashMap<String, Schema> = lowerer.sources.clone();
     for (name, info) in &lowerer.env {
-        schemas.insert(name.clone(), info.columns.clone());
+        schemas.insert(name.clone(), info.schema.clone());
     }
     Ok(LoweredPlan {
         program: Program {
@@ -86,28 +92,28 @@ pub fn lower(ir: &QueryIr, sources: &SourceSchemas) -> Result<LoweredPlan> {
     })
 }
 
-/// What a plan variable is bound to: a relation plus its column names.
+/// What a plan variable is bound to: a relation plus its schema.
 #[derive(Clone)]
 struct RelInfo {
     relation: String,
-    columns: Vec<String>,
+    schema: Schema,
 }
 
 /// A column binding inside one rule body under construction.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum Bind {
     Var(usize),
-    Lit(u64),
+    Lit(Value),
 }
 
 impl Bind {
-    fn term(self, remap: &HashMap<usize, usize>) -> Result<Term> {
+    fn term(&self, remap: &HashMap<usize, usize>) -> Result<Term> {
         match self {
             Bind::Var(v) => remap
-                .get(&v)
+                .get(v)
                 .map(|nv| Term::Var(*nv))
                 .context("head column refers to a variable that does not occur in the body"),
-            Bind::Lit(x) => Ok(Term::lit(x)),
+            Bind::Lit(value) => Ok(Term::Lit(value.clone())),
         }
     }
 }
@@ -124,43 +130,69 @@ struct Scope {
 impl Scope {
     fn resolve(&self, name: &str) -> Result<Bind> {
         match self.names.get(name) {
-            Some(Some(bind)) => Ok(*bind),
+            Some(Some(bind)) => Ok(bind.clone()),
             Some(None) => bail!("column {name} is ambiguous here, qualify it with an alias"),
             None => bail!("unknown column {name}"),
         }
     }
 
-    fn substitute(&mut self, from: usize, to: Bind) {
+    fn substitute(&mut self, from: usize, to: &Bind) {
         for (_, bind) in &mut self.columns {
             if *bind == Bind::Var(from) {
-                *bind = to;
+                *bind = to.clone();
             }
         }
         for bind in self.names.values_mut() {
             if *bind == Some(Bind::Var(from)) {
-                *bind = Some(to);
+                *bind = Some(to.clone());
             }
         }
     }
+
+    /// The columns as a schema, with their types taken from `frame`.
+    fn schema(&self, frame: &Frame) -> Schema {
+        self.columns
+            .iter()
+            .map(|(name, bind)| Column::new(name.clone(), frame.ty(bind)))
+            .collect()
+    }
 }
 
-/// One rule body under construction: a variable counter and the atoms.
+/// One rule body under construction: the variables (each with its type)
+/// and the atoms.
 #[derive(Default)]
 struct Frame {
-    next_var: usize,
+    var_types: Vec<ScalarType>,
     atoms: Vec<Atom>,
 }
 
 impl Frame {
-    fn fresh(&mut self) -> usize {
-        self.next_var += 1;
-        self.next_var - 1
+    fn fresh(&mut self, ty: ScalarType) -> usize {
+        self.var_types.push(ty);
+        self.var_types.len() - 1
     }
 
-    fn substitute(&mut self, from: usize, to: Bind) {
+    fn ty(&self, bind: &Bind) -> ScalarType {
+        match bind {
+            Bind::Var(v) => self.var_types[*v],
+            Bind::Lit(value) => value.scalar_type(),
+        }
+    }
+
+    /// Fail unless both bindings have the same type; `what` names the
+    /// construct for the message.
+    fn check_same_type(&self, left: &Bind, right: &Bind, what: &str) -> Result<()> {
+        let (l, r) = (self.ty(left), self.ty(right));
+        if l != r {
+            bail!("{what} equates a {l} column with a {r} column");
+        }
+        Ok(())
+    }
+
+    fn substitute(&mut self, from: usize, to: &Bind) {
         let to = match to {
-            Bind::Var(v) => Term::Var(v),
-            Bind::Lit(x) => Term::lit(x),
+            Bind::Var(v) => Term::Var(*v),
+            Bind::Lit(value) => Term::Lit(value.clone()),
         };
         for atom in &mut self.atoms {
             for term in &mut atom.terms {
@@ -175,10 +207,10 @@ impl Frame {
 #[derive(Default)]
 struct Lowerer {
     rules: Vec<Rule>,
-    /// All base tables the catalog offers (id, column names).
-    available_sources: HashMap<String, Vec<String>>,
+    /// All base tables the catalog offers (id, schema).
+    available_sources: HashMap<String, Schema>,
     /// The subset of `available_sources` the plan actually uses.
-    sources: HashMap<String, Vec<String>>,
+    sources: HashMap<String, Schema>,
     env: HashMap<String, RelInfo>,
     outputs: HashMap<String, String>,
 }
@@ -203,7 +235,7 @@ impl Lowerer {
             .as_ref()
             .with_context(|| format!("variable {} has no initializer", var.name))?;
 
-        let columns = match initializer {
+        let schema = match initializer {
             // Aliasing one relation variable to another.
             Expr::Var(inner) => {
                 let info = self.lookup(&inner.name)?.clone();
@@ -215,24 +247,25 @@ impl Lowerer {
                     self.lower_fixed_point(&var.name, fixed_point)?
                 }
                 RelExpr::Union(union) => {
-                    let mut columns: Option<Vec<String>> = None;
+                    let mut schema: Option<Schema> = None;
                     for branch in &union.relations {
-                        let branch_columns = self.push_rule_for(&var.name, branch)?;
-                        match &columns {
-                            None => columns = Some(branch_columns),
+                        let branch_schema = self.push_rule_for(&var.name, branch)?;
+                        match &schema {
+                            None => schema = Some(branch_schema),
                             Some(first) => {
-                                if first.len() != branch_columns.len() {
+                                if first.types() != branch_schema.types() {
                                     bail!(
-                                        "union branches for {} have arities {} and {}",
+                                        "union branches for {} have different schemas, \
+                                         {} and {}",
                                         var.name,
-                                        first.len(),
-                                        branch_columns.len()
+                                        describe(first),
+                                        describe(&branch_schema)
                                     );
                                 }
                             }
                         }
                     }
-                    columns.with_context(|| format!("union for {} is empty", var.name))?
+                    schema.with_context(|| format!("union for {} is empty", var.name))?
                 }
                 _ => self.push_rule_for(&var.name, initializer)?,
             },
@@ -246,19 +279,20 @@ impl Lowerer {
             var.name.clone(),
             RelInfo {
                 relation: var.name.clone(),
-                columns,
+                schema,
             },
         );
         Ok(())
     }
 
     /// Lower one relational expression into a single rule with the given
-    /// head relation; returns the head's column names.
-    fn push_rule_for(&mut self, head: &str, expr: &Expr) -> Result<Vec<String>> {
+    /// head relation; returns the head's schema.
+    fn push_rule_for(&mut self, head: &str, expr: &Expr) -> Result<Schema> {
         let mut frame = Frame::default();
         let scope = self.lower_rel(expr, &mut frame)?;
+        let schema = scope.schema(&frame);
         self.push_rule(head, frame, &scope)?;
-        Ok(scope.columns.iter().map(|(name, _)| name.clone()).collect())
+        Ok(schema)
     }
 
     /// A fixed point defines its accumulator as a recursive relation:
@@ -269,9 +303,9 @@ impl Lowerer {
         &mut self,
         head: &str,
         fixed_point: &FixedPointIterExpr,
-    ) -> Result<Vec<String>> {
+    ) -> Result<Schema> {
         let (accumulator, init) = (&fixed_point.accumulator.0, &fixed_point.accumulator.1);
-        let columns = self.push_rule_for(head, init)?;
+        let schema = self.push_rule_for(head, init)?;
 
         // Inside the step, the accumulator name refers to the relation
         // being defined; that reference is what makes the rule recursive.
@@ -279,7 +313,7 @@ impl Lowerer {
             accumulator.clone(),
             RelInfo {
                 relation: head.to_string(),
-                columns: columns.clone(),
+                schema: schema.clone(),
             },
         );
 
@@ -290,12 +324,12 @@ impl Lowerer {
             let Stmt::Expr(step_expr) = step else {
                 bail!("batch lowering expects the fixed point step to be an expression");
             };
-            let step_columns = self.push_rule_for(head, &step_expr.expr)?;
-            if step_columns.len() != columns.len() {
+            let step_schema = self.push_rule_for(head, &step_expr.expr)?;
+            if step_schema.types() != schema.types() {
                 bail!(
-                    "fixed point step for {head} has arity {}, its base has {}",
-                    step_columns.len(),
-                    columns.len()
+                    "fixed point step for {head} has schema {}, its base has {}",
+                    describe(&step_schema),
+                    describe(&schema)
                 );
             }
             Ok(())
@@ -310,7 +344,7 @@ impl Lowerer {
             }
         }
         result?;
-        Ok(columns)
+        Ok(schema)
     }
 
     /// An output statement names a derived relation as a sink.
@@ -350,7 +384,7 @@ impl Lowerer {
                     let inner = self.lower_rel(&alias.relation, frame)?;
                     let mut names = inner.names.clone();
                     for (name, bind) in &inner.columns {
-                        names.insert(format!("{}.{}", alias.alias, name), Some(*bind));
+                        names.insert(format!("{}.{}", alias.alias, name), Some(bind.clone()));
                     }
                     Ok(Scope {
                         columns: inner.columns,
@@ -367,7 +401,7 @@ impl Lowerer {
                         let bind = self
                             .lower_attribute(attribute, &inner)
                             .with_context(|| format!("in the projection attribute {name}"))?;
-                        columns.push((name.clone(), bind));
+                        columns.push((name.clone(), bind.clone()));
                         names.insert(name.clone(), Some(bind));
                     }
                     Ok(Scope { columns, names })
@@ -398,29 +432,31 @@ impl Lowerer {
 
     fn lower_source(&mut self, source: &SourceExpr, frame: &mut Frame) -> Result<Scope> {
         let id = source.as_id().as_str().to_string();
-        let columns = self
+        let schema = self
             .available_sources
             .get(&id)
             .with_context(|| format!("source {id} is not in the catalog"))?
             .clone();
-        self.sources.insert(id.clone(), columns.clone());
+        self.sources.insert(id.clone(), schema.clone());
         let info = RelInfo {
             relation: id,
-            columns,
+            schema,
         };
         Ok(self.scope_from_atom(&info, frame))
     }
 
-    /// Place one atom over `info`'s relation with fresh variables.
+    /// Place one atom over `info`'s relation with fresh variables, one per
+    /// column, typed like the column.
     fn scope_from_atom(&mut self, info: &RelInfo, frame: &mut Frame) -> Scope {
-        let mut columns = Vec::with_capacity(info.columns.len());
+        let arity = info.schema.arity();
+        let mut columns = Vec::with_capacity(arity);
         let mut names = HashMap::new();
-        let mut terms = Vec::with_capacity(info.columns.len());
-        for name in &info.columns {
-            let var = frame.fresh();
+        let mut terms = Vec::with_capacity(arity);
+        for column in info.schema.columns() {
+            let var = frame.fresh(column.ty);
             terms.push(Term::Var(var));
-            columns.push((name.clone(), Bind::Var(var)));
-            names.insert(name.clone(), Some(Bind::Var(var)));
+            columns.push((column.name.clone(), Bind::Var(var)));
+            names.insert(column.name.clone(), Some(Bind::Var(var)));
         }
         frame.atoms.push(Atom {
             relation: info.relation.clone(),
@@ -442,16 +478,23 @@ impl Lowerer {
         let mut left = left;
 
         for (left_expr, right_expr) in &join.on {
-            let left_bind = left.resolve(Self::column_name(left_expr)?)?;
-            let right_bind = right.resolve(Self::column_name(right_expr)?)?;
-            match (left_bind, right_bind) {
+            let left_name = Self::column_name(left_expr)?;
+            let right_name = Self::column_name(right_expr)?;
+            let left_bind = left.resolve(left_name)?;
+            let right_bind = right.resolve(right_name)?;
+            frame.check_same_type(
+                &left_bind,
+                &right_bind,
+                &format!("join condition {left_name} = {right_name}"),
+            )?;
+            match (&left_bind, &right_bind) {
                 (Bind::Var(l), _) => {
-                    frame.substitute(l, right_bind);
-                    left.substitute(l, right_bind);
+                    frame.substitute(*l, &right_bind);
+                    left.substitute(*l, &right_bind);
                 }
                 (Bind::Lit(_), Bind::Var(r)) => {
-                    frame.substitute(r, left_bind);
-                    right.substitute(r, left_bind);
+                    frame.substitute(*r, &left_bind);
+                    right.substitute(*r, &left_bind);
                 }
                 (Bind::Lit(a), Bind::Lit(b)) if a == b => {}
                 (Bind::Lit(a), Bind::Lit(b)) => {
@@ -468,7 +511,7 @@ impl Lowerer {
                     names.insert(name.clone(), None);
                 }
                 None => {
-                    names.insert(name.clone(), *bind);
+                    names.insert(name.clone(), bind.clone());
                 }
             }
         }
@@ -498,7 +541,7 @@ impl Lowerer {
 
         let mut names = merged.names;
         for (name, bind) in &columns {
-            names.insert(name.clone(), Some(*bind));
+            names.insert(name.clone(), Some(bind.clone()));
         }
         Ok(Scope { columns, names })
     }
@@ -539,18 +582,23 @@ impl Lowerer {
                     }
                     Some(kept) => {
                         carried.insert((*relation, column), None);
-                        match (kept, bind) {
+                        frame.check_same_type(
+                            &kept,
+                            &bind,
+                            &format!("join variable {}", variable.name),
+                        )?;
+                        match (&kept, &bind) {
                             (Bind::Var(l), _) => {
-                                frame.substitute(l, bind);
+                                frame.substitute(*l, &bind);
                                 for scope in &mut scopes {
-                                    scope.substitute(l, bind);
+                                    scope.substitute(*l, &bind);
                                 }
                                 bind
                             }
                             (Bind::Lit(_), Bind::Var(r)) => {
-                                frame.substitute(r, kept);
+                                frame.substitute(*r, &kept);
                                 for scope in &mut scopes {
-                                    scope.substitute(r, kept);
+                                    scope.substitute(*r, &kept);
                                 }
                                 kept
                             }
@@ -570,11 +618,13 @@ impl Lowerer {
         for (relation, scope) in scopes.iter().enumerate() {
             for (name, bind) in &scope.columns {
                 match carried.get(&(relation, name.clone())) {
-                    Some(Some(variable_name)) => columns.push((variable_name.clone(), *bind)),
+                    Some(Some(variable_name)) => {
+                        columns.push((variable_name.clone(), bind.clone()));
+                    }
                     Some(None) => {}
                     None => {
                         if columns.iter().all(|(active, _)| active != name) {
-                            columns.push((name.clone(), *bind));
+                            columns.push((name.clone(), bind.clone()));
                         }
                     }
                 }
@@ -587,12 +637,12 @@ impl Lowerer {
         for scope in &scopes {
             for (name, bind) in &scope.names {
                 if name.contains('.') {
-                    names.entry(name.clone()).or_insert(*bind);
+                    names.entry(name.clone()).or_insert(bind.clone());
                 }
             }
         }
         for (name, bind) in &columns {
-            names.insert(name.clone(), Some(*bind));
+            names.insert(name.clone(), Some(bind.clone()));
         }
         let merged = Scope {
             columns: columns.clone(),
@@ -615,7 +665,7 @@ impl Lowerer {
 
         let mut names = merged.names;
         for (name, bind) in &columns {
-            names.insert(name.clone(), Some(*bind));
+            names.insert(name.clone(), Some(bind.clone()));
         }
         Ok(Scope { columns, names })
     }
@@ -625,7 +675,7 @@ impl Lowerer {
     fn lower_attribute(&self, attribute: &Expr, scope: &Scope) -> Result<Bind> {
         match attribute {
             Expr::Var(var) => scope.resolve(&var.name),
-            Expr::Literal(literal) => Ok(Bind::Lit(Self::literal_u64(&literal.value)?)),
+            Expr::Literal(literal) => Ok(Bind::Lit(literal_value(&literal.value)?)),
             _ => bail!(
                 "computed attributes need the scalar engine and are not supported in this slice"
             ),
@@ -647,14 +697,23 @@ impl Lowerer {
             bail!("selection conditions beyond column = literal need the scalar engine");
         }
         let (column, literal) = match (&binary.left, &binary.right) {
-            (Expr::Var(var), Expr::Literal(lit)) => (&var.name, Self::literal_u64(&lit.value)?),
-            (Expr::Literal(lit), Expr::Var(var)) => (&var.name, Self::literal_u64(&lit.value)?),
+            (Expr::Var(var), Expr::Literal(lit)) => (&var.name, literal_value(&lit.value)?),
+            (Expr::Literal(lit), Expr::Var(var)) => (&var.name, literal_value(&lit.value)?),
             _ => bail!("selection conditions beyond column = literal need the scalar engine"),
         };
-        match scope.resolve(column)? {
+        let bind = scope.resolve(column)?;
+        let column_type = frame.ty(&bind);
+        if column_type != literal.scalar_type() {
+            bail!(
+                "selection compares column {column} ({column_type}) with the {} literal {literal}",
+                literal.scalar_type()
+            );
+        }
+        match bind {
             Bind::Var(v) => {
-                frame.substitute(v, Bind::Lit(literal));
-                scope.substitute(v, Bind::Lit(literal));
+                let pinned = Bind::Lit(literal);
+                frame.substitute(v, &pinned);
+                scope.substitute(v, &pinned);
             }
             Bind::Lit(existing) if existing == literal => {}
             Bind::Lit(existing) => {
@@ -718,14 +777,16 @@ impl Lowerer {
             _ => bail!("join conditions must reference columns by name"),
         }
     }
+}
 
-    fn literal_u64(literal: &Literal) -> Result<u64> {
-        match literal {
-            Literal::Uint(value) => Ok(*value),
-            Literal::Bool(value) => Ok(*value as u64),
-            _ => bail!("only unsigned integer and boolean literals are supported in this slice"),
-        }
-    }
+/// A schema for error messages: `(name: type, …)`.
+fn describe(schema: &Schema) -> String {
+    let columns: Vec<String> = schema
+        .columns()
+        .iter()
+        .map(|c| format!("{}: {}", c.name, c.ty))
+        .collect();
+    format!("({})", columns.join(", "))
 }
 
 #[cfg(test)]
@@ -741,8 +802,8 @@ mod tests {
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DistinctExpr, JoinVariable, OutputExpr,
         ProjectionExpr, SelectionExpr, SinkId, SourceId, UnionExpr,
     };
-    use crate::relational::schema::{Column, EntityRef, TableSchema};
-    use crate::scalarial::ScalarType;
+    use crate::relational::schema::{Column as PlanColumn, EntityRef, TableSchema};
+    use crate::scalarial::ScalarType as PlanType;
     use coln_batch::fixpoint::{self, Exec};
     use coln_batch::generic_join;
     use coln_batch::query::Catalog;
@@ -755,25 +816,40 @@ mod tests {
         SourceId::from(name)
     }
 
-    /// One catalog for every rung: the base tables a plan may name.
+    /// One catalog for every rung: the base tables a plan may name. The
+    /// first three are plain unsigned integer tables; `person` carries
+    /// every kind of column the engine types.
     fn test_sources() -> SourceSchemas {
-        [
-            ("edge", ["from", "to"]),
-            ("r", ["a", "b"]),
-            ("s", ["c", "d"]),
+        let uint_tables = [
+            ("edge", vec!["from", "to"]),
+            ("r", vec!["a", "b"]),
+            ("s", vec!["c", "d"]),
         ]
         .into_iter()
         .map(|(name, columns)| {
             let columns = columns
                 .into_iter()
-                .map(|column| Column::new(column, ScalarType::Uint))
+                .map(|column| PlanColumn::new(column, PlanType::Uint))
                 .collect();
             (
                 SourceId::from(name),
                 TableSchema::new(EntityRef::from(name), columns, vec![]),
             )
-        })
-        .collect()
+        });
+        let person = (
+            SourceId::from("person"),
+            TableSchema::new(
+                EntityRef::from("person"),
+                vec![
+                    PlanColumn::new("id", PlanType::Uint),
+                    PlanColumn::new("name", PlanType::String),
+                    PlanColumn::new("age", PlanType::Iint),
+                    PlanColumn::new("active", PlanType::Bool),
+                ],
+                vec![],
+            ),
+        );
+        uint_tables.chain(std::iter::once(person)).collect()
     }
 
     fn lower_plan(stmts: Vec<Stmt>) -> Result<LoweredPlan> {
@@ -795,6 +871,10 @@ mod tests {
         Expr::from(LiteralExpr {
             value: Literal::Uint(value),
         })
+    }
+
+    fn literal(value: Literal) -> Expr {
+        Expr::from(LiteralExpr { value })
     }
 
     fn out(name: &str) -> Stmt {
@@ -824,6 +904,14 @@ mod tests {
             .collect()
     }
 
+    fn equals(column: &str, value: Literal) -> Expr {
+        Expr::from(BinaryExpr {
+            operator: Operator::Equal,
+            left: var(column),
+            right: literal(value),
+        })
+    }
+
     /// Run a lowered plan over hand-built relations with coln-batch's
     /// semi-naive fixpoint and the worst-case-optimal executor.
     fn run(plan: &LoweredPlan, edb: Catalog) -> Catalog {
@@ -847,6 +935,27 @@ mod tests {
         (0..relation.len()).map(|i| relation.row(i)).collect()
     }
 
+    /// The `person` table with typed rows, in a catalog of its own.
+    fn people() -> Catalog {
+        let mut edb = Catalog::new();
+        edb.insert_rows(
+            "person",
+            Schema::new([
+                Column::new("id", ScalarType::Uint),
+                Column::new("name", ScalarType::String),
+                Column::new("age", ScalarType::Iint),
+                Column::new("active", ScalarType::Bool),
+            ]),
+            vec![
+                vec![1u64.into(), "ann".into(), (-5i64).into(), true.into()],
+                vec![2u64.into(), "bob".into(), 30i64.into(), false.into()],
+                vec![3u64.into(), "ann".into(), 7i64.into(), true.into()],
+            ],
+        )
+        .unwrap();
+        edb
+    }
+
     /// Step 1: a source becomes a stored atom, a variable becomes a
     /// derived relation, and an output names what to read. The smallest
     /// possible translation: one rule that copies the source.
@@ -858,7 +967,7 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(plan.sources["edge"], vec!["from", "to"]);
+        assert_eq!(plan.sources["edge"].names(), vec!["from", "to"]);
         assert_eq!(plan.outputs["edges"], "edges");
         assert_eq!(plan.program.rules.len(), 1);
         let rule = &plan.program.rules[0];
@@ -894,7 +1003,7 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(plan.schemas["swapped"], vec!["target", "origin"]);
+        assert_eq!(plan.schemas["swapped"].names(), vec!["target", "origin"]);
 
         let result = run(&plan, {
             let mut edb = Catalog::new();
@@ -972,11 +1081,7 @@ mod tests {
                 "from_three",
                 SelectionExpr {
                     relation: Expr::from(SourceExpr::new(src("edge"))),
-                    condition: Expr::from(BinaryExpr {
-                        operator: Operator::Equal,
-                        left: var("from"),
-                        right: lit(3),
-                    }),
+                    condition: equals("from", Literal::Uint(3)),
                 },
             ),
             out("from_three"),
@@ -1133,7 +1238,7 @@ mod tests {
         // once, under its variable name.
         let rule = &plan.program.rules[1];
         assert_eq!(rule.body.len(), 3);
-        assert_eq!(plan.schemas["triangles"], vec!["x", "y", "z"]);
+        assert_eq!(plan.schemas["triangles"].names(), vec!["x", "y", "z"]);
 
         // Edges 1→2→3→1 close a triangle; 1→4 is a dead end. The three
         // result rows are the rotations of the one triangle.
@@ -1176,7 +1281,7 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(plan.schemas["joined"], vec!["a", "d"]);
+        assert_eq!(plan.schemas["joined"].names(), vec!["a", "d"]);
 
         let result = run(&plan, {
             let mut edb = Catalog::new();
@@ -1345,7 +1450,7 @@ mod tests {
                 attributes: vec![(
                     "sum".to_string(),
                     Expr::from(BinaryExpr {
-                        operator: Operator::Addition,
+                        operator: Operator::Less,
                         left: var("a"),
                         right: var("b"),
                     }),
@@ -1353,6 +1458,171 @@ mod tests {
             },
         )])
         .unwrap_err();
-        assert!(format!("{err:#}").contains("scalar engine"));
+        assert!(format!("{err:#}").contains("scalar engine"), "{err:#}");
+
+        let err = lower_plan(vec![let_rel("missing", SourceExpr::new(src("nope")))]).unwrap_err();
+        assert!(err.to_string().contains("not in the catalog"));
+
+        let err = lower_plan(vec![let_rel(
+            "nested",
+            ProjectionExpr {
+                relation: Expr::from(OutputExpr {
+                    relation: Expr::from(SourceExpr::new(src("r"))),
+                    id: SinkId::from("inner"),
+                    kind: OutputKind::Channel,
+                }),
+                attributes: named_columns(&[("a", "a")]),
+            },
+        )])
+        .unwrap_err();
+        assert!(err.to_string().contains("nested"));
+    }
+
+    /// Step 15: columns keep their types. A source's schema types the
+    /// rule variables, a selection may pin a string or a signed integer,
+    /// and a derived relation's schema carries the types on, so the
+    /// engine decodes real values on the way out.
+    #[test]
+    fn s15_columns_keep_their_types() {
+        let plan = lower_plan(vec![
+            let_rel(
+                "anns",
+                SelectionExpr {
+                    relation: Expr::from(SourceExpr::new(src("person"))),
+                    condition: equals("name", Literal::String("ann".into())),
+                },
+            ),
+            let_rel(
+                "young",
+                SelectionExpr {
+                    relation: var("anns"),
+                    condition: equals("age", Literal::Iint(-5)),
+                },
+            ),
+            let_rel(
+                "picked",
+                ProjectionExpr {
+                    relation: var("young"),
+                    attributes: vec![
+                        ("who".to_string(), var("name")),
+                        ("id".to_string(), var("id")),
+                        ("note".to_string(), literal(Literal::String("seen".into()))),
+                    ],
+                },
+            ),
+            out("picked"),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            plan.sources["person"].types(),
+            vec![
+                ScalarType::Uint,
+                ScalarType::String,
+                ScalarType::Iint,
+                ScalarType::Bool
+            ]
+        );
+        assert_eq!(plan.schemas["picked"].names(), vec!["who", "id", "note"]);
+        assert_eq!(
+            plan.schemas["picked"].types(),
+            vec![ScalarType::String, ScalarType::Uint, ScalarType::String]
+        );
+
+        let result = run(&plan, people());
+        assert_eq!(
+            result.rows_of("picked").unwrap(),
+            vec![vec!["ann".into(), 1u64.into(), "seen".into()]]
+        );
+        // The unknown name never matches, and that is not an error.
+        let plan = lower_plan(vec![
+            let_rel(
+                "nobody",
+                SelectionExpr {
+                    relation: Expr::from(SourceExpr::new(src("person"))),
+                    condition: equals("name", Literal::String("zed".into())),
+                },
+            ),
+            out("nobody"),
+        ])
+        .unwrap();
+        assert!(run(&plan, people()).get("nobody").unwrap().is_empty());
+    }
+
+    /// Step 16: type errors are lowering errors. Joining or comparing
+    /// columns of different types is rejected before any data is read.
+    #[test]
+    fn s16_type_mismatches_fail_at_lowering() {
+        // A uint column joined with a string column.
+        let err = lower_plan(vec![let_rel(
+            "bad_join",
+            EquiJoinExpr {
+                left: Expr::from(SourceExpr::new(src("r"))),
+                right: Expr::from(SourceExpr::new(src("person"))),
+                on: vec![(var("a"), var("name"))],
+                attributes: None,
+            },
+        )])
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("uint column with a string column"),
+            "{err}"
+        );
+
+        // A string column compared with an integer literal.
+        let err = lower_plan(vec![let_rel(
+            "bad_selection",
+            SelectionExpr {
+                relation: Expr::from(SourceExpr::new(src("person"))),
+                condition: equals("name", Literal::Uint(3)),
+            },
+        )])
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("(string) with the uint literal 3"),
+            "{err}"
+        );
+
+        // A multi-way join variable spanning two types.
+        let err = lower_plan(vec![let_rel(
+            "bad_multi",
+            MultiWayEquiJoinExpr::new(
+                vec![
+                    Expr::from(SourceExpr::new(src("r"))),
+                    Expr::from(SourceExpr::new(src("person"))),
+                ],
+                vec![join_variable("k", &[(0, "a"), (1, "age")])],
+                None,
+            )
+            .unwrap(),
+        )])
+        .unwrap_err();
+        assert!(err.to_string().contains("join variable k"), "{err}");
+
+        // Union branches must agree on types, not only on arity.
+        let err = lower_plan(vec![
+            let_rel(
+                "ids",
+                ProjectionExpr {
+                    relation: Expr::from(SourceExpr::new(src("person"))),
+                    attributes: named_columns(&[("v", "id")]),
+                },
+            ),
+            let_rel(
+                "names",
+                ProjectionExpr {
+                    relation: Expr::from(SourceExpr::new(src("person"))),
+                    attributes: named_columns(&[("v", "name")]),
+                },
+            ),
+            let_rel(
+                "mixed",
+                UnionExpr {
+                    relations: vec![var("ids"), var("names")],
+                },
+            ),
+        ])
+        .unwrap_err();
+        assert!(err.to_string().contains("different schemas"), "{err}");
     }
 }
