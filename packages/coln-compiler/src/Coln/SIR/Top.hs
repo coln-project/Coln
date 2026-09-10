@@ -47,11 +47,11 @@ fromNode Nothing = []
 fromNode (Just Leaf{}) = panic "leaf at top of generator trie"
 fromNode (Just (Node d)) = toList d
 
-mirToSIR :: RealmId -> MIR.Realm -> SIR.Realm
-mirToSIR rId r = do
-  let (_, _, root) = cache "root" (BwdNil :> "root") (emptyScope rId) r.root
-  let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (TableName rId p)) BwdNil r.generators
-  let (names, cached) = unzip $ map (fst &&& uncurry (cacheTop rId)) $ OMap.assocs r.realmDefinitions
+mirToSIR :: MIR.Realm -> SIR.Realm
+mirToSIR r = do
+  let (_, _, root) = cache "root" (BwdNil :> "root") emptyScope r.root
+  let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (tableName p)) BwdNil r.generators
+  let (names, cached) = unzip $ map (fst &&& uncurry cacheTop) $ OMap.assocs r.realmDefinitions
   let (cachedE, cachedD, _) = unzip3 cached
   let viewE = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedE)]
   let viewD = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedD)]

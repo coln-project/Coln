@@ -45,15 +45,15 @@ interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions
   go :: V.Globals -> (Name, Core.Definition Global) -> V.Globals
   go acc (x, def) = acc OMap.>| (x, interp' acc x def)
 
-coreToMIR :: V.Globals -> RealmId -> Core.Realm -> MIR.Realm
-coreToMIR g rId r = do
+coreToMIR :: V.Globals -> Core.Realm -> MIR.Realm
+coreToMIR g r = do
   let rTy = interpAt STheory g BwdNil r.rootType.stx
-  let (rootgens, rootbody) = layoutTop rId rTy
+  let (rootgens, rootbody) = layoutTop rTy
   let go :: (Int, V.Locals) -> (Name, Core.Definition Local) -> ((Int, V.Locals), (Name, (Trie Generator, RealmDefinition)))
       go (n, ls) (x, def) = do
         let ty = interpAt STheory g ls $ readb n def.ty
         let bodyD = interpAt STheory g ls def.body.stx
-        let (gens, body) = declareEvaluation (BwdNil :> "init" :> x) (emptyScope rId) bodyD
+        let (gens, body) = declareEvaluation (BwdNil :> "init" :> x) emptyScope bodyD
         let l' = Pair STheory body.val
         let def' =
               RealmDefinition

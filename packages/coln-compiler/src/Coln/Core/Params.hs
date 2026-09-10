@@ -9,6 +9,7 @@ import Coln.Common
 import GHC.Generics (Generic)
 import Prettyprinter
 
+
 -- Level stuff (levels, universes, function variants)
 --------------------------------------------------------------------------------
 
@@ -185,11 +186,14 @@ type RealmId = Name
 
 type Path = Bwd Name
 
-data TableName = TableName {realm :: RealmId, path :: Path}
-  deriving (Show, Eq, Ord)
+newtype TableName = TableName { name :: Text }
+  deriving (Eq, Ord, Show)
 
 instance DPretty TableName where
-  dpretty tn = concatWith (surround dot) (dpretty <$> toList tn.path)
+  dpretty tn = pretty tn.name
+
+tableName :: Path -> TableName
+tableName = TableName . renderText . concatWith (surround dot) . fmap dpretty . toList
 
 -- Mode
 --------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { Store, WireTuple } from "./store.js";
-import { WhereClause } from "./types.js"
+import { Path, WhereClause, WireRowId } from "./types.js"
 import { Adaptor } from "./flatten.js"
+import { RowId } from "./row_id.js";
 
 export interface Set<T> {
   values(): T[]
@@ -15,31 +16,31 @@ export interface MutableSet<T> extends Set<T> {
   add(): T
 }
 
-export class BoundBaseTable<T> implements MutableSet<T> {
-  constructor(private store: Store) {}
+export class BaseTableSet<P extends string> implements MutableSet<RowId<P>> {
+  constructor(private store: Store, private table_name: Path, private bound: WireTuple) {}
   
-  values(): T[] {
+  values(): RowId<P>[] {
+    return this.store.all_row_id({ table_name: this.table_name, row_id: null, values: this.bound }).map((i: WireRowId) => {return new RowId()})
+  }
+  
+  contains(v: RowId<P>): boolean {
     return todo()
   }
   
-  contains(v: T): boolean {
-    return todo()
-  }
-  
-  add(): T {
+  add(): RowId<P> {
     return todo()
   }
 }
 
-export class View<T> {
-  constructor(
-    private store: Store,
-    private table_name: WhereClause,
-    private params: WireTuple,
-    private adapter: Adaptor<T>
-  ) {}
+export class ViewTableSet<T> implements Set<T> {
+  constructor(private store: Store, private table_name: Path, private bound: WireTuple, private select: [number], private adaptor: Adaptor<T>) {}
+
+  values(): T[] {
+    return this.store.all_proj({ table_name: this.table_name, row_id: null, values: this.bound }, this.select).map(this.adaptor.reconstruct)
+  }
   
-  // values(): T[] {
-  //   return this.store.all(this.where, this.select).map(this.reconstruct)
-  // }
+  contains(v: T): boolean {
+    return this.store.exists({ table_name: this.table_name, row_id: null, values: [...this.bound, ...this.adaptor.flatten(v)] })
+  }
 }
+

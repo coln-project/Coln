@@ -1,15 +1,83 @@
 flatrealm
   entities
-    table ℜ.root.V := []
-    table ℜ.root.E := [.a : ℜ.root.V, .b : ℜ.root.V]
+    table root.V := []
+    table root.E := [a : root.V, b : root.V]
+    view view.outgoing-edges := [
+      v : root.V,
+      outgoing-edges.into : root.V,
+      outgoing-edges.has-edge : root.E
+    ] primarykey [v, outgoing-edges.into, outgoing-edges.has-edge]
+    view view.incoming-edges := [
+      v : root.V,
+      incoming-edges.outof : root.V,
+      incoming-edges.has-edge : root.E
+    ] primarykey [v, incoming-edges.outof, incoming-edges.has-edge]
+    view view.free-edge := [
+      free-edge.v0 : root.V,
+      free-edge.v1 : root.V,
+      free-edge.e : root.E
+    ] primarykey [free-edge.v0, free-edge.v1, free-edge.e]
+    view view.free-edge-pair := [
+      free-edge-pair.e0.v0 : root.V,
+      free-edge-pair.e0.v1 : root.V,
+      free-edge-pair.e0.e : root.E,
+      free-edge-pair.e1.v0 : root.V,
+      free-edge-pair.e1.v1 : root.V,
+      free-edge-pair.e1.e : root.E
+    ] primarykey [
+      free-edge-pair.e0.v0,
+      free-edge-pair.e0.v1,
+      free-edge-pair.e0.e,
+      free-edge-pair.e1.v0,
+      free-edge-pair.e1.v1,
+      free-edge-pair.e1.e
+    ]
   end
   definitions
+    chased view.outgoing-edges.definition v outgoing-edges.into outgoing-edges.has-edge := v ∈ root.V [] ∧ outgoing-edges.into ∈ root.V [] ∧ outgoing-edges.has-edge ∈ root.E [
+      a ↦ v,
+      b ↦ outgoing-edges.into
+    ] ⊢ view.outgoing-edges [
+      v ↦ v,
+      outgoing-edges.into ↦ outgoing-edges.into,
+      outgoing-edges.has-edge ↦ outgoing-edges.has-edge
+    ]
+    chased view.incoming-edges.definition v incoming-edges.outof incoming-edges.has-edge := v ∈ root.V [] ∧ incoming-edges.outof ∈ root.V [] ∧ incoming-edges.has-edge ∈ root.E [
+      a ↦ incoming-edges.outof,
+      b ↦ v
+    ] ⊢ view.incoming-edges [
+      v ↦ v,
+      incoming-edges.outof ↦ incoming-edges.outof,
+      incoming-edges.has-edge ↦ incoming-edges.has-edge
+    ]
+    chased view.free-edge.definition free-edge.v0 free-edge.v1 free-edge.e := free-edge.v0 ∈ root.V [] ∧ free-edge.v1 ∈ root.V [] ∧ free-edge.e ∈ root.E [
+      a ↦ free-edge.v0,
+      b ↦ free-edge.v1
+    ] ⊢ view.free-edge [
+      free-edge.v0 ↦ free-edge.v0,
+      free-edge.v1 ↦ free-edge.v1,
+      free-edge.e ↦ free-edge.e
+    ]
+    chased view.free-edge-pair.definition free-edge-pair.e0.v0 free-edge-pair.e0.v1 free-edge-pair.e0.e free-edge-pair.e1.v0 free-edge-pair.e1.v1 free-edge-pair.e1.e := free-edge-pair.e0.v0 ∈ root.V [] ∧ free-edge-pair.e0.v1 ∈ root.V [] ∧ free-edge-pair.e0.e ∈ root.E [
+      a ↦ free-edge-pair.e0.v0,
+      b ↦ free-edge-pair.e0.v1
+    ] ∧ free-edge-pair.e1.v0 ∈ root.V [] ∧ free-edge-pair.e1.v1 ∈ root.V [] ∧ free-edge-pair.e1.e ∈ root.E [
+      a ↦ free-edge-pair.e1.v0,
+      b ↦ free-edge-pair.e1.v1
+    ] ⊢ view.free-edge-pair [
+      free-edge-pair.e0.v0 ↦ free-edge-pair.e0.v0,
+      free-edge-pair.e0.v1 ↦ free-edge-pair.e0.v1,
+      free-edge-pair.e0.e ↦ free-edge-pair.e0.e,
+      free-edge-pair.e1.v0 ↦ free-edge-pair.e1.v0,
+      free-edge-pair.e1.v1 ↦ free-edge-pair.e1.v1,
+      free-edge-pair.e1.e ↦ free-edge-pair.e1.e
+    ]
   end
   rules
-    enforced ℜ.root.V.foreignKey := ℜ.root.V [] ⊢ ⊤
-    enforced ℜ.root.E.foreignKey a b := ℜ.root.E [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.root.V [] ∧ b ∈ ℜ.root.V []
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.E.foreignKey a b := root.E [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
   end
 end

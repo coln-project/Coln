@@ -67,24 +67,11 @@ aeOptions =
     , AE.constructorTagModifier = \x -> fmap toLower (take 1 x) ++ (drop 1 x)
     }
 
-class PathLike a where
-  namesOf :: a -> [Name]
-
-encName :: Name -> AE.Encoding
-encName n = AE.list AE.toEncoding $ n.init ++ [n.last]
-
-encPath :: (PathLike a) => a -> AE.Encoding
-encPath = AE.list encName . namesOf
-
-instance PathLike Path where namesOf = toList
-
-instance PathLike TableName where namesOf tn = tn.realm : namesOf tn.path
-
 taggedEncoding :: Text -> AE.Series -> AE.Encoding
 taggedEncoding t v = AE.pairs $ AE.pair "tag" (AE.toEncoding t) <> v
 
 instance AE.ToJSON ScalarType where
   toJSON = panic "aesons behaving badly"
   toEncoding = \case
-    RowId e -> taggedEncoding "rowId" $ AE.pair "path" $ encPath e
+    RowId e -> taggedEncoding "rowId" $ AE.pair "path" $ AE.toEncoding e.name
     BuiltinTy bt -> taggedEncoding "builtin" $ AE.pair "type" $ AE.genericToEncoding aeOptions bt

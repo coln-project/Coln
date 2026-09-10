@@ -19,18 +19,16 @@ data Scope = Scope
   , names :: Bwd Name
   , bound :: Bwd (V.El N Set)
   , used :: Set.Set Name
-  , realm :: RealmId
   }
 
-emptyScope :: RealmId -> Scope
-emptyScope rId =
+emptyScope :: Scope
+emptyScope =
   Scope
     { len = 0
     , ctx = BwdNil
     , names = BwdNil
     , bound = BwdNil
     , used = Set.empty
-    , realm = rId
     }
 
 bind :: Scope -> Maybe Name -> V.Ty N Set -> (Name, V.El N Set, Scope)
@@ -68,7 +66,7 @@ cache x p sc v = do
         let bound = toList (sc.bound :> V.local (FId sc.len))
         let boundStx = separate (sc.len + 1) <$> bound
         let ent = Entity (View Materialized) (second (.shape) <$> cols) (Just [0 .. sc.len])
-        let tn = TableName sc.realm p
+        let tn = tableName p
         let def = Definition cols tn boundStx
         let elt = S.SelectLast u tn (separate sc.len <$> toList sc.bound) (shapeOf a)
         (Leaf ent, Node (fromList [("definition", Leaf def)]), elt)
@@ -89,5 +87,5 @@ cache x p sc v = do
         , S.Cons (Dict fields.head (fromList fields'))
         )
 
-cacheTop :: RealmId -> Name -> V.RealmDefinition -> (Trie Entity, Trie Definition, S.El Theory)
-cacheTop rId x def = cache x (BwdNil :> "view" :> x) (emptyScope rId) def.body.val
+cacheTop :: Name -> V.RealmDefinition -> (Trie Entity, Trie Definition, S.El Theory)
+cacheTop x def = cache x (BwdNil :> "view" :> x) emptyScope def.body.val

@@ -213,33 +213,16 @@ pub(crate) fn decode_prim_value(
 
 pub(crate) fn encode_path(path: &ir::Path) -> Vec<u8> {
     let mut out = Vec::new();
-    commit_leb128::write_len(&mut out, path.0.len());
-    for qname in &path.0 {
-        commit_leb128::write_len(&mut out, qname.len());
-        for part in qname {
-            commit_leb128::write_len_prefixed_bytes(&mut out, part.as_bytes());
-        }
-    }
+    commit_leb128::write_len_prefixed_bytes(&mut out, path.as_ref().as_bytes());
     out
 }
 
 pub(crate) fn decode_path(data: &[u8], pos: &mut usize) -> Result<ir::Path, CodecError> {
-    let qname_count = commit_leb128::read_len(data, pos, "path name count")?;
-    let mut path = Vec::with_capacity(qname_count);
+    let path_bytes = commit_leb128::read_len_prefixed_bytes(data, pos, "path")?;
+    let path = std::str::from_utf8(path_bytes)
+        .map_err(|_| CodecError::DataFormatError("path invalid utf-8".into()))?;
 
-    for _ in 0..qname_count {
-        let part_count = commit_leb128::read_len(data, pos, "part count")?;
-        let mut qname = Vec::with_capacity(part_count);
-        for _ in 0..part_count {
-            let part_bytes = commit_leb128::read_len_prefixed_bytes(data, pos, "qname part")?;
-            let part = std::str::from_utf8(part_bytes)
-                .map_err(|_| CodecError::DataFormatError("path part invalid utf-8".into()))?;
-            qname.push(part.to_owned())
-        }
-        path.push(qname);
-    }
-
-    Ok(ir::Path(path))
+    Ok(ir::Path(path.into()))
 }
 
 #[allow(dead_code)]

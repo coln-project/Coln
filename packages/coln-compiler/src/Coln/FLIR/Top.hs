@@ -12,13 +12,13 @@ import Coln.SIR.Realm qualified as SIR
 
 import Data.Map.Ordered qualified as OMap
 
-trieToOMap :: RealmId -> Trie a -> OMap TableName a
-trieToOMap rId t = OMap.fromList [(TableName rId k, v) | (k, v) <- toList t]
+trieToOMap :: Trie a -> OMap TableName a
+trieToOMap t = OMap.fromList [(tableName k, v) | (k, v) <- toList t]
 
-sirToFLIR :: RealmId -> SIR.Realm -> FLIR.Realm
-sirToFLIR rId r =
+sirToFLIR :: SIR.Realm -> FLIR.Realm
+sirToFLIR r =
   FLIR.Realm
-    { entities = trieToOMap rId $ fmap flattenEntity r.entities
-    , definitions = trieToOMap rId $ fmap flattenDefinition r.definitions
-    , rules = trieToOMap rId $ fmap flattenRule r.rules
+    { entities = trieToOMap $ fmap flattenEntity r.entities
+    , definitions = trieToOMap $ fmap flattenDefinition r.definitions
+    , rules = trieToOMap $ fmap flattenRule r.rules
     }
