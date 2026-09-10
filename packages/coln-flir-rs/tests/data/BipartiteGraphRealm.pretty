@@ -1,0 +1,58 @@
+flatrealm
+  entities
+    table ℜ.root.red := []
+    table ℜ.root.blue := []
+    table ℜ.root.red-blue := [.a : ℜ.root.red, .b : ℜ.root.blue]
+    table ℜ.root.blue-red := [.a : ℜ.root.blue, .b : ℜ.root.red]
+    view ℜ.init.connection-info.red-red := [
+      .a : ℜ.root.red,
+      .b : ℜ.root.red
+    ] primarykey [.a, .b]
+    view ℜ.init.connection-info.blue-blue := [
+      .a : ℜ.root.blue,
+      .b : ℜ.root.blue
+    ] primarykey [.a, .b]
+  end
+  definitions
+    chased ℜ.init.connection-info.red/refl v := v ∈ ℜ.root.red [] ⊢ ℜ.init.connection-info.red-red [
+      .a ↦ v,
+      .b ↦ v
+    ]
+    chased ℜ.init.connection-info.blue/refl v := v ∈ ℜ.root.blue [] ⊢ ℜ.init.connection-info.blue-blue [
+      .a ↦ v,
+      .b ↦ v
+    ]
+    chased ℜ.init.connection-info.red/trans v0 v1 w0 w1 a c := v0 ∈ ℜ.root.red [] ∧ v1 ∈ ℜ.root.red [] ∧ w0 ∈ ℜ.root.blue [] ∧ w1 ∈ ℜ.root.blue [] ∧ a ∈ ℜ.root.red-blue [
+      .a ↦ v0,
+      .b ↦ w0
+    ] ∧ ℜ.init.connection-info.blue-blue [
+      .a ↦ w0,
+      .b ↦ w1
+    ] ∧ c ∈ ℜ.root.blue-red [
+      .a ↦ w1,
+      .b ↦ v1
+    ] ⊢ ℜ.init.connection-info.red-red [.a ↦ v0, .b ↦ v1]
+    chased ℜ.init.connection-info.blue/trans v0 v1 w0 w1 a c := v0 ∈ ℜ.root.blue [] ∧ v1 ∈ ℜ.root.blue [] ∧ w0 ∈ ℜ.root.red [] ∧ w1 ∈ ℜ.root.red [] ∧ a ∈ ℜ.root.blue-red [
+      .a ↦ v0,
+      .b ↦ w0
+    ] ∧ ℜ.init.connection-info.red-red [
+      .a ↦ w0,
+      .b ↦ w1
+    ] ∧ c ∈ ℜ.root.red-blue [
+      .a ↦ w1,
+      .b ↦ v1
+    ] ⊢ ℜ.init.connection-info.blue-blue [.a ↦ v0, .b ↦ v1]
+  end
+  rules
+    enforced ℜ.root.red.foreignKey := ℜ.root.red [] ⊢ ⊤
+    enforced ℜ.root.blue.foreignKey := ℜ.root.blue [] ⊢ ⊤
+    enforced ℜ.root.red-blue.foreignKey a b := ℜ.root.red-blue [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.root.red [] ∧ b ∈ ℜ.root.blue []
+    enforced ℜ.root.blue-red.foreignKey a b := ℜ.root.blue-red [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.root.blue [] ∧ b ∈ ℜ.root.red []
+  end
+end
