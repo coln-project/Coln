@@ -15,7 +15,11 @@ use crate::{
     },
     error::{QueryEngineError, RuntimeError},
     pipeline::Pipeline,
-    relational::{Runtime, expr::SourceId, incremental::DbspRuntime},
+    relational::{
+        Runtime,
+        expr::{SinkId, SourceId},
+        incremental::{DbspRuntime, dbsp::DbspOutputDelta},
+    },
 };
 use coln_flir_rs::ir::{self, FlatRealm};
 use query::FlirProgram;
@@ -135,48 +139,49 @@ impl ColnQuery {
     fn interpret_outputs(&mut self) -> Result<TxOutcome, QueryEngineError> {
         let mut hard_violations = ViolationsSet::empty();
         let mut soft_violations = ViolationsDelta::empty();
-        let derived_data_delta = DerivedDataDelta::empty();
+        let mut derived_data_delta = DerivedDataDelta::empty();
         // We must drain all outputs first, so upon short-circuiting due to an
         // error while processing below, we have absorbed all effects of the
         // ongoing commit and they don't leak into the next commit.
         let drained: Vec<_> = self.incremental_runtime.all_outputs().collect();
         for (sink_id, delta) in drained {
-            let sink_meta = self.flir_program.constraint_meta(sink_id).ok_or_else(|| {
-                RuntimeError::new(format!(
-                    "Bug: FLIR program does not know output sink {}",
-                    sink_id
-                ))
-            })?;
             let delta = TableDelta::new(sink_id, delta.view().to_zrows());
             if delta.is_empty() {
                 continue;
             }
-            match sink_meta.kind() {
-                // How to deal with the schema mismatch between coln-query,
-                // coln-store, and coln-compiler? Reporting may require the
-                // latter view, while coln-store may want to store it in its
-                // view. Looks like we need transformations in all directions...
-                ir::RuleVariant::Enforced => {
-                    // An enforced rule's violation set is empty after every
-                    // committed transaction, because any transaction that violates
-                    // one is rolled back. So there is never a hard violation
-                    // for a transaction to retract, and a negative zweight here
-                    // means that an invariant broke, that is, some path fed the
-                    // circuit without checking: `unsafe_apply` returning an
-                    // `UnsafeApplyError` is the one that can.
-                    debug_assert!(
-                        delta.iter().retractions().next().is_none(),
-                        "enforced rule {} retracts a violation it never reported",
-                        delta.for_entity()
-                    );
-                    hard_violations.extend(Some(delta));
+            if let Some(derived_view_meta) = self.flir_program.derived_view_meta(sink_id) {
+                derived_data_delta.extend(Some(delta));
+            } else {
+                let sink_meta = self.flir_program.constraint_meta(sink_id).ok_or_else(|| {
+                    RuntimeError::new(format!(
+                        "Bug: FLIR program does not know output sink {}",
+                        sink_id
+                    ))
+                })?;
+                match sink_meta.kind() {
+                    // How to deal with the schema mismatch between coln-query,
+                    // coln-store, and coln-compiler? Reporting may require the
+                    // latter view, while coln-store may want to store it in its
+                    // view. Looks like we need transformations in all directions...
+                    ir::RuleVariant::Enforced => {
+                        // An enforced rule's violation set is empty after every
+                        // committed transaction, because any transaction that violates
+                        // one is rolled back. So there is never a hard violation
+                        // for a transaction to retract, and a negative zweight here
+                        // means that an invariant broke, that is, some path fed the
+                        // circuit without checking: `unsafe_apply` returning an
+                        // `UnsafeApplyError` is the one that can.
+                        debug_assert!(
+                            delta.iter().retractions().next().is_none(),
+                            "enforced rule {} retracts a violation it never reported",
+                            delta.for_entity()
+                        );
+                        hard_violations.extend(Some(delta));
+                    }
+                    ir::RuleVariant::Monitored => {
+                        soft_violations.extend(Some(delta));
+                    }
                 }
-                ir::RuleVariant::Monitored => {
-                    soft_violations.extend(Some(delta));
-                } // TODO: Fix interpretation with derived views.
-                  // ir::RuleVariant::Chased => {
-                  //     derived_data_delta.extend(Some(delta));
-                  // }
             }
         }
         // Both guards are the same emptiness check, but they answer different
