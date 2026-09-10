@@ -15,10 +15,10 @@ use std::{cell::RefCell, collections::HashMap};
 use ena::unify::{InPlace, Snapshot};
 
 use crate::{
-    id_packer::IdPacker,
+    pack::{IdPacker, PackedRowId},
     rollback::Rollback,
     rowing::uf::{NodeId, UnionFind},
-    table::{PackedRowId, TableOid},
+    table::TableOid,
 };
 
 #[derive(Debug)]
@@ -53,11 +53,11 @@ impl Rollback for Rowing {
         }
     }
 
-    fn commit_snapshot(&mut self, snapshot: Self::Snapshot) {
+    fn commit(&mut self, snapshot: Self::Snapshot) {
         self.uf.get_mut().commit(snapshot.uf_snapshot);
     }
 
-    fn rollback(&mut self, snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, snapshot: Self::Snapshot) {
         self.uf.get_mut().rollback_to(snapshot.uf_snapshot);
         self.keys = snapshot.keys;
         self.displaced.truncate(snapshot.displaced_len);
@@ -107,7 +107,7 @@ impl Rowing {
             let displaced = canonical1.max(canonical2);
             self.displaced.push(
                 id_packer
-                    .lookup_row_id(displaced)
+                    .lookup_row_id(&displaced)
                     .expect("displaced row id was packed before union"),
             );
         }
@@ -121,7 +121,7 @@ impl Rowing {
         };
         let canonical = self.uf.borrow_mut().probe_value(key);
         id_packer
-            .lookup_row_id(canonical)
+            .lookup_row_id(&canonical)
             .expect("canonical row id was packed before union")
     }
 
@@ -145,24 +145,29 @@ impl Rowing {
 
 #[cfg(test)]
 mod tests {
-    use crate::commit::hash::CommitHash;
+    use rstest::rstest;
+
     use crate::table::WireRowId;
+    use crate::test_utils::zerocounter_row_id;
 
     use super::*;
 
-    fn row_id(byte: u8) -> WireRowId {
-        WireRowId {
-            commit: CommitHash([byte; 32]),
-            counter: 0,
-        }
-    }
-
-    #[test]
-    fn union_uses_unpacked_order_and_records_displaced_id() {
+    #[rstest]
+    fn union_uses_unpacked_order_and_records_displaced_id(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        low_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        high_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(3)]
+        unseen_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let low = packer.pack_row_id(row_id(1));
-        let high = packer.pack_row_id(row_id(2));
-        let unseen = packer.pack_row_id(row_id(3));
+        let low = packer.pack_row_id(low_id);
+        let high = packer.pack_row_id(high_id);
+        let unseen = packer.pack_row_id(unseen_id);
         let mut rowing = Rowing::new();
 
         rowing.stage_union(0, high, low);
@@ -178,12 +183,22 @@ mod tests {
         assert_eq!(rowing.displaced().collect::<Vec<_>>(), [high]);
     }
 
-    #[test]
-    fn transitive_union_displaces_each_previous_canonical_id() {
+    #[rstest]
+    fn transitive_union_displaces_each_previous_canonical_id(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        low_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        middle_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(3)]
+        high_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let low = packer.pack_row_id(row_id(1));
-        let middle = packer.pack_row_id(row_id(2));
-        let high = packer.pack_row_id(row_id(3));
+        let low = packer.pack_row_id(low_id);
+        let middle = packer.pack_row_id(middle_id);
+        let high = packer.pack_row_id(high_id);
         let mut rowing = Rowing::new();
 
         rowing.stage_union(0, high, middle);
@@ -195,30 +210,50 @@ mod tests {
         assert_eq!(rowing.displaced().collect::<Vec<_>>(), [high, middle]);
     }
 
-    #[test]
-    fn rollback_restores_union_state() {
+    #[rstest]
+    fn rollback_restores_union_state(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        low_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        high_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let low = packer.pack_row_id(row_id(1));
-        let high = packer.pack_row_id(row_id(2));
+        let low = packer.pack_row_id(low_id);
+        let high = packer.pack_row_id(high_id);
         let mut rowing = Rowing::new();
         let snapshot = rowing.snapshot();
 
         rowing.stage_union(0, high, low);
         rowing.apply_unions(&packer);
-        rowing.rollback(snapshot);
+        rowing.rollback_to(snapshot);
 
         assert_eq!(rowing.canonical_id(&high, &packer), high);
         assert_eq!(rowing.canonical_id(&low, &packer), low);
         assert!(!rowing.has_displaced());
     }
 
-    #[test]
-    fn clearing_displaced_keeps_canonical_ids_and_empties_the_worklist() {
+    #[rstest]
+    fn clearing_displaced_keeps_canonical_ids_and_empties_the_worklist(
+        #[from(zerocounter_row_id)]
+        #[with(1)]
+        first_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(2)]
+        second_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(3)]
+        third_id: WireRowId,
+        #[from(zerocounter_row_id)]
+        #[with(4)]
+        fourth_id: WireRowId,
+    ) {
         let mut packer = IdPacker::new();
-        let first = packer.pack_row_id(row_id(1));
-        let second = packer.pack_row_id(row_id(2));
-        let third = packer.pack_row_id(row_id(3));
-        let fourth = packer.pack_row_id(row_id(4));
+        let first = packer.pack_row_id(first_id);
+        let second = packer.pack_row_id(second_id);
+        let third = packer.pack_row_id(third_id);
+        let fourth = packer.pack_row_id(fourth_id);
         let mut rowing = Rowing::new();
 
         rowing.stage_union(0, second, first);

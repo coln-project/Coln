@@ -12,7 +12,7 @@ import theory from "../../coln-compiler/test/golden/basic-ir/set.ts.output/TReal
 };
 
 test("resolve pending row id to existing on commit", () => {
-  const store = StoreHandle.fromTheory(JSON.stringify(theory));
+  const store = StoreHandle.fromTheory(JSON.stringify(theory), "", "");
   let txn = store.beginTransaction();
   let vertex = txn.add("TRealm.V", []);
 

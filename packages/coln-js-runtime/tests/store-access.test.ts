@@ -4,13 +4,23 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 
 import { StoreHandle, valueEqual } from "#wasm-bodge/bindings";
 
 import theory from "../../coln-compiler/test/golden/graph.ts.output/GraphRealm.json" with { type: "json" };
 
+const graph_coln = readFileSync(
+  new URL("../../coln-compiler/test/golden/graph.coln", import.meta.url),
+  "utf8",
+);
+
 test("Add vertices and edges to a store", () => {
-  let store = StoreHandle.fromTheory(JSON.stringify(theory));
+  let store = StoreHandle.fromTheory(
+    JSON.stringify(theory),
+    graph_coln,
+    "GraphRealm",
+  );
   let txn = store.beginTransaction();
 
   // adding two vertices
@@ -72,5 +82,5 @@ test("Add vertices and edges to a store", () => {
   }
 
   const expected_edges = [e1, e3];
-  assert.deepStrictEqual([...v1v2_edges].sort(), [...expected_edges].sort())
+  assert.deepStrictEqual([...v1v2_edges].sort(), [...expected_edges].sort());
 });

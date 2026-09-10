@@ -15,8 +15,6 @@ pub mod wire;
 
 use std::borrow::Cow;
 
-use coln_flir_rs::ir::FlatRealm;
-
 use crate::{
     commit::{
         author::Author,
@@ -24,7 +22,7 @@ use crate::{
         error::CodecError,
         hash::CommitHash,
         hash_dict::HashMapper,
-        wire::CommitData,
+        wire::{CommitData, RootCommitData},
     },
     ir::Path,
     op::Op,
@@ -65,8 +63,9 @@ pub struct Commit<'a> {
 
 impl Commit<'static> {
     /// Creating the commit data structure from the deserialized root data
-    pub(crate) fn from_root_data(root: &FlatRealm) -> Result<Self, CodecError> {
+    pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, CodecError> {
         let bytes = wire::serialize_root(root)?;
+
         Ok(Self::from_root_bytes(bytes))
     }
 
@@ -171,7 +170,7 @@ impl<'a> Commit<'a> {
         self.chunk_type() == ChunkType::Root
     }
 
-    pub(crate) fn root_payload(&self) -> Result<FlatRealm, CodecError> {
+    pub(crate) fn root_payload(&self) -> Result<RootCommitData, CodecError> {
         if self.chunk_type() != ChunkType::Root {
             return Err(CodecError::ChunkMismatch {
                 expected: ChunkType::Root,
@@ -220,165 +219,100 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::LazyLock;
-
     use coln_flir_rs::ir::Schema;
+    use rstest::{fixture, rstest};
 
     use super::*;
     use crate::commit::chunk::{Chunk, hash};
     use crate::commit::hash::HASH_SIZE;
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, TableEntry};
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, Path};
     use crate::table::{TableMeta, TableOid, WireRowId};
+    use crate::test_utils::{id_col_type, id_schema, int_schema, non_empty_root_commit_data};
     use crate::txn::{TempRowId, TxnWireRowId};
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])
     }
 
-    fn int_schema() -> &'static Schema {
-        static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: None,
-        });
-        &SCHEMA
+    struct TestTableMetadata {
+        path_t: Path,
+        path_uv: Path,
+        int_schema: Schema,
+        entity_pair_schema: Schema,
+        mixed_schema: Schema,
     }
 
-    fn entity_pair_schema() -> &'static Schema {
-        static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![
-                ColumnEntry {
-                    path: Path::from("c0"),
-                    col_type: ColType::RowId {
-                        path: Path::from("T.E"),
-                    },
-                },
-                ColumnEntry {
-                    path: Path::from("c1"),
-                    col_type: ColType::RowId {
-                        path: Path::from("T.E"),
-                    },
-                },
-            ],
-            primary_key: None,
-        });
-        &SCHEMA
-    }
-
-    fn mixed_schema() -> &'static Schema {
-        static SCHEMA: LazyLock<Schema> = LazyLock::new(|| Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![
-                ColumnEntry {
-                    path: Path::from("c0"),
-                    col_type: ColType::RowId {
-                        path: Path::from("T.E"),
-                    },
-                },
-                ColumnEntry {
-                    path: Path::from("c1"),
-                    col_type: ColType::RowId {
-                        path: Path::from("T.E"),
-                    },
-                },
-                ColumnEntry {
-                    path: Path::from("c2"),
-                    col_type: ColType::BuiltinTy {
-                        builtin_ty: BuiltinTy::BuiltinStr,
-                    },
-                },
-            ],
-            primary_key: None,
-        });
-        &SCHEMA
-    }
-
-    fn path_t() -> &'static Path {
-        static PATH: LazyLock<Path> = LazyLock::new(|| Path::from("T"));
-        &PATH
-    }
-
-    fn path_uv() -> &'static Path {
-        static PATH: LazyLock<Path> = LazyLock::new(|| Path::from("U.V"));
-        &PATH
-    }
-
-    fn int_encode_table_meta(oid: TableOid) -> Option<TableMeta<'static>> {
-        (oid == 0).then_some(TableMeta {
-            path: path_t(),
-            oid: 0,
-            schema: int_schema(),
-        })
-    }
-
-    fn payload_encode_table_meta(oid: TableOid) -> Option<TableMeta<'static>> {
-        match oid {
-            0 => Some(TableMeta {
-                path: path_t(),
+    impl TestTableMetadata {
+        fn int_for_oid(&self, oid: TableOid) -> Option<TableMeta<'_>> {
+            (oid == 0).then_some(TableMeta {
+                path: &self.path_t,
                 oid: 0,
-                schema: int_schema(),
-            }),
-            1 => Some(TableMeta {
-                path: path_uv(),
-                oid: 1,
-                schema: mixed_schema(),
-            }),
-            _ => None,
+                schema: &self.int_schema,
+            })
         }
-    }
 
-    fn payload_decode_table_meta(path: &Path) -> Option<TableMeta<'static>> {
-        if path == path_t() {
-            Some(TableMeta {
-                path: path_t(),
+        fn payload_for_oid(&self, oid: TableOid) -> Option<TableMeta<'_>> {
+            match oid {
+                0 => self.int_for_oid(oid),
+                1 => Some(TableMeta {
+                    path: &self.path_uv,
+                    oid: 1,
+                    schema: &self.mixed_schema,
+                }),
+                _ => None,
+            }
+        }
+
+        fn payload_for_path(&self, path: &Path) -> Option<TableMeta<'_>> {
+            if path == &self.path_t {
+                self.int_for_oid(0)
+            } else if path == &self.path_uv {
+                Some(TableMeta {
+                    path: &self.path_uv,
+                    oid: 1,
+                    schema: &self.mixed_schema,
+                })
+            } else {
+                None
+            }
+        }
+
+        fn entity_pair_for_oid(&self, oid: TableOid) -> Option<TableMeta<'_>> {
+            (oid == 0).then_some(TableMeta {
+                path: &self.path_t,
                 oid: 0,
-                schema: int_schema(),
+                schema: &self.entity_pair_schema,
             })
-        } else if path == path_uv() {
-            Some(TableMeta {
-                path: path_uv(),
-                oid: 1,
-                schema: mixed_schema(),
-            })
-        } else {
-            None
         }
     }
 
-    fn entity_pair_encode_table_meta(oid: TableOid) -> Option<TableMeta<'static>> {
-        (oid == 0).then_some(TableMeta {
-            path: path_t(),
-            oid: 0,
-            schema: entity_pair_schema(),
-        })
-    }
+    #[fixture]
+    fn table_metadata(
+        #[from(int_schema)]
+        #[with(vec!["c0"], None)]
+        int_schema: Schema,
+        #[from(id_schema)]
+        #[with(
+            vec!["c0", "c1"],
+            None,
+            id_col_type(Path::from("T.E"))
+        )]
+        entity_pair_schema: Schema,
+    ) -> TestTableMetadata {
+        let mut mixed_schema = entity_pair_schema.clone();
+        mixed_schema.columns.push(ColumnEntry {
+            path: Path::from("c2"),
+            col_type: ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinStr,
+            },
+        });
 
-    fn owned_int_schema() -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: Some(vec![Path::from("c0")]),
-        }
-    }
-
-    fn int_theory() -> FlatRealm {
-        FlatRealm {
-            tables: vec![TableEntry {
-                path: Path::from("T"),
-                table: owned_int_schema(),
-            }],
-            rules: vec![],
+        TestTableMetadata {
+            path_t: Path::from("T"),
+            path_uv: Path::from("U.V"),
+            int_schema,
+            entity_pair_schema,
+            mixed_schema,
         }
     }
 
@@ -392,9 +326,9 @@ mod tests {
         CommitData::new(deps, author, timestamp, message.map(str::to_owned), pending)
     }
 
-    #[test]
-    fn decode_root_preserves_payload_and_hash() {
-        let original = Commit::from_root_data(&int_theory()).expect("build root");
+    #[rstest]
+    fn decode_root_preserves_payload_and_hash(non_empty_root_commit_data: RootCommitData) {
+        let original = Commit::from_root_data(&non_empty_root_commit_data).expect("build root");
 
         let bytes = Chunk::from(&original).encoded();
         let chunk = Chunk::decode(&bytes).expect("decode root chunk");
@@ -411,8 +345,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn decode_data_preserves_payload_metadata_and_ops() {
+    #[rstest]
+    fn decode_data_preserves_payload_metadata_and_ops(table_metadata: TestTableMetadata) {
         let dep = zero_hash();
         let deps = vec![dep];
         let rid = WireRowId {
@@ -437,13 +371,14 @@ mod tests {
         ];
         let original = Commit::from_commit_data(
             data(deps.clone(), Author::foo(), 42, Some("hi"), pending.clone()),
-            payload_encode_table_meta,
+            |oid| table_metadata.payload_for_oid(oid),
         )
         .expect("build commit");
 
         let bytes = Chunk::from(&original).encoded();
         let chunk = Chunk::decode(&bytes).expect("decode commit chunk");
-        let decoded = Commit::from_chunk(chunk, payload_decode_table_meta).expect("decode commit");
+        let decoded = Commit::from_chunk(chunk, |path| table_metadata.payload_for_path(path))
+            .expect("decode commit");
 
         assert_eq!(decoded.chunk_type(), ChunkType::Commit);
         assert_eq!(decoded.hash(), original.hash());
@@ -458,7 +393,7 @@ mod tests {
         let hash = decoded.hash();
         let expected: Vec<Op> = pending.iter().map(|op| op.resolve(hash)).collect();
         let got: Vec<Op> = decoded
-            .resolved_ops(payload_decode_table_meta)
+            .resolved_ops(|path| table_metadata.payload_for_path(path))
             .expect("resolve ops");
         assert_eq!(got, expected);
     }
@@ -528,17 +463,16 @@ mod tests {
         assert_ne!(a.hash(), b.hash());
     }
 
-    #[test]
-    fn different_ops_produce_different_hashes() {
+    #[rstest]
+    fn different_ops_produce_different_hashes(table_metadata: TestTableMetadata) {
         let op = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
             values: vec![42.into()],
         };
-        let a = Commit::from_commit_data(
-            data(vec![], Author::foo(), 0, None, vec![op]),
-            int_encode_table_meta,
-        )
+        let a = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op]), |oid| {
+            table_metadata.int_for_oid(oid)
+        })
         .expect("build a");
 
         let op2 = PendingOp::Add {
@@ -546,10 +480,9 @@ mod tests {
             table: 0,
             values: vec![99.into()],
         };
-        let b = Commit::from_commit_data(
-            data(vec![], Author::foo(), 0, None, vec![op2]),
-            int_encode_table_meta,
-        )
+        let b = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op2]), |oid| {
+            table_metadata.int_for_oid(oid)
+        })
         .expect("build b");
 
         assert_ne!(a.hash(), b.hash());
@@ -565,10 +498,9 @@ mod tests {
         assert_eq!(commit.hash(), expected);
     }
 
-    #[test]
-    fn root_commit_wraps_and_decodes_root_payload() {
-        let root = int_theory();
-        let commit = Commit::from_root_data(&root).expect("build root");
+    #[rstest]
+    fn root_commit_wraps_and_decodes_root_payload(non_empty_root_commit_data: RootCommitData) {
+        let commit = Commit::from_root_data(&non_empty_root_commit_data).expect("build root");
 
         assert_eq!(commit.chunk_type(), ChunkType::Root);
         assert!(commit.deps.is_empty());
@@ -576,14 +508,16 @@ mod tests {
         assert_eq!(commit.hash(), hash(ChunkType::Root, commit.payload()));
 
         let decoded = commit.root_payload().expect("decode root payload");
-        assert_eq!(decoded.tables.len(), 1);
-        assert_eq!(decoded.tables[0].path, Path::from("T"));
-        assert_eq!(decoded.tables[0].table.columns, owned_int_schema().columns);
+        let ir = &decoded.ir;
+        assert_eq!(ir.tables.len(), 1);
+        assert_eq!(ir.tables[0].path, Path::from("T"));
         assert_eq!(
-            decoded.tables[0].table.primary_key,
-            Some(vec![Path::from("c0")])
+            ir.tables[0].table.columns,
+            int_schema(vec!["c0"], Some(vec!["c0"])).columns
         );
-        assert!(decoded.rules.is_empty());
+        assert_eq!(ir.tables[0].table.primary_key, Some(vec![Path::from("c0")]));
+        assert_eq!(ir.rules.len(), 1);
+        assert_eq!(ir.rules[0].path, Path::from("T.non_negative"));
     }
 
     #[test]
@@ -601,8 +535,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn build_records_metadata_and_pending_ops() {
+    #[rstest]
+    fn build_records_metadata_and_pending_ops(table_metadata: TestTableMetadata) {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
@@ -627,7 +561,7 @@ mod tests {
         let pending = vec![op0, op1];
         let commit = Commit::from_commit_data(
             data(deps.clone(), author, 42, Some("hi"), pending.clone()),
-            payload_encode_table_meta,
+            |oid| table_metadata.payload_for_oid(oid),
         )
         .expect("build commit");
 
@@ -636,17 +570,19 @@ mod tests {
         assert_eq!(commit.message.as_deref(), Some("hi"));
         assert_eq!(commit.other_hashes, vec![dep]);
         assert_eq!(
-            wire::data::deserialize(commit.payload(), payload_decode_table_meta)
-                .expect("decode payload")
-                .pending,
+            wire::data::deserialize(commit.payload(), |path| {
+                table_metadata.payload_for_path(path)
+            })
+            .expect("decode payload")
+            .pending,
             pending,
             "ops live in the payload, decodable on demand"
         );
         assert!(!commit.payload().is_empty());
     }
 
-    #[test]
-    fn payload_decode_round_trips_columnar_commit() {
+    #[rstest]
+    fn payload_decode_round_trips_columnar_commit(table_metadata: TestTableMetadata) {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
@@ -669,14 +605,16 @@ mod tests {
             ],
         };
         let pending = vec![op0, op1];
-        let commit = Commit::from_commit_data(
-            data(deps, author, 42, Some("hi"), pending.clone()),
-            payload_encode_table_meta,
-        )
-        .expect("build commit");
+        let commit =
+            Commit::from_commit_data(data(deps, author, 42, Some("hi"), pending.clone()), |oid| {
+                table_metadata.payload_for_oid(oid)
+            })
+            .expect("build commit");
 
-        let got = wire::data::deserialize(commit.payload(), payload_decode_table_meta)
-            .expect("decode commit");
+        let got = wire::data::deserialize(commit.payload(), |path| {
+            table_metadata.payload_for_path(path)
+        })
+        .expect("decode commit");
         assert_eq!(got.deps, commit.deps);
         assert_eq!(got.author, commit.author);
         assert_eq!(got.timestamp, commit.timestamp);
@@ -685,8 +623,8 @@ mod tests {
         assert_eq!(got.pending, pending);
     }
 
-    #[test]
-    fn other_hashes_contain_right_hashes() {
+    #[rstest]
+    fn other_hashes_contain_right_hashes(table_metadata: TestTableMetadata) {
         let ha = CommitHash([1u8; HASH_SIZE]);
         let hb = CommitHash([2u8; HASH_SIZE]);
         let rid_a = WireRowId {
@@ -721,7 +659,7 @@ mod tests {
         };
         let commit = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op0, op1]),
-            entity_pair_encode_table_meta,
+            |oid| table_metadata.entity_pair_for_oid(oid),
         )
         .expect("build commit");
         assert_eq!(
@@ -735,11 +673,11 @@ mod tests {
             table: 0,
             values: vec![42.into()],
         };
-        let no_row_refs = Commit::from_commit_data(
-            data(vec![], Author::foo(), 0, None, vec![op_int]),
-            int_encode_table_meta,
-        )
-        .expect("build");
+        let no_row_refs =
+            Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op_int]), |oid| {
+                table_metadata.int_for_oid(oid)
+            })
+            .expect("build");
         assert!(
             no_row_refs.other_hashes.is_empty(),
             "no Existing row refs → empty hash dictionary"

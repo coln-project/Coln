@@ -10,8 +10,11 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
-    store::CommitChunk as StoreCommitChunk,
-    table::{RowView as StoreRowView, WireRowId as StoreRowId, WireValue as StoreCellValue},
+    store::{ColnDef as StoreColnDef, CommitChunk as StoreCommitChunk},
+    table::{
+        WireRowId as StoreRowId, WireValue as StoreCellValue,
+        table_handle::WireRowView as StoreRowView,
+    },
     txn::{TxnLiveRowId, TxnLiveValue as StoreTxnValue},
 };
 
@@ -229,6 +232,21 @@ fn decode_commit_hash(value: &str) -> Result<[u8; 32], BoundaryError> {
                 bytes.len()
             ))
         })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+pub struct ColnDef {
+    pub theory: String,
+    pub realm: String,
+}
+
+impl From<StoreColnDef> for ColnDef {
+    fn from(value: StoreColnDef) -> Self {
+        Self {
+            theory: value.theory,
+            realm: value.realm,
+        }
+    }
 }
 
 #[cfg(test)]
