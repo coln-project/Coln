@@ -76,35 +76,18 @@ impl StoreWrite for OwnedTransaction {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
+    use crate::ir::Path;
     use crate::table::ValidationError;
+    use crate::test_utils::single_int_store;
 
-    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns,
-            primary_key,
-        }
-    }
-
-    fn int_col(name: &str) -> ColumnEntry {
-        ColumnEntry {
-            path: Path::from(name),
-            col_type: ColType::BuiltinTy {
-                builtin_ty: BuiltinTy::BuiltinInt,
-            },
-        }
-    }
-
-    #[test]
-    fn owned_transaction_commits_and_returns_updated_store() {
+    #[rstest]
+    fn owned_transaction_commits_and_returns_updated_store(
+        #[from(single_int_store)] store: Store,
+    ) {
         let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
         tx.add(&path, vec![42i32]).expect("add");
@@ -113,14 +96,11 @@ mod tests {
         assert_eq!(committed.table_at(&path).expect("T").row_count(), 1);
     }
 
-    #[test]
-    fn owned_transaction_add_validates_table_and_column_count() {
+    #[rstest]
+    fn owned_transaction_add_validates_table_and_column_count(
+        #[from(single_int_store)] store: Store,
+    ) {
         let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
         let err = tx.add(&Path::from("missing"), vec![1i32]).unwrap_err();
@@ -136,14 +116,11 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn owned_transaction_store_read_sees_committed_rows_not_pending() {
+    #[rstest]
+    fn owned_transaction_store_read_sees_committed_rows_not_pending(
+        #[from(single_int_store)] store: Store,
+    ) {
         let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
 
         let mut tx = OwnedTransaction::new(store);
         tx.add(&path, vec![1i32]).expect("add");

@@ -193,9 +193,28 @@ mod root {
 }
 
 mod store {
+    use crate::store::auto::AutoStore;
+
     use super::root::empty_colndef;
-    use super::schema::{int_col_type, int_schema};
+    use super::schema::{id_col_type, id_schema, idonly_schema, int_col_type, int_schema};
     use super::*;
+
+    #[fixture]
+    pub(crate) fn nodes_edges_store(
+        idonly_schema: Schema,
+        #[from(id_schema)]
+        #[with(vec!["node"], None, id_col_type(Path::from("Nodes")))]
+        edges_schema: Schema,
+    ) -> Store {
+        let mut store = Store::new();
+        store
+            .create_table(Path::from("Nodes"), idonly_schema)
+            .expect("create nodes table");
+        store
+            .create_table(Path::from("Edges"), edges_schema)
+            .expect("create edges table");
+        store
+    }
 
     #[fixture]
     pub(crate) fn single_int_store(
@@ -207,6 +226,11 @@ mod store {
         let mut store = Store::new();
         store.create_table(path, schema).expect("create test table");
         store
+    }
+
+    #[fixture]
+    pub(crate) fn single_int_autostore(single_int_store: Store) -> AutoStore {
+        AutoStore::new(single_int_store)
     }
 
     // A single_int_store, but with a single commit added
