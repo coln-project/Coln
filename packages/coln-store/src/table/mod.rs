@@ -26,7 +26,7 @@ use crate::ir::Schema;
 use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedValue};
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
-use crate::table::index::{IndexId, IndexMeta, TableIndex};
+use crate::table::index::{IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 use crate::txn::TxnId;
 
@@ -69,32 +69,15 @@ pub enum ValidationError {
     TxnIdMismatch { current: TxnId, got: TxnId },
     #[error("invalid row handle: {reason}")]
     InvalidTxnLiveRowId { reason: String },
-    #[error("invalid index id passed {index}")]
-    InvalidIndex { index: u64 },
-    #[error("invalid index key for index {index}: expected {expected} values, got {got}")]
-    InvalidIndexKey {
-        index: IndexId,
-        expected: usize,
-        got: usize,
-    },
+    #[error("invalid index key for index: expected <= {expected} values, got {got}")]
+    InvalidIndexKey { expected: usize, got: usize },
     #[error("lookup column {column} is outside the table's {column_count} columns")]
     InvalidLookupColumn { column: usize, column_count: usize },
     #[error("passed in row id is not valid {wire_id}")]
     InvalidRowId { wire_id: WireRowId },
 }
 
-/// How the primary key constraint is checked on insert. Resolved once at
-/// table construction.
-#[derive(Debug, Clone)]
-enum PkConstraint {
-    /// No primary key in the schema.
-    None,
-    /// An empty primary key: the table holds at most one row.
-    Singleton,
-    /// A non-empty primary key backed by the sorted index at this position
-    /// in [`Table::indexes`].
-    Indexed(usize),
-}
+type ColName = ir::Path;
 
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
 ///
@@ -106,18 +89,26 @@ enum PkConstraint {
 /// [`TableRef`] bundles the table and dictionary for decoded reads.
 #[derive(Debug)]
 pub struct Table {
+    // metadata
     oid: TableOid,
     path: ir::Path,
     schema: Schema,
-    /// Structural (all-columns) index used for structural identification, when enabled.
-    structural_index: Option<IndexId>,
-    indexes: Vec<TableIndex>,
+
+    // actual data
     row_ids: IdColumn,
     cols: Vec<Column>,
-    pk: PkConstraint,
+
+    // the first n
+    pk: Option<usize>,
+    // A single index on all columns
+    index: TableIndex,
+
+    // buffering rollback
     pending_updates: Vec<PackedOp>,
     undo_log: Option<Vec<UndoOp>>,
 
+    // structural identification
+    structural: bool,
     // Map each rowid to the rows that refer to them.
     rebuild_index: HashMap<PackedRowId, Vec<PackedRowId>>,
 }
@@ -132,38 +123,25 @@ impl Table {
             .map(|column| Column::new(CellKind::from(&column.col_type)))
             .collect();
 
-        let mut indexes = Vec::new();
         let pk = match &schema.primary_key {
-            None => PkConstraint::None,
-            Some(pk) if pk.is_empty() => PkConstraint::Singleton,
-            Some(pk) => {
-                // Schemas come from the compiler, so an unresolvable primary
-                // key column is a construction bug, not a runtime condition.
-                let key_cols: Vec<usize> = pk
-                    .iter()
-                    // we can expect the schema to contain right information
-                    .map(|n| *n as usize)
-                    .collect();
-                indexes.push(TableIndex::new(&key_cols, &schema));
-                // ? Is referring to the index id the right thing to do?
-                PkConstraint::Indexed(indexes.len() - 1)
-            }
+            None => None,
+            Some(pk) if pk.is_empty() => Some(0),
+            Some(pk) => Some(pk.len()),
         };
 
-        // TODO if structural identity is enabled, then create another index.
-        let structural_cols: Vec<usize> = (0..schema.columns.len()).collect();
-        indexes.push(TableIndex::new(&structural_cols, &schema));
-        // let structural_index = Some(indexes.len() - 1);
-        let structural_index = None;
+        let except_rowid: Vec<usize> = (0..schema.columns.len()).collect();
+        let index = TableIndex::new(&except_rowid, &schema);
+        // TODO if structural identity is enabled, then change this.
+        let structural = false;
 
         Self {
             oid,
             path,
             schema,
-            structural_index,
+            structural,
             row_ids: IdColumn::new(),
             cols,
-            indexes,
+            index,
             pk,
             pending_updates: Vec::new(),
             undo_log: None,
@@ -188,22 +166,15 @@ impl Table {
         self.row_ids.len()
     }
 
-    pub(crate) fn indexes_meta(&self) -> Vec<IndexMeta<'_>> {
-        self.indexes
-            .iter()
-            .enumerate()
-            .map(|(id, index)| IndexMeta {
-                id,
-                key_cols: index.key_cols(),
-            })
-            .collect()
+    pub(crate) fn index_meta(&self) -> IndexMeta<'_> {
+        IndexMeta {
+            key_cols: self.index.key_cols(),
+        }
     }
 
-    pub(crate) fn primary_index(&self) -> Option<IndexId> {
-        match self.pk {
-            PkConstraint::Indexed(i) => Some(i),
-            PkConstraint::None | PkConstraint::Singleton => None,
-        }
+    // Returns the first n columns that are required to be unique in this table
+    pub(crate) fn unique_columns(&self) -> Option<usize> {
+        self.pk
     }
 }
 
@@ -256,23 +227,15 @@ impl Table {
 
     pub(crate) fn index_seek<'s>(
         &'s self,
-        index: IndexId,
         key: &[PackedValue],
     ) -> Result<impl Iterator<Item = PackedRowId> + use<'s>, ValidationError> {
-        let table_index = self
-            .indexes
-            .get(index)
-            .ok_or(ValidationError::InvalidIndex {
-                index: index as u64,
-            })?;
-        if key.len() != table_index.key_cols().len() {
+        if key.len() > self.index.key_cols().len() {
             return Err(ValidationError::InvalidIndexKey {
-                index,
-                expected: table_index.key_cols().len(),
+                expected: self.index.key_cols().len(),
                 got: key.len(),
             });
         }
-        Ok(table_index.get(key))
+        Ok(self.index.get(key))
     }
 }
 
@@ -304,31 +267,18 @@ impl Table {
             value.matches_schema(&col_entry.col_type, i)?;
         }
 
-        match &self.pk {
-            PkConstraint::None => {}
-            PkConstraint::Singleton => {
-                // A primary key with empty columns only allows at most one
-                // row, hence inserting any more rows would be an error
-                if self.row_count() >= 1 {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
+        if let Some(cols) = &self.pk {
+            let Some(key) = (0..*cols)
+                .map(|ci| dict.try_pack_value(&values[ci]))
+                .collect::<Option<Vec<_>>>()
+            else {
+                // If we cannot pack, then the primary key should be absent, so no need to check
+                return Ok(());
+            };
+            if self.index.contains_key(&key) {
+                return Err(ValidationError::DuplicatePrimaryKey);
             }
-            PkConstraint::Indexed(i) => {
-                let index = &self.indexes[*i];
-                let Some(key) = index
-                    .key_cols()
-                    .iter()
-                    .map(|&ci| dict.try_pack_value(&values[ci]))
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    // If we cannot pack, then the primary key should be absent, so noneed to check
-                    return Ok(());
-                };
-                if index.contains_key(&key) {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
-            }
-        }
+        };
         Ok(())
     }
 
@@ -606,27 +556,17 @@ impl Table {
     ) -> Result<(), ValidationError> {
         // Checked before anything is recorded, so a rejected row leaves behind
         // neither an index entry nor a staged union.
-        match self.pk {
-            PkConstraint::None => {}
-            PkConstraint::Singleton => {
-                if self.row_count() >= 1 {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
+        if let Some(unique_cols) = self.pk {
+            if self.index.contains_key(&values[..unique_cols]) {
+                return Err(ValidationError::DuplicatePrimaryKey);
             }
-            PkConstraint::Indexed(pk_index) => {
-                let key = Self::project_index_key(&self.indexes[pk_index], &values);
-                if self.indexes[pk_index].contains_key(&key) {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
-            }
-        }
+        };
 
         // A structurally identical row is stored anyway: rowing unions the two
         // ids and a later rebuild pass collapses them.
-        if let Some(index) = self.structural_index {
-            let key = Self::project_index_key(&self.indexes[index], &values);
+        if self.structural {
             if let Some(old) = self
-                .index_seek(index, &key)
+                .index_seek(&values)
                 .expect("valid structural index and key structure")
                 .next()
             {
@@ -647,10 +587,8 @@ impl Table {
     fn insert_packed(&mut self, values: Vec<PackedValue>, row_id: PackedRowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
-        for index in &mut self.indexes {
-            let key = Self::project_index_key(index, &values);
-            index.insert(key, row_id);
-        }
+        self.index.insert(values.clone(), row_id);
+
         // TODO this should only be maintained when a table needs rebuild, i.e. a structural table.
         // for child in Self::referenced_ids(&values) {
         //     self.rebuild_index.entry(child).or_default().push(row_id);
@@ -675,10 +613,8 @@ impl Table {
             .packed_row_by_id(row_id)
             .expect("removal target should have a complete row");
 
-        for index in &mut self.indexes {
-            let key = Self::project_index_key(index, &values);
-            index.remove(&key, row_id);
-        }
+        self.index.remove(&values, row_id);
+
         // for child in Self::referenced_ids(&values) {
         //     let referring = self
         //         .rebuild_index
@@ -699,14 +635,6 @@ impl Table {
         }
         values
     }
-
-    fn project_index_key(index: &TableIndex, values: &[PackedValue]) -> Vec<PackedValue> {
-        index
-            .key_cols()
-            .iter()
-            .map(|&col_idx| values[col_idx].clone())
-            .collect()
-    }
 }
 
 impl Table {
@@ -717,7 +645,7 @@ impl Table {
     pub(crate) fn set_structural_index_for_test(&mut self, enabled: bool) {
         // `Table::new` always appends the all-columns index last; enable
         // structural identity by pointing at that slot.
-        self.structural_index = enabled.then_some(self.indexes.len() - 1);
+        self.structural = enabled;
     }
 
     /// Dump table contents row by row for debugging.

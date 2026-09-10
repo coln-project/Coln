@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-pub mod error;
 pub mod auto;
+pub mod error;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 

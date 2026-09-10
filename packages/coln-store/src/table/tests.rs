@@ -732,13 +732,14 @@ fn table_index_non_index_give_same_results(
     }
     let index = test_table
         .handle()
-        .primary_index()
+        .unique_columns()
         .expect("primary-key index");
+    assert_eq!(index, 1);
 
     for value in [7, 9] {
         let indexed = test_table
             .handle()
-            .index_seek(index, &[WireValue::Int(value)])
+            .index_seek(&[WireValue::Int(value)])
             .expect("valid index lookup")
             .collect::<Vec<_>>();
         let scanned = test_table
