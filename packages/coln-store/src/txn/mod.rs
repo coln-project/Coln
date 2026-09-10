@@ -137,49 +137,20 @@ impl<M> Drop for Transaction<M> {
 #[cfg(test)]
 mod tests {
 
+    use rstest::rstest;
+
     use super::*;
-    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
+    use crate::ir::Path;
     use crate::table::{ValidationError, WireValue};
+    use crate::test_utils::{int_schema, nodes_edges_store, single_int_store};
     use crate::txn::row_handle::empty_row;
 
-    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<u64>>) -> Schema {
-        Schema {
-            entity_variant: EntityVariant::Table,
-            columns,
-            primary_key,
-        }
-    }
-
-    fn int_col(name: &str) -> ColumnEntry {
-        ColumnEntry {
-            path: Path::from(name),
-            col_type: ColType::BuiltinTy {
-                builtin_ty: BuiltinTy::BuiltinInt,
-            },
-        }
-    }
-
-    fn row_id_col(name: &str, path: Path) -> ColumnEntry {
-        ColumnEntry {
-            path: Path::from(name),
-            col_type: ColType::RowId { path },
-        }
-    }
-
-    #[test]
-    fn transaction_resolves_pending_row_references_with_commit_hash() {
+    #[rstest]
+    fn transaction_resolves_pending_row_references_with_commit_hash(
+        #[from(nodes_edges_store)] mut store: Store,
+    ) {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
-        let mut store = Store::new();
-        store
-            .create_table(nodes.clone(), table_schema(vec![], None))
-            .expect("create nodes table");
-        store
-            .create_table(
-                edges.clone(),
-                table_schema(vec![row_id_col("node", nodes.clone())], None),
-            )
-            .expect("create edges table");
 
         let mut tx = store.transaction();
         let node_temp = tx.add(&nodes, empty_row()).expect("add node");
@@ -202,20 +173,12 @@ mod tests {
         assert_eq!(edge.cell_at(0, 0), Some(WireValue::Id(node_id)));
     }
 
-    #[test]
-    fn committed_row_handle_can_be_used_in_later_transaction() {
+    #[rstest]
+    fn committed_row_handle_can_be_used_in_later_transaction(
+        #[from(nodes_edges_store)] mut store: Store,
+    ) {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
-        let mut store = Store::new();
-        store
-            .create_table(nodes.clone(), table_schema(vec![], None))
-            .expect("create nodes table");
-        store
-            .create_table(
-                edges.clone(),
-                table_schema(vec![row_id_col("node", nodes.clone())], None),
-            )
-            .expect("create edges table");
 
         let mut tx = store.transaction();
         let node = tx.add(&nodes, empty_row()).expect("add node");
@@ -233,20 +196,10 @@ mod tests {
         assert_eq!(edge.cell_at(0, 0), Some(WireValue::Id(node_id)));
     }
 
-    #[test]
-    fn abort_invalidates_returned_row_handles() {
+    #[rstest]
+    fn abort_invalidates_returned_row_handles(#[from(nodes_edges_store)] mut store: Store) {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
-        let mut store = Store::new();
-        store
-            .create_table(nodes.clone(), table_schema(vec![], None))
-            .expect("create nodes table");
-        store
-            .create_table(
-                edges.clone(),
-                table_schema(vec![row_id_col("node", nodes.clone())], None),
-            )
-            .expect("create edges table");
         let mut tx = store.transaction();
         let node = tx.add(&nodes, empty_row()).expect("add node");
         tx.abort();
@@ -267,20 +220,14 @@ mod tests {
         assert_eq!(store.table_at(&nodes).expect("Nodes").row_count(), 0);
     }
 
-    #[test]
-    fn failed_transaction_invalidates_returned_row_handles() {
+    #[rstest]
+    fn failed_transaction_invalidates_returned_row_handles(
+        #[from(nodes_edges_store)]
+        #[with(int_schema(vec![], Some(vec![])))]
+        mut store: Store,
+    ) {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
-        let mut store = Store::new();
-        store
-            .create_table(nodes.clone(), table_schema(vec![], Some(vec![])))
-            .expect("create nodes table");
-        store
-            .create_table(
-                edges.clone(),
-                table_schema(vec![row_id_col("node", nodes.clone())], None),
-            )
-            .expect("create edges table");
 
         let mut tx = store.transaction();
         let node = tx.add(&nodes, empty_row()).expect("add first node");
@@ -315,13 +262,11 @@ mod tests {
     /// `(commit, counter)` id, which names no stored row. The first handle
     /// may still go stale when the second commit wins the merge; reading
     /// through `row_by_liveid` resolves and repairs it.
-    #[test]
-    fn deduplicated_row_handle_finalizes_to_canonical_id() {
-        let term = Path::from("Term");
-        let mut store = Store::new();
-        store
-            .create_table(term.clone(), table_schema(vec![int_col("value")], None))
-            .expect("create term table");
+    #[rstest]
+    fn deduplicated_row_handle_finalizes_to_canonical_id(
+        #[from(single_int_store)] mut store: Store,
+    ) {
+        let term = Path::from("T");
         store.set_structural_index_for_test(&term, true);
 
         let mut tx = store.transaction();
@@ -356,14 +301,11 @@ mod tests {
         assert_eq!(first.row_id().expect("finalized"), stored);
     }
 
-    #[test]
-    fn transaction_commit_updates_commit_graph_heads_and_deps() {
+    #[rstest]
+    fn transaction_commit_updates_commit_graph_heads_and_deps(
+        #[from(single_int_store)] mut store: Store,
+    ) {
         let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
         let root = store.commits().root_commit().expect("root commit").hash();
 
         let mut tx = store.transaction();
@@ -394,14 +336,11 @@ mod tests {
 
     /// We provide read-committed isolation guarantee. So uncommitted data will
     /// not be seen.
-    #[test]
-    fn transaction_store_read_sees_committed_rows_not_pending() {
+    #[rstest]
+    fn transaction_store_read_sees_committed_rows_not_pending(
+        #[from(single_int_store)] mut store: Store,
+    ) {
         let path = Path::from("T");
-        let schema = table_schema(vec![int_col("c0")], None);
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
 
         let mut tx = store.transaction();
         tx.add(&path, vec![1i32]).expect("add");
