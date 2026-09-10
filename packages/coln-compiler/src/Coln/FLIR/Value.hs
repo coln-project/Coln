@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Coln.FLIR.Value where
 
 import Coln.Common
@@ -17,7 +18,7 @@ import FNotation qualified as N
 import FNotation.Kinds qualified as K
 import GHC.Generics
 
-type ColName = Path
+type ColName = TableName
 
 type ColType = SIR.ScalarType
 
@@ -98,8 +99,12 @@ aeOptions =
     , AE.constructorTagModifier = \x -> fmap toLower (take 1 x) ++ (drop 1 x)
     }
 
-pathMapEncoding :: (SIR.PathLike k) => (a -> AE.Encoding) -> OMap k a -> AE.Encoding
-pathMapEncoding f = AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (SIR.encPath k) <> AE.pair "value" (f v)) . OMap.assocs
+pathMapEncoding :: (a -> AE.Encoding) -> OMap TableName a -> AE.Encoding
+pathMapEncoding f = AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (AE.toEncoding k) <> AE.pair "value" (f v)) . OMap.assocs
+
+instance AE.ToJSON TableName where
+  toJSON = panic "aesons behaving badly"
+  toEncoding = AE.toEncoding . (.name)
 
 instance AE.ToJSON Materialization where
   toEncoding = AE.genericToEncoding aeOptions{AE.allNullaryToStringTag = True}
@@ -112,7 +117,7 @@ instance AE.ToJSON EntityVariant where
   toEncoding = \case
     Table -> SIR.taggedEncoding "table" $ mempty
     View m -> SIR.taggedEncoding "view" $ AE.pair "materialization" $ AE.toEncoding m
-    Index m cs -> SIR.taggedEncoding "index" $ AE.pair "method" (AE.toEncoding m) <> AE.pair "columns" (AE.list SIR.encPath cs)
+    Index m cs -> SIR.taggedEncoding "index" $ AE.pair "method" (AE.toEncoding m) <> AE.pair "columns" (AE.list AE.toEncoding cs)
 
 instance AE.ToJSON Entity where
   toJSON = panic "aesons behaving badly"
@@ -120,7 +125,7 @@ instance AE.ToJSON Entity where
     AE.pairs $
       mconcat
         [ AE.pair "entityVariant" $ AE.toEncoding e.entityVariant
-        , AE.pair "columns" $ AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (SIR.encPath k) <> AE.pair "type" (AE.toEncoding v)) e.columns
+        , AE.pair "columns" $ AE.list (\(k, v) -> AE.pairs $ AE.pair "path" (AE.toEncoding k) <> AE.pair "type" (AE.toEncoding v)) e.columns
         , AE.pair "primaryKey" $ fromMaybe AE.null_ $ fmap (AE.list AE.toEncoding) e.primaryKey
         ]
 
@@ -138,7 +143,7 @@ instance AE.ToJSON Atom where
   toEncoding a =
     AE.pairs $
       mconcat
-        [ AE.pair "entity" $ SIR.encPath a.entity
+        [ AE.pair "entity" $ AE.toEncoding a.entity
         , AE.pair "rowId" $ AE.toEncoding a.rowId
         , AE.pair "values" $ AE.list (\(i, t) -> AE.pairs $ mconcat [ AE.pair "column" (AE.toEncoding i), AE.pair "term" (AE.toEncoding t) ]) a.values
         ]
@@ -153,9 +158,9 @@ instance AE.ToJSON Definition where
   toEncoding r =
     AE.pairs $
       mconcat
-        [ AE.pair "vars" $ AE.list (AE.list id . (\(x, y) -> [x, y]) . (SIR.encPath *** AE.toEncoding)) $ r.vars
+        [ AE.pair "vars" $ AE.list (AE.list id . (\(x, y) -> [x, y]) . (AE.toEncoding *** AE.toEncoding)) $ r.vars
         , AE.pair "antecedents" $ AE.toEncoding r.antecedents
-        , AE.pair "definand" $ SIR.encPath r.definand
+        , AE.pair "definand" $ AE.toEncoding r.definand
         , AE.pair "arguments" $ AE.toEncoding r.args
         ]
 
@@ -165,7 +170,7 @@ instance AE.ToJSON Rule where
     AE.pairs $
       mconcat
         [ AE.pair "ruleVariant" $ AE.toEncoding r.ruleVariant
-        , AE.pair "vars" $ AE.list (AE.list id . (\(x, y) -> [x, y]) . (SIR.encPath *** AE.toEncoding)) $ r.vars
+        , AE.pair "vars" $ AE.list (AE.list id . (\(x, y) -> [x, y]) . (AE.toEncoding *** AE.toEncoding)) $ r.vars
         , AE.pair "antecedents" $ AE.toEncoding r.antecedents
         , AE.pair "consequents" $ AE.toEncoding r.consequents
         ]
@@ -188,18 +193,8 @@ ruleVariantDeclKeyword e = Name [] $ case e of
   SIR.Enforced -> "enforced"
   SIR.Monitored -> "monitored"
 
-toNotationColName :: ColName -> N.Ntn0
-toNotationColName BwdNil = N.Tuple [] () -- Shouldn't happen
-toNotationColName (BwdNil :> x) = N.Field x ()
-toNotationColName (p :> x) = N.Juxt (toNotationColName p) (N.Field x ())
-
-instance ToNotationTop Path where
-  toNotationTop BwdNil = N.Tuple [] () -- Shouldn't happen
-  toNotationTop (BwdNil :> x) = N.Ident x ()
-  toNotationTop (p :> x) = N.Juxt (toNotationTop p) (N.Field x ())
-
 instance ToNotationTop TableName where
-  toNotationTop tn = foldl (\n p -> N.Juxt n (N.Field p ())) (N.Ident "ℜ" ()) tn.path
+  toNotationTop tn = N.Raw tn.name ()
 
 instance ToNotationTop ColType where
   toNotationTop = \case
@@ -207,7 +202,7 @@ instance ToNotationTop ColType where
     SIR.BuiltinTy bt -> N.Keyword (fromString $ show bt) ()
 
 instance ToNotationTop (ColName, ColType) where
-  toNotationTop (n, t) = N.Infix (toNotationColName n) (N.Keyword ":" ()) (toNotationTop t)
+  toNotationTop (n, t) = N.Infix (toNotationTop n) (N.Keyword ":" ()) (toNotationTop t)
 
 instance ToNotationTop (TableName, Entity) where
   toNotationTop (tn, e) = do
@@ -215,7 +210,7 @@ instance ToNotationTop (TableName, Entity) where
     let cols = N.Tuple (map toNotationTop e.columns) ()
     let colsWKey = case e.primaryKey of
           Nothing -> cols
-          Just primaryKey -> N.Infix cols (N.Keyword "primarykey" ()) (N.Tuple (map toNotationColName $ map (fst . (e.columns !!)) primaryKey) ())
+          Just primaryKey -> N.Infix cols (N.Keyword "primarykey" ()) (N.Tuple (map toNotationTop $ map (fst . (e.columns !!)) primaryKey) ())
     N.Decl keyword (N.Infix (toNotationTop tn) (N.Keyword ":=" ()) colsWKey) ()
 
 instance ToNotationTop Literal where
@@ -234,7 +229,7 @@ toNotationAtom columnNames cs a = do
   let cols = case OMap.lookup a.entity columnNames of
         Just cols -> cols
         Nothing -> panic $ show a.entity ++ " not found"
-  let field (i, t) = N.Infix (toNotationColName (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
+  let field (i, t) = N.Infix (toNotationTop (cols !! i)) (N.Keyword "↦" ()) (toNotationTerm cs t)
   let body = N.Juxt entity $ N.Tuple (map field a.values) ()
   case a.rowId of
     Nothing -> body

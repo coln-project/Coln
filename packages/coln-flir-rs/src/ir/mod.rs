@@ -2,20 +2,48 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-pub mod path;
-
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use specta::Type;
+use std::fmt;
 
-// A QName is a vec of string, potentially separated by a forward slash /
-pub type QName = Vec<String>;
-
-// For example a G.V would become [["G"], ["V"]], this is at a higher level than
-// QName because V would be a query inside a theory G
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(transparent)]
-pub struct Path(pub Vec<QName>);
+pub struct Path(pub String);
+
+impl Path {
+    pub fn from<S: Into<String>>(value: S) -> Self {
+        Path(value.into())
+    }
+
+    pub fn append<S: AsRef<str>>(&self, segment: S) -> Self {
+        Path(format!("{}.{}", &self.0, segment.as_ref()))
+    }
+}
+
+impl From<Path> for String {
+    fn from(value: Path) -> Self {
+        value.0
+    }
+}
+
+impl From<&str> for Path {
+    fn from(value: &str) -> Self {
+        Path(value.into())
+    }
+}
+
+impl AsRef<str> for Path {
+    fn as_ref<'a>(&'a self) -> &'a str {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 /// A column name is given by a [`Path`].
 pub type ColName = Path;

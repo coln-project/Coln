@@ -46,6 +46,7 @@ module Coln.Common (
   mangleToString,
   fromShow,
   for,
+  renderText
 )
 where
 
@@ -69,8 +70,9 @@ import Data.Void
 
 import Diagnostician
 import FNotation (Name (..))
-import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty, (<+>))
+import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty, layoutCompact, (<+>))
 import Prettyprinter.Render.String
+import Prettyprinter.Render.Text
 import Prelude hiding (lookup)
 
 #ifdef DEBUG
@@ -371,3 +373,6 @@ mangleToDoc x = mconcat [pretty s <> "_slash_" | s <- x.init] <> pretty x.last
 
 mangleToString :: Name -> String
 mangleToString = renderString . layoutPretty defaultLayoutOptions . mangleToDoc
+
+renderText :: DDoc -> Text
+renderText = renderStrict . layoutCompact

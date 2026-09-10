@@ -46,8 +46,8 @@ loadRealms fp = do
   (rep, g) <- loadFile fp
   let realmsCore = OMap.assocs g.realms
   let globalsMIR = interpGlobals g
-  let realmsMIR = [(rId, coreToMIR globalsMIR rId r) | (rId, r) <- realmsCore]
-  let realmsSIR = [(rId, mirToSIR rId r) | (rId, r) <- realmsMIR]
+  let realmsMIR = [(rId, coreToMIR globalsMIR r) | (rId, r) <- realmsCore]
+  let realmsSIR = [(rId, mirToSIR r) | (rId, r) <- realmsMIR]
   pure (rep, OMap.fromList realmsSIR)
 
 compile :: FilePath -> T.Text -> (Reporter ColnCode, IO Globals)
@@ -59,7 +59,7 @@ compile fp contents = do
 
 writeFLIR :: FilePath -> Reporter ColnCode -> OMap Name SIR.Realm -> IO ()
 writeFLIR fp _ realms = for_ (OMap.assocs realms) $ \(rId, r) -> do
-  let flir = sirToFLIR rId r
+  let flir = sirToFLIR r
   let fn = fp </> mangleToString rId <> ".json"
   AE.encodeFile fn flir
   let pn = fp </> mangleToString rId <> ".pretty"

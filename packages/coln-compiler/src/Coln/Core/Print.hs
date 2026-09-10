@@ -14,7 +14,6 @@ import Coln.Core.Params
 import Coln.Core.Readback
 import Coln.Core.Syntax
 import Coln.Frontend.Notation
-import Data.List.NonEmpty (NonEmpty (..))
 import Data.String (fromString)
 import Data.Text qualified as T
 import FNotation qualified as N
@@ -41,7 +40,7 @@ instance ToNotation BId where
     go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
 
 instance ToNotation TableName where
-  toNotation _ x = N.Group (N.Ident x.realm () :| [N.Field s () | s <- toList x.path])
+  toNotation _ x = N.Raw x.name ()
 
 instance ToNotation (El e) where
   toNotation xs = \case

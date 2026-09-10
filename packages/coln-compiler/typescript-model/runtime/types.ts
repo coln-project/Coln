@@ -11,7 +11,11 @@ export type TxnWireRowId = { type: "Existing"; value: WireRowId } | { type: "Pen
 
 export type Value<I> = I | number | string;
 
-export type WhereClause = { type: "PrimaryKey"; values: Value<WireRowId>[] } | { type: "ExceptRowId"; values: Value<WireRowId>[] } | { type: "Generic"; values_at: ([number, Value<WireRowId>])[] };
+export type WhereClause = {
+	table_name: Path,
+	row_id: WireRowId | null,
+	values: Value<WireRowId>[],
+};
 
 /**
  *  The unique id that identifies each row in a table.

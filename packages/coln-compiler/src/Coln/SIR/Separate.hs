@@ -118,10 +118,7 @@ separateGenerator tn gen = do
             let rule = Rule Monitored Antecedent cols S.trueProp codProp
             (Nothing, Nothing, Just $ Leaf rule)
       HSet -> do
-        let tableNameLast = case tn.path of
-              (_ :> last) -> last
-              BwdNil -> tn.realm
-        let resultName = freshenFor names tableNameLast
+        let resultName = freshNameFor names
         let resultQ = separate argNum a
 
         case gen.providence of

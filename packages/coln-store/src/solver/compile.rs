@@ -309,18 +309,8 @@ struct DisplayPath<'a>(&'a ir::Path);
 
 impl fmt::Display for DisplayPath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (idx, qname) in self.0.iter().enumerate() {
-            if idx > 0 {
-                write!(f, ".")?;
-            }
-            write!(f, "{}", display_qname(qname))?;
-        }
-        Ok(())
+        self.0.fmt(f)
     }
-}
-
-fn display_qname(qname: &ir::QName) -> String {
-    qname.join("/")
 }
 
 fn var_name(index: usize) -> String {

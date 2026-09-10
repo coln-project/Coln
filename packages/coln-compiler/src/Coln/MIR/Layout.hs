@@ -32,10 +32,9 @@ data Scope = Scope
   , bound :: Bwd (V.El N Set)
   , locals :: V.Locals
   , usedNames :: Set.Set Name
-  , realm :: RealmId
   }
 
-emptyScope :: RealmId -> Scope
+emptyScope :: Scope
 emptyScope = Scope 0 BwdNil BwdNil BwdNil BwdNil Set.empty
 
 bind :: Scope -> Name -> V.Ty N Set -> (V.El N Set, Scope)
@@ -59,10 +58,10 @@ layout :: Path -> Providence -> Scope -> V.Ty N Theory -> (Trie Generator, M.El 
 layout p pr sc = \case
   V.LiftTy LSetTheory a -> do
     let gt = Leaf (Generator pr sc.names sc.ctx (GenLift a))
-    (gt, M.liftEl $ M.lookup (TableName sc.realm p) (args sc) (M.fromV sc.len a))
+    (gt, M.liftEl $ M.lookup (tableName p) (args sc) (M.fromV sc.len a))
   V.U (inferSetCodes -> u) -> do
     let gt = Leaf (Generator pr sc.names sc.ctx (GenU u))
-    (gt, M.primCode u (TableName sc.realm p) (args sc))
+    (gt, M.primCode u (tableName p) (args sc))
   V.Function ft -> case ft.variant.mlevel of
     SSetTheory -> do
       let x = argName sc.usedNames ft.cod
@@ -79,8 +78,8 @@ layout p pr sc = \case
     let gt = Node $ Dict rt.fieldTypes.head (Vector.fromList gts)
     (gt, M.cons (Dict rt.fieldTypes.head (Vector.fromList ms)))
 
-layoutTop :: RealmId -> V.Ty N Theory -> (Trie Generator, M.El N Theory)
-layoutTop x = layout (BwdNil :> "root") Profane (emptyScope x)
+layoutTop :: V.Ty N Theory -> (Trie Generator, M.El N Theory)
+layoutTop = layout (BwdNil :> "root") Profane emptyScope
 
 asNominative :: V.El D Set -> V.El N Set
 asNominative = \case

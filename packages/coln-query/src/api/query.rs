@@ -95,7 +95,7 @@ impl From<&BaseTableSchema> for TableSchema {
         let columns = value
             .query_cols()
             .iter()
-            .map(|col| Column::new(col.name(), *col.ty()))
+            .map(|col| Column::new(col.name().to_string(), *col.ty()))
             .collect();
         let row_id_key = value
             .resolve_query_col_range(CompilerColIdx::for_row_id())
@@ -395,7 +395,7 @@ impl FlirProgram {
                     })?;
                     binder.conditions.push(Expr::from(BinaryExpr {
                         operator: Operator::Equal,
-                        left: Expr::from(VarExpr::new(column.name())),
+                        left: Expr::from(VarExpr::new(column.name().as_ref())),
                         right: Expr::from(LiteralExpr::from(Literal::from(lit))),
                     }));
                 }

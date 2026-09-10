@@ -95,6 +95,7 @@ prt p = \case
   Mode x _ -> "^" <> dprettyWithKinds ?lconfig x
   Int i _ -> pretty i
   String x _ -> "\"" <> pretty x <> "\""
+  Raw x _ -> pretty x
   Tuple ns _ -> bracketedTuple $ prtTop <$> ns
   Error _ -> "<error>"
 

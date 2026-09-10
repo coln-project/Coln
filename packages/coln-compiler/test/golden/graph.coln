@@ -4,6 +4,16 @@ theory Graph := sig
 end
 
 realm GraphRealm @ Graph
+  def outgoing-edges (v : root.V) : Set := sig
+    into : root.V
+    has-edge : root.E v into
+  end
+
+  def incoming-edges (v : root.V) : Set := sig
+    outof : root.V
+    has-edge : root.E outof v
+  end
+
   def free-edge : Set := sig
     v0 : root.V
     v1 : root.V
