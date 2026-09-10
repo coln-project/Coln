@@ -8,7 +8,7 @@
 use crate::ir::{self, Path};
 use std::ops::Range;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BaseTableSchema {
     /// The table's unique identifier/name.
     name: ir::Path,
@@ -30,6 +30,9 @@ impl BaseTableSchema {
     /// The name of the base table.
     pub fn name(&self) -> &ir::Path {
         &self.name
+    }
+    pub fn compiler_cols(&self) -> &CompilerCols {
+        &self.cols_compiler
     }
     /// Returns [`None`] if `idx` is an index for an implicit row id.
     pub fn get_compiler_col(&self, idx: CompilerColIdx) -> Option<&CompilerCol> {
@@ -108,8 +111,8 @@ impl From<&ir::TableEntry> for Option<BaseTableSchema> {
     fn from(value: &ir::TableEntry) -> Self {
         let path = &value.path;
         let schema = &value.table;
-        if !matches!(schema.entity_variant, ir::EntityVariant::Table) {
-            return None; // Only base tables allowed.
+        if matches!(schema.entity_variant, ir::EntityVariant::Index { .. }) {
+            return None; // Only base tables and derived views allowed.
         }
         let columns_compiler = CompilerCols::from(schema.columns.as_slice());
         let columns_store = StoreEngineCols::from(columns_compiler.0.as_slice());
@@ -189,7 +192,7 @@ impl From<StoreEngineScalarType> for QueryEngineScalarType {
 }
 
 /// Generic column metadata representation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Col<T, R> {
     /// The column's name.
     name: ir::ColName,
@@ -236,15 +239,21 @@ impl From<ir::ColumnIdx> for CompilerColIdx {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CompilerCols(Vec<CompilerCol>);
+
+impl CompilerCols {
+    pub fn inner(&self) -> &[CompilerCol] {
+        &self.0
+    }
+}
 
 pub type StoreEngineCol = Col<StoreEngineScalarType, Option<ir::Path>>;
 
 #[derive(Copy, Clone, Debug)]
 pub struct StoreEngineColIdx(usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StoreEngineCols(Vec<StoreEngineCol>);
 
 impl StoreEngineCols {
@@ -297,10 +306,13 @@ pub type QueryEngineCol = Col<QueryEngineScalarType, Option<ir::Path>>;
 #[derive(Copy, Clone, Debug)]
 pub struct QueryEngineColIdx(usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QueryEngineCols(Vec<QueryEngineCol>);
 
 impl QueryEngineCols {
+    pub fn inner(&self) -> &[QueryEngineCol] {
+        &self.0
+    }
     pub fn iter(&self) -> std::slice::Iter<'_, QueryEngineCol> {
         self.0.iter()
     }

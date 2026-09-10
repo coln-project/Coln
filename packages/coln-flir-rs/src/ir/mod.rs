@@ -195,12 +195,12 @@ pub struct Equality {
     pub right: El,
 }
 
+/// Chased rules are not reported as a rule but defined separately as a
+/// [`DefinitionEntry`] under the top-level
+/// [`definitions`](FlatRealm::definitions).
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuleVariant {
-    /// _Chased_ rules are not yet fully alive but become relevant once initial
-    /// models land.
-    Chased,
     /// Violations of _enforced_ rules cause a transaction to abort.
     Enforced,
     /// Violations of _monitored_ rules are just reported back to the user but

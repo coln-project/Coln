@@ -135,13 +135,13 @@ impl ColnQuery {
     fn interpret_outputs(&mut self) -> Result<TxOutcome, QueryEngineError> {
         let mut hard_violations = ViolationsSet::empty();
         let mut soft_violations = ViolationsDelta::empty();
-        let mut derived_data_delta = DerivedDataDelta::empty();
+        let derived_data_delta = DerivedDataDelta::empty();
         // We must drain all outputs first, so upon short-circuiting due to an
         // error while processing below, we have absorbed all effects of the
         // ongoing commit and they don't leak into the next commit.
         let drained: Vec<_> = self.incremental_runtime.all_outputs().collect();
         for (sink_id, delta) in drained {
-            let sink_meta = self.flir_program.sink_meta(sink_id).ok_or_else(|| {
+            let sink_meta = self.flir_program.constraint_meta(sink_id).ok_or_else(|| {
                 RuntimeError::new(format!(
                     "Bug: FLIR program does not know output sink {}",
                     sink_id
@@ -173,10 +173,10 @@ impl ColnQuery {
                 }
                 ir::RuleVariant::Monitored => {
                     soft_violations.extend(Some(delta));
-                }
-                ir::RuleVariant::Chased => {
-                    derived_data_delta.extend(Some(delta));
-                }
+                } // TODO: Fix interpretation with derived views.
+                  // ir::RuleVariant::Chased => {
+                  //     derived_data_delta.extend(Some(delta));
+                  // }
             }
         }
         // Both guards are the same emptiness check, but they answer different
