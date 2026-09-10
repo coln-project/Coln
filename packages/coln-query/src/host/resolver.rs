@@ -14,9 +14,9 @@ use crate::{
         variable::SCOPES_CAPACITY,
     },
     relational::expr::{
-        AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr, RelExpr,
-        RelExprVisitorMut, SelectionExpr, SourceExpr, UnionExpr,
+        AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr, DistinctExpr,
+        EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr,
+        RelExpr, RelExprVisitorMut, SelectionExpr, SourceExpr, UnionExpr,
     },
 };
 use std::collections::HashMap;
@@ -313,6 +313,14 @@ impl RelExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
     fn visit_source_expr(&mut self, expr: &mut SourceExpr, ctx: VisitorCtx) -> VisitorResult {
         // A source is a plan leaf that names an extensional relation; it carries
         // no variables to resolve.
+        Ok(())
+    }
+
+    fn visit_constant_expr(&mut self, expr: &mut ConstantExpr, ctx: VisitorCtx) -> VisitorResult {
+        // The other plan leaf: it carries rows rather than variables, so there
+        // is nothing to resolve. Its invariants need no re-check here either,
+        // unlike a `MultiWayEquiJoinExpr`, a constant cannot be assembled
+        // except through `ConstantExpr::new`, which checks them.
         Ok(())
     }
 

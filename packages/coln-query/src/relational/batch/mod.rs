@@ -95,6 +95,7 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
         let LoweredPlan {
             program,
             sources: used_sources,
+            constants,
             outputs,
             schemas,
         } = lower(plan.as_code(), &sources)
@@ -112,6 +113,7 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
             outputs,
             schemas,
             inputs,
+            constants,
             sinks,
             results: None,
         })
@@ -130,6 +132,10 @@ pub struct BatchRuntime {
     /// the interim snapshot store described in the module docs; the pull
     /// API replaces it.
     inputs: HashMap<String, HashMap<Vec<u64>, ZWeight>>,
+    /// The base tables the plan's constants *are*. Unlike `inputs` these need
+    /// no integration and never change: the plan states them, so lowering
+    /// materialized them once (see [`LoweredPlan::constants`]).
+    constants: Vec<Relation>,
     sinks: Vec<SinkId>,
     /// The relations of the last commit.
     results: Option<BatchCatalog>,
@@ -221,6 +227,11 @@ impl BatchRuntime {
                 }
             }
             edb.insert(Relation::new(source.clone(), columns, data));
+        }
+        // A constant is a base table like any other; it just came from the plan
+        // rather than through `feed`, so there are no deltas to integrate.
+        for constant in &self.constants {
+            edb.insert(constant.clone());
         }
         Ok(edb)
     }

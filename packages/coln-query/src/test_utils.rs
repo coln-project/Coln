@@ -14,6 +14,7 @@ use crate::{
         catalog::{Catalog, SourceSchemas},
         expr::SourceId,
         incremental::{dbsp::ZWeight, schema::TupleKey},
+        relation::Tuple,
         schema::{Column, EntityRef, TableSchema},
     },
     scalarial::{ScalarType, ScalarTypedValue},
@@ -608,6 +609,39 @@ pub fn person_profession_data() -> [(Vec<PersonRel>, Vec<ProfessionRel>); 1] {
             },
         ],
     )]
+}
+
+/// Contains only unit tuples, that is, 0-tuples or tuples with zero fields.
+/// Think of it as Rust's `()` unit type but applied to tuples.
+#[derive(Copy, Clone, Debug)]
+pub struct UnitRel {}
+
+impl UnitRel {
+    pub fn new_unit_tuple() -> Self {
+        Self {}
+    }
+    pub fn named_schema(name: &'static str) -> TableSchema {
+        table_schema(name, [], [])
+    }
+}
+
+impl InputRel for UnitRel {
+    fn schema() -> TableSchema {
+        // Zero columns and zero keys.
+        table_schema("unit", [], [])
+    }
+}
+
+impl From<UnitRel> for TupleKey {
+    fn from(fact: UnitRel) -> Self {
+        TupleKey::empty()
+    }
+}
+
+impl From<UnitRel> for TupleValue {
+    fn from(fact: UnitRel) -> Self {
+        TupleValue::empty()
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
