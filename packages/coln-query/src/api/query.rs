@@ -22,7 +22,7 @@ use crate::relational::expr::{
 use crate::relational::schema::{Column, EntityRef, TableSchema};
 use crate::scalarial::ScalarType;
 use coln_flir_rs::ir::{
-    self, Atom, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry, Term,
+    self, Atom, El, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry, TableEntry,
 };
 use coln_flir_rs::schema::{
     BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
@@ -150,7 +150,7 @@ impl FlirProgram {
     fn table_declaration(&mut self, table_entry: &TableEntry) -> Result<(), SyntaxError> {
         match &table_entry.table.entity_variant {
             EntityVariant::Table => self.base_table(table_entry),
-            EntityVariant::View(materialization) => {
+            EntityVariant::View { materialization } => {
                 unimplemented!("[Initial models] Materialized views defined through a query");
             }
             EntityVariant::Index { method, columns } => {
@@ -362,7 +362,7 @@ impl FlirProgram {
         // The row id, if this atom brings it into scope.
         if let Some(row_id) = &atom.row_id {
             match row_id {
-                ir::Term::Var { index } => {
+                ir::El::Var { index } => {
                     let var = friendly_var(vars, *index)?;
                     if !var.is_row_id() {
                         return Err(SyntaxError::new(
@@ -375,7 +375,7 @@ impl FlirProgram {
                         schema.resolve_query_cols(CompilerColIdx::for_row_id()),
                     )?;
                 }
-                ir::Term::Lit { lit: _ } => {
+                ir::El::Lit { lit: _ } => {
                     // Matching [`ir::Atom::row_id`]'s own note: a literal row id
                     // is not something we can express.
                     return Err(SyntaxError::new(
@@ -389,7 +389,7 @@ impl FlirProgram {
         for value in &atom.values {
             let mut columns = schema.resolve_query_cols(CompilerColIdx::from(value.column));
             match &value.term {
-                ir::Term::Lit { lit } => {
+                ir::El::Lit { lit } => {
                     let column = columns.next().ok_or_else(|| {
                         SyntaxError::new("FLIR compares a literal against a column that does not resolve to any query column")
                     })?;
@@ -399,7 +399,7 @@ impl FlirProgram {
                         right: Expr::from(LiteralExpr::from(Literal::from(lit))),
                     }));
                 }
-                ir::Term::Var { index } => {
+                ir::El::Var { index } => {
                     binder.bind(*index, friendly_var(vars, *index)?, columns)?;
                 }
             }
@@ -433,10 +433,10 @@ impl FlirProgram {
             bindings: binder.bindings,
         })
     }
-    fn term(&mut self, term: &Term, vars: &[FriendlyVar]) -> Result<Vec<Expr>, SyntaxError> {
+    fn term(&mut self, term: &El, vars: &[FriendlyVar]) -> Result<Vec<Expr>, SyntaxError> {
         match term {
-            Term::Lit { lit } => Ok(vec![Expr::from(LiteralExpr::from(Literal::from(lit)))]),
-            Term::Var { index } => Ok(friendly_var(vars, *index)?
+            El::Lit { lit } => Ok(vec![Expr::from(LiteralExpr::from(Literal::from(lit)))]),
+            El::Var { index } => Ok(friendly_var(vars, *index)?
                 .parts()
                 .map(|(_part, name)| Expr::from(VarExpr::new(name)))
                 .collect()),
@@ -499,10 +499,10 @@ impl QueryProgram for FlirProgram {
 ///
 /// 1. Meaningless rules with an empty [consequent](ir::Rule::consequents) are
 ///    skipped and chased rules panic at the moment due to open questions.
-/// 2. It zips the [`ir::Rule::var_names`] and the [`ir::Rule::var_types`] into one
-///    array of [`FriendlyVar`]s.
-/// 3. It converts [`ir::Rule::antecedents`] and [`ir::Rule::consequents`] into a
-///    [`ConjunctiveQuery`], each.
+/// 2. It creates the wrapper type [`FriendlyVar`]s for a rule's
+///    [`ir::Rule::vars`].
+/// 3. It converts [`ir::Rule::antecedents`] and [`ir::Rule::consequents`] into
+///    a [`ConjunctiveQuery`], each.
 struct FriendlyRule {
     kind: ir::RuleVariant,
     vars: Vec<FriendlyVar>,
@@ -520,14 +520,9 @@ impl FriendlyRule {
                 "[Unclear] Chased rules produce a materialized view; how are they different from a materialized view defined in the table/entities section?"
             );
         }
-        assert!(
-            rule.var_names.len() == rule.var_types.len(),
-            "var_names and var_types arrays do not size match"
-        );
         let vars = rule
-            .var_names
+            .vars
             .iter()
-            .zip(rule.var_types.iter())
             .map(|(path, col_type)| FriendlyVar {
                 name: path.clone(),
                 ty: col_type.clone(),
@@ -571,8 +566,7 @@ impl ConjunctiveQuery {
     }
 }
 
-/// All information from [`ir::Rule::var_names`] and [`ir::Rule::var_types`] but
-/// _zipped_.
+/// A wrapper type around ([`ir::Path`], [`ir::ColType`]).
 struct FriendlyVar {
     name: ir::Path,
     ty: ir::ColType, // either a row id or a builtin type
@@ -1074,6 +1068,7 @@ mod tests {
                 T,
                 vec![("a", builtin_int()), ("b", builtin_int())],
             )],
+            definitions: vec![],
             rules: vec![enforced_rule(
                 "r",
                 [("x", builtin_int()), ("y", builtin_int())],
@@ -1120,6 +1115,7 @@ mod tests {
                 T,
                 vec![("a", builtin_int()), ("b", builtin_int())],
             )],
+            definitions: vec![],
             rules: vec![enforced_rule(
                 "r",
                 [("x", builtin_int()), ("y", builtin_int())],
@@ -1146,6 +1142,7 @@ mod tests {
         );
         let realm = FlatRealm {
             tables: vec![table_entry(T, vec![("a", builtin_int())])],
+            definitions: vec![],
             rules: vec![rule.clone(), rule],
         };
         assert!(FlirProgram::from_flat_realm(&realm).is_err());
@@ -1538,13 +1535,13 @@ mod tests {
 
     #[test]
     fn graph_flir() {
-        let program = translate_json_flir("Graph.json");
+        let program = translate_json_flir("GraphRealm.json");
         println!("{}", program.to_tree());
     }
 
     #[test]
     fn graph_of_graphs_flir() {
-        let program = translate_json_flir("GraphOfGraphs.json");
+        let program = translate_json_flir("GraphOfGraphsRealm.json");
         println!("{}", program.to_tree());
     }
 }

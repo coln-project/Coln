@@ -18,15 +18,14 @@ data Abs (f :: Case -> Type) (c :: Case) = Abs Name (f c) | AbsConst (f c)
 data El :: Case -> Type where
   LocalVar :: BId -> El N
   GlobalVar :: Name -> V.El N -> El N
-  Code :: Ty c -> El c
-  Lam :: Ty N -> Abs El c -> El c
-  App :: El N -> El N -> El N
-  Cons :: Dict (El c) -> El c
-  Proj :: El N -> Name -> El N
+  Code :: Universe -> Ty c -> El c
+  Lam :: FunctionVariant -> Ty N -> Abs El c -> El c
+  App :: FunctionVariant -> El N -> El N -> El N
+  Cons :: Level -> Dict (El c) -> El c
+  Proj :: Level -> El N -> Name -> El N
   Init :: Ty N -> El D
   Lit :: Literal -> El N
   Is :: El N -> El D
-  Lookup :: TableName -> Dict (El N) -> Ty N -> El N
 
 data FunctionType ty = FunctionType
   { variant :: FunctionVariant
@@ -47,13 +46,12 @@ data EqualityType el ty = EqualityType
 
 data Ty :: Case -> Type where
   U :: Universe -> Ty N
-  Decode :: El N -> Ty N
+  Decode :: Universe -> El N -> Ty N
   Function :: FunctionType Ty -> Ty N
   Record :: RecordType Ty -> Ty D
   Eq :: EqualityType El Ty -> Ty N
   BuiltinTy :: BuiltinTy -> Ty N
   IsTy :: Ty N -> Ty D
-  EltOf :: TableName -> Dict (El N) -> Ty N
 
 data TypeBehavior
   = LikeU Universe

@@ -4,13 +4,14 @@
 
 module Coln.Backend.TypeScript.Generate where
 
-import Control.Monad (forM_)
 import Control.Monad.State
-import Data.Aeson qualified as AE
+
+-- import Data.Aeson qualified as AE
 import Data.Foldable (foldlM)
-import Data.Foldable qualified as F
-import Data.Map.Ordered qualified as OMap
-import Data.Set (Set)
+
+-- import Data.Foldable qualified as F
+-- import Data.Map.Ordered qualified as OMap
+import Data.Set qualified as Set
 import Data.String (IsString (..))
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.IO qualified as TLIO
@@ -18,16 +19,19 @@ import Prettyprinter
 import Prettyprinter.Render.Text
 import System.FilePath
 
-import Coln.Backend.Lower (lowerRealm)
 import Coln.Backend.TypeScript.AST qualified as TS
 import Coln.Backend.TypeScript.Assemble (asm)
 import Coln.Backend.TypeScript.Params
 import Coln.Common
-import Coln.Core.Globals
-import Coln.Core.Memoed
+
 import Coln.Core.Params
 import Coln.Core.Readback
+import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
+import Coln.FLIR.Flatten qualified as FLIR
+import Coln.FLIR.Value qualified as FLIR
+import Coln.SIR.Realm qualified as SIR
+import Coln.SIR.Syntax qualified as SIR
 
 mangle :: Name -> TS.Id
 mangle = TS.Id . mangleToDoc
@@ -36,7 +40,6 @@ tyFromHead :: Access -> V.Head -> TS.Ty
 tyFromHead access (V.GlobalVar x _) =
   TS.TyConst (TS.QId [mangle x] (fromString (show access)))
 tyFromHead access (V.LocalVar _) = TS.runtime $ ColnRef access
-tyFromHead _ (V.Lookup _ _ _) = panic "table lookup cannot be used as a type"
 
 genTy :: Access -> CtxLen -> V.Ty N -> TS.Ty
 genTy access n = \case
@@ -44,7 +47,6 @@ genTy access n = \case
   V.Function ft -> do
     let v = V.local (FId n) ft.dom
     TS.Fun (TS.Binding (TS.Id "x") (TS.runtime Value)) (genTy access (n + 1) (V.appClo ft.cod v))
-  V.EltOf _ _ -> TS.runtime $ ColnRef access
   V.Decode n -> tyFromHead access n.head
   V.BuiltinTy _ -> TS.runtime $ ColnRef access
   _ -> error "not yet supported"
@@ -64,45 +66,45 @@ genInterface access n = \case
       bnd : go (n' + 1) (V.LSnoc vs v) rest
 
 class TrackGlobals a where
-  trackGlobals :: a -> State (Set Name) ()
+  trackGlobals :: a -> State (Set.Set Name) ()
 
--- instance TrackGlobals (f c) => TrackGlobals (S.Abs f c) where
---   trackGlobals abs = trackGlobals (absBody abs)
+instance (TrackGlobals (f c)) => TrackGlobals (S.Abs f c) where
+  trackGlobals (S.Abs _ body) = trackGlobals body
+  trackGlobals (S.AbsConst body) = trackGlobals body
 
--- instance TrackGlobals a => TrackGlobals (Name, a) where
---   trackGlobals (_, t) = trackGlobals t
+instance (TrackGlobals a) => TrackGlobals (Name, a) where
+  trackGlobals (_, t) = trackGlobals t
 
--- instance TrackGlobals (S.El c) where
---   trackGlobals = \case
---     S.LocalVar _ -> pure ()
---     S.GlobalVar x _ -> modify (Set.insert x)
---     S.Code a -> trackGlobals a
---     S.Lam dom body -> do
---       trackGlobals dom
---       trackGlobals body
---     S.App t0 t1 -> do
---       trackGlobals t0
---       trackGlobals t1
---     S.Cons ts -> mapM_ trackGlobals (toList ts)
---     S.Proj t _ -> trackGlobals t
---     S.Lit _ -> pure ()
---     S.Is t -> trackGlobals t
---     S.Lookup _ _ -> pure ()
+instance TrackGlobals (S.El c) where
+  trackGlobals = \case
+    S.LocalVar _ -> pure ()
+    S.GlobalVar x _ -> modify (Set.insert x)
+    S.Code _ a -> trackGlobals a
+    S.Lam _ dom body -> do
+      trackGlobals dom
+      trackGlobals body
+    S.App _ t0 t1 -> do
+      trackGlobals t0
+      trackGlobals t1
+    S.Cons _ ts -> mapM_ trackGlobals (toList ts)
+    S.Proj _ t _ -> trackGlobals t
+    S.Init _ -> pure ()
+    S.Lit _ -> pure ()
+    S.Is t -> trackGlobals t
 
--- instance TrackGlobals (S.Ty c) where
---   trackGlobals = \case
---     S.U _ -> pure ()
---     S.Decode t -> trackGlobals t
---     S.Function ft -> do
---       trackGlobals ft.dom
---       trackGlobals ft.cod
---     S.Record rt -> mapM_ trackGlobals (toList rt.fieldTypes)
---     S.Eq et -> do
---       trackGlobals et.lhs
---       trackGlobals et.rhs
---     S.BuiltinTy _ -> pure ()
---     S.IsTy a -> trackGlobals a
---     S.EltOf _ _ -> pure ()
+instance TrackGlobals (S.Ty c) where
+  trackGlobals = \case
+    S.U _ -> pure ()
+    S.Decode _ t -> trackGlobals t
+    S.Function ft -> do
+      trackGlobals ft.dom
+      trackGlobals ft.cod
+    S.Record rt -> mapM_ trackGlobals (toList rt.fieldTypes)
+    S.Eq et -> do
+      trackGlobals et.lhs
+      trackGlobals et.rhs
+    S.BuiltinTy _ -> pure ()
+    S.IsTy a -> trackGlobals a
 
 genTypeDef :: Access -> CtxLen -> V.Ty N -> TS.TypeDef
 genTypeDef access n a = TS.TypeDef (fromShow access) (genTy access n a)
@@ -120,71 +122,102 @@ genEntryModule imports a ev = go 0 a ev
     Just $ TS.Module imports (TS.Exported <$> definitions)
   go n (V.Function ft) ev' = do
     let v = V.local (FId n) ft.dom
-    go (n + 1) (V.appClo ft.cod v) (V.ebind (flip V.app v) ev')
+    go (n + 1) (V.appClo ft.cod v) (V.ebind (flip (V.app ft.variant) v) ev')
   go _ _ _ = Nothing
-
-data TSCtxShape = TSCtxShape
-  { len :: CtxLen
-  , names :: Bwd TS.Id
-  }
-
-emptyTSCtxShape :: TSCtxShape
-emptyTSCtxShape = TSCtxShape 0 BwdNil
-
-bind :: TSCtxShape -> TS.Id -> TSCtxShape
-bind cs x = TSCtxShape{len = cs.len + 1, names = cs.names :> x}
 
 tableNameDoc :: TableName -> DDoc
 tableNameDoc tn = concatWith (surround dot) (dpretty <$> (tn.realm : toList tn.path))
 
-genTyVal :: Access -> TSCtxShape -> V.Ty N -> TS.El
-genTyVal access cs = \case
-  V.EltOf x vs -> do
-    let params = TS.List $ genEl access cs <$> F.toList vs
-    let transactionArg = case access of
-          View -> []
-          Transaction -> [TS.Var "transaction"]
-    let args = [TS.Var "store", TS.String (tableNameDoc x), params] ++ transactionArg
-    TS.New (TS.Const (TS.runtime (RowIdSet access))) args
-  _ -> panic "composite not yet supported"
+data FlatParams = FlatParams
+  { paramVals :: Bwd TS.El
+  , numParams :: Int
+  }
 
-genHead :: Access -> TSCtxShape -> V.Head -> TS.El
-genHead access cs = \case
-  V.LocalVar (FId i) -> TS.Var $ elemAt cs.names (BId (cs.len - i - 1))
-  V.GlobalVar _ _ -> panic "global var neutral not yet supported"
-  V.Lookup tn vs _ -> do
-    let params = TS.List $ genEl access cs <$> F.toList vs
-    let transactionArg = case access of
-          View -> []
-          Transaction -> [TS.Var "transaction"]
-    let args = [TS.Var "store", TS.String (tableNameDoc tn), params] ++ transactionArg
-    TS.New (TS.Const (TS.runtime (TableCellRef access))) args
+allocParams :: TS.El -> SIR.Shape -> State FlatParams FLIR.Els
+allocParams v = \case
+  SIR.Tuple d -> do
+    FLIR.Cons <$> mapWithKeyM (\x sh -> allocParams (TS.Proj v (mangle x)) sh) d
+  SIR.Scalar _ -> state \p ->
+    ( FLIR.Scalar (FLIR.Param (FId p.numParams))
+    , p{paramVals = p.paramVals :> v, numParams = p.numParams + 1}
+    )
+  SIR.Unstored -> pure FLIR.Erased
 
-genSp :: TSCtxShape -> V.Spine -> TS.El -> TS.El
-genSp _cs = \case
-  V.Id -> \t -> t
-  _ -> panic "unsupported spine operation"
+data TSEnv = TSEnv
+  { tsLocals :: Bwd TS.El
+  , usedNames :: Set.Set Name
+  , flatParams :: FlatParams
+  , flirLocals :: FLIR.Locals
+  }
 
-argName :: TSCtxShape -> V.Clo f c -> TS.Id
-argName _ (V.Clo x _ _) = mangle x
-argName _ (V.CloConst _) = panic "closures from the layout process should have argument names"
+emptyTSEnv :: TSEnv
+emptyTSEnv = TSEnv BwdNil Set.empty (FlatParams BwdNil 0) BwdNil
 
-genEl :: Access -> TSCtxShape -> V.El N -> TS.El
-genEl access cs = \case
-  V.Neu n -> genSp cs n.spine $ genHead access cs n.head
-  V.InitNeu _ -> panic "can't lower init yet"
-  V.Code a -> genTyVal access cs a
-  V.Lam dom clo -> do
-    let v = V.local (FId cs.len) dom
-    let x = argName cs clo
+reconstructEl :: FlatParams -> FLIR.El -> TS.El
+reconstructEl e = \case
+  FLIR.LocalVar (FId i) -> TS.Index (TS.Var "result") i
+  FLIR.Lit l -> TS.Lit l
+  FLIR.Param (FId i) -> elemAt e.paramVals (BId (e.numParams - i - 1))
+
+reconstructEls :: FlatParams -> FLIR.Els -> TS.El
+reconstructEls e = \case
+  FLIR.Scalar v -> reconstructEl e v
+  FLIR.Cons d -> TS.Object [(mangle x, reconstructEls e t) | (x, t) <- toList d]
+  FLIR.Erased -> TS.Null
+
+genQuery :: Access -> TSEnv -> SIR.Query -> TS.El
+genQuery _access e q = do
+  let ((v, mainProps), vars, auxProps) = FLIR.runFlatM $ do
+        v <- FLIR.freshAt (BwdNil :> "result") q.shape
+        mainprops <- FLIR.app e.flirLocals q.pred v
+        pure (v, mainprops)
+  let query = FLIR.Query vars (toList (mainProps <> auxProps))
+  let flir = TS.String (undefined query)
+  -- TODO: should make sure "result" is fresh
+  let reconstruct =
+        TS.Lam
+          (TS.Binding "result" (TS.ListTy (TS.runtime Value)))
+          (TS.Block [] (Just (reconstructEls e.flatParams v)))
+  TS.New (TS.Const (TS.runtime Query)) [flir, reconstruct]
+
+varName :: SIR.Abs a -> Set.Set Name -> Name
+varName (SIR.Abs (Just x) _) xs = case Set.member x xs of
+  True -> freshNameFor xs
+  False -> x
+varName _ xs = freshNameFor xs
+
+genAbs :: Access -> TSEnv -> SIR.Abs (SIR.El l) -> (Name, TS.El)
+genAbs access e (SIR.Abs mx body) = do
+  let x = freshNameWithPref e.usedNames mx
+  let e' =
+        e
+          { tsLocals = e.tsLocals :> TS.Var (mangle x)
+          , usedNames = Set.insert x e.usedNames
+          }
+  (x, genEl access e' body)
+genAbs access e (SIR.AbsConst body) = do
+  let x = freshNameFor e.usedNames
+  let e' = e{usedNames = Set.insert x e.usedNames}
+  (x, genEl access e' body)
+
+genEl :: Access -> TSEnv -> SIR.El l -> TS.El
+genEl access e = \case
+  SIR.LiftEl t -> genEl access e t
+  SIR.Var i -> elemAt e.tsLocals i
+  -- SIR.Single q -> TS.MethodCall (genQuery access e q) "single" []
+  SIR.Proj t x -> TS.Proj (genEl access e t) (mangle x)
+  -- SIR.Multi _ q -> TS.MethodCall (genQuery access e q) "multi" []
+  SIR.Lam _dom abs -> do
+    let (x, body) = genAbs access e abs
     TS.Lam
-      (TS.Binding x (TS.runtime Value))
-      (TS.Block [] (Just (genEl access (bind cs x) (V.appClo clo v))))
-  V.Cons fields -> TS.Object $ for (toList fields) $ \(x, v) ->
-    (mangle x, genEl access cs v)
-  V.Lit l -> TS.Lit l
+      (TS.Binding (mangle x) (TS.runtime Value))
+      (TS.Block [] (Just body))
+  SIR.Cons fields ->
+    TS.Object [(mangle x, genEl access e t) | (x, t) <- toList fields]
+  SIR.Lit l -> TS.Lit l
+  SIR.Erased -> TS.Null
 
-genRealmConstructor :: Access -> Realm -> TS.Constructor
+genRealmConstructor :: Access -> SIR.Realm -> TS.Constructor
 genRealmConstructor access r = do
   let args = case access of
         View ->
@@ -199,11 +232,11 @@ genRealmConstructor access r = do
         Nothing -> []
   let body =
         TS.Block
-          (superCall ++ [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSCtxShape r.root)])
+          (superCall ++ [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSEnv r.root)])
           Nothing
   TS.Constructor args body
 
-genRealmClass :: Access -> Realm -> TS.Class
+genRealmClass :: Access -> SIR.Realm -> TS.Class
 genRealmClass access r =
   TS.Class
     (fromShow access)
@@ -212,7 +245,7 @@ genRealmClass access r =
     [TS.Binding "root" (genTy access 0 r.rootType)]
     (genRealmConstructor access r)
 
-genRealmModule :: [TS.Import] -> Realm -> TS.Module
+genRealmModule :: [TS.Import] -> SIR.Realm -> TS.Module
 genRealmModule imports r = do
   let classes = for accessLevels $ \access -> TS.DClass $ genRealmClass access r
   TS.Module imports (TS.Exported <$> classes)
@@ -232,19 +265,19 @@ runtimeImport = TS.ImportQualified "runtime" "@coln-project/runtime"
 forAccM :: (Monad m) => [b] -> a -> (a -> b -> m a) -> m a
 forAccM bs init f = foldlM f init bs
 
-generate :: Globals -> FilePath -> IO ()
-generate ge outdir = do
-  typeImports <- forAccM (OMap.assocs ge.definitions) BwdNil $ \imports (x, e) -> do
-    let ev = e.body.val :: V.Evaluation V.El D
-    case genEntryModule (runtimeImport : toList imports) e.ty ev of
-      Just mod -> do
-        writeModule outdir x mod
-        pure (imports :> TS.ImportQualified (mangle x) ("./" <> mangleToDoc x <> ".ts"))
-      Nothing -> pure imports
-  let imports = runtimeImport : toList typeImports
-  forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
-    let flat = lowerRealm x r
-    flip AE.encodeFile flat $ outdir </> mangleToString x <> ".json"
-    let schemaImport = TS.ImportSpecificExported "schema" $ "./" <> mangleToDoc x <> ".json"
-    let mod = genRealmModule (schemaImport : imports) r
-    writeModule outdir x mod
+-- generate :: Globals -> FilePath -> IO ()
+-- generate ge outdir = do
+--   typeImports <- forAccM (OMap.assocs ge.definitions) BwdNil $ \imports (x, e) -> do
+--     let ev = e.body.val :: V.Evaluation V.El D
+--     case genEntryModule (runtimeImport : toList imports) e.ty ev of
+--       Just mod -> do
+--         writeModule outdir x mod
+--         pure (imports :> TS.ImportQualified (mangle x) ("./" <> mangleToDoc x <> ".ts"))
+--       Nothing -> pure imports
+--   let imports = runtimeImport : toList typeImports
+--   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
+--     let flat = lowerRealm x r
+--     flip AE.encodeFile flat $ outdir </> mangleToString x <> ".json"
+--     let schemaImport = TS.ImportSpecificExported "schema" $ "./" <> mangleToDoc x <> ".json"
+--     let mod = genRealmModule (schemaImport : imports) r
+--     writeModule outdir x mod

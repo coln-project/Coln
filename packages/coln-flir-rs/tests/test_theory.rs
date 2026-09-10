@@ -6,7 +6,12 @@ use coln_flir_rs::ir::Path;
 use coln_flir_rs::test_utils;
 
 // TODO add more theory json files
-const THEORY_FIXTURES: &[&str] = &["Graph.json", "Prim.json"];
+const THEORY_FIXTURES: &[&str] = &[
+    "GraphRealm.json",
+    "GraphOfGraphsRealm.json",
+    "TriangleRealm.json",
+    "TransitiveClosureRealm.json",
+];
 
 #[test]
 fn deserialises_all_theory_fixtures() {
@@ -17,16 +22,18 @@ fn deserialises_all_theory_fixtures() {
 
 #[test]
 fn deserialises_graph_theory() {
-    let theory = test_utils::load_theory_from_json("Graph.json");
+    let theory = test_utils::load_theory_from_json("GraphRealm.json");
 
     assert_eq!(theory.tables.len(), 2);
     assert_eq!(theory.rules.len(), 2);
 
-    assert_eq!(theory.tables[0].path, Path::from("Graph.E"));
-    assert_eq!(theory.tables[1].path, Path::from("Graph.V"));
+    assert_eq!(theory.tables[0].path, Path::from("GraphRealm.root.V"));
+    assert_eq!(theory.tables[1].path, Path::from("GraphRealm.root.E"));
 
-    let rules = &theory.rules[0];
-    assert_eq!(rules.path, Path::from("Graph.E.foreignKey"));
-    assert_eq!(rules.rule.var_names.len(), 2);
-    assert_eq!(rules.rule.var_types.len(), 2);
+    let e_foreign_key_rule = &theory.rules[1];
+    assert_eq!(
+        e_foreign_key_rule.path,
+        Path::from("GraphRealm.root.E.foreignKey")
+    );
+    assert_eq!(e_foreign_key_rule.rule.vars.len(), 2);
 }

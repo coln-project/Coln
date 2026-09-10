@@ -18,7 +18,7 @@ intro sp t = Chk $ \e ty -> do
   case V.behavior ty of
     V.LikeU u -> do
       case leq (levelOf raw) (decodesInto u) of
-        True -> pure $ code raw
+        True -> pure $ code u raw
         False -> do
           let msg = "type" <+> prtIn e raw <+> "too large for universe" <+> pretty u
           failWith e.diagEnv sp TypeTooLarge msg
@@ -29,13 +29,13 @@ intro sp t = Chk $ \e ty -> do
 elim :: Universe -> Chk N -> Typ N
 elim u c = Typ \e -> do
   el <- c.elab e $ V.U u
-  pure $ decode el
+  pure $ decode u el
 
 elimSyn :: Span -> Syn N -> Typ N
 elimSyn sp s = Typ \e -> do
   (a, el) <- s.elab e
   case V.behavior a of
-    V.LikeU _ -> pure $ decode el
+    V.LikeU u -> pure $ decode u el
     _ -> do
       let msg = "expected element of universe type"
       failWith e.diagEnv sp TypeAtNonUniverse msg

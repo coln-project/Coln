@@ -420,6 +420,7 @@ mod tests {
                     primary_key: None,
                 },
             }],
+            definitions: vec![],
             rules: vec![],
         };
         let mut store = Store::try_from_ir(theory).expect("store");

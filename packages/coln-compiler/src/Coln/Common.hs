@@ -5,9 +5,12 @@
 module Coln.Common (
   module Diagnostician,
   module FNotation,
-  module Data.Map,
+  module Data.Key,
   module Data.Kind,
+  module Data.Map,
+  module Data.Map.Ordered,
   module Data.Vector.Strict,
+  module Data.Void,
   module Data.Text,
   module Prettyprinter,
   module Coln.Report,
@@ -36,6 +39,9 @@ module Coln.Common (
   alphaNames,
   freshNameFor,
   freshNamesFor,
+  freshNameWithPref,
+  freshenFor,
+  Match (..),
   mangleToDoc,
   mangleToString,
   fromShow,
@@ -45,15 +51,22 @@ where
 
 import Coln.Report
 import Data.Foldable qualified as F
+import Data.Key (FoldableWithKey (..), Key, Keyed (..), TraversableWithKey (..))
 import Data.Kind (Constraint, Type)
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
 import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
 import Data.Traversable hiding (for)
+import Data.Vector.Fusion.Bundle qualified as Bundle
+import Data.Vector.Generic (stream, unstreamM)
 import Data.Vector.Strict (Vector)
 import Data.Vector.Strict qualified as V
+import Data.Void
+
 import Diagnostician
 import FNotation (Name (..))
 import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty, (<+>))
@@ -89,6 +102,11 @@ unwrap Nothing = panic "should only unwrap a Just"
 class ElemAt a i b | a i -> b where
   elemAt :: a -> i -> b
 
+instance (Ord a) => ElemAt (OMap a b) a b where
+  elemAt m k = case OMap.lookup k m of
+    Just v -> v
+    Nothing -> panic "no such key found in map"
+
 class Lookup a i b | a -> i b where
   lookup :: a -> i -> Maybe b
 
@@ -98,8 +116,14 @@ class Contains a i | a -> i where
 class ToList a e | a -> e where
   toList :: a -> [e]
 
+instance ToList (V.Vector a) a where
+  toList = V.toList
+
 class FromList a e | a -> e where
   fromList :: [e] -> a
+
+instance FromList (Vector a) a where
+  fromList = V.fromList
 
 -- Partial orderings
 --------------------------------------------------------------------------------
@@ -233,7 +257,33 @@ getKeyIndex :: Dict a -> Name -> KeyIndex
 getKeyIndex d x = KeyIndex $ d.head.byName Map.! x
 
 withHead :: Dict a -> [b] -> Dict b
-withHead d xs = Dict d.head (V.fromList xs)
+withHead d xs = do
+  let n = V.length d.values
+  Dict d.head (V.fromListN n xs)
+
+dstream :: Dict a -> Bundle.Bundle V.Vector (Name, a)
+dstream d = Bundle.zip (stream d.head.keys) (stream d.values)
+
+type instance Key Dict = Name
+
+instance Keyed Dict where
+  mapWithKey f d = Dict d.head $ V.zipWith f d.head.keys d.values
+
+instance FoldableWithKey Dict where
+  toKeyedList = toList
+  foldMapWithKey f = foldlWithKey (\acc x v -> acc <> f x v) mempty
+  foldrWithKey f init =
+    Bundle.foldr (uncurry f) init . dstream
+  foldlWithKey f init =
+    Bundle.foldl (\acc (x, v) -> f acc x v) init . dstream
+
+instance TraversableWithKey Dict where
+  traverseWithKey f d =
+    withHead d
+      <$> traverse (uncurry f) (zip (toList d.head.keys) (toList d.values))
+  mapWithKeyM f d =
+    Dict d.head
+      <$> (unstreamM $ Bundle.mapM (uncurry f) $ dstream d)
 
 -- Name-based Tries
 --------------------------------------------------------------------------------
@@ -273,11 +323,39 @@ instance HasNames (Dict a) where
 instance HasNames [Name] where
   namesIn xs = Set.fromList xs
 
+instance HasNames (Bwd Name) where
+  namesIn xs = Set.fromList (toList xs)
+
+instance HasNames (Set.Set Name) where
+  namesIn = id
+
 freshNamesFor :: (HasNames a) => a -> [Name]
 freshNamesFor a = flip filter alphaNames $ flip Set.notMember $ namesIn a
 
 freshNameFor :: (HasNames a) => a -> Name
 freshNameFor = head . freshNamesFor
+
+freshNameWithPref :: (HasNames a) => a -> Maybe Name -> Name
+freshNameWithPref a (Just x) = case Set.member x (namesIn a) of
+  True -> freshNameFor a
+  False -> x
+freshNameWithPref a Nothing = freshNameFor a
+
+freshenBy :: Name -> String -> Name
+freshenBy (Name qual last) s = Name (qual ++ [last]) (fromString s)
+
+freshenFor :: (HasNames a) => a -> Name -> Name
+freshenFor a x =
+  head $
+    filter
+      (\x -> not $ Set.member x (namesIn a))
+      (x : (freshenBy x <$> alphaStrings))
+
+-- Any
+--------------------------------------------------------------------------------
+
+data Match (f :: k -> Type) (g :: k -> Type) where
+  Pair :: f i -> g i -> Match f g
 
 -- Misc
 --------------------------------------------------------------------------------

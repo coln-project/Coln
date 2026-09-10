@@ -14,8 +14,8 @@ use crate::{
 };
 
 use inner::TxnInner;
-pub(crate) use row_handle::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue};
-pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, empty_row};
+pub(crate) use row_handle::{PendingOp, TempRowId};
+pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, TxnWireRowId, TxnWireValue, empty_row};
 
 pub struct Transaction<'a> {
     inner: TxnInner,
@@ -104,7 +104,7 @@ mod tests {
     use crate::table::{ValidationError, WireValue};
     use crate::txn::row_handle::empty_row;
 
-    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<Path>>) -> Schema {
+    fn table_schema(columns: Vec<ColumnEntry>, primary_key: Option<Vec<u64>>) -> Schema {
         Schema {
             entity_variant: EntityVariant::Table,
             columns,

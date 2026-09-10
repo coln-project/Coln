@@ -4,13 +4,11 @@
 
 module Coln.Core.Globals where
 
-import Data.Map.Ordered (OMap)
 import Data.Map.Ordered qualified as OMap
 
 import Coln.Common
 import Coln.Core.Memoed qualified as M
 import Coln.Core.Params
-import Coln.Core.Syntax qualified as S
 import Coln.Core.Value qualified as V
 
 -- Definitions
@@ -28,22 +26,13 @@ mkDefinition x ty tm m = do
   let neu = V.reflect (V.GlobalVar x neu) V.Id ty (Just tm.val)
   Definition tm ty neu m
 
--- Realms
---------------------------------------------------------------------------------
-
-data Generator
-  = Rel [Name] [S.Ty N]
-  | Fun [Name] [S.Ty N] (S.Ty N)
-
-data Realm = Realm
-  { generators :: Trie Generator
-  , root :: V.El N
-  , rootType :: V.Ty N
-  , realmDefinitions :: OMap Name (Definition Local)
-  }
-
 -- Global environment
 --------------------------------------------------------------------------------
+
+data Realm = Realm
+  { rootType :: M.Ty N
+  , realmDefinitions :: OMap Name (Definition Local)
+  }
 
 data Globals = Globals
   { definitions :: OMap Name (Definition Global)

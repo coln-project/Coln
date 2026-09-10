@@ -241,6 +241,7 @@ mod test {
     fn main_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
+            definitions: vec![],
             rules: vec![],
         };
         let mut coln_query = ColnQuery::init(&flat_realm)?;
@@ -293,6 +294,7 @@ mod test {
     fn restart_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
+            definitions: vec![],
             rules: vec![],
         };
         let mut coln_query = ColnQuery::init(&flat_realm)?;
@@ -389,7 +391,7 @@ mod test {
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "Graph.E.foreignKey");
+        assert_eq!(violation.for_entity().id(), "GraphRealm.root.E.foreignKey");
         assert_eq!(violation.delta().len(), 3);
 
         let mut tx3 = Tx::empty();
@@ -402,7 +404,7 @@ mod test {
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "Graph.E.foreignKey");
+        assert_eq!(violation.for_entity().id(), "GraphRealm.root.E.foreignKey");
         assert_eq!(violation.delta().len(), 1);
 
         Ok(())

@@ -1,0 +1,15 @@
+flatrealm
+  entities
+    table ℜ.root.V := []
+    table ℜ.root.E := [.a : ℜ.root.V, .b : ℜ.root.V]
+  end
+  definitions
+  end
+  rules
+    enforced ℜ.root.V.foreignKey := ℜ.root.V [] ⊢ ⊤
+    enforced ℜ.root.E.foreignKey a b := ℜ.root.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.root.V [] ∧ b ∈ ℜ.root.V []
+  end
+end

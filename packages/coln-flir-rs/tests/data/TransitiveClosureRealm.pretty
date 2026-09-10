@@ -1,0 +1,30 @@
+flatrealm
+  entities
+    table ℜ.root.V := []
+    table ℜ.root.E := [.a : ℜ.root.V, .b : ℜ.root.V]
+    view ℜ.init.trans-closure.connected := [
+      .a : ℜ.root.V,
+      .b : ℜ.root.V
+    ] primarykey [.a, .b]
+  end
+  definitions
+    chased ℜ.init.trans-closure.refl v := v ∈ ℜ.root.V [] ⊢ ℜ.init.trans-closure.connected [
+      .a ↦ v,
+      .b ↦ v
+    ]
+    chased ℜ.init.trans-closure.snoc v0 v1 v2 b := v0 ∈ ℜ.root.V [] ∧ v1 ∈ ℜ.root.V [] ∧ v2 ∈ ℜ.root.V [] ∧ ℜ.init.trans-closure.connected [
+      .a ↦ v0,
+      .b ↦ v1
+    ] ∧ b ∈ ℜ.root.E [.a ↦ v1, .b ↦ v2] ⊢ ℜ.init.trans-closure.connected [
+      .a ↦ v0,
+      .b ↦ v2
+    ]
+  end
+  rules
+    enforced ℜ.root.V.foreignKey := ℜ.root.V [] ⊢ ⊤
+    enforced ℜ.root.E.foreignKey a b := ℜ.root.E [
+      .a ↦ a,
+      .b ↦ b
+    ] ⊢ a ∈ ℜ.root.V [] ∧ b ∈ ℜ.root.V []
+  end
+end

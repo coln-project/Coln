@@ -6,21 +6,21 @@ pub mod path;
 
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use specta::Type;
 
 // A QName is a vec of string, potentially separated by a forward slash /
 pub type QName = Vec<String>;
 
 // For example a G.V would become [["G"], ["V"]], this is at a higher level than
 // QName because V would be a query inside a theory G
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(transparent)]
 pub struct Path(pub Vec<QName>);
 
 /// A column name is given by a [`Path`].
 pub type ColName = Path;
 
-/// An index into the [`varNames`](Rule::var_names) and
-/// [`varTypes`](Rule::var_types) arrays of a [`Rule`].
+/// An index into the [`vars`](Rule::vars) array of a [`Rule`].
 ///
 /// Note: An `FId` in `coln-compiler`.
 pub type VarIdx = u64;
@@ -83,7 +83,7 @@ pub enum ColType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "tag", rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub enum Materialization {
     Recomputed,
     Memoized,
@@ -102,7 +102,7 @@ pub enum EntityVariant {
     /// A base table of the extensional database (EDB).
     Table,
     /// A derived view of the intensional database (IDB).
-    View(Materialization),
+    View { materialization: Materialization },
     /// Tell `coln-store` to create an index and possibly hint to `coln-query`.
     Index {
         method: IndexMethod,
@@ -133,7 +133,7 @@ pub struct Schema {
     ///  `ColB`.
     ///
     /// At the moment there is only support for a single (compound) primary key.
-    pub primary_key: Option<Vec<ColName>>,
+    pub primary_key: Option<Vec<ColumnIdx>>,
 }
 
 /// A literal expression.
@@ -148,7 +148,7 @@ pub enum Lit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "tag", rename_all = "lowercase")]
-pub enum Term {
+pub enum El {
     Lit { lit: Lit },
     Var { index: VarIdx },
 }
@@ -156,7 +156,7 @@ pub enum Term {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValueEntry {
     pub column: ColumnIdx,
-    pub term: Term,
+    pub term: El,
 }
 
 /// An [`Atom`] references an entity (a relation or a table) to bring some of
@@ -168,9 +168,9 @@ pub struct Atom {
     pub entity: Path,
     /// To bring the `row_id` of the [`Entity`](Self::entity) into scope.
     ///
-    /// Note: A [`Some(Term::Lit)`](Term::Lit) does not make sense in this
-    /// context, as we do not support a row id literal at the moment, I suppose.
-    pub row_id: Option<Term>,
+    /// Note: A [`Some(El::Lit)`](El::Lit) does not make sense in this context,
+    /// as we do not support a row id literal at the moment, I suppose.
+    pub row_id: Option<El>,
     /// To bring some columns of the [`Entity`](Self::entity) into scope.
     pub values: Vec<ValueEntry>,
 }
@@ -191,8 +191,8 @@ pub enum Prop {
 /// we assert `left == right`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Equality {
-    pub left: Term,
-    pub right: Term,
+    pub left: El,
+    pub right: El,
 }
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -214,18 +214,21 @@ pub enum RuleVariant {
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
     pub rule_variant: RuleVariant,
-    /// Assigns some names to the variables the rule binds.
-    ///
-    /// Note: Must be of the same arity as [`Self::var_types`].
-    pub var_names: Vec<ColName>,
-    /// Tells the types of the variables the rule binds.
-    ///
-    /// Note: Must be of the same arity as [`Self::var_names`].
-    pub var_types: Vec<ColType>,
+    /// The variables the rule binds.
+    pub vars: Vec<(ColName, ColType)>,
     /// The left-hand side of the implication.
     pub antecedents: Vec<Prop>,
     /// The right-hand side of the implication.
     pub consequents: Vec<Prop>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Definition {
+    pub vars: Vec<(ColName, ColType)>,
+    pub antecedents: Vec<Prop>,
+    pub definand: Path,
+    pub arguments: Vec<El>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,12 +247,21 @@ pub struct RuleEntry {
     pub rule: Rule,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefinitionEntry {
+    pub path: Path,
+    #[serde(rename = "value")]
+    pub definition: Definition,
+}
+
 /// The top-level type of a flattened realm and the starting point of the FLIR.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlatRealm {
     /// The tables of the flattened realm.
     #[serde(rename = "entities")]
     pub tables: Vec<TableEntry>,
+    /// How derived views are computed. These contain the chased laws.
+    pub definitions: Vec<DefinitionEntry>,
     /// The rules (laws) of the flattened realm.
     pub rules: Vec<RuleEntry>,
 }

@@ -6,7 +6,7 @@
 pub(crate) mod test_support {
     use crate::ir::{
         Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Prop, Rule,
-        RuleEntry, RuleVariant, Schema, TableEntry, Term, ValueEntry,
+        RuleEntry, RuleVariant, Schema, TableEntry, El, ValueEntry,
     };
 
     fn int_col_type() -> ColType {
@@ -48,12 +48,12 @@ pub(crate) mod test_support {
                     table: int_entity(&["a", "b"]),
                 },
             ],
+            definitions: Vec::new(),
             rules: vec![RuleEntry {
                 path: Path::from("Link.foreignKeys"),
                 rule: Rule {
                     rule_variant: RuleVariant::Enforced,
-                    var_names: vec![Path::from("a"), Path::from("b")],
-                    var_types: vec![int_col_type(), int_col_type()],
+                    vars: vec![(Path::from("a"), int_col_type()), (Path::from("b"), int_col_type())],
                     antecedents: vec![Prop::Atom {
                         atom: Atom {
                             entity: link.clone(),
@@ -61,11 +61,11 @@ pub(crate) mod test_support {
                             values: vec![
                                 ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 },
                                 ValueEntry {
                                     column: 1,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 },
                             ],
                         },
@@ -77,7 +77,7 @@ pub(crate) mod test_support {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 }],
                             },
                         },
@@ -87,7 +87,7 @@ pub(crate) mod test_support {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 }],
                             },
                         },
@@ -263,7 +263,7 @@ mod transactions {
                     builtin_ty: BuiltinTy::BuiltinInt,
                 },
             }],
-            primary_key: Some(vec![Path::from("c0")]),
+            primary_key: Some(vec![0u64]),
         };
         let mut store = Store::new();
         store
@@ -480,7 +480,7 @@ mod rowing {
                 Schema {
                     entity_variant: EntityVariant::Table,
                     columns: vec![id_col("x", "Term"), id_col("y", "Term")],
-                    primary_key: Some(vec![Path::from("x")]),
+                    primary_key: Some(vec![0u64]),
                 },
             ),
         ] {

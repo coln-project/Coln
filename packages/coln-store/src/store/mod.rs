@@ -104,6 +104,7 @@ impl Store {
     pub fn new() -> Self {
         let commits = Self::graph_with_root_commit(&FlatRealm {
             tables: Vec::new(),
+            definitions: Vec::new(),
             rules: Vec::new(),
         })
         .expect("empty root commit should build");
@@ -741,6 +742,7 @@ impl Store {
         tables.sort_by_key(|(oid, _)| *oid);
         let ir = FlatRealm {
             tables: tables.into_iter().map(|(_, entry)| entry).collect(),
+            definitions: Vec::new(),
             rules: self.rule_entries.clone(),
         };
         self.commits = Self::graph_with_root_commit(&ir)?;

@@ -121,6 +121,7 @@ mod tests {
                 path: Path::from("T"),
                 table: int_schema(),
             }],
+            definitions: vec![],
             rules: vec![],
         }
     }

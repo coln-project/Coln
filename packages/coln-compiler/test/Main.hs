@@ -4,13 +4,13 @@
 
 module Main (main) where
 
-import Coln.Backend.Lower
 import Coln.Backend.TypeScript.Generate qualified as TypeScript
 import Coln.Common
 import Coln.Core
 import Coln.Diagnostics
 import Coln.Frontend.Notation
 import Coln.Frontend.Parser
+import Coln.Top
 import Control.Exception (evaluate, finally, onException)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)

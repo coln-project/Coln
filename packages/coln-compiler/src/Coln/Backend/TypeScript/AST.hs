@@ -71,6 +71,7 @@ data El
   | Index El Int
   | Not El
   | Object [(Id, El)]
+  | Null
 
 data Statement
   = Let Id El

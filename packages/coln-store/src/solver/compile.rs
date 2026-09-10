@@ -4,7 +4,7 @@
 
 use std::{collections::HashSet, fmt};
 
-use crate::ir::{self, Atom, Prop, RuleEntry, Term};
+use crate::ir::{self, Atom, El, Prop, RuleEntry};
 
 /// Errors raised while lowering an `ir::Rule` into the restricted solver form.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -89,11 +89,11 @@ pub fn compile_rule(rule_entry: &RuleEntry) -> Result<CompRule, CompileError> {
     let path = rule_entry.path.clone();
     let vars = rule_entry
         .rule
-        .var_types
+        .vars
         .clone()
         .into_iter()
         .enumerate()
-        .map(|(index, ty)| VarSpec { index, ty })
+        .map(|(index, (_, ty))| VarSpec { index, ty })
         .collect::<Vec<_>>();
 
     let var_count = vars.len();
@@ -185,9 +185,9 @@ fn compile_atom(atom: &Atom, var_count: usize) -> Result<CompAtom, CompileError>
     })
 }
 
-fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError> {
+fn compile_term(term: &El, var_count: usize) -> Result<CompTerm, CompileError> {
     match term {
-        Term::Var { index } => {
+        El::Var { index } => {
             if *index >= var_count as u64 {
                 return Err(CompileError::InvalidVarIndex {
                     index: *index,
@@ -196,7 +196,7 @@ fn compile_term(term: &Term, var_count: usize) -> Result<CompTerm, CompileError>
             }
             Ok(CompTerm::Var(*index as usize))
         }
-        Term::Lit { lit } => Ok(CompTerm::Lit(lit.clone())),
+        El::Lit { lit } => Ok(CompTerm::Lit(lit.clone())),
     }
 }
 
@@ -359,10 +359,11 @@ mod tests {
             path: Path::from(path),
             rule: Rule {
                 rule_variant: RuleVariant::Enforced,
-                var_names: (0..var_types.len())
-                    .map(|index| Path::from(format!("v{index}")))
+                vars: var_types
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, ty)| (Path::from(format!("v{i}")), ty))
                     .collect(),
-                var_types,
                 antecedents,
                 consequents,
             },
@@ -380,7 +381,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: Term::Var { index: 0 },
+                        term: El::Var { index: 0 },
                     }],
                 },
             }],
@@ -390,7 +391,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: Term::Var { index: 0 },
+                        term: El::Var { index: 0 },
                     }],
                 },
             }],
@@ -526,8 +527,8 @@ mod tests {
             vec![int_ty(), int_ty()],
             vec![Prop::Eq {
                 equality: Equality {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
+                    left: El::Var { index: 0 },
+                    right: El::Var { index: 1 },
                 },
             }],
             vec![Prop::Atom {
@@ -557,19 +558,19 @@ mod tests {
                     values: vec![
                         ir::ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         },
                         ir::ValueEntry {
                             column: 1,
-                            term: Term::Var { index: 1 },
+                            term: El::Var { index: 1 },
                         },
                     ],
                 },
             }],
             vec![Prop::Eq {
                 equality: Equality {
-                    left: Term::Var { index: 0 },
-                    right: Term::Var { index: 1 },
+                    left: El::Var { index: 0 },
+                    right: El::Var { index: 1 },
                 },
             }],
         );
@@ -602,11 +603,11 @@ mod tests {
                     values: vec![
                         ir::ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         },
                         ir::ValueEntry {
                             column: 1,
-                            term: Term::Var { index: 1 },
+                            term: El::Var { index: 1 },
                         },
                     ],
                 },
@@ -618,14 +619,14 @@ mod tests {
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         }],
                     },
                 },
                 Prop::Eq {
                     equality: Equality {
-                        left: Term::Var { index: 0 },
-                        right: Term::Var { index: 1 },
+                        left: El::Var { index: 0 },
+                        right: El::Var { index: 1 },
                     },
                 },
             ],

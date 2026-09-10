@@ -21,13 +21,12 @@ instance Readback V.Head (S.El N) where
   readb n = \case
     V.LocalVar (FId i) -> S.LocalVar (BId (n - i - 1))
     V.GlobalVar x v -> S.GlobalVar x v
-    V.Lookup x vs a -> S.Lookup x (readb n <$> vs) (readb n a)
 
 instance Readback V.Spine (S.El N -> S.El N) where
   readb n = \case
     V.Id -> \t -> t
-    V.App sp v -> \t -> S.App (readb n sp t) (readb n v)
-    V.Proj sp x -> \t -> S.Proj (readb n sp t) x
+    V.App fv sp v -> \t -> S.App fv (readb n sp t) (readb n v)
+    V.Proj l sp x -> \t -> S.Proj l (readb n sp t) x
 
 instance Readback V.BareNeutral (S.El N) where
   readb n ne = readb n ne.spine $ readb n ne.head
@@ -48,11 +47,11 @@ instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
   readb n = \case
     V.Neu ne -> readb n ne.spine $ readb n ne.head
     V.InitNeu ne -> readb n ne.spine $ readb n ne.name
-    V.Code a -> S.Code (readb n a)
-    V.Lam dom body -> S.Lam (readb n dom) $ case V.scase @c of
+    V.Code u a -> S.Code u (readb n a)
+    V.Lam fv dom body -> S.Lam fv (readb n dom) $ case V.scase @c of
       SNominative -> readbClo n dom body
       SDescriptive -> readbClo n dom body
-    V.Cons d -> S.Cons $ case V.scase @c of
+    V.Cons l d -> S.Cons l $ case V.scase @c of
       SNominative -> readb n <$> d
       SDescriptive -> readb n <$> d
     V.Lit l -> S.Lit l
@@ -94,13 +93,12 @@ instance Readback V.EqualityType (S.EqualityType S.El S.Ty) where
 instance (V.HasEvaluation c) => Readback (V.Ty c) (S.Ty c) where
   readb n = \case
     V.U u -> S.U u
-    V.Decode ne -> S.Decode $ readb n ne.spine $ readb n ne.head
-    V.InitDecode ne -> S.Decode $ readb n ne.spine $ readb n ne.name
+    V.Decode ne -> S.Decode ne.universe $ readb n ne.spine $ readb n ne.head
+    V.InitDecode ne -> S.Decode TheoryU $ readb n ne.spine $ readb n ne.name
     V.Function f -> S.Function $ readb n f
     V.Record r -> S.Record $ readb n r
     V.Eq eq -> S.Eq $ readb n eq
     V.BuiltinTy b -> S.BuiltinTy b
-    V.EltOf x vs -> S.EltOf x (readb n <$> vs)
 
 instance Readback V.TypeBehavior S.TypeBehavior where
   readb n = \case

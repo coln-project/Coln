@@ -191,10 +191,11 @@ mod tests {
             path: Path::from(path),
             rule: Rule {
                 rule_variant: RuleVariant::Enforced,
-                var_names: (0..var_types.len())
-                    .map(|index| Path::from(format!("v{index}")))
+                vars: var_types
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, ty)| (Path::from(format!("v{i}")), ty))
                     .collect(),
-                var_types,
                 antecedents,
                 consequents,
             },
@@ -259,7 +260,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: ir::Term::Var { index: 0 },
+                        term: ir::El::Var { index: 0 },
                     }],
                 },
             }],
@@ -269,7 +270,7 @@ mod tests {
                     row_id: None,
                     values: vec![ir::ValueEntry {
                         column: 0,
-                        term: ir::Term::Var { index: 0 },
+                        term: ir::El::Var { index: 0 },
                     }],
                 },
             }],
@@ -305,11 +306,11 @@ mod tests {
                     values: vec![
                         ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 0 },
+                            term: ir::El::Var { index: 0 },
                         },
                         ir::ValueEntry {
                             column: 1,
-                            term: ir::Term::Var { index: 1 },
+                            term: ir::El::Var { index: 1 },
                         },
                     ],
                 },
@@ -321,7 +322,7 @@ mod tests {
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 0 },
+                            term: ir::El::Var { index: 0 },
                         }],
                     },
                 },
@@ -331,7 +332,7 @@ mod tests {
                         row_id: None,
                         values: vec![ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 1 },
+                            term: ir::El::Var { index: 1 },
                         }],
                     },
                 },
@@ -388,19 +389,19 @@ mod tests {
                     values: vec![
                         ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 0 },
+                            term: ir::El::Var { index: 0 },
                         },
                         ir::ValueEntry {
                             column: 1,
-                            term: ir::Term::Var { index: 1 },
+                            term: ir::El::Var { index: 1 },
                         },
                     ],
                 },
             }],
             vec![ir::Prop::Eq {
                 equality: Equality {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Var { index: 1 },
+                    left: ir::El::Var { index: 0 },
+                    right: ir::El::Var { index: 1 },
                 },
             }],
         );
@@ -430,19 +431,19 @@ mod tests {
                     values: vec![
                         ir::ValueEntry {
                             column: 0,
-                            term: ir::Term::Var { index: 0 },
+                            term: ir::El::Var { index: 0 },
                         },
                         ir::ValueEntry {
                             column: 1,
-                            term: ir::Term::Var { index: 1 },
+                            term: ir::El::Var { index: 1 },
                         },
                     ],
                 },
             }],
             vec![ir::Prop::Eq {
                 equality: Equality {
-                    left: ir::Term::Var { index: 0 },
-                    right: ir::Term::Var { index: 1 },
+                    left: ir::El::Var { index: 0 },
+                    right: ir::El::Var { index: 1 },
                 },
             }],
         );

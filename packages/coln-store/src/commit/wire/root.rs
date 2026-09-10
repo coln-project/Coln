@@ -20,8 +20,8 @@ mod tests {
 
     use super::*;
     use crate::ir::{
-        Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Prop, Rule, RuleEntry,
-        RuleVariant, Schema, TableEntry, Term, ValueEntry,
+        Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, Path, Prop, Rule, RuleEntry,
+        RuleVariant, Schema, TableEntry, ValueEntry,
     };
 
     fn int_schema() -> Schema {
@@ -33,7 +33,7 @@ mod tests {
                     builtin_ty: BuiltinTy::BuiltinInt,
                 },
             }],
-            primary_key: Some(vec![Path::from("c0")]),
+            primary_key: Some(vec![0]),
         }
     }
 
@@ -63,24 +63,26 @@ mod tests {
             path: Path::from("T.non_negative"),
             rule: Rule {
                 rule_variant: RuleVariant::Enforced,
-                var_names: vec![Path::from("x")],
-                var_types: vec![ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                }],
+                vars: vec![(
+                    Path::from("x"),
+                    ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
+                )],
                 antecedents: vec![Prop::Atom {
                     atom: Atom {
                         entity: table.clone(),
                         row_id: None,
                         values: vec![ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         }],
                     },
                 }],
                 consequents: vec![Prop::Eq {
                     equality: Equality {
-                        left: Term::Var { index: 0 },
-                        right: Term::Var { index: 0 },
+                        left: El::Var { index: 0 },
+                        right: El::Var { index: 0 },
                     },
                 }],
             },
@@ -91,6 +93,7 @@ mod tests {
     fn root_payload_round_trips() {
         let root = FlatRealm {
             tables: vec![table_entry("T", int_schema())],
+            definitions: vec![],
             rules: vec![simple_rule()],
         };
 
@@ -100,10 +103,7 @@ mod tests {
         assert_eq!(decoded.tables.len(), 1);
         assert_eq!(decoded.tables[0].path, Path::from("T"));
         assert_eq!(decoded.tables[0].table.columns, int_schema().columns);
-        assert_eq!(
-            decoded.tables[0].table.primary_key,
-            Some(vec![Path::from("c0")])
-        );
+        assert_eq!(decoded.tables[0].table.primary_key, Some(vec![0]));
         assert_eq!(decoded.rules.len(), 1);
         assert_eq!(decoded.rules[0].path, Path::from("T.non_negative"));
     }
@@ -115,10 +115,12 @@ mod tests {
 
         let left = FlatRealm {
             tables: vec![b.clone(), a.clone()],
+            definitions: vec![],
             rules: vec![],
         };
         let right = FlatRealm {
             tables: vec![a, b],
+            definitions: vec![],
             rules: vec![],
         };
 
@@ -132,6 +134,7 @@ mod tests {
     fn root_payload_rejects_trailing_bytes() {
         let root = FlatRealm {
             tables: vec![],
+            definitions: vec![],
             rules: vec![],
         };
 

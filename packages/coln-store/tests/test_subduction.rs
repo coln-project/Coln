@@ -49,6 +49,7 @@ fn int_theory() -> FlatRealm {
                 primary_key: None,
             },
         }],
+        definitions: vec![],
         rules: vec![],
     }
 }
