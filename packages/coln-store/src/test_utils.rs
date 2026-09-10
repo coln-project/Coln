@@ -89,7 +89,7 @@ mod schema {
     #[fixture]
     pub(crate) fn string_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
-        #[default(None)] primary_key: Option<Vec<&'static str>>,
+        #[default(None)] primary_key: Option<Vec<u64>>,
     ) -> Schema {
         table_schema(
             col_names,
@@ -136,24 +136,26 @@ mod root {
             path: Path::from("T.non_negative"),
             rule: Rule {
                 rule_variant: RuleVariant::Enforced,
-                var_names: vec![Path::from("x")],
-                var_types: vec![ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                }],
+                vars: vec![(
+                    Path::from("x"),
+                    ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
+                )],
                 antecedents: vec![Prop::Atom {
                     atom: Atom {
                         entity: table,
                         row_id: None,
                         values: vec![ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         }],
                     },
                 }],
                 consequents: vec![Prop::Eq {
                     equality: Equality {
-                        left: Term::Var { index: 0 },
-                        right: Term::Var { index: 0 },
+                        left: El::Var { index: 0 },
+                        right: El::Var { index: 0 },
                     },
                 }],
             },
@@ -165,6 +167,7 @@ mod root {
         RootCommitData::new(
             FlatRealm {
                 tables: vec![],
+                definitions: vec![],
                 rules: vec![],
             },
             empty_colndef,
@@ -176,7 +179,7 @@ mod root {
         non_empty_colndef: ColnDef,
         simple_rule: RuleEntry,
         #[from(int_schema)]
-        #[with(vec!["c0"], Some(vec!["c0"]))]
+        #[with(vec!["c0"], Some(vec![0]))]
         schema: Schema,
     ) -> RootCommitData {
         RootCommitData::new(
@@ -185,6 +188,7 @@ mod root {
                     path: Path::from("T"),
                     table: schema,
                 }],
+                definitions: vec![],
                 rules: vec![simple_rule],
             },
             non_empty_colndef,

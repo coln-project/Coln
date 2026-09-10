@@ -77,8 +77,6 @@ pub enum ValidationError {
     InvalidRowId { wire_id: WireRowId },
 }
 
-type ColName = ir::Path;
-
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
 ///
 /// Row ids are dictionary encoded: each distinct commit hash is stored once
