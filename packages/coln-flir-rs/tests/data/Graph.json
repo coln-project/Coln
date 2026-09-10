@@ -1,50 +1,84 @@
 {
   "entities": [
     {
-      "path": [["Graph"], ["E"]],
+      "path": "Graph.E",
       "value": {
-        "entityVariant": { "tag": "table" },
+        "entityVariant": {
+          "tag": "table"
+        },
         "columns": [
           {
-            "path": [["a"]],
-            "type": { "tag": "rowId", "path": [["Graph"], ["V"]] }
+            "path": "a",
+            "type": {
+              "tag": "rowId",
+              "path": "Graph.V"
+            }
           },
           {
-            "path": [["b"]],
-            "type": { "tag": "rowId", "path": [["Graph"], ["V"]] }
+            "path": "b",
+            "type": {
+              "tag": "rowId",
+              "path": "Graph.V"
+            }
           }
         ],
         "primaryKey": null
       }
     },
     {
-      "path": [["Graph"], ["V"]],
+      "path": "Graph.V",
       "value": {
-        "entityVariant": { "tag": "table" },
+        "entityVariant": {
+          "tag": "table"
+        },
         "columns": [],
         "primaryKey": null
       }
     }
   ],
+  "definitions": [],
   "rules": [
     {
-      "path": [["Graph"], ["E"], ["foreignKey"]],
+      "path": "Graph.E.foreignKey",
       "value": {
         "ruleVariant": "enforced",
-        "varNames": [[["a"]], [["b"]]],
-        "varTypes": [
-          { "tag": "rowId", "path": [["Graph"], ["V"]] },
-          { "tag": "rowId", "path": [["Graph"], ["V"]] }
+        "vars": [
+          [
+            "a",
+            {
+              "tag": "rowId",
+              "path": "Graph.V"
+            }
+          ],
+          [
+            "b",
+            {
+              "tag": "rowId",
+              "path": "Graph.V"
+            }
+          ]
         ],
         "antecedents": [
           {
             "tag": "atom",
             "atom": {
-              "entity": [["Graph"], ["E"]],
+              "entity": "Graph.E",
               "rowId": null,
               "values": [
-                { "column": 0, "term": { "tag": "var", "index": 0 } },
-                { "column": 1, "term": { "tag": "var", "index": 1 } }
+                {
+                  "column": 0,
+                  "term": {
+                    "tag": "var",
+                    "index": 0
+                  }
+                },
+                {
+                  "column": 1,
+                  "term": {
+                    "tag": "var",
+                    "index": 1
+                  }
+                }
               ]
             }
           }
@@ -53,16 +87,22 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["Graph"], ["V"]],
-              "rowId": { "tag": "var", "index": 0 },
+              "entity": "Graph.V",
+              "rowId": {
+                "tag": "var",
+                "index": 0
+              },
               "values": []
             }
           },
           {
             "tag": "atom",
             "atom": {
-              "entity": [["Graph"], ["V"]],
-              "rowId": { "tag": "var", "index": 1 },
+              "entity": "Graph.V",
+              "rowId": {
+                "tag": "var",
+                "index": 1
+              },
               "values": []
             }
           }
@@ -70,16 +110,15 @@
       }
     },
     {
-      "path": [["Graph"], ["V"], ["foreignKey"]],
+      "path": "Graph.V.foreignKey",
       "value": {
         "ruleVariant": "enforced",
-        "varNames": [],
-        "varTypes": [],
+        "vars": [],
         "antecedents": [
           {
             "tag": "atom",
             "atom": {
-              "entity": [["Graph"], ["V"]],
+              "entity": "Graph.V",
               "rowId": null,
               "values": []
             }

@@ -506,13 +506,17 @@ fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<Vec
 mod tests {
     use super::*;
 
-    static PATHS_IR: &str = "Path.json";
-    static PATHS_COLN: &str = "path.coln";
-    static PATHS_REALM: &str = "Path";
+    static GRAPH_IR: &str = "Graph.json";
+    static GRAPH_REALM: &str = "Graph";
 
-    fn load_paths_schema() -> LoadedState {
-        let data = Path::new("tests/data/");
-        load_schema(&data.join(PATHS_IR), &data.join(PATHS_COLN), PATHS_REALM).expect("load schema")
+    fn graph_ir_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../coln-flir-rs/tests/data")
+            .join(GRAPH_IR)
+    }
+
+    fn load_graph_schema() -> LoadedState {
+        load_schema(&graph_ir_path(), Path::new(""), GRAPH_REALM).expect("load schema")
     }
 
     #[test]
@@ -542,22 +546,22 @@ mod tests {
 
     #[test]
     fn renders_all_table_schemas() {
-        let loaded = load_paths_schema();
+        let loaded = load_graph_schema();
         let rendered = render_schema_summary(Some(&loaded.schema));
-        assert!(rendered.contains("source: tests/data/Path.json"));
-        assert!(rendered.contains("table: Path.G.V"));
-        assert!(rendered.contains("- a: entity(Path.Graphs)"));
-        assert!(rendered.contains("table: Path.G.E"));
-        assert!(rendered.contains("- b: entity(Path.G.V)"));
+        assert!(rendered.contains("Graph.json"));
+        assert!(rendered.contains("table: Graph.V"));
+        assert!(rendered.contains("table: Graph.E"));
+        assert!(rendered.contains("- a: entity(Graph.V)"));
+        assert!(rendered.contains("- b: entity(Graph.V)"));
     }
 
     #[test]
     fn loads_schema_summary_from_fixture() {
-        let loaded = load_paths_schema();
-        assert_eq!(loaded.store.table_count(), 16);
-        assert_eq!(loaded.schema.table_count, 16);
-        assert_eq!(loaded.schema.law_count, 27);
-        assert_eq!(loaded.schema.tables[0].path, "Path.G0");
+        let loaded = load_graph_schema();
+        assert_eq!(loaded.store.table_count(), 2);
+        assert_eq!(loaded.schema.table_count, 2);
+        assert_eq!(loaded.schema.law_count, 2);
+        assert_eq!(loaded.schema.tables[0].path, "Graph.E");
         let root = loaded
             .store
             .commits()
@@ -565,17 +569,13 @@ mod tests {
             .expect("root commit")
             .root_payload()
             .expect("root payload");
-        assert_eq!(
-            root.coln_def.theory,
-            include_str!("../../../tests/data/path.coln")
-        );
-        assert_eq!(root.coln_def.realm, PATHS_REALM);
+        assert!(root.coln_def.theory.is_empty());
+        assert_eq!(root.coln_def.realm, GRAPH_REALM);
     }
 
     #[test]
     fn loads_schema_without_coln_metadata() {
-        let loaded = load_schema(&Path::new("tests/data/").join(PATHS_IR), Path::new(""), "")
-            .expect("load schema");
+        let loaded = load_schema(&graph_ir_path(), Path::new(""), "").expect("load schema");
         let root = loaded
             .store
             .commits()
@@ -590,17 +590,18 @@ mod tests {
 
     #[test]
     fn renders_single_table_schema() {
-        let loaded = load_paths_schema();
+        let loaded = load_graph_schema();
         let rendered =
-            render_table_schema(Some(&loaded.schema), "Path.G.V").expect("render table schema");
-        assert!(rendered.contains("table: Path.G.V"));
+            render_table_schema(Some(&loaded.schema), "Graph.E").expect("render table schema");
+        assert!(rendered.contains("table: Graph.E"));
         assert!(rendered.contains("primary key:"));
-        assert!(rendered.contains("- a: entity(Path.Graphs)"));
+        assert!(rendered.contains("- a: entity(Graph.V)"));
+        assert!(rendered.contains("- b: entity(Graph.V)"));
     }
 
     #[test]
     fn renders_ir_json() {
-        let loaded = load_paths_schema();
+        let loaded = load_graph_schema();
         let rendered = render_ir(Some(&loaded.store)).expect("render ir");
         assert_eq!(rendered, loaded.store.json_ir().expect("json ir"));
         let parsed: FlatRealm = serde_json::from_str(&rendered).expect("parse ir json");
