@@ -8,6 +8,7 @@ pub(crate) mod index;
 pub mod sorted;
 pub mod table_ref;
 mod undo;
+pub mod view;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -96,7 +97,6 @@ pub struct RowView {
     pub values: Vec<WireValue>,
 }
 
-type ColName = ir::Path;
 
 /// How the primary key constraint is checked on insert. Resolved once at
 /// table construction.

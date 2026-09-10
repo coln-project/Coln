@@ -635,10 +635,6 @@ fn string_primary_key_detects_duplicates() {
     );
 }
 
-/// Schemas are compiler-generated, so a primary key referencing an
-/// unknown column is a bug and fails table construction.
-#[test]
-
 /// Manual benchmark for the primary key duplicate check on insert.
 /// Inserting `n` rows of one integer (the primary key) and one row id.
 /// Run with:
