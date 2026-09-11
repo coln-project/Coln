@@ -8,7 +8,7 @@ use specta::Type;
 
 use crate::{
     store::error::StoreError,
-    table::{WireRowId, WireValue, table_handle::WireRowView},
+    table::{WireRowId, WireValue, cell::WireTuple, table_handle::WireRowView},
     txn::{TxnLiveRowId, TxnLiveValue},
 };
 
@@ -18,8 +18,6 @@ pub struct WhereClause {
     pub row_id: Option<WireRowId>,
     pub values: Vec<WireValue>, // A prefix of column values
 }
-
-pub type WireTuple = Vec<WireValue>;
 
 pub trait StoreRead {
     // Return a vec for external world

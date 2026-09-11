@@ -11,7 +11,7 @@ mod timestamp;
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreError},
-    table::{WireRowId, table_handle::WireRowView},
+    table::{WireRowId, cell::WireTuple, table_handle::WireRowView},
     txn::rw::{StoreRead, StoreWrite, WhereClause},
 };
 use coln_flir_rs::ir;
@@ -114,7 +114,7 @@ impl<M: Mode> StoreRead for Transaction<M> {
         self.mode.store().row_by_id_inner(table, row_id)
     }
 
-    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<rw::WireTuple>> {
+    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
         self.mode.store().all_inner(query, select)
     }
 }

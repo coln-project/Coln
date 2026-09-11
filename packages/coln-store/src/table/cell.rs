@@ -104,3 +104,5 @@ impl fmt::Display for WireValue {
         }
     }
 }
+
+pub type WireTuple = Vec<WireValue>;
