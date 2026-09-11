@@ -26,3 +26,14 @@ realm PairRealm @ Pair
   def realm_def : Int := 38
   def def_arg (realm_def : Int) : Int := 23
 end
+
+theory Nasty := sig
+  B : Set
+  E : B -> Set
+  n : (b : B) -> (b : E b) -> Int
+end
+
+theory NastyParam (b : Int) := sig
+  E : Int -> Set
+  b : E b
+end
