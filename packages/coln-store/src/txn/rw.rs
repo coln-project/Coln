@@ -8,7 +8,7 @@ use specta::Type;
 
 use crate::{
     store::error::StoreError,
-    table::{WireRowId, WireValue, cell::WireTuple, table_handle::WireRowView},
+    table::{WireRowId, WireValue, cell::WireTuple, handle::WireRowView},
     txn::{TxnLiveRowId, TxnLiveValue},
 };
 

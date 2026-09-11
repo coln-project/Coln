@@ -13,7 +13,7 @@ use coln_store::{
     store::CommitChunk as StoreCommitChunk,
     table::{
         WireRowId as StoreRowId, WireValue as StoreCellValue,
-        table_handle::WireRowView as StoreRowView,
+        handle::WireRowView as StoreRowView,
     },
     txn::{TxnLiveRowId, TxnLiveValue as StoreTxnValue},
 };

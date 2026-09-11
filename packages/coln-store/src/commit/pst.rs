@@ -100,7 +100,7 @@ mod tests {
     use crate::commit::hash::{CommitHash, HASH_SIZE};
     use crate::commit::wire::{CommitData, RootCommitData};
     use crate::ir::Path;
-    use crate::table::{WireValue, table_handle::WireRowView};
+    use crate::table::{WireValue, handle::WireRowView};
     use crate::test_utils::non_empty_root_commit_data;
     use crate::txn::rw::{StoreRead, StoreWrite};
 

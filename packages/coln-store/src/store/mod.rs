@@ -27,7 +27,7 @@ use crate::pack::{IdPacker, IdPackerSnapshot};
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
 use crate::store::error::{CommitApplyError, StoreError};
-use crate::table::table_handle::WireRowView;
+use crate::table::handle::WireRowView;
 use crate::table::{
     Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
