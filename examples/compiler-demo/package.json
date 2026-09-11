@@ -1,0 +1,17 @@
+{
+  "name": "coln-compiler-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "coln-compiler": "file:../../_build/npm/coln-compiler"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14"
+  }
+}
