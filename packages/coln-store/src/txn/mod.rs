@@ -146,6 +146,86 @@ mod tests {
     use crate::txn::row_handle::empty_row;
 
     #[rstest]
+    fn validates_then_applies(#[from(single_int_store)] mut store: Store) {
+        let path = Path::from("T");
+
+        let mut txn = store.transaction();
+        txn.add(&path, vec![1i32]).expect("first add");
+        txn.add(&path, vec![2i32]).expect("second add");
+
+        txn.commit().expect("commit");
+
+        assert_eq!(store.table_at(&path).expect("T").row_count(), 2);
+    }
+
+    /// Covers the same rollback guarantee as the old `transact` test: if validation fails,
+    /// no rows from the batch are committed (here the second op references an unregistered table).
+    #[rstest]
+    fn unknown_table_leaves_store_unchanged(#[from(single_int_store)] mut store: Store) {
+        let path = Path::from("T");
+
+        let err = {
+            let mut txn = store.transaction();
+            txn.add(&path, vec![1i32]).expect("first add");
+            txn.add(&Path::from("missing"), vec![2i32]).unwrap_err()
+        };
+
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::UnknownTable { .. })
+        ));
+        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
+    }
+
+    #[test]
+    fn duplicate_primary_key_within_batch() {
+        let path = Path::from("T");
+        let schema = Schema {
+            entity_variant: EntityVariant::Table,
+            columns: vec![ColumnEntry {
+                path: Path::from("c0"),
+                col_type: ColType::BuiltinTy {
+                    builtin_ty: BuiltinTy::BuiltinInt,
+                },
+            }],
+            primary_key: Some(vec![0u64]),
+        };
+        let mut store = Store::new();
+        store
+            .create_table(path.clone(), schema)
+            .expect("create table");
+
+        let mut txn = store.transaction();
+        txn.add(&path, vec![1i32]).expect("first add");
+        txn.add(&path, vec![1i32]).expect("second add");
+        let err = txn.commit().unwrap_err();
+
+        assert!(matches!(
+            err,
+            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
+        ));
+        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
+    }
+
+    #[rstest]
+    fn single_insert_commits(#[from(single_int_store)] mut store: Store) {
+        let path = Path::from("T");
+
+        let mut txn = store.transaction();
+        let live_id = txn.add(&path, vec![42i32]).expect("add");
+        txn.commit().expect("commit");
+        let row_id = live_id.row_id().expect("finalized");
+
+        assert_eq!(
+            store.row_by_id(&path, row_id),
+            Some(WireRowView {
+                row_id,
+                values: vec![42i32.into()],
+            })
+        );
+    }
+
+    #[rstest]
     fn transaction_resolves_pending_row_references_with_commit_hash(
         #[from(nodes_edges_store)] mut store: Store,
     ) {
@@ -154,23 +234,24 @@ mod tests {
 
         let mut tx = store.transaction();
         let node_temp = tx.add(&nodes, empty_row()).expect("add node");
-        tx.add(&edges, vec![TxnLiveValue::Id(node_temp)])
+        let edge_temp = tx
+            .add(&edges, vec![TxnLiveValue::Id(node_temp.clone())])
             .expect("add edge");
         let commit = tx.commit().expect("commit");
-
-        let node_id = store
-            .table_at(&nodes)
-            .expect("Nodes")
-            .row_id_at(0)
-            .expect("node row id");
-        let edge = store.table_at(&edges).expect("Edges");
-        let edge_id = edge.row_id_at(0).expect("edge row id");
+        let node_id = node_temp.row_id().expect("node finalized");
+        let edge_id = edge_temp.row_id().expect("edge finalized");
 
         assert_eq!(node_id.commit, commit);
         assert_eq!(node_id.counter, 0);
         assert_eq!(edge_id.commit, commit);
         assert_eq!(edge_id.counter, 1);
-        assert_eq!(edge.cell_at(0, 0), Some(WireValue::Id(node_id)));
+        assert_eq!(
+            store.row_by_id(&edges, edge_id),
+            Some(WireRowView {
+                row_id: edge_id,
+                values: vec![WireValue::Id(node_id)],
+            })
+        );
     }
 
     #[rstest]
@@ -188,12 +269,19 @@ mod tests {
         assert_eq!(node_id.commit, first_commit);
 
         let mut tx = store.transaction();
-        tx.add(&edges, vec![TxnLiveValue::Id(node)])
+        let edge = tx
+            .add(&edges, vec![TxnLiveValue::Id(node)])
             .expect("add edge");
         tx.commit().expect("commit edge");
+        let edge_id = edge.row_id().expect("edge finalized");
 
-        let edge = store.table_at(&edges).expect("Edges");
-        assert_eq!(edge.cell_at(0, 0), Some(WireValue::Id(node_id)));
+        assert_eq!(
+            store.row_by_id(&edges, edge_id),
+            Some(WireRowView {
+                row_id: edge_id,
+                values: vec![WireValue::Id(node_id)],
+            })
+        );
     }
 
     #[rstest]
@@ -279,12 +367,8 @@ mod tests {
         let second = tx.add(&term, vec![7_i32]).expect("add equal term");
         tx.commit().expect("commit equal term");
 
-        let stored = store
-            .table_at(&term)
-            .expect("Term")
-            .row_id_at(0)
-            .expect("one stored row");
-        assert_eq!(store.table_at(&term).expect("Term").row_count(), 1);
+        let stored = second.row_id().expect("finalized");
+        assert_eq!(store.scan_table(&term).expect("Term").len(), 1);
 
         // The second handle is born canonical, whether its row was kept old
         // or won the merge.
@@ -293,9 +377,7 @@ mod tests {
         // The first handle resolves through the store even if its id went
         // stale, and the read writes the canonical id back into the handle.
         let view = store
-            .table_at(&term)
-            .expect("class row is stored")
-            .row_by_handle(&first)
+            .row_by_liveid(&term, &first)
             .expect("class row is stored");
         assert_eq!(view.row_id, stored);
         assert_eq!(first.row_id().expect("finalized"), stored);
@@ -343,16 +425,24 @@ mod tests {
         let path = Path::from("T");
 
         let mut tx = store.transaction();
-        tx.add(&path, vec![1i32]).expect("add");
+        let live_id = tx.add(&path, vec![1i32]).expect("add");
         tx.commit().expect("commit");
+        let row_id = live_id.row_id().expect("finalized");
 
         let mut tx = store.transaction();
-        let rows = tx.scan_table(&path).expect("T");
-        assert_eq!(rows.len(), 1);
-        assert!(tx.row_by_id(&path, rows[0].row_id).is_some());
-        assert!(
-            tx.row_by_liveid(&path, &TxnLiveRowId::from_existing(rows[0].row_id))
-                .is_some()
+        assert_eq!(
+            tx.row_by_id(&path, row_id),
+            Some(WireRowView {
+                row_id,
+                values: vec![1i32.into()],
+            })
+        );
+        assert_eq!(
+            tx.row_by_liveid(&path, &live_id),
+            Some(WireRowView {
+                row_id,
+                values: vec![1i32.into()],
+            })
         );
 
         tx.add(&path, vec![2i32]).expect("add pending");

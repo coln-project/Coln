@@ -6,10 +6,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fmt;
 
-use coln_query::api::deltas::{ScalarTypedValue, TupleValue};
-
 use super::ValidationError;
-use crate::column_map::ColIndex;
 use crate::commit::hash::CommitHash;
 use crate::ir::{BuiltinTy, ColType};
 use crate::value::Value;

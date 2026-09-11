@@ -75,7 +75,14 @@ fn row_count_matches_inserts_when_schema_has_no_columns(
         .insert_row(vec![], r0)
         .expect("id-only row is valid");
     assert_eq!(test_table.handle().row_count(), 1);
-    assert_eq!(test_table.handle().row_id_at(0), Some(r0));
+    assert_eq!(
+        test_table
+            .handle()
+            .row_by_id(r0)
+            .expect("rowid present")
+            .row_id,
+        r0
+    );
 
     let r1 = zerohash_row_id(1);
     test_table
@@ -83,7 +90,14 @@ fn row_count_matches_inserts_when_schema_has_no_columns(
         .insert_row(vec![], r1)
         .expect("id-only row is valid");
     assert_eq!(test_table.handle().row_count(), 2);
-    assert_eq!(test_table.handle().row_id_at(1), Some(r1));
+    assert_eq!(
+        test_table
+            .handle()
+            .row_by_id(r1)
+            .expect("rowid present")
+            .row_id,
+        r1
+    );
 }
 
 #[rstest]
@@ -126,7 +140,13 @@ fn rollback_removes_applied_rows_and_index_entries(
 
     let handle = test_table.handle();
     assert_eq!(handle.row_count(), 1);
-    assert_eq!(handle.row_id_at(0), Some(existing));
+    assert_eq!(
+        handle
+            .row_by_id(existing)
+            .expect("existing row present")
+            .row_id,
+        existing
+    );
     assert_eq!(handle.row_by_id(first_added), None);
     assert_eq!(handle.row_by_id(second_added), None);
     assert!(
@@ -273,9 +293,13 @@ fn full_rebuild_rewrites_stale_id_cells(
     test_table.as_mut().apply_staged().unwrap();
 
     let handle = test_table.handle();
-    assert_eq!(handle.row_count(), 1);
-    assert_eq!(handle.row_id_at(0), Some(owner));
-    assert_eq!(handle.cell_at(0, 0), Some(WireValue::Id(row_id_from(1, 0))));
+    assert_eq!(
+        handle.row_by_id(owner),
+        Some(WireRowView {
+            row_id: owner,
+            values: vec![WireValue::Id(row_id_from(1, 0))],
+        })
+    );
 }
 
 #[rstest]
@@ -299,9 +323,13 @@ fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row(
     test_table.as_mut().apply_staged().unwrap();
 
     let handle = test_table.handle();
-    assert_eq!(handle.row_count(), 1);
-    assert_eq!(handle.row_id_at(0), Some(canonical));
-    assert_eq!(handle.cell_at(0, 0), Some(WireValue::Int(7)));
+    assert_eq!(
+        handle.row_by_id(canonical),
+        Some(WireRowView {
+            row_id: canonical,
+            values: vec![WireValue::Int(7)],
+        })
+    );
 }
 
 /// Rollback replays the undo log through the same insert path, so the
@@ -353,7 +381,13 @@ fn commit_snapshot_keeps_rows_and_discards_undo_log(
     test_table.table.commit(snapshot);
 
     assert_eq!(test_table.handle().row_count(), 1);
-    assert_eq!(test_table.handle().row_id_at(0), Some(row_id));
+    assert_eq!(
+        test_table.handle().row_by_id(row_id),
+        Some(WireRowView {
+            row_id,
+            values: vec![WireValue::Int(7)],
+        })
+    );
     assert!(test_table.table.undo_log.is_none());
 }
 
@@ -432,20 +466,16 @@ fn row_read_helpers_return_row_id_and_cells(
             values: vec![WireValue::Int(7), WireValue::Str("x".to_string())],
         })
     );
-    assert_eq!(handle.row_id_at(0), Some(row_id));
-    assert_eq!(handle.cell_at(0, 0), Some(WireValue::Int(7)));
-    assert_eq!(handle.cell_at(0, 1), Some(WireValue::Str("x".to_string())));
     let packed = test_table
         .dict
         .lookup_row_id(&row_id)
         .expect("insert packed the row id");
     assert_eq!(
-        test_table.table.packed_row_by_id(packed),
+        test_table.table.row_by_id(packed),
         Some(vec![PackedValue::Int(7), PackedValue::Str("x".to_string())])
     );
-    assert!(test_table.table.row_at(1).is_none());
-    assert_eq!(handle.row_id_at(1), None);
-    assert_eq!(handle.cell_at(0, 2), None);
+    assert!(test_table.table.row_by_idx(1).is_none());
+    assert!(test_table.table.cell_by_idx(0, 2).is_none());
 }
 
 #[rstest]

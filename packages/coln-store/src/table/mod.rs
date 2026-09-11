@@ -16,21 +16,17 @@ pub use table_handle::TableHandle;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-pub use cell::{CellKind, WireRowId, WireValue};
 use coln_query::api::deltas::{TableDelta, ZRow};
-pub use table_ref::TableRef;
 
-use crate::id_packer::IdPacker;
 use crate::ir;
 use crate::ir::Schema;
 use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedValue};
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
+use crate::table::col::{Column, IdColumn};
 use crate::table::index::{IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 use crate::txn::TxnId;
-
-use self::col::{Column, IdColumn};
 
 pub type TableOid = usize;
 
@@ -181,7 +177,7 @@ impl Table {
 
     /// O(N * log S) as first find out the index from the row_id, and then do a
     /// lookup on each column
-    pub(crate) fn packed_row_by_id(&self, row_id: PackedRowId) -> Option<Vec<PackedValue>> {
+    pub(crate) fn row_by_id(&self, row_id: PackedRowId) -> Option<Vec<PackedValue>> {
         let row_idx = self.row_ids.position(row_id).ok()?;
         (0..self.schema.columns.len())
             .map(|col_idx| {
@@ -192,23 +188,23 @@ impl Table {
             .collect()
     }
 
-    pub(crate) fn row_at(&self, row_idx: usize) -> Option<PackedRowView> {
-        let row_id = self.row_id_at(row_idx)?;
+    pub(crate) fn row_by_idx(&self, row_idx: usize) -> Option<PackedRowView> {
+        let row_id = self.row_id_by_idx(row_idx)?;
         let values = (0..self.schema.columns.len())
-            .map(|col_idx| self.cell_at(row_idx, col_idx))
+            .map(|col_idx| self.cell_by_idx(row_idx, col_idx))
             .collect::<Option<Vec<_>>>()?;
 
         Some(PackedRowView { row_id, values })
     }
 
     /// Row id at a given physical row index.
-    pub(crate) fn row_id_at(&self, row_idx: usize) -> Option<PackedRowId> {
+    pub(crate) fn row_id_by_idx(&self, row_idx: usize) -> Option<PackedRowId> {
         self.row_ids.get(row_idx)
     }
 
     /// Cell at `(row_idx, col_idx)` in columnar storage.
     /// O(1) to locate the column, roughly O(log S) to find by index in a slab.
-    pub(crate) fn cell_at(&self, row_idx: usize, col_idx: usize) -> Option<PackedValue> {
+    pub(crate) fn cell_by_idx(&self, row_idx: usize, col_idx: usize) -> Option<PackedValue> {
         self.cols
             .get(col_idx)
             .and_then(|col| col.get_packed(row_idx))
@@ -220,7 +216,7 @@ impl Table {
     }
 
     pub(crate) fn scan(&self) -> impl Iterator<Item = PackedRowView> {
-        (0..self.row_count()).filter_map(move |row_idx| self.row_at(row_idx))
+        (0..self.row_count()).filter_map(move |row_idx| self.row_by_idx(row_idx))
     }
 
     pub(crate) fn index_seek<'s>(
@@ -365,14 +361,14 @@ impl Table {
             .into_iter()
             .map(|op| match op {
                 PackedOp::Add { row_id, values } => {
-                    let tuple = cell::packedvalue_to_tuple(row_id, values);
+                    let tuple = PackedRowView { row_id, values }.into();
                     ZRow::new(1, tuple).unwrap()
                 }
                 PackedOp::Delete { row_id } => {
                     let values = self
-                        .packed_row_at(row_id)
+                        .row_by_id(row_id)
                         .expect("element to delete should exist");
-                    let tuple = cell::packedvalue_to_tuple(row_id, values);
+                    let tuple = PackedRowView { row_id, values }.into();
                     ZRow::new(-1, tuple).unwrap()
                 }
             })
@@ -414,7 +410,7 @@ impl Table {
         for old in rowing.displaced() {
             // A row whose own id was displaced is rebuilt here, including any
             // stale ids in its cells. Referring-row handling below skips it.
-            if let Some(old_cells) = self.packed_row_by_id(old) {
+            if let Some(old_cells) = self.row_by_id(old) {
                 let new_rid = rowing.canonical_id(&old, id_packer);
                 let new_cells = Self::canonicalise_cells(&old_cells, rowing, id_packer);
 
@@ -423,7 +419,7 @@ impl Table {
                 let collapses = self.row_ids.position(new_rid).is_ok();
                 debug_assert!(
                     !collapses
-                        || self.packed_row_by_id(new_rid).is_some_and(|stored| {
+                        || self.row_by_id(new_rid).is_some_and(|stored| {
                             Self::canonicalise_cells(&stored, rowing, id_packer) == new_cells
                         }),
                     "collapsing {old:?} onto {new_rid:?} would discard differing cells"
@@ -447,7 +443,7 @@ impl Table {
                     continue;
                 }
                 let old_cells = self
-                    .packed_row_by_id(row_id)
+                    .row_by_id(row_id)
                     .expect("a referring row is present in the table");
                 let new_cells = Self::canonicalise_cells(&old_cells, rowing, id_packer);
                 if new_cells == old_cells {
@@ -492,7 +488,7 @@ impl Table {
 
             debug_assert!(
                 !collapses
-                    || self.packed_row_by_id(new_row_id).is_some_and(|stored| {
+                    || self.row_by_id(new_row_id).is_some_and(|stored| {
                         Self::canonicalise_cells(&stored, rowing, id_packer) == new_cells
                     }),
                 "collapsing {old_row_id:?} onto {new_row_id:?} would discard differing cells"
@@ -554,22 +550,21 @@ impl Table {
     ) -> Result<(), ValidationError> {
         // Checked before anything is recorded, so a rejected row leaves behind
         // neither an index entry nor a staged union.
-        if let Some(unique_cols) = self.pk {
-            if self.index.contains_key(&values[..unique_cols]) {
-                return Err(ValidationError::DuplicatePrimaryKey);
-            }
+        if let Some(unique_cols) = self.pk
+            && self.index.contains_key(&values[..unique_cols])
+        {
+            return Err(ValidationError::DuplicatePrimaryKey);
         };
 
         // A structurally identical row is stored anyway: rowing unions the two
         // ids and a later rebuild pass collapses them.
-        if self.structural {
-            if let Some(old) = self
+        if self.structural
+            && let Some(old) = self
                 .index_seek(&values)
                 .expect("valid structural index and key structure")
                 .next()
-            {
-                rowing.stage_union(self.oid, old, row_id);
-            }
+        {
+            rowing.stage_union(self.oid, old, row_id);
         }
 
         // Checks for existing row ids
@@ -608,7 +603,7 @@ impl Table {
             .position(row_id)
             .expect("removal target should be present");
         let values = self
-            .packed_row_by_id(row_id)
+            .row_by_id(row_id)
             .expect("removal target should have a complete row");
 
         self.index.remove(&values, row_id);

@@ -88,10 +88,17 @@ mod tests {
         let path = Path::from("T");
 
         let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![42i32]).expect("add");
+        let live_id = tx.add(&path, vec![42i32]).expect("add");
 
         let (_hash, committed) = tx.commit().expect("commit");
-        assert_eq!(committed.table_at(&path).expect("T").row_count(), 1);
+        let row_id = live_id.row_id().expect("finalized");
+        assert_eq!(
+            committed.row_by_id(&path, row_id),
+            Some(WireRowView {
+                row_id,
+                values: vec![42i32.into()],
+            })
+        );
     }
 
     #[rstest]
@@ -121,13 +128,18 @@ mod tests {
         let path = Path::from("T");
 
         let mut tx = OwnedTransaction::new(store);
-        tx.add(&path, vec![1i32]).expect("add");
+        let live_id = tx.add(&path, vec![1i32]).expect("add");
         let (_hash, store) = tx.commit().expect("commit");
+        let row_id = live_id.row_id().expect("finalized");
 
         let mut tx = OwnedTransaction::new(store);
-        let rows = tx.scan_table(&path).expect("T");
-        assert_eq!(rows.len(), 1);
-        assert!(tx.row_by_id(&path, rows[0].row_id).is_some());
+        assert_eq!(
+            tx.row_by_id(&path, row_id),
+            Some(WireRowView {
+                row_id,
+                values: vec![1i32.into()],
+            })
+        );
 
         tx.add(&path, vec![2i32]).expect("add pending");
         assert_eq!(tx.scan_table(&path).expect("T").len(), 1);
