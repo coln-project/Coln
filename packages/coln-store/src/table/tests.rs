@@ -8,7 +8,7 @@ use super::*;
 use crate::ir::{self, Path};
 use crate::ir::{BuiltinTy, ColType};
 use crate::op::Op;
-use crate::table::table_handle::{TableMut, WireRowView};
+use crate::table::handle::{TableMut, WireRowView};
 use crate::test_utils::{
     id_col_type, id_schema, idonly_schema, int_schema, row_id_from, zerohash_row_id,
 };

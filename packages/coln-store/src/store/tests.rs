@@ -7,7 +7,7 @@ use rstest::rstest;
 use super::*;
 use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema},
-    table::table_handle::WireRowView,
+    table::handle::WireRowView,
     txn::rw::{StoreRead, StoreWrite},
 };
 

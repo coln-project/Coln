@@ -6,11 +6,11 @@ pub mod cell;
 mod col;
 pub(crate) mod index;
 pub mod sorted;
-pub mod table_handle;
+pub mod handle;
 mod undo;
 
 pub use cell::{CellKind, WireRowId, WireValue};
-pub use table_handle::TableHandle;
+pub use handle::TableHandle;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
