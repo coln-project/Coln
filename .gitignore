@@ -337,6 +337,8 @@ TSWLatexianTemp*
 .shake
 
 _build/
+.env
+.env.local
 /cabal.project.local
 
 # nix result

@@ -1,0 +1,45 @@
+{
+  "name": "coln-lab",
+  "private": true,
+  "license": "(Apache-2.0 OR MIT)",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/with-server.mjs vite --host 127.0.0.1",
+    "server": "node scripts/server.mjs",
+    "graph:generate": "bash src/tools/graph/compile.sh",
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc --noEmit",
+    "build": "pnpm run check && vite build && node scripts/check-static-build.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:dev": "PLAYWRIGHT_DEV=1 playwright test"
+  },
+  "dependencies": {
+    "@automerge/automerge-codemirror": "0.2.0",
+    "@automerge/automerge-repo": "github:onsetsoftware/automerge-repo#test/custom-url-scemes&path:packages/automerge-repo",
+    "@automerge/automerge-repo-storage-indexeddb": "2.6.0-subduction.47",
+    "@automerge/automerge-subduction": "0.16.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/state": "^6.7.2",
+    "@codemirror/view": "^6.43.11",
+    "@coln-project/repo": "link:../../packages/coln-repo",
+    "@coln-project/runtime": "link:../../packages/coln-js-runtime",
+    "codemirror": "^6.0.2",
+    "json-formatter-js": "^2.5.23",
+    "paneforge": "^1.0.2",
+    "svelte": "^5.57.0",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.4.1",
+    "@vitest/browser-playwright": "^4.1.11",
+    "svelte-check": "^4.7.6",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2",
+    "vite-plugin-wasm": "^3.6.0",
+    "vitest": "^4.1.11"
+  }
+}

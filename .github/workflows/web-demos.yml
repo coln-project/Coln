@@ -1,110 +1,100 @@
+name: Coln Lab
+
 on:
-  pull_request:
   push:
-    branches: [main]
-
-name: Web demos
-
-permissions:
-  contents: read
-  pull-requests: write
+    branches: [live-demos]
 
 concurrency:
-  group: web-demos-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  # build-and-deploy:
-  #   runs-on: ubuntu-latest
-  #   env:
-  #     CARGO_TARGET_DIR: ${{ github.workspace }}/target
-  #     NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-  #     NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      PNPM_STORE_DIR: ${{ github.workspace }}/.pnpm-store
+      VITE_SUBDUCTION_ENDPOINT: wss://coln.sync.inkandswitch.com
 
-  #   steps:
-  #     - name: Checkout ⬇️
-  #       uses: actions/checkout@v6
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
-  #     - name: Install Nix ❄️
-  #       uses: cachix/install-nix-action@v31
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
 
-  #     - name: Set up Cachix ♻️
-  #       if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-  #       uses: cachix/cachix-action@v17
-  #       with:
-  #         name: coln
-  #         authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
 
-  #     - name: Restore build caches
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: |
-  #           .pnpm-store
-  #           ~/.npm
-  #           ~/.cargo/registry
-  #           ~/.cargo/git
-  #           ~/.ghc-wasm/.cabal
-  #           target
-  #           dist-newstyle
-  #         key: web-demos-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'cabal.project', 'packages/**/*.cabal', 'packages/coln-js-runtime/package-lock.json', 'examples/sync-demo/pnpm-lock.yaml') }}
-  #         restore-keys: |
-  #           web-demos-${{ runner.os }}-
+      - name: Set up Cachix
+        if: ${{ env.CACHIX_AUTH_TOKEN != '' }}
+        uses: cachix/cachix-action@v17
+        with:
+          name: coln
+          authToken: ${{ env.CACHIX_AUTH_TOKEN }}
 
-  #     - name: Build sync demo
-  #       run: nix run --accept-flake-config .#sync-demo -- "$GITHUB_WORKSPACE"
-  #       env:
-  #         VITE_BASE: /sync/
+      - name: Restore build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .pnpm-store
+            ~/.npm
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.ghc-wasm/.cabal
+            ~/.cache/ms-playwright
+            target
+            dist-newstyle
+          key: lab-${{ runner.os }}-${{ hashFiles('flake.lock', 'Cargo.lock', 'cabal.project', 'packages/**/*.cabal', 'packages/coln-js-runtime/package-lock.json', 'packages/coln-repo/pnpm-lock.yaml', 'examples/lab/pnpm-lock.yaml') }}
+          restore-keys: |
+            lab-${{ runner.os }}-
 
-  #     - name: Build web compiler
-  #       run: |
-  #         nix develop --accept-flake-config --command wasm32-wasi-cabal update 'hackage.haskell.org,2026-07-15T17:07:49Z'
-  #         nix develop --accept-flake-config --command just examples/build-web-compiler
+      - name: Build linked packages
+        run: |
+          nix develop --accept-flake-config .#web --command npm ci --prefix packages/coln-js-runtime
+          nix develop --accept-flake-config .#web --command npm run --prefix packages/coln-js-runtime build
+          nix develop --accept-flake-config .#web --command pnpm --dir packages/coln-repo install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
+          nix develop --accept-flake-config .#web --command pnpm --dir packages/coln-repo build
 
-  #     - name: Assemble deploy directory
-  #       run: |
-  #         cp examples/index.html examples/style.css _build/web/
-  #         cp -r examples/sync-demo/dist _build/web/sync
+      - name: Install Lab dependencies
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
 
-  #     - name: Deploy PR preview to Netlify
-  #       id: deploy-preview
-  #       if: github.event_name == 'pull_request' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
-  #       run: |
-  #         npx --yes netlify-cli@latest deploy \
-  #           --auth "$NETLIFY_AUTH_TOKEN" \
-  #           --site "$NETLIFY_SITE_ID" \
-  #           --dir _build/web \
-  #           --no-build \
-  #           --alias "pr-${{ github.event.pull_request.number }}" \
-  #           --message "PR #${{ github.event.pull_request.number }} web demos" \
-  #           --json > netlify-deploy.json
+      - name: Install Chromium
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab exec playwright install --with-deps chromium
 
-  #         cat netlify-deploy.json
-  #         deploy_url=$(node -e "const d = require('./netlify-deploy.json'); console.log(d.deploy_ssl_url || d.ssl_url || d.deploy_url || d.url)")
-  #         echo "deploy-url=$deploy_url" >> "$GITHUB_OUTPUT"
+      - name: Build compiler WASM
+        run: |
+          nix develop --accept-flake-config .#web --command wasm32-wasi-cabal update 'hackage.haskell.org,2026-07-15T17:07:49Z'
+          nix develop --accept-flake-config .#web --command just examples/stage-web-lab
 
-  #     - name: Comment with deploy preview URL
-  #       if: github.event_name == 'pull_request' && steps.deploy-preview.outputs.deploy-url != ''
-  #       uses: actions/github-script@v8
-  #       with:
-  #         script: |
-  #           const marker = '<!-- coln-web-demos-deploy-preview -->'
-  #           const body = `${marker}\nWeb demo preview: ${{ steps.deploy-preview.outputs.deploy-url }}`
-  #           const { owner, repo } = context.repo
-  #           const issue_number = context.issue.number
-  #           const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
-  #           const existing = comments.data.find(comment => comment.body?.includes(marker))
-  #           if (existing) {
-  #             await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
-  #           } else {
-  #             await github.rest.issues.createComment({ owner, repo, issue_number, body })
-  #           }
-  #     - name: Deploy main to Netlify production
-  #       if: github.event_name == 'push' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
-  #       run: |
-  #         npx --yes netlify-cli@latest deploy \
-  #           --auth "$NETLIFY_AUTH_TOKEN" \
-  #           --site "$NETLIFY_SITE_ID" \
-  #           --dir _build/web \
-  #           --no-build \
-  #           --prod \
-  #           --message "web demos ${{ github.sha }}"
+      - name: Test Lab
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab test
+
+      - name: Build Lab
+        run: nix develop --accept-flake-config .#web --command pnpm --dir examples/lab build
+        env:
+          VITE_BASE: ${{ steps.pages.outputs.base_path }}/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _build/web/lab-app
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
