@@ -2,13 +2,24 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir;
+use coln_flir_rs::ir::{self, Path};
+use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::{
     store::error::StoreError,
-    table::{WireRowId, table_handle::WireRowView},
+    table::{WireRowId, WireValue, table_handle::WireRowView},
     txn::{TxnLiveRowId, TxnLiveValue},
 };
+
+#[derive(Debug, Type, Serialize, Deserialize)]
+pub struct WhereClause {
+    pub table_name: Path,
+    pub row_id: Option<WireRowId>,
+    pub values: Vec<WireValue>, // A prefix of column values
+}
+
+pub type WireTuple = Vec<WireValue>;
 
 pub trait StoreRead {
     // Return a vec for external world
@@ -19,6 +30,16 @@ pub trait StoreRead {
 
     fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
         self.row_by_liveid(table, &TxnLiveRowId::from_existing(row_id))
+    }
+
+    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>>;
+
+    fn one(&self, query: &WhereClause, select: &[u32]) -> Option<WireTuple> {
+        self.all(query, select)?.pop()
+    }
+
+    fn exists(&self, query: &WhereClause) -> bool {
+        self.all(query, &[0]).is_some_and(|v| !v.is_empty())
     }
 }
 

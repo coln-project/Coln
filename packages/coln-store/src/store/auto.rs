@@ -10,7 +10,7 @@ use crate::{
     table::table_handle::WireRowView,
     txn::{
         OwnedTransaction, TxnLiveRowId, TxnLiveValue,
-        rw::{StoreRead, StoreWrite},
+        rw::{StoreRead, StoreWrite, WhereClause, WireTuple},
     },
 };
 
@@ -28,6 +28,10 @@ impl StoreRead for AutoStore {
             .as_ref()
             .expect("open txn")
             .row_by_liveid(table, live_id)
+    }
+
+    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
+        self.txn.as_ref().expect("open txn").all(query, select)
     }
 }
 
