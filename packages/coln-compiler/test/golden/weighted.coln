@@ -8,5 +8,5 @@ theory Q (G : WeightedGraph) := sig
   y : G.V
   z : G.V
   e1 : G.E x y 1
-  e1 : G.E y z 3
+  e2 : G.E y z 3
 end
