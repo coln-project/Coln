@@ -26,7 +26,7 @@ export class View implements ColnSet.View {
     return row !== undefined && tupleEqual(row.values, this.params);
   }
 
-  values(): Iterator<RowView> {
+  values(): IterableIterator<RowView> {
     const rows = this.store.scanTable(this.path);
 
     return rows.filter((row) => tupleEqual(row.values, this.params)).values();

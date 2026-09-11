@@ -6,7 +6,7 @@ import { Value, RowView  } from "#wasm-bodge/bindings";
 
 export interface View {
   has(x: Value): boolean;
-  values(): Iterator<RowView>;
+  values(): IterableIterator<RowView>;
 }
 
 export interface Transaction extends View {

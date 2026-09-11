@@ -22,6 +22,7 @@ test("prop", () => {
   const view = realm.commit();
 
   assert.equal(view.V.has(value), true);
+  assert.equal([...view.V.values()].length, 1);
 });
 
 test("prop canonicalizes proofs", { expectFailure: true }, () => {
