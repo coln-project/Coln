@@ -136,7 +136,7 @@ impl<'a> SortedTable for SortedCopy<'a> {
     }
 
     fn value(&self, row: RowIdx, col: ColIdx) -> Option<Self::Value> {
-        self.table.inner().cell_at(row, col)
+        self.table.inner().cell_by_idx(row, col)
     }
 
     // Note assuming that col[depth] is totally sorted, otherwise UB.

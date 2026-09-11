@@ -365,38 +365,28 @@ mod rowing {
     /// rebuild renames the row in its own table and rewrites the id cells of
     /// every table that references it.
     #[rstest]
-    fn swap_rewrites_referencing_table_cells(mut structural_store: Store) {
+    fn swap_rewrites_referencing_table_cells(#[from(structural_store)] mut store: Store) {
         let t_high = row_id_from(2, 0);
-        let ops = vec![add_op(
-            &structural_store,
-            "Term",
-            t_high,
-            vec![WireValue::Int(7)],
-        )];
-        apply_ops_and_rebuild(&mut structural_store, ops).unwrap();
+        let ops = vec![add_op(&store, "Term", t_high, vec![WireValue::Int(7)])];
+        apply_ops_and_rebuild(&mut store, ops).unwrap();
 
         let plus = row_id_from(3, 0);
         let note = row_id_from(4, 0);
         let ops = vec![
             add_op(
-                &structural_store,
+                &store,
                 "Plus",
                 plus,
                 vec![WireValue::Id(t_high), WireValue::Id(t_high)],
             ),
-            add_op(&structural_store, "Note", note, vec![WireValue::Id(t_high)]),
+            add_op(&store, "Note", note, vec![WireValue::Id(t_high)]),
         ];
-        apply_ops_and_rebuild(&mut structural_store, ops).unwrap();
+        apply_ops_and_rebuild(&mut store, ops).unwrap();
 
         // A smaller equal term swaps the class canonical from t_high to t_low.
         let t_low = row_id_from(1, 0);
-        let ops = vec![add_op(
-            &structural_store,
-            "Term",
-            t_low,
-            vec![WireValue::Int(7)],
-        )];
-        apply_ops_and_rebuild(&mut structural_store, ops).unwrap();
+        let ops = vec![add_op(&store, "Term", t_low, vec![WireValue::Int(7)])];
+        apply_ops_and_rebuild(&mut store, ops).unwrap();
 
         // The stored row is now t_low; the stale id t_high resolves to it.
         let term_path = Path::from("Term");
@@ -653,6 +643,17 @@ mod commits {
 
     use super::*;
 
+    /// Replayed commits mint their own row ids, so these tests can only
+    /// compare the values a scan reports.
+    fn row_values(store: &Store, table: &Path) -> Vec<Vec<WireValue>> {
+        store
+            .scan_table(table)
+            .expect("table")
+            .into_iter()
+            .map(|row| row.values)
+            .collect()
+    }
+
     #[rstest]
     fn heads_and_commit_by_hash_track_current_frontier(#[from(single_int_store)] mut store: Store) {
         let root = store.heads();
@@ -734,8 +735,10 @@ mod commits {
         let (restored, pending) = Store::try_from_commit_bytes(chunks).expect("store from chunks");
 
         assert!(pending.is_empty());
-        let table = restored.table_at(&Path::from("T")).expect("table");
-        assert_eq!(table.cell_at(0, 0), Some(WireValue::Int(99)));
+        assert_eq!(
+            row_values(&restored, &Path::from("T")),
+            vec![vec![WireValue::Int(99)]]
+        );
         assert_eq!(restored.heads(), vec![commit]);
     }
 
@@ -746,15 +749,15 @@ mod commits {
         source: (Store, CommitHash),
         #[from(single_int_store)] mut target: Store,
     ) {
-        let (source, commit) = source;
+        let (source, _) = source;
 
         let commits = source.commits_after(&target.heads());
         target.apply_commits(commits).expect("apply commits");
 
-        let table = target.table_at(&Path::from("T")).expect("table");
-        assert_eq!(table.row_count(), 1);
-        assert_eq!(table.cell_at(0, 0), Some(WireValue::Int(99)));
-        assert_eq!(table.row_id_at(0).expect("row id").commit, commit);
+        assert_eq!(
+            row_values(&target, &Path::from("T")),
+            vec![vec![WireValue::Int(99)]]
+        );
         assert_eq!(target.heads(), source.heads());
     }
 
@@ -772,10 +775,10 @@ mod commits {
         commits.reverse();
         target.apply_commits(commits).expect("apply commits");
 
-        let table = target.table_at(&Path::from("T")).expect("table");
-        assert_eq!(table.row_count(), 2);
-        assert_eq!(table.cell_at(0, 0), Some(WireValue::Int(1)));
-        assert_eq!(table.cell_at(1, 0), Some(WireValue::Int(2)));
+        assert_eq!(
+            row_values(&target, &Path::from("T")),
+            vec![vec![WireValue::Int(1)], vec![WireValue::Int(2)]]
+        );
         assert_eq!(target.heads(), source.heads());
     }
 
@@ -795,11 +798,8 @@ mod commits {
         target.apply_commits(commits).expect("second apply commits");
 
         assert_eq!(
-            target
-                .table_at(&Path::from("T"))
-                .expect("table")
-                .row_count(),
-            1
+            row_values(&target, &Path::from("T")),
+            vec![vec![WireValue::Int(5)]]
         );
     }
 
@@ -823,13 +823,7 @@ mod commits {
         let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
 
         assert_eq!(leftover_hashes, vec![second]);
-        assert_eq!(
-            target
-                .table_at(&Path::from("T"))
-                .expect("table")
-                .row_count(),
-            0
-        );
+        assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
     }
 
     #[rstest]
@@ -851,12 +845,10 @@ mod commits {
         let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
 
         assert_eq!(leftover_hashes, vec![third]);
+        // The blocked commit's row never landed, so only the first row is stored.
         assert_eq!(
-            target
-                .table_at(&Path::from("T"))
-                .expect("table")
-                .row_count(),
-            1
+            row_values(&target, &Path::from("T")),
+            vec![vec![WireValue::Int(1)]]
         );
         assert_eq!(target.heads(), vec![first]);
     }
@@ -882,13 +874,7 @@ mod commits {
             .apply_chunk_bytes([chunks[1].clone()])
             .expect("skip child without parent");
         assert_eq!(leftover.len(), 1);
-        assert_eq!(
-            target
-                .table_at(&Path::from("T"))
-                .expect("table")
-                .row_count(),
-            0
-        );
+        assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
 
         let leftover = target
             .apply_chunk_bytes(
@@ -899,10 +885,10 @@ mod commits {
             .expect("retry leftover with parent");
         assert!(leftover.is_empty());
 
-        let table = target.table_at(&Path::from("T")).expect("table");
-        assert_eq!(table.row_count(), 2);
-        assert_eq!(table.cell_at(0, 0), Some(1i32.into()));
-        assert_eq!(table.cell_at(1, 0), Some(2i32.into()));
+        assert_eq!(
+            row_values(&target, &Path::from("T")),
+            vec![vec![1i32.into()], vec![2i32.into()]]
+        );
         assert_eq!(target.heads(), vec![second]);
     }
 }

@@ -22,7 +22,6 @@ use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::RootCommitData;
-use crate::id_packer::{IdPacker, IdPackerSnapshot};
 use crate::ir::{self, FlatRealm};
 use crate::op::Op;
 use crate::pack::{IdPacker, IdPackerSnapshot};
@@ -118,7 +117,15 @@ impl Store {
             definitions: Vec::new(),
             rules: Vec::new(),
         };
-        let commits = Self::graph_with_root_commit(&ir).expect("empty root commit should build");
+        let empty_colndef = ColnDef {
+            theory: String::new(),
+            realm: String::new(),
+        };
+        let empty_root = RootCommitData::new(ir.clone(), empty_colndef);
+
+        let commits =
+            Self::graph_with_root_commit(empty_root).expect("empty root commit should build");
+        let cq = ColnQuery::init(&ir).expect("start coln-query");
         Self {
             path_to_oid: HashMap::new(),
             tables: HashMap::new(),
@@ -197,7 +204,7 @@ impl Store {
         table: &ir::Path,
         live_id: &TxnLiveRowId,
     ) -> Option<WireRowView> {
-        self.table_at(table)?.row_by_handle(live_id)
+        self.table_at(table)?.row_by_liveid(live_id)
     }
 
     // This function will canonicalise the row_id on read, but will not change it
@@ -283,7 +290,6 @@ impl Store {
         }
 
         let cq = ColnQuery::init(&ir)?;
-        let comp_rules = Store::compile_rules(&ir.rules)?;
         let commits = Self::graph_with_root_commit(RootCommitData::new(ir.clone(), coln_def))?;
 
         Ok(Self {

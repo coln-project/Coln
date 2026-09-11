@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_flir_rs::ir::{
-    Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, Equality, FlatRealm, Path, Prop,
-    Rule, RuleEntry, RuleVariant, Schema, TableEntry, ValueEntry,
+    Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, FlatRealm, Path, Prop, Rule,
+    RuleEntry, RuleVariant, Schema, TableEntry, ValueEntry,
 };
 use rstest::fixture;
 
@@ -18,11 +18,7 @@ use crate::{
 mod rowid {
     use super::*;
 
-    #[fixture]
-    pub(crate) fn row_id_from(
-        #[default(0)] commit_byte: u8,
-        #[default(0)] counter: u32,
-    ) -> WireRowId {
+    pub(crate) fn row_id_from(commit_byte: u8, counter: u32) -> WireRowId {
         WireRowId {
             commit: CommitHash([commit_byte; 32]),
             counter,
@@ -144,7 +140,7 @@ mod root {
                 )],
                 antecedents: vec![Prop::Atom {
                     atom: Atom {
-                        entity: table,
+                        entity: table.clone(),
                         row_id: None,
                         values: vec![ValueEntry {
                             column: 0,
@@ -152,10 +148,14 @@ mod root {
                         }],
                     },
                 }],
-                consequents: vec![Prop::Eq {
-                    equality: Equality {
-                        left: El::Var { index: 0 },
-                        right: El::Var { index: 0 },
+                consequents: vec![Prop::Atom {
+                    atom: Atom {
+                        entity: table,
+                        row_id: None,
+                        values: vec![ValueEntry {
+                            column: 0,
+                            term: El::Var { index: 0 },
+                        }],
                     },
                 }],
             },

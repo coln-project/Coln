@@ -89,12 +89,17 @@ mod tests {
     ) {
         let path = Path::from("T");
 
-        store.add(&path, vec![1i32]).expect("add");
+        let live_id = store.add(&path, vec![1i32]).expect("add");
         let _hash = store.commit().expect("commit");
+        let row_id = live_id.row_id().expect("finalized");
 
-        let rows = store.scan_table(&path).expect("T");
-        assert_eq!(rows.len(), 1);
-        assert!(store.row_by_id(&path, rows[0].row_id).is_some());
+        assert_eq!(
+            store.row_by_id(&path, row_id),
+            Some(WireRowView {
+                row_id,
+                values: vec![1i32.into()],
+            })
+        );
 
         store.add(&path, vec![2i32]).expect("add pending");
         assert_eq!(store.scan_table(&path).expect("T").len(), 1);

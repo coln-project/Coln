@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod id_packer;
+use coln_query::api::deltas::ScalarTypedValue;
 pub(crate) use id_packer::{IdPacker, IdPackerSnapshot};
 
 use crate::{column_map::ColIndex, value::Value};
@@ -69,7 +70,7 @@ impl ColIndex for PackedRowId {
 pub type PackedValue = Value<PackedRowId>;
 
 /// Packed representation of an operation staged for a table.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum PackedOp {
     Add {
         row_id: PackedRowId,
@@ -83,4 +84,21 @@ pub(crate) enum PackedOp {
 pub(crate) struct PackedRowView {
     pub row_id: PackedRowId,
     pub values: Vec<PackedValue>,
+}
+
+impl From<PackedRowView> for coln_query::api::deltas::TupleValue {
+    fn from(packed_view: PackedRowView) -> Self {
+        let PackedRowView { row_id, values } = packed_view;
+        std::iter::once(PackedValue::Id(row_id))
+            .chain(values)
+            .flat_map(|values| match values {
+                PackedValue::Id(prid) => vec![
+                    ScalarTypedValue::Uint(prid.commit_idx as u64),
+                    ScalarTypedValue::Uint(prid.counter as u64),
+                ],
+                PackedValue::Int(i) => vec![ScalarTypedValue::Iint(i as i64)],
+                PackedValue::Str(s) => vec![ScalarTypedValue::String(s)],
+            })
+            .collect()
+    }
 }

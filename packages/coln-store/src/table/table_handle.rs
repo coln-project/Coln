@@ -66,8 +66,8 @@ impl<'a> TableHandle<'a> {
         self.inner.cols.len() + 1
     }
 
-    pub fn row_by_handle(&self, row_handle: &TxnLiveRowId) -> Option<WireRowView> {
-        let row_id = row_handle.row_id().ok()?;
+    pub fn row_by_liveid(&self, live_id: &TxnLiveRowId) -> Option<WireRowView> {
+        let row_id = live_id.row_id().ok()?;
         let packed_row_id = self.id_packer.lookup_row_id(&row_id)?;
         let con_rowid = self
             .canonicaliser
@@ -75,7 +75,7 @@ impl<'a> TableHandle<'a> {
         let unpacked_con = self.id_packer.unpack_row_id(con_rowid);
         // replace the rowid in the row_handle so it stays canonical
         if packed_row_id != con_rowid {
-            row_handle.canonicalise_to(unpacked_con).ok()?
+            live_id.canonicalise_to(unpacked_con).ok()?
         }
         self.row_by_id(unpacked_con)
     }
@@ -90,7 +90,7 @@ impl<'a> TableHandle<'a> {
             .canonical_id(&packed_row_id, self.id_packer);
 
         self.inner
-            .row_at(self.inner.packed_rowid_idx(packed_row_id)?)
+            .row_by_idx(self.inner.packed_rowid_idx(packed_row_id)?)
             .map(|packed_view| self.unpack_row_view(packed_view))
     }
 
@@ -106,7 +106,7 @@ impl<'a> TableHandle<'a> {
             values: packed_view
                 .values
                 .into_iter()
-                .map(|packed_value| packed_value.map_owned(|id| self.id_packer.unpack_row_id(id)))
+                .map(|packed_value| self.id_packer.unpack_value(packed_value))
                 .collect(),
         }
     }
@@ -152,20 +152,9 @@ impl<'a> TableHandle<'a> {
         self.inner
     }
 
-    pub(crate) fn row_id_at(self, row_idx: usize) -> Option<WireRowId> {
-        let packed = self.inner.row_id_at(row_idx)?;
-        Some(self.id_packer.unpack_row_id(packed))
-    }
-
     #[cfg(feature = "native")]
     pub(crate) fn dump(self) -> String {
         self.inner.dump(self.id_packer)
-    }
-
-    pub(crate) fn cell_at(self, row_idx: usize, col_idx: usize) -> Option<WireValue> {
-        self.inner
-            .cell_at(row_idx, col_idx)
-            .map(|value| self.id_packer.unpack_value(value))
     }
 }
 
@@ -201,7 +190,9 @@ impl<'a> TableMut<'a> {
         self.inner.stage_update(PackedOp::Delete { row_id });
     }
 
-    pub(crate) fn apply_staged(&mut self) -> Result<(), ValidationError> {
+    pub(crate) fn apply_staged(
+        &mut self,
+    ) -> Result<coln_query::api::deltas::TableDelta, ValidationError> {
         self.inner.apply_staged_ops(self.rowing)
     }
 

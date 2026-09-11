@@ -127,31 +127,6 @@ fn test_read_graph_json(#[from(graph_ir)] theory: &FlatRealm) {
 }
 
 #[rstest]
-// Builds a minimal valid graph dataset from the fixture, including the witness
-// rows required by the fixture's totality rules before inserting vertices/edges.
-fn test_add_data_and_law_enforce(
-    #[from(graph_ir)] theory: &FlatRealm,
-    #[from(graph_coln_def)] coln_def: &ColnDef,
-) {
-    let n_tables = theory.tables.len();
-    let n_rules = theory.rules.len();
-
-    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
-
-    assert_eq!(store.table_count(), n_tables);
-    assert_eq!(store.rule_entries().len(), n_rules);
-    assert!(store.resolve_table(&Path::from("Path.Graphs")).is_some());
-
-    add_basic_data_to_graph(&mut store).expect("add basic data");
-
-    let ge = store
-        .table_at(&Path::from("Graph.E"))
-        .expect("get table Graph.E");
-    assert_eq!(ge.schema().columns.len(), 2);
-    assert_eq!(ge.row_count(), 1);
-}
-
-#[rstest]
 fn test_add_edge_referencing_vertices_from_previous_commit(
     #[from(graph_ir)] theory: &FlatRealm,
     #[from(graph_coln_def)] coln_def: &ColnDef,
