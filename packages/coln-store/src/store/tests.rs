@@ -100,84 +100,9 @@ mod root_metadata {
     }
 }
 
-mod transactions {
+mod writes {
     use super::*;
     use crate::test_utils::{link_foreign_key_root_commit_data, single_int_store};
-
-    #[rstest]
-    fn validates_then_applies(#[from(single_int_store)] mut store: Store) {
-        let path = Path::from("T");
-
-        let mut txn = store.transaction();
-        txn.add(&path, vec![1i32]).expect("first add");
-        txn.add(&path, vec![2i32]).expect("second add");
-
-        txn.commit().expect("commit");
-
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 2);
-    }
-
-    /// Covers the same rollback guarantee as the old `transact` test: if validation fails,
-    /// no rows from the batch are committed (here the second op references an unregistered table).
-    #[rstest]
-    fn unknown_table_leaves_store_unchanged(#[from(single_int_store)] mut store: Store) {
-        let path = Path::from("T");
-
-        let err = {
-            let mut txn = store.transaction();
-            txn.add(&path, vec![1i32]).expect("first add");
-            txn.add(&Path::from("missing"), vec![2i32]).unwrap_err()
-        };
-
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::UnknownTable { .. })
-        ));
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
-    }
-
-    #[test]
-    fn duplicate_primary_key_within_batch() {
-        let path = Path::from("T");
-        let schema = Schema {
-            entity_variant: EntityVariant::Table,
-            columns: vec![ColumnEntry {
-                path: Path::from("c0"),
-                col_type: ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                },
-            }],
-            primary_key: Some(vec![0u64]),
-        };
-        let mut store = Store::new();
-        store
-            .create_table(path.clone(), schema)
-            .expect("create table");
-
-        let mut txn = store.transaction();
-        txn.add(&path, vec![1i32]).expect("first add");
-        txn.add(&path, vec![1i32]).expect("second add");
-        let err = txn.commit().unwrap_err();
-
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
-        ));
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 0);
-    }
-
-    #[rstest]
-    fn single_insert_commits(#[from(single_int_store)] mut store: Store) {
-        let path = Path::from("T");
-
-        let mut txn = store.transaction();
-        txn.add(&path, vec![42i32]).expect("add");
-        txn.commit().expect("commit");
-
-        let t = store.table_at(&path).expect("T");
-        assert_eq!(t.row_count(), 1);
-        assert_eq!(t.cell_at(0, 0), Some(42i32.into()));
-    }
 
     #[rstest]
     fn store_add_inserts_row(#[from(single_int_store)] mut store: Store) {
@@ -203,26 +128,142 @@ mod transactions {
         assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
         assert_eq!(store.id_packer.len(), packed_id_count);
     }
+}
 
+mod reads {
+    use super::*;
+    use crate::table::WireValue;
+    use crate::test_utils::{int_schema, nodes_edges_store};
+    use crate::txn::empty_row;
+    use crate::txn::rw::WhereClause;
+
+    // Tests that store.all() returns all values satisfy requirements.
+    // Test with/without rowid, and the table should contain duplicate values as well
+    // Test with/without select
     #[rstest]
-    fn owned_transaction_commit_err_returns_original_store(
-        link_foreign_key_root_commit_data: RootCommitData,
+    fn store_all_returns_all_rows(#[from(nodes_edges_store)] mut store: Store) {
+        let nodes = Path::from("Nodes");
+        let edges = Path::from("Edges");
+
+        let n0 = store.add(&nodes, empty_row()).expect("n0");
+        let n1 = store.add(&nodes, empty_row()).expect("n1");
+        let n0_id = n0.row_id().expect("n0 id");
+        let n1_id = n1.row_id().expect("n1 id");
+
+        let e0 = store.add(&edges, vec![n0.clone()]).expect("e0");
+        store
+            .add(&edges, vec![n0.clone()])
+            .expect("duplicate edge to n0");
+        store.add(&edges, vec![n1.clone()]).expect("e2");
+        let e0_id = e0.row_id().expect("e0 id");
+
+        let n0_col = vec![WireValue::Id(n0_id)];
+        let n1_col = vec![WireValue::Id(n1_id)];
+
+        let all_edges = WhereClause {
+            table_name: edges.clone(),
+            row_id: None,
+            values: vec![],
+        };
+        assert_eq!(
+            store.all(&all_edges, &[0]).expect("all edge node columns"),
+            vec![n0_col.clone(), n0_col.clone(), n1_col.clone()]
+        );
+        assert_eq!(
+            store
+                .all(&all_edges, &[])
+                .expect("all edges with empty select"),
+            vec![vec![], vec![], vec![]]
+        );
+
+        let by_row_id = WhereClause {
+            table_name: edges,
+            row_id: Some(e0_id),
+            values: vec![],
+        };
+        assert_eq!(store.all(&by_row_id, &[0]).expect("edge e0"), vec![n0_col]);
+        assert_eq!(
+            store
+                .all(&by_row_id, &[])
+                .expect("edge e0 with empty select"),
+            vec![vec![]]
+        );
+    }
+
+    // Partial keys are a prefix of the first n consecutive columns.
+    #[rstest]
+    fn store_all_supports_partial_keys(
+        #[from(int_schema)]
+        #[with(vec!["a", "b", "c"])]
+        schema: Schema,
     ) {
-        let link = Path::from("Link");
-        let root = link_foreign_key_root_commit_data;
-        let store = Store::try_from_ir(root.ir, root.coln_def).expect("theory");
+        let path = Path::from("T");
+        let mut store = Store::new();
+        store.create_table(path.clone(), schema).expect("create T");
 
-        let mut tx = OwnedTransaction::new(store);
-        tx.add(&link, vec![10_i32, 20_i32]).expect("add");
+        store.add(&path, vec![1i32, 10, 100]).expect("r0");
+        store.add(&path, vec![1i32, 10, 101]).expect("r1");
+        store.add(&path, vec![1i32, 20, 200]).expect("r2");
+        store.add(&path, vec![2i32, 10, 300]).expect("r3");
 
-        let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(err, StoreError::Rule(_)));
-        assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
+        let r0 = vec![1i32.into(), 10.into(), 100.into()];
+        let r1 = vec![1i32.into(), 10.into(), 101.into()];
+        let r2 = vec![1i32.into(), 20.into(), 200.into()];
+        let r3 = vec![2i32.into(), 10.into(), 300.into()];
+        let cols = [0, 1, 2];
+
+        let query = |values: Vec<i32>| WhereClause {
+            table_name: path.clone(),
+            row_id: None,
+            values: values.into_iter().map(WireValue::from).collect(),
+        };
+
+        assert_eq!(
+            store.all(&query(vec![]), &cols).expect("empty prefix"),
+            vec![r0.clone(), r1.clone(), r2.clone(), r3.clone()]
+        );
+        assert_eq!(
+            store.all(&query(vec![1]), &cols).expect("first column"),
+            vec![r0.clone(), r1.clone(), r2.clone()]
+        );
+        assert_eq!(
+            store
+                .all(&query(vec![1, 10]), &cols)
+                .expect("first two columns"),
+            vec![r0.clone(), r1.clone()]
+        );
+        assert_eq!(
+            store
+                .all(&query(vec![1, 10, 100]), &cols)
+                .expect("full key"),
+            vec![r0]
+        );
+        assert_eq!(
+            store
+                .all(&query(vec![1, 20]), &cols)
+                .expect("first two, other b"),
+            vec![r2]
+        );
+        assert_eq!(
+            store
+                .all(&query(vec![2]), &cols)
+                .expect("other first column"),
+            vec![r3]
+        );
+        assert_eq!(
+            store
+                .all(&query(vec![10]), &cols)
+                .expect("10 is a later-column value, not a col0 prefix"),
+            Vec::<Vec<WireValue>>::new()
+        );
+        assert!(
+            store.all(&query(vec![1, 10, 100, 0]), &cols).is_none(),
+            "longer than the column count is not a valid prefix"
+        );
     }
 }
 
 mod query {
-
     use super::*;
     use crate::test_utils::{commit_int_store, single_int_store};
 

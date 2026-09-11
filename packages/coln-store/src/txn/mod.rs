@@ -12,7 +12,7 @@ use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreError},
     table::{WireRowId, table_handle::WireRowView},
-    txn::rw::{StoreRead, StoreWrite},
+    txn::rw::{StoreRead, StoreWrite, WhereClause},
 };
 use coln_flir_rs::ir;
 
@@ -113,6 +113,10 @@ impl<M: Mode> StoreRead for Transaction<M> {
     fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
         self.mode.store().row_by_id_inner(table, row_id)
     }
+
+    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<rw::WireTuple>> {
+        self.mode.store().all_inner(query, select)
+    }
 }
 
 impl StoreWrite for Transaction<ReadWrite<'_>> {
@@ -140,7 +144,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::ir::Path;
+    use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::{ValidationError, WireValue};
     use crate::test_utils::{int_schema, nodes_edges_store, single_int_store};
     use crate::txn::row_handle::empty_row;

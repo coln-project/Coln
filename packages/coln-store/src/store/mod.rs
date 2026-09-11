@@ -32,7 +32,7 @@ use crate::table::table_handle::WireRowView;
 use crate::table::{
     Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
-use crate::txn::rw::{StoreRead, StoreWrite};
+use crate::txn::rw::{StoreRead, StoreWrite, WhereClause, WireTuple};
 use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnLiveRowId, TxnLiveValue};
 
 #[derive(Debug)]
@@ -191,6 +191,9 @@ impl Store {
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
     }
+}
+impl Store {
+    // Helper methods for StoreRead
 
     pub(crate) fn scan_table_iter(
         &self,
@@ -216,6 +219,35 @@ impl Store {
         row_id: WireRowId,
     ) -> Option<WireRowView> {
         self.table_at(table)?.row_by_id(row_id)
+    }
+
+    // TODO ignoring efficiency. I'll leave that to the query engine to produce
+    // the optimal query plan! Or we can optimise later.
+    pub(crate) fn all_inner(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
+        let WhereClause {
+            table_name,
+            values,
+            row_id,
+        } = query;
+        let select: HashSet<u32> = select.iter().copied().collect();
+        let t = self.table_at(table_name)?;
+        let v = t
+            .index_seek(values)
+            .ok()?
+            .filter(|&r| row_id.is_none_or(|id| id == r))
+            .map(|r| {
+                t.row_by_id(r)
+                    .expect("index_seek return valid rowid")
+                    .values
+            })
+            .map(|vs| {
+                vs.into_iter()
+                    .enumerate()
+                    .filter_map(|(i, v)| select.contains(&(i as u32)).then_some(v))
+                    .collect::<WireTuple>()
+            })
+            .collect::<Vec<WireTuple>>();
+        Some(v)
     }
 }
 
@@ -243,6 +275,10 @@ impl StoreRead for Store {
 
     fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
         self.ro_transaction().row_by_id(table, row_id)
+    }
+
+    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
+        self.ro_transaction().all(query, select)
     }
 }
 
