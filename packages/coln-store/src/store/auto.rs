@@ -7,10 +7,10 @@ use coln_flir_rs::ir::{self, FlatRealm};
 use crate::{
     commit::hash::CommitHash,
     store::{ColnDef, Store, error::StoreError},
-    table::table_handle::WireRowView,
+    table::{cell::WireTuple, table_handle::WireRowView},
     txn::{
         OwnedTransaction, TxnLiveRowId, TxnLiveValue,
-        rw::{StoreRead, StoreWrite, WhereClause, WireTuple},
+        rw::{StoreRead, StoreWrite, WhereClause},
     },
 };
 

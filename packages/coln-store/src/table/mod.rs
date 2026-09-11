@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-mod cell;
+pub mod cell;
 mod col;
 pub(crate) mod index;
 pub mod sorted;
 pub mod table_handle;
 mod undo;
-pub mod view;
 
 pub use cell::{CellKind, WireRowId, WireValue};
 pub use table_handle::TableHandle;
@@ -110,7 +109,7 @@ pub struct Table {
 impl Table {
     // Basic accessors
 
-    pub fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
+    pub(crate) fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
         let cols = schema
             .columns
             .iter()

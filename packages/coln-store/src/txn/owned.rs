@@ -7,8 +7,8 @@ use coln_flir_rs::ir;
 use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreError},
-    table::{WireRowId, table_handle::WireRowView},
-    txn::rw::{StoreRead, StoreWrite, WhereClause, WireTuple},
+    table::{WireRowId, cell::WireTuple, table_handle::WireRowView},
+    txn::rw::{StoreRead, StoreWrite, WhereClause},
 };
 
 use super::{TxnInner, TxnLiveRowId, TxnLiveValue};

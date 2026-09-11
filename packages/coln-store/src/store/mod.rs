@@ -16,7 +16,6 @@ use coln_query::api::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::commit::Commit;
 use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
@@ -32,8 +31,9 @@ use crate::table::table_handle::WireRowView;
 use crate::table::{
     Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
-use crate::txn::rw::{StoreRead, StoreWrite, WhereClause, WireTuple};
+use crate::txn::rw::{StoreRead, StoreWrite, WhereClause};
 use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnLiveRowId, TxnLiveValue};
+use crate::{commit::Commit, table::cell::WireTuple};
 
 #[derive(Debug)]
 pub struct Store {
