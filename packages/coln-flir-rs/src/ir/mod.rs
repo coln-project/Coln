@@ -5,7 +5,7 @@
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use specta::Type;
-use std::fmt;
+use std::fmt::{self, Display};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(transparent)]
@@ -136,6 +136,17 @@ pub enum EntityVariant {
         method: IndexMethod,
         columns: Vec<ColName>,
     },
+}
+
+impl Display for EntityVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            EntityVariant::Table => "table",
+            EntityVariant::View { .. } => "view",
+            EntityVariant::Index { .. } => "index",
+        };
+        f.write_str(name)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

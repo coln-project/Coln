@@ -243,6 +243,7 @@ mod tests {
                 law_count: 0,
                 tables: vec![TableSummary {
                     path: "T".to_string(),
+                    entity_variant: EntityVariant::Table,
                     column_count: 2,
                     primary_key: PrimaryKeySummary::None,
                     columns: vec!["c0: int".to_string(), "c1: string".to_string()],

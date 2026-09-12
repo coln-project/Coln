@@ -16,7 +16,7 @@ use std::ops::Range;
 
 use crate::{
     ir::Schema,
-    pack::{PackedRowId, PackedValue},
+    pack::{PackedRowId, PackedTuple, PackedValue},
 };
 
 use super::{CellKind, Column, IdColumn};
@@ -59,7 +59,8 @@ impl TableIndex {
     }
 
     /// insert assumes that the key as the same number of columns as the
-    pub(super) fn insert(&mut self, key: Vec<PackedValue>, value: PackedRowId) {
+    pub(super) fn insert(&mut self, key: impl Into<PackedTuple>, value: PackedRowId) {
+        let key = key.into();
         if key.len() != self.key_cols.len() {
             panic!("insertion key length must be the same as the index length");
         }

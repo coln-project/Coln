@@ -9,9 +9,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use coln_query::api::{
     ColnQuery,
-    deltas::StoreDelta,
+    deltas::{DerivedDataDelta, StoreDelta},
     transaction::{Prepare, TryCommitErr, TryCommitOk, Tx as QueryTx},
-    violations::ViolationsDelta,
 };
 use serde::{Deserialize, Serialize};
 use tracing::info;
@@ -362,15 +361,16 @@ impl Store {
     pub fn check_rules(
         &mut self,
         query_tx: QueryTx<Prepare>,
-    ) -> Result<ViolationsDelta, StoreError> {
+    ) -> Result<DerivedDataDelta, StoreError> {
         match query_tx.try_commit(&mut self.cq) {
             Ok(TryCommitOk::Pending(pending)) => {
                 let mut committed = pending.commit()?;
+                let derived = committed.take_derived_data_delta();
                 let monitored_constraints = committed.take_soft_violations();
                 if !monitored_constraints.is_empty() {
                     tracing::warn!("monitored constraint violation {}", monitored_constraints);
                 }
-                Ok(monitored_constraints)
+                Ok(derived)
             }
             Ok(TryCommitOk::Rejected(mut rejected)) => {
                 let violations = rejected.take_hard_violations();
@@ -584,8 +584,43 @@ impl Store {
         let mut query_tx = QueryTx::new(StoreDelta::empty());
         let commit = self.apply_commit_ready(commit, &mut query_tx)?;
         self.rebuild_to_fixpoint(&mut query_tx)?;
-        self.check_rules(query_tx)?;
+        let derived = self.check_rules(query_tx)?;
+        self.apply_derived_view(derived, &commit)?;
         self.record_in_commit_graph(commit);
+        Ok(())
+    }
+
+    fn apply_derived_view(
+        &mut self,
+        derived: DerivedDataDelta,
+        commit: &Commit<'_>,
+    ) -> Result<(), StoreError> {
+        let mut cnt = commit.num_ops as u32;
+        let delta = derived.into_table_deltas();
+        for td in delta {
+            let oid = self.resolve_table(&td.for_entity().id().into()).ok_or(
+                ValidationError::UnknownTable {
+                    path: td.for_entity().id().into(),
+                },
+            )?;
+            let table = self.tables.get_mut(&oid).expect("resolved correct table");
+
+            let id_allocate = || {
+                let row_id = WireRowId {
+                    commit: commit.hash(),
+                    counter: cnt,
+                };
+                cnt += 1;
+                self.id_packer
+                    .lookup_row_id(&row_id)
+                    .expect("hash already packed")
+            };
+
+            let ops = table.ops_from_table_delta(td, id_allocate);
+
+            ops.into_iter().for_each(|op| table.stage_update(op));
+            table.apply_staged_ops(&mut self.rowing)?;
+        }
         Ok(())
     }
 

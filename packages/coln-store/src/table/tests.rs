@@ -472,7 +472,10 @@ fn row_read_helpers_return_row_id_and_cells(
         .expect("insert packed the row id");
     assert_eq!(
         test_table.table.row_by_id(packed),
-        Some(vec![PackedValue::Int(7), PackedValue::Str("x".to_string())])
+        Some(PackedTuple::from(vec![
+            PackedValue::Int(7),
+            PackedValue::Str("x".to_string())
+        ]))
     );
     assert!(test_table.table.row_by_idx(1).is_none());
     assert!(test_table.table.cell_by_idx(0, 2).is_none());

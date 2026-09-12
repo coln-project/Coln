@@ -69,12 +69,53 @@ impl ColIndex for PackedRowId {
 
 pub type PackedValue = Value<PackedRowId>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackedTuple(Vec<PackedValue>);
+
+impl std::ops::Deref for PackedTuple {
+    type Target = [PackedValue];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Vec<PackedValue>> for PackedTuple {
+    fn from(values: Vec<PackedValue>) -> Self {
+        Self(values)
+    }
+}
+
+impl IntoIterator for PackedTuple {
+    type Item = PackedValue;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a PackedTuple {
+    type Item = &'a PackedValue;
+    type IntoIter = std::slice::Iter<'a, PackedValue>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl FromIterator<PackedValue> for PackedTuple {
+    fn from_iter<T: IntoIterator<Item = PackedValue>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
 /// Packed representation of an operation staged for a table.
 #[derive(Debug, Clone)]
 pub(crate) enum PackedOp {
     Add {
         row_id: PackedRowId,
-        values: Vec<PackedValue>,
+        values: PackedTuple,
     },
     Delete {
         row_id: PackedRowId,
@@ -83,7 +124,7 @@ pub(crate) enum PackedOp {
 
 pub(crate) struct PackedRowView {
     pub row_id: PackedRowId,
-    pub values: Vec<PackedValue>,
+    pub values: PackedTuple,
 }
 
 impl From<PackedRowView> for coln_query::api::deltas::TupleValue {

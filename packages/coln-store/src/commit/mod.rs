@@ -59,6 +59,7 @@ pub struct Commit<'a> {
     /// Identifier of the commit author. Currently a placeholder of all zeros.
     pub timestamp: i64,
     pub message: Option<String>,
+    pub num_ops: usize, // not serialised to bytes
 }
 
 impl Commit<'static> {
@@ -97,6 +98,7 @@ impl Commit<'static> {
             timestamp: 0,
             message: None,
             other_hashes: vec![],
+            num_ops: 0, // root commit does not have operations
         }
     }
 
@@ -114,6 +116,7 @@ impl Commit<'static> {
             timestamp: data.timestamp,
             message: data.message,
             other_hashes: data.other_hashes,
+            num_ops: data.pending.len(),
         }
     }
 
