@@ -15,11 +15,7 @@ use crate::{
     },
     error::{QueryEngineError, RuntimeError},
     pipeline::Pipeline,
-    relational::{
-        Runtime,
-        expr::{SinkId, SourceId},
-        incremental::{DbspRuntime, dbsp::DbspOutputDelta},
-    },
+    relational::{Runtime, expr::SourceId, incremental::DbspRuntime},
 };
 use coln_flir_rs::ir::{self, FlatRealm};
 use query::FlirProgram;
@@ -147,6 +143,7 @@ impl ColnQuery {
         for (sink_id, delta) in drained {
             let delta = TableDelta::new(sink_id, delta.view().to_zrows());
             if delta.is_empty() {
+                // The sink has not reported anything in this iteration.
                 continue;
             }
             if let Some(derived_view_meta) = self.flir_program.derived_view_meta(sink_id) {
@@ -237,7 +234,7 @@ mod test {
         },
         test_utils::{
             self,
-            graph_flir::{self, Entity, JsonFlir},
+            graph_flir::{self, JsonFlir},
         },
     };
     use anyhow::{Error, Result};
@@ -328,7 +325,7 @@ mod test {
 
     #[test]
     fn graph_flir() -> Result<()> {
-        let mut graph_flir = test_utils::graph_flir::GraphFlir::init();
+        let mut graph_flir = test_utils::graph_flir::GraphFlir::new();
         let flat_realm = graph_flir.load();
         let flir_program = FlirProgram::from_flat_realm(&flat_realm)?;
         let mut coln_query = ColnQuery::with_flir_program(flir_program)?;
@@ -337,7 +334,7 @@ mod test {
         let v0 = graph_flir.insert_vertex();
         let v1 = graph_flir.insert_vertex();
         let v2 = graph_flir.insert_vertex();
-        tx0.insert(graph_flir.next_epoch().into_table_deltas());
+        tx0.insert(graph_flir.driver().next_epoch().into_table_deltas());
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
@@ -347,7 +344,7 @@ mod test {
         let mut tx1 = Tx::empty();
         let e0 = graph_flir.insert_edge(&v0, &v1);
         let e1 = graph_flir.insert_edge(&v1, &v2);
-        tx1.insert(graph_flir.next_epoch().into_table_deltas());
+        tx1.insert(graph_flir.driver().next_epoch().into_table_deltas());
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
@@ -358,37 +355,24 @@ mod test {
         // Just some ints which haven't been used yet for sure.
         let dangling_hash = 999;
         let dangling_ctr = 999;
+        let dangling_row_id_1 = graph_flir::RowId::new(999, 999);
+        let dangling_row_id_2 = graph_flir::RowId::new(1000, 1000);
         // Although the vertex does not violate a contraint, this vertex must be
         // rolled back because tx3 is invalid due to the other inserts.
         let v_rollback = graph_flir.insert_vertex();
-        let invalid_edge_to = graph_flir::Edge::new(
-            graph_flir.epoch(),
-            graph_flir.next_ctr(),
-            v0.row_id().hash(),
-            v0.row_id().ctr(),
-            dangling_hash,
-            dangling_ctr,
-        );
-        let invalid_edge_from = graph_flir::Edge::new(
-            graph_flir.epoch(),
-            graph_flir.next_ctr(),
-            dangling_hash,
-            dangling_ctr,
-            v1.row_id().hash(),
-            v1.row_id().ctr(),
-        );
+        let invalid_edge_to =
+            graph_flir::Edge::new(graph_flir.driver().next_row_id(), &v0, dangling_row_id_1);
+        let invalid_edge_from =
+            graph_flir::Edge::new(graph_flir.driver().next_row_id(), dangling_row_id_1, &v1);
         let invalid_edge = graph_flir::Edge::new(
-            graph_flir.epoch(),
-            graph_flir.next_ctr(),
-            dangling_hash,
-            dangling_ctr,
-            dangling_hash + 1,
-            dangling_ctr + 1,
+            graph_flir.driver().next_row_id(),
+            dangling_row_id_1,
+            dangling_row_id_2,
         );
         graph_flir.insert_raw_edge(invalid_edge_to);
         graph_flir.insert_raw_edge(invalid_edge_from);
         graph_flir.insert_raw_edge(invalid_edge);
-        tx2.insert(graph_flir.next_epoch().into_table_deltas());
+        tx2.insert(graph_flir.driver().next_epoch().into_table_deltas());
         println!("> Tx2\n{}", tx2.to_cli_report()?);
         let mut tx2 = tx2.try_commit(&mut coln_query)?.expect_rejected();
         println!("> Tx2\n{}", tx2.to_cli_report()?);
@@ -401,7 +385,7 @@ mod test {
 
         let mut tx3 = Tx::empty();
         let e0 = graph_flir.insert_edge(&v0, &v_rollback);
-        tx3.insert(graph_flir.next_epoch().into_table_deltas());
+        tx3.insert(graph_flir.driver().next_epoch().into_table_deltas());
         println!("> Tx3\n{}", tx3.to_cli_report()?);
         let mut tx3 = tx3.try_commit(&mut coln_query)?.expect_rejected();
         println!("> Tx3\n{}", tx3.to_cli_report()?);
