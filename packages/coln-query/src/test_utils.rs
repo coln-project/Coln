@@ -30,7 +30,7 @@ use std::fmt::Debug;
 /// [`FlirProgram`](crate::api::query::FlirProgram) internals directly) keeps that
 /// next to those tests; what lives here is the part every such test states the
 /// same way.
-pub mod flir {
+pub mod flir_builders {
     use coln_flir_rs::ir;
 
     /// A base table `name` whose columns are given as `(name, type)` pairs, in
@@ -151,7 +151,7 @@ pub mod flir {
 /// `t` whose `a` is not `1`. Trivial to violate, and trivial to repair again,
 /// which is the pair of transactions the monitored semantics turn on.
 pub mod monitored_flir {
-    use super::flir;
+    use super::flir_builders;
     use crate::{relational::TupleValue, scalarial::ScalarTypedValue};
     use coln_flir_rs::ir;
 
@@ -164,18 +164,24 @@ pub mod monitored_flir {
 
     pub fn realm() -> ir::FlatRealm {
         // The single variable `x`, bound to column 0 (`a`) on both sides.
-        let x = || vec![(0, flir::var_term(0))];
+        let x = || vec![(0, flir_builders::var_term(0))];
         ir::FlatRealm {
-            tables: vec![flir::table_entry(TABLE, vec![("a", flir::builtin_int())])],
+            tables: vec![flir_builders::table_entry(
+                TABLE,
+                vec![("a", flir_builders::builtin_int())],
+            )],
             definitions: vec![],
-            rules: vec![flir::rule_entry(
+            rules: vec![flir_builders::rule_entry(
                 RULE,
                 ir::RuleVariant::Monitored,
-                [("x", flir::builtin_int())],
-                flir::atom_props(vec![flir::atom(TABLE, None, x())]),
+                [("x", flir_builders::builtin_int())],
+                flir_builders::atom_props(vec![flir_builders::atom(TABLE, None, x())]),
                 vec![
-                    flir::atom_prop(flir::atom(TABLE, None, x())),
-                    flir::eq_prop(flir::equality(flir::var_term(0), flir::lit_term(PERMITTED))),
+                    flir_builders::atom_prop(flir_builders::atom(TABLE, None, x())),
+                    flir_builders::eq_prop(flir_builders::equality(
+                        flir_builders::var_term(0),
+                        flir_builders::lit_term(PERMITTED),
+                    )),
                 ],
             )],
         }
@@ -194,31 +200,39 @@ pub mod monitored_flir {
     }
 }
 
-pub mod graph_flir {
+pub mod flir {
     use crate::{
         api::deltas::{StoreDelta, TableDelta, ZRow},
         relational::{TupleValue, schema::EntityRef},
         scalarial::ScalarTypedValue,
     };
     use coln_flir_rs::ir;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, marker::PhantomData};
 
     pub trait JsonFlir {
-        const FILENAME: &'static str;
+        const NAME: &'static str;
 
         fn load(&self) -> ir::FlatRealm {
-            coln_flir_rs::test_utils::load_theory_from_json(Self::FILENAME)
+            coln_flir_rs::test_utils::load_theory_from_json(&format!("{}.json", Self::NAME))
         }
     }
 
-    #[derive(Default)]
-    pub struct FlirDriver {
+    pub struct FlirDriver<F> {
         hash: u64,
         ctr: u64,
         base_tables: HashMap<EntityRef, TableDelta>,
+        phantom: PhantomData<F>,
     }
 
-    impl FlirDriver {
+    impl<F: JsonFlir> FlirDriver<F> {
+        pub fn new() -> Self {
+            Self {
+                hash: 0,
+                ctr: 0,
+                base_tables: HashMap::new(),
+                phantom: PhantomData,
+            }
+        }
         pub fn epoch(&self) -> u64 {
             self.hash
         }
@@ -243,30 +257,43 @@ pub mod graph_flir {
         fn with_zweight(zweight: i64, row: TupleValue) -> ZRow {
             ZRow::new(zweight, row).expect("non-zero zweight")
         }
-        fn insert_to_table_delta<T: Entity>(&mut self, entry: &T) {
-            // Maybe improve by collecting all vertices of this epoch in a single
-            // table delta but maybe it's good to test this not-so-pretty code
-            // path as well..
-            self.base_tables
-                .entry(EntityRef::from(&T::ir_path()))
-                .and_modify(|table_delta| {
-                    table_delta.extend([Self::with_zweight(1, entry.to_row())])
-                })
-                .or_insert_with(|| {
-                    TableDelta::new(&T::ir_path(), [Self::with_zweight(1, entry.to_row())])
-                });
+        fn table_delta<E>(&mut self, entry: &E) -> &mut TableDelta
+        where
+            E: EntityPath<F>,
+        {
+            let entity_ref = EntityRef::from(&E::ir_path());
+            if !self.base_tables.contains_key(&entity_ref) {
+                let entitiy_ref = entity_ref.clone();
+                self.base_tables
+                    .insert(entitiy_ref.clone(), TableDelta::new(entitiy_ref, []));
+            }
+            self.base_tables.get_mut(&entity_ref).expect("just added")
+        }
+        fn insert_to_table_delta<E>(&mut self, entry: &E)
+        where
+            E: EntityPath<F> + Entity,
+        {
+            self.table_delta(entry)
+                .extend([Self::with_zweight(1, entry.to_row())]);
+        }
+        fn delete_from_table_delta<E>(&mut self, entry: &E)
+        where
+            E: EntityPath<F> + Entity,
+        {
+            self.table_delta(entry)
+                .extend([Self::with_zweight(-1, entry.to_row())]);
+        }
+    }
+
+    pub trait EntityPath<Flir: JsonFlir> {
+        const PATH: &'static str;
+        fn ir_path() -> ir::Path {
+            ir::Path::from(format!("{}.{}", Flir::NAME, Self::PATH))
         }
     }
 
     pub trait Entity {
-        const NAME: &'static str;
-
-        fn ir_path() -> ir::Path {
-            ir::Path::from(Self::NAME)
-        }
-
         fn to_row(&self) -> TupleValue;
-
         fn row_id(&self) -> RowId;
     }
 
@@ -295,16 +322,16 @@ pub mod graph_flir {
     }
 
     pub struct GraphFlir {
-        driver: FlirDriver,
+        driver: FlirDriver<Self>,
     }
 
     impl GraphFlir {
         pub fn new() -> Self {
             Self {
-                driver: FlirDriver::default(),
+                driver: FlirDriver::new(),
             }
         }
-        pub fn driver(&mut self) -> &mut FlirDriver {
+        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
             &mut self.driver
         }
         pub fn insert_vertex(&mut self) -> Vertex {
@@ -324,7 +351,7 @@ pub mod graph_flir {
     }
 
     impl JsonFlir for GraphFlir {
-        const FILENAME: &'static str = "GraphRealm.json";
+        const NAME: &'static str = "GraphRealm";
     }
 
     pub struct Vertex {
@@ -338,8 +365,6 @@ pub mod graph_flir {
     }
 
     impl Entity for Vertex {
-        const NAME: &'static str = "GraphRealm.root.V";
-
         fn to_row(&self) -> TupleValue {
             [
                 ScalarTypedValue::from(self.row_id.hash()),
@@ -352,6 +377,14 @@ pub mod graph_flir {
         fn row_id(&self) -> RowId {
             self.row_id
         }
+    }
+
+    impl EntityPath<GraphFlir> for Vertex {
+        const PATH: &'static str = "root.V";
+    }
+
+    impl EntityPath<TransitiveClosureFlir> for Vertex {
+        const PATH: &'static str = "root.V";
     }
 
     pub struct Edge {
@@ -371,8 +404,6 @@ pub mod graph_flir {
     }
 
     impl Entity for Edge {
-        const NAME: &'static str = "GraphRealm.root.E";
-
         fn to_row(&self) -> TupleValue {
             [
                 ScalarTypedValue::from(self.row_id.hash()),
@@ -389,6 +420,46 @@ pub mod graph_flir {
         fn row_id(&self) -> RowId {
             self.row_id
         }
+    }
+
+    impl EntityPath<GraphFlir> for Edge {
+        const PATH: &'static str = "root.E";
+    }
+
+    impl EntityPath<TransitiveClosureFlir> for Edge {
+        const PATH: &'static str = "root.E";
+    }
+
+    pub struct TransitiveClosureFlir {
+        driver: FlirDriver<Self>,
+    }
+
+    impl TransitiveClosureFlir {
+        pub fn new() -> Self {
+            Self {
+                driver: FlirDriver::new(),
+            }
+        }
+        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
+            &mut self.driver
+        }
+        pub fn insert_vertex(&mut self) -> Vertex {
+            let vertex = Vertex::new(self.driver.next_row_id());
+            self.driver.insert_to_table_delta(&vertex);
+            vertex
+        }
+        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
+            let edge = Edge::new(self.driver.next_row_id(), from, to);
+            self.driver.insert_to_table_delta(&edge);
+            edge
+        }
+        pub fn remove_edge(&mut self, edge: &Edge) {
+            self.driver.delete_from_table_delta(edge);
+        }
+    }
+
+    impl JsonFlir for TransitiveClosureFlir {
+        const NAME: &'static str = "TransitiveClosureRealm";
     }
 }
 
