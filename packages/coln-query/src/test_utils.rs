@@ -211,25 +211,22 @@ pub mod graph_flir {
         }
     }
 
-    pub struct GraphFlir {
+    #[derive(Default)]
+    pub struct FlirDriver {
         hash: u64,
         ctr: u64,
         base_tables: HashMap<EntityRef, TableDelta>,
     }
 
-    impl GraphFlir {
-        pub fn init() -> Self {
-            Self {
-                hash: 0,
-                ctr: 0,
-                base_tables: HashMap::new(),
-            }
-        }
+    impl FlirDriver {
         pub fn epoch(&self) -> u64 {
             self.hash
         }
         pub fn ctr(&self) -> u64 {
             self.ctr
+        }
+        pub fn next_row_id(&mut self) -> RowId {
+            RowId::new(self.epoch(), self.next_ctr())
         }
         pub fn next_epoch(&mut self) -> StoreDelta {
             self.hash += 1;
@@ -246,20 +243,6 @@ pub mod graph_flir {
         fn with_zweight(zweight: i64, row: TupleValue) -> ZRow {
             ZRow::new(zweight, row).expect("non-zero zweight")
         }
-        pub fn insert_vertex(&mut self) -> Vertex {
-            let vertex = Vertex::new(self.hash, self.next_ctr());
-            self.insert_to_table_delta(&vertex);
-            vertex
-        }
-        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
-            let edge = Edge::with_vertices(self.hash, self.next_ctr(), from, to);
-            self.insert_to_table_delta(&edge);
-            edge
-        }
-        pub fn insert_raw_edge(&mut self, edge: Edge) -> Edge {
-            self.insert_to_table_delta(&edge);
-            edge
-        }
         fn insert_to_table_delta<T: Entity>(&mut self, entry: &T) {
             // Maybe improve by collecting all vertices of this epoch in a single
             // table delta but maybe it's good to test this not-so-pretty code
@@ -275,10 +258,6 @@ pub mod graph_flir {
         }
     }
 
-    impl JsonFlir for GraphFlir {
-        const FILENAME: &'static str = "GraphRealm.json";
-    }
-
     pub trait Entity {
         const NAME: &'static str;
 
@@ -288,15 +267,25 @@ pub mod graph_flir {
 
         fn to_row(&self) -> TupleValue;
 
-        fn row_id(&self) -> &RowId;
+        fn row_id(&self) -> RowId;
     }
 
+    impl<T: Entity> From<&T> for RowId {
+        fn from(value: &T) -> Self {
+            value.row_id()
+        }
+    }
+
+    #[derive(Clone, Copy)]
     pub struct RowId {
         hash: u64,
         ctr: u64,
     }
 
     impl RowId {
+        pub fn new(hash: u64, ctr: u64) -> Self {
+            Self { hash, ctr }
+        }
         pub fn hash(&self) -> u64 {
             self.hash
         }
@@ -305,15 +294,46 @@ pub mod graph_flir {
         }
     }
 
+    pub struct GraphFlir {
+        driver: FlirDriver,
+    }
+
+    impl GraphFlir {
+        pub fn new() -> Self {
+            Self {
+                driver: FlirDriver::default(),
+            }
+        }
+        pub fn driver(&mut self) -> &mut FlirDriver {
+            &mut self.driver
+        }
+        pub fn insert_vertex(&mut self) -> Vertex {
+            let vertex = Vertex::new(self.driver.next_row_id());
+            self.driver.insert_to_table_delta(&vertex);
+            vertex
+        }
+        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
+            let edge = Edge::new(self.driver.next_row_id(), from, to);
+            self.driver.insert_to_table_delta(&edge);
+            edge
+        }
+        pub fn insert_raw_edge(&mut self, edge: Edge) -> Edge {
+            self.driver.insert_to_table_delta(&edge);
+            edge
+        }
+    }
+
+    impl JsonFlir for GraphFlir {
+        const FILENAME: &'static str = "GraphRealm.json";
+    }
+
     pub struct Vertex {
         row_id: RowId,
     }
 
     impl Vertex {
-        fn new(hash: u64, ctr: u64) -> Vertex {
-            Self {
-                row_id: RowId { hash, ctr },
-            }
+        fn new(row_id: RowId) -> Vertex {
+            Self { row_id }
         }
     }
 
@@ -329,44 +349,23 @@ pub mod graph_flir {
             .collect()
         }
 
-        fn row_id(&self) -> &RowId {
-            &self.row_id
+        fn row_id(&self) -> RowId {
+            self.row_id
         }
     }
 
     pub struct Edge {
         row_id: RowId,
-        from_hash: u64,
-        from_ctr: u64,
-        to_hash: u64,
-        to_ctr: u64,
+        from: RowId,
+        to: RowId,
     }
 
     impl Edge {
-        pub fn with_vertices(hash: u64, ctr: u64, from: &Vertex, to: &Vertex) -> Edge {
-            Edge::new(
-                hash,
-                ctr,
-                from.row_id.hash(),
-                from.row_id.ctr(),
-                to.row_id.hash(),
-                to.row_id.ctr(),
-            )
-        }
-        pub fn new(
-            hash: u64,
-            ctr: u64,
-            from_hash: u64,
-            from_ctr: u64,
-            to_hash: u64,
-            to_ctr: u64,
-        ) -> Edge {
+        pub fn new<T: Into<RowId>, U: Into<RowId>>(row_id: RowId, from: T, to: U) -> Edge {
             Self {
-                row_id: RowId { hash, ctr },
-                from_hash,
-                from_ctr,
-                to_hash,
-                to_ctr,
+                row_id,
+                from: from.into(),
+                to: to.into(),
             }
         }
     }
@@ -378,17 +377,17 @@ pub mod graph_flir {
             [
                 ScalarTypedValue::from(self.row_id.hash()),
                 ScalarTypedValue::from(self.row_id.ctr()),
-                ScalarTypedValue::from(self.from_hash),
-                ScalarTypedValue::from(self.from_ctr),
-                ScalarTypedValue::from(self.to_hash),
-                ScalarTypedValue::from(self.to_ctr),
+                ScalarTypedValue::from(self.from.hash()),
+                ScalarTypedValue::from(self.from.ctr()),
+                ScalarTypedValue::from(self.to.hash()),
+                ScalarTypedValue::from(self.to.ctr()),
             ]
             .into_iter()
             .collect()
         }
 
-        fn row_id(&self) -> &RowId {
-            &self.row_id
+        fn row_id(&self) -> RowId {
+            self.row_id
         }
     }
 }
