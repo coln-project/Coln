@@ -21,7 +21,7 @@ import Coln.MIR.Value qualified as V
 -- Layout is the process of creating a realm from a theory, along with the
 -- universal model of that theory in the realm.
 
-argName :: Set.Set Name -> V.Clo a b -> Name
+argName :: (HasNames c) => c -> V.Clo a b -> Name
 argName used (V.Clo x _) = freshenFor used x
 argName used (V.CloConst _) = freshNameFor used
 

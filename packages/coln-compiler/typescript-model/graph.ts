@@ -1,9 +1,5 @@
 import * as runtime from "./runtime/index.js"
 
-function todo<T>(): T {
-  throw "todo"
-}
-
 export class GraphRealm {
   root: {
     vertex: runtime.MutableSet<runtime.RowId<"root.vertex">>,
@@ -13,21 +9,29 @@ export class GraphRealm {
   incoming_edges: (v: runtime.RowId<"root.vertex">) => runtime.Set<{ from: runtime.RowId<"root.vertex">, edge: runtime.RowId<"root.edge"> }>
   
   constructor(store: runtime.Store) {
+    const mstore = new runtime.ManagedStore(store)
     this.root = {
-      vertex: todo(),
-      edge: todo()
+      vertex: new runtime.BaseTableSet(mstore, "root.vertex", []),
+      edge: (a: runtime.RowId<"root.vertex">) => (b: runtime.RowId<"root.vertex">) => {
+        return new runtime.BaseTableSet(mstore, "root.edge", [a, b])
+      }
     };
     this.incoming_edges = (v: runtime.RowId<"root.vertex">) => {
-      return new View(store, { table_name: "incoming_edges", row_id: null, values: [v] }, [1,2], (ts) => { return { from: ts[0], edge: ts[1] } })
+      return new runtime.ViewTableSet(
+        mstore,
+        "view.incoming_edges",
+        [v],
+        [1, 2],
+        {
+          flatten: (v : { from: runtime.RowId<"root.vertex">, edge: runtime.RowId<"root.edge"> }) => [v.from.asWire(), v.edge.asWire()],
+          reconstruct: (t: runtime.WireTuple) => {
+            return {
+              from: runtime.rowIdFromWire(t[0], "root.vertex"),
+              edge: runtime.rowIdFromWire(t[1], "root.edge")
+            }
+          }
+        }
+      )
     }
   }
 }
-
-const g = new GraphRealm(todo())
-
-const v0 = g.root.vertex.add()
-const e0 = g.root.edge(v0)(v0).add()
-
-const es = g.incoming_edges(v0).values()
-
-g.root.edge(es[0].from)

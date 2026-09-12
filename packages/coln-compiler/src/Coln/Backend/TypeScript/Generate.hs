@@ -4,14 +4,14 @@
 
 module Coln.Backend.TypeScript.Generate where
 
--- import Control.Monad.State
+import Control.Monad.State
 
 -- import Data.Aeson qualified as AE
 -- import Data.Foldable (foldlM)
 
 -- import Data.Foldable qualified as F
 -- import Data.Map.Ordered qualified as OMap
--- import Data.Set qualified as Set
+import Data.Set qualified as Set
 -- import Data.String (IsString (..))
 -- import Data.Text.Lazy qualified as TL
 -- import Data.Text.Lazy.IO qualified as TLIO
@@ -19,151 +19,124 @@ module Coln.Backend.TypeScript.Generate where
 -- import Prettyprinter.Render.Text
 -- import System.FilePath
 
--- import Coln.Backend.TypeScript.AST qualified as TS
+import Coln.Backend.TypeScript.AST qualified as TS
 -- import Coln.Backend.TypeScript.Assemble (asm)
--- import Coln.Backend.TypeScript.Params
--- import Coln.Common
+import Coln.Common
+import Coln.Core.Params
+import Coln.MIR.Params
 
--- import Coln.Core.Params
--- import Coln.Core.Readback
--- import Coln.Core.Syntax qualified as S
--- import Coln.Core.Value qualified as V
--- import Coln.FLIR.Flatten qualified as FLIR
--- import Coln.FLIR.Value qualified as FLIR
+import Coln.FLIR.Flatten qualified as FLIR
+import Coln.FLIR.Value qualified as FLIR
 -- import Coln.SIR.Realm qualified as SIR
--- import Coln.SIR.Syntax qualified as SIR
+import Coln.SIR.Syntax qualified as SIR
 
--- mangle :: Name -> TS.Id
--- mangle = TS.Id . mangleToDoc
+mangle :: Name -> TS.Id
+mangle = TS.Id . mangleToDoc
 
--- tyFromHead :: Access -> V.Head -> TS.Ty
--- tyFromHead access (V.GlobalVar x _) =
---   TS.TyConst (TS.QId [mangle x] (fromString (show access)))
--- tyFromHead access (V.LocalVar _) = TS.runtime $ ColnRef access
+runtime :: TS.Id -> TS.QId
+runtime x = TS.QId ["runtime"] x
 
--- genTy :: Access -> CtxLen -> V.Ty N -> TS.Ty
--- genTy access n = \case
---   V.U (SetU; PropU) -> TS.runtime (ColnSet access)
---   V.Function ft -> do
---     let v = V.local (FId n) ft.dom
---     TS.Fun (TS.Binding (TS.Id "x") (TS.runtime Value)) (genTy access (n + 1) (V.appClo ft.cod v))
---   V.Decode n -> tyFromHead access n.head
---   V.BuiltinTy _ -> TS.runtime $ ColnRef access
---   _ -> error "not yet supported"
+setInterface :: TS.Ty -> TS.Ty
+setInterface ty = TS.TyConst (runtime "Set") [ty]
 
--- genInterface :: Access -> CtxLen -> V.Ty D -> TS.Interface
--- genInterface access n = \case
---   V.Record rt -> do
---     let name = fromString $ show access
---     let extendsName = fromString . show <$> extends access
---     TS.Interface name extendsName (go n rt.capture (toList rt.fieldTypes))
---    where
---     go _ _ [] = []
---     go n' vs ((x, f) : rest) = do
---       let a = f vs
---       let v = V.local (FId n') a
---       let bnd = TS.Binding (mangle x) (genTy access n' a)
---       bnd : go (n' + 1) (V.LSnoc vs v) rest
+mutableSetInterface :: TS.Ty -> TS.Ty
+mutableSetInterface ty = TS.TyConst (runtime "MutableSet") [ty]
 
--- class TrackGlobals a where
---   trackGlobals :: a -> State (Set.Set Name) ()
+propInterface :: TS.Ty
+propInterface = TS.TyConst (runtime "Prop") []
 
--- instance (TrackGlobals (f c)) => TrackGlobals (S.Abs f c) where
---   trackGlobals (S.Abs _ body) = trackGlobals body
---   trackGlobals (S.AbsConst body) = trackGlobals body
+refInterface :: TS.Ty -> TS.Ty
+refInterface ty = TS.TyConst (runtime "Ref") [ty]
 
--- instance (TrackGlobals a) => TrackGlobals (Name, a) where
---   trackGlobals (_, t) = trackGlobals t
+mutableRefInterface :: TS.Ty -> TS.Ty
+mutableRefInterface ty = TS.TyConst (runtime "MutableRef") [ty]
 
--- instance TrackGlobals (S.El c) where
---   trackGlobals = \case
---     S.LocalVar _ -> pure ()
---     S.GlobalVar x _ -> modify (Set.insert x)
---     S.Code _ a -> trackGlobals a
---     S.Lam _ dom body -> do
---       trackGlobals dom
---       trackGlobals body
---     S.App _ t0 t1 -> do
---       trackGlobals t0
---       trackGlobals t1
---     S.Cons _ ts -> mapM_ trackGlobals (toList ts)
---     S.Proj _ t _ -> trackGlobals t
---     S.Init _ -> pure ()
---     S.Lit _ -> pure ()
---     S.Is t -> trackGlobals t
+tnString :: TableName -> TS.El
+tnString = TS.String . pretty . (.name)
 
--- instance TrackGlobals (S.Ty c) where
---   trackGlobals = \case
---     S.U _ -> pure ()
---     S.Decode _ t -> trackGlobals t
---     S.Function ft -> do
---       trackGlobals ft.dom
---       trackGlobals ft.cod
---     S.Record rt -> mapM_ trackGlobals (toList rt.fieldTypes)
---     S.Eq et -> do
---       trackGlobals et.lhs
---       trackGlobals et.rhs
---     S.BuiltinTy _ -> pure ()
---     S.IsTy a -> trackGlobals a
+rowId :: TableName -> TS.Ty
+rowId x = TS.TyConst (runtime "RowId") [TS.Singleton $ tnString x]
 
--- genTypeDef :: Access -> CtxLen -> V.Ty N -> TS.TypeDef
--- genTypeDef access n a = TS.TypeDef (fromShow access) (genTy access n a)
+class GenTy a where
+  genTy :: a -> TS.Ty
 
--- genEntryModule :: [TS.Import] -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
--- genEntryModule imports a ev = go 0 a ev
---  where
---   go :: CtxLen -> V.Ty N -> V.Evaluation V.El D -> Maybe TS.Module
---   go n (V.U TheoryU) ev' = do
---     let definitions = for accessLevels $ \access ->
---           case V.ebind V.decode ev' of
---             V.Become a -> TS.DTypeDef $ genTypeDef access n a
---             V.Describe a -> TS.DInterface $ genInterface access n a
---             V.BecomeWith _ -> panic "can't lower becomewith yet"
---     Just $ TS.Module imports (TS.Exported <$> definitions)
---   go n (V.Function ft) ev' = do
---     let v = V.local (FId n) ft.dom
---     go (n + 1) (V.appClo ft.cod v) (V.ebind (flip (V.app ft.variant) v) ev')
---   go _ _ _ = Nothing
+instance GenTy BuiltinTy where
+  genTy = \case
+    BuiltinInt -> TS.TyConst "number" []
+    BuiltinString -> TS.TyConst "string" []
 
--- tableNameDoc :: TableName -> DDoc
--- tableNameDoc tn = concatWith (surround dot) (dpretty <$> (tn.realm : toList tn.path))
+instance GenTy SIR.ScalarType where
+  genTy = \case
+    SIR.RowId tn -> rowId tn
+    SIR.BuiltinTy ty -> genTy ty
 
--- data FlatParams = FlatParams
---   { paramVals :: Bwd TS.El
---   , numParams :: Int
---   }
+instance GenTy SIR.Shape where
+  genTy = \case
+    SIR.Tuple fields -> TS.RecordTy (genTy <$> fields)
+    SIR.Scalar s -> genTy s
+    SIR.Unstored -> TS.NullTy
 
--- allocParams :: TS.El -> SIR.Shape -> State FlatParams FLIR.Els
--- allocParams v = \case
---   SIR.Tuple d -> do
---     FLIR.Cons <$> mapWithKeyM (\x sh -> allocParams (TS.Proj v (mangle x)) sh) d
---   SIR.Scalar _ -> state \p ->
---     ( FLIR.Scalar (FLIR.Param (FId p.numParams))
---     , p{paramVals = p.paramVals :> v, numParams = p.numParams + 1}
---     )
---   SIR.Unstored -> pure FLIR.Erased
+instance GenTy SIR.TheoryShape where
+  genTy = \case
+    SIR.LiftTy a -> refInterface (genTy a)
+    SIR.Function x dom cod -> TS.Fun (TS.Binding (mangle x) (genTy dom)) (genTy cod)
+    SIR.Record fields -> TS.RecordTy (genTy <$> fields)
+    SIR.U SSetU a -> setInterface (genTy a)
+    SIR.U SPropU _ -> propInterface
 
--- data TSEnv = TSEnv
---   { tsLocals :: Bwd TS.El
---   , usedNames :: Set.Set Name
---   , flatParams :: FlatParams
---   , flirLocals :: FLIR.Locals
---   }
+data FlatParams = FlatParams
+  { paramVals :: Bwd TS.El
+  , numParams :: Int
+  }
 
--- emptyTSEnv :: TSEnv
--- emptyTSEnv = TSEnv BwdNil Set.empty (FlatParams BwdNil 0) BwdNil
+allocParams :: TS.El -> SIR.Shape -> State FlatParams FLIR.Els
+allocParams v = \case
+  SIR.Tuple d -> do
+    FLIR.Cons <$> mapWithKeyM (\x sh -> allocParams (TS.Proj v (mangle x)) sh) d
+  SIR.Scalar _ -> state \p ->
+    ( FLIR.Scalar (FLIR.Param (FId p.numParams))
+    , p{paramVals = p.paramVals :> v, numParams = p.numParams + 1}
+    )
+  SIR.Unstored -> pure FLIR.Erased
 
--- reconstructEl :: FlatParams -> FLIR.El -> TS.El
--- reconstructEl e = \case
---   FLIR.LocalVar (FId i) -> TS.Index (TS.Var "result") i
---   FLIR.Lit l -> TS.Lit l
---   FLIR.Param (FId i) -> elemAt e.paramVals (BId (e.numParams - i - 1))
+data TSEnv = TSEnv
+  { tsLocals :: Bwd TS.El
+  , usedNames :: Set.Set Name
+  , flatParams :: FlatParams
+  , store :: TS.El
+  }
 
--- reconstructEls :: FlatParams -> FLIR.Els -> TS.El
--- reconstructEls e = \case
---   FLIR.Scalar v -> reconstructEl e v
---   FLIR.Cons d -> TS.Object [(mangle x, reconstructEls e t) | (x, t) <- toList d]
---   FLIR.Erased -> TS.Null
+emptyTSEnv :: TS.El -> TSEnv
+emptyTSEnv = TSEnv BwdNil Set.empty (FlatParams BwdNil 0)
+
+reconstructEl :: FlatParams -> FLIR.El -> TS.El
+reconstructEl e = \case
+  FLIR.LocalVar (FId i) -> TS.Index (TS.Var "result") i
+  FLIR.Lit l -> TS.Lit l
+  FLIR.Param (FId i) -> elemAt e.paramVals (BId (e.numParams - i - 1))
+
+reconstructEls :: FlatParams -> FLIR.Els -> TS.El
+reconstructEls e = \case
+  FLIR.Scalar v -> reconstructEl e v
+  FLIR.Cons d -> TS.Object [(mangle x, reconstructEls e t) | (x, t) <- toList d]
+  FLIR.Erased -> TS.Null
+
+class GenEl a where
+  genEl :: TSEnv -> a -> TS.El
+
+baseTableSet :: TSEnv -> TableName -> TS.El
+baseTableSet env tn =
+  TS.New
+    (TS.Const (runtime "BaseTableSet"))
+    [ env.store
+    , tnString tn
+    , toList env.flatParams.paramVals
+    ]
+
+instance GenEl (SIR.El Theory) where
+  genEl e = \case
+    SIR.LiftEl v -> undefined
+    SIR.SelectRowId SSetU tn cols -> baseTableSet e 
 
 -- genQuery :: Access -> TSEnv -> SIR.Query -> TS.El
 -- genQuery _access e q = do

@@ -9,7 +9,6 @@ import Data.Text.Lazy qualified as TL
 import Prettyprinter
 import Prettyprinter.Render.Text
 
-import Coln.Backend.TypeScript.Params
 import Coln.Common
 import Coln.Core.Params
 
@@ -29,27 +28,13 @@ data QId = QId [Id] Id
 instance IsString QId where
   fromString = QId [] . fromString
 
-class Runtime a where
-  runtime :: RuntimeConst -> a
-
-instance Runtime QId where
-  runtime = \case
-    ColnSet access -> QId ["runtime", "ColnSet"] (fromShow access)
-    RowIdSet access -> QId ["runtime", "RowIdSet"] (fromShow access)
-    ColnRef access -> QId ["runtime", "ColnRef"] (fromShow access)
-    TableCellRef access -> QId ["runtime", "TableCellRef"] (fromShow access)
-    x -> QId ["runtime"] (fromShow x)
-
-instance Runtime Ty where
-  runtime = TyConst . runtime
-
-instance Runtime El where
-  runtime = Const . runtime
-
 data Ty
   = Fun Binding Ty
-  | TyConst QId
+  | TyConst QId [Ty]
+  | Singleton El
   | ListTy Ty
+  | RecordTy (Dict Ty)
+  | NullTy
 
 data Binding = Binding {name :: Id, ty :: Ty}
 

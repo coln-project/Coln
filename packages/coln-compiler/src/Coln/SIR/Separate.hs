@@ -5,9 +5,11 @@ import Coln.Core.Params
 import Coln.MIR.Params
 import Coln.MIR.Realm qualified as V
 import Coln.MIR.Value qualified as V
+import Coln.MIR.Layout (argName)
 import Coln.SIR.Realm
 import Coln.SIR.Syntax qualified as S
 
+import Data.Key (mapAccumWithKeyL)
 import Control.Arrow (second)
 import Data.Maybe (mapMaybe, maybeToList)
 
@@ -56,6 +58,25 @@ shapeOf = \case
     S.Tuple $ fromList $ go (toList rt.fieldTypes) rt.capture v
   V.BuiltinTy t -> S.Scalar $ S.BuiltinTy t
   V.Eq _ _ _ -> S.Unstored
+
+theoryShapeOf :: CtxShape -> V.Ty N Theory -> V.El N Theory -> S.TheoryShape
+theoryShapeOf cs a v = case a of
+  V.LiftTy LSetTheory a' -> S.LiftTy (shapeOf a')
+  V.Function ft -> case ft.variant.mlevel of
+    SSetTheory -> do
+      let arg = V.local (FId cs.len)
+      let dom = shapeOf ft.dom
+      let x = argName cs.names ft.cod
+      let cs' = CtxShape (cs.len + 1) (cs.names :> x)
+      let cod = theoryShapeOf cs' (V.appClo ft.cod arg) (V.app SSetTheory v arg)
+      S.Function x dom cod
+  V.Record rt -> do
+    let doField x l fieldTy = do
+          let fieldVal = V.proj v x
+          (l :> Pair STheory fieldVal, theoryShapeOf cs (fieldTy l) fieldVal)
+    let fields = snd $ mapAccumWithKeyL doField rt.capture rt.fieldTypes
+    S.Record fields
+  V.U (inferSetCodes -> u) -> S.U u $ shapeOf $ V.decode u v
 
 propAt :: CtxLen -> V.Ty N Set -> V.El N Set -> S.Prop
 propAt n = \case

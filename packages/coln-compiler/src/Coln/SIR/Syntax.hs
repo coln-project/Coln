@@ -57,6 +57,12 @@ data Query = Query
   , pred :: Abs Prop
   }
 
+data TheoryShape
+  = LiftTy Shape
+  | Function Name Shape TheoryShape
+  | Record (Dict TheoryShape)
+  | U (SUniverse Set Theory) Shape
+
 -- JSON
 --------------------------------------------------------------------------------
 
