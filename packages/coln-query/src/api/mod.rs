@@ -234,7 +234,7 @@ mod test {
         },
         test_utils::{
             self,
-            graph_flir::{self, JsonFlir},
+            flir::{self, JsonFlir},
         },
     };
     use anyhow::{Error, Result};
@@ -325,7 +325,7 @@ mod test {
 
     #[test]
     fn graph_flir() -> Result<()> {
-        let mut graph_flir = test_utils::graph_flir::GraphFlir::new();
+        let mut graph_flir = test_utils::flir::GraphFlir::new();
         let flat_realm = graph_flir.load();
         let flir_program = FlirProgram::from_flat_realm(&flat_realm)?;
         let mut coln_query = ColnQuery::with_flir_program(flir_program)?;
@@ -355,16 +355,16 @@ mod test {
         // Just some ints which haven't been used yet for sure.
         let dangling_hash = 999;
         let dangling_ctr = 999;
-        let dangling_row_id_1 = graph_flir::RowId::new(999, 999);
-        let dangling_row_id_2 = graph_flir::RowId::new(1000, 1000);
+        let dangling_row_id_1 = flir::RowId::new(999, 999);
+        let dangling_row_id_2 = flir::RowId::new(1000, 1000);
         // Although the vertex does not violate a contraint, this vertex must be
         // rolled back because tx3 is invalid due to the other inserts.
         let v_rollback = graph_flir.insert_vertex();
         let invalid_edge_to =
-            graph_flir::Edge::new(graph_flir.driver().next_row_id(), &v0, dangling_row_id_1);
+            flir::Edge::new(graph_flir.driver().next_row_id(), &v0, dangling_row_id_1);
         let invalid_edge_from =
-            graph_flir::Edge::new(graph_flir.driver().next_row_id(), dangling_row_id_1, &v1);
-        let invalid_edge = graph_flir::Edge::new(
+            flir::Edge::new(graph_flir.driver().next_row_id(), dangling_row_id_1, &v1);
+        let invalid_edge = flir::Edge::new(
             graph_flir.driver().next_row_id(),
             dangling_row_id_1,
             dangling_row_id_2,
@@ -395,6 +395,67 @@ mod test {
         let violation = &violations[0];
         assert_eq!(violation.for_entity().id(), "GraphRealm.root.E.foreignKey");
         assert_eq!(violation.delta().len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn transitive_closure_flir() -> Result<()> {
+        let mut transitive_closure_flir = test_utils::flir::TransitiveClosureFlir::new();
+        let flat_realm = transitive_closure_flir.load();
+        let flir_program = FlirProgram::from_flat_realm(&flat_realm)?;
+        let mut coln_query = ColnQuery::with_flir_program(flir_program)?;
+
+        let mut tx0 = Tx::empty();
+        let v0 = transitive_closure_flir.insert_vertex();
+        let v1 = transitive_closure_flir.insert_vertex();
+        let v2 = transitive_closure_flir.insert_vertex();
+        let v3 = transitive_closure_flir.insert_vertex();
+        let e1 = transitive_closure_flir.insert_edge(&v0, &v1);
+        let e2 = transitive_closure_flir.insert_edge(&v1, &v2);
+        let e3 = transitive_closure_flir.insert_edge(&v2, &v3);
+        tx0.insert(
+            transitive_closure_flir
+                .driver()
+                .next_epoch()
+                .into_table_deltas(),
+        );
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
+        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
+        assert!(tx0.take_soft_violations().is_empty());
+        let mut derived_data_table_deltas = tx0.take_derived_data_delta().into_table_deltas();
+        assert_eq!(derived_data_table_deltas.len(), 1);
+        let trans_closure_delta = derived_data_table_deltas.pop().expect("checked");
+        assert_eq!(
+            trans_closure_delta.for_entity().id(),
+            "TransitiveClosureRealm.init.trans-closure.connected"
+        );
+        let trans_closure_delta = trans_closure_delta.into_delta();
+        assert_eq!(trans_closure_delta.len(), 10);
+
+        let mut tx1 = Tx::empty();
+        transitive_closure_flir.remove_edge(&e1);
+        transitive_closure_flir.remove_edge(&e2);
+        tx1.insert(
+            transitive_closure_flir
+                .driver()
+                .next_epoch()
+                .into_table_deltas(),
+        );
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
+        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
+        assert!(tx1.take_soft_violations().is_empty());
+        assert_eq!(
+            tx1.take_derived_data_delta()
+                .into_table_deltas()
+                .pop()
+                .expect("one delta only")
+                .into_delta()
+                .len(),
+            5
+        );
 
         Ok(())
     }

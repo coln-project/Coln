@@ -32,7 +32,6 @@ use coln_flir_rs::schema::{
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
-use std::fmt;
 
 type BaseTableName = EntityRef;
 type DerivedViewName = EntityRef;
@@ -59,8 +58,9 @@ pub struct FlirProgram {
     /// queries defined in here.
     ///
     /// This doubles as the set of derived views an [`Atom`] may reference, so
-    /// that what [`rule_declaration`](Self::rule_declaration) writes is exactly
-    /// what [`derived_view_var_expr`](Self::derived_view_var_expr) reads.
+    /// that what [`definition_entries`](Self::definition_entries) writes is
+    /// exactly what [`derived_view_var_expr`](Self::derived_view_var_expr)
+    /// reads.
     derived_views: HashMap<DerivedViewName, DerivedViewMeta>,
     /// The constraints the program itself defines, that is, one per declared
     /// constraint, which is an enforced or monitored rule.
@@ -254,7 +254,7 @@ impl FlirProgram {
             // For mutual recursion: Combine non-rec and rec rules into one
             // predicate and then the algorithm should work the same, except for
             // how to return the accumulators back up with multiple recursands?
-            let predicate = clique.get(0).expect("Only cliques with one member");
+            let predicate = clique.first().expect("Only cliques with one member");
 
             if predicate.non_rec_rules.is_empty() {
                 return Err(SyntaxError::new(
@@ -1213,7 +1213,7 @@ impl From<QueryEngineScalarType> for ScalarType {
 mod tests {
     use super::*;
     use crate::relational::expr::RelExpr;
-    use crate::test_utils::flir::{
+    use crate::test_utils::flir_builders::{
         atom, atom_props, builtin_int, equality, lit_term, rule_entry, table_entry, var_term,
     };
 
