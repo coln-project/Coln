@@ -6,6 +6,7 @@
 
 pub mod api;
 mod error;
+mod frontend;
 mod host;
 mod optimizer;
 mod pipeline;

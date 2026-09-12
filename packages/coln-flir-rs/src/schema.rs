@@ -313,9 +313,6 @@ impl QueryEngineCols {
     pub fn inner(&self) -> &[QueryEngineCol] {
         &self.0
     }
-    pub fn iter(&self) -> std::slice::Iter<'_, QueryEngineCol> {
-        self.0.iter()
-    }
 }
 
 // Conversions from one view into another view.

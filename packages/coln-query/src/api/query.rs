@@ -12,12 +12,12 @@ use crate::error::SyntaxError;
 use crate::host::QueryIr;
 use crate::host::expr::{BinaryExpr, Expr, Literal, LiteralExpr, VarExpr};
 use crate::host::operator::Operator;
-use crate::host::stmt::{Stmt, VarStmt};
+use crate::host::stmt::{BlockStmt, ExprStmt, Stmt, VarStmt};
 use crate::program::QueryProgram;
 use crate::relational::catalog::Catalog;
 use crate::relational::expr::{
-    AntiJoinExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr, OutputKind, ProjectionExpr,
-    RelationIdx, SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
+    AntiJoinExpr, FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr, OutputKind,
+    ProjectionExpr, RelationIdx, SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
 };
 use crate::relational::schema::{Column, EntityRef, TableSchema};
 use crate::scalarial::ScalarType;
@@ -32,6 +32,7 @@ use coln_flir_rs::schema::{
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
+use std::fmt;
 
 type BaseTableName = EntityRef;
 type DerivedViewName = EntityRef;
@@ -136,6 +137,7 @@ impl From<&BaseTableSchema> for TableSchema {
     fn from(value: &BaseTableSchema) -> Self {
         let columns = value
             .query_cols()
+            .inner()
             .iter()
             .map(|col| Column::new(col.name(), *col.ty()))
             .collect();
@@ -175,7 +177,7 @@ impl FlirProgram {
         for table in &flat_realm.tables {
             builder.table_declaration(table)?;
         }
-        builder.definitions(&flat_realm.definitions)?;
+        builder.definition_entries(&flat_realm.definitions)?;
         for rule in &flat_realm.rules {
             if rule.rule.consequents.is_empty() {
                 // The compiler does not clean up after the lowering and emits
@@ -245,47 +247,88 @@ impl FlirProgram {
         Ok(())
     }
 
-    fn definitions(&mut self, definitions: &[DefinitionEntry]) -> Result<(), SyntaxError> {
-        // TODO: Figure out potential interdependencies for mutual recursion.
-        let groups = DefinitionGroups::from(definitions);
-        for (definand, definitions) in groups.inner.iter() {
-            let mut identifiers = Vec::with_capacity(definitions.len());
-            for definition in definitions {
-                let (var_stmt, bindings) = self.definition(definand, definition)?;
-                identifiers.push(Expr::from(VarExpr::new(var_stmt.name.clone())));
-                self.code.push(Stmt::from(var_stmt));
+    fn definition_entries(&mut self, entries: &[DefinitionEntry]) -> Result<(), SyntaxError> {
+        let predicates = DefinitionGroups::from(entries);
+        for clique in &predicates.inner {
+            debug_assert_eq!(clique.len(), 1, "No mutual recursion yet");
+            // For mutual recursion: Combine non-rec and rec rules into one
+            // predicate and then the algorithm should work the same, except for
+            // how to return the accumulators back up with multiple recursands?
+            let predicate = clique.get(0).expect("Only cliques with one member");
+
+            if predicate.non_rec_rules.is_empty() {
+                return Err(SyntaxError::new(
+                    "Clique with no base case. Shall we just ignore it?",
+                ));
             }
-            let unionized = if identifiers.len() == 1 {
-                identifiers
-                    .pop()
-                    .expect("At least one definiton per definand group")
-            } else {
-                Expr::from(UnionExpr {
-                    relations: identifiers,
-                })
+
+            let (base_combining_expr, base_stmts) =
+                self.definitions(&predicate.name, &predicate.non_rec_rules)?;
+            self.code.extend(base_stmts);
+            if !predicate.is_recursive() {
+                self.code.push(Stmt::from(VarStmt {
+                    name: predicate.name.to_string(),
+                    initializer: Some(Expr::from(OutputExpr {
+                        id: SinkId::from(predicate.name.to_string()),
+                        kind: OutputKind::Channel,
+                        relation: base_combining_expr,
+                    })),
+                }));
+                continue;
+            }
+
+            let (step_combining_expr, mut step_stmts) =
+                self.definitions(&predicate.name, &predicate.rec_rules)?;
+            step_stmts.push(Stmt::from(ExprStmt {
+                expr: step_combining_expr,
+            }));
+            let fixed_point_iter_expr = FixedPointIterExpr {
+                accumulator: (predicate.name.to_string(), base_combining_expr),
+                step: BlockStmt { stmts: step_stmts },
             };
             self.code.push(Stmt::from(VarStmt {
-                name: definand.to_string(),
+                name: predicate.name.to_string(),
                 initializer: Some(Expr::from(OutputExpr {
-                    id: SinkId::from(definand.to_string()),
+                    id: SinkId::from(predicate.name.to_string()),
                     kind: OutputKind::Channel,
-                    relation: unionized,
+                    relation: Expr::from(fixed_point_iter_expr),
                 })),
-            }))
+            }));
         }
         Ok(())
     }
 
+    fn definitions(
+        &mut self,
+        definand: &Definand,
+        definitions: &[FriendlyDefinition],
+    ) -> Result<(Expr, Vec<Stmt>), SyntaxError> {
+        let (mut var_exprs, stmts): (Vec<Expr>, Vec<Stmt>) = definitions.iter().try_fold(
+            (Vec::<Expr>::new(), Vec::<Stmt>::new()),
+            |(mut var_exprs, mut stmts), definition| {
+                let (var_stmt, binding) = self.definition(definand, definition)?;
+                var_exprs.push(Expr::from(VarExpr::new(var_stmt.name.clone())));
+                stmts.push(Stmt::from(var_stmt));
+                Ok((var_exprs, stmts))
+            },
+        )?;
+        let combining_expr = if var_exprs.len() == 1 {
+            var_exprs.pop().expect("checked")
+        } else {
+            Expr::from(UnionExpr {
+                relations: var_exprs,
+            })
+        };
+        Ok((combining_expr, stmts))
+    }
+
+    /// Translates a single [rule](FriendlyDefinition) in isolation.
     fn definition(
         &mut self,
         definand: &Definand,
         definition: &FriendlyDefinition,
     ) -> Result<(VarStmt, Vec<Binding>), SyntaxError> {
-        let (expr, bindings) = if definition.is_recursive_with(definand) {
-            todo!("Recursive query");
-        } else {
-            self.conjunctive_query(&definition.antecedent, &definition.vars)?
-        };
+        let (expr, bindings) = self.conjunctive_query(&definition.antecedent, &definition.vars)?;
 
         let argument_expr = definition
             .arguments
@@ -320,7 +363,7 @@ impl FlirProgram {
                 name: definition.path.to_string(),
                 initializer: Some(Expr::from(projection)),
             },
-            bindings, // TODO: Correct bindings?
+            bindings, // TODO: Correct bindings after the projection, still?
         ))
     }
 
@@ -622,16 +665,20 @@ impl FlirProgram {
         self.derived_views
             .get(&DerivedViewName::from(name))
             .map(|derived_view_meta| {
-                if !derived_view_meta.is_live() {
-                    Err(SyntaxError::new(format!(
-                        "Referencing the derived view '{name}' prior to having finished formulating its query"
-                    )))
-                } else {
-                    Ok((
-                        VarExpr::new(name.to_string()),
-                        derived_view_meta.coln_schema(),
-                    ))
-                }
+                Ok((
+                    VarExpr::new(name.to_string()),
+                    derived_view_meta.coln_schema(),
+                ))
+                // if !derived_view_meta.is_live() {
+                //     Err(SyntaxError::new(format!(
+                //         "Referencing the derived view '{name}' prior to having finished formulating its query"
+                //     )))
+                // } else {
+                //     Ok((
+                //         VarExpr::new(name.to_string()),
+                //         derived_view_meta.coln_schema(),
+                //     ))
+                // }
             })
     }
 }
@@ -665,27 +712,83 @@ type Definand = ir::Path;
 
 /// [`DefinitionEntries`](ir::DefinitionEntry) grouped by their [`Definand`].
 struct DefinitionGroups {
-    inner: HashMap<Definand, Vec<FriendlyDefinition>>,
+    /// The inner vec is a clique, that is, a group of predicates who are
+    /// mutually recursive. They form a strongly connected component (SCC) of
+    /// the predicate graph.
+    inner: Vec<Vec<Predicate>>,
 }
 
 impl DefinitionGroups {
     fn from(definition_entries: &[ir::DefinitionEntry]) -> DefinitionGroups {
-        let mut groups =
-            HashMap::<Definand, Vec<FriendlyDefinition>>::with_capacity(definition_entries.len());
+        let mut predicates: Vec<Predicate> = Vec::with_capacity(definition_entries.len());
+        let mut grouping: HashMap<&Definand, usize> =
+            HashMap::with_capacity(definition_entries.len());
+
         for definition_entry in definition_entries {
             let definand = &definition_entry.definition.definand;
+            let idx = if grouping.contains_key(definand) {
+                *grouping.get(definand).expect("checked above")
+            } else {
+                let idx = predicates.len();
+                predicates.push(Predicate::empty(definand.clone()));
+                debug_assert!(grouping.insert(definand, idx).is_none());
+                idx
+            };
+            let predicate = &mut predicates[idx];
             let friendly_definition =
                 FriendlyDefinition::from(&definition_entry.path, &definition_entry.definition);
-            if groups.contains_key(definand) {
-                groups
-                    .get_mut(definand)
-                    .expect("checked above")
-                    .push(friendly_definition);
+            let is_self_recursive = friendly_definition.is_recursive_with(definand);
+            if is_self_recursive {
+                predicate.rec_rules.push(friendly_definition);
             } else {
-                groups.insert(definand.clone(), vec![friendly_definition]);
+                predicate.non_rec_rules.push(friendly_definition);
             }
         }
-        Self { inner: groups }
+        // TODO: Sorting of the predicates for mutual recursion and execution
+        // order. For now we cheat and don't compute exec order and every
+        // predicate ends up in its own isolated clique because we don't support
+        // mutual recursion at the moment.
+        let inner = predicates
+            .into_iter()
+            .map(|predicate| vec![predicate])
+            .collect();
+        Self { inner }
+    }
+}
+
+/// TODO: Plan for mutually recursive rules:
+/// [`Predicate`] models one "Datalog" predicate which is defined through
+/// multiple rules. It partitions its rules into non-recursive rules and
+/// recursive rules (may they be self- or mutually-recursive).
+/// Then, compute the SCCs in reverse topological order on top of the
+/// Predicates to get an evaluation order.
+/// Then, within one SCC combine all DefinitionGroups' non-recursive rules
+/// into the FixedPointIter's accumulator and combine the recursive rules
+/// into the FixedPointIter's step.
+///
+/// TODO: Outsource into a middle layer, sitting between the query engine's IR
+/// and the FLIR or maybe a Datalog frontend. Every frontend can then use the
+/// `PredicateMeta` generic to add arbitrary per-frontend metadata,
+/// such as the a FLIR's rule kind. Add a RuleMeta.
+struct Predicate {
+    /// The name (unique identifier) of the predicate.
+    name: ir::Path,
+    /// Contains non-recursive rules.
+    non_rec_rules: Vec<FriendlyDefinition>,
+    /// Contains both self-recursive and mutually-recursive rules.
+    rec_rules: Vec<FriendlyDefinition>,
+}
+
+impl Predicate {
+    fn empty(name: ir::Path) -> Self {
+        Self {
+            name,
+            non_rec_rules: Vec::new(),
+            rec_rules: Vec::new(),
+        }
+    }
+    fn is_recursive(&self) -> bool {
+        !self.rec_rules.is_empty()
     }
 }
 
@@ -696,6 +799,9 @@ impl DefinitionGroups {
 /// 2. It converts [`ir::Definition::antecedents`] into a [`ConjunctiveQuery`].
 ///
 /// Similar to [`FriendlyRule`] but it does not know a consequent nor a rule kind.
+/// TODO: Unite both [`FriendlyRule`] and [`FriendlyDefinition`] in one rule
+/// type of the fronend-neutral middle layer and solve the variable expansion
+/// problem beforehand.
 struct FriendlyDefinition {
     path: ir::Path,
     vars: Vec<FriendlyVar>,
@@ -1758,7 +1864,7 @@ mod tests {
     fn translate_json_flir(file_name: &str) -> FlirProgram {
         let flat_realm = coln_flir_rs::test_utils::load_theory_from_json(file_name);
         FlirProgram::from_flat_realm(&flat_realm)
-            .unwrap_or_else(|_| panic!("{file_name} is convertible to a query program"))
+            .unwrap_or_else(|err| panic!("{file_name} is convertible to a query program {err}"))
     }
 
     #[test]
@@ -1776,6 +1882,12 @@ mod tests {
     #[test]
     fn triangle_flir() {
         let program = translate_json_flir("TriangleRealm.json");
+        println!("{}", program.to_tree());
+    }
+
+    #[test]
+    fn transitive_closure_flir() {
+        let program = translate_json_flir("TransitiveClosureRealm.json");
         println!("{}", program.to_tree());
     }
 }

@@ -40,6 +40,10 @@ impl QueryIr {
         self.0.push(stmt);
     }
 
+    pub fn extend(&mut self, stmts: impl IntoIterator<Item = Stmt>) {
+        self.0.extend(stmts)
+    }
+
     pub fn into_stmts(self) -> Vec<Stmt> {
         self.0
     }
