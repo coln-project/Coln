@@ -9,9 +9,6 @@ import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
 import GHC.Generics
 
-data PrimQuery
-  = PrimaryKey TableName [El Set]
-
 data El :: MLevel -> Type where
   LiftEl :: El Set -> El Theory
   Var :: BId -> El Set

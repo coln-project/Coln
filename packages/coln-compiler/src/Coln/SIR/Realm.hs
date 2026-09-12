@@ -43,9 +43,9 @@ data Rule = Rule
   }
 
 data Realm = Realm
-  { entities :: Trie Entity
-  , definitions :: Trie Definition
-  , rules :: Trie Rule
+  { entities :: OMap TableName Entity
+  , definitions :: OMap TableName Definition
+  , rules :: OMap TableName Rule
   , root :: El Theory
   , rootType :: CoreV.Ty N
   }

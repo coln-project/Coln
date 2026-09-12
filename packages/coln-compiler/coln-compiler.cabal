@@ -13,7 +13,6 @@ library
     Coln.Backend.TypeScript.AST
     Coln.Backend.TypeScript.Assemble
     Coln.Backend.TypeScript.Generate
-    Coln.Backend.TypeScript.Params
     Coln.Common
     Coln.Core
     Coln.Core.Conversion

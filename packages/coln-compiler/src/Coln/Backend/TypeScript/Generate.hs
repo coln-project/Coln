@@ -27,7 +27,7 @@ import Coln.MIR.Params
 
 import Coln.FLIR.Flatten qualified as FLIR
 import Coln.FLIR.Value qualified as FLIR
--- import Coln.SIR.Realm qualified as SIR
+import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Syntax qualified as SIR
 
 mangle :: Name -> TS.Id
@@ -89,25 +89,27 @@ data FlatParams = FlatParams
   , numParams :: Int
   }
 
-allocParams :: TS.El -> SIR.Shape -> State FlatParams FLIR.Els
-allocParams v = \case
+allocParam :: TS.El -> SIR.Shape -> State FlatParams FLIR.Els
+allocParam v = \case
   SIR.Tuple d -> do
-    FLIR.Cons <$> mapWithKeyM (\x sh -> allocParams (TS.Proj v (mangle x)) sh) d
+    FLIR.Cons <$> mapWithKeyM (\x sh -> allocParam (TS.Proj v (mangle x)) sh) d
   SIR.Scalar _ -> state \p ->
     ( FLIR.Scalar (FLIR.Param (FId p.numParams))
     , p{paramVals = p.paramVals :> v, numParams = p.numParams + 1}
     )
   SIR.Unstored -> pure FLIR.Erased
 
+-- allocParams :: [(TS.El, SIR.Shape)] -> State FlatParams [TS.El]
+
 data TSEnv = TSEnv
   { tsLocals :: Bwd TS.El
   , usedNames :: Set.Set Name
-  , flatParams :: FlatParams
+  , realm :: SIR.Realm
   , store :: TS.El
   }
 
-emptyTSEnv :: TS.El -> TSEnv
-emptyTSEnv = TSEnv BwdNil Set.empty (FlatParams BwdNil 0)
+emptyTSEnv :: SIR.Realm -> TS.El -> TSEnv
+emptyTSEnv = TSEnv BwdNil Set.empty
 
 reconstructEl :: FlatParams -> FLIR.El -> TS.El
 reconstructEl e = \case
@@ -124,19 +126,55 @@ reconstructEls e = \case
 class GenEl a where
   genEl :: TSEnv -> a -> TS.El
 
-baseTableSet :: TSEnv -> TableName -> TS.El
-baseTableSet env tn =
+flattenParams :: [(TS.El, SIR.Shape)] -> [TS.El]
+flattenParams params = do
+  let fp = execState (traverse (uncurry allocParam) params) (FlatParams BwdNil 0)
+  toList fp.paramVals
+
+baseTableSet :: TSEnv -> TableName -> [(TS.El, SIR.Shape)] -> TS.El
+baseTableSet env tn params =
   TS.New
     (TS.Const (runtime "BaseTableSet"))
     [ env.store
     , tnString tn
-    , toList env.flatParams.paramVals
+    , TS.List $ flattenParams params
     ]
+
+viewTableSet :: TSEnv -> TableName -> [(TS.El, SIR.Shape)] -> SIR.Shape -> TS.El
+viewTableSet env tn params retShape = undefined
+
+data El = Reference (SIR.El Set) | Value (SIR.El Set)
+
+argName :: Set.Set Name -> SIR.Abs a -> Name
+argName used (SIR.Abs (Just x) _) = freshenFor used x
+argName used _ = freshNameFor used
 
 instance GenEl (SIR.El Theory) where
   genEl e = \case
-    SIR.LiftEl v -> undefined
-    SIR.SelectRowId SSetU tn cols -> baseTableSet e 
+    SIR.LiftEl v -> genEl e (Reference v)
+    SIR.SelectRowId u tn cols -> do
+      let tsCols = genEl e . Value <$> cols
+      let colShapes = snd <$> (elemAt e.realm.entities tn).columns
+      case u of
+        SPropU -> panic "todo"
+        SSetU -> baseTableSet e tn $ zip tsCols colShapes
+    SIR.SelectLast u tn cols retShape -> do
+      let tsCols = genEl e . Value <$> cols
+      let colShapes = snd <$> (elemAt e.realm.entities tn).columns
+      case u of
+        SPropU -> panic "todo"
+        SSetU -> viewTableSet e tn (zip tsCols colShapes) retShape
+    SIR.Lam dom abs -> do
+      let x = mangle $ argName e.usedNames abs
+      let tsBody = case abs of
+            SIR.Abs _ body -> genEl (e { tsLocals = e.tsLocals :> TS.Var x }) body
+            SIR.AbsConst body -> genEl e body
+      TS.Lam (TS.Binding x (genTy dom.shape)) (TS.Block [] (Just tsBody))
+    SIR.Cons fields -> TS.Object $ [(mangle x, genEl e t) | (x, t) <- toList fields]
+
+instance GenEl El where
+  genEl e = \case
+    _ -> undefined
 
 -- genQuery :: Access -> TSEnv -> SIR.Query -> TS.El
 -- genQuery _access e q = do
