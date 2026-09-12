@@ -12,7 +12,7 @@ use crate::rowing::Rowing;
 use crate::table::PackedOp;
 use crate::table::index::IndexMeta;
 use crate::table::{
-    PackedRowView, PackedValue, Table, TableOid, ValidationError, WireRowId, WireValue,
+    PackedRowView, PackedTuple, PackedValue, Table, TableOid, ValidationError, WireRowId, WireValue,
 };
 use crate::txn::TxnLiveRowId;
 
@@ -132,7 +132,7 @@ impl<'a> TableHandle<'a> {
                 WireValue::Int(i) => Ok(PackedValue::Int(*i)),
                 WireValue::Str(s) => Ok(PackedValue::Str(s.clone())),
             })
-            .collect::<Result<Vec<PackedValue>, _>>()?;
+            .collect::<Result<PackedTuple, _>>()?;
         Ok(self
             .inner
             .index_seek(&packed_key)?

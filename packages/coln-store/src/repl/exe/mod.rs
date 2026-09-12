@@ -14,7 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use crate::{
     commit::pst::{decode_store, encode_store},
-    ir::{BuiltinTy, ColType, ColumnEntry, FlatRealm},
+    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm},
     store::{ColnDef, Store},
     table::{TableHandle, WireRowId},
     txn::{TempRowId, TxnWireValue},
@@ -212,6 +212,7 @@ pub struct SchemaSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableSummary {
     pub(crate) path: String,
+    pub(crate) entity_variant: EntityVariant,
     pub(crate) column_count: usize,
     pub(crate) primary_key: PrimaryKeySummary,
     pub(crate) columns: Vec<String>,
@@ -263,6 +264,7 @@ impl SchemaSummary {
             .tables()
             .map(|(_, table)| TableSummary {
                 path: table.path().to_string(),
+                entity_variant: table.inner().table_variant().clone(),
                 column_count: table.schema().columns.len(),
                 primary_key: match &table.schema().primary_key {
                     None => PrimaryKeySummary::None,
@@ -289,6 +291,7 @@ impl SchemaSummary {
             .iter()
             .map(|entry| TableSummary {
                 path: entry.path.to_string(),
+                entity_variant: entry.table.entity_variant.clone(),
                 column_count: entry.table.columns.len(),
                 primary_key: match &entry.table.primary_key {
                     None => PrimaryKeySummary::None,
@@ -363,7 +366,7 @@ pub fn render_schema_summary(schema: Option<&SchemaSummary>) -> String {
 
 fn render_table_schema_summary(table: &TableSummary) -> String {
     let mut lines = vec![
-        format!("table: {}", table.path),
+        format!("{}: {}", table.entity_variant, table.path),
         format!("columns: {}", table.column_count),
         format!("primary key: {}", format_primary_key(&table.primary_key)),
     ];

@@ -4,9 +4,9 @@
 
 pub mod cell;
 mod col;
+pub mod handle;
 pub(crate) mod index;
 pub mod sorted;
-pub mod handle;
 mod undo;
 
 pub use cell::{CellKind, WireRowId, WireValue};
@@ -15,11 +15,11 @@ pub use handle::TableHandle;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-use coln_query::api::deltas::{TableDelta, ZRow};
+use coln_query::api::deltas::{ScalarTypedValue, TableDelta, ZRow};
 
 use crate::ir;
 use crate::ir::Schema;
-use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedValue};
+use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedTuple, PackedValue};
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
 use crate::table::col::{Column, IdColumn};
@@ -169,6 +169,10 @@ impl Table {
     pub(crate) fn unique_columns(&self) -> Option<usize> {
         self.pk
     }
+
+    pub(crate) fn table_variant(&self) -> &ir::EntityVariant {
+        &self.schema.entity_variant
+    }
 }
 
 impl Table {
@@ -176,7 +180,7 @@ impl Table {
 
     /// O(N * log S) as first find out the index from the row_id, and then do a
     /// lookup on each column
-    pub(crate) fn row_by_id(&self, row_id: PackedRowId) -> Option<Vec<PackedValue>> {
+    pub(crate) fn row_by_id(&self, row_id: PackedRowId) -> Option<PackedTuple> {
         let row_idx = self.row_ids.position(row_id).ok()?;
         (0..self.schema.columns.len())
             .map(|col_idx| {
@@ -191,7 +195,7 @@ impl Table {
         let row_id = self.row_id_by_idx(row_idx)?;
         let values = (0..self.schema.columns.len())
             .map(|col_idx| self.cell_by_idx(row_idx, col_idx))
-            .collect::<Option<Vec<_>>>()?;
+            .collect::<Option<PackedTuple>>()?;
 
         Some(PackedRowView { row_id, values })
     }
@@ -220,7 +224,7 @@ impl Table {
 
     pub(crate) fn index_seek<'s>(
         &'s self,
-        key: &[PackedValue],
+        key: &PackedTuple,
     ) -> Result<impl Iterator<Item = PackedRowId> + use<'s>, ValidationError> {
         if key.len() > self.index.key_cols().len() {
             return Err(ValidationError::InvalidIndexKey {
@@ -263,7 +267,7 @@ impl Table {
         if let Some(cols) = &self.pk {
             let Some(key) = (0..*cols)
                 .map(|ci| dict.try_pack_value(&values[ci]))
-                .collect::<Option<Vec<_>>>()
+                .collect::<Option<PackedTuple>>()
             else {
                 // If we cannot pack, then the primary key should be absent, so no need to check
                 return Ok(());
@@ -376,6 +380,73 @@ impl Table {
         TableDelta::new(self.path().to_string(), zrows)
     }
 
+    // This conversion needs table schema, therefore cannot be done with From trait
+    pub(crate) fn ops_from_table_delta<F>(
+        &self,
+        td: TableDelta,
+        mut id_allocate: F,
+    ) -> Vec<PackedOp>
+    where
+        F: FnMut() -> PackedRowId,
+    {
+        td.into_iter()
+            .map(|zrow| {
+                let row_id = id_allocate();
+                if zrow.zweight() > 0 {
+                    let mut val_iter = zrow.into_row().data.into_iter();
+                    let mut packed_val = Vec::new();
+
+                    for col in &self.schema().columns {
+                        match col.col_type {
+                            ir::ColType::RowId { .. } => {
+                                let ScalarTypedValue::Uint(commit_idx) =
+                                    val_iter.next().expect("coln-query returns valid data")
+                                else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                let ScalarTypedValue::Uint(counter) =
+                                    val_iter.next().expect("coln-query returns valid data")
+                                else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                packed_val.push(PackedValue::Id(PackedRowId {
+                                    commit_idx: commit_idx as u32,
+                                    counter: counter as u32,
+                                }));
+                            }
+                            ir::ColType::BuiltinTy {
+                                builtin_ty: ir::BuiltinTy::BuiltinInt,
+                            } => {
+                                let ScalarTypedValue::String(s) = val_iter.next().unwrap() else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                packed_val.push(PackedValue::Str(s));
+                            }
+                            ir::ColType::BuiltinTy {
+                                builtin_ty: ir::BuiltinTy::BuiltinStr,
+                            } => {
+                                let ScalarTypedValue::Iint(i) = val_iter.next().unwrap() else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                packed_val.push(PackedValue::Int(i as i32));
+                            }
+                        }
+                    }
+
+                    PackedOp::Add {
+                        row_id,
+                        values: packed_val.into(),
+                    }
+                } else if zrow.zweight() < 0 {
+                    // TODO don't know how to remove yet
+                    todo!()
+                } else {
+                    unreachable!("zero zweight impossible")
+                }
+            })
+            .collect()
+    }
+
     fn apply_op(&mut self, op: PackedOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
         match op {
             PackedOp::Add { row_id, values } => {
@@ -473,7 +544,7 @@ impl Table {
             }
 
             let new_row_id = rowing.canonical_id(&old_row_id, id_packer);
-            let old_cells: Vec<PackedValue> = self
+            let old_cells: PackedTuple = self
                 .cols
                 .iter()
                 .map(|column| {
@@ -509,10 +580,10 @@ impl Table {
 
     /// Rewrite every id cell to its canonical id, leaving other cells alone.
     fn canonicalise_cells(
-        values: &[PackedValue],
+        values: &PackedTuple,
         rowing: &Rowing,
         id_packer: &IdPacker,
-    ) -> Vec<PackedValue> {
+    ) -> PackedTuple {
         values
             .iter()
             .map(|cell| match cell {
@@ -524,7 +595,7 @@ impl Table {
 
     /// ids referred by this row.
     #[expect(dead_code)]
-    fn referenced_ids(values: &[PackedValue]) -> impl Iterator<Item = PackedRowId> {
+    fn referenced_ids(values: &PackedTuple) -> impl Iterator<Item = PackedRowId> {
         values
             .iter()
             .enumerate()
@@ -543,7 +614,7 @@ impl Table {
     /// Only does primary key check, but no other validation.
     pub(super) fn insert_row(
         &mut self,
-        values: Vec<PackedValue>,
+        values: PackedTuple,
         row_id: PackedRowId,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
@@ -576,7 +647,7 @@ impl Table {
     }
 
     /// Place a row in columnar storage and every index, with no validation
-    fn insert_packed(&mut self, values: Vec<PackedValue>, row_id: PackedRowId) {
+    fn insert_packed(&mut self, values: PackedTuple, row_id: PackedRowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
         self.index.insert(values.clone(), row_id);
@@ -596,7 +667,7 @@ impl Table {
     }
 
     /// Take a row out of columnar storage and every index, returning its cells
-    fn remove_packed(&mut self, row_id: PackedRowId) -> Vec<PackedValue> {
+    fn remove_packed(&mut self, row_id: PackedRowId) -> PackedTuple {
         let row_idx = self
             .row_ids
             .position(row_id)
@@ -645,7 +716,8 @@ impl Table {
         let mut out = String::new();
         let _ = writeln!(
             out,
-            "table {} (rows: {}, cols: {})",
+            "{} {} (rows: {}, cols: {})",
+            self.schema.entity_variant,
             self.path,
             self.row_count(),
             self.schema.columns.len()
