@@ -2,7 +2,6 @@ module Coln.MIR.Realm where
 
 import Coln.Common
 import Coln.Core.Params
-import Coln.Core.Value qualified as CoreV
 import Coln.MIR.Memoed qualified as M
 import Coln.MIR.Params
 import Coln.MIR.Value qualified as V
@@ -29,7 +28,7 @@ data RealmDefinition = RealmDefinition
 
 data Realm = Realm
   { root :: V.El N Theory
-  , rootType :: CoreV.Ty N
+  , rootType :: V.Ty N Theory
   , generators :: Trie Generator
   , realmDefinitions :: OMap Name RealmDefinition
   }

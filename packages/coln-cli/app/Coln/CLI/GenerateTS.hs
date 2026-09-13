@@ -4,12 +4,10 @@
 
 module Coln.CLI.GenerateTS where
 
--- import Coln.Backend.TypeScript.Generate
--- import Coln.CLI.Common
+import Coln.Top
 import Coln.CLI.Options
 
 generateTS :: GenerateTSOptions -> IO ()
 generateTS opts = do
-  putStrLn "typescript generation currently unimplemented"
-  -- ge <- loadFile opts.inputFile
-  -- generate ge opts.outputDir
+  (_, realms) <- loadRealms opts.inputFile
+  writeTS opts.outputDir realms

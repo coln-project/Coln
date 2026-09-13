@@ -13,15 +13,4 @@ realm GraphRealm @ Graph
     outof : root.V
     has-edge : root.E outof v
   end
-
-  def free-edge : Set := sig
-    v0 : root.V
-    v1 : root.V
-    e : root.E v0 v1
-  end
-
-  def free-edge-pair : Set := sig
-    e0 : free-edge
-    e1 : free-edge
-  end
 end

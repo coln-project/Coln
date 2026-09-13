@@ -14,6 +14,7 @@ import Coln.MIR.Realm qualified as MIR
 import Coln.SIR.Cache
 import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Separate
+import Coln.MIR.Memoed (Memoed (..))
 
 split3 :: Dict (Maybe x, Maybe y, Maybe z) -> (Maybe (Dict x), Maybe (Dict y), Maybe (Dict z))
 split3 d = do
@@ -47,18 +48,23 @@ fromNode Nothing = []
 fromNode (Just Leaf{}) = panic "leaf at top of generator trie"
 fromNode (Just (Node d)) = toList d
 
+trieToOMap :: Trie a -> OMap TableName a
+trieToOMap t = OMap.fromList [(tableName k, v) | (k, v) <- toList t]
+
 mirToSIR :: MIR.Realm -> SIR.Realm
 mirToSIR r = do
   let (_, _, root) = cache "root" (BwdNil :> "root") emptyScope r.root
   let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (tableName p)) BwdNil r.generators
   let (names, cached) = unzip $ map (fst &&& uncurry cacheTop) $ OMap.assocs r.realmDefinitions
-  let (cachedE, cachedD, _) = unzip3 cached
+  let auxTypes = map (\(_, d) -> theoryShapeOf (CtxShape 0 BwdNil) d.ty d.body.val) $ OMap.assocs r.realmDefinitions
+  let (cachedE, cachedD, cachedS) = unzip3 cached
   let viewE = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedE)]
   let viewD = Node $ fromList [(x, y) | (x, Just y) <- zip names (map cleanTrie cachedD)]
   SIR.Realm
-    { entities = Node $ fromList $ fromNode rootE ++ [("view", viewE)]
-    , definitions = Node $ fromList $ fromNode rootD ++ [("view", viewD)]
-    , rules = fromMaybe emptyNode rootR
+    { entities = trieToOMap $ Node $ fromList $ fromNode rootE ++ [("view", viewE)]
+    , definitions = trieToOMap $ Node $ fromList $ fromNode rootD ++ [("view", viewD)]
+    , rules = trieToOMap $ fromMaybe emptyNode rootR
     , root = root
-    , rootType = r.rootType
+    , rootType = theoryShapeOf (CtxShape 0 BwdNil) r.rootType r.root
+    , auxillaries = OMap.fromList $ zip names (zip cachedS auxTypes)
     }

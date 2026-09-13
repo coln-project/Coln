@@ -2,7 +2,7 @@ module Coln.SIR.Realm where
 
 import Coln.Common
 import Coln.Core.Params
-import Coln.Core.Value qualified as CoreV
+
 import Coln.SIR.Syntax
 
 import Data.Aeson qualified as AE
@@ -47,7 +47,8 @@ data Realm = Realm
   , definitions :: OMap TableName Definition
   , rules :: OMap TableName Rule
   , root :: El Theory
-  , rootType :: CoreV.Ty N
+  , rootType :: TheoryShape
+  , auxillaries :: OMap Name (El Theory, TheoryShape)
   }
 
 -- JSON

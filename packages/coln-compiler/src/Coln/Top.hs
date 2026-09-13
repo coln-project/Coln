@@ -8,6 +8,8 @@ import Coln.Frontend.Parser
 import Coln.MIR.Top
 import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Top
+import Coln.Backend.TypeScript.Generate (genRealmModule)
+import Coln.Backend.TypeScript.Assemble (asm)
 
 import Control.Exception
 import Data.Aeson qualified as AE
@@ -57,10 +59,16 @@ compile fp contents = do
   let top = topFromText reporter f
   (reporter, top)
 
-writeFLIR :: FilePath -> Reporter ColnCode -> OMap Name SIR.Realm -> IO ()
-writeFLIR fp _ realms = for_ (OMap.assocs realms) $ \(rId, r) -> do
+writeFLIR :: FilePath -> OMap Name SIR.Realm -> IO ()
+writeFLIR fp realms = for_ (OMap.assocs realms) $ \(rId, r) -> do
   let flir = sirToFLIR r
   let fn = fp </> mangleToString rId <> ".json"
   AE.encodeFile fn flir
   let pn = fp </> mangleToString rId <> ".pretty"
   withFile pn WriteMode $ \h -> hPutDoc h $ dpretty flir
+
+writeTS :: FilePath -> OMap Name SIR.Realm -> IO ()
+writeTS fp realms = for_ (OMap.assocs realms) $ \(rId, r) -> do
+  let tsModule = genRealmModule rId r
+  let fn = fp </> mangleToString rId <> ".ts"
+  withFile fn WriteMode $ \h -> hPutDoc h $ asm tsModule

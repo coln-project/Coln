@@ -4,29 +4,16 @@
 
 module Coln.Backend.TypeScript.Generate where
 
+import Control.Monad (forM)
 import Control.Monad.State
-
--- import Data.Aeson qualified as AE
--- import Data.Foldable (foldlM)
-
--- import Data.Foldable qualified as F
--- import Data.Map.Ordered qualified as OMap
 import Data.Set qualified as Set
--- import Data.String (IsString (..))
--- import Data.Text.Lazy qualified as TL
--- import Data.Text.Lazy.IO qualified as TLIO
--- import Prettyprinter
--- import Prettyprinter.Render.Text
--- import System.FilePath
+import Data.Map.Ordered qualified as OMap
 
 import Coln.Backend.TypeScript.AST qualified as TS
--- import Coln.Backend.TypeScript.Assemble (asm)
 import Coln.Common
 import Coln.Core.Params
 import Coln.MIR.Params
 
-import Coln.FLIR.Flatten qualified as FLIR
-import Coln.FLIR.Value qualified as FLIR
 import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Syntax qualified as SIR
 
@@ -72,7 +59,7 @@ instance GenTy SIR.ScalarType where
 
 instance GenTy SIR.Shape where
   genTy = \case
-    SIR.Tuple fields -> TS.RecordTy (genTy <$> fields)
+    SIR.Tuple fields -> TS.RecordTy [(mangle x, genTy ty) | (x, ty) <- toList fields]
     SIR.Scalar s -> genTy s
     SIR.Unstored -> TS.NullTy
 
@@ -80,7 +67,7 @@ instance GenTy SIR.TheoryShape where
   genTy = \case
     SIR.LiftTy a -> refInterface (genTy a)
     SIR.Function x dom cod -> TS.Fun (TS.Binding (mangle x) (genTy dom)) (genTy cod)
-    SIR.Record fields -> TS.RecordTy (genTy <$> fields)
+    SIR.Record fields -> TS.RecordTy [(mangle x, genTy ty) | (x, ty) <- toList fields]
     SIR.U SSetU a -> setInterface (genTy a)
     SIR.U SPropU _ -> propInterface
 
@@ -89,17 +76,64 @@ data FlatParams = FlatParams
   , numParams :: Int
   }
 
-allocParam :: TS.El -> SIR.Shape -> State FlatParams FLIR.Els
-allocParam v = \case
+emptyParams :: FlatParams
+emptyParams = FlatParams BwdNil 0
+
+class Reconstructable a b | a -> b, b -> a where
+  atIndex :: a -> Int -> SIR.ScalarType -> b
+  cons :: [(TS.Id, b)] -> b
+  unstored :: b
+
+instance Reconstructable TS.Id TS.El where
+  atIndex res i = do
+    let t = TS.Index (TS.Var res) i
+    \case
+      SIR.BuiltinTy _ -> t
+      SIR.RowId tn -> TS.New (TS.Const (runtime "RowId")) [t, tnString tn]
+  cons = TS.Object
+  unstored = TS.Null
+
+instance Reconstructable () () where
+  atIndex _ _ _ = ()
+  cons _ = ()
+  unstored = ()
+
+allocParam :: (Reconstructable a b) => a -> TS.El -> SIR.Shape -> State FlatParams b
+allocParam res v = \case
   SIR.Tuple d -> do
-    FLIR.Cons <$> mapWithKeyM (\x sh -> allocParam (TS.Proj v (mangle x)) sh) d
-  SIR.Scalar _ -> state \p ->
-    ( FLIR.Scalar (FLIR.Param (FId p.numParams))
+    fmap cons $ forM (toList d) $ \(x, sh) -> do
+      let i = mangle x
+      el <- allocParam res (TS.Proj v i) sh
+      pure (i, el)
+  SIR.Scalar st -> state \p ->
+    ( atIndex res p.numParams st
     , p{paramVals = p.paramVals :> v, numParams = p.numParams + 1}
     )
-  SIR.Unstored -> pure FLIR.Erased
+  SIR.Unstored -> pure unstored
 
--- allocParams :: [(TS.El, SIR.Shape)] -> State FlatParams [TS.El]
+flattenParams :: [(TS.El, SIR.Shape)] -> (Int, [TS.El])
+flattenParams params = do
+  let fp = execState (traverse (uncurry (allocParam ())) params) (FlatParams BwdNil 0)
+  (fp.numParams, toList fp.paramVals)
+
+data Adapter = Adapter
+  { flatten :: TS.El
+  , reconstruct :: TS.El
+  , length :: Int
+  }
+
+constructAdapter :: TSEnv -> SIR.Shape -> Adapter
+constructAdapter e sh = do
+  let resultVar = mangle $ freshenFor e.usedNames "result"
+  let inputVar = mangle $ freshNameFor e.usedNames
+  let (reconstructed, params) = runState (allocParam resultVar (TS.Var inputVar) sh) emptyParams
+  let flatten = TS.Lam
+        (TS.Binding inputVar (genTy sh))
+        (TS.Block [] (Just (TS.List $ toList params.paramVals)))
+  let reconstruct = TS.Lam
+        (TS.Binding resultVar (TS.TyConst (runtime "WireTuple") []))
+        (TS.Block [] (Just reconstructed))
+  Adapter flatten reconstruct params.numParams
 
 data TSEnv = TSEnv
   { tsLocals :: Bwd TS.El
@@ -111,39 +145,57 @@ data TSEnv = TSEnv
 emptyTSEnv :: SIR.Realm -> TS.El -> TSEnv
 emptyTSEnv = TSEnv BwdNil Set.empty
 
-reconstructEl :: FlatParams -> FLIR.El -> TS.El
-reconstructEl e = \case
-  FLIR.LocalVar (FId i) -> TS.Index (TS.Var "result") i
-  FLIR.Lit l -> TS.Lit l
-  FLIR.Param (FId i) -> elemAt e.paramVals (BId (e.numParams - i - 1))
-
-reconstructEls :: FlatParams -> FLIR.Els -> TS.El
-reconstructEls e = \case
-  FLIR.Scalar v -> reconstructEl e v
-  FLIR.Cons d -> TS.Object [(mangle x, reconstructEls e t) | (x, t) <- toList d]
-  FLIR.Erased -> TS.Null
-
 class GenEl a where
   genEl :: TSEnv -> a -> TS.El
 
-flattenParams :: [(TS.El, SIR.Shape)] -> [TS.El]
-flattenParams params = do
-  let fp = execState (traverse (uncurry allocParam) params) (FlatParams BwdNil 0)
-  toList fp.paramVals
-
-baseTableSet :: TSEnv -> TableName -> [(TS.El, SIR.Shape)] -> TS.El
-baseTableSet env tn params =
+createTSArgs :: TSEnv -> TableName -> [SIR.El Set] -> [(TS.El, SIR.Shape)]
+createTSArgs e tn cols = do
+  let tsCols = genEl e . (Value,) <$> cols
+  let colShapes = snd <$> (elemAt e.realm.entities tn).columns
+  zip tsCols colShapes
+  
+baseTableSet :: TSEnv -> TableName -> [SIR.El Set] -> TS.El
+baseTableSet env tn cols =
   TS.New
     (TS.Const (runtime "BaseTableSet"))
     [ env.store
     , tnString tn
-    , TS.List $ flattenParams params
+    , TS.List $ snd $ flattenParams $ createTSArgs env tn cols
     ]
 
-viewTableSet :: TSEnv -> TableName -> [(TS.El, SIR.Shape)] -> SIR.Shape -> TS.El
-viewTableSet env tn params retShape = undefined
+viewTableSet :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> TS.El
+viewTableSet env tn cols retShape = do
+  let (n, tsParams) = flattenParams $ createTSArgs env tn cols
+  let adapter = constructAdapter env retShape
+  TS.New
+    (TS.Const (runtime "ViewTableSet"))
+    [ env.store
+    , tnString tn
+    , TS.List tsParams
+    , TS.List [TS.Lit (LitInt i) | i <- [n..n + adapter.length - 1]]
+    , TS.Object
+      [ ("flatten", adapter.flatten)
+      , ("reconstruct", adapter.reconstruct)
+      ]
+    ]
 
-data El = Reference (SIR.El Set) | Value (SIR.El Set)
+baseTableRef :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> TS.El
+baseTableRef env tn cols retShape = do
+  let (n, tsParams) = flattenParams $ createTSArgs env tn cols
+  let adapter = constructAdapter env retShape
+  TS.New
+    (TS.Const (runtime "BaseTableRef"))
+    [ env.store
+    , tnString tn
+    , TS.List tsParams
+    , TS.List [TS.Lit (LitInt i) | i <- [n..n + adapter.length]]
+    , TS.Object
+      [ ("flatten", adapter.flatten)
+      , ("reconstruct", adapter.reconstruct)
+      ]
+    ]
+
+data AccessType = Reference | Value
 
 argName :: Set.Set Name -> SIR.Abs a -> Name
 argName used (SIR.Abs (Just x) _) = freshenFor used x
@@ -151,19 +203,15 @@ argName used _ = freshNameFor used
 
 instance GenEl (SIR.El Theory) where
   genEl e = \case
-    SIR.LiftEl v -> genEl e (Reference v)
+    SIR.LiftEl v -> genEl e (Reference, v)
     SIR.SelectRowId u tn cols -> do
-      let tsCols = genEl e . Value <$> cols
-      let colShapes = snd <$> (elemAt e.realm.entities tn).columns
       case u of
         SPropU -> panic "todo"
-        SSetU -> baseTableSet e tn $ zip tsCols colShapes
+        SSetU -> baseTableSet e tn cols
     SIR.SelectLast u tn cols retShape -> do
-      let tsCols = genEl e . Value <$> cols
-      let colShapes = snd <$> (elemAt e.realm.entities tn).columns
       case u of
         SPropU -> panic "todo"
-        SSetU -> viewTableSet e tn (zip tsCols colShapes) retShape
+        SSetU -> viewTableSet e tn cols retShape
     SIR.Lam dom abs -> do
       let x = mangle $ argName e.usedNames abs
       let tsBody = case abs of
@@ -172,123 +220,43 @@ instance GenEl (SIR.El Theory) where
       TS.Lam (TS.Binding x (genTy dom.shape)) (TS.Block [] (Just tsBody))
     SIR.Cons fields -> TS.Object $ [(mangle x, genEl e t) | (x, t) <- toList fields]
 
-instance GenEl El where
-  genEl e = \case
-    _ -> undefined
+instance GenEl (AccessType, SIR.El Set) where
+  genEl e (access, t) = case t of
+    SIR.Var i -> elemAt e.tsLocals i
+    SIR.Lookup tn cols retShape -> do
+      let ref = baseTableRef e tn cols retShape
+      case access of
+        Value -> TS.MethodCall ref "value" []
+        Reference -> ref
+    SIR.Proj t x -> TS.Proj (genEl e (Value, t)) (mangle x)
+    SIR.Cons fields -> TS.Object [(mangle x, genEl e (Value, t')) | (x, t') <- toList fields]
+    SIR.Lit l -> TS.Lit l
+    SIR.Erased -> TS.Null
 
--- genQuery :: Access -> TSEnv -> SIR.Query -> TS.El
--- genQuery _access e q = do
---   let ((v, mainProps), vars, auxProps) = FLIR.runFlatM $ do
---         v <- FLIR.freshAt (BwdNil :> "result") q.shape
---         mainprops <- FLIR.app e.flirLocals q.pred v
---         pure (v, mainprops)
---   let query = FLIR.Query vars (toList (mainProps <> auxProps))
---   let flir = TS.String (undefined query)
---   -- TODO: should make sure "result" is fresh
---   let reconstruct =
---         TS.Lam
---           (TS.Binding "result" (TS.ListTy (TS.runtime Value)))
---           (TS.Block [] (Just (reconstructEls e.flatParams v)))
---   TS.New (TS.Const (TS.runtime Query)) [flir, reconstruct]
+genRealmConstructor :: SIR.Realm -> TS.Constructor
+genRealmConstructor r = do
+  let args = [ TS.Binding "store" (TS.TyConst (runtime "Store") []) ]
+  let env = emptyTSEnv r (TS.Var "mstore")
+  let auxillaryAssignments = [ TS.Assign (TS.QId ["this"] (mangle x)) (genEl env v) | (x, (v, _)) <- OMap.assocs $ r.auxillaries ]
+  let body =
+        TS.Block
+          ([ TS.Assign (TS.QId [] "mstore") (TS.New (TS.Const (runtime "ManagedStore")) [TS.Var "store"])
+          , TS.Assign (TS.QId ["this"] "root") (genEl env r.root)
+          ] ++ auxillaryAssignments)
+          Nothing
+  TS.Constructor args body
 
--- varName :: SIR.Abs a -> Set.Set Name -> Name
--- varName (SIR.Abs (Just x) _) xs = case Set.member x xs of
---   True -> freshNameFor xs
---   False -> x
--- varName _ xs = freshNameFor xs
+genRealmClass :: Name -> SIR.Realm -> TS.Class
+genRealmClass x r =
+  TS.Class
+    (mangle x)
+    Nothing
+    Nothing
+    (TS.Binding "root" (genTy r.rootType) : [TS.Binding (mangle x) (genTy ty) | (x, (_, ty)) <- OMap.assocs r.auxillaries])
+    (genRealmConstructor r)
 
--- genAbs :: Access -> TSEnv -> SIR.Abs (SIR.El l) -> (Name, TS.El)
--- genAbs access e (SIR.Abs mx body) = do
---   let x = freshNameWithPref e.usedNames mx
---   let e' =
---         e
---           { tsLocals = e.tsLocals :> TS.Var (mangle x)
---           , usedNames = Set.insert x e.usedNames
---           }
---   (x, genEl access e' body)
--- genAbs access e (SIR.AbsConst body) = do
---   let x = freshNameFor e.usedNames
---   let e' = e{usedNames = Set.insert x e.usedNames}
---   (x, genEl access e' body)
-
--- genEl :: Access -> TSEnv -> SIR.El l -> TS.El
--- genEl access e = \case
---   SIR.LiftEl t -> genEl access e t
---   SIR.Var i -> elemAt e.tsLocals i
---   -- SIR.Single q -> TS.MethodCall (genQuery access e q) "single" []
---   SIR.Proj t x -> TS.Proj (genEl access e t) (mangle x)
---   -- SIR.Multi _ q -> TS.MethodCall (genQuery access e q) "multi" []
---   SIR.Lam _dom abs -> do
---     let (x, body) = genAbs access e abs
---     TS.Lam
---       (TS.Binding (mangle x) (TS.runtime Value))
---       (TS.Block [] (Just body))
---   SIR.Cons fields ->
---     TS.Object [(mangle x, genEl access e t) | (x, t) <- toList fields]
---   SIR.Lit l -> TS.Lit l
---   SIR.Erased -> TS.Null
-
--- genRealmConstructor :: Access -> SIR.Realm -> TS.Constructor
--- genRealmConstructor access r = do
---   let args = case access of
---         View ->
---           [ TS.Binding "store" (TS.runtime StoreHandle)
---           ]
---         Transaction ->
---           [ TS.Binding "store" (TS.runtime StoreHandle)
---           , TS.Binding "transaction" (TS.runtime TransactionHandle)
---           ]
---   let superCall = case extends access of
---         Just _ -> [TS.Expr (TS.Call (TS.Var "super") [TS.Var "store"])]
---         Nothing -> []
---   let body =
---         TS.Block
---           (superCall ++ [TS.Assign (TS.QId ["this"] "root") (genEl access emptyTSEnv r.root)])
---           Nothing
---   TS.Constructor args body
-
--- genRealmClass :: Access -> SIR.Realm -> TS.Class
--- genRealmClass access r =
---   TS.Class
---     (fromShow access)
---     Nothing
---     (fromShow <$> extends access)
---     [TS.Binding "root" (genTy access 0 r.rootType)]
---     (genRealmConstructor access r)
-
--- genRealmModule :: [TS.Import] -> SIR.Realm -> TS.Module
--- genRealmModule imports r = do
---   let classes = for accessLevels $ \access -> TS.DClass $ genRealmClass access r
---   TS.Module imports (TS.Exported <$> classes)
-
--- render :: DDoc -> TL.Text
--- render = renderLazy . layoutPretty defaultLayoutOptions
-
--- writeModule :: FilePath -> Name -> TS.Module -> IO ()
--- writeModule outdir x mod = do
---   let fn = outdir </> TS.idToString (mangle x) <> ".ts"
---   let content = render $ asm mod
---   TLIO.writeFile fn content
-
--- runtimeImport :: TS.Import
--- runtimeImport = TS.ImportQualified "runtime" "@coln-project/runtime"
-
--- forAccM :: (Monad m) => [b] -> a -> (a -> b -> m a) -> m a
--- forAccM bs init f = foldlM f init bs
-
--- generate :: Globals -> FilePath -> IO ()
--- generate ge outdir = do
---   typeImports <- forAccM (OMap.assocs ge.definitions) BwdNil $ \imports (x, e) -> do
---     let ev = e.body.val :: V.Evaluation V.El D
---     case genEntryModule (runtimeImport : toList imports) e.ty ev of
---       Just mod -> do
---         writeModule outdir x mod
---         pure (imports :> TS.ImportQualified (mangle x) ("./" <> mangleToDoc x <> ".ts"))
---       Nothing -> pure imports
---   let imports = runtimeImport : toList typeImports
---   forM_ (OMap.assocs ge.realms) $ \(x, r) -> do
---     let flat = lowerRealm x r
---     flip AE.encodeFile flat $ outdir </> mangleToString x <> ".json"
---     let schemaImport = TS.ImportSpecificExported "schema" $ "./" <> mangleToDoc x <> ".json"
---     let mod = genRealmModule (schemaImport : imports) r
---     writeModule outdir x mod
+genRealmModule :: Name -> SIR.Realm -> TS.Module
+genRealmModule x r = do
+  TS.Module
+    [TS.ImportQualified "runtime" "@coln-project/runtime"]
+    [TS.Exported $ TS.DClass $ genRealmClass x r]

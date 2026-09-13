@@ -9,5 +9,5 @@ import Coln.CLI.Options
 
 generateIR :: GenerateIROptions -> IO ()
 generateIR opts = do
-  (rep, realms) <- loadRealms opts.inputFile
-  writeFLIR opts.outputDir rep realms
+  (_, realms) <- loadRealms opts.inputFile
+  writeFLIR opts.outputDir realms

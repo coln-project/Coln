@@ -33,7 +33,7 @@ data Ty
   | TyConst QId [Ty]
   | Singleton El
   | ListTy Ty
-  | RecordTy (Dict Ty)
+  | RecordTy [(Id, Ty)]
   | NullTy
 
 data Binding = Binding {name :: Id, ty :: Ty}

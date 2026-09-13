@@ -12,7 +12,7 @@ import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
 import Data.Char (toLower)
 import Data.Map.Ordered qualified as OMap
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe)
 import Data.String (fromString)
 import FNotation qualified as N
 import FNotation.Kinds qualified as K
@@ -49,7 +49,6 @@ data Entity = Entity
 data El
   = Lit Literal
   | LocalVar FId
-  | Param FId
   deriving (Show, Eq, Generic)
 
 data Atom = Atom
@@ -136,7 +135,6 @@ instance AE.ToJSON El where
       LitInt i -> SIR.taggedEncoding "int" $ AE.pair "value" $ AE.toEncoding i
       LitString s -> SIR.taggedEncoding "string" $ AE.pair "value" $ AE.toEncoding s
     LocalVar (FId i) -> SIR.taggedEncoding "var" $ AE.pair "index" $ AE.toEncoding i
-    Param (FId i) -> SIR.taggedEncoding "param" $ AE.pair "index" $ AE.toEncoding i
 
 instance AE.ToJSON Atom where
   toJSON = panic "aesons behaving badly"
@@ -221,7 +219,6 @@ instance ToNotationTop Literal where
 toNotationTerm :: [ColName] -> El -> N.Ntn0
 toNotationTerm _ (Lit l) = toNotationTop l
 toNotationTerm cs (LocalVar (FId i)) = toNotationTop (cs !! i)
-toNotationTerm _ (Param (FId _)) = panic "param"
 
 toNotationAtom :: OMap TableName [ColName] -> [ColName] -> Atom -> N.Ntn0
 toNotationAtom columnNames cs a = do

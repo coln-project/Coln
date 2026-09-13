@@ -64,7 +64,7 @@ coreToMIR g r = do
   let (gens, defs) = fromList *** OMap.fromList $ unzip $ fmap (\(x,(y,z)) -> ((x,y),(x,z))) $ snd $ mapAccumL go (1, BwdNil :> Pair STheory rootbody.val) $ OMap.assocs r.realmDefinitions
   MIR.Realm
     { root = rootbody.val
-    , rootType = r.rootType.val
+    , rootType = rTy
     , generators = Node $ fromList $ [("root", rootgens), ("init", Node gens)]
     , realmDefinitions = defs
     }
