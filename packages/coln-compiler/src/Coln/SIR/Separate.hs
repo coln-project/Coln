@@ -76,7 +76,11 @@ theoryShapeOf cs a v = case a of
           (l :> Pair STheory fieldVal, theoryShapeOf cs (fieldTy l) fieldVal)
     let fields = snd $ mapAccumWithKeyL doField rt.capture rt.fieldTypes
     S.Record fields
-  V.U (inferSetCodes -> u) -> S.U u $ shapeOf $ V.decode u v
+  V.U (inferSetCodes -> u) -> case v of
+    V.PrimCode _ tn  _ -> S.BaseU u (S.Scalar (S.RowId tn))
+    V.Code SSetU a -> S.ViewU u $ shapeOf a
+    V.Code SPropU a -> S.ViewU u $ shapeOf a
+    _ -> panic "expected a primcode or a code"
 
 propAt :: CtxLen -> V.Ty N Set -> V.El N Set -> S.Prop
 propAt n = \case

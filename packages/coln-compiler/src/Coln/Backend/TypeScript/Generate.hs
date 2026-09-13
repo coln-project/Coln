@@ -31,6 +31,9 @@ mutableSetInterface ty = TS.TyConst (runtime "MutableSet") [ty]
 
 propInterface :: TS.Ty
 propInterface = TS.TyConst (runtime "Prop") []
+  
+mutablePropInterface :: TS.Ty
+mutablePropInterface = TS.TyConst (runtime "MutableProp") []
 
 refInterface :: TS.Ty -> TS.Ty
 refInterface ty = TS.TyConst (runtime "Ref") [ty]
@@ -68,8 +71,10 @@ instance GenTy SIR.TheoryShape where
     SIR.LiftTy a -> refInterface (genTy a)
     SIR.Function x dom cod -> TS.Fun (TS.Binding (mangle x) (genTy dom)) (genTy cod)
     SIR.Record fields -> TS.RecordTy [(mangle x, genTy ty) | (x, ty) <- toList fields]
-    SIR.U SSetU a -> setInterface (genTy a)
-    SIR.U SPropU _ -> propInterface
+    SIR.BaseU SSetU a -> mutableSetInterface (genTy a)
+    SIR.ViewU SSetU a -> setInterface (genTy a)
+    SIR.BaseU SPropU _ -> mutablePropInterface
+    SIR.ViewU SPropU _ -> propInterface
 
 data FlatParams = FlatParams
   { paramVals :: Bwd TS.El
@@ -89,7 +94,14 @@ instance Reconstructable TS.Id TS.El where
     let t = TS.Index (TS.Var res) i
     \case
       SIR.BuiltinTy _ -> t
-      SIR.RowId tn -> TS.New (TS.Const (runtime "RowId")) [t, tnString tn]
+      SIR.RowId tn -> TS.New
+        (TS.Const (runtime "RowId"))
+        [ TS.Object
+            [ ("type", TS.String "Existing")
+              , ("value", TS.Coerce t (TS.TyConst (runtime "WireRowId") []))
+              ]
+          , tnString tn
+          ]
   cons = TS.Object
   unstored = TS.Null
 
@@ -240,7 +252,7 @@ genRealmConstructor r = do
   let auxillaryAssignments = [ TS.Assign (TS.QId ["this"] (mangle x)) (genEl env v) | (x, (v, _)) <- OMap.assocs $ r.auxillaries ]
   let body =
         TS.Block
-          ([ TS.Assign (TS.QId [] "mstore") (TS.New (TS.Const (runtime "ManagedStore")) [TS.Var "store"])
+          ([ TS.Let "mstore" (TS.New (TS.Const (runtime "ManagedStore")) [TS.Var "store"])
           , TS.Assign (TS.QId ["this"] "root") (genEl env r.root)
           ] ++ auxillaryAssignments)
           Nothing
@@ -258,5 +270,5 @@ genRealmClass x r =
 genRealmModule :: Name -> SIR.Realm -> TS.Module
 genRealmModule x r = do
   TS.Module
-    [TS.ImportQualified "runtime" "@coln-project/runtime"]
+    [TS.ImportQualified "runtime" "./runtime/index.js"]
     [TS.Exported $ TS.DClass $ genRealmClass x r]

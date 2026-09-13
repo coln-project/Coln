@@ -57,6 +57,7 @@ data El
   | Not El
   | Object [(Id, El)]
   | Null
+  | Coerce El Ty
 
 data Statement
   = Let Id El

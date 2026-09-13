@@ -58,7 +58,8 @@ data TheoryShape
   = LiftTy Shape
   | Function Name Shape TheoryShape
   | Record (Dict TheoryShape)
-  | U (SUniverse Set Theory) Shape
+  | ViewU (SUniverse Set Theory) Shape
+  | BaseU (SUniverse Set Theory) Shape
 
 -- JSON
 --------------------------------------------------------------------------------
