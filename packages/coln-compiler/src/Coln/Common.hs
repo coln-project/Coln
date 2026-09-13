@@ -61,6 +61,7 @@ import Data.Map.Ordered qualified as OMap
 import Data.Set qualified as Set
 import Data.String (IsString, fromString)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Traversable hiding (for)
 import Data.Vector.Fusion.Bundle qualified as Bundle
 import Data.Vector.Generic (stream, unstreamM)
@@ -368,8 +369,11 @@ fromShow = fromString . show
 for :: [a] -> (a -> b) -> [b]
 for = flip map
 
+mangleSeg :: Text -> DDoc
+mangleSeg = pretty . T.map (\c -> if c == '-' then '_' else c)
+
 mangleToDoc :: Name -> DDoc
-mangleToDoc x = mconcat [pretty s <> "_slash_" | s <- x.init] <> pretty x.last
+mangleToDoc x = mconcat [mangleSeg s <> "_slash_" | s <- x.init] <> mangleSeg x.last
 
 mangleToString :: Name -> String
 mangleToString = renderString . layoutPretty defaultLayoutOptions . mangleToDoc
