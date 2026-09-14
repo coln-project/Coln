@@ -22,7 +22,7 @@ pub enum Op {
 impl Op {
     pub fn id(&self) -> WireRowId {
         match self {
-            Op::Add { row_id, .. } => *row_id,
+            Op::Add { row_id, .. } => row_id.clone(),
         }
     }
 

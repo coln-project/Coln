@@ -14,7 +14,6 @@ use crate::table::index::IndexMeta;
 use crate::table::{
     PackedRowView, PackedTuple, PackedValue, Table, TableOid, ValidationError, WireRowId, WireValue,
 };
-use crate::txn::TxnLiveRowId;
 
 /// Public facing row value
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,25 +65,11 @@ impl<'a> TableHandle<'a> {
         self.inner.cols.len() + 1
     }
 
-    pub fn row_by_liveid(&self, live_id: &TxnLiveRowId) -> Option<WireRowView> {
-        let row_id = live_id.row_id().ok()?;
-        let packed_row_id = self.id_packer.lookup_row_id(&row_id)?;
-        let con_rowid = self
-            .canonicaliser
-            .canonical_id(&packed_row_id, self.id_packer);
-        let unpacked_con = self.id_packer.unpack_row_id(con_rowid);
-        // replace the rowid in the row_handle so it stays canonical
-        if packed_row_id != con_rowid {
-            live_id.canonicalise_to(unpacked_con).ok()?
-        }
-        self.row_by_id(unpacked_con)
-    }
-
     // This function will canonicalise the row_id on read, but will not change it
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
-    pub fn row_by_id(&self, row_id: WireRowId) -> Option<WireRowView> {
-        let packed_row_id = self.id_packer.lookup_row_id(&row_id)?;
+    pub fn row_by_id(&self, row_id: &WireRowId) -> Option<WireRowView> {
+        let packed_row_id = self.id_packer.lookup_row_id(row_id)?;
         let packed_row_id = self
             .canonicaliser
             .canonical_id(&packed_row_id, self.id_packer);
@@ -123,10 +108,11 @@ impl<'a> TableHandle<'a> {
             .iter()
             .map(|wire_val: &WireValue| match wire_val {
                 WireValue::Id(wire_id) => {
-                    let packed = self
-                        .id_packer
-                        .lookup_row_id(wire_id)
-                        .ok_or(ValidationError::InvalidRowId { wire_id: *wire_id })?;
+                    let packed = self.id_packer.lookup_row_id(wire_id).ok_or(
+                        ValidationError::InvalidRowId {
+                            wire_id: wire_id.clone(),
+                        },
+                    )?;
                     Ok(PackedValue::Id(packed))
                 }
                 WireValue::Int(i) => Ok(PackedValue::Int(*i)),
@@ -232,12 +218,12 @@ mod test {
         let table = store.table_at(&path).expect("table exists");
 
         assert_eq!(
-            table.row_by_id(row_id),
+            table.row_by_id(&row_id),
             Some(WireRowView {
                 row_id,
                 values: vec![42i32.into()],
             })
         );
-        assert_eq!(table.row_by_id(WireRowId { commit, counter: 1 }), None);
+        assert_eq!(table.row_by_id(&WireRowId { commit, counter: 1 }), None);
     }
 }

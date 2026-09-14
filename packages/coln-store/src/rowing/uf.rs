@@ -31,6 +31,6 @@ impl UnifyValue for WireRowId {
     type Error = ena::unify::NoError;
 
     fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
-        Ok((*value1).min(*value2))
+        Ok((value1).min(value2).clone())
     }
 }

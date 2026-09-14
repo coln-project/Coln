@@ -17,7 +17,7 @@ use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm},
     store::{ColnDef, Store},
     table::{TableHandle, WireRowId},
-    txn::{TempRowId, TxnWireValue},
+    txn::{TempRowId, TxnWireValue, id::TxnWireTuple},
 };
 use crate::{
     repl::{
@@ -482,7 +482,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<Vec<TxnWireValue>> {
+fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<TxnWireTuple> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         bail!(
@@ -509,8 +509,8 @@ fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<Vec
 mod tests {
     use super::*;
 
-    static GRAPH_IR: &str = "Graph.json";
-    static GRAPH_REALM: &str = "Graph";
+    static GRAPH_IR: &str = "GraphRealm.json";
+    static GRAPH_REALM: &str = "GraphRealm";
 
     fn graph_ir_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -551,11 +551,11 @@ mod tests {
     fn renders_all_table_schemas() {
         let loaded = load_graph_schema();
         let rendered = render_schema_summary(Some(&loaded.schema));
-        assert!(rendered.contains("Graph.json"));
-        assert!(rendered.contains("table: Graph.V"));
-        assert!(rendered.contains("table: Graph.E"));
-        assert!(rendered.contains("- a: entity(Graph.V)"));
-        assert!(rendered.contains("- b: entity(Graph.V)"));
+        assert!(rendered.contains("GraphRealm.json"));
+        assert!(rendered.contains("table: root.V"));
+        assert!(rendered.contains("table: root.E"));
+        assert!(rendered.contains("- a: entity(root.V)"));
+        assert!(rendered.contains("- b: entity(root.V)"));
     }
 
     #[test]
@@ -564,7 +564,7 @@ mod tests {
         assert_eq!(loaded.store.table_count(), 2);
         assert_eq!(loaded.schema.table_count, 2);
         assert_eq!(loaded.schema.law_count, 2);
-        assert_eq!(loaded.schema.tables[0].path, "Graph.E");
+        assert_eq!(loaded.schema.tables[0].path, "root.V");
         let root = loaded
             .store
             .commits()
@@ -595,11 +595,11 @@ mod tests {
     fn renders_single_table_schema() {
         let loaded = load_graph_schema();
         let rendered =
-            render_table_schema(Some(&loaded.schema), "Graph.E").expect("render table schema");
-        assert!(rendered.contains("table: Graph.E"));
+            render_table_schema(Some(&loaded.schema), "root.E").expect("render table schema");
+        assert!(rendered.contains("table: root.E"));
         assert!(rendered.contains("primary key:"));
-        assert!(rendered.contains("- a: entity(Graph.V)"));
-        assert!(rendered.contains("- b: entity(Graph.V)"));
+        assert!(rendered.contains("- a: entity(root.V)"));
+        assert!(rendered.contains("- b: entity(root.V)"));
     }
 
     #[test]

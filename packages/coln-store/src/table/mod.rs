@@ -25,7 +25,6 @@ use crate::rowing::Rowing;
 use crate::table::col::{Column, IdColumn};
 use crate::table::index::{IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
-use crate::txn::TxnId;
 
 pub type TableOid = usize;
 
@@ -60,8 +59,6 @@ pub enum ValidationError {
         expected: ir::Path,
         actual: ir::Path,
     },
-    #[error("row handle belongs to a different transaction: current {current:?}, got {got:?}")]
-    TxnIdMismatch { current: TxnId, got: TxnId },
     #[error("invalid row handle: {reason}")]
     InvalidTxnLiveRowId { reason: String },
     #[error("invalid index key for index: expected <= {expected} values, got {got}")]

@@ -46,10 +46,11 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
         .add(&Path::from("root.E"), vec![va.clone(), vb.clone()])
         .expect("add edge successful");
     let _e2 = auto_store
-        .add(&Path::from("root.E"), vec![vb.clone(), vc])
+        .add(&Path::from("root.E"), vec![vb.clone(), vc.clone()])
         .expect("add edge successful");
 
-    auto_store.commit().expect("commit success");
+    let h = auto_store.commit().expect("commit success");
+    let [va, vb] = auto_store.promote(vec![va, vb], h).try_into().unwrap();
 
     // TODO change the API so user does not need to manually construct WireValue?
     let connected = auto_store
@@ -57,10 +58,7 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
             &WhereClause {
                 table_name: Path::from("init.trans-closure.connected"),
                 row_id: None,
-                values: vec![
-                    Value::Id(va.row_id().unwrap()),
-                    Value::Id(vb.row_id().unwrap()),
-                ],
+                values: vec![Value::Id(va), Value::Id(vb)],
             },
             &[1, 2],
         )

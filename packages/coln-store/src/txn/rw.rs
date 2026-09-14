@@ -9,7 +9,7 @@ use specta::Type;
 use crate::{
     store::error::{QueryError, StoreError},
     table::{WireRowId, WireValue, cell::WireTuple, handle::WireRowView},
-    txn::{TxnLiveRowId, TxnLiveValue},
+    txn::{TxnWireRowId, id::TxnWireTuple},
 };
 
 #[derive(Debug, Type, Serialize, Deserialize)]
@@ -24,11 +24,7 @@ pub trait StoreRead {
     // TODO we might want another version of the API which does vectorised processing model for query processing
     fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>>;
 
-    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView>;
-
-    fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
-        self.row_by_liveid(table, &TxnLiveRowId::from_existing(row_id))
-    }
+    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView>;
 
     fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError>;
 
@@ -51,9 +47,9 @@ pub trait StoreRead {
 }
 
 pub trait StoreWrite {
-    fn add<V: Into<TxnLiveValue>>(
+    fn add(
         &mut self,
         table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError>;
+        values: impl Into<TxnWireTuple>,
+    ) -> Result<TxnWireRowId, StoreError>;
 }

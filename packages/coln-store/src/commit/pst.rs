@@ -332,13 +332,13 @@ mod tests {
         let mut txn = store.transaction();
         let live_id = txn.add(&table, vec![99_i32]).expect("add row");
         let commit = txn.commit().expect("commit");
-        let row_id = live_id.row_id().expect("finalized");
+        let row_id = store.promote_one(live_id, commit);
 
         let bytes = encode_store(&store).unwrap();
         let restored = decode_store(&bytes).unwrap();
 
         assert_eq!(
-            restored.row_by_id(&table, row_id),
+            restored.row_by_id(&table, &row_id),
             Some(WireRowView {
                 row_id,
                 values: vec![WireValue::Int(99)],

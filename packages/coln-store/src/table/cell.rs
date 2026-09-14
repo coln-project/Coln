@@ -14,9 +14,7 @@ use crate::value::Value;
 /// The unique id that identifies each row in a table.
 ///
 /// It is managed by the database and read-only for the user.
-#[derive(
-    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Serialize, Deserialize, Type,
-)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Serialize, Deserialize, Type)]
 pub struct WireRowId {
     pub commit: CommitHash,
     pub counter: u32,

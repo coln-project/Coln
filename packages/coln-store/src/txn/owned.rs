@@ -8,10 +8,14 @@ use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreError},
     table::{WireRowId, cell::WireTuple, handle::WireRowView},
-    txn::rw::{StoreRead, StoreWrite, WhereClause},
+    txn::{
+        TxnWireRowId,
+        id::TxnWireTuple,
+        rw::{StoreRead, StoreWrite, WhereClause},
+    },
 };
 
-use super::{TxnInner, TxnLiveRowId, TxnLiveValue};
+use super::TxnInner;
 
 pub struct OwnedTransaction {
     inner: TxnInner,
@@ -27,12 +31,8 @@ impl OwnedTransaction {
         }
     }
 
-    pub fn add<V: Into<TxnLiveValue>>(
-        &mut self,
-        table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError> {
-        self.inner.add(&self.store, table, values)
+    pub(crate) fn store(&self) -> &Store {
+        &self.store
     }
 
     pub fn abort(mut self) -> Store {
@@ -55,11 +55,7 @@ impl StoreRead for OwnedTransaction {
         self.store.scan_table_iter(table).map(|rows| rows.collect())
     }
 
-    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView> {
-        self.store.row_by_liveid_inner(table, live_id)
-    }
-
-    fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
         self.store.row_by_id_inner(table, row_id)
     }
 
@@ -73,11 +69,11 @@ impl StoreRead for OwnedTransaction {
 }
 
 impl StoreWrite for OwnedTransaction {
-    fn add<V: Into<TxnLiveValue>>(
+    fn add(
         &mut self,
         table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError> {
+        values: impl Into<TxnWireTuple>,
+    ) -> Result<TxnWireRowId, StoreError> {
         self.inner.add(&self.store, table, values)
     }
 }
@@ -97,12 +93,12 @@ mod tests {
         let path = Path::from("T");
 
         let mut tx = OwnedTransaction::new(store);
-        let live_id = tx.add(&path, vec![42i32]).expect("add");
+        let pending_id = tx.add(&path, vec![42i32]).expect("add");
 
-        let (_hash, committed) = tx.commit().expect("commit");
-        let row_id = live_id.row_id().expect("finalized");
+        let (h, committed) = tx.commit().expect("commit");
+        let row_id = committed.promote_one(pending_id, h);
         assert_eq!(
-            committed.row_by_id(&path, row_id),
+            committed.row_by_id(&path, &row_id),
             Some(WireRowView {
                 row_id,
                 values: vec![42i32.into()],
@@ -137,13 +133,13 @@ mod tests {
         let path = Path::from("T");
 
         let mut tx = OwnedTransaction::new(store);
-        let live_id = tx.add(&path, vec![1i32]).expect("add");
-        let (_hash, store) = tx.commit().expect("commit");
-        let row_id = live_id.row_id().expect("finalized");
+        let pending_id = tx.add(&path, vec![1i32]).expect("add");
+        let (h, store) = tx.commit().expect("commit");
+        let row_id = store.promote_one(pending_id, h);
 
         let mut tx = OwnedTransaction::new(store);
         assert_eq!(
-            tx.row_by_id(&path, row_id),
+            tx.row_by_id(&path, &row_id),
             Some(WireRowView {
                 row_id,
                 values: vec![1i32.into()],

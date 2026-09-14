@@ -9,13 +9,12 @@ use coln_store::{
     commit::{hash::CommitHash, pst},
     store::{ColnDef, Store, error::StoreError},
     table::{WireRowId, WireValue},
-    txn::{empty_row, rw::StoreWrite},
-    value::Value,
+    txn::{TxnWireValue, empty_row, rw::StoreWrite},
 };
 use rstest::{fixture, rstest};
 use tracing_subscriber::EnvFilter;
 
-static GRAPH_IR: &str = include_str!("../../coln-flir-rs/tests/data/Graph.json");
+static GRAPH_IR: &str = include_str!("../../coln-flir-rs/tests/data/GraphRealm.json");
 
 // For testing only
 #[allow(dead_code)]
@@ -44,7 +43,7 @@ fn graph_ir() -> FlatRealm {
 fn graph_coln_def() -> ColnDef {
     ColnDef {
         theory: String::new(),
-        realm: String::from("Graph"),
+        realm: String::from("GraphRealm"),
     }
 }
 
@@ -54,24 +53,25 @@ struct GraphData {
 }
 
 fn add_basic_data_to_graph(store: &mut Store) -> Result<GraphData, StoreError> {
-    let gv = Path::from("Graph.V");
-    let ge = Path::from("Graph.E");
+    let gv = Path::from("root.V");
+    let ge = Path::from("root.E");
 
     let mut tx = store.transaction();
     let v1 = tx.add(&gv, empty_row())?;
     let v2 = tx.add(&gv, empty_row())?;
-    tx.add(&ge, vec![v1.clone(), v2.clone()])?;
-    tx.commit()?;
+    tx.add(
+        &ge,
+        vec![TxnWireValue::Id(v1.clone()), TxnWireValue::Id(v2.clone())],
+    )?;
+    let h = tx.commit()?;
+    let [v1, v2] = store.promote(vec![v1, v2], h).try_into().unwrap();
 
-    Ok(GraphData {
-        v1: v1.row_id()?,
-        v2: v2.row_id()?,
-    })
+    Ok(GraphData { v1, v2 })
 }
 
 fn add_graph_vertex(store: &mut Store) -> Result<CommitHash, StoreError> {
     let mut tx = store.transaction();
-    tx.add(&Path::from("Graph.V"), empty_row())?;
+    tx.add(&Path::from("root.V"), empty_row())?;
     tx.commit()
 }
 
@@ -80,49 +80,53 @@ fn add_graph_edge(
     v1: WireRowId,
     v2: WireRowId,
 ) -> Result<CommitHash, StoreError> {
-    let gv = Path::from("Graph.V");
-    let ge = Path::from("Graph.E");
-    let tv = store.table_at(&gv).expect("Graph.V table");
-    let v1 = tv.row_by_id(v1).expect("vertex 1");
-    let v2 = tv.row_by_id(v2).expect("vertex 2");
+    let gv = Path::from("root.V");
+    let ge = Path::from("root.E");
+    let tv = store.table_at(&gv).expect("root.V table");
+    let v1 = tv.row_by_id(&v1).expect("vertex 1");
+    let v2 = tv.row_by_id(&v2).expect("vertex 2");
 
     let mut txn = store.transaction();
-    txn.add(&ge, vec![Value::Id(v1.row_id), Value::Id(v2.row_id)])?;
+    txn.add(&ge, vec![v1.row_id, v2.row_id])?;
     txn.commit()
 }
 
 #[rstest]
-fn test_read_graph_json(#[from(graph_ir)] theory: &FlatRealm) {
+fn test_read_graph_realm_json(#[from(graph_ir)] theory: &FlatRealm) {
     assert_eq!(
         theory.tables.len(),
         2,
-        "expected table count from Graph.json"
+        "expected table count from GraphRealm.json"
     );
-    assert_eq!(theory.rules.len(), 2, "expected law count from Graph.json");
+    assert_eq!(
+        theory.rules.len(),
+        2,
+        "expected law count from GraphRealm.json"
+    );
 
     let edge = theory
         .tables
         .iter()
-        .find(|t| t.path == Path::from("Graph.E"))
-        .expect("Graph.E table");
+        .find(|t| t.path == Path::from("root.E"))
+        .expect("root.E table");
     assert_eq!(edge.table.columns.len(), 2);
     assert_eq!(edge.table.primary_key, None);
 
     let vertices = theory
         .tables
         .iter()
-        .find(|t| t.path == Path::from("Graph.V"))
-        .expect("Graph.V table");
+        .find(|t| t.path == Path::from("root.V"))
+        .expect("root.V table");
     assert!(vertices.table.columns.is_empty());
 
     let edge_fk = theory
         .rules
         .iter()
-        .find(|e| e.path == Path::from("Graph.E.foreignKey"))
-        .expect("Graph.E.foreignKey law path");
+        .find(|e| e.path == Path::from("root.E.foreignKey"))
+        .expect("root.E.foreignKey law path");
     assert!(
         !edge_fk.rule.vars.is_empty(),
-        "Graph.E foreignKey law should bind variables"
+        "root.E foreignKey law should bind variables"
     );
 }
 
@@ -135,22 +139,23 @@ fn test_add_edge_referencing_vertices_from_previous_commit(
 
     let data = add_basic_data_to_graph(&mut store).expect("add basic data");
 
-    let edge_commit =
-        add_graph_edge(&mut store, data.v1, data.v2).expect("add edge in later transaction");
+    let edge_commit = add_graph_edge(&mut store, data.v1.clone(), data.v2.clone())
+        .expect("add edge in later transaction");
 
-    let edges = store
-        .table_at(&Path::from("Graph.E"))
-        .expect("Graph.E table");
+    let edges = store.table_at(&Path::from("root.E")).expect("root.E table");
     assert_eq!(edges.row_count(), 2);
     let second_edge = WireRowId {
         commit: edge_commit,
         counter: 0,
     };
-    let row = edges.row_by_id(second_edge).expect("second edge row");
+    let row = edges.row_by_id(&second_edge).expect("second edge row");
     assert_eq!(row.row_id, second_edge);
     assert_eq!(
         row.values,
-        vec![WireValue::Id(data.v1), WireValue::Id(data.v2)]
+        vec![
+            WireValue::Id(data.v1.clone()),
+            WireValue::Id(data.v2.clone())
+        ]
     );
 }
 
@@ -161,32 +166,31 @@ fn test_missing_vertex_rejects_batch_without_mutation(
 ) {
     let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
-    let vertices = store
-        .table_at(&Path::from("Graph.V"))
-        .expect("Graph.V table");
-    let edges = store
-        .table_at(&Path::from("Graph.E"))
-        .expect("Graph.E table");
+    let vertices = store.table_at(&Path::from("root.V")).expect("root.V table");
+    let edges = store.table_at(&Path::from("root.E")).expect("root.E table");
 
     assert_eq!(vertices.row_count(), 0);
     assert_eq!(edges.row_count(), 0);
 
-    let dummy_vid = Value::Id(WireRowId {
+    let dummy_vid = WireRowId {
         commit: CommitHash([0xff; 32]),
         counter: u32::MAX,
-    });
+    };
     let mut tx = store.transaction();
-    tx.add(&Path::from("Graph.E"), vec![dummy_vid.clone(), dummy_vid])
-        .expect("add edge");
+    tx.add(
+        &Path::from("root.E"),
+        vec![dummy_vid.clone(), dummy_vid.clone()],
+    )
+    .expect("add edge");
     let err = tx.commit().expect_err("missing vertices");
     assert!(matches!(err, StoreError::Rule(_)));
 
     assert_eq!(
-        store.table_at(&Path::from("Graph.V")).unwrap().row_count(),
+        store.table_at(&Path::from("root.V")).unwrap().row_count(),
         0
     );
     assert_eq!(
-        store.table_at(&Path::from("Graph.E")).unwrap().row_count(),
+        store.table_at(&Path::from("root.E")).unwrap().row_count(),
         0
     );
 }
@@ -195,16 +199,15 @@ fn test_missing_vertex_rejects_batch_without_mutation(
 fn test_fk(#[from(graph_ir)] theory: &FlatRealm, #[from(graph_coln_def)] coln_def: &ColnDef) {
     let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
 
-    let ge = Path::from("Graph.E");
+    let ge = Path::from("root.E");
     let data = add_basic_data_to_graph(&mut store).expect("add valid baseline data");
 
-    let dummy_vid = Value::Id(WireRowId {
+    let dummy_vid = WireRowId {
         commit: CommitHash([0xff; 32]),
         counter: u32::MAX,
-    });
+    };
     let mut tx = store.transaction();
-    tx.add(&ge, vec![Value::Id(data.v1), dummy_vid])
-        .expect("add edge");
+    tx.add(&ge, vec![data.v1, dummy_vid]).expect("add edge");
     let err = tx.commit().expect_err("missing target vertex");
 
     assert!(matches!(err, StoreError::Rule(_)));
@@ -221,8 +224,8 @@ fn test_persist_roundtrip(
     assert!(r.is_ok());
     assert!(
         store
-            .table_at(&ir::Path::from("Graph.V"))
-            .expect("table Graph.V")
+            .table_at(&ir::Path::from("root.V"))
+            .expect("table root.V")
             .row_count()
             > 0
     );
@@ -271,17 +274,13 @@ fn test_divergent_commits_merge_between_stores(
         expected_heads
     );
 
-    let left_vertices = left.table_at(&Path::from("Graph.V")).expect("left Graph.V");
-    let right_vertices = right
-        .table_at(&Path::from("Graph.V"))
-        .expect("right Graph.V");
+    let left_vertices = left.table_at(&Path::from("root.V")).expect("left root.V");
+    let right_vertices = right.table_at(&Path::from("root.V")).expect("right root.V");
     assert_eq!(left_vertices.row_count(), 3);
     assert_eq!(right_vertices.row_count(), 3);
 
-    let left_edges = left.table_at(&Path::from("Graph.E")).expect("left Graph.E");
-    let right_edges = right
-        .table_at(&Path::from("Graph.E"))
-        .expect("right Graph.E");
+    let left_edges = left.table_at(&Path::from("root.E")).expect("left root.E");
+    let right_edges = right.table_at(&Path::from("root.E")).expect("right root.E");
     assert_eq!(left_edges.row_count(), 2);
     assert_eq!(right_edges.row_count(), 2);
 

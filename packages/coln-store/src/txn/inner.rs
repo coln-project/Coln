@@ -2,8 +2,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use coln_flir_rs::ir;
 use tracing::info;
 
@@ -16,16 +14,8 @@ use crate::{
     },
     store::{Store, error::StoreError},
     table::ValidationError,
-    txn::{
-        PendingOp, TempRowId, TxnId, TxnLiveRowId, TxnLiveValue, TxnWireValue, timestamp::Timestamp,
-    },
+    txn::{PendingOp, TempRowId, TxnWireRowId, id::TxnWireTuple, timestamp::Timestamp},
 };
-
-static NEXT_TX_ID: AtomicU64 = AtomicU64::new(1);
-
-fn next_tx_id() -> TxnId {
-    TxnId::new(NEXT_TX_ID.fetch_add(1, Ordering::Relaxed))
-}
 
 pub(crate) struct TxnInner {
     deps: Vec<CommitHash>,
@@ -33,8 +23,6 @@ pub(crate) struct TxnInner {
     pending: Vec<PendingOp>,
     timestamp: Timestamp,
     message: Option<String>,
-    tx_id: TxnId,
-    pending_handles: Vec<TxnLiveRowId>,
 }
 
 impl TxnInner {
@@ -45,8 +33,6 @@ impl TxnInner {
             pending: Vec::new(),
             timestamp: Timestamp::now(),
             message: None,
-            tx_id: next_tx_id(),
-            pending_handles: Vec::new(),
         }
     }
 
@@ -58,7 +44,7 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnWireValue>,
+        values: impl Into<TxnWireTuple>,
     ) -> Result<TempRowId, StoreError> {
         let t = store
             .table_at(table)
@@ -66,6 +52,7 @@ impl TxnInner {
             .ok_or(ValidationError::UnknownTable {
                 path: table.clone(),
             })?;
+        let values = values.into();
         t.validate_column_count(values.len())?;
         let temp_id = self.next_id();
         self.pending.push(PendingOp::Add {
@@ -76,19 +63,14 @@ impl TxnInner {
         Ok(temp_id)
     }
 
-    pub(super) fn add<V: Into<TxnLiveValue>>(
+    pub(super) fn add(
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError> {
-        let txn_values = values
-            .into_iter()
-            .map(|v| v.into().to_txn_cell_value(self.tx_id))
-            .collect::<Result<Vec<TxnWireValue>, _>>()?;
-        let temp_id = self.add_cell_values(store, table, txn_values)?;
-        let handle = TxnLiveRowId::from_pending(self.tx_id, temp_id.0);
-        self.pending_handles.push(handle.clone());
+        values: impl Into<TxnWireTuple>,
+    ) -> Result<TxnWireRowId, StoreError> {
+        let temp_id = self.add_cell_values(store, table, values)?;
+        let handle = TxnWireRowId::Pending(temp_id);
         Ok(handle)
     }
 
@@ -98,24 +80,9 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: Vec<TxnWireValue>,
+        values: impl Into<TxnWireTuple>,
     ) -> Result<TempRowId, StoreError> {
         self.add_cell_values(store, table, values)
-    }
-
-    fn invalidate_live_ids(&mut self, reason: &str) {
-        self.pending_handles
-            .iter()
-            .for_each(|h| h.invalidate(reason));
-    }
-
-    /// Finalise live ids to the id the store actually kept: a row that was
-    /// deduplicated against an existing class finalises to that class's
-    /// canonical id, not to the never-stored raw id.
-    fn finalize_live_ids(&mut self, h: CommitHash, store: &Store) {
-        self.pending_handles.iter().for_each(|handle| {
-            handle.finalize(h, |rid| store.canonical_row_id(&rid).unwrap_or(rid))
-        });
     }
 
     pub(super) fn commit(&mut self, store: &mut Store) -> Result<CommitHash, StoreError> {
@@ -149,7 +116,6 @@ impl TxnInner {
         let cmt = match cmt {
             Ok(cmt) => cmt,
             Err(err) => {
-                self.invalidate_live_ids("txn commit encoding failed");
                 return Err(err.into());
             }
         };
@@ -158,20 +124,16 @@ impl TxnInner {
         match store.apply_commit(cmt) {
             Ok(None) => {
                 // Everything applied successfully
-                self.finalize_live_ids(h, store);
                 Ok(h)
             }
             Ok(Some(_)) => {
                 unreachable!("commit a local transaction should always succeed");
             }
-            Err(err) => {
-                self.invalidate_live_ids("txn commit failed");
-                Err(err)
-            }
+            Err(err) => Err(err),
         }
     }
 
     pub(super) fn abort(&mut self) {
-        self.invalidate_live_ids("txn abort");
+        // do nothing
     }
 }

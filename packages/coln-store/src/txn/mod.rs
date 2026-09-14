@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+pub mod id;
 mod inner;
 mod owned;
-mod row_handle;
 pub mod rw;
 mod timestamp;
 
@@ -12,14 +12,17 @@ use crate::{
     commit::hash::CommitHash,
     store::{Store, error::StoreError},
     table::{WireRowId, cell::WireTuple, handle::WireRowView},
-    txn::rw::{StoreRead, StoreWrite, WhereClause},
+    txn::{
+        id::TxnWireTuple,
+        rw::{StoreRead, StoreWrite, WhereClause},
+    },
 };
 use coln_flir_rs::ir;
 
+pub(crate) use id::{PendingOp, TempRowId};
+pub use id::{TxnWireRowId, TxnWireValue, empty_row};
 use inner::TxnInner;
 pub use owned::OwnedTransaction;
-pub(crate) use row_handle::{PendingOp, TempRowId};
-pub use row_handle::{TxnId, TxnLiveRowId, TxnLiveValue, TxnWireRowId, TxnWireValue, empty_row};
 
 pub struct ReadOnly<'a> {
     store: &'a Store,
@@ -79,7 +82,7 @@ impl<'a> Transaction<ReadWrite<'a>> {
     pub(crate) fn add_internal(
         &mut self,
         table: &ir::Path,
-        values: Vec<TxnWireValue>,
+        values: impl Into<TxnWireTuple>,
     ) -> Result<TempRowId, StoreError> {
         self.inner.add_internal(self.mode.store, table, values)
     }
@@ -106,11 +109,7 @@ impl<M: Mode> StoreRead for Transaction<M> {
             .map(|rows| rows.collect())
     }
 
-    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView> {
-        self.mode.store().row_by_liveid_inner(table, live_id)
-    }
-
-    fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
         self.mode.store().row_by_id_inner(table, row_id)
     }
 
@@ -124,11 +123,11 @@ impl<M: Mode> StoreRead for Transaction<M> {
 }
 
 impl StoreWrite for Transaction<ReadWrite<'_>> {
-    fn add<V: Into<TxnLiveValue>>(
+    fn add(
         &mut self,
         table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError> {
+        values: impl Into<TxnWireTuple>,
+    ) -> Result<TxnWireRowId, StoreError> {
         self.inner.add(self.mode.store(), table, values)
     }
 }
@@ -150,8 +149,8 @@ mod tests {
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::{ValidationError, WireValue};
-    use crate::test_utils::{int_schema, nodes_edges_store, single_int_store};
-    use crate::txn::row_handle::empty_row;
+    use crate::test_utils::{nodes_edges_store, single_int_store};
+    use crate::txn::id::empty_row;
 
     #[rstest]
     fn validates_then_applies(#[from(single_int_store)] mut store: Store) {
@@ -220,12 +219,12 @@ mod tests {
         let path = Path::from("T");
 
         let mut txn = store.transaction();
-        let live_id = txn.add(&path, vec![42i32]).expect("add");
-        txn.commit().expect("commit");
-        let row_id = live_id.row_id().expect("finalized");
+        let row_id = txn.add(&path, vec![42i32]).expect("add");
+        let h = txn.commit().expect("commit");
+        let row_id = store.promote_one(row_id, h);
 
         assert_eq!(
-            store.row_by_id(&path, row_id),
+            store.row_by_id(&path, &row_id),
             Some(WireRowView {
                 row_id,
                 values: vec![42i32.into()],
@@ -243,18 +242,18 @@ mod tests {
         let mut tx = store.transaction();
         let node_temp = tx.add(&nodes, empty_row()).expect("add node");
         let edge_temp = tx
-            .add(&edges, vec![TxnLiveValue::Id(node_temp.clone())])
+            .add(&edges, vec![TxnWireValue::Id(node_temp.clone())])
             .expect("add edge");
-        let commit = tx.commit().expect("commit");
-        let node_id = node_temp.row_id().expect("node finalized");
-        let edge_id = edge_temp.row_id().expect("edge finalized");
+        let h = tx.commit().expect("commit");
+        let ids = store.promote([node_temp, edge_temp], h);
+        let [node_id, edge_id] = ids.try_into().unwrap();
 
-        assert_eq!(node_id.commit, commit);
+        assert_eq!(node_id.commit, h);
         assert_eq!(node_id.counter, 0);
-        assert_eq!(edge_id.commit, commit);
+        assert_eq!(edge_id.commit, h);
         assert_eq!(edge_id.counter, 1);
         assert_eq!(
-            store.row_by_id(&edges, edge_id),
+            store.row_by_id(&edges, &edge_id),
             Some(WireRowView {
                 row_id: edge_id,
                 values: vec![WireValue::Id(node_id)],
@@ -273,18 +272,19 @@ mod tests {
         let node = tx.add(&nodes, empty_row()).expect("add node");
         let first_commit = tx.commit().expect("commit node");
 
-        let node_id = node.row_id().expect("node handle finalized");
+        let node_id = store.promote_one(node, first_commit);
         assert_eq!(node_id.commit, first_commit);
 
         let mut tx = store.transaction();
         let edge = tx
-            .add(&edges, vec![TxnLiveValue::Id(node)])
+            .add(&edges, vec![TxnWireValue::Id(node_id.clone().into())])
             .expect("add edge");
-        tx.commit().expect("commit edge");
-        let edge_id = edge.row_id().expect("edge finalized");
+        let h = tx.commit().expect("commit edge");
+
+        let edge_id = store.promote_one(edge, h);
 
         assert_eq!(
-            store.row_by_id(&edges, edge_id),
+            store.row_by_id(&edges, &edge_id),
             Some(WireRowView {
                 row_id: edge_id,
                 values: vec![WireValue::Id(node_id)],
@@ -292,72 +292,11 @@ mod tests {
         );
     }
 
-    #[rstest]
-    fn abort_invalidates_returned_row_handles(#[from(nodes_edges_store)] mut store: Store) {
-        let nodes = Path::from("Nodes");
-        let edges = Path::from("Edges");
-        let mut tx = store.transaction();
-        let node = tx.add(&nodes, empty_row()).expect("add node");
-        tx.abort();
-        let err = node.row_id().expect_err("abort invalidates handle");
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
-        ));
-        let mut tx = store.transaction();
-        let err = tx
-            .add(&edges, vec![TxnLiveValue::Id(node)])
-            .expect_err("aborted handle cannot be reused");
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
-        ));
-        tx.abort();
-        assert_eq!(store.table_at(&nodes).expect("Nodes").row_count(), 0);
-    }
-
-    #[rstest]
-    fn failed_transaction_invalidates_returned_row_handles(
-        #[from(nodes_edges_store)]
-        #[with(int_schema(vec![], Some(vec![])))]
-        mut store: Store,
-    ) {
-        let nodes = Path::from("Nodes");
-        let edges = Path::from("Edges");
-
-        let mut tx = store.transaction();
-        let node = tx.add(&nodes, empty_row()).expect("add first node");
-        tx.add(&nodes, empty_row())
-            .expect("add duplicate singleton row");
-        let err = tx
-            .commit()
-            .expect_err("duplicate singleton row should fail");
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::DuplicatePrimaryKey)
-        ));
-
-        let err = node.row_id().expect_err("failed commit invalidates handle");
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
-        ));
-
-        let mut tx = store.transaction();
-        let err = tx
-            .add(&edges, vec![TxnLiveValue::Id(node)])
-            .expect_err("invalid handle cannot be reused");
-        assert!(matches!(
-            err,
-            StoreError::Validation(ValidationError::InvalidTxnLiveRowId { .. })
-        ));
-    }
-
-    /// A handle whose row deduplicates into an existing structural class
-    /// finalizes to the id the store actually kept, not to its raw
-    /// `(commit, counter)` id, which names no stored row. The first handle
-    /// may still go stale when the second commit wins the merge; reading
-    /// through `row_by_liveid` resolves and repairs it.
+    /// A pending id whose row deduplicates into an existing structural class
+    /// promotes to the id the store actually kept, not to its raw
+    /// `(commit, counter)` id, which names no stored row. The first id
+    /// may still go stale when the second commit wins the merge; promoting
+    /// the existing id again resolves it to the canonical id.
     #[rstest]
     fn deduplicated_row_handle_finalizes_to_canonical_id(
         #[from(single_int_store)] mut store: Store,
@@ -367,28 +306,24 @@ mod tests {
 
         let mut tx = store.transaction();
         let first = tx.add(&term, vec![7_i32]).expect("add first term");
-        tx.commit().expect("commit first term");
+        let h1 = tx.commit().expect("commit first term");
+        let first = store.promote_one(first, h1);
 
         // Structurally equal row: deduplicates into the first row's class.
         // Which id wins the merge depends on the commit hash ordering.
         let mut tx = store.transaction();
         let second = tx.add(&term, vec![7_i32]).expect("add equal term");
-        tx.commit().expect("commit equal term");
+        let h2 = tx.commit().expect("commit equal term");
 
-        let stored = second.row_id().expect("finalized");
+        let stored = store.promote_one(second, h2);
         assert_eq!(store.scan_table(&term).expect("Term").len(), 1);
 
-        // The second handle is born canonical, whether its row was kept old
-        // or won the merge.
-        assert_eq!(second.row_id().expect("finalized"), stored);
-
-        // The first handle resolves through the store even if its id went
-        // stale, and the read writes the canonical id back into the handle.
-        let view = store
-            .row_by_liveid(&term, &first)
-            .expect("class row is stored");
+        // Reads return the canonical id. Promoting an already-existing id
+        // also canonicalises, so a stale first id catches up.
+        let view = store.row_by_id(&term, &first).expect("class row is stored");
         assert_eq!(view.row_id, stored);
-        assert_eq!(first.row_id().expect("finalized"), stored);
+        let first = store.promote_one(first, h1);
+        assert_eq!(first, stored);
     }
 
     #[rstest]
@@ -433,20 +368,13 @@ mod tests {
         let path = Path::from("T");
 
         let mut tx = store.transaction();
-        let live_id = tx.add(&path, vec![1i32]).expect("add");
-        tx.commit().expect("commit");
-        let row_id = live_id.row_id().expect("finalized");
+        let pending_id = tx.add(&path, vec![1i32]).expect("add");
+        let h = tx.commit().expect("commit");
+        let row_id = store.promote_one(pending_id, h);
 
         let mut tx = store.transaction();
         assert_eq!(
-            tx.row_by_id(&path, row_id),
-            Some(WireRowView {
-                row_id,
-                values: vec![1i32.into()],
-            })
-        );
-        assert_eq!(
-            tx.row_by_liveid(&path, &live_id),
+            tx.row_by_id(&path, &row_id),
             Some(WireRowView {
                 row_id,
                 values: vec![1i32.into()],

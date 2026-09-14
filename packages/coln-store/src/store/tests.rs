@@ -102,15 +102,16 @@ mod root_metadata {
 
 mod writes {
     use super::*;
-    use crate::test_utils::{link_foreign_key_root_commit_data, single_int_store};
+    use crate::test_utils::{link_foreign_key_root_commit_data, single_int_autostore};
 
     #[rstest]
-    fn store_add_inserts_row(#[from(single_int_store)] mut store: Store) {
+    fn store_add_inserts_row(#[from(single_int_autostore)] mut store: AutoStore) {
         let path = Path::from("T");
 
         store.add(&path, vec![42i32]).expect("add row");
+        store.commit().expect("txn success");
 
-        assert_eq!(store.table_at(&path).expect("T").row_count(), 1);
+        assert_eq!(store.scan_table(&path).expect("T").len(), 1);
     }
 
     #[rstest]
@@ -131,6 +132,7 @@ mod writes {
 }
 
 mod reads {
+
     use super::*;
     use crate::table::WireValue;
     use crate::test_utils::{int_schema, nodes_edges_store};
@@ -141,21 +143,21 @@ mod reads {
     // Test with/without rowid, and the table should contain duplicate values as well
     // Test with/without select
     #[rstest]
-    fn store_all_returns_all_rows(#[from(nodes_edges_store)] mut store: Store) {
+    fn store_all_returns_all_rows(#[from(nodes_edges_store)] store: Store) {
+        let mut store = store.auto();
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
 
         let n0 = store.add(&nodes, empty_row()).expect("n0");
         let n1 = store.add(&nodes, empty_row()).expect("n1");
-        let n0_id = n0.row_id().expect("n0 id");
-        let n1_id = n1.row_id().expect("n1 id");
 
         let e0 = store.add(&edges, vec![n0.clone()]).expect("e0");
         store
             .add(&edges, vec![n0.clone()])
             .expect("duplicate edge to n0");
         store.add(&edges, vec![n1.clone()]).expect("e2");
-        let e0_id = e0.row_id().expect("e0 id");
+        let h = store.commit().expect("txn success");
+        let [n0_id, n1_id, e0_id] = store.promote(vec![n0, n1, e0], h).try_into().unwrap();
 
         let n0_col = vec![WireValue::Id(n0_id)];
         let n1_col = vec![WireValue::Id(n1_id)];
@@ -206,10 +208,13 @@ mod reads {
         let mut store = Store::new();
         store.create_table(path.clone(), schema).expect("create T");
 
+        let mut store = store.auto();
+
         store.add(&path, vec![1i32, 10, 100]).expect("r0");
         store.add(&path, vec![1i32, 10, 101]).expect("r1");
         store.add(&path, vec![1i32, 20, 200]).expect("r2");
         store.add(&path, vec![2i32, 10, 300]).expect("r3");
+        store.commit().expect("txn success");
 
         let r0 = vec![1i32.into(), 10.into(), 100.into()];
         let r1 = vec![1i32.into(), 10.into(), 101.into()];
@@ -302,7 +307,6 @@ mod rowing {
 
     use super::*;
     use crate::test_utils::row_id_from;
-    use crate::txn::TxnLiveValue;
 
     /// Store with a structural `Term` table (one int column), a structural
     /// `Plus` table (two id columns), and a non-structural `Note` table (one
@@ -415,7 +419,12 @@ mod rowing {
     #[rstest]
     fn swap_rewrites_referencing_table_cells(#[from(structural_store)] mut store: Store) {
         let t_high = row_id_from(2, 0);
-        let ops = vec![add_op(&store, "Term", t_high, vec![WireValue::Int(7)])];
+        let ops = vec![add_op(
+            &store,
+            "Term",
+            t_high.clone(),
+            vec![WireValue::Int(7)],
+        )];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
 
         let plus = row_id_from(3, 0);
@@ -424,46 +433,56 @@ mod rowing {
             add_op(
                 &store,
                 "Plus",
-                plus,
-                vec![WireValue::Id(t_high), WireValue::Id(t_high)],
+                plus.clone(),
+                vec![WireValue::Id(t_high.clone()), WireValue::Id(t_high.clone())],
             ),
-            add_op(&store, "Note", note, vec![WireValue::Id(t_high)]),
+            add_op(
+                &store,
+                "Note",
+                note.clone(),
+                vec![WireValue::Id(t_high.clone())],
+            ),
         ];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
 
         // A smaller equal term swaps the class canonical from t_high to t_low.
         let t_low = row_id_from(1, 0);
-        let ops = vec![add_op(&store, "Term", t_low, vec![WireValue::Int(7)])];
+        let ops = vec![add_op(
+            &store,
+            "Term",
+            t_low.clone(),
+            vec![WireValue::Int(7)],
+        )];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
 
         // The stored row is now t_low; the stale id t_high resolves to it.
         let term_path = Path::from("Term");
-        let term_view = Some(WireRowView {
-            row_id: t_low,
+        let term_view: Option<WireRowView> = Some(WireRowView {
+            row_id: t_low.clone(),
             values: vec![WireValue::Int(7)],
         });
         let term = store.table_at(&term_path).expect("Term");
-        assert_eq!(term.row_by_id(t_low), term_view);
-        assert_eq!(term.row_by_id(t_high), term_view);
+        assert_eq!(term.row_by_id(&t_low), term_view);
+        assert_eq!(term.row_by_id(&t_high), term_view);
         // An id that was never observed still misses.
-        assert_eq!(term.row_by_id(row_id_from(9, 0)), None);
+        assert_eq!(term.row_by_id(&row_id_from(9, 0)), None);
 
         // Both referencing tables now name the new canonical id.
         assert_eq!(
             store
                 .table_at(&Path::from("Plus"))
                 .expect("Plus")
-                .row_by_id(plus),
+                .row_by_id(&plus),
             Some(WireRowView {
                 row_id: plus,
-                values: vec![WireValue::Id(t_low), WireValue::Id(t_low)],
+                values: vec![WireValue::Id(t_low.clone()), WireValue::Id(t_low.clone())],
             })
         );
         assert_eq!(
             store
                 .table_at(&Path::from("Note"))
                 .expect("Note")
-                .row_by_id(note),
+                .row_by_id(&note),
             Some(WireRowView {
                 row_id: note,
                 values: vec![WireValue::Id(t_low)],
@@ -489,19 +508,19 @@ mod rowing {
         let keep = row_id_from(3, 0);
         let dup = row_id_from(4, 0);
         let ops = vec![
-            add_op(&store, "Term", t_low, vec![WireValue::Int(7)]),
-            add_op(&store, "Term", t_high, vec![WireValue::Int(7)]),
+            add_op(&store, "Term", t_low.clone(), vec![WireValue::Int(7)]),
+            add_op(&store, "Term", t_high.clone(), vec![WireValue::Int(7)]),
             add_op(
                 &store,
                 "Plus",
-                keep,
-                vec![WireValue::Id(t_high), WireValue::Id(t_high)],
+                keep.clone(),
+                vec![WireValue::Id(t_high.clone()), WireValue::Id(t_high.clone())],
             ),
             add_op(
                 &store,
                 "Plus",
-                dup,
-                vec![WireValue::Id(t_high), WireValue::Id(t_high)],
+                dup.clone(),
+                vec![WireValue::Id(t_high.clone()), WireValue::Id(t_high)],
             ),
         ];
         apply_ops_and_rebuild(&mut store, ops)
@@ -514,10 +533,13 @@ mod rowing {
 
         // The surviving row keeps the canonical id and names canonical children.
         assert_eq!(plus[0].row_id, keep);
-        assert_eq!(plus[0].values, [WireValue::Id(t_low), WireValue::Id(t_low)]);
+        assert_eq!(
+            plus[0].values,
+            [WireValue::Id(t_low.clone()), WireValue::Id(t_low)]
+        );
         // Both stale ids still resolve to what replaced them.
         let plus_tbl = store.table_at(&Path::from("Plus")).expect("Plus");
-        assert_eq!(plus_tbl.row_by_id(dup), plus_tbl.row_by_id(keep));
+        assert_eq!(plus_tbl.row_by_id(&dup), plus_tbl.row_by_id(&keep));
     }
 
     /// A row holding two displaced ids is recorded against both of them, so a
@@ -533,14 +555,14 @@ mod rowing {
         let u_high = row_id_from(2, 1);
         let plus = row_id_from(3, 0);
         let ops = vec![
-            add_op(&store, "Term", t_low, vec![WireValue::Int(7)]),
-            add_op(&store, "Term", u_low, vec![WireValue::Int(8)]),
-            add_op(&store, "Term", t_high, vec![WireValue::Int(7)]),
-            add_op(&store, "Term", u_high, vec![WireValue::Int(8)]),
+            add_op(&store, "Term", t_low.clone(), vec![WireValue::Int(7)]),
+            add_op(&store, "Term", u_low.clone(), vec![WireValue::Int(8)]),
+            add_op(&store, "Term", t_high.clone(), vec![WireValue::Int(7)]),
+            add_op(&store, "Term", u_high.clone(), vec![WireValue::Int(8)]),
             add_op(
                 &store,
                 "Plus",
-                plus,
+                plus.clone(),
                 vec![WireValue::Id(t_high), WireValue::Id(u_high)],
             ),
         ];
@@ -553,7 +575,7 @@ mod rowing {
             store
                 .table_at(&Path::from("Plus"))
                 .expect("Plus")
-                .row_by_id(plus),
+                .row_by_id(&plus),
             Some(WireRowView {
                 row_id: plus,
                 values: vec![WireValue::Id(t_low), WireValue::Id(u_low)],
@@ -570,29 +592,17 @@ mod rowing {
         let mult_path = Path::from("Mult");
 
         let mut txn = store.transaction();
-        let t7 = txn.add(&term_path, vec![TxnLiveValue::Int(7)]).unwrap();
-        let t8 = txn.add(&term_path, vec![TxnLiveValue::Int(8)]).unwrap();
-        let tp = txn
-            .add(&plus_path, vec![TxnLiveValue::Id(t7), TxnLiveValue::Id(t8)])
-            .unwrap();
-        txn.add(
-            &mult_path,
-            vec![TxnLiveValue::Id(tp.clone()), TxnLiveValue::Id(tp)],
-        )
-        .unwrap();
+        let t7 = txn.add(&term_path, vec![7]).unwrap();
+        let t8 = txn.add(&term_path, vec![8]).unwrap();
+        let tp = txn.add(&plus_path, vec![t7, t8]).unwrap();
+        txn.add(&mult_path, vec![tp.clone(), tp]).unwrap();
         txn.commit().unwrap();
 
         let mut txn2 = store.transaction();
-        let t7 = txn2.add(&term_path, vec![TxnLiveValue::Int(7)]).unwrap();
-        let t8 = txn2.add(&term_path, vec![TxnLiveValue::Int(8)]).unwrap();
-        let tp = txn2
-            .add(&plus_path, vec![TxnLiveValue::Id(t7), TxnLiveValue::Id(t8)])
-            .unwrap();
-        txn2.add(
-            &mult_path,
-            vec![TxnLiveValue::Id(tp.clone()), TxnLiveValue::Id(tp)],
-        )
-        .unwrap();
+        let t7 = txn2.add(&term_path, vec![7]).unwrap();
+        let t8 = txn2.add(&term_path, vec![8]).unwrap();
+        let tp = txn2.add(&plus_path, vec![t7, t8]).unwrap();
+        txn2.add(&mult_path, vec![tp.clone(), tp]).unwrap();
         txn2.commit().unwrap();
 
         let terms: Vec<WireRowView> = store.scan_table(&term_path).unwrap();
@@ -611,7 +621,7 @@ mod rowing {
                 .filter(|row| row.values == [value.into()])
                 .collect();
             assert_eq!(matching.len(), 1, "exactly one Term({value})");
-            matching[0].row_id
+            matching[0].row_id.clone()
         };
         let t7 = term_id(7);
         let t8 = term_id(8);
@@ -621,7 +631,10 @@ mod rowing {
         assert_eq!(plus[0].values, [WireValue::Id(t7), WireValue::Id(t8)]);
         assert_eq!(
             mult[0].values,
-            [WireValue::Id(plus[0].row_id), WireValue::Id(plus[0].row_id)]
+            [
+                WireValue::Id(plus[0].row_id.clone()),
+                WireValue::Id(plus[0].row_id.clone())
+            ]
         );
     }
 
@@ -639,18 +652,10 @@ mod rowing {
         let f = Path::from("F");
 
         let mut first = store.transaction();
-        let t1 = first
-            .add(&term, vec![TxnLiveValue::Int(1)])
-            .expect("Term(1)");
-        let t2 = first
-            .add(&term, vec![TxnLiveValue::Int(2)])
-            .expect("Term(2)");
-        first
-            .add(&term, vec![TxnLiveValue::Int(3)])
-            .expect("Term(3)");
-        first
-            .add(&f, vec![TxnLiveValue::Id(t1), TxnLiveValue::Id(t2)])
-            .expect("F(Term1, Term2)");
+        let t1 = first.add(&term, vec![1]).expect("Term(1)");
+        let t2 = first.add(&term, vec![2]).expect("Term(2)");
+        first.add(&term, vec![3]).expect("Term(3)");
+        first.add(&f, vec![t1, t2]).expect("F(Term1, Term2)");
         first.commit().expect("x is mapped only once");
 
         let terms_before = store.scan_table(&term).expect("Term").len();
@@ -663,15 +668,9 @@ mod rowing {
         // the two Term(1) rows canonicalise onto one id and F's x cell is
         // rewritten, which is why the check cannot live in the pre-apply pass.
         let mut second = store.transaction();
-        let t1_again = second
-            .add(&term, vec![TxnLiveValue::Int(1)])
-            .expect("Term(1)");
-        let t4 = second
-            .add(&term, vec![TxnLiveValue::Int(4)])
-            .expect("Term(4)");
-        second
-            .add(&f, vec![TxnLiveValue::Id(t1_again), TxnLiveValue::Id(t4)])
-            .expect("F(Term1, Term4)");
+        let t1_again = second.add(&term, vec![1]).expect("Term(1)");
+        let t4 = second.add(&term, vec![4]).expect("Term(4)");
+        second.add(&f, vec![t1_again, t4]).expect("F(Term1, Term4)");
 
         let err = second.commit().unwrap_err();
         assert!(matches!(

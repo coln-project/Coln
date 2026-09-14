@@ -360,7 +360,7 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(0),
                 table: 0,
-                values: vec![1i32.into()],
+                values: vec![1i32].into(),
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
@@ -369,7 +369,8 @@ mod tests {
                     TxnWireValue::Id(TxnWireRowId::Existing(rid)),
                     TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
                     TxnWireValue::Str("x".into()),
-                ],
+                ]
+                .into(),
             },
         ];
         let original = Commit::from_commit_data(
@@ -394,7 +395,7 @@ mod tests {
         // Ops are decoded from the payload on demand and resolve against the
         // commit hash.
         let hash = decoded.hash();
-        let expected: Vec<Op> = pending.iter().map(|op| op.resolve(hash)).collect();
+        let expected: Vec<Op> = pending.into_iter().map(|op| op.resolve(hash)).collect();
         let got: Vec<Op> = decoded
             .resolved_ops(|path| table_metadata.payload_for_path(path))
             .expect("resolve ops");
@@ -471,7 +472,7 @@ mod tests {
         let op = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![42.into()],
+            values: vec![42].into(),
         };
         let a = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op]), |oid| {
             table_metadata.int_for_oid(oid)
@@ -481,7 +482,7 @@ mod tests {
         let op2 = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![99.into()],
+            values: vec![99].into(),
         };
         let b = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op2]), |oid| {
             table_metadata.int_for_oid(oid)
@@ -550,7 +551,7 @@ mod tests {
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![1i32.into()],
+            values: vec![1i32].into(),
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
@@ -559,7 +560,8 @@ mod tests {
                 TxnWireValue::Id(TxnWireRowId::Existing(rid)),
                 TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
                 TxnWireValue::Str("x".into()),
-            ],
+            ]
+            .into(),
         };
         let pending = vec![op0, op1];
         let commit = Commit::from_commit_data(
@@ -596,7 +598,7 @@ mod tests {
         let op0 = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![1i32.into()],
+            values: vec![1i32].into(),
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
@@ -605,7 +607,8 @@ mod tests {
                 TxnWireValue::Id(TxnWireRowId::Existing(rid)),
                 TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
                 TxnWireValue::Str("x".into()),
-            ],
+            ]
+            .into(),
         };
         let pending = vec![op0, op1];
         let commit =
@@ -648,9 +651,10 @@ mod tests {
             row_id: TempRowId(0),
             table: 0,
             values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a)),
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a)),
-            ],
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a.clone())),
+                TxnWireValue::Id(TxnWireRowId::Existing(rid_a.clone())),
+            ]
+            .into(),
         };
         let op1 = PendingOp::Add {
             row_id: TempRowId(1),
@@ -658,7 +662,8 @@ mod tests {
             values: vec![
                 TxnWireValue::Id(TxnWireRowId::Existing(rid_b)),
                 TxnWireValue::Id(TxnWireRowId::Existing(rid_a_later)),
-            ],
+            ]
+            .into(),
         };
         let commit = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op0, op1]),
@@ -674,7 +679,7 @@ mod tests {
         let op_int = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![42.into()],
+            values: vec![42].into(),
         };
         let no_row_refs =
             Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op_int]), |oid| {

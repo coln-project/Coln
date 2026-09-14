@@ -15,7 +15,6 @@ use coln_query::api::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
@@ -30,9 +29,10 @@ use crate::table::handle::WireRowView;
 use crate::table::{
     Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
 };
-use crate::txn::rw::{StoreRead, StoreWrite, WhereClause};
-use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnLiveRowId, TxnLiveValue};
+use crate::txn::rw::{StoreRead, WhereClause};
+use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnWireRowId};
 use crate::{commit::Commit, table::cell::WireTuple};
+use crate::{commit::chunk::Chunk, store::auto::AutoStore};
 
 #[derive(Debug)]
 pub struct Store {
@@ -201,21 +201,13 @@ impl Store {
         self.table_at(table_path).map(|table| table.scan())
     }
 
-    pub(crate) fn row_by_liveid_inner(
-        &self,
-        table: &ir::Path,
-        live_id: &TxnLiveRowId,
-    ) -> Option<WireRowView> {
-        self.table_at(table)?.row_by_liveid(live_id)
-    }
-
     // This function will canonicalise the row_id on read, but will not change it
     // See `row_by_liveid` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
     pub(crate) fn row_by_id_inner(
         &self,
         table: &ir::Path,
-        row_id: WireRowId,
+        row_id: &WireRowId,
     ) -> Option<WireRowView> {
         self.table_at(table)?.row_by_id(row_id)
     }
@@ -237,7 +229,7 @@ impl Store {
             .all_row_id_inner(query)?
             .into_iter()
             .map(|r| {
-                t.row_by_id(r)
+                t.row_by_id(&r)
                     .expect("index_seek return valid rowid")
                     .values
             })
@@ -267,7 +259,7 @@ impl Store {
             })?;
         let row_ids = t
             .index_seek(values)?
-            .filter(|&r| row_id.is_none_or(|id| id == r))
+            .filter(|r| row_id.as_ref().is_none_or(|id| id == r))
             .collect();
         Ok(row_ids)
     }
@@ -291,11 +283,7 @@ impl StoreRead for Store {
         txn.scan_table(table)
     }
 
-    fn row_by_liveid(&self, table: &ir::Path, live_id: &TxnLiveRowId) -> Option<WireRowView> {
-        self.ro_transaction().row_by_liveid(table, live_id)
-    }
-
-    fn row_by_id(&self, table: &ir::Path, row_id: WireRowId) -> Option<WireRowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
         self.ro_transaction().row_by_id(table, row_id)
     }
 
@@ -305,20 +293,6 @@ impl StoreRead for Store {
 
     fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
         self.ro_transaction().all_row_id(query)
-    }
-}
-
-impl StoreWrite for Store {
-    // Opens a single transaction and hands back the live row id, does not return hash
-    fn add<V: Into<TxnLiveValue>>(
-        &mut self,
-        table: &ir::Path,
-        values: Vec<V>,
-    ) -> Result<TxnLiveRowId, StoreError> {
-        let mut txn = self.transaction();
-        let h = txn.add(table, values);
-        txn.commit()?;
-        h
     }
 }
 
@@ -369,6 +343,10 @@ impl Store {
 impl Store {
     // transactions
 
+    pub fn auto(self) -> AutoStore {
+        AutoStore::new(self)
+    }
+
     pub fn ro_transaction(&self) -> Transaction<ReadOnly<'_>> {
         Transaction::<ReadOnly<'_>>::new(self)
     }
@@ -379,6 +357,32 @@ impl Store {
 
     pub fn into_transaction(self) -> OwnedTransaction {
         OwnedTransaction::new(self)
+    }
+
+    // Promote the pending ids to existing ids
+    // And also canonicalise them
+    // Will not check validity, callers is responsible for calling it with valid pending ids
+    pub fn promote(
+        &self,
+        pending_ids: impl IntoIterator<Item = TxnWireRowId>,
+        h: CommitHash,
+    ) -> Vec<WireRowId> {
+        pending_ids
+            .into_iter()
+            .map(|pending| {
+                let wire_id = match pending {
+                    TxnWireRowId::Pending(pending) => pending.resolve(h),
+                    TxnWireRowId::Existing(row_id) => row_id,
+                };
+                self.canonical_row_id(&wire_id).unwrap_or(wire_id)
+            })
+            .collect()
+    }
+
+    pub fn promote_one(&self, pending_id: impl Into<TxnWireRowId>, h: CommitHash) -> WireRowId {
+        self.promote(std::iter::once(pending_id.into()), h)
+            .pop()
+            .expect("one id to promote")
     }
 }
 

@@ -11,6 +11,7 @@ use crate::commit::leb128 as commit_leb128;
 use crate::commit::wire::prim::{
     self, ValueMeta, decode_prim_value, encode_path, encode_prim_value,
 };
+use crate::txn::id::TxnWireTuple;
 use crate::{
     commit::{
         error::CodecError,
@@ -290,7 +291,7 @@ fn encode_op_group(
     ops: &[&PendingOp],
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
-    let mut rows: Vec<&[TxnWireValue]> = Vec::with_capacity(ops.len());
+    let mut rows: Vec<&TxnWireTuple> = Vec::with_capacity(ops.len());
     for op in ops {
         let PendingOp::Add {
             table: op_table,
@@ -323,7 +324,7 @@ fn encode_op_group(
     for (column_index, col_entry) in schema.columns.iter().enumerate() {
         let values = rows
             .iter()
-            .map(|row| row[column_index].clone())
+            .map(|row| row.as_slice()[column_index].clone())
             .collect::<Vec<_>>();
         let blob = encode_txn_value_column(&values, &col_entry.col_type, hash_mapper)?;
         commit_leb128::write_len_prefixed_bytes(&mut buf, &blob);
@@ -436,9 +437,16 @@ where
             ))
         })?;
         let row_idx = group_offsets[group_idx];
-        let values = group.rows.get(row_idx).cloned().ok_or_else(|| {
-            CodecError::DataFormatError(format!("op group {group_idx} exhausted at row {row_idx}"))
-        })?;
+        let values = group
+            .rows
+            .get(row_idx)
+            .cloned()
+            .ok_or_else(|| {
+                CodecError::DataFormatError(format!(
+                    "op group {group_idx} exhausted at row {row_idx}"
+                ))
+            })?
+            .into();
         group_offsets[group_idx] += 1;
 
         pending.push(PendingOp::Add {
@@ -854,7 +862,8 @@ mod tests {
                         commit: ha,
                         counter: 7,
                     })),
-                ],
+                ]
+                .into(),
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
@@ -863,7 +872,8 @@ mod tests {
                     2i32.into(),
                     "b".into(),
                     TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
-                ],
+                ]
+                .into(),
             },
         ];
         let op_refs: Vec<&PendingOp> = ops.iter().collect();
@@ -916,7 +926,7 @@ mod tests {
         let op = PendingOp::Add {
             row_id: TempRowId(0),
             table: 1,
-            values: vec![],
+            values: TxnWireTuple::empty(),
         };
         let err = encode_op_group(&Path::from("T"), 0, &schema, &[&op], &HashMapper::new())
             .expect_err("table mismatch");
@@ -939,7 +949,7 @@ mod tests {
         let op = PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![],
+            values: TxnWireTuple::empty(),
         };
         let err = encode_op_group(&table, 0, &schema, &[&op], &HashMapper::new())
             .expect_err("column count mismatch");
@@ -986,17 +996,17 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(0),
                 table: 0,
-                values: vec![1i32.into()],
+                values: vec![1i32].into(),
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
                 table: 1,
-                values: vec!["x".into()],
+                values: vec!["x"].into(),
             },
             PendingOp::Add {
                 row_id: TempRowId(2),
                 table: 0,
-                values: vec![2i32.into()],
+                values: vec![2i32].into(),
             },
         ];
 
@@ -1099,17 +1109,17 @@ mod tests {
             PendingOp::Add {
                 row_id: TempRowId(0),
                 table: 0,
-                values: vec![1i32.into()],
+                values: vec![1i32].into(),
             },
             PendingOp::Add {
                 row_id: TempRowId(1),
                 table: 1,
-                values: vec!["x".into()],
+                values: vec!["x"].into(),
             },
             PendingOp::Add {
                 row_id: TempRowId(2),
                 table: 0,
-                values: vec![2i32.into()],
+                values: vec![2i32].into(),
             },
         ];
 
@@ -1134,7 +1144,7 @@ mod tests {
         let pending = vec![PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![],
+            values: TxnWireTuple::empty(),
         }];
         let encoded = encode_commit_body(
             &pending,
@@ -1160,7 +1170,7 @@ mod tests {
         let pending = vec![PendingOp::Add {
             row_id: TempRowId(0),
             table: 0,
-            values: vec![],
+            values: TxnWireTuple::empty(),
         }];
 
         let err =
