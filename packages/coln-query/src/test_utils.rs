@@ -288,7 +288,7 @@ pub mod flir {
     pub trait EntityPath<Flir: JsonFlir> {
         const PATH: &'static str;
         fn ir_path() -> ir::Path {
-            ir::Path::from(Self::PATH.to_string())
+            ir::Path::from(Self::PATH)
         }
     }
 
