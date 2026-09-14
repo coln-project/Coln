@@ -321,39 +321,6 @@ pub mod flir {
         }
     }
 
-    pub struct GraphFlir {
-        driver: FlirDriver<Self>,
-    }
-
-    impl GraphFlir {
-        pub fn new() -> Self {
-            Self {
-                driver: FlirDriver::new(),
-            }
-        }
-        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
-            &mut self.driver
-        }
-        pub fn insert_vertex(&mut self) -> Vertex {
-            let vertex = Vertex::new(self.driver.next_row_id());
-            self.driver.insert_to_table_delta(&vertex);
-            vertex
-        }
-        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
-            let edge = Edge::new(self.driver.next_row_id(), from, to);
-            self.driver.insert_to_table_delta(&edge);
-            edge
-        }
-        pub fn insert_raw_edge(&mut self, edge: Edge) -> Edge {
-            self.driver.insert_to_table_delta(&edge);
-            edge
-        }
-    }
-
-    impl JsonFlir for GraphFlir {
-        const NAME: &'static str = "GraphRealm";
-    }
-
     pub struct Vertex {
         row_id: RowId,
     }
@@ -380,6 +347,10 @@ pub mod flir {
     }
 
     impl EntityPath<GraphFlir> for Vertex {
+        const PATH: &'static str = "root.V";
+    }
+
+    impl EntityPath<TriangleFlir> for Vertex {
         const PATH: &'static str = "root.V";
     }
 
@@ -426,8 +397,74 @@ pub mod flir {
         const PATH: &'static str = "root.E";
     }
 
+    impl EntityPath<TriangleFlir> for Edge {
+        const PATH: &'static str = "root.E";
+    }
+
     impl EntityPath<TransitiveClosureFlir> for Edge {
         const PATH: &'static str = "root.E";
+    }
+
+    pub struct GraphFlir {
+        driver: FlirDriver<Self>,
+    }
+
+    impl GraphFlir {
+        pub fn new() -> Self {
+            Self {
+                driver: FlirDriver::new(),
+            }
+        }
+        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
+            &mut self.driver
+        }
+        pub fn insert_vertex(&mut self) -> Vertex {
+            let vertex = Vertex::new(self.driver.next_row_id());
+            self.driver.insert_to_table_delta(&vertex);
+            vertex
+        }
+        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
+            let edge = Edge::new(self.driver.next_row_id(), from, to);
+            self.driver.insert_to_table_delta(&edge);
+            edge
+        }
+        pub fn insert_raw_edge(&mut self, edge: Edge) -> Edge {
+            self.driver.insert_to_table_delta(&edge);
+            edge
+        }
+    }
+
+    impl JsonFlir for GraphFlir {
+        const NAME: &'static str = "GraphRealm";
+    }
+
+    pub struct TriangleFlir {
+        driver: FlirDriver<Self>,
+    }
+
+    impl TriangleFlir {
+        pub fn new() -> Self {
+            Self {
+                driver: FlirDriver::new(),
+            }
+        }
+        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
+            &mut self.driver
+        }
+        pub fn insert_vertex(&mut self) -> Vertex {
+            let vertex = Vertex::new(self.driver.next_row_id());
+            self.driver.insert_to_table_delta(&vertex);
+            vertex
+        }
+        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
+            let edge = Edge::new(self.driver.next_row_id(), from, to);
+            self.driver.insert_to_table_delta(&edge);
+            edge
+        }
+    }
+
+    impl JsonFlir for TriangleFlir {
+        const NAME: &'static str = "TriangleRealm";
     }
 
     pub struct TransitiveClosureFlir {

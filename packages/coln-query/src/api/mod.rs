@@ -232,10 +232,13 @@ mod test {
             deltas::{TableDelta, ZRow},
             transaction::{ToCliReport, TryCommitErr, TryCommitOk, Tx},
         },
+        relational::TupleValue,
+        scalarial::ScalarTypedValue,
         test_utils::{
             self,
             flir::{self, JsonFlir},
         },
+        zrow,
     };
     use anyhow::{Error, Result};
 
@@ -400,11 +403,57 @@ mod test {
     }
 
     #[test]
+    fn triangle_flir() -> Result<()> {
+        let mut triangle_flir = test_utils::flir::TriangleFlir::new();
+        let mut coln_query = ColnQuery::init(&triangle_flir.load())?;
+
+        let mut tx0 = Tx::empty();
+        let v0 = triangle_flir.insert_vertex();
+        let v1 = triangle_flir.insert_vertex();
+        let v2 = triangle_flir.insert_vertex();
+        let v3 = triangle_flir.insert_vertex();
+        let e1 = triangle_flir.insert_edge(&v0, &v1);
+        let e2 = triangle_flir.insert_edge(&v1, &v2);
+        let e3 = triangle_flir.insert_edge(&v2, &v3);
+        tx0.insert(triangle_flir.driver().next_epoch().into_table_deltas());
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
+        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
+        assert!(tx0.take_soft_violations().is_empty());
+        assert!(tx0.take_derived_data_delta().is_empty());
+
+        let mut tx1 = Tx::empty();
+        triangle_flir.insert_edge(&v2, &v0);
+        triangle_flir.insert_edge(&v3, &v0);
+        triangle_flir.insert_edge(&v3, &v1);
+        tx1.insert(triangle_flir.driver().next_epoch().into_table_deltas());
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
+        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
+        assert!(tx1.take_soft_violations().is_empty());
+        let triangle_data = tx1
+            .take_derived_data_delta()
+            .into_table_deltas()
+            .pop()
+            .expect("one data delta");
+        assert_eq!(
+            triangle_data,
+            (
+                "view.triangle",
+                [
+                    zrow!(1 [0_u64, 2_u64, 0_u64, 3_u64, 0_u64, 0_u64, 0_u64, 6_u64, 1_u64, 1_u64, 1_u64, 0_u64]),
+                    zrow!(1 [0_u64, 3_u64, 0_u64, 0_u64, 0_u64, 1_u64, 1_u64, 1_u64, 0_u64, 4_u64, 1_u64, 2_u64])
+                ]
+            )
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn transitive_closure_flir() -> Result<()> {
         let mut transitive_closure_flir = test_utils::flir::TransitiveClosureFlir::new();
-        let flat_realm = transitive_closure_flir.load();
-        let flir_program = FlirProgram::from_flat_realm(&flat_realm)?;
-        let mut coln_query = ColnQuery::with_flir_program(flir_program)?;
+        let mut coln_query = ColnQuery::init(&transitive_closure_flir.load())?;
 
         let mut tx0 = Tx::empty();
         let v0 = transitive_closure_flir.insert_vertex();
