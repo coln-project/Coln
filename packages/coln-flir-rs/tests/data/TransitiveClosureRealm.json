@@ -1,7 +1,7 @@
 {
   "entities": [
     {
-      "path": [["TransitiveClosureRealm"], ["root"], ["V"]],
+      "path": "root.V",
       "value": {
         "entityVariant": { "tag": "table" },
         "columns": [],
@@ -9,52 +9,23 @@
       }
     },
     {
-      "path": [["TransitiveClosureRealm"], ["root"], ["E"]],
+      "path": "root.E",
       "value": {
         "entityVariant": { "tag": "table" },
         "columns": [
-          {
-            "path": [["a"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          },
-          {
-            "path": [["b"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          }
+          { "path": "a", "type": { "tag": "rowId", "path": "root.V" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.V" } }
         ],
         "primaryKey": null
       }
     },
     {
-      "path": [
-        ["TransitiveClosureRealm"],
-        ["init"],
-        ["trans-closure"],
-        ["connected"]
-      ],
+      "path": "init.trans-closure.connected",
       "value": {
         "entityVariant": { "tag": "view", "materialization": "memoized" },
         "columns": [
-          {
-            "path": [["a"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          },
-          {
-            "path": [["b"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          }
+          { "path": "a", "type": { "tag": "rowId", "path": "root.V" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.V" } }
         ],
         "primaryKey": [0, 1]
       }
@@ -62,38 +33,20 @@
   ],
   "definitions": [
     {
-      "path": [
-        ["TransitiveClosureRealm"],
-        ["init"],
-        ["trans-closure"],
-        ["refl"]
-      ],
+      "path": "init.trans-closure.refl",
       "value": {
-        "vars": [
-          [
-            [["v"]],
-            {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          ]
-        ],
+        "vars": [["v", { "tag": "rowId", "path": "root.V" }]],
         "antecedents": [
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 0 },
               "values": []
             }
           }
         ],
-        "definand": [
-          ["TransitiveClosureRealm"],
-          ["init"],
-          ["trans-closure"],
-          ["connected"]
-        ],
+        "definand": "init.trans-closure.connected",
         "arguments": [
           { "tag": "var", "index": 0 },
           { "tag": "var", "index": 0 }
@@ -101,48 +54,19 @@
       }
     },
     {
-      "path": [
-        ["TransitiveClosureRealm"],
-        ["init"],
-        ["trans-closure"],
-        ["snoc"]
-      ],
+      "path": "init.trans-closure.snoc",
       "value": {
         "vars": [
-          [
-            [["v0"]],
-            {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          ],
-          [
-            [["v1"]],
-            {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          ],
-          [
-            [["v2"]],
-            {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          ],
-          [
-            [["b"]],
-            {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["E"]]
-            }
-          ]
+          ["v0", { "tag": "rowId", "path": "root.V" }],
+          ["v1", { "tag": "rowId", "path": "root.V" }],
+          ["v2", { "tag": "rowId", "path": "root.V" }],
+          ["b", { "tag": "rowId", "path": "root.E" }]
         ],
         "antecedents": [
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 0 },
               "values": []
             }
@@ -150,7 +74,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 1 },
               "values": []
             }
@@ -158,7 +82,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 2 },
               "values": []
             }
@@ -166,12 +90,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [
-                ["TransitiveClosureRealm"],
-                ["init"],
-                ["trans-closure"],
-                ["connected"]
-              ],
+              "entity": "init.trans-closure.connected",
               "rowId": null,
               "values": [
                 { "column": 0, "term": { "tag": "var", "index": 0 } },
@@ -182,7 +101,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["E"]],
+              "entity": "root.E",
               "rowId": { "tag": "var", "index": 3 },
               "values": [
                 { "column": 0, "term": { "tag": "var", "index": 1 } },
@@ -191,12 +110,7 @@
             }
           }
         ],
-        "definand": [
-          ["TransitiveClosureRealm"],
-          ["init"],
-          ["trans-closure"],
-          ["connected"]
-        ],
+        "definand": "init.trans-closure.connected",
         "arguments": [
           { "tag": "var", "index": 0 },
           { "tag": "var", "index": 2 }
@@ -206,48 +120,32 @@
   ],
   "rules": [
     {
-      "path": [["TransitiveClosureRealm"], ["root"], ["V"], ["foreignKey"]],
+      "path": "root.V.foreignKey",
       "value": {
         "ruleVariant": "enforced",
         "vars": [],
         "antecedents": [
           {
             "tag": "atom",
-            "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["V"]],
-              "rowId": null,
-              "values": []
-            }
+            "atom": { "entity": "root.V", "rowId": null, "values": [] }
           }
         ],
         "consequents": []
       }
     },
     {
-      "path": [["TransitiveClosureRealm"], ["root"], ["E"], ["foreignKey"]],
+      "path": "root.E.foreignKey",
       "value": {
         "ruleVariant": "enforced",
         "vars": [
-          [
-            [["a"]],
-            {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          ],
-          [
-            [["b"]],
-            {
-              "tag": "rowId",
-              "path": [["TransitiveClosureRealm"], ["root"], ["V"]]
-            }
-          ]
+          ["a", { "tag": "rowId", "path": "root.V" }],
+          ["b", { "tag": "rowId", "path": "root.V" }]
         ],
         "antecedents": [
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["E"]],
+              "entity": "root.E",
               "rowId": null,
               "values": [
                 { "column": 0, "term": { "tag": "var", "index": 0 } },
@@ -260,7 +158,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 0 },
               "values": []
             }
@@ -268,7 +166,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TransitiveClosureRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 1 },
               "values": []
             }

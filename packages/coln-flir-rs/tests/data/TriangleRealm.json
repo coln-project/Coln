@@ -1,7 +1,7 @@
 {
   "entities": [
     {
-      "path": [["TriangleRealm"], ["root"], ["V"]],
+      "path": "root.V",
       "value": {
         "entityVariant": { "tag": "table" },
         "columns": [],
@@ -9,75 +9,42 @@
       }
     },
     {
-      "path": [["TriangleRealm"], ["root"], ["E"]],
+      "path": "root.E",
       "value": {
         "entityVariant": { "tag": "table" },
         "columns": [
-          {
-            "path": [["a"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["V"]]
-            }
-          },
-          {
-            "path": [["b"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["V"]]
-            }
-          }
+          { "path": "a", "type": { "tag": "rowId", "path": "root.V" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.V" } }
         ],
         "primaryKey": null
       }
     },
     {
-      "path": [["TriangleRealm"], ["view"], ["triangle"]],
+      "path": "view.triangle",
       "value": {
         "entityVariant": { "tag": "view", "materialization": "materialized" },
         "columns": [
           {
-            "path": [["triangle"], ["a"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["V"]]
-            }
+            "path": "triangle.a",
+            "type": { "tag": "rowId", "path": "root.V" }
           },
           {
-            "path": [["triangle"], ["b"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["V"]]
-            }
+            "path": "triangle.b",
+            "type": { "tag": "rowId", "path": "root.V" }
           },
           {
-            "path": [["triangle"], ["c"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["V"]]
-            }
+            "path": "triangle.c",
+            "type": { "tag": "rowId", "path": "root.V" }
           },
           {
-            "path": [["triangle"], ["f"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["E"]]
-            }
+            "path": "triangle.f",
+            "type": { "tag": "rowId", "path": "root.E" }
           },
           {
-            "path": [["triangle"], ["g"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["E"]]
-            }
+            "path": "triangle.g",
+            "type": { "tag": "rowId", "path": "root.E" }
           },
-          {
-            "path": [["triangle"], ["h"]],
-            "type": {
-              "tag": "rowId",
-              "path": [["TriangleRealm"], ["root"], ["E"]]
-            }
-          }
+          { "path": "triangle.h", "type": { "tag": "rowId", "path": "root.E" } }
         ],
         "primaryKey": [0, 1, 2, 3, 4, 5]
       }
@@ -85,39 +52,21 @@
   ],
   "definitions": [
     {
-      "path": [["TriangleRealm"], ["view"], ["triangle"], ["definition"]],
+      "path": "view.triangle.definition",
       "value": {
         "vars": [
-          [
-            [["triangle"], ["a"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["V"]] }
-          ],
-          [
-            [["triangle"], ["b"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["V"]] }
-          ],
-          [
-            [["triangle"], ["c"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["V"]] }
-          ],
-          [
-            [["triangle"], ["f"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["E"]] }
-          ],
-          [
-            [["triangle"], ["g"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["E"]] }
-          ],
-          [
-            [["triangle"], ["h"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["E"]] }
-          ]
+          ["triangle.a", { "tag": "rowId", "path": "root.V" }],
+          ["triangle.b", { "tag": "rowId", "path": "root.V" }],
+          ["triangle.c", { "tag": "rowId", "path": "root.V" }],
+          ["triangle.f", { "tag": "rowId", "path": "root.E" }],
+          ["triangle.g", { "tag": "rowId", "path": "root.E" }],
+          ["triangle.h", { "tag": "rowId", "path": "root.E" }]
         ],
         "antecedents": [
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 0 },
               "values": []
             }
@@ -125,7 +74,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 1 },
               "values": []
             }
@@ -133,7 +82,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 2 },
               "values": []
             }
@@ -141,7 +90,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["E"]],
+              "entity": "root.E",
               "rowId": { "tag": "var", "index": 3 },
               "values": [
                 { "column": 0, "term": { "tag": "var", "index": 0 } },
@@ -152,7 +101,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["E"]],
+              "entity": "root.E",
               "rowId": { "tag": "var", "index": 4 },
               "values": [
                 { "column": 0, "term": { "tag": "var", "index": 1 } },
@@ -163,7 +112,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["E"]],
+              "entity": "root.E",
               "rowId": { "tag": "var", "index": 5 },
               "values": [
                 { "column": 0, "term": { "tag": "var", "index": 0 } },
@@ -172,7 +121,7 @@
             }
           }
         ],
-        "definand": [["TriangleRealm"], ["view"], ["triangle"]],
+        "definand": "view.triangle",
         "arguments": [
           { "tag": "var", "index": 0 },
           { "tag": "var", "index": 1 },
@@ -186,42 +135,32 @@
   ],
   "rules": [
     {
-      "path": [["TriangleRealm"], ["root"], ["V"], ["foreignKey"]],
+      "path": "root.V.foreignKey",
       "value": {
         "ruleVariant": "enforced",
         "vars": [],
         "antecedents": [
           {
             "tag": "atom",
-            "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["V"]],
-              "rowId": null,
-              "values": []
-            }
+            "atom": { "entity": "root.V", "rowId": null, "values": [] }
           }
         ],
         "consequents": []
       }
     },
     {
-      "path": [["TriangleRealm"], ["root"], ["E"], ["foreignKey"]],
+      "path": "root.E.foreignKey",
       "value": {
         "ruleVariant": "enforced",
         "vars": [
-          [
-            [["a"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["V"]] }
-          ],
-          [
-            [["b"]],
-            { "tag": "rowId", "path": [["TriangleRealm"], ["root"], ["V"]] }
-          ]
+          ["a", { "tag": "rowId", "path": "root.V" }],
+          ["b", { "tag": "rowId", "path": "root.V" }]
         ],
         "antecedents": [
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["E"]],
+              "entity": "root.E",
               "rowId": null,
               "values": [
                 { "column": 0, "term": { "tag": "var", "index": 0 } },
@@ -234,7 +173,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 0 },
               "values": []
             }
@@ -242,7 +181,7 @@
           {
             "tag": "atom",
             "atom": {
-              "entity": [["TriangleRealm"], ["root"], ["V"]],
+              "entity": "root.V",
               "rowId": { "tag": "var", "index": 1 },
               "values": []
             }

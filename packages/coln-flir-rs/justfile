@@ -24,6 +24,31 @@ lint-check:
     cargo check -p {{ crate }} --all-targets --all-features
     cargo clippy -p {{ crate }} --all-targets --all-features -- -D warnings
 
+coln_compiler_programs_dir := "../coln-compiler/test/golden"
+coln_flir_rs_flir_dir := "tests/data"
+# Currently used coln programs from coln-compiler/test/golden for testing.
+# Add new ones here.
+coln_programs := "\
+graph.coln \
+graph-of-graphs.coln \
+transitive-closure.coln \
+triangle.coln \
+bipartite-trans-closure.coln \
+"
+
+# (Re)generate FLIRs in tests/data.
+generate-fixtures:
+    #!/usr/bin/env bash
+    for coln_program in {{ coln_programs }}; do
+        echo "Generating '{{ coln_compiler_programs_dir }}/$coln_program' ..."
+        cabal run coln-cli -- generate-ir {{ coln_compiler_programs_dir }}/$coln_program -o {{ coln_flir_rs_flir_dir }}
+    done
+    shopt -s nullglob # makes the glob expand to nothing if there are no matches
+    for json_flir in {{ coln_flir_rs_flir_dir }}/*.json; do
+        echo "Pretty-printing '$json_flir'"
+        prettier --write "$json_flir"
+    done
+
 # Run tests with stdout and stderr suppressed.
 test *TESTS:
     cargo nextest run -p {{ crate }} --all-targets --no-fail-fast {{ TESTS }}
