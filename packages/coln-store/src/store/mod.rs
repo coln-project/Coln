@@ -222,18 +222,20 @@ impl Store {
 
     // TODO ignoring efficiency. I'll leave that to the query engine to produce
     // the optimal query plan! Or we can optimise later.
-    pub(crate) fn all_inner(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
-        let WhereClause {
-            table_name,
-            values,
-            row_id,
-        } = query;
+    pub(crate) fn all_proj_inner(
+        &self,
+        query: &WhereClause,
+        select: &[u32],
+    ) -> Result<Vec<WireTuple>, StoreError> {
         let select: HashSet<u32> = select.iter().copied().collect();
-        let t = self.table_at(table_name)?;
-        let v = t
-            .index_seek(values)
-            .ok()?
-            .filter(|&r| row_id.is_none_or(|id| id == r))
+        let t = self
+            .table_at(&query.table_name)
+            .ok_or(ValidationError::UnknownTable {
+                path: query.table_name.clone(),
+            })?;
+        let v = self
+            .all_row_id_inner(query)?
+            .into_iter()
             .map(|r| {
                 t.row_by_id(r)
                     .expect("index_seek return valid rowid")
@@ -246,7 +248,28 @@ impl Store {
                     .collect::<WireTuple>()
             })
             .collect::<Vec<WireTuple>>();
-        Some(v)
+        Ok(v)
+    }
+
+    pub(crate) fn all_row_id_inner(
+        &self,
+        query: &WhereClause,
+    ) -> Result<Vec<WireRowId>, StoreError> {
+        let WhereClause {
+            table_name,
+            values,
+            row_id,
+        } = query;
+        let t = self
+            .table_at(table_name)
+            .ok_or(ValidationError::UnknownTable {
+                path: table_name.clone(),
+            })?;
+        let row_ids = t
+            .index_seek(values)?
+            .filter(|&r| row_id.is_none_or(|id| id == r))
+            .collect();
+        Ok(row_ids)
     }
 }
 
@@ -276,8 +299,12 @@ impl StoreRead for Store {
         self.ro_transaction().row_by_id(table, row_id)
     }
 
-    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
-        self.ro_transaction().all(query, select)
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
+        self.ro_transaction().all_proj(query, select)
+    }
+
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
+        self.ro_transaction().all_row_id(query)
     }
 }
 

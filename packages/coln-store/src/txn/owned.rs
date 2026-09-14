@@ -63,8 +63,12 @@ impl StoreRead for OwnedTransaction {
         self.store.row_by_id_inner(table, row_id)
     }
 
-    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
-        self.store.all_inner(query, select)
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
+        self.store.all_proj_inner(query, select)
+    }
+
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
+        self.store.all_row_id_inner(query)
     }
 }
 

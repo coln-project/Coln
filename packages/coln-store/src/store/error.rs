@@ -25,6 +25,17 @@ pub enum StoreError {
     CommitGraph(#[from] CommitGraphError),
     #[error(transparent)]
     CQError(#[from] ColnQueryError),
+    #[error(transparent)]
+    QError(#[from] QueryError),
+}
+
+// TODO remove this to query engine
+#[derive(Debug, thiserror::Error)]
+pub enum QueryError {
+    #[error("results have multiple matching tuple")]
+    MultipleMatchingTuple,
+    #[error("results have zero matching tuple")]
+    ZeroMatchingTuple,
 }
 
 #[derive(Debug, thiserror::Error)]

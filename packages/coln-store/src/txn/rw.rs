@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::{
-    store::error::StoreError,
+    store::error::{QueryError, StoreError},
     table::{WireRowId, WireValue, cell::WireTuple, handle::WireRowView},
     txn::{TxnLiveRowId, TxnLiveValue},
 };
@@ -30,14 +30,23 @@ pub trait StoreRead {
         self.row_by_liveid(table, &TxnLiveRowId::from_existing(row_id))
     }
 
-    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>>;
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError>;
 
-    fn one(&self, query: &WhereClause, select: &[u32]) -> Option<WireTuple> {
-        self.all(query, select)?.pop()
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError>;
+
+    fn one_proj(&self, query: &WhereClause, select: &[u32]) -> Result<WireTuple, StoreError> {
+        let mut all_tuples = self.all_proj(query, select)?;
+        if all_tuples.len() == 1 {
+            Ok(all_tuples.pop().unwrap())
+        } else if all_tuples.is_empty() {
+            Err(QueryError::ZeroMatchingTuple.into())
+        } else {
+            Err(QueryError::MultipleMatchingTuple.into())
+        }
     }
 
-    fn exists(&self, query: &WhereClause) -> bool {
-        self.all(query, &[0]).is_some_and(|v| !v.is_empty())
+    fn exists(&self, query: &WhereClause) -> Result<bool, StoreError> {
+        self.all_row_id(query).map(|v| !v.is_empty())
     }
 }
 

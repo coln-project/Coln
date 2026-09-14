@@ -53,7 +53,7 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
 
     // TODO change the API so user does not need to manually construct WireValue?
     let connected = auto_store
-        .all(
+        .all_proj(
             &WhereClause {
                 table_name: Path::from("init.trans-closure.connected"),
                 row_id: None,

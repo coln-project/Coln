@@ -30,8 +30,12 @@ impl StoreRead for AutoStore {
             .row_by_liveid(table, live_id)
     }
 
-    fn all(&self, query: &WhereClause, select: &[u32]) -> Option<Vec<WireTuple>> {
-        self.txn.as_ref().expect("open txn").all(query, select)
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
+        self.txn.as_ref().expect("open txn").all_proj(query, select)
+    }
+
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<crate::table::WireRowId>, StoreError> {
+        self.txn.as_ref().expect("open txn").all_row_id(query)
     }
 }
 

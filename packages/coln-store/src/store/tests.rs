@@ -166,12 +166,14 @@ mod reads {
             values: vec![],
         };
         assert_eq!(
-            store.all(&all_edges, &[0]).expect("all edge node columns"),
+            store
+                .all_proj(&all_edges, &[0])
+                .expect("all edge node columns"),
             vec![n0_col.clone(), n0_col.clone(), n1_col.clone()]
         );
         assert_eq!(
             store
-                .all(&all_edges, &[])
+                .all_proj(&all_edges, &[])
                 .expect("all edges with empty select"),
             vec![vec![], vec![], vec![]]
         );
@@ -181,10 +183,13 @@ mod reads {
             row_id: Some(e0_id),
             values: vec![],
         };
-        assert_eq!(store.all(&by_row_id, &[0]).expect("edge e0"), vec![n0_col]);
+        assert_eq!(
+            store.all_proj(&by_row_id, &[0]).expect("edge e0"),
+            vec![n0_col]
+        );
         assert_eq!(
             store
-                .all(&by_row_id, &[])
+                .all_proj(&by_row_id, &[])
                 .expect("edge e0 with empty select"),
             vec![vec![]]
         );
@@ -219,45 +224,47 @@ mod reads {
         };
 
         assert_eq!(
-            store.all(&query(vec![]), &cols).expect("empty prefix"),
+            store.all_proj(&query(vec![]), &cols).expect("empty prefix"),
             vec![r0.clone(), r1.clone(), r2.clone(), r3.clone()]
         );
         assert_eq!(
-            store.all(&query(vec![1]), &cols).expect("first column"),
+            store
+                .all_proj(&query(vec![1]), &cols)
+                .expect("first column"),
             vec![r0.clone(), r1.clone(), r2.clone()]
         );
         assert_eq!(
             store
-                .all(&query(vec![1, 10]), &cols)
+                .all_proj(&query(vec![1, 10]), &cols)
                 .expect("first two columns"),
             vec![r0.clone(), r1.clone()]
         );
         assert_eq!(
             store
-                .all(&query(vec![1, 10, 100]), &cols)
+                .all_proj(&query(vec![1, 10, 100]), &cols)
                 .expect("full key"),
             vec![r0]
         );
         assert_eq!(
             store
-                .all(&query(vec![1, 20]), &cols)
+                .all_proj(&query(vec![1, 20]), &cols)
                 .expect("first two, other b"),
             vec![r2]
         );
         assert_eq!(
             store
-                .all(&query(vec![2]), &cols)
+                .all_proj(&query(vec![2]), &cols)
                 .expect("other first column"),
             vec![r3]
         );
         assert_eq!(
             store
-                .all(&query(vec![10]), &cols)
+                .all_proj(&query(vec![10]), &cols)
                 .expect("10 is a later-column value, not a col0 prefix"),
             Vec::<Vec<WireValue>>::new()
         );
         assert!(
-            store.all(&query(vec![1, 10, 100, 0]), &cols).is_none(),
+            store.all_proj(&query(vec![1, 10, 100, 0]), &cols).is_err(),
             "longer than the column count is not a valid prefix"
         );
     }
