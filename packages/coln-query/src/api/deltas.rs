@@ -99,6 +99,15 @@ impl std::fmt::Display for ZRow {
     }
 }
 
+#[cfg(test)]
+#[macro_export]
+macro_rules! zrow {
+    ( $zweight:literal [$($key:expr),* $(,)?]) => {{
+        let tuple = [$( ScalarTypedValue::from($key) ),*].into_iter().collect::<TupleValue>();
+        ZRow::new($zweight, tuple).expect("non-zero zweight")
+    }};
+}
+
 /// An update to a base table (part of the EDB).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableDelta {
@@ -160,6 +169,17 @@ impl<'a> IntoIterator for &'a TableDelta {
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.iter()
+    }
+}
+
+#[cfg(test)]
+impl<T: AsRef<[ZRow]>> PartialEq<(&'static str, T)> for TableDelta {
+    fn eq(&self, other: &(&'static str, T)) -> bool {
+        let entity = other.0;
+        let data = other.1.as_ref();
+        self.for_entity().id() == entity
+            && self.delta().len() == data.len()
+            && self.delta().iter().all(|row| data.contains(row))
     }
 }
 
