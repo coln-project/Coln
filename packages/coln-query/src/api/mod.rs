@@ -380,7 +380,7 @@ mod test {
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "GraphRealm.root.E.foreignKey");
+        assert_eq!(violation.for_entity().id(), "root.E.foreignKey");
         assert_eq!(violation.delta().len(), 3);
 
         let mut tx3 = Tx::empty();
@@ -393,7 +393,7 @@ mod test {
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "GraphRealm.root.E.foreignKey");
+        assert_eq!(violation.for_entity().id(), "root.E.foreignKey");
         assert_eq!(violation.delta().len(), 1);
 
         Ok(())
@@ -429,7 +429,7 @@ mod test {
         let trans_closure_delta = derived_data_table_deltas.pop().expect("checked");
         assert_eq!(
             trans_closure_delta.for_entity().id(),
-            "TransitiveClosureRealm.init.trans-closure.connected"
+            "init.trans-closure.connected"
         );
         let trans_closure_delta = trans_closure_delta.into_delta();
         assert_eq!(trans_closure_delta.len(), 10);
