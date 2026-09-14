@@ -34,7 +34,7 @@ impl From<&str> for Path {
 }
 
 impl AsRef<str> for Path {
-    fn as_ref<'a>(&'a self) -> &'a str {
+    fn as_ref(&self) -> &str {
         self.0.as_ref()
     }
 }
