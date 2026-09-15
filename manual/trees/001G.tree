@@ -1,14 +1,14 @@
 \title{Propositions and relations}
 \import{prelude}
 
-\p{There is a theory \code{Prop} which is even more boring than \code{Set}; it is the theory of a set with at most one element. One could think of it also as a truth value: inhabited means true and empty means false}
+\p{There is an additional type-of-types \code{Prop} whose elements are simpler than those of \code{Set}; its elements are collections that themselves have \em{at most one} element. One can think of \code{Prop} as the type of [truth values](TODO): an element which is an inhabited collection means \code{true}, and an element which is an empty collection means \code{false}}
 
-\p{While on its own \code{Prop} is boring, we can combine it with function types to make it more interesting. For instance, we can now rewrite \code{SantaLists} so that the same person may appear on lists in different years.}
+\p{While on its own \code{Prop} is boring, we can combine it with function types to make it more interesting. For instance, we can rewrite \code{SantaLists} so that the same person may appear on lists in different years.}
 
 \pre{%
 \kw{theory} SantaListOver (person : Set) := \kw{sig}
-  naughty : person -> Prop
-  nice : person -> Prop
+  is-naughty : person -> Prop
+  is-nice : person -> Prop
 \kw{end}
 
 \kw{theory} SantaLists := \kw{sig}
@@ -18,9 +18,9 @@
 \kw{end}
 }
 
-\p{Here we have also introduced an additional feature: a theory can have \em{parameters}, which are models of other theories. In this case, \code{SantaList} now takes in a parameter \code{person} which is a model of \code{Set}. We instantiate this parameter with \code{children} in \code{SantaLists}.}
+% Example instance
 
-\p{We call a function whose codomain is \code{Prop} a \defcase{relation}. \code{m.list(y2025).nice} is a \em{unary} relation because it takes in one argument. Here is another example, this time of a \em{binary} relation.}
+\p{We call a function whose codomain is \code{Prop} a \defcase{relation}. Here, \code{is-naughty} and \code{is-nice} are \em{unary} relations, because each takes in one argument. Here is another example, this time of a \em{binary} relation.}
 
 \pre{%
 \kw{theory} Drama := \kw{sig}
@@ -29,7 +29,9 @@
 \kw{end}
 }
 
-\p{Just like a set is a theory, a proposition is also a theory; a model of the proposition can be thought of as a witness that the proposition is true. We can use this to put \em{laws} in our database. For instance, we can make jealousy be transitive.}
+\p{An element of a proposition can be thought of as a witness that the
+proposition is true. We can use this to put \em{laws} in our database.
+For instance, we can enforce a law that makes jealousy be transitive.}
 
 \pre{%
 \kw{theory} ExtraDrama := \kw{sig}
@@ -40,3 +42,4 @@
 \kw{end}
 }
 
+% Example instance

@@ -10,6 +10,22 @@
 \def\cell[content]{\<html:td>{\content}}
 \def\hcell[content]{\<html:th>{\content}}
 
+\def\collapsedaside[~body]{
+  \scope{
+    \put\transclude/expanded{false}
+    \put\transclude/toc{false}
+    \put\transclude/numbered{false}
+    \subtree{\body{}}
+  }
+}
+
+\def\dbexample[body]{
+  \collapsedaside{
+    \taxon{Example Instance}
+    \<html:div>[class]{database-example}{\body}
+  }
+}
+
 \def\todo{\<html:sup>[class]{smallcaps}{todo}}
 \def\kw[x]{\strong{\x}}
 

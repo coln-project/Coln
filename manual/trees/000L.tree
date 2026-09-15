@@ -1,11 +1,17 @@
 \title{Coln as a type theory}
 \import{prelude}
 
+% Intro
 \transclude{000N}
+
+% Basic type constructors
+\transclude{000S}
 
 % Levels
 \transclude{0033}
 
-\transclude{000S}
+% Sets as views
+\transclude{0035}
 
+% Inductive types
 \transclude{001N}

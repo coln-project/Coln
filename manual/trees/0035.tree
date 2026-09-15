@@ -1,0 +1,23 @@
+\title{Queries and Views}
+\import{prelude}
+
+
+\p{\mvrnote{TODO, something like:} some of the above have alternative useful interpretations. A set, described in the context of a model, is a construction that might mention pieces of the model. This can be interpreted as a \defcase{query} over the database instance described by that model, so that the result of the query is the collection of occurrences of the construction in the model, see [TODO](TODO). Similarly a proposition in the context of a model can be interpreted as \mvrnote{something something datalog}.}
+
+\p{We go into much more detail about the database interpretation of types in a [later section](000M).}
+
+
+\subtree[001A]{
+  \taxon{Slogan}
+  \title{Sets are queries, elements are results}
+
+  \p{One can query a database in Coln via for-loops in TypeScript, but this is obviously not the most efficient or ergonomic way to do it. In fact, we already have the machinery to write down queries, it just requires a bit of rethinking what we have already learned. The idea is that giving a way to produce a set from a model of a theory is a query. The elements of that set are the results of the query.}
+}
+
+\transclude{001J}
+
+\transclude{001K}
+
+\transclude{001L}
+
+\transclude{001M}
