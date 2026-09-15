@@ -16,6 +16,7 @@ pub use handle::TableHandle;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
+#[cfg(not(target_arch = "wasm32"))]
 use coln_query::api::deltas::{ScalarTypedValue, TableDelta, ZRow};
 
 use crate::ir;
@@ -170,10 +171,6 @@ impl Table {
     // Returns the first n columns that are required to be unique in this table
     pub(crate) fn unique_columns(&self) -> Option<usize> {
         self.pk
-    }
-
-    pub(crate) fn table_variant(&self) -> &ir::EntityVariant {
-        &self.schema.entity_variant
     }
 }
 
@@ -346,21 +343,38 @@ impl Table {
 
     // Apply the staged updates to the table. Rollback support will record
     // inverse operations separately before these operations are consumed.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn apply_staged_ops(
         &mut self,
         rowing: &mut Rowing,
     ) -> Result<TableDelta, ValidationError> {
         let ops = std::mem::take(&mut self.pending_updates);
         let delta = self.table_delta_from_ops(ops.clone());
+        self.apply_ops(ops, rowing)?;
+        Ok(delta)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn apply_staged_ops(&mut self, rowing: &mut Rowing) -> Result<(), ValidationError> {
+        let ops = std::mem::take(&mut self.pending_updates);
+        self.apply_ops(ops, rowing)
+    }
+
+    fn apply_ops(
+        &mut self,
+        ops: impl IntoIterator<Item = PackedOp>,
+        rowing: &mut Rowing,
+    ) -> Result<(), ValidationError> {
         for op in ops {
             let undo_op = self.apply_op(op, rowing)?;
             if let Some(undo_log) = &mut self.undo_log {
                 undo_log.push(undo_op);
             }
         }
-        Ok(delta)
+        Ok(())
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn table_delta_from_ops(&self, ops: impl IntoIterator<Item = PackedOp>) -> TableDelta {
         let zrows: Vec<ZRow> = ops
             .into_iter()
@@ -383,6 +397,7 @@ impl Table {
     }
 
     // This conversion needs table schema, therefore cannot be done with From trait
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn ops_from_table_delta<F>(
         &self,
         td: TableDelta,

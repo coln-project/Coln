@@ -7,6 +7,7 @@ pub mod error;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+#[cfg(not(target_arch = "wasm32"))]
 use coln_query::api::{
     ColnQuery,
     deltas::{DerivedDataDelta, StoreDelta},
@@ -44,6 +45,7 @@ pub struct Store {
     ir: FlatRealm,
     commits: CommitGraph,
     rowing: rowing::Rowing,
+    #[cfg(not(target_arch = "wasm32"))]
     cq: ColnQuery,
 }
 
@@ -124,6 +126,7 @@ impl Store {
 
         let commits =
             Self::graph_with_root_commit(empty_root).expect("empty root commit should build");
+        #[cfg(not(target_arch = "wasm32"))]
         let cq = ColnQuery::init(&ir).expect("start coln-query");
         Self {
             path_to_oid: HashMap::new(),
@@ -132,6 +135,7 @@ impl Store {
             ir,
             commits,
             rowing: rowing::Rowing::new(),
+            #[cfg(not(target_arch = "wasm32"))]
             cq,
         }
     }
@@ -325,6 +329,7 @@ impl Store {
             );
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         let cq = ColnQuery::init(&ir)?;
         let commits = Self::graph_with_root_commit(RootCommitData::new(ir.clone(), coln_def))?;
 
@@ -335,6 +340,7 @@ impl Store {
             ir,
             commits,
             rowing: rowing::Rowing::new(),
+            #[cfg(not(target_arch = "wasm32"))]
             cq,
         })
     }
@@ -389,6 +395,7 @@ impl Store {
 impl Store {
     // Dealing with rules (by asking coln-query to do it)
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn check_rules(
         &mut self,
         query_tx: QueryTx<Prepare>,
@@ -611,6 +618,7 @@ impl Store {
 
     // Apply a commit + and fixpoint rebuilding + rule checking
     // This function is doing the actual work, after a dozen levels of indirection.
+    #[cfg(not(target_arch = "wasm32"))]
     fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
         let mut query_tx = QueryTx::new(StoreDelta::empty());
         let commit = self.apply_commit_ready(commit, &mut query_tx)?;
@@ -621,6 +629,15 @@ impl Store {
         Ok(())
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
+        let commit = self.apply_commit_ready(commit)?;
+        self.rebuild_to_fixpoint()?;
+        self.record_in_commit_graph(commit);
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn apply_derived_view(
         &mut self,
         derived: DerivedDataDelta,
@@ -657,6 +674,7 @@ impl Store {
 
     /// Rebuild until a pass displaces no further ids, so a commit that merged
     /// nothing does no rebuild work at all.
+    #[cfg(not(target_arch = "wasm32"))]
     fn rebuild_to_fixpoint(&mut self, query_tx: &mut QueryTx<Prepare>) -> Result<(), StoreError> {
         while self.rowing.has_displaced() {
             self.rebuild_one(query_tx)?;
@@ -665,20 +683,40 @@ impl Store {
         Ok(())
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreError> {
+        while self.rowing.has_displaced() {
+            self.rebuild_one()?;
+            tracing::debug!("finished one iteration of rebuilding");
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn rebuild_one(&mut self, query_tx: &mut QueryTx<Prepare>) -> Result<(), StoreError> {
+        let affected = self.rebuild_tables();
+        self.apply_staged_ops(&affected, query_tx)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn rebuild_one(&mut self) -> Result<(), StoreError> {
+        let affected = self.rebuild_tables();
+        self.apply_staged_ops(&affected)
+    }
+
+    fn rebuild_tables(&mut self) -> Vec<TableOid> {
         for tbl in self.tables.values_mut() {
             tbl.rebuild(&self.rowing, &self.id_packer);
         }
 
         // clear up the displaced table because the changes have all been staged.
         self.rowing.clear_displaced();
-        let affected: Vec<TableOid> = self.tables.keys().copied().collect();
-        self.apply_staged_ops(&affected, query_tx)?;
-        Ok(())
+        self.tables.keys().copied().collect()
     }
 
     // Apply a commit with its deps checked to be satisfied
     // The commit data itself might still violate rules, primary key constraints, etc
+    #[cfg(not(target_arch = "wasm32"))]
     fn apply_commit_ready(
         &mut self,
         cmt: Commit<'static>,
@@ -699,10 +737,18 @@ impl Store {
         Ok(original)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<Commit<'static>, StoreError> {
+        let PrecheckedCommit { ops, original } = self.precheck_commit(cmt)?;
+        self.apply_commit_ops(ops)?;
+        Ok(original)
+    }
+
     /// Applying the data, assuming that it has passed the format checker, i.e.
     /// the data conforms the the schema type definitions.
     /// But it might not follow all the rule definitions, it might also violate
     /// primary key constraints after hashconsing
+    #[cfg(not(target_arch = "wasm32"))]
     fn apply_commit_ops(
         &mut self,
         ops: Vec<Op>,
@@ -711,6 +757,16 @@ impl Store {
         let op_count = ops.len();
         let affected = self.stage_commit_ops(ops);
         self.apply_staged_ops(&affected, query_tx)?;
+
+        info!(op_count, "applied batch");
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn apply_commit_ops(&mut self, ops: Vec<Op>) -> Result<(), StoreError> {
+        let op_count = ops.len();
+        let affected = self.stage_commit_ops(ops);
+        self.apply_staged_ops(&affected)?;
 
         info!(op_count, "applied batch");
         Ok(())
@@ -731,18 +787,31 @@ impl Store {
         affected.into_iter().collect()
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn apply_staged_ops(
         &mut self,
         tables: &[TableOid],
         query_tx: &mut QueryTx<Prepare>,
     ) -> Result<(), StoreError> {
         for oid in tables {
-            let ops = self
+            let query_delta = self
                 .tables
                 .get_mut(oid)
                 .expect("staged table exists")
                 .apply_staged_ops(&mut self.rowing)?;
-            query_tx.insert(std::iter::once(ops));
+            query_tx.insert(std::iter::once(query_delta));
+        }
+        self.rowing.apply_unions(&self.id_packer);
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn apply_staged_ops(&mut self, tables: &[TableOid]) -> Result<(), StoreError> {
+        for oid in tables {
+            self.tables
+                .get_mut(oid)
+                .expect("staged table exists")
+                .apply_staged_ops(&mut self.rowing)?;
         }
         self.rowing.apply_unions(&self.id_packer);
         Ok(())

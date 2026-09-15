@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#[cfg(not(target_arch = "wasm32"))]
 use coln_query::api::error::ColnQueryError;
+#[cfg(not(target_arch = "wasm32"))]
 use coln_query::api::violations::ViolationsSet;
 
 use crate::commit::error::CodecError;
@@ -15,6 +17,7 @@ use crate::table::ValidationError;
 pub enum StoreError {
     #[error(transparent)]
     Validation(#[from] ValidationError),
+    #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     Rule(#[from] RuleViolation),
     #[error(transparent)]
@@ -23,6 +26,7 @@ pub enum StoreError {
     Commit(#[from] CommitApplyError),
     #[error(transparent)]
     CommitGraph(#[from] CommitGraphError),
+    #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
     CQError(#[from] ColnQueryError),
     #[error(transparent)]
@@ -38,6 +42,7 @@ pub enum QueryError {
     ZeroMatchingTuple,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, thiserror::Error)]
 pub enum RuleViolation {
     #[error("A hardviolation {0}")]

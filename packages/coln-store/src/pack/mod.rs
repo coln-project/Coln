@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod id_packer;
+#[cfg(not(target_arch = "wasm32"))]
 use coln_query::api::deltas::ScalarTypedValue;
 pub(crate) use id_packer::{IdPacker, IdPackerSnapshot};
 
@@ -127,6 +128,7 @@ pub(crate) struct PackedRowView {
     pub values: PackedTuple,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<PackedRowView> for coln_query::api::deltas::TupleValue {
     fn from(packed_view: PackedRowView) -> Self {
         let PackedRowView { row_id, values } = packed_view;

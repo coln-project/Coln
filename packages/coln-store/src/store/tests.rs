@@ -413,10 +413,17 @@ mod rowing {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<Op>) -> Result<(), StoreError> {
         let mut query_tx = QueryTx::new(StoreDelta::empty());
         store.apply_commit_ops(ops, &mut query_tx)?;
         store.rebuild_to_fixpoint(&mut query_tx)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<Op>) -> Result<(), StoreError> {
+        store.apply_commit_ops(ops)?;
+        store.rebuild_to_fixpoint()
     }
 
     /// When a smaller structurally equal row swaps a class's canonical id, the

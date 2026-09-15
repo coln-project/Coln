@@ -176,9 +176,15 @@ impl<'a> TableMut<'a> {
         self.inner.stage_update(PackedOp::Delete { row_id });
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn apply_staged(
         &mut self,
     ) -> Result<coln_query::api::deltas::TableDelta, ValidationError> {
+        self.inner.apply_staged_ops(self.rowing)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn apply_staged(&mut self) -> Result<(), ValidationError> {
         self.inner.apply_staged_ops(self.rowing)
     }
 

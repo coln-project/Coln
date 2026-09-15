@@ -264,7 +264,7 @@ impl SchemaSummary {
             .tables()
             .map(|(_, table)| TableSummary {
                 path: table.path().to_string(),
-                entity_variant: table.inner().table_variant().clone(),
+                entity_variant: table.schema().entity_variant.clone(),
                 column_count: table.schema().columns.len(),
                 primary_key: match &table.schema().primary_key {
                     None => PrimaryKeySummary::None,
