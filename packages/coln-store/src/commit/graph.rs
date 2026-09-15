@@ -121,13 +121,15 @@ impl CommitGraph {
 
 #[cfg(test)]
 mod tests {
-
-    use coln_flir_rs::ir::EntityVariant;
+    use rstest::{fixture, rstest};
 
     use super::*;
     use crate::commit::author::Author;
     use crate::commit::hash::HASH_SIZE;
+    use crate::commit::wire::RootCommitData;
     use crate::ir::{FlatRealm, Path, Schema, TableEntry};
+    use crate::store::ColnDef;
+    use crate::test_utils::{empty_colndef, int_schema};
 
     fn h(n: u8) -> CommitHash {
         CommitHash([n; HASH_SIZE])
@@ -141,23 +143,30 @@ mod tests {
         .expect("build commit")
     }
 
-    fn root() -> Commit<'static> {
-        root_with_table(0)
+    #[fixture]
+    fn root(root_with_table: Commit<'static>) -> Commit<'static> {
+        root_with_table
     }
 
-    fn root_with_table(oid: usize) -> Commit<'static> {
-        Commit::from_root_data(&FlatRealm {
-            tables: vec![TableEntry {
-                path: Path::from(format!("T{oid}")),
-                table: Schema {
-                    entity_variant: EntityVariant::Table,
-                    columns: vec![],
-                    primary_key: None,
-                },
-            }],
-            definitions: vec![],
-            rules: vec![],
-        })
+    #[fixture]
+    fn root_with_table(
+        #[default(0)] oid: usize,
+        #[from(int_schema)]
+        #[with(vec![], None)]
+        schema: Schema,
+        empty_colndef: ColnDef,
+    ) -> Commit<'static> {
+        Commit::from_root_data(&RootCommitData::new(
+            FlatRealm {
+                tables: vec![TableEntry {
+                    path: Path::from(format!("T{oid}")),
+                    table: schema,
+                }],
+                definitions: vec![],
+                rules: vec![],
+            },
+            empty_colndef,
+        ))
         .expect("build root commit")
     }
 
@@ -309,21 +318,27 @@ mod tests {
         assert_eq!(g.root_commit().unwrap_err(), CommitGraphError::MissingRoot);
     }
 
-    #[test]
-    fn root_commit_returns_single_root() {
+    #[rstest]
+    fn root_commit_returns_single_root(root: Commit<'static>) {
         let mut g = CommitGraph::new();
-        let root = root();
         let root_hash = root.hash();
         g.add_commit(root);
 
         assert_eq!(g.root_commit().expect("root").hash(), root_hash);
     }
 
-    #[test]
-    fn root_commit_rejects_multiple_roots() {
+    #[rstest]
+    fn root_commit_rejects_multiple_roots(
+        #[from(root_with_table)]
+        #[with(0)]
+        first_root: Commit<'static>,
+        #[from(root_with_table)]
+        #[with(1)]
+        second_root: Commit<'static>,
+    ) {
         let mut g = CommitGraph::new();
-        g.add_commit(root_with_table(0));
-        g.add_commit(root_with_table(1));
+        g.add_commit(first_root);
+        g.add_commit(second_root);
 
         assert_eq!(
             g.root_commit().unwrap_err(),

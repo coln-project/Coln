@@ -4,15 +4,16 @@
 
 mod column_map;
 pub mod commit;
-mod id_packer;
 pub mod op;
+mod pack;
 #[cfg(feature = "native")]
 pub mod repl;
 mod rollback;
 mod rowing;
-pub mod solver;
 pub mod store;
 pub mod table;
+#[cfg(test)]
+mod test_utils;
 pub mod txn;
 pub mod value;
 

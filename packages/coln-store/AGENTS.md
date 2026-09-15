@@ -21,6 +21,7 @@ Priorities, in order:
 - Add comments only when they clarify non-obvious behaviour.
 - This is a research prototype, so do not worry about backwards compatibility issues, prioritise cleaner design & implementation.
 - When making technical decisions, don't give too much weight to development cost.
+- If asked to do something that you think is not good for the codebase, feel free to ask clarifying questions, or push back.
 
 Quick examples:
 
@@ -68,6 +69,8 @@ Quick examples:
 - Law compilation and validation logic belongs under `solver`.
 - REPL code should stay presentation-oriented: parse commands, call store APIs, and format results.
 - Public docs and interfaces should reflect the implemented state of the repository accurately.
+- When writing tests, before you introducing a helper, consider whether there is something that
+can be reused in test_utils.rs
 
 ## Rust Conventions
 

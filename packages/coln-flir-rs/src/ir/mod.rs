@@ -5,7 +5,7 @@
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use specta::Type;
-use std::fmt;
+use std::fmt::{self, Display};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 #[serde(transparent)]
@@ -138,6 +138,17 @@ pub enum EntityVariant {
     },
 }
 
+impl Display for EntityVariant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            EntityVariant::Table => "table",
+            EntityVariant::View { .. } => "view",
+            EntityVariant::Index { .. } => "index",
+        };
+        f.write_str(name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnEntry {
@@ -156,9 +167,9 @@ pub struct Schema {
     /// The columns of the table in their physical order.
     pub columns: Vec<ColumnEntry>,
     /// A `None` indicates that there is no primary key. `Some(vec![])` means
-    /// that there is at most one row in the table. `Some(vec![ColA, ColB])`
-    /// encodes a compound primary key consisting of the columns `ColA` and
-    ///  `ColB`.
+    /// that there is at most one row in the table. `Some(vec![0, 3])`
+    /// encodes a compound primary key consisting of the columns at those
+    /// physical indexes.
     ///
     /// At the moment there is only support for a single (compound) primary key.
     pub primary_key: Option<Vec<ColumnIdx>>,
@@ -223,12 +234,12 @@ pub struct Equality {
     pub right: El,
 }
 
+/// Chased rules are not reported as a rule but defined separately as a
+/// [`DefinitionEntry`] under the top-level
+/// [`definitions`](FlatRealm::definitions).
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RuleVariant {
-    /// _Chased_ rules are not yet fully alive but become relevant once initial
-    /// models land.
-    Chased,
     /// Violations of _enforced_ rules cause a transaction to abort.
     Enforced,
     /// Violations of _monitored_ rules are just reported back to the user but

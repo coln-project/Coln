@@ -2,30 +2,31 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-mod cell;
+pub mod cell;
 mod col;
+pub mod handle;
 pub(crate) mod index;
 pub mod sorted;
-pub mod table_ref;
 mod undo;
 
 pub use cell::{CellKind, WireRowId, WireValue};
-pub use table_ref::TableRef;
+use coln_flir_rs::ir::{EntityVariant, Materialization};
+pub use handle::TableHandle;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-use crate::id_packer::IdPacker;
+#[cfg(not(target_arch = "wasm32"))]
+use coln_query::api::deltas::{ScalarTypedValue, TableDelta, ZRow};
+
 use crate::ir;
 use crate::ir::Schema;
+use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedTuple, PackedValue};
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
-use crate::table::index::{IndexId, IndexMeta, TableIndex};
+use crate::table::col::{Column, IdColumn};
+use crate::table::index::{IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
-use crate::txn::TxnId;
-
-pub(crate) use self::cell::{PackedRowId, PackedValue};
-use self::col::{Column, IdColumn};
 
 pub type TableOid = usize;
 
@@ -35,18 +36,6 @@ pub(crate) struct TableMeta<'a> {
     pub path: &'a ir::Path,
     pub oid: TableOid,
     pub schema: &'a Schema,
-}
-
-/// Packed representation of an operation staged for a table.
-#[derive(Debug)]
-pub(crate) enum PackedOp {
-    Add {
-        row_id: PackedRowId,
-        values: Vec<PackedValue>,
-    },
-    Delete {
-        row_id: PackedRowId,
-    },
 }
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -72,42 +61,14 @@ pub enum ValidationError {
         expected: ir::Path,
         actual: ir::Path,
     },
-    #[error("row handle belongs to a different transaction: current {current:?}, got {got:?}")]
-    TxnIdMismatch { current: TxnId, got: TxnId },
     #[error("invalid row handle: {reason}")]
     InvalidTxnLiveRowId { reason: String },
-    #[error("invalid index id passed {index}")]
-    InvalidIndex { index: u64 },
-    #[error("invalid index key for index {index}: expected {expected} values, got {got}")]
-    InvalidIndexKey {
-        index: IndexId,
-        expected: usize,
-        got: usize,
-    },
+    #[error("invalid index key for index: expected <= {expected} values, got {got}")]
+    InvalidIndexKey { expected: usize, got: usize },
     #[error("lookup column {column} is outside the table's {column_count} columns")]
     InvalidLookupColumn { column: usize, column_count: usize },
-}
-
-/// Public facing row value
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RowView {
-    pub row_id: WireRowId,
-    pub values: Vec<WireValue>,
-}
-
-type ColName = ir::Path;
-
-/// How the primary key constraint is checked on insert. Resolved once at
-/// table construction.
-#[derive(Debug, Clone)]
-enum PkConstraint {
-    /// No primary key in the schema.
-    None,
-    /// An empty primary key: the table holds at most one row.
-    Singleton,
-    /// A non-empty primary key backed by the sorted index at this position
-    /// in [`Table::indexes`].
-    Indexed(usize),
+    #[error("passed in row id is not valid {wire_id}")]
+    InvalidRowId { wire_id: WireRowId },
 }
 
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
@@ -120,18 +81,26 @@ enum PkConstraint {
 /// [`TableRef`] bundles the table and dictionary for decoded reads.
 #[derive(Debug)]
 pub struct Table {
+    // metadata
     oid: TableOid,
     path: ir::Path,
     schema: Schema,
-    /// Structural (all-columns) index used for structural identification, when enabled.
-    structural_index: Option<IndexId>,
-    indexes: Vec<TableIndex>,
+
+    // actual data
     row_ids: IdColumn,
     cols: Vec<Column>,
-    pk: PkConstraint,
+
+    // the first n
+    pk: Option<usize>,
+    // A single index on all columns
+    index: TableIndex,
+
+    // buffering rollback
     pending_updates: Vec<PackedOp>,
     undo_log: Option<Vec<UndoOp>>,
 
+    // structural identification
+    structural: bool,
     // Map each rowid to the rows that refer to them.
     rebuild_index: HashMap<PackedRowId, Vec<PackedRowId>>,
 }
@@ -139,45 +108,36 @@ pub struct Table {
 impl Table {
     // Basic accessors
 
-    pub fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
+    pub(crate) fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
         let cols = schema
             .columns
             .iter()
             .map(|column| Column::new(CellKind::from(&column.col_type)))
             .collect();
 
-        let mut indexes = Vec::new();
         let pk = match &schema.primary_key {
-            None => PkConstraint::None,
-            Some(pk) if pk.is_empty() => PkConstraint::Singleton,
-            Some(pk) => {
-                // Schemas come from the compiler, so an unresolvable primary
-                // key column is a construction bug, not a runtime condition.
-                let key_cols: Vec<usize> = pk
-                    .iter()
-                    // we can expect the schema to contain right information
-                    .map(|n| *n as usize)
-                    .collect();
-                indexes.push(TableIndex::new(&key_cols, &schema));
-                // ? Is referring to the index id the right thing to do?
-                PkConstraint::Indexed(indexes.len() - 1)
-            }
+            None => None,
+            Some(pk) if pk.is_empty() => Some(0),
+            Some(pk) => Some(pk.len()),
         };
 
-        // TODO if structural identity is enabled, then create another index.
-        let structural_cols: Vec<usize> = (0..schema.columns.len()).collect();
-        indexes.push(TableIndex::new(&structural_cols, &schema));
-        // let structural_index = Some(indexes.len() - 1);
-        let structural_index = None;
+        let except_rowid: Vec<usize> = (0..schema.columns.len()).collect();
+        let index = TableIndex::new(&except_rowid, &schema);
+        let structural = matches!(
+            schema.entity_variant,
+            EntityVariant::View {
+                materialization: Materialization::Memoized
+            }
+        );
 
         Self {
             oid,
             path,
             schema,
-            structural_index,
+            structural,
             row_ids: IdColumn::new(),
             cols,
-            indexes,
+            index,
             pk,
             pending_updates: Vec::new(),
             undo_log: None,
@@ -185,88 +145,41 @@ impl Table {
         }
     }
 
-    pub fn schema(&self) -> &Schema {
+    pub(crate) fn schema(&self) -> &Schema {
         &self.schema
     }
 
-    pub fn path(&self) -> &ir::Path {
+    pub(crate) fn path(&self) -> &ir::Path {
         &self.path
     }
 
-    pub fn oid(&self) -> TableOid {
+    pub(crate) fn oid(&self) -> TableOid {
         self.oid
     }
 
-    pub fn row_count(&self) -> usize {
+    pub(crate) fn row_count(&self) -> usize {
         // We need to return row_ids here, because cols might be empty for tables with only ids but nothing else
         self.row_ids.len()
     }
 
-    /// Row id at a given physical row index.
-    pub(crate) fn row_id_at(&self, row_idx: usize, packer: &IdPacker) -> Option<WireRowId> {
-        self.row_ids
-            .get(row_idx)
-            .map(|packed| packer.unpack_row_id(packed))
-    }
-
-    /// Cell at `(row_idx, col_idx)` in columnar storage.
-    /// O(1) to locate the column, roughly O(log S) to find by index in a slab.
-    pub(crate) fn cell_at(
-        &self,
-        row_idx: usize,
-        col_idx: usize,
-        packer: &IdPacker,
-    ) -> Option<WireValue> {
-        self.cols
-            .get(col_idx)
-            .and_then(|col| col.get(row_idx, packer))
-    }
-
-    /// Find the index of the row given a `row_id`. Internal API only.
-    fn row_idx(&self, row_id: PackedRowId) -> Option<usize> {
-        self.row_ids.position(row_id).ok()
-    }
-
-    pub fn indexes_meta(&self) -> Vec<IndexMeta<'_>> {
-        self.indexes
-            .iter()
-            .enumerate()
-            .map(|(id, index)| IndexMeta {
-                id,
-                key_cols: index.key_cols(),
-            })
-            .collect()
-    }
-
-    pub fn primary_index(&self) -> Option<IndexId> {
-        match self.pk {
-            PkConstraint::Indexed(i) => Some(i),
-            PkConstraint::None | PkConstraint::Singleton => None,
+    pub(crate) fn index_meta(&self) -> IndexMeta<'_> {
+        IndexMeta {
+            key_cols: self.index.key_cols(),
         }
     }
-}
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct SeekKey {
-    pub(crate) column: usize,
-    pub(crate) value: WireValue,
+    // Returns the first n columns that are required to be unique in this table
+    pub(crate) fn unique_columns(&self) -> Option<usize> {
+        self.pk
+    }
 }
 
 impl Table {
-    // public facing read and indexing APIs
-
-    pub(crate) fn row_at(&self, row_idx: usize, id_packer: &IdPacker) -> Option<RowView> {
-        let row_id = self.row_id_at(row_idx, id_packer)?;
-        let values = (0..self.schema.columns.len())
-            .map(|col_idx| self.cell_at(row_idx, col_idx, id_packer))
-            .collect::<Option<Vec<_>>>()?;
-
-        Some(RowView { row_id, values })
-    }
+    // Accessing a row or a cell
 
     /// O(N * log S) as first find out the index from the row_id, and then do a
     /// lookup on each column
-    pub(crate) fn packed_row_at(&self, row_id: PackedRowId) -> Option<Vec<PackedValue>> {
+    pub(crate) fn row_by_id(&self, row_id: PackedRowId) -> Option<PackedTuple> {
         let row_idx = self.row_ids.position(row_id).ok()?;
         (0..self.schema.columns.len())
             .map(|col_idx| {
@@ -277,108 +190,48 @@ impl Table {
             .collect()
     }
 
-    pub(crate) fn table_scan(&self, id_packer: &IdPacker) -> impl Iterator<Item = RowView> {
-        (0..self.row_count()).filter_map(move |row_idx| self.row_at(row_idx, id_packer))
+    pub(crate) fn row_by_idx(&self, row_idx: usize) -> Option<PackedRowView> {
+        let row_id = self.row_id_by_idx(row_idx)?;
+        let values = (0..self.schema.columns.len())
+            .map(|col_idx| self.cell_by_idx(row_idx, col_idx))
+            .collect::<Option<PackedTuple>>()?;
+
+        Some(PackedRowView { row_id, values })
     }
 
-    pub(crate) fn seek(
-        &self,
-        key: &[SeekKey],
-        id_packer: &IdPacker,
-    ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
-        if let Some(column) = key
-            .iter()
-            .map(|part| part.column)
-            .find(|&column| column >= self.cols.len())
-        {
-            return Err(ValidationError::InvalidLookupColumn {
-                column,
-                column_count: self.cols.len(),
-            });
-        }
-
-        Ok((0..self.row_count())
-            .filter(move |&row_idx| {
-                key.iter().all(|part| {
-                    self.cell_at(row_idx, part.column, id_packer).as_ref() == Some(&part.value)
-                })
-            })
-            .map(move |row_idx| {
-                self.row_id_at(row_idx, id_packer)
-                    .expect("row index came from the table's row count")
-            }))
+    /// Row id at a given physical row index.
+    pub(crate) fn row_id_by_idx(&self, row_idx: usize) -> Option<PackedRowId> {
+        self.row_ids.get(row_idx)
     }
 
-    pub(crate) fn index_seek(
-        &self,
-        index: IndexId,
-        key: &[WireValue],
-        id_packer: &IdPacker,
-    ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
-        let table_index = self
-            .indexes
-            .get(index)
-            .ok_or(ValidationError::InvalidIndex {
-                index: index as u64,
-            })?;
-        if key.len() != table_index.key_cols().len() {
+    /// Cell at `(row_idx, col_idx)` in columnar storage.
+    /// O(1) to locate the column, roughly O(log S) to find by index in a slab.
+    pub(crate) fn cell_by_idx(&self, row_idx: usize, col_idx: usize) -> Option<PackedValue> {
+        self.cols
+            .get(col_idx)
+            .and_then(|col| col.get_packed(row_idx))
+    }
+
+    /// Find the index of the row given a `row_id`. Internal API only.
+    fn packed_rowid_idx(&self, row_id: PackedRowId) -> Option<usize> {
+        self.row_ids.position(row_id).ok()
+    }
+
+    pub(crate) fn scan(&self) -> impl Iterator<Item = PackedRowView> {
+        (0..self.row_count()).filter_map(move |row_idx| self.row_by_idx(row_idx))
+    }
+
+    pub(crate) fn index_seek<'s>(
+        &'s self,
+        key: &PackedTuple,
+    ) -> Result<impl Iterator<Item = PackedRowId> + use<'s>, ValidationError> {
+        if key.len() > self.index.key_cols().len() {
             return Err(ValidationError::InvalidIndexKey {
-                index,
-                expected: table_index.key_cols().len(),
+                expected: self.index.key_cols().len(),
                 got: key.len(),
             });
         }
-
-        let rows = key
-            .iter()
-            .map(|value| id_packer.try_pack_cell(value))
-            .collect::<Option<Vec<_>>>()
-            .map(|key| {
-                table_index
-                    .get(&key)
-                    .map(|row_id| id_packer.unpack_row_id(row_id))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        Ok(rows.into_iter())
-    }
-
-    pub(crate) fn index_seek_packed(
-        &self,
-        index: IndexId,
-        key: &[PackedValue],
-    ) -> Result<impl Iterator<Item = PackedRowId>, ValidationError> {
-        let table_index = self
-            .indexes
-            .get(index)
-            .ok_or(ValidationError::InvalidIndex {
-                index: index as u64,
-            })?;
-        if key.len() != table_index.key_cols().len() {
-            return Err(ValidationError::InvalidIndexKey {
-                index,
-                expected: table_index.key_cols().len(),
-                got: key.len(),
-            });
-        }
-        Ok(table_index.get(key))
-    }
-
-    pub(crate) fn lookup(
-        &self,
-        key: &[SeekKey],
-        id_packer: &IdPacker,
-    ) -> Result<bool, ValidationError> {
-        Ok(self.seek(key, id_packer)?.next().is_some())
-    }
-
-    pub(crate) fn index_lookup(
-        &self,
-        index: IndexId,
-        key: &[WireValue],
-        id_packer: &IdPacker,
-    ) -> Result<bool, ValidationError> {
-        Ok(self.index_seek(index, key, id_packer)?.next().is_some())
+        Ok(self.index.get(key))
     }
 }
 
@@ -388,7 +241,7 @@ impl Table {
     /// Checks that a row has the right number of values for this table. This is
     /// a preliminary check that is done as soon as an operation is added. More
     /// complex check is in validate_insert and deferred at commit time
-    pub fn validate_column_count(&self, got: usize) -> Result<(), ValidationError> {
+    pub(crate) fn validate_column_count(&self, got: usize) -> Result<(), ValidationError> {
         let expected = self.schema.columns.len();
         if got != expected {
             return Err(ValidationError::ColumnCount { expected, got });
@@ -410,43 +263,32 @@ impl Table {
             value.matches_schema(&col_entry.col_type, i)?;
         }
 
-        match &self.pk {
-            PkConstraint::None => {}
-            PkConstraint::Singleton => {
-                // A primary key with empty columns only allows at most one
-                // row, hence inserting any more rows would be an error
-                if self.row_count() >= 1 {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
+        if let Some(cols) = &self.pk {
+            let Some(key) = (0..*cols)
+                .map(|ci| dict.try_pack_value(&values[ci]))
+                .collect::<Option<PackedTuple>>()
+            else {
+                // If we cannot pack, then the primary key should be absent, so no need to check
+                return Ok(());
+            };
+            if self.index.contains_key(&key) {
+                return Err(ValidationError::DuplicatePrimaryKey);
             }
-            PkConstraint::Indexed(i) => {
-                let index = &self.indexes[*i];
-                let Some(key) = index
-                    .key_cols()
-                    .iter()
-                    .map(|&ci| dict.try_pack_cell(&values[ci]))
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    // If we cannot pack, then the primary key should be absent, so noneed to check
-                    return Ok(());
-                };
-                if index.contains_key(&key) {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
-            }
-        }
+        };
         Ok(())
     }
 
     /// Values at primary-key columns for this row.
     /// A primary key definition would occur in tables that do not end up in Query
     /// An empty primary key means the table would have at most one row.
-    pub fn primary_key_values(&self, values: &[WireValue]) -> Option<Vec<WireValue>> {
+    pub(crate) fn primary_key_values(&self, values: &[WireValue]) -> Option<Vec<WireValue>> {
         self.schema.primary_key.as_ref().and_then(|pk| {
             if pk.is_empty() {
                 Some(Vec::new())
             } else {
-                pk.iter().map(|i| Some(values[*i as usize].clone())).collect()
+                pk.iter()
+                    .map(|i| Some(values[*i as usize].clone()))
+                    .collect()
             }
         })
     }
@@ -475,7 +317,7 @@ impl Rollback for Table {
         TableSnapshot
     }
 
-    fn commit_snapshot(&mut self, _snapshot: Self::Snapshot) {
+    fn commit(&mut self, _snapshot: Self::Snapshot) {
         assert!(
             self.pending_updates.is_empty(),
             "cannot commit a snapshot with staged updates"
@@ -483,7 +325,7 @@ impl Rollback for Table {
         self.undo_log.take().expect("table has no active snapshot");
     }
 
-    fn rollback(&mut self, _snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, _snapshot: Self::Snapshot) {
         self.pending_updates.clear();
 
         let undo_ops = self.undo_log.take().expect("table has no active snapshot");
@@ -501,8 +343,28 @@ impl Table {
 
     // Apply the staged updates to the table. Rollback support will record
     // inverse operations separately before these operations are consumed.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn apply_staged_ops(
+        &mut self,
+        rowing: &mut Rowing,
+    ) -> Result<TableDelta, ValidationError> {
+        let ops = std::mem::take(&mut self.pending_updates);
+        let delta = self.table_delta_from_ops(ops.clone());
+        self.apply_ops(ops, rowing)?;
+        Ok(delta)
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub(crate) fn apply_staged_ops(&mut self, rowing: &mut Rowing) -> Result<(), ValidationError> {
         let ops = std::mem::take(&mut self.pending_updates);
+        self.apply_ops(ops, rowing)
+    }
+
+    fn apply_ops(
+        &mut self,
+        ops: impl IntoIterator<Item = PackedOp>,
+        rowing: &mut Rowing,
+    ) -> Result<(), ValidationError> {
         for op in ops {
             let undo_op = self.apply_op(op, rowing)?;
             if let Some(undo_log) = &mut self.undo_log {
@@ -510,6 +372,96 @@ impl Table {
             }
         }
         Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn table_delta_from_ops(&self, ops: impl IntoIterator<Item = PackedOp>) -> TableDelta {
+        let zrows: Vec<ZRow> = ops
+            .into_iter()
+            .map(|op| match op {
+                PackedOp::Add { row_id, values } => {
+                    let tuple = PackedRowView { row_id, values }.into();
+                    ZRow::new(1, tuple).unwrap()
+                }
+                PackedOp::Delete { row_id } => {
+                    let values = self
+                        .row_by_id(row_id)
+                        .expect("element to delete should exist");
+                    let tuple = PackedRowView { row_id, values }.into();
+                    ZRow::new(-1, tuple).unwrap()
+                }
+            })
+            .collect();
+
+        TableDelta::new(self.path().to_string(), zrows)
+    }
+
+    // This conversion needs table schema, therefore cannot be done with From trait
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn ops_from_table_delta<F>(
+        &self,
+        td: TableDelta,
+        mut id_allocate: F,
+    ) -> Vec<PackedOp>
+    where
+        F: FnMut() -> PackedRowId,
+    {
+        td.into_iter()
+            .map(|zrow| {
+                let row_id = id_allocate();
+                if zrow.zweight() > 0 {
+                    let mut val_iter = zrow.into_row().data.into_iter();
+                    let mut packed_val = Vec::new();
+
+                    for col in &self.schema().columns {
+                        match col.col_type {
+                            ir::ColType::RowId { .. } => {
+                                let ScalarTypedValue::Uint(commit_idx) =
+                                    val_iter.next().expect("coln-query returns valid data")
+                                else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                let ScalarTypedValue::Uint(counter) =
+                                    val_iter.next().expect("coln-query returns valid data")
+                                else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                packed_val.push(PackedValue::Id(PackedRowId {
+                                    commit_idx: commit_idx as u32,
+                                    counter: counter as u32,
+                                }));
+                            }
+                            ir::ColType::BuiltinTy {
+                                builtin_ty: ir::BuiltinTy::BuiltinInt,
+                            } => {
+                                let ScalarTypedValue::String(s) = val_iter.next().unwrap() else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                packed_val.push(PackedValue::Str(s));
+                            }
+                            ir::ColType::BuiltinTy {
+                                builtin_ty: ir::BuiltinTy::BuiltinStr,
+                            } => {
+                                let ScalarTypedValue::Iint(i) = val_iter.next().unwrap() else {
+                                    panic!("invalid data from coln-query");
+                                };
+                                packed_val.push(PackedValue::Int(i as i32));
+                            }
+                        }
+                    }
+
+                    PackedOp::Add {
+                        row_id,
+                        values: packed_val.into(),
+                    }
+                } else if zrow.zweight() < 0 {
+                    // TODO don't know how to remove yet
+                    todo!()
+                } else {
+                    unreachable!("zero zweight impossible")
+                }
+            })
+            .collect()
     }
 
     fn apply_op(&mut self, op: PackedOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
@@ -545,7 +497,7 @@ impl Table {
         for old in rowing.displaced() {
             // A row whose own id was displaced is rebuilt here, including any
             // stale ids in its cells. Referring-row handling below skips it.
-            if let Some(old_cells) = self.packed_row_at(old) {
+            if let Some(old_cells) = self.row_by_id(old) {
                 let new_rid = rowing.canonical_id(&old, id_packer);
                 let new_cells = Self::canonicalise_cells(&old_cells, rowing, id_packer);
 
@@ -554,7 +506,7 @@ impl Table {
                 let collapses = self.row_ids.position(new_rid).is_ok();
                 debug_assert!(
                     !collapses
-                        || self.packed_row_at(new_rid).is_some_and(|stored| {
+                        || self.row_by_id(new_rid).is_some_and(|stored| {
                             Self::canonicalise_cells(&stored, rowing, id_packer) == new_cells
                         }),
                     "collapsing {old:?} onto {new_rid:?} would discard differing cells"
@@ -578,7 +530,7 @@ impl Table {
                     continue;
                 }
                 let old_cells = self
-                    .packed_row_at(row_id)
+                    .row_by_id(row_id)
                     .expect("a referring row is present in the table");
                 let new_cells = Self::canonicalise_cells(&old_cells, rowing, id_packer);
                 if new_cells == old_cells {
@@ -609,7 +561,7 @@ impl Table {
             }
 
             let new_row_id = rowing.canonical_id(&old_row_id, id_packer);
-            let old_cells: Vec<PackedValue> = self
+            let old_cells: PackedTuple = self
                 .cols
                 .iter()
                 .map(|column| {
@@ -623,7 +575,7 @@ impl Table {
 
             debug_assert!(
                 !collapses
-                    || self.packed_row_at(new_row_id).is_some_and(|stored| {
+                    || self.row_by_id(new_row_id).is_some_and(|stored| {
                         Self::canonicalise_cells(&stored, rowing, id_packer) == new_cells
                     }),
                 "collapsing {old_row_id:?} onto {new_row_id:?} would discard differing cells"
@@ -645,10 +597,10 @@ impl Table {
 
     /// Rewrite every id cell to its canonical id, leaving other cells alone.
     fn canonicalise_cells(
-        values: &[PackedValue],
+        values: &PackedTuple,
         rowing: &Rowing,
         id_packer: &IdPacker,
-    ) -> Vec<PackedValue> {
+    ) -> PackedTuple {
         values
             .iter()
             .map(|cell| match cell {
@@ -660,7 +612,7 @@ impl Table {
 
     /// ids referred by this row.
     #[expect(dead_code)]
-    fn referenced_ids(values: &[PackedValue]) -> impl Iterator<Item = PackedRowId> {
+    fn referenced_ids(values: &PackedTuple) -> impl Iterator<Item = PackedRowId> {
         values
             .iter()
             .enumerate()
@@ -679,38 +631,27 @@ impl Table {
     /// Only does primary key check, but no other validation.
     pub(super) fn insert_row(
         &mut self,
-        values: Vec<PackedValue>,
+        values: PackedTuple,
         row_id: PackedRowId,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
         // Checked before anything is recorded, so a rejected row leaves behind
         // neither an index entry nor a staged union.
-        match self.pk {
-            PkConstraint::None => {}
-            PkConstraint::Singleton => {
-                if self.row_count() >= 1 {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
-            }
-            PkConstraint::Indexed(pk_index) => {
-                let key = Self::project_index_key(&self.indexes[pk_index], &values);
-                if self.indexes[pk_index].contains_key(&key) {
-                    return Err(ValidationError::DuplicatePrimaryKey);
-                }
-            }
-        }
+        if let Some(unique_cols) = self.pk
+            && self.index.contains_key(&values[..unique_cols])
+        {
+            return Err(ValidationError::DuplicatePrimaryKey);
+        };
 
         // A structurally identical row is stored anyway: rowing unions the two
         // ids and a later rebuild pass collapses them.
-        if let Some(index) = self.structural_index {
-            let key = Self::project_index_key(&self.indexes[index], &values);
-            if let Some(old) = self
-                .index_seek_packed(index, &key)
+        if self.structural
+            && let Some(old) = self
+                .index_seek(&values)
                 .expect("valid structural index and key structure")
                 .next()
-            {
-                rowing.stage_union(self.oid, old, row_id);
-            }
+        {
+            rowing.stage_union(self.oid, old, row_id);
         }
 
         // Checks for existing row ids
@@ -723,13 +664,11 @@ impl Table {
     }
 
     /// Place a row in columnar storage and every index, with no validation
-    fn insert_packed(&mut self, values: Vec<PackedValue>, row_id: PackedRowId) {
+    fn insert_packed(&mut self, values: PackedTuple, row_id: PackedRowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
-        for index in &mut self.indexes {
-            let key = Self::project_index_key(index, &values);
-            index.insert(key, row_id);
-        }
+        self.index.insert(values.clone(), row_id);
+
         // TODO this should only be maintained when a table needs rebuild, i.e. a structural table.
         // for child in Self::referenced_ids(&values) {
         //     self.rebuild_index.entry(child).or_default().push(row_id);
@@ -745,19 +684,17 @@ impl Table {
     }
 
     /// Take a row out of columnar storage and every index, returning its cells
-    fn remove_packed(&mut self, row_id: PackedRowId) -> Vec<PackedValue> {
+    fn remove_packed(&mut self, row_id: PackedRowId) -> PackedTuple {
         let row_idx = self
             .row_ids
             .position(row_id)
             .expect("removal target should be present");
         let values = self
-            .packed_row_at(row_id)
+            .row_by_id(row_id)
             .expect("removal target should have a complete row");
 
-        for index in &mut self.indexes {
-            let key = Self::project_index_key(index, &values);
-            index.remove(&key, row_id);
-        }
+        self.index.remove(&values, row_id);
+
         // for child in Self::referenced_ids(&values) {
         //     let referring = self
         //         .rebuild_index
@@ -778,33 +715,18 @@ impl Table {
         }
         values
     }
-
-    fn project_index_key(index: &TableIndex, values: &[PackedValue]) -> Vec<PackedValue> {
-        index
-            .key_cols()
-            .iter()
-            .map(|&col_idx| values[col_idx].clone())
-            .collect()
-    }
 }
 
 impl Table {
     // For debugging for testing
-
-    // TODO remove this when we have schema level structural identity
-    #[cfg(test)]
-    pub(crate) fn set_structural_index_for_test(&mut self, enabled: bool) {
-        // `Table::new` always appends the all-columns index last; enable
-        // structural identity by pointing at that slot.
-        self.structural_index = enabled.then_some(self.indexes.len() - 1);
-    }
 
     /// Dump table contents row by row for debugging.
     pub(crate) fn dump(&self, dict: &IdPacker) -> String {
         let mut out = String::new();
         let _ = writeln!(
             out,
-            "table {} (rows: {}, cols: {})",
+            "{} {} (rows: {}, cols: {})",
+            self.schema.entity_variant,
             self.path,
             self.row_count(),
             self.schema.columns.len()

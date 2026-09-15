@@ -4,8 +4,9 @@
 
 use crate::commit::hash_dict::HashMapper;
 use crate::op::Op;
+use crate::pack::{PackedOp, PackedRowId, PackedValue};
 use crate::rollback::Rollback;
-use crate::table::{PackedOp, PackedRowId, PackedValue, WireRowId, WireValue};
+use crate::table::{WireRowId, WireValue};
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]
@@ -36,7 +37,7 @@ impl IdPacker {
     /// Packs `id` without interning its commit hash.
     ///
     /// Returns `None` when the commit hash has not already been interned.
-    pub(crate) fn lookup_row_id(&self, id: WireRowId) -> Option<PackedRowId> {
+    pub(crate) fn lookup_row_id(&self, id: &WireRowId) -> Option<PackedRowId> {
         Some(PackedRowId {
             commit_idx: self.dict.index(id.commit)?,
             counter: id.counter,
@@ -53,12 +54,27 @@ impl IdPacker {
         }
     }
 
-    pub(crate) fn pack_cell(&mut self, value: WireValue) -> PackedValue {
+    pub(crate) fn pack_value(&mut self, value: WireValue) -> PackedValue {
         match value {
             WireValue::Id(id) => PackedValue::Id(self.pack_row_id(id)),
             WireValue::Int(value) => PackedValue::Int(value),
             WireValue::Str(value) => PackedValue::Str(value),
         }
+    }
+
+    /// Packs a cell without modifying the dictionary.
+    ///
+    /// Returns `None` when an ID cell's commit hash has not been interned.
+    pub(crate) fn try_pack_value(&self, value: &WireValue) -> Option<PackedValue> {
+        Some(match value {
+            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(id)?),
+            WireValue::Int(value) => PackedValue::Int(*value),
+            WireValue::Str(value) => PackedValue::Str(value.clone()),
+        })
+    }
+
+    pub(crate) fn unpack_value(&self, value: PackedValue) -> WireValue {
+        value.map_owned(|id| self.unpack_row_id(id))
     }
 
     pub(crate) fn pack_op(&mut self, op: Op) -> PackedOp {
@@ -67,27 +83,20 @@ impl IdPacker {
                 let row_id = self.pack_row_id(row_id);
                 let values = values
                     .into_iter()
-                    .map(|value| self.pack_cell(value))
+                    .map(|value| self.pack_value(value))
                     .collect();
                 PackedOp::Add { row_id, values }
             }
         }
     }
 
-    /// Packs a cell without modifying the dictionary.
-    ///
-    /// Returns `None` when an ID cell's commit hash has not been interned.
-    pub(crate) fn try_pack_cell(&self, value: &WireValue) -> Option<PackedValue> {
-        Some(match value {
-            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(*id)?),
-            WireValue::Int(value) => PackedValue::Int(*value),
-            WireValue::Str(value) => PackedValue::Str(value.clone()),
-        })
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.dict.hashes().len()
     }
+
+    // TODO we should have a method to remove a hash from dictionary?
+    // Perhaps we could do mark and sweep, as we are doing a full rebuild of a
+    // table because we need to scan the table anyway.
 }
 
 impl Rollback for IdPacker {
@@ -102,13 +111,13 @@ impl Rollback for IdPacker {
         IdPackerSnapshot
     }
 
-    fn commit_snapshot(&mut self, _snapshot: Self::Snapshot) {
+    fn commit(&mut self, _snapshot: Self::Snapshot) {
         self.snapshot_len
             .take()
             .expect("ID packer has no active snapshot");
     }
 
-    fn rollback(&mut self, _snapshot: Self::Snapshot) {
+    fn rollback_to(&mut self, _snapshot: Self::Snapshot) {
         let snapshot_len = self
             .snapshot_len
             .take()
@@ -120,43 +129,40 @@ impl Rollback for IdPacker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commit::hash::CommitHash;
-
-    fn row_id(byte: u8, counter: u32) -> WireRowId {
-        WireRowId {
-            commit: CommitHash([byte; 32]),
-            counter,
-        }
-    }
+    use crate::test_utils::row_id_from;
 
     #[test]
     fn rollback_removes_hashes_added_after_snapshot() {
         let mut packer = IdPacker::new();
-        assert_eq!(packer.pack_row_id(row_id(1, 0)).commit_idx, 0);
+        assert_eq!(packer.pack_row_id(row_id_from(1, 0)).commit_idx, 0);
         let snapshot = packer.snapshot();
 
-        assert_eq!(packer.pack_row_id(row_id(2, 0)).commit_idx, 1);
-        assert_eq!(packer.pack_row_id(row_id(1, 1)).commit_idx, 0);
-        packer.rollback(snapshot);
+        assert_eq!(packer.pack_row_id(row_id_from(2, 0)).commit_idx, 1);
+        assert_eq!(packer.pack_row_id(row_id_from(1, 1)).commit_idx, 0);
+        packer.rollback_to(snapshot);
 
         assert_eq!(
-            packer.lookup_row_id(row_id(1, 0)).map(|id| id.commit_idx),
+            packer
+                .lookup_row_id(&row_id_from(1, 0))
+                .map(|id| id.commit_idx),
             Some(0)
         );
-        assert_eq!(packer.lookup_row_id(row_id(2, 0)), None);
-        assert_eq!(packer.pack_row_id(row_id(3, 0)).commit_idx, 1);
+        assert_eq!(packer.lookup_row_id(&row_id_from(2, 0)), None);
+        assert_eq!(packer.pack_row_id(row_id_from(3, 0)).commit_idx, 1);
     }
 
     #[test]
     fn commit_snapshot_keeps_added_hashes() {
         let mut packer = IdPacker::new();
         let snapshot = packer.snapshot();
-        assert_eq!(packer.pack_row_id(row_id(1, 0)).commit_idx, 0);
+        assert_eq!(packer.pack_row_id(row_id_from(1, 0)).commit_idx, 0);
 
-        packer.commit_snapshot(snapshot);
+        packer.commit(snapshot);
 
         assert_eq!(
-            packer.lookup_row_id(row_id(1, 0)).map(|id| id.commit_idx),
+            packer
+                .lookup_row_id(&row_id_from(1, 0))
+                .map(|id| id.commit_idx),
             Some(0)
         );
     }

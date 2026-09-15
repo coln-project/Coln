@@ -4,10 +4,7 @@
 
 use std::ops::Range;
 
-use crate::{
-    store::Store,
-    table::{self, TableOid, TableRef},
-};
+use crate::table::{self, TableHandle};
 
 pub type RowIdx = usize;
 pub type ColIdx = usize;
@@ -16,7 +13,7 @@ pub type ColIdx = usize;
 // this interface which coln-integrator provides for you no matter if the data
 // your queries operate upon comes from coln-store or from coln-query.
 /// A read API for some snapshot of _sorted_, _column-oriented_ data.
-pub trait SortedTableSnapshot {
+pub trait SortedTable {
     type Value: PartialOrd;
 
     /// Number of columns.
@@ -93,47 +90,37 @@ pub trait SortedTableSnapshot {
     fn equal_range(
         &self,
         depth: usize,
-        v: Self::Value,
+        v: &Self::Value,
         lo: RowIdx,
         hi: RowIdx,
     ) -> Option<Range<RowIdx>> {
-        let start = self.lower_bound(depth, &v, lo, hi)?;
-        let end = self.upper_bound(depth, &v, start, hi)?;
+        let start = self.lower_bound(depth, v, lo, hi)?;
+        let end = self.upper_bound(depth, v, start, hi)?;
         Some(start..end)
     }
 }
 
-pub struct SortedTable<'a> {
-    table: TableRef<'a>,
-    sort_order: &'a [usize],
+pub struct SortedCopy<'a> {
+    table: TableHandle<'a>,
+    sort_order: Vec<ColIdx>,
 }
 
-impl Store {
-    /// Returns all the ways a table could be sorted by as a SortedTable
-    /// which implements the `SortedTable` trait
-    pub fn sorted_snapshot_of(&self, oid: TableOid) -> Vec<SortedTable<'_>> {
-        let mut sorted_snapshots = vec![];
-        if let Some(tr) = self.table(oid) {
-            let sort_by_rid = SortedTable {
-                table: tr,
-                sort_order: &[0],
-            };
-            sorted_snapshots.push(sort_by_rid);
-
-            for index_info in tr.indexes_meta() {
-                let sort_by_idnex = SortedTable {
-                    table: tr,
-                    sort_order: index_info.key_cols,
-                };
-                sorted_snapshots.push(sort_by_idnex);
-            }
-        }
-        sorted_snapshots
+impl<'a> TableHandle<'a> {
+    pub fn sorted_copies(self) -> Vec<SortedCopy<'a>> {
+        let s1 = SortedCopy {
+            table: self,
+            sort_order: vec![0],
+        };
+        let s2 = SortedCopy {
+            table: self,
+            sort_order: (1..self.inner().schema().columns.len() + 1).collect(),
+        };
+        vec![s1, s2]
     }
 }
 
-impl<'a> SortedTableSnapshot for SortedTable<'a> {
-    type Value = table::WireValue;
+impl<'a> SortedTable for SortedCopy<'a> {
+    type Value = table::PackedValue;
 
     /// Number of columns, including rowid column
     fn arity(&self) -> usize {
@@ -145,11 +132,36 @@ impl<'a> SortedTableSnapshot for SortedTable<'a> {
     }
 
     fn sort_order(&self) -> &[ColIdx] {
-        self.sort_order
+        &self.sort_order
     }
 
     fn value(&self, row: RowIdx, col: ColIdx) -> Option<Self::Value> {
-        self.table.cell_at(row, col)
+        self.table.inner().cell_by_idx(row, col)
+    }
+
+    // Note assuming that col[depth] is totally sorted, otherwise UB.
+    fn lower_bound(&self, depth: usize, v: &Self::Value, lo: RowIdx, hi: RowIdx) -> Option<RowIdx> {
+        let col = self.sort_order()[depth];
+        let r = self.table.inner().cols.get(col)?.scope_to_value(v, lo..hi);
+        Some(r.start)
+    }
+
+    fn upper_bound(&self, depth: usize, v: &Self::Value, lo: RowIdx, hi: RowIdx) -> Option<RowIdx> {
+        let col = self.sort_order()[depth];
+        let r = self.table.inner().cols.get(col)?.scope_to_value(v, lo..hi);
+        Some(r.end)
+    }
+
+    fn equal_range(
+        &self,
+        depth: usize,
+        v: &Self::Value,
+        lo: RowIdx,
+        hi: RowIdx,
+    ) -> Option<Range<RowIdx>> {
+        let col = self.sort_order()[depth];
+        let r = self.table.inner().cols.get(col)?.scope_to_value(v, lo..hi);
+        Some(r)
     }
 }
 
@@ -157,7 +169,7 @@ impl<'a> SortedTableSnapshot for SortedTable<'a> {
 mod tests {
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::store::Store;
-    use crate::table::sorted::SortedTableSnapshot;
+    use crate::table::sorted::SortedTable;
 
     // TODO: once we can distinguish tables that need rebuild from those that
     // do not, assert that only rebuild tables expose the structural index
@@ -188,11 +200,9 @@ mod tests {
         let mut store = Store::new();
         let oid = store.create_table(path, schema).expect("create test table");
 
-        let snapshots = store.sorted_snapshot_of(oid);
-        assert_eq!(snapshots.len(), 3);
-        // rid-order placeholder, then primary-key index, then all-columns structural index
-        assert_eq!(snapshots[0].sort_order(), &[0]);
-        assert_eq!(snapshots[1].sort_order(), &[0]);
-        assert_eq!(snapshots[2].sort_order(), &[0, 1]);
+        let t = store.table(oid).expect("table exists").sorted_copies();
+        assert_eq!(t.len(), 2);
+        assert_eq!(t[0].sort_order(), &[0]);
+        assert_eq!(t[1].sort_order(), &[1, 2]);
     }
 }

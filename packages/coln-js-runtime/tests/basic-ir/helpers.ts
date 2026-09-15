@@ -7,8 +7,8 @@ import { StoreHandle, type RealmBindings } from "@coln-project/runtime";
 export function beginRealm<ViewRoot, TransactionRoot>(
   realm: RealmBindings<ViewRoot, TransactionRoot>,
 ) {
-  let store = StoreHandle.fromTheory(JSON.stringify(realm.schema));
-  const transaction = store.beginTransaction();
+  let store = StoreHandle.fromTheory(JSON.stringify(realm.schema), "", "");
+  const transaction = store.transaction();
   const root = new realm.Transaction(store, transaction).root;
 
   return {
