@@ -2,13 +2,14 @@
 {-# LANGUAGE TypeAbstractions #-}
 module Coln.MIR.Interpret where
 
--- Interpret Core syntax into MIR values
-import Coln.Common
+import Prelude hiding (lookup)
 
+import Coln.Common
 import Coln.Core.Params
 import Coln.Core.Syntax qualified as S
 import Coln.MIR.Params
 import Coln.MIR.Value qualified as V
+import Data.Map.Ordered qualified as OMap
 
 class Interp (a :: Case -> Type) (f :: Case -> MLevel -> Type) | a -> f where
   interp :: (V.HasEvaluation c) => V.Globals -> V.Locals -> a c -> Match SMLevel (V.Evaluation f c)
@@ -16,18 +17,15 @@ class Interp (a :: Case -> Type) (f :: Case -> MLevel -> Type) | a -> f where
 interpAt :: (Interp a b, forall c'. LevelCoerce (b c'), V.HasEvaluation c) => SMLevel l -> V.Globals -> V.Locals -> a c -> V.Evaluation b c l
 interpAt l0 g e t = case interp g e t of
   Pair l1 v -> V.emap (levelCoerce l1 l0) v
-    -- case V.scase @c of
-    -- SNominative -> levelCoerce l1 l0 v
-    -- SDescriptive -> case v of
-    --   V.Describe v' -> V.Describe $ levelCoerce l1 l0 v'
-    --   V.Become v' -> V.Become $ levelCoerce l1 l0 v'
 
 -- Should this also be "compile"?
 
 instance Interp S.El V.El where
   interp @c g e = \case
     S.LocalVar i -> elemAt e i
-    S.GlobalVar x _ -> elemAt g x
+    S.GlobalVar mg -> case lookup g mg.name of
+      Just v -> v
+      Nothing -> panic $ "no such global variable " ++ show mg.name ++ " in " ++ show (fst <$> OMap.assocs g)
     S.Code u a -> withUniverse u $ \su -> do
       let (l0, l1) = (sDecodesInto su, sCodesInto su)
       case V.scase @c of

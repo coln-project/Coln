@@ -42,7 +42,7 @@ class Core el ty | el -> ty, ty -> el where
 
 instance Core El Ty where
   localVar i v = M (S.LocalVar i) v
-  globalVar x v = M (S.GlobalVar x v) v
+  globalVar x v = M (S.GlobalVar (S.MemoedGlobal x v)) v
   code u t = M (S.Code u t.stx) (V.emap (V.Code u) t.val)
   app fv f x = M (S.App fv f.stx x.stx) (V.app fv f.val x.val)
   lam fv vs dom (S.Abs x body) =

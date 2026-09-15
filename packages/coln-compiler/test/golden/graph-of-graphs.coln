@@ -3,9 +3,6 @@ theory Graph := sig
   E : V -> V -> Set
 end
 
-realm GraphRealm @ Graph
-end
-
 theory Graph/hom (G0 : Graph) (G1 : Graph) := sig
   V : G0.V -> G1.V
   E : (v0 : G0.V) -> (v1 : G0.V) -> G0.E v0 v1 -> G1.E (V v0) (V v1)
@@ -17,5 +14,28 @@ theory GraphOfGraphs := sig
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
 
+def TotalV (G : GraphOfGraphs) : Set := sig
+  base : G.base.V
+  fiber : G.fiber base .V
+end
+
+def TotalE (G : GraphOfGraphs) : (v0 : TotalV G) -> (v1 : TotalV G) -> Set := v0 => v1 => sig
+  base : G.base.E v0.base v1.base
+  fiber : G.fiber v1.base .E (G.action v0.base v1.base base .V v0.fiber) v1.fiber
+end
+
+def TotalGraph (G : GraphOfGraphs) : Graph := struct
+  V := TotalV G
+  E := TotalE G
+end
+
+theory TransitiveExtension (^i G : Graph) := sig
+  t : G.V -> G.V -> Prop
+  refl : (v : G.V) -> t v v
+  snoc : (v0 : G.V) -> (v1 : G.V) -> (v2 : G.V) -> t v0 v1 -> G.E v1 v2 -> t v0 v2
+end
+
 realm GraphOfGraphsRealm @ GraphOfGraphs
+  def total : Graph := TotalGraph root
+  ind def connection : TransitiveExtension total := init (TransitiveExtension total)
 end

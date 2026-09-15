@@ -45,7 +45,7 @@ instance ToNotation TableName where
 instance ToNotation (El e) where
   toNotation xs = \case
     LocalVar i -> toNotation xs i
-    GlobalVar x _ -> N.Ident x ()
+    GlobalVar mg -> N.Ident mg.name ()
     Code _ ty -> toNotation xs ty
     App _ f t -> N.Juxt (toNotation xs f) (toNotation xs t)
     Lam _ _ (Abs x t) ->

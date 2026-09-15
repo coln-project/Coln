@@ -103,7 +103,7 @@ unwrap Nothing = panic "should only unwrap a Just"
 --------------------------------------------------------------------------------
 
 class ElemAt a i b | a i -> b where
-  elemAt :: a -> i -> b
+  elemAt :: (Dbg) => a -> i -> b
 
 instance (Ord a) => ElemAt (OMap a b) a b where
   elemAt m k = case OMap.lookup k m of
@@ -112,6 +112,9 @@ instance (Ord a) => ElemAt (OMap a b) a b where
 
 class Lookup a i b | a -> i b where
   lookup :: a -> i -> Maybe b
+  
+instance (Ord a) => Lookup (OMap a b) a b where
+  lookup m k = OMap.lookup k m
 
 class Contains a i | a -> i where
   contains :: a -> i -> Bool

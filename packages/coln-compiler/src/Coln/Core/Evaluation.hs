@@ -27,7 +27,7 @@ compileAbs (S.AbsConst t) = do
 instance Compile S.El V.El where
   compile = \case
     S.LocalVar i -> (`elemAt` i)
-    S.GlobalVar _ v -> const v
+    S.GlobalVar mg -> const mg.value
     S.Code u a -> V.emap (V.Code u) . compile a
     S.App fv t0 t1 -> do
       let k0 = compile t0

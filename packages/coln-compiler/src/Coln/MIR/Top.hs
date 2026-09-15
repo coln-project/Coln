@@ -20,8 +20,8 @@ import Coln.MIR.Params (SMLevel (..))
 import Coln.MIR.Realm as MIR
 import Coln.MIR.Value qualified as V
 
-evalToNominative :: V.Description V.El l -> V.El N l
-evalToNominative = \case
+descriptionToNominative :: V.Description V.El l -> V.El N l
+descriptionToNominative = \case
   V.Describe v -> toNominative v
   V.Become v -> v
 
@@ -31,17 +31,17 @@ toNominative = \case
   V.Init _ -> panic "init not allowed in globals"
   V.Lam fv a clo -> do
     let clo' = case clo of
-         V.Clo x f -> V.Clo x (evalToNominative . f)
-         V.CloConst v -> V.CloConst (evalToNominative v)
+         V.Clo x f -> V.Clo x (descriptionToNominative . f)
+         V.CloConst v -> V.CloConst (descriptionToNominative v)
     V.Lam fv a clo'
-  V.Cons fields -> V.Cons $ evalToNominative <$> fields
+  V.Cons fields -> V.Cons $ descriptionToNominative <$> fields
 
 interpGlobals :: Core.Globals -> V.Globals
 interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions
  where
   interp' :: V.Globals -> Name -> Core.Definition Global -> Match SMLevel (V.El N)
   interp' acc _ def = case interp acc BwdNil def.body.stx of 
-    Pair l v -> Pair l (evalToNominative v)
+    Pair l v -> Pair l (descriptionToNominative v)
   go :: V.Globals -> (Name, Core.Definition Global) -> V.Globals
   go acc (x, def) = acc OMap.>| (x, interp' acc x def)
 

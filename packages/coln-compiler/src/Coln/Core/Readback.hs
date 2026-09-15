@@ -20,7 +20,7 @@ class Readback a b | a -> b where
 instance Readback V.Head (S.El N) where
   readb n = \case
     V.LocalVar (FId i) -> S.LocalVar (BId (n - i - 1))
-    V.GlobalVar x v -> S.GlobalVar x v
+    V.GlobalVar x v -> S.GlobalVar (S.MemoedGlobal x v)
 
 instance Readback V.Spine (S.El N -> S.El N) where
   readb n = \case

@@ -1,5 +1,6 @@
 module Coln.Top
   ( loadRealmsFromFile
+  , lowerRealms
   , generateTs
   , generateIr
   , irPretty
@@ -23,8 +24,12 @@ import Prettyprinter.Render.Text (renderStrict)
 loadRealmsFromFile :: Reporter ColnCode -> File -> IO (OMap Name SIR.Realm)
 loadRealmsFromFile r f = do
   globals <- topFromText r f
+  pure $ lowerRealms globals
+  
+lowerRealms :: Globals -> OMap Name SIR.Realm
+lowerRealms globals = do
   let globalEnv = interpGlobals globals
-  pure $ fmap (mirToSIR . coreToMIR globalEnv) globals.realms
+  fmap (mirToSIR . coreToMIR globalEnv) globals.realms
 
 render :: DDoc -> Text
 render = renderStrict . layoutPretty defaultLayoutOptions

@@ -8,6 +8,11 @@ description: Elaborator and compiler for Coln
 category: Language
 build-type: Simple
 
+flag debug
+  description: turn on debug info printing
+  manual: True
+  default: True
+
 library
   exposed-modules:
     Coln.Backend.TypeScript.AST
@@ -114,6 +119,9 @@ library
     text,
     vector,
     vector-hashtables,
+
+  if flag(debug)
+    cpp-options: -DDEBUG
 
 test-suite coln-compiler-test
   type: exitcode-stdio-1.0
