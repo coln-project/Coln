@@ -1,6 +1,29 @@
-\title{The theory of sets}
+\title{The type of sets}
 \import{prelude}
 
-\p{\code{Set} is a theory, and models of \code{Set} are collections of things. This corresponds to a very simple kind of database by itself, but we can do many things from this foundation.}
+\p{There is a type \code{Set}, whose elements are collections of things.}
 
-\p{We refer to models of \code{Set} as, unsurprisingly, “sets.”}
+% In particular we have \code{String : Set} and \code{Int : Set}.
+
+\p{As a database schema, this produces a table of completely abstract row-ids, with no associated data.}
+
+\pre{%
+\kw{theory} Widget := Set
+}
+
+\dbexample{
+  \p{\strong{Table \code{Widget}}}
+
+  \table{
+    \row{\hcell{RowID}}
+  }{
+    \row{\cell{\code{a}}}
+    \row{\cell{\code{b}}}
+  }
+
+  \p{\strong{Constraints:}
+  \ul{
+    \li{None.}
+  }
+  }
+}

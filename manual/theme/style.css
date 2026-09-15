@@ -459,6 +459,15 @@ td.macro-doc {
   font-size: .9em;
 }
 
+.database-example th,
+.database-example td {
+  padding: 0.35rem 0.8rem;
+}
+
+.database-example th {
+  border-bottom: 1px solid #aaa;
+}
+
 .enclosing.macro-scope>.enclosing {
   border-radius: 2px;
 }

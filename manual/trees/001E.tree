@@ -1,9 +1,21 @@
-\title{Function types as theories}
+\title{Function types}
 \import{prelude}
 
-\p{Function types are theories, as long as the domain is a set and the codomain is a theory.}
+\p{An element of a function type \code{A -> B} assigns for each element of \code{A}, an element of \code{B}.}
 
-\p{Function types can be used in many ways. Here are some examples.}
+\pre{%
+\kw{theory} SimpleMachine := \kw{sig}
+  input : Set
+  output : Set
+  next : input -> output
+\kw{end}
+}
+
+\p{If we have \code{m : StateMachine}, then \code{m.next} is a function that sends elements of \code{m.input} to elements of \code{m.output}.}
+
+% Instance Example
+
+\p{These can certainly use the same collection on both sides.}
 
 \pre{%
 \kw{theory} StateMachine := \kw{sig}
@@ -12,9 +24,9 @@
 \kw{end}
 }
 
-\p{If we have \code{m : StateMachine}, then \code{m.next} is a function that sends elements of \code{m.state} to other elements of \code{m.state}. The type \code{state -> state} satisfies the criterion for being a theory because its domain is a set and its codomain is a theory (following [[001D]]).}
+% Instance Example
 
-\p{But that is not all functions can do. As the codomain of a function can be a theory, we could also do the following.}
+\p{But that is not all functions can do. Though there are some restrictions (see [[Levels]]), the domain and codomain of a function can be a general type, so we can do the following:}
 
 \pre{%
 \kw{theory} SantaLists := \kw{sig}
@@ -22,5 +34,7 @@
   list : year -> SantaList
 \kw{end}
 }
+
+% Instance Example
 
 \p{Now, there are some ontological problems with this database schema. We cannot ask whether a person is nice one year and naughty the other year, because the nice and naughty sets for each year are disjoint. What we would really like is there to be \em{one} set of people, and then in different years they might be nice or naughty. This can be accomplished with [relations](001G).}

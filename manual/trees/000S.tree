@@ -1,31 +1,22 @@
 \title{Basic type constructors}
 \import{prelude}
 
-\p{As explained above, there are only really two things in the Coln language: types and elements of those types. We write \code{a : A} to express that \code{a} is an element of the type \code{A}. In this section, we describe informally the various type constructors available in Coln.}
+\p{In this section, we describe informally the various type constructors available in Coln.}
 
-\p{We now show how to build up progressively more complex theories via different type formers.}
+\p{As we introduce each new type construction, we demonstrate the database schema produced by the Coln compiler, together with a valid instance of that schema. Click the "Example" heading to expand it. \mvrnote{forward link to more details}}
 
 \transclude{0031}
-\transclude{001I}
 \transclude{001B}
 \transclude{001C}
-\transclude{001E}
 \transclude{001D}
+\transclude{001E}
+\transclude{0034}
 \transclude{001G}
+\transclude{001I}
 
-\p{These type formers ([[0031]], [[001B]], [[001I]], [[001C]], [[001D]], [[001E]] and [[001G]]) can be used to compositionally build up fairly complex combinatorial structures of sets, functions and relations.}
+\p{These type formers ([[0031]], [[001B]], [[001C]], [[001D]],
+[[001E]], [[0034]], [[001G]] and [[001I]]) are individually simple,
+but can be composed to build complex combinatorial structures of sets,
+functions and relations.}
 
-\subtree[001A]{
-  \taxon{Slogan}
-  \title{Sets are queries, elements are results}
-
-  \p{One can query a database in Coln via for-loops in TypeScript, but this is obviously not the most efficient or ergonomic way to do it. In fact, we already have the machinery to write down queries, it just requires a bit of rethinking what we have already learned. The idea is that giving a way to produce a set from a model of a theory is a query. The elements of that set are the results of the query.}
-}
-
-\transclude{001J}
-
-\transclude{001K}
-
-\transclude{001L}
-
-\transclude{001M}
+\transclude{0036}

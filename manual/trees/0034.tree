@@ -1,0 +1,21 @@
+\title{Parameterised theories}
+\import{prelude}
+
+\p{Coln also provides the facility for functions at the \em{theory} level, which enables code reuse between database schemas. As a simple example:}
+
+\pre{%
+\kw{theory} StateMachineOn (state : Set) := \kw{sig}
+  next : state -> state
+\kw{end}
+}
+
+\pre{%
+\kw{theory} Factory := \kw{sig}
+  steps : Set
+  chocolate-recipe : StateMachineOn steps
+  rooms : Set
+  boat-ride : StateMachineOn rooms
+\kw{end}
+}
+
+% Example instance
