@@ -45,6 +45,7 @@ instance Assemble Ty where
   asm (TyConst i args) = asm i <> case args of
     [] -> ""
     _ -> enclose "<" ">" $ mconcat $ punctuate ", " $ asm <$> args
+  asm (TypeOf i) = "typeof" <+> asm i
   asm (ListTy a) = asm a <> "[]"
   asm (Singleton v) = asm v
   asm (RecordTy fields) = blocked $ punctuate "," [asm x <> ":" <+> asm ty | (x, ty) <- fields]
@@ -78,6 +79,7 @@ instance Assemble El where
     blocked $ punctuate "," [asm x <> ":" <+> asm t | (x, t) <- fields]
   asm Null = "null"
   asm (Coerce t ty) = asm t <+> "as" <+> asm ty
+  asm (ClassExpr c) = asm c
 
 instance Assemble Statement where
   asm (Let x t) = "const" <+> asm x <+> "=" <+> asm t <> ";"
@@ -155,6 +157,8 @@ instance Assemble Import where
   asm = \case
     ImportQualified x from ->
       "import * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+    ImportQualifiedType x from ->
+      "import type * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
     ImportSpecific x from ->
       "import" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
     ImportSpecificExported x from ->

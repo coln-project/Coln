@@ -31,6 +31,7 @@ instance IsString QId where
 data Ty
   = Fun Binding Ty
   | TyConst QId [Ty]
+  | TypeOf QId
   | Singleton El
   | ListTy Ty
   | RecordTy [(Id, Ty)]
@@ -58,6 +59,7 @@ data El
   | Object [(Id, El)]
   | Null
   | Coerce El Ty
+  | ClassExpr Class
 
 data Statement
   = Let Id El
@@ -110,6 +112,7 @@ data Declaration
 
 data Import
   = ImportQualified Id DDoc
+  | ImportQualifiedType Id DDoc
   | ImportSpecific Id DDoc
   | ImportSpecificExported Id DDoc
 

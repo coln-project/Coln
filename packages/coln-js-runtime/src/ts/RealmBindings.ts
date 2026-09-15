@@ -6,6 +6,7 @@ import type { StoreHandle, TransactionHandle } from "#wasm-bodge/bindings"
 
 export interface ColnSchema {
   entities: readonly unknown[]
+  definitions: readonly unknown[]
   rules: readonly unknown[]
 }
 

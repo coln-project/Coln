@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@coln-project/runtime": ["src/ts/index.ts"]
+    }
+  },
+  "include": [
+    "../../src/**/*.ts",
+    "../binding-runtime.test.ts",
+    "../../../coln-compiler/typescript-model/GraphRealm.ts"
+  ]
+}

@@ -1,84 +1,85 @@
-import * as runtime from "./runtime/index.js";
+import type * as Runtime from "@coln-project/runtime";
 
-export class GraphRealm {
-  root: {
-    V: runtime.MutableSet<runtime.RowId<"root.V">>,
-    E: (a: runtime.RowId<"root.V">) => (b: runtime.RowId<"root.V">) => runtime.MutableSet<runtime.RowId<"root.E">>
+export function createRealm(runtime: typeof Runtime) {
+  return class GraphRealm {
+    root: {
+      V: Runtime.MutableSet<Runtime.RowId<"root.V">>,
+      E: (a: Runtime.RowId<"root.V">) => (b: Runtime.RowId<"root.V">) => Runtime.MutableSet<Runtime.RowId<"root.E">>
+    };
+    outgoing_edges: (v: Runtime.RowId<"root.V">) => Runtime.Set<{
+      into: Runtime.RowId<"root.V">,
+      has_edge: Runtime.RowId<"root.E">
+    }>;
+    incoming_edges: (v: Runtime.RowId<"root.V">) => Runtime.Set<{
+      outof: Runtime.RowId<"root.V">,
+      has_edge: Runtime.RowId<"root.E">
+    }>;
+
+    constructor(store: Runtime.ManagedStore) {
+      this.root = {
+        V: (new runtime.BaseTableSet(store, "root.V", [])),
+        E: (a: Runtime.RowId<"root.V">) => {
+          return (b: Runtime.RowId<"root.V">) => {
+            return (new runtime.BaseTableSet(store, "root.E", [a, b]));
+          };
+        }
+      };
+      this.outgoing_edges = (v: Runtime.RowId<"root.V">) => {
+        return (new runtime.ViewTableSet(
+          store,
+          "view.outgoing-edges",
+          [v],
+          [1, 2],
+          {
+            flatten: (a: {
+              into: Runtime.RowId<"root.V">,
+              has_edge: Runtime.RowId<"root.E">
+            }) => {
+              return [a.into, a.has_edge];
+            },
+            reconstruct: (result: Runtime.WireTuple) => {
+              return {
+                into: (new runtime.RowId(
+                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  "root.V"
+                )),
+                has_edge: (new runtime.RowId(
+                  { type: "Existing", value: result[1] as Runtime.WireRowId },
+                  "root.E"
+                ))
+              };
+            }
+          }
+        ));
+      };
+      this.incoming_edges = (v: Runtime.RowId<"root.V">) => {
+        return (new runtime.ViewTableSet(
+          store,
+          "view.incoming-edges",
+          [v],
+          [1, 2],
+          {
+            flatten: (a: {
+              outof: Runtime.RowId<"root.V">,
+              has_edge: Runtime.RowId<"root.E">
+            }) => {
+              return [a.outof, a.has_edge];
+            },
+            reconstruct: (result: Runtime.WireTuple) => {
+              return {
+                outof: (new runtime.RowId(
+                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  "root.V"
+                )),
+                has_edge: (new runtime.RowId(
+                  { type: "Existing", value: result[1] as Runtime.WireRowId },
+                  "root.E"
+                ))
+              };
+            }
+          }
+        ));
+      };
+    }
   };
-  outgoing_edges: (v: runtime.RowId<"root.V">) => runtime.Set<{
-    into: runtime.RowId<"root.V">,
-    has_edge: runtime.RowId<"root.E">
-  }>;
-  incoming_edges: (v: runtime.RowId<"root.V">) => runtime.Set<{
-    outof: runtime.RowId<"root.V">,
-    has_edge: runtime.RowId<"root.E">
-  }>;
-
-  constructor(store: runtime.Store) {
-    const mstore = (new runtime.ManagedStore(store));
-    this.root = {
-      V: (new runtime.BaseTableSet(mstore, "root.V", [])),
-      E: (a: runtime.RowId<"root.V">) => {
-        return (b: runtime.RowId<"root.V">) => {
-          return (new runtime.BaseTableSet(mstore, "root.E", [a, b]));
-        };
-      }
-    };
-    this.outgoing_edges = (v: runtime.RowId<"root.V">) => {
-      return (new runtime.ViewTableSet(
-        mstore,
-        "view.outgoing-edges",
-        [v],
-        [1, 2],
-        {
-          flatten: (a: {
-            into: runtime.RowId<"root.V">,
-            has_edge: runtime.RowId<"root.E">
-          }) => {
-            return [a.into, a.has_edge];
-          },
-          reconstruct: (result: runtime.WireTuple) => {
-            return {
-              into: (new runtime.RowId(
-                { type: "Existing", value: result[0] as runtime.WireRowId },
-                "root.V"
-              )),
-              has_edge: (new runtime.RowId(
-                { type: "Existing", value: result[1] as runtime.WireRowId },
-                "root.E"
-              ))
-            };
-          }
-        }
-      ));
-    };
-    this.incoming_edges = (v: runtime.RowId<"root.V">) => {
-      return (new runtime.ViewTableSet(
-        mstore,
-        "view.incoming-edges",
-        [v],
-        [1, 2],
-        {
-          flatten: (a: {
-            outof: runtime.RowId<"root.V">,
-            has_edge: runtime.RowId<"root.E">
-          }) => {
-            return [a.outof, a.has_edge];
-          },
-          reconstruct: (result: runtime.WireTuple) => {
-            return {
-              outof: (new runtime.RowId(
-                { type: "Existing", value: result[0] as runtime.WireRowId },
-                "root.V"
-              )),
-              has_edge: (new runtime.RowId(
-                { type: "Existing", value: result[1] as runtime.WireRowId },
-                "root.E"
-              ))
-            };
-          }
-        }
-      ));
-    };
-  }
 }

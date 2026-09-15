@@ -173,3 +173,24 @@ test-suite coln-compiler-test
     temporary >=1.3,
     text >=2.1.1,
     vector,
+
+test-suite coln-compiler-interface-test
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  hs-source-dirs: test-interface
+  default-language: GHC2024
+  default-extensions:
+    NoFieldSelectors
+    OverloadedRecordDot
+    OverloadedStrings
+
+  ghc-options:
+    -Wall
+    -g
+
+  build-depends:
+    base,
+    coln-compiler,
+    diagnostician,
+    ordered-containers,
+    text,
