@@ -1,0 +1,30 @@
+\title{Base types}
+\import{prelude}
+
+\p{Coln includes two base types for demonstration purposes:
+\code{String} and \code{Int}. Both are ultimately stored as a single
+database column. As we saw previously:}
+
+\pre{%
+\kw{theory} FavouriteNumber := Int
+}
+
+\dbexample{
+  \p{\strong{Table \code{FavouriteNumber}}}
+
+  \table{
+    \row{\hcell{\code{root : Int}}}
+  }{
+    \row{\cell{19}}
+  }
+
+\p{\strong{Constraints:}
+\ul{
+  \li{\code{FavouriteNumber} has exactly one row.}
+}
+}
+}
+
+\p{A word of caution: the user is not currently prevented from writing theories that would require an infinite amount of storage to produce a valid instance of, for example, the theory of [functions](001E) \code{String -> String}.}
+
+% \p{The solution to this problem requires building up a little more theory, so we do not address it right now, and instead continue on to give a full account of the “purely combinatorial” fragment of Coln. \mvrnote{Has the fix here actually been figured out?}}

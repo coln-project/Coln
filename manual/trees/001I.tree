@@ -1,12 +1,12 @@
-\title{Equality types as theories}
+\title{Equality types}
 \import{prelude}
 
-\p{Another way of creating interesting propositions is with \defcase{equality}. Given two elements \code{a0} and \code{a1} of a set \code{A}, there is a proposition \code{a0 = a1} which is true if and only if \code{a0} is equal to \code{a1}.}
+\p{Besides using a \code{Prop} asserted as a field, the other method of forming a proposition is \defcase{equality}. Given two elements \code{a0} and \code{a1} of \em{any} set \code{A : Set}, there is a proposition \code{(a0 = a1) : Prop} which is true (i.e. is inhabited) exactly when \code{a0} is equal to \code{a1}.}
 
-\p{We can use this to write down laws in our theories that involve equality. For instance, we can write down the theory of a two-way mapping (mathematically known as a \em{bijection}) in the following way}
+\p{We can use this to write down laws in our theories that involve equality. For instance, we can write down the theory of a bijection in the following way:}
 
 \pre{%
-\kw{theory} TwoWayMapping (X : Set) (Y : Set) := \kw{sig}
+\kw{theory} Bijection (X : Set) (Y : Set) := \kw{sig}
   fwd : X -> Y
   bwd : Y -> X
   bwd-fwd : (x : X) -> bwd (fwd x) = x
@@ -14,7 +14,9 @@
 \kw{end}
 }
 
-\p{Another example of equality usage is when we assert that a relation is a partial function, by saying that if \code{x} is related to both \code{y0} and \code{y1} then \code{y0} must be equal to \code{y1}.}
+% Example instance, for Bijection instantiated
+
+\p{Another example of equality usage is when we assert that a relation is a partial function, by saying that if \code{x} is related to both \code{y0} and \code{y1}, then \code{y0} must be equal to \code{y1}.}
 
 \pre{%
 \kw{theory} IsPartialFunction (X : Set) (Y : Set) (R : X -> Y -> Prop) := 

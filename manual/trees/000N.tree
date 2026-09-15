@@ -1,25 +1,21 @@
 \title{Introduction}
+\import{prelude}
 
-\p{A traditional database language (or indeed general-purpose language) has many syntactic classes used for different purposes.}
+\p{A traditional database language (or indeed general-purpose language) has many syntactic classes used for different purposes.
+For example, a single [SQL](sql) \code{SELECT} statement has many possible clauses, each with their own syntax (see the [PostgreSQL manual](https://www.postgresql.org/docs/current/queries.html)).}
 
-\subtree{
-  \taxon{Example}
+\p{Coln has only one syntactic class: the syntactic class of an element of a type. We write \code{a : A} to express that \code{a} is an element of the type \code{A}, so, for example, it will be the case that \code{19 : Int}.}
 
-  \p{[SQL](sql) has an exceedingly large grammar. For instance, a single SELECT statement has many possible clauses, each with their own syntax (see the [postgresql manual](https://www.postgresql.org/docs/current/queries.html)).}
+\p{Even types themselves are in this same syntactic class, because they are elements of [type universes](type-universe). In this case, \code{Int : Set}; the type of integers is a set. What is achieved in other languages via syntactic differentiation is achieved instead by semantic restrictions in Coln.}
+
+\collapsedaside{\taxon{Aside} This is in contrast to typical languages with strong type systems whose syntax differs, depending on whether an operation is happening at the value or the type level. For instance, in Rust one uses \code{Vec<i32>} to apply the \code{Vec : Type -> Type} function to \code{i32}, rather than ordinary function application \code{f(1, 2)}, and in OCaml one writes the postfix \code{'t list} at the type level and \code{plus 1 2} at the value level.}
+
+\p{In Coln, a database schema is described by constructing a type. When a type is playing the role of a schema, we will call it a \defcase{theory}. An element of such a theory is called a \defcase{model}, and corresponds to a database instance that has that schema. Later, when we discuss [type levels](0033), we will be able to make precise when a type counts as a theory with an associated database schema.}
+
+\p{In the code examples in the upcoming sections, we will make top-level theory declarations using the following syntax:}
+
+\pre{%
+\kw{theory} FavouriteNumber := Int
 }
 
-\subtree{
-  \taxon{Example}
-
-  \p{Many languages have a different syntax for type parameters to a function than regular parameters. For instance, in Rust one uses \code{Vec<i32>} for applying the \code{Vec : Type -> Type} function to \code{i32} while normal function application looks like \code{plus(1, 2)}, in OCaml one uses \code{int list} while normal function application looks like \code{plus 1 2}.}
-}
-
-\p{Coln differs from this, perhaps to an extreme degree, by only having essentially one syntactic class: the syntactic class of an element of a type. Even types themselves are in this syntactic class, because types are elements of [type universes](type-universe). What is achieved via syntactic differentiation in other languages is achieved instead by semantic restrictions in Coln.}
-
-\subtree{
-  \taxon{Example}
-
-  \p{In Coln there are set-level types, theory-level types, and top-level types. These all use the same syntax; operations which only work on set-level types will produce an error during [elaboration](000O). See [[000S]] for more information about this topic.}
-}
-
-\p{One downside of this approach is that the grammar of Coln is not a very meaningful way of getting a feel for the language; the grammar is almost trivial. What is important is understanding the [semantics](000S) of Coln and the process of [elaboration](000O).}
+% \p{In practice, each declaration of this kind can be \em{lowered} into a database schema using a further [realm](TODO) declaration, which we defer discussion of until much later.}

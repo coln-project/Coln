@@ -1,31 +1,60 @@
-\title{Sets as theories}
+\title{Sets as fields}
 \import{prelude}
 
-\p{A model \code{A : Set} may itself be used as a theory. A model of \code{A} is just an element of \code{A} (remember that a model of \code{Set} is a collection of things). For example, consider the following theory.}
+\p{An element \code{A : Set} may be used directly as a type. Elements of \code{Set} are supposed to correspond to collections of things, so an element of \code{A} as a type is just an element of the collection \code{A} is supposed to be. For example, consider the following theory.}
 
 \pre{%
 \kw{theory} PopulatedSantaList := \kw{sig}
-  list : SantaList
-  john : list.nice
-  mary : list.naughty
+  Naughty : Set
+  Nice : Set
+  charlie : Nice
+  veruca : Naughty
 \kw{end}
 }
 
-\p{A model \code{m} of \code{PopulatedSantaList} consists of a model \code{m.list} of \code{SantaList}, along with specific elements \code{m.john} in \code{m.list.nice} and \code{m.mary} in \code{m.list.naughty}.}
+\p{An element \code{m} of \code{PopulatedSantaList} consists of two collections, \code{m.Naughty} and \code{m.Nice}, along with specific elements \code{m.charlie} in \code{m.Nice} and \code{m.veruca} in \code{m.Naughty}.}
 
-\p{In TypeScript, an element of a set comes along with a getter, and if it is read-write, also a setter. So if \code{m} is a TypeScript variable accessing a model of \code{PopulatedSantaList}, then we should have:} 
+\dbexample{
+  \p{\strong{Table \code{PopulatedSantaList.Naughty}}}
 
-\pre{assert(m.list.nice.has(m.john.get()))}
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{b1}}}
+  }
 
-\p{If \code{m} is \em{incomplete}, then \code{m.john.get()} might return \code{null}. This would be the case in a freshly-created model, as in}
+  \p{\strong{Table \code{PopulatedSantaList.Nice}}}
 
-\pre{\kw{const} m = PopulatedSantaList.create()}
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{g1}}}
+    \row{\cell{\code{g2}}}
+  }
 
-\p{This can be remedied by using \code{.set()}, as in}
+  \p{\strong{Table \code{PopulatedSantaList.charlie}}}
 
-\pre{%
-\kw{const} john = m.list.nice.add()
-m.john.set(john)
+  \table{
+    \row{\hcell{\code{root : Nice}}}
+  }{
+    \row{\cell{\code{g1}}}
+  }
+
+  \p{\strong{Table \code{PopulatedSantaList.veruca}}}
+
+  \table{
+    \row{\hcell{\code{root : Naughty}}}
+  }{
+    \row{\cell{\code{b1}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{The \code{charlie} and \code{veruca} tables each have exactly one row.}
+    \li{The value in \code{charlie.root} is a row ID in \code{Nice}.}
+    \li{The value in \code{veruca.root} is a row ID in \code{Naughty}.}
+  }
+  \p{Here, \code{charlie} selects \code{g1} from \code{Nice}, and \code{veruca} selects \code{b1} from \code{Naughty}.}
 }
 
-\p{Note that \code{m.john.set(x)} would throw an exception if \code{x} were not in \code{m.list.nice}.}
+\p{In particular, records in Coln may be \em{dependent}: the types of later fields may refer to earlier fields, as is the case for \code{charlie} and \code{veruca}.}

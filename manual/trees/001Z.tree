@@ -4,7 +4,7 @@
 \p{Recall from [[001H]] the query \code{jealousy-triangle} defined by}
 
 \pre{%
-\kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
+\kw{def} jealousy-triangle (m : Drama) : Set := \kw{sig}
   a b c : m.person
   m.jealous-of a b
   m.jealous-of b c
@@ -12,4 +12,4 @@
 \kw{end}
 }
 
-\p{}
+\p{\mvrnote{TODO unfinished example}}

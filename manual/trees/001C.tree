@@ -1,22 +1,62 @@
-\title{Record types as theories}
+\title{Record types}
 \import{prelude}
 
-\p{Records types are a way of composing multiple theories into one theory. A record type has multiple \em{fields}, each of which is declared to be a model of another theory. For instance:}
+\p{Record types compose multiple types into a single type, whose elements consist of elements of each of the individual pieces. A record type declaration consists of a list of \em{fields}, each with its own type. A record is formed by a \code{\kw{sig} ... \kw{end}} block, with one field per line. For instance:}
 
 \pre{%
-\kw{theory} SantaList := \kw{sig}
-  naughty : Set
-  nice : Set
+\kw{theory} PersonDeets := \kw{sig}
+  name : String
+  age : Int
 \kw{end}
 }
 
-\p{\code{SantaList} is a very simple theory, the models of which consist of a pair of a collection of naughty things and a collection of nice things.}
+\p{An instance of \code{PersonDeets} stores \em{one person}'s name and age. The two fields become columns in a single table:}
 
-\p{More precisely, if we have a model \code{m} of \code{SantaList} in TypeScript, then \code{m.naughty} and \code{m.nice} are both models of \code{Set}. If \code{m} is readonly, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadonlySet}, and if \code{m} is read-write, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadWriteSet}. The following TypeScript code should run without errors if \code{m} is a read-write model of \code{SantaList}.}
+\dbexample{
+  \p{\strong{Table \code{PersonDeets}}}
+
+  \table{
+    \row{\hcell{\code{name : String}} \hcell{\code{age : Int}}}
+  }{
+    \row{\cell{\code{"Wonka"}} \cell{38}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{\code{PersonDeets} has exactly one row.}
+  }
+}
+
+\p{Fields can also be collections, by giving them the type \code{Set}:}
 
 \pre{%
-\kw{const} alice = m.nice.add()
-\kw{const} bob = m.naughty.add()
-assert(m.nice.has(alice))
-assert(!m.nice.has(bob))
+\kw{theory} SantaList := \kw{sig}
+  Naughty : Set
+  Nice : Set
+\kw{end}
 }
+
+\p{Elements of \code{SantaList} consist of a pair of a collection of naughty things and a collection of nice things.}
+
+\dbexample{
+  \p{\strong{Table \code{SantaList.Naughty}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{b1}}}
+  }
+
+  \p{\strong{Table \code{SantaList.Nice}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{g1}}}
+    \row{\cell{\code{g2}}}
+  }
+
+  \p{\strong{Constraints:} None.}
+}
+
+\p{Each element of a collection is represented by a row with its own opaque row-id.}
