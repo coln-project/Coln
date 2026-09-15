@@ -1,0 +1,40 @@
+def Pair : Set := sig
+  x : Int
+  y : Int
+end
+
+def Pair : Set := sig
+  x : String
+  y : String
+end
+
+def ShadowField : Set := sig
+  x : Int
+  x : String
+end
+
+# Banish him to the
+realm ShadowRealm @ Pair
+end
+
+realm ShadowRealm @ Pair
+end
+
+realm ShadowRoot @ Pair
+  def root : Pair := struct
+    x := 1
+    y := 2
+  end
+end
+
+realm ShadowRealmDefinition @ Pair
+  def thing : Pair := struct
+    x := 1
+    y := 2
+  end
+
+  def thing : Pair := struct
+    x := 3
+    y := 4
+  end
+end

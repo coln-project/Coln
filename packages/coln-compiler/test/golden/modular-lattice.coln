@@ -24,7 +24,7 @@ theory ModularLattice := sig
     join (join a b) c = join a (join b c)
   )
   # Commutativity: a ⋁ b = b ⋁ a
-  join/associative : (a : Element) -> (b : Element) -> (
+  join/commutative : (a : Element) -> (b : Element) -> (
     join a b = join b a
   )
   # Idempotence: a ⋁ a = a

@@ -5,6 +5,7 @@
 
 module Coln.Frontend.Parser.Expr where
 
+import Control.Monad (when)
 import FNotation (Ntn)
 import FNotation qualified as N
 
@@ -61,6 +62,20 @@ fieldSetting :: (V.HasEvaluation c) => ParserEnv -> Ntn -> IO (Record.FieldSetti
 fieldSetting e (N.Infix (N.Ident x sp) (N.Keyword ":=" _) body) =
   Record.FieldSetting x <$> chk e body <*> pure sp
 fieldSetting e n = unexpectedNotation e n "field setting of the form `<fieldname> := <expr>`"
+
+recordFields :: ParserEnv -> (Ntn -> IO a) -> [Ntn] -> IO [a]
+recordFields e parseField = go []
+ where
+  go _ [] = pure []
+  go seen (n : rest) = do
+    field <- parseField n
+    seen' <- case n of
+      N.Infix (N.Ident x sp) _ _ -> do
+        when (x `elem` seen) $
+          failWith e sp DuplicateField ("duplicate record field" <+> dpretty x)
+        pure (x : seen)
+      _ -> pure seen
+    (field :) <$> go seen' rest
 
 ident :: ParserEnv -> Ntn -> IO Name
 ident _ (N.Ident x _) = pure x
@@ -137,10 +152,10 @@ expr e n = case n of
               <*> syn e "term in equality" rhs
           )
   N.Block "sig" Nothing ns _ -> do
-    t <- Record.formation <$> traverse (fieldDecl e) ns
+    t <- Record.formation <$> recordFields e (fieldDecl e) ns
     fromTypD e (N.span n) t
-  N.Block "struct" Nothing ns s ->
-    FromChk "struct expression" <$> (Record.intro s <$> traverse (fieldSetting e) ns)
+  N.Block "struct" Nothing ns s -> do
+    FromChk "struct expression" <$> Record.intro s <$> recordFields e (fieldSetting e) ns
   N.Int i _ -> pure $ fromSynN $ Builtin.intro $ LitInt i
   N.String s _ -> pure $ fromSynN $ Builtin.intro $ LitString s
   n -> unexpectedNotation e n "expression"
