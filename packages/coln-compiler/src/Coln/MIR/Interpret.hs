@@ -1,5 +1,9 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.MIR.Interpret where
 
 import Prelude hiding (lookup)
@@ -34,7 +38,7 @@ instance Interp S.El V.El where
           V.Become a' -> Pair l1 (V.Become $ V.Code su a')
           V.Describe a' -> case a' of
             V.LiftTy x _ -> case x of
-              LTheoryTop -> case su of
+              LTheoryTop -> case su of {}
     S.Lam fv dom abs -> withFunctionVariant fv.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
       let clo = case abs of

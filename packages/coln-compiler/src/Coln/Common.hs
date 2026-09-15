@@ -46,7 +46,7 @@ module Coln.Common (
   mangleToString,
   fromShow,
   for,
-  renderText
+  renderText,
 )
 where
 
@@ -71,7 +71,7 @@ import Data.Void
 
 import Diagnostician
 import FNotation (Name (..))
-import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutPretty, layoutCompact, (<+>))
+import Prettyprinter (Pretty (..), defaultLayoutOptions, layoutCompact, layoutPretty, (<+>))
 import Prettyprinter.Render.String
 import Prettyprinter.Render.Text
 import Prelude hiding (lookup)
@@ -112,7 +112,7 @@ instance (Ord a) => ElemAt (OMap a b) a b where
 
 class Lookup a i b | a -> i b where
   lookup :: a -> i -> Maybe b
-  
+
 instance (Ord a) => Lookup (OMap a b) a b where
   lookup m k = OMap.lookup k m
 

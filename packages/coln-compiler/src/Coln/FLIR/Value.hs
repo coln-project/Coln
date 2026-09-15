@@ -1,4 +1,8 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# OPTIONS_GHC -Wno-orphans #-}
+
 module Coln.FLIR.Value where
 
 import Coln.Common
@@ -143,7 +147,7 @@ instance AE.ToJSON Atom where
       mconcat
         [ AE.pair "entity" $ AE.toEncoding a.entity
         , AE.pair "rowId" $ AE.toEncoding a.rowId
-        , AE.pair "values" $ AE.list (\(i, t) -> AE.pairs $ mconcat [ AE.pair "column" (AE.toEncoding i), AE.pair "term" (AE.toEncoding t) ]) a.values
+        , AE.pair "values" $ AE.list (\(i, t) -> AE.pairs $ mconcat [AE.pair "column" (AE.toEncoding i), AE.pair "term" (AE.toEncoding t)]) a.values
         ]
 
 instance AE.ToJSON Prop where
@@ -246,7 +250,7 @@ toNotationDefinition columnNames (tn, r) = do
   let keyword = "chased"
   let head = foldl' N.Juxt (toNotationTop tn) (fmap toNotationTop (map fst r.vars))
   let ante = toNotationConjunction $ fmap (toNotationProp columnNames $ map fst r.vars) r.antecedents
-  let cons = toNotationAtom columnNames (map fst r.vars) $ Atom r.definand Nothing $ zip [0..] r.args
+  let cons = toNotationAtom columnNames (map fst r.vars) $ Atom r.definand Nothing $ zip [0 ..] r.args
   let seq = N.Infix ante (N.Keyword "⊢" ()) cons
   N.Decl keyword (N.Infix head (N.Keyword ":=" ()) seq) ()
 

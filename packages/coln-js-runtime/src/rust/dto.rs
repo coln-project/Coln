@@ -12,8 +12,7 @@ use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
     store::CommitChunk as StoreCommitChunk,
     table::{
-        WireRowId as StoreRowId, WireValue as StoreCellValue,
-        handle::WireRowView as StoreRowView,
+        WireRowId as StoreRowId, WireValue as StoreCellValue, handle::WireRowView as StoreRowView,
     },
     txn::{TxnLiveRowId, TxnLiveValue as StoreTxnValue},
 };

@@ -10,11 +10,11 @@ import Data.Maybe (fromMaybe)
 
 import Coln.Common
 import Coln.Core.Params
+import Coln.MIR.Memoed (Memoed (..))
 import Coln.MIR.Realm qualified as MIR
 import Coln.SIR.Cache
 import Coln.SIR.Realm qualified as SIR
 import Coln.SIR.Separate
-import Coln.MIR.Memoed (Memoed (..))
 
 split3 :: Dict (Maybe x, Maybe y, Maybe z) -> (Maybe (Dict x), Maybe (Dict y), Maybe (Dict z))
 split3 d = do

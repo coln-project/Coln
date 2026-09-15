@@ -9,7 +9,6 @@ import Coln.Common
 import GHC.Generics (Generic)
 import Prettyprinter
 
-
 -- Level stuff (levels, universes, function variants)
 --------------------------------------------------------------------------------
 
@@ -186,7 +185,7 @@ type RealmId = Name
 
 type Path = Bwd Name
 
-newtype TableName = TableName { name :: Text }
+newtype TableName = TableName {name :: Text}
   deriving (Eq, Ord, Show)
 
 instance DPretty TableName where

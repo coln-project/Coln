@@ -9,10 +9,10 @@ import Data.Map.Ordered qualified as OMap
 import Data.Text.IO qualified as TIO
 import System.FilePath ((</>))
 
-import Coln.Top
-import Coln.Common
 import Coln.CLI.Common
 import Coln.CLI.Options
+import Coln.Common
+import Coln.Top
 
 generateTS :: GenerateTSOptions -> IO ()
 generateTS opts = do

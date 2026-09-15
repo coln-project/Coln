@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import { CommitHash, TxnWireRowId, WireRowId } from "./types.js";
 import { WireValue } from "./value.js"
 

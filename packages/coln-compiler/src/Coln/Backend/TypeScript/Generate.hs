@@ -6,8 +6,8 @@ module Coln.Backend.TypeScript.Generate where
 
 import Control.Monad (forM)
 import Control.Monad.State
-import Data.Set qualified as Set
 import Data.Map.Ordered qualified as OMap
+import Data.Set qualified as Set
 
 import Coln.Backend.TypeScript.AST qualified as TS
 import Coln.Common
@@ -31,7 +31,7 @@ mutableSetInterface ty = TS.TyConst (runtime "MutableSet") [ty]
 
 propInterface :: TS.Ty
 propInterface = TS.TyConst (runtime "Prop") []
-  
+
 mutablePropInterface :: TS.Ty
 mutablePropInterface = TS.TyConst (runtime "MutableProp") []
 
@@ -94,10 +94,11 @@ instance Reconstructable TS.Id TS.El where
     let t = TS.Index (TS.Var res) i
     \case
       SIR.BuiltinTy _ -> t
-      SIR.RowId tn -> TS.New
-        (TS.Const (runtime "RowId"))
-        [ TS.Object
-            [ ("type", TS.String "Existing")
+      SIR.RowId tn ->
+        TS.New
+          (TS.Const (runtime "RowId"))
+          [ TS.Object
+              [ ("type", TS.String "Existing")
               , ("value", TS.Coerce t (TS.TyConst (runtime "WireRowId") []))
               ]
           , tnString tn
@@ -139,12 +140,14 @@ constructAdapter e sh = do
   let resultVar = mangle $ freshenFor e.usedNames "result"
   let inputVar = mangle $ freshNameFor e.usedNames
   let (reconstructed, params) = runState (allocParam resultVar (TS.Var inputVar) sh) emptyParams
-  let flatten = TS.Lam
-        (TS.Binding inputVar (genTy sh))
-        (TS.Block [] (Just (TS.List $ toList params.paramVals)))
-  let reconstruct = TS.Lam
-        (TS.Binding resultVar (TS.TyConst (runtime "WireTuple") []))
-        (TS.Block [] (Just reconstructed))
+  let flatten =
+        TS.Lam
+          (TS.Binding inputVar (genTy sh))
+          (TS.Block [] (Just (TS.List $ toList params.paramVals)))
+  let reconstruct =
+        TS.Lam
+          (TS.Binding resultVar (TS.TyConst (runtime "WireTuple") []))
+          (TS.Block [] (Just reconstructed))
   Adapter flatten reconstruct params.numParams
 
 data TSEnv = TSEnv
@@ -165,7 +168,7 @@ createTSArgs e tn cols = do
   let tsCols = genEl e . (Value,) <$> cols
   let colShapes = snd <$> (elemAt e.realm.entities tn).columns
   zip tsCols colShapes
-  
+
 baseTableSet :: TSEnv -> TableName -> [SIR.El Set] -> TS.El
 baseTableSet env tn cols =
   TS.New
@@ -184,11 +187,11 @@ viewTableSet env tn cols retShape = do
     [ env.store
     , tnString tn
     , TS.List tsParams
-    , TS.List [TS.Lit (LitInt i) | i <- [n..n + adapter.length - 1]]
+    , TS.List [TS.Lit (LitInt i) | i <- [n .. n + adapter.length - 1]]
     , TS.Object
-      [ ("flatten", adapter.flatten)
-      , ("reconstruct", adapter.reconstruct)
-      ]
+        [ ("flatten", adapter.flatten)
+        , ("reconstruct", adapter.reconstruct)
+        ]
     ]
 
 baseTableRef :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> TS.El
@@ -200,11 +203,11 @@ baseTableRef env tn cols retShape = do
     [ env.store
     , tnString tn
     , TS.List tsParams
-    , TS.List [TS.Lit (LitInt i) | i <- [n..n + adapter.length]]
+    , TS.List [TS.Lit (LitInt i) | i <- [n .. n + adapter.length]]
     , TS.Object
-      [ ("flatten", adapter.flatten)
-      , ("reconstruct", adapter.reconstruct)
-      ]
+        [ ("flatten", adapter.flatten)
+        , ("reconstruct", adapter.reconstruct)
+        ]
     ]
 
 data AccessType = Reference | Value
@@ -227,7 +230,7 @@ instance GenEl (SIR.El Theory) where
     SIR.Lam dom abs -> do
       let x = mangle $ argName e.usedNames abs
       let tsBody = case abs of
-            SIR.Abs _ body -> genEl (e { tsLocals = e.tsLocals :> TS.Var x }) body
+            SIR.Abs _ body -> genEl (e{tsLocals = e.tsLocals :> TS.Var x}) body
             SIR.AbsConst body -> genEl e body
       TS.Lam (TS.Binding x (genTy dom.shape)) (TS.Block [] (Just tsBody))
     SIR.Cons fields -> TS.Object $ [(mangle x, genEl e t) | (x, t) <- toList fields]
@@ -247,14 +250,16 @@ instance GenEl (AccessType, SIR.El Set) where
 
 genRealmConstructor :: SIR.Realm -> TS.Constructor
 genRealmConstructor r = do
-  let args = [ TS.Binding "store" (TS.TyConst (runtime "Store") []) ]
+  let args = [TS.Binding "store" (TS.TyConst (runtime "Store") [])]
   let env = emptyTSEnv r (TS.Var "mstore")
-  let auxillaryAssignments = [ TS.Assign (TS.QId ["this"] (mangle x)) (genEl env v) | (x, (v, _)) <- OMap.assocs $ r.auxillaries ]
+  let auxillaryAssignments = [TS.Assign (TS.QId ["this"] (mangle x)) (genEl env v) | (x, (v, _)) <- OMap.assocs $ r.auxillaries]
   let body =
         TS.Block
-          ([ TS.Let "mstore" (TS.New (TS.Const (runtime "ManagedStore")) [TS.Var "store"])
-          , TS.Assign (TS.QId ["this"] "root") (genEl env r.root)
-          ] ++ auxillaryAssignments)
+          ( [ TS.Let "mstore" (TS.New (TS.Const (runtime "ManagedStore")) [TS.Var "store"])
+            , TS.Assign (TS.QId ["this"] "root") (genEl env r.root)
+            ]
+              ++ auxillaryAssignments
+          )
           Nothing
   TS.Constructor args body
 

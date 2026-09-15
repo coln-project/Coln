@@ -1,4 +1,8 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
 {-# LANGUAGE TypeAbstractions #-}
+
 module Coln.MIR.Value where
 
 import Coln.Common

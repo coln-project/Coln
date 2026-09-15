@@ -1,8 +1,8 @@
 -- SPDX-FileCopyrightText: 2026 Coln contributors
 --
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
-
 {-# LANGUAGE UndecidableInstances #-}
+
 module Coln.Core.Syntax where
 
 import Coln.Common
@@ -52,7 +52,7 @@ data RecordType ty = RecordType
   { level :: Level
   , fieldTypes :: Dict (ty N)
   }
-  
+
 deriving instance (Show (ty N)) => Show (RecordType ty)
 
 data EqualityType el ty = EqualityType
@@ -60,7 +60,7 @@ data EqualityType el ty = EqualityType
   , lhs :: el N
   , rhs :: el N
   }
-  
+
 deriving instance (Show (ty N), Show (el N)) => Show (EqualityType el ty)
 
 data Ty :: Case -> Type where

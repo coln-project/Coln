@@ -31,8 +31,8 @@ toNominative = \case
   V.Init _ -> panic "init not allowed in globals"
   V.Lam fv a clo -> do
     let clo' = case clo of
-         V.Clo x f -> V.Clo x (descriptionToNominative . f)
-         V.CloConst v -> V.CloConst (descriptionToNominative v)
+          V.Clo x f -> V.Clo x (descriptionToNominative . f)
+          V.CloConst v -> V.CloConst (descriptionToNominative v)
     V.Lam fv a clo'
   V.Cons fields -> V.Cons $ descriptionToNominative <$> fields
 
@@ -40,7 +40,7 @@ interpGlobals :: Core.Globals -> V.Globals
 interpGlobals g = foldl go OMap.empty $ OMap.assocs g.definitions
  where
   interp' :: V.Globals -> Name -> Core.Definition Global -> Match SMLevel (V.El N)
-  interp' acc _ def = case interp acc BwdNil def.body.stx of 
+  interp' acc _ def = case interp acc BwdNil def.body.stx of
     Pair l v -> Pair l (descriptionToNominative v)
   go :: V.Globals -> (Name, Core.Definition Global) -> V.Globals
   go acc (x, def) = acc OMap.>| (x, interp' acc x def)
@@ -61,7 +61,7 @@ coreToMIR g r = do
                 , ty = ty
                 }
         ((n + 1, ls :> l'), (x, (gens, def')))
-  let (gens, defs) = fromList *** OMap.fromList $ unzip $ fmap (\(x,(y,z)) -> ((x,y),(x,z))) $ snd $ mapAccumL go (1, BwdNil :> Pair STheory rootbody.val) $ OMap.assocs r.realmDefinitions
+  let (gens, defs) = fromList *** OMap.fromList $ unzip $ fmap (\(x, (y, z)) -> ((x, y), (x, z))) $ snd $ mapAccumL go (1, BwdNil :> Pair STheory rootbody.val) $ OMap.assocs r.realmDefinitions
   MIR.Realm
     { root = rootbody.val
     , rootType = rTy

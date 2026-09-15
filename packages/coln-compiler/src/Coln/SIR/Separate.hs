@@ -1,16 +1,20 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.SIR.Separate where
 
 import Coln.Common
 import Coln.Core.Params
+import Coln.MIR.Layout (argName)
 import Coln.MIR.Params
 import Coln.MIR.Realm qualified as V
 import Coln.MIR.Value qualified as V
-import Coln.MIR.Layout (argName)
 import Coln.SIR.Realm
 import Coln.SIR.Syntax qualified as S
 
-import Data.Key (mapAccumWithKeyL)
 import Control.Arrow (second)
+import Data.Key (mapAccumWithKeyL)
 import Data.Maybe (mapMaybe, maybeToList)
 
 type CtxLen = Int
@@ -77,7 +81,7 @@ theoryShapeOf cs a v = case a of
     let fields = snd $ mapAccumWithKeyL doField rt.capture rt.fieldTypes
     S.Record fields
   V.U (inferSetCodes -> u) -> case v of
-    V.PrimCode _ tn  _ -> S.BaseU u (S.Scalar (S.RowId tn))
+    V.PrimCode _ tn _ -> S.BaseU u (S.Scalar (S.RowId tn))
     V.Code SSetU a -> S.ViewU u $ shapeOf a
     V.Code SPropU a -> S.ViewU u $ shapeOf a
     _ -> panic "expected a primcode or a code"

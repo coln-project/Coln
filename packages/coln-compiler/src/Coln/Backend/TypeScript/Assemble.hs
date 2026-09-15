@@ -42,9 +42,10 @@ instance Assemble QId where
 
 instance Assemble Ty where
   asm (Fun bnd ret) = parens (asm bnd) <+> "=>" <+> asm ret
-  asm (TyConst i args) = asm i <> case args of
-    [] -> ""
-    _ -> enclose "<" ">" $ mconcat $ punctuate ", " $ asm <$> args
+  asm (TyConst i args) =
+    asm i <> case args of
+      [] -> ""
+      _ -> enclose "<" ">" $ mconcat $ punctuate ", " $ asm <$> args
   asm (ListTy a) = asm a <> "[]"
   asm (Singleton v) = asm v
   asm (RecordTy fields) = blocked $ punctuate "," [asm x <> ":" <+> asm ty | (x, ty) <- fields]

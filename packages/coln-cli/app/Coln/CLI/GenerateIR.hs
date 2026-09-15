@@ -5,15 +5,15 @@
 module Coln.CLI.GenerateIR where
 
 import Control.Monad (forM_)
+import Data.Aeson qualified as AE
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO qualified as TIO
-import Data.Aeson qualified as AE
 import System.FilePath ((</>))
 
-import Coln.Top
-import Coln.Common
 import Coln.CLI.Common
 import Coln.CLI.Options
+import Coln.Common
+import Coln.Top
 
 generateIR :: GenerateIROptions -> IO ()
 generateIR opts = do

@@ -1,12 +1,18 @@
-module Coln.Top
-  ( loadRealmsFromFile
-  , lowerRealms
-  , generateTs
-  , generateIr
-  , irPretty
-  )
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
+module Coln.Top (
+  loadRealmsFromFile,
+  lowerRealms,
+  generateTs,
+  generateIr,
+  irPretty,
+)
 where
 
+import Coln.Backend.TypeScript.Assemble (asm)
+import Coln.Backend.TypeScript.Generate (genRealmModule)
 import Coln.Common
 import Coln.Core.Globals
 import Coln.Diagnostics (ColnCode)
@@ -14,10 +20,8 @@ import Coln.FLIR.Top (sirToFLIR)
 import Coln.FLIR.Value qualified as FLIR
 import Coln.Frontend.Parser (topFromText)
 import Coln.MIR.Top (coreToMIR, interpGlobals)
-import Coln.SIR.Top (mirToSIR)
 import Coln.SIR.Realm qualified as SIR
-import Coln.Backend.TypeScript.Generate (genRealmModule)
-import Coln.Backend.TypeScript.Assemble (asm)
+import Coln.SIR.Top (mirToSIR)
 
 import Prettyprinter.Render.Text (renderStrict)
 
@@ -25,7 +29,7 @@ loadRealmsFromFile :: Reporter ColnCode -> File -> IO (OMap Name SIR.Realm)
 loadRealmsFromFile r f = do
   globals <- topFromText r f
   pure $ lowerRealms globals
-  
+
 lowerRealms :: Globals -> OMap Name SIR.Realm
 lowerRealms globals = do
   let globalEnv = interpGlobals globals

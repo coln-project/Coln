@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import { ManagedStore } from "./store.js";
 import { Path, WireRowId } from "./types.js"
 import { Adaptor } from "./flatten.js"

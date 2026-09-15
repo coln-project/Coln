@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import { RowId } from "./row_id.js"
 import { WireTuple, TxnWireTuple } from "./value.ts"
 import { WhereClause, TxnWireRowId, WireRowId, Path, CommitHash } from "./types.js"
