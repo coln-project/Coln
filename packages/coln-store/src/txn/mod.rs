@@ -149,7 +149,7 @@ mod tests {
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::{ValidationError, WireValue};
-    use crate::test_utils::{nodes_edges_store, single_int_store};
+    use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int_store};
     use crate::txn::id::empty_row;
 
     #[rstest]
@@ -299,10 +299,9 @@ mod tests {
     /// the existing id again resolves it to the canonical id.
     #[rstest]
     fn deduplicated_row_handle_finalizes_to_canonical_id(
-        #[from(single_int_store)] mut store: Store,
+        #[from(single_memoized_int_store)] mut store: Store,
     ) {
         let term = Path::from("T");
-        store.set_structural_index_for_test(&term, true);
 
         let mut tx = store.transaction();
         let first = tx.add(&term, vec![7_i32]).expect("add first term");

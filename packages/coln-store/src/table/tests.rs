@@ -10,7 +10,8 @@ use crate::ir::{BuiltinTy, ColType};
 use crate::op::Op;
 use crate::table::handle::{TableMut, WireRowView};
 use crate::test_utils::{
-    id_col_type, id_schema, idonly_schema, int_schema, row_id_from, zerohash_row_id,
+    id_col_type, id_schema, idonly_schema, int_schema, memoized_int_schema, row_id_from,
+    zerohash_row_id,
 };
 
 /// A [`Table`] paired with its own dictionary, packing mutations at the
@@ -313,9 +314,8 @@ fn full_rebuild_rewrites_stale_id_cells(
 
 #[rstest]
 fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row(
-    #[with("term", int_schema(vec!["value"], None))] mut test_table: TestTable,
+    #[with("term", memoized_int_schema(vec!["value"], None))] mut test_table: TestTable,
 ) {
-    test_table.table.set_structural_index_for_test(true);
     let canonical = row_id_from(1, 0);
     let displaced = row_id_from(2, 0);
     test_table

@@ -955,16 +955,6 @@ impl Store {
             .collect::<Vec<_>>()
             .join("\n\n")
     }
-
-    // TODO remove this when we have schema level structural identity
-    #[cfg(test)]
-    pub(crate) fn set_structural_index_for_test(&mut self, path: &ir::Path, enabled: bool) {
-        let oid = self.resolve_table(path).expect("table exists");
-        self.tables
-            .get_mut(&oid)
-            .expect("resolved tables are registered")
-            .set_structural_index_for_test(enabled);
-    }
 }
 
 impl Default for Store {

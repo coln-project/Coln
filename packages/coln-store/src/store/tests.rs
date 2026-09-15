@@ -6,7 +6,7 @@ use rstest::rstest;
 
 use super::*;
 use crate::{
-    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema},
+    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Materialization, Path, Schema},
     table::handle::WireRowView,
     txn::rw::{StoreRead, StoreWrite},
 };
@@ -325,31 +325,34 @@ mod rowing {
                 path: Path::from(target),
             },
         };
-        let schema = |columns: Vec<ColumnEntry>| Schema {
-            entity_variant: EntityVariant::Table,
+        let schema = |columns: Vec<ColumnEntry>, structural: bool| Schema {
+            entity_variant: if structural {
+                EntityVariant::View {
+                    materialization: Materialization::Memoized,
+                }
+            } else {
+                EntityVariant::Table
+            },
             columns,
             primary_key: None,
         };
 
         let mut store = Store::new();
-        for (path, table_schema, structural) in [
-            ("Term", schema(vec![int_col("value")]), true),
+        for (path, table_schema) in [
+            ("Term", schema(vec![int_col("value")], true)),
             (
                 "Plus",
-                schema(vec![id_col("left", "Term"), id_col("right", "Term")]),
-                true,
+                schema(vec![id_col("left", "Term"), id_col("right", "Term")], true),
             ),
             (
                 "Mult",
-                schema(vec![id_col("left", "Term"), id_col("right", "Term")]),
-                true,
+                schema(vec![id_col("left", "Term"), id_col("right", "Term")], true),
             ),
-            ("Note", schema(vec![id_col("term", "Term")]), false),
+            ("Note", schema(vec![id_col("term", "Term")], false)),
         ] {
             store
                 .create_table(Path::from(path), table_schema)
                 .expect("create table");
-            store.set_structural_index_for_test(&Path::from(path), structural);
         }
         store
     }
@@ -375,7 +378,9 @@ mod rowing {
             (
                 "Term",
                 Schema {
-                    entity_variant: EntityVariant::Table,
+                    entity_variant: EntityVariant::View {
+                        materialization: Materialization::Memoized,
+                    },
                     columns: vec![int_col("value")],
                     primary_key: None,
                 },
@@ -383,7 +388,9 @@ mod rowing {
             (
                 "F",
                 Schema {
-                    entity_variant: EntityVariant::Table,
+                    entity_variant: EntityVariant::View {
+                        materialization: Materialization::Memoized,
+                    },
                     columns: vec![id_col("x", "Term"), id_col("y", "Term")],
                     primary_key: Some(vec![0u64]),
                 },
@@ -392,7 +399,6 @@ mod rowing {
             store
                 .create_table(Path::from(path), table_schema)
                 .expect("create table");
-            store.set_structural_index_for_test(&Path::from(path), true);
         }
         store
     }

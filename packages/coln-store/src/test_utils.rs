@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_flir_rs::ir::{
-    Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, FlatRealm, Path, Prop, Rule,
-    RuleEntry, RuleVariant, Schema, TableEntry, ValueEntry,
+    Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, FlatRealm, Materialization, Path,
+    Prop, Rule, RuleEntry, RuleVariant, Schema, TableEntry, ValueEntry,
 };
 use rstest::fixture;
 
@@ -80,6 +80,19 @@ mod schema {
         #[default(None)] primary_key: Option<Vec<u64>>,
     ) -> Schema {
         table_schema(col_names, int_col_type(), primary_key)
+    }
+
+    #[fixture]
+    pub(crate) fn memoized_int_schema(
+        #[default(vec!["x"])] col_names: Vec<&'static str>,
+        #[default(None)] primary_key: Option<Vec<u64>>,
+    ) -> Schema {
+        Schema {
+            entity_variant: EntityVariant::View {
+                materialization: Materialization::Memoized,
+            },
+            ..table_schema(col_names, int_col_type(), primary_key)
+        }
     }
 
     #[fixture]
@@ -200,7 +213,9 @@ mod store {
     use crate::store::auto::AutoStore;
 
     use super::root::empty_colndef;
-    use super::schema::{id_col_type, id_schema, idonly_schema, int_col_type, int_schema};
+    use super::schema::{
+        id_col_type, id_schema, idonly_schema, int_col_type, int_schema, memoized_int_schema,
+    };
     use super::*;
 
     #[fixture]
@@ -223,6 +238,18 @@ mod store {
     #[fixture]
     pub(crate) fn single_int_store(
         #[from(int_schema)]
+        #[with(vec!["c0"])]
+        schema: Schema,
+    ) -> Store {
+        let path = Path::from("T");
+        let mut store = Store::new();
+        store.create_table(path, schema).expect("create test table");
+        store
+    }
+
+    #[fixture]
+    pub(crate) fn single_memoized_int_store(
+        #[from(memoized_int_schema)]
         #[with(vec!["c0"])]
         schema: Schema,
     ) -> Store {

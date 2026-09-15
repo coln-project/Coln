@@ -10,6 +10,7 @@ pub mod sorted;
 mod undo;
 
 pub use cell::{CellKind, WireRowId, WireValue};
+use coln_flir_rs::ir::{EntityVariant, Materialization};
 pub use handle::TableHandle;
 
 use std::collections::{HashMap, HashSet};
@@ -121,8 +122,12 @@ impl Table {
 
         let except_rowid: Vec<usize> = (0..schema.columns.len()).collect();
         let index = TableIndex::new(&except_rowid, &schema);
-        // TODO if structural identity is enabled, then change this.
-        let structural = false;
+        let structural = matches!(
+            schema.entity_variant,
+            EntityVariant::View {
+                materialization: Materialization::Memoized
+            }
+        );
 
         Self {
             oid,
@@ -699,14 +704,6 @@ impl Table {
 
 impl Table {
     // For debugging for testing
-
-    // TODO remove this when we have schema level structural identity
-    #[cfg(test)]
-    pub(crate) fn set_structural_index_for_test(&mut self, enabled: bool) {
-        // `Table::new` always appends the all-columns index last; enable
-        // structural identity by pointing at that slot.
-        self.structural = enabled;
-    }
 
     /// Dump table contents row by row for debugging.
     pub(crate) fn dump(&self, dict: &IdPacker) -> String {
