@@ -1,0 +1,40 @@
+{
+  "name": "@coln-project/repo",
+  "version": "0.0.1-alpha.0",
+  "private": true,
+  "license": "(Apache-2.0 OR MIT)",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
+    "test:unit": "tsx --test \"tests/**/*.test.ts\"",
+    "test:package": "pnpm run build && tsc -p tsconfig.package.json && node --input-type=module --eval \"const pkg = await import('@coln-project/repo'); if (typeof pkg.find !== 'function') throw new Error('missing find export')\"",
+    "test:e2e": "pnpm run test:package && playwright test"
+  },
+  "dependencies": {
+    "@automerge/automerge-repo": "github:automerge/automerge-repo#doctypes&path:packages/automerge-repo",
+    "@coln-project/runtime": "link:../coln-js-runtime"
+  },
+  "devDependencies": {
+    "@automerge/automerge-subduction": "0.16.1",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^25.9.5",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.2",
+    "vite-plugin-wasm": "^3.6.0",
+    "ws": "^8.21.3"
+  }
+}

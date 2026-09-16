@@ -1,0 +1,4 @@
+dist/
+playwright-report/
+test-results/
+tests/browser/dist/
