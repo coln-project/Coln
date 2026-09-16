@@ -9,7 +9,7 @@ use coln_flir_rs::ir::{
 };
 use coln_store::{
     commit::hash::CommitHash,
-    store::{ColnDef, Store},
+    store::{ColnDef, Store, frag::FragmentSync},
     table::WireValue,
     txn::rw::StoreWrite,
 };

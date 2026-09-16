@@ -705,7 +705,10 @@ mod rowing {
 }
 
 mod commits {
-    use crate::test_utils::{commit_int, commit_int_store, single_int_store};
+    use crate::{
+        store::frag::FragmentSync,
+        test_utils::{commit_int, commit_int_store, single_int_store},
+    };
 
     use super::*;
 

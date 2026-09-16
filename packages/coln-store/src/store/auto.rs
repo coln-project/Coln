@@ -10,7 +10,7 @@ use coln_flir_rs::ir::{self, FlatRealm};
 
 use crate::{
     commit::hash::CommitHash,
-    store::{ColnDef, Store, error::StoreError},
+    store::{ColnDef, Store, error::StoreError, frag::FragmentSync},
     table::{WireRowId, cell::WireTuple, handle::WireRowView},
     txn::{
         OwnedTransaction, TxnWireRowId,
@@ -52,6 +52,25 @@ impl StoreWrite for AutoStore {
         values: impl Into<TxnWireTuple>,
     ) -> Result<TxnWireRowId, StoreError> {
         self.txn.as_mut().expect("open_txn").add(table, values)
+    }
+}
+
+impl FragmentSync for AutoStore {
+    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<super::frag::CommitChunk> {
+        self.store
+            .as_ref()
+            .expect("closed txn")
+            .commit_chunks_after(have_heads)
+    }
+
+    fn apply_chunk_bytes(
+        &mut self,
+        chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Result<Vec<Vec<u8>>, StoreError> {
+        self.store
+            .as_mut()
+            .expect("closed txn")
+            .apply_chunk_bytes(chunk_bytes)
     }
 }
 
