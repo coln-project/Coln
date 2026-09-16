@@ -18,23 +18,26 @@ variantFor m dom cod sp e =
       let msg = "higher-order theories are not supported"
       failWith e.diagEnv sp FunctionDomainTooLarge msg
 
-data Binder = Anonymous Mode (Typ N) | Named Mode Name (Typ N)
+data Binder = Binder {
+  bindings :: [AbsEntry],
+  mode :: Mode,
+  domain :: Typ N
+  }
 
 shiftToMode :: Mode -> Scope -> Scope
 shiftToMode Conjunctive sc = sc
 shiftToMode Inductive sc = unlock sc
 
 formation :: Span -> Binder -> Typ N -> Typ N
-formation sp (Anonymous m dom) cod = Typ \e -> do
-  edom <- dom.elab (e{scope = shiftToMode m e.scope})
-  ecod <- cod.elab e
-  v <- variantFor m edom ecod sp e
-  pure $ function e.scope.locals v edom (S.AbsConst ecod)
-formation sp (Named m x dom) cod = Typ \e -> do
-  edom <- dom.elab (e{scope = shiftToMode m e.scope})
-  ecod <- cod.elab $ e{scope = bind x edom.val m e.scope}
-  v <- variantFor m edom ecod sp e
-  pure $ function e.scope.locals v edom (S.Abs x ecod)
+formation sp binder cod = Typ \e -> do
+  edom <- binder.domain.elab (e{scope = shiftToMode binder.mode e.scope})
+  let bindEntry scope = \case
+        Named x -> bind x edom.val binder.mode scope
+        Anonymous -> scope
+  let scope = foldl bindEntry e.scope binder.bindings
+  ecod <- cod.elab (e{scope = scope})
+  v <- variantFor binder.mode edom ecod sp e
+  pure $ function e.scope.locals v edom (S.MultiAbs binder.bindings ecod)
 
 intro :: (V.HasEvaluation c) => Span -> Name -> Chk c -> Chk c
 intro sp x body = Chk \e a ->
@@ -43,8 +46,8 @@ intro sp x body = Chk \e a ->
       ebody <- withBound x ft.dom ft.variant.domainMode e.scope $ \v scope' ->
         body.elab
           (e{scope = scope', target = appTarget ft.variant e.target v})
-          (V.appClo ft.cod v)
-      pure $ lam ft.variant e.scope.locals (fromVTy e.scope.len ft.dom) (S.Abs x ebody)
+          (V.appFunctionType ft v)
+      pure $ lam ft.variant e.scope.locals (fromVTy e.scope.len ft.dom) (S.Abs (Named x) ebody)
     _ -> do
       let msg = "tried to check a lambda expression at a non-function type"
       failWith e.diagEnv sp CheckLambdaAtNonFunctionType msg
@@ -55,7 +58,7 @@ elim sp callee arg = Syn $ \e -> do
   case V.behavior ty of
     V.LikeFunction ft -> do
       earg <- arg.elab (e{scope = shiftToMode ft.variant.domainMode e.scope}) ft.dom
-      pure (V.appClo ft.cod earg.val, app ft.variant ecallee earg)
+      pure (V.appFunctionType ft earg.val, app ft.variant ecallee earg)
     _ -> do
       let msg = "tried to apply a value that was not of a function type"
       failWith e.diagEnv sp ApplicationOfNonFunction msg

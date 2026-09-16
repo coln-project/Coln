@@ -1,0 +1,72 @@
+theory Pi := sig
+  fn : (x : Int) -> (y : Int) -> Int
+  fm : (x y : Int) -> Int
+
+  F : Int -> Set
+  fux : (x y : Int) -> F x
+  fuy : (x y : Int) -> F y
+
+  B : Set
+  E : B -> Set
+  dn : (b : B) -> (x : E b) -> (y : E b) -> Int
+  dm : (b : B) -> (x y : E b) -> Int
+  dr : (b b2 : B) -> (x : E b) -> (y : E b2) -> Int
+  G : (b : B) -> (x : E b) -> Set
+  dux : (b : B) -> (x y : E b) -> G b x
+  duy : (b : B) -> (x y : E b) -> G b y
+end
+
+def use-x (x y : Int) : Int := x
+def use-y (x y : Int) : Int := y
+
+def use-x-dep (B : Set) (E : B -> Set) (b : B) (x y : E b) : E b := x
+def use-y-dep (B : Set) (E : B -> Set) (b : B) (x y : E b) : E b := y
+
+theory Param (x y : Int) := sig
+  U : Int -> Set
+  ux : U x
+  uy : U y
+end
+
+theory ParamDep (B : Set) (E : B -> Set) (b : B) (x y : E b) := sig
+  U : E b -> Set
+  ux : U x
+  uy : U y
+end
+
+def eq-single-2 : (x : Int) -> (y : Int) -> Int := x => y => 19
+def eq-multi-2-eq : (x y : Int) -> Int := eq-single-2
+
+def eq-multi-2 : (x y : Int) -> Int := x => y => 19
+def eq-single-2-eq : (x : Int) -> (y : Int) -> Int := eq-multi-2
+
+def eq-single-3 : (x : Int) -> (y : Int) -> (z : Int) -> Int := x => y => z => 19
+def eq-multi-3-eq : (x y z : Int) -> Int := eq-single-3
+
+def eq-multi-3 : (x y z : Int) -> Int := x => y => z => 19
+def eq-single-3-eq : (x : Int) -> (y : Int) -> (z : Int) -> Int := eq-multi-3
+
+theory Anon := sig
+  fn : (x : Int) -> Int -> (y : Int) -> Int
+  fm : (_ x _ y _ : Int) -> Int
+
+  F : Int -> Set
+  fux : (_ x _ y _ : Int) -> F x
+  fuy : (_ x _ y _ : Int) -> F y
+  B : Set
+  E : B -> Set
+  dn : (b : B) -> (x : E b) -> (y : E b) -> Int
+  dm : (b : B) -> (_ x _ y _ : E b) -> Int
+  dr : (_ b _ b2 _ : B) -> (x : E b) -> (y : E b2) -> Int
+  G : (b : B) -> (x : E b) -> Set
+  dux : (b : B) -> (_ x _ y _ : E b) -> G b x
+  duy : (b : B) -> (_ x _ y _ : E b) -> G b y
+end
+
+def eq-mixed-3 : (x y : Int) -> (z : Int) -> Int := eq-multi-3
+def eq-anon-grouped : (_ x _ : Int) -> Int := eq-single-3
+def eq-anon-nested : Int -> (x : Int) -> Int -> Int := eq-anon-grouped
+def eq-partially-applied : (y : Int) -> Int := eq-multi-2 19
+
+def eq-dep-arg-forward (F : Int -> Set) (f : (^c x y : Int) -> F y) : (^c x : Int) -> (^c y : Int) -> F y := f
+def eq-dep-arg-backward (F : Int -> Set) (f : (^c x : Int) -> (^c y : Int) -> F y) : (^c x y : Int) -> F y := f

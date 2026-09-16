@@ -46,6 +46,10 @@ cloName :: V.Clo a c -> Maybe Name
 cloName (V.Clo n _ _) = Just n
 cloName (V.CloConst _) = Nothing
 
+multiCloName :: V.MultiClo a c -> Maybe Name
+multiCloName (V.MultiClo (Named n : _) _ _) = Just n
+multiCloName _ = Nothing
+
 -- XXX freshen the variable name?
 defEqClo :: (DefEq (a N)) => CtxShape -> V.Ty N -> V.Clo a N -> V.Clo a N -> DefEqM ()
 defEqClo cs a c0 c1 = do
@@ -53,6 +57,14 @@ defEqClo cs a c0 c1 = do
   let cs' = CtxShape (cs.len + 1) (cs.names :> n)
   let v = V.local (FId cs.len) a
   defEq cs' (V.appClo c0 v) (V.appClo c1 v)
+
+defEqFunctionCod :: CtxShape -> V.FunctionType -> V.FunctionType -> DefEqM ()
+defEqFunctionCod cs f0 f1 = do
+  let n = fromMaybe "x" (multiCloName f0.cod <|> multiCloName f1.cod)
+  let cs' = CtxShape (cs.len + 1) (cs.names :> n)
+  let v = V.local (FId cs.len) f0.dom
+  -- Compare residual types so unconsumed bindings remain part of conversion.
+  defEq cs' (V.appFunctionType f0 v) (V.appFunctionType f1 v)
 
 instance DefEq (V.Ty N) where
   defEq cs a a' = case a of
@@ -72,7 +84,7 @@ instance DefEq (V.Ty N) where
             Just $
               "different function variants:" <+> pretty f.variant <+> "and" <+> pretty f'.variant
         defEq cs f.dom f'.dom
-        defEqClo cs f.dom f.cod f'.cod
+        defEqFunctionCod cs f f'
       _ -> throwUnequalTys cs a a' Nothing
     V.Eq et -> case a' of
       V.Eq et' -> do

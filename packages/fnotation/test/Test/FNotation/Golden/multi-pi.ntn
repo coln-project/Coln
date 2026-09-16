@@ -1,0 +1,5 @@
+A -> B
+(x : A) -> B
+(x y : A) -> B
+(x y z : A) -> B
+(^m x y : C) -> D

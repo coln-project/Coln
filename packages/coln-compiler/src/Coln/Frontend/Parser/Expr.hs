@@ -5,6 +5,7 @@
 
 module Coln.Frontend.Parser.Expr where
 
+import Data.List.NonEmpty (NonEmpty (..))
 import FNotation (Ntn)
 import FNotation qualified as N
 
@@ -43,12 +44,28 @@ debugCommand e _ "expand" n = do
   pure $ Expand (N.span n) s
 debugCommand e sp x _ = unknownCommand e sp x
 
+binderIdent :: ParserEnv -> Ntn -> IO AbsEntry
+binderIdent _ (N.Ident "_" _) = pure Anonymous
+binderIdent _ (N.Ident x _) = pure (Named x)
+binderIdent e n = unexpectedNotation e n "identifier or _"
+
+modalIdents :: ParserEnv -> Mode -> Ntn -> IO (Mode, [AbsEntry])
+modalIdents e def n@(N.Group (first :| rest)) = do
+  (mode, names) <- case first of
+    N.Mode "i" _ -> pure (Inductive, rest)
+    N.Mode "c" _ -> pure (Conjunctive, rest)
+    N.Mode _ sp -> failWith e sp UnknownMode "unknown mode"
+    _ -> pure (def, first : rest)
+  case names of
+    [] -> unexpectedNotation e n "one or more identifiers after mode annotation"
+    _ -> (mode,) <$> traverse (binderIdent e) names
+
 binder :: ParserEnv -> Ntn -> IO Function.Binder
 binder e = \case
-  N.Infix name (N.Keyword ":" _) arg -> do
-    (mode, x) <- modalIdent e Inductive name
-    Function.Named mode x <$> typ e arg
-  n -> Function.Anonymous Inductive <$> typ e n
+  N.Infix names (N.Keyword ":" _) arg -> do
+    (mode, xs) <- modalIdents e Inductive names
+    Function.Binder xs mode <$> typ e arg
+  n -> Function.Binder [Anonymous] Inductive <$> typ e n
 
 fieldDecl :: ParserEnv -> Ntn -> IO Record.FieldDeclaration
 fieldDecl e (N.Infix (N.Ident x _) (N.Keyword ":" _) n) =
@@ -65,14 +82,6 @@ fieldSetting e n = unexpectedNotation e n "field setting of the form `<fieldname
 ident :: ParserEnv -> Ntn -> IO Name
 ident _ (N.Ident x _) = pure x
 ident e n = unexpectedNotation e n "identifier"
-
-modalIdent :: ParserEnv -> Mode -> Ntn -> IO (Mode, Name)
-modalIdent _ def (N.Ident x _) = pure (def, x)
-modalIdent _ _ (N.Juxt (N.Mode "i" _) (N.Ident x _)) = pure (Inductive, x)
-modalIdent _ _ (N.Juxt (N.Mode "c" _) (N.Ident x _)) = pure (Conjunctive, x)
-modalIdent e _ (N.Juxt (N.Mode _ sp) (N.Ident _ _)) =
-  failWith e sp UnknownMode "unknown mode"
-modalIdent e _ n = unexpectedNotation e n "identifier, possibly with mode annotation"
 
 unexpectedNotation :: ParserEnv -> Ntn -> DDoc -> IO a
 unexpectedNotation e n c = do
