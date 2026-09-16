@@ -8,7 +8,10 @@ use crate::{
     host::{expr::Literal, operator::Operator},
     scalarial::ScalarType,
 };
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash::Hash {}
 
@@ -17,8 +20,8 @@ trait Identifiable<Identifier> {
 }
 
 // TODO: On top of these traits, implement:
-// - Protect against unknown predicate references, that is, predicates neither
-//   part of the IDB nor EDB
+// - Help with the construction of predicates by a shared grouping
+//   implementation.
 // - Conjunctive query translation
 
 trait LogicalProgram {
@@ -26,8 +29,47 @@ trait LogicalProgram {
     type Predicate: Predicate<Identifier = Self::Identifier>;
 
     /// All predicates of the program, each exactly once and in no particular
-    /// order.
+    /// order. Together they form the IDB.
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate>;
+
+    /// If `identifier` names a base relation of the EDB, that is, something the
+    /// program reads but does not define. The counterpart of
+    /// [`Self::predicates`], which enumerates what the program _does_ define.
+    ///
+    /// A name may be both: a predicate shadows a base relation of the same
+    /// name, see [`Self::cliques`].
+    fn is_base_relation(&self, identifier: &Self::Identifier) -> bool;
+
+    /// Every atom naming neither a predicate of this program nor a base
+    /// relation of the EDB. Such a reference cannot be evaluated: nothing ever
+    /// produces the relation it asks for.
+    ///
+    /// An empty result is the precondition of [`Self::cliques`] and of any
+    /// translation built on it. An atom repeating a dangling name is reported
+    /// once per occurrence, so every offending site can be pointed at.
+    fn dangling_references(&self) -> Vec<DanglingReference<'_, Self::Predicate>> {
+        let defined: HashSet<&Self::Identifier> =
+            self.predicates().map(|predicate| predicate.id()).collect();
+        // Re-borrowed so that the `move` closures below copy a reference
+        // instead of fighting over the set itself.
+        let defined = &defined;
+        self.predicates()
+            .flat_map(move |predicate| {
+                predicate.rules().flat_map(move |rule| {
+                    rule.atoms()
+                        .map(|atom| atom.id())
+                        .filter(move |identifier| {
+                            !defined.contains(identifier) && !self.is_base_relation(identifier)
+                        })
+                        .map(move |identifier| DanglingReference {
+                            predicate,
+                            rule,
+                            identifier,
+                        })
+                })
+            })
+            .collect()
+    }
 
     /// Groups the predicates into [`Clique`]s, the strongly connected
     /// components of the reference graph, and orders those cliques such that
@@ -41,6 +83,11 @@ trait LogicalProgram {
     /// Materialised rather than lazy, for two reasons: the cliques are computed
     /// once instead of once per call, and they outlive the borrows handed out
     /// by [`Clique::members`], so callers can collect predicates out of them.
+    ///
+    /// Assumes the program has no [`Self::dangling_references`]: a name that is
+    /// neither a predicate nor a base relation is silently taken for the
+    /// latter. A predicate _shadowing_ a base relation of the same name, on the
+    /// other hand, is intended and resolves to the predicate.
     fn cliques(&self) -> Vec<PredicateClique<'_, Self::Predicate>> {
         // A predicate's position in `predicates` is its node in the reference
         // graph. That correspondence never leaves this function, so no part of
@@ -51,8 +98,9 @@ trait LogicalProgram {
             .enumerate()
             .map(|(idx, predicate)| (predicate.id(), idx))
             .collect();
-        // An atom naming something that is not a predicate (a base table from
-        // the EDB) resolves to no index and hence contributes no edge.
+        // An atom naming a base relation of the EDB resolves to no index and
+        // hence contributes no edge. Consulting the IDB alone is what lets a
+        // predicate shadow a base relation of the same name.
         // Atoms referencing the same predicate more than once yield duplicate
         // edges, which the search walks over without any further ado.
         let adjacency: Vec<Vec<usize>> = predicates
@@ -224,6 +272,31 @@ trait TypedVar: Identifiable<Self::Identifier> {
 
 trait Lit: Into<Literal> {}
 
+/// An atom that resolves to nothing, as reported by
+/// [`LogicalProgram::dangling_references`]. Borrows the offending site from the
+/// program so that a diagnostic can point at it.
+struct DanglingReference<'a, P: Predicate> {
+    /// The predicate whose definition contains the offending atom.
+    predicate: &'a P,
+    /// The rule within that predicate.
+    rule: &'a P::Rule,
+    /// The name that resolves to neither the IDB nor the EDB.
+    identifier: &'a P::Identifier,
+}
+
+impl<P: Predicate> fmt::Display for DanglingReference<'_, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "rule '{}' of predicate '{}' references '{}', which is neither \
+             defined by the program nor a base relation of the EDB",
+            self.rule.id(),
+            self.predicate.id(),
+            self.identifier,
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,8 +325,34 @@ mod tests {
         }
     }
 
+    /// A program whose EDB holds every name the predicates reference but do not
+    /// define, so that it is free of dangling references by construction.
     fn program(predicates: Vec<Pred>) -> Program {
-        Program { predicates }
+        let defined: HashSet<&String> =
+            predicates.iter().map(|predicate| &predicate.name).collect();
+        let base_relations = predicates
+            .iter()
+            .flat_map(|predicate| predicate.rules.iter())
+            .flat_map(|rule| rule.atoms.iter())
+            .map(|atom| atom.name.clone())
+            .filter(|name| !defined.contains(name))
+            .collect();
+        Program {
+            predicates,
+            base_relations,
+        }
+    }
+
+    /// A program whose EDB holds exactly `base_relations`, for the cases where
+    /// that matters.
+    fn program_over(predicates: Vec<Pred>, base_relations: &[&str]) -> Program {
+        Program {
+            predicates,
+            base_relations: base_relations
+                .iter()
+                .map(|name| (*name).to_owned())
+                .collect(),
+        }
     }
 
     /// The names of the predicates per clique, in execution order.
@@ -281,6 +380,67 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    /// The offending names, in the order they are reported.
+    fn dangling_names(program: &Program) -> Vec<String> {
+        program
+            .dangling_references()
+            .iter()
+            .map(|reference| reference.identifier.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_well_formed_program_has_no_dangling_references() {
+        let program = program(vec![
+            pred("path", &[&["edge"], &["path", "edge"]]),
+            pred("reachable", &[&["path"]]),
+        ]);
+        assert_eq!(dangling_names(&program), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_name_in_neither_the_idb_nor_the_edb_dangles() {
+        // `pathh` is a typo for `path` and `edgee` one for `edge`.
+        let program = program_over(
+            vec![pred("path", &[&["edge"], &["pathh", "edgee"]])],
+            &["edge"],
+        );
+        assert_eq!(dangling_names(&program), vec!["pathh", "edgee"]);
+    }
+
+    #[test]
+    fn a_dangling_reference_names_its_site() {
+        let program = program_over(vec![pred("path", &[&["edgee"]])], &["edge"]);
+        let references = program.dangling_references();
+        let [reference] = references.as_slice() else {
+            panic!(
+                "expected exactly one dangling reference, got {}",
+                references.len()
+            );
+        };
+        assert_eq!(reference.predicate.id(), "path");
+        assert_eq!(reference.rule.id(), "path#0");
+        assert_eq!(
+            reference.to_string(),
+            "rule 'path#0' of predicate 'path' references 'edgee', which is \
+             neither defined by the program nor a base relation of the EDB"
+        );
+    }
+
+    #[test]
+    fn a_predicate_shadows_a_base_relation_of_the_same_name() {
+        // `edge` is both a predicate and a base relation. Listing `path` first
+        // makes the outcome tell the two readings apart: resolving to the
+        // predicate puts `edge` in an earlier clique, resolving to the base
+        // relation would leave `path` without any dependency and hence first.
+        let program = program_over(
+            vec![pred("path", &[&["edge"]]), pred("edge", &[&["raw_edge"]])],
+            &["edge", "raw_edge"],
+        );
+        assert_eq!(dangling_names(&program), Vec::<String>::new());
+        assert_eq!(cliques_of(&program), vec![vec!["edge"], vec!["path"]]);
     }
 
     #[test]
@@ -401,6 +561,7 @@ mod tests {
 
     struct Program {
         predicates: Vec<Pred>,
+        base_relations: HashSet<String>,
     }
 
     impl LogicalProgram for Program {
@@ -409,6 +570,10 @@ mod tests {
 
         fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
             self.predicates.iter()
+        }
+
+        fn is_base_relation(&self, identifier: &Self::Identifier) -> bool {
+            self.base_relations.contains(identifier)
         }
     }
 
