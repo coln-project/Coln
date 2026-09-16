@@ -7,4 +7,16 @@ description.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+path = "src/rust/lib.rs"
+crate-type = ["cdylib"]
+
 [dependencies]
+coln-store = { version = "0.1.0", path = "../coln-store" }
+napi = "3"
+napi-derive = "3"
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+napi-build = "1"

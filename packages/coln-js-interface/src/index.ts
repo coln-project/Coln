@@ -4,6 +4,7 @@
 
 export { RowId, rowIdFromWire } from "./row_id.js"
 export { Store, ManagedStore } from "./store.js"
-export { Set, MutableSet, BaseTableSet, ViewTableSet } from "./set.js"
-export { WireTuple } from "./value.js"
-export { WireRowId } from "./types.js"
+export { Ref, MutableRef, BaseRef, ConstRef } from "./ref.js"
+export { Set, MutableSet, Prop, MutableProp, BaseSet, BaseProp, ConjunctiveViewSet, ViewProp } from "./set.js"
+export { WireTuple, TxnWireTuple } from "./value.js"
+export { WireRowId, TxnWireRowId, WhereClause, Path, CommitHash } from "./types.js"

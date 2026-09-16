@@ -63,7 +63,7 @@ data TheoryShape
   | Function Name Shape TheoryShape
   | Record (Dict TheoryShape)
   | ViewU (SUniverse Set Theory) Shape
-  | BaseU (SUniverse Set Theory) Shape
+  | BaseU Providence (SUniverse Set Theory) Shape
 
 -- JSON
 --------------------------------------------------------------------------------
