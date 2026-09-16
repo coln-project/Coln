@@ -108,9 +108,11 @@ mod writes {
     fn store_add_inserts_row(#[from(single_int_autostore)] mut store: AutoStore) {
         let path = Path::from("T");
 
+        store.transaction();
         store.add(&path, vec![42i32]).expect("add row");
         store.commit().expect("txn success");
 
+        store.transaction();
         assert_eq!(store.scan_table(&path).expect("T").len(), 1);
     }
 
@@ -148,6 +150,7 @@ mod reads {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
 
+        store.transaction();
         let n0 = store.add(&nodes, empty_row()).expect("n0");
         let n1 = store.add(&nodes, empty_row()).expect("n1");
 
@@ -167,6 +170,7 @@ mod reads {
             row_id: None,
             values: vec![],
         };
+        store.transaction();
         assert_eq!(
             store
                 .all_proj(&all_edges, &[0])
@@ -209,6 +213,7 @@ mod reads {
         store.create_table(path.clone(), schema).expect("create T");
 
         let mut store = store.auto();
+        store.transaction();
 
         store.add(&path, vec![1i32, 10, 100]).expect("r0");
         store.add(&path, vec![1i32, 10, 101]).expect("r1");
@@ -227,6 +232,7 @@ mod reads {
             row_id: None,
             values: values.into_iter().map(WireValue::from).collect(),
         };
+        store.transaction();
 
         assert_eq!(
             store.all_proj(&query(vec![]), &cols).expect("empty prefix"),

@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! A Store that manages a transaction for the user.
+//! But the user is still responsible for starting/finishing transactions
+//!
+
 use coln_flir_rs::ir::{self, FlatRealm};
 
 use crate::{
@@ -17,6 +21,7 @@ use crate::{
 
 pub struct AutoStore {
     txn: Option<OwnedTransaction>,
+    store: Option<Store>,
 }
 
 impl StoreRead for AutoStore {
@@ -58,22 +63,31 @@ impl AutoStore {
 
     pub fn new(store: Store) -> Self {
         Self {
-            txn: Some(store.into_transaction()),
+            txn: None,
+            store: Some(store),
         }
     }
 
+    pub fn transaction(&mut self) {
+        self.txn = Some(self.store.take().expect("closed txn").into_transaction());
+    }
+}
+
+impl AutoStore {
     pub fn commit(&mut self) -> Result<CommitHash, StoreError> {
         let (res, store) = match self.txn.take().expect("open txn").commit() {
             Ok((hash, store)) => (Ok(hash), store),
             Err((err, store)) => (Err(err), store),
         };
-        self.txn.replace(store.into_transaction());
+        self.store = Some(store);
+        self.txn = None;
         res
     }
 
     pub fn abort(&mut self) {
         let store = self.txn.take().expect("open txn").abort();
-        self.txn.replace(store.into_transaction());
+        self.store = Some(store);
+        self.txn = None;
     }
 }
 
@@ -83,17 +97,18 @@ impl Promote for AutoStore {
         pending_ids: impl IntoIterator<Item = TxnWireRowId>,
         hash: CommitHash,
     ) -> Vec<WireRowId> {
-        self.txn
+        self.store
             .as_ref()
-            .expect("open txn")
-            .store()
+            .expect("closed txn")
             .promote(pending_ids, hash)
     }
 }
 
 impl Drop for AutoStore {
     fn drop(&mut self) {
-        self.abort();
+        if self.txn.is_some() {
+            self.abort();
+        }
     }
 }
 
@@ -112,10 +127,12 @@ mod tests {
     ) {
         let path = Path::from("T");
 
+        store.transaction();
         let pending_id = store.add(&path, vec![1i32]).expect("add");
         let h = store.commit().expect("commit");
         let row_id = store.promote_one(pending_id, h);
 
+        store.transaction();
         assert_eq!(
             store.row_by_id(&path, &row_id),
             Some(WireRowView {
