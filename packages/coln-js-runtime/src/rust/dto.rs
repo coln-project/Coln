@@ -10,7 +10,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use coln_store::{
     commit::hash::CommitHash as StoreCommitHash,
-    store::CommitChunk as StoreCommitChunk,
+    store::{ColnDef as StoreColnDef, CommitChunk as StoreCommitChunk},
     table::{
         WireRowId as StoreRowId, WireValue as StoreCellValue, handle::WireRowView as StoreRowView,
     },
@@ -214,6 +214,21 @@ impl From<StoreRowView> for RowView {
         Self {
             row_id: Value::existing_id(value.row_id.into()),
             values: value.values.into_iter().map(Value::from).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Tsify)]
+pub struct ColnDef {
+    theory: String,
+    realm: String,
+}
+
+impl From<StoreColnDef> for ColnDef {
+    fn from(value: StoreColnDef) -> Self {
+        Self {
+            theory: value.theory,
+            realm: value.realm,
         }
     }
 }
