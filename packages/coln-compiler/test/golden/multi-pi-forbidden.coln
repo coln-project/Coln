@@ -1,0 +1,4 @@
+def eq-multi-2 : (x y : Int) -> Int := x => y => 19
+
+def eq-too-few : (x : Int) -> Int := eq-multi-2
+def eq-too-many : (x y z : Int) -> Int := eq-multi-2

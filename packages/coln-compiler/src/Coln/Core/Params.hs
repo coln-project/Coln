@@ -178,6 +178,16 @@ instance Show BuiltinTy where
 
 data CtxShape = CtxShape {len :: Int, names :: Bwd Name}
 
+-- Binder entries
+--------------------------------------------------------------------------------
+
+data AbsEntry = Named Name | Anonymous
+  deriving (Show)
+
+isNamedEntry :: AbsEntry -> Bool
+isNamedEntry (Named _) = True
+isNamedEntry Anonymous = False
+
 -- Realms
 --------------------------------------------------------------------------------
 

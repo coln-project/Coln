@@ -40,8 +40,15 @@ instance Readback (V.Description V.El) (S.El D) where
 
 readbClo :: (Readback (V.Evaluation a c) (b c)) => CtxLen -> V.Ty N -> V.Clo a c -> S.Abs b c
 readbClo n dom = \case
-  V.Clo x l f -> S.Abs x $ readb (n + 1) (f (V.LSnoc l $ V.local (FId n) dom))
-  V.CloConst t -> S.AbsConst $ readb n t
+  V.Clo x l f -> S.Abs (Named x) $ readb (n + 1) (f (V.LSnoc l $ V.local (FId n) dom))
+  V.CloConst t -> S.Abs Anonymous $ readb n t
+
+readbMultiClo :: (Readback (V.Evaluation a c) (b c)) => CtxLen -> V.Ty N -> V.MultiClo a c -> S.MultiAbs b c
+readbMultiClo n dom (V.MultiClo xs l f) =
+  S.MultiAbs xs $ readb (n + namedCount) (f (V.LSnocChunk l locals))
+ where
+  namedCount = length $ filter isNamedEntry xs
+  locals = Vector.generate namedCount $ \i -> V.local (FId (n + i)) dom
 
 instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
   readb n = \case
@@ -61,7 +68,7 @@ instance Readback V.FunctionType (S.FunctionType S.Ty) where
     S.FunctionType
       { S.variant = f.variant
       , S.dom = readb n f.dom
-      , S.cod = readbClo n f.dom f.cod
+      , S.cod = readbMultiClo n f.dom f.cod
       }
 
 instance Readback V.RecordType (S.RecordType S.Ty) where

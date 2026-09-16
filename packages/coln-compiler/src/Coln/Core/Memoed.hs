@@ -34,7 +34,7 @@ class Core el ty | el -> ty, ty -> el where
   is :: el N -> el D
   univ :: Universe -> ty N
   decode :: Universe -> el N -> ty N
-  function :: V.Locals -> FunctionVariant -> ty N -> S.Abs ty N -> ty N
+  function :: V.Locals -> FunctionVariant -> ty N -> S.MultiAbs ty N -> ty N
   record :: V.Locals -> S.RecordType ty -> ty D
   equality :: S.EqualityType el ty -> ty N
   builtinTy :: BuiltinTy -> ty N
@@ -45,13 +45,13 @@ instance Core El Ty where
   globalVar x v = M (S.GlobalVar (S.MemoedGlobal x v)) v
   code u t = M (S.Code u t.stx) (V.emap (V.Code u) t.val)
   app fv f x = M (S.App fv f.stx x.stx) (V.app fv f.val x.val)
-  lam fv vs dom (S.Abs x body) =
+  lam fv vs dom (S.Abs (Named x) body) =
     M
-      (S.Lam fv dom.stx (S.Abs x body.stx))
+      (S.Lam fv dom.stx (S.Abs (Named x) body.stx))
       (V.epure $ V.Lam fv dom.val (V.Clo x vs (compile body.stx)))
-  lam fv _ dom (S.AbsConst body) =
+  lam fv _ dom (S.Abs Anonymous body) =
     M
-      (S.Lam fv dom.stx (S.AbsConst body.stx))
+      (S.Lam fv dom.stx (S.Abs Anonymous body.stx))
       (V.epure $ V.Lam fv dom.val (V.CloConst body.val))
   cons l d = M (S.Cons l $ (.stx) <$> d) (V.epure $ V.Cons l $ (.val) <$> d)
   proj l x f = M (S.Proj l x.stx f) (V.proj x.val f)
@@ -61,14 +61,10 @@ instance Core El Ty where
   is x = M (S.Is x.stx) (V.Become x.val)
   univ u = M (S.U u) (V.U u)
   decode u x = M (S.Decode u x.stx) (V.decode x.val)
-  function vs fv dom (S.Abs x body) =
+  function vs fv dom (S.MultiAbs xs body) =
     M
-      (S.Function $ S.FunctionType fv dom.stx (S.Abs x body.stx))
-      (V.Function $ V.FunctionType fv dom.val (V.Clo x vs (compile body.stx)))
-  function _ fv dom (S.AbsConst body) =
-    M
-      (S.Function $ S.FunctionType fv dom.stx (S.AbsConst body.stx))
-      (V.Function $ V.FunctionType fv dom.val (V.CloConst body.val))
+      (S.Function $ S.FunctionType fv dom.stx (S.MultiAbs xs body.stx))
+      (V.Function $ V.FunctionType fv dom.val (V.MultiClo xs vs (compile body.stx)))
   record vs rt =
     M
       (S.Record $ S.RecordType rt.level $ (.stx) <$> rt.fieldTypes)

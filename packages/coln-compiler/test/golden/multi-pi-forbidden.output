@@ -1,0 +1,17 @@
+-- elaborated
+global entry named eq-multi-2
+in mode: Conjunctive
+type: (x y : Int) -> Int
+value: x => y => 19
+
+-- messages
+
+error[E0300]: expected type (x : Int) -> Int, but got type (x y : Int) -> Int
+3 | def eq-too-few : (x : Int) -> Int := eq-multi-2
+3 |                                      ^^^^^^^^^^
+types Int and (y : Int) -> Int are not equal 
+
+error[E0300]: expected type (x y z : Int) -> Int, but got type (x y : Int) -> Int
+4 | def eq-too-many : (x y z : Int) -> Int := eq-multi-2
+4 |                                           ^^^^^^^^^^
+types (z : Int) -> Int and Int are not equal 

@@ -71,6 +71,9 @@ appClo :: Clo f c -> El N -> Evaluation f c
 appClo (Clo _ locals body) v = body (LSnoc locals v)
 appClo (CloConst body) _ = body
 
+data MultiClo (f :: Case -> Type) (c :: Case)
+  = MultiClo [AbsEntry] Locals (Locals -> Evaluation f c)
+
 -- Neutrals
 --------------------------------------------------------------------------------
 
@@ -222,7 +225,7 @@ proj v x = elemAt (coerceToFields v) x
 data FunctionType = FunctionType
   { variant :: FunctionVariant
   , dom :: Ty N
-  , cod :: Clo Ty N
+  , cod :: MultiClo Ty N
   }
 
 data RecordType = RecordType
@@ -325,8 +328,19 @@ instance DebugVal TypeBehavior where
     LikeBuiltinTy _ -> "LikeBuiltinTy"
     NoRules -> "NoRules"
 
+appFunctionType :: FunctionType -> El N -> Ty N
+appFunctionType ft arg = case ft.cod of
+  MultiClo (binding : rest) locals body ->
+    let locals' = case binding of
+          Named _ -> LSnoc locals arg
+          Anonymous -> locals
+     in case rest of
+          [] -> body locals'
+          _ -> Function (ft{cod = MultiClo rest locals' body})
+  MultiClo [] _ _ -> panic "function type with no bindings"
+
 appTy :: Ty N -> El N -> Ty N
-appTy (behavior -> LikeFunction ft) arg = appClo ft.cod arg
+appTy (behavior -> LikeFunction ft) arg = appFunctionType ft arg
 appTy a _ = panic $ "ill-typed computation of type for application: " ++ debugVal a
 
 projTy :: Ty N -> El N -> Name -> Ty N
