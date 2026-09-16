@@ -20,8 +20,6 @@ trait Identifiable<Identifier> {
 }
 
 // TODO: On top of these traits, implement:
-// - Help with the construction of predicates by a shared grouping
-//   implementation.
 // - Conjunctive query translation
 
 trait LogicalProgram {
@@ -217,6 +215,73 @@ trait Predicate: Identifiable<Self::Identifier> + AggregateRules {
     }
 }
 
+/// A [`Predicate`] assembled from the rules defining it.
+///
+/// Unlike [`PredicateClique`], this _owns_ its rules: a program holding both a
+/// flat rule list and predicates borrowing from it would be self-referential.
+/// Hand the flat list to [`Self::group`] and keep the result instead.
+struct RulePredicate<I, R> {
+    name: I,
+    rules: Vec<R>,
+}
+
+impl<I: Identifier, R: Rule<Identifier = I>> RulePredicate<I, R> {
+    /// Groups `rules` into the predicates they define, each paired with an
+    /// optional name for the predicate it contributes to.
+    ///
+    /// `None` joins the predicate the rule's [`Rule::head`] names, which is
+    /// what plain Datalog wants: the definand is the head. `Some(name)` is
+    /// for frontends that keep the two apart: FLIR names a rule and its
+    /// definand distinctly.
+    ///
+    /// Either way the name must be the one _body_ atoms use to reference the
+    /// predicate: [`LogicalProgram::cliques`] pairs an [`Atom`] with a
+    /// predicate by matching identifiers: Hence, providing a name no body atom
+    /// mentions yields a predicate nothing depends on, and the atoms meant to
+    /// reach it become [`LogicalProgram::dangling_references`].
+    ///
+    /// Predicates come out in order of first definition and their rules in the
+    /// order they arrived, so one input always yields the same program. No
+    /// predicate is empty, and a rule ends up in exactly one of them.
+    fn group(rules: impl IntoIterator<Item = (Option<I>, R)>) -> Vec<Self> {
+        let mut predicates: Vec<Self> = Vec::new();
+        let mut indices: HashMap<I, usize> = HashMap::new();
+        for (name, rule) in rules {
+            let name = name.unwrap_or_else(|| rule.head().id().clone());
+            let idx = match indices.get(&name) {
+                Some(&idx) => idx,
+                None => {
+                    indices.insert(name.clone(), predicates.len());
+                    predicates.push(Self {
+                        name,
+                        rules: Vec::new(),
+                    });
+                    predicates.len() - 1
+                }
+            };
+            predicates[idx].rules.push(rule);
+        }
+        predicates
+    }
+}
+
+impl<I: Identifier, R> Identifiable<I> for RulePredicate<I, R> {
+    fn id(&self) -> &I {
+        &self.name
+    }
+}
+
+impl<I: Identifier, R: Rule<Identifier = I>> AggregateRules for RulePredicate<I, R> {
+    type Identifier = I;
+    type Rule = R;
+
+    fn rules(&self) -> impl Iterator<Item = &Self::Rule> {
+        self.rules.iter()
+    }
+}
+
+impl<I: Identifier, R: Rule<Identifier = I>> Predicate for RulePredicate<I, R> {}
+
 /// A rule contains atoms and conditions, sometimes united under the umbrella
 /// term _proposition_.
 trait Rule: Identifiable<Self::Identifier> {
@@ -224,7 +289,19 @@ trait Rule: Identifiable<Self::Identifier> {
     type Atom: Atom<Identifier = Self::Identifier>;
     type Cond: Cond;
 
+    /// The atom this rule derives, which is its _definand_ if not specified
+    /// otherwise in [`RulePredicate::group`].
+    ///
+    /// Note that [`Identifiable::id`] names the _rule_, which some frontends
+    /// may want to keep distinct even between rules of one predicate.
+    fn head(&self) -> &Self::Atom;
+
+    /// The atoms of the rule's _body_. The head is _not_ among them, as
+    /// otherwise, every rule would be falsely classified as self-recursive.
     fn atoms(&self) -> impl Iterator<Item = &Self::Atom>;
+
+    /// The conditions of the rule's body. Conditions constrain a variable's
+    /// domain.
     fn conditions(&self) -> impl Iterator<Item = &Self::Cond>;
 
     fn references(&self, identifier: &Self::Identifier) -> bool {
@@ -306,20 +383,28 @@ mod tests {
     /// A predicate named `name`, defined by one rule per entry in `rules`,
     /// each rule listing the names its atoms reference. A name that is not a
     /// predicate of the program stands for a base table from the EDB.
-    fn pred(name: &str, rules: &[&[&str]]) -> Pred {
-        Pred {
+    fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
+        TestPredicate {
             name: name.to_owned(),
             rules: rules
                 .iter()
                 .enumerate()
-                .map(|(idx, atoms)| Rl {
-                    name: format!("{name}#{idx}"),
-                    atoms: atoms
-                        .iter()
-                        .map(|atom| Atm {
-                            name: (*atom).to_owned(),
-                        })
-                        .collect(),
+                .map(|(idx, atoms)| rule(&format!("{name}#{idx}"), name, atoms))
+                .collect(),
+        }
+    }
+
+    /// A rule called `name`, deriving the predicate `head` from body `atoms`.
+    fn rule(name: &str, head: &str, atoms: &[&str]) -> TestRule {
+        TestRule {
+            name: name.to_owned(),
+            head: TestAtom {
+                name: head.to_owned(),
+            },
+            atoms: atoms
+                .iter()
+                .map(|atom| TestAtom {
+                    name: (*atom).to_owned(),
                 })
                 .collect(),
         }
@@ -327,7 +412,7 @@ mod tests {
 
     /// A program whose EDB holds every name the predicates reference but do not
     /// define, so that it is free of dangling references by construction.
-    fn program(predicates: Vec<Pred>) -> Program {
+    fn program(predicates: Vec<TestPredicate>) -> TestLogicalProgram {
         let defined: HashSet<&String> =
             predicates.iter().map(|predicate| &predicate.name).collect();
         let base_relations = predicates
@@ -337,7 +422,7 @@ mod tests {
             .map(|atom| atom.name.clone())
             .filter(|name| !defined.contains(name))
             .collect();
-        Program {
+        TestLogicalProgram {
             predicates,
             base_relations,
         }
@@ -345,8 +430,8 @@ mod tests {
 
     /// A program whose EDB holds exactly `base_relations`, for the cases where
     /// that matters.
-    fn program_over(predicates: Vec<Pred>, base_relations: &[&str]) -> Program {
-        Program {
+    fn program_over(predicates: Vec<TestPredicate>, base_relations: &[&str]) -> TestLogicalProgram {
+        TestLogicalProgram {
             predicates,
             base_relations: base_relations
                 .iter()
@@ -356,7 +441,7 @@ mod tests {
     }
 
     /// The names of the predicates per clique, in execution order.
-    fn cliques_of(program: &Program) -> Vec<Vec<String>> {
+    fn cliques_of(program: &TestLogicalProgram) -> Vec<Vec<String>> {
         program
             .cliques()
             .into_iter()
@@ -366,12 +451,12 @@ mod tests {
 
     /// The names of the non-recursive and the recursive rules of every clique,
     /// in execution order.
-    fn rule_split_of(program: &Program) -> Vec<(Vec<String>, Vec<String>)> {
+    fn rule_split_of(program: &TestLogicalProgram) -> Vec<(Vec<String>, Vec<String>)> {
         program
             .cliques()
             .into_iter()
             .map(|clique| {
-                let names = |rules: &mut dyn Iterator<Item = &Rl>| {
+                let names = |rules: &mut dyn Iterator<Item = &TestRule>| {
                     rules.map(|rule| rule.id().clone()).collect()
                 };
                 (
@@ -383,12 +468,114 @@ mod tests {
     }
 
     /// The offending names, in the order they are reported.
-    fn dangling_names(program: &Program) -> Vec<String> {
+    fn dangling_names(program: &TestLogicalProgram) -> Vec<String> {
         program
             .dangling_references()
             .iter()
             .map(|reference| reference.identifier.clone())
             .collect()
+    }
+
+    /// The predicate names, and per predicate its rule names.
+    fn grouping_of(predicates: &[TestPredicate]) -> Vec<(&str, Vec<&str>)> {
+        predicates
+            .iter()
+            .map(|predicate| {
+                (
+                    predicate.id().as_str(),
+                    predicate.rules().map(|rule| rule.id().as_str()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn rules_group_into_predicates_by_their_head() {
+        // `r1` interleaves the two rules deriving `path`, so the grouping
+        // cannot simply be a run-length split of the input.
+        let predicates = RulePredicate::group(vec![
+            (None, rule("r0", "path", &["edge"])),
+            (None, rule("r1", "reachable", &["path"])),
+            (None, rule("r2", "path", &["path", "edge"])),
+        ]);
+        assert_eq!(
+            grouping_of(&predicates),
+            vec![("path", vec!["r0", "r2"]), ("reachable", vec!["r1"])]
+        );
+    }
+
+    #[test]
+    fn grouping_orders_predicates_by_first_definition() {
+        // `reachable` is defined first, so it comes first, even though `path`
+        // is the one it reads.
+        let predicates = RulePredicate::group(vec![
+            (None, rule("r0", "reachable", &["path"])),
+            (None, rule("r1", "path", &["edge"])),
+        ]);
+        assert_eq!(
+            grouping_of(&predicates),
+            vec![("reachable", vec!["r0"]), ("path", vec!["r1"])]
+        );
+    }
+
+    #[test]
+    fn a_given_name_overrides_the_head() {
+        // `r1` is named differently from the predicate it defines,
+        // so its definand comes alongside instead of out of its head.
+        // `r0` takes the plain Datalog route, and the two still meet in `path`.
+        // No frontend currently has this mixed behavior but we support it
+        // anyways.
+        let predicates = RulePredicate::group(vec![
+            (None, rule("r0", "path", &["edge"])),
+            (
+                Some("path".to_owned()),
+                rule("r1", "transitive_closure", &["path", "edge"]),
+            ),
+        ]);
+        assert_eq!(grouping_of(&predicates), vec![("path", vec!["r0", "r1"])]);
+    }
+
+    #[test]
+    fn one_name_for_every_rule_yields_one_predicate() {
+        // An ad-hoc query: whatever the heads say, it all derives one output.
+        let predicates = RulePredicate::group(vec![
+            (Some("answer".to_owned()), rule("r0", "path", &["edge"])),
+            (
+                Some("answer".to_owned()),
+                rule("r1", "reachable", &["path"]),
+            ),
+        ]);
+        assert_eq!(grouping_of(&predicates), vec![("answer", vec!["r0", "r1"])]);
+    }
+
+    #[test]
+    fn grouping_nothing_yields_no_predicates() {
+        let nothing = Vec::<(Option<String>, TestRule)>::new();
+        assert!(RulePredicate::group(nothing).is_empty());
+    }
+
+    #[test]
+    fn a_grouped_program_stratifies() {
+        // The path a real frontend takes: a flat list of rules, grouped into
+        // predicates, read back as a program.
+        let program = program(RulePredicate::group(vec![
+            (None, rule("r0", "reachable", &["path"])),
+            (None, rule("r1", "path", &["edge"])),
+            (None, rule("r2", "path", &["path", "edge"])),
+        ]));
+        assert_eq!(dangling_names(&program), Vec::<String>::new());
+        assert_eq!(cliques_of(&program), vec![vec!["path"], vec!["reachable"]]);
+        let cliques = program.cliques();
+        let [path, _] = cliques.as_slice() else {
+            panic!("expected two cliques, got {}", cliques.len());
+        };
+        assert!(path.is_recursive());
+        assert_eq!(
+            path.rec_rules()
+                .map(|rule| rule.id().as_str())
+                .collect::<Vec<_>>(),
+            vec!["r2"]
+        );
     }
 
     #[test]
@@ -449,7 +636,8 @@ mod tests {
         let cliques = program.cliques();
         // The members borrow from the program, so they may be collected out of
         // the cliques and outlive iterating them.
-        let members: Vec<&Pred> = cliques.iter().flat_map(|clique| clique.members()).collect();
+        let members: Vec<&TestPredicate> =
+            cliques.iter().flat_map(|clique| clique.members()).collect();
         assert_eq!(
             members
                 .iter()
@@ -559,14 +747,14 @@ mod tests {
         );
     }
 
-    struct Program {
-        predicates: Vec<Pred>,
+    struct TestLogicalProgram {
+        predicates: Vec<TestPredicate>,
         base_relations: HashSet<String>,
     }
 
-    impl LogicalProgram for Program {
+    impl LogicalProgram for TestLogicalProgram {
         type Identifier = String;
-        type Predicate = Pred;
+        type Predicate = TestPredicate;
 
         fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
             self.predicates.iter()
@@ -577,43 +765,30 @@ mod tests {
         }
     }
 
-    struct Pred {
+    /// The tests use [`RulePredicate`] itself as their [`Predicate`], so the
+    /// scaffolding stops at the rule level.
+    type TestPredicate = RulePredicate<String, TestRule>;
+
+    struct TestRule {
         name: String,
-        rules: Vec<Rl>,
+        head: TestAtom,
+        atoms: Vec<TestAtom>,
     }
 
-    impl Identifiable<String> for Pred {
+    impl Identifiable<String> for TestRule {
         fn id(&self) -> &String {
             &self.name
         }
     }
 
-    impl Predicate for Pred {}
-
-    impl AggregateRules for Pred {
+    impl Rule for TestRule {
         type Identifier = String;
-        type Rule = Rl;
+        type Atom = TestAtom;
+        type Cond = TestCond;
 
-        fn rules(&self) -> impl Iterator<Item = &Self::Rule> {
-            self.rules.iter()
+        fn head(&self) -> &Self::Atom {
+            &self.head
         }
-    }
-
-    struct Rl {
-        name: String,
-        atoms: Vec<Atm>,
-    }
-
-    impl Identifiable<String> for Rl {
-        fn id(&self) -> &String {
-            &self.name
-        }
-    }
-
-    impl Rule for Rl {
-        type Identifier = String;
-        type Atom = Atm;
-        type Cond = Condition;
 
         fn atoms(&self) -> impl Iterator<Item = &Self::Atom> {
             self.atoms.iter()
@@ -624,20 +799,20 @@ mod tests {
         }
     }
 
-    struct Atm {
+    struct TestAtom {
         name: String,
     }
 
-    impl Identifiable<String> for Atm {
+    impl Identifiable<String> for TestAtom {
         fn id(&self) -> &String {
             &self.name
         }
     }
 
-    impl Atom for Atm {
+    impl Atom for TestAtom {
         type Identifier = String;
-        type Var = Var;
-        type Lit = Value;
+        type Var = TestTypedVar;
+        type Lit = TestLit;
 
         fn bindings(&self) -> impl Iterator<Item = Bind<&Self::Var, &Self::Lit>> {
             std::iter::empty()
@@ -648,17 +823,17 @@ mod tests {
         }
     }
 
-    struct Var {
+    struct TestTypedVar {
         name: String,
     }
 
-    impl Identifiable<String> for Var {
+    impl Identifiable<String> for TestTypedVar {
         fn id(&self) -> &String {
             &self.name
         }
     }
 
-    impl TypedVar for Var {
+    impl TypedVar for TestTypedVar {
         type Identifier = String;
 
         fn ty(&self) -> ScalarType {
@@ -666,28 +841,28 @@ mod tests {
         }
     }
 
-    struct Value(Literal);
+    struct TestLit(Literal);
 
-    impl From<Value> for Literal {
-        fn from(value: Value) -> Self {
+    impl From<TestLit> for Literal {
+        fn from(value: TestLit) -> Self {
             value.0
         }
     }
 
-    impl Lit for Value {}
+    impl Lit for TestLit {}
 
     /// Conditions play no part in the reference graph, so the test programs
     /// carry none and this type exists only to satisfy [`Rule::Cond`].
-    struct Condition {
+    struct TestCond {
         operator: Operator,
-        left: Bind<Var, Value>,
-        right: Bind<Var, Value>,
+        left: Bind<TestTypedVar, TestLit>,
+        right: Bind<TestTypedVar, TestLit>,
     }
 
-    impl Cond for Condition {
+    impl Cond for TestCond {
         type Identifier = String;
-        type Var = Var;
-        type Lit = Value;
+        type Var = TestTypedVar;
+        type Lit = TestLit;
 
         fn operator(&self) -> impl Into<Operator> {
             self.operator
