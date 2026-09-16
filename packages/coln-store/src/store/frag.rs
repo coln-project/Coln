@@ -16,10 +16,14 @@ pub struct CommitChunk {
 
 pub trait FragmentSync {
     fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk>;
+
+    /// Apply the chunk bytes onto store as much as possible, buffer those ones
+    /// that cannot be applied.
+    /// Buffered data are not persisted.
     fn apply_chunk_bytes(
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<Vec<Vec<u8>>, StoreError>;
+    ) -> Result<(), StoreError>;
 }
 
 impl FragmentSync for Store {
@@ -39,13 +43,11 @@ impl FragmentSync for Store {
             .collect()
     }
 
-    /// Apply the bytes received by interpreting them as chunks, for syncing purposes
-    /// Return chunk bytes that cannot be applied yet.
     fn apply_chunk_bytes(
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<Vec<Vec<u8>>, StoreError> {
-        let commits = chunk_bytes
+    ) -> Result<(), StoreError> {
+        let new_commits = chunk_bytes
             .into_iter()
             .map(|bytes| Chunk::decode(&bytes))
             .map(|chunk| {
@@ -57,8 +59,12 @@ impl FragmentSync for Store {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let pending_commits = std::mem::take(&mut self.pending_commits);
+        let unapplied =
+            self.apply_commits(new_commits.into_iter().chain(pending_commits.into_iter()))?;
 
-        Ok(Self::commits_to_chunk_bytes(self.apply_commits(commits)?))
+        self.pending_commits = unapplied;
+        Ok(())
     }
 }
 
@@ -70,7 +76,7 @@ impl Store {
     /// `chunk_bytes` contains a valid root commit.
     pub fn try_from_commit_bytes(
         chunk_bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
-    ) -> Result<(Self, Vec<Vec<u8>>), StoreError> {
+    ) -> Result<Self, StoreError> {
         let chunks = chunk_bytes
             .into_iter()
             .map(|bytes| Chunk::decode(bytes.as_ref()))
@@ -79,7 +85,7 @@ impl Store {
     }
 
     /// Create a store from the commit chunks, assuming the chunk contains a valid root
-    pub(crate) fn try_from_chunks(chunks: Vec<Chunk>) -> Result<(Self, Vec<Vec<u8>>), StoreError> {
+    pub(crate) fn try_from_chunks(chunks: Vec<Chunk>) -> Result<Self, StoreError> {
         let roots = chunks
             .iter()
             .filter(|chunk| chunk.is_root())
@@ -114,14 +120,12 @@ impl Store {
             commits.push(commit);
         }
 
-        let pending_bytes = Self::commits_to_chunk_bytes(store.apply_commits(commits)?);
-        Ok((store, pending_bytes))
+        let pending_commits = store.apply_commits(commits)?;
+        store.pending_commits = pending_commits;
+        Ok(store)
     }
 
-    fn commits_to_chunk_bytes(commits: Vec<Commit<'static>>) -> Vec<Vec<u8>> {
-        commits
-            .into_iter()
-            .map(|commit| Chunk::from(commit).encoded())
-            .collect()
+    pub(crate) fn pending_commits_len(&self) -> usize {
+        self.pending_commits.len()
     }
 }

@@ -63,10 +63,13 @@ impl FragmentSync for AutoStore {
             .commit_chunks_after(have_heads)
     }
 
+    // TODO allow this after we have a good concurrency control theory
+    // A current open transaction should only read data from its deps backward,
+    // But no a concurrent txn
     fn apply_chunk_bytes(
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<Vec<Vec<u8>>, StoreError> {
+    ) -> Result<(), StoreError> {
         self.store
             .as_mut()
             .expect("closed txn")
@@ -90,9 +93,7 @@ impl AutoStore {
     pub fn transaction(&mut self) {
         self.txn = Some(self.store.take().expect("closed txn").into_transaction());
     }
-}
 
-impl AutoStore {
     pub fn commit(&mut self) -> Result<CommitHash, StoreError> {
         let (res, store) = match self.txn.take().expect("open txn").commit() {
             Ok((hash, store)) => (Ok(hash), store),
@@ -107,6 +108,13 @@ impl AutoStore {
         let store = self.txn.take().expect("open txn").abort();
         self.store = Some(store);
         self.txn = None;
+    }
+
+    pub fn try_from_commit_bytes(
+        chunk_bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<Self, StoreError> {
+        let store = Store::try_from_commit_bytes(chunk_bytes)?;
+        Ok(store.auto())
     }
 }
 

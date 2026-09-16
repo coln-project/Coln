@@ -38,8 +38,8 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
 /// Decode a store from bytes produced by [`encode_store`].
 pub fn decode_store(data: &[u8]) -> Result<Store, StoreError> {
     let encoded = read_store_envelope(data)?;
-    let (store, pending) = Store::try_from_chunks(encoded.chunks)?;
-    if !pending.is_empty() {
+    let store = Store::try_from_chunks(encoded.chunks)?;
+    if store.pending_commits_len() > 0 {
         return Err(CodecError::DataContentError(
             "store snapshot contains commits that could not be applied".into(),
         )

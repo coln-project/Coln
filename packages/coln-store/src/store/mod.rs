@@ -46,6 +46,8 @@ pub struct Store {
     ir: FlatRealm,
     commits: CommitGraph,
     rowing: rowing::Rowing,
+    pending_commits: Vec<Commit<'static>>,
+
     #[cfg(not(target_arch = "wasm32"))]
     cq: ColnQuery,
 }
@@ -136,6 +138,7 @@ impl Store {
             ir,
             commits,
             rowing: rowing::Rowing::new(),
+            pending_commits: Vec::new(),
             #[cfg(not(target_arch = "wasm32"))]
             cq,
         }
@@ -341,6 +344,8 @@ impl Store {
             ir,
             commits,
             rowing: rowing::Rowing::new(),
+            pending_commits: Vec::new(),
+
             #[cfg(not(target_arch = "wasm32"))]
             cq,
         })

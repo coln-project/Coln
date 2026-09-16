@@ -780,9 +780,9 @@ mod commits {
             .map(|chunk| chunk.bytes)
             .collect::<Vec<_>>();
 
-        let (restored, pending) = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
 
-        assert!(pending.is_empty());
+        assert_eq!(restored.pending_commits_len(), 0);
         assert_eq!(restored.table_count(), 0);
         assert_eq!(restored.heads(), source.heads());
     }
@@ -801,9 +801,9 @@ mod commits {
             .collect::<Vec<_>>();
         chunks.reverse();
 
-        let (restored, pending) = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
 
-        assert!(pending.is_empty());
+        assert_eq!(restored.pending_commits_len(), 0);
         assert_eq!(
             row_values(&restored, &Path::from("T")),
             vec![vec![WireValue::Int(99)]]
@@ -939,20 +939,16 @@ mod commits {
             .collect();
         assert_eq!(chunks.len(), 2);
 
-        let leftover = target
+        target
             .apply_chunk_bytes([chunks[1].clone()])
             .expect("skip child without parent");
-        assert_eq!(leftover.len(), 1);
+        assert_eq!(target.pending_commits.len(), 1);
         assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
 
-        let leftover = target
-            .apply_chunk_bytes(
-                leftover
-                    .into_iter()
-                    .chain(std::iter::once(chunks[0].clone())),
-            )
+        target
+            .apply_chunk_bytes(std::iter::once(chunks[0].clone()))
             .expect("retry leftover with parent");
-        assert!(leftover.is_empty());
+        assert!(target.pending_commits.is_empty());
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
