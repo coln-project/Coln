@@ -32,3 +32,13 @@ export function toTxnWire(v: LiveValue): TxnWireValue {
     return v.asTxnWire()
   }
 }
+
+export function toTxn(v: WireValue): TxnWireValue {
+  if (typeof(v) == "number") {
+    return v
+  } if (typeof(v) == "string") {
+    return v
+  } else {
+    return { "type": "Existing", "value": v }
+  }
+}

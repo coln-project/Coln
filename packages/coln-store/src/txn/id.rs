@@ -94,7 +94,8 @@ impl From<WireRowId> for TxnWireValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct TxnWireTuple(Vec<TxnWireValue>);
 
 impl FromIterator<TxnWireValue> for TxnWireTuple {

@@ -56,7 +56,7 @@ instance Core El Ty where
   cons l d = M (S.Cons l $ (.stx) <$> d) (V.epure $ V.Cons l $ (.val) <$> d)
   proj l x f = M (S.Proj l x.stx f) (V.proj x.val f)
   init a =
-    M (S.Init a.stx) (V.BecomeWith $ \n -> V.InitNeu (V.InitNeutral n a.val V.Id))
+    M (S.Init a.stx) (V.BecomeWith $ \n -> V.reflectInit n V.Id a.val)
   lit l = M (S.Lit l) (V.Lit l)
   is x = M (S.Is x.stx) (V.Become x.val)
   univ u = M (S.U u) (V.U u)

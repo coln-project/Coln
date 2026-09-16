@@ -6,23 +6,23 @@ import { RowId } from "./row_id.js"
 import { WireTuple, TxnWireTuple } from "./value.js"
 import { WhereClause, TxnWireRowId, WireRowId, Path, CommitHash } from "./types.js"
 
-export type CommitChunk = {
-  hash: CommitHash
-  parents: CommitHash[]
-  bytes: Uint8Array
-}
+// export type CommitChunk = {
+//   hash: CommitHash
+//   parents: CommitHash[]
+//   bytes: Uint8Array
+// }
 
 export interface Store {
-  heads(): CommitHash[]
-  commitChunksAfter(haveHeads: CommitHash[]): CommitChunk[]
-  applyChunkBytes(chunks: Uint8Array[]): void
+  // heads(): CommitHash[]
+  // commitChunksAfter(haveHeads: CommitHash[]): CommitChunk[]
+  // applyChunkBytes(chunks: Uint8Array[]): void
  
   startTransaction(): void
   endTransaction(): CommitHash
   abortTransaction(): void
 
-  all_proj(query: WhereClause, select: number[]): [WireTuple]
-  all_row_id(query: WhereClause): [WireRowId]
+  all_proj(query: WhereClause, select: number[]): WireTuple[]
+  all_row_id(query: WhereClause): WireRowId[]
   one_proj(query: WhereClause, select: number[]): WireTuple
   exists(query: WhereClause): boolean
   
@@ -36,13 +36,17 @@ export class ManagedStore {
     this.pending = []
   }
   
+  startTransaction(): void {
+    this.base.startTransaction()
+  }
+  
   endTransaction(): CommitHash {
     const hash = this.base.endTransaction()
     for (const i of this.pending) {
       i.finish(hash)
     }
     this.pending = []
-    return hash;
+    return hash
   }
 
   abortTransaction() {
@@ -53,11 +57,11 @@ export class ManagedStore {
     this.pending = []
   }
 
-  all_proj(query: WhereClause, select: number[]): [WireTuple] {
+  all_proj(query: WhereClause, select: number[]): WireTuple[] {
     return this.base.all_proj(query, select)
   }
 
-  all_row_id(query: WhereClause): [WireRowId] {
+  all_row_id(query: WhereClause): WireRowId[] {
     return this.base.all_row_id(query)
   }
 

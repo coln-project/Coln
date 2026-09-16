@@ -120,5 +120,8 @@
       "import": "./dist/esm/slim.js",
       "require": "./dist/cjs/slim.cjs"
     }
+  },
+  "dependencies": {
+    "@coln-project/interface": "link:../coln-js-interface"
   }
 }

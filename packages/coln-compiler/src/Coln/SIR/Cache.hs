@@ -78,7 +78,7 @@ cache x p sc v = do
     V.LiftEl LSetTheory v -> (emptyNode, emptyNode, S.LiftEl (separate sc.len v))
     V.Code SSetU a -> code SSetU a
     V.Code SPropU a -> code SPropU a
-    V.PrimCode u tn args -> (emptyNode, emptyNode, S.SelectRowId u tn (separate sc.len <$> args))
+    V.PrimCode _ u tn args -> (emptyNode, emptyNode, S.SelectRowId u tn (separate sc.len <$> args))
     V.Lam SSetTheory dom clo -> do
       let (x', arg, sc') = bind sc (cloArgName clo) dom
       let (ents, defs, body) = cache x p sc' (V.appClo clo arg)

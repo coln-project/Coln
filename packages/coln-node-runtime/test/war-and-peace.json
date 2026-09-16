@@ -1,0 +1,237 @@
+{
+  "work": "War and Peace",
+  "people": {
+    "kirill_bezukhov": {
+      "name": "Count Kirill Vladimirovich Bezukhov",
+      "family": "Bezukhov",
+      "parents": [],
+      "spouses": []
+    },
+
+    "pierre_bezukhov": {
+      "name": "Count Pyotr Kirillovich Bezukhov",
+      "aliases": ["Pierre Bezukhov"],
+      "family": "Bezukhov",
+      "parents": ["kirill_bezukhov"],
+      "parentage": "illegitimate",
+      "spouses": ["helene_kuragina", "natasha_rostova"]
+    },
+
+    "helene_kuragina": {
+      "name": "Princess Elena Vasilyevna Kuragina",
+      "aliases": ["Hélène Kuragina", "Hélène Bezukhov"],
+      "family": "Kuragin",
+      "parents": ["vasili_kuragin"],
+      "spouses": ["pierre_bezukhov"]
+    },
+
+    "vasili_kuragin": {
+      "name": "Prince Vasili Sergeyevich Kuragin",
+      "family": "Kuragin",
+      "parents": [],
+      "spouses": []
+    },
+
+    "ippolit_kuragin": {
+      "name": "Prince Ippolit Vasilyevich Kuragin",
+      "aliases": ["Hippolyte Kuragin"],
+      "family": "Kuragin",
+      "parents": ["vasili_kuragin"],
+      "spouses": []
+    },
+
+    "anatole_kuragin": {
+      "name": "Prince Anatole Vasilyevich Kuragin",
+      "family": "Kuragin",
+      "parents": ["vasili_kuragin"],
+      "spouses": ["anatole_unnamed_wife"]
+    },
+
+    "anatole_unnamed_wife": {
+      "name": "Unnamed Polish woman",
+      "family": null,
+      "parents": [],
+      "spouses": ["anatole_kuragin"]
+    },
+
+    "nikolai_bolkonsky": {
+      "name": "Prince Nikolai Andreevich Bolkonsky",
+      "family": "Bolkonsky",
+      "parents": [],
+      "spouses": []
+    },
+
+    "andrei_bolkonsky": {
+      "name": "Prince Andrei Nikolayevich Bolkonsky",
+      "family": "Bolkonsky",
+      "parents": ["nikolai_bolkonsky"],
+      "spouses": ["lise_bolkonskaya"]
+    },
+
+    "marya_bolkonskaya": {
+      "name": "Princess Marya Nikolayevna Bolkonskaya",
+      "aliases": ["Maria Bolkonskaya"],
+      "family": "Bolkonsky",
+      "parents": ["nikolai_bolkonsky"],
+      "spouses": ["nikolai_rostov"]
+    },
+
+    "lise_bolkonskaya": {
+      "name": "Princess Elisabeth Karlovna Bolkonskaya",
+      "aliases": ["Lise Bolkonskaya", "the little princess"],
+      "family": "Bolkonsky",
+      "parents": [],
+      "spouses": ["andrei_bolkonsky"]
+    },
+
+    "nikolenka_bolkonsky": {
+      "name": "Prince Nikolai Andreevich Bolkonsky",
+      "aliases": ["Nikolenka Bolkonsky"],
+      "family": "Bolkonsky",
+      "parents": ["andrei_bolkonsky", "lise_bolkonskaya"],
+      "spouses": []
+    },
+
+    "ilya_rostov": {
+      "name": "Count Ilya Andreevich Rostov",
+      "family": "Rostov",
+      "parents": [],
+      "spouses": ["natalya_rostova_sr"]
+    },
+
+    "natalya_rostova_sr": {
+      "name": "Countess Natalya Rostova",
+      "family": "Rostov",
+      "parents": [],
+      "spouses": ["ilya_rostov"]
+    },
+
+    "vera_rostova": {
+      "name": "Countess Vera Ilyinichna Rostova",
+      "aliases": ["Vera Berg"],
+      "family": "Rostov",
+      "parents": ["ilya_rostov", "natalya_rostova_sr"],
+      "spouses": ["berg"]
+    },
+
+    "berg": {
+      "name": "Adolf Karlovich Berg",
+      "family": "Berg",
+      "parents": [],
+      "spouses": ["vera_rostova"]
+    },
+
+    "nikolai_rostov": {
+      "name": "Count Nikolai Ilyich Rostov",
+      "family": "Rostov",
+      "parents": ["ilya_rostov", "natalya_rostova_sr"],
+      "spouses": ["marya_bolkonskaya"]
+    },
+
+    "natasha_rostova": {
+      "name": "Countess Natalya Ilyinichna Rostova",
+      "aliases": ["Natasha Rostova", "Natasha Bezukhov"],
+      "family": "Rostov",
+      "parents": ["ilya_rostov", "natalya_rostova_sr"],
+      "spouses": ["pierre_bezukhov"]
+    },
+
+    "petya_rostov": {
+      "name": "Pyotr Ilyich Rostov",
+      "aliases": ["Petya Rostov"],
+      "family": "Rostov",
+      "parents": ["ilya_rostov", "natalya_rostova_sr"],
+      "spouses": []
+    },
+
+    "sonya_rostova": {
+      "name": "Sofia Alexandrovna Rostova",
+      "aliases": ["Sonya Rostova"],
+      "family": "Rostov",
+      "parents": [],
+      "spouses": [],
+      "relations": {
+        "cousins": [
+          "vera_rostova",
+          "nikolai_rostov",
+          "natasha_rostova",
+          "petya_rostov"
+        ]
+      }
+    },
+
+    "anna_drubetskaya": {
+      "name": "Princess Anna Mikhailovna Drubetskaya",
+      "family": "Drubetskoy",
+      "parents": [],
+      "spouses": []
+    },
+
+    "boris_drubetskoy": {
+      "name": "Prince Boris Drubetskoy",
+      "family": "Drubetskoy",
+      "parents": ["anna_drubetskaya"],
+      "spouses": ["julie_karagina"]
+    },
+
+    "julie_karagina": {
+      "name": "Julie Karagina",
+      "family": "Karagin",
+      "parents": [],
+      "spouses": ["boris_drubetskoy"]
+    },
+
+    "andrei_rostov_jr": {
+      "name": "Andrei Nikolayevich Rostov",
+      "family": "Rostov",
+      "parents": ["nikolai_rostov", "marya_bolkonskaya"],
+      "spouses": []
+    },
+
+    "mitya_rostov": {
+      "name": "Dmitri Nikolayevich Rostov",
+      "aliases": ["Mitya Rostov"],
+      "family": "Rostov",
+      "parents": ["nikolai_rostov", "marya_bolkonskaya"],
+      "spouses": []
+    },
+
+    "natalya_rostova_jr": {
+      "name": "Natalya Nikolayevna Rostova",
+      "family": "Rostov",
+      "parents": ["nikolai_rostov", "marya_bolkonskaya"],
+      "spouses": []
+    },
+
+    "masha_bezukhova": {
+      "name": "Maria Petrovna Bezukhov",
+      "aliases": ["Masha Bezukhov"],
+      "family": "Bezukhov",
+      "parents": ["pierre_bezukhov", "natasha_rostova"],
+      "spouses": []
+    },
+
+    "lisa_bezukhova": {
+      "name": "Elizaveta Petrovna Bezukhov",
+      "aliases": ["Lisa Bezukhov"],
+      "family": "Bezukhov",
+      "parents": ["pierre_bezukhov", "natasha_rostova"],
+      "spouses": []
+    },
+
+    "petya_bezukhov": {
+      "name": "Pyotr Petrovich Bezukhov",
+      "aliases": ["Petya Bezukhov"],
+      "family": "Bezukhov",
+      "parents": ["pierre_bezukhov", "natasha_rostova"],
+      "spouses": []
+    },
+
+    "unnamed_bezukhov_daughter": {
+      "name": "Unnamed daughter of Pierre and Natasha",
+      "family": "Bezukhov",
+      "parents": ["pierre_bezukhov", "natasha_rostova"],
+      "spouses": []
+    }
+  }
+}

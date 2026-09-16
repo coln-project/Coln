@@ -6,6 +6,17 @@
   "type": "module",
   "license": "(Apache-2.0 OR MIT)",
   "scripts": {},
+  "files": [ "dist" ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepack": "npm run build"
+  },
   "devDependencies": {
     "tsx": "^4.23.1",
     "typescript": "^5.0.0"
