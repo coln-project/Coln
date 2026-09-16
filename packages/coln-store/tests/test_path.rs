@@ -9,7 +9,7 @@ use coln_store::{
     commit::{hash::CommitHash, pst},
     store::{ColnDef, Store, error::StoreError},
     table::{WireRowId, WireValue},
-    txn::{TxnWireValue, empty_row, rw::StoreWrite},
+    txn::{TxnWireValue, empty_row, id::Promote, rw::StoreWrite},
 };
 use rstest::{fixture, rstest};
 use tracing_subscriber::EnvFilter;

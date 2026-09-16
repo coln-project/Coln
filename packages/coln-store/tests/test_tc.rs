@@ -7,6 +7,7 @@ use coln_store::{
     store::{ColnDef, auto::AutoStore},
     txn::{
         empty_row,
+        id::Promote,
         rw::{StoreRead, StoreWrite, WhereClause},
     },
     value::Value,
@@ -31,6 +32,7 @@ fn coln_def() -> ColnDef {
 #[rstest]
 fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
     let mut auto_store = AutoStore::try_from_ir(ir, coln_def).expect("create store successful");
+    auto_store.transaction();
     let va = auto_store
         .add(&Path::from("root.V"), empty_row())
         .expect("add successful");
@@ -52,7 +54,7 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
     let h = auto_store.commit().expect("commit success");
     let [va, vb] = auto_store.promote(vec![va, vb], h).try_into().unwrap();
 
-    // TODO change the API so user does not need to manually construct WireValue?
+    auto_store.transaction();
     let connected = auto_store
         .all_proj(
             &WhereClause {

@@ -5,7 +5,7 @@
 use coln_flir_rs::ir;
 use coln_store::{
     commit::{chunk::Chunk, hash::CommitHash as StoreCommitHash},
-    store::{ColnDef, Store},
+    store::{ColnDef as StoreColnDef, Store},
     table::WireRowId as StoreRowId,
     txn::{
         OwnedTransaction, TxnLiveRowId as StoreRowHandle,
@@ -14,7 +14,7 @@ use coln_store::{
 };
 use js_sys::Reflect;
 
-use crate::dto::{CommitChunk, CommitHash, RowId, RowRef, RowView, Value};
+use crate::dto::{ColnDef, CommitChunk, CommitHash, RowId, RowRef, RowView, Value};
 use crate::error::js_error;
 
 use tsify::{Ts, Tsify};
@@ -223,7 +223,7 @@ impl StoreHandle {
     ) -> Result<StoreHandle, JsValue> {
         let ir = serde_json::from_str::<ir::FlatRealm>(&flat_realm_json)
             .map_err(|err| js_error(format!("invalid flat theory JSON: {err}")))?;
-        let cd = ColnDef { theory, realm };
+        let cd = StoreColnDef { theory, realm };
         let store = Store::try_from_ir(ir, cd).map_err(js_error)?;
 
         Ok(Self::ready(store))
@@ -232,6 +232,12 @@ impl StoreHandle {
     #[wasm_bindgen(js_name = jsonIR)]
     pub fn json_ir(&self) -> Result<String, JsValue> {
         self.store()?.json_ir().map_err(js_error)
+    }
+
+    #[wasm_bindgen(js_name=colnDef)]
+    pub fn coln_def(&self) -> Result<Ts<ColnDef>, JsValue> {
+        let cd = self.store()?.coln_def().map_err(js_error)?;
+        ColnDef::from(cd).into_ts().map_err(js_error)
     }
 
     pub fn transaction(&mut self) -> Result<TransactionHandle, JsValue> {
@@ -506,7 +512,7 @@ mod tests {
             definitions: vec![],
             rules: vec![],
         };
-        let cd = ColnDef {
+        let cd = StoreColnDef {
             theory: String::new(),
             realm: String::new(),
         };

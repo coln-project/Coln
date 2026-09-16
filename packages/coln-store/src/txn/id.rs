@@ -63,6 +63,23 @@ impl From<WireRowId> for TxnWireRowId {
     }
 }
 
+pub trait Promote {
+    /// Promoting pending ids to Wire ids, after successful transactions
+    //  and also canonicalise them
+    //  Will not check validity, callers is responsible for calling it with valid pending ids
+    fn promote(
+        &self,
+        pending_ids: impl IntoIterator<Item = TxnWireRowId>,
+        hash: CommitHash,
+    ) -> Vec<WireRowId>;
+
+    fn promote_one(&self, pending_id: impl Into<TxnWireRowId>, hash: CommitHash) -> WireRowId {
+        self.promote(std::iter::once(pending_id.into()), hash)
+            .pop()
+            .expect("ond id to promote")
+    }
+}
+
 pub type TxnWireValue = Value<TxnWireRowId>;
 
 impl From<TxnWireRowId> for TxnWireValue {
