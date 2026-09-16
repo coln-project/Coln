@@ -1,0 +1,13 @@
+{
+  "name": "@coln-project/interface",
+  "version": "0.1.0",
+  "private": true,
+  "author": "Coln contributors",
+  "type": "module",
+  "license": "(Apache-2.0 OR MIT)",
+  "scripts": {},
+  "devDependencies": {
+    "tsx": "^4.23.1",
+    "typescript": "^5.0.0"
+  }
+}
