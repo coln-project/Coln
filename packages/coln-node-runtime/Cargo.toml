@@ -1,0 +1,10 @@
+[package]
+name = "coln-node-runtime"
+edition = "2024"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]

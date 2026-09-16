@@ -1073,20 +1073,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "coln-js-runtime"
-version = "0.1.0"
-dependencies = [
- "coln-flir-rs",
- "coln-store",
- "console_error_panic_hook",
- "hex",
- "js-sys",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "tsify",
- "wasm-bindgen",
-]
+name = "coln-node-runtime"
+version = "0.0.1"
 
 [[package]]
 name = "coln-query"
@@ -1102,19 +1090,6 @@ dependencies = [
  "feldera-size-of",
  "rkyv",
  "thiserror 2.0.20",
-]
-
-[[package]]
-name = "coln-rpc"
-version = "0.0.1"
-dependencies = [
- "coln-flir-rs",
- "coln-store",
- "serde",
- "serde_json",
- "specta",
- "specta-serde",
- "specta-typescript",
 ]
 
 [[package]]
@@ -1150,6 +1125,22 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "coln-wasm-runtime"
+version = "0.1.0"
+dependencies = [
+ "coln-flir-rs",
+ "coln-store",
+ "console_error_panic_hook",
+ "hex",
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "tsify",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4604,26 +4595,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "specta-serde"
-version = "0.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee8a72b755ddb8949fd8f17c5db43f0e8a806ea587d9bc602ee3f73240c00029"
-dependencies = [
- "specta",
- "specta-macros",
-]
-
-[[package]]
-name = "specta-typescript"
-version = "0.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "639404ee95557f2f8b7e4cb773ffefd45304c7ab8ba21ac83b69051595e083c0"
-dependencies = [
- "serde",
- "specta",
 ]
 
 [[package]]
