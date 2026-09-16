@@ -16,7 +16,6 @@ use coln_query::api::{
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::hash::CommitHash;
 use crate::commit::wire::RootCommitData;
@@ -34,6 +33,7 @@ use crate::txn::rw::{StoreRead, WhereClause};
 use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnWireRowId};
 use crate::{commit::Commit, table::cell::WireTuple};
 use crate::{commit::chunk::Chunk, store::auto::AutoStore};
+use crate::{commit::error::CodecError, txn::id::Promote};
 
 #[derive(Debug)]
 pub struct Store {
@@ -364,31 +364,24 @@ impl Store {
     pub fn into_transaction(self) -> OwnedTransaction {
         OwnedTransaction::new(self)
     }
+}
 
-    // Promote the pending ids to existing ids
-    // And also canonicalise them
-    // Will not check validity, callers is responsible for calling it with valid pending ids
-    pub fn promote(
+impl Promote for Store {
+    fn promote(
         &self,
         pending_ids: impl IntoIterator<Item = TxnWireRowId>,
-        h: CommitHash,
+        hash: CommitHash,
     ) -> Vec<WireRowId> {
         pending_ids
             .into_iter()
             .map(|pending| {
                 let wire_id = match pending {
-                    TxnWireRowId::Pending(pending) => pending.resolve(h),
+                    TxnWireRowId::Pending(pending) => pending.resolve(hash),
                     TxnWireRowId::Existing(row_id) => row_id,
                 };
                 self.canonical_row_id(&wire_id).unwrap_or(wire_id)
             })
             .collect()
-    }
-
-    pub fn promote_one(&self, pending_id: impl Into<TxnWireRowId>, h: CommitHash) -> WireRowId {
-        self.promote(std::iter::once(pending_id.into()), h)
-            .pop()
-            .expect("one id to promote")
     }
 }
 

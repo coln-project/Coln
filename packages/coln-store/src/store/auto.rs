@@ -10,7 +10,7 @@ use crate::{
     table::{WireRowId, cell::WireTuple, handle::WireRowView},
     txn::{
         OwnedTransaction, TxnWireRowId,
-        id::TxnWireTuple,
+        id::{Promote, TxnWireTuple},
         rw::{StoreRead, StoreWrite, WhereClause},
     },
 };
@@ -75,25 +75,19 @@ impl AutoStore {
         let store = self.txn.take().expect("open txn").abort();
         self.txn.replace(store.into_transaction());
     }
+}
 
-    pub fn promote_one(&self, pending_id: impl Into<TxnWireRowId>, h: CommitHash) -> WireRowId {
-        self.txn
-            .as_ref()
-            .expect("open txn")
-            .store()
-            .promote_one(pending_id, h)
-    }
-
-    pub fn promote(
+impl Promote for AutoStore {
+    fn promote(
         &self,
         pending_ids: impl IntoIterator<Item = TxnWireRowId>,
-        h: CommitHash,
+        hash: CommitHash,
     ) -> Vec<WireRowId> {
         self.txn
             .as_ref()
             .expect("open txn")
             .store()
-            .promote(pending_ids, h)
+            .promote(pending_ids, hash)
     }
 }
 

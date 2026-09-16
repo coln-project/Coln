@@ -87,6 +87,7 @@ mod tests {
     use crate::ir::Path;
     use crate::table::ValidationError;
     use crate::test_utils::{link_foreign_key_root_commit_data, single_int_store};
+use crate::txn::id::Promote;
 
     #[rstest]
     fn owned_transaction_commits_and_returns_updated_store(#[from(single_int_store)] store: Store) {

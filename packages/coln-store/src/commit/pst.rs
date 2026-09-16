@@ -102,6 +102,7 @@ mod tests {
     use crate::ir::Path;
     use crate::table::{WireValue, handle::WireRowView};
     use crate::test_utils::non_empty_root_commit_data;
+    use crate::txn::id::Promote;
     use crate::txn::rw::{StoreRead, StoreWrite};
 
     #[fixture]
