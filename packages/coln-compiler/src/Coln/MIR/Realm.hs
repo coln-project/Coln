@@ -10,10 +10,6 @@ import Coln.MIR.Memoed qualified as M
 import Coln.MIR.Params
 import Coln.MIR.Value qualified as V
 
-data Providence
-  = Holy -- A god-given relation or function, derived from laying out an initial model
-  | Profane -- A user-edited relation or function, derived from laying out the root theory
-
 data GenTy
   = GenU (SUniverse Set Theory)
   | GenLift (V.Ty N Set)

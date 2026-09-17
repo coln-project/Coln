@@ -35,8 +35,8 @@ lookup tn args a = M (S.Lookup tn ((.stx) <$> args) a.stx) (V.lookup tn ((.val) 
 code :: SUniverse Set Theory -> Ty N Set -> El N Theory
 code u (M s v) = M (S.Code u s) (V.Code u v)
 
-primCode :: SUniverse Set Theory -> TableName -> [El N Set] -> El N Theory
-primCode u tn args = M (S.PrimCode u tn ((.stx) <$> args)) (V.PrimCode u tn ((.val) <$> args))
+primCode :: Providence -> SUniverse Set Theory -> TableName -> [El N Set] -> El N Theory
+primCode p u tn args = M (S.PrimCode p u tn ((.stx) <$> args)) (V.PrimCode p u tn ((.val) <$> args))
 
 lam :: (V.HasEvaluation c) => V.Locals -> Ty N Set -> S.Abs (S.El c Theory) -> El c Theory
 lam vs dom abs = do

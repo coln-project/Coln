@@ -92,3 +92,7 @@ data SFunctionVariant (l0 :: MLevel) (l1 :: MLevel) = SFunctionVariant
 
 instance HLevelOf (SFunctionVariant l0 l1) where
   hlevelOf sfv = sfv.hlevel
+
+data Providence
+  = Holy -- A god-given relation or function, derived from laying out an initial model
+  | Profane -- A user-edited relation or function, derived from laying out the root theory
