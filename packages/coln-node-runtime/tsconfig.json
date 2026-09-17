@@ -9,5 +9,5 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["src/typescript/*.ts", "test/*.ts", "native/*"]
+  "include": ["src/typescript/*.ts", "test/*.ts"]
 }

@@ -17,10 +17,10 @@ export class NodeStore implements types.Store {
   startTransaction(): void {
   }
   endTransaction(): types.CommitHash {
-    throw new Error("Method not implemented.")
+    return JSON.parse(this.underlying.endTransaction())
   }
   abortTransaction(): void {
-    throw new Error("Method not implemented.")
+    this.underlying.abortTransaction();
   }
   
   all_proj(where: types.WhereClause, select: number[]): types.WireTuple[] {

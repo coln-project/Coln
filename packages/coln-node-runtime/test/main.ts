@@ -1,6 +1,7 @@
 import { NodeStore } from "../src/typescript/index.js"
 import { readFile } from "node:fs/promises"
 import { TransitiveClosureRealm  } from "./TransitiveClosureRealm.js"
+import { ManagedStore } from "@coln-project/interface"
 
 const ir: string = await readFile(
   new URL("./TransitiveClosureRealm.json", import.meta.url),
@@ -10,16 +11,14 @@ const ir: string = await readFile(
 const realmDef = {
   ir: ir,
   coln_source: "",
-  realm_name: ""
+  realm_name: "TransitiveClosureRealm"
 }
 
-const store = new NodeStore(realmDef)
+const store = new ManagedStore(new NodeStore(realmDef))
 
 const gr = new TransitiveClosureRealm(store)
 
 const g = gr.root
-
-store.startTransaction()
 
 const [v0, v1, v2] = [g.V.add(), g.V.add(), g.V.add()]
 g.E(v0)(v1).add()

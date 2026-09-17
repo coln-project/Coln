@@ -3,12 +3,13 @@ use coln_store::store::auto::AutoStore;
 use coln_store::txn::id::TxnWireTuple;
 use coln_store::txn::rw::StoreRead;
 use coln_store::txn::rw::StoreWrite;
+use coln_flir_rs::ir;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 #[napi]
 pub struct AutoStoreWrapper {
-    store: Box<AutoStore>,
+    store: AutoStore,
 }
 
 #[napi]
@@ -17,10 +18,10 @@ pub fn store_from_ir(
     coln_source: String,
     realm_name: String,
 ) -> Result<AutoStoreWrapper> {
-    let ir = serde_json::from_str(&ir_json).unwrap();
+    let ir = serde_json::from_str(&ir_json).expect("parse flir");
     let coln_def = ColnDef::new(coln_source, realm_name);
     Ok(AutoStoreWrapper {
-        store: Box::new(AutoStore::try_from_ir(ir, coln_def).unwrap()),
+        store: AutoStore::try_from_ir(ir, coln_def).expect("create store successful"),
     })
 }
 
@@ -85,7 +86,7 @@ impl AutoStoreWrapper {
         let res = self
             .store
             .add(
-                &(serde_json::from_str(&table_name).unwrap()),
+                &ir::Path(table_name),
                 serde_json::from_str::<TxnWireTuple>(&values).unwrap(),
             )
             .unwrap();

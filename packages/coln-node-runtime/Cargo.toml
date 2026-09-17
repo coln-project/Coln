@@ -12,6 +12,7 @@ path = "src/rust/lib.rs"
 crate-type = ["cdylib"]
 
 [dependencies]
+coln-flir-rs = { version = "0.1.0", path = "../coln-flir-rs" }
 coln-store = { version = "0.1.0", path = "../coln-store" }
 napi = "3"
 napi-derive = "3"

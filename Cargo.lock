@@ -1076,6 +1076,7 @@ dependencies = [
 name = "coln-node-runtime"
 version = "0.0.1"
 dependencies = [
+ "coln-flir-rs",
  "coln-store",
  "napi",
  "napi-build 1.2.1",

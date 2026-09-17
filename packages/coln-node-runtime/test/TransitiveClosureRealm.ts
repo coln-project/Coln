@@ -11,8 +11,7 @@ export class TransitiveClosureRealm {
     snoc: (v0: runtime.RowId<"root.V">) => (v1: runtime.RowId<"root.V">) => (v2: runtime.RowId<"root.V">) => (a: null) => (b: runtime.RowId<"root.E">) => runtime.Ref<null>
   };
 
-  constructor(store: runtime.Store) {
-    const mstore = (new runtime.ManagedStore(store));
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
       V: (new runtime.BaseSet(mstore, "root.V", [])),
       E: (a: runtime.RowId<"root.V">) => {
