@@ -3,12 +3,15 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod gabow;
+mod translation;
 
 use crate::{
     host::{expr::Literal, operator::Operator},
+    relational::schema::{Column, TableSchema},
     scalarial::ScalarType,
 };
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt,
 };
@@ -30,17 +33,28 @@ trait LogicalProgram {
     /// order. Together they form the IDB.
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate>;
 
-    /// If `identifier` names a base relation of the EDB, that is, something the
-    /// program reads but does not define. The counterpart of
-    /// [`Self::predicates`], which enumerates what the program _does_ define.
+    /// The schema of the base relation `identifier` names, or [`None`] if the
+    /// EDB has no such relation. The counterpart of [`Self::predicates`], which
+    /// enumerates what the program _does_ define.
     ///
     /// A name may be both: a predicate shadows a base relation of the same
     /// name, see [`Self::cliques`].
-    fn is_base_relation(&self, identifier: &Self::Identifier) -> bool;
+    ///
+    /// [`Cow`] for the same reason [`Catalog::source_schema`] uses it: a
+    /// frontend keeping [`TableSchema`]s outright hands one out borrowed, while
+    /// one holding its own schema vocabulary projects onto [`TableSchema`] per
+    /// call and hands that out owned.
+    ///
+    /// [`Catalog::source_schema`]: crate::relational::catalog::Catalog::source_schema
+    fn base_relation_schema(&self, identifier: &Self::Identifier) -> Option<Cow<'_, TableSchema>>;
 
-    /// Every atom naming neither a predicate of this program nor a base
+    /// Every body atom naming neither a predicate of this program nor a base
     /// relation of the EDB. Such a reference cannot be evaluated: nothing ever
     /// produces the relation it asks for.
+    ///
+    /// The head side has no counterpart here, because a rule deriving an
+    /// undeclared predicate never reaches a program: [`RulePredicate::group`]
+    /// rejects it outright.
     ///
     /// An empty result is the precondition of [`Self::cliques`] and of any
     /// translation built on it. An atom repeating a dangling name is reported
@@ -57,7 +71,8 @@ trait LogicalProgram {
                     rule.atoms()
                         .map(|atom| atom.id())
                         .filter(move |identifier| {
-                            !defined.contains(identifier) && !self.is_base_relation(identifier)
+                            !defined.contains(identifier)
+                                && self.base_relation_schema(identifier).is_none()
                         })
                         .map(move |identifier| DanglingReference {
                             predicate,
@@ -207,6 +222,17 @@ impl<P: Predicate> Clique for PredicateClique<'_, P> {
 
 /// A predicate may be defined through one or multiple rules.
 trait Predicate: Identifiable<Self::Identifier> + AggregateRules {
+    /// The columns this predicate's relation exposes, in order. Every rule's
+    /// head fills exactly these, positionally.
+    ///
+    /// Declared rather than derived: a predicate defined by several rules
+    /// becomes a union of their projections, and union branches have to agree
+    /// on column names, while variable names are rule-local. Deriving names
+    /// from one rule's head would silently impose that rule's naming on all the
+    /// others. This is the [`Predicate`]-side counterpart of
+    /// [`LogicalProgram::base_relation_schema`].
+    fn columns(&self) -> impl Iterator<Item = &Column>;
+
     /// If the predicate is self-recursive, that is, referencing itself in some
     /// of its rules. Unlike mutual recursion, this is visible from the
     /// predicate alone and needs no [`Clique`] computation.
@@ -220,48 +246,88 @@ trait Predicate: Identifiable<Self::Identifier> + AggregateRules {
 /// Unlike [`PredicateClique`], this _owns_ its rules: a program holding both a
 /// flat rule list and predicates borrowing from it would be self-referential.
 /// Hand the flat list to [`Self::group`] and keep the result instead.
+#[derive(Debug)]
 struct RulePredicate<I, R> {
     name: I,
+    columns: Vec<Column>,
     rules: Vec<R>,
 }
 
 impl<I: Identifier, R: Rule<Identifier = I>> RulePredicate<I, R> {
-    /// Groups `rules` into the predicates they define, each paired with an
-    /// optional name for the predicate it contributes to.
+    /// Slots `rules` into the predicates `declarations` declares, each rule
+    /// paired with the definand naming the predicate it derives.
     ///
-    /// `None` joins the predicate the rule's [`Rule::head`] names, which is
-    /// what plain Datalog wants: the definand is the head. `Some(name)` is
-    /// for frontends that keep the two apart: FLIR names a rule and its
-    /// definand distinctly.
+    /// The definand is always explicit, whether or not a frontend keeps it
+    /// distinct from the rule's own name. FLIR does, for provenance; plain
+    /// Datalog does not and passes the rule's name for both. Asking for it
+    /// outright spares the layer having to tell those conventions apart, and
+    /// spares a frontend from having to fit either.
     ///
-    /// Either way the name must be the one _body_ atoms use to reference the
-    /// predicate: [`LogicalProgram::cliques`] pairs an [`Atom`] with a
-    /// predicate by matching identifiers: Hence, providing a name no body atom
-    /// mentions yields a predicate nothing depends on, and the atoms meant to
-    /// reach it become [`LogicalProgram::dangling_references`].
+    /// The declarations define which predicates exist, in which order, and with
+    /// which columns; a rule only says which one it contributes to. That name
+    /// has to be the one _body_ atoms use to reference the predicate:
+    /// [`LogicalProgram::cliques`] pairs an [`Atom`] with a predicate by
+    /// matching identifiers, so a predicate no body atom mentions is one
+    /// nothing depends on.
     ///
-    /// Predicates come out in order of first definition and their rules in the
-    /// order they arrived, so one input always yields the same program. No
-    /// predicate is empty, and a rule ends up in exactly one of them.
-    fn group(rules: impl IntoIterator<Item = (Option<I>, R)>) -> Vec<Self> {
+    /// The predicates come back in declaration order with their rules in
+    /// arrival order, so one input always yields the same program. A declared
+    /// predicate with no rules comes back empty rather than being omitted.
+    ///
+    /// Fails if any rule's definand matches no declaration — the head-side
+    /// counterpart of a [`LogicalProgram::dangling_references`], reported here
+    /// because such a rule belongs to no predicate and so would never reach a
+    /// program to be reported from. All offenders are collected, not just the
+    /// first.
+    fn group(
+        declarations: impl IntoIterator<Item = (I, Vec<Column>)>,
+        rules: impl IntoIterator<Item = (I, R)>,
+    ) -> Result<Vec<Self>, UnmatchedRules<I, R>> {
         let mut predicates: Vec<Self> = Vec::new();
         let mut indices: HashMap<I, usize> = HashMap::new();
-        for (name, rule) in rules {
-            let name = name.unwrap_or_else(|| rule.head().id().clone());
-            let idx = match indices.get(&name) {
-                Some(&idx) => idx,
-                None => {
-                    indices.insert(name.clone(), predicates.len());
-                    predicates.push(Self {
-                        name,
-                        rules: Vec::new(),
-                    });
-                    predicates.len() - 1
-                }
-            };
-            predicates[idx].rules.push(rule);
+        for (name, columns) in declarations {
+            indices.insert(name.clone(), predicates.len());
+            predicates.push(Self {
+                name,
+                columns,
+                rules: Vec::new(),
+            });
         }
-        predicates
+        let mut unmatched: Vec<(I, R)> = Vec::new();
+        for (definand, rule) in rules {
+            match indices.get(&definand) {
+                Some(&idx) => predicates[idx].rules.push(rule),
+                None => unmatched.push((definand, rule)),
+            }
+        }
+        match unmatched.is_empty() {
+            true => Ok(predicates),
+            false => Err(UnmatchedRules { rules: unmatched }),
+        }
+    }
+}
+
+/// The rules [`RulePredicate::group`] could not place, each with the
+/// definand that named no declared predicate.
+#[derive(Debug)]
+struct UnmatchedRules<I, R> {
+    rules: Vec<(I, R)>,
+}
+
+impl<I: Identifier, R: Rule<Identifier = I>> fmt::Display for UnmatchedRules<I, R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.rules
+            .iter()
+            .enumerate()
+            .try_for_each(|(idx, (name, rule))| {
+                let separator = if idx == 0 { "" } else { "; " };
+                write!(
+                    f,
+                    "{separator}rule '{}' derives '{}', which no declaration names",
+                    rule.id(),
+                    name,
+                )
+            })
     }
 }
 
@@ -280,20 +346,31 @@ impl<I: Identifier, R: Rule<Identifier = I>> AggregateRules for RulePredicate<I,
     }
 }
 
-impl<I: Identifier, R: Rule<Identifier = I>> Predicate for RulePredicate<I, R> {}
+impl<I: Identifier, R: Rule<Identifier = I>> Predicate for RulePredicate<I, R> {
+    fn columns(&self) -> impl Iterator<Item = &Column> {
+        self.columns.iter()
+    }
+}
 
 /// A rule contains atoms and conditions, sometimes united under the umbrella
 /// term _proposition_.
-trait Rule: Identifiable<Self::Identifier> {
+///
+/// [`fmt::Debug`] so that anything carrying rules around — [`UnmatchedRules`],
+/// say — can be unwrapped and printed without a frontend having to be asked
+/// for it a second time.
+trait Rule: Identifiable<Self::Identifier> + fmt::Debug {
     type Identifier: Identifier;
     type Atom: Atom<Identifier = Self::Identifier>;
     type Cond: Cond;
 
-    /// The atom this rule derives, which is its _definand_ if not specified
-    /// otherwise in [`RulePredicate::group`].
+    /// The atom this rule derives, its _definand_. Its
+    /// [`bindings`](Atom::bindings) say which term fills each of the derived
+    /// predicate's [`columns`](Predicate::columns).
     ///
-    /// Note that [`Identifiable::id`] names the _rule_, which some frontends
-    /// may want to keep distinct even between rules of one predicate.
+    /// Its identifier plays no part in grouping: [`RulePredicate::group`] takes
+    /// the definand's name as an argument of its own, so a frontend keeping
+    /// a rule's name and its definand apart need not encode one in the
+    /// other. Note that [`Identifiable::id`] names the _rule_.
     fn head(&self) -> &Self::Atom;
 
     /// The atoms of the rule's _body_. The head is _not_ among them, as
@@ -309,7 +386,7 @@ trait Rule: Identifiable<Self::Identifier> {
     }
 }
 
-trait Cond {
+trait Cond: fmt::Debug {
     type Identifier: Identifier;
     type Var: TypedVar<Identifier = Self::Identifier>;
     type Lit: Lit;
@@ -319,25 +396,35 @@ trait Cond {
     fn right(&self) -> Bind<&Self::Var, &Self::Lit>;
 }
 
-trait Atom: Identifiable<Self::Identifier> {
+trait Atom: Identifiable<Self::Identifier> + fmt::Debug {
     type Identifier: Identifier;
     type Var: TypedVar<Identifier = Self::Identifier>;
     type Lit: Lit;
 
-    /// What's in the parenthesis, in order of appearance.
-    fn bindings(&self) -> impl Iterator<Item = Bind<&Self::Var, &Self::Lit>>;
+    /// What's in the parenthesis, as `(column position, term)` pairs.
+    ///
+    /// Sparse: a position the atom does not mention is simply absent. It binds
+    /// no variable, so it constrains no join and reaches no projection, which
+    /// is what keeps an atom over a wide relation cheap and spares Datalog's
+    /// `_` any representation at all.
+    ///
+    /// A rule's [`head`](Rule::head) is the exception and has to be dense,
+    /// covering every one of its predicate's [`columns`](Predicate::columns)
+    /// exactly once: a column no head fills has nothing to project into it.
+    fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)>;
 
     /// All variables brought into scope by this [`Atom`].
     fn vars(&self) -> impl Iterator<Item = &Self::Var>;
 }
 
 /// Binds something to either a variable or a literal value.
+#[derive(Debug)]
 enum Bind<Var, Lit> {
     Var(Var),
     Lit(Lit),
 }
 
-trait TypedVar: Identifiable<Self::Identifier> {
+trait TypedVar: Identifiable<Self::Identifier> + fmt::Debug {
     type Identifier: Identifier;
 
     fn name(&self) -> &Self::Identifier {
@@ -347,7 +434,7 @@ trait TypedVar: Identifiable<Self::Identifier> {
     fn ty(&self) -> ScalarType;
 }
 
-trait Lit: Into<Literal> {}
+trait Lit: Into<Literal> + fmt::Debug {}
 
 /// An atom that resolves to nothing, as reported by
 /// [`LogicalProgram::dangling_references`]. Borrows the offending site from the
@@ -355,9 +442,9 @@ trait Lit: Into<Literal> {}
 struct DanglingReference<'a, P: Predicate> {
     /// The predicate whose definition contains the offending atom.
     predicate: &'a P,
-    /// The rule within that predicate.
+    /// The rule the offending name sits in.
     rule: &'a P::Rule,
-    /// The name that resolves to neither the IDB nor the EDB.
+    /// The name that resolves to nothing.
     identifier: &'a P::Identifier,
 }
 
@@ -377,6 +464,7 @@ impl<P: Predicate> fmt::Display for DanglingReference<'_, P> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::table_schema;
 
     impl Identifier for String {}
 
@@ -386,6 +474,7 @@ mod tests {
     fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
         TestPredicate {
             name: name.to_owned(),
+            columns: columns(),
             rules: rules
                 .iter()
                 .enumerate()
@@ -410,17 +499,28 @@ mod tests {
         }
     }
 
+    /// A rule paired with the definand it derives, the shape
+    /// [`RulePredicate::group`] takes. The rule heads an atom named after the
+    /// definand, which is the ordinary case; pass an explicit pair where the
+    /// two have to differ.
+    fn derives(definand: &str, name: &str, atoms: &[&str]) -> (String, TestRule) {
+        (definand.to_owned(), rule(name, definand, atoms))
+    }
+
     /// A program whose EDB holds every name the predicates reference but do not
     /// define, so that it is free of dangling references by construction.
     fn program(predicates: Vec<TestPredicate>) -> TestLogicalProgram {
-        let defined: HashSet<&String> =
-            predicates.iter().map(|predicate| &predicate.name).collect();
+        let defined: HashSet<&str> = predicates
+            .iter()
+            .map(|predicate| predicate.name.as_str())
+            .collect();
         let base_relations = predicates
             .iter()
             .flat_map(|predicate| predicate.rules.iter())
             .flat_map(|rule| rule.atoms.iter())
-            .map(|atom| atom.name.clone())
+            .map(|atom| atom.name.as_str())
             .filter(|name| !defined.contains(name))
+            .map(edb_entry)
             .collect();
         TestLogicalProgram {
             predicates,
@@ -433,11 +533,32 @@ mod tests {
     fn program_over(predicates: Vec<TestPredicate>, base_relations: &[&str]) -> TestLogicalProgram {
         TestLogicalProgram {
             predicates,
-            base_relations: base_relations
-                .iter()
-                .map(|name| (*name).to_owned())
-                .collect(),
+            base_relations: base_relations.iter().copied().map(edb_entry).collect(),
         }
+    }
+
+    /// A base relation paired with its schema. The columns play no part in
+    /// grouping, resolution or stratification, so one keyed column stands in
+    /// for whatever shape a translation test will want later.
+    fn edb_entry(name: &str) -> (String, TableSchema) {
+        (
+            name.to_owned(),
+            table_schema(name, [("x", ScalarType::Uint)], ["x"]),
+        )
+    }
+
+    /// The declared columns of a test predicate, matching [`edb_entry`]'s
+    /// single column so heads and base relations line up.
+    fn columns() -> Vec<Column> {
+        vec![Column::new("x", ScalarType::Uint)]
+    }
+
+    /// A declaration for each `name`, all sharing [`columns`].
+    fn declarations(names: &[&str]) -> Vec<(String, Vec<Column>)> {
+        names
+            .iter()
+            .map(|name| ((*name).to_owned(), columns()))
+            .collect()
     }
 
     /// The names of the predicates per clique, in execution order.
@@ -490,14 +611,18 @@ mod tests {
     }
 
     #[test]
-    fn rules_group_into_predicates_by_their_head() {
+    fn rules_slot_into_the_predicate_their_definand_names() {
         // `r1` interleaves the two rules deriving `path`, so the grouping
         // cannot simply be a run-length split of the input.
-        let predicates = RulePredicate::group(vec![
-            (None, rule("r0", "path", &["edge"])),
-            (None, rule("r1", "reachable", &["path"])),
-            (None, rule("r2", "path", &["path", "edge"])),
-        ]);
+        let predicates = RulePredicate::group(
+            declarations(&["path", "reachable"]),
+            vec![
+                derives("path", "r0", &["edge"]),
+                derives("reachable", "r1", &["path"]),
+                derives("path", "r2", &["path", "edge"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
         assert_eq!(
             grouping_of(&predicates),
             vec![("path", vec!["r0", "r2"]), ("reachable", vec!["r1"])]
@@ -505,64 +630,116 @@ mod tests {
     }
 
     #[test]
-    fn grouping_orders_predicates_by_first_definition() {
-        // `reachable` is defined first, so it comes first, even though `path`
-        // is the one it reads.
-        let predicates = RulePredicate::group(vec![
-            (None, rule("r0", "reachable", &["path"])),
-            (None, rule("r1", "path", &["edge"])),
-        ]);
+    fn rules_may_carry_their_predicate_s_own_name() {
+        // The Datalog convention: a frontend that does not name rules apart
+        // passes the predicate's name for both, so the rules of one predicate
+        // are indistinguishable by name. Grouping does not care either way.
+        let predicates = RulePredicate::group(
+            declarations(&["path"]),
+            vec![
+                derives("path", "path", &["edge"]),
+                derives("path", "path", &["path", "edge"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
         assert_eq!(
             grouping_of(&predicates),
-            vec![("reachable", vec!["r0"]), ("path", vec!["r1"])]
+            vec![("path", vec!["path", "path"])]
         );
     }
 
     #[test]
-    fn a_given_name_overrides_the_head() {
-        // `r1` is named differently from the predicate it defines,
-        // so its definand comes alongside instead of out of its head.
-        // `r0` takes the plain Datalog route, and the two still meet in `path`.
-        // No frontend currently has this mixed behavior but we support it
-        // anyways.
-        let predicates = RulePredicate::group(vec![
-            (None, rule("r0", "path", &["edge"])),
-            (
-                Some("path".to_owned()),
-                rule("r1", "transitive_closure", &["path", "edge"]),
-            ),
-        ]);
+    fn predicates_come_out_in_declaration_order() {
+        // Declaration order decides, not the order the rules arrive in: `r0`
+        // derives `reachable` but `path` was declared first.
+        let predicates = RulePredicate::group(
+            declarations(&["path", "reachable"]),
+            vec![
+                derives("reachable", "r0", &["path"]),
+                derives("path", "r1", &["edge"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        assert_eq!(
+            grouping_of(&predicates),
+            vec![("path", vec!["r1"]), ("reachable", vec!["r0"])]
+        );
+    }
+
+    #[test]
+    fn a_declared_predicate_without_rules_stays_empty() {
+        let predicates = RulePredicate::group(
+            declarations(&["path", "unused"]),
+            vec![derives("path", "r0", &["edge"])],
+        )
+        .expect("every definand names a declared predicate");
+        assert_eq!(
+            grouping_of(&predicates),
+            vec![("path", vec!["r0"]), ("unused", vec![])]
+        );
+    }
+
+    #[test]
+    fn the_definand_decides_where_a_rule_lands_not_its_head() {
+        // Both rules head an atom named after neither the predicate nor
+        // themselves, so only the definand can be placing them.
+        let predicates = RulePredicate::group(
+            declarations(&["path"]),
+            vec![
+                ("path".to_owned(), rule("r0", "base_case", &["edge"])),
+                (
+                    "path".to_owned(),
+                    rule("r1", "transitive_closure", &["path", "edge"]),
+                ),
+            ],
+        )
+        .expect("both definands name a declared predicate");
         assert_eq!(grouping_of(&predicates), vec![("path", vec!["r0", "r1"])]);
     }
 
     #[test]
-    fn one_name_for_every_rule_yields_one_predicate() {
-        // An ad-hoc query: whatever the heads say, it all derives one output.
-        let predicates = RulePredicate::group(vec![
-            (Some("answer".to_owned()), rule("r0", "path", &["edge"])),
-            (
-                Some("answer".to_owned()),
-                rule("r1", "reachable", &["path"]),
-            ),
-        ]);
-        assert_eq!(grouping_of(&predicates), vec![("answer", vec!["r0", "r1"])]);
+    fn a_rule_deriving_no_declared_predicate_is_rejected() {
+        // Both offenders are reported, not just the first, and each is named
+        // by its definand. `r2`'s head says `path`, which *is* declared, so
+        // reporting the head would point at the wrong thing.
+        let error = RulePredicate::group(
+            declarations(&["path"]),
+            vec![
+                derives("path", "r0", &["edge"]),
+                derives("pathh", "r1", &["edge"]),
+                ("paths".to_owned(), rule("r2", "path", &["path", "edge"])),
+            ],
+        )
+        .expect_err("two definands name undeclared predicates");
+        assert_eq!(
+            error.to_string(),
+            "rule 'r1' derives 'pathh', which no declaration names; \
+             rule 'r2' derives 'paths', which no declaration names"
+        );
     }
 
     #[test]
     fn grouping_nothing_yields_no_predicates() {
-        let nothing = Vec::<(Option<String>, TestRule)>::new();
-        assert!(RulePredicate::group(nothing).is_empty());
+        let nothing = Vec::<(String, TestRule)>::new();
+        let predicates =
+            RulePredicate::group(declarations(&[]), nothing).expect("nothing to mismatch");
+        assert!(predicates.is_empty());
     }
 
     #[test]
     fn a_grouped_program_stratifies() {
-        // The path a real frontend takes: a flat list of rules, grouped into
-        // predicates, read back as a program.
-        let program = program(RulePredicate::group(vec![
-            (None, rule("r0", "reachable", &["path"])),
-            (None, rule("r1", "path", &["edge"])),
-            (None, rule("r2", "path", &["path", "edge"])),
-        ]));
+        // The path a real frontend takes: declarations plus a flat list of
+        // rules, grouped into predicates, read back as a program.
+        let predicates = RulePredicate::group(
+            declarations(&["reachable", "path"]),
+            vec![
+                derives("reachable", "r0", &["path"]),
+                derives("path", "r1", &["edge"]),
+                derives("path", "r2", &["path", "edge"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
         assert_eq!(dangling_names(&program), Vec::<String>::new());
         assert_eq!(cliques_of(&program), vec![vec!["path"], vec!["reachable"]]);
         let cliques = program.cliques();
@@ -749,7 +926,7 @@ mod tests {
 
     struct TestLogicalProgram {
         predicates: Vec<TestPredicate>,
-        base_relations: HashSet<String>,
+        base_relations: HashMap<String, TableSchema>,
     }
 
     impl LogicalProgram for TestLogicalProgram {
@@ -760,8 +937,11 @@ mod tests {
             self.predicates.iter()
         }
 
-        fn is_base_relation(&self, identifier: &Self::Identifier) -> bool {
-            self.base_relations.contains(identifier)
+        fn base_relation_schema(
+            &self,
+            identifier: &Self::Identifier,
+        ) -> Option<Cow<'_, TableSchema>> {
+            self.base_relations.get(identifier).map(Cow::Borrowed)
         }
     }
 
@@ -769,6 +949,7 @@ mod tests {
     /// scaffolding stops at the rule level.
     type TestPredicate = RulePredicate<String, TestRule>;
 
+    #[derive(Debug)]
     struct TestRule {
         name: String,
         head: TestAtom,
@@ -799,6 +980,7 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
     struct TestAtom {
         name: String,
     }
@@ -814,7 +996,7 @@ mod tests {
         type Var = TestTypedVar;
         type Lit = TestLit;
 
-        fn bindings(&self) -> impl Iterator<Item = Bind<&Self::Var, &Self::Lit>> {
+        fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)> {
             std::iter::empty()
         }
 
@@ -823,6 +1005,7 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
     struct TestTypedVar {
         name: String,
     }
@@ -841,6 +1024,7 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
     struct TestLit(Literal);
 
     impl From<TestLit> for Literal {
@@ -853,6 +1037,7 @@ mod tests {
 
     /// Conditions play no part in the reference graph, so the test programs
     /// carry none and this type exists only to satisfy [`Rule::Cond`].
+    #[derive(Debug)]
     struct TestCond {
         operator: Operator,
         left: Bind<TestTypedVar, TestLit>,
