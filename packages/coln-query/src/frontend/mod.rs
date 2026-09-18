@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod gabow;
+#[cfg(test)]
+mod test_utils;
 mod translation;
 
 use crate::{
@@ -18,9 +20,6 @@ trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash
 trait Identifiable<Identifier> {
     fn id(&self) -> &Identifier;
 }
-
-// TODO: On top of these traits, implement:
-// - Conjunctive query translation
 
 trait LogicalProgram {
     type Identifier: Identifier;
@@ -443,7 +442,12 @@ trait TypedVar: Identifiable<Self::Identifier> + fmt::Debug {
     fn ty(&self) -> ScalarType;
 }
 
-trait Lit: Into<Literal> + fmt::Debug {}
+trait Lit: fmt::Debug {
+    /// [`Atom::bindings`] and [`Cond`] hand out a `&Self`, while the IR wants an
+    /// owned [`Literal`]. An implementor that has `impl From<&Self> for Literal`
+    /// writes `self.into()` here.
+    fn to_literal(&self) -> Literal;
+}
 
 /// An atom that resolves to nothing, as reported by
 /// [`LogicalProgram::dangling_references`]. Borrows the offending site from the
@@ -472,153 +476,7 @@ impl<P: Predicate> fmt::Display for DanglingReference<'_, P> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::test_utils::table_schema;
-    use std::collections::HashMap;
-
-    impl Identifier for String {}
-
-    /// A predicate named `name`, defined by one rule per entry in `rules`,
-    /// each rule listing the names its atoms reference. A name that is not a
-    /// predicate of the program stands for a base table from the EDB.
-    fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
-        TestPredicate {
-            name: name.to_owned(),
-            columns: columns(),
-            rules: rules
-                .iter()
-                .enumerate()
-                .map(|(idx, atoms)| rule(&format!("{name}#{idx}"), name, atoms))
-                .collect(),
-        }
-    }
-
-    /// A rule called `name`, deriving the predicate `head` from body `atoms`.
-    fn rule(name: &str, head: &str, atoms: &[&str]) -> TestRule {
-        TestRule {
-            name: name.to_owned(),
-            head: TestAtom {
-                name: head.to_owned(),
-            },
-            atoms: atoms
-                .iter()
-                .map(|atom| TestAtom {
-                    name: (*atom).to_owned(),
-                })
-                .collect(),
-        }
-    }
-
-    /// A rule paired with the definand it derives, the shape
-    /// [`RulePredicate::group`] takes. The rule heads an atom named after the
-    /// definand, which is the ordinary case; pass an explicit pair where the
-    /// two have to differ.
-    fn derives(definand: &str, name: &str, atoms: &[&str]) -> (String, TestRule) {
-        (definand.to_owned(), rule(name, definand, atoms))
-    }
-
-    /// A program whose EDB holds every name the predicates reference but do not
-    /// define, so that it is free of dangling references by construction.
-    fn program(predicates: Vec<TestPredicate>) -> TestLogicalProgram {
-        let defined: HashSet<&str> = predicates
-            .iter()
-            .map(|predicate| predicate.name.as_str())
-            .collect();
-        let base_relations = predicates
-            .iter()
-            .flat_map(|predicate| predicate.rules.iter())
-            .flat_map(|rule| rule.atoms.iter())
-            .map(|atom| atom.name.as_str())
-            .filter(|name| !defined.contains(name))
-            .map(edb_entry)
-            .collect();
-        TestLogicalProgram {
-            predicates,
-            base_relations,
-        }
-    }
-
-    /// A program whose EDB holds exactly `base_relations`, for the cases where
-    /// that matters.
-    fn program_over(predicates: Vec<TestPredicate>, base_relations: &[&str]) -> TestLogicalProgram {
-        TestLogicalProgram {
-            predicates,
-            base_relations: base_relations.iter().copied().map(edb_entry).collect(),
-        }
-    }
-
-    /// A base relation paired with its schema. The columns play no part in
-    /// grouping, resolution or stratification, so one keyed column stands in
-    /// for whatever shape a translation test will want later.
-    fn edb_entry(name: &str) -> (String, TableSchema) {
-        (
-            name.to_owned(),
-            table_schema(name, [("x", ScalarType::Uint)], ["x"]),
-        )
-    }
-
-    /// The declared columns of a test predicate, matching [`edb_entry`]'s
-    /// single column so heads and base relations line up.
-    fn columns() -> Vec<Column> {
-        vec![Column::new("x", ScalarType::Uint)]
-    }
-
-    /// A declaration for each `name`, all sharing [`columns`].
-    fn declarations(names: &[&str]) -> Vec<(String, Vec<Column>)> {
-        names
-            .iter()
-            .map(|name| ((*name).to_owned(), columns()))
-            .collect()
-    }
-
-    /// The names of the predicates per clique, in execution order.
-    fn cliques_of(program: &TestLogicalProgram) -> Vec<Vec<String>> {
-        program
-            .cliques()
-            .into_iter()
-            .map(|clique| clique.members().map(|member| member.id().clone()).collect())
-            .collect()
-    }
-
-    /// The names of the non-recursive and the recursive rules of every clique,
-    /// in execution order.
-    fn rule_split_of(program: &TestLogicalProgram) -> Vec<(Vec<String>, Vec<String>)> {
-        program
-            .cliques()
-            .into_iter()
-            .map(|clique| {
-                let names = |rules: &mut dyn Iterator<Item = &TestRule>| {
-                    rules.map(|rule| rule.id().clone()).collect()
-                };
-                (
-                    names(&mut clique.non_rec_rules()),
-                    names(&mut clique.rec_rules()),
-                )
-            })
-            .collect()
-    }
-
-    /// The offending names, in the order they are reported.
-    fn dangling_names(program: &TestLogicalProgram) -> Vec<String> {
-        program
-            .dangling_references()
-            .iter()
-            .map(|reference| reference.identifier.clone())
-            .collect()
-    }
-
-    /// The predicate names, and per predicate its rule names.
-    fn grouping_of(predicates: &[TestPredicate]) -> Vec<(&str, Vec<&str>)> {
-        predicates
-            .iter()
-            .map(|predicate| {
-                (
-                    predicate.id().as_str(),
-                    predicate.rules().map(|rule| rule.id().as_str()).collect(),
-                )
-            })
-            .collect()
-    }
+    use super::{test_utils::*, *};
 
     #[test]
     fn rules_slot_into_the_predicate_their_definand_names() {
@@ -932,150 +790,5 @@ mod tests {
                 ),
             ]
         );
-    }
-
-    struct TestLogicalProgram {
-        predicates: Vec<TestPredicate>,
-        base_relations: HashMap<String, TableSchema>,
-    }
-
-    impl LogicalProgram for TestLogicalProgram {
-        type Identifier = String;
-        type Predicate = TestPredicate;
-
-        fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
-            self.predicates.iter()
-        }
-
-        fn base_relation_schema(
-            &self,
-            identifier: &Self::Identifier,
-        ) -> Option<Cow<'_, TableSchema>> {
-            self.base_relations.get(identifier).map(Cow::Borrowed)
-        }
-    }
-
-    /// The tests use [`RulePredicate`] itself as their [`Predicate`], so the
-    /// scaffolding stops at the rule level.
-    type TestPredicate = RulePredicate<String, TestRule>;
-
-    #[derive(Debug)]
-    struct TestRule {
-        name: String,
-        head: TestAtom,
-        atoms: Vec<TestAtom>,
-    }
-
-    impl Identifiable<String> for TestRule {
-        fn id(&self) -> &String {
-            &self.name
-        }
-    }
-
-    impl Rule for TestRule {
-        type Identifier = String;
-        type Atom = TestAtom;
-        type Cond = TestCond;
-
-        fn head(&self) -> &Self::Atom {
-            &self.head
-        }
-
-        fn atoms(&self) -> impl Iterator<Item = &Self::Atom> {
-            self.atoms.iter()
-        }
-
-        fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
-            std::iter::empty()
-        }
-    }
-
-    #[derive(Debug)]
-    struct TestAtom {
-        name: String,
-    }
-
-    impl Identifiable<String> for TestAtom {
-        fn id(&self) -> &String {
-            &self.name
-        }
-    }
-
-    impl Atom for TestAtom {
-        type Identifier = String;
-        type Var = TestTypedVar;
-        type Lit = TestLit;
-
-        fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)> {
-            std::iter::empty()
-        }
-
-        fn vars(&self) -> impl Iterator<Item = &Self::Var> {
-            std::iter::empty()
-        }
-    }
-
-    #[derive(Debug)]
-    struct TestTypedVar {
-        name: String,
-    }
-
-    impl Identifiable<String> for TestTypedVar {
-        fn id(&self) -> &String {
-            &self.name
-        }
-    }
-
-    impl TypedVar for TestTypedVar {
-        type Identifier = String;
-
-        fn ty(&self) -> ScalarType {
-            ScalarType::Uint
-        }
-    }
-
-    #[derive(Debug)]
-    struct TestLit(Literal);
-
-    impl From<TestLit> for Literal {
-        fn from(value: TestLit) -> Self {
-            value.0
-        }
-    }
-
-    impl Lit for TestLit {}
-
-    /// Conditions play no part in the reference graph, so the test programs
-    /// carry none and this type exists only to satisfy [`Rule::Cond`].
-    #[derive(Debug)]
-    struct TestCond {
-        operator: Operator,
-        left: Bind<TestTypedVar, TestLit>,
-        right: Bind<TestTypedVar, TestLit>,
-    }
-
-    impl Cond for TestCond {
-        type Identifier = String;
-        type Var = TestTypedVar;
-        type Lit = TestLit;
-
-        fn operator(&self) -> impl Into<Operator> {
-            self.operator
-        }
-
-        fn left(&self) -> Bind<&Self::Var, &Self::Lit> {
-            borrow(&self.left)
-        }
-
-        fn right(&self) -> Bind<&Self::Var, &Self::Lit> {
-            borrow(&self.right)
-        }
-    }
-
-    fn borrow<Var, Lit>(bind: &Bind<Var, Lit>) -> Bind<&Var, &Lit> {
-        match bind {
-            Bind::Var(var) => Bind::Var(var),
-            Bind::Lit(lit) => Bind::Lit(lit),
-        }
     }
 }
