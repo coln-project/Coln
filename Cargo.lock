@@ -1097,6 +1097,7 @@ dependencies = [
  "criterion",
  "dbsp",
  "feldera-size-of",
+ "indexmap",
  "rkyv",
  "thiserror 2.0.20",
 ]

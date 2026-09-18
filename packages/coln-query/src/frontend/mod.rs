@@ -10,11 +10,8 @@ use crate::{
     relational::schema::{Column, TableSchema},
     scalarial::ScalarType,
 };
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    fmt,
-};
+use indexmap::IndexMap;
+use std::{borrow::Cow, collections::HashSet, fmt};
 
 trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash::Hash {}
 
@@ -103,13 +100,12 @@ trait LogicalProgram {
     /// other hand, is intended and resolves to the predicate.
     fn cliques(&self) -> Vec<PredicateClique<'_, Self::Predicate>> {
         // A predicate's position in `predicates` is its node in the reference
-        // graph. That correspondence never leaves this function, so no part of
-        // the trait has to promise anything about predicate order.
-        let predicates: Vec<&Self::Predicate> = self.predicates().collect();
-        let indices: HashMap<&Self::Identifier, usize> = predicates
-            .iter()
-            .enumerate()
-            .map(|(idx, predicate)| (predicate.id(), idx))
+        // graph, and the map's keys are what an atom is matched against. That
+        // correspondence never leaves this function, so no part of the trait
+        // has to promise anything about predicate order.
+        let predicates: IndexMap<&Self::Identifier, &Self::Predicate> = self
+            .predicates()
+            .map(|predicate| (predicate.id(), predicate))
             .collect();
         // An atom naming a base relation of the EDB resolves to no index and
         // hence contributes no edge. Consulting the IDB alone is what lets a
@@ -117,19 +113,29 @@ trait LogicalProgram {
         // Atoms referencing the same predicate more than once yield duplicate
         // edges, which the search walks over without any further ado.
         let adjacency: Vec<Vec<usize>> = predicates
-            .iter()
+            .values()
             .map(|predicate| {
                 predicate
                     .rules()
                     .flat_map(|rule| rule.atoms())
-                    .filter_map(|atom| indices.get(atom.id()).copied())
+                    .filter_map(|atom| predicates.get_index_of(atom.id()))
                     .collect()
             })
             .collect();
         let sccs_rev_topo_order = gabow::sccs(&adjacency);
         sccs_rev_topo_order
             .into_iter()
-            .map(|members| members.into_iter().map(|idx| predicates[idx]).collect())
+            .map(|members| {
+                members
+                    .into_iter()
+                    .map(|idx| {
+                        *predicates
+                            .get_index(idx)
+                            .expect("a component names a node of the graph just built")
+                            .1
+                    })
+                    .collect()
+            })
             .collect::<Vec<PredicateClique<_>>>()
     }
 }
@@ -283,25 +289,28 @@ impl<I: Identifier, R: Rule<Identifier = I>> RulePredicate<I, R> {
         declarations: impl IntoIterator<Item = (I, Vec<Column>)>,
         rules: impl IntoIterator<Item = (I, R)>,
     ) -> Result<Vec<Self>, UnmatchedRules<I, R>> {
-        let mut predicates: Vec<Self> = Vec::new();
-        let mut indices: HashMap<I, usize> = HashMap::new();
-        for (name, columns) in declarations {
-            indices.insert(name.clone(), predicates.len());
-            predicates.push(Self {
-                name,
-                columns,
-                rules: Vec::new(),
-            });
-        }
+        // Keyed by name for slotting rules in, ordered by declaration for
+        // handing the predicates back.
+        let mut predicates: IndexMap<I, Self> = declarations
+            .into_iter()
+            .map(|(name, columns)| {
+                let predicate = Self {
+                    name: name.clone(),
+                    columns,
+                    rules: Vec::new(),
+                };
+                (name, predicate)
+            })
+            .collect();
         let mut unmatched: Vec<(I, R)> = Vec::new();
         for (definand, rule) in rules {
-            match indices.get(&definand) {
-                Some(&idx) => predicates[idx].rules.push(rule),
+            match predicates.get_mut(&definand) {
+                Some(predicate) => predicate.rules.push(rule),
                 None => unmatched.push((definand, rule)),
             }
         }
         match unmatched.is_empty() {
-            true => Ok(predicates),
+            true => Ok(predicates.into_values().collect()),
             false => Err(UnmatchedRules { rules: unmatched }),
         }
     }
@@ -465,6 +474,7 @@ impl<P: Predicate> fmt::Display for DanglingReference<'_, P> {
 mod tests {
     use super::*;
     use crate::test_utils::table_schema;
+    use std::collections::HashMap;
 
     impl Identifier for String {}
 
