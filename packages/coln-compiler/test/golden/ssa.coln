@@ -1,6 +1,6 @@
 theory IsTransClosure (X : Set) (R : (^c x : X) -> (^c y : X) -> Set) (P : X -> X -> Set) := sig
   refl : (x : X) -> P x x
-  snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
+  snoc : (x y z : X) -> P x y -> R y z -> P x z
 end
 
 theory LinearOrder := sig
@@ -17,7 +17,7 @@ theory LinearOrder := sig
 
   follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
 
-  acyclic : (^c x : car) -> (^c y : car) -> follows x y -> follows y x -> x = y
+  acyclic : (^c x y : car) -> (^c y : car) -> follows x y -> follows y x -> x = y
   first-is-top : (x : car) -> follows first x
   last-is-bot : (x : car) -> follows x last
 end
