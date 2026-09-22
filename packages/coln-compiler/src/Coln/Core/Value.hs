@@ -114,7 +114,7 @@ expandRecord recordType head spine desc = do
       go vs ((x, ty) : rest) = do
         let v = reflect head (Proj recordType.level spine x) (ty vs) ((`proj` x) <$> desc)
         v : go (LSnoc vs v) rest
-  let tele = recordType.fieldTypes
+  let tele = expandMultiDict recordType.fieldTypes
   Dict
     tele.head
     (Vector.fromList (go recordType.capture (toList tele)))
@@ -231,7 +231,7 @@ data FunctionType = FunctionType
 data RecordType = RecordType
   { level :: Level
   , capture :: Locals
-  , fieldTypes :: Dict (Locals -> Ty N)
+  , fieldTypes :: MultiDict (Locals -> Ty N)
   }
 
 data InductiveType = InductiveType
@@ -247,7 +247,7 @@ data EqualityType = EqualityType
 
 typeForProjection :: RecordType -> Name -> Dict (El N) -> Ty N
 typeForProjection rt x fields = do
-  let i = getKeyIndex rt.fieldTypes x
+  let i = getKeyIndexMulti rt.fieldTypes x
   let chunk = Vector.slice 0 i.value fields.values
   let locals = LSnocChunk rt.capture chunk
   elemAt rt.fieldTypes i $ locals

@@ -39,6 +39,14 @@ bind x a m c = do
   let v = V.local (FId c.len) a
   let_ x v a m c
 
+-- bindMany :: [AbsEntry] -> V.Ty N -> Mode -> Scope -> Scope
+-- bindMany xs a m c = foldr (\x s -> case x of
+--                               Named x -> bind x a m s
+--                               Anonymous -> s) c xs
+
+bindMany :: [Name] -> V.Ty N -> Mode -> Scope -> Scope
+bindMany xs a m c = foldr (\x s -> bind x a m s) c xs
+
 let_ :: Name -> V.El N -> V.Ty N -> Mode -> Scope -> Scope
 let_ x v a m c =
   Scope

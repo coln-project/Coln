@@ -1,0 +1,61 @@
+theory Field := sig
+  B : Set
+  x : B
+  y : B
+  z w : B
+
+  P : Prop
+  p : P
+  q : P
+  r s : P
+  # P
+end
+
+theory SimpleSets := sig
+  B : Set
+  x : B
+  y z : B
+  w : B
+end
+
+def simple-model : SimpleSets := struct
+  B := Int
+  x := 41
+  y := 19
+  z := 34
+  w := 38
+end
+
+def Q : Prop := sig
+end
+
+theory SimpleProps := sig
+  x : Q
+  y z : Q
+  w : Q
+end
+
+def q : Q := struct
+end
+
+def prop-model : SimpleProps := struct
+  x := q
+  y := q
+  z := q
+  w := q
+end
+
+# TODO:
+
+# theory AnonProps := sig
+#   Q
+#   x : Int
+#   Q
+#   y : Int
+#   Q
+# end
+
+# def anon-model : AnonProps := struct
+#   x := 41
+#   y := 19
+# end

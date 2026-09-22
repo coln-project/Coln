@@ -60,7 +60,7 @@ deriving instance (Show (ty N)) => Show (FunctionType ty)
 
 data RecordType ty = RecordType
   { level :: Level
-  , fieldTypes :: Dict (ty N)
+  , fieldTypes :: MultiDict (ty N)
   }
 
 deriving instance (Show (ty N)) => Show (RecordType ty)
