@@ -76,7 +76,7 @@ instance Interp S.Ty V.Ty where
             in V.Function (V.FunctionType variant dom cod)
       Pair c (go e ft.cod.bindings)
     S.Record rt -> withLevel rt.level.mlevel $ \sl -> do
-      let rt' = V.RecordType rt.level.hlevel e (flip (interpAt sl g) <$> rt.fieldTypes)
+      let rt' = V.RecordType rt.level.hlevel e (flip (interpAt sl g) <$> expandMultiDict rt.fieldTypes)
       Pair sl (V.Become $ V.Record rt')
     S.Eq et -> do
       let at = interpAt SSet g e et.at

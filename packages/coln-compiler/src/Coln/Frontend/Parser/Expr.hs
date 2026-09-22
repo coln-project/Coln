@@ -67,9 +67,15 @@ binder e = \case
     Function.Binder xs mode <$> typ e arg
   n -> Function.Binder [Anonymous] Inductive <$> typ e n
 
+fieldIdent :: ParserEnv -> Ntn -> IO Name
+fieldIdent e n@(N.Ident "_" _) = unexpectedNotation e n "non _ identifier"
+fieldIdent _ (N.Ident x _) = pure x
+fieldIdent e n = unexpectedNotation e n "identifier"
+
 fieldDecl :: ParserEnv -> Ntn -> IO Record.FieldDeclaration
-fieldDecl e (N.Infix (N.Ident x _) (N.Keyword ":" _) n) =
-  Record.FieldDeclaration x <$> typ e n
+fieldDecl e (N.Infix (N.Group xs) (N.Keyword ":" _) n) = do
+  names <- traverse (fieldIdent e) (toList xs)
+  Record.FieldDeclaration names <$> typ e n
 fieldDecl e (N.Decl c n sp) =
   Record.FieldDeclarationDebug <$> debugCommand e sp c n
 fieldDecl e n = unexpectedNotation e n "field declaration of the form `<fieldname> : <type>`"

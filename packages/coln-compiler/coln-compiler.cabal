@@ -73,6 +73,7 @@ library
     Coln.Util.Dict
     Coln.Util.Fresh
     Coln.Util.Match
+    Coln.Util.MultiDict
     Coln.Util.PartialOrd
     Coln.Util.Report
     Coln.Util.Strings

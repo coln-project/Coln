@@ -188,6 +188,10 @@ isNamedEntry :: AbsEntry -> Bool
 isNamedEntry (Named _) = True
 isNamedEntry Anonymous = False
 
+entryName :: AbsEntry -> Maybe Name
+entryName (Named n) = Just n
+entryName Anonymous = Nothing
+
 -- Realms
 --------------------------------------------------------------------------------
 

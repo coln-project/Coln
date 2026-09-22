@@ -20,6 +20,7 @@ module Coln.Common (
   module Coln.Util.Dict,
   module Coln.Util.Fresh,
   module Coln.Util.Match,
+  module Coln.Util.MultiDict,
   module Coln.Util.PartialOrd,
   module Coln.Util.Report,
   module Coln.Util.Strings,
@@ -47,6 +48,7 @@ import Coln.Util.Debug
 import Coln.Util.Dict
 import Coln.Util.Fresh
 import Coln.Util.Match
+import Coln.Util.MultiDict
 import Coln.Util.PartialOrd
 import Coln.Util.Report
 import Coln.Util.Strings

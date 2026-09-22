@@ -76,7 +76,7 @@ instance Readback V.RecordType (S.RecordType S.Ty) where
     S.RecordType
       { S.level = r.level
       , S.fieldTypes =
-          Dict
+          MultiDict
             { head = r.fieldTypes.head
             , values = Vector.fromList $ go n r.capture r.fieldTypes.values
             }

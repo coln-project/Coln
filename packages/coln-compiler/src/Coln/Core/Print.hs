@@ -93,8 +93,8 @@ instance ToNotation (Ty e) where
     Record r -> N.Block "sig" Nothing (go xs $ toList r.fieldTypes) ()
      where
       go _ [] = []
-      go xs' ((y, a) : pairs') =
-        nbinding y (toNotation xs' a) : go (xs' :> y) pairs'
+      go xs' ((ys, a) : pairs') =
+        multibinding (fmap Named ys) (toNotation xs' a) : go (xs' <> fromList ys) pairs'
     Eq eq ->
       N.Infix
         (toNotation xs eq.lhs)
