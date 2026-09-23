@@ -4,24 +4,24 @@
 
 module Coln.WasmTop () where
 
-import Prelude hiding (span)
-import Coln.FLIR.Value qualified as FLIR
-import Coln.Top
-import Coln.Diagnostics
-import Coln.SIR.Realm qualified as SIR
 import Coln.Common
+import Coln.Diagnostics
+import Coln.FLIR.Value qualified as FLIR
+import Coln.SIR.Realm qualified as SIR
+import Coln.Top
 import Coln.Util.JSString
+import Prelude hiding (span)
 
-import Data.IORef
 import Data.Aeson qualified as AE
 import Data.Aeson.Encoding qualified as AE
+import Data.ByteString qualified as BS
+import Data.IORef
 import Data.Map.Ordered qualified as OMap
+import Data.Text.Lazy qualified as TL
 import Diagnostician.HTML
 import GHC.Wasm.Prim
 import Lucid qualified as Lucid
 import Prettyprinter.Render.Text
-import Data.ByteString qualified as BS
-import Data.Text.Lazy qualified as TL
 
 data RealmProducts = RealmProducts
   { flir :: FLIR.Realm
@@ -72,7 +72,7 @@ getAnnotation d = do
   let code = renderStrict $ layoutCompact $ prtCode d.code
   let message = renderStrict $ layoutCompact $ d.summary
   Annotation span code message
-  
+
 data RenderedDiagnostic = RenderedDiagnostic
   { html :: TL.Text
   , annotation :: Annotation
@@ -115,7 +115,7 @@ fullPipeline src = do
   dRef <- newIORef []
   let rep = pureReporter dRef
   realms <- loadRealmsFromFile rep f
-  let products = OMap.fromList [(x, getProducts x r) | (x, r) <- OMap.assocs realms ]
+  let products = OMap.fromList [(x, getProducts x r) | (x, r) <- OMap.assocs realms]
   diagnostics <- (fmap renderDiagnostic) <$> readIORef dRef
   pure $ CompileResult products diagnostics
 
@@ -123,5 +123,5 @@ jsCompile :: JSString -> IO JSString
 jsCompile src = do
   res <- fullPipeline (textFromJSString src)
   pure $ byteStringToJSString $ BS.toStrict $ AE.encode res
-  
+
 foreign export javascript "compile" jsCompile :: JSString -> IO JSString

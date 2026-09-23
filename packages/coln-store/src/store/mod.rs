@@ -283,6 +283,12 @@ pub struct ColnDef {
     pub realm: String,
 }
 
+impl ColnDef {
+    pub fn new(theory: String, realm: String) -> Self {
+        Self { theory, realm }
+    }
+}
+
 // Autocommit method that opens up a txn, does a single operations
 // then immediately closes the txn
 impl StoreRead for Store {

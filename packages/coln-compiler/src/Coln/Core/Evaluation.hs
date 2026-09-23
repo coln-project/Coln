@@ -45,7 +45,7 @@ instance Compile S.El V.El where
       \vs -> V.proj (k vs) x
     S.Init t -> do
       let k = compile t
-      \vs -> V.BecomeWith $ \n -> V.InitNeu (V.InitNeutral n (k vs) V.Id)
+      \vs -> V.BecomeWith $ \n -> V.reflectInit n V.Id (k vs)
     S.Lit l -> \_ -> V.Lit l
     S.Is t -> do
       let k = compile t

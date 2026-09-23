@@ -25,7 +25,9 @@ class Separate a b | a -> b where
 instance Separate V.Head (S.El Set) where
   separate n = \case
     V.Var (FId i) -> S.Var (BId (n - i - 1))
-    V.Lookup tn args ret -> S.Lookup tn (separate n <$> args) (shapeOf ret)
+    V.Lookup tn args ret -> case shapeOf ret of
+      S.Unstored -> S.Erased
+      sh -> S.Lookup tn (separate n <$> args) sh
 
 instance Separate (V.El N Set) (S.El Set) where
   separate n = \case
@@ -40,14 +42,6 @@ instance Separate (V.El N Set) (S.El Set) where
 separateClo :: (Separate a b) => CtxLen -> V.Clo (V.El N Set) a -> S.Abs b
 separateClo n (V.Clo x body) = S.Abs (Just x) (separate (n + 1) (body (V.local (FId n))))
 separateClo n (V.CloConst body) = S.AbsConst (separate n body)
-
--- instance Separate (V.El N Theory) (S.El Theory) where
---   separate n = \case
---     V.LiftEl LSetTheory v -> S.LiftEl (separate n v)
---     V.Code SSetU a -> S.Multi SSetU (separate n a)
---     V.Code SPropU a -> S.Multi SPropU (separate n a)
---     V.Lam SSetTheory dom clo -> S.Lam (separate n dom) (separateClo n clo)
---     V.Cons fields -> S.Cons $ separate n <$> fields
 
 shapeOf :: V.Ty N Set -> S.Shape
 shapeOf = \case
@@ -81,7 +75,7 @@ theoryShapeOf cs a v = case a of
     let fields = snd $ mapAccumWithKeyL doField rt.capture rt.fieldTypes
     S.Record fields
   V.U (inferSetCodes -> u) -> case v of
-    V.PrimCode _ tn _ -> S.BaseU u (S.Scalar (S.RowId tn))
+    V.PrimCode pr _ tn _ -> S.BaseU pr u (S.Scalar (S.RowId tn))
     V.Code SSetU a -> S.ViewU u $ shapeOf a
     V.Code SPropU a -> S.ViewU u $ shapeOf a
     _ -> panic "expected a primcode or a code"
@@ -127,23 +121,23 @@ separateGenerator tn gen = do
             SSetU -> Nothing
             SPropU -> Just [0 .. argNum - 1]
       let entityVariant = case gen.providence of
-            V.Holy -> View Memoized
-            V.Profane -> Table
+            Holy -> View Memoized
+            Profane -> Table
       let entity = Entity entityVariant (second (.shape) <$> cols) primaryKey
       let atom = S.Atom tn S.Erased [S.Var (BId $ argNum - i - 1) | i <- [0 .. argNum - 1]]
       let foreignKey = Rule Enforced Consequent (zip names septys) atom S.trueProp
       let rules = case gen.providence of
-            V.Holy -> Nothing
-            V.Profane -> Just $ Node $ fromList [("foreignKey", Leaf foreignKey)]
+            Holy -> Nothing
+            Profane -> Just $ Node $ fromList [("foreignKey", Leaf foreignKey)]
       (Just $ Leaf entity, Nothing, rules)
     V.GenLift a -> case hlevelOf a of
       HUnit -> (Nothing, Nothing, Nothing)
       HProp -> do
         let codProp = propAt argNum a V.Erased
         case gen.providence of
-          V.Holy -> do
+          Holy -> do
             (Nothing, defsOf cols codProp, Nothing)
-          V.Profane -> do
+          Profane -> do
             let rule = Rule Monitored Antecedent cols S.trueProp codProp
             (Nothing, Nothing, Just $ Leaf rule)
       HSet -> do
@@ -151,7 +145,7 @@ separateGenerator tn gen = do
         let resultQ = separate argNum a
 
         case gen.providence of
-          V.Holy -> do
+          Holy -> do
             let view = Entity (View Memoized) (second (.shape) <$> cols) (Just [0 .. argNum - 1])
 
             let collect = Definition cols tn [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
@@ -161,7 +155,7 @@ separateGenerator tn gen = do
             let codProp = propAt (argNum + 1) a V.Erased
             let construct = defsOf (cols ++ [(resultName, domQ)]) codProp
             (Just $ Leaf view, Just $ Node $ fromList $ ("collect", Leaf collect) : (maybeToList . sequence) ("construct", construct), Nothing)
-          V.Profane -> do
+          Profane -> do
             let allCols = cols ++ [(resultName, resultQ)]
             let table = Entity Table (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
 

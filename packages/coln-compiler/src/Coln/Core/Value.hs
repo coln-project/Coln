@@ -161,7 +161,28 @@ data InitNeutral = InitNeutral
   { name :: BareNeutral
   , initialOf :: Ty N
   , spine :: Spine
+  , expansion :: ~Expansion
   }
+
+expandInitRecord :: RecordType -> BareNeutral -> Spine -> Dict (El N)
+expandInitRecord recordType head spine = do
+  let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
+      go _ [] = []
+      go vs ((x, ty) : rest) = do
+        let v = reflectInit head (Proj recordType.level spine x) (ty vs)
+        v : go (LSnoc vs v) rest
+  let tele = recordType.fieldTypes
+  Dict
+    tele.head
+    (Vector.fromList (go recordType.capture (toList tele)))
+
+reflectInit :: BareNeutral -> Spine -> Ty N -> El N
+reflectInit bn spine ty = do
+  let ~expansion = case behavior ty of
+        LikeRecord recordType ->
+          IntoCons (expandInitRecord recordType bn spine)
+        _ -> NotApplicable
+  InitNeu $ InitNeutral bn ty spine expansion
 
 fullNeu :: InitNeutral -> BareNeutral
 fullNeu n = BareNeutral n.name.head (composeSpines n.name.spine n.spine)
@@ -178,6 +199,8 @@ app :: FunctionVariant -> El c -> El N -> Evaluation El c
 app _ (Lam _ _ clo) arg = appClo clo arg
 app fv (Neu n) arg =
   reflect n.head (App fv n.spine arg) (appTy n.ty arg) ((flip (app fv) arg) <$> n.description)
+app fv (InitNeu n) arg =
+  reflectInit n.name (App fv n.spine arg) (appTy n.initialOf arg)
 app _ _ _ = panic "ill-typed application"
 
 coerceToFields :: El c -> Dict (Evaluation El c)
@@ -185,6 +208,9 @@ coerceToFields (Cons _ fields) = fields
 coerceToFields (Neu n) = case n.expansion of
   IntoCons fields -> fields
   _ -> panic "unexpanded neutral of record type"
+coerceToFields (InitNeu n) = case n.expansion of
+  IntoCons fields -> fields
+  _ -> panic "unexpanded init neutral of record type"
 coerceToFields _ = panic "ill-typed projection"
 
 proj :: El c -> Name -> Evaluation El c

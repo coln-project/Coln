@@ -17,7 +17,15 @@ export interface MutableSet<T> extends Set<T> {
   add(): T
 }
 
-export class BaseTableSet<P extends string> implements MutableSet<RowId<P>> {
+export interface Prop {
+  isTrue(): boolean
+}
+
+export interface MutableProp extends Prop {
+  makeTrue(): void
+}
+
+export class BaseSet<P extends string> implements MutableSet<RowId<P>> {
   constructor(private store: ManagedStore, private table_name: P, private bound: LiveTuple) {}
   
   values(): RowId<P>[] {
@@ -43,7 +51,19 @@ export class BaseTableSet<P extends string> implements MutableSet<RowId<P>> {
   }
 }
 
-export class ViewTableSet<T> implements Set<T> {
+export class BaseProp implements MutableProp {
+  constructor(private store: ManagedStore, private table_name: string, private bound: LiveTuple) {}
+  
+  isTrue(): boolean {
+    return this.store.exists({table_name: this.table_name, row_id: null, values: this.bound.map(toWire)})
+  }
+  
+  makeTrue(): void {
+    this.store.add(this.table_name, this.bound.map(toTxnWire))
+  }
+}
+
+export class ConjunctiveViewSet<T> implements Set<T> {
   constructor(private store: ManagedStore, private table_name: Path, private bound: LiveTuple, private select: number[], private adaptor: Adaptor<T>) {}
 
   values(): T[] {
@@ -58,8 +78,15 @@ export class ViewTableSet<T> implements Set<T> {
     return this.store.exists({
       table_name: this.table_name,
       row_id: null,
-      values: [...this.bound.map(toWire), ...this.adaptor.flatten(v)]
+      values: [...this.bound.map(toWire), ...this.adaptor.flatten(v).map(toWire)]
     })
   }
 }
 
+export class ViewProp implements Prop {
+  constructor(private store: ManagedStore, private table_name: string, private bound: LiveTuple) {}
+
+  isTrue(): boolean {
+    return this.store.exists({table_name: this.table_name, row_id: null, values: this.bound.map(toWire)})
+  }
+}

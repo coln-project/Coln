@@ -731,7 +731,8 @@ impl DefinitionGroups {
             } else {
                 let idx = predicates.len();
                 predicates.push(Predicate::empty(definand.clone()));
-                debug_assert!(grouping.insert(definand, idx).is_none());
+                let res = grouping.insert(definand, idx);
+                debug_assert!(res.is_none());
                 idx
             };
             let predicate = &mut predicates[idx];
@@ -770,6 +771,7 @@ impl DefinitionGroups {
 /// and the FLIR or maybe a Datalog frontend. Every frontend can then use the
 /// `PredicateMeta` generic to add arbitrary per-frontend metadata,
 /// such as the a FLIR's rule kind. Add a RuleMeta.
+#[derive(Debug)]
 struct Predicate {
     /// The name (unique identifier) of the predicate.
     name: ir::Path,
@@ -802,6 +804,7 @@ impl Predicate {
 /// TODO: Unite both [`FriendlyRule`] and [`FriendlyDefinition`] in one rule
 /// type of the fronend-neutral middle layer and solve the variable expansion
 /// problem beforehand.
+#[derive(Debug)]
 struct FriendlyDefinition {
     path: ir::Path,
     vars: Vec<FriendlyVar>,
@@ -866,6 +869,7 @@ impl FriendlyRule {
 /// in an antijoin by partitioning a `Vec<Prop>` into atoms and conditions.
 /// This is useful because applying all atoms first, guarantees that every
 /// variable a condition may refer to is in scope already.
+#[derive(Debug)]
 struct ConjunctiveQuery {
     atoms: Vec<ir::Atom>,
     // Currently, only equality conditions are part of the FLIR.
@@ -892,6 +896,7 @@ impl ConjunctiveQuery {
 }
 
 /// A wrapper type around ([`ir::Path`], [`ir::ColType`]).
+#[derive(Debug)]
 struct FriendlyVar {
     name: ir::Path,
     ty: ir::ColType, // either a row id or a builtin type

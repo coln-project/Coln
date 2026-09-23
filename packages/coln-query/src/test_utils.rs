@@ -213,7 +213,7 @@ pub mod flir {
         const NAME: &'static str;
 
         fn load(&self) -> ir::FlatRealm {
-            coln_flir_rs::test_utils::load_theory_from_json(&format!("{}.json", Self::NAME))
+            coln_flir_rs::test_utils::load_theory_from_json(format!("{}.json", Self::NAME))
         }
     }
 
@@ -288,7 +288,7 @@ pub mod flir {
     pub trait EntityPath<Flir: JsonFlir> {
         const PATH: &'static str;
         fn ir_path() -> ir::Path {
-            ir::Path::from(format!("{}.{}", Flir::NAME, Self::PATH))
+            ir::Path::from(Self::PATH.to_string())
         }
     }
 
