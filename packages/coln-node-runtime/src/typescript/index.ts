@@ -19,6 +19,7 @@ export class NodeStore implements types.Store {
   }
 
   startTransaction(): void {
+    this.underlying.startTransaction()
   }
   endTransaction(): types.CommitHash {
     return JSON.parse(this.underlying.endTransaction())

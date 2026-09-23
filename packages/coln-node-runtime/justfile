@@ -1,13 +1,16 @@
 build-runtime:
     npx napi build --platform --esm -o native
     mkdir -p dist
+    rm -rf dist/native
     cp -r native dist/native
 
 generate-bindings:
     cabal run coln-cli -- generate-ts test/definitions.coln -o test
 
-test: build-runtime generate-bindings
+test: 
     mkdir -p dist
     tsc
     cabal run coln-cli -- generate-ir test/definitions.coln -o dist/test
     node dist/test/main.js
+
+build-and-test: build-runtime generate-bindings test

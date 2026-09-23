@@ -32,7 +32,9 @@ pub fn store_from_ir(
 #[napi]
 impl AutoStoreWrapper {
     #[napi]
-    pub fn start_transaction(&self) {}
+    pub fn start_transaction(&mut self) {
+        self.store.transaction();
+    }
 
     #[napi]
     pub fn end_transaction(&mut self) -> String {

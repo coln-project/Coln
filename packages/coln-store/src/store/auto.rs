@@ -26,21 +26,21 @@ pub struct AutoStore {
 
 impl StoreRead for AutoStore {
     fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
-        self.txn.as_ref().expect("open txn").scan_table(table)
+        self.store.as_ref().expect("closed txn").scan_table(table)
     }
 
     fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_proj(query, select)
+        self.store.as_ref().expect("closed txn").all_proj(query, select)
     }
 
     fn all_row_id(&self, query: &WhereClause) -> Result<Vec<crate::table::WireRowId>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_row_id(query)
+        self.store.as_ref().expect("closed txn").all_row_id(query)
     }
 
     fn row_by_id(&self, table: &ir::Path, row_id: &crate::table::WireRowId) -> Option<WireRowView> {
-        self.txn
+        self.store
             .as_ref()
-            .expect("open txn")
+            .expect("closed txn")
             .row_by_id(table, row_id)
     }
 }
