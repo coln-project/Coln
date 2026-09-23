@@ -174,7 +174,7 @@ expandInitRecord recordType head spine = do
       go vs ((x, ty) : rest) = do
         let v = reflectInit head (Proj recordType.level spine x) (ty vs)
         v : go (LSnoc vs v) rest
-  let tele = recordType.fieldTypes
+  let tele = expandMultiDict recordType.fieldTypes
   Dict
     tele.head
     (Vector.fromList (go recordType.capture (toList tele)))
