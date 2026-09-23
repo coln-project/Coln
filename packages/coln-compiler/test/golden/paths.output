@@ -14,9 +14,30 @@ value: G => sig
   empty : (x : G.V) -> t x x
   cons : (x : G.V) -> (y : G.V) -> (z : G.V) -> (e : G.E x y) -> t y z -> t x z
 end
+realm named Graph
+lowered: flatrealm
+  entities
+    table root.V := []
+    table root.E := [a : root.V, b : root.V] primarykey [a, b]
+    view init.reachability.t := [a : root.V, b : root.V] primarykey [a, b]
+  end
+  definitions
+    chased init.reachability.empty x := x ∈ root.V [] ⊢ init.reachability.t [
+      a ↦ x,
+      b ↦ x
+    ]
+    chased init.reachability.cons x y z := x ∈ root.V [] ∧ y ∈ root.V [] ∧ z ∈ root.V [] ∧ root.E [
+      a ↦ x,
+      b ↦ y
+    ] ∧ init.reachability.t [a ↦ y, b ↦ z] ⊢ init.reachability.t [a ↦ x, b ↦ z]
+  end
+  rules
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.E.foreignKey a b := root.E [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
+  end
+end
 
 -- messages
-
-error[E0314]: no such variable self in scope
-22 |   ind def reachability : Reachability/motive self := init (Reachability/motive self)
-22 |                                              ^^^^
