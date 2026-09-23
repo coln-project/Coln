@@ -37,14 +37,11 @@ data FieldSetting c = FieldSetting
   , span :: Span
   }
 
-chunkSublistsH :: [(a, b)] -> [[a]] -> [b] -> [[(a,b)]]
-chunkSublistsH acc [] bs = []
-chunkSublistsH acc ass [] = []
-chunkSublistsH acc ([]:ass) bs = acc : chunkSublistsH [] ass bs
-chunkSublistsH acc ((a:as):ass) (b:bs) = chunkSublistsH ((a,b):acc) (as:ass) bs
-
-chunkSublists :: [[a]] -> [b] -> [[(a,b)]]
-chunkSublists = chunkSublistsH []
+chunkSublists :: [[a]] -> [b] -> [[(a, b)]]
+chunkSublists [] _ = []
+chunkSublists (as : ass) bs =
+  let (group, rest) = splitAt (length as) bs
+   in zip as group : chunkSublists ass rest
 
 intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Chk c
 intro @c sp fieldSettings = Chk \e a -> do
