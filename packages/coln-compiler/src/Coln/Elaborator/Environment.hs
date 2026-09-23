@@ -45,7 +45,7 @@ bind x a m c = do
 --                               Anonymous -> s) c xs
 
 bindMany :: [Name] -> V.Ty N -> Mode -> Scope -> Scope
-bindMany xs a m c = foldr (\x s -> bind x a m s) c xs
+bindMany xs a m c = foldl (\s x -> bind x a m s) c xs
 
 let_ :: Name -> V.El N -> V.Ty N -> Mode -> Scope -> Scope
 let_ x v a m c =

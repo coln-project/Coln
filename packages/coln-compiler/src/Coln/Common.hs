@@ -315,12 +315,8 @@ data MultiDict a = MultiDict
   , values :: Vector a
   }
 
--- TODO: do this less stupidly
 expandMultiDict :: MultiDict a -> Dict a
-expandMultiDict md = do
-  let newKeys = fromList $ concat $ toList md.head.keys
-  let newValues = fromList $ concat $ zipWith (\ns v -> replicate (length ns) v) (toList md.head.keys) (toList md.values)
-  Dict (DictHead md.head.byName newKeys) newValues
+expandMultiDict md = fromList [(name, value) | (names, value) <- toList md, name <- names]
 
 instance (Show a) => Show (MultiDict a) where
   show d = "MultiDict " ++ show (toList d)
