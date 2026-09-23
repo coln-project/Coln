@@ -150,7 +150,7 @@ mod tests {
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::table::{ValidationError, WireValue};
     use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int_store};
-    use crate::txn::id::empty_row;
+    use crate::txn::id::{Promote, empty_row};
 
     #[rstest]
     fn validates_then_applies(#[from(single_int_store)] mut store: Store) {

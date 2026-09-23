@@ -108,9 +108,11 @@ mod writes {
     fn store_add_inserts_row(#[from(single_int_autostore)] mut store: AutoStore) {
         let path = Path::from("T");
 
+        store.transaction();
         store.add(&path, vec![42i32]).expect("add row");
         store.commit().expect("txn success");
 
+        store.transaction();
         assert_eq!(store.scan_table(&path).expect("T").len(), 1);
     }
 
@@ -148,6 +150,7 @@ mod reads {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
 
+        store.transaction();
         let n0 = store.add(&nodes, empty_row()).expect("n0");
         let n1 = store.add(&nodes, empty_row()).expect("n1");
 
@@ -167,6 +170,7 @@ mod reads {
             row_id: None,
             values: vec![],
         };
+        store.transaction();
         assert_eq!(
             store
                 .all_proj(&all_edges, &[0])
@@ -209,6 +213,7 @@ mod reads {
         store.create_table(path.clone(), schema).expect("create T");
 
         let mut store = store.auto();
+        store.transaction();
 
         store.add(&path, vec![1i32, 10, 100]).expect("r0");
         store.add(&path, vec![1i32, 10, 101]).expect("r1");
@@ -227,6 +232,7 @@ mod reads {
             row_id: None,
             values: values.into_iter().map(WireValue::from).collect(),
         };
+        store.transaction();
 
         assert_eq!(
             store.all_proj(&query(vec![]), &cols).expect("empty prefix"),
@@ -699,7 +705,10 @@ mod rowing {
 }
 
 mod commits {
-    use crate::test_utils::{commit_int, commit_int_store, single_int_store};
+    use crate::{
+        store::frag::FragmentSync,
+        test_utils::{commit_int, commit_int_store, single_int_store},
+    };
 
     use super::*;
 
@@ -771,9 +780,9 @@ mod commits {
             .map(|chunk| chunk.bytes)
             .collect::<Vec<_>>();
 
-        let (restored, pending) = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
 
-        assert!(pending.is_empty());
+        assert_eq!(restored.pending_commits_len(), 0);
         assert_eq!(restored.table_count(), 0);
         assert_eq!(restored.heads(), source.heads());
     }
@@ -792,9 +801,9 @@ mod commits {
             .collect::<Vec<_>>();
         chunks.reverse();
 
-        let (restored, pending) = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
 
-        assert!(pending.is_empty());
+        assert_eq!(restored.pending_commits_len(), 0);
         assert_eq!(
             row_values(&restored, &Path::from("T")),
             vec![vec![WireValue::Int(99)]]
@@ -930,20 +939,16 @@ mod commits {
             .collect();
         assert_eq!(chunks.len(), 2);
 
-        let leftover = target
+        target
             .apply_chunk_bytes([chunks[1].clone()])
             .expect("skip child without parent");
-        assert_eq!(leftover.len(), 1);
+        assert_eq!(target.pending_commits.len(), 1);
         assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
 
-        let leftover = target
-            .apply_chunk_bytes(
-                leftover
-                    .into_iter()
-                    .chain(std::iter::once(chunks[0].clone())),
-            )
+        target
+            .apply_chunk_bytes(std::iter::once(chunks[0].clone()))
             .expect("retry leftover with parent");
-        assert!(leftover.is_empty());
+        assert!(target.pending_commits.is_empty());
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
