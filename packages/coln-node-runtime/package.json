@@ -5,10 +5,10 @@
   },
   "type": "module",
   "scripts": {
-    "runtime": "napi build --platform --esm --release -o native",
-    "runtime:debug": "napi build --platform --esm -o native",
-    "bindings": "cabal run coln-cli -- generate-ts test/transitive-closure.coln -o test",
-    "test": "tsc; cp test/war-and-peace.json dist/test/; cabal run coln-cli -- generate-ir test/transitive-closure.coln -o dist/test; node dist/test/main.js"
+    "build-runtime": "napi build --platform --esm --release -o native",
+    "build-runtime:debug": "napi build --platform --esm -o native",
+    "generate-bindings": "cabal run coln-cli -- generate-ts test/definitions.coln -o test",
+    "test": "tsc; cabal run coln-cli -- generate-ir test/definitions.coln -o dist/test; node dist/test/main.js"
   },
   "dependencies": {
     "@coln-project/interface": "link:../coln-js-interface"

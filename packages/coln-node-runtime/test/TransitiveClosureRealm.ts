@@ -1,14 +1,9 @@
-// SPDX-FileCopyrightText: 2026 Coln contributors
-//
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-
 import * as runtime from "@coln-project/interface";
 
 export class TransitiveClosureRealm {
   root: {
     V: runtime.MutableSet<runtime.RowId<"root.V">>,
-    E: (a: runtime.RowId<"root.V">) => (b: runtime.RowId<"root.V">) => runtime.MutableSet<runtime.RowId<"root.E">>,
-    blah: (v0: runtime.RowId<"root.V">) => (v1: runtime.RowId<"root.V">) => (a: runtime.RowId<"root.E">) => runtime.MutableRef<null>
+    E: (a: runtime.RowId<"root.V">) => (b: runtime.RowId<"root.V">) => runtime.MutableSet<runtime.RowId<"root.E">>
   };
   trans_closure: {
     connected: (a: runtime.RowId<"root.V">) => (b: runtime.RowId<"root.V">) => runtime.Prop,
@@ -26,13 +21,6 @@ export class TransitiveClosureRealm {
       E: (a: runtime.RowId<"root.V">) => {
         return (b: runtime.RowId<"root.V">) => {
           return (new runtime.BaseSet(mstore, "root.E", [a, b]));
-        };
-      },
-      blah: (v0: runtime.RowId<"root.V">) => {
-        return (v1: runtime.RowId<"root.V">) => {
-          return (a: runtime.RowId<"root.E">) => {
-            return (new runtime.ConstRef(null));
-          };
         };
       }
     };

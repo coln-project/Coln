@@ -1,7 +1,6 @@
 theory Graph := sig
   V : Set
   E : V -> V -> Set
-  blah : (^c v0 : V) -> (^c v1 : V) -> E v0 v1 -> v0 = v1
 end
 
 theory TransExt (^i G : Graph) := sig
