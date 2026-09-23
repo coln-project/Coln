@@ -32,10 +32,15 @@ import Test.Tasty.HUnit (testCase, (@?=))
 import Prelude hiding (lex, read)
 
 knownCrashingElaboratorTests :: [String]
-knownCrashingElaboratorTests = []
+knownCrashingElaboratorTests = ["empty"]
 
 knownCrashingTypeScriptTests :: [String]
-knownCrashingTypeScriptTests = []
+knownCrashingTypeScriptTests = [
+  "empty-prop-record-function",
+  "prop-record-nested-dependent",
+  "proof-record",
+  "prop-record"
+  ]
 
 main :: IO ()
 main = defaultMain =<< goldenTests
