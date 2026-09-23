@@ -78,16 +78,16 @@ instance Readback V.RecordType (S.RecordType S.Ty) where
       , S.fieldTypes =
           MultiDict
             { head = r.fieldTypes.head
-            , values = Vector.fromList $ go n r.capture r.fieldTypes.values
+            , values = Vector.fromList $ go n r.capture (toList r.fieldTypes)
             }
       }
    where
-    go i ls fs =
-      if Vector.null fs
-        then []
-        else do
-          let ty = Vector.head fs ls
-          readb i ty : go (i + 1) (V.LSnoc ls $ V.local (FId i) ty) (Vector.tail fs)
+    go _ _ [] = []
+    go i ls ((names, fieldTy) : rest) = do
+      let ty = fieldTy ls
+      let count = length names
+      let locals = Vector.generate count $ \j -> V.local (FId (i + j)) ty
+      readb i ty : go (i + count) (V.LSnocChunk ls locals) rest
 
 instance Readback V.EqualityType (S.EqualityType S.El S.Ty) where
   readb n eq =
