@@ -213,7 +213,7 @@ pub mod flir {
         const NAME: &'static str;
 
         fn load(&self) -> ir::FlatRealm {
-            coln_flir_rs::test_utils::load_theory_from_json(&format!("{}.json", Self::NAME))
+            coln_flir_rs::test_utils::load_theory_from_json(format!("{}.json", Self::NAME))
         }
     }
 
