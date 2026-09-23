@@ -1,0 +1,42 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "coln",
+      "camelcase": "Coln",
+      "title": "Coln",
+      "scope": "source.coln",
+      "file-types": [
+        "coln"
+      ],
+      "injection-regex": "^coln$",
+      "class-name": "TreeSitterColn"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.1",
+    "license": "Apache-2.0 OR MIT",
+    "description": "A data-oriented proof assistant",
+    "authors": [
+      {
+        "name": "Benno Lossin",
+        "email": "bl603@cam.ac.uk",
+        "url": "benno-lossin.de"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/coln-project/Coln",
+      "funding": ""
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "java": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true,
+    "zig": true
+  }
+}
