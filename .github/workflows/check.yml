@@ -22,6 +22,7 @@ jobs:
         run: |
           nix-env -i just reuse -f '<nixpkgs>'
           just check-licenses
+
   rust-fmt:
     runs-on: ubuntu-latest
     steps:
@@ -95,3 +96,23 @@ jobs:
         run: |
           RUN_CHECKS=$(nix build .#haskell-tests --no-link --print-out-paths)
           $RUN_CHECKS
+
+  end-to-end-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ⬇️
+        uses: actions/checkout@v6
+
+      - name: Install Nix ❄️
+        uses: cachix/install-nix-action@v31
+
+      - name: Set up Cachix ♻️
+        uses: cachix/cachix-action@v17
+        with:
+          name: coln
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Run end-to-end tests
+        run: |
+          nix develop --command just -f packages/coln-node-runtime/justfile build-and-test

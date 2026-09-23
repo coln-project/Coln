@@ -30,7 +30,10 @@ impl StoreRead for AutoStore {
     }
 
     fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
-        self.store.as_ref().expect("closed txn").all_proj(query, select)
+        self.store
+            .as_ref()
+            .expect("closed txn")
+            .all_proj(query, select)
     }
 
     fn all_row_id(&self, query: &WhereClause) -> Result<Vec<crate::table::WireRowId>, StoreError> {

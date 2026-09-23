@@ -4,12 +4,6 @@
     "binaryName": "coln-node-runtime"
   },
   "type": "module",
-  "scripts": {
-    "build-runtime": "napi build --platform --esm --release -o native",
-    "build-runtime:debug": "napi build --platform --esm -o native",
-    "generate-bindings": "cabal run coln-cli -- generate-ts test/definitions.coln -o test",
-    "test": "tsc; cabal run coln-cli -- generate-ir test/definitions.coln -o dist/test; node dist/test/main.js"
-  },
   "dependencies": {
     "@coln-project/interface": "link:../coln-js-interface"
   },

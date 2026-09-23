@@ -4,7 +4,7 @@
 
 import { NodeStore } from "../src/typescript/index.js"
 import { readFile } from "node:fs/promises"
-import { TransitiveClosureRealm  } from "./TransitiveClosureRealm.js"
+import { TransitiveClosureRealm  } from "./bindings/TransitiveClosureRealm.js"
 import { ManagedStore } from "@coln-project/interface"
 
 const ir: string = await readFile(

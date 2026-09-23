@@ -4,8 +4,14 @@ build-runtime:
     rm -rf dist/native
     cp -r native dist/native
 
+build-interface:
+    cd ../coln-js-interface/
+    mkdir -p dist
+    tsc
+
 generate-bindings:
-    cabal run coln-cli -- generate-ts test/definitions.coln -o test
+    mkdir -p test/bindings
+    cabal run coln-cli -- generate-ts test/definitions.coln -o test/bindings/
 
 test: 
     mkdir -p dist
@@ -13,4 +19,4 @@ test:
     cabal run coln-cli -- generate-ir test/definitions.coln -o dist/test
     node dist/test/main.js
 
-build-and-test: build-runtime generate-bindings test
+build-and-test: build-interface build-runtime generate-bindings test
