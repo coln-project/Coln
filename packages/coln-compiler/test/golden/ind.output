@@ -20,7 +20,3 @@ type: (G : Graph) -> TransitiveExt G
 value: G => init (TransitiveExt G)
 
 -- messages
-
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-14 | ind def free-point (X : Set) : X := init X
-14 |                                          ^

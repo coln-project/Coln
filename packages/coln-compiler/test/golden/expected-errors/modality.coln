@@ -1,0 +1,21 @@
+theory cond (^i X : Set) := sig
+  x : X
+end
+
+def string-alias : Set := String
+
+theory Graph := sig
+  V : Set
+  E : V -> V -> Set
+end
+
+theory Graph/hom (G : Graph) (^i H : Graph) := sig
+  V : G.V -> H.V
+  E : (a b : G.V) -> G.E a b -> H.E (V a) (V b)
+end
+
+theory GraphWithNames := sig
+  G : Graph
+  name : G.V -> String
+  a : G.V
+end

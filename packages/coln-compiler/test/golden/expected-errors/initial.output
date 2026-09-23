@@ -1,0 +1,8 @@
+-- elaborated
+
+
+-- messages
+
+error[E0316]: cannot use inductively bound variable in a conjunctive context
+1 | ind def free-point (X : Set) : X := init X
+1 |                                          ^

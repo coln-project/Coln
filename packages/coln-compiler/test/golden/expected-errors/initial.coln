@@ -1,0 +1,1 @@
+ind def free-point (X : Set) : X := init X
