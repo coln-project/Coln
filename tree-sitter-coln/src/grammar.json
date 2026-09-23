@@ -1,16 +1,454 @@
 {
   "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
   "name": "coln",
+  "word": "ident",
   "rules": {
-    "source_file": {
+    "file": {
+      "type": "REPEAT",
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "_ident_keyword"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_ident_symbol"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_symbol_token"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_dynamic_token"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_composite_symbol"
+          }
+        ]
+      }
+    },
+    "_ident_keyword": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "t_sig"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_struct"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_theory"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_realm"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_def"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_let"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_open"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_import"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_showtypeb"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_showtype"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_showlevel"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_expand"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_ind"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_end"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_Set"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_Prop"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_Int"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_String"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_Inductive"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_pure"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_init"
+        }
+      ]
+    },
+    "t_sig": {
       "type": "STRING",
-      "value": "hello"
+      "value": "sig"
+    },
+    "t_struct": {
+      "type": "STRING",
+      "value": "struct"
+    },
+    "t_theory": {
+      "type": "STRING",
+      "value": "theory"
+    },
+    "t_realm": {
+      "type": "STRING",
+      "value": "realm"
+    },
+    "t_def": {
+      "type": "STRING",
+      "value": "def"
+    },
+    "t_let": {
+      "type": "STRING",
+      "value": "let"
+    },
+    "t_open": {
+      "type": "STRING",
+      "value": "open"
+    },
+    "t_import": {
+      "type": "STRING",
+      "value": "import"
+    },
+    "t_showtypeb": {
+      "type": "STRING",
+      "value": "showtypeb"
+    },
+    "t_showtype": {
+      "type": "STRING",
+      "value": "showtype"
+    },
+    "t_showlevel": {
+      "type": "STRING",
+      "value": "showlevel"
+    },
+    "t_expand": {
+      "type": "STRING",
+      "value": "expand"
+    },
+    "t_ind": {
+      "type": "STRING",
+      "value": "ind"
+    },
+    "t_end": {
+      "type": "STRING",
+      "value": "end"
+    },
+    "t_Set": {
+      "type": "STRING",
+      "value": "Set"
+    },
+    "t_Prop": {
+      "type": "STRING",
+      "value": "Prop"
+    },
+    "t_Int": {
+      "type": "STRING",
+      "value": "Int"
+    },
+    "t_String": {
+      "type": "STRING",
+      "value": "String"
+    },
+    "t_Inductive": {
+      "type": "STRING",
+      "value": "Inductive"
+    },
+    "t_pure": {
+      "type": "STRING",
+      "value": "pure"
+    },
+    "t_init": {
+      "type": "STRING",
+      "value": "init"
+    },
+    "_ident_symbol": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "t_less"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_greater"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_dash"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_plus"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_slash"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_star"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_tilde"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_colon"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_equals"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_at"
+        }
+      ]
+    },
+    "t_less": {
+      "type": "STRING",
+      "value": "<"
+    },
+    "t_greater": {
+      "type": "STRING",
+      "value": ">"
+    },
+    "t_dash": {
+      "type": "STRING",
+      "value": "-"
+    },
+    "t_plus": {
+      "type": "STRING",
+      "value": "+"
+    },
+    "t_slash": {
+      "type": "STRING",
+      "value": "/"
+    },
+    "t_star": {
+      "type": "STRING",
+      "value": "*"
+    },
+    "t_tilde": {
+      "type": "STRING",
+      "value": "~"
+    },
+    "t_colon": {
+      "type": "STRING",
+      "value": ":"
+    },
+    "t_equals": {
+      "type": "STRING",
+      "value": "="
+    },
+    "t_at": {
+      "type": "STRING",
+      "value": "@"
+    },
+    "_symbol_token": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "t_paren_opn"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_paren_cls"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_brack_opn"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_brack_cls"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_brace_opn"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_brace_cls"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_comma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_semi"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_dot"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_single_quote"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "t_caret"
+        }
+      ]
+    },
+    "t_paren_opn": {
+      "type": "STRING",
+      "value": "("
+    },
+    "t_paren_cls": {
+      "type": "STRING",
+      "value": ")"
+    },
+    "t_brack_opn": {
+      "type": "STRING",
+      "value": "["
+    },
+    "t_brack_cls": {
+      "type": "STRING",
+      "value": "]"
+    },
+    "t_brace_opn": {
+      "type": "STRING",
+      "value": "{"
+    },
+    "t_brace_cls": {
+      "type": "STRING",
+      "value": "}"
+    },
+    "t_comma": {
+      "type": "STRING",
+      "value": ","
+    },
+    "t_semi": {
+      "type": "STRING",
+      "value": ";"
+    },
+    "t_dot": {
+      "type": "STRING",
+      "value": "."
+    },
+    "t_single_quote": {
+      "type": "STRING",
+      "value": "'"
+    },
+    "t_caret": {
+      "type": "STRING",
+      "value": "^"
+    },
+    "_composite_symbol": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "t_colon_equals"
+        }
+      ]
+    },
+    "t_colon_equals": {
+      "type": "STRING",
+      "value": ":="
+    },
+    "_dynamic_token": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "number"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ident"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "quoted_name_seg"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "comment"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "string"
+        }
+      ]
+    },
+    "number": {
+      "type": "PATTERN",
+      "value": "[0-9]+"
+    },
+    "ident": {
+      "type": "PATTERN",
+      "value": "[a-zA-Z_][a-zA-Z_0-9-]*"
+    },
+    "quoted_name_seg": {
+      "type": "PATTERN",
+      "value": "\\`[^\"`\"\\n\\r\\t]*\\`"
+    },
+    "comment": {
+      "type": "PATTERN",
+      "value": "#.*"
+    },
+    "string": {
+      "type": "PATTERN",
+      "value": "\\\"[^\"]*\\\""
     }
   },
   "extras": [
     {
       "type": "PATTERN",
       "value": "\\s"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "comment"
     }
   ],
   "conflicts": [],

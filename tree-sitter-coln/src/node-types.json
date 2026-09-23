@@ -1,12 +1,399 @@
 [
   {
-    "type": "source_file",
+    "type": "file",
     "named": true,
     "root": true,
-    "fields": {}
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "comment",
+          "named": true
+        },
+        {
+          "type": "ident",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        },
+        {
+          "type": "quoted_name_seg",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        },
+        {
+          "type": "t_Inductive",
+          "named": true
+        },
+        {
+          "type": "t_Int",
+          "named": true
+        },
+        {
+          "type": "t_Prop",
+          "named": true
+        },
+        {
+          "type": "t_Set",
+          "named": true
+        },
+        {
+          "type": "t_String",
+          "named": true
+        },
+        {
+          "type": "t_at",
+          "named": true
+        },
+        {
+          "type": "t_brace_cls",
+          "named": true
+        },
+        {
+          "type": "t_brace_opn",
+          "named": true
+        },
+        {
+          "type": "t_brack_cls",
+          "named": true
+        },
+        {
+          "type": "t_brack_opn",
+          "named": true
+        },
+        {
+          "type": "t_caret",
+          "named": true
+        },
+        {
+          "type": "t_colon",
+          "named": true
+        },
+        {
+          "type": "t_colon_equals",
+          "named": true
+        },
+        {
+          "type": "t_comma",
+          "named": true
+        },
+        {
+          "type": "t_dash",
+          "named": true
+        },
+        {
+          "type": "t_def",
+          "named": true
+        },
+        {
+          "type": "t_dot",
+          "named": true
+        },
+        {
+          "type": "t_end",
+          "named": true
+        },
+        {
+          "type": "t_equals",
+          "named": true
+        },
+        {
+          "type": "t_expand",
+          "named": true
+        },
+        {
+          "type": "t_greater",
+          "named": true
+        },
+        {
+          "type": "t_import",
+          "named": true
+        },
+        {
+          "type": "t_ind",
+          "named": true
+        },
+        {
+          "type": "t_init",
+          "named": true
+        },
+        {
+          "type": "t_less",
+          "named": true
+        },
+        {
+          "type": "t_let",
+          "named": true
+        },
+        {
+          "type": "t_open",
+          "named": true
+        },
+        {
+          "type": "t_paren_cls",
+          "named": true
+        },
+        {
+          "type": "t_paren_opn",
+          "named": true
+        },
+        {
+          "type": "t_plus",
+          "named": true
+        },
+        {
+          "type": "t_pure",
+          "named": true
+        },
+        {
+          "type": "t_realm",
+          "named": true
+        },
+        {
+          "type": "t_semi",
+          "named": true
+        },
+        {
+          "type": "t_showlevel",
+          "named": true
+        },
+        {
+          "type": "t_showtype",
+          "named": true
+        },
+        {
+          "type": "t_showtypeb",
+          "named": true
+        },
+        {
+          "type": "t_sig",
+          "named": true
+        },
+        {
+          "type": "t_single_quote",
+          "named": true
+        },
+        {
+          "type": "t_slash",
+          "named": true
+        },
+        {
+          "type": "t_star",
+          "named": true
+        },
+        {
+          "type": "t_struct",
+          "named": true
+        },
+        {
+          "type": "t_theory",
+          "named": true
+        },
+        {
+          "type": "t_tilde",
+          "named": true
+        }
+      ]
+    }
   },
   {
-    "type": "hello",
-    "named": false
+    "type": "comment",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "ident",
+    "named": true
+  },
+  {
+    "type": "number",
+    "named": true
+  },
+  {
+    "type": "quoted_name_seg",
+    "named": true
+  },
+  {
+    "type": "string",
+    "named": true
+  },
+  {
+    "type": "t_Inductive",
+    "named": true
+  },
+  {
+    "type": "t_Int",
+    "named": true
+  },
+  {
+    "type": "t_Prop",
+    "named": true
+  },
+  {
+    "type": "t_Set",
+    "named": true
+  },
+  {
+    "type": "t_String",
+    "named": true
+  },
+  {
+    "type": "t_at",
+    "named": true
+  },
+  {
+    "type": "t_brace_cls",
+    "named": true
+  },
+  {
+    "type": "t_brace_opn",
+    "named": true
+  },
+  {
+    "type": "t_brack_cls",
+    "named": true
+  },
+  {
+    "type": "t_brack_opn",
+    "named": true
+  },
+  {
+    "type": "t_caret",
+    "named": true
+  },
+  {
+    "type": "t_colon",
+    "named": true
+  },
+  {
+    "type": "t_colon_equals",
+    "named": true
+  },
+  {
+    "type": "t_comma",
+    "named": true
+  },
+  {
+    "type": "t_dash",
+    "named": true
+  },
+  {
+    "type": "t_def",
+    "named": true
+  },
+  {
+    "type": "t_dot",
+    "named": true
+  },
+  {
+    "type": "t_end",
+    "named": true
+  },
+  {
+    "type": "t_equals",
+    "named": true
+  },
+  {
+    "type": "t_expand",
+    "named": true
+  },
+  {
+    "type": "t_greater",
+    "named": true
+  },
+  {
+    "type": "t_import",
+    "named": true
+  },
+  {
+    "type": "t_ind",
+    "named": true
+  },
+  {
+    "type": "t_init",
+    "named": true
+  },
+  {
+    "type": "t_less",
+    "named": true
+  },
+  {
+    "type": "t_let",
+    "named": true
+  },
+  {
+    "type": "t_open",
+    "named": true
+  },
+  {
+    "type": "t_paren_cls",
+    "named": true
+  },
+  {
+    "type": "t_paren_opn",
+    "named": true
+  },
+  {
+    "type": "t_plus",
+    "named": true
+  },
+  {
+    "type": "t_pure",
+    "named": true
+  },
+  {
+    "type": "t_realm",
+    "named": true
+  },
+  {
+    "type": "t_semi",
+    "named": true
+  },
+  {
+    "type": "t_showlevel",
+    "named": true
+  },
+  {
+    "type": "t_showtype",
+    "named": true
+  },
+  {
+    "type": "t_showtypeb",
+    "named": true
+  },
+  {
+    "type": "t_sig",
+    "named": true
+  },
+  {
+    "type": "t_single_quote",
+    "named": true
+  },
+  {
+    "type": "t_slash",
+    "named": true
+  },
+  {
+    "type": "t_star",
+    "named": true
+  },
+  {
+    "type": "t_struct",
+    "named": true
+  },
+  {
+    "type": "t_theory",
+    "named": true
+  },
+  {
+    "type": "t_tilde",
+    "named": true
   }
 ]
