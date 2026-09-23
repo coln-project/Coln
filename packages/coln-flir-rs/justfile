@@ -32,6 +32,7 @@ coln_programs := "\
 graph.coln \
 graph-of-graphs.coln \
 transitive-closure.coln \
+transitive-closure-set.coln \
 triangle.coln \
 bipartite-trans-closure.coln \
 tricky-clique-pair.output \
