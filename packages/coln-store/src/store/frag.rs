@@ -60,8 +60,7 @@ impl FragmentSync for Store {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let pending_commits = std::mem::take(&mut self.pending_commits);
-        let unapplied =
-            self.apply_commits(new_commits.into_iter().chain(pending_commits.into_iter()))?;
+        let unapplied = self.apply_commits(new_commits.into_iter().chain(pending_commits))?;
 
         self.pending_commits = unapplied;
         Ok(())
