@@ -12,10 +12,12 @@
 //! [`Snapshot`]. Where the incremental backend reports deltas, this backend
 //! reports states.
 //!
-//! Value scope of this slice: unsigned integers and booleans, mapped onto
-//! the engine's u64 universe.
-// TODO(Jan): the remaining scalar types (strings first, via dictionary
-// encoding) land after the end-to-end slice is complete.
+//! Values keep their plan types end to end: unsigned and signed integers,
+//! booleans, characters and strings. The engine stores every cell as a
+//! typed key (see `coln_batch::types`); strings go through a dictionary
+//! the runtime owns, so their keys stay stable across commits. `Null` is
+//! the one plan type the backend refuses, at build time for schemas and at
+//! feed time for rows.
 //!
 //! # Interim: base tables arrive by push
 //!
@@ -40,6 +42,7 @@
 // lowering, fixpoint, and output stay as they are.
 
 mod lowering;
+mod values;
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -49,9 +52,11 @@ use coln_batch::generic_join;
 use coln_batch::query::Catalog as BatchCatalog;
 use coln_batch::relation::Relation;
 use coln_batch::rule::Program;
+use coln_batch::types::{Dictionary, Key, Schema};
 use dbsp::{OrdZSet, utils::Tup2};
 
 use self::lowering::{LoweredPlan, lower};
+use self::values::{engine_value, pipeline_value};
 use super::{Backend, Runtime};
 use crate::{
     api::deltas::{ZRow, ZWeight},
@@ -62,7 +67,7 @@ use crate::{
         expr::{SinkId, SourceId},
         relation::TupleValue,
     },
-    scalarial::{ColumnScalarEngine, ScalarTypedValue, column::VectorizedScalarEngine},
+    scalarial::{ColumnScalarEngine, column::VectorizedScalarEngine},
 };
 
 /// The non-incremental backend: lowers the plan to a coln-batch Datalog
@@ -111,6 +116,7 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
             program,
             outputs,
             schemas,
+            dictionary: Dictionary::new(),
             inputs,
             sinks,
             results: None,
@@ -124,22 +130,27 @@ pub struct BatchRuntime {
     program: Program,
     /// Sink id to the derived relation `output` reads.
     outputs: HashMap<String, String>,
-    /// Column names per relation, sources and derived alike.
-    schemas: HashMap<String, Vec<String>>,
-    /// Per used source: the net z-weight of every row fed so far. This is
-    /// the interim snapshot store described in the module docs; the pull
-    /// API replaces it.
-    inputs: HashMap<String, HashMap<Vec<u64>, ZWeight>>,
+    /// Schema (column names and types) per relation, sources and derived
+    /// alike.
+    schemas: HashMap<String, Schema>,
+    /// String codes for every row fed so far. Stable for the life of the
+    /// runtime; every commit's catalog starts from a copy of it.
+    dictionary: Dictionary,
+    /// Per used source: the net z-weight of every row fed so far, as
+    /// keys. This is the interim snapshot store described in the module
+    /// docs; the pull API replaces it.
+    inputs: HashMap<String, HashMap<Vec<Key>, ZWeight>>,
     sinks: Vec<SinkId>,
-    /// The relations of the last commit.
+    /// The relations of the last commit, with the dictionary that decodes
+    /// them.
     results: Option<BatchCatalog>,
 }
 
 /// The full current state of a result relation, the natural output of a
 /// batch backend (the incremental backend reports deltas instead).
 ///
-/// Rows are sorted and deduplicated: results are sets. Values come back as
-/// unsigned integers, matching the value slice the backend accepts.
+/// Rows are sorted and deduplicated: results are sets. Every cell carries
+/// the type the plan gave its column.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Snapshot {
     columns: Vec<String>,
@@ -147,17 +158,21 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    fn from_relation(columns: Vec<String>, relation: &Relation) -> Self {
-        let rows = (0..relation.len())
-            .map(|row| TupleValue {
-                data: relation
-                    .row(row)
-                    .into_iter()
-                    .map(ScalarTypedValue::Uint)
-                    .collect(),
-            })
-            .collect();
-        Self { columns, rows }
+    fn from_relation(
+        columns: Vec<String>,
+        relation: &Relation,
+        dictionary: &Dictionary,
+    ) -> Result<Self, RuntimeError> {
+        let mut rows = Vec::with_capacity(relation.len());
+        for i in 0..relation.len() {
+            let values = relation
+                .row_values(i, dictionary)
+                .map_err(|error| RuntimeError::new(format!("{error:#}")))?;
+            rows.push(TupleValue {
+                data: values.into_iter().map(pipeline_value).collect(),
+            });
+        }
+        Ok(Self { columns, rows })
     }
 
     /// The result's column names, in tuple order.
@@ -200,9 +215,10 @@ impl BatchRuntime {
     // TODO(Jan): swap for the pull API once the pipeline offers one.
     fn materialize_sources(&self) -> Result<BatchCatalog, RuntimeError> {
         let mut edb = BatchCatalog::new();
+        *edb.dictionary_mut() = self.dictionary.clone();
         for (source, staged) in &self.inputs {
-            let columns = self.schemas.get(source).cloned().unwrap_or_default();
-            let mut data: Vec<Vec<u64>> = vec![Vec::new(); columns.len()];
+            let schema = self.schemas.get(source).cloned().unwrap_or_default();
+            let mut data: Vec<Vec<Key>> = vec![Vec::new(); schema.arity()];
             for (row, weight) in staged {
                 match weight {
                     weight if *weight < 0 => {
@@ -214,15 +230,51 @@ impl BatchRuntime {
                     0 => {}
                     // Sets: duplicated insertions collapse into one row.
                     _ => {
-                        for (column, value) in data.iter_mut().zip(row) {
-                            column.push(*value);
+                        for (column, key) in data.iter_mut().zip(row) {
+                            column.push(*key);
                         }
                     }
                 }
             }
-            edb.insert(Relation::new(source.clone(), columns, data));
+            edb.insert(Relation::with_schema(source.clone(), schema, data));
         }
         Ok(edb)
+    }
+
+    /// Encode one fed row against its source's schema.
+    fn encode_row(
+        &mut self,
+        source: &SourceId,
+        row: &TupleValue,
+    ) -> Result<Vec<Key>, RuntimeError> {
+        let schema = self
+            .schemas
+            .get(source.as_str())
+            .expect("checked by the caller: the plan uses this source");
+        if row.data.len() != schema.arity() {
+            return Err(RuntimeError::new(format!(
+                "row for source '{}' has {} values, its schema has {} columns",
+                source.as_str(),
+                row.data.len(),
+                schema.arity()
+            )));
+        }
+        let mut keys = Vec::with_capacity(row.data.len());
+        for (col, cell) in row.data.iter().enumerate() {
+            let value = engine_value(cell).map_err(|error| {
+                RuntimeError::new(format!("source '{}': {error:#}", source.as_str()))
+            })?;
+            let expected = schema.column_type(col);
+            if value.scalar_type() != expected {
+                return Err(RuntimeError::new(format!(
+                    "source '{}', column {}: expected {expected}, got {value}",
+                    source.as_str(),
+                    schema.name(col)
+                )));
+            }
+            keys.push(value.to_key(&mut self.dictionary));
+        }
+        Ok(keys)
     }
 }
 
@@ -237,14 +289,14 @@ impl Runtime for BatchRuntime {
     ) -> Result<bool, Self::Error> {
         // Mirrors the incremental backend: a source the plan does not use
         // is `Ok(false)`, not an error. The caller decides what that means.
-        let arity = self.schemas.get(source.as_str()).map_or(0, Vec::len);
-        let Some(staged) = self.inputs.get_mut(source.as_str()) else {
+        if !self.inputs.contains_key(source.as_str()) {
             return Ok(false);
-        };
+        }
         for zrow in rows {
             let weight = zrow.zweight();
-            let row = convert_row(source, &zrow.into_row(), arity)?;
-            *staged.entry(row).or_insert(0) += weight;
+            let keys = self.encode_row(source, &zrow.into_row())?;
+            let staged = self.inputs.get_mut(source.as_str()).expect("checked above");
+            *staged.entry(keys).or_insert(0) += weight;
         }
         Ok(true)
     }
@@ -269,45 +321,18 @@ impl Runtime for BatchRuntime {
         };
         // The engine names rule variables generically (v0, v1, …); the
         // plan's speaking column names live in the schema table.
-        let columns = self.schemas.get(relation).cloned().unwrap_or_default();
+        let columns = self
+            .schemas
+            .get(relation)
+            .map(Schema::names)
+            .unwrap_or_default();
         let relation = results
             .get(relation)
             .map_err(|error| RuntimeError::new(format!("{error:#}")))?;
-        Ok(Snapshot::from_relation(columns, relation))
+        Snapshot::from_relation(columns, relation, results.dictionary())
     }
 
     fn list_outputs(&self) -> impl Iterator<Item = &'_ SinkId> {
         self.sinks.iter()
     }
-}
-
-/// Convert one staged row into the engine's u64 universe.
-///
-/// This slice accepts unsigned integers and booleans; everything else
-/// fails loudly instead of computing something wrong.
-// TODO(Jan): remaining scalar types after the end-to-end slice.
-fn convert_row(
-    source: &SourceId,
-    row: &TupleValue,
-    arity: usize,
-) -> Result<Vec<u64>, RuntimeError> {
-    if row.data.len() != arity {
-        return Err(RuntimeError::new(format!(
-            "row for source '{}' has {} values, its schema has {arity} columns",
-            source.as_str(),
-            row.data.len()
-        )));
-    }
-    row.data
-        .iter()
-        .map(|value| match value {
-            ScalarTypedValue::Uint(value) => Ok(*value),
-            ScalarTypedValue::Bool(value) => Ok(u64::from(*value)),
-            other => Err(RuntimeError::new(format!(
-                "source '{}': the batch backend supports unsigned integer and boolean \
-                 values for now, got {other:?}",
-                source.as_str()
-            ))),
-        })
-        .collect()
 }

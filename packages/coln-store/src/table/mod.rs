@@ -108,7 +108,7 @@ pub struct Table {
 impl Table {
     // Basic accessors
 
-    pub(crate) fn new(path: ir::Path, oid: TableOid, schema: Schema) -> Self {
+    pub(crate) fn new<P: Into<ir::Path>>(path: P, oid: TableOid, schema: Schema) -> Self {
         let cols = schema
             .columns
             .iter()
@@ -132,7 +132,7 @@ impl Table {
 
         Self {
             oid,
-            path,
+            path: path.into(),
             schema,
             structural,
             row_ids: IdColumn::new(),

@@ -18,7 +18,11 @@ use crate::{
 mod rowid {
     use super::*;
 
-    pub(crate) fn row_id_from(commit_byte: u8, counter: u32) -> WireRowId {
+    #[fixture]
+    pub(crate) fn row_id_from(
+        #[default(0)] commit_byte: u8,
+        #[default(0)] counter: u32,
+    ) -> WireRowId {
         WireRowId {
             commit: CommitHash([commit_byte; 32]),
             counter,

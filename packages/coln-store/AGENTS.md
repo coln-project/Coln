@@ -17,11 +17,10 @@ Priorities, in order:
 ## Core Rules
 
 - Keep mutable state inside well-defined structs; avoid global mutable state.
-- Prefer small, focused changes over broad refactoring.
 - Add comments only when they clarify non-obvious behaviour.
 - This is a research prototype, so do not worry about backwards compatibility issues, prioritise cleaner design & implementation.
 - When making technical decisions, don't give too much weight to development cost.
-- If asked to do something that you think is not good for the codebase, feel free to ask clarifying questions, or push back.
+- If asked to do something that you think is not good for the codebase, to ask clarifying questions, or push back rather than just blindly follow the instructions.
 
 Quick examples:
 
@@ -46,14 +45,15 @@ Quick examples:
 - `./`: storage crate and binary.
   - `src/lib.rs`: crate exports.
   - `src/main.rs`: REPL entry point.
-  - `src/table.rs`: column storage, row ids, cell values, and table validation.
+  - `src/table/`: column storage, row ids, cell values, and table validation.
   - `src/store/`: table registry, theory loading, law compilation, commit
     application, whole-store law checks, and store error types.
-  - `src/solver/`: law compilation, matching, binding, and validation.
   - `src/commit/`: commit payloads, chunk framing, commit graph state, hashes,
     authorship metadata, prefix search trees, and encoding helpers.
     - `src/commit/wire/`: commit and root payload encoding and decoding.
   - `src/repl/`: REPL parsing, execution, summaries, and errors.
+  - `src/rowing/`: id canonicalisation logic
+  - `src/pack/`: Dictionary encoding of ids
   - `src/txn/`: transaction state, operation types, timestamps, and the
     user-facing transaction API.
   - `examples/`: example Coln theory files.
@@ -66,7 +66,6 @@ Quick examples:
 - `Store` owns table registration, table lookup, compiled laws, and a commit graph which is the columnar encoded operations.
 - `Table` is the materialised view of what each table should contain, after playing the commits. It also has schema-level validation for inserted values.
 - Store mutation should flow through explicit operations such as `Op` and transaction helpers.
-- Law compilation and validation logic belongs under `solver`.
 - REPL code should stay presentation-oriented: parse commands, call store APIs, and format results.
 - Public docs and interfaces should reflect the implemented state of the repository accurately.
 - When writing tests, before you introducing a helper, consider whether there is something that
