@@ -22,41 +22,19 @@ value: sig
   make : (x : X) -> Outer (P x) (Q x)
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      P = rel [a : TRealm.X []]
-      Q = rel [a : TRealm.X []]
-      make = (fun [x : TRealm.X []] -> Outer (TRealm.P [a := x]) (TRealm.Q [
-        a := x
-      ]))
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.P := [a : root.X] primarykey [a]
+    table root.Q := [a : root.X] primarykey [a]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.P := [.a : ℜ.X]
-    table ℜ.Q := [.a : ℜ.X]
-    table ℜ.make := [
-      .x : ℜ.X,
-      .a.nested.proof : ℜ.P,
-      .a.direct : ℜ.Q
-    ] primarykey [.x]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ a ∈ ℜ.X []
-    enforced ℜ.Q.foreignKey a := ℜ.Q [.a ↦ a] ⊢ a ∈ ℜ.X []
-    enforced ℜ.make.foreignKey x a.nested.proof a.direct := ℜ.make [
-      .x ↦ x,
-      .a.nested.proof ↦ a.nested.proof,
-      .a.direct ↦ a.direct
-    ] ⊢ x ∈ ℜ.X [] ∧ a.nested.proof ∈ ℜ.P [.a ↦ x] ∧ a.direct ∈ ℜ.Q [.a ↦ x]
-    monitored ℜ.make.total x := x ∈ ℜ.X [] ⊢ ℜ.make [.x ↦ x]
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.P.foreignKey a := root.P [a ↦ a] ⊢ a ∈ root.X []
+    enforced root.Q.foreignKey a := root.Q [a ↦ a] ⊢ a ∈ root.X []
+    monitored root.make x := x ∈ root.X [] ⊢ root.P [a ↦ x] ∧ root.Q [a ↦ x]
   end
 end
 

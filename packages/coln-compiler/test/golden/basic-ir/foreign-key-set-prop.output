@@ -7,24 +7,16 @@ value: sig
   E : V -> Prop
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      V = rel []
-      E = rel [a : TRealm.V []]
-    end
+lowered: flatrealm
+  entities
+    table root.V := []
+    table root.E := [a : root.V] primarykey [a]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.V := []
-    table ℜ.E := [.a : ℜ.V]
-  end
   rules
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
-    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.V []
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.V []
   end
 end
 

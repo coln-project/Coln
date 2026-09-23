@@ -1,0 +1,71 @@
+-- elaborated
+global entry named Graph
+in mode: Conjunctive
+type: Theory
+value: sig
+  vertex : Set
+  edge : vertex -> vertex -> Set
+end
+global entry named FlowExpr/motive
+in mode: Conjunctive
+type: (G : Graph) -> Theory
+value: G => sig
+  t : G.vertex -> Set
+  const : (v : G.vertex) -> Int -> t v
+  plus : (v : G.vertex) -> t v -> t v -> t v
+  flow : (from : G.vertex) -> (into : G.vertex) -> G.edge from into -> t into
+end
+realm named GraphRealm
+lowered: flatrealm
+  entities
+    table root.vertex := []
+    table root.edge := [a : root.vertex, b : root.vertex]
+    view init.FlowExpr.t := [a : root.vertex]
+    view init.FlowExpr.const := [v : root.vertex, a : Int] primarykey [v, a]
+    view init.FlowExpr.plus := [
+      v : root.vertex,
+      a : init.FlowExpr.t,
+      b : init.FlowExpr.t
+    ] primarykey [v, a, b]
+    view init.FlowExpr.flow := [
+      from : root.vertex,
+      into : root.vertex,
+      a : root.edge
+    ] primarykey [from, into, a]
+  end
+  definitions
+    chased init.FlowExpr.const.collect v a := v ∈ root.vertex [] ⊢ init.FlowExpr.const [
+      v ↦ v,
+      a ↦ a
+    ]
+    chased init.FlowExpr.const.construct v a := v ∈ root.vertex [] ∧ init.FlowExpr.const [
+      v ↦ a
+    ] ⊢ init.FlowExpr.t [a ↦ v]
+    chased init.FlowExpr.plus.collect v a b := v ∈ root.vertex [] ∧ a ∈ init.FlowExpr.t [
+      a ↦ v
+    ] ∧ b ∈ init.FlowExpr.t [a ↦ v] ⊢ init.FlowExpr.plus [v ↦ v, a ↦ a, b ↦ b]
+    chased init.FlowExpr.plus.construct v a b := v ∈ root.vertex [] ∧ a ∈ init.FlowExpr.t [
+      a ↦ v
+    ] ∧ b ∈ init.FlowExpr.t [a ↦ v] ∧ init.FlowExpr.plus [
+      v ↦ a,
+      a ↦ b
+    ] ⊢ init.FlowExpr.t [a ↦ v]
+    chased init.FlowExpr.flow.collect from into a := from ∈ root.vertex [] ∧ into ∈ root.vertex [] ∧ a ∈ root.edge [
+      a ↦ from,
+      b ↦ into
+    ] ⊢ init.FlowExpr.flow [from ↦ from, into ↦ into, a ↦ a]
+    chased init.FlowExpr.flow.construct from into a := from ∈ root.vertex [] ∧ into ∈ root.vertex [] ∧ a ∈ root.edge [
+      a ↦ from,
+      b ↦ into
+    ] ∧ init.FlowExpr.flow [from ↦ into, into ↦ a] ⊢ init.FlowExpr.t [a ↦ into]
+  end
+  rules
+    enforced root.vertex.foreignKey := root.vertex [] ⊢ ⊤
+    enforced root.edge.foreignKey a b := root.edge [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.vertex [] ∧ b ∈ root.vertex []
+  end
+end
+
+-- messages

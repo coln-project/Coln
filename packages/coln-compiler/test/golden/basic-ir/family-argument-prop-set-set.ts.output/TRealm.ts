@@ -1,52 +1,21 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    A: runtime.MutableProp,
+    B: (a: null) => runtime.MutableSet<runtime.RowId<"root.B">>,
+    R: (a: null) => (b: runtime.RowId<"root.B">) => runtime.MutableSet<runtime.RowId<"root.R">>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      A: (new runtime.RowIdSet.View(store, "TRealm.A", [])),
-      B: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.B", [a]));
+      A: (new runtime.BaseProp(mstore, "root.A", [])),
+      B: (a: null) => {
+        return (new runtime.BaseSet(mstore, "root.B", []));
       },
-      R: (a: runtime.Value) => {
-        return (b: runtime.Value) => {
-          return (new runtime.RowIdSet.View(store, "TRealm.R", [a, b]));
-        };
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      A: (new runtime.RowIdSet.Transaction(store, "TRealm.A", [], transaction)),
-      B: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.B",
-          [a],
-          transaction
-        ));
-      },
-      R: (a: runtime.Value) => {
-        return (b: runtime.Value) => {
-          return (new runtime.RowIdSet.Transaction(
-            store,
-            "TRealm.R",
-            [a, b],
-            transaction
-          ));
+      R: (a: null) => {
+        return (b: runtime.RowId<"root.B">) => {
+          return (new runtime.BaseSet(mstore, "root.R", [b]));
         };
       }
     };

@@ -1,34 +1,51 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    X: runtime.MutableSet<runtime.RowId<"root.X">>,
+    value: runtime.MutableRef<{
+      first: runtime.RowId<"root.X">,
+      second: runtime.RowId<"root.X">,
+      proof: null,
+      trailing: runtime.RowId<"root.X">
+    }>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      X: (new runtime.RowIdSet.View(store, "TRealm.X", [])),
-      value: (new runtime.TableCellRef.View(store, "TRealm.value", []))
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      X: (new runtime.RowIdSet.Transaction(store, "TRealm.X", [], transaction)),
-      value: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.value",
+      X: (new runtime.BaseSet(mstore, "root.X", [])),
+      value: (new runtime.BaseTableRef(
+        mstore,
+        "root.value",
         [],
-        transaction
+        [0, 1, 2, 3],
+        {
+          flatten: (a: {
+            first: runtime.RowId<"root.X">,
+            second: runtime.RowId<"root.X">,
+            proof: null,
+            trailing: runtime.RowId<"root.X">
+          }) => {
+            return [a.first, a.second, a.trailing];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return {
+              first: (new runtime.RowId(
+                { type: "Existing", value: result[0] as runtime.WireRowId },
+                "root.X"
+              )),
+              second: (new runtime.RowId(
+                { type: "Existing", value: result[1] as runtime.WireRowId },
+                "root.X"
+              )),
+              proof: null,
+              trailing: (new runtime.RowId(
+                { type: "Existing", value: result[2] as runtime.WireRowId },
+                "root.X"
+              ))
+            };
+          }
+        }
       ))
     };
   }

@@ -16,28 +16,24 @@ value: sig
   Accepted : EqualTriple X -> Prop
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      Accepted = rel [a : EqualTriple (TRealm.X [])]
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.Accepted := [
+      a.first : root.X,
+      a.second : root.X,
+      a.trailing : root.X
+    ] primarykey [a.first, a.second, a.trailing]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.Accepted := [.a.first : ℜ.X, .a.second : ℜ.X, .a.trailing : ℜ.X]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.Accepted.foreignKey a.first a.second a.trailing := ℜ.Accepted [
-      .a.first ↦ a.first,
-      .a.second ↦ a.second,
-      .a.trailing ↦ a.trailing
-    ] ⊢ a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.Accepted.foreignKey a.first a.second a.trailing := root.Accepted [
+      a.first ↦ a.first,
+      a.second ↦ a.second,
+      a.trailing ↦ a.trailing
+    ] ⊢ a.first ∈ root.X [] ∧ a.second ∈ root.X [] ∧ a.first = a.second ∧ a.trailing ∈ root.X []
   end
 end
 

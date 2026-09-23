@@ -1,65 +1,54 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    IntEdge: (a: number) => runtime.MutableSet<runtime.RowId<"root.IntEdge">>,
+    StringEdge: (a: string) => runtime.MutableSet<runtime.RowId<"root.StringEdge">>,
+    intEdge: runtime.MutableRef<runtime.RowId<"root.IntEdge">>,
+    stringEdge: runtime.MutableRef<runtime.RowId<"root.StringEdge">>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      IntEdge: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.IntEdge", [a]));
+      IntEdge: (a: number) => {
+        return (new runtime.BaseSet(mstore, "root.IntEdge", [a]));
       },
-      StringEdge: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.StringEdge", [a]));
+      StringEdge: (a: string) => {
+        return (new runtime.BaseSet(mstore, "root.StringEdge", [a]));
       },
-      intEdge: (new runtime.TableCellRef.View(store, "TRealm.intEdge", [])),
-      stringEdge: (new runtime.TableCellRef.View(
-        store,
-        "TRealm.stringEdge",
-        []
-      ))
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      IntEdge: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.IntEdge",
-          [a],
-          transaction
-        ));
-      },
-      StringEdge: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.StringEdge",
-          [a],
-          transaction
-        ));
-      },
-      intEdge: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.intEdge",
+      intEdge: (new runtime.BaseTableRef(
+        mstore,
+        "root.intEdge",
         [],
-        transaction
+        [0, 1],
+        {
+          flatten: (a: runtime.RowId<"root.IntEdge">) => {
+            return [a];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return (new runtime.RowId(
+              { type: "Existing", value: result[0] as runtime.WireRowId },
+              "root.IntEdge"
+            ));
+          }
+        }
       )),
-      stringEdge: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.stringEdge",
+      stringEdge: (new runtime.BaseTableRef(
+        mstore,
+        "root.stringEdge",
         [],
-        transaction
+        [0, 1],
+        {
+          flatten: (a: runtime.RowId<"root.StringEdge">) => {
+            return [a];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return (new runtime.RowId(
+              { type: "Existing", value: result[0] as runtime.WireRowId },
+              "root.StringEdge"
+            ));
+          }
+        }
       ))
     };
   }

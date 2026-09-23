@@ -4,6 +4,7 @@
 
 module Coln.Top (
   loadRealmsFromFile,
+  lowerRealm,
   lowerRealms,
   generateTs,
   generateIr,
@@ -29,6 +30,11 @@ loadRealmsFromFile :: Reporter ColnCode -> File -> IO (OMap Name SIR.Realm)
 loadRealmsFromFile r f = do
   globals <- topFromText r f
   pure $ lowerRealms globals
+
+lowerRealm :: Globals -> Realm -> SIR.Realm
+lowerRealm globals realm = do
+  let globalEnv = interpGlobals globals
+  mirToSIR (coreToMIR globalEnv realm)
 
 lowerRealms :: Globals -> OMap Name SIR.Realm
 lowerRealms globals = do

@@ -1,64 +1,31 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    X: runtime.MutableSet<runtime.RowId<"root.X">>,
+    Y: runtime.MutableSet<runtime.RowId<"root.Y">>,
+    R: (a: runtime.RowId<"root.X">) => (b: runtime.RowId<"root.Y">) => runtime.MutableSet<runtime.RowId<"root.R">>,
+    slices: (x: runtime.RowId<"root.X">) => (y: runtime.RowId<"root.Y">) => (a: {
+      entry: runtime.RowId<"root.R">
+    }) => runtime.MutableSet<runtime.RowId<"root.slices">>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      X: (new runtime.RowIdSet.View(store, "TRealm.X", [])),
-      Y: (new runtime.RowIdSet.View(store, "TRealm.Y", [])),
-      R: (a: runtime.Value) => {
-        return (b: runtime.Value) => {
-          return (new runtime.RowIdSet.View(store, "TRealm.R", [a, b]));
+      X: (new runtime.BaseSet(mstore, "root.X", [])),
+      Y: (new runtime.BaseSet(mstore, "root.Y", [])),
+      R: (a: runtime.RowId<"root.X">) => {
+        return (b: runtime.RowId<"root.Y">) => {
+          return (new runtime.BaseSet(mstore, "root.R", [a, b]));
         };
       },
-      slices: (x: runtime.Value) => {
-        return (y: runtime.Value) => {
-          return (a: runtime.Value) => {
-            return (new runtime.RowIdSet.View(
-              store,
-              "TRealm.slices",
-              [x, y, a]
-            ));
-          };
-        };
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      X: (new runtime.RowIdSet.Transaction(store, "TRealm.X", [], transaction)),
-      Y: (new runtime.RowIdSet.Transaction(store, "TRealm.Y", [], transaction)),
-      R: (a: runtime.Value) => {
-        return (b: runtime.Value) => {
-          return (new runtime.RowIdSet.Transaction(
-            store,
-            "TRealm.R",
-            [a, b],
-            transaction
-          ));
-        };
-      },
-      slices: (x: runtime.Value) => {
-        return (y: runtime.Value) => {
-          return (a: runtime.Value) => {
-            return (new runtime.RowIdSet.Transaction(
-              store,
-              "TRealm.slices",
-              [x, y, a],
-              transaction
+      slices: (x: runtime.RowId<"root.X">) => {
+        return (y: runtime.RowId<"root.Y">) => {
+          return (a: { entry: runtime.RowId<"root.R"> }) => {
+            return (new runtime.BaseSet(
+              mstore,
+              "root.slices",
+              [x, y, a.entry]
             ));
           };
         };

@@ -1,75 +1,30 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    A: runtime.MutableProp,
+    B: (a: null) => runtime.MutableProp,
+    E: (x: null) => (a: null) => runtime.MutableProp,
+    next: (x: null) => runtime.MutableRef<null>,
+    nextedge: (x: null) => runtime.MutableRef<null>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      A: (new runtime.RowIdSet.View(store, "TRealm.A", [])),
-      B: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.B", [a]));
+      A: (new runtime.BaseProp(mstore, "root.A", [])),
+      B: (a: null) => {
+        return (new runtime.BaseProp(mstore, "root.B", []));
       },
-      E: (x: runtime.Value) => {
-        return (a: runtime.Value) => {
-          return (new runtime.RowIdSet.View(store, "TRealm.E", [x, a]));
+      E: (x: null) => {
+        return (a: null) => {
+          return (new runtime.BaseProp(mstore, "root.E", []));
         };
       },
-      next: (x: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.next", [x]));
+      next: (x: null) => {
+        return (new runtime.ConstRef(null));
       },
-      nextedge: (x: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.nextedge", [x]));
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      A: (new runtime.RowIdSet.Transaction(store, "TRealm.A", [], transaction)),
-      B: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.B",
-          [a],
-          transaction
-        ));
-      },
-      E: (x: runtime.Value) => {
-        return (a: runtime.Value) => {
-          return (new runtime.RowIdSet.Transaction(
-            store,
-            "TRealm.E",
-            [x, a],
-            transaction
-          ));
-        };
-      },
-      next: (x: runtime.Value) => {
-        return (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.next",
-          [x],
-          transaction
-        ));
-      },
-      nextedge: (x: runtime.Value) => {
-        return (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.nextedge",
-          [x],
-          transaction
-        ));
+      nextedge: (x: null) => {
+        return (new runtime.ConstRef(null));
       }
     };
   }

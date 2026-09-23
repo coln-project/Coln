@@ -1,0 +1,49 @@
+-- elaborated
+global entry named Graph
+in mode: Conjunctive
+type: Theory
+value: sig
+  V : Set
+  E : V -> V -> Set
+end
+global entry named TransExt
+in mode: Conjunctive
+type: (G : Graph) -> Theory
+value: G => sig
+  connected : G.V -> G.V -> Prop
+  refl : (v : G.V) -> connected v v
+  snoc : (v0 : G.V) -> (v1 : G.V) -> (v2 : G.V) -> connected v0 v1 -> G.E v1 v2 -> connected v0 v2
+end
+realm named TransitiveClosureRealm
+lowered: flatrealm
+  entities
+    table root.V := []
+    table root.E := [a : root.V, b : root.V]
+    view init.trans-closure.connected := [a : root.V, b : root.V] primarykey [
+      a,
+      b
+    ]
+  end
+  definitions
+    chased init.trans-closure.refl v := v ∈ root.V [] ⊢ init.trans-closure.connected [
+      a ↦ v,
+      b ↦ v
+    ]
+    chased init.trans-closure.snoc v0 v1 v2 b := v0 ∈ root.V [] ∧ v1 ∈ root.V [] ∧ v2 ∈ root.V [] ∧ init.trans-closure.connected [
+      a ↦ v0,
+      b ↦ v1
+    ] ∧ b ∈ root.E [a ↦ v1, b ↦ v2] ⊢ init.trans-closure.connected [
+      a ↦ v0,
+      b ↦ v2
+    ]
+  end
+  rules
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.E.foreignKey a b := root.E [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
+  end
+end
+
+-- messages

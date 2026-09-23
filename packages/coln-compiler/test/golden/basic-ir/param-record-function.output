@@ -15,34 +15,25 @@ value: sig
   boxed : Box Key f String -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      Key = rel []
-      f = (fun [a : TRealm.Key []] -> TRealm.Key [])
-      boxed = rel [a : Box (TRealm.Key []) (a => TRealm.f [a := a]) String]
-    end
+lowered: flatrealm
+  entities
+    table root.Key := []
+    table root.f := [a : root.Key, b : root.Key] primarykey [a]
+    table root.boxed := [a.key : root.Key, a.value : String]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.Key := []
-    table ℜ.f := [.a : ℜ.Key, .b : ℜ.Key] primarykey [.a]
-    table ℜ.boxed := [.a.key : ℜ.Key, .a.value : String]
-  end
   rules
-    enforced ℜ.Key.foreignKey := ℜ.Key [] ⊢ ⊤
-    enforced ℜ.f.foreignKey a b := ℜ.f [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.Key [] ∧ b ∈ ℜ.Key []
-    monitored ℜ.f.total a := a ∈ ℜ.Key [] ⊢ ℜ.f [.a ↦ a]
-    enforced ℜ.boxed.foreignKey a.key a.value := ℜ.boxed [
-      .a.key ↦ a.key,
-      .a.value ↦ a.value
-    ] ⊢ a.key ∈ ℜ.Key []
+    enforced root.Key.foreignKey := root.Key [] ⊢ ⊤
+    enforced root.f.foreignKey a b := root.f [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.Key [] ∧ b ∈ root.Key []
+    monitored root.f.total a := a ∈ root.Key [] ⊢ root.f [a ↦ a]
+    enforced root.boxed.foreignKey a.key a.value := root.boxed [
+      a.key ↦ a.key,
+      a.value ↦ a.value
+    ] ⊢ a.key ∈ root.Key []
   end
 end
 

@@ -7,27 +7,19 @@ value: sig
   Pair : (x : X) -> (x : X) -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      Pair = rel [x : TRealm.X [], x/a : TRealm.X []]
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.Pair := [x : root.X, x/a : root.X]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.Pair := [.x : ℜ.X, .x/a : ℜ.X]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.Pair.foreignKey x x/a := ℜ.Pair [
-      .x ↦ x,
-      .x/a ↦ x/a
-    ] ⊢ x ∈ ℜ.X [] ∧ x/a ∈ ℜ.X []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.Pair.foreignKey x x/a := root.Pair [
+      x ↦ x,
+      x/a ↦ x/a
+    ] ⊢ x ∈ root.X [] ∧ x/a ∈ root.X []
   end
 end
 

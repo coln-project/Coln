@@ -1,66 +1,23 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    IntFact: (a: number) => runtime.MutableProp,
+    StringFact: (a: string) => runtime.MutableProp,
+    intFact: runtime.MutableRef<null>,
+    stringFact: runtime.MutableRef<null>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      IntFact: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.IntFact", [a]));
+      IntFact: (a: number) => {
+        return (new runtime.BaseProp(mstore, "root.IntFact", [a]));
       },
-      StringFact: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.StringFact", [a]));
+      StringFact: (a: string) => {
+        return (new runtime.BaseProp(mstore, "root.StringFact", [a]));
       },
-      intFact: (new runtime.TableCellRef.View(store, "TRealm.intFact", [])),
-      stringFact: (new runtime.TableCellRef.View(
-        store,
-        "TRealm.stringFact",
-        []
-      ))
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      IntFact: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.IntFact",
-          [a],
-          transaction
-        ));
-      },
-      StringFact: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.StringFact",
-          [a],
-          transaction
-        ));
-      },
-      intFact: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.intFact",
-        [],
-        transaction
-      )),
-      stringFact: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.stringFact",
-        [],
-        transaction
-      ))
+      intFact: (new runtime.ConstRef(null)),
+      stringFact: (new runtime.ConstRef(null))
     };
   }
 }

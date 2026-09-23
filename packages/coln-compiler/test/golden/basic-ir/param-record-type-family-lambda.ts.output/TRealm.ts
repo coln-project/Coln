@@ -1,39 +1,17 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    boxed: (x: number) => (a: {
+      value: string
+    }) => runtime.MutableSet<runtime.RowId<"root.boxed">>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      boxed: (x: runtime.Value) => {
-        return (a: runtime.Value) => {
-          return (new runtime.RowIdSet.View(store, "TRealm.boxed", [x, a]));
-        };
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      boxed: (x: runtime.Value) => {
-        return (a: runtime.Value) => {
-          return (new runtime.RowIdSet.Transaction(
-            store,
-            "TRealm.boxed",
-            [x, a],
-            transaction
-          ));
+      boxed: (x: number) => {
+        return (a: { value: string }) => {
+          return (new runtime.BaseSet(mstore, "root.boxed", [x, a.value]));
         };
       }
     };

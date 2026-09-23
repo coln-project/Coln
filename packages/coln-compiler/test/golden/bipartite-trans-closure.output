@@ -1,0 +1,76 @@
+-- elaborated
+global entry named BipartiteGraph
+in mode: Conjunctive
+type: Theory
+value: sig
+  red : Set
+  blue : Set
+  red-blue : red -> blue -> Set
+  blue-red : blue -> red -> Set
+end
+global entry named BipartiteConnection
+in mode: Conjunctive
+type: (G : BipartiteGraph) -> Theory
+value: G => sig
+  red-red : G.red -> G.red -> Prop
+  blue-blue : G.blue -> G.blue -> Prop
+  red/refl : (v : G.red) -> red-red v v
+  blue/refl : (v : G.blue) -> blue-blue v v
+  red/trans : (v0 : G.red) -> (v1 : G.red) -> (w0 : G.blue) -> (w1 : G.blue) -> G.red-blue v0 w0 -> blue-blue w0 w1 -> G.blue-red w1 v1 -> red-red v0 v1
+  blue/trans : (v0 : G.blue) -> (v1 : G.blue) -> (w0 : G.red) -> (w1 : G.red) -> G.blue-red v0 w0 -> red-red w0 w1 -> G.red-blue w1 v1 -> blue-blue v0 v1
+end
+realm named BipartiteGraphRealm
+lowered: flatrealm
+  entities
+    table root.red := []
+    table root.blue := []
+    table root.red-blue := [a : root.red, b : root.blue]
+    table root.blue-red := [a : root.blue, b : root.red]
+    view init.connection-info.red-red := [
+      a : root.red,
+      b : root.red
+    ] primarykey [a, b]
+    view init.connection-info.blue-blue := [
+      a : root.blue,
+      b : root.blue
+    ] primarykey [a, b]
+  end
+  definitions
+    chased init.connection-info.red/refl v := v ∈ root.red [] ⊢ init.connection-info.red-red [
+      a ↦ v,
+      b ↦ v
+    ]
+    chased init.connection-info.blue/refl v := v ∈ root.blue [] ⊢ init.connection-info.blue-blue [
+      a ↦ v,
+      b ↦ v
+    ]
+    chased init.connection-info.red/trans v0 v1 w0 w1 a c := v0 ∈ root.red [] ∧ v1 ∈ root.red [] ∧ w0 ∈ root.blue [] ∧ w1 ∈ root.blue [] ∧ a ∈ root.red-blue [
+      a ↦ v0,
+      b ↦ w0
+    ] ∧ init.connection-info.blue-blue [a ↦ w0, b ↦ w1] ∧ c ∈ root.blue-red [
+      a ↦ w1,
+      b ↦ v1
+    ] ⊢ init.connection-info.red-red [a ↦ v0, b ↦ v1]
+    chased init.connection-info.blue/trans v0 v1 w0 w1 a c := v0 ∈ root.blue [] ∧ v1 ∈ root.blue [] ∧ w0 ∈ root.red [] ∧ w1 ∈ root.red [] ∧ a ∈ root.blue-red [
+      a ↦ v0,
+      b ↦ w0
+    ] ∧ init.connection-info.red-red [a ↦ w0, b ↦ w1] ∧ c ∈ root.red-blue [
+      a ↦ w1,
+      b ↦ v1
+    ] ⊢ init.connection-info.blue-blue [a ↦ v0, b ↦ v1]
+  end
+  rules
+    enforced root.red.foreignKey := root.red [] ⊢ ⊤
+    enforced root.blue.foreignKey := root.blue [] ⊢ ⊤
+    enforced root.red-blue.foreignKey a b := root.red-blue [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.red [] ∧ b ∈ root.blue []
+    enforced root.blue-red.foreignKey a b := root.blue-red [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.blue [] ∧ b ∈ root.red []
+  end
+end
+
+-- messages
