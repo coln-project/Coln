@@ -1,8 +1,11 @@
-setup:
-    cd ../coln-js-interface/
+[working-directory: '../coln-js-interface/']
+setup-interface:
     pnpm install
-    cd ../coln-node-runtime/
+
+setup-runtime:
     pnpm install
+
+setup: setup-interface setup-runtime
 
 build-runtime:
     npx napi build --platform --esm -o native
@@ -10,8 +13,8 @@ build-runtime:
     rm -rf dist/native
     cp -r native dist/native
 
+[working-directory: '../coln-js-interface/']
 build-interface:
-    cd ../coln-js-interface/
     mkdir -p dist
     tsc
 
@@ -19,7 +22,7 @@ generate-bindings:
     mkdir -p test/bindings
     cabal run coln-cli -- generate-ts test/definitions.coln -o test/bindings/
 
-test: 
+test:
     mkdir -p dist
     tsc
     cabal run coln-cli -- generate-ir test/definitions.coln -o dist/test
