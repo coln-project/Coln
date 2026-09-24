@@ -14,6 +14,7 @@ lexConfig =
     , ("struct", K.Block)
     , ("theory", K.Decl)
     , ("realm", K.Block)
+    , ("attr", K.Decl)
     , ("def", K.Decl)
     , ("let", K.Decl)
     , ("open", K.Decl)

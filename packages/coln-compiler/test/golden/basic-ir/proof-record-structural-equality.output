@@ -22,35 +22,27 @@ value: sig
   comparison : Comparison X
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      comparison = (fun [] -> Comparison (TRealm.X []))
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.comparison := [
+      a.first.left : root.X,
+      a.first.right : root.X,
+      a.second.left : root.X,
+      a.second.right : root.X
+    ] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.comparison := [
-      .a.first.left : ℜ.X,
-      .a.first.right : ℜ.X,
-      .a.second.left : ℜ.X,
-      .a.second.right : ℜ.X
-    ] primarykey []
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.comparison.foreignKey a.first.left a.first.right a.second.left a.second.right := ℜ.comparison [
-      .a.first.left ↦ a.first.left,
-      .a.first.right ↦ a.first.right,
-      .a.second.left ↦ a.second.left,
-      .a.second.right ↦ a.second.right
-    ] ⊢ a.first.left ∈ ℜ.X [] ∧ a.first.right ∈ ℜ.X [] ∧ a.second.left ∈ ℜ.X [] ∧ a.second.right ∈ ℜ.X [] ∧ a.first.left = a.second.left ∧ a.first.right = a.second.right
-    monitored ℜ.comparison.total := ⊤ ⊢ ℜ.comparison []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.comparison.foreignKey a.first.left a.first.right a.second.left a.second.right := root.comparison [
+      a.first.left ↦ a.first.left,
+      a.first.right ↦ a.first.right,
+      a.second.left ↦ a.second.left,
+      a.second.right ↦ a.second.right
+    ] ⊢ a.first.left ∈ root.X [] ∧ a.first.right ∈ root.X [] ∧ a.second.left ∈ root.X [] ∧ a.second.right ∈ root.X [] ∧ a.first.left = a.second.left ∧ a.first.right = a.second.right
+    monitored root.comparison.total := ⊤ ⊢ root.comparison []
   end
 end
 

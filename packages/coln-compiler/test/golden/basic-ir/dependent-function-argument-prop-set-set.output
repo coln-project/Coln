@@ -9,43 +9,24 @@ value: sig
   f : (a : A) -> (b : B a) -> C a b
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      A = rel []
-      B = rel [a : TRealm.A []]
-      C = rel [a : TRealm.A [], b : TRealm.B [a := a]]
-      f = (fun [a : TRealm.A [], b : TRealm.B [a := a]] -> TRealm.C [
-        a := a,
-        b := b
-      ])
-    end
+lowered: flatrealm
+  entities
+    table root.A := [] primarykey []
+    table root.B := []
+    table root.C := [b : root.B]
+    table root.f := [b : root.B, c : root.C] primarykey [b]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.A := []
-    table ℜ.B := [.a : ℜ.A]
-    table ℜ.C := [.a : ℜ.A, .b : ℜ.B]
-    table ℜ.f := [.a : ℜ.A, .b : ℜ.B, .c : ℜ.C] primarykey [.a, .b]
-  end
   rules
-    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
-    enforced ℜ.B.foreignKey a := ℜ.B [.a ↦ a] ⊢ a ∈ ℜ.A []
-    enforced ℜ.C.foreignKey a b := ℜ.C [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [
-      .a ↦ a
-    ]
-    enforced ℜ.f.foreignKey a b c := ℜ.f [
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ∧ c ∈ ℜ.C [.a ↦ a, .b ↦ b]
-    monitored ℜ.f.total a b := a ∈ ℜ.A [] ∧ b ∈ ℜ.B [.a ↦ a] ⊢ ℜ.f [
-      .a ↦ a,
-      .b ↦ b
-    ]
+    enforced root.A.foreignKey := root.A [] ⊢ ⊤
+    enforced root.B.foreignKey := root.B [] ⊢ root.A []
+    enforced root.C.foreignKey b := root.C [b ↦ b] ⊢ root.A [] ∧ b ∈ root.B []
+    enforced root.f.foreignKey b c := root.f [
+      b ↦ b,
+      c ↦ c
+    ] ⊢ root.A [] ∧ b ∈ root.B [] ∧ c ∈ root.C [b ↦ b]
+    monitored root.f.total b := root.A [] ∧ b ∈ root.B [] ⊢ root.f [b ↦ b]
   end
 end
 

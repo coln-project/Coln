@@ -20,29 +20,23 @@ value: sig
   result : (expected : X) -> Result X expected
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      result = (fun [expected : TRealm.X []] -> Result (TRealm.X []) expected)
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.result := [expected : root.X, a.actual : root.X] primarykey [
+      expected
+    ]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.result := [.expected : ℜ.X, .a.actual : ℜ.X] primarykey [.expected]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.result.foreignKey expected a.actual := ℜ.result [
-      .expected ↦ expected,
-      .a.actual ↦ a.actual
-    ] ⊢ expected ∈ ℜ.X [] ∧ a.actual ∈ ℜ.X [] ∧ a.actual = expected
-    monitored ℜ.result.total expected := expected ∈ ℜ.X [] ⊢ ℜ.result [
-      .expected ↦ expected
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.result.foreignKey expected a.actual := root.result [
+      expected ↦ expected,
+      a.actual ↦ a.actual
+    ] ⊢ expected ∈ root.X [] ∧ a.actual ∈ root.X [] ∧ a.actual = expected
+    monitored root.result.total expected := expected ∈ root.X [] ⊢ root.result [
+      expected ↦ expected
     ]
   end
 end

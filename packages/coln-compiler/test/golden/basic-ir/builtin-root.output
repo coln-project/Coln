@@ -7,26 +7,18 @@ value: sig
   label : String
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      count = (fun [] -> Int)
-      label = (fun [] -> String)
-    end
+lowered: flatrealm
+  entities
+    table root := [a.count : Int, a.label : String] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.count := [.a : Int] primarykey []
-    table ℜ.label := [.a : String] primarykey []
-  end
   rules
-    enforced ℜ.count.foreignKey a := ℜ.count [.a ↦ a] ⊢ ⊤
-    monitored ℜ.count.total := ⊤ ⊢ ℜ.count []
-    enforced ℜ.label.foreignKey a := ℜ.label [.a ↦ a] ⊢ ⊤
-    monitored ℜ.label.total := ⊤ ⊢ ℜ.label []
+    enforced root.foreignKey a.count a.label := root [
+      a.count ↦ a.count,
+      a.label ↦ a.label
+    ] ⊢ ⊤
+    monitored root.total := ⊤ ⊢ root []
   end
 end
 

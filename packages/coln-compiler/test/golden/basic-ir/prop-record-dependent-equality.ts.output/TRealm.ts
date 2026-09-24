@@ -1,34 +1,27 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    P: runtime.MutableProp,
+    witness: runtime.MutableRef<{ first: null, second: null, same: null }>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      P: (new runtime.RowIdSet.View(store, "TRealm.P", [])),
-      witness: (new runtime.TableCellRef.View(store, "TRealm.witness", []))
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      P: (new runtime.RowIdSet.Transaction(store, "TRealm.P", [], transaction)),
-      witness: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.witness",
+      P: (new runtime.BaseProp(mstore, "root.P", [])),
+      witness: (new runtime.BaseTableRef(
+        mstore,
+        "root.witness",
         [],
-        transaction
+        [0],
+        {
+          flatten: (a: { first: null, second: null, same: null }) => {
+            return [];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return { first: null, second: null, same: null };
+          }
+        }
       ))
     };
   }

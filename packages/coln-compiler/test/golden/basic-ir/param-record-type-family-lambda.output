@@ -12,23 +12,16 @@ value: sig
   boxed : (x : Int) -> Box Int x (y => String) -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      boxed = rel [x : Int, a : Box Int x (y => String)]
-    end
+lowered: flatrealm
+  entities
+    table root.boxed := [x : Int, a.value : String]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.boxed := [.x : Int, .a.value : String]
-  end
   rules
-    enforced ℜ.boxed.foreignKey x a.value := ℜ.boxed [
-      .x ↦ x,
-      .a.value ↦ a.value
+    enforced root.boxed.foreignKey x a.value := root.boxed [
+      x ↦ x,
+      a.value ↦ a.value
     ] ⊢ ⊤
   end
 end

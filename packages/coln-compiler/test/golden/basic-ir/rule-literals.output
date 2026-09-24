@@ -10,46 +10,34 @@ value: sig
   labelIsZombocom : (x : X) -> label x = "zombocom"
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      count = (fun [a : TRealm.X []] -> Int)
-      label = (fun [a : TRealm.X []] -> String)
-      countIs19 = (fun [x : TRealm.X []] -> TRealm.count [a := x] = 19)
-      labelIsZombocom = (fun [x : TRealm.X []] -> TRealm.label [
-        a := x
-      ] = "zombocom")
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.count := [a : root.X, b : Int] primarykey [a]
+    table root.label := [a : root.X, b : String] primarykey [a]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.count := [.a : ℜ.X, .b : Int] primarykey [.a]
-    table ℜ.label := [.a : ℜ.X, .b : String] primarykey [.a]
-    table ℜ.countIs19 := [.x : ℜ.X] primarykey [.x]
-    table ℜ.labelIsZombocom := [.x : ℜ.X] primarykey [.x]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.count.foreignKey a b := ℜ.count [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
-    monitored ℜ.count.total a := a ∈ ℜ.X [] ⊢ ℜ.count [.a ↦ a]
-    enforced ℜ.label.foreignKey a b := ℜ.label [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.X []
-    monitored ℜ.label.total a := a ∈ ℜ.X [] ⊢ ℜ.label [.a ↦ a]
-    enforced ℜ.countIs19.foreignKey x a.lhs := ℜ.countIs19 [.x ↦ x] ∧ ℜ.count [
-      .a ↦ x,
-      .b ↦ a.lhs
-    ] ⊢ x ∈ ℜ.X [] ∧ a.lhs = 19
-    monitored ℜ.countIs19.total x := x ∈ ℜ.X [] ⊢ ℜ.countIs19 [.x ↦ x]
-    enforced ℜ.labelIsZombocom.foreignKey x a.lhs := ℜ.labelIsZombocom [
-      .x ↦ x
-    ] ∧ ℜ.label [.a ↦ x, .b ↦ a.lhs] ⊢ x ∈ ℜ.X [] ∧ a.lhs = "zombocom"
-    monitored ℜ.labelIsZombocom.total x := x ∈ ℜ.X [] ⊢ ℜ.labelIsZombocom [
-      .x ↦ x
-    ]
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.count.foreignKey a b := root.count [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.X []
+    monitored root.count.total a := a ∈ root.X [] ⊢ root.count [a ↦ a]
+    enforced root.label.foreignKey a b := root.label [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.X []
+    monitored root.label.total a := a ∈ root.X [] ⊢ root.label [a ↦ a]
+    monitored root.countIs19 x a := x ∈ root.X [] ∧ root.count [
+      a ↦ x,
+      b ↦ a
+    ] ⊢ a = 19
+    monitored root.labelIsZombocom x a := x ∈ root.X [] ∧ root.label [
+      a ↦ x,
+      b ↦ a
+    ] ⊢ a = "zombocom"
   end
 end
 

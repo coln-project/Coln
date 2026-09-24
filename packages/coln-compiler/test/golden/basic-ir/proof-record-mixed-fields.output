@@ -16,33 +16,25 @@ value: sig
   value : EqualTriple X
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      value = (fun [] -> EqualTriple (TRealm.X []))
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.value := [
+      a.first : root.X,
+      a.second : root.X,
+      a.trailing : root.X
+    ] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.value := [
-      .a.first : ℜ.X,
-      .a.second : ℜ.X,
-      .a.trailing : ℜ.X
-    ] primarykey []
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.value.foreignKey a.first a.second a.trailing := ℜ.value [
-      .a.first ↦ a.first,
-      .a.second ↦ a.second,
-      .a.trailing ↦ a.trailing
-    ] ⊢ a.first ∈ ℜ.X [] ∧ a.second ∈ ℜ.X [] ∧ a.first = a.second ∧ a.trailing ∈ ℜ.X []
-    monitored ℜ.value.total := ⊤ ⊢ ℜ.value []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.value.foreignKey a.first a.second a.trailing := root.value [
+      a.first ↦ a.first,
+      a.second ↦ a.second,
+      a.trailing ↦ a.trailing
+    ] ⊢ a.first ∈ root.X [] ∧ a.second ∈ root.X [] ∧ a.first = a.second ∧ a.trailing ∈ root.X []
+    monitored root.value.total := ⊤ ⊢ root.value []
   end
 end
 

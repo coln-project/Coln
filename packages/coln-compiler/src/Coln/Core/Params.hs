@@ -203,6 +203,15 @@ data Mode = Inductive | Conjunctive
 instance DPretty Mode where
   dpretty = pretty . show
 
+-- Attrs for Decls
+--------------------------------------------------------------------------------
+
+data Attr = AttrExpectedError Text
+  deriving (Show, Eq, Ord)
+
+instance DPretty Attr where
+  dpretty (AttrExpectedError e) = "expected-error" <+> pretty e
+
 -- Definition scope
 --------------------------------------------------------------------------------
 

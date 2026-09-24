@@ -16,51 +16,33 @@ value: sig
   same : first = second
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      first = (fun [] -> Pair (TRealm.X []))
-      second = (fun [] -> Pair (TRealm.X []))
-      same = (fun [] -> TRealm.first [] = TRealm.second [])
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.first := [a.left : root.X, a.right : root.X] primarykey []
+    table root.second := [a.left : root.X, a.right : root.X] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.first := [.a.left : ℜ.X, .a.right : ℜ.X] primarykey []
-    table ℜ.second := [.a.left : ℜ.X, .a.right : ℜ.X] primarykey []
-    table ℜ.same := [] primarykey []
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.first.foreignKey a.left a.right := ℜ.first [
-      .a.left ↦ a.left,
-      .a.right ↦ a.right
-    ] ⊢ a.left ∈ ℜ.X [] ∧ a.right ∈ ℜ.X []
-    monitored ℜ.first.total := ⊤ ⊢ ℜ.first []
-    enforced ℜ.second.foreignKey a.left a.right := ℜ.second [
-      .a.left ↦ a.left,
-      .a.right ↦ a.right
-    ] ⊢ a.left ∈ ℜ.X [] ∧ a.right ∈ ℜ.X []
-    monitored ℜ.second.total := ⊤ ⊢ ℜ.second []
-    enforced ℜ.same.foreignKey a.lhs.left.left a.lhs.left.right a.lhs.right.left a.lhs.right.right a.rhs.left.left a.rhs.left.right a.rhs.right.left a.rhs.right.right := ℜ.same [] ∧ ℜ.first [
-      .a.left ↦ a.lhs.left.left,
-      .a.right ↦ a.lhs.left.right
-    ] ∧ ℜ.first [
-      .a.left ↦ a.lhs.right.left,
-      .a.right ↦ a.lhs.right.right
-    ] ∧ ℜ.second [
-      .a.left ↦ a.rhs.left.left,
-      .a.right ↦ a.rhs.left.right
-    ] ∧ ℜ.second [
-      .a.left ↦ a.rhs.right.left,
-      .a.right ↦ a.rhs.right.right
-    ] ⊢ a.lhs.left.left = a.rhs.left.left ∧ a.lhs.right.right = a.rhs.right.right
-    monitored ℜ.same.total := ⊤ ⊢ ℜ.same []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.first.foreignKey a.left a.right := root.first [
+      a.left ↦ a.left,
+      a.right ↦ a.right
+    ] ⊢ a.left ∈ root.X [] ∧ a.right ∈ root.X []
+    monitored root.first.total := ⊤ ⊢ root.first []
+    enforced root.second.foreignKey a.left a.right := root.second [
+      a.left ↦ a.left,
+      a.right ↦ a.right
+    ] ⊢ a.left ∈ root.X [] ∧ a.right ∈ root.X []
+    monitored root.second.total := ⊤ ⊢ root.second []
+    monitored root.same a.left a.right b.left b.right := root.first [
+      a.left ↦ a.left,
+      a.right ↦ a.right
+    ] ∧ root.second [
+      a.left ↦ b.left,
+      a.right ↦ b.right
+    ] ⊢ a.left = b.left ∧ a.right = b.right
   end
 end
 

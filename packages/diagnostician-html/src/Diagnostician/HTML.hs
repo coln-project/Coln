@@ -30,6 +30,7 @@ severityClassSuffix = \case
   SInfo -> "info"
   SWarning -> "warning"
   SError -> "error"
+  SExpectedError -> "expected-error"
 
 annClassSuffix :: DiagnosticAnn -> Text
 annClassSuffix = \case

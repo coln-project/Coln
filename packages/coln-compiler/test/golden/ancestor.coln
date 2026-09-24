@@ -3,10 +3,10 @@ theory Family := sig
   is-parent : person -> person -> Prop
 end
 
-theory AncestorRelation (F *: Family) := sig
-  is-ancestor : F.person *-> F.person *-> Prop
-  parent-is-ancestor : (x : F.person) *-> (y : F.person) *-> F.is-parent x y *-> is-ancestor x y
-  parent-of-ancestor-is-ancestor : (x : F.person) *-> (y : F.person) *-> (z : F.person) *-> F.is-parent x y *-> is-ancestor y z -> is-ancestor x z
+theory AncestorRelation (^i F : Family) := sig
+  is-ancestor : F.person -> F.person -> Prop
+  parent-is-ancestor : (x : F.person) -> (y : F.person) -> F.is-parent x y -> is-ancestor x y
+  parent-of-ancestor-is-ancestor : (x : F.person) -> (y : F.person) -> (z : F.person) -> F.is-parent x y -> is-ancestor y z -> is-ancestor x z
 end
 
-def AncestryFor (F *: Family) : Inductive (AncestorRelation F) := init (AncestorRelation F)
+ind def AncestryFor (F : Family) : AncestorRelation F := init (AncestorRelation F)

@@ -184,7 +184,7 @@ pureReporter ref =
 -- Diagnostics
 --------------------------------------------------------------------------------
 
-data Severity = SDebug | SInfo | SWarning | SError
+data Severity = SDebug | SInfo | SWarning | SError | SExpectedError
 
 data CodeMeta = CodeMeta
   { number :: Int
@@ -212,6 +212,7 @@ prtCode c = annotate DSeverity s <> "[" <> annotate DCode (sl <> padWithZerosTo 
     SInfo -> ("info", "I")
     SWarning -> ("warning", "W")
     SError -> ("error", "E")
+    SExpectedError -> ("expected error", "E")
 
 data SourceLoc = SourceLoc
   { file :: File

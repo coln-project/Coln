@@ -16,7 +16,7 @@ value: []
 
 -- messages
 
-error[E0300]: expected type B, but got type A
-10 | def b : B := a
-10 |              ^
+expected error[E0300]: expected type B, but got type A
+11 | def b : B := a
+11 |              ^
 B and A are not equal 

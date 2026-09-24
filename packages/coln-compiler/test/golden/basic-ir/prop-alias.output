@@ -10,21 +10,14 @@ value: sig
   V : PropAlias
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      V = rel []
-    end
+lowered: flatrealm
+  entities
+    table root.V := [] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.V := []
-  end
   rules
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
   end
 end
 

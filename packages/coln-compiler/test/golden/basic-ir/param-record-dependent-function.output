@@ -22,50 +22,29 @@ value: sig
   boxed : Box Key key E f point -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      Key = rel []
-      key = (fun [] -> TRealm.Key [])
-      E = rel [a : TRealm.Key []]
-      f = (fun [x : TRealm.Key []] -> TRealm.E [a := x])
-      point = (fun [] -> PointAt (TRealm.E [a := TRealm.key []]) (TRealm.f [
-        x := TRealm.key []
-      ]))
-      boxed = rel [
-        a : Box (TRealm.Key []) (TRealm.key []) (a => TRealm.E [
-          a := a
-        ]) (x => TRealm.f [x := x]) (TRealm.point [])
-      ]
-    end
+lowered: flatrealm
+  entities
+    table root.Key := []
+    table root.key := [a : root.Key] primarykey []
+    table root.E := [a : root.Key]
+    table root.f := [x : root.Key, a : root.E] primarykey [x]
+    table root.boxed := [a.image : root.E]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.Key := []
-    table ℜ.key := [.a : ℜ.Key] primarykey []
-    table ℜ.E := [.a : ℜ.Key]
-    table ℜ.f := [.x : ℜ.Key, .a : ℜ.E] primarykey [.x]
-    table ℜ.point := [] primarykey []
-    table ℜ.boxed := [.a.image : ℜ.E]
-  end
   rules
-    enforced ℜ.Key.foreignKey := ℜ.Key [] ⊢ ⊤
-    enforced ℜ.key.foreignKey a := ℜ.key [.a ↦ a] ⊢ a ∈ ℜ.Key []
-    monitored ℜ.key.total := ⊤ ⊢ ℜ.key []
-    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.Key []
-    enforced ℜ.f.foreignKey x a := ℜ.f [
-      .x ↦ x,
-      .a ↦ a
-    ] ⊢ x ∈ ℜ.Key [] ∧ a ∈ ℜ.E [.a ↦ x]
-    monitored ℜ.f.total x := x ∈ ℜ.Key [] ⊢ ℜ.f [.x ↦ x]
-    enforced ℜ.point.foreignKey := ℜ.point [] ⊢ ⊤
-    monitored ℜ.point.total := ⊤ ⊢ ℜ.point []
-    enforced ℜ.boxed.foreignKey a.image a.image.a := ℜ.boxed [
-      .a.image ↦ a.image
-    ] ∧ ℜ.key [.a ↦ a.image.a] ⊢ a.image ∈ ℜ.E [.a ↦ a.image.a]
+    enforced root.Key.foreignKey := root.Key [] ⊢ ⊤
+    enforced root.key.foreignKey a := root.key [a ↦ a] ⊢ a ∈ root.Key []
+    monitored root.key.total := ⊤ ⊢ root.key []
+    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.Key []
+    enforced root.f.foreignKey x a := root.f [
+      x ↦ x,
+      a ↦ a
+    ] ⊢ x ∈ root.Key [] ∧ a ∈ root.E [a ↦ x]
+    monitored root.f.total x := x ∈ root.Key [] ⊢ root.f [x ↦ x]
+    enforced root.boxed.foreignKey a.image b := root.boxed [
+      a.image ↦ a.image
+    ] ⊢ root.key [a ↦ b] ∧ a.image ∈ root.E [a ↦ b]
   end
 end
 

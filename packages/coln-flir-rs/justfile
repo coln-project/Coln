@@ -34,6 +34,8 @@ graph-of-graphs.coln \
 transitive-closure.coln \
 triangle.coln \
 bipartite-trans-closure.coln \
+tricky-clique-pair.output \
+tricky-self-clique.output \
 "
 
 # (Re)generate FLIRs in tests/data.

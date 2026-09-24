@@ -17,26 +17,18 @@ value: sig
   boxed : Box X -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      boxed = rel [a : Box (TRealm.X [])]
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.boxed := [a.value : root.X]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.boxed := [.a.value : ℜ.X]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.boxed.foreignKey a.value := ℜ.boxed [
-      .a.value ↦ a.value
-    ] ⊢ a.value ∈ ℜ.X []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.boxed.foreignKey a.value := root.boxed [
+      a.value ↦ a.value
+    ] ⊢ a.value ∈ root.X []
   end
 end
 

@@ -19,25 +19,21 @@ value: sig
   payload : Outer
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      payload = (fun [] -> Outer)
-    end
+lowered: flatrealm
+  entities
+    table root := [
+      a.payload.name : String,
+      a.payload.inner.rank : Int
+    ] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.payload := [.a.name : String, .a.inner.rank : Int] primarykey []
-  end
   rules
-    enforced ℜ.payload.foreignKey a.name a.inner.rank := ℜ.payload [
-      .a.name ↦ a.name,
-      .a.inner.rank ↦ a.inner.rank
+    enforced root.foreignKey a.payload.name a.payload.inner.rank := root [
+      a.payload.name ↦ a.payload.name,
+      a.payload.inner.rank ↦ a.payload.inner.rank
     ] ⊢ ⊤
-    monitored ℜ.payload.total := ⊤ ⊢ ℜ.payload []
+    monitored root.total := ⊤ ⊢ root []
   end
 end
 

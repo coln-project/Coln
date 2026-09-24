@@ -13,25 +13,15 @@ value: sig
   witness : (x : X) -> Witness X x
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      witness = (fun [x : TRealm.X []] -> Witness (TRealm.X []) x)
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.witness := [.x : ℜ.X] primarykey [.x]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.witness.foreignKey x := ℜ.witness [.x ↦ x] ⊢ x ∈ ℜ.X [] ∧ x = x
-    monitored ℜ.witness.total x := x ∈ ℜ.X [] ⊢ ℜ.witness [.x ↦ x]
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    monitored root.witness x := x ∈ root.X [] ⊢ x = x
   end
 end
 

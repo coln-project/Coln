@@ -1,0 +1,55 @@
+-- elaborated
+global entry named Graph
+in mode: Conjunctive
+type: Theory
+value: sig
+  V : Set
+  E : V -> V -> Set
+end
+realm named TriangleRealm
+lowered: flatrealm
+  entities
+    table root.V := []
+    table root.E := [a : root.V, b : root.V]
+    view view.triangle := [
+      triangle.a : root.V,
+      triangle.b : root.V,
+      triangle.c : root.V,
+      triangle.f : root.E,
+      triangle.g : root.E,
+      triangle.h : root.E
+    ] primarykey [
+      triangle.a,
+      triangle.b,
+      triangle.c,
+      triangle.f,
+      triangle.g,
+      triangle.h
+    ]
+  end
+  definitions
+    chased view.triangle.definition triangle.a triangle.b triangle.c triangle.f triangle.g triangle.h := triangle.a ∈ root.V [] ∧ triangle.b ∈ root.V [] ∧ triangle.c ∈ root.V [] ∧ triangle.f ∈ root.E [
+      a ↦ triangle.a,
+      b ↦ triangle.b
+    ] ∧ triangle.g ∈ root.E [
+      a ↦ triangle.b,
+      b ↦ triangle.c
+    ] ∧ triangle.h ∈ root.E [a ↦ triangle.a, b ↦ triangle.c] ⊢ view.triangle [
+      triangle.a ↦ triangle.a,
+      triangle.b ↦ triangle.b,
+      triangle.c ↦ triangle.c,
+      triangle.f ↦ triangle.f,
+      triangle.g ↦ triangle.g,
+      triangle.h ↦ triangle.h
+    ]
+  end
+  rules
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.E.foreignKey a b := root.E [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
+  end
+end
+
+-- messages

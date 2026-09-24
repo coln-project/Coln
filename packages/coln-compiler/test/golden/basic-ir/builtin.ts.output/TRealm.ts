@@ -1,48 +1,45 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    V: runtime.MutableSet<runtime.RowId<"root.V">>,
+    count: (a: runtime.RowId<"root.V">) => runtime.MutableRef<number>,
+    label: (a: runtime.RowId<"root.V">) => runtime.MutableRef<string>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      V: (new runtime.RowIdSet.View(store, "TRealm.V", [])),
-      count: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.count", [a]));
-      },
-      label: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.label", [a]));
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      V: (new runtime.RowIdSet.Transaction(store, "TRealm.V", [], transaction)),
-      count: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.count",
+      V: (new runtime.BaseSet(mstore, "root.V", [])),
+      count: (a: runtime.RowId<"root.V">) => {
+        return (new runtime.BaseTableRef(
+          mstore,
+          "root.count",
           [a],
-          transaction
+          [1, 2],
+          {
+            flatten: (a: number) => {
+              return [a];
+            },
+            reconstruct: (result: runtime.WireTuple) => {
+              return result[0];
+            }
+          }
         ));
       },
-      label: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.label",
+      label: (a: runtime.RowId<"root.V">) => {
+        return (new runtime.BaseTableRef(
+          mstore,
+          "root.label",
           [a],
-          transaction
+          [1, 2],
+          {
+            flatten: (a: string) => {
+              return [a];
+            },
+            reconstruct: (result: runtime.WireTuple) => {
+              return result[0];
+            }
+          }
         ));
       }
     };

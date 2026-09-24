@@ -16,47 +16,37 @@ value: sig
   edge : (x : X) -> E (payload x .rank)
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      payload = (fun [a : TRealm.X []] -> Payload)
-      E = rel [a : Int]
-      edge = (fun [x : TRealm.X []] -> TRealm.E [
-        a := TRealm.payload [a := x] .rank
-      ])
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.payload := [
+      a : root.X,
+      b.name : String,
+      b.rank : Int
+    ] primarykey [a]
+    table root.E := [a : Int]
+    table root.edge := [x : root.X, a : root.E] primarykey [x]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.payload := [.a : ℜ.X, .b.name : String, .b.rank : Int] primarykey [
-      .a
-    ]
-    table ℜ.E := [.a : Int]
-    table ℜ.edge := [.x : ℜ.X, .a : ℜ.E] primarykey [.x]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.payload.foreignKey a b.name b.rank := ℜ.payload [
-      .a ↦ a,
-      .b.name ↦ b.name,
-      .b.rank ↦ b.rank
-    ] ⊢ a ∈ ℜ.X []
-    monitored ℜ.payload.total a := a ∈ ℜ.X [] ⊢ ℜ.payload [.a ↦ a]
-    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ ⊤
-    enforced ℜ.edge.foreignKey x a a.a.name a.a.rank := ℜ.edge [
-      .x ↦ x,
-      .a ↦ a
-    ] ∧ ℜ.payload [
-      .a ↦ x,
-      .b.name ↦ a.a.name,
-      .b.rank ↦ a.a.rank
-    ] ⊢ x ∈ ℜ.X [] ∧ a ∈ ℜ.E [.a ↦ a.a.rank]
-    monitored ℜ.edge.total x := x ∈ ℜ.X [] ⊢ ℜ.edge [.x ↦ x]
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.payload.foreignKey a b.name b.rank := root.payload [
+      a ↦ a,
+      b.name ↦ b.name,
+      b.rank ↦ b.rank
+    ] ⊢ a ∈ root.X []
+    monitored root.payload.total a := a ∈ root.X [] ⊢ root.payload [a ↦ a]
+    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ ⊤
+    enforced root.edge.foreignKey x a b.name b.rank := root.edge [
+      x ↦ x,
+      a ↦ a
+    ] ⊢ x ∈ root.X [] ∧ root.payload [
+      a ↦ x,
+      b.name ↦ b.name,
+      b.rank ↦ b.rank
+    ] ∧ a ∈ root.E [a ↦ b.rank]
+    monitored root.edge.total x := x ∈ root.X [] ⊢ root.edge [x ↦ x]
   end
 end
 

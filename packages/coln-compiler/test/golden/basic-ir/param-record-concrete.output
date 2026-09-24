@@ -18,22 +18,15 @@ value: sig
   boxed : Box Payload -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      boxed = rel [a : Box Payload]
-    end
+lowered: flatrealm
+  entities
+    table root.boxed := [a.value.name : String]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.boxed := [.a.value.name : String]
-  end
   rules
-    enforced ℜ.boxed.foreignKey a.value.name := ℜ.boxed [
-      .a.value.name ↦ a.value.name
+    enforced root.boxed.foreignKey a.value.name := root.boxed [
+      a.value.name ↦ a.value.name
     ] ⊢ ⊤
   end
 end

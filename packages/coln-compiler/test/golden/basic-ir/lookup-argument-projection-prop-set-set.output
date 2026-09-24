@@ -10,46 +10,28 @@ value: sig
   nextedge : (x : A) -> E x (next x)
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      A = rel []
-      B = rel [a : TRealm.A []]
-      E = rel [x : TRealm.A [], a : TRealm.B [a := x]]
-      next = (fun [x : TRealm.A []] -> TRealm.B [a := x])
-      nextedge = (fun [x : TRealm.A []] -> TRealm.E [
-        x := x,
-        a := TRealm.next [x := x]
-      ])
-    end
+lowered: flatrealm
+  entities
+    table root.A := [] primarykey []
+    table root.B := []
+    table root.E := [a : root.B]
+    table root.next := [a : root.B] primarykey []
+    table root.nextedge := [a : root.E] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.A := []
-    table ℜ.B := [.a : ℜ.A]
-    table ℜ.E := [.x : ℜ.A, .a : ℜ.B]
-    table ℜ.next := [.x : ℜ.A, .a : ℜ.B] primarykey [.x]
-    table ℜ.nextedge := [.x : ℜ.A, .a : ℜ.E] primarykey [.x]
-  end
   rules
-    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
-    enforced ℜ.B.foreignKey a := ℜ.B [.a ↦ a] ⊢ a ∈ ℜ.A []
-    enforced ℜ.E.foreignKey x a := ℜ.E [.x ↦ x, .a ↦ a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [
-      .a ↦ x
-    ]
-    enforced ℜ.next.foreignKey x a := ℜ.next [
-      .x ↦ x,
-      .a ↦ a
-    ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [.a ↦ x]
-    monitored ℜ.next.total x := x ∈ ℜ.A [] ⊢ ℜ.next [.x ↦ x]
-    enforced ℜ.nextedge.foreignKey x a a.a := ℜ.nextedge [
-      .x ↦ x,
-      .a ↦ a
-    ] ∧ ℜ.next [.x ↦ x, .a ↦ a.a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.x ↦ x, .a ↦ a.a]
-    monitored ℜ.nextedge.total x := x ∈ ℜ.A [] ⊢ ℜ.nextedge [.x ↦ x]
+    enforced root.A.foreignKey := root.A [] ⊢ ⊤
+    enforced root.B.foreignKey := root.B [] ⊢ root.A []
+    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ root.A [] ∧ a ∈ root.B []
+    enforced root.next.foreignKey a := root.next [
+      a ↦ a
+    ] ⊢ root.A [] ∧ a ∈ root.B []
+    monitored root.next.total := root.A [] ⊢ root.next []
+    enforced root.nextedge.foreignKey a b := root.nextedge [
+      a ↦ a
+    ] ⊢ root.A [] ∧ root.next [a ↦ b] ∧ a ∈ root.E [a ↦ b]
+    monitored root.nextedge.total := root.A [] ⊢ root.nextedge []
   end
 end
 

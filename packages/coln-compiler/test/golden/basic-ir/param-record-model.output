@@ -20,29 +20,19 @@ value: sig
   boxed : Box model String -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      model = node
-        X = rel []
-      end
-      boxed = rel [a : Box [X := TRealm.model.X []] String]
-    end
+lowered: flatrealm
+  entities
+    table root.model.X := []
+    table root.boxed := [a.modelValue : root.model.X, a.value : String]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.model.X := []
-    table ℜ.boxed := [.a.modelValue : ℜ.model.X, .a.value : String]
-  end
   rules
-    enforced ℜ.model.X.foreignKey := ℜ.model.X [] ⊢ ⊤
-    enforced ℜ.boxed.foreignKey a.modelValue a.value := ℜ.boxed [
-      .a.modelValue ↦ a.modelValue,
-      .a.value ↦ a.value
-    ] ⊢ a.modelValue ∈ ℜ.model.X []
+    enforced root.model.X.foreignKey := root.model.X [] ⊢ ⊤
+    enforced root.boxed.foreignKey a.modelValue a.value := root.boxed [
+      a.modelValue ↦ a.modelValue,
+      a.value ↦ a.value
+    ] ⊢ a.modelValue ∈ root.model.X []
   end
 end
 

@@ -8,29 +8,26 @@ value: sig
   label : V -> String
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      V = rel []
-      count = (fun [a : TRealm.V []] -> Int)
-      label = (fun [a : TRealm.V []] -> String)
-    end
+lowered: flatrealm
+  entities
+    table root.V := []
+    table root.count := [a : root.V, b : Int] primarykey [a]
+    table root.label := [a : root.V, b : String] primarykey [a]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.V := []
-    table ℜ.count := [.a : ℜ.V, .b : Int] primarykey [.a]
-    table ℜ.label := [.a : ℜ.V, .b : String] primarykey [.a]
-  end
   rules
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
-    enforced ℜ.count.foreignKey a b := ℜ.count [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V []
-    monitored ℜ.count.total a := a ∈ ℜ.V [] ⊢ ℜ.count [.a ↦ a]
-    enforced ℜ.label.foreignKey a b := ℜ.label [.a ↦ a, .b ↦ b] ⊢ a ∈ ℜ.V []
-    monitored ℜ.label.total a := a ∈ ℜ.V [] ⊢ ℜ.label [.a ↦ a]
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.count.foreignKey a b := root.count [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V []
+    monitored root.count.total a := a ∈ root.V [] ⊢ root.count [a ↦ a]
+    enforced root.label.foreignKey a b := root.label [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V []
+    monitored root.label.total a := a ∈ root.V [] ⊢ root.label [a ↦ a]
   end
 end
 

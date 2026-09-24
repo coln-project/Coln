@@ -1,4 +1,4 @@
-theory IsTransClosure (X : Set) (R : X -> X -> Set) (P : X -> X -> Set) := sig
+theory IsTransClosure (X : Set) (R : (^c x : X) -> (^c y : X) -> Set) (P : X -> X -> Set) := sig
   refl : (x : X) -> P x x
   snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
 end
@@ -10,14 +10,14 @@ theory LinearOrder := sig
   next : car -> car
   prev : car -> car
 
-  next/prev : (x : car) -> next (prev x) = x
-  prev/next : (x : car) -> prev (next x) = x
+  next/prev : (^c x : car) -> next (prev x) = x
+  prev/next : (^c x : car) -> prev (next x) = x
 
   follows : car -> car -> Set
 
   follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
 
-  acyclic : (x : car) -> (y : car) -> follows x y -> follows y x -> x = y
+  acyclic : (^c x : car) -> (^c y : car) -> follows x y -> follows y x -> x = y
   first-is-top : (x : car) -> follows first x
   last-is-bot : (x : car) -> follows x last
 end
@@ -31,8 +31,8 @@ end
 theory Iso (A : Set) (B : Set) := sig
   fwd : A -> B
   bwd : B -> A
-  fwd/bwd : (a : A) -> bwd (fwd a) = a
-  bwd/fwd : (b : B) -> fwd (bwd b) = b
+  fwd/bwd : (^c a : A) -> bwd (fwd a) = a
+  bwd/fwd : (^c b : B) -> fwd (bwd b) = b
 end
 
 theory Operation (opInfo : OpInfo) (val : Set) (outputs : Set) := sig
@@ -50,7 +50,7 @@ end
 theory Block (opInfo : OpInfo) := sig
   ops : LinearOrder
   outputs : ops.car -> Set
-  payload : (x : ops.car) -> (
+  payload : (^c x : ops.car) -> (
     Operation
       opInfo
       (PrecedingOutput (ops.car) (ops.follows) x outputs)

@@ -14,29 +14,20 @@ value: sig
   shadowed : Shadowed A B -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      A = rel []
-      B = rel []
-      shadowed = rel [a : Shadowed (TRealm.A []) (TRealm.B [])]
-    end
+lowered: flatrealm
+  entities
+    table root.A := []
+    table root.B := []
+    table root.shadowed := [a.value : root.B]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.A := []
-    table ℜ.B := []
-    table ℜ.shadowed := [.a.value : ℜ.B]
-  end
   rules
-    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
-    enforced ℜ.B.foreignKey := ℜ.B [] ⊢ ⊤
-    enforced ℜ.shadowed.foreignKey a.value := ℜ.shadowed [
-      .a.value ↦ a.value
-    ] ⊢ a.value ∈ ℜ.B []
+    enforced root.A.foreignKey := root.A [] ⊢ ⊤
+    enforced root.B.foreignKey := root.B [] ⊢ ⊤
+    enforced root.shadowed.foreignKey a.value := root.shadowed [
+      a.value ↦ a.value
+    ] ⊢ a.value ∈ root.B []
   end
 end
 

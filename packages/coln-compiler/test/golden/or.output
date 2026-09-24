@@ -1,24 +1,19 @@
 -- elaborated
-
+global entry named Cocone
+in mode: Conjunctive
+type: (a : Set) -> (b : Set) -> Theory
+value: a => b => sig
+  apex : Set
+  inl : a -> apex
+  inr : b -> apex
+end
+global entry named Either/cocone
+in mode: Inductive
+type: (a : Set) -> (b : Set) -> Cocone a b
+value: a => b => init (Cocone a b)
+global entry named Either
+in mode: Inductive
+type: (a : Set) -> (b : Set) -> Set
+value: a => b => Either/cocone a b .apex
 
 -- messages
-
-error[E0200]: unexpected notation for argument binding of the form `<name> : <type>`: Infix
-1 | theory Cocone (a *: Set) (b *: Set) := sig
-1 |                ^^^^^^^^
-
-error[E0200]: unexpected notation for argument binding of the form `<name> : <type>`: Infix
-7 | def Either/cocone (a *: Set) (b *: Set) : Inductive (Cocone a b) := (
-7 |                    ^^^^^^^^
-
-error[E0200]: unexpected notation for argument binding of the form `<name> : <type>`: Infix
-11 | def Either (a *: Set) (b *: Set) : Inductive Set := pure (Either/cocone a b .use .apex)
-11 |             ^^^^^^^^
-
-error[E0200]: unexpected notation for argument binding of the form `<name> : <type>`: Infix
-13 | theory Cone (a *: Set) (b *: Set) := sig
-13 |              ^^^^^^^^
-
-error[E0200]: unexpected notation for expression: Keyword Inductive
-19 | def Prod/cone (a : Set) (b : Set) : Inductive (Cone a b) := init (Cone a b)
-19 |                                     ^^^^^^^^^

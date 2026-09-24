@@ -19,12 +19,13 @@ data Definition (s :: DefinitionScope) = Definition
   , ty :: V.Ty N
   , reflected :: V.El N
   , mode :: Mode
+  , attrs :: [Attr]
   }
 
 mkDefinition :: Name -> V.Ty N -> M.El D -> Mode -> Definition s
 mkDefinition x ty tm m = do
   let neu = V.reflect (V.GlobalVar x neu) V.Id ty (Just tm.val)
-  Definition tm ty neu m
+  Definition tm ty neu m []
 
 -- Global environment
 --------------------------------------------------------------------------------
@@ -37,16 +38,20 @@ data Realm = Realm
 data Globals = Globals
   { definitions :: OMap Name (Definition Global)
   , realms :: OMap Name Realm
+  , attrStack :: [Attr]
   }
 
 emptyGlobals :: Globals
-emptyGlobals = Globals OMap.empty OMap.empty
+emptyGlobals = Globals OMap.empty OMap.empty []
 
 addDefinition :: Name -> Definition Global -> Globals -> Globals
-addDefinition n e g = g{definitions = g.definitions OMap.>| (n, e)}
+addDefinition n e g = g{definitions = g.definitions OMap.>| (n, e{attrs = g.attrStack}), attrStack = []}
 
 addRealm :: Name -> Realm -> Globals -> Globals
 addRealm n r g = g{realms = g.realms OMap.>| (n, r)}
+
+pushAttr :: Attr -> Globals -> Globals
+pushAttr x g = g{attrStack = x : g.attrStack}
 
 instance Lookup Globals Name (Definition Global) where
   lookup gs x = OMap.lookup x gs.definitions
