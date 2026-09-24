@@ -16,7 +16,6 @@ data ParserCode
   | UnknownCommand
   | UnknownModifiers
   | UnknownMode
-  | ExpectedErrorNotReached
   deriving (Eq, Ord)
 
 parserCodeTable :: Map ParserCode CodeMeta
@@ -30,5 +29,4 @@ parserCodeTable =
     , (UnknownCommand, CodeMeta 5 SError Nothing)
     , (UnknownModifiers, CodeMeta 6 SError Nothing)
     , (UnknownMode, CodeMeta 7 SError Nothing)
-    , (ExpectedErrorNotReached, CodeMeta 8 SError Nothing)
     ]

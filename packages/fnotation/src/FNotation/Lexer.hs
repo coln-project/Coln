@@ -167,7 +167,7 @@ report :: LexState -> LexerCode -> DDoc -> IO ()
 report st c m = do
   s <- span st
   let d = Diagnostic c m [Note (Just (SourceLoc (st.file) s)) Nothing]
-  st.reporter.reportIO d
+  reportTo st.reporter d
 
 unexpectedChar :: LexState -> Char -> IO ()
 unexpectedChar st c = do

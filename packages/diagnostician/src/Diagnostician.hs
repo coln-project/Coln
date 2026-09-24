@@ -4,8 +4,9 @@
 
 module Diagnostician where
 
+import Control.Exception (bracket)
 import Data.Functor.Contravariant
-import Data.IORef (IORef, atomicModifyIORef)
+import Data.IORef (IORef, atomicModifyIORef, readIORef, newIORef)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Maybe (maybeToList)
@@ -156,35 +157,68 @@ linesPretty f sp@(Span s e) =
 -- Reporter
 --------------------------------------------------------------------------------
 
+newtype DiagnosticContext = DiagnosticContext { ctxSegments :: [Text] }
+
 {- | A @Reporter@ is a destination for diagnostic messages. It corresponds
 to an IO action `reportIO` that logs a diagnostic
 -}
-newtype Reporter a = Reporter {reportIO :: Diagnostic a -> IO ()}
+newtype ReporterBackend a = ReporterBackend
+  { reportIO :: DiagnosticContext -> Diagnostic a -> IO ()
+  }
+
+data Reporter a = Reporter
+  { backend :: ReporterBackend a
+  , ctxReversed :: IORef [Text]
+  }
 
 reportTo :: Reporter a -> Diagnostic a -> IO ()
-reportTo r d = r.reportIO d
+reportTo r d = do
+  cr <- readIORef r.ctxReversed
+  r.backend.reportIO (DiagnosticContext (reverse cr)) d
+
+pushDiagCtx :: Reporter a -> Text -> IO ()
+pushDiagCtx r c = atomicModifyIORef r.ctxReversed (\cs -> (c:cs, ()))
+
+popDiagCtx :: Reporter a -> IO ()
+popDiagCtx r = atomicModifyIORef r.ctxReversed \case
+  _:rest -> (rest, ())
+  [] -> ([], ())
+
+inDiagCtx :: Reporter a -> Text -> IO a -> IO a
+inDiagCtx r c action = bracket (pushDiagCtx r c) (\_ -> popDiagCtx r) (\_ -> action)
+
+instance Contravariant ReporterBackend where
+  contramap f (ReporterBackend r) = ReporterBackend $ \c d -> r c (fmap f d)
 
 instance Contravariant Reporter where
-  contramap f (Reporter r) = Reporter $ r . fmap f
+  contramap f r = r { backend = contramap f r.backend }
 
 -- | Create a `Reporter` that writes the prettyprinted diagnostic to a file
-fileReporter :: (Code a) => Handle -> Reporter a
+fileReporter :: (Code a) => Handle -> ReporterBackend a
 fileReporter handle =
-  Reporter
-    { reportIO = \d -> hPutDoc handle (hardline <> dpretty d <> hardline)
+  ReporterBackend
+    { reportIO = \_ d -> hPutDoc handle (hardline <> dpretty d <> hardline)
     }
 
 -- | Create a `Reporter` that appends a diagnostic to a list
-pureReporter :: (Code a) => IORef [Diagnostic a] -> Reporter a
+pureReporter :: (Code a) => IORef [(DiagnosticContext, Diagnostic a)] -> ReporterBackend a
 pureReporter ref =
-  Reporter
-    { reportIO = \d -> atomicModifyIORef ref (\ds -> (d : ds, ()))
+  ReporterBackend
+    { reportIO = \c d -> atomicModifyIORef ref (\ds -> ((c, d) : ds, ()))
     }
+
+nullReporter :: ReporterBackend a
+nullReporter = ReporterBackend { reportIO = \_ _ -> pure () }
+
+newReporter :: ReporterBackend a -> IO (Reporter a)
+newReporter backend = do
+  ctxReversed <- newIORef []
+  pure $ Reporter backend ctxReversed
 
 -- Diagnostics
 --------------------------------------------------------------------------------
 
-data Severity = SDebug | SInfo | SWarning | SError | SExpectedError
+data Severity = SDebug | SInfo | SWarning | SError
 
 data CodeMeta = CodeMeta
   { number :: Int
@@ -212,7 +246,6 @@ prtCode c = annotate DSeverity s <> "[" <> annotate DCode (sl <> padWithZerosTo 
     SInfo -> ("info", "I")
     SWarning -> ("warning", "W")
     SError -> ("error", "E")
-    SExpectedError -> ("expected error", "E")
 
 data SourceLoc = SourceLoc
   { file :: File

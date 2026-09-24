@@ -12,10 +12,6 @@ import Test.Tasty
 import Test.Tasty.QuickCheck
 import Prelude hiding (read)
 
--- | A reporter that silently discards all diagnostics.
-nullReporter :: Reporter ReaderCode
-nullReporter = Reporter{reportIO = \_ -> pure ()}
-
 -- | Property: the reader should not crash on any generated token stream.
 readerProperties :: TestTree
 readerProperties =
@@ -24,6 +20,7 @@ readerProperties =
     [ testProperty "reader does not crash on arbitrary tokens" \(FNTokens tokens) ->
         ioProperty do
           let f = newFile "<quickcheck>" ""
-          ns <- read readConfig nullReporter f tokens
+          r <- newReporter nullReporter
+          ns <- read readConfig r f tokens
           length ns `seq` pure True
     ]

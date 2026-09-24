@@ -5,7 +5,7 @@
 module Coln.Frontend.Parser.Top where
 
 import Control.Exception (try)
-import Data.Foldable (foldlM, forM_)
+import Data.Foldable (foldlM)
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
 
@@ -13,7 +13,7 @@ import Data.Map.Ordered qualified as OMap
 import FNotation (Ntn)
 import FNotation qualified as N
 import Prettyprinter
-import Prettyprinter.Render.Text (renderStrict)
+
 
 import Coln.Common
 import Coln.Core
@@ -93,7 +93,7 @@ mode e sp ms = do
   failWith e sp UnknownModifiers msg
 
 attr :: ParserEnv -> Span -> Ntn -> IO Attr
-attr e sp (N.Juxt (N.Ident (Name [] "expected-error") _) (N.String s _)) = pure $ AttrExpectedError s
+attr _ _ (N.Juxt (N.Ident (Name [] "expected-error") _) (N.String s _)) = pure $ AttrExpectedError s
 attr e sp ntn = do
   let msg = "invalid attr" <+> dpretty ntn
   failWith e sp UnexpectedNotation msg
@@ -166,23 +166,9 @@ tryDecl e g n@(N.MDecl _ "attr" _ _) = do
     Right g' -> pure g'
     Left (_ :: FailException) -> pure g
 tryDecl e g n = do
-  let expected = case g.attrStack of
-        (AttrExpectedError code) : _ -> Just code
-        _ -> Nothing
-
-  let reporter = Reporter $ \d -> do
-        let actual = renderStrict $ layoutPretty defaultLayoutOptions $ prtCode d.code
-        let matched = Just actual == fmap (\code -> "error[" <> code <> "]") expected
-        reportTo e.reporter (if matched then fmap ExpectedError d else d)
-
-  result <- try (decl e{reporter = reporter} g n)
-
+  result <- try (decl e g n)
   case result of
-    Right g' -> do
-      forM_ expected $ \code ->
-        report (contramap ParserCode e) (N.span n) ExpectedErrorNotReached $
-          "expected error" <+> pretty code <+> "did not occur"
-      pure g'{attrStack = []}
+    Right g' -> do pure g'{attrStack = []}
     Left (_ :: FailException) -> pure g{attrStack = []}
 
 top :: DiagnosticEnv ColnCode -> [Ntn] -> IO Globals

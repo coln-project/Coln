@@ -16,8 +16,8 @@ import Prelude hiding (lex, read)
 
 readErrorFree :: Text -> IO Bool
 readErrorFree src = do
-  ref <- newIORef ([] :: [Diagnostic TestCode])
-  let r = pureReporter ref
+  ref <- newIORef ([] :: [(DiagnosticContext, Diagnostic TestCode)])
+  r <- newReporter (pureReporter ref)
   let f = newFile "<input>" src
   tokens <- lex lexConfig (contramap LexerCode r) f
   _ <- read readConfig (contramap ReaderCode r) f tokens

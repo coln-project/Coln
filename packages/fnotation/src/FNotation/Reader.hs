@@ -59,7 +59,7 @@ report :: ReaderState -> Span -> ReaderCode -> DDoc -> IO ()
 report st s c m = do
   let n = Note (Just (SourceLoc st.file s)) Nothing
   let d = Diagnostic c m [n]
-  st.reporter.reportIO d
+  reportTo st.reporter d
 
 cur :: ReaderState -> IO T.Kind
 cur st = do

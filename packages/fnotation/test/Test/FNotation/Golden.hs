@@ -7,8 +7,6 @@ module Test.FNotation.Golden (goldenTests) where
 import Control.Exception
 import Data.ByteString.Lazy qualified as LBS
 import Data.Functor.Contravariant (contramap)
-import Data.Map (Map)
-import Data.Map qualified as Map
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding qualified as TLE
@@ -33,7 +31,7 @@ readToPretty fp = do
   src <- T.readFile fp
   let f = newFile fp src
   withSystemTempFile "reporter-output" $ \path h -> do
-    let r = fileReporter h
+    r <- newReporter (fileReporter h)
     try @SomeException (lex lexConfig (contramap LexerCode r) f) >>= \case
       Left err -> pure $ TLE.encodeUtf8 $ "lex error:\n" <> TL.show err
       Right tokens -> do

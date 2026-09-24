@@ -13,10 +13,6 @@ import Test.Tasty
 import Test.Tasty.QuickCheck
 import Prelude hiding (lex)
 
--- | A reporter that silently discards all diagnostics.
-nullReporter :: Reporter LexerCode
-nullReporter = Reporter{reportIO = \_ -> pure ()}
-
 -- | Property: the lexer should not crash on any generated source text.
 lexerProperties :: TestTree
 lexerProperties =
@@ -25,6 +21,7 @@ lexerProperties =
     [ testProperty "lexer does not crash on arbitrary source" \(FNSource src) ->
         ioProperty do
           let f = newFile "<quickcheck>" src
-          tokens <- lex lexConfig nullReporter f
+          r <- newReporter nullReporter
+          tokens <- lex lexConfig r f
           pure $ V.length tokens `seq` True
     ]

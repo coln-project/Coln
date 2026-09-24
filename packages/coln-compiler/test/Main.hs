@@ -4,6 +4,7 @@
 
 module Main (main) where
 
+import Data.IORef
 import Coln.Common
 import Coln.Core
 import Coln.Diagnostics
@@ -26,7 +27,7 @@ import Prettyprinter.Render.Text
 import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory, removePathForcibly)
 import System.FilePath (replaceExtension, takeBaseName, takeExtension, (</>))
 import System.IO
-import System.IO.Temp (withSystemTempFile)
+
 import Test.Tasty (DependencyType (AllSucceed), TestTree, defaultMain, dependentTestGroup, testGroup, withResource)
 import Test.Tasty.ExpectedFailure (expectFail)
 import Test.Tasty.Golden (findByExtension, goldenVsFile, goldenVsString)
@@ -80,19 +81,17 @@ prettyDecls ge =
     (prettyEntry <$> OMap.assocs ge.definitions)
       ++ (prettyRealm ge <$> OMap.assocs ge.realms)
 
-loadGlobals :: FilePath -> IO (Globals, Text)
+loadGlobals :: FilePath -> IO (Globals, [(DiagnosticContext, Diagnostic ColnCode)])
 loadGlobals fp = do
   src <- T.readFile fp
   let f = newFile fp src
-  withSystemTempFile "reporter-output" $ \path h -> do
-    let r = fileReporter h
-    ts <- lex lexConfig (contramap LexerCode r) f
-    ns <- read readConfig (contramap ReaderCode r) f ts
-    ge <- top (DiagnosticEnv r f) ns
-    hFlush h
-    hClose h
-    msgs <- T.readFile path
-    pure (ge, msgs)
+  dRef <- newIORef []
+  r <- newReporter (pureReporter dRef)
+  ts <- lex lexConfig (contramap LexerCode r) f
+  ns <- read readConfig (contramap ReaderCode r) f ts
+  ge <- top (DiagnosticEnv r f) ns
+  ds <- readIORef dRef
+  pure (ge, ds)
 
 elaborate :: FilePath -> IO LBS.ByteString
 elaborate fp = do
@@ -103,8 +102,8 @@ elaborate fp = do
         [ "-- elaborated"
         , prettyDecls ge
         , ""
-        , "-- messages"
-        , pretty $ msgs
+        -- , "-- messages"
+        -- , pretty $ msgs
         ]
 
 generateTypeScript :: FilePath -> FilePath -> IO ()
