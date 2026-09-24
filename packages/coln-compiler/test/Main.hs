@@ -15,7 +15,7 @@ import Control.Monad (forM_)
 import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Functor.Contravariant (contramap)
-import Data.List (partition)
+import Data.List (partition, sort)
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy qualified as TL
@@ -119,7 +119,7 @@ generateTypeScript fp outdir = do
 
 typescriptFiles :: FilePath -> IO [FilePath]
 typescriptFiles directory =
-  filter (\path -> takeExtension path `elem` [".json", ".ts"])
+  sort . filter (\path -> takeExtension path `elem` [".json", ".ts"])
     <$> listDirectory directory
 
 elaboratorTests :: IO TestTree
