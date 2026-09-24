@@ -13,10 +13,12 @@ import Coln.Top
 import Control.Exception (evaluate, finally, onException)
 import Control.Monad (forM_)
 import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Functor.Contravariant (contramap)
 import Data.List (partition)
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO.Utf8 qualified as T
+import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding qualified as TLE
 import FNotation
 import Prettyprinter
@@ -54,11 +56,14 @@ render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 prettyEntry :: (Name, Definition Global) -> DDoc
-prettyEntry (x, (Definition t a _ m)) =
-  vsep
+prettyEntry (x, (Definition t a _ m attrs)) =
+  vsep $
     [ "global entry named" <+> dpretty x
     , "in mode:" <+> dpretty m
-    , "type:" <+> prtIn (CtxShape 0 BwdNil) a
+    ]
+    ++ (["attrs:" <+> vsep (dpretty <$> attrs) | not (null attrs)])
+    ++ [
+      "type:" <+> prtIn (CtxShape 0 BwdNil) a
     , "value:" <+> dprettyWithNames mempty t.stx
     ]
 
@@ -129,7 +134,17 @@ elaboratorTests = do
       ]
 
 elaboratorGoldenTest :: FilePath -> TestTree
-elaboratorGoldenTest colnFile = goldenVsString name outputFile (elaborate colnFile)
+elaboratorGoldenTest colnFile =
+  withResource (elaborate colnFile) (const $ pure ()) $ \getOutput ->
+    testGroup
+      name
+      [ goldenVsString "output" outputFile getOutput
+      , testCase "no unexpected errors" $ do
+          output <- getOutput
+          case filter (LBS.isPrefixOf "error[") (LBS8.lines output) of
+            [] -> pure ()
+            err : _ -> fail (colnFile <> ": " <> TL.unpack (TLE.decodeUtf8 err))
+      ]
  where
   name = takeBaseName colnFile
   outputFile = replaceExtension colnFile ".output"

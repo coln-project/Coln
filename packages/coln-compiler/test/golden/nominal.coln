@@ -7,4 +7,5 @@ end
 def a : A := struct
 end
 
+attr expected-error "E0300"
 def b : B := a

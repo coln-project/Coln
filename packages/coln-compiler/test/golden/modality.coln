@@ -1,7 +1,3 @@
-theory cond (^i X : Set) := sig
-  x : X
-end
-
 def string-alias : Set := String
 
 theory Graph := sig
@@ -9,13 +5,19 @@ theory Graph := sig
   E : V -> V -> Set
 end
 
+attr expected-error "E0316"
 theory Graph/hom (G : Graph) (^i H : Graph) := sig
   V : G.V -> H.V
-  E : (a b : G.V) -> G.E a b -> H.E (V a) (V b)
+  E : (a : G.V) -> (b : G.V) -> G.E a b -> H.E (V a) (V b)
 end
 
 theory GraphWithNames := sig
   G : Graph
   name : G.V -> String
   a : G.V
+end
+
+attr expected-error "E0316"
+theory cond (^i X : Set) := sig
+  x : X
 end

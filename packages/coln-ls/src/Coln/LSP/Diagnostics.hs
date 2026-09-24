@@ -66,3 +66,4 @@ metaToLspSeverity = \case
   D.SInfo -> DiagnosticSeverity_Information
   D.SWarning -> DiagnosticSeverity_Warning
   D.SError -> DiagnosticSeverity_Error
+  D.SExpectedError -> DiagnosticSeverity_Information

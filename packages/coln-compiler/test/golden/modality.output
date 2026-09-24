@@ -21,10 +21,10 @@ end
 
 -- messages
 
-error[E0316]: cannot use inductively bound variable in a conjunctive context
-2 |   x : X
-2 |       ^
+expected error[E0316]: cannot use inductively bound variable in a conjunctive context
+10 |   V : G.V -> H.V
+10 |              ^
 
-error[E0200]: unexpected notation for identifier, possibly with mode annotation: Juxt
-14 |   E : (a b : G.V) -> G.E a b -> H.E (V a) (V b)
-14 |        ^^^
+expected error[E0316]: cannot use inductively bound variable in a conjunctive context
+22 |   x : X
+22 |       ^

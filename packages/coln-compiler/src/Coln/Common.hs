@@ -54,6 +54,7 @@ import Coln.Report
 import Data.Foldable qualified as F
 import Data.Key (FoldableWithKey (..), Key, Keyed (..), TraversableWithKey (..))
 import Data.Kind (Constraint, Type)
+import Data.List.NonEmpty qualified as NE
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Map.Ordered (OMap)
@@ -124,6 +125,9 @@ class ToList a e | a -> e where
 
 instance ToList (V.Vector a) a where
   toList = V.toList
+
+instance ToList (NE.NonEmpty a) a where
+  toList = NE.toList
 
 class FromList a e | a -> e where
   fromList :: [e] -> a

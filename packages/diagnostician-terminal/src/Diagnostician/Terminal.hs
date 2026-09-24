@@ -36,3 +36,4 @@ toAnsiStyle severity = \case
     SInfo -> Ansi.Blue
     SWarning -> Ansi.Yellow
     SError -> Ansi.Red
+    SExpectedError -> Ansi.Green

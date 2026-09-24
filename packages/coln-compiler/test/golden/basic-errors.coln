@@ -18,44 +18,59 @@ def dependent : Dependent := struct
   value := 1
 end
 
+attr expected-error "E0302"
 def projectionOfNonRecord : Int := (1).missing
 
+attr expected-error "E0303"
 def noSuchField : Int := pair.missing
 
+attr expected-error "E0304"
 def applicationOfNonFunction : Int := 1 2
 
+attr expected-error "E0305"
 def annotationRequired : Int := (x => x) 1
 
+attr expected-error "E0306"
 def wrongNumberOfRecordFields : Pair := struct
   first := 1
 end
 
+attr expected-error "E0300"
 def equalityTypeMismatch : Prop := 1 = "one"
 
+attr expected-error "E0308"
 def equalityUnsupported : Prop := Pair = Pair
 
+attr expected-error "E0309"
 def typeAtNonUniverse : Int := Set
 
+attr expected-error "E0310"
 def checkLambdaAtNonFunctionType : Int := x => x
 
+attr expected-error "E0312"
 def checkRecordAtNonRecordType : Int := struct
 end
 
+attr expected-error "E0313"
 def mismatchedRecordField : Pair := struct
   second := 2
   first := 1
 end
 
+attr expected-error "E0307"
 theory InvalidArrow := sig
   V : Set -> Set
 end
 
+attr expected-error "E0307"
 theory InvalidIntArrow := sig
   V : (Int -> Int) -> Set
 end
 
+attr expected-error "E0311"
 theory InvalidParameter (F : Set -> Set) := sig
 end
 
+attr expected-error "E0311"
 theory InvalidIntParameter (F : (Int -> Int) -> Set) := sig
 end

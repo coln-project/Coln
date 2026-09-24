@@ -5,7 +5,7 @@
 module Coln.Frontend.Parser.Top where
 
 import Control.Exception (try)
-import Data.Foldable
+import Data.Foldable (foldlM, forM_)
 import Data.Functor.Contravariant (contramap)
 import Data.List.NonEmpty (NonEmpty (..))
 
@@ -13,6 +13,7 @@ import Data.Map.Ordered qualified as OMap
 import FNotation (Ntn)
 import FNotation qualified as N
 import Prettyprinter
+import Prettyprinter.Render.Text (renderStrict)
 
 import Coln.Common
 import Coln.Core
@@ -81,7 +82,7 @@ elabDefinition e g m (x, ty, tm) = do
   let tmE = emptyElabEnvFor e g m x a.val
   t <- tm.elab tmE a.val
   let v = V.reflect (V.GlobalVar x v) V.Id a.val (Just t.val)
-  let entry = Definition t a.val v m
+  let entry = Definition t a.val v m []
   pure entry
 
 mode :: ParserEnv -> Span -> [Name] -> IO Mode
@@ -90,6 +91,12 @@ mode _ _ ["ind"] = pure Inductive
 mode e sp ms = do
   let msg = "unknown modifiers" <+> hsep (dpretty <$> ms)
   failWith e sp UnknownModifiers msg
+
+attr :: ParserEnv -> Span -> Ntn -> IO Attr
+attr e sp (N.Juxt (N.Ident (Name [] "expected-error") _) (N.String s _)) = pure $ AttrExpectedError s
+attr e sp ntn = do
+  let msg = "invalid attr" <+> dpretty ntn
+  failWith e sp UnexpectedNotation msg
 
 decl :: DiagnosticEnv ColnCode -> Globals -> Ntn -> IO Globals
 decl e g (N.MDecl ms "theory" n sp) = do
@@ -105,6 +112,9 @@ decl e g (N.MDecl ms "def" n sp) = do
 decl e g (N.Block "realm" (Just head) body _) = do
   (x, r) <- realm e g head body
   pure $ addRealm x r g
+decl e g (N.MDecl ms "attr" n sp) = do
+  x <- attr (contramap ParserCode e) sp n
+  pure $ pushAttr x g
 decl e _ n = unexpectedNotation (contramap ParserCode e) n "top-level declaration"
 
 realmHead :: ParserEnv -> Ntn -> IO (Name, Ntn)
@@ -127,7 +137,7 @@ elabRealmDefinition e m (ty, tm) = do
   let e'' = e'{target = TargetNamed $ V.BareNeutral var V.Id}
   t <- tm.elab e'' a.val
   let v = V.reflect var V.Id a.val (Just t.val)
-  pure $ Definition t a.val v m
+  pure $ Definition t a.val v m []
 
 realmDecl :: DiagnosticEnv ColnCode -> ElabEnv N -> Ntn -> IO (Name, Definition Local)
 realmDecl de e (N.MDecl ms "def" n sp) = do
@@ -151,10 +161,29 @@ realmDecls de g theory ns = do
   pure $ ds
 
 tryDecl :: DiagnosticEnv ColnCode -> Globals -> Ntn -> IO Globals
-tryDecl e g n = do
+tryDecl e g n@(N.MDecl _ "attr" _ _) = do
   try (decl e g n) >>= \case
     Right g' -> pure g'
     Left (_ :: FailException) -> pure g
+tryDecl e g n = do
+  let expected = case g.attrStack of
+        (AttrExpectedError code):_ -> Just code
+        _ -> Nothing
+
+  let reporter = Reporter $ \d -> do
+        let actual = renderStrict $ layoutPretty defaultLayoutOptions $ prtCode d.code
+        let matched = Just actual == fmap (\code -> "error[" <> code <> "]") expected
+        reportTo e.reporter (if matched then fmap ExpectedError d else d)
+
+  result <- try (decl e{reporter = reporter} g n)
+
+  case result of
+    Right g' -> do
+      forM_ expected $ \code ->
+        report (contramap ParserCode e) (N.span n) ExpectedErrorNotReached $
+          "expected error" <+> pretty code <+> "did not occur"
+      pure g'{attrStack = []}
+    Left (_ :: FailException) -> pure g{attrStack = []}
 
 top :: DiagnosticEnv ColnCode -> [Ntn] -> IO Globals
 top e = foldlM (tryDecl e) emptyGlobals
