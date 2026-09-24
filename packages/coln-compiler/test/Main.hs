@@ -37,11 +37,11 @@ knownCrashingElaboratorTests :: [String]
 knownCrashingElaboratorTests = ["empty"]
 
 knownCrashingTypeScriptTests :: [String]
-knownCrashingTypeScriptTests = [
-  "empty-prop-record-function",
-  "prop-record-nested-dependent",
-  "proof-record",
-  "prop-record"
+knownCrashingTypeScriptTests =
+  [ "empty-prop-record-function"
+  , "prop-record-nested-dependent"
+  , "proof-record"
+  , "prop-record"
   ]
 
 main :: IO ()
@@ -61,11 +61,10 @@ prettyEntry (x, (Definition t a _ m attrs)) =
     [ "global entry named" <+> dpretty x
     , "in mode:" <+> dpretty m
     ]
-    ++ (["attrs:" <+> vsep (dpretty <$> attrs) | not (null attrs)])
-    ++ [
-      "type:" <+> prtIn (CtxShape 0 BwdNil) a
-    , "value:" <+> dprettyWithNames mempty t.stx
-    ]
+      ++ (["attrs:" <+> vsep (dpretty <$> attrs) | not (null attrs)])
+      ++ [ "type:" <+> prtIn (CtxShape 0 BwdNil) a
+         , "value:" <+> dprettyWithNames mempty t.stx
+         ]
 
 prettyRealm :: Globals -> (Name, Realm) -> DDoc
 prettyRealm ge (x, r) = do

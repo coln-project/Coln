@@ -167,7 +167,7 @@ tryDecl e g n@(N.MDecl _ "attr" _ _) = do
     Left (_ :: FailException) -> pure g
 tryDecl e g n = do
   let expected = case g.attrStack of
-        (AttrExpectedError code):_ -> Just code
+        (AttrExpectedError code) : _ -> Just code
         _ -> Nothing
 
   let reporter = Reporter $ \d -> do
