@@ -115,4 +115,4 @@ jobs:
 
       - name: Run end-to-end tests
         run: |
-          nix develop --command just -f packages/coln-node-runtime/justfile build-and-test
+          nix develop --command just -f packages/coln-node-runtime/justfile ci

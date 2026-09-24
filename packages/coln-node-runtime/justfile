@@ -1,3 +1,9 @@
+setup:
+    cd ../coln-js-interface/
+    pnpm install
+    cd ../coln-node-runtime/
+    pnpm install
+
 build-runtime:
     npx napi build --platform --esm -o native
     mkdir -p dist
@@ -20,3 +26,5 @@ test:
     node dist/test/main.js
 
 build-and-test: build-interface build-runtime generate-bindings test
+
+ci: setup build-and-test
