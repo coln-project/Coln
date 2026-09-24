@@ -100,7 +100,7 @@ eval file = do
   reporter translator = contramap translator $ terminalReporter stdout
 
 prettyEntry :: (Name, Definition Global) -> DDoc
-prettyEntry (x, Definition t a _ _) =
+prettyEntry (x, Definition t a _ _ _) =
   vsep
     [ "global entry named" <+> dpretty x
     , "type:" <+> prtIn (CtxShape 0 BwdNil) a

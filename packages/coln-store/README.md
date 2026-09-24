@@ -67,6 +67,21 @@ commit;
 
 ```
 
+Test the transitive closure computation:
+
+```text
+.load ../coln-flir-rs/tests/data/TransitiveClosureRealm.json
+
+begin transact;
+    va = add root.V values ();
+    vb = add root.V values ();
+    vc = add root.V values ();
+
+    e1 = add root.E values (va vb);
+    e2 = add root.E values (vb vc);
+commit;
+```
+
 To get a violation of the law, say (`Path.Hom.V.total`), change the line
 `i1 = add Path.G0 values (g1);` to `i1 = add Path.G0 values (g0)` so that we
 do not have a morphism between `Path.G0` and `Path.G1`.

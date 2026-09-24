@@ -162,6 +162,7 @@ mod tests {
                     path: Path::from(format!("T{oid}")),
                     table: schema,
                 }],
+                definitions: vec![],
                 rules: vec![],
             },
             empty_colndef,

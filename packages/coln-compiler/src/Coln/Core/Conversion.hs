@@ -10,8 +10,8 @@ import Coln.Core.Print (prtIn)
 import Coln.Core.Value qualified as BN (BareNeutral (..))
 import Coln.Core.Value qualified as V
 import Control.Applicative ((<|>))
-import Control.Monad (forM_, unless, zipWithM_)
-import Data.Foldable qualified as F
+import Control.Monad (forM_, unless)
+
 import Data.Maybe (fromMaybe)
 import Data.Vector.Strict qualified as Vec
 
@@ -84,11 +84,6 @@ instance DefEq (V.Ty N) where
       V.BuiltinTy b' ->
         unless (b == b') $ throwUnequalTys cs a a' $ Just "unequal builtin types"
       _ -> throwUnequalTys cs a a' Nothing
-    V.EltOf x vs -> case a' of
-      V.EltOf x' vs' -> do
-        unless (x == x') $ throwUnequalTys cs a a' $ Just "unequal table names"
-        zipWithM_ (defEq cs) (F.toList vs) (F.toList vs')
-      _ -> throwUnequalTys cs a a' Nothing
 
 instance DefEq V.Head where
   defEq cs h h' = case h of
@@ -98,24 +93,19 @@ instance DefEq V.Head where
     V.GlobalVar x _ -> case h' of
       V.GlobalVar x' _ | x == x' -> pure ()
       _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing
-    V.Lookup x vs _ -> case h' of
-      V.Lookup x' vs' _ -> do
-        unless (x == x') $ throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) $ Just "unequal table names"
-        zipWithM_ (defEq cs) (F.toList vs) (F.toList vs') -- XXX check heads?
-      _ -> throwUnequalNeus cs (V.BareNeutral h V.Id) (V.BareNeutral h' V.Id) Nothing
 
 instance DefEq V.BareNeutral where
   defEq cs n n' = case n.spine of
     V.Id -> case n'.spine of
       V.Id -> defEq cs n.head n'.head
       _ -> throwUnequalNeus cs n n' Nothing
-    V.App sq v -> case n'.spine of
-      V.App sq' v' -> do
+    V.App _ sq v -> case n'.spine of
+      V.App _ sq' v' -> do
         defEq cs (n{BN.spine = sq}) (n'{BN.spine = sq'})
         defEq cs v v'
       _ -> throwUnequalNeus cs n n' Nothing
-    V.Proj sq x -> case n'.spine of
-      V.Proj sq' x' -> do
+    V.Proj _ sq x -> case n'.spine of
+      V.Proj _ sq' x' -> do
         defEq cs (n{BN.spine = sq}) (n'{BN.spine = sq'})
         unless (x == x') $ throwUnequalNeus cs n n' Nothing
       _ -> throwUnequalNeus cs n n' Nothing
@@ -131,9 +121,9 @@ instance DefEq V.InitNeutral where
 
 canon :: V.El N -> V.El N
 canon v@(V.Neu n) = case V.behavior n.ty of
-  V.LikeRecord _ -> V.Cons (V.unwrap n.expansion)
+  V.LikeRecord rt -> V.Cons rt.level (V.unwrap n.expansion)
   -- XXX is it okay to use LNil here?
-  V.LikeFunction f -> V.Lam f.dom $ V.Clo "x" V.LNil $ \w -> V.app v (elemAt w (BId 0))
+  V.LikeFunction ft -> V.Lam ft.variant ft.dom $ V.Clo "x" V.LNil $ \w -> V.app ft.variant v (elemAt w (BId 0))
   _ -> v
 canon v = v
 
@@ -146,14 +136,14 @@ instance DefEq (V.El N) where
     V.InitNeu n -> case canon v' of
       V.InitNeu n' -> defEq cs n n'
       _ -> throwUnequalEls cs v v' Nothing
-    V.Code a -> case canon v' of
-      V.Code a' -> defEq cs a a'
+    V.Code _ a -> case canon v' of
+      V.Code _ a' -> defEq cs a a'
       _ -> throwUnequalEls cs v v' Nothing
-    V.Lam a c -> case canon v' of
-      V.Lam _ c' -> defEqClo cs a c c'
+    V.Lam _ a c -> case canon v' of
+      V.Lam _ _ c' -> defEqClo cs a c c'
       _ -> throwUnequalEls cs v v' Nothing
-    V.Cons d -> case canon v' of
-      V.Cons d' -> forM_ (Vec.zip d.values d'.values) (uncurry (defEq cs))
+    V.Cons _ d -> case canon v' of
+      V.Cons _ d' -> forM_ (Vec.zip d.values d'.values) (uncurry (defEq cs))
       _ -> throwUnequalEls cs v v' Nothing
     V.Lit l -> case canon v' of
       V.Lit l' -> unless (l == l') $ throwUnequalEls cs v v' $ Just "unequal literals"

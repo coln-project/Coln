@@ -7,36 +7,45 @@ value: sig
   E : V -> V -> Set
 end
 realm named GraphRealm
-elaborated: realm
-  generators
-    node
-      V = rel []
-      E = rel [a : GraphRealm.V [], b : GraphRealm.V []]
-    end
-  end
-  definitions
-    def free-edge : Set := sig
-      v0 : root.V
-      v1 : root.V
-      e : root.E v0 v1
-    end
-    def free-edge-pair : Set := sig
-      e0 : free-edge
-      e1 : free-edge
-    end
-  end
-end
 lowered: flatrealm
   entities
-    table ℜ.V := []
-    table ℜ.E := [.a : ℜ.V, .b : ℜ.V]
+    table root.V := []
+    table root.E := [a : root.V, b : root.V]
+    view view.outgoing-edges := [
+      v : root.V,
+      outgoing-edges.into : root.V,
+      outgoing-edges.has-edge : root.E
+    ] primarykey [v, outgoing-edges.into, outgoing-edges.has-edge]
+    view view.incoming-edges := [
+      v : root.V,
+      incoming-edges.outof : root.V,
+      incoming-edges.has-edge : root.E
+    ] primarykey [v, incoming-edges.outof, incoming-edges.has-edge]
+  end
+  definitions
+    chased view.outgoing-edges.definition v outgoing-edges.into outgoing-edges.has-edge := v ∈ root.V [] ∧ outgoing-edges.into ∈ root.V [] ∧ outgoing-edges.has-edge ∈ root.E [
+      a ↦ v,
+      b ↦ outgoing-edges.into
+    ] ⊢ view.outgoing-edges [
+      v ↦ v,
+      outgoing-edges.into ↦ outgoing-edges.into,
+      outgoing-edges.has-edge ↦ outgoing-edges.has-edge
+    ]
+    chased view.incoming-edges.definition v incoming-edges.outof incoming-edges.has-edge := v ∈ root.V [] ∧ incoming-edges.outof ∈ root.V [] ∧ incoming-edges.has-edge ∈ root.E [
+      a ↦ incoming-edges.outof,
+      b ↦ v
+    ] ⊢ view.incoming-edges [
+      v ↦ v,
+      incoming-edges.outof ↦ incoming-edges.outof,
+      incoming-edges.has-edge ↦ incoming-edges.has-edge
+    ]
   end
   rules
-    enforced ℜ.V.foreignKey := ℜ.V [] ⊢ ⊤
-    enforced ℜ.E.foreignKey a b := ℜ.E [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.V [] ∧ b ∈ ℜ.V []
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.E.foreignKey a b := root.E [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
   end
 end
 

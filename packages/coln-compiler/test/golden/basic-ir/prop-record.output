@@ -16,59 +16,18 @@ value: sig
   projectLeft : And P Q -> P
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      P = rel []
-      Q = rel []
-      make = (fun [
-        a : TRealm.P [],
-        b : TRealm.Q []
-      ] -> And (TRealm.P []) (TRealm.Q []))
-      projectLeft = (fun [a : And (TRealm.P []) (TRealm.Q [])] -> TRealm.P [])
-    end
+lowered: flatrealm
+  entities
+    table root.P := [] primarykey []
+    table root.Q := [] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.P := []
-    table ℜ.Q := []
-    table ℜ.make := [
-      .a : ℜ.P,
-      .b : ℜ.Q,
-      .c.left : ℜ.P,
-      .c.right : ℜ.Q
-    ] primarykey [.a, .b]
-    table ℜ.projectLeft := [
-      .a.left : ℜ.P,
-      .a.right : ℜ.Q,
-      .b : ℜ.P
-    ] primarykey [.a.left, .a.right]
-  end
   rules
-    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
-    enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
-    enforced ℜ.make.foreignKey a b c.left c.right := ℜ.make [
-      .a ↦ a,
-      .b ↦ b,
-      .c.left ↦ c.left,
-      .c.right ↦ c.right
-    ] ⊢ a ∈ ℜ.P [] ∧ b ∈ ℜ.Q [] ∧ c.left ∈ ℜ.P [] ∧ c.right ∈ ℜ.Q []
-    monitored ℜ.make.total a b := a ∈ ℜ.P [] ∧ b ∈ ℜ.Q [] ⊢ ℜ.make [
-      .a ↦ a,
-      .b ↦ b
-    ]
-    enforced ℜ.projectLeft.foreignKey a.left a.right b := ℜ.projectLeft [
-      .a.left ↦ a.left,
-      .a.right ↦ a.right,
-      .b ↦ b
-    ] ⊢ a.left ∈ ℜ.P [] ∧ a.right ∈ ℜ.Q [] ∧ b ∈ ℜ.P []
-    monitored ℜ.projectLeft.total a.left a.right := a.left ∈ ℜ.P [] ∧ a.right ∈ ℜ.Q [] ⊢ ℜ.projectLeft [
-      .a.left ↦ a.left,
-      .a.right ↦ a.right
-    ]
+    enforced root.P.foreignKey := root.P [] ⊢ ⊤
+    enforced root.Q.foreignKey := root.Q [] ⊢ ⊤
+    monitored root.make := root.P [] ∧ root.Q [] ⊢ root.P [] ∧ root.Q []
+    monitored root.projectLeft := root.P [] ∧ root.Q [] ⊢ root.P []
   end
 end
 

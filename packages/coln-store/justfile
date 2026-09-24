@@ -44,3 +44,6 @@ coverage:
 
 run:
     cargo run -p {{crate}}
+
+build-wasm:
+    cargo build --target wasm32-unknown-unknown --no-default-features --features wasm --release

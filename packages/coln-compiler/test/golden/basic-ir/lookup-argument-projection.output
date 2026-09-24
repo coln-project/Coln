@@ -10,46 +10,33 @@ value: sig
   nextedge : (x : A) -> E x (next x)
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      A = rel []
-      B = rel [a : TRealm.A []]
-      E = rel [x : TRealm.A [], a : TRealm.B [a := x]]
-      next = (fun [x : TRealm.A []] -> TRealm.B [a := x])
-      nextedge = (fun [x : TRealm.A []] -> TRealm.E [
-        x := x,
-        a := TRealm.next [x := x]
-      ])
-    end
+lowered: flatrealm
+  entities
+    table root.A := []
+    table root.B := [a : root.A]
+    table root.E := [x : root.A, a : root.B]
+    table root.next := [x : root.A, a : root.B] primarykey [x]
+    table root.nextedge := [x : root.A, a : root.E] primarykey [x]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.A := []
-    table ℜ.B := [.a : ℜ.A]
-    table ℜ.E := [.x : ℜ.A, .a : ℜ.B]
-    table ℜ.next := [.x : ℜ.A, .a : ℜ.B] primarykey [.x]
-    table ℜ.nextedge := [.x : ℜ.A, .a : ℜ.E] primarykey [.x]
-  end
   rules
-    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
-    enforced ℜ.B.foreignKey a := ℜ.B [.a ↦ a] ⊢ a ∈ ℜ.A []
-    enforced ℜ.E.foreignKey x a := ℜ.E [.x ↦ x, .a ↦ a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [
-      .a ↦ x
-    ]
-    enforced ℜ.next.foreignKey x a := ℜ.next [
-      .x ↦ x,
-      .a ↦ a
-    ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.B [.a ↦ x]
-    monitored ℜ.next.total x := x ∈ ℜ.A [] ⊢ ℜ.next [.x ↦ x]
-    enforced ℜ.nextedge.foreignKey x a a.a := ℜ.nextedge [
-      .x ↦ x,
-      .a ↦ a
-    ] ∧ ℜ.next [.x ↦ x, .a ↦ a.a] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.x ↦ x, .a ↦ a.a]
-    monitored ℜ.nextedge.total x := x ∈ ℜ.A [] ⊢ ℜ.nextedge [.x ↦ x]
+    enforced root.A.foreignKey := root.A [] ⊢ ⊤
+    enforced root.B.foreignKey a := root.B [a ↦ a] ⊢ a ∈ root.A []
+    enforced root.E.foreignKey x a := root.E [
+      x ↦ x,
+      a ↦ a
+    ] ⊢ x ∈ root.A [] ∧ a ∈ root.B [a ↦ x]
+    enforced root.next.foreignKey x a := root.next [
+      x ↦ x,
+      a ↦ a
+    ] ⊢ x ∈ root.A [] ∧ a ∈ root.B [a ↦ x]
+    monitored root.next.total x := x ∈ root.A [] ⊢ root.next [x ↦ x]
+    enforced root.nextedge.foreignKey x a b := root.nextedge [
+      x ↦ x,
+      a ↦ a
+    ] ⊢ x ∈ root.A [] ∧ root.next [x ↦ x, a ↦ b] ∧ a ∈ root.E [x ↦ x, a ↦ b]
+    monitored root.nextedge.total x := x ∈ root.A [] ⊢ root.nextedge [x ↦ x]
   end
 end
 

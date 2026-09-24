@@ -9,8 +9,9 @@ use coln_flir_rs::ir::{
 };
 use coln_store::{
     commit::hash::CommitHash,
-    store::{ColnDef, Store},
+    store::{ColnDef, Store, frag::FragmentSync},
     table::WireValue,
+    txn::rw::StoreWrite,
 };
 use future_form::Sendable;
 use rstest::{fixture, rstest};
@@ -55,6 +56,7 @@ fn int_theory() -> FlatRealm {
                 primary_key: None,
             },
         }],
+        definitions: vec![],
         rules: vec![],
     }
 }
@@ -201,6 +203,7 @@ async fn subduction_storage_can_exchange_coln_commit_chunks(
         BTreeSet::from([left_commit, right_commit])
     );
 
+    tokio::task::spawn_blocking(move || drop((left, right))).await?;
     Ok(())
 }
 
@@ -334,6 +337,7 @@ async fn subduction_sync_coln_chunks(
         right_store.heads().into_iter().collect::<BTreeSet<_>>(),
         BTreeSet::from([left_commit, right_commit])
     );
+    tokio::task::spawn_blocking(move || drop((left_store, right_store))).await?;
 
     Ok(())
 }

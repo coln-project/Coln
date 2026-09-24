@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_flir_rs::ir::{
-    Atom, BuiltinTy, ColType, ColumnEntry, EntityVariant, Equality, FlatRealm, Path, Prop, Rule,
-    RuleEntry, RuleVariant, Schema, TableEntry, Term, ValueEntry,
+    Atom, BuiltinTy, ColType, ColumnEntry, El, EntityVariant, FlatRealm, Materialization, Path,
+    Prop, Rule, RuleEntry, RuleVariant, Schema, TableEntry, ValueEntry,
 };
 use rstest::fixture;
 
@@ -12,6 +12,7 @@ use crate::{
     commit::{hash::CommitHash, wire::root::RootCommitData},
     store::{ColnDef, Store},
     table::WireRowId,
+    txn::rw::StoreWrite,
 };
 
 mod rowid {
@@ -57,7 +58,7 @@ mod schema {
     fn table_schema(
         col_names: Vec<&'static str>,
         col_type: ColType,
-        primary_key: Option<Vec<&'static str>>,
+        primary_key: Option<Vec<u64>>,
     ) -> Schema {
         Schema {
             entity_variant: EntityVariant::Table,
@@ -68,7 +69,7 @@ mod schema {
                     col_type: col_type.clone(),
                 })
                 .collect(),
-            primary_key: primary_key.map(|pk| pk.into_iter().map(Path::from).collect()),
+            primary_key,
         }
     }
 
@@ -80,15 +81,28 @@ mod schema {
     #[fixture]
     pub(crate) fn int_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
-        #[default(None)] primary_key: Option<Vec<&'static str>>,
+        #[default(None)] primary_key: Option<Vec<u64>>,
     ) -> Schema {
         table_schema(col_names, int_col_type(), primary_key)
     }
 
     #[fixture]
+    pub(crate) fn memoized_int_schema(
+        #[default(vec!["x"])] col_names: Vec<&'static str>,
+        #[default(None)] primary_key: Option<Vec<u64>>,
+    ) -> Schema {
+        Schema {
+            entity_variant: EntityVariant::View {
+                materialization: Materialization::Memoized,
+            },
+            ..table_schema(col_names, int_col_type(), primary_key)
+        }
+    }
+
+    #[fixture]
     pub(crate) fn string_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
-        #[default(None)] primary_key: Option<Vec<&'static str>>,
+        #[default(None)] primary_key: Option<Vec<u64>>,
     ) -> Schema {
         table_schema(
             col_names,
@@ -102,7 +116,7 @@ mod schema {
     #[fixture]
     pub(crate) fn id_schema(
         #[default(vec!["x"])] col_names: Vec<&'static str>,
-        #[default(None)] primary_key: Option<Vec<&'static str>>,
+        #[default(None)] primary_key: Option<Vec<u64>>,
         id_col_type: ColType,
     ) -> Schema {
         table_schema(col_names, id_col_type, primary_key)
@@ -135,24 +149,30 @@ mod root {
             path: Path::from("T.non_negative"),
             rule: Rule {
                 rule_variant: RuleVariant::Enforced,
-                var_names: vec![Path::from("x")],
-                var_types: vec![ColType::BuiltinTy {
-                    builtin_ty: BuiltinTy::BuiltinInt,
-                }],
+                vars: vec![(
+                    Path::from("x"),
+                    ColType::BuiltinTy {
+                        builtin_ty: BuiltinTy::BuiltinInt,
+                    },
+                )],
                 antecedents: vec![Prop::Atom {
+                    atom: Atom {
+                        entity: table.clone(),
+                        row_id: None,
+                        values: vec![ValueEntry {
+                            column: 0,
+                            term: El::Var { index: 0 },
+                        }],
+                    },
+                }],
+                consequents: vec![Prop::Atom {
                     atom: Atom {
                         entity: table,
                         row_id: None,
                         values: vec![ValueEntry {
                             column: 0,
-                            term: Term::Var { index: 0 },
+                            term: El::Var { index: 0 },
                         }],
-                    },
-                }],
-                consequents: vec![Prop::Eq {
-                    equality: Equality {
-                        left: Term::Var { index: 0 },
-                        right: Term::Var { index: 0 },
                     },
                 }],
             },
@@ -164,6 +184,7 @@ mod root {
         RootCommitData::new(
             FlatRealm {
                 tables: vec![],
+                definitions: vec![],
                 rules: vec![],
             },
             empty_colndef,
@@ -175,7 +196,7 @@ mod root {
         non_empty_colndef: ColnDef,
         simple_rule: RuleEntry,
         #[from(int_schema)]
-        #[with(vec!["c0"], Some(vec!["c0"]))]
+        #[with(vec!["c0"], Some(vec![0]))]
         schema: Schema,
     ) -> RootCommitData {
         RootCommitData::new(
@@ -184,6 +205,7 @@ mod root {
                     path: Path::from("T"),
                     table: schema,
                 }],
+                definitions: vec![],
                 rules: vec![simple_rule],
             },
             non_empty_colndef,
@@ -192,9 +214,30 @@ mod root {
 }
 
 mod store {
+    use crate::store::auto::AutoStore;
+
     use super::root::empty_colndef;
-    use super::schema::{int_col_type, int_schema};
+    use super::schema::{
+        id_col_type, id_schema, idonly_schema, int_col_type, int_schema, memoized_int_schema,
+    };
     use super::*;
+
+    #[fixture]
+    pub(crate) fn nodes_edges_store(
+        idonly_schema: Schema,
+        #[from(id_schema)]
+        #[with(vec!["node"], None, id_col_type(Path::from("Nodes")))]
+        edges_schema: Schema,
+    ) -> Store {
+        let mut store = Store::new();
+        store
+            .create_table(Path::from("Nodes"), idonly_schema)
+            .expect("create nodes table");
+        store
+            .create_table(Path::from("Edges"), edges_schema)
+            .expect("create edges table");
+        store
+    }
 
     #[fixture]
     pub(crate) fn single_int_store(
@@ -206,6 +249,23 @@ mod store {
         let mut store = Store::new();
         store.create_table(path, schema).expect("create test table");
         store
+    }
+
+    #[fixture]
+    pub(crate) fn single_memoized_int_store(
+        #[from(memoized_int_schema)]
+        #[with(vec!["c0"])]
+        schema: Schema,
+    ) -> Store {
+        let path = Path::from("T");
+        let mut store = Store::new();
+        store.create_table(path, schema).expect("create test table");
+        store
+    }
+
+    #[fixture]
+    pub(crate) fn single_int_autostore(single_int_store: Store) -> AutoStore {
+        AutoStore::new(single_int_store)
     }
 
     // A single_int_store, but with a single commit added
@@ -254,12 +314,15 @@ mod store {
                     table: link_table,
                 },
             ],
+            definitions: vec![],
             rules: vec![RuleEntry {
                 path: Path::from("Link.foreignKeys"),
                 rule: Rule {
                     rule_variant: RuleVariant::Enforced,
-                    var_names: vec![Path::from("a"), Path::from("b")],
-                    var_types: vec![int_col_type.clone(), int_col_type],
+                    vars: vec![
+                        (Path::from("a"), int_col_type.clone()),
+                        (Path::from("b"), int_col_type),
+                    ],
                     antecedents: vec![Prop::Atom {
                         atom: Atom {
                             entity: link.clone(),
@@ -267,11 +330,11 @@ mod store {
                             values: vec![
                                 ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 },
                                 ValueEntry {
                                     column: 1,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 },
                             ],
                         },
@@ -283,7 +346,7 @@ mod store {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 0 },
+                                    term: El::Var { index: 0 },
                                 }],
                             },
                         },
@@ -293,7 +356,7 @@ mod store {
                                 row_id: None,
                                 values: vec![ValueEntry {
                                     column: 0,
-                                    term: Term::Var { index: 1 },
+                                    term: El::Var { index: 1 },
                                 }],
                             },
                         },

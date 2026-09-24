@@ -24,7 +24,7 @@ intoSyn _ sp (FromTyp t) = Syn $ \e -> do
     Nothing -> do
       let msg = "type" <+> prtIn e raw <+> "too large to fit in a universe"
       failWith e.diagEnv sp TypeTooLarge msg
-    Just u -> pure (V.U u, M.code raw)
+    Just u -> pure (V.U u, M.code u raw)
 intoSyn _ _ (FromSyn s) = s
 intoSyn use sp (FromChk nd _) = Syn $ \e -> do
   let msg = "Type annotation required when using a" <+> nd <+> "as" <+> use

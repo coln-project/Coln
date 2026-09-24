@@ -26,31 +26,21 @@ value: sig
   boxed : Box Key pointed String -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      pointed = node
-        point = (fun [] -> Key)
-      end
-      boxed = rel [a : Box Key [point := TRealm.pointed.point []] String]
-    end
+lowered: flatrealm
+  entities
+    table root.pointed := [a.point.rank : Int] primarykey []
+    table root.boxed := [a.key.rank : Int, a.value : String]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.pointed.point := [.a.rank : Int] primarykey []
-    table ℜ.boxed := [.a.key.rank : Int, .a.value : String]
-  end
   rules
-    enforced ℜ.pointed.point.foreignKey a.rank := ℜ.pointed.point [
-      .a.rank ↦ a.rank
+    enforced root.pointed.foreignKey a.point.rank := root.pointed [
+      a.point.rank ↦ a.point.rank
     ] ⊢ ⊤
-    monitored ℜ.pointed.point.total := ⊤ ⊢ ℜ.pointed.point []
-    enforced ℜ.boxed.foreignKey a.key.rank a.value := ℜ.boxed [
-      .a.key.rank ↦ a.key.rank,
-      .a.value ↦ a.value
+    monitored root.pointed.total := ⊤ ⊢ root.pointed []
+    enforced root.boxed.foreignKey a.key.rank a.value := root.boxed [
+      a.key.rank ↦ a.key.rank,
+      a.value ↦ a.value
     ] ⊢ ⊤
   end
 end

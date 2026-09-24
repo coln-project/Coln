@@ -48,6 +48,7 @@ theory P := sig
   showlevel u = u
 end
 
+attr expected-error "E0307"
 def LevelJoinRecordIsNotSet (A : Set) (P : Prop) : Set := sig
   f : A -> P
   a : A

@@ -1,0 +1,16 @@
+{
+  "name": "@coln-project/node-runtime",
+  "napi": {
+    "binaryName": "coln-node-runtime"
+  },
+  "type": "module",
+  "dependencies": {
+    "@coln-project/interface": "link:../coln-js-interface"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.0.0",
+    "@types/node": "^26.6.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

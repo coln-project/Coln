@@ -14,7 +14,6 @@ import Coln.Core.Params
 import Coln.Core.Readback
 import Coln.Core.Syntax
 import Coln.Frontend.Notation
-import Data.List.NonEmpty (NonEmpty (..))
 import Data.String (fromString)
 import Data.Text qualified as T
 import FNotation qualified as N
@@ -41,20 +40,20 @@ instance ToNotation BId where
     go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
 
 instance ToNotation TableName where
-  toNotation _ x = N.Group (N.Ident x.realm () :| [N.Field s () | s <- toList x.path])
+  toNotation _ x = N.Raw x.name ()
 
 instance ToNotation (El e) where
   toNotation xs = \case
     LocalVar i -> toNotation xs i
-    GlobalVar x _ -> N.Ident x ()
-    Code ty -> toNotation xs ty
-    App f t -> N.Juxt (toNotation xs f) (toNotation xs t)
-    Lam _ (Abs x t) ->
+    GlobalVar mg -> N.Ident mg.name ()
+    Code _ ty -> toNotation xs ty
+    App _ f t -> N.Juxt (toNotation xs f) (toNotation xs t)
+    Lam _ _ (Abs x t) ->
       N.Infix (N.Ident x ()) (N.Keyword "=>" ()) (toNotation (xs :> x) t)
-    Lam _ (AbsConst t) ->
+    Lam _ _ (AbsConst t) ->
       N.Infix (N.Ident "_" ()) (N.Keyword "=>" ()) (toNotation xs t)
-    Proj t f -> N.Juxt (toNotation xs t) (N.Field f ())
-    Cons d ->
+    Proj _ t f -> N.Juxt (toNotation xs t) (N.Field f ())
+    Cons _ d ->
       N.Tuple [field y t | (y, t) <- toList d] ()
      where
       field y t = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
@@ -62,9 +61,6 @@ instance ToNotation (El e) where
     Lit (LitInt i) -> N.Int i ()
     Lit (LitString s) -> N.String s ()
     Is t -> toNotation xs t -- invisible
-    Lookup x ts _ -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
-     where
-      field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
@@ -72,7 +68,7 @@ nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 instance ToNotation (Ty e) where
   toNotation xs = \case
     U u -> N.Keyword (fromString $ show $ pretty u) ()
-    Decode t -> toNotation xs t
+    Decode _ t -> toNotation xs t
     Function f -> case f.cod of
       Abs x b ->
         N.Infix
@@ -96,9 +92,6 @@ instance ToNotation (Ty e) where
         (toNotation xs eq.rhs)
     BuiltinTy a -> N.Keyword (fromString $ show a) ()
     IsTy a -> toNotation xs a
-    EltOf x ts -> N.Juxt (toNotation xs x) (N.Tuple (field <$> toList ts) ())
-     where
-      field (y, t) = N.Infix (N.Ident y ()) (N.Keyword ":=" ()) (toNotation xs t)
 
 instance ToNotation TypeBehavior where
   toNotation xs = \case
@@ -118,14 +111,14 @@ toNotationTele xs tys = go xs BwdNil tys
     bnd : go xs' (names :> x) tys'
   go _ _ _ = panic "mismatched lengths"
 
-instance ToNotationTop Generator where
-  toNotationTop (Rel xs tys) =
-    N.Juxt (N.Keyword "rel" ()) (N.Tuple (toNotationTele xs tys) ())
-  toNotationTop (Fun xs tys ret) =
-    N.Infix
-      (N.Juxt (N.Keyword "fun" ()) (N.Tuple (toNotationTele xs tys) ()))
-      (N.Keyword "->" ())
-      (toNotation (fromList xs) ret)
+-- instance ToNotationTop Generator where
+--   toNotationTop (Rel xs tys) =
+--     N.Juxt (N.Keyword "rel" ()) (N.Tuple (toNotationTele xs tys) ())
+--   toNotationTop (Fun xs tys ret) =
+--     N.Infix
+--       (N.Juxt (N.Keyword "fun" ()) (N.Tuple (toNotationTele xs tys) ()))
+--       (N.Keyword "->" ())
+--       (toNotation (fromList xs) ret)
 
 instance (ToNotationTop a) => ToNotationTop (Trie a) where
   toNotationTop (Leaf g) = toNotationTop g
@@ -141,9 +134,7 @@ instance ToNotationTop Realm where
     N.Block
       "realm"
       Nothing
-      [ N.Block "generators" Nothing [toNotationTop r.generators] ()
-      , N.Block "definitions" Nothing (go (BwdNil :> "root") (OMap.assocs r.realmDefinitions)) ()
-      ]
+      (go (BwdNil :> "root") (OMap.assocs r.realmDefinitions))
       ()
    where
     toAnn Conjunctive = []

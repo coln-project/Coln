@@ -11,22 +11,15 @@ value: sig
   unit : Unit
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      unit = (fun [] -> Unit)
-    end
+lowered: flatrealm
+  entities
+    table root := [] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.unit := [] primarykey []
-  end
   rules
-    enforced ℜ.unit.foreignKey := ℜ.unit [] ⊢ ⊤
-    monitored ℜ.unit.total := ⊤ ⊢ ℜ.unit []
+    enforced root.foreignKey := root [] ⊢ ⊤
+    monitored root.total := ⊤ ⊢ root []
   end
 end
 

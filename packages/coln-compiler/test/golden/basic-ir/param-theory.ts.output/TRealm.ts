@@ -1,38 +1,33 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as PointOf from "./PointOf.ts";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    X: runtime.MutableSet<runtime.RowId<"root.X">>,
+    P: runtime.MutableRef<{ point: runtime.RowId<"root.X"> }>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      X: (new runtime.RowIdSet.View(store, "TRealm.X", [])),
-      P: { point: (new runtime.TableCellRef.View(store, "TRealm.P.point", [])) }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      X: (new runtime.RowIdSet.Transaction(store, "TRealm.X", [], transaction)),
-      P: {
-        point: (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.P.point",
-          [],
-          transaction
-        ))
-      }
+      X: (new runtime.BaseSet(mstore, "root.X", [])),
+      P: (new runtime.BaseTableRef(
+        mstore,
+        "root.P",
+        [],
+        [0, 1],
+        {
+          flatten: (a: { point: runtime.RowId<"root.X"> }) => {
+            return [a.point];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return {
+              point: (new runtime.RowId(
+                { type: "Existing", value: result[0] as runtime.WireRowId },
+                "root.X"
+              ))
+            };
+          }
+        }
+      ))
     };
   }
 }

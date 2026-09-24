@@ -14,28 +14,20 @@ value: sig
   R : (p : Pair) -> E p.second p.first -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      E = rel [a : Int, b : Int]
-      R = rel [p : Pair, a : TRealm.E [a := p.second, b := p.first]]
-    end
+lowered: flatrealm
+  entities
+    table root.E := [a : Int, b : Int]
+    table root.R := [p.first : Int, p.second : Int, a : root.E]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.E := [.a : Int, .b : Int]
-    table ℜ.R := [.p.first : Int, .p.second : Int, .a : ℜ.E]
-  end
   rules
-    enforced ℜ.E.foreignKey a b := ℜ.E [.a ↦ a, .b ↦ b] ⊢ ⊤
-    enforced ℜ.R.foreignKey p.first p.second a := ℜ.R [
-      .p.first ↦ p.first,
-      .p.second ↦ p.second,
-      .a ↦ a
-    ] ⊢ a ∈ ℜ.E [.a ↦ p.second, .b ↦ p.first]
+    enforced root.E.foreignKey a b := root.E [a ↦ a, b ↦ b] ⊢ ⊤
+    enforced root.R.foreignKey p.first p.second a := root.R [
+      p.first ↦ p.first,
+      p.second ↦ p.second,
+      a ↦ a
+    ] ⊢ a ∈ root.E [a ↦ p.second, b ↦ p.first]
   end
 end
 

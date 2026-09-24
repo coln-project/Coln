@@ -14,33 +14,20 @@ value: sig
   evidence : (x : X) -> Evidence X P x -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      P = rel [a : TRealm.X []]
-      evidence = rel [
-        x : TRealm.X [],
-        a : Evidence (TRealm.X []) (a => TRealm.P [a := a]) x
-      ]
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.P := [a : root.X] primarykey [a]
+    table root.evidence := [x : root.X]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.P := [.a : ℜ.X]
-    table ℜ.evidence := [.x : ℜ.X, .a.proof : ℜ.P]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.P.foreignKey a := ℜ.P [.a ↦ a] ⊢ a ∈ ℜ.X []
-    enforced ℜ.evidence.foreignKey x a.proof := ℜ.evidence [
-      .x ↦ x,
-      .a.proof ↦ a.proof
-    ] ⊢ x ∈ ℜ.X [] ∧ a.proof ∈ ℜ.P [.a ↦ x]
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.P.foreignKey a := root.P [a ↦ a] ⊢ a ∈ root.X []
+    enforced root.evidence.foreignKey x := root.evidence [
+      x ↦ x
+    ] ⊢ x ∈ root.X [] ∧ root.P [a ↦ x]
   end
 end
 

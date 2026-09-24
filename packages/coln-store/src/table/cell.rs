@@ -2,18 +2,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::fmt;
 
+use super::ValidationError;
 use crate::commit::hash::CommitHash;
 use crate::ir::{BuiltinTy, ColType};
 use crate::value::Value;
 
-use super::ValidationError;
-
 /// The unique id that identifies each row in a table.
 ///
 /// It is managed by the database and read-only for the user.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Serialize, Deserialize, Type)]
 pub struct WireRowId {
     pub commit: CommitHash,
     pub counter: u32,
@@ -101,3 +102,5 @@ impl fmt::Display for WireValue {
         }
     }
 }
+
+pub type WireTuple = Vec<WireValue>;

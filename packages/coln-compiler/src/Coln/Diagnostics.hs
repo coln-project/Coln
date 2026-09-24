@@ -16,6 +16,7 @@ data ColnCode
   | ReaderCode ReaderCode
   | ParserCode ParserCode
   | ElaboratorCode ElaboratorCode
+  | ExpectedError ColnCode
   deriving (Eq, Ord)
 
 colnCodeTable :: Map ColnCode CodeMeta
@@ -28,6 +29,7 @@ colnCodeTable =
     ]
 
 instance Code ColnCode where
+  codeMeta (ExpectedError c) = (codeMeta c){severity = SExpectedError}
   codeMeta c = case Map.lookup c colnCodeTable of
     Just m -> m
     Nothing -> error "unregistered code"

@@ -15,28 +15,15 @@ value: sig
   witness : Witness P
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      P = rel []
-      witness = (fun [] -> Witness (TRealm.P []))
-    end
+lowered: flatrealm
+  entities
+    table root.P := [] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.P := []
-    table ℜ.witness := [.a.first : ℜ.P, .a.second : ℜ.P] primarykey []
-  end
   rules
-    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
-    enforced ℜ.witness.foreignKey a.first a.second := ℜ.witness [
-      .a.first ↦ a.first,
-      .a.second ↦ a.second
-    ] ⊢ a.first ∈ ℜ.P [] ∧ a.second ∈ ℜ.P [] ∧ a.first = a.second
-    monitored ℜ.witness.total := ⊤ ⊢ ℜ.witness []
+    enforced root.P.foreignKey := root.P [] ⊢ ⊤
+    monitored root.witness := ⊤ ⊢ root.P [] ∧ root.P []
   end
 end
 

@@ -1,24 +1,22 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: runtime.MutableRef<{}>;
 
-  constructor(store: runtime.StoreHandle) {
-    this.root = {};
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {};
+  constructor(mstore: runtime.ManagedStore) {
+    this.root = (new runtime.BaseTableRef(
+      mstore,
+      "root",
+      [],
+      [0],
+      {
+        flatten: (a: {}) => {
+          return [];
+        },
+        reconstruct: (result: runtime.WireTuple) => {
+          return {};
+        }
+      }
+    ));
   }
 }

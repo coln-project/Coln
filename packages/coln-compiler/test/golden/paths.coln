@@ -3,7 +3,7 @@ theory Graph := sig
   E : V -> V -> Prop
 end
 
-theory Reachability/motive (G : Graph) := sig
+theory Reachability/motive (^i G : Graph) := sig
   t : G.V -> G.V -> Prop
   empty : (x : G.V) -> t x x
   cons : (
@@ -16,8 +16,6 @@ theory Reachability/motive (G : Graph) := sig
   )
 end
 
-
-
 realm Graph @ Graph
-  ind def reachability : Reachability/motive self := init (Reachability/motive self)
+  ind def reachability : Reachability/motive root := init (Reachability/motive root)
 end

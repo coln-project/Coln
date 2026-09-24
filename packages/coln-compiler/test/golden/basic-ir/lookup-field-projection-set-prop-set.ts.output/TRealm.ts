@@ -1,65 +1,58 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    A: runtime.MutableSet<runtime.RowId<"root.A">>,
+    B: runtime.MutableProp,
+    E: (a: null) => runtime.MutableSet<runtime.RowId<"root.E">>,
+    x: runtime.MutableRef<runtime.RowId<"root.A">>,
+    next: (a: runtime.RowId<"root.A">) => runtime.MutableRef<null>,
+    edge: runtime.MutableRef<runtime.RowId<"root.E">>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      A: (new runtime.RowIdSet.View(store, "TRealm.A", [])),
-      B: (new runtime.RowIdSet.View(store, "TRealm.B", [])),
-      E: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.E", [a]));
+      A: (new runtime.BaseSet(mstore, "root.A", [])),
+      B: (new runtime.BaseProp(mstore, "root.B", [])),
+      E: (a: null) => {
+        return (new runtime.BaseSet(mstore, "root.E", []));
       },
-      x: (new runtime.TableCellRef.View(store, "TRealm.x", [])),
-      next: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.View(store, "TRealm.next", [a]));
-      },
-      edge: (new runtime.TableCellRef.View(store, "TRealm.edge", []))
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      A: (new runtime.RowIdSet.Transaction(store, "TRealm.A", [], transaction)),
-      B: (new runtime.RowIdSet.Transaction(store, "TRealm.B", [], transaction)),
-      E: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.E",
-          [a],
-          transaction
-        ));
-      },
-      x: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.x",
+      x: (new runtime.BaseTableRef(
+        mstore,
+        "root.x",
         [],
-        transaction
+        [0, 1],
+        {
+          flatten: (a: runtime.RowId<"root.A">) => {
+            return [a];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return (new runtime.RowId(
+              { type: "Existing", value: result[0] as runtime.WireRowId },
+              "root.A"
+            ));
+          }
+        }
       )),
-      next: (a: runtime.Value) => {
-        return (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.next",
-          [a],
-          transaction
-        ));
+      next: (a: runtime.RowId<"root.A">) => {
+        return (new runtime.ConstRef(null));
       },
-      edge: (new runtime.TableCellRef.Transaction(
-        store,
-        "TRealm.edge",
+      edge: (new runtime.BaseTableRef(
+        mstore,
+        "root.edge",
         [],
-        transaction
+        [0, 1],
+        {
+          flatten: (a: runtime.RowId<"root.E">) => {
+            return [a];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return (new runtime.RowId(
+              { type: "Existing", value: result[0] as runtime.WireRowId },
+              "root.E"
+            ));
+          }
+        }
       ))
     };
   }

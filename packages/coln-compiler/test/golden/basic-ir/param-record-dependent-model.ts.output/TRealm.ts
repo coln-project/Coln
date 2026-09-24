@@ -1,51 +1,35 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as PointOf from "./PointOf.ts";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    pointed: runtime.MutableRef<{ point: { rank: number } }>,
+    boxed: (a: {
+      key: { rank: number },
+      value: string
+    }) => runtime.MutableSet<runtime.RowId<"root.boxed">>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      pointed: {
-        point: (new runtime.TableCellRef.View(
-          store,
-          "TRealm.pointed.point",
-          []
-        ))
-      },
-      boxed: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.boxed", [a]));
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      pointed: {
-        point: (new runtime.TableCellRef.Transaction(
-          store,
-          "TRealm.pointed.point",
-          [],
-          transaction
-        ))
-      },
-      boxed: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.boxed",
-          [a],
-          transaction
+      pointed: (new runtime.BaseTableRef(
+        mstore,
+        "root.pointed",
+        [],
+        [0, 1],
+        {
+          flatten: (a: { point: { rank: number } }) => {
+            return [a.point.rank];
+          },
+          reconstruct: (result: runtime.WireTuple) => {
+            return { point: { rank: result[0] } };
+          }
+        }
+      )),
+      boxed: (a: { key: { rank: number }, value: string }) => {
+        return (new runtime.BaseSet(
+          mstore,
+          "root.boxed",
+          [a.key.rank, a.value]
         ));
       }
     };

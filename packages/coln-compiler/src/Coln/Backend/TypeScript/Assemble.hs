@@ -42,8 +42,14 @@ instance Assemble QId where
 
 instance Assemble Ty where
   asm (Fun bnd ret) = parens (asm bnd) <+> "=>" <+> asm ret
-  asm (TyConst i) = asm i
+  asm (TyConst i args) =
+    asm i <> case args of
+      [] -> ""
+      _ -> enclose "<" ">" $ mconcat $ punctuate ", " $ asm <$> args
   asm (ListTy a) = asm a <> "[]"
+  asm (Singleton v) = asm v
+  asm (RecordTy fields) = blocked $ punctuate "," [asm x <> ":" <+> asm ty | (x, ty) <- fields]
+  asm NullTy = "null"
 
 instance Assemble Binding where
   asm b = asm b.name <> ":" <+> asm b.ty
@@ -71,6 +77,8 @@ instance Assemble El where
   asm (Not t) = "!" <> asm t
   asm (Object fields) =
     blocked $ punctuate "," [asm x <> ":" <+> asm t | (x, t) <- fields]
+  asm Null = "null"
+  asm (Coerce t ty) = asm t <+> "as" <+> asm ty
 
 instance Assemble Statement where
   asm (Let x t) = "const" <+> asm x <+> "=" <+> asm t <> ";"

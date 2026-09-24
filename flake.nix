@@ -214,30 +214,31 @@
         devShells.default = pkgs.mkShell {
           name = "coln";
           buildInputs = with pkgs; [
+            binaryen
             cabal-install
             cabal2nix
             cargo-llvm-cov
             cargo-nextest
             coln-manual-dev
+            esbuild
             forester
             fourmolu
-            esbuild
-            haskell-wasm.wasm32-wasi-ghc-9_14
             haskell-wasm.wasm32-wasi-cabal-9_14
+            haskell-wasm.wasm32-wasi-ghc-9_14
             haskell.compiler.ghc912
             haskell.packages.ghc912.haskell-language-server
             haskellPackages.cabal-gild
             jq
             just
             nodejs_24
-            pnpm
-            packages.wasm-bodge
-            rustToolchain
-            packages.wasm-bindgen-cli
-            binaryen
             openssl
+            packages.wasm-bindgen-cli
+            packages.wasm-bodge
             pkg-config
+            pnpm
+            prettier
             reuse
+            rustToolchain
             simple-http-server
             tectonic
             typescript

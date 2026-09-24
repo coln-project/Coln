@@ -4,19 +4,21 @@
 
 module Main (main) where
 
-import Coln.Backend.Lower
-import Coln.Backend.TypeScript.Generate qualified as TypeScript
 import Coln.Common
 import Coln.Core
 import Coln.Diagnostics
 import Coln.Frontend.Notation
 import Coln.Frontend.Parser
+import Coln.Top
 import Control.Exception (evaluate, finally, onException)
+import Control.Monad (forM_)
 import Data.ByteString.Lazy qualified as LBS
+import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Functor.Contravariant (contramap)
-import Data.List (partition)
+import Data.List (partition, sort)
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO.Utf8 qualified as T
+import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Encoding qualified as TLE
 import FNotation
 import Prettyprinter
@@ -31,16 +33,15 @@ import Test.Tasty.Golden (findByExtension, goldenVsFile, goldenVsString)
 import Test.Tasty.HUnit (testCase, (@?=))
 import Prelude hiding (lex, read)
 
-knownFailingElaboratorTests :: [String]
-knownFailingElaboratorTests = []
+knownCrashingElaboratorTests :: [String]
+knownCrashingElaboratorTests = ["empty"]
 
-knownFailingTypeScriptTests :: [String]
-knownFailingTypeScriptTests =
-  [ "equality"
-  , "equality-prop"
-  , "equality-record"
-  , "equality-record-nested"
-  , "rule-literals"
+knownCrashingTypeScriptTests :: [String]
+knownCrashingTypeScriptTests =
+  [ "empty-prop-record-function"
+  , "prop-record-nested-dependent"
+  , "proof-record"
+  , "prop-record"
   ]
 
 main :: IO ()
@@ -55,27 +56,29 @@ render :: DDoc -> LBS.ByteString
 render = TLE.encodeUtf8 . renderLazy . layoutPretty defaultLayoutOptions
 
 prettyEntry :: (Name, Definition Global) -> DDoc
-prettyEntry (x, (Definition t a _ m)) =
-  vsep
+prettyEntry (x, (Definition t a _ m attrs)) =
+  vsep $
     [ "global entry named" <+> dpretty x
     , "in mode:" <+> dpretty m
-    , "type:" <+> prtIn (CtxShape 0 BwdNil) a
-    , "value:" <+> dprettyWithNames mempty t.stx
     ]
+      ++ (["attrs:" <+> vsep (dpretty <$> attrs) | not (null attrs)])
+      ++ [ "type:" <+> prtIn (CtxShape 0 BwdNil) a
+         , "value:" <+> dprettyWithNames mempty t.stx
+         ]
 
-prettyRealm :: (Name, Realm) -> DDoc
-prettyRealm (x, r) =
+prettyRealm :: Globals -> (Name, Realm) -> DDoc
+prettyRealm ge (x, r) = do
+  let ir = generateIr (lowerRealm ge r)
   vsep
     [ "realm named" <+> dpretty x
-    , "elaborated:" <+> dpretty r
-    , "lowered:" <+> dpretty (lowerRealm x r)
+    , "lowered:" <+> dpretty ir
     ]
 
 prettyDecls :: Globals -> DDoc
 prettyDecls ge =
   vsep $
     (prettyEntry <$> OMap.assocs ge.definitions)
-      ++ (prettyRealm <$> OMap.assocs ge.realms)
+      ++ (prettyRealm ge <$> OMap.assocs ge.realms)
 
 loadGlobals :: FilePath -> IO (Globals, Text)
 loadGlobals fp = do
@@ -108,17 +111,20 @@ generateTypeScript :: FilePath -> FilePath -> IO ()
 generateTypeScript fp outdir = do
   createDirectoryIfMissing True outdir
   (ge, _) <- loadGlobals fp
-  TypeScript.generate ge outdir
+  let realms = lowerRealms ge
+  forM_ (OMap.assocs realms) $ \(x, r) -> do
+    let fn = outdir </> mangleToString x <> ".ts"
+    T.writeFile fn (generateTs x r)
 
 typescriptFiles :: FilePath -> IO [FilePath]
 typescriptFiles directory =
-  filter (\path -> takeExtension path `elem` [".json", ".ts"])
+  sort . filter (\path -> takeExtension path `elem` [".json", ".ts"])
     <$> listDirectory directory
 
 elaboratorTests :: IO TestTree
 elaboratorTests = do
   colnFiles <- findByExtension [".coln"] "test/golden"
-  let (failingFiles, goldenFiles) = partition (isKnownFailure knownFailingElaboratorTests) colnFiles
+  let (failingFiles, goldenFiles) = partition (isKnownFailure knownCrashingElaboratorTests) colnFiles
   return $
     testGroup
       "Elaborator golden tests"
@@ -127,7 +133,17 @@ elaboratorTests = do
       ]
 
 elaboratorGoldenTest :: FilePath -> TestTree
-elaboratorGoldenTest colnFile = goldenVsString name outputFile (elaborate colnFile)
+elaboratorGoldenTest colnFile =
+  withResource (elaborate colnFile) (const $ pure ()) $ \getOutput ->
+    testGroup
+      name
+      [ goldenVsString "output" outputFile getOutput
+      , testCase "no unexpected errors" $ do
+          output <- getOutput
+          case filter (LBS.isPrefixOf "error[") (LBS8.lines output) of
+            [] -> pure ()
+            err : _ -> fail (colnFile <> ": " <> TL.unpack (TLE.decodeUtf8 err))
+      ]
  where
   name = takeBaseName colnFile
   outputFile = replaceExtension colnFile ".output"
@@ -143,7 +159,7 @@ elaboratorFailingTest colnFile =
 typescriptTests :: IO TestTree
 typescriptTests = do
   colnFiles <- findByExtension [".coln"] "test/golden/basic-ir"
-  let (failingFiles, goldenFiles) = partition (isKnownFailure knownFailingTypeScriptTests) colnFiles
+  let (failingFiles, goldenFiles) = partition (isKnownFailure knownCrashingTypeScriptTests) colnFiles
   goldenTestTrees <- mapM typescriptGoldenTest goldenFiles
   return $
     testGroup

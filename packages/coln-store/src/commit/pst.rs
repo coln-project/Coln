@@ -38,8 +38,8 @@ pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
 /// Decode a store from bytes produced by [`encode_store`].
 pub fn decode_store(data: &[u8]) -> Result<Store, StoreError> {
     let encoded = read_store_envelope(data)?;
-    let (store, pending) = Store::try_from_chunks(encoded.chunks)?;
-    if !pending.is_empty() {
+    let store = Store::try_from_chunks(encoded.chunks)?;
+    if store.pending_commits_len() > 0 {
         return Err(CodecError::DataContentError(
             "store snapshot contains commits that could not be applied".into(),
         )
@@ -100,8 +100,10 @@ mod tests {
     use crate::commit::hash::{CommitHash, HASH_SIZE};
     use crate::commit::wire::{CommitData, RootCommitData};
     use crate::ir::Path;
-    use crate::table::WireValue;
+    use crate::table::{WireValue, handle::WireRowView};
     use crate::test_utils::non_empty_root_commit_data;
+    use crate::txn::id::Promote;
+    use crate::txn::rw::{StoreRead, StoreWrite};
 
     #[fixture]
     fn int_store(non_empty_root_commit_data: RootCommitData) -> Store {
@@ -329,16 +331,20 @@ mod tests {
         let root = store.commits().root_commit().expect("root").hash();
         let table = Path::from("T");
         let mut txn = store.transaction();
-        txn.add(&table, vec![99_i32]).expect("add row");
+        let live_id = txn.add(&table, vec![99_i32]).expect("add row");
         let commit = txn.commit().expect("commit");
+        let row_id = store.promote_one(live_id, commit);
 
         let bytes = encode_store(&store).unwrap();
         let restored = decode_store(&bytes).unwrap();
 
-        let restored_table = restored.table_at(&table).expect("table");
-        assert_eq!(restored_table.row_count(), 1);
-        assert_eq!(restored_table.cell_at(0, 0), Some(WireValue::Int(99)));
-        assert_eq!(restored_table.row_id_at(0).expect("row id").commit, commit);
+        assert_eq!(
+            restored.row_by_id(&table, &row_id),
+            Some(WireRowView {
+                row_id,
+                values: vec![WireValue::Int(99)],
+            })
+        );
         assert_eq!(
             restored.commits().parents_of(&commit),
             Some([root].as_slice())

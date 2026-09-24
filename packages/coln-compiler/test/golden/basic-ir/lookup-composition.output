@@ -12,56 +12,41 @@ value: sig
   edge : (x : A) -> E (second (first x))
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      A = rel []
-      B = rel []
-      C = rel []
-      E = rel [a : TRealm.C []]
-      first = (fun [a : TRealm.A []] -> TRealm.B [])
-      second = (fun [a : TRealm.B []] -> TRealm.C [])
-      edge = (fun [x : TRealm.A []] -> TRealm.E [
-        a := TRealm.second [a := TRealm.first [a := x]]
-      ])
-    end
+lowered: flatrealm
+  entities
+    table root.A := []
+    table root.B := []
+    table root.C := []
+    table root.E := [a : root.C]
+    table root.first := [a : root.A, b : root.B] primarykey [a]
+    table root.second := [a : root.B, b : root.C] primarykey [a]
+    table root.edge := [x : root.A, a : root.E] primarykey [x]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.A := []
-    table ℜ.B := []
-    table ℜ.C := []
-    table ℜ.E := [.a : ℜ.C]
-    table ℜ.first := [.a : ℜ.A, .b : ℜ.B] primarykey [.a]
-    table ℜ.second := [.a : ℜ.B, .b : ℜ.C] primarykey [.a]
-    table ℜ.edge := [.x : ℜ.A, .a : ℜ.E] primarykey [.x]
-  end
   rules
-    enforced ℜ.A.foreignKey := ℜ.A [] ⊢ ⊤
-    enforced ℜ.B.foreignKey := ℜ.B [] ⊢ ⊤
-    enforced ℜ.C.foreignKey := ℜ.C [] ⊢ ⊤
-    enforced ℜ.E.foreignKey a := ℜ.E [.a ↦ a] ⊢ a ∈ ℜ.C []
-    enforced ℜ.first.foreignKey a b := ℜ.first [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.A [] ∧ b ∈ ℜ.B []
-    monitored ℜ.first.total a := a ∈ ℜ.A [] ⊢ ℜ.first [.a ↦ a]
-    enforced ℜ.second.foreignKey a b := ℜ.second [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.B [] ∧ b ∈ ℜ.C []
-    monitored ℜ.second.total a := a ∈ ℜ.B [] ⊢ ℜ.second [.a ↦ a]
-    enforced ℜ.edge.foreignKey x a a.a a.a.a := ℜ.edge [
-      .x ↦ x,
-      .a ↦ a
-    ] ∧ ℜ.first [.a ↦ x, .b ↦ a.a.a] ∧ ℜ.second [
-      .a ↦ a.a.a,
-      .b ↦ a.a
-    ] ⊢ x ∈ ℜ.A [] ∧ a ∈ ℜ.E [.a ↦ a.a]
-    monitored ℜ.edge.total x := x ∈ ℜ.A [] ⊢ ℜ.edge [.x ↦ x]
+    enforced root.A.foreignKey := root.A [] ⊢ ⊤
+    enforced root.B.foreignKey := root.B [] ⊢ ⊤
+    enforced root.C.foreignKey := root.C [] ⊢ ⊤
+    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.C []
+    enforced root.first.foreignKey a b := root.first [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.A [] ∧ b ∈ root.B []
+    monitored root.first.total a := a ∈ root.A [] ⊢ root.first [a ↦ a]
+    enforced root.second.foreignKey a b := root.second [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.B [] ∧ b ∈ root.C []
+    monitored root.second.total a := a ∈ root.B [] ⊢ root.second [a ↦ a]
+    enforced root.edge.foreignKey x a b c := root.edge [
+      x ↦ x,
+      a ↦ a
+    ] ⊢ x ∈ root.A [] ∧ root.first [a ↦ x, b ↦ c] ∧ root.second [
+      a ↦ c,
+      b ↦ b
+    ] ∧ a ∈ root.E [a ↦ b]
+    monitored root.edge.total x := x ∈ root.A [] ⊢ root.edge [x ↦ x]
   end
 end
 

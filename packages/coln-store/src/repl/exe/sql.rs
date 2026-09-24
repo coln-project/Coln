@@ -253,7 +253,7 @@ mod tests {
         let loaded = session.loaded.as_ref().expect("loaded session");
         let table = loaded
             .store
-            .table_at(&"Person".parse().unwrap())
+            .table_at(&"Person".into())
             .expect("Person table");
         assert_eq!(table.row_count(), 2);
 
@@ -276,7 +276,7 @@ mod tests {
         let loaded = session.loaded.as_ref().expect("loaded session");
         let dump = loaded
             .store
-            .table_at(&"Person".parse().unwrap())
+            .table_at(&"Person".into())
             .expect("Person table")
             .dump();
         assert!(dump.contains("alice"));

@@ -1,0 +1,30 @@
+theory Ops := sig
+  Addr : Set
+  Ref : Set
+  Field : Set
+
+  # x := y
+  assign : (x : Ref) -> (y : Ref) -> Set
+  # x.f := y
+  assign-to-field : (x : Ref) -> (f : Field) -> (y : Ref) -> Set
+  # x := y.f
+  assign-from-field : (x : Ref) -> (y : Ref) -> (f : Field) -> Set
+end
+
+theory Analysis (^i O : Ops) := sig
+  points-to : O.Ref -> O.Addr -> Prop
+  points-to-field : O.Ref -> O.Field -> O.Addr -> Prop
+
+  # y ↦ a and x := y => x ↦ a
+  points-to/assign : (x : O.Ref) -> (y : O.Ref) -> (a : O.Addr) -> O.assign x y -> points-to y a -> points-to x a
+
+  # y ↦ a and x.f := y => x.f ↦ a
+  points-to-field/assign : (x : O.Ref) -> (f : O.Field) -> (y : O.Ref) -> (a : O.Addr) -> O.assign-to-field x f y -> points-to y a -> points-to-field x f a
+
+  # y.f ↦ a and x := y.f => x ↦ a
+  points-to/field-assign : (x : O.Ref) -> (y : O.Ref) -> (f : O.Field) -> (a : O.Addr) -> O.assign-from-field x y f -> points-to-field y f a -> points-to x a
+end
+
+realm AnalysisRealm @ Ops
+  ind def analysis : Analysis root := init (Analysis root)
+end

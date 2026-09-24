@@ -1,52 +1,23 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    X: runtime.MutableSet<runtime.RowId<"root.X">>,
+    P: (a: runtime.RowId<"root.X">) => runtime.MutableProp,
+    evidence: (x: runtime.RowId<"root.X">) => (a: {
+      proof: null
+    }) => runtime.MutableSet<runtime.RowId<"root.evidence">>
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      X: (new runtime.RowIdSet.View(store, "TRealm.X", [])),
-      P: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.View(store, "TRealm.P", [a]));
+      X: (new runtime.BaseSet(mstore, "root.X", [])),
+      P: (a: runtime.RowId<"root.X">) => {
+        return (new runtime.BaseProp(mstore, "root.P", [a]));
       },
-      evidence: (x: runtime.Value) => {
-        return (a: runtime.Value) => {
-          return (new runtime.RowIdSet.View(store, "TRealm.evidence", [x, a]));
-        };
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      X: (new runtime.RowIdSet.Transaction(store, "TRealm.X", [], transaction)),
-      P: (a: runtime.Value) => {
-        return (new runtime.RowIdSet.Transaction(
-          store,
-          "TRealm.P",
-          [a],
-          transaction
-        ));
-      },
-      evidence: (x: runtime.Value) => {
-        return (a: runtime.Value) => {
-          return (new runtime.RowIdSet.Transaction(
-            store,
-            "TRealm.evidence",
-            [x, a],
-            transaction
-          ));
+      evidence: (x: runtime.RowId<"root.X">) => {
+        return (a: { proof: null }) => {
+          return (new runtime.BaseSet(mstore, "root.evidence", [x]));
         };
       }
     };

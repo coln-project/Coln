@@ -14,33 +14,25 @@ value: sig
   payload : point -> Payload
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      point = rel []
-      payload = (fun [a : TRealm.point []] -> Payload)
-    end
+lowered: flatrealm
+  entities
+    table root.point := []
+    table root.payload := [
+      a : root.point,
+      b.name : String,
+      b.rank : Int
+    ] primarykey [a]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.point := []
-    table ℜ.payload := [
-      .a : ℜ.point,
-      .b.name : String,
-      .b.rank : Int
-    ] primarykey [.a]
-  end
   rules
-    enforced ℜ.point.foreignKey := ℜ.point [] ⊢ ⊤
-    enforced ℜ.payload.foreignKey a b.name b.rank := ℜ.payload [
-      .a ↦ a,
-      .b.name ↦ b.name,
-      .b.rank ↦ b.rank
-    ] ⊢ a ∈ ℜ.point []
-    monitored ℜ.payload.total a := a ∈ ℜ.point [] ⊢ ℜ.payload [.a ↦ a]
+    enforced root.point.foreignKey := root.point [] ⊢ ⊤
+    enforced root.payload.foreignKey a b.name b.rank := root.payload [
+      a ↦ a,
+      b.name ↦ b.name,
+      b.rank ↦ b.rank
+    ] ⊢ a ∈ root.point []
+    monitored root.payload.total a := a ∈ root.point [] ⊢ root.payload [a ↦ a]
   end
 end
 

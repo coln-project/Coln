@@ -51,6 +51,9 @@ equalityHLevelOf = \case
   HSet -> HProp
   HTop -> HTop
 
+class HLevelOf a where
+  hlevelOf :: a -> HLevel
+
 data Level = Level
   { mlevel :: MLevel
   , hlevel :: HLevel
@@ -182,11 +185,14 @@ type RealmId = Name
 
 type Path = Bwd Name
 
-data TableName = TableName {realm :: RealmId, path :: Path}
-  deriving (Show, Eq, Ord)
+newtype TableName = TableName {name :: Text}
+  deriving (Eq, Ord, Show)
 
 instance DPretty TableName where
-  dpretty tn = concatWith (surround dot) (dpretty <$> toList tn.path)
+  dpretty tn = pretty tn.name
+
+tableName :: Path -> TableName
+tableName = TableName . renderText . concatWith (surround dot) . fmap dpretty . toList
 
 -- Mode
 --------------------------------------------------------------------------------
@@ -196,6 +202,15 @@ data Mode = Inductive | Conjunctive
 
 instance DPretty Mode where
   dpretty = pretty . show
+
+-- Attrs for Decls
+--------------------------------------------------------------------------------
+
+data Attr = AttrExpectedError Text
+  deriving (Show, Eq, Ord)
+
+instance DPretty Attr where
+  dpretty (AttrExpectedError e) = "expected-error" <+> pretty e
 
 -- Definition scope
 --------------------------------------------------------------------------------

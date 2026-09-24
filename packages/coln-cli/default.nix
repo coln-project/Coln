@@ -1,6 +1,6 @@
-{ mkDerivation, base, coln-compiler, coln-ls, coln-repl
-, diagnostician, diagnostician-terminal, fnotation, lib
-, optparse-applicative, text
+{ mkDerivation, aeson, base, coln-compiler, coln-ls, coln-repl
+, diagnostician, diagnostician-terminal, filepath, fnotation, lib
+, optparse-applicative, ordered-containers, text
 }:
 mkDerivation {
   pname = "coln-cli";
@@ -9,8 +9,9 @@ mkDerivation {
   isLibrary = false;
   isExecutable = true;
   executableHaskellDepends = [
-    base coln-compiler coln-ls coln-repl diagnostician
-    diagnostician-terminal fnotation optparse-applicative text
+    aeson base coln-compiler coln-ls coln-repl diagnostician
+    diagnostician-terminal filepath fnotation optparse-applicative
+    ordered-containers text
   ];
   license = "(Apache-2.0 OR MIT)";
   mainProgram = "coln";

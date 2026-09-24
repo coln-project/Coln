@@ -4,12 +4,20 @@
 
 module Coln.CLI.GenerateTS where
 
-import Coln.Backend.TypeScript.Generate
+import Control.Monad (forM_)
+import Data.Map.Ordered qualified as OMap
+import Data.Text.IO qualified as TIO
+import System.FilePath ((</>))
+
 import Coln.CLI.Common
 import Coln.CLI.Options
+import Coln.Common
+import Coln.Top
 
 generateTS :: GenerateTSOptions -> IO ()
 generateTS opts = do
-  ge <- loadFile opts.inputFile
-  generate ge opts.outputDir
-  pure ()
+  globals <- loadFile opts.inputFile
+  let realms = lowerRealms globals
+  forM_ (OMap.assocs realms) $ \(x, r) -> do
+    let fn = opts.outputDir </> mangleToString x <> ".ts"
+    TIO.writeFile fn (generateTs x r)

@@ -1,0 +1,10 @@
+theory Monoid := sig
+  car : Set
+  unit : car
+  mul : car -> car -> car
+
+  mul/unitl : (^c x : car) -> mul unit x = x
+  mul/unitr : (^c x : car) -> mul x unit = x
+
+  mul/assoc : (^c x : car) -> (^c y : car) -> (^c z : car) -> mul (mul x y) z = mul x (mul y z)
+end

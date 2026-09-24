@@ -19,31 +19,19 @@ value: sig
   outer : Pointed X
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      outer = node
-        inner = node
-          point = (fun [] -> TRealm.X [])
-        end
-      end
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.outer.inner := [a.point : root.X] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.outer.inner.point := [.a : ℜ.X] primarykey []
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.outer.inner.point.foreignKey a := ℜ.outer.inner.point [
-      .a ↦ a
-    ] ⊢ a ∈ ℜ.X []
-    monitored ℜ.outer.inner.point.total := ⊤ ⊢ ℜ.outer.inner.point []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.outer.inner.foreignKey a.point := root.outer.inner [
+      a.point ↦ a.point
+    ] ⊢ a.point ∈ root.X []
+    monitored root.outer.inner.total := ⊤ ⊢ root.outer.inner []
   end
 end
 

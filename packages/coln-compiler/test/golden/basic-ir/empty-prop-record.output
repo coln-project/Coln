@@ -11,22 +11,13 @@ value: sig
   truth : Truth
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      truth = (fun [] -> Truth)
-    end
+lowered: flatrealm
+  entities
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.truth := [] primarykey []
-  end
   rules
-    enforced ℜ.truth.foreignKey := ℜ.truth [] ⊢ ⊤
-    monitored ℜ.truth.total := ⊤ ⊢ ℜ.truth []
+    monitored root := ⊤ ⊢ ⊤
   end
 end
 

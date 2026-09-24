@@ -1,0 +1,36 @@
+theory BipartiteGraphOver := sig
+  red : Set
+  blue : Set
+  red-blue : red -> blue -> Set
+  blue-red : blue -> red -> Set
+
+  red-over : red -> Set
+  blue-over : blue -> Set
+  red-blue-over : (v : red) -> red-over v -> (w : blue) -> blue-over w -> Set
+  blue-red-over : (w : blue) -> blue-over w -> (v : red) -> red-over v -> Set
+end
+
+theory BipartiteOverConnection (^i G : BipartiteGraphOver) := sig
+  red-red : G.red -> G.red -> Prop
+  blue-blue : G.blue -> G.blue -> Prop
+  red/refl : (v : G.red) -> red-red v v
+  blue/refl : (w : G.blue) -> blue-blue w w
+  red/trans : (v0 : G.red) -> (v1 : G.red) -> (w0 : G.blue) -> (w1 : G.blue) -> G.red-blue v0 w0 -> blue-blue w0 w1 -> G.blue-red w1 v1 -> red-red v0 v1
+  blue/trans : (w0 : G.blue) -> (w1 : G.blue) -> (v0 : G.red) -> (v1 : G.red) -> G.blue-red w0 v0 -> red-red v0 v1 -> G.red-blue v1 w1 -> blue-blue w0 w1
+
+  red-red-over : (v0 : G.red) -> G.red-over v0 -> (v1 : G.red) -> G.red-over v1 -> Prop
+  blue-blue-over : (w0 : G.blue) -> G.blue-over w0 -> (w1 : G.blue) -> G.blue-over w1 -> Prop
+
+  red-over/lift : (v0 : G.red) -> (x0 : G.red-over v0) -> (v1 : G.red) -> (x1 : G.red-over v1) -> red-red v0 v1 -> red-red-over v0 x0 v1 x1
+  blue-over/lift : (w0 : G.blue) -> (y0 : G.blue-over w0) -> (w1 : G.blue) -> (y1 : G.blue-over w1) -> blue-blue w0 w1 -> blue-blue-over w0 y0 w1 y1
+
+  red-over/refl : (v : G.red) -> (x : G.red-over v) -> red-red-over v x v x
+  blue-over/refl : (w : G.blue) -> (y : G.blue-over w) -> blue-blue-over w y w y
+
+  red/trans : (v0 : G.red) -> (x0 : G.red-over v0) -> (v1 : G.red) -> (x1 : G.red-over v1) -> (w0 : G.blue) -> (y0 : G.blue-over w0) -> (w1 : G.blue) -> (y1 : G.blue-over w1) -> G.red-blue-over v0 x0 w0 y0 -> blue-blue-over w0 y0 w1 y1 -> G.blue-red-over w1 y1 v1 x1 -> red-red-over v0 x0 v1 x1
+  blue/trans : (w0 : G.blue) -> (y0 : G.blue-over w0) -> (w1 : G.blue) -> (y1 : G.blue-over w1) -> (v0 : G.red) -> (x0 : G.red-over v0) -> (v1 : G.red) -> (x1 : G.red-over v1) -> G.blue-red-over w0 y0 v0 x0 -> red-red-over v0 x0 v1 x1 -> G.red-blue-over v1 x1 w1 y1 -> blue-blue-over w0 y0 w1 y1
+end
+
+realm BipartiteGraphOverRealm @ BipartiteGraphOver
+  ind def connection-info : BipartiteOverConnection root := init (BipartiteOverConnection root)
+end

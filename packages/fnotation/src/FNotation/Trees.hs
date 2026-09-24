@@ -40,6 +40,7 @@ data NtnGeneric a
   | Mode Name a
   | Int Int a
   | String Text a
+  | Raw Text a -- This is used for pretty printing, when you just want to include some raw text in the pretty printed output
   | Error a
 
 pattern Decl :: Name -> NtnGeneric a -> a -> NtnGeneric a
@@ -73,6 +74,7 @@ startPos (Mode _ s) = s.start
 startPos (Int _ s) = s.start
 startPos (String _ s) = s.start
 startPos (Tuple _ s) = s.start
+startPos (Raw _ s) = s.start
 startPos (Error s) = s.start
 
 endPos :: Ntn -> Pos
@@ -87,6 +89,7 @@ endPos (Tag _ s) = s.end
 endPos (Mode _ s) = s.end
 endPos (Int _ s) = s.end
 endPos (String _ s) = s.end
+endPos (Raw _ s) = s.end
 endPos (Tuple _ s) = s.end
 endPos (Error s) = s.end
 
@@ -109,6 +112,7 @@ head (Mode x _) = "Mode" <+> dpretty x
 head (Int i _) = "Int" <+> pretty i
 head (String s _) = "String" <+> pretty s
 head (Tuple _ _) = "Tuple"
+head (Raw _ _) = "Raw"
 head (Error _) = "Error"
 
 children :: Ntn -> [Ntn]
@@ -124,6 +128,7 @@ children (Mode _ _) = []
 children (Int _ _) = []
 children (String _ _) = []
 children (Tuple ns _) = ns
+children (Raw _ _) = []
 children (Error _) = []
 
 instance DPretty Ntn where

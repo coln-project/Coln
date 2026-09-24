@@ -26,7 +26,7 @@ lint-check:
 
 # Run tests with stdout and stderr suppressed.
 test *TESTS:
-    cargo nextest run -p {{ crate }} --all-targets {{ TESTS }}
+    cargo nextest run -p {{ crate }} --all-targets --no-fail-fast {{ TESTS }}
     # As of now nextest does not support doc tests, so we fallback to
     # cargo test to run them.
     cargo test --doc -p {{ crate }} {{ TESTS }}

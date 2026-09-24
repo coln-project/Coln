@@ -15,41 +15,27 @@ value: sig
   slices : (x : X) -> (y : Y) -> Slice Y (R x) y -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      Y = rel []
-      R = rel [a : TRealm.X [], b : TRealm.Y []]
-      slices = rel [
-        x : TRealm.X [],
-        y : TRealm.Y [],
-        a : Slice (TRealm.Y []) (b => TRealm.R [a := x, b := b]) y
-      ]
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.Y := []
+    table root.R := [a : root.X, b : root.Y]
+    table root.slices := [x : root.X, y : root.Y, a.entry : root.R]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.Y := []
-    table ℜ.R := [.a : ℜ.X, .b : ℜ.Y]
-    table ℜ.slices := [.x : ℜ.X, .y : ℜ.Y, .a.entry : ℜ.R]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.Y.foreignKey := ℜ.Y [] ⊢ ⊤
-    enforced ℜ.R.foreignKey a b := ℜ.R [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.Y []
-    enforced ℜ.slices.foreignKey x y a.entry := ℜ.slices [
-      .x ↦ x,
-      .y ↦ y,
-      .a.entry ↦ a.entry
-    ] ⊢ x ∈ ℜ.X [] ∧ y ∈ ℜ.Y [] ∧ a.entry ∈ ℜ.R [.a ↦ x, .b ↦ y]
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.Y.foreignKey := root.Y [] ⊢ ⊤
+    enforced root.R.foreignKey a b := root.R [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.X [] ∧ b ∈ root.Y []
+    enforced root.slices.foreignKey x y a.entry := root.slices [
+      x ↦ x,
+      y ↦ y,
+      a.entry ↦ a.entry
+    ] ⊢ x ∈ root.X [] ∧ y ∈ root.Y [] ∧ a.entry ∈ root.R [a ↦ x, b ↦ y]
   end
 end
 

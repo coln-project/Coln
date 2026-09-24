@@ -10,5 +10,3 @@ theory TransitiveExt (^i G : Graph) := sig
 end
 
 ind def transitive-closure (G : Graph) : TransitiveExt G := init (TransitiveExt G)
-
-ind def free-point (X : Set) : X := init X

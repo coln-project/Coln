@@ -19,26 +19,18 @@ value: sig
   nested : Nested X -> Set
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      nested = rel [a : Nested (TRealm.X [])]
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.nested := [a.inner.value : root.X]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.nested := [.a.inner.value : ℜ.X]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.nested.foreignKey a.inner.value := ℜ.nested [
-      .a.inner.value ↦ a.inner.value
-    ] ⊢ a.inner.value ∈ ℜ.X []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.nested.foreignKey a.inner.value := root.nested [
+      a.inner.value ↦ a.inner.value
+    ] ⊢ a.inner.value ∈ root.X []
   end
 end
 

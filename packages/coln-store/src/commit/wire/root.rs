@@ -54,12 +54,9 @@ mod tests {
         assert_eq!(decoded.ir.tables[0].path, Path::from("T"));
         assert_eq!(
             decoded.ir.tables[0].table.columns,
-            int_schema(vec!["c0"], Some(vec!["c0"])).columns
+            int_schema(vec!["c0"], Some(vec![0])).columns
         );
-        assert_eq!(
-            decoded.ir.tables[0].table.primary_key,
-            Some(vec![Path::from("c0")])
-        );
+        assert_eq!(decoded.ir.tables[0].table.primary_key, Some(vec![0]));
         assert_eq!(decoded.ir.rules.len(), 1);
         assert_eq!(decoded.ir.rules[0].path, Path::from("T.non_negative"));
         assert_eq!(decoded.coln_def.theory, "theory T");
@@ -71,7 +68,7 @@ mod tests {
         #[from(root_commit_data)] mut left: RootCommitData,
         #[from(root_commit_data)] mut right: RootCommitData,
         #[from(int_schema)]
-        #[with(vec!["c0"], Some(vec!["c0"]))]
+        #[with(vec!["c0"], Some(vec![0]))]
         int_schema: Schema,
         #[from(string_schema)]
         #[with(vec!["c0"], None)]

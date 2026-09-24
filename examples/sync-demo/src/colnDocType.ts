@@ -93,7 +93,7 @@ export function colnDocType<
     state: ColnState,
     body: (tx: ColnFfiTransaction<Ffi>) => void
   ): ColnState => {
-    const tx = state.store.beginTransaction()
+    const tx = state.store.transaction()
     try {
       const typedTx = new ffi.Transaction(state.store, tx)
       body(typedTx)

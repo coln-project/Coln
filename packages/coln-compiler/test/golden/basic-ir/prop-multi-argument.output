@@ -9,34 +9,22 @@ value: sig
   R : X -> P -> Q -> Prop
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      P = rel []
-      Q = rel []
-      R = rel [a : TRealm.X [], b : TRealm.P [], c : TRealm.Q []]
-    end
+lowered: flatrealm
+  entities
+    table root.X := []
+    table root.P := [] primarykey []
+    table root.Q := [] primarykey []
+    table root.R := [a : root.X] primarykey [a]
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.P := []
-    table ℜ.Q := []
-    table ℜ.R := [.a : ℜ.X, .b : ℜ.P, .c : ℜ.Q]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.P.foreignKey := ℜ.P [] ⊢ ⊤
-    enforced ℜ.Q.foreignKey := ℜ.Q [] ⊢ ⊤
-    enforced ℜ.R.foreignKey a b c := ℜ.R [
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.P [] ∧ c ∈ ℜ.Q []
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.P.foreignKey := root.P [] ⊢ ⊤
+    enforced root.Q.foreignKey := root.Q [] ⊢ ⊤
+    enforced root.R.foreignKey a := root.R [
+      a ↦ a
+    ] ⊢ a ∈ root.X [] ∧ root.P [] ∧ root.Q []
   end
 end
 

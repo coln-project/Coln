@@ -21,162 +21,215 @@ value: sig
   fiber : base.V -> Graph
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
-realm named GraphOfGraphsRealm
-elaborated: realm
-  generators
-    node
-      base = node
-        V = rel []
-        E = rel [
-          a : GraphOfGraphsRealm.base.V [],
-          b : GraphOfGraphsRealm.base.V []
-        ]
-      end
-      fiber = node
-        V = rel [a : GraphOfGraphsRealm.base.V []]
-        E = rel [
-          a : GraphOfGraphsRealm.base.V [],
-          b : GraphOfGraphsRealm.fiber.V [a := a],
-          c : GraphOfGraphsRealm.fiber.V [a := a]
-        ]
-      end
-      action = node
-        V = (fun [
-          v0 : GraphOfGraphsRealm.base.V [],
-          v1 : GraphOfGraphsRealm.base.V [],
-          a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
-          b : GraphOfGraphsRealm.fiber.V [a := v0]
-        ] -> GraphOfGraphsRealm.fiber.V [a := v1])
-        E = (fun [
-          v0 : GraphOfGraphsRealm.base.V [],
-          v1 : GraphOfGraphsRealm.base.V [],
-          a : GraphOfGraphsRealm.base.E [a := v0, b := v1],
-          v0/a : GraphOfGraphsRealm.fiber.V [a := v0],
-          v1/a : GraphOfGraphsRealm.fiber.V [a := v0],
-          b : GraphOfGraphsRealm.fiber.E [a := v0, b := v0/a, c := v1/a]
-        ] -> GraphOfGraphsRealm.fiber.E [
-          a := v1,
-          b := GraphOfGraphsRealm.action.V [
-            v0 := v0,
-            v1 := v1,
-            a := a,
-            b := v0/a
-          ],
-          c := GraphOfGraphsRealm.action.V [
-            v0 := v0,
-            v1 := v1,
-            a := a,
-            b := v1/a
-          ]
-        ])
-      end
-    end
-  end
-  definitions
-  end
+global entry named TotalV
+in mode: Conjunctive
+type: (G : GraphOfGraphs) -> Set
+value: G => sig
+  base : G.base.V
+  fiber : G.fiber base .V
 end
+global entry named TotalE
+in mode: Conjunctive
+type: (G : GraphOfGraphs) -> (v0 : TotalV G) -> (v1 : TotalV G) -> Set
+value: G => v0 => v1 => sig
+  base : G.base.E v0.base v1.base
+  fiber : G.fiber v1.base .E (G.action v0.base v1.base base .V v0.fiber) v1.fiber
+end
+global entry named TotalGraph
+in mode: Conjunctive
+type: (G : GraphOfGraphs) -> Graph
+value: G => [V := TotalV G, E := TotalE G]
+global entry named TransitiveExtension
+in mode: Conjunctive
+type: (G : Graph) -> Theory
+value: G => sig
+  t : G.V -> G.V -> Prop
+  refl : (v : G.V) -> t v v
+  snoc : (v0 : G.V) -> (v1 : G.V) -> (v2 : G.V) -> t v0 v1 -> G.E v1 v2 -> t v0 v2
+end
+realm named GraphOfGraphsRealm
 lowered: flatrealm
   entities
-    table ℜ.base.V := []
-    table ℜ.base.E := [.a : ℜ.base.V, .b : ℜ.base.V]
-    table ℜ.fiber.V := [.a : ℜ.base.V]
-    table ℜ.fiber.E := [.a : ℜ.base.V, .b : ℜ.fiber.V, .c : ℜ.fiber.V]
-    table ℜ.action.V := [
-      .v0 : ℜ.base.V,
-      .v1 : ℜ.base.V,
-      .a : ℜ.base.E,
-      .b : ℜ.fiber.V,
-      .c : ℜ.fiber.V
-    ] primarykey [.a, .b, .v0, .v1]
-    table ℜ.action.E := [
-      .v0 : ℜ.base.V,
-      .v1 : ℜ.base.V,
-      .a : ℜ.base.E,
-      .v0/a : ℜ.fiber.V,
-      .v1/a : ℜ.fiber.V,
-      .b : ℜ.fiber.E,
-      .c : ℜ.fiber.E
-    ] primarykey [.a, .b, .v0, .v1, .v0/a, .v1/a]
+    table root.base.V := []
+    table root.base.E := [a : root.base.V, b : root.base.V]
+    table root.fiber.V := [a : root.base.V]
+    table root.fiber.E := [a : root.base.V, b : root.fiber.V, c : root.fiber.V]
+    table root.action.V := [
+      v0 : root.base.V,
+      v1 : root.base.V,
+      a : root.base.E,
+      b : root.fiber.V,
+      c : root.fiber.V
+    ] primarykey [v0, v1, a, b]
+    table root.action.E := [
+      v0 : root.base.V,
+      v1 : root.base.V,
+      a : root.base.E,
+      v0/a : root.fiber.V,
+      v1/a : root.fiber.V,
+      b : root.fiber.E,
+      c : root.fiber.E
+    ] primarykey [v0, v1, a, v0/a, v1/a, b]
+    view init.connection.t := [
+      a.base : root.base.V,
+      a.fiber : root.fiber.V,
+      b.base : root.base.V,
+      b.fiber : root.fiber.V
+    ] primarykey [a.base, a.fiber, b.base, b.fiber]
+    view view.total.V := [
+      V.base : root.base.V,
+      V.fiber : root.fiber.V
+    ] primarykey [V.base, V.fiber]
+    view view.total.E := [
+      v0.base : root.base.V,
+      v0.fiber : root.fiber.V,
+      v1.base : root.base.V,
+      v1.fiber : root.fiber.V,
+      E.base : root.base.E,
+      E.fiber : root.fiber.E
+    ] primarykey [v0.base, v0.fiber, v1.base, v1.fiber, E.base, E.fiber]
+  end
+  definitions
+    chased init.connection.refl v.base v.fiber := v.base ∈ root.base.V [] ∧ v.fiber ∈ root.fiber.V [
+      a ↦ v.base
+    ] ⊢ init.connection.t [
+      a.base ↦ v.base,
+      a.fiber ↦ v.fiber,
+      b.base ↦ v.base,
+      b.fiber ↦ v.fiber
+    ]
+    chased init.connection.snoc v0.base v0.fiber v1.base v1.fiber v2.base v2.fiber b.base b.fiber c := v0.base ∈ root.base.V [] ∧ v0.fiber ∈ root.fiber.V [
+      a ↦ v0.base
+    ] ∧ v1.base ∈ root.base.V [] ∧ v1.fiber ∈ root.fiber.V [
+      a ↦ v1.base
+    ] ∧ v2.base ∈ root.base.V [] ∧ v2.fiber ∈ root.fiber.V [
+      a ↦ v2.base
+    ] ∧ init.connection.t [
+      a.base ↦ v0.base,
+      a.fiber ↦ v0.fiber,
+      b.base ↦ v1.base,
+      b.fiber ↦ v1.fiber
+    ] ∧ root.action.V [
+      v0 ↦ v1.base,
+      v1 ↦ v2.base,
+      a ↦ b.base,
+      b ↦ v1.fiber,
+      c ↦ c
+    ] ∧ b.base ∈ root.base.E [
+      a ↦ v1.base,
+      b ↦ v2.base
+    ] ∧ b.fiber ∈ root.fiber.E [
+      a ↦ v2.base,
+      b ↦ c,
+      c ↦ v2.fiber
+    ] ⊢ init.connection.t [
+      a.base ↦ v0.base,
+      a.fiber ↦ v0.fiber,
+      b.base ↦ v2.base,
+      b.fiber ↦ v2.fiber
+    ]
+    chased view.total.V.definition V.base V.fiber := V.base ∈ root.base.V [] ∧ V.fiber ∈ root.fiber.V [
+      a ↦ V.base
+    ] ⊢ view.total.V [V.base ↦ V.base, V.fiber ↦ V.fiber]
+    chased view.total.E.definition v0.base v0.fiber v1.base v1.fiber E.base E.fiber a := v0.base ∈ root.base.V [] ∧ v0.fiber ∈ root.fiber.V [
+      a ↦ v0.base
+    ] ∧ v1.base ∈ root.base.V [] ∧ v1.fiber ∈ root.fiber.V [
+      a ↦ v1.base
+    ] ∧ root.action.V [
+      v0 ↦ v0.base,
+      v1 ↦ v1.base,
+      a ↦ E.base,
+      b ↦ v0.fiber,
+      c ↦ a
+    ] ∧ E.base ∈ root.base.E [
+      a ↦ v0.base,
+      b ↦ v1.base
+    ] ∧ E.fiber ∈ root.fiber.E [
+      a ↦ v1.base,
+      b ↦ a,
+      c ↦ v1.fiber
+    ] ⊢ view.total.E [
+      v0.base ↦ v0.base,
+      v0.fiber ↦ v0.fiber,
+      v1.base ↦ v1.base,
+      v1.fiber ↦ v1.fiber,
+      E.base ↦ E.base,
+      E.fiber ↦ E.fiber
+    ]
   end
   rules
-    enforced ℜ.base.V.foreignKey := ℜ.base.V [] ⊢ ⊤
-    enforced ℜ.base.E.foreignKey a b := ℜ.base.E [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.base.V []
-    enforced ℜ.fiber.V.foreignKey a := ℜ.fiber.V [.a ↦ a] ⊢ a ∈ ℜ.base.V []
-    enforced ℜ.fiber.E.foreignKey a b c := ℜ.fiber.E [
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ a ∈ ℜ.base.V [] ∧ b ∈ ℜ.fiber.V [.a ↦ a] ∧ c ∈ ℜ.fiber.V [.a ↦ a]
-    enforced ℜ.action.V.foreignKey v0 v1 a b c := ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ b,
-      .c ↦ c
-    ] ⊢ v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
-      .a ↦ v0,
-      .b ↦ v1
-    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ∧ c ∈ ℜ.fiber.V [.a ↦ v1]
-    monitored ℜ.action.V.total v0 v1 a b := v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
-      .a ↦ v0,
-      .b ↦ v1
-    ] ∧ b ∈ ℜ.fiber.V [.a ↦ v0] ⊢ ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ b
+    enforced root.base.V.foreignKey := root.base.V [] ⊢ ⊤
+    enforced root.base.E.foreignKey a b := root.base.E [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.base.V [] ∧ b ∈ root.base.V []
+    enforced root.fiber.V.foreignKey a := root.fiber.V [
+      a ↦ a
+    ] ⊢ a ∈ root.base.V []
+    enforced root.fiber.E.foreignKey a b c := root.fiber.E [
+      a ↦ a,
+      b ↦ b,
+      c ↦ c
+    ] ⊢ a ∈ root.base.V [] ∧ b ∈ root.fiber.V [a ↦ a] ∧ c ∈ root.fiber.V [a ↦ a]
+    enforced root.action.V.foreignKey v0 v1 a b c := root.action.V [
+      v0 ↦ v0,
+      v1 ↦ v1,
+      a ↦ a,
+      b ↦ b,
+      c ↦ c
+    ] ⊢ v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
+      a ↦ v0,
+      b ↦ v1
+    ] ∧ b ∈ root.fiber.V [a ↦ v0] ∧ c ∈ root.fiber.V [a ↦ v1]
+    monitored root.action.V.total v0 v1 a b := v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
+      a ↦ v0,
+      b ↦ v1
+    ] ∧ b ∈ root.fiber.V [a ↦ v0] ⊢ root.action.V [
+      v0 ↦ v0,
+      v1 ↦ v1,
+      a ↦ a,
+      b ↦ b
     ]
-    enforced ℜ.action.E.foreignKey v0 v1 a v0/a v1/a b c c.b c.c := ℜ.action.E [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .v0/a ↦ v0/a,
-      .v1/a ↦ v1/a,
-      .b ↦ b,
-      .c ↦ c
-    ] ∧ ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ v0/a,
-      .c ↦ c.b
-    ] ∧ ℜ.action.V [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .b ↦ v1/a,
-      .c ↦ c.c
-    ] ⊢ v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
-      .a ↦ v0,
-      .b ↦ v1
-    ] ∧ v0/a ∈ ℜ.fiber.V [.a ↦ v0] ∧ v1/a ∈ ℜ.fiber.V [
-      .a ↦ v0
-    ] ∧ b ∈ ℜ.fiber.E [.a ↦ v0, .b ↦ v0/a, .c ↦ v1/a] ∧ c ∈ ℜ.fiber.E [
-      .a ↦ v1,
-      .b ↦ c.b,
-      .c ↦ c.c
-    ]
-    monitored ℜ.action.E.total v0 v1 a v0/a v1/a b := v0 ∈ ℜ.base.V [] ∧ v1 ∈ ℜ.base.V [] ∧ a ∈ ℜ.base.E [
-      .a ↦ v0,
-      .b ↦ v1
-    ] ∧ v0/a ∈ ℜ.fiber.V [.a ↦ v0] ∧ v1/a ∈ ℜ.fiber.V [
-      .a ↦ v0
-    ] ∧ b ∈ ℜ.fiber.E [.a ↦ v0, .b ↦ v0/a, .c ↦ v1/a] ⊢ ℜ.action.E [
-      .v0 ↦ v0,
-      .v1 ↦ v1,
-      .a ↦ a,
-      .v0/a ↦ v0/a,
-      .v1/a ↦ v1/a,
-      .b ↦ b
+    enforced root.action.E.foreignKey v0 v1 a v0/a v1/a b c d e := root.action.E [
+      v0 ↦ v0,
+      v1 ↦ v1,
+      a ↦ a,
+      v0/a ↦ v0/a,
+      v1/a ↦ v1/a,
+      b ↦ b,
+      c ↦ c
+    ] ⊢ v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
+      a ↦ v0,
+      b ↦ v1
+    ] ∧ v0/a ∈ root.fiber.V [a ↦ v0] ∧ v1/a ∈ root.fiber.V [
+      a ↦ v0
+    ] ∧ b ∈ root.fiber.E [a ↦ v0, b ↦ v0/a, c ↦ v1/a] ∧ root.action.V [
+      v0 ↦ v0,
+      v1 ↦ v1,
+      a ↦ a,
+      b ↦ v0/a,
+      c ↦ d
+    ] ∧ root.action.V [
+      v0 ↦ v0,
+      v1 ↦ v1,
+      a ↦ a,
+      b ↦ v1/a,
+      c ↦ e
+    ] ∧ c ∈ root.fiber.E [a ↦ v1, b ↦ d, c ↦ e]
+    monitored root.action.E.total v0 v1 a v0/a v1/a b := v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
+      a ↦ v0,
+      b ↦ v1
+    ] ∧ v0/a ∈ root.fiber.V [a ↦ v0] ∧ v1/a ∈ root.fiber.V [
+      a ↦ v0
+    ] ∧ b ∈ root.fiber.E [a ↦ v0, b ↦ v0/a, c ↦ v1/a] ⊢ root.action.E [
+      v0 ↦ v0,
+      v1 ↦ v1,
+      a ↦ a,
+      v0/a ↦ v0/a,
+      v1/a ↦ v1/a,
+      b ↦ b
     ]
   end
 end
 
 -- messages
-
-error[E0314]: no such variable self in scope
-8 |     v0 : self.V
-8 |          ^^^^

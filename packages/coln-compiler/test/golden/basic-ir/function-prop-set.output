@@ -8,31 +8,21 @@ value: sig
   next : X -> Y
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      X = rel []
-      Y = rel []
-      next = (fun [a : TRealm.X []] -> TRealm.Y [])
-    end
+lowered: flatrealm
+  entities
+    table root.X := [] primarykey []
+    table root.Y := []
+    table root.next := [b : root.Y] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.X := []
-    table ℜ.Y := []
-    table ℜ.next := [.a : ℜ.X, .b : ℜ.Y] primarykey [.a]
-  end
   rules
-    enforced ℜ.X.foreignKey := ℜ.X [] ⊢ ⊤
-    enforced ℜ.Y.foreignKey := ℜ.Y [] ⊢ ⊤
-    enforced ℜ.next.foreignKey a b := ℜ.next [
-      .a ↦ a,
-      .b ↦ b
-    ] ⊢ a ∈ ℜ.X [] ∧ b ∈ ℜ.Y []
-    monitored ℜ.next.total a := a ∈ ℜ.X [] ⊢ ℜ.next [.a ↦ a]
+    enforced root.X.foreignKey := root.X [] ⊢ ⊤
+    enforced root.Y.foreignKey := root.Y [] ⊢ ⊤
+    enforced root.next.foreignKey b := root.next [
+      b ↦ b
+    ] ⊢ root.X [] ∧ b ∈ root.Y []
+    monitored root.next.total := root.X [] ⊢ root.next []
   end
 end
 

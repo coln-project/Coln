@@ -243,6 +243,7 @@ mod tests {
                 law_count: 0,
                 tables: vec![TableSummary {
                     path: "T".to_string(),
+                    entity_variant: EntityVariant::Table,
                     column_count: 2,
                     primary_key: PrimaryKeySummary::None,
                     columns: vec!["c0: int".to_string(), "c1: string".to_string()],
@@ -278,14 +279,7 @@ mod tests {
         assert!(message.contains(":0, #"));
         assert!(message.ends_with(":1]"));
         let loaded = session.loaded.as_ref().expect("loaded session");
-        assert_eq!(
-            loaded
-                .store
-                .table_at(&"T".parse().unwrap())
-                .unwrap()
-                .row_count(),
-            2
-        );
+        assert_eq!(loaded.store.table_at(&"T".into()).unwrap().row_count(), 2);
     }
 
     #[test]
@@ -338,7 +332,7 @@ mod tests {
 
         assert_eq!(message, "created table Person");
         let loaded = session.loaded.as_ref().expect("sql store loaded");
-        assert!(loaded.store.table_at(&"Person".parse().unwrap()).is_some());
+        assert!(loaded.store.table_at(&"Person".into()).is_some());
         assert_eq!(loaded.schema.table_count, 1);
         assert_eq!(loaded.schema.tables[0].path, "Person");
         assert_eq!(
@@ -410,7 +404,7 @@ mod tests {
         let loaded = session.loaded.as_ref().expect("loaded session");
         let table = loaded
             .store
-            .table_at(&"Person".parse().unwrap())
+            .table_at(&"Person".into())
             .expect("Person table");
         assert_eq!(table.row_count(), 2);
         // The fixture header order (age, name) differs from the schema order.
@@ -422,17 +416,15 @@ mod tests {
     #[test]
     fn add_rejects_bad_entity_id() {
         let mut store = Store::new();
-        let path: crate::ir::Path = "Ref".parse().unwrap();
+        let path: crate::ir::Path = "Ref".into();
         store
             .create_table(
                 path,
                 crate::ir::Schema {
                     entity_variant: EntityVariant::Table,
                     columns: vec![ColumnEntry {
-                        path: "ref".parse().unwrap(),
-                        col_type: ColType::RowId {
-                            path: "T".parse().unwrap(),
-                        },
+                        path: "ref".into(),
+                        col_type: ColType::RowId { path: "T".into() },
                     }],
                     primary_key: None,
                 },
@@ -462,7 +454,7 @@ mod tests {
         let loaded = session.loaded.as_ref().expect("loaded session");
         let table = loaded
             .store
-            .table_at(&"Person".parse().unwrap())
+            .table_at(&"Person".into())
             .expect("Person table");
         assert_eq!(table.row_count(), 2);
     }
@@ -497,14 +489,7 @@ mod tests {
         .expect("spanned batch");
 
         let loaded = session.loaded.as_ref().expect("loaded session");
-        assert_eq!(
-            loaded
-                .store
-                .table_at(&"T".parse().unwrap())
-                .unwrap()
-                .row_count(),
-            1
-        );
+        assert_eq!(loaded.store.table_at(&"T".into()).unwrap().row_count(), 1);
     }
 
     #[test]
@@ -542,7 +527,7 @@ mod tests {
             .as_ref()
             .expect("first create should have succeeded");
         assert_eq!(loaded.schema.table_count, 1);
-        assert!(loaded.store.table_at(&"Other".parse().unwrap()).is_none());
+        assert!(loaded.store.table_at(&"Other".into()).is_none());
     }
 
     #[test]
@@ -560,6 +545,6 @@ mod tests {
 
         let loaded = session.loaded.as_ref().expect("loaded");
         assert_eq!(loaded.schema.table_count, 1);
-        assert!(loaded.store.table_at(&"Other".parse().unwrap()).is_none());
+        assert!(loaded.store.table_at(&"Other".into()).is_none());
     }
 }

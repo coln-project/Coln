@@ -19,31 +19,19 @@ value: sig
   pointed : PointOf model
 end
 realm named TRealm
-elaborated: realm
-  generators
-    node
-      model = node
-        X = rel []
-      end
-      pointed = node
-        point = (fun [] -> TRealm.model.X [])
-      end
-    end
+lowered: flatrealm
+  entities
+    table root.model.X := []
+    table root.pointed := [a.point : root.model.X] primarykey []
   end
   definitions
   end
-end
-lowered: flatrealm
-  entities
-    table ℜ.model.X := []
-    table ℜ.pointed.point := [.a : ℜ.model.X] primarykey []
-  end
   rules
-    enforced ℜ.model.X.foreignKey := ℜ.model.X [] ⊢ ⊤
-    enforced ℜ.pointed.point.foreignKey a := ℜ.pointed.point [
-      .a ↦ a
-    ] ⊢ a ∈ ℜ.model.X []
-    monitored ℜ.pointed.point.total := ⊤ ⊢ ℜ.pointed.point []
+    enforced root.model.X.foreignKey := root.model.X [] ⊢ ⊤
+    enforced root.pointed.foreignKey a.point := root.pointed [
+      a.point ↦ a.point
+    ] ⊢ a.point ∈ root.model.X []
+    monitored root.pointed.total := ⊤ ⊢ root.pointed []
   end
 end
 

@@ -1,48 +1,22 @@
-import schema from "./TRealm.json";
-export {schema};
-import * as runtime from "@coln-project/runtime";
-import * as T from "./T.ts";
+import * as runtime from "@coln-project/interface";
 
-export class View {
-  root: T.View;
+export class TRealm {
+  root: {
+    X: runtime.MutableSet<runtime.RowId<"root.X">>,
+    P: runtime.MutableProp,
+    Q: runtime.MutableProp,
+    R: (a: runtime.RowId<"root.X">) => (b: null) => (c: null) => runtime.MutableProp
+  };
 
-  constructor(store: runtime.StoreHandle) {
+  constructor(mstore: runtime.ManagedStore) {
     this.root = {
-      X: (new runtime.RowIdSet.View(store, "TRealm.X", [])),
-      P: (new runtime.RowIdSet.View(store, "TRealm.P", [])),
-      Q: (new runtime.RowIdSet.View(store, "TRealm.Q", [])),
-      R: (a: runtime.Value) => {
-        return (b: runtime.Value) => {
-          return (c: runtime.Value) => {
-            return (new runtime.RowIdSet.View(store, "TRealm.R", [a, b, c]));
-          };
-        };
-      }
-    };
-  }
-}
-
-export class Transaction extends View {
-  root: T.Transaction;
-
-  constructor(
-    store: runtime.StoreHandle,
-    transaction: runtime.TransactionHandle
-  ) {
-    super(store);
-    this.root = {
-      X: (new runtime.RowIdSet.Transaction(store, "TRealm.X", [], transaction)),
-      P: (new runtime.RowIdSet.Transaction(store, "TRealm.P", [], transaction)),
-      Q: (new runtime.RowIdSet.Transaction(store, "TRealm.Q", [], transaction)),
-      R: (a: runtime.Value) => {
-        return (b: runtime.Value) => {
-          return (c: runtime.Value) => {
-            return (new runtime.RowIdSet.Transaction(
-              store,
-              "TRealm.R",
-              [a, b, c],
-              transaction
-            ));
+      X: (new runtime.BaseSet(mstore, "root.X", [])),
+      P: (new runtime.BaseProp(mstore, "root.P", [])),
+      Q: (new runtime.BaseProp(mstore, "root.Q", [])),
+      R: (a: runtime.RowId<"root.X">) => {
+        return (b: null) => {
+          return (c: null) => {
+            return (new runtime.BaseProp(mstore, "root.R", [a]));
           };
         };
       }

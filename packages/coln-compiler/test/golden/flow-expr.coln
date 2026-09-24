@@ -1,0 +1,15 @@
+theory Graph := sig
+  vertex : Set
+  edge : vertex -> vertex -> Set
+end
+
+theory FlowExpr/motive (^i G : Graph) := sig
+  t : G.vertex -> Set
+  const : (v : G.vertex) -> Int -> t v
+  plus : (v : G.vertex) -> t v -> t v -> t v
+  flow : (from : G.vertex) -> (into : G.vertex) -> G.edge from into -> t into
+end
+
+realm GraphRealm @ Graph
+  ind def FlowExpr : FlowExpr/motive root := init (FlowExpr/motive root)
+end
