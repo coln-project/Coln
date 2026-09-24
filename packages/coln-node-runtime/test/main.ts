@@ -32,6 +32,10 @@ g.E(v1)(v2).add()
 
 store.endTransaction()
 
+store.startTransaction()
+
 console.log(gr.trans_closure.connected(v0)(v2).isTrue())
 
 console.log(gr.down_set(v1).values().map((d) => d.connected))
+
+store.abortTransaction()
