@@ -9,8 +9,8 @@
 //! it sits in a module of its own rather than inside either one's `mod tests`.
 
 use super::*;
-use crate::{error::SyntaxError, test_utils::table_schema};
-use std::collections::HashMap;
+use crate::{relational::schema::TableSchema, test_utils::table_schema};
+use std::collections::{HashMap, HashSet};
 
 impl Identifier for String {}
 
@@ -43,12 +43,15 @@ pub(super) fn rule(name: &str, head: &str, atoms: &[&str]) -> TestRule {
 }
 
 /// An atom written as `name(term, term, …)`, or as a bare `name` when it
-/// binds nothing.
+/// binds nothing. A leading `!` negates it.
 ///
 /// A term that parses as a number is a literal, `_` leaves that position
 /// unbound (the sparseness [`Atom::bindings`] allows), and anything else is
 /// a variable.
 pub(super) fn atom(spec: &str) -> TestAtom {
+    let (spec, positive) = spec
+        .strip_prefix('!')
+        .map_or((spec, true), |negated| (negated, false));
     let (name, terms) = spec.split_once('(').map_or((spec, ""), |(name, terms)| {
         (name, terms.trim_end_matches(')'))
     });
@@ -70,6 +73,7 @@ pub(super) fn atom(spec: &str) -> TestAtom {
         .collect();
     TestAtom {
         name: name.trim().to_owned(),
+        positive,
         bindings,
     }
 }
@@ -139,42 +143,6 @@ pub(super) fn declarations(names: &[&str]) -> Vec<(String, Vec<Column>)> {
         .collect()
 }
 
-/// The names of the predicates per clique, in execution order.
-pub(super) fn cliques_of(program: &TestLogicalProgram) -> Vec<Vec<String>> {
-    program
-        .cliques()
-        .into_iter()
-        .map(|clique| clique.members().map(|member| member.id().clone()).collect())
-        .collect()
-}
-
-/// The names of the non-recursive and the recursive rules of every clique,
-/// in execution order.
-pub(super) fn rule_split_of(program: &TestLogicalProgram) -> Vec<(Vec<String>, Vec<String>)> {
-    program
-        .cliques()
-        .into_iter()
-        .map(|clique| {
-            let names = |rules: &mut dyn Iterator<Item = &TestRule>| {
-                rules.map(|rule| rule.id().clone()).collect()
-            };
-            (
-                names(&mut clique.non_rec_rules()),
-                names(&mut clique.rec_rules()),
-            )
-        })
-        .collect()
-}
-
-/// The offending names, in the order they are reported.
-pub(super) fn dangling_names(program: &TestLogicalProgram) -> Vec<String> {
-    program
-        .dangling_references()
-        .iter()
-        .map(|reference| reference.identifier.clone())
-        .collect()
-}
-
 /// The predicate names, and per predicate its rule names.
 pub(super) fn grouping_of(predicates: &[TestPredicate]) -> Vec<(&str, Vec<&str>)> {
     predicates
@@ -199,10 +167,6 @@ impl LogicalProgram for TestLogicalProgram {
 
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
         self.predicates.iter()
-    }
-
-    fn base_relation_schema(&self, identifier: &Self::Identifier) -> Option<Cow<'_, TableSchema>> {
-        self.base_relations.get(identifier).map(Cow::Borrowed)
     }
 }
 
@@ -244,6 +208,7 @@ impl Rule for TestRule {
 #[derive(Debug)]
 pub(super) struct TestAtom {
     name: String,
+    positive: bool,
     bindings: Vec<(usize, Bind<TestTypedVar, TestLit>)>,
 }
 
@@ -258,17 +223,14 @@ impl Atom for TestAtom {
     type Var = TestTypedVar;
     type Lit = TestLit;
 
+    fn is_positive(&self) -> bool {
+        self.positive
+    }
+
     fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)> {
         self.bindings
             .iter()
             .map(|(position, bind)| (*position, borrow(bind)))
-    }
-
-    fn vars(&self) -> impl Iterator<Item = &Self::Var> {
-        self.bindings.iter().filter_map(|(_, bind)| match bind {
-            Bind::Var(var) => Some(var),
-            Bind::Lit(_) => None,
-        })
     }
 }
 
@@ -357,17 +319,4 @@ pub(super) fn declare(name: &str, columns: &[&str]) -> (String, Vec<Column>) {
             .map(|column| Column::new(*column, ScalarType::Uint))
             .collect(),
     )
-}
-
-/// The IR a program of `declarations` and `rules` lowers to, rendered.
-pub(super) fn translated(
-    declarations: Vec<(String, Vec<Column>)>,
-    rules: Vec<(String, TestRule)>,
-) -> Result<String, SyntaxError> {
-    let predicates = RulePredicate::group(declarations, rules).expect("every definand is declared");
-    let program = TestLogicalProgram {
-        predicates,
-        base_relations: edb(),
-    };
-    translation::translate(&program).map(|ir| ir.to_tree())
 }

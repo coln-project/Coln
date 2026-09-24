@@ -1890,4 +1890,10 @@ mod tests {
         let program = translate_json_flir("TransitiveClosureRealm.json");
         println!("{}", program.to_tree());
     }
+
+    #[test]
+    fn transitive_closure_set_flir() {
+        let program = translate_json_flir("TransitiveClosureSetRealm.json");
+        println!("{}", program.to_tree());
+    }
 }

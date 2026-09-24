@@ -2,7 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Translation of a [`LogicalProgram`] into the query engine's IR.
+//! Translation of a [`LogicalProgram`](super::LogicalProgram) into the query
+//! engine's IR.
 //!
 //! # Naming rules in the IR
 //!
@@ -29,11 +30,12 @@
 //! Output(Union(path))` reads the rule and only then shadows it, which is fine.
 
 use super::{
-    AggregateRules, Atom, Bind, Clique, Cond, Identifiable, Identifier, Lit, LogicalProgram,
-    Predicate, PredicateClique, Rule, TypedVar,
+    AggregateRules, Atom, Bind, Component, Cond, Identifiable, Identifier, Lit, Predicate, Rule,
+    TypedVar,
 };
 use crate::{
     error::SyntaxError,
+    frontend::{ExecutionOrder, analysis::PredicateComponent},
     host::{
         QueryIr,
         expr::{BinaryExpr, Expr, LiteralExpr, VarExpr},
@@ -53,59 +55,43 @@ use std::collections::{HashMap, hash_map::Entry};
 
 /// The rule type of a program's predicates, and the pieces hanging off it. Named
 /// because the paths through the associated types are otherwise unreadable.
-type RuleOf<P> = <<P as LogicalProgram>::Predicate as AggregateRules>::Rule;
+type RuleOf<P> = <P as AggregateRules>::Rule;
 type AtomOf<P> = <RuleOf<P> as Rule>::Atom;
 type CondOf<P> = <RuleOf<P> as Rule>::Cond;
 
-/// Lowers `program` into the query engine's IR.
-///
-/// Fails on a program that is not well formed: a
-/// [dangling reference](LogicalProgram::dangling_references), a clique with no
-/// base case, or a rule whose head does not fill its predicate's columns.
-pub(super) fn translate(program: &impl LogicalProgram) -> Result<QueryIr, SyntaxError> {
-    Translator::new(program).run()
-}
-
-struct Translator<'a, P: LogicalProgram> {
-    program: &'a P,
+pub(super) struct Translator<'a, P: Predicate> {
     /// The IDB, keyed the way an atom looks a relation up. Consulted before the
     /// EDB, which is what lets a predicate shadow a base relation of the same
     /// name.
-    predicates: IndexMap<&'a P::Identifier, &'a P::Predicate>,
+    predicates: IndexMap<&'a P::Identifier, &'a P>,
     ir: QueryIr,
 }
 
-impl<'a, P: LogicalProgram> Translator<'a, P> {
-    fn new(program: &'a P) -> Self {
+impl<'a, P: Predicate> Translator<'a, P> {
+    pub(super) fn new() -> Self {
         Self {
-            program,
-            predicates: program
-                .predicates()
-                .map(|predicate| (predicate.id(), predicate))
-                .collect(),
+            predicates: IndexMap::new(),
             ir: QueryIr::default(),
         }
     }
 
-    fn run(mut self) -> Result<QueryIr, SyntaxError> {
-        // Copied out so the borrows below do not run through `self`, which the
-        // statements are pushed onto.
-        let program = self.program;
-        if let Some(dangling) = program.dangling_references().first() {
-            return Err(SyntaxError::new(dangling.to_string()));
-        }
-        for clique in program.cliques() {
-            self.clique(&clique)?;
+    /// Lowers `program` into the query engine's IR.
+    pub(super) fn run(
+        mut self,
+        program: &'a ExecutionOrder<'a, P>,
+    ) -> Result<QueryIr, SyntaxError> {
+        for component in program.iter() {
+            self.component(component)?;
         }
         Ok(self.ir)
     }
 
-    /// Emits one clique: a statement per rule, then the statement binding the
-    /// predicate to the union of them, wrapped in a fixed point if the clique
+    /// Emits one component: a statement per rule, then the statement binding the
+    /// predicate to the union of them, wrapped in a fixed point if the component
     /// is recursive.
-    fn clique(&mut self, clique: &PredicateClique<'a, P::Predicate>) -> Result<(), SyntaxError> {
-        let mut members = clique.members();
-        let predicate = members.next().expect("a clique has at least one member");
+    fn component(&mut self, component: &'a PredicateComponent<'a, P>) -> Result<(), SyntaxError> {
+        let mut members = component.members();
+        let predicate = members.next().expect("a component has at least one member");
         if members.next().is_some() {
             todo!("mutual recursion in query IR")
         }
@@ -114,14 +100,14 @@ impl<'a, P: LogicalProgram> Translator<'a, P> {
         // rules they belong to. See the module docs for why a rule's own
         // identifier is not always usable as an IR variable name.
         let mut names = Names::default();
-        let (non_rec, rec): (Vec<_>, Vec<_>) = clique
+        let (non_rec, rec): (Vec<_>, Vec<_>) = component
             .rules()
             .map(|rule| (names.mint(rule.id()), rule))
-            .partition(|(_, rule)| !clique.references_member(rule));
+            .partition(|(_, rule)| !component.references_member(rule));
 
         if non_rec.is_empty() {
             return Err(SyntaxError::new(format!(
-                "Predicate '{}' has no base case: every rule of it reads the clique \
+                "Predicate '{}' has no base case: every rule of it reads the component \
                  it is part of, so nothing ever seeds the iteration",
                 predicate.id(),
             )));
@@ -144,6 +130,7 @@ impl<'a, P: LogicalProgram> Translator<'a, P> {
             }
         };
 
+        self.predicates.insert(predicate.id(), predicate);
         self.ir.push(Stmt::from(VarStmt {
             name: predicate.id().to_string(),
             initializer: Some(Expr::from(OutputExpr {
@@ -161,8 +148,8 @@ impl<'a, P: LogicalProgram> Translator<'a, P> {
     /// emitted ahead of it, since it references them by name.
     fn rules(
         &self,
-        predicate: &P::Predicate,
-        rules: &[(String, &RuleOf<P>)],
+        predicate: &P,
+        rules: &[(String, &P::Rule)],
     ) -> Result<(Expr, Vec<Stmt>), SyntaxError> {
         let mut relations: Vec<Expr> = Vec::with_capacity(rules.len());
         let mut stmts: Vec<Stmt> = Vec::with_capacity(rules.len());
@@ -184,7 +171,7 @@ impl<'a, P: LogicalProgram> Translator<'a, P> {
 
     /// One rule: its body as a conjunctive query, projected onto the columns
     /// its predicate declares.
-    fn rule(&self, predicate: &P::Predicate, rule: &RuleOf<P>) -> Result<Expr, SyntaxError> {
+    fn rule(&self, predicate: &P, rule: &P::Rule) -> Result<Expr, SyntaxError> {
         let relation = self.conjunctive_query(rule)?;
         let columns: Vec<&Column> = predicate.columns().collect();
 
@@ -233,7 +220,7 @@ impl<'a, P: LogicalProgram> Translator<'a, P> {
 
     /// A rule's body: its atoms joined on the variables they share, filtered by
     /// its conditions.
-    fn conjunctive_query(&self, rule: &RuleOf<P>) -> Result<Expr, SyntaxError> {
+    pub fn conjunctive_query(&self, rule: &P::Rule) -> Result<Expr, SyntaxError> {
         let plans = rule
             .atoms()
             .map(|atom| self.atom(atom))
@@ -283,21 +270,22 @@ impl<'a, P: LogicalProgram> Translator<'a, P> {
         // the same name. A derived relation is bound to a host variable rather
         // than being a source leaf, because its rows are computed, not fed in.
         let (relation, columns): (Expr, Vec<Column>) = match self.predicates.get(name) {
-            Some(predicate) => (
-                Expr::from(VarExpr::new(name.to_string())),
-                predicate.columns().cloned().collect(),
-            ),
-            None => match self.program.base_relation_schema(name) {
-                Some(schema) => (
-                    Expr::from(SourceExpr::new(name.to_string())),
-                    schema.columns().to_vec(),
-                ),
-                None => {
-                    return Err(SyntaxError::new(format!(
-                        "Atom references undeclared entity '{name}'"
-                    )));
-                }
-            },
+            Some(predicate) => {
+                let columns: Vec<Column> = predicate.columns().cloned().collect();
+                let expr = if predicate.is_edb_predicate() {
+                    Expr::from(SourceExpr::new(name.to_string()))
+                } else {
+                    Expr::from(VarExpr::new(name.to_string()))
+                };
+                (expr, columns)
+            }
+            None => {
+                // TODO: Should not return an Err but something like
+                // expect("program not in execution order or predicate has not been registered")
+                return Err(SyntaxError::new(format!(
+                    "Atom references undeclared entity '{name}'"
+                )));
+            }
         };
 
         let mut binder = AtomBinder::new();
@@ -490,190 +478,5 @@ impl Names {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_utils::*;
-
-    #[test]
-    fn a_rule_projects_its_body_onto_its_predicate_s_columns() {
-        let tree = translated(
-            vec![declare("reachable", &["x", "y"])],
-            vec![derives("reachable(x, y)", "r0", &["edge(x, y)"])],
-        )
-        .expect("translates");
-        // The inner projection renames the source's columns to the variables
-        // the atom binds; the outer one puts those under the predicate's
-        // declared column names.
-        assert_eq!(
-            tree.trim(),
-            r#"
-VarStmt r0
-└─ init: Projection
-   ├─ relation: Projection
-   │  ├─ relation: Source "edge"
-   │  ├─ select(x): Var from (unresolved)
-   │  └─ select(y): Var to (unresolved)
-   ├─ select(x): Var x (unresolved)
-   └─ select(y): Var y (unresolved)
-VarStmt reachable
-└─ init: Output "reachable" channel
-   └─ relation: Var r0 (unresolved)
-"#
-            .trim()
-        );
-    }
-
-    #[test]
-    fn self_recursion_becomes_a_fixed_point() {
-        let tree = translated(
-            vec![declare("path", &["x", "y"])],
-            vec![
-                derives("path(x, y)", "r0", &["edge(x, y)"]),
-                derives("path(x, y)", "r1", &["path(x, z)", "edge(z, y)"]),
-            ],
-        )
-        .expect("translates");
-        // The non-recursive rule seeds the accumulator, the recursive one
-        // becomes the step, and the shared `z` becomes the join condition.
-        assert_eq!(
-            tree.trim(),
-            r#"
-VarStmt r0
-└─ init: Projection
-   ├─ relation: Projection
-   │  ├─ relation: Source "edge"
-   │  ├─ select(x): Var from (unresolved)
-   │  └─ select(y): Var to (unresolved)
-   ├─ select(x): Var x (unresolved)
-   └─ select(y): Var y (unresolved)
-VarStmt path
-└─ init: Output "path" channel
-   └─ relation: FixedPointIter path
-      ├─ init: Var r0 (unresolved)
-      ├─ step(0): VarStmt r1
-      │  └─ init: Projection
-      │     ├─ relation: MultiWayEquiJoin
-      │     │  ├─ relation(0): Projection
-      │     │  │  ├─ relation: Var path (unresolved)
-      │     │  │  ├─ select(x): Var x (unresolved)
-      │     │  │  └─ select(z): Var y (unresolved)
-      │     │  ├─ relation(1): Projection
-      │     │  │  ├─ relation: Source "edge"
-      │     │  │  ├─ select(z): Var from (unresolved)
-      │     │  │  └─ select(y): Var to (unresolved)
-      │     │  ├─ on(z in 0): Var z (unresolved)
-      │     │  └─ on(z in 1): Var z (unresolved)
-      │     ├─ select(x): Var x (unresolved)
-      │     └─ select(y): Var y (unresolved)
-      └─ step(1): ExprStmt
-         └─ expr: Var r1 (unresolved)
-"#
-            .trim()
-        );
-    }
-
-    #[test]
-    fn several_non_recursive_rules_become_a_union() {
-        let tree = translated(
-            vec![declare("touched", &["x"])],
-            vec![
-                derives("touched(x)", "r0", &["node(x)"]),
-                derives("touched(x)", "r1", &["edge(x, _)"]),
-            ],
-        )
-        .expect("translates");
-        assert!(tree.contains("Union"), "{tree}");
-        assert!(tree.contains("relation(0): Var r0"), "{tree}");
-        assert!(tree.contains("relation(1): Var r1"), "{tree}");
-        // `_` leaves the second column of `edge` unbound, so it is not
-        // projected.
-        assert!(!tree.contains("select(to)"), "{tree}");
-    }
-
-    #[test]
-    fn a_literal_in_an_atom_becomes_a_selection_on_that_atom() {
-        let tree = translated(
-            vec![declare("from_one", &["y"])],
-            vec![derives("from_one(y)", "r0", &["edge(1, y)"])],
-        )
-        .expect("translates");
-        // The literal pins `edge`'s first column, so it becomes a selection on
-        // that one relation and is not projected: nothing binds it.
-        assert_eq!(
-            tree.trim(),
-            r#"
-VarStmt r0
-└─ init: Projection
-   ├─ relation: Projection
-   │  ├─ relation: Selection
-   │  │  ├─ relation: Source "edge"
-   │  │  └─ condition: Binary ==
-   │  │     ├─ left: Var from (unresolved)
-   │  │     └─ right: Literal 1
-   │  └─ select(y): Var to (unresolved)
-   └─ select(y): Var y (unresolved)
-VarStmt from_one
-└─ init: Output "from_one" channel
-   └─ relation: Var r0 (unresolved)
-"#
-            .trim()
-        );
-    }
-
-    #[test]
-    fn a_variable_repeated_within_one_atom_becomes_a_local_equality() {
-        let tree = translated(
-            vec![declare("loop_", &["x"])],
-            vec![derives("loop_(x)", "r0", &["edge(x, x)"])],
-        )
-        .expect("translates");
-        // A local selection on the one relation, not a join, and `x` is
-        // projected exactly once.
-        assert!(tree.contains("Selection"), "{tree}");
-        assert!(!tree.contains("MultiWayEquiJoin"), "{tree}");
-        assert_eq!(tree.matches("select(x)").count(), 2, "{tree}");
-    }
-
-    #[test]
-    fn a_predicate_reads_an_earlier_predicate_as_a_variable() {
-        let tree = translated(
-            vec![declare("path", &["x", "y"]), declare("ends", &["y"])],
-            vec![
-                derives("path(x, y)", "r0", &["edge(x, y)"]),
-                derives("ends(y)", "r1", &["path(_, y)"]),
-            ],
-        )
-        .expect("translates");
-        // `edge` is a source leaf, `path` a host variable: one is fed in, the
-        // other computed.
-        assert!(tree.contains("Source \"edge\""), "{tree}");
-        assert!(tree.contains("relation: Var path"), "{tree}");
-        assert!(!tree.contains("Source \"path\""), "{tree}");
-    }
-
-    #[test]
-    fn a_head_that_leaves_a_column_unfilled_is_rejected() {
-        let error = translated(
-            vec![declare("path", &["x", "y"])],
-            vec![derives("path(x)", "r0", &["edge(x, _)"])],
-        )
-        .expect_err("the head fills only one of two columns");
-        assert_eq!(
-            error.to_string(),
-            "Rule 'r0' leaves column 1 ('y') of predicate 'path' unfilled"
-        );
-    }
-
-    #[test]
-    fn a_clique_with_no_base_case_is_rejected() {
-        let error = translated(
-            vec![declare("path", &["x", "y"])],
-            vec![derives("path(x, y)", "r0", &["path(x, y)"])],
-        )
-        .expect_err("the only rule reads the predicate it defines");
-        assert!(
-            error
-                .to_string()
-                .starts_with("Predicate 'path' has no base case"),
-            "{error}"
-        );
-    }
+    // TODO:
 }

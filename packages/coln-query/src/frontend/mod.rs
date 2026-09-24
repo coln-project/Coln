@@ -2,22 +2,25 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-mod gabow;
+mod analysis;
+mod graph_utils;
 #[cfg(test)]
 mod test_utils;
 mod translation;
 
 use crate::{
-    host::{expr::Literal, operator::Operator},
-    relational::schema::{Column, TableSchema},
+    error::SyntaxError,
+    frontend::analysis::{ExecutionOrder, static_analysis_pipeline},
+    host::{QueryIr, expr::Literal, operator::Operator},
+    relational::schema::Column,
     scalarial::ScalarType,
 };
 use indexmap::IndexMap;
-use std::{borrow::Cow, collections::HashSet, fmt};
+use std::fmt;
 
-trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash::Hash {}
+pub trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash::Hash {}
 
-trait Identifiable<Identifier> {
+pub trait Identifiable<Identifier> {
     fn id(&self) -> &Identifier;
 }
 
@@ -29,113 +32,18 @@ trait LogicalProgram {
     /// order. Together they form the IDB.
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate>;
 
-    /// The schema of the base relation `identifier` names, or [`None`] if the
-    /// EDB has no such relation. The counterpart of [`Self::predicates`], which
-    /// enumerates what the program _does_ define.
-    ///
-    /// A name may be both: a predicate shadows a base relation of the same
-    /// name, see [`Self::cliques`].
-    ///
-    /// [`Cow`] for the same reason [`Catalog::source_schema`] uses it: a
-    /// frontend keeping [`TableSchema`]s outright hands one out borrowed, while
-    /// one holding its own schema vocabulary projects onto [`TableSchema`] per
-    /// call and hands that out owned.
-    ///
-    /// [`Catalog::source_schema`]: crate::relational::catalog::Catalog::source_schema
-    fn base_relation_schema(&self, identifier: &Self::Identifier) -> Option<Cow<'_, TableSchema>>;
-
-    /// Every body atom naming neither a predicate of this program nor a base
-    /// relation of the EDB. Such a reference cannot be evaluated: nothing ever
-    /// produces the relation it asks for.
-    ///
-    /// The head side has no counterpart here, because a rule deriving an
-    /// undeclared predicate never reaches a program: [`RulePredicate::group`]
-    /// rejects it outright.
-    ///
-    /// An empty result is the precondition of [`Self::cliques`] and of any
-    /// translation built on it. An atom repeating a dangling name is reported
-    /// once per occurrence, so every offending site can be pointed at.
-    fn dangling_references(&self) -> Vec<DanglingReference<'_, Self::Predicate>> {
-        let defined: HashSet<&Self::Identifier> =
-            self.predicates().map(|predicate| predicate.id()).collect();
-        // Re-borrowed so that the `move` closures below copy a reference
-        // instead of fighting over the set itself.
-        let defined = &defined;
-        self.predicates()
-            .flat_map(move |predicate| {
-                predicate.rules().flat_map(move |rule| {
-                    rule.atoms()
-                        .map(|atom| atom.id())
-                        .filter(move |identifier| {
-                            !defined.contains(identifier)
-                                && self.base_relation_schema(identifier).is_none()
-                        })
-                        .map(move |identifier| DanglingReference {
-                            predicate,
-                            rule,
-                            identifier,
-                        })
-                })
-            })
-            .collect()
+    fn verify<'a>(&'a self) -> Result<ExecutionOrder<'a, Self::Predicate>, SyntaxError>
+    where
+        Self: Sized,
+    {
+        static_analysis_pipeline(self).map_err(|e| SyntaxError::new(e.to_string()))
     }
 
-    /// Groups the predicates into [`Clique`]s, the strongly connected
-    /// components of the reference graph, and orders those cliques such that
-    /// each clique comes after everything it references. Evaluating the program
-    /// in this order means every predicate a clique reads has been computed by
-    /// the time the clique runs.
-    ///
-    /// A predicate that is not mutually recursive with any other ends up in a
-    /// clique of its own, whether it is self-recursive or not.
-    ///
-    /// Materialised rather than lazy, for two reasons: the cliques are computed
-    /// once instead of once per call, and they outlive the borrows handed out
-    /// by [`Clique::members`], so callers can collect predicates out of them.
-    ///
-    /// Assumes the program has no [`Self::dangling_references`]: a name that is
-    /// neither a predicate nor a base relation is silently taken for the
-    /// latter. A predicate _shadowing_ a base relation of the same name, on the
-    /// other hand, is intended and resolves to the predicate.
-    fn cliques(&self) -> Vec<PredicateClique<'_, Self::Predicate>> {
-        // A predicate's position in `predicates` is its node in the reference
-        // graph, and the map's keys are what an atom is matched against. That
-        // correspondence never leaves this function, so no part of the trait
-        // has to promise anything about predicate order.
-        let predicates: IndexMap<&Self::Identifier, &Self::Predicate> = self
-            .predicates()
-            .map(|predicate| (predicate.id(), predicate))
-            .collect();
-        // An atom naming a base relation of the EDB resolves to no index and
-        // hence contributes no edge. Consulting the IDB alone is what lets a
-        // predicate shadow a base relation of the same name.
-        // Atoms referencing the same predicate more than once yield duplicate
-        // edges, which the search walks over without any further ado.
-        let adjacency: Vec<Vec<usize>> = predicates
-            .values()
-            .map(|predicate| {
-                predicate
-                    .rules()
-                    .flat_map(|rule| rule.atoms())
-                    .filter_map(|atom| predicates.get_index_of(atom.id()))
-                    .collect()
-            })
-            .collect();
-        let sccs_rev_topo_order = gabow::sccs(&adjacency);
-        sccs_rev_topo_order
-            .into_iter()
-            .map(|members| {
-                members
-                    .into_iter()
-                    .map(|idx| {
-                        *predicates
-                            .get_index(idx)
-                            .expect("a component names a node of the graph just built")
-                            .1
-                    })
-                    .collect()
-            })
-            .collect::<Vec<PredicateClique<_>>>()
+    fn prepare<'a>(
+        &'a self,
+        exec_order: ExecutionOrder<'a, Self::Predicate>,
+    ) -> Result<QueryIr, SyntaxError> {
+        todo!()
     }
 }
 
@@ -144,11 +52,11 @@ trait AggregateRules {
     type Rule: Rule<Identifier = Self::Identifier>;
 
     /// All rules that contribute to the definition of this [`Predicate`], or,
-    /// for a [`Clique`], of all of its members.
+    /// for a [`Component`], of all of its members.
     ///
     /// Whether a rule is recursive is deliberately not asked here: it is a
-    /// property of the [`Clique`] a predicate ends up in, not of the predicate
-    /// itself. See [`Clique::rec_rules`].
+    /// property of the [`Component`] a predicate ends up in, not of the predicate
+    /// itself. See [`Component::rec_rules`].
     fn rules(&self) -> impl Iterator<Item = &Self::Rule>;
 
     /// If any rule references the `identifier`.
@@ -157,33 +65,44 @@ trait AggregateRules {
     }
 }
 
-/// A clique contains one or multiple [`Predicate`]s. In the latter case,
+/// A component contains one or multiple [`Predicate`]s. In the latter case,
 /// the predicates reference each other (mutual recursion) and therefore form
-/// a clique.
-trait Clique: AggregateRules {
+/// a component.
+trait Component: AggregateRules {
     type Predicate: Predicate<Identifier = Self::Identifier>;
 
     fn members(&self) -> impl Iterator<Item = &Self::Predicate>;
 
-    /// The rules referencing a member of this clique. Those are what make the
-    /// clique recursive, whether a rule references the very predicate it
+    /// The rules referencing a member of this component. Those are what make
+    /// the component recursive, whether a rule references the very predicate it
     /// defines (self recursion) or another member (mutual recursion).
+    ///
+    /// [Self::rec_rules] and [Self::non_rec_rules] partition all of
+    /// the [`Component`]s rules into two partitions.
     fn rec_rules(&self) -> impl Iterator<Item = &Self::Rule> {
         self.rules().filter(|rule| self.references_member(rule))
     }
 
-    /// The rules referencing no member of this clique. They only read
-    /// predicates of earlier cliques and base tables from the EDB, all of
-    /// which are fully computed by the time this clique runs.
+    /// The rules referencing no member of this component. They only read
+    /// predicates of earlier components and base tables from the EDB, all of
+    /// which are fully computed by the time this component runs.
+    ///
+    /// [Self::non_rec_rules] and [Self::rec_rules] partition all of
+    /// the [`Component`]s rules into two partitions.
     fn non_rec_rules(&self) -> impl Iterator<Item = &Self::Rule> {
         self.rules().filter(|rule| !self.references_member(rule))
     }
 
-    /// If the clique has to be evaluated recursively at all. True for every
-    /// clique of more than one member, and for a single member that is
+    /// If the component has to be evaluated recursively at all. True for every
+    /// component of more than one member, and for a single member that is
     /// self-recursive.
     fn is_recursive(&self) -> bool {
         self.rec_rules().next().is_some()
+    }
+
+    fn contains_self_recursion(&self) -> bool {
+        self.members()
+            .any(|predicate| predicate.is_self_recursive())
     }
 
     fn references_member(&self, rule: &Self::Rule) -> bool {
@@ -191,41 +110,8 @@ trait Clique: AggregateRules {
     }
 }
 
-/// The [`Clique`] a [`LogicalProgram`] is cut into by [`LogicalProgram::cliques`],
-/// borrowing its members from the program.
-struct PredicateClique<'a, P> {
-    members: Vec<&'a P>,
-}
-
-impl<'a, P> FromIterator<&'a P> for PredicateClique<'a, P> {
-    fn from_iter<I: IntoIterator<Item = &'a P>>(members: I) -> Self {
-        Self {
-            members: members.into_iter().collect(),
-        }
-    }
-}
-
-impl<P: Predicate> AggregateRules for PredicateClique<'_, P> {
-    type Identifier = P::Identifier;
-    type Rule = P::Rule;
-
-    fn rules(&self) -> impl Iterator<Item = &Self::Rule> {
-        self.members
-            .iter()
-            .copied()
-            .flat_map(|member| member.rules())
-    }
-}
-
-impl<P: Predicate> Clique for PredicateClique<'_, P> {
-    type Predicate = P;
-
-    fn members(&self) -> impl Iterator<Item = &Self::Predicate> {
-        self.members.iter().copied()
-    }
-}
-
-/// A predicate may be defined through one or multiple rules.
+/// A predicate is either defined by one or multiple rules (part of the IDB),
+/// or it is given externally (part of the EDB).
 trait Predicate: Identifiable<Self::Identifier> + AggregateRules {
     /// The columns this predicate's relation exposes, in order. Every rule's
     /// head fills exactly these, positionally.
@@ -234,25 +120,52 @@ trait Predicate: Identifiable<Self::Identifier> + AggregateRules {
     /// becomes a union of their projections, and union branches have to agree
     /// on column names, while variable names are rule-local. Deriving names
     /// from one rule's head would silently impose that rule's naming on all the
-    /// others. This is the [`Predicate`]-side counterpart of
-    /// [`LogicalProgram::base_relation_schema`].
+    /// others.
     fn columns(&self) -> impl Iterator<Item = &Column>;
+
+    /// A predicate is a predicate of the EDB (base table, externally given)
+    /// if it does not contain any rule.
+    fn is_edb_predicate(&self) -> bool {
+        self.rules().next().is_none()
+    }
+
+    /// A predicate is a predicate of the IDB (derived view, defined by rules)
+    /// if it does contain some rules.
+    fn is_idb_predicate(&self) -> bool {
+        !self.is_edb_predicate()
+    }
 
     /// If the predicate is self-recursive, that is, referencing itself in some
     /// of its rules. Unlike mutual recursion, this is visible from the
-    /// predicate alone and needs no [`Clique`] computation.
+    /// predicate alone and needs no [`Component`] computation.
     fn is_self_recursive(&self) -> bool {
         self.references(self.id())
     }
 }
 
-/// A [`Predicate`] assembled from the rules defining it.
-///
-/// Unlike [`PredicateClique`], this _owns_ its rules: a program holding both a
-/// flat rule list and predicates borrowing from it would be self-referential.
-/// Hand the flat list to [`Self::group`] and keep the result instead.
 #[derive(Debug)]
-struct RulePredicate<I, R> {
+pub struct DatalogProgram<I, R> {
+    predicates: Vec<RulePredicate<I, R>>,
+}
+
+impl<I, R> DatalogProgram<I, R> {
+    pub fn new(predicates: Vec<RulePredicate<I, R>>) -> Self {
+        Self { predicates }
+    }
+}
+
+impl<I: Identifier, R: Rule<Identifier = I>> LogicalProgram for DatalogProgram<I, R> {
+    type Identifier = I;
+    type Predicate = RulePredicate<I, R>;
+
+    fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
+        self.predicates.iter()
+    }
+}
+
+/// A [`Predicate`] assembled from the rules defining it.
+#[derive(Debug)]
+pub struct RulePredicate<I, R> {
     name: I,
     columns: Vec<Column>,
     rules: Vec<R>,
@@ -270,20 +183,14 @@ impl<I: Identifier, R: Rule<Identifier = I>> RulePredicate<I, R> {
     ///
     /// The declarations define which predicates exist, in which order, and with
     /// which columns; a rule only says which one it contributes to. That name
-    /// has to be the one _body_ atoms use to reference the predicate:
-    /// [`LogicalProgram::cliques`] pairs an [`Atom`] with a predicate by
-    /// matching identifiers, so a predicate no body atom mentions is one
-    /// nothing depends on.
+    /// has to be the one _body_ atoms use to reference the predicate.
     ///
     /// The predicates come back in declaration order with their rules in
     /// arrival order, so one input always yields the same program. A declared
     /// predicate with no rules comes back empty rather than being omitted.
     ///
-    /// Fails if any rule's definand matches no declaration — the head-side
-    /// counterpart of a [`LogicalProgram::dangling_references`], reported here
-    /// because such a rule belongs to no predicate and so would never reach a
-    /// program to be reported from. All offenders are collected, not just the
-    /// first.
+    /// Fails if any rule's definand matches no declaration.
+    /// All offenders are collected, not just the first.
     fn group(
         declarations: impl IntoIterator<Item = (I, Vec<Column>)>,
         rules: impl IntoIterator<Item = (I, R)>,
@@ -366,7 +273,7 @@ impl<I: Identifier, R: Rule<Identifier = I>> Predicate for RulePredicate<I, R> {
 /// [`fmt::Debug`] so that anything carrying rules around — [`UnmatchedRules`],
 /// say — can be unwrapped and printed without a frontend having to be asked
 /// for it a second time.
-trait Rule: Identifiable<Self::Identifier> + fmt::Debug {
+pub trait Rule: Identifiable<Self::Identifier> + fmt::Debug {
     type Identifier: Identifier;
     type Atom: Atom<Identifier = Self::Identifier>;
     type Cond: Cond;
@@ -394,7 +301,7 @@ trait Rule: Identifiable<Self::Identifier> + fmt::Debug {
     }
 }
 
-trait Cond: fmt::Debug {
+pub trait Cond: fmt::Debug {
     type Identifier: Identifier;
     type Var: TypedVar<Identifier = Self::Identifier>;
     type Lit: Lit;
@@ -404,10 +311,15 @@ trait Cond: fmt::Debug {
     fn right(&self) -> Bind<&Self::Var, &Self::Lit>;
 }
 
-trait Atom: Identifiable<Self::Identifier> + fmt::Debug {
+pub trait Atom: Identifiable<Self::Identifier> + fmt::Debug {
     type Identifier: Identifier;
     type Var: TypedVar<Identifier = Self::Identifier>;
     type Lit: Lit;
+
+    fn is_positive(&self) -> bool;
+    fn is_negative(&self) -> bool {
+        !self.is_positive()
+    }
 
     /// What's in the parenthesis, as `(column position, term)` pairs.
     ///
@@ -422,17 +334,22 @@ trait Atom: Identifiable<Self::Identifier> + fmt::Debug {
     fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)>;
 
     /// All variables brought into scope by this [`Atom`].
-    fn vars(&self) -> impl Iterator<Item = &Self::Var>;
+    fn vars(&self) -> impl Iterator<Item = &Self::Var> {
+        self.bindings().filter_map(|(_, bind)| match bind {
+            Bind::Var(var) => Some(var),
+            Bind::Lit(_) => None,
+        })
+    }
 }
 
 /// Binds something to either a variable or a literal value.
 #[derive(Debug)]
-enum Bind<Var, Lit> {
+pub enum Bind<Var, Lit> {
     Var(Var),
     Lit(Lit),
 }
 
-trait TypedVar: Identifiable<Self::Identifier> + fmt::Debug {
+pub trait TypedVar: Identifiable<Self::Identifier> + fmt::Debug {
     type Identifier: Identifier;
 
     fn name(&self) -> &Self::Identifier {
@@ -442,36 +359,11 @@ trait TypedVar: Identifiable<Self::Identifier> + fmt::Debug {
     fn ty(&self) -> ScalarType;
 }
 
-trait Lit: fmt::Debug {
+pub trait Lit: fmt::Debug {
     /// [`Atom::bindings`] and [`Cond`] hand out a `&Self`, while the IR wants an
     /// owned [`Literal`]. An implementor that has `impl From<&Self> for Literal`
     /// writes `self.into()` here.
     fn to_literal(&self) -> Literal;
-}
-
-/// An atom that resolves to nothing, as reported by
-/// [`LogicalProgram::dangling_references`]. Borrows the offending site from the
-/// program so that a diagnostic can point at it.
-struct DanglingReference<'a, P: Predicate> {
-    /// The predicate whose definition contains the offending atom.
-    predicate: &'a P,
-    /// The rule the offending name sits in.
-    rule: &'a P::Rule,
-    /// The name that resolves to nothing.
-    identifier: &'a P::Identifier,
-}
-
-impl<P: Predicate> fmt::Display for DanglingReference<'_, P> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "rule '{}' of predicate '{}' references '{}', which is neither \
-             defined by the program nor a base relation of the EDB",
-            self.rule.id(),
-            self.predicate.id(),
-            self.identifier,
-        )
-    }
 }
 
 #[cfg(test)]
@@ -592,203 +484,5 @@ mod tests {
         let predicates =
             RulePredicate::group(declarations(&[]), nothing).expect("nothing to mismatch");
         assert!(predicates.is_empty());
-    }
-
-    #[test]
-    fn a_grouped_program_stratifies() {
-        // The path a real frontend takes: declarations plus a flat list of
-        // rules, grouped into predicates, read back as a program.
-        let predicates = RulePredicate::group(
-            declarations(&["reachable", "path"]),
-            vec![
-                derives("reachable", "r0", &["path"]),
-                derives("path", "r1", &["edge"]),
-                derives("path", "r2", &["path", "edge"]),
-            ],
-        )
-        .expect("every definand names a declared predicate");
-        let program = program(predicates);
-        assert_eq!(dangling_names(&program), Vec::<String>::new());
-        assert_eq!(cliques_of(&program), vec![vec!["path"], vec!["reachable"]]);
-        let cliques = program.cliques();
-        let [path, _] = cliques.as_slice() else {
-            panic!("expected two cliques, got {}", cliques.len());
-        };
-        assert!(path.is_recursive());
-        assert_eq!(
-            path.rec_rules()
-                .map(|rule| rule.id().as_str())
-                .collect::<Vec<_>>(),
-            vec!["r2"]
-        );
-    }
-
-    #[test]
-    fn a_well_formed_program_has_no_dangling_references() {
-        let program = program(vec![
-            pred("path", &[&["edge"], &["path", "edge"]]),
-            pred("reachable", &[&["path"]]),
-        ]);
-        assert_eq!(dangling_names(&program), Vec::<String>::new());
-    }
-
-    #[test]
-    fn a_name_in_neither_the_idb_nor_the_edb_dangles() {
-        // `pathh` is a typo for `path` and `edgee` one for `edge`.
-        let program = program_over(
-            vec![pred("path", &[&["edge"], &["pathh", "edgee"]])],
-            &["edge"],
-        );
-        assert_eq!(dangling_names(&program), vec!["pathh", "edgee"]);
-    }
-
-    #[test]
-    fn a_dangling_reference_names_its_site() {
-        let program = program_over(vec![pred("path", &[&["edgee"]])], &["edge"]);
-        let references = program.dangling_references();
-        let [reference] = references.as_slice() else {
-            panic!(
-                "expected exactly one dangling reference, got {}",
-                references.len()
-            );
-        };
-        assert_eq!(reference.predicate.id(), "path");
-        assert_eq!(reference.rule.id(), "path#0");
-        assert_eq!(
-            reference.to_string(),
-            "rule 'path#0' of predicate 'path' references 'edgee', which is \
-             neither defined by the program nor a base relation of the EDB"
-        );
-    }
-
-    #[test]
-    fn a_predicate_shadows_a_base_relation_of_the_same_name() {
-        // `edge` is both a predicate and a base relation. Listing `path` first
-        // makes the outcome tell the two readings apart: resolving to the
-        // predicate puts `edge` in an earlier clique, resolving to the base
-        // relation would leave `path` without any dependency and hence first.
-        let program = program_over(
-            vec![pred("path", &[&["edge"]]), pred("edge", &[&["raw_edge"]])],
-            &["edge", "raw_edge"],
-        );
-        assert_eq!(dangling_names(&program), Vec::<String>::new());
-        assert_eq!(cliques_of(&program), vec![vec!["edge"], vec!["path"]]);
-    }
-
-    #[test]
-    fn members_outlive_the_clique_they_came_from() {
-        let program = program(vec![pred("a", &[&["b"]]), pred("b", &[&["edge"]])]);
-        let cliques = program.cliques();
-        // The members borrow from the program, so they may be collected out of
-        // the cliques and outlive iterating them.
-        let members: Vec<&TestPredicate> =
-            cliques.iter().flat_map(|clique| clique.members()).collect();
-        assert_eq!(
-            members
-                .iter()
-                .map(|member| member.id().as_str())
-                .collect::<Vec<_>>(),
-            vec!["b", "a"]
-        );
-    }
-
-    #[test]
-    fn self_recursion_is_visible_without_cliques() {
-        let program = program(vec![
-            pred("path", &[&["edge"], &["path", "edge"]]),
-            pred("even", &[&["odd"]]),
-            pred("odd", &[&["even"]]),
-        ]);
-        let self_recursive: Vec<bool> = program
-            .predicates()
-            .map(|predicate| predicate.is_self_recursive())
-            .collect();
-        assert_eq!(self_recursive, vec![true, false, false]);
-        // Mutual recursion, in contrast, only shows up once the cliques are
-        // known: neither `even` nor `odd` references itself.
-        let recursive: Vec<bool> = program
-            .cliques()
-            .iter()
-            .map(|clique| clique.is_recursive())
-            .collect();
-        assert_eq!(recursive, vec![true, true]);
-    }
-
-    #[test]
-    fn a_clique_without_recursion_has_no_rec_rules() {
-        let program = program(vec![pred("a", &[&["b"]]), pred("b", &[&["edge"]])]);
-        let cliques = program.cliques();
-        assert!(cliques.iter().all(|clique| !clique.is_recursive()));
-    }
-
-    #[test]
-    fn edb_references_do_not_create_cliques() {
-        // Neither `edge` nor `node` is a predicate of the program.
-        let program = program(vec![pred("reachable", &[&["edge", "node"]])]);
-        assert_eq!(cliques_of(&program), vec![vec!["reachable"]]);
-    }
-
-    #[test]
-    fn dependencies_run_before_their_dependents() {
-        // `a :- b.`, `b :- c.`, `c :- edge.`
-        let program = program(vec![
-            pred("a", &[&["b"]]),
-            pred("b", &[&["c"]]),
-            pred("c", &[&["edge"]]),
-        ]);
-        assert_eq!(cliques_of(&program), vec![vec!["c"], vec!["b"], vec!["a"]]);
-    }
-
-    #[test]
-    fn self_recursion_stays_a_single_member_clique() {
-        // The textbook transitive closure over a base table `edge`.
-        let program = program(vec![pred("path", &[&["edge"], &["path", "edge"]])]);
-        assert_eq!(cliques_of(&program), vec![vec!["path"]]);
-        assert_eq!(
-            rule_split_of(&program),
-            vec![(vec!["path#0".to_owned()], vec!["path#1".to_owned()])]
-        );
-    }
-
-    #[test]
-    fn mutual_recursion_collapses_into_one_clique() {
-        // `even :- zero.`, `even :- odd.`, `odd :- even.`
-        let program = program(vec![
-            pred("even", &[&["zero"], &["odd"]]),
-            pred("odd", &[&["even"]]),
-        ]);
-        assert_eq!(cliques_of(&program), vec![vec!["even", "odd"]]);
-        // The rule reaching out of the clique is the non-recursive one; both
-        // rules crossing between the members are recursive.
-        assert_eq!(
-            rule_split_of(&program),
-            vec![(
-                vec!["even#0".to_owned()],
-                vec!["even#1".to_owned(), "odd#0".to_owned()]
-            )]
-        );
-    }
-
-    #[test]
-    fn a_clique_runs_after_the_clique_it_reads() {
-        // `even`/`odd` are mutually recursive and both read `num`.
-        let program = program(vec![
-            pred("even", &[&["num"], &["odd"]]),
-            pred("odd", &[&["num"], &["even"]]),
-            pred("num", &[&["succ"]]),
-        ]);
-        assert_eq!(cliques_of(&program), vec![vec!["num"], vec!["even", "odd"]]);
-        // For the recursive clique, reading `num` is not recursion: `num` sits
-        // in an earlier clique and is fully computed by then.
-        assert_eq!(
-            rule_split_of(&program),
-            vec![
-                (vec!["num#0".to_owned()], Vec::new()),
-                (
-                    vec!["even#0".to_owned(), "odd#0".to_owned()],
-                    vec!["even#1".to_owned(), "odd#1".to_owned()]
-                ),
-            ]
-        );
     }
 }
