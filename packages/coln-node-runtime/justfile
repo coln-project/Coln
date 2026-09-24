@@ -20,12 +20,12 @@ build-interface:
 
 generate-bindings:
     mkdir -p test/bindings
-    cabal run coln-cli -- generate-ts test/definitions.coln -o test/bindings/
+    nix run ../..#coln-cli -- generate-ts test/definitions.coln -o test/bindings/
 
 test:
     mkdir -p dist
     tsc
-    cabal run coln-cli -- generate-ir test/definitions.coln -o dist/test
+    nix run ../..#coln-cli -- generate-ir test/definitions.coln -o dist/test
     node dist/test/main.js
 
 build-and-test: build-interface build-runtime generate-bindings test
