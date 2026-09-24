@@ -1,9 +1,7 @@
 setup:
     cd ../coln-js-interface/
-    pnpm approve-builds esbuild
     pnpm install
     cd ../coln-node-runtime/
-    pnpm approve-builds esbuild
     pnpm install
 
 build-runtime:
