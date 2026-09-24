@@ -155,7 +155,6 @@ isSymbol = \case
   '>' -> True
   '-' -> True
   '+' -> True
-  '/' -> True
   '*' -> True
   '~' -> True
   ':' -> True
