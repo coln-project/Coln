@@ -246,11 +246,16 @@ data EqualityType = EqualityType
   }
 
 typeForProjection :: RecordType -> Name -> Dict (El N) -> Ty N
-typeForProjection rt x fields = do
-  let i = getKeyIndexMulti rt.fieldTypes x
-  let chunk = Vector.slice 0 i.value fields.values
-  let locals = LSnocChunk rt.capture chunk
-  elemAt rt.fieldTypes i $ locals
+typeForProjection rt x fields = go rt.capture (toList rt.fieldTypes) fields.values
+ where
+  -- The type of a multi-field sees all preceding multi-fields but
+  -- none of its own.
+  go _ [] _ = panic "field not in record type"
+  go locals ((xs, fieldTy) : rest) remaining
+    | x `elem` xs = fieldTy locals
+    | otherwise =
+        let (group, remaining') = Vector.splitAt (length xs) remaining
+         in go (LSnocChunk locals group) rest remaining'
 
 data Ty :: Case -> Type where
   U :: Universe -> Ty N
