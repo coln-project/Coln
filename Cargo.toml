@@ -1,10 +1,9 @@
 [workspace]
 resolver = "3"
-members = ["packages/coln-batch", "packages/coln-flir-rs", "packages/coln-integrator", "packages/coln-node-runtime", "packages/coln-query", "packages/coln-store", "packages/coln-wasm-runtime"]
+members = ["packages/coln-batch", "packages/coln-bouncer", "packages/coln-flir-rs", "packages/coln-node-runtime", "packages/coln-query", "packages/coln-store", "packages/coln-wasm-runtime"]
 
 [workspace.package]
 version = "0.0.1"
-authors = ["The Coln Authors"]
 description = "A proof assistant with database characteristics"
 homepage = "https://github.com/coln-project/Coln"
 repository = "https://github.com/coln-project/Coln"
