@@ -71,9 +71,9 @@ instance Interp S.Ty V.Ty where
       let go ls [] = interpAt c g ls ft.cod.body
           go ls (binding : rest) =
             let cod = case binding of
-                        Named x -> V.Clo x (\v -> go (ls :> Pair d v) rest)
-                        Anonymous -> V.CloConst (go ls rest)
-            in V.Function (V.FunctionType variant dom cod)
+                  Named x -> V.Clo x (\v -> go (ls :> Pair d v) rest)
+                  Anonymous -> V.CloConst (go ls rest)
+             in V.Function (V.FunctionType variant dom cod)
       Pair c (go e ft.cod.bindings)
     S.Record rt -> withLevel rt.level.mlevel $ \sl -> do
       let weakenTy fieldTy (vs :> _) = fieldTy vs
