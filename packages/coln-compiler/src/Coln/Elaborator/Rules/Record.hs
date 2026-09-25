@@ -37,12 +37,6 @@ data FieldSetting c = FieldSetting
   , span :: Span
   }
 
-chunkSublists :: [[a]] -> [b] -> [[(a, b)]]
-chunkSublists [] _ = []
-chunkSublists (as : ass) bs =
-  let (group, rest) = splitAt (length as) bs
-   in zip as group : chunkSublists ass rest
-
 intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Chk c
 intro @c sp fieldSettings = Chk \e a -> do
   let goinner :: Level -> (Name, FieldSetting c) -> V.Ty N -> IO (Name, El c, V.El N)
@@ -55,15 +49,16 @@ intro @c sp fieldSettings = Chk \e a -> do
         | otherwise = do
             let msg = "expected record field" <+> dpretty x <+> "got: " <+> dpretty fs.name
             failWith e.diagEnv fs.span MismatchedRecordField msg
-      go :: Level -> V.Locals -> [([(Name, FieldSetting c)], V.Locals -> V.Ty N)] -> IO [(Name, El c)]
-      go lvl vs [] = pure []
-      go lvl vs ((ns, fieldTyC):xs) = do
+      go :: Level -> V.Locals -> [([Name], V.Locals -> V.Ty N)] -> [FieldSetting c] -> IO [(Name, El c)]
+      go _ _ [] _ = pure []
+      go lvl vs ((names, fieldTyC) : rest) settings = do
+        let (groupSettings, restSettings) = splitAt (length names) settings
         let fieldTy = fieldTyC vs
-        xmvs <- traverse (\n -> goinner lvl n fieldTy) ns
-        let newvs = fmap (\(x,m,v) -> v) xmvs
-        fields <- go lvl (V.LSnocChunk vs (fromList newvs)) xs
-        let newxms = fmap (\(x,m,v) -> (x,m)) xmvs
-        return $ newxms ++ fields
+        xmvs <- traverse (\n -> goinner lvl n fieldTy) (zip names groupSettings)
+        let newvs = fmap (\(_, _, v) -> v) xmvs
+        fields <- go lvl (V.LSnocChunk vs (fromList newvs)) rest restSettings
+        let newxms = fmap (\(x, m, _) -> (x, m)) xmvs
+        pure $ newxms ++ fields
   case V.behavior a of
     V.LikeRecord rt -> do
       let expectedLength = multiDictLength rt.fieldTypes
@@ -71,8 +66,7 @@ intro @c sp fieldSettings = Chk \e a -> do
       unless (expectedLength == givenLength) $ do
         let msg = "expected" <+> pretty expectedLength <+> "fields, got: " <+> pretty givenLength
         failWith e.diagEnv sp WrongNumberOfRecordFields msg
-      let (names, types) = unzip (toList rt.fieldTypes)
-      fields <- go rt.level rt.capture $ zip (chunkSublists names fieldSettings) types
+      fields <- go rt.level rt.capture (toList rt.fieldTypes) fieldSettings
       pure $ cons rt.level (fromList fields)
     _ -> do
       let msg = "tried to check a record expression at a non-record type"
