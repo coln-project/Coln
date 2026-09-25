@@ -6,16 +6,23 @@
 //! But the user is still responsible for starting/finishing transactions
 //!
 
-use coln_flir_rs::ir::{self, FlatRealm};
+use coln_flir_rs::{
+    WireRowId, WireRowView, WireTuple,
+    engine::{
+        schema::ColnDef,
+        txn_val::{TxnWireRowId, TxnWireTuple},
+    },
+    hash::CommitHash,
+    ir::{self, FlatRealm},
+    query::WhereClause,
+};
 
 use crate::{
-    commit::hash::CommitHash,
-    store::{ColnDef, Store, error::StoreError, frag::FragmentSync},
-    table::{WireRowId, cell::WireTuple, handle::WireRowView},
+    store::{Store, error::StoreError, frag::FragmentSync},
     txn::{
-        OwnedTransaction, TxnWireRowId,
-        id::{Promote, TxnWireTuple},
-        rw::{StoreRead, StoreWrite, WhereClause},
+        OwnedTransaction,
+        id::Promote,
+        rw::{StoreRead, StoreWrite},
     },
 };
 
@@ -33,11 +40,11 @@ impl StoreRead for AutoStore {
         self.txn.as_ref().expect("open txn").all_proj(query, select)
     }
 
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<crate::table::WireRowId>, StoreError> {
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
         self.txn.as_ref().expect("open txn").all_row_id(query)
     }
 
-    fn row_by_id(&self, table: &ir::Path, row_id: &crate::table::WireRowId) -> Option<WireRowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
         self.txn
             .as_ref()
             .expect("open txn")

@@ -6,9 +6,9 @@
 //! coln-store, and coln-query in code.
 
 use either::Either;
-
 use crate::ir::{self, Path};
 use std::{marker::PhantomData, ops::Range};
+use serde::{Deserialize, Serialize};
 
 /// Typestate marker whether the [`ColnSchema`] represents a base table
 /// and, therefore, has (implicit) row ids.
@@ -288,6 +288,12 @@ impl From<ir::BuiltinTy> for NativeScalarType {
     }
 }
 
+// TODO @ Leo I think we should have a common notion of what a tuple is.
+// right now I have PackedRowView, and you have TableDelta?
+// We should define them here and then write conversion method to and from what is
+// expected by coln-query and coln-store
+// Same for transactions, see rw.rs
+
 /// Scalar types which are supported by coln-store.
 #[derive(Clone, Copy, Debug)]
 pub enum StoreEngineScalarType {
@@ -494,5 +500,21 @@ impl QueryEngineCols {
                 })
                 .collect(),
         )
+    }
+}
+
+/// A Coln theory source file contains theory definitions and (multiple) realm definitions
+/// Each realm corresponds will be compiled to one IR file, this struct stores
+/// which realm the IR is referring to
+/// It is stored as literal string and uninterpreted in the root commit of the store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColnDef {
+    pub theory: String,
+    pub realm: String,
+}
+
+impl ColnDef {
+    pub fn new(theory: String, realm: String) -> Self {
+        Self { theory, realm }
     }
 }

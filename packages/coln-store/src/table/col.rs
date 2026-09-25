@@ -5,9 +5,12 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use crate::pack::{IdPacker, PackedRowId, PackedValue};
+use coln_flir_rs::{
+    WireValue,
+    engine::packed::{PackedRowId, PackedValue},
+};
 
-use super::{CellKind, WireValue};
+use crate::{pack::IdPacker, table::CellKind};
 
 /// Columnar storage for [`PackedRowId`]s, split into two parallel columns.
 ///

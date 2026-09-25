@@ -2,19 +2,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir;
+use coln_flir_rs::{
+    engine::txn_val::{TempRowId, TxnWireRowId, TxnWireTuple},
+    hash::{self, CommitHash},
+    ir,
+};
 use tracing::info;
 
 use crate::{
-    commit::{
-        Commit,
-        author::Author,
-        hash::{self, CommitHash},
-        wire::CommitData,
-    },
+    commit::{Commit, author::Author, wire::CommitData},
     store::{Store, error::StoreError},
     table::ValidationError,
-    txn::{PendingOp, TempRowId, TxnWireRowId, id::TxnWireTuple, timestamp::Timestamp},
+    txn::{PendingOp, timestamp::Timestamp},
 };
 
 pub(crate) struct TxnInner {

@@ -4,11 +4,12 @@
 
 use std::io::Write;
 
+use coln_flir_rs::engine::txn_val::TxnWireValue;
 use coln_flir_rs::ir::{self, BuiltinTy};
 use hexane::{Codec, PackError, lebsize};
 
+use crate::commit::error::CodecError;
 use crate::commit::leb128 as commit_leb128;
-use crate::{commit::error::CodecError, txn::TxnWireValue};
 
 /// Number of low bits reserved for the [`ValueType`] code in a [`ValueMeta`].
 const TYPE_CODE_BITS: u32 = 5;
