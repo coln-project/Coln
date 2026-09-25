@@ -15,6 +15,5 @@ pub mod table;
 #[cfg(test)]
 mod test_utils;
 pub mod txn;
-pub mod value;
 
 use coln_flir_rs::ir;

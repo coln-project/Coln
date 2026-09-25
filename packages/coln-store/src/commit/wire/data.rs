@@ -4,6 +4,9 @@
 
 use std::io::Write;
 
+use coln_flir_rs::engine::txn_val::{TempRowId, TxnWireRowId, TxnWireTuple, TxnWireValue};
+use coln_flir_rs::ffi::WireRowId;
+use coln_flir_rs::hash::{CommitHash, HASH_SIZE};
 use hexane::{Column, DeltaColumn};
 
 use crate::commit::author::Author;
@@ -11,18 +14,16 @@ use crate::commit::leb128 as commit_leb128;
 use crate::commit::wire::prim::{
     self, ValueMeta, decode_prim_value, encode_path, encode_prim_value,
 };
-use crate::txn::id::TxnWireTuple;
 use crate::{
     commit::{
         error::CodecError,
-        hash::{CommitHash, HASH_SIZE},
         hash_dict::{HashMapper, read_hash_dict, write_hash_dict},
         utils::read_slice,
     },
     ir::{BuiltinTy, ColType, Path, Schema},
     op::OP_KIND_ADD,
-    table::{TableMeta, TableOid, WireRowId},
-    txn::{PendingOp, TempRowId, TxnWireRowId, TxnWireValue},
+    table::{TableMeta, TableOid},
+    txn::PendingOp,
 };
 
 // TODO change this to i32 when we support it as a column type
@@ -646,11 +647,8 @@ fn decode_txn_prim_value_column(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::prim::ValueType;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
-    use crate::table::WireRowId;
-    use crate::txn::{TempRowId, TxnWireRowId};
 
     #[test]
     fn txn_row_ref_column_round_trips_existing_and_pending_refs() {

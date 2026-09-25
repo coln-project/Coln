@@ -10,6 +10,8 @@ repository.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 coln-store = { path = "../coln-store" }
+coln-query = { path = "../coln-query" }
+coln-flir-rs = { path = "../coln-flir-rs" }
 thiserror = { workspace = true }
 
 [dev-dependencies]

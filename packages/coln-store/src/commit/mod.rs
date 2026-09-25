@@ -6,7 +6,6 @@ pub mod author;
 pub mod chunk;
 pub mod error;
 pub mod graph;
-pub mod hash;
 pub(crate) mod hash_dict;
 pub(crate) mod leb128;
 pub mod pst;
@@ -15,19 +14,23 @@ pub mod wire;
 
 use std::borrow::Cow;
 
+use coln_flir_rs::{
+    engine::txn_val::{TxnWireRowId, TxnWireValue},
+    hash::CommitHash,
+};
+
 use crate::{
     commit::{
         author::Author,
         chunk::{Chunk, ChunkType, Header},
         error::CodecError,
-        hash::CommitHash,
         hash_dict::HashMapper,
         wire::{CommitData, RootCommitData},
     },
     ir::Path,
     op::Op,
     table::{TableMeta, TableOid},
-    txn::{PendingOp, TxnWireRowId, TxnWireValue},
+    txn::PendingOp,
 };
 
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
@@ -222,16 +225,17 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::WireRowId;
+    use coln_flir_rs::engine::txn_val::{TempRowId, TxnWireRowId, TxnWireValue};
+    use coln_flir_rs::hash::HASH_SIZE;
     use coln_flir_rs::ir::Schema;
     use rstest::{fixture, rstest};
 
     use super::*;
     use crate::commit::chunk::{Chunk, hash};
-    use crate::commit::hash::HASH_SIZE;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, Path};
-    use crate::table::{TableMeta, TableOid, WireRowId};
+    use crate::table::{TableMeta, TableOid};
     use crate::test_utils::{id_col_type, id_schema, int_schema, non_empty_root_commit_data};
-    use crate::txn::{TempRowId, TxnWireRowId};
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])

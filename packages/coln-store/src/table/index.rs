@@ -14,10 +14,9 @@
 use core::panic;
 use std::ops::Range;
 
-use crate::{
-    ir::Schema,
-    pack::{PackedRowId, PackedTuple, PackedValue},
-};
+use coln_flir_rs::engine::packed::{PackedRowId, PackedTuple, PackedValue};
+
+use crate::ir::Schema;
 
 use super::{CellKind, Column, IdColumn};
 
@@ -126,10 +125,7 @@ impl TableIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        ir::{self, BuiltinTy, ColType, Path},
-        pack::{PackedRowId, PackedValue},
-    };
+    use crate::ir::{self, BuiltinTy, ColType, Path};
 
     fn one_int_index() -> TableIndex {
         let schema = Schema {

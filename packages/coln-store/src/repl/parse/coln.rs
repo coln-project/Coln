@@ -4,12 +4,11 @@
 
 use std::collections::HashMap;
 
-use crate::{
-    commit::hash::{CommitHash, HASH_SIZE},
-    ir::{BuiltinTy, ColType},
-    table::{WireRowId, WireValue},
-    txn::{TempRowId, TxnWireRowId, TxnWireValue},
-};
+use coln_flir_rs::engine::txn_val::{TempRowId, TxnWireRowId, TxnWireValue};
+use coln_flir_rs::hash::{CommitHash, HASH_SIZE};
+use coln_flir_rs::{WireRowId, WireValue};
+
+use crate::ir::{BuiltinTy, ColType};
 
 /// Parse failure for a single cell inside a `begin batch` block (before column index is known).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

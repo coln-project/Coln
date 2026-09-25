@@ -9,19 +9,18 @@ pub(crate) mod index;
 pub mod sorted;
 mod undo;
 
-pub use cell::{CellKind, WireRowId, WireValue};
+pub use cell::CellKind;
+use coln_flir_rs::engine::packed::{PackedRowId, PackedRowView, PackedTuple, PackedValue};
 use coln_flir_rs::ir::{EntityVariant, Materialization};
+use coln_flir_rs::{WireRowId, WireValue};
 pub use handle::TableHandle;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-#[cfg(not(target_arch = "wasm32"))]
-use coln_query::api::deltas::{ScalarTypedValue, TableDelta, ZRow};
-
 use crate::ir;
 use crate::ir::Schema;
-use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedTuple, PackedValue};
+use crate::pack::{IdPacker, PackedOp};
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
 use crate::table::col::{Column, IdColumn};
@@ -260,7 +259,15 @@ impl Table {
         self.validate_column_count(values.len())?;
 
         for (i, (col_entry, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
-            value.matches_schema(&col_entry.col_type, i)?;
+            let expected = CellKind::from(&col_entry.col_type);
+            let got = CellKind::from(value);
+            if expected != got {
+                return Err(ValidationError::TypeMismatch {
+                    column: i,
+                    expected,
+                    got,
+                });
+            }
         }
 
         if let Some(cols) = &self.pk {
@@ -343,18 +350,6 @@ impl Table {
 
     // Apply the staged updates to the table. Rollback support will record
     // inverse operations separately before these operations are consumed.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn apply_staged_ops(
-        &mut self,
-        rowing: &mut Rowing,
-    ) -> Result<TableDelta, ValidationError> {
-        let ops = std::mem::take(&mut self.pending_updates);
-        let delta = self.table_delta_from_ops(ops.clone());
-        self.apply_ops(ops, rowing)?;
-        Ok(delta)
-    }
-
-    #[cfg(target_arch = "wasm32")]
     pub(crate) fn apply_staged_ops(&mut self, rowing: &mut Rowing) -> Result<(), ValidationError> {
         let ops = std::mem::take(&mut self.pending_updates);
         self.apply_ops(ops, rowing)
@@ -372,96 +367,6 @@ impl Table {
             }
         }
         Ok(())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn table_delta_from_ops(&self, ops: impl IntoIterator<Item = PackedOp>) -> TableDelta {
-        let zrows: Vec<ZRow> = ops
-            .into_iter()
-            .map(|op| match op {
-                PackedOp::Add { row_id, values } => {
-                    let tuple = PackedRowView { row_id, values }.into();
-                    ZRow::new(1, tuple).unwrap()
-                }
-                PackedOp::Delete { row_id } => {
-                    let values = self
-                        .row_by_id(row_id)
-                        .expect("element to delete should exist");
-                    let tuple = PackedRowView { row_id, values }.into();
-                    ZRow::new(-1, tuple).unwrap()
-                }
-            })
-            .collect();
-
-        TableDelta::new(self.path().to_string(), zrows)
-    }
-
-    // This conversion needs table schema, therefore cannot be done with From trait
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn ops_from_table_delta<F>(
-        &self,
-        td: TableDelta,
-        mut id_allocate: F,
-    ) -> Vec<PackedOp>
-    where
-        F: FnMut() -> PackedRowId,
-    {
-        td.into_iter()
-            .map(|zrow| {
-                let row_id = id_allocate();
-                if zrow.zweight() > 0 {
-                    let mut val_iter = zrow.into_row().data.into_iter();
-                    let mut packed_val = Vec::new();
-
-                    for col in &self.schema().columns {
-                        match col.col_type {
-                            ir::ColType::RowId { .. } => {
-                                let ScalarTypedValue::Uint(commit_idx) =
-                                    val_iter.next().expect("coln-query returns valid data")
-                                else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                let ScalarTypedValue::Uint(counter) =
-                                    val_iter.next().expect("coln-query returns valid data")
-                                else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                packed_val.push(PackedValue::Id(PackedRowId {
-                                    commit_idx: commit_idx as u32,
-                                    counter: counter as u32,
-                                }));
-                            }
-                            ir::ColType::BuiltinTy {
-                                builtin_ty: ir::BuiltinTy::BuiltinInt,
-                            } => {
-                                let ScalarTypedValue::String(s) = val_iter.next().unwrap() else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                packed_val.push(PackedValue::Str(s));
-                            }
-                            ir::ColType::BuiltinTy {
-                                builtin_ty: ir::BuiltinTy::BuiltinStr,
-                            } => {
-                                let ScalarTypedValue::Iint(i) = val_iter.next().unwrap() else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                packed_val.push(PackedValue::Int(i as i32));
-                            }
-                        }
-                    }
-
-                    PackedOp::Add {
-                        row_id,
-                        values: packed_val.into(),
-                    }
-                } else if zrow.zweight() < 0 {
-                    // TODO don't know how to remove yet
-                    todo!()
-                } else {
-                    unreachable!("zero zweight impossible")
-                }
-            })
-            .collect()
     }
 
     fn apply_op(&mut self, op: PackedOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {

@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Coln contributors
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! A generic representation for values expected by the external world and the
+//! internal engines.
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
