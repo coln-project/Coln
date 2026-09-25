@@ -109,15 +109,13 @@ unwrap NotApplicable = panic "neutral of record type was never expanded"
 
 expandRecord :: RecordType -> Head -> Spine -> Maybe (El D) -> Dict (El N)
 expandRecord recordType head spine desc = do
-  let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
+  let go :: Locals -> [([Name], Locals -> Ty N)] -> [(Name, El N)]
       go _ [] = []
-      go vs ((x, ty) : rest) = do
-        let v = reflect head (Proj recordType.level spine x) (ty vs) ((`proj` x) <$> desc)
-        v : go (LSnoc vs v) rest
-  let tele = expandMultiDict recordType.fieldTypes
-  Dict
-    tele.head
-    (Vector.fromList (go recordType.capture (toList tele)))
+      go vs ((names, ty) : rest) = do
+        let fieldTy = ty vs
+        let fields = fmap (\x -> (x, reflect head (Proj recordType.level spine x) fieldTy ((`proj` x) <$> desc))) names
+        fields ++ go (LSnocChunk vs (Vector.fromList (map snd fields))) rest
+  fromList (go recordType.capture (toList recordType.fieldTypes))
 
 reflect :: Head -> Spine -> Ty N -> Maybe (Evaluation El D) -> El N
 reflect head spine ~ty edesc = do
@@ -169,15 +167,13 @@ data InitNeutral = InitNeutral
 
 expandInitRecord :: RecordType -> BareNeutral -> Spine -> Dict (El N)
 expandInitRecord recordType head spine = do
-  let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
+  let go :: Locals -> [([Name], Locals -> Ty N)] -> [(Name, El N)]
       go _ [] = []
-      go vs ((x, ty) : rest) = do
-        let v = reflectInit head (Proj recordType.level spine x) (ty vs)
-        v : go (LSnoc vs v) rest
-  let tele = expandMultiDict recordType.fieldTypes
-  Dict
-    tele.head
-    (Vector.fromList (go recordType.capture (toList tele)))
+      go vs ((names, ty) : rest) = do
+        let fieldTy = ty vs
+        let fields = fmap (\x -> (x, reflectInit head (Proj recordType.level spine x) fieldTy)) names
+        fields ++ go (LSnocChunk vs (Vector.fromList (map snd fields))) rest
+  fromList (go recordType.capture (toList recordType.fieldTypes))
 
 reflectInit :: BareNeutral -> Spine -> Ty N -> El N
 reflectInit bn spine ty = do
