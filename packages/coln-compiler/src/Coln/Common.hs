@@ -325,8 +325,10 @@ multiDictLength :: MultiDict a -> Int
 multiDictLength d = V.sum $ fmap length d.head.keys
 
 instance Lookup (MultiDict a) Name a where
+  lookup d x = (d.values V.!) <$> Map.lookup x d.head.byName
 
 instance ElemAt (MultiDict a) Name a where
+  elemAt t x = unwrap $ lookup t x
 
 instance FromList (MultiDict a) ([Name], a) where
   fromList pairs = do
