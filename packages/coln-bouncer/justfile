@@ -1,8 +1,8 @@
 # Task runner: https://github.com/casey/just
-# From packages/coln-integrator, with Rust on PATH (e.g. `nix develop`):
+# From packages/coln-bouncer, with Rust on PATH (e.g. `nix develop`):
 #   just              # list available recipes
 #   just check        # fmt-check + clippy + test
-#   just cargo-check  # type-check coln-integrator targets
+#   just cargo-check  # type-check coln-bouncer targets
 #   just import
 #   just fix          # apply cargo fixes + format
 #   just coverage     # llvm-cov + Cobertura

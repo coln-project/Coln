@@ -1103,6 +1103,8 @@ name = "coln-bouncer"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "coln-flir-rs",
+ "coln-query",
  "coln-store",
  "criterion",
  "thiserror 2.0.20",
@@ -1114,6 +1116,8 @@ version = "0.1.0"
 dependencies = [
  "coln-flir-rs",
  "either",
+ "ena",
+ "hex",
  "serde",
  "serde_json",
  "specta",
@@ -1160,7 +1164,6 @@ dependencies = [
  "blake3",
  "clap",
  "coln-flir-rs",
- "coln-query",
  "csv",
  "ena",
  "future_form",
@@ -1176,7 +1179,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shlex",
- "specta",
  "sqlparser",
  "subduction_core",
  "subduction_crypto",

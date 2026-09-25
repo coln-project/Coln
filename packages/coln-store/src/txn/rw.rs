@@ -2,26 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir::{self, Path};
-use serde::{Deserialize, Serialize};
-use specta::Type;
-
-use crate::{
-    store::error::{QueryError, StoreError},
-    table::{WireRowId, WireValue, cell::WireTuple, handle::WireRowView},
-    txn::{TxnWireRowId, id::TxnWireTuple},
+use coln_flir_rs::{
+    WireRowId, WireRowView, WireTuple, engine::txn_val::TxnWireTuple, ir, query::WhereClause,
 };
 
-#[derive(Debug, Type, Serialize, Deserialize)]
-pub struct WhereClause {
-    pub table_name: Path,
-    pub row_id: Option<WireRowId>,
-    pub values: Vec<WireValue>, // A prefix of column values
-}
+use crate::{store::error::StoreError, txn::TxnWireRowId};
 
 pub trait StoreRead {
     // Return a vec for external world
-    // TODO we might want another version of the API which does vectorised processing model for query processing
     fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>>;
 
     fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView>;
@@ -35,9 +23,9 @@ pub trait StoreRead {
         if all_tuples.len() == 1 {
             Ok(all_tuples.pop().unwrap())
         } else if all_tuples.is_empty() {
-            Err(QueryError::ZeroMatchingTuple.into())
+            todo!("implement this in coln bouncer")
         } else {
-            Err(QueryError::MultipleMatchingTuple.into())
+            todo!("implement this in coln bouncer")
         }
     }
 

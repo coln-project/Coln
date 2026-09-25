@@ -7,7 +7,6 @@ use rstest::rstest;
 use super::*;
 use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Materialization, Path, Schema},
-    table::handle::WireRowView,
     txn::rw::{StoreRead, StoreWrite},
 };
 
@@ -102,7 +101,7 @@ mod root_metadata {
 
 mod writes {
     use super::*;
-    use crate::test_utils::{link_foreign_key_root_commit_data, single_int_autostore};
+    use crate::test_utils::single_int_autostore;
 
     #[rstest]
     fn store_add_inserts_row(#[from(single_int_autostore)] mut store: AutoStore) {
@@ -115,31 +114,13 @@ mod writes {
         store.transaction();
         assert_eq!(store.scan_table(&path).expect("T").len(), 1);
     }
-
-    #[rstest]
-    fn leaves_store_unchanged_when_rules_fail(link_foreign_key_root_commit_data: RootCommitData) {
-        let link = Path::from("Link");
-        let root = link_foreign_key_root_commit_data;
-        let mut store = Store::try_from_ir(root.ir, root.coln_def).expect("theory");
-        let packed_id_count = store.id_packer.len();
-
-        let mut txn = store.transaction();
-        txn.add(&link, vec![10i32, 20i32]).expect("add");
-        let err = txn.commit().unwrap_err();
-
-        assert!(matches!(err, StoreError::Rule(_)));
-        assert_eq!(store.table_at(&link).expect("Link").row_count(), 0);
-        assert_eq!(store.id_packer.len(), packed_id_count);
-    }
 }
 
 mod reads {
 
     use super::*;
-    use crate::table::WireValue;
     use crate::test_utils::{int_schema, nodes_edges_store};
     use crate::txn::empty_row;
-    use crate::txn::rw::WhereClause;
 
     // Tests that store.all() returns all values satisfy requirements.
     // Test with/without rowid, and the table should contain duplicate values as well
@@ -419,14 +400,6 @@ mod rowing {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<Op>) -> Result<(), StoreError> {
-        let mut query_tx = QueryTx::new(StoreDelta::empty());
-        store.apply_commit_ops(ops, &mut query_tx)?;
-        store.rebuild_to_fixpoint(&mut query_tx)
-    }
-
-    #[cfg(target_arch = "wasm32")]
     fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<Op>) -> Result<(), StoreError> {
         store.apply_commit_ops(ops)?;
         store.rebuild_to_fixpoint()

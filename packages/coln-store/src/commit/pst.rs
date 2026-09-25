@@ -92,15 +92,15 @@ fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::hash::{CommitHash, HASH_SIZE};
+    use coln_flir_rs::{WireRowView, WireValue};
     use rstest::{fixture, rstest};
 
     use super::*;
     use crate::commit::author::Author;
     use crate::commit::chunk::{ChunkType, Header};
-    use crate::commit::hash::{CommitHash, HASH_SIZE};
     use crate::commit::wire::{CommitData, RootCommitData};
     use crate::ir::Path;
-    use crate::table::{WireValue, handle::WireRowView};
     use crate::test_utils::non_empty_root_commit_data;
     use crate::txn::id::Promote;
     use crate::txn::rw::{StoreRead, StoreWrite};

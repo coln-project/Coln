@@ -17,12 +17,12 @@ use crate::relational::{
 };
 use crate::scalarial::ScalarType;
 use coln_flir_rs::{
-    ir::{self, El, FlatRealm},
-    schema::{
+    engine::schema::{
         ColnSchema, ColnSchemaWrapper, CompilerColIdx, DerivedView, GroundTable, NativeScalarType,
         QueryEngineCol, QueryEngineScalarType, ResolveCompilerIdxToQueryView, RuleVars,
         StoreEngineCols,
     },
+    ir::{self, El, FlatRealm},
 };
 use indexmap::IndexMap;
 use std::borrow::Cow;
