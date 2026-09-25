@@ -1,0 +1,16 @@
+[package]
+name = "coln-bouncer"
+edition = "2024"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+coln-store = { path = "../coln-store" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
