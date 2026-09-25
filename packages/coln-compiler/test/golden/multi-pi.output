@@ -1,0 +1,145 @@
+-- elaborated
+global entry named Pi
+in mode: Conjunctive
+type: Theory
+value: sig
+  fn : (x : Int) -> (y : Int) -> Int
+  fm : (x y : Int) -> Int
+  F : Int -> Set
+  fux : (x y : Int) -> F x
+  fuy : (x y : Int) -> F y
+  B : Set
+  E : B -> Set
+  dn : (b : B) -> (x : E b) -> (y : E b) -> Int
+  dm : (b : B) -> (x y : E b) -> Int
+  dr : (b b2 : B) -> (x : E b) -> (y : E b2) -> Int
+  G : (b : B) -> (x : E b) -> Set
+  dux : (b : B) -> (x y : E b) -> G b x
+  duy : (b : B) -> (x y : E b) -> G b y
+end
+global entry named use-x
+in mode: Conjunctive
+type: (x y : Int) -> Int
+value: x => y => x
+global entry named use-y
+in mode: Conjunctive
+type: (x y : Int) -> Int
+value: x => y => y
+global entry named use-x-dep
+in mode: Conjunctive
+type: (B : Set) -> (E : B -> Set) -> (b : B) -> (x y : E b) -> E b
+value: B => E => b => x => y => x
+global entry named use-y-dep
+in mode: Conjunctive
+type: (B : Set) -> (E : B -> Set) -> (b : B) -> (x y : E b) -> E b
+value: B => E => b => x => y => y
+global entry named Param
+in mode: Conjunctive
+type: (x y : Int) -> Theory
+value: x => y => sig
+  U : Int -> Set
+  ux : U x
+  uy : U y
+end
+global entry named ParamDep
+in mode: Conjunctive
+type: (B : Set) -> (E : B -> Set) -> (b : B) -> (x y : E b) -> Theory
+value: B => E => b => x => y => sig
+  U : E b -> Set
+  ux : U x
+  uy : U y
+end
+global entry named eq-single-2
+in mode: Conjunctive
+type: (x : Int) -> (y : Int) -> Int
+value: x => y => 19
+global entry named eq-multi-2-eq
+in mode: Conjunctive
+type: (x y : Int) -> Int
+value: eq-single-2
+global entry named eq-single-2-eq
+in mode: Conjunctive
+type: (x : Int) -> (y : Int) -> Int
+value: eq-multi-2
+global entry named eq-single-3
+in mode: Conjunctive
+type: (x : Int) -> (y : Int) -> (z : Int) -> Int
+value: x => y => z => 19
+global entry named eq-multi-3-eq
+in mode: Conjunctive
+type: (x y z : Int) -> Int
+value: eq-single-3
+global entry named eq-multi-3
+in mode: Conjunctive
+type: (x y z : Int) -> Int
+value: x => y => z => 19
+global entry named eq-single-3-eq
+in mode: Conjunctive
+type: (x : Int) -> (y : Int) -> (z : Int) -> Int
+value: eq-multi-3
+global entry named Anon
+in mode: Conjunctive
+type: Theory
+value: sig
+  fn : (x : Int) -> Int -> (y : Int) -> Int
+  fm : (_ x _ y _ : Int) -> Int
+  F : Int -> Set
+  fux : (_ x _ y _ : Int) -> F x
+  fuy : (_ x _ y _ : Int) -> F y
+  B : Set
+  E : B -> Set
+  dn : (b : B) -> (x : E b) -> (y : E b) -> Int
+  dm : (b : B) -> (_ x _ y _ : E b) -> Int
+  dr : (_ b _ b2 _ : B) -> (x : E b) -> (y : E b2) -> Int
+  G : (b : B) -> (x : E b) -> Set
+  dux : (b : B) -> (_ x _ y _ : E b) -> G b x
+  duy : (b : B) -> (_ x _ y _ : E b) -> G b y
+end
+global entry named eq-mixed-3
+in mode: Conjunctive
+type: (x y : Int) -> (z : Int) -> Int
+value: eq-multi-3
+global entry named eq-anon-grouped
+in mode: Conjunctive
+type: (_ x _ : Int) -> Int
+value: eq-single-3
+global entry named eq-anon-nested
+in mode: Conjunctive
+type: Int -> (x : Int) -> Int -> Int
+value: eq-anon-grouped
+global entry named eq-partially-applied
+in mode: Conjunctive
+type: (y : Int) -> Int
+value: eq-multi-2 19
+global entry named eq-dep-arg-forward
+in mode: Conjunctive
+type: (F : Int -> Set) -> (f : (x y : Int) -> F y) -> (x : Int) -> (y : Int) -> F y
+value: F => f => f
+global entry named eq-dep-arg-backward
+in mode: Conjunctive
+type: (F : Int -> Set) -> (f : (x : Int) -> (y : Int) -> F y) -> (x y : Int) -> F y
+value: F => f => f
+global entry named eq-dep-tail-forward
+in mode: Conjunctive
+type: (F : Int -> Set) -> (f : (x y : Int) -> (z : F y) -> F x) -> (x : Int) -> (y : Int) -> (z : F y) -> F x
+value: F => f => f
+global entry named eq-dep-tail-backward
+in mode: Conjunctive
+type: (F : Int -> Set) -> (f : (x : Int) -> (y : Int) -> (z : F y) -> F x) -> (x y : Int) -> (z : F y) -> F x
+value: F => f => f
+global entry named eq-multi-2
+in mode: Conjunctive
+type: (x y : Int) -> Int
+value: x => y => 19
+
+-- messages
+
+expected error[E0300]: expected type (x : Int) -> Int, but got type (x y : Int) -> Int
+83 | def eq-too-few : (x : Int) -> Int := eq-multi-2
+83 |                                      ^^^^^^^^^^
+types Int and (y : Int) -> Int are not equal 
+
+expected error[E0300]: expected type (x y z : Int) -> Int, but got type (x y : Int) -> Int
+86 | def eq-too-many : (x y z : Int) -> Int := eq-multi-2
+86 |                                           ^^^^^^^^^^
+types (z : Int) -> Int and Int are not equal 

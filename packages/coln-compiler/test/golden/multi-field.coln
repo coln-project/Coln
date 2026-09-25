@@ -1,0 +1,86 @@
+theory Field := sig
+  B : Set
+  x : B
+  y : B
+  z w : B
+
+  P : Prop
+  p : P
+  q : P
+  r s : P
+  # P
+end
+
+theory SimpleSets := sig
+  B : Set
+  x : B
+  y z : B
+  w : B
+end
+
+def simple-model : SimpleSets := struct
+  B := Int
+  x := 41
+  y := 19
+  z := 34
+  w := 38
+end
+
+def OnlyGroup : Set := sig
+  a b : Int
+end
+
+def only-group-model : OnlyGroup := struct
+  a := 7
+  b := 11
+end
+
+theory Bound := sig
+  x y : Int
+  p : x = x
+  q : y = y
+end
+
+def Q : Prop := sig
+end
+
+theory SimpleProps := sig
+  x : Q
+  y z : Q
+  w : Q
+end
+
+def q : Q := struct
+end
+
+def prop-model : SimpleProps := struct
+  x := q
+  y := q
+  z := q
+  w := q
+end
+
+theory SomeSet := sig
+  T : Set
+end
+
+realm MultiFieldRealm @ SomeSet
+  def pair : Set := sig
+    a b : root.T
+  end
+end
+
+# TODO:
+
+# theory AnonProps := sig
+#   Q
+#   x : Int
+#   Q
+#   y : Int
+#   Q
+# end
+
+# def anon-model : AnonProps := struct
+#   x := 41
+#   y := 19
+# end

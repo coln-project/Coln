@@ -14,16 +14,16 @@ import Coln.Elaborator.Judgment
 import Control.Monad (unless)
 
 data FieldDeclaration
-  = FieldDeclaration {name :: Name, typ :: Typ N}
+  = FieldDeclaration {name :: [Name], typ :: Typ N}
   | FieldDeclarationDebug DebugCommand
 
 formation :: [FieldDeclaration] -> Typ D
 formation fieldTyps = Typ $ \e -> do
   let go _ [] = pure (Level Set HUnit, [])
-      go e' ((FieldDeclaration x typ) : rest) = do
+      go e' ((FieldDeclaration xs typ) : rest) = do
         ty <- typ.elab e'
-        (l, fieldTys) <- go (e'{scope = bind x ty.val Conjunctive e'.scope}) rest
-        pure (maxLevel l (levelOf ty), (x, ty) : fieldTys)
+        (l, fieldTys) <- go (e'{scope = bindMany xs ty.val Conjunctive e'.scope}) rest
+        pure (maxLevel l (levelOf ty), (xs, ty) : fieldTys)
       go e' ((FieldDeclarationDebug ds) : rest) = do
         runDebug e' ds
         go e' rest
@@ -39,27 +39,34 @@ data FieldSetting c = FieldSetting
 
 intro :: (V.HasEvaluation c) => Span -> [FieldSetting c] -> Chk c
 intro @c sp fieldSettings = Chk \e a -> do
-  let go :: Level -> V.Locals -> [(FieldSetting c, (Name, V.Locals -> V.Ty N))] -> IO [(Name, El c)]
-      go _ _ [] = pure []
-      go lvl vs ((fs, (x, fieldTyC)) : rest)
+  let goinner :: Level -> (Name, FieldSetting c) -> V.Ty N -> IO (Name, El c, V.El N)
+      goinner lvl (x, fs) fieldTy
         | fs.name == x = do
-            let fieldTy = fieldTyC vs
             let target' = projTarget lvl e.target x
             m <- fs.body.elab (e{target = target'}) fieldTy
             let v = reflectTarget target' fieldTy m.val
-            fields <- go lvl (V.LSnoc vs v) rest
-            pure ((x, m) : fields)
+            pure (x, m, v)
         | otherwise = do
             let msg = "expected record field" <+> dpretty x <+> "got: " <+> dpretty fs.name
             failWith e.diagEnv fs.span MismatchedRecordField msg
+      go :: Level -> V.Locals -> [([Name], V.Locals -> V.Ty N)] -> [FieldSetting c] -> IO [(Name, El c)]
+      go _ _ [] _ = pure []
+      go lvl vs ((names, fieldTyC) : rest) settings = do
+        let (groupSettings, restSettings) = splitAt (length names) settings
+        let fieldTy = fieldTyC vs
+        xmvs <- traverse (\n -> goinner lvl n fieldTy) (zip names groupSettings)
+        let newvs = fmap (\(_, _, v) -> v) xmvs
+        fields <- go lvl (V.LSnocChunk vs (fromList newvs)) rest restSettings
+        let newxms = fmap (\(x, m, _) -> (x, m)) xmvs
+        pure $ newxms ++ fields
   case V.behavior a of
     V.LikeRecord rt -> do
-      let expectedLength = dictLength rt.fieldTypes
+      let expectedLength = multiDictLength rt.fieldTypes
       let givenLength = length fieldSettings
       unless (expectedLength == givenLength) $ do
         let msg = "expected" <+> pretty expectedLength <+> "fields, got: " <+> pretty givenLength
         failWith e.diagEnv sp WrongNumberOfRecordFields msg
-      fields <- go rt.level rt.capture (zip fieldSettings (toList rt.fieldTypes))
+      fields <- go rt.level rt.capture (toList rt.fieldTypes) fieldSettings
       pure $ cons rt.level (fromList fields)
     _ -> do
       let msg = "tried to check a record expression at a non-record type"

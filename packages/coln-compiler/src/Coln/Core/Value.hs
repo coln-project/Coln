@@ -71,6 +71,9 @@ appClo :: Clo f c -> El N -> Evaluation f c
 appClo (Clo _ locals body) v = body (LSnoc locals v)
 appClo (CloConst body) _ = body
 
+data MultiClo (f :: Case -> Type) (c :: Case)
+  = MultiClo [AbsEntry] Locals (Locals -> Evaluation f c)
+
 -- Neutrals
 --------------------------------------------------------------------------------
 
@@ -106,15 +109,13 @@ unwrap NotApplicable = panic "neutral of record type was never expanded"
 
 expandRecord :: RecordType -> Head -> Spine -> Maybe (El D) -> Dict (El N)
 expandRecord recordType head spine desc = do
-  let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
+  let go :: Locals -> [([Name], Locals -> Ty N)] -> [(Name, El N)]
       go _ [] = []
-      go vs ((x, ty) : rest) = do
-        let v = reflect head (Proj recordType.level spine x) (ty vs) ((`proj` x) <$> desc)
-        v : go (LSnoc vs v) rest
-  let tele = recordType.fieldTypes
-  Dict
-    tele.head
-    (Vector.fromList (go recordType.capture (toList tele)))
+      go vs ((names, ty) : rest) = do
+        let fieldTy = ty vs
+        let fields = fmap (\x -> (x, reflect head (Proj recordType.level spine x) fieldTy ((`proj` x) <$> desc))) names
+        fields ++ go (LSnocChunk vs (Vector.fromList (map snd fields))) rest
+  fromList (go recordType.capture (toList recordType.fieldTypes))
 
 reflect :: Head -> Spine -> Ty N -> Maybe (Evaluation El D) -> El N
 reflect head spine ~ty edesc = do
@@ -166,15 +167,13 @@ data InitNeutral = InitNeutral
 
 expandInitRecord :: RecordType -> BareNeutral -> Spine -> Dict (El N)
 expandInitRecord recordType head spine = do
-  let go :: Locals -> [(Name, Locals -> Ty N)] -> [El N]
+  let go :: Locals -> [([Name], Locals -> Ty N)] -> [(Name, El N)]
       go _ [] = []
-      go vs ((x, ty) : rest) = do
-        let v = reflectInit head (Proj recordType.level spine x) (ty vs)
-        v : go (LSnoc vs v) rest
-  let tele = recordType.fieldTypes
-  Dict
-    tele.head
-    (Vector.fromList (go recordType.capture (toList tele)))
+      go vs ((names, ty) : rest) = do
+        let fieldTy = ty vs
+        let fields = fmap (\x -> (x, reflectInit head (Proj recordType.level spine x) fieldTy)) names
+        fields ++ go (LSnocChunk vs (Vector.fromList (map snd fields))) rest
+  fromList (go recordType.capture (toList recordType.fieldTypes))
 
 reflectInit :: BareNeutral -> Spine -> Ty N -> El N
 reflectInit bn spine ty = do
@@ -222,13 +221,13 @@ proj v x = elemAt (coerceToFields v) x
 data FunctionType = FunctionType
   { variant :: FunctionVariant
   , dom :: Ty N
-  , cod :: Clo Ty N
+  , cod :: MultiClo Ty N
   }
 
 data RecordType = RecordType
   { level :: Level
   , capture :: Locals
-  , fieldTypes :: Dict (Locals -> Ty N)
+  , fieldTypes :: MultiDict (Locals -> Ty N)
   }
 
 data InductiveType = InductiveType
@@ -243,11 +242,16 @@ data EqualityType = EqualityType
   }
 
 typeForProjection :: RecordType -> Name -> Dict (El N) -> Ty N
-typeForProjection rt x fields = do
-  let i = getKeyIndex rt.fieldTypes x
-  let chunk = Vector.slice 0 i.value fields.values
-  let locals = LSnocChunk rt.capture chunk
-  elemAt rt.fieldTypes i $ locals
+typeForProjection rt x fields = go rt.capture (toList rt.fieldTypes) fields.values
+ where
+  -- The type of a multi-field sees all preceding multi-fields but
+  -- none of its own.
+  go _ [] _ = panic "field not in record type"
+  go locals ((xs, fieldTy) : rest) remaining
+    | x `elem` xs = fieldTy locals
+    | otherwise =
+        let (group, remaining') = Vector.splitAt (length xs) remaining
+         in go (LSnocChunk locals group) rest remaining'
 
 data Ty :: Case -> Type where
   U :: Universe -> Ty N
@@ -325,8 +329,19 @@ instance DebugVal TypeBehavior where
     LikeBuiltinTy _ -> "LikeBuiltinTy"
     NoRules -> "NoRules"
 
+appFunctionType :: FunctionType -> El N -> Ty N
+appFunctionType ft arg = case ft.cod of
+  MultiClo (binding : rest) locals body ->
+    let locals' = case binding of
+          Named _ -> LSnoc locals arg
+          Anonymous -> locals
+     in case rest of
+          [] -> body locals'
+          _ -> Function (ft{cod = MultiClo rest locals' body})
+  MultiClo [] _ _ -> panic "function type with no bindings"
+
 appTy :: Ty N -> El N -> Ty N
-appTy (behavior -> LikeFunction ft) arg = appClo ft.cod arg
+appTy (behavior -> LikeFunction ft) arg = appFunctionType ft arg
 appTy a _ = panic $ "ill-typed computation of type for application: " ++ debugVal a
 
 projTy :: Ty N -> El N -> Name -> Ty N

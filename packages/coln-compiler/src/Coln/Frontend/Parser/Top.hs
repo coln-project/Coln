@@ -35,27 +35,31 @@ annot :: ParserEnv -> Ntn -> IO (Ntn, Ntn)
 annot _ (N.Infix n0 (N.Keyword ":" _) n1) = pure (n0, n1)
 annot e n = unexpectedNotation e n "type-annotated expression, e.g. `<pattern> : <type>`"
 
-argBinding :: ParserEnv -> Ntn -> IO (Span, Mode, Name, Typ N)
-argBinding e n@(N.Infix n0 (N.Keyword ":" _) n1) = do
-  (m, x) <- modalIdent e Conjunctive n0
+argBindings :: ParserEnv -> Ntn -> IO (Span, Mode, [AbsEntry], Typ N)
+argBindings e n@(N.Infix n0 (N.Keyword ":" _) n1) = do
+  (m, xs) <- modalIdents e Conjunctive n0
   a <- typ e n1
-  pure (N.span n, m, x, a)
-argBinding e n = unexpectedNotation e n "argument binding of the form `<name> : <type>`"
+  pure (N.span n, m, xs, a)
+argBindings e n = unexpectedNotation e n "argument binding of the form `<names> : <type>`"
 
-unpackArgs :: ParserEnv -> Ntn -> IO (Name, [(Span, Mode, Name, Typ N)])
+unpackArgs :: ParserEnv -> Ntn -> IO (Name, [(Span, Mode, [AbsEntry], Typ N)])
 unpackArgs e (N.Group (xN :| argsN)) = do
   x <- ident e xN
-  args <- mapM (argBinding e) argsN
+  args <- mapM (argBindings e) argsN
   pure (x, args)
 
-withArgs :: (V.HasEvaluation c) => [(Span, Mode, Name, Typ N)] -> (Typ N, Chk c) -> (Typ N, Chk c)
+withArgs :: (V.HasEvaluation c) => [(Span, Mode, [AbsEntry], Typ N)] -> (Typ N, Chk c) -> (Typ N, Chk c)
 withArgs args base = foldr go base args
  where
-  go :: (V.HasEvaluation c) => (Span, Mode, Name, Typ N) -> (Typ N, Chk c) -> (Typ N, Chk c)
-  go (sp, m, name, a) (t, c) =
-    ( Function.formation sp (Function.Named m name a) t
-    , Function.intro sp name c
+  go :: (V.HasEvaluation c) => (Span, Mode, [AbsEntry], Typ N) -> (Typ N, Chk c) -> (Typ N, Chk c)
+  go (sp, m, names, a) (t, c) =
+    ( Function.formation sp (Function.Binder names m a) t
+    , foldr (introArg sp) c names
     )
+
+  introArg :: (V.HasEvaluation c) => Span -> AbsEntry -> Chk c -> Chk c
+  introArg sp (Named name) = Function.intro sp name
+  introArg sp Anonymous = Function.intro sp "_"
 
 theory :: ParserEnv -> Ntn -> IO (Name, Typ N, Chk D)
 theory e n = do

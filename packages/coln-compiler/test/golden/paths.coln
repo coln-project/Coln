@@ -7,9 +7,7 @@ theory Reachability/motive (^i G : Graph) := sig
   t : G.V -> G.V -> Prop
   empty : (x : G.V) -> t x x
   cons : (
-    (x : G.V) ->
-    (y : G.V) ->
-    (z : G.V) ->
+    (x y z: G.V) ->
     (e : G.E x y) ->
     t y z ->
     t x z

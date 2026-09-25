@@ -42,8 +42,8 @@ instance Interp S.El V.El where
     S.Lam fv dom abs -> withFunctionVariant fv.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
       let clo = case abs of
-            S.Abs x body -> V.Clo x (\v -> interpAt c g (e :> Pair d v) body)
-            S.AbsConst body -> V.CloConst (interpAt c g e body)
+            S.Abs (Named x) body -> V.Clo x (\v -> interpAt c g (e :> Pair d v) body)
+            S.Abs Anonymous body -> V.CloConst (interpAt c g e body)
       Pair c (V.epure $ V.Lam sfv (interpAt d g e dom) clo)
     S.App fv t0 t1 -> withFunctionVariant fv.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
@@ -67,12 +67,25 @@ instance Interp S.Ty V.Ty where
     S.Function ft -> withFunctionVariant ft.variant.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
       let dom = interpAt d g e ft.dom
-      let cod = case ft.cod of
-            S.Abs x body -> V.Clo x (\v -> interpAt c g (e :> Pair d v) body)
-            S.AbsConst body -> V.CloConst (interpAt c g e body)
-      Pair c (V.Function (V.FunctionType (SFunctionVariant sfv ft.variant.hlevel) dom cod))
+      let variant = SFunctionVariant sfv ft.variant.hlevel
+      let go ls [] = interpAt c g ls ft.cod.body
+          go ls (binding : rest) =
+            let cod = case binding of
+                  Named x -> V.Clo x (\v -> go (ls :> Pair d v) rest)
+                  Anonymous -> V.CloConst (go ls rest)
+             in V.Function (V.FunctionType variant dom cod)
+      Pair c (go e ft.cod.bindings)
     S.Record rt -> withLevel rt.level.mlevel $ \sl -> do
-      let rt' = V.RecordType rt.level.hlevel e (flip (interpAt sl g) <$> rt.fieldTypes)
+      let weakenTy fieldTy (vs :> _) = fieldTy vs
+          weakenTy _ BwdNil = panic "missing grouped record field"
+          expandGroup _ [] = []
+          expandGroup fieldTy (x : xs) = (x, fieldTy) : expandGroup (weakenTy fieldTy) xs
+          fieldTypes =
+            fromList $
+              concatMap
+                (\(xs, ty) -> expandGroup (flip (interpAt sl g) ty) xs)
+                (toList rt.fieldTypes)
+      let rt' = V.RecordType rt.level.hlevel e fieldTypes
       Pair sl (V.Become $ V.Record rt')
     S.Eq et -> do
       let at = interpAt SSet g e et.at
