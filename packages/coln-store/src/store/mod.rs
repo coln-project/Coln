@@ -649,7 +649,8 @@ impl Store {
         commit: &Commit<'_>,
     ) -> Result<(), StoreError> {
         let mut cnt = commit.num_ops as u32;
-        let delta = derived.into_table_deltas();
+        let mut delta = derived.into_table_deltas();
+        delta.sort_by(|a, b| a.for_entity().id().cmp(b.for_entity().id()));
         for td in delta {
             let oid = self.resolve_table(&td.for_entity().id().into()).ok_or(
                 ValidationError::UnknownTable {
