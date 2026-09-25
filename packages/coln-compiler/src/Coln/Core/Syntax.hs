@@ -12,16 +12,16 @@ import Coln.Core.Value qualified as V
 -- Abstractions
 --------------------------------------------------------------------------------
 
-data Abs (f :: Case -> Type) (c :: Case) = Abs {
-  binding :: AbsEntry,
-  body :: f c
+data Abs (f :: Case -> Type) (c :: Case) = Abs
+  { binding :: AbsEntry
+  , body :: f c
   }
 
 deriving instance (Show (f c)) => Show (Abs f c)
 
-data MultiAbs (f :: Case -> Type) (c :: Case) = MultiAbs {
-  bindings :: [AbsEntry],
-  body :: f c
+data MultiAbs (f :: Case -> Type) (c :: Case) = MultiAbs
+  { bindings :: [AbsEntry]
+  , body :: f c
   }
 
 deriving instance (Show (f c)) => Show (MultiAbs f c)

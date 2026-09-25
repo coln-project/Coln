@@ -68,16 +68,18 @@ nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 
 multibinding :: [AbsEntry] -> N.Ntn0 -> N.Ntn0
 multibinding xs n = N.Infix (foldl1 N.Juxt idents) (N.Keyword ":" ()) n
-  where idents = flip fmap xs \case
-          Anonymous -> N.Ident "_" ()
-          Named x -> N.Ident x ()
+ where
+  idents = flip fmap xs \case
+    Anonymous -> N.Ident "_" ()
+    Named x -> N.Ident x ()
 
 instance ToNotation (Ty e) where
   toNotation xs = \case
     U u -> N.Keyword (fromString $ show $ pretty u) ()
     Decode _ t -> toNotation xs t
     Function f -> case f.cod of
-      MultiAbs [Anonymous] b -> -- This does need to be a special case so ordinary functions can be simply (A -> B)
+      MultiAbs [Anonymous] b ->
+        -- This does need to be a special case so ordinary functions can be simply (A -> B)
         N.Infix
           (toNotation xs f.dom)
           (N.Keyword "->" ())
@@ -87,9 +89,10 @@ instance ToNotation (Ty e) where
           (multibinding ns (toNotation xs f.dom))
           (N.Keyword "->" ())
           (toNotation (xs <> fromList names) b)
-        where names = flip mapMaybe ns \case
-                Anonymous -> Nothing
-                Named n -> Just n
+       where
+        names = flip mapMaybe ns \case
+          Anonymous -> Nothing
+          Named n -> Just n
     Record r -> N.Block "sig" Nothing (go xs $ toList r.fieldTypes) ()
      where
       go _ [] = []

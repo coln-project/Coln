@@ -18,10 +18,10 @@ variantFor m dom cod sp e =
       let msg = "higher-order theories are not supported"
       failWith e.diagEnv sp FunctionDomainTooLarge msg
 
-data Binder = Binder {
-  bindings :: [AbsEntry],
-  mode :: Mode,
-  domain :: Typ N
+data Binder = Binder
+  { bindings :: [AbsEntry]
+  , mode :: Mode
+  , domain :: Typ N
   }
 
 shiftToMode :: Mode -> Scope -> Scope
