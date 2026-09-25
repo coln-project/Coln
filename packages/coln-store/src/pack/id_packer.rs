@@ -2,11 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::engine::packed::PackedValue;
+use coln_flir_rs::{WireRowId, WireValue};
+
 use crate::commit::hash_dict::HashMapper;
 use crate::op::Op;
-use crate::pack::{PackedOp, PackedRowId, PackedValue};
+use crate::pack::{PackedOp, PackedRowId};
 use crate::rollback::Rollback;
-use crate::table::{WireRowId, WireValue};
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]

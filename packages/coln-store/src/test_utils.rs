@@ -8,14 +8,11 @@ use coln_flir_rs::ir::{
 };
 use rstest::fixture;
 
-use crate::{
-    commit::{hash::CommitHash, wire::root::RootCommitData},
-    store::{ColnDef, Store},
-    table::WireRowId,
-    txn::rw::StoreWrite,
-};
+use crate::{commit::wire::root::RootCommitData, store::Store, txn::rw::StoreWrite};
 
 mod rowid {
+    use coln_flir_rs::{WireRowId, hash::CommitHash};
+
     use super::*;
 
     #[fixture]
@@ -124,6 +121,8 @@ mod schema {
 }
 
 mod root {
+    use coln_flir_rs::engine::schema::ColnDef;
+
     use super::*;
 
     #[fixture]
@@ -214,6 +213,9 @@ mod root {
 }
 
 mod store {
+    use coln_flir_rs::engine::schema::ColnDef;
+    use coln_flir_rs::hash::CommitHash;
+
     use crate::store::auto::AutoStore;
 
     use super::root::empty_colndef;

@@ -5,10 +5,11 @@
 //! Integration tests for REPL commands.
 //! Integration tests for `begin batch` … `commit` REPL semantics.
 
+use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::{
     repl::{exe::run_transact, parse::coln::BatchAssignment},
-    store::{ColnDef, Store},
+    store::Store,
 };
 use rstest::{fixture, rstest};
 

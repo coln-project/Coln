@@ -12,10 +12,11 @@ mod uf;
 
 use std::{cell::RefCell, collections::HashMap};
 
+use coln_flir_rs::engine::packed::PackedRowId;
 use ena::unify::{InPlace, Snapshot};
 
 use crate::{
-    pack::{IdPacker, PackedRowId},
+    pack::IdPacker,
     rollback::Rollback,
     rowing::uf::{NodeId, UnionFind},
     table::TableOid,
@@ -145,9 +146,9 @@ impl Rowing {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::WireRowId;
     use rstest::rstest;
 
-    use crate::table::WireRowId;
     use crate::test_utils::zerocounter_row_id;
 
     use super::*;

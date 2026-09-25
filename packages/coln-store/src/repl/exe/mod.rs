@@ -11,24 +11,21 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
+use coln_flir_rs::WireRowId;
+use coln_flir_rs::engine::schema::ColnDef;
+use coln_flir_rs::engine::txn_val::{TempRowId, TxnWireRowId, TxnWireTuple, TxnWireValue};
 
-use crate::{
-    commit::pst::{decode_store, encode_store},
-    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm},
-    store::{ColnDef, Store},
-    table::{TableHandle, WireRowId},
-    txn::{TempRowId, TxnWireValue, id::TxnWireTuple},
-};
-use crate::{
-    repl::{
-        Session, ShellMode, Step,
-        parse::{
-            ColnCommand, MetaCommand, SqlCommand,
-            coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
-        },
+use crate::commit::pst::{decode_store, encode_store};
+use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm};
+use crate::repl::{
+    Session, ShellMode, Step,
+    parse::{
+        ColnCommand, MetaCommand, SqlCommand,
+        coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
     },
-    txn::TxnWireRowId,
 };
+use crate::store::Store;
+use crate::table::TableHandle;
 
 fn help_text(mode: ShellMode) -> String {
     let mut lines = vec![

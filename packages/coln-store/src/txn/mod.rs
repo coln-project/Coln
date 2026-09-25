@@ -9,18 +9,18 @@ pub mod rw;
 mod timestamp;
 
 use crate::{
-    commit::hash::CommitHash,
     store::{Store, error::StoreError},
-    table::{WireRowId, cell::WireTuple, handle::WireRowView},
-    txn::{
-        id::TxnWireTuple,
-        rw::{StoreRead, StoreWrite, WhereClause},
-    },
+    txn::rw::{StoreRead, StoreWrite},
 };
-use coln_flir_rs::ir;
+#[cfg(feature = "native")]
+use coln_flir_rs::engine::txn_val::{TempRowId, TxnWireTuple};
+use coln_flir_rs::{
+    WireRowId, WireRowView, WireTuple, engine::txn_val::TxnWireRowId, hash::CommitHash, ir,
+    query::WhereClause,
+};
 
-pub(crate) use id::{PendingOp, TempRowId};
-pub use id::{TxnWireRowId, TxnWireValue, empty_row};
+pub(crate) use id::PendingOp;
+pub use id::empty_row;
 use inner::TxnInner;
 pub use owned::OwnedTransaction;
 
@@ -144,11 +144,13 @@ impl<M> Drop for Transaction<M> {
 #[cfg(test)]
 mod tests {
 
+    use coln_flir_rs::WireValue;
+    use coln_flir_rs::engine::txn_val::TxnWireValue;
     use rstest::rstest;
 
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
-    use crate::table::{ValidationError, WireValue};
+    use crate::table::ValidationError;
     use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int_store};
     use crate::txn::id::{Promote, empty_row};
 

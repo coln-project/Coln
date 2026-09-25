@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::table::{TableOid, WireRowId, WireValue};
+use coln_flir_rs::{WireRowId, WireValue};
+
+use crate::table::TableOid;
 
 pub const OP_KIND_ADD: u32 = 0;
 

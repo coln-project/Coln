@@ -121,14 +121,14 @@ impl CommitGraph {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::engine::schema::ColnDef;
+    use coln_flir_rs::hash::HASH_SIZE;
     use rstest::{fixture, rstest};
 
     use super::*;
     use crate::commit::author::Author;
-    use crate::commit::hash::HASH_SIZE;
     use crate::commit::wire::RootCommitData;
     use crate::ir::{FlatRealm, Path, Schema, TableEntry};
-    use crate::store::ColnDef;
     use crate::test_utils::{empty_colndef, int_schema};
 
     fn h(n: u8) -> CommitHash {

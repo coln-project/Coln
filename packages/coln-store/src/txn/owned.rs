@@ -2,16 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir;
+use coln_flir_rs::{
+    WireRowId, WireRowView, WireTuple, engine::txn_val::TxnWireTuple, hash::CommitHash, ir,
+    query::WhereClause,
+};
 
 use crate::{
-    commit::hash::CommitHash,
     store::{Store, error::StoreError},
-    table::{WireRowId, cell::WireTuple, handle::WireRowView},
     txn::{
         TxnWireRowId,
-        id::TxnWireTuple,
-        rw::{StoreRead, StoreWrite, WhereClause},
+        rw::{StoreRead, StoreWrite},
     },
 };
 
@@ -79,10 +79,9 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::commit::wire::RootCommitData;
     use crate::ir::Path;
     use crate::table::ValidationError;
-    use crate::test_utils::{link_foreign_key_root_commit_data, single_int_store};
+    use crate::test_utils::single_int_store;
     use crate::txn::id::Promote;
 
     #[rstest]
@@ -146,21 +145,5 @@ mod tests {
         tx.add(&path, vec![2i32]).expect("add pending");
         assert_eq!(tx.scan_table(&path).expect("T").len(), 1);
         let _store = tx.abort();
-    }
-
-    #[rstest]
-    fn owned_transaction_commit_err_returns_original_store(
-        link_foreign_key_root_commit_data: RootCommitData,
-    ) {
-        let link = Path::from("Link");
-        let root = link_foreign_key_root_commit_data;
-        let store = Store::try_from_ir(root.ir, root.coln_def).expect("theory");
-
-        let mut tx = OwnedTransaction::new(store);
-        tx.add(&link, vec![10_i32, 20_i32]).expect("add");
-
-        let (err, recovered) = tx.commit().unwrap_err();
-        assert!(matches!(err, StoreError::Rule(_)));
-        assert_eq!(recovered.table_at(&link).expect("Link").row_count(), 0);
     }
 }

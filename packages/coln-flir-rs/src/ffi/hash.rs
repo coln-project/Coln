@@ -7,8 +7,8 @@ use specta::Type;
 use std::fmt;
 
 /// The number of bytes in a commit hash.
-pub(crate) const HASH_SIZE: usize = 32;
-pub(crate) static ALL_ZERO_HASH: CommitHash = CommitHash([0; HASH_SIZE]);
+pub const HASH_SIZE: usize = 32;
+pub static ALL_ZERO_HASH: CommitHash = CommitHash([0; HASH_SIZE]);
 
 #[derive(
     Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize, Type,
@@ -20,11 +20,11 @@ pub struct CommitHash(
 );
 
 impl CommitHash {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
-    pub(crate) fn checksum(&self) -> [u8; 4] {
+    pub fn checksum(&self) -> [u8; 4] {
         [self.0[0], self.0[1], self.0[2], self.0[3]]
     }
 }

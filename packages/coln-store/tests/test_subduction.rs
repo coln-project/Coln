@@ -4,13 +4,14 @@
 
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
+use coln_flir_rs::WireValue;
+use coln_flir_rs::engine::schema::ColnDef;
+use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
 use coln_store::{
-    commit::hash::CommitHash,
-    store::{ColnDef, Store, frag::FragmentSync},
-    table::WireValue,
+    store::{Store, frag::FragmentSync},
     txn::rw::StoreWrite,
 };
 use future_form::Sendable;

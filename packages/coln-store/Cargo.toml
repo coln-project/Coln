@@ -24,7 +24,6 @@ clap = { version = "4.6.1", features = ["derive"], optional = true }
 coln-flir-rs = { path = "../coln-flir-rs" }
 csv = "1.4.0"
 ena = "0.14.4"
-hex = { version = "0.4.3", features = ["serde"] }
 hexane = "1.0.0-alpha.5"
 leb128 = "0.2.6"
 petgraph = "0.8.3"
@@ -40,8 +39,8 @@ tracing-subscriber = { workspace = true, features = [
     "env-filter",
     "fmt",
 ], optional = true }
-specta.workspace = true
 rstest = "0.26.1"
+hex.workspace = true
 
 [dev-dependencies]
 future_form = "0.3.1"
@@ -69,16 +68,8 @@ tokio = { version = "1.52.3", features = [
 
 [features]
 default = ["native"]
-native = [
-    "dep:rustyline",
-    "dep:tracing-subscriber",
-    "dep:clap",
-    "dep:coln-query",
-]
+native = ["dep:rustyline", "dep:tracing-subscriber", "dep:clap"]
 wasm = []
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-coln-query = { path = "../coln-query", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = { version = "0.3.83" }

@@ -4,12 +4,15 @@
 
 use std::{collections::BTreeSet, sync::Once};
 
+use coln_flir_rs::engine::schema::ColnDef;
+use coln_flir_rs::engine::txn_val::TxnWireValue;
+use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{self, FlatRealm, Path};
+use coln_flir_rs::{WireRowId, WireValue};
 use coln_store::{
-    commit::{hash::CommitHash, pst},
-    store::{ColnDef, Store, error::StoreError},
-    table::{WireRowId, WireValue},
-    txn::{TxnWireValue, empty_row, id::Promote, rw::StoreWrite},
+    commit::pst,
+    store::{Store, error::StoreError},
+    txn::{empty_row, id::Promote, rw::StoreWrite},
 };
 use rstest::{fixture, rstest};
 use tracing_subscriber::EnvFilter;
@@ -157,60 +160,6 @@ fn test_add_edge_referencing_vertices_from_previous_commit(
             WireValue::Id(data.v2.clone())
         ]
     );
-}
-
-#[rstest]
-fn test_missing_vertex_rejects_batch_without_mutation(
-    #[from(graph_ir)] theory: &FlatRealm,
-    #[from(graph_coln_def)] coln_def: &ColnDef,
-) {
-    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
-
-    let vertices = store.table_at(&Path::from("root.V")).expect("root.V table");
-    let edges = store.table_at(&Path::from("root.E")).expect("root.E table");
-
-    assert_eq!(vertices.row_count(), 0);
-    assert_eq!(edges.row_count(), 0);
-
-    let dummy_vid = WireRowId {
-        commit: CommitHash([0xff; 32]),
-        counter: u32::MAX,
-    };
-    let mut tx = store.transaction();
-    tx.add(
-        &Path::from("root.E"),
-        vec![dummy_vid.clone(), dummy_vid.clone()],
-    )
-    .expect("add edge");
-    let err = tx.commit().expect_err("missing vertices");
-    assert!(matches!(err, StoreError::Rule(_)));
-
-    assert_eq!(
-        store.table_at(&Path::from("root.V")).unwrap().row_count(),
-        0
-    );
-    assert_eq!(
-        store.table_at(&Path::from("root.E")).unwrap().row_count(),
-        0
-    );
-}
-
-#[rstest]
-fn test_fk(#[from(graph_ir)] theory: &FlatRealm, #[from(graph_coln_def)] coln_def: &ColnDef) {
-    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
-
-    let ge = Path::from("root.E");
-    let data = add_basic_data_to_graph(&mut store).expect("add valid baseline data");
-
-    let dummy_vid = WireRowId {
-        commit: CommitHash([0xff; 32]),
-        counter: u32::MAX,
-    };
-    let mut tx = store.transaction();
-    tx.add(&ge, vec![data.v1, dummy_vid]).expect("add edge");
-    let err = tx.commit().expect_err("missing target vertex");
-
-    assert!(matches!(err, StoreError::Rule(_)));
 }
 
 #[rstest]

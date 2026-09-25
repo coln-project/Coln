@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use ena::unify::{InPlaceUnificationTable, UnifyKey, UnifyValue};
-
-use crate::table::WireRowId;
+use coln_flir_rs::WireRowId;
+use ena::unify::{InPlaceUnificationTable, UnifyKey};
 
 pub(super) type UnionFind = InPlaceUnificationTable<NodeId>;
 
@@ -24,13 +23,5 @@ impl UnifyKey for NodeId {
 
     fn tag() -> &'static str {
         "rowing"
-    }
-}
-
-impl UnifyValue for WireRowId {
-    type Error = ena::unify::NoError;
-
-    fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
-        Ok((value1).min(value2).clone())
     }
 }

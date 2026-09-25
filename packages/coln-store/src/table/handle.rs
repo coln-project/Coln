@@ -2,6 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::engine::packed::{PackedRowView, PackedTuple, PackedValue};
+use coln_flir_rs::{WireRowId, WireRowView, WireValue};
+
 use crate::ir;
 use crate::ir::Schema;
 #[cfg(test)]
@@ -11,16 +14,7 @@ use crate::rowing::Rowing;
 #[cfg(test)]
 use crate::table::PackedOp;
 use crate::table::index::IndexMeta;
-use crate::table::{
-    PackedRowView, PackedTuple, PackedValue, Table, TableOid, ValidationError, WireRowId, WireValue,
-};
-
-/// Public facing row value
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WireRowView {
-    pub row_id: WireRowId,
-    pub values: Vec<WireValue>,
-}
+use crate::table::{Table, TableOid, ValidationError};
 
 /// A [`Table`] together with the store-wide hash dictionary and canonicaliser,
 /// for read-only access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -176,14 +170,6 @@ impl<'a> TableMut<'a> {
         self.inner.stage_update(PackedOp::Delete { row_id });
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn apply_staged(
-        &mut self,
-    ) -> Result<coln_query::api::deltas::TableDelta, ValidationError> {
-        self.inner.apply_staged_ops(self.rowing)
-    }
-
-    #[cfg(target_arch = "wasm32")]
     pub(crate) fn apply_staged(&mut self) -> Result<(), ValidationError> {
         self.inner.apply_staged_ops(self.rowing)
     }
@@ -208,13 +194,11 @@ impl<'a> TableMut<'a> {
 
 #[cfg(test)]
 mod test {
-    use coln_flir_rs::ir::Path;
+    use coln_flir_rs::{hash::CommitHash, ir::Path};
     use rstest::rstest;
 
     use super::*;
-    use crate::{
-        commit::hash::CommitHash, store::Store, table::WireRowId, test_utils::commit_int_store,
-    };
+    use crate::{store::Store, test_utils::commit_int_store};
 
     #[rstest]
     fn row_by_id_finds_committed_row(commit_int_store: (Store, CommitHash)) {

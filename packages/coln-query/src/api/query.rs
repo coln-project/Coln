@@ -21,13 +21,13 @@ use crate::relational::expr::{
 };
 use crate::relational::schema::{Column, EntityRef, TableSchema};
 use crate::scalarial::ScalarType;
+use coln_flir_rs::engine::schema::{
+    BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
+    StoreEngineCols,
+};
 use coln_flir_rs::ir::{
     self, Atom, DefinitionEntry, El, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry,
     TableEntry,
-};
-use coln_flir_rs::schema::{
-    BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
-    StoreEngineCols,
 };
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;

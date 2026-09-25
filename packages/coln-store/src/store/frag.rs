@@ -2,8 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::hash::CommitHash;
+
 use crate::{
-    commit::{Commit, chunk::Chunk, error::CodecError, hash::CommitHash},
+    commit::{Commit, chunk::Chunk, error::CodecError},
     store::{Store, error::StoreError},
 };
 
