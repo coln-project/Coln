@@ -1,0 +1,920 @@
+{
+  "entities": [
+    {
+      "path": "root.red",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.blue",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.red-blue",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.red" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.blue" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.blue-red",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.blue" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.red" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.red-over",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.red" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.blue-over",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.blue" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.red-blue-over",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "v", "type": { "tag": "rowId", "path": "root.red" } },
+          { "path": "a", "type": { "tag": "rowId", "path": "root.red-over" } },
+          { "path": "w", "type": { "tag": "rowId", "path": "root.blue" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.blue-over" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.blue-red-over",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "w", "type": { "tag": "rowId", "path": "root.blue" } },
+          { "path": "a", "type": { "tag": "rowId", "path": "root.blue-over" } },
+          { "path": "v", "type": { "tag": "rowId", "path": "root.red" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.red-over" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "init.connection-info.red-red",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.red" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.red" } }
+        ],
+        "primaryKey": [0, 1]
+      }
+    },
+    {
+      "path": "init.connection-info.blue-blue",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.blue" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.blue" } }
+        ],
+        "primaryKey": [0, 1]
+      }
+    },
+    {
+      "path": "init.connection-info.red-red-over",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "v0", "type": { "tag": "rowId", "path": "root.red" } },
+          { "path": "a", "type": { "tag": "rowId", "path": "root.red-over" } },
+          { "path": "v1", "type": { "tag": "rowId", "path": "root.red" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.red-over" } }
+        ],
+        "primaryKey": [0, 1, 2, 3]
+      }
+    },
+    {
+      "path": "init.connection-info.blue-blue-over",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "w0", "type": { "tag": "rowId", "path": "root.blue" } },
+          { "path": "a", "type": { "tag": "rowId", "path": "root.blue-over" } },
+          { "path": "w1", "type": { "tag": "rowId", "path": "root.blue" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.blue-over" } }
+        ],
+        "primaryKey": [0, 1, 2, 3]
+      }
+    }
+  ],
+  "definitions": [
+    {
+      "path": "init.connection-info.red/refl",
+      "value": {
+        "vars": [["v", { "tag": "rowId", "path": "root.red" }]],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          }
+        ],
+        "definand": "init.connection-info.red-red",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 0 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection-info.blue/refl",
+      "value": {
+        "vars": [["w", { "tag": "rowId", "path": "root.blue" }]],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          }
+        ],
+        "definand": "init.connection-info.blue-blue",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 0 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection-info.red/trans",
+      "value": {
+        "vars": [
+          ["v0", { "tag": "rowId", "path": "root.red" }],
+          ["x0", { "tag": "rowId", "path": "root.red-over" }],
+          ["v1", { "tag": "rowId", "path": "root.red" }],
+          ["x1", { "tag": "rowId", "path": "root.red-over" }],
+          ["w0", { "tag": "rowId", "path": "root.blue" }],
+          ["y0", { "tag": "rowId", "path": "root.blue-over" }],
+          ["w1", { "tag": "rowId", "path": "root.blue" }],
+          ["y1", { "tag": "rowId", "path": "root.blue-over" }],
+          ["a", { "tag": "rowId", "path": "root.red-blue-over" }],
+          ["c", { "tag": "rowId", "path": "root.blue-red-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 5 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 4 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 6 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 7 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 6 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-blue-over",
+              "rowId": { "tag": "var", "index": 8 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 4 } },
+                { "column": 3, "term": { "tag": "var", "index": 5 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.connection-info.blue-blue-over",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 4 } },
+                { "column": 1, "term": { "tag": "var", "index": 5 } },
+                { "column": 2, "term": { "tag": "var", "index": 6 } },
+                { "column": 3, "term": { "tag": "var", "index": 7 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-red-over",
+              "rowId": { "tag": "var", "index": 9 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 6 } },
+                { "column": 1, "term": { "tag": "var", "index": 7 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } },
+                { "column": 3, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.connection-info.red-red-over",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 },
+          { "tag": "var", "index": 3 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection-info.blue/trans",
+      "value": {
+        "vars": [
+          ["w0", { "tag": "rowId", "path": "root.blue" }],
+          ["y0", { "tag": "rowId", "path": "root.blue-over" }],
+          ["w1", { "tag": "rowId", "path": "root.blue" }],
+          ["y1", { "tag": "rowId", "path": "root.blue-over" }],
+          ["v0", { "tag": "rowId", "path": "root.red" }],
+          ["x0", { "tag": "rowId", "path": "root.red-over" }],
+          ["v1", { "tag": "rowId", "path": "root.red" }],
+          ["x1", { "tag": "rowId", "path": "root.red-over" }],
+          ["a", { "tag": "rowId", "path": "root.blue-red-over" }],
+          ["c", { "tag": "rowId", "path": "root.red-blue-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 5 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 4 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 6 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 7 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 6 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-red-over",
+              "rowId": { "tag": "var", "index": 8 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 4 } },
+                { "column": 3, "term": { "tag": "var", "index": 5 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.connection-info.red-red-over",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 4 } },
+                { "column": 1, "term": { "tag": "var", "index": 5 } },
+                { "column": 2, "term": { "tag": "var", "index": 6 } },
+                { "column": 3, "term": { "tag": "var", "index": 7 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-blue-over",
+              "rowId": { "tag": "var", "index": 9 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 6 } },
+                { "column": 1, "term": { "tag": "var", "index": 7 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } },
+                { "column": 3, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.connection-info.blue-blue-over",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 },
+          { "tag": "var", "index": 3 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection-info.red-over/lift",
+      "value": {
+        "vars": [
+          ["v0", { "tag": "rowId", "path": "root.red" }],
+          ["x0", { "tag": "rowId", "path": "root.red-over" }],
+          ["v1", { "tag": "rowId", "path": "root.red" }],
+          ["x1", { "tag": "rowId", "path": "root.red-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.connection-info.red-red",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.connection-info.red-red-over",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 },
+          { "tag": "var", "index": 3 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection-info.blue-over/lift",
+      "value": {
+        "vars": [
+          ["w0", { "tag": "rowId", "path": "root.blue" }],
+          ["y0", { "tag": "rowId", "path": "root.blue-over" }],
+          ["w1", { "tag": "rowId", "path": "root.blue" }],
+          ["y1", { "tag": "rowId", "path": "root.blue-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.connection-info.blue-blue",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.connection-info.blue-blue-over",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 },
+          { "tag": "var", "index": 3 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection-info.red-over/refl",
+      "value": {
+        "vars": [
+          ["v", { "tag": "rowId", "path": "root.red" }],
+          ["x", { "tag": "rowId", "path": "root.red-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          }
+        ],
+        "definand": "init.connection-info.red-red-over",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection-info.blue-over/refl",
+      "value": {
+        "vars": [
+          ["w", { "tag": "rowId", "path": "root.blue" }],
+          ["y", { "tag": "rowId", "path": "root.blue-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          }
+        ],
+        "definand": "init.connection-info.blue-blue-over",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 }
+        ]
+      }
+    }
+  ],
+  "rules": [
+    {
+      "path": "root.red.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": { "entity": "root.red", "rowId": null, "values": [] }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": "root.blue.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": { "entity": "root.blue", "rowId": null, "values": [] }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": "root.red-blue.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["a", { "tag": "rowId", "path": "root.red" }],
+          ["b", { "tag": "rowId", "path": "root.blue" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-blue",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "root.blue-red.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["a", { "tag": "rowId", "path": "root.blue" }],
+          ["b", { "tag": "rowId", "path": "root.red" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-red",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "root.red-over.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [["a", { "tag": "rowId", "path": "root.red" }]],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": null,
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "root.blue-over.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [["a", { "tag": "rowId", "path": "root.blue" }]],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": null,
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "root.red-blue-over.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["v", { "tag": "rowId", "path": "root.red" }],
+          ["a", { "tag": "rowId", "path": "root.red-over" }],
+          ["w", { "tag": "rowId", "path": "root.blue" }],
+          ["b", { "tag": "rowId", "path": "root.blue-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-blue-over",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } },
+                { "column": 3, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "root.blue-red-over.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["w", { "tag": "rowId", "path": "root.blue" }],
+          ["a", { "tag": "rowId", "path": "root.blue-over" }],
+          ["v", { "tag": "rowId", "path": "root.red" }],
+          ["b", { "tag": "rowId", "path": "root.red-over" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-red-over",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } },
+                { "column": 3, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.blue-over",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.red-over",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

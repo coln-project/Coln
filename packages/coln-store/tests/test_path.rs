@@ -95,7 +95,7 @@ fn add_graph_edge(
 fn test_read_graph_realm_json(#[from(graph_ir)] theory: &FlatRealm) {
     assert_eq!(
         theory.tables.len(),
-        2,
+        4,
         "expected table count from GraphRealm.json"
     );
     assert_eq!(

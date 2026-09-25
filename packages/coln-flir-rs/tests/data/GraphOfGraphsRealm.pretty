@@ -20,8 +20,92 @@ flatrealm
       b : root.fiber.E,
       c : root.fiber.E
     ] primarykey [v0, v1, a, v0/a, v1/a, b]
+    view init.connection.t := [
+      a.base : root.base.V,
+      a.fiber : root.fiber.V,
+      b.base : root.base.V,
+      b.fiber : root.fiber.V
+    ] primarykey [a.base, a.fiber, b.base, b.fiber]
+    view view.total.V := [
+      V.base : root.base.V,
+      V.fiber : root.fiber.V
+    ] primarykey [V.base, V.fiber]
+    view view.total.E := [
+      v0.base : root.base.V,
+      v0.fiber : root.fiber.V,
+      v1.base : root.base.V,
+      v1.fiber : root.fiber.V,
+      E.base : root.base.E,
+      E.fiber : root.fiber.E
+    ] primarykey [v0.base, v0.fiber, v1.base, v1.fiber, E.base, E.fiber]
   end
   definitions
+    chased init.connection.refl v.base v.fiber := v.base ∈ root.base.V [] ∧ v.fiber ∈ root.fiber.V [
+      a ↦ v.base
+    ] ⊢ init.connection.t [
+      a.base ↦ v.base,
+      a.fiber ↦ v.fiber,
+      b.base ↦ v.base,
+      b.fiber ↦ v.fiber
+    ]
+    chased init.connection.snoc v0.base v0.fiber v1.base v1.fiber v2.base v2.fiber b.base b.fiber c := v0.base ∈ root.base.V [] ∧ v0.fiber ∈ root.fiber.V [
+      a ↦ v0.base
+    ] ∧ v1.base ∈ root.base.V [] ∧ v1.fiber ∈ root.fiber.V [
+      a ↦ v1.base
+    ] ∧ v2.base ∈ root.base.V [] ∧ v2.fiber ∈ root.fiber.V [
+      a ↦ v2.base
+    ] ∧ init.connection.t [
+      a.base ↦ v0.base,
+      a.fiber ↦ v0.fiber,
+      b.base ↦ v1.base,
+      b.fiber ↦ v1.fiber
+    ] ∧ root.action.V [
+      v0 ↦ v1.base,
+      v1 ↦ v2.base,
+      a ↦ b.base,
+      b ↦ v1.fiber,
+      c ↦ c
+    ] ∧ b.base ∈ root.base.E [
+      a ↦ v1.base,
+      b ↦ v2.base
+    ] ∧ b.fiber ∈ root.fiber.E [
+      a ↦ v2.base,
+      b ↦ c,
+      c ↦ v2.fiber
+    ] ⊢ init.connection.t [
+      a.base ↦ v0.base,
+      a.fiber ↦ v0.fiber,
+      b.base ↦ v2.base,
+      b.fiber ↦ v2.fiber
+    ]
+    chased view.total.V.definition V.base V.fiber := V.base ∈ root.base.V [] ∧ V.fiber ∈ root.fiber.V [
+      a ↦ V.base
+    ] ⊢ view.total.V [V.base ↦ V.base, V.fiber ↦ V.fiber]
+    chased view.total.E.definition v0.base v0.fiber v1.base v1.fiber E.base E.fiber a := v0.base ∈ root.base.V [] ∧ v0.fiber ∈ root.fiber.V [
+      a ↦ v0.base
+    ] ∧ v1.base ∈ root.base.V [] ∧ v1.fiber ∈ root.fiber.V [
+      a ↦ v1.base
+    ] ∧ root.action.V [
+      v0 ↦ v0.base,
+      v1 ↦ v1.base,
+      a ↦ E.base,
+      b ↦ v0.fiber,
+      c ↦ a
+    ] ∧ E.base ∈ root.base.E [
+      a ↦ v0.base,
+      b ↦ v1.base
+    ] ∧ E.fiber ∈ root.fiber.E [
+      a ↦ v1.base,
+      b ↦ a,
+      c ↦ v1.fiber
+    ] ⊢ view.total.E [
+      v0.base ↦ v0.base,
+      v0.fiber ↦ v0.fiber,
+      v1.base ↦ v1.base,
+      v1.fiber ↦ v1.fiber,
+      E.base ↦ E.base,
+      E.fiber ↦ E.fiber
+    ]
   end
   rules
     enforced root.base.V.foreignKey := root.base.V [] ⊢ ⊤
