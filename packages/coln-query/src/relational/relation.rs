@@ -14,8 +14,9 @@ use std::{
 };
 
 pub trait Tuple: FromIterator<ScalarTypedValue> {
+    /// The empty tuple is also called the _unit tuple_.
     fn empty() -> Self {
-        Self::from_iter(vec![])
+        Self::from_iter(std::iter::empty())
     }
     fn data_at(&self, index: usize) -> &ScalarTypedValue;
     /// Iterates over _all_ stored fields of the tuple,

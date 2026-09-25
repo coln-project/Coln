@@ -11,6 +11,7 @@ use super::{
     store::TxStore,
     violations::{ViolationsDelta, ViolationsSet},
 };
+use crate::api::deltas::Consolidated;
 pub use crate::utils::cli_table::{CliReport, ToCliReport};
 use std::io;
 
@@ -190,18 +191,18 @@ pub enum TxOutcome {
 
 #[derive(Debug, Clone)]
 pub struct DataDelta {
-    derived: DerivedDataDelta,
+    derived: DerivedDataDelta<Consolidated>,
     soft_violations: ViolationsDelta,
 }
 
 impl DataDelta {
-    pub fn new(derived: DerivedDataDelta, soft_violations: ViolationsDelta) -> Self {
+    pub fn new(derived: DerivedDataDelta<Consolidated>, soft_violations: ViolationsDelta) -> Self {
         Self {
             derived,
             soft_violations,
         }
     }
-    pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta {
+    pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
         std::mem::take(&mut self.derived)
     }
     pub fn take_soft_violations(&mut self) -> ViolationsDelta {
@@ -335,7 +336,7 @@ impl<Store: TxStore> Tx<Pending<'_, Store>> {
 }
 
 impl Tx<Committed> {
-    pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta {
+    pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
         self.state.delta.take_derived_data_delta()
     }
     pub fn take_soft_violations(&mut self) -> ViolationsDelta {

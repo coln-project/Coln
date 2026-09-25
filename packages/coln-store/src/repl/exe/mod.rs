@@ -561,8 +561,8 @@ mod tests {
     #[test]
     fn loads_schema_summary_from_fixture() {
         let loaded = load_graph_schema();
-        assert_eq!(loaded.store.table_count(), 2);
-        assert_eq!(loaded.schema.table_count, 2);
+        assert_eq!(loaded.store.table_count(), 4);
+        assert_eq!(loaded.schema.table_count, 4);
         assert_eq!(loaded.schema.law_count, 2);
         assert_eq!(loaded.schema.tables[0].path, "root.V");
         let root = loaded

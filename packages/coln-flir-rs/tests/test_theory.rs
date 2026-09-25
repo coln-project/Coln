@@ -16,7 +16,8 @@ fn deserialises_all_theory_fixtures() {
 fn deserialises_graph_theory() {
     let theory = test_utils::load_theory_from_json("GraphRealm.json");
 
-    assert_eq!(theory.tables.len(), 2);
+    assert_eq!(theory.tables.len(), 4);
+    assert_eq!(theory.definitions.len(), 2);
     assert_eq!(theory.rules.len(), 2);
 
     assert_eq!(theory.tables[0].path, Path::from("root.V"));

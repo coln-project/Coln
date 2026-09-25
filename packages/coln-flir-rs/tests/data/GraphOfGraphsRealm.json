@@ -76,9 +76,368 @@
         ],
         "primaryKey": [0, 1, 2, 3, 4, 5]
       }
+    },
+    {
+      "path": "init.connection.t",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          {
+            "path": "a.base",
+            "type": { "tag": "rowId", "path": "root.base.V" }
+          },
+          {
+            "path": "a.fiber",
+            "type": { "tag": "rowId", "path": "root.fiber.V" }
+          },
+          {
+            "path": "b.base",
+            "type": { "tag": "rowId", "path": "root.base.V" }
+          },
+          {
+            "path": "b.fiber",
+            "type": { "tag": "rowId", "path": "root.fiber.V" }
+          }
+        ],
+        "primaryKey": [0, 1, 2, 3]
+      }
+    },
+    {
+      "path": "view.total.V",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "materialized" },
+        "columns": [
+          {
+            "path": "V.base",
+            "type": { "tag": "rowId", "path": "root.base.V" }
+          },
+          {
+            "path": "V.fiber",
+            "type": { "tag": "rowId", "path": "root.fiber.V" }
+          }
+        ],
+        "primaryKey": [0, 1]
+      }
+    },
+    {
+      "path": "view.total.E",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "materialized" },
+        "columns": [
+          {
+            "path": "v0.base",
+            "type": { "tag": "rowId", "path": "root.base.V" }
+          },
+          {
+            "path": "v0.fiber",
+            "type": { "tag": "rowId", "path": "root.fiber.V" }
+          },
+          {
+            "path": "v1.base",
+            "type": { "tag": "rowId", "path": "root.base.V" }
+          },
+          {
+            "path": "v1.fiber",
+            "type": { "tag": "rowId", "path": "root.fiber.V" }
+          },
+          {
+            "path": "E.base",
+            "type": { "tag": "rowId", "path": "root.base.E" }
+          },
+          {
+            "path": "E.fiber",
+            "type": { "tag": "rowId", "path": "root.fiber.E" }
+          }
+        ],
+        "primaryKey": [0, 1, 2, 3, 4, 5]
+      }
     }
   ],
-  "definitions": [],
+  "definitions": [
+    {
+      "path": "init.connection.refl",
+      "value": {
+        "vars": [
+          ["v.base", { "tag": "rowId", "path": "root.base.V" }],
+          ["v.fiber", { "tag": "rowId", "path": "root.fiber.V" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          }
+        ],
+        "definand": "init.connection.t",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 }
+        ]
+      }
+    },
+    {
+      "path": "init.connection.snoc",
+      "value": {
+        "vars": [
+          ["v0.base", { "tag": "rowId", "path": "root.base.V" }],
+          ["v0.fiber", { "tag": "rowId", "path": "root.fiber.V" }],
+          ["v1.base", { "tag": "rowId", "path": "root.base.V" }],
+          ["v1.fiber", { "tag": "rowId", "path": "root.fiber.V" }],
+          ["v2.base", { "tag": "rowId", "path": "root.base.V" }],
+          ["v2.fiber", { "tag": "rowId", "path": "root.fiber.V" }],
+          ["b.base", { "tag": "rowId", "path": "root.base.E" }],
+          ["b.fiber", { "tag": "rowId", "path": "root.fiber.E" }],
+          ["c", { "tag": "rowId", "path": "root.fiber.V" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.V",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.V",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.V",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.V",
+              "rowId": { "tag": "var", "index": 5 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 4 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.connection.t",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } },
+                { "column": 3, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.action.V",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 2 } },
+                { "column": 1, "term": { "tag": "var", "index": 4 } },
+                { "column": 2, "term": { "tag": "var", "index": 6 } },
+                { "column": 3, "term": { "tag": "var", "index": 3 } },
+                { "column": 4, "term": { "tag": "var", "index": 8 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.E",
+              "rowId": { "tag": "var", "index": 6 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 2 } },
+                { "column": 1, "term": { "tag": "var", "index": 4 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.E",
+              "rowId": { "tag": "var", "index": 7 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 4 } },
+                { "column": 1, "term": { "tag": "var", "index": 8 } },
+                { "column": 2, "term": { "tag": "var", "index": 5 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.connection.t",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 4 },
+          { "tag": "var", "index": 5 }
+        ]
+      }
+    },
+    {
+      "path": "view.total.V.definition",
+      "value": {
+        "vars": [
+          ["V.base", { "tag": "rowId", "path": "root.base.V" }],
+          ["V.fiber", { "tag": "rowId", "path": "root.fiber.V" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          }
+        ],
+        "definand": "view.total.V",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 }
+        ]
+      }
+    },
+    {
+      "path": "view.total.E.definition",
+      "value": {
+        "vars": [
+          ["v0.base", { "tag": "rowId", "path": "root.base.V" }],
+          ["v0.fiber", { "tag": "rowId", "path": "root.fiber.V" }],
+          ["v1.base", { "tag": "rowId", "path": "root.base.V" }],
+          ["v1.fiber", { "tag": "rowId", "path": "root.fiber.V" }],
+          ["E.base", { "tag": "rowId", "path": "root.base.E" }],
+          ["E.fiber", { "tag": "rowId", "path": "root.fiber.E" }],
+          ["a", { "tag": "rowId", "path": "root.fiber.V" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 0 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.V",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.V",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [{ "column": 0, "term": { "tag": "var", "index": 2 } }]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.action.V",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } },
+                { "column": 2, "term": { "tag": "var", "index": 4 } },
+                { "column": 3, "term": { "tag": "var", "index": 1 } },
+                { "column": 4, "term": { "tag": "var", "index": 6 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.base.E",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.fiber.E",
+              "rowId": { "tag": "var", "index": 5 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 2 } },
+                { "column": 1, "term": { "tag": "var", "index": 6 } },
+                { "column": 2, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          }
+        ],
+        "definand": "view.total.E",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 },
+          { "tag": "var", "index": 3 },
+          { "tag": "var", "index": 4 },
+          { "tag": "var", "index": 5 }
+        ]
+      }
+    }
+  ],
   "rules": [
     {
       "path": "root.base.V.foreignKey",
