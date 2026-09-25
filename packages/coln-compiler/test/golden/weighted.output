@@ -10,11 +10,9 @@ global entry named Q
 in mode: Conjunctive
 type: (G : WeightedGraph) -> Theory
 value: G => sig
-  x : G.V
-  y : G.V
-  z : G.V
+  x y z : G.V
   e1 : G.E x y 1
-  e1 : G.E y z 3
+  e2 : G.E y z 3
 end
 
 -- messages
