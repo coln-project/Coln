@@ -70,3 +70,6 @@ def eq-partially-applied : (y : Int) -> Int := eq-multi-2 19
 
 def eq-dep-arg-forward (F : Int -> Set) (f : (^c x y : Int) -> F y) : (^c x : Int) -> (^c y : Int) -> F y := f
 def eq-dep-arg-backward (F : Int -> Set) (f : (^c x : Int) -> (^c y : Int) -> F y) : (^c x y : Int) -> F y := f
+
+def eq-dep-tail-forward (F : Int -> Set) (f : (^c x y : Int) -> (z : F y) -> F x) : (^c x : Int) -> (^c y : Int) -> (z : F y) -> F x := f
+def eq-dep-tail-backward (F : Int -> Set) (f : (^c x : Int) -> (^c y : Int) -> (z : F y) -> F x) : (^c x y : Int) -> (z : F y) -> F x := f

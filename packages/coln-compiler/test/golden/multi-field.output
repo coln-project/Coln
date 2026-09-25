@@ -24,7 +24,25 @@ end
 global entry named simple-model
 in mode: Conjunctive
 type: SimpleSets
-value: [B := Int, x := 41, z := 34, y := 19]
+value: [B := Int, x := 41, y := 19, z := 34, w := 38]
+global entry named OnlyGroup
+in mode: Conjunctive
+type: Set
+value: sig
+  a b : Int
+end
+global entry named only-group-model
+in mode: Conjunctive
+type: OnlyGroup
+value: [a := 7, b := 11]
+global entry named Bound
+in mode: Conjunctive
+type: Theory
+value: sig
+  x y : Int
+  p : x = x
+  q : y = y
+end
 global entry named Q
 in mode: Conjunctive
 type: Prop
@@ -45,6 +63,6 @@ value: []
 global entry named prop-model
 in mode: Conjunctive
 type: SimpleProps
-value: [x := q, z := q, y := q]
+value: [x := q, y := q, z := q, w := q]
 
 -- messages

@@ -26,6 +26,21 @@ def simple-model : SimpleSets := struct
   w := 38
 end
 
+def OnlyGroup : Set := sig
+  a b : Int
+end
+
+def only-group-model : OnlyGroup := struct
+  a := 7
+  b := 11
+end
+
+theory Bound := sig
+  x y : Int
+  p : x = x
+  q : y = y
+end
+
 def Q : Prop := sig
 end
 

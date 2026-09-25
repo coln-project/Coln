@@ -17,7 +17,7 @@ theory LinearOrder := sig
 
   follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
 
-  acyclic : (^c x y : car) -> (^c y : car) -> follows x y -> follows y x -> x = y
+  acyclic : (^c x y : car) -> follows x y -> follows y x -> x = y
   first-is-top : (x : car) -> follows first x
   last-is-bot : (x : car) -> follows x last
 end

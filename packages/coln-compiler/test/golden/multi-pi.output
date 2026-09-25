@@ -123,5 +123,13 @@ global entry named eq-dep-arg-backward
 in mode: Conjunctive
 type: (F : Int -> Set) -> (f : (x : Int) -> (y : Int) -> F y) -> (x y : Int) -> F y
 value: F => f => f
+global entry named eq-dep-tail-forward
+in mode: Conjunctive
+type: (F : Int -> Set) -> (f : (x y : Int) -> (z : F y) -> F x) -> (x : Int) -> (y : Int) -> (z : F y) -> F x
+value: F => f => f
+global entry named eq-dep-tail-backward
+in mode: Conjunctive
+type: (F : Int -> Set) -> (f : (x : Int) -> (y : Int) -> (z : F y) -> F x) -> (x y : Int) -> (z : F y) -> F x
+value: F => f => f
 
 -- messages

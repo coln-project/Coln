@@ -19,7 +19,7 @@ value: sig
   prev/next : (x : car) -> prev (next x) = x
   follows : car -> car -> Set
   follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
-  acyclic : (x : car) -> (y : car) -> follows x y -> follows y x -> x = y
+  acyclic : (x y : car) -> follows x y -> follows y x -> x = y
   first-is-top : (x : car) -> follows first x
   last-is-bot : (x : car) -> follows x last
 end
