@@ -73,3 +73,14 @@ def eq-dep-arg-backward (F : Int -> Set) (f : (^c x : Int) -> (^c y : Int) -> F 
 
 def eq-dep-tail-forward (F : Int -> Set) (f : (^c x y : Int) -> (z : F y) -> F x) : (^c x : Int) -> (^c y : Int) -> (z : F y) -> F x := f
 def eq-dep-tail-backward (F : Int -> Set) (f : (^c x : Int) -> (^c y : Int) -> (z : F y) -> F x) : (^c x y : Int) -> (z : F y) -> F x := f
+
+
+## Bad cases:
+
+def eq-multi-2 : (x y : Int) -> Int := x => y => 19
+
+attr expected-error "E0300"
+def eq-too-few : (x : Int) -> Int := eq-multi-2
+
+attr expected-error "E0300"
+def eq-too-many : (x y z : Int) -> Int := eq-multi-2

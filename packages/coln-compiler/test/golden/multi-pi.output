@@ -57,10 +57,6 @@ global entry named eq-multi-2-eq
 in mode: Conjunctive
 type: (x y : Int) -> Int
 value: eq-single-2
-global entry named eq-multi-2
-in mode: Conjunctive
-type: (x y : Int) -> Int
-value: x => y => 19
 global entry named eq-single-2-eq
 in mode: Conjunctive
 type: (x : Int) -> (y : Int) -> Int
@@ -131,5 +127,19 @@ global entry named eq-dep-tail-backward
 in mode: Conjunctive
 type: (F : Int -> Set) -> (f : (x : Int) -> (y : Int) -> (z : F y) -> F x) -> (x y : Int) -> (z : F y) -> F x
 value: F => f => f
+global entry named eq-multi-2
+in mode: Conjunctive
+type: (x y : Int) -> Int
+value: x => y => 19
 
 -- messages
+
+expected error[E0300]: expected type (x : Int) -> Int, but got type (x y : Int) -> Int
+83 | def eq-too-few : (x : Int) -> Int := eq-multi-2
+83 |                                      ^^^^^^^^^^
+types Int and (y : Int) -> Int are not equal 
+
+expected error[E0300]: expected type (x y z : Int) -> Int, but got type (x y : Int) -> Int
+86 | def eq-too-many : (x y z : Int) -> Int := eq-multi-2
+86 |                                           ^^^^^^^^^^
+types (z : Int) -> Int and Int are not equal 
