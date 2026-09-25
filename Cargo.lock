@@ -1053,6 +1053,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "coln-bouncer"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "coln-store",
+ "criterion",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "coln-flir-rs"
 version = "0.1.0"
 dependencies = [

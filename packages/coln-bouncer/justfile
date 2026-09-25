@@ -7,7 +7,7 @@
 #   just fix          # apply cargo fixes + format
 #   just coverage     # llvm-cov + Cobertura
 
-crate := "coln-integrator"
+crate := "coln-bouncer"
 
 default:
     @just --list
