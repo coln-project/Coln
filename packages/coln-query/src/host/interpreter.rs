@@ -442,3 +442,90 @@ impl InterpreterContext<'_> {
         self.tuple_vars.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::{
+        QueryIr,
+        expr::{BinaryExpr, LiteralExpr, VarExpr},
+        resolver::ResolvedCode,
+        stmt::VarStmt,
+        variable::Environment,
+    };
+
+    fn bind(name: &str, initializer: Expr) -> Stmt {
+        Stmt::from(VarStmt {
+            name: name.to_owned(),
+            initializer: Some(initializer),
+        })
+    }
+
+    fn add(left: Expr, right: Expr) -> Expr {
+        Expr::from(BinaryExpr {
+            operator: Operator::Addition,
+            left,
+            right,
+        })
+    }
+
+    /// Resolves `stmts` and runs them, yielding the last statement's value.
+    fn run(stmts: Vec<Stmt>) -> Value {
+        let resolved = ResolvedCode::from(QueryIr::new(stmts)).expect("resolves");
+        let mut environment = Environment::default();
+        let mut ctx = InterpreterContext::new(&mut environment);
+        ScalarHost
+            .interpret(resolved.as_code().iter(), &mut ctx)
+            .expect("interprets")
+            .expect("the last statement yields a value")
+    }
+
+    #[test]
+    fn a_shadowing_initializer_reads_the_previous_binding() {
+        // var x = 1; var x = x + 1; var x = x + 1;
+        // Each initializer sees the binding it shadows, so this counts up.
+        let value = run(vec![
+            bind("x", Expr::from(LiteralExpr::from(1u64))),
+            bind(
+                "x",
+                add(
+                    Expr::from(VarExpr::new("x")),
+                    Expr::from(LiteralExpr::from(1u64)),
+                ),
+            ),
+            bind(
+                "x",
+                add(
+                    Expr::from(VarExpr::new("x")),
+                    Expr::from(LiteralExpr::from(1u64)),
+                ),
+            ),
+        ]);
+        assert_eq!(value, Value::Uint(3));
+    }
+
+    #[test]
+    fn a_variable_declared_after_a_shadowing_is_not_aliased() {
+        // var x = 1; var x = 2; var y = 3; var z = y;
+        // `y` must survive the shadowed `x`, which it would not if slots were
+        // counted by distinct names rather than by declarations.
+        let value = run(vec![
+            bind("x", Expr::from(LiteralExpr::from(1u64))),
+            bind("x", Expr::from(LiteralExpr::from(2u64))),
+            bind("y", Expr::from(LiteralExpr::from(3u64))),
+            bind("z", Expr::from(VarExpr::new("y"))),
+        ]);
+        assert_eq!(value, Value::Uint(3));
+    }
+
+    #[test]
+    fn shadowing_keeps_the_latest_binding_visible() {
+        // var x = 1; var x = 2; var y = x;
+        let value = run(vec![
+            bind("x", Expr::from(LiteralExpr::from(1u64))),
+            bind("x", Expr::from(LiteralExpr::from(2u64))),
+            bind("y", Expr::from(VarExpr::new("x"))),
+        ]);
+        assert_eq!(value, Value::Uint(2));
+    }
+}

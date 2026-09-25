@@ -31,6 +31,7 @@
 //! The tests at the bottom build up in difficulty and double as a guided
 //! tour of the translation.
 
+use indexmap::IndexSet;
 use std::collections::HashMap;
 
 use anyhow::{Context, Result, bail};
@@ -107,11 +108,13 @@ enum Bind {
 }
 
 impl Bind {
-    fn term(&self, remap: &HashMap<usize, usize>) -> Result<Term> {
+    /// `body_vars` holds the body's variables in first-occurrence order, so a
+    /// variable's position in it is its compacted index.
+    fn term(&self, body_vars: &IndexSet<usize>) -> Result<Term> {
         match self {
-            Bind::Var(v) => remap
-                .get(v)
-                .map(|nv| Term::Var(*nv))
+            Bind::Var(v) => body_vars
+                .get_index_of(v)
+                .map(Term::Var)
                 .context("head column refers to a variable that does not occur in the body"),
             Bind::Lit(value) => Ok(Term::Lit(value.clone())),
         }
@@ -725,15 +728,17 @@ impl Lowerer {
 
     /// Compact the frame's variables to a dense range and emit the rule.
     fn push_rule(&mut self, head_relation: &str, frame: Frame, scope: &Scope) -> Result<()> {
-        let mut remap: HashMap<usize, usize> = HashMap::new();
-        for atom in &frame.atoms {
-            for term in &atom.terms {
-                if let Term::Var(v) = term {
-                    let next = remap.len();
-                    remap.entry(*v).or_insert(next);
-                }
-            }
-        }
+        // Insertion order is the compaction: a variable's position in the set
+        // is the dense index it is rewritten to.
+        let body_vars: IndexSet<usize> = frame
+            .atoms
+            .iter()
+            .flat_map(|atom| &atom.terms)
+            .filter_map(|term| match term {
+                Term::Var(v) => Some(*v),
+                _ => None,
+            })
+            .collect();
         let body = frame
             .atoms
             .into_iter()
@@ -743,7 +748,11 @@ impl Lowerer {
                     .terms
                     .into_iter()
                     .map(|term| match term {
-                        Term::Var(v) => Term::Var(remap[&v]),
+                        Term::Var(v) => Term::Var(
+                            body_vars
+                                .get_index_of(&v)
+                                .expect("every body variable was just collected"),
+                        ),
                         lit => lit,
                     })
                     .collect(),
@@ -752,10 +761,13 @@ impl Lowerer {
         let head_terms = scope
             .columns
             .iter()
-            .map(|(name, bind)| bind.term(&remap).with_context(|| format!("column {name}")))
+            .map(|(name, bind)| {
+                bind.term(&body_vars)
+                    .with_context(|| format!("column {name}"))
+            })
             .collect::<Result<Vec<_>>>()?;
         self.rules.push(Rule {
-            var_names: (0..remap.len()).map(|i| format!("v{i}")).collect(),
+            var_names: (0..body_vars.len()).map(|i| format!("v{i}")).collect(),
             head: Atom {
                 relation: head_relation.to_string(),
                 terms: head_terms,

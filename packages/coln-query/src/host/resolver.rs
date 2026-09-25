@@ -31,21 +31,26 @@ pub trait Named {
 
 #[derive(Clone, Copy, Debug)]
 struct VariableMeta {
-    initialized: bool,
     slot: usize,
 }
 
-impl VariableMeta {
-    fn new(slot: usize) -> Self {
+/// One scope's variables, plus how many declarations it has handed slots to.
+struct Scope<T> {
+    vars: HashMap<String, T>,
+    declared: usize,
+}
+
+impl<T> Scope<T> {
+    fn new() -> Self {
         Self {
-            initialized: false,
-            slot,
+            vars: HashMap::new(),
+            declared: 0,
         }
     }
 }
 
 pub struct ScopeStack<T> {
-    inner: Vec<HashMap<String, T>>,
+    inner: Vec<Scope<T>>,
 }
 
 impl<T> Default for ScopeStack<T> {
@@ -67,25 +72,45 @@ impl<T> ScopeStack<T> {
         self.inner.len() == 1
     }
     pub fn begin_scope(&mut self) {
-        self.inner.push(HashMap::new());
+        self.inner.push(Scope::new());
     }
     pub fn end_scope(&mut self) {
         self.inner.pop();
     }
+    /// Hands out the next slot of the innermost scope, counting _declarations_
+    /// rather than distinct names.
+    ///
+    /// Shadowing a name replaces its map entry without growing the map, while
+    /// the interpreter pushes a fresh slot for every declaration it executes
+    /// ([`Environment::define_var`](super::variable::Environment::define_var)).
+    /// Deriving slots from the map's length would therefore drift apart from
+    /// the runtime layout at the first shadowed name, and alias every variable
+    /// declared after it in that scope.
+    pub fn next_slot(&mut self) -> Option<usize> {
+        self.inner.last_mut().map(|scope| {
+            let slot = scope.declared;
+            scope.declared += 1;
+            slot
+        })
+    }
     pub fn innermost(&self) -> Option<&HashMap<String, T>> {
-        self.inner.last()
+        self.inner.last().map(|scope| &scope.vars)
     }
     pub fn innermost_mut(&mut self) -> Option<&mut HashMap<String, T>> {
-        self.inner.last_mut()
+        self.inner.last_mut().map(|scope| &mut scope.vars)
     }
     /// Iterates from innermost to outermost scope.
     pub fn iter(&self) -> impl Iterator<Item = &HashMap<String, T>> {
-        self.inner.iter().rev()
+        self.inner.iter().rev().map(|scope| &scope.vars)
     }
     /// Iterates from innermost to outermost scope while returning indexes that
     /// work from left to right.
     pub fn indexed_iter(&self) -> impl Iterator<Item = (usize, &HashMap<String, T>)> {
-        self.inner.iter().enumerate().rev()
+        self.inner
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(idx, scope)| (idx, &scope.vars))
     }
 }
 
@@ -133,28 +158,23 @@ impl Resolver {
         debug_assert!(ctx.scopes.just_global());
         ret
     }
-    // declare in Lox
+    /// Binds `name` to a fresh slot of the innermost scope, shadowing whatever
+    /// that name stood for before.
+    ///
+    /// Unlike Lox, which splits this into a declare and a define step to catch
+    /// a variable read inside its own initializer, there is nothing to catch
+    /// here: initializers are resolved _before_ the name they bind is declared,
+    /// so a self-mention reaches the shadowed binding instead. See
+    /// [`Resolver::visit_var_stmt`].
     fn declare_var(&mut self, name: &str, ctx: VisitorCtx) -> Result<(), SyntaxError> {
-        match ctx.scopes.innermost_mut() {
-            Some(scope) => {
-                scope.insert(name.to_string(), VariableMeta::new(scope.len()));
-                Ok(())
-            }
-            None => Err(SyntaxError::new("No scope to declare variable in")),
-        }
-    }
-    // define in Lox
-    fn define_var(&mut self, name: &String, ctx: VisitorCtx) -> Result<(), SyntaxError> {
-        match ctx.scopes.innermost_mut() {
-            Some(scope) => match scope.get_mut(name) {
-                Some(var) => {
-                    var.initialized = true;
-                    Ok(())
-                }
-                None => Err(SyntaxError::new("Variable not declared in innermost scope")),
-            },
-            None => Err(SyntaxError::new("No scope to find variable to assign to")),
-        }
+        let Some(slot) = ctx.scopes.next_slot() else {
+            return Err(SyntaxError::new("No scope to declare variable in"));
+        };
+        ctx.scopes
+            .innermost_mut()
+            .expect("the scope that just handed out a slot")
+            .insert(name.to_string(), VariableMeta { slot });
+        Ok(())
     }
     // resolveLocal in Lox
     fn resolve_var<T: Resolvable + Named>(
@@ -265,16 +285,6 @@ impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
     }
 
     fn visit_var_expr(&mut self, expr: &mut VarExpr, ctx: VisitorCtx) -> VisitorResult {
-        if let Some(var) = ctx
-            .scopes
-            .innermost()
-            .and_then(|scope| scope.get(&expr.name))
-            && !var.initialized
-        {
-            return Err(SyntaxError::new(
-                "Variable referenced in its own initializer",
-            ));
-        }
         // `resolve_var` returns an error if the variable is not declared.
         self.resolve_var(expr, ctx)
     }
@@ -289,7 +299,6 @@ impl ExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
         self.visit_block(&mut expr.body.stmts, ctx, |resolver, ctx| {
             for parameter in &expr.parameters {
                 resolver.declare_var(parameter, ctx)?;
-                resolver.define_var(parameter, ctx)?;
             }
             Ok(())
         })
@@ -450,23 +459,25 @@ impl RelExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
         // imports list.
         self.visit_block(&mut expr.step.stmts, ctx, |resolver, ctx| {
             resolver.declare_var(&expr.accumulator.0, ctx)?;
-            resolver.define_var(&expr.accumulator.0, ctx)?;
             Ok(())
         })
     }
 }
 
 impl StmtVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
+    /// Resolves the initializer _before_ declaring the name it binds, so that a
+    /// mention of that name inside the initializer reaches the binding this one
+    /// shadows, as in Rust and the ML family: `var x = x` rebinds `x` from its
+    /// previous value rather than being rejected.
+    ///
+    /// This mirrors what the interpreter does anyway — it evaluates the
+    /// initializer and only then pushes the new slot — so the two agree by
+    /// construction instead of by a check.
     fn visit_var_stmt(&mut self, stmt: &mut VarStmt, ctx: VisitorCtx) -> VisitorResult {
+        if let Some(expr) = &mut stmt.initializer {
+            self.visit_expr(expr, ctx)?;
+        }
         self.declare_var(&stmt.name, ctx)
-            .and_then(|()| {
-                if let Some(expr) = &mut stmt.initializer {
-                    self.visit_expr(expr, ctx)
-                } else {
-                    Ok(())
-                }
-            })
-            .and_then(|()| self.define_var(&stmt.name, ctx))
     }
 
     fn visit_expr_stmt(&mut self, stmt: &mut ExprStmt, ctx: VisitorCtx) -> VisitorResult {
@@ -495,5 +506,78 @@ impl ResolverContext<'_> {
     }
     fn end_tuple_context(&mut self) {
         self.is_tuple_context = false;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::{expr::LiteralExpr, variable::VariableSlot};
+
+    fn bind(name: &str, initializer: Expr) -> Stmt {
+        Stmt::from(VarStmt {
+            name: name.to_owned(),
+            initializer: Some(initializer),
+        })
+    }
+
+    /// The slot a statement's initializer resolved its (sole) variable to.
+    fn initializer_slot(stmt: &Stmt) -> Option<VariableSlot> {
+        let Stmt::Var(var_stmt) = stmt else {
+            return None;
+        };
+        let Some(Expr::Var(var_expr)) = var_stmt.initializer.as_ref() else {
+            return None;
+        };
+        var_expr.resolved
+    }
+
+    #[test]
+    fn an_initializer_resolves_to_the_binding_it_shadows() {
+        // var x = 1; var x = x; var y = x;
+        let code = QueryIr::new(vec![
+            bind("x", Expr::from(LiteralExpr::from(1u64))),
+            bind("x", Expr::from(VarExpr::new("x"))),
+            bind("y", Expr::from(VarExpr::new("x"))),
+        ]);
+        let resolved = ResolvedCode::from(code).expect("shadowing resolves");
+        let stmts: Vec<&Stmt> = resolved.as_code().iter().collect();
+        // The shadowing initializer reads the *first* `x`, not itself.
+        assert_eq!(initializer_slot(stmts[1]), Some((0, 0)));
+        // And the next statement reads the *second* `x`.
+        assert_eq!(initializer_slot(stmts[2]), Some((0, 1)));
+    }
+
+    #[test]
+    fn shadowing_does_not_alias_later_slots() {
+        // The bug a declaration counter avoids: with slots taken from the
+        // scope's map length, `y` would land on the shadowed `x`'s slot,
+        // because shadowing replaces a map entry without growing the map.
+        // var x = 1; var x = 2; var y = x; var z = y;
+        let code = QueryIr::new(vec![
+            bind("x", Expr::from(LiteralExpr::from(1u64))),
+            bind("x", Expr::from(LiteralExpr::from(2u64))),
+            bind("y", Expr::from(VarExpr::new("x"))),
+            bind("z", Expr::from(VarExpr::new("y"))),
+        ]);
+        let resolved = ResolvedCode::from(code).expect("shadowing resolves");
+        let stmts: Vec<&Stmt> = resolved.as_code().iter().collect();
+        assert_eq!(
+            initializer_slot(stmts[2]),
+            Some((0, 1)),
+            "y reads the second x"
+        );
+        assert_eq!(initializer_slot(stmts[3]), Some((0, 2)), "z reads y, not x");
+    }
+
+    #[test]
+    fn a_variable_that_was_never_declared_is_rejected() {
+        // Including the case shadowing might be mistaken for: with the
+        // initializer resolved first, `var x = x` has no earlier `x` to reach.
+        let code = QueryIr::new(vec![bind("x", Expr::from(VarExpr::new("x")))]);
+        let Err(error) = ResolvedCode::from(code) else {
+            panic!("'x' is not declared before its own initializer");
+        };
+        assert_eq!(error.to_string(), "Variable 'x' not declared");
     }
 }

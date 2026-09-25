@@ -25,6 +25,7 @@ cli-table = "0.4.9"
 coln-batch = { path = "../coln-batch" }
 coln-flir-rs = { path = "../coln-flir-rs" }
 dbsp = "0.305.0"
+indexmap = { workspace = true }
 rkyv = {
   version = "0.7.46",
   default-features = false,

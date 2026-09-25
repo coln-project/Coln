@@ -1,0 +1,313 @@
+{
+  "entities": [
+    {
+      "path": "root.V",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.E",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.V" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.V" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "init.trans-closure.connected",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.V" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.V" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "init.trans-closure.refl",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "v", "type": { "tag": "rowId", "path": "root.V" } }
+        ],
+        "primaryKey": [0]
+      }
+    },
+    {
+      "path": "init.trans-closure.snoc",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "v0", "type": { "tag": "rowId", "path": "root.V" } },
+          { "path": "v1", "type": { "tag": "rowId", "path": "root.V" } },
+          { "path": "v2", "type": { "tag": "rowId", "path": "root.V" } },
+          {
+            "path": "a",
+            "type": { "tag": "rowId", "path": "init.trans-closure.connected" }
+          },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.E" } }
+        ],
+        "primaryKey": [0, 1, 2, 3, 4]
+      }
+    }
+  ],
+  "definitions": [
+    {
+      "path": "init.trans-closure.refl.collect",
+      "value": {
+        "vars": [["v", { "tag": "rowId", "path": "root.V" }]],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          }
+        ],
+        "definand": "init.trans-closure.refl",
+        "arguments": [{ "tag": "var", "index": 0 }]
+      }
+    },
+    {
+      "path": "init.trans-closure.refl.construct",
+      "value": {
+        "vars": [["v", { "tag": "rowId", "path": "root.V" }]],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.trans-closure.refl",
+              "rowId": null,
+              "values": []
+            }
+          }
+        ],
+        "definand": "init.trans-closure.connected",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 0 }
+        ]
+      }
+    },
+    {
+      "path": "init.trans-closure.snoc.collect",
+      "value": {
+        "vars": [
+          ["v0", { "tag": "rowId", "path": "root.V" }],
+          ["v1", { "tag": "rowId", "path": "root.V" }],
+          ["v2", { "tag": "rowId", "path": "root.V" }],
+          ["a", { "tag": "rowId", "path": "init.trans-closure.connected" }],
+          ["b", { "tag": "rowId", "path": "root.E" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.trans-closure.connected",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.E",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 1 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.trans-closure.snoc",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 },
+          { "tag": "var", "index": 3 },
+          { "tag": "var", "index": 4 }
+        ]
+      }
+    },
+    {
+      "path": "init.trans-closure.snoc.construct",
+      "value": {
+        "vars": [
+          ["v0", { "tag": "rowId", "path": "root.V" }],
+          ["v1", { "tag": "rowId", "path": "root.V" }],
+          ["v2", { "tag": "rowId", "path": "root.V" }],
+          ["a", { "tag": "rowId", "path": "init.trans-closure.connected" }],
+          ["b", { "tag": "rowId", "path": "root.E" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.trans-closure.connected",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.E",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 1 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.trans-closure.snoc",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 1 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } },
+                { "column": 2, "term": { "tag": "var", "index": 3 } },
+                { "column": 3, "term": { "tag": "var", "index": 4 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.trans-closure.connected",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 2 }
+        ]
+      }
+    }
+  ],
+  "rules": [
+    {
+      "path": "root.V.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": { "entity": "root.V", "rowId": null, "values": [] }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": "root.E.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["a", { "tag": "rowId", "path": "root.V" }],
+          ["b", { "tag": "rowId", "path": "root.V" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.E",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

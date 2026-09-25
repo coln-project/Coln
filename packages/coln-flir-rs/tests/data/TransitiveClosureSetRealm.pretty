@@ -1,0 +1,50 @@
+flatrealm
+  entities
+    table root.V := []
+    table root.E := [a : root.V, b : root.V]
+    view init.trans-closure.connected := [a : root.V, b : root.V]
+    view init.trans-closure.refl := [v : root.V] primarykey [v]
+    view init.trans-closure.snoc := [
+      v0 : root.V,
+      v1 : root.V,
+      v2 : root.V,
+      a : init.trans-closure.connected,
+      b : root.E
+    ] primarykey [v0, v1, v2, a, b]
+  end
+  definitions
+    chased init.trans-closure.refl.collect v := v ∈ root.V [] ⊢ init.trans-closure.refl [
+      v ↦ v
+    ]
+    chased init.trans-closure.refl.construct v := v ∈ root.V [] ∧ init.trans-closure.refl [] ⊢ init.trans-closure.connected [
+      a ↦ v,
+      b ↦ v
+    ]
+    chased init.trans-closure.snoc.collect v0 v1 v2 a b := v0 ∈ root.V [] ∧ v1 ∈ root.V [] ∧ v2 ∈ root.V [] ∧ a ∈ init.trans-closure.connected [
+      a ↦ v0,
+      b ↦ v1
+    ] ∧ b ∈ root.E [a ↦ v1, b ↦ v2] ⊢ init.trans-closure.snoc [
+      v0 ↦ v0,
+      v1 ↦ v1,
+      v2 ↦ v2,
+      a ↦ a,
+      b ↦ b
+    ]
+    chased init.trans-closure.snoc.construct v0 v1 v2 a b := v0 ∈ root.V [] ∧ v1 ∈ root.V [] ∧ v2 ∈ root.V [] ∧ a ∈ init.trans-closure.connected [
+      a ↦ v0,
+      b ↦ v1
+    ] ∧ b ∈ root.E [a ↦ v1, b ↦ v2] ∧ init.trans-closure.snoc [
+      v0 ↦ v1,
+      v1 ↦ v2,
+      v2 ↦ a,
+      a ↦ b
+    ] ⊢ init.trans-closure.connected [a ↦ v0, b ↦ v2]
+  end
+  rules
+    enforced root.V.foreignKey := root.V [] ⊢ ⊤
+    enforced root.E.foreignKey a b := root.E [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
+  end
+end

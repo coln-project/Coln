@@ -29,6 +29,7 @@ use coln_flir_rs::schema::{
     BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
     StoreEngineCols,
 };
+use indexmap::IndexMap;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
@@ -720,22 +721,16 @@ struct DefinitionGroups {
 
 impl DefinitionGroups {
     fn from(definition_entries: &[ir::DefinitionEntry]) -> DefinitionGroups {
-        let mut predicates: Vec<Predicate> = Vec::with_capacity(definition_entries.len());
-        let mut grouping: HashMap<&Definand, usize> =
-            HashMap::with_capacity(definition_entries.len());
+        // Keyed by definand for grouping, ordered by first definition for the
+        // cliques handed out below.
+        let mut predicates: IndexMap<&Definand, Predicate> =
+            IndexMap::with_capacity(definition_entries.len());
 
         for definition_entry in definition_entries {
             let definand = &definition_entry.definition.definand;
-            let idx = if grouping.contains_key(definand) {
-                *grouping.get(definand).expect("checked above")
-            } else {
-                let idx = predicates.len();
-                predicates.push(Predicate::empty(definand.clone()));
-                let res = grouping.insert(definand, idx);
-                debug_assert!(res.is_none());
-                idx
-            };
-            let predicate = &mut predicates[idx];
+            let predicate = predicates
+                .entry(definand)
+                .or_insert_with(|| Predicate::empty(definand.clone()));
             let friendly_definition =
                 FriendlyDefinition::from(&definition_entry.path, &definition_entry.definition);
             let is_self_recursive = friendly_definition.is_recursive_with(definand);
@@ -750,7 +745,7 @@ impl DefinitionGroups {
         // predicate ends up in its own isolated clique because we don't support
         // mutual recursion at the moment.
         let inner = predicates
-            .into_iter()
+            .into_values()
             .map(|predicate| vec![predicate])
             .collect();
         Self { inner }
@@ -1893,6 +1888,12 @@ mod tests {
     #[test]
     fn transitive_closure_flir() {
         let program = translate_json_flir("TransitiveClosureRealm.json");
+        println!("{}", program.to_tree());
+    }
+
+    #[test]
+    fn transitive_closure_set_flir() {
+        let program = translate_json_flir("TransitiveClosureSetRealm.json");
         println!("{}", program.to_tree());
     }
 }

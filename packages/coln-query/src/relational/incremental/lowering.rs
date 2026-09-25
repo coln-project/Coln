@@ -64,6 +64,7 @@ use crate::{
         EquiJoinExpr, JoinVariable, MultiWayEquiJoinExpr, RelExpr, RelKind, RelationIdx,
     },
 };
+use indexmap::IndexSet;
 use std::collections::HashMap;
 
 /// Rewrite `plan` so that no [`MultiWayEquiJoinExpr`] remains, leaving a plan
@@ -121,7 +122,7 @@ impl TransformationRule for MultiWayJoinFold {
 /// therefore an optimizer's business, while turning a chosen order into a chain
 /// of binary joins is mechanical and belongs here. With nothing to inform the
 /// choice yet, the order the plan already states is as good a guess as any.
-fn join_order(join: &MultiWayEquiJoinExpr) -> Vec<RelationIdx> {
+fn join_order(join: &MultiWayEquiJoinExpr) -> IndexSet<RelationIdx> {
     (0..join.relations.len()).collect()
 }
 
@@ -133,19 +134,16 @@ fn fold(join: MultiWayEquiJoinExpr) -> Result<Expr, RewriteError> {
     // bounds and pairwise distinct occurrences) rather than re-deriving them.
     join.validate()?;
 
+    // An `IndexSet` is both the order and the lookup from a relation to its
+    // position in it, so no second map has to be kept in step with it.
     let order = join_order(&join);
-    let position: HashMap<RelationIdx, usize> = order
-        .iter()
-        .enumerate()
-        .map(|(position, relation)| (*relation, position))
-        .collect();
 
     let MultiWayEquiJoinExpr {
         relations,
         on,
         attributes,
     } = join;
-    let mut keys = keys_by_relation(on, &position)?;
+    let mut keys = keys_by_relation(on, &order)?;
     // Taken one by one, in fold order, rather than in relation order.
     let mut relations: Vec<Option<Expr>> = relations.into_iter().map(Some).collect();
     let mut take = |relation: RelationIdx| {
@@ -159,6 +157,7 @@ fn fold(join: MultiWayEquiJoinExpr) -> Result<Expr, RewriteError> {
     // projected would drop columns a later one still has to join on or include
     // columns that a later one still has to produce.
     let folded = order
+        .as_slice()
         .split_last()
         .map(|(last, order)| {
             let mut order = order.iter();
@@ -197,7 +196,7 @@ fn fold(join: MultiWayEquiJoinExpr) -> Result<Expr, RewriteError> {
 /// against yet. Every later occurrence is compared against that copy by name.
 fn keys_by_relation(
     on: Vec<JoinVariable>,
-    position: &HashMap<RelationIdx, usize>,
+    order: &IndexSet<RelationIdx>,
 ) -> Result<HashMap<RelationIdx, Vec<(Expr, Expr)>>, RewriteError> {
     let mut keys: HashMap<RelationIdx, Vec<(Expr, Expr)>> = HashMap::new();
 
@@ -208,7 +207,11 @@ fn keys_by_relation(
         } = variable;
         // `MultiWayEquiJoinExpr` normalizes into relation order, which is not
         // the order the relations enter the chain in.
-        occurrences.sort_by_key(|(relation, _)| position[relation]);
+        occurrences.sort_by_key(|(relation, _)| {
+            order
+                .get_index_of(relation)
+                .expect("A join order names every relation exactly once")
+        });
 
         let mut occurrences = occurrences.into_iter();
         let (carrier, carried) = occurrences
