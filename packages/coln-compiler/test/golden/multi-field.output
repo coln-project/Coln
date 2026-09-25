@@ -64,5 +64,30 @@ global entry named prop-model
 in mode: Conjunctive
 type: SimpleProps
 value: [x := q, y := q, z := q, w := q]
+global entry named SomeSet
+in mode: Conjunctive
+type: Theory
+value: sig
+  T : Set
+end
+realm named MultiFieldRealm
+lowered: flatrealm
+  entities
+    table root.T := []
+    view view.pair := [pair.a : root.T, pair.b : root.T] primarykey [
+      pair.a,
+      pair.b
+    ]
+  end
+  definitions
+    chased view.pair.definition pair.a pair.b := pair.a ∈ root.T [] ∧ pair.b ∈ root.T [] ⊢ view.pair [
+      pair.a ↦ pair.a,
+      pair.b ↦ pair.b
+    ]
+  end
+  rules
+    enforced root.T.foreignKey := root.T [] ⊢ ⊤
+  end
+end
 
 -- messages

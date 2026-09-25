@@ -35,7 +35,6 @@ module Coln.Common (
   withHead,
   MultiDict (..),
   multiDictLength,
-  expandMultiDict,
   getKeyIndexMulti,
   Trie (..),
   HasNames (..),
@@ -314,9 +313,6 @@ data MultiDict a = MultiDict
   { head :: MultiDictHead
   , values :: Vector a
   }
-
-expandMultiDict :: MultiDict a -> Dict a
-expandMultiDict md = fromList [(name, value) | (names, value) <- toList md, name <- names]
 
 instance (Show a) => Show (MultiDict a) where
   show d = "MultiDict " ++ show (toList d)

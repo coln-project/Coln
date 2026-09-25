@@ -60,6 +60,16 @@ def prop-model : SimpleProps := struct
   w := q
 end
 
+theory SomeSet := sig
+  T : Set
+end
+
+realm MultiFieldRealm @ SomeSet
+  def pair : Set := sig
+    a b : root.T
+  end
+end
+
 # TODO:
 
 # theory AnonProps := sig
