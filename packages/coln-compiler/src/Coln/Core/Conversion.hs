@@ -63,7 +63,6 @@ defEqFunctionCod cs f0 f1 = do
   let n = fromMaybe "x" (multiCloName f0.cod <|> multiCloName f1.cod)
   let cs' = CtxShape (cs.len + 1) (cs.names :> n)
   let v = V.local (FId cs.len) f0.dom
-  -- Compare residual types so unconsumed bindings remain part of conversion.
   defEq cs' (V.appFunctionType f0 v) (V.appFunctionType f1 v)
 
 instance DefEq (V.Ty N) where

@@ -76,7 +76,16 @@ instance Interp S.Ty V.Ty where
             in V.Function (V.FunctionType variant dom cod)
       Pair c (go e ft.cod.bindings)
     S.Record rt -> withLevel rt.level.mlevel $ \sl -> do
-      let rt' = V.RecordType rt.level.hlevel e (flip (interpAt sl g) <$> expandMultiDict rt.fieldTypes)
+      let weakenTy fieldTy (vs :> _) = fieldTy vs
+          weakenTy _ BwdNil = panic "missing grouped record field"
+          expandGroup _ [] = []
+          expandGroup fieldTy (x : xs) = (x, fieldTy) : expandGroup (weakenTy fieldTy) xs
+          fieldTypes =
+            fromList $
+              concatMap
+                (\(xs, ty) -> expandGroup (flip (interpAt sl g) ty) xs)
+                (toList rt.fieldTypes)
+      let rt' = V.RecordType rt.level.hlevel e fieldTypes
       Pair sl (V.Become $ V.Record rt')
     S.Eq et -> do
       let at = interpAt SSet g e et.at
