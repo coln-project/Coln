@@ -18,9 +18,136 @@
         ],
         "primaryKey": null
       }
+    },
+    {
+      "path": "view.outgoing-edges",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "materialized" },
+        "columns": [
+          { "path": "v", "type": { "tag": "rowId", "path": "root.V" } },
+          {
+            "path": "outgoing-edges.into",
+            "type": { "tag": "rowId", "path": "root.V" }
+          },
+          {
+            "path": "outgoing-edges.has-edge",
+            "type": { "tag": "rowId", "path": "root.E" }
+          }
+        ],
+        "primaryKey": [0, 1, 2]
+      }
+    },
+    {
+      "path": "view.incoming-edges",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "materialized" },
+        "columns": [
+          { "path": "v", "type": { "tag": "rowId", "path": "root.V" } },
+          {
+            "path": "incoming-edges.outof",
+            "type": { "tag": "rowId", "path": "root.V" }
+          },
+          {
+            "path": "incoming-edges.has-edge",
+            "type": { "tag": "rowId", "path": "root.E" }
+          }
+        ],
+        "primaryKey": [0, 1, 2]
+      }
     }
   ],
-  "definitions": [],
+  "definitions": [
+    {
+      "path": "view.outgoing-edges.definition",
+      "value": {
+        "vars": [
+          ["v", { "tag": "rowId", "path": "root.V" }],
+          ["outgoing-edges.into", { "tag": "rowId", "path": "root.V" }],
+          ["outgoing-edges.has-edge", { "tag": "rowId", "path": "root.E" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.E",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          }
+        ],
+        "definand": "view.outgoing-edges",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 }
+        ]
+      }
+    },
+    {
+      "path": "view.incoming-edges.definition",
+      "value": {
+        "vars": [
+          ["v", { "tag": "rowId", "path": "root.V" }],
+          ["incoming-edges.outof", { "tag": "rowId", "path": "root.V" }],
+          ["incoming-edges.has-edge", { "tag": "rowId", "path": "root.E" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.V",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.E",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 1 } },
+                { "column": 1, "term": { "tag": "var", "index": 0 } }
+              ]
+            }
+          }
+        ],
+        "definand": "view.incoming-edges",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 2 }
+        ]
+      }
+    }
+  ],
   "rules": [
     {
       "path": "root.V.foreignKey",

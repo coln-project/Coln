@@ -1,0 +1,156 @@
+flatrealm
+  entities
+    table root.red := []
+    table root.blue := []
+    table root.red-blue := [a : root.red, b : root.blue]
+    table root.blue-red := [a : root.blue, b : root.red]
+    table root.red-over := [a : root.red]
+    table root.blue-over := [a : root.blue]
+    table root.red-blue-over := [
+      v : root.red,
+      a : root.red-over,
+      w : root.blue,
+      b : root.blue-over
+    ]
+    table root.blue-red-over := [
+      w : root.blue,
+      a : root.blue-over,
+      v : root.red,
+      b : root.red-over
+    ]
+    view init.connection-info.red-red := [
+      a : root.red,
+      b : root.red
+    ] primarykey [a, b]
+    view init.connection-info.blue-blue := [
+      a : root.blue,
+      b : root.blue
+    ] primarykey [a, b]
+    view init.connection-info.red-red-over := [
+      v0 : root.red,
+      a : root.red-over,
+      v1 : root.red,
+      b : root.red-over
+    ] primarykey [v0, a, v1, b]
+    view init.connection-info.blue-blue-over := [
+      w0 : root.blue,
+      a : root.blue-over,
+      w1 : root.blue,
+      b : root.blue-over
+    ] primarykey [w0, a, w1, b]
+  end
+  definitions
+    chased init.connection-info.red/refl v := v ∈ root.red [] ⊢ init.connection-info.red-red [
+      a ↦ v,
+      b ↦ v
+    ]
+    chased init.connection-info.blue/refl w := w ∈ root.blue [] ⊢ init.connection-info.blue-blue [
+      a ↦ w,
+      b ↦ w
+    ]
+    chased init.connection-info.red/trans v0 x0 v1 x1 w0 y0 w1 y1 a c := v0 ∈ root.red [] ∧ x0 ∈ root.red-over [
+      a ↦ v0
+    ] ∧ v1 ∈ root.red [] ∧ x1 ∈ root.red-over [
+      a ↦ v1
+    ] ∧ w0 ∈ root.blue [] ∧ y0 ∈ root.blue-over [
+      a ↦ w0
+    ] ∧ w1 ∈ root.blue [] ∧ y1 ∈ root.blue-over [
+      a ↦ w1
+    ] ∧ a ∈ root.red-blue-over [
+      v ↦ v0,
+      a ↦ x0,
+      w ↦ w0,
+      b ↦ y0
+    ] ∧ init.connection-info.blue-blue-over [
+      w0 ↦ w0,
+      a ↦ y0,
+      w1 ↦ w1,
+      b ↦ y1
+    ] ∧ c ∈ root.blue-red-over [
+      w ↦ w1,
+      a ↦ y1,
+      v ↦ v1,
+      b ↦ x1
+    ] ⊢ init.connection-info.red-red-over [v0 ↦ v0, a ↦ x0, v1 ↦ v1, b ↦ x1]
+    chased init.connection-info.blue/trans w0 y0 w1 y1 v0 x0 v1 x1 a c := w0 ∈ root.blue [] ∧ y0 ∈ root.blue-over [
+      a ↦ w0
+    ] ∧ w1 ∈ root.blue [] ∧ y1 ∈ root.blue-over [
+      a ↦ w1
+    ] ∧ v0 ∈ root.red [] ∧ x0 ∈ root.red-over [
+      a ↦ v0
+    ] ∧ v1 ∈ root.red [] ∧ x1 ∈ root.red-over [
+      a ↦ v1
+    ] ∧ a ∈ root.blue-red-over [
+      w ↦ w0,
+      a ↦ y0,
+      v ↦ v0,
+      b ↦ x0
+    ] ∧ init.connection-info.red-red-over [
+      v0 ↦ v0,
+      a ↦ x0,
+      v1 ↦ v1,
+      b ↦ x1
+    ] ∧ c ∈ root.red-blue-over [
+      v ↦ v1,
+      a ↦ x1,
+      w ↦ w1,
+      b ↦ y1
+    ] ⊢ init.connection-info.blue-blue-over [w0 ↦ w0, a ↦ y0, w1 ↦ w1, b ↦ y1]
+    chased init.connection-info.red-over/lift v0 x0 v1 x1 := v0 ∈ root.red [] ∧ x0 ∈ root.red-over [
+      a ↦ v0
+    ] ∧ v1 ∈ root.red [] ∧ x1 ∈ root.red-over [
+      a ↦ v1
+    ] ∧ init.connection-info.red-red [
+      a ↦ v0,
+      b ↦ v1
+    ] ⊢ init.connection-info.red-red-over [v0 ↦ v0, a ↦ x0, v1 ↦ v1, b ↦ x1]
+    chased init.connection-info.blue-over/lift w0 y0 w1 y1 := w0 ∈ root.blue [] ∧ y0 ∈ root.blue-over [
+      a ↦ w0
+    ] ∧ w1 ∈ root.blue [] ∧ y1 ∈ root.blue-over [
+      a ↦ w1
+    ] ∧ init.connection-info.blue-blue [
+      a ↦ w0,
+      b ↦ w1
+    ] ⊢ init.connection-info.blue-blue-over [w0 ↦ w0, a ↦ y0, w1 ↦ w1, b ↦ y1]
+    chased init.connection-info.red-over/refl v x := v ∈ root.red [] ∧ x ∈ root.red-over [
+      a ↦ v
+    ] ⊢ init.connection-info.red-red-over [v0 ↦ v, a ↦ x, v1 ↦ v, b ↦ x]
+    chased init.connection-info.blue-over/refl w y := w ∈ root.blue [] ∧ y ∈ root.blue-over [
+      a ↦ w
+    ] ⊢ init.connection-info.blue-blue-over [w0 ↦ w, a ↦ y, w1 ↦ w, b ↦ y]
+  end
+  rules
+    enforced root.red.foreignKey := root.red [] ⊢ ⊤
+    enforced root.blue.foreignKey := root.blue [] ⊢ ⊤
+    enforced root.red-blue.foreignKey a b := root.red-blue [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.red [] ∧ b ∈ root.blue []
+    enforced root.blue-red.foreignKey a b := root.blue-red [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.blue [] ∧ b ∈ root.red []
+    enforced root.red-over.foreignKey a := root.red-over [
+      a ↦ a
+    ] ⊢ a ∈ root.red []
+    enforced root.blue-over.foreignKey a := root.blue-over [
+      a ↦ a
+    ] ⊢ a ∈ root.blue []
+    enforced root.red-blue-over.foreignKey v a w b := root.red-blue-over [
+      v ↦ v,
+      a ↦ a,
+      w ↦ w,
+      b ↦ b
+    ] ⊢ v ∈ root.red [] ∧ a ∈ root.red-over [
+      a ↦ v
+    ] ∧ w ∈ root.blue [] ∧ b ∈ root.blue-over [a ↦ w]
+    enforced root.blue-red-over.foreignKey w a v b := root.blue-red-over [
+      w ↦ w,
+      a ↦ a,
+      v ↦ v,
+      b ↦ b
+    ] ⊢ w ∈ root.blue [] ∧ a ∈ root.blue-over [
+      a ↦ w
+    ] ∧ v ∈ root.red [] ∧ b ∈ root.red-over [a ↦ v]
+  end
+end

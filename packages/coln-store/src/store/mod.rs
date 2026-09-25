@@ -11,7 +11,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 #[cfg(not(target_arch = "wasm32"))]
 use coln_query::api::{
     ColnQuery,
-    deltas::{DerivedDataDelta, StoreDelta},
+    deltas::{Consolidated, DerivedDataDelta, StoreDelta},
     transaction::{Prepare, TryCommitErr, TryCommitOk, Tx as QueryTx},
 };
 use serde::{Deserialize, Serialize};
@@ -404,7 +404,7 @@ impl Store {
     pub fn check_rules(
         &mut self,
         query_tx: QueryTx<Prepare>,
-    ) -> Result<DerivedDataDelta, StoreError> {
+    ) -> Result<DerivedDataDelta<Consolidated>, StoreError> {
         match query_tx.try_commit(&mut self.cq) {
             Ok(TryCommitOk::Pending(pending)) => {
                 let mut committed = pending.commit()?;
@@ -645,7 +645,7 @@ impl Store {
     #[cfg(not(target_arch = "wasm32"))]
     fn apply_derived_view(
         &mut self,
-        derived: DerivedDataDelta,
+        derived: DerivedDataDelta<Consolidated>,
         commit: &Commit<'_>,
     ) -> Result<(), StoreError> {
         let mut cnt = commit.num_ops as u32;
