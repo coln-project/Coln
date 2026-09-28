@@ -1074,6 +1074,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "subenum",
 ]
 
 [[package]]
@@ -4821,6 +4822,18 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tungstenite",
+]
+
+[[package]]
+name = "subenum"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eee3fb942ed39f3971438fcc7e05e20717e599e14c5c7cb50edd0df2a44b274"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
