@@ -108,6 +108,47 @@ pub trait SortedTable {
     }
 }
 
+/// A boxed sorted table is a sorted table, so an executor can read tables
+/// from different back ends through one type. Every method forwards, so a
+/// back end's own searches stay in use.
+impl<T: SortedTable + ?Sized> SortedTable for Box<T> {
+    fn arity(&self) -> usize {
+        (**self).arity()
+    }
+
+    fn len(&self) -> usize {
+        (**self).len()
+    }
+
+    fn is_empty(&self) -> bool {
+        (**self).is_empty()
+    }
+
+    fn sort_order(&self) -> &[ColId] {
+        (**self).sort_order()
+    }
+
+    fn primary_keys(&self) -> &[Vec<ColId>] {
+        (**self).primary_keys()
+    }
+
+    fn value(&self, row: RowIdx, col: ColId) -> Key {
+        (**self).value(row, col)
+    }
+
+    fn lower_bound(&self, depth: usize, v: Key, lo: RowIdx, hi: RowIdx) -> RowIdx {
+        (**self).lower_bound(depth, v, lo, hi)
+    }
+
+    fn upper_bound(&self, depth: usize, v: Key, lo: RowIdx, hi: RowIdx) -> RowIdx {
+        (**self).upper_bound(depth, v, lo, hi)
+    }
+
+    fn equal_range(&self, depth: usize, v: Key, lo: RowIdx, hi: RowIdx) -> Range<RowIdx> {
+        (**self).equal_range(depth, v, lo, hi)
+    }
+}
+
 /// In-memory [`SortedTable`] built from Arrow data: sorts once at
 /// construction, then serves reads from plain key column vectors.
 #[derive(Clone, Debug)]
@@ -212,7 +253,7 @@ impl SortedTable for ArrowSortedTable {
 /// join will. The cost is roughly quadratic, so restrict it to small
 /// instances in tests. Storage implementations can run this against
 /// their own indexes to validate the contract.
-pub fn check_contract<T: SortedTable>(t: &T) {
+pub fn check_contract<T: SortedTable + ?Sized>(t: &T) {
     let arity = t.arity();
     let order = t.sort_order();
     assert_eq!(order.len(), arity, "sort order must cover all columns");
@@ -253,7 +294,7 @@ pub fn check_contract<T: SortedTable>(t: &T) {
     }
 }
 
-fn check_range<T: SortedTable>(t: &T, depth: usize, lo: RowIdx, hi: RowIdx) {
+fn check_range<T: SortedTable + ?Sized>(t: &T, depth: usize, lo: RowIdx, hi: RowIdx) {
     if depth == t.arity() || lo == hi {
         return;
     }

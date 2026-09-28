@@ -20,6 +20,7 @@ use crate::{
 use coln_flir_rs::ir::{self, FlatRealm};
 use query::FlirProgram;
 
+pub mod batch;
 pub mod deltas;
 pub mod error;
 pub mod query;

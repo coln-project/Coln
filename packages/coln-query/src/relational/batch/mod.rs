@@ -42,7 +42,10 @@
 // lowering, fixpoint, and output stay as they are.
 
 mod lowering;
+mod source;
 mod values;
+
+pub use self::source::{ColId, Dictionary, Key, RelationSource, SortedTable, TableHandle};
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
@@ -52,7 +55,7 @@ use coln_batch::generic_join;
 use coln_batch::query::Catalog as BatchCatalog;
 use coln_batch::relation::Relation;
 use coln_batch::rule::Program;
-use coln_batch::types::{Dictionary, Key, Schema};
+use coln_batch::types::Schema;
 use dbsp::{OrdZSet, utils::Tup2};
 
 use self::lowering::{LoweredPlan, lower};
