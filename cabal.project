@@ -3,6 +3,7 @@ packages:
   packages/diagnostician-terminal
   packages/diagnostician-html
   packages/fnotation
+  packages/yclept
   packages/coln-compiler
 if !os(wasi)
   packages:

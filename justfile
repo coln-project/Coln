@@ -14,7 +14,7 @@ check package:
 fix package:
     just -f packages/{{package}}/justfile fix
 
-check-haskell: (check "coln-compiler") (check "coln-cli") (check "coln-repl") (check "coln-ls") (check "fnotation") (check "diagnostician")
+check-haskell: (check "coln-compiler") (check "coln-cli") (check "coln-repl") (check "coln-ls") (check "fnotation") (check "diagnostician") (check "yclept")
 
 check-rust: (check "coln-store") (check "coln-query") (check "coln-integrator") (check "coln-batch") (check "coln-flir-rs")
 
@@ -25,7 +25,7 @@ check-licenses:
 
 check-all: check-haskell check-rust check-typescript
 
-fix-haskell: (fix "coln-compiler") (fix "coln-cli") (fix "coln-repl") (fix "coln-ls") (fix "fnotation") (fix "diagnostician")
+fix-haskell: (fix "coln-compiler") (fix "coln-cli") (fix "coln-repl") (fix "coln-ls") (fix "fnotation") (fix "diagnostician") (fix "yclept")
 
 fix-licenses:
     git ls-files -z '*.[hrt]s' {{ generated_file_pathspecs }} | xargs -0 reuse annotate -c "Coln contributors" -l "Apache-2.0 OR MIT"
