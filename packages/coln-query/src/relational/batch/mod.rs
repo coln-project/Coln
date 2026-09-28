@@ -5,64 +5,58 @@
 //! A batch backend optimized for efficient evaluation of non-binary joins.
 //!
 //! The non-incremental half of the pipeline. [`Backend::build`] lowers the
-//! resolved plan into one coln-batch Datalog program, [`Runtime::feed`]
-//! stages rows per source, [`Runtime::commit`] recomputes the whole result
-//! eagerly (a semi-naive fixpoint over worst-case-optimal joins), and
-//! [`Runtime::output`] hands back the full current state of a sink as a
+//! resolved plan into one coln-batch Datalog program,
+//! [`BatchRuntime::commit_from`] computes the whole result from the store's
+//! current tables (a semi-naive fixpoint over worst-case-optimal joins),
+//! and [`Runtime::output`] hands back the full current state of a sink as a
 //! [`Snapshot`]. Where the incremental backend reports deltas, this backend
 //! reports states.
 //!
 //! Values keep their plan types end to end: unsigned and signed integers,
-//! booleans, characters and strings. The engine stores every cell as a
-//! typed key (see `coln_batch::types`); strings go through a dictionary
-//! the runtime owns, so their keys stay stable across commits. `Null` is
-//! the one plan type the backend refuses, at build time for schemas and at
-//! feed time for rows.
+//! booleans, characters and strings. The engine compares every cell as a
+//! typed key (see `coln_batch::types`); a string's key is its code in the
+//! store's dictionary. `Null` is the one plan type the backend refuses, at
+//! build time.
 //!
-//! # Interim: base tables arrive by push
+//! # Base tables come from the store
 //!
-//! The pipeline has one input door, [`Runtime::feed`], and it speaks
-//! deltas: rows with z-weights, pushed by the store transaction by
-//! transaction. That is what the incremental backend needs. A batch
-//! backend wants the opposite: pull the full snapshot of every base table
-//! at query time. That pull API does not exist in the pipeline yet; the
-//! store side of it does (`SortedTableSnapshot` in coln-store).
+//! The backend never copies a base table. At commit it asks the store for
+//! a handle per base table the plan reads ([`RelationSource`]), and the
+//! join asks each handle for the table sorted in the column order it needs
+//! ([`TableHandle`]). The contract for those tables is in `source.rs`. The
+//! plan's own constants are the one input that is not the store's: small
+//! tables, encoded per commit against a copy of the store's dictionary and
+//! read next to the store's tables.
 //!
-//! Until it lands, this backend integrates the pushed deltas itself:
-//! [`Runtime::feed`] keeps a net z-weight per row and
-//! `materialize_sources` turns that into the base tables right before
-//! every recomputation. This is correct as long as the runtime sees every
-//! delta from the start, which holds for what a batch query is today: one
-//! feed-commit-output cycle over a snapshot pushed through `feed`. It is a
-//! stopgap, not the design. The store already holds these tables, copying
-//! them through `feed` is wasted work, and a runtime created later cannot
-//! catch up on deltas it never saw.
-// TODO(Jan): replace the push-side integration with the pull API once the
-// pipeline offers one. `materialize_sources` is the single seam to swap;
-// lowering, fixpoint, and output stay as they are.
+//! Deltas have no place here. [`Runtime::feed`] and the plain
+//! [`Runtime::commit`] are the incremental backend's verbs; this backend
+//! refuses both with an error that names [`BatchRuntime::commit_from`].
 
 mod lowering;
 mod source;
 mod values;
 
+#[cfg(test)]
+pub(crate) use self::source::MemoryStore;
 pub use self::source::{ColId, Dictionary, Key, RelationSource, SortedTable, TableHandle};
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
-use coln_batch::fixpoint::{self, Exec};
+use anyhow::{Context, bail};
+use coln_batch::fixpoint::{self, Exec, FixpointResult};
 use coln_batch::generic_join;
-use coln_batch::query::Catalog as BatchCatalog;
+use coln_batch::query::{Catalog as BatchCatalog, Layered, Tables};
 use coln_batch::relation::Relation;
 use coln_batch::rule::Program;
 use coln_batch::types::Schema;
 use dbsp::{OrdZSet, utils::Tup2};
 
-use self::lowering::{LoweredPlan, lower};
-use self::values::{engine_value, pipeline_value};
+use self::lowering::{ConstantTable, LoweredPlan, lower};
+use self::values::pipeline_value;
 use super::{Backend, Runtime};
 use crate::{
-    api::deltas::{ZRow, ZWeight},
+    api::deltas::ZRow,
     error::{BuildError, RuntimeError},
     host::resolver::ResolvedCode,
     relational::{
@@ -74,7 +68,8 @@ use crate::{
 };
 
 /// The non-incremental backend: lowers the plan to a coln-batch Datalog
-/// program at build time and recomputes it eagerly on every commit.
+/// program at build time and computes it from the store's tables on every
+/// [`BatchRuntime::commit_from`].
 pub struct BatchBackend<E: ColumnScalarEngine = VectorizedScalarEngine> {
     // Reserved for the scalar slice: computed columns and general
     // conditions will run on this engine.
@@ -108,26 +103,13 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
             schemas,
         } = lower(plan.as_code(), &sources)
             .map_err(|error| BuildError::new(format!("{error:#}")))?;
-        // The constants' string codes have to come from the same dictionary the
-        // fed rows use, and that one belongs to the runtime — so lowering hands
-        // over typed rows and the encoding happens here, once.
-        let mut dictionary = Dictionary::new();
-        let constants = constants
-            .into_iter()
-            .map(|constant| {
-                Relation::from_rows(
-                    constant.name,
-                    constant.schema,
-                    constant.rows,
-                    &mut dictionary,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()
+        // Constants are encoded per commit, against the store's dictionary.
+        // Encoding them once here surfaces a value the engine cannot store
+        // at build time instead of at the first commit.
+        encode_constants(&constants, Dictionary::new())
             .map_err(|error| BuildError::new(format!("{error:#}")))?;
-        let inputs = used_sources
-            .into_keys()
-            .map(|source| (source, HashMap::new()))
-            .collect();
+        let mut sources: Vec<String> = used_sources.into_keys().collect();
+        sources.sort();
         let sinks = outputs
             .keys()
             .map(|sink| SinkId::from(sink.as_str()))
@@ -136,8 +118,7 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
             program,
             outputs,
             schemas,
-            dictionary,
-            inputs,
+            sources,
             constants,
             sinks,
             results: None,
@@ -145,8 +126,8 @@ impl<E: ColumnScalarEngine> Backend for BatchBackend<E> {
     }
 }
 
-/// Staged source rows plus the compiled program; [`Runtime::commit`]
-/// recomputes the full result from the accumulated inputs.
+/// The compiled program and what [`Runtime::output`] needs to read its
+/// results; [`BatchRuntime::commit_from`] computes them from the store.
 pub struct BatchRuntime {
     program: Program,
     /// Sink id to the derived relation `output` reads.
@@ -154,21 +135,15 @@ pub struct BatchRuntime {
     /// Schema (column names and types) per relation, sources and derived
     /// alike.
     schemas: HashMap<String, Schema>,
-    /// String codes for every row fed so far. Stable for the life of the
-    /// runtime; every commit's catalog starts from a copy of it.
-    dictionary: Dictionary,
-    /// Per used source: the net z-weight of every row fed so far, as
-    /// keys. This is the interim snapshot store described in the module
-    /// docs; the pull API replaces it.
-    inputs: HashMap<String, HashMap<Vec<Key>, ZWeight>>,
-    /// The base tables the plan's constants *are*. Unlike `inputs` these need
-    /// no integration and never change: the plan states them, so they were
-    /// encoded once at build time (see [`LoweredPlan::constants`]), against
-    /// `dictionary`, which is why every commit's catalog decodes them.
-    constants: Vec<Relation>,
+    /// The base tables the plan reads, every one of them from the store.
+    sources: Vec<String>,
+    /// The tables the plan states itself (see [`LoweredPlan::constants`]),
+    /// as typed rows. Their strings need the store's dictionary, so they
+    /// are encoded per commit.
+    constants: Vec<ConstantTable>,
     sinks: Vec<SinkId>,
-    /// The relations of the last commit, with the dictionary that decodes
-    /// them.
+    /// The derived relations of the last commit, with the dictionary that
+    /// decodes them.
     results: Option<BatchCatalog>,
 }
 
@@ -232,112 +207,130 @@ impl Snapshot {
 }
 
 impl BatchRuntime {
-    /// Build the base tables for one recomputation from the deltas fed so
-    /// far: a row is present when its net z-weight is positive.
+    /// Compute every output from the store's current tables.
     ///
-    /// Interim, see the module docs. This is the one seam where the pull
-    /// API hooks in later: read the store's sorted snapshots instead of
-    /// integrating pushed deltas. Nothing downstream needs to change.
-    // TODO(Jan): swap for the pull API once the pipeline offers one.
-    fn materialize_sources(&self) -> Result<BatchCatalog, RuntimeError> {
-        let mut edb = BatchCatalog::new();
-        *edb.dictionary_mut() = self.dictionary.clone();
-        for (source, staged) in &self.inputs {
-            let schema = self.schemas.get(source).cloned().unwrap_or_default();
-            let mut data: Vec<Vec<Key>> = vec![Vec::new(); schema.arity()];
-            for (row, weight) in staged {
-                match weight {
-                    weight if *weight < 0 => {
-                        return Err(RuntimeError::new(format!(
-                            "source '{source}': a row was deleted more often than inserted \
-                             (net weight {weight})"
-                        )));
-                    }
-                    0 => {}
-                    // Sets: duplicated insertions collapse into one row.
-                    _ => {
-                        for (column, key) in data.iter_mut().zip(row) {
-                            column.push(*key);
-                        }
-                    }
-                }
-            }
-            edb.insert(Relation::with_schema(source.clone(), schema, data));
-        }
-        // A constant is a base table like any other; it just came from the plan
-        // rather than through `feed`, so there are no deltas to integrate.
-        for constant in &self.constants {
-            edb.insert(constant.clone());
-        }
-        Ok(edb)
+    /// @Vincent: this is the call the bouncer (or Leo's `adhoc_query`)
+    /// makes, once per query, with the store behind `source`. `output`
+    /// reads the results afterwards.
+    pub fn commit_from(&mut self, source: &dyn RelationSource) -> Result<(), RuntimeError> {
+        let result = self.evaluate(source)?;
+        self.results = Some(result.catalog);
+        Ok(())
     }
 
-    /// Encode one fed row against its source's schema.
-    fn encode_row(
-        &mut self,
-        source: &SourceId,
-        row: &TupleValue,
-    ) -> Result<Vec<Key>, RuntimeError> {
-        let schema = self
-            .schemas
-            .get(source.as_str())
-            .expect("checked by the caller: the plan uses this source");
-        if row.data.len() != schema.arity() {
-            return Err(RuntimeError::new(format!(
-                "row for source '{}' has {} values, its schema has {} columns",
-                source.as_str(),
-                row.data.len(),
-                schema.arity()
-            )));
-        }
-        let mut keys = Vec::with_capacity(row.data.len());
-        for (col, cell) in row.data.iter().enumerate() {
-            let value = engine_value(cell).map_err(|error| {
-                RuntimeError::new(format!("source '{}': {error:#}", source.as_str()))
-            })?;
-            let expected = schema.column_type(col);
-            if value.scalar_type() != expected {
+    fn evaluate(&self, source: &dyn RelationSource) -> Result<FixpointResult, RuntimeError> {
+        let mut handles = HashMap::new();
+        for name in &self.sources {
+            // @Vincent: one handle per base table the query reads, asked
+            // for once per query.
+            let handle = source
+                .table(&SourceId::from(name.as_str()))
+                .ok_or_else(|| RuntimeError::new(format!("the store has no table '{name}'")))?;
+            let expected = self.schemas.get(name).map_or(0, Schema::arity);
+            if handle.arity() != expected {
                 return Err(RuntimeError::new(format!(
-                    "source '{}', column {}: expected {expected}, got {value}",
-                    source.as_str(),
-                    schema.name(col)
+                    "base table '{name}': the store's table has width {}, the plan reads width \
+                     {expected}",
+                    handle.arity()
                 )));
             }
-            keys.push(value.to_key(&mut self.dictionary));
+            handles.insert(name.as_str(), handle);
         }
-        Ok(keys)
+        let store = StoreTables {
+            handles,
+            schemas: &self.schemas,
+            dictionary: source.dictionary(),
+        };
+        let constants = encode_constants(&self.constants, source.dictionary().clone())
+            .map_err(|error| RuntimeError::new(format!("{error:#}")))?;
+        let input = Layered::new(&constants, &store);
+        fixpoint::semi_naive_over(&self.program, &input, generic_join::execute as Exec)
+            .map_err(|error| RuntimeError::new(format!("{error:#}")))
     }
+}
+
+/// The store's tables as the executors read them: a handle per base table
+/// the plan reads, the schemas the plan gave them, and the store's
+/// dictionary for their strings.
+struct StoreTables<'s> {
+    handles: HashMap<&'s str, Box<dyn TableHandle + 's>>,
+    schemas: &'s HashMap<String, Schema>,
+    dictionary: &'s Dictionary,
+}
+
+impl Tables for StoreTables<'_> {
+    fn schema(&self, relation: &str) -> anyhow::Result<&Schema> {
+        if !self.handles.contains_key(relation) {
+            bail!("the plan reads no base table '{relation}'");
+        }
+        self.schemas
+            .get(relation)
+            .with_context(|| format!("base table '{relation}' has no schema"))
+    }
+
+    fn sorted(&self, relation: &str, order: &[ColId]) -> anyhow::Result<Box<dyn SortedTable + '_>> {
+        let arity = self.schema(relation)?.arity();
+        let table = self.handles[relation].sorted(order);
+        // The cheap part of the contract, checked on every table: the width
+        // the plan expects and the order the join asked for.
+        if table.arity() != arity || table.sort_order() != order {
+            bail!(
+                "base table '{relation}': the store served width {} sorted by {:?}, the join \
+                 needs width {arity} sorted by {order:?}",
+                table.arity(),
+                table.sort_order()
+            );
+        }
+        Ok(table)
+    }
+
+    fn dictionary(&self) -> &Dictionary {
+        self.dictionary
+    }
+}
+
+/// The plan's constant tables, encoded against `dictionary`. Per commit
+/// that is a copy of the store's, so a constant's strings meet the store's
+/// under the same keys.
+fn encode_constants(
+    constants: &[ConstantTable],
+    dictionary: Dictionary,
+) -> anyhow::Result<BatchCatalog> {
+    let mut catalog = BatchCatalog::new();
+    *catalog.dictionary_mut() = dictionary;
+    for constant in constants {
+        catalog.insert_rows(
+            constant.name.clone(),
+            constant.schema.clone(),
+            constant.rows.clone(),
+        )?;
+    }
+    Ok(catalog)
 }
 
 impl Runtime for BatchRuntime {
     type Output = Snapshot;
     type Error = RuntimeError;
 
+    /// Refused. This backend reads finished tables from the store and has
+    /// no use for deltas; see [`BatchRuntime::commit_from`].
     fn feed(
         &mut self,
         source: &SourceId,
-        rows: impl IntoIterator<Item = ZRow>,
+        _rows: impl IntoIterator<Item = ZRow>,
     ) -> Result<bool, Self::Error> {
-        // Mirrors the incremental backend: a source the plan does not use
-        // is `Ok(false)`, not an error. The caller decides what that means.
-        if !self.inputs.contains_key(source.as_str()) {
-            return Ok(false);
-        }
-        for zrow in rows {
-            let weight = zrow.zweight();
-            let keys = self.encode_row(source, &zrow.into_row())?;
-            let staged = self.inputs.get_mut(source.as_str()).expect("checked above");
-            *staged.entry(keys).or_insert(0) += weight;
-        }
-        Ok(true)
+        Err(RuntimeError::new(format!(
+            "the batch backend takes no deltas (source '{source}'): \
+             it reads the store's tables in `commit_from`"
+        )))
     }
 
+    /// Refused. Without the store there is nothing to compute from; see
+    /// [`BatchRuntime::commit_from`].
     fn commit(&mut self) -> Result<(), Self::Error> {
-        let edb = self.materialize_sources()?;
-        let result = fixpoint::semi_naive(&self.program, &edb, generic_join::execute as Exec)
-            .map_err(|error| RuntimeError::new(format!("{error:#}")))?;
-        self.results = Some(result.catalog);
-        Ok(())
+        Err(RuntimeError::new(
+            "the batch backend computes from the store's tables: call `commit_from`",
+        ))
     }
 
     fn output(&self, out: &SinkId) -> Result<Snapshot, Self::Error> {

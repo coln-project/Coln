@@ -67,3 +67,152 @@ pub trait TableHandle {
     /// encoding.
     fn sorted(&self, order: &[ColId]) -> Box<dyn SortedTable + '_>;
 }
+
+#[cfg(test)]
+pub(crate) use self::memory::MemoryStore;
+
+/// A store in memory, for tests, and the smallest implementation of the
+/// contract above. It keeps each table as encoded rows with their summed
+/// weights, the way a store integrates transactions, and sorts a copy per
+/// request.
+#[cfg(test)]
+mod memory {
+    use std::collections::HashMap;
+
+    use coln_batch::relation::Relation;
+    use coln_batch::table::ArrowSortedTable;
+    use coln_batch::types::Schema;
+
+    use super::{ColId, Dictionary, Key, RelationSource, SortedTable, TableHandle};
+    use crate::{
+        api::deltas::{ZRow, ZWeight},
+        error::RuntimeError,
+        relational::{
+            batch::values::{batch_schema, engine_value},
+            expr::SourceId,
+            relation::TupleValue,
+            schema::TableSchema,
+        },
+    };
+
+    pub(crate) struct MemoryStore {
+        dictionary: Dictionary,
+        tables: HashMap<SourceId, Table>,
+    }
+
+    struct Table {
+        schema: Schema,
+        rows: HashMap<Vec<Key>, ZWeight>,
+    }
+
+    impl MemoryStore {
+        /// A store with the given tables, all empty.
+        pub(crate) fn new(schemas: impl IntoIterator<Item = TableSchema>) -> Self {
+            let tables = schemas
+                .into_iter()
+                .map(|schema| {
+                    let table = Table {
+                        schema: batch_schema(&schema).expect("a type the engine stores"),
+                        rows: HashMap::new(),
+                    };
+                    (SourceId::from(schema.name()), table)
+                })
+                .collect();
+            Self {
+                dictionary: Dictionary::new(),
+                tables,
+            }
+        }
+
+        /// Apply one transaction's rows to `table`: every row's weight adds
+        /// to what the table holds, and a row is present while its sum is
+        /// positive. Cells are checked against the schema and encoded on
+        /// the way in.
+        pub(crate) fn apply(
+            &mut self,
+            table: &SourceId,
+            rows: impl IntoIterator<Item = ZRow>,
+        ) -> Result<(), RuntimeError> {
+            let entry = self
+                .tables
+                .get_mut(table)
+                .ok_or_else(|| RuntimeError::new(format!("no table '{table}'")))?;
+            for zrow in rows {
+                let weight = zrow.zweight();
+                let keys = encode(table, &entry.schema, &zrow.into_row(), &mut self.dictionary)?;
+                *entry.rows.entry(keys).or_insert(0) += weight;
+            }
+            Ok(())
+        }
+    }
+
+    /// Check one row against its table's schema and encode it.
+    fn encode(
+        table: &SourceId,
+        schema: &Schema,
+        row: &TupleValue,
+        dictionary: &mut Dictionary,
+    ) -> Result<Vec<Key>, RuntimeError> {
+        if row.data.len() != schema.arity() {
+            return Err(RuntimeError::new(format!(
+                "row for table '{table}' has {} values, its schema has {} columns",
+                row.data.len(),
+                schema.arity()
+            )));
+        }
+        let mut keys = Vec::with_capacity(row.data.len());
+        for (col, cell) in row.data.iter().enumerate() {
+            let value = engine_value(cell)
+                .map_err(|error| RuntimeError::new(format!("table '{table}': {error:#}")))?;
+            let expected = schema.column_type(col);
+            if value.scalar_type() != expected {
+                return Err(RuntimeError::new(format!(
+                    "table '{table}', column {}: expected {expected}, got {value}",
+                    schema.name(col)
+                )));
+            }
+            keys.push(value.to_key(dictionary));
+        }
+        Ok(keys)
+    }
+
+    impl RelationSource for MemoryStore {
+        fn table(&self, table: &SourceId) -> Option<Box<dyn TableHandle + '_>> {
+            let (name, found) = self.tables.get_key_value(table)?;
+            Some(Box::new(MemoryTable {
+                name: name.as_str(),
+                table: found,
+            }))
+        }
+
+        fn dictionary(&self) -> &Dictionary {
+            &self.dictionary
+        }
+    }
+
+    struct MemoryTable<'a> {
+        name: &'a str,
+        table: &'a Table,
+    }
+
+    impl TableHandle for MemoryTable<'_> {
+        fn arity(&self) -> usize {
+            self.table.schema.arity()
+        }
+
+        fn sorted(&self, order: &[ColId]) -> Box<dyn SortedTable + '_> {
+            let mut cols: Vec<Vec<Key>> = vec![Vec::new(); self.table.schema.arity()];
+            for (row, weight) in &self.table.rows {
+                if *weight > 0 {
+                    for (column, key) in cols.iter_mut().zip(row) {
+                        column.push(*key);
+                    }
+                }
+            }
+            let rel = Relation::with_schema(self.name, self.table.schema.clone(), cols);
+            let table = ArrowSortedTable::from_relation(&rel, order.to_vec())
+                .expect("the join asks for a permutation of the columns");
+            Box::new(table)
+        }
+    }
+}

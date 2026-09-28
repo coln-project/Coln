@@ -34,6 +34,7 @@ mod test {
         pipeline::Pipeline,
         relational::{
             Runtime,
+            batch::MemoryStore,
             expr::{
                 AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr,
                 DistinctExpr, EquiJoinExpr, FixedPointIterExpr, Multiplicity, OutputExpr,
@@ -1291,11 +1292,12 @@ mod test {
         };
         let schemas = || [PlainRel::schema(), EdgeRel::schema()];
 
+        let mut store = MemoryStore::new(schemas());
+        store.apply(&PlainRel::id(), rows(seed()))?;
+        store.apply(&EdgeRel::id(), rows_with_weight(edges(), 1))?;
         let mut batch =
             Pipeline::batch().runtime(&mut TestProgram::new(reachability_plan(), schemas()))?;
-        assert!(batch.feed(&PlainRel::id(), rows(seed()))?);
-        assert!(batch.feed(&EdgeRel::id(), rows_with_weight(edges(), 1))?);
-        batch.commit()?;
+        batch.commit_from(&store)?;
         let snapshot = batch.output(&SinkId::from("reachable"))?;
         assert_eq!(snapshot.columns(), ["node"]);
         assert_eq!(snapshot.len(), 4);
@@ -1321,6 +1323,28 @@ mod test {
                 .to_zset(),
             expected
         );
+        Ok(())
+    }
+
+    /// The batch backend reads the store's tables and takes no deltas:
+    /// `feed` and the plain `commit` fail and point to `commit_from`, and a
+    /// table the store does not have fails the commit.
+    #[test]
+    fn batch_reads_the_store_and_refuses_deltas() -> Result<(), anyhow::Error> {
+        let schemas = || [PlainRel::schema(), EdgeRel::schema()];
+        let mut batch =
+            Pipeline::batch().runtime(&mut TestProgram::new(reachability_plan(), schemas()))?;
+
+        let err = batch
+            .feed(&EdgeRel::id(), rows_with_weight([EdgeRel::new(0, 1, 1)], 1))
+            .unwrap_err();
+        assert!(err.to_string().contains("commit_from"), "got: {err}");
+        let err = batch.commit().unwrap_err();
+        assert!(err.to_string().contains("commit_from"), "got: {err}");
+
+        let without_edges = MemoryStore::new([PlainRel::schema()]);
+        let err = batch.commit_from(&without_edges).unwrap_err();
+        assert!(err.to_string().contains("no table"), "got: {err}");
         Ok(())
     }
 
@@ -1367,10 +1391,11 @@ mod test {
             ]
         };
 
+        let mut store = MemoryStore::new([EdgeRel::schema()]);
+        store.apply(&EdgeRel::id(), rows_with_weight(data(), 1))?;
         let mut batch =
             Pipeline::batch().runtime(&mut TestProgram::new(plan(), [EdgeRel::schema()]))?;
-        assert!(batch.feed(&EdgeRel::id(), rows_with_weight(data(), 1))?);
-        batch.commit()?;
+        batch.commit_from(&store)?;
 
         let mut incremental =
             Pipeline::incremental().runtime(&mut TestProgram::new(plan(), [EdgeRel::schema()]))?;
@@ -1443,6 +1468,7 @@ mod test {
         };
         let schemas = || [PersonRel::schema(), ProfessionRel::schema()];
         let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(plan(), schemas()))?;
+        let mut store = MemoryStore::new(schemas());
         let mut incremental =
             Pipeline::incremental().runtime(&mut TestProgram::new(plan(), schemas()))?;
 
@@ -1450,9 +1476,9 @@ mod test {
             .into_iter()
             .zip(person_profession_data());
         for ((persons, professions), (persons_again, professions_again)) in steps {
-            assert!(batch.feed(&PersonRel::id(), rows_with_weight(persons, 1))?);
-            assert!(batch.feed(&ProfessionRel::id(), rows_with_weight(professions, 1))?);
-            batch.commit()?;
+            store.apply(&PersonRel::id(), rows_with_weight(persons, 1))?;
+            store.apply(&ProfessionRel::id(), rows_with_weight(professions, 1))?;
+            batch.commit_from(&store)?;
             assert!(incremental.feed(&PersonRel::id(), rows_with_weight(persons_again, 1))?);
             assert!(
                 incremental.feed(&ProfessionRel::id(), rows_with_weight(professions_again, 1))?
@@ -1487,9 +1513,10 @@ mod test {
         Ok(())
     }
 
-    /// Every scalar type the plan knows, except null, flows through feed,
-    /// a selection on a string literal, and output unchanged, on both
-    /// backends.
+    /// Every scalar type the plan knows, except null, flows in, through a
+    /// selection on a string literal, and out unchanged, on both backends:
+    /// fed as deltas to the incremental one, read from the store by the
+    /// batch one.
     #[test]
     fn batch_carries_every_scalar_type() -> Result<(), anyhow::Error> {
         use crate::api::deltas::ZRow;
@@ -1549,9 +1576,10 @@ mod test {
             tuple!(3_u64, -1_i64, "b", true, 'z') => 1,
         };
 
+        let mut store = MemoryStore::new([schema()]);
+        store.apply(&SourceId::from("cells"), data())?;
         let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(plan(), [schema()]))?;
-        assert!(batch.feed(&SourceId::from("cells"), data())?);
-        batch.commit()?;
+        batch.commit_from(&store)?;
         let snapshot = batch.output(&SinkId::from("picked"))?;
         assert_eq!(
             snapshot.columns(),
@@ -1574,13 +1602,13 @@ mod test {
     }
 
     /// Null is the one plan type the batch backend refuses: a null column
-    /// fails at build time, a null cell at feed time.
+    /// fails at build time. A null cell cannot reach the backend at all,
+    /// since the store serves keys and no key stands for null.
     #[test]
     fn batch_rejects_null() -> Result<(), anyhow::Error> {
-        use crate::api::deltas::ZRow;
         use crate::relational::expr::SourceId;
         use crate::relational::schema::{Column, EntityRef, TableSchema};
-        use crate::scalarial::{ScalarType, ScalarTypedValue};
+        use crate::scalarial::ScalarType;
 
         let plan = || {
             vec![
@@ -1601,17 +1629,6 @@ mod test {
             .err()
             .expect("a null column cannot be built");
         assert!(err.to_string().contains("null"), "got: {err}");
-
-        let uint_column = TableSchema::new(
-            EntityRef::from("t"),
-            vec![Column::new("n", ScalarType::Uint)],
-            vec![],
-        );
-        let mut rt = Pipeline::batch().runtime(&mut TestProgram::new(plan(), [uint_column]))?;
-        let null_cell = ZRow::new(1, tuple!(())).expect("non-zero zweight");
-        let err = rt.feed(&SourceId::from("t"), [null_cell]).unwrap_err();
-        assert!(err.to_string().contains("null"), "got: {err}");
-        let _ = ScalarTypedValue::Null(());
         Ok(())
     }
 
@@ -1825,12 +1842,13 @@ mod test {
             let expected = typed_pairs_zset(ty, &two_hops_of(pairs));
             assert!(!expected.is_empty());
 
+            let mut store = MemoryStore::new([typed_edge_schema(ty)]);
+            store.apply(&edge_id(), typed_edges(ty, pairs))?;
             let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(
                 two_hop_plan(),
                 [typed_edge_schema(ty)],
             ))?;
-            assert!(batch.feed(&edge_id(), typed_edges(ty, pairs))?);
-            batch.commit()?;
+            batch.commit_from(&store)?;
             let snapshot = batch.output(&SinkId::from("two_hops"))?;
             assert_eq!(snapshot.columns(), ["start", "end"]);
             assert_eq!(snapshot.to_debug_zset(), expected, "batch over {ty}");
@@ -1866,12 +1884,13 @@ mod test {
             };
             let expected = typed_pairs_zset(ty, &closure_of(pairs));
 
+            let mut store = MemoryStore::new([typed_edge_schema(ty)]);
+            store.apply(&edge_id(), typed_edges(ty, pairs))?;
             let mut batch = Pipeline::batch().runtime(&mut TestProgram::new(
                 closure_plan(),
                 [typed_edge_schema(ty)],
             ))?;
-            assert!(batch.feed(&edge_id(), typed_edges(ty, pairs))?);
-            batch.commit()?;
+            batch.commit_from(&store)?;
             assert_eq!(
                 batch.output(&SinkId::from("closure_set"))?.to_debug_zset(),
                 expected,
@@ -1896,11 +1915,14 @@ mod test {
         Ok(())
     }
 
-    /// A fed cell must have its column's type, and a row its schema's
-    /// arity; both mismatches fail at feed time, naming the source.
+    /// The backend checks the cheap part of the store's contract before it
+    /// reads: a table of the wrong width fails the commit and names the
+    /// table. Cell types are the store's to check, the backend only ever
+    /// sees keys.
     #[test]
-    fn batch_feed_checks_cell_types() -> Result<(), anyhow::Error> {
-        use crate::api::deltas::ZRow;
+    fn batch_checks_what_the_store_serves() -> Result<(), anyhow::Error> {
+        use crate::relational::schema::{Column, TableSchema};
+        use crate::scalarial::ScalarType;
 
         let plan = vec![
             Stmt::from(VarStmt {
@@ -1912,19 +1934,19 @@ mod test {
         let mut rt =
             Pipeline::batch().runtime(&mut TestProgram::new(plan, [PersonRel::schema()]))?;
 
-        let wrong_type = ZRow::new(1, tuple!("zero", "Alice", 20_u64, 0_u64)).expect("non-zero");
-        let err = rt.feed(&PersonRel::id(), [wrong_type]).unwrap_err();
-        assert!(err.to_string().contains("expected uint"), "got: {err}");
+        // The store's table under the plan's name, three columns short.
+        let narrow = TableSchema::new(
+            PersonRel::schema().name().clone(),
+            vec![Column::new("person_id", ScalarType::Uint)],
+            vec![],
+        );
+        let err = rt.commit_from(&MemoryStore::new([narrow])).unwrap_err();
+        assert!(err.to_string().contains("width 1"), "got: {err}");
         assert!(err.to_string().contains("person"), "got: {err}");
-
-        let wrong_arity = ZRow::new(1, tuple!(0_u64, "Alice")).expect("non-zero");
-        let err = rt.feed(&PersonRel::id(), [wrong_arity]).unwrap_err();
-        assert!(err.to_string().contains("columns"), "got: {err}");
         Ok(())
     }
 
-    /// Reading an output before any commit is an error, and feeding a
-    /// source the plan does not use reports `false` instead of failing.
+    /// Reading an output before any commit is an error.
     #[test]
     fn batch_output_requires_commit() -> Result<(), anyhow::Error> {
         let plan = vec![
@@ -1934,8 +1956,7 @@ mod test {
             }),
             output_stmt("edges"),
         ];
-        let mut rt = Pipeline::batch().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
-        assert!(!rt.feed(&PlainRel::id(), rows([(PlainRel::new(0, 0, 0), 1)]))?);
+        let rt = Pipeline::batch().runtime(&mut TestProgram::new(plan, [EdgeRel::schema()]))?;
         let err = rt.output(&SinkId::from("edges")).unwrap_err();
         assert!(err.to_string().contains("commit"), "got: {err}");
         Ok(())

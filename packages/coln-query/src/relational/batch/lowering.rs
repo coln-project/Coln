@@ -1770,9 +1770,9 @@ mod tests {
         assert_eq!(plan.program.rules[0].body[0].relation, "__const0");
         assert_eq!(plan.schemas["__const0"].names(), vec!["a", "b"]);
 
-        // The runtime encodes these into the catalog it hands the fixpoint,
-        // alongside the fed sources (see `BatchRuntime::materialize_sources`
-        // and `BatchBackend::build`), which is what this mimics.
+        // The runtime encodes these into a catalog next to the store's
+        // tables (see `BatchRuntime::commit_from` and `BatchBackend::build`),
+        // which is what this mimics.
         let result = run(&plan, constant_catalog(&plan));
         assert_eq!(
             rows(result.get("pairs").unwrap()),
