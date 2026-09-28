@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result, bail};
 
 use crate::relation::Relation;
+use crate::table::{ArrowSortedTable, ColId, SortedTable};
 use crate::types::{Column, Dictionary, Key, ScalarType, Schema, Value};
 
 /// A query variable, identified by its index. For the worst-case-optimal
@@ -268,54 +269,132 @@ impl Catalog {
     /// Validate and type-check a query against this catalog: structure,
     /// relation existence, arity agreement, and consistent types.
     pub fn check(&self, query: &Query) -> Result<Typing> {
-        query.validate()?;
-        let var_types = infer_var_types(query.num_vars(), &query.atoms, |name| {
-            Ok(self
-                .get(name)?
-                .schema
-                .types()
-                .into_iter()
-                .map(Some)
-                .collect())
-        })?;
-        let var_types = var_types
-            .into_iter()
-            .map(|t| t.expect("every variable occurs in some atom (validated)"))
-            .collect();
-        Ok(Typing { var_types })
+        check(query, self)
+    }
+}
+
+/// Where an executor reads a query's relations from: per relation name a
+/// schema and sorted tables in the column order the executor asks for,
+/// plus the dictionary every string key stems from.
+///
+/// [`Catalog`] serves the relations it holds in memory and sorts a copy per
+/// request. A storage layer can serve its own sorted tables instead,
+/// without copying them into a catalog, and [`Layered`] puts the
+/// fixpoint's derived relations on top of such a source.
+pub trait Tables {
+    /// The schema of `relation`, or an error if there is no such relation.
+    fn schema(&self, relation: &str) -> Result<&Schema>;
+
+    /// `relation` as a sorted table whose rows are ordered by `order`, a
+    /// permutation of its columns in schema order.
+    fn sorted(&self, relation: &str, order: &[ColId]) -> Result<Box<dyn SortedTable + '_>>;
+
+    /// The dictionary the string keys of every relation stem from.
+    fn dictionary(&self) -> &Dictionary;
+}
+
+impl Tables for Catalog {
+    fn schema(&self, relation: &str) -> Result<&Schema> {
+        Ok(&self.get(relation)?.schema)
     }
 
-    /// Check the query and encode its literals.
-    pub(crate) fn prepare(&self, query: &Query) -> Result<Prepared> {
-        let typing = self.check(query)?;
-        let schema = typing.head_schema(query);
-        let mut atoms = Vec::with_capacity(query.atoms.len());
-        for atom in &query.atoms {
-            let mut terms = Vec::with_capacity(atom.terms.len());
-            for term in &atom.terms {
-                terms.push(match term {
-                    Term::Var(v) => KeyTerm::Var(*v),
-                    Term::Lit(value) => match value.key_if_known(&self.dict) {
-                        Some(key) => KeyTerm::Lit(key),
-                        None => {
-                            return Ok(Prepared {
-                                schema,
-                                atoms: None,
-                            });
-                        }
-                    },
-                });
-            }
-            atoms.push(KeyAtom {
-                relation: atom.relation.clone(),
-                terms,
+    fn sorted(&self, relation: &str, order: &[ColId]) -> Result<Box<dyn SortedTable + '_>> {
+        // TODO(perf): sorts a copy per request, so every query and every
+        // fixpoint round sorts again. Sorted tables served by the storage
+        // layer (see `Tables`) make this a lookup.
+        let table = ArrowSortedTable::from_relation(self.get(relation)?, order.to_vec())?;
+        Ok(Box::new(table))
+    }
+
+    fn dictionary(&self) -> &Dictionary {
+        &self.dict
+    }
+}
+
+/// Two sources as one: a relation in `local` shadows one of the same name
+/// in `base`. The fixpoint keeps its derived relations in `local`, on top
+/// of its input in `base`.
+///
+/// `local`'s dictionary must extend `base`'s (start as a copy of it, then
+/// only grow), so every key `base` hands out decodes the same way.
+pub struct Layered<'a> {
+    local: &'a Catalog,
+    base: &'a dyn Tables,
+}
+
+impl<'a> Layered<'a> {
+    pub fn new(local: &'a Catalog, base: &'a dyn Tables) -> Self {
+        Self { local, base }
+    }
+}
+
+impl Tables for Layered<'_> {
+    fn schema(&self, relation: &str) -> Result<&Schema> {
+        if self.local.contains(relation) {
+            Tables::schema(self.local, relation)
+        } else {
+            self.base.schema(relation)
+        }
+    }
+
+    fn sorted(&self, relation: &str, order: &[ColId]) -> Result<Box<dyn SortedTable + '_>> {
+        if self.local.contains(relation) {
+            self.local.sorted(relation, order)
+        } else {
+            self.base.sorted(relation, order)
+        }
+    }
+
+    fn dictionary(&self) -> &Dictionary {
+        self.local.dictionary()
+    }
+}
+
+/// Validate and type-check a query against `tables`: structure, relation
+/// existence, arity agreement, and consistent types.
+pub fn check(query: &Query, tables: &dyn Tables) -> Result<Typing> {
+    query.validate()?;
+    let var_types = infer_var_types(query.num_vars(), &query.atoms, |name| {
+        Ok(tables.schema(name)?.types().into_iter().map(Some).collect())
+    })?;
+    let var_types = var_types
+        .into_iter()
+        .map(|t| t.expect("every variable occurs in some atom (validated)"))
+        .collect();
+    Ok(Typing { var_types })
+}
+
+/// Check the query against `tables` and encode its literals with their
+/// dictionary.
+pub(crate) fn prepare(query: &Query, tables: &dyn Tables) -> Result<Prepared> {
+    let typing = check(query, tables)?;
+    let schema = typing.head_schema(query);
+    let mut atoms = Vec::with_capacity(query.atoms.len());
+    for atom in &query.atoms {
+        let mut terms = Vec::with_capacity(atom.terms.len());
+        for term in &atom.terms {
+            terms.push(match term {
+                Term::Var(v) => KeyTerm::Var(*v),
+                Term::Lit(value) => match value.key_if_known(tables.dictionary()) {
+                    Some(key) => KeyTerm::Lit(key),
+                    None => {
+                        return Ok(Prepared {
+                            schema,
+                            atoms: None,
+                        });
+                    }
+                },
             });
         }
-        Ok(Prepared {
-            schema,
-            atoms: Some(atoms),
-        })
+        atoms.push(KeyAtom {
+            relation: atom.relation.clone(),
+            terms,
+        });
     }
+    Ok(Prepared {
+        schema,
+        atoms: Some(atoms),
+    })
 }
 
 #[cfg(test)]
@@ -429,7 +508,7 @@ mod tests {
         assert_eq!(schema.names(), vec!["what", "id"]);
         assert_eq!(schema.types(), vec![ScalarType::String, ScalarType::Uint]);
 
-        let prepared = cat.prepare(&q).unwrap();
+        let prepared = prepare(&q, &cat).unwrap();
         assert!(prepared.atoms.is_some());
     }
 
@@ -478,7 +557,7 @@ mod tests {
             }],
             head: vec![0],
         };
-        let prepared = cat.prepare(&q).unwrap();
+        let prepared = prepare(&q, &cat).unwrap();
         assert!(prepared.atoms.is_none());
         assert_eq!(prepared.schema.types(), vec![ScalarType::String]);
     }

@@ -26,9 +26,9 @@ use std::collections::BTreeMap;
 
 use anyhow::{Result, bail};
 
-use crate::query::{Atom, Catalog, Query, Term, infer_var_types};
+use crate::query::{Atom, Query, Tables, Term, infer_var_types};
 use crate::relation::Relation;
-use crate::types::{Column, Key, ScalarType, Schema};
+use crate::types::{Column, Dictionary, Key, ScalarType, Schema};
 
 #[derive(Clone, Debug)]
 pub struct Rule {
@@ -111,10 +111,14 @@ struct PartialSchema {
 }
 
 impl Program {
-    /// Validate against the EDB catalog, infer the derived schemas, and
-    /// lower every rule. String literals are interned into the catalog's
-    /// dictionary, which is why the catalog is borrowed mutably.
-    pub(crate) fn compile(&self, edb: &mut Catalog) -> Result<CompiledProgram> {
+    /// Validate against the input tables in `edb`, infer the derived
+    /// schemas, and lower every rule. String literals are interned into
+    /// `dict`, which must extend `edb`'s dictionary.
+    pub(crate) fn compile(
+        &self,
+        edb: &dyn Tables,
+        dict: &mut Dictionary,
+    ) -> Result<CompiledProgram> {
         if self.rules.is_empty() {
             bail!("program has no rules");
         }
@@ -135,7 +139,7 @@ impl Program {
                 }
                 continue;
             }
-            let schema = if let Ok(initial) = edb.get(name) {
+            let schema = if let Ok(initial) = edb.schema(name) {
                 if initial.arity() != arity {
                     bail!(
                         "initial facts for {name} have arity {}, head has {arity}",
@@ -143,8 +147,8 @@ impl Program {
                     );
                 }
                 PartialSchema {
-                    names: initial.schema.names(),
-                    types: initial.schema.types().into_iter().map(Some).collect(),
+                    names: initial.names(),
+                    types: initial.types().into_iter().map(Some).collect(),
                 }
             } else {
                 PartialSchema {
@@ -174,13 +178,7 @@ impl Program {
                     if let Some(p) = partial.get(name) {
                         Ok(p.types.clone())
                     } else {
-                        Ok(edb
-                            .get(name)?
-                            .schema
-                            .types()
-                            .into_iter()
-                            .map(Some)
-                            .collect())
+                        Ok(edb.schema(name)?.types().into_iter().map(Some).collect())
                     }
                 })?;
                 let head = partial
@@ -241,7 +239,7 @@ impl Program {
                         head_vars.push(*v);
                     }
                     Term::Lit(value) => {
-                        head_cols.push(HeadCol::Lit(value.to_key(edb.dictionary_mut())));
+                        head_cols.push(HeadCol::Lit(value.to_key(dict)));
                     }
                 }
             }
@@ -263,7 +261,7 @@ impl Program {
             infer_var_types(query.num_vars(), &query.atoms, |name| {
                 let schema = match idb_schemas.get(name) {
                     Some(schema) => schema,
-                    None => &edb.get(name)?.schema,
+                    None => edb.schema(name)?,
                 };
                 Ok(schema.types().into_iter().map(Some).collect())
             })?;
@@ -272,7 +270,7 @@ impl Program {
             for atom in &query.atoms {
                 for term in &atom.terms {
                     if let Term::Lit(value) = term {
-                        value.to_key(edb.dictionary_mut());
+                        value.to_key(dict);
                     }
                 }
             }
@@ -304,6 +302,18 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::query::Catalog;
+
+    impl Program {
+        /// [`Program::compile`] against a catalog, interning literals into
+        /// the catalog's own dictionary.
+        fn compile_in(&self, catalog: &mut Catalog) -> Result<CompiledProgram> {
+            let mut dict = catalog.dictionary().clone();
+            let compiled = self.compile(catalog, &mut dict);
+            *catalog.dictionary_mut() = dict;
+            compiled
+        }
+    }
 
     fn edb() -> Catalog {
         let mut cat = Catalog::new();
@@ -352,7 +362,7 @@ mod tests {
 
     #[test]
     fn compiles_ancestor() {
-        let compiled = ancestor_rules().compile(&mut edb()).unwrap();
+        let compiled = ancestor_rules().compile_in(&mut edb()).unwrap();
         assert_eq!(compiled.rules.len(), 2);
         assert_eq!(compiled.rules[0].idb_positions, Vec::<usize>::new());
         assert_eq!(compiled.rules[1].idb_positions, vec![1]);
@@ -366,23 +376,23 @@ mod tests {
         // Unknown EDB relation.
         let mut p = ancestor_rules();
         p.rules[0].body[0].relation = "nope".into();
-        assert!(p.compile(&mut edb()).is_err());
+        assert!(p.compile_in(&mut edb()).is_err());
 
         // Head variable not bound in the body.
         let mut p = ancestor_rules();
         p.rules[0].head.terms[1] = Term::Var(1);
         p.rules[0].body[0].terms[1] = Term::lit(7u64);
-        assert!(p.compile(&mut edb()).is_err());
+        assert!(p.compile_in(&mut edb()).is_err());
 
         // Inconsistent IDB arity.
         let mut p = ancestor_rules();
         p.rules[1].head.terms.push(Term::Var(1));
-        assert!(p.compile(&mut edb()).is_err());
+        assert!(p.compile_in(&mut edb()).is_err());
 
         // Reserved prefix.
         let mut p = ancestor_rules();
         p.rules[0].head.relation = "__delta_ancestor".into();
-        assert!(p.compile(&mut edb()).is_err());
+        assert!(p.compile_in(&mut edb()).is_err());
     }
 
     fn typed_edb() -> Catalog {
@@ -439,7 +449,7 @@ mod tests {
 
     #[test]
     fn infers_derived_types_through_recursion() {
-        let compiled = labeled_reach().compile(&mut typed_edb()).unwrap();
+        let compiled = labeled_reach().compile_in(&mut typed_edb()).unwrap();
         let schema = &compiled.idb_schemas["reach"];
         assert_eq!(schema.names(), vec!["x", "y", "l"]);
         assert_eq!(
@@ -457,7 +467,7 @@ mod tests {
         program.rules.swap(0, 1);
         program.rules[1].head.terms[2] = Term::lit("seed");
         let mut edb = typed_edb();
-        let compiled = program.compile(&mut edb).unwrap();
+        let compiled = program.compile_in(&mut edb).unwrap();
         assert_eq!(
             compiled.idb_schemas["reach"].types(),
             vec![ScalarType::Uint, ScalarType::Uint, ScalarType::String]
@@ -471,7 +481,10 @@ mod tests {
         // Second rule derives the label column as uint.
         let mut program = labeled_reach();
         program.rules[1].head.terms[2] = Term::lit(5u64);
-        let err = program.compile(&mut typed_edb()).unwrap_err().to_string();
+        let err = program
+            .compile_in(&mut typed_edb())
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("is string but a rule derives it as uint"),
             "{err}"
@@ -495,7 +508,7 @@ mod tests {
             }],
         };
         let err = program
-            .compile(&mut Catalog::new())
+            .compile_in(&mut Catalog::new())
             .unwrap_err()
             .to_string();
         assert!(err.contains("cannot infer the type"), "{err}");
@@ -506,7 +519,7 @@ mod tests {
             "p",
             Schema::new([Column::new("x", ScalarType::String)]),
         ));
-        let compiled = program.compile(&mut cat).unwrap();
+        let compiled = program.compile_in(&mut cat).unwrap();
         assert_eq!(compiled.idb_schemas["p"].types(), vec![ScalarType::String]);
     }
 
@@ -523,7 +536,7 @@ mod tests {
             vec![vec![7u64.into(), 8u64.into(), "rail".into()]],
         )
         .unwrap();
-        let compiled = labeled_reach().compile(&mut cat).unwrap();
+        let compiled = labeled_reach().compile_in(&mut cat).unwrap();
         assert_eq!(
             compiled.idb_schemas["reach"].names(),
             vec!["from", "to", "via"]
@@ -537,7 +550,10 @@ mod tests {
             vec![vec![7u64.into(), 8u64.into(), 9u64.into()]],
         )
         .unwrap();
-        let err = labeled_reach().compile(&mut cat).unwrap_err().to_string();
+        let err = labeled_reach()
+            .compile_in(&mut cat)
+            .unwrap_err()
+            .to_string();
         assert!(
             err.contains("is uint but a rule derives it as string"),
             "{err}"

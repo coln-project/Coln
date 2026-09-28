@@ -13,21 +13,29 @@
 
 use anyhow::Result;
 
-use crate::query::{Catalog, KeyAtom, KeyTerm, Query};
+use crate::query::{KeyAtom, KeyTerm, Query, Tables, prepare};
 use crate::relation::Relation;
+use crate::table::SortedTable;
 use crate::types::Key;
 
-/// Evaluate `query` against `catalog` by exhaustive search. Returns the
+/// Evaluate `query` against `tables` by exhaustive search. Returns the
 /// projected result, sorted and deduplicated (set semantics).
-pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
-    let prepared = catalog.prepare(query)?;
+///
+/// It reads each relation by a plain scan in schema order and uses none of
+/// the searches, so it also serves to cross-check a storage layer's tables.
+pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
+    let prepared = prepare(query, tables)?;
     let Some(atoms) = prepared.atoms else {
         return Ok(Relation::empty("result", prepared.schema));
     };
-    let tables: Vec<&Relation> = atoms
+    let scanned: Vec<Box<dyn SortedTable + '_>> = atoms
         .iter()
-        .map(|a| catalog.get(&a.relation))
+        .map(|a| {
+            let identity: Vec<usize> = (0..tables.schema(&a.relation)?.arity()).collect();
+            tables.sorted(&a.relation, &identity)
+        })
         .collect::<Result<_>>()?;
+    let tables: Vec<&dyn SortedTable> = scanned.iter().map(|t| &**t).collect();
 
     let mut binding: Vec<Option<Key>> = vec![None; query.num_vars()];
     let mut out: Vec<Key> = Vec::new();
@@ -39,7 +47,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
 fn search(
     query: &Query,
     atoms: &[KeyAtom],
-    tables: &[&Relation],
+    tables: &[&dyn SortedTable],
     atom_idx: usize,
     binding: &mut Vec<Option<Key>>,
     out: &mut Vec<Key>,
@@ -56,7 +64,7 @@ fn search(
         // Try to unify this row with the atom's terms.
         let mut newly_bound: Vec<usize> = Vec::new();
         for (c, term) in atom.terms.iter().enumerate() {
-            let value = table.cols[c][r];
+            let value = table.value(r, c);
             match term {
                 KeyTerm::Lit(l) => {
                     if value != *l {

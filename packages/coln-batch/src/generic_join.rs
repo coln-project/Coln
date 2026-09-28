@@ -16,9 +16,11 @@
 //!
 //! Requirements on storage are exactly the [`SortedTable`] trait: one
 //! index per atom, sorted by the atom's literal columns first, then its
-//! variable columns in elimination order. [`execute`] builds those indexes
-//! in memory ([`ArrowSortedTable`]); a storage layer can serve them
-//! instead without touching this module's search logic.
+//! variable columns in elimination order. [`execute`] asks its [`Tables`]
+//! for each of them. An in-memory catalog sorts a copy
+//! ([`ArrowSortedTable`](crate::table::ArrowSortedTable)); a storage layer
+//! serves its own, and this module's search logic cannot tell the
+//! difference.
 //!
 //! The search runs on keys (see [`crate::types`]); literals are encoded
 //! once up front and the result carries the typed schema of the head.
@@ -27,27 +29,22 @@ use std::ops::Range;
 
 use anyhow::Result;
 
-use crate::query::{Catalog, KeyTerm, Query, VarId};
+use crate::query::{KeyTerm, Query, Tables, VarId, prepare};
 use crate::relation::Relation;
-use crate::table::{ArrowSortedTable, SortedTable};
+use crate::table::SortedTable;
 use crate::types::Key;
 
-/// Evaluate `query` against `catalog` with the generic join. Returns the
+/// Evaluate `query` against `tables` with the generic join. Returns the
 /// projected result, sorted and deduplicated (set semantics).
-pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
-    let prepared = catalog.prepare(query)?;
+pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
+    let prepared = prepare(query, tables)?;
     let Some(key_atoms) = prepared.atoms else {
         return Ok(Relation::empty("result", prepared.schema));
     };
 
-    // Build one suitably-sorted index per atom.
-    // TODO(perf): sorting happens here, per query. Once the storage layer
-    // serves SortedTable directly (pre-built indexes), this block becomes
-    // a lookup instead of an O(N log N) build.
-    let mut atoms: Vec<AtomExec<ArrowSortedTable>> = Vec::with_capacity(key_atoms.len());
+    // One suitably sorted table per atom.
+    let mut atoms: Vec<AtomExec<Box<dyn SortedTable + '_>>> = Vec::with_capacity(key_atoms.len());
     for atom in &key_atoms {
-        let rel = catalog.get(&atom.relation)?;
-
         // Column order: literal columns first, then variable columns in
         // elimination (VarId) order; a variable's columns end up adjacent.
         let mut order: Vec<usize> = (0..atom.terms.len()).collect();
@@ -65,7 +62,13 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
             }
         }
 
-        let table = ArrowSortedTable::from_relation(rel, order)?;
+        // @Vincent: this is where the join reads your table. For a base
+        // table, `tables` is the store and this call reaches your handle's
+        // `sorted`. `order` is chosen per query (literal columns first, then
+        // variables in elimination order), so one query can ask for the
+        // same table in two orders. From here on the join only calls
+        // `len`, `value`, `lower_bound` and `equal_range`.
+        let table = tables.sorted(&atom.relation, &order)?;
         atoms.push(AtomExec {
             table,
             lit_prefix,
@@ -206,7 +209,7 @@ impl<T: SortedTable> Solver<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query::{Atom, Term};
+    use crate::query::{Atom, Catalog, Term};
 
     #[test]
     fn triangle_on_hand_built_graph() {
