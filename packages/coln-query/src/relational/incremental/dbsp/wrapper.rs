@@ -10,12 +10,12 @@ use crate::utils::cli_table::{
     ChainedHeader, CliReport, CliTableHeader, TableDisplay, ToCliReport, ToCliTableIterExt,
     ZWeightedHeader,
 };
+use dbsp::{
+    Circuit, IndexedZSetHandle, IndexedZSetReader, OrdIndexedZSet, OutputHandle, Stream,
+    operator::ConstantGenerator, typed_batch::SpineSnapshot, utils::Tup2,
+};
 pub use dbsp::{
     DBSPHandle as DbspHandle, Error as DbspError, NestedCircuit, RootCircuit, Runtime, ZWeight,
-};
-use dbsp::{
-    IndexedZSetHandle, IndexedZSetReader, OrdIndexedZSet, OutputHandle, Stream,
-    typed_batch::SpineSnapshot, utils::Tup2,
 };
 #[allow(unused_imports, reason = "For testing purposes")]
 pub use dbsp::{OrdZSet, indexed_zset, zset, zset_set};
@@ -31,6 +31,68 @@ pub fn new_ord_indexed_stream(
     circuit: &mut RootCircuit,
 ) -> (OrdIndexedRootStream, OrdIndexedStreamInputHandle) {
     circuit.add_input_indexed_zset::<TupleKey, TupleValue>()
+}
+
+/// Wires a relation the plan itself carries, a
+/// [`ConstantExpr`](crate::relational::expr::ConstantExpr), into a root stream.
+/// There is no handle because there is nobody to feed it.
+///
+/// `rows` are the relation's *contents*, but a root stream carries *changes*.
+/// The constant is therefore emitted as one delta in the circuit's first step
+/// and as nothing afterwards, which is what `differentiate` over a stream that
+/// is constantly `rows` computes (`rows - z⁻¹(rows)`). Its integrated value is
+/// `rows` at every step, which is exactly the claim the plan node makes.
+///
+/// [`ConstantGenerator`] is also what keeps the rows from being multiplied by
+/// the worker count, as it emits them on worker 0 only, and the operators that
+/// need the data partitioned shard it themselves. A hand-rolled
+/// [`Generator`](::dbsp::operator::Generator) would emit a full copy per worker.
+pub fn new_constant_stream(
+    circuit: &RootCircuit,
+    schema: &StreamSchema,
+    rows: impl IntoIterator<Item = (TupleValue, ZWeight)>,
+) -> OrdIndexedRootStream {
+    let key_indices = key_indices(schema);
+    let tuples = rows
+        .into_iter()
+        .map(|(row, weight)| Tup2(Tup2(key_of(&key_indices, &row), row), weight))
+        .collect();
+    let batch = OrdIndexedZSet::<TupleKey, TupleValue>::from_tuples((), tuples);
+    circuit
+        .add_source(ConstantGenerator::new(batch))
+        .differentiate()
+}
+
+/// Where the key columns of `schema` sit in its rows.
+///
+/// A relation's key is not data of its own: it is a projection of the row (see
+/// [`StreamSchema`]), which is what makes "the key determines the row" hold by
+/// construction rather than by anyone's discipline.
+fn key_indices(schema: &StreamSchema) -> Vec<usize> {
+    let tuple_names: Vec<String> = schema
+        .tuple
+        .field_names(ColumnSelector::Visible, &None)
+        .collect();
+    schema
+        .key
+        .field_names(ColumnSelector::Visible, &None)
+        .map(|key_field| {
+            tuple_names
+                .iter()
+                .position(|name| *name == key_field)
+                .expect("key field must appear in the tuple schema")
+        })
+        .collect()
+}
+
+/// The key of one row, as [`key_indices`] located it.
+fn key_of(key_indices: &[usize], row: &TupleValue) -> TupleKey {
+    TupleKey {
+        data: key_indices
+            .iter()
+            .map(|index| row.data[*index].clone())
+            .collect(),
+    }
 }
 
 pub type OrdIndexedStreamInputHandle = IndexedZSetHandle<TupleKey, TupleValue>;
@@ -282,33 +344,15 @@ impl DbspInput {
     }
     /// Feed a batch of value tuples (with z-weights) into this input. The tuple
     /// key is derived from the value by picking the schema's key fields, so
-    /// callers only supply the value — matching the neutral `Runtime::feed`.
+    /// callers only supply the value, matching the neutral `Runtime::feed`.
     pub fn feed(&self, rows: impl IntoIterator<Item = ZRow>) {
-        let tuple_names: Vec<String> = self
-            .schema
-            .tuple
-            .field_names(ColumnSelector::Visible, &None)
-            .collect();
-        let key_indices: Vec<usize> = self
-            .schema
-            .key
-            .field_names(ColumnSelector::Visible, &None)
-            .map(|key_field| {
-                tuple_names
-                    .iter()
-                    .position(|name| *name == key_field)
-                    .expect("key field must appear in the tuple schema")
-            })
-            .collect();
+        let key_indices = key_indices(&self.schema);
         let mut batch = rows
             .into_iter()
             .map(|row_delta| {
                 let zweight = row_delta.zweight();
                 let row = row_delta.into_row();
-                let key = TupleKey {
-                    data: key_indices.iter().map(|&i| row.data[i].clone()).collect(),
-                };
-                Tup2(key, Tup2(row, zweight))
+                Tup2(key_of(&key_indices, &row), Tup2(row, zweight))
             })
             .collect();
         self.handle.append(&mut batch);

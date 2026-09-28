@@ -147,7 +147,9 @@ impl ColnQuery {
                 continue;
             }
             if let Some(derived_view_meta) = self.flir_program.derived_view_meta(sink_id) {
-                derived_data_delta.extend(Some(delta));
+                // Safety: Due to every sink being unique, we have at most one
+                // TableDelta per output entity.
+                derived_data_delta.unsafe_extend(Some(delta));
             } else {
                 let sink_meta = self.flir_program.constraint_meta(sink_id).ok_or_else(|| {
                     RuntimeError::new(format!(
@@ -190,6 +192,8 @@ impl ColnQuery {
         if !hard_violations.is_empty() {
             return Ok(TxOutcome::HardViolationsSet(hard_violations));
         }
+        // At least be warned if output deltas are not consolidated.
+        debug_assert!(derived_data_delta.is_consolidated());
         Ok(TxOutcome::DerivedDataDelta(DataDelta::new(
             derived_data_delta,
             soft_violations,
@@ -351,7 +355,22 @@ mod test {
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
-        assert!(tx1.take_derived_data_delta().is_empty());
+        let derived_data_delta = tx1.take_derived_data_delta();
+        assert_eq!(derived_data_delta.size(), 2);
+        assert_eq!(
+            derived_data_delta["view.outgoing-edges"],
+            [
+                zrow!(1 [0_u64, 0_u64, 0_u64, 1_u64, 1_u64, 0_u64]),
+                zrow!(1 [0_u64, 1_u64, 0_u64, 2_u64, 1_u64, 1_u64])
+            ]
+        );
+        assert_eq!(
+            derived_data_delta["view.incoming-edges"],
+            [
+                zrow!(1 [0_u64, 1_u64, 0_u64, 0_u64, 1_u64, 0_u64]),
+                zrow!(1 [0_u64, 2_u64, 0_u64, 1_u64, 1_u64, 1_u64])
+            ]
+        );
         assert!(tx1.take_soft_violations().is_empty());
 
         let mut tx2 = Tx::empty();
@@ -431,20 +450,14 @@ mod test {
         let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         assert!(tx1.take_soft_violations().is_empty());
-        let triangle_data = tx1
-            .take_derived_data_delta()
-            .into_table_deltas()
-            .pop()
-            .expect("one data delta");
+        let derived_data_delta = tx1.take_derived_data_delta();
+        assert_eq!(derived_data_delta.size(), 1);
         assert_eq!(
-            triangle_data,
-            (
-                "view.triangle",
-                [
-                    zrow!(1 [0_u64, 2_u64, 0_u64, 3_u64, 0_u64, 0_u64, 0_u64, 6_u64, 1_u64, 1_u64, 1_u64, 0_u64]),
-                    zrow!(1 [0_u64, 3_u64, 0_u64, 0_u64, 0_u64, 1_u64, 1_u64, 1_u64, 0_u64, 4_u64, 1_u64, 2_u64])
-                ]
-            )
+            derived_data_delta["view.triangle"],
+            [
+                zrow!(1 [0_u64, 2_u64, 0_u64, 3_u64, 0_u64, 0_u64, 0_u64, 6_u64, 1_u64, 1_u64, 1_u64, 0_u64]),
+                zrow!(1 [0_u64, 3_u64, 0_u64, 0_u64, 0_u64, 1_u64, 1_u64, 1_u64, 0_u64, 4_u64, 1_u64, 2_u64])
+            ]
         );
 
         Ok(())

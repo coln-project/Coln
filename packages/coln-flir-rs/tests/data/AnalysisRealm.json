@@ -1,0 +1,489 @@
+{
+  "entities": [
+    {
+      "path": "root.Addr",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.Ref",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.Field",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.assign",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "x", "type": { "tag": "rowId", "path": "root.Ref" } },
+          { "path": "y", "type": { "tag": "rowId", "path": "root.Ref" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.assign-to-field",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "x", "type": { "tag": "rowId", "path": "root.Ref" } },
+          { "path": "f", "type": { "tag": "rowId", "path": "root.Field" } },
+          { "path": "y", "type": { "tag": "rowId", "path": "root.Ref" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "root.assign-from-field",
+      "value": {
+        "entityVariant": { "tag": "table" },
+        "columns": [
+          { "path": "x", "type": { "tag": "rowId", "path": "root.Ref" } },
+          { "path": "y", "type": { "tag": "rowId", "path": "root.Ref" } },
+          { "path": "f", "type": { "tag": "rowId", "path": "root.Field" } }
+        ],
+        "primaryKey": null
+      }
+    },
+    {
+      "path": "init.analysis.points-to",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.Ref" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.Addr" } }
+        ],
+        "primaryKey": [0, 1]
+      }
+    },
+    {
+      "path": "init.analysis.points-to-field",
+      "value": {
+        "entityVariant": { "tag": "view", "materialization": "memoized" },
+        "columns": [
+          { "path": "a", "type": { "tag": "rowId", "path": "root.Ref" } },
+          { "path": "b", "type": { "tag": "rowId", "path": "root.Field" } },
+          { "path": "c", "type": { "tag": "rowId", "path": "root.Addr" } }
+        ],
+        "primaryKey": [0, 1, 2]
+      }
+    }
+  ],
+  "definitions": [
+    {
+      "path": "init.analysis.points-to/assign",
+      "value": {
+        "vars": [
+          ["x", { "tag": "rowId", "path": "root.Ref" }],
+          ["y", { "tag": "rowId", "path": "root.Ref" }],
+          ["a", { "tag": "rowId", "path": "root.Addr" }],
+          ["b", { "tag": "rowId", "path": "root.assign" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Addr",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.assign",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.analysis.points-to",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 1 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.analysis.points-to",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 2 }
+        ]
+      }
+    },
+    {
+      "path": "init.analysis.points-to-field/assign",
+      "value": {
+        "vars": [
+          ["x", { "tag": "rowId", "path": "root.Ref" }],
+          ["f", { "tag": "rowId", "path": "root.Field" }],
+          ["y", { "tag": "rowId", "path": "root.Ref" }],
+          ["a", { "tag": "rowId", "path": "root.Addr" }],
+          ["b", { "tag": "rowId", "path": "root.assign-to-field" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Field",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Addr",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.assign-to-field",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.analysis.points-to",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 2 } },
+                { "column": 1, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.analysis.points-to-field",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 1 },
+          { "tag": "var", "index": 3 }
+        ]
+      }
+    },
+    {
+      "path": "init.analysis.points-to/field-assign",
+      "value": {
+        "vars": [
+          ["x", { "tag": "rowId", "path": "root.Ref" }],
+          ["y", { "tag": "rowId", "path": "root.Ref" }],
+          ["f", { "tag": "rowId", "path": "root.Field" }],
+          ["a", { "tag": "rowId", "path": "root.Addr" }],
+          ["b", { "tag": "rowId", "path": "root.assign-from-field" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Field",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Addr",
+              "rowId": { "tag": "var", "index": 3 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.assign-from-field",
+              "rowId": { "tag": "var", "index": 4 },
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "init.analysis.points-to-field",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 1 } },
+                { "column": 1, "term": { "tag": "var", "index": 2 } },
+                { "column": 2, "term": { "tag": "var", "index": 3 } }
+              ]
+            }
+          }
+        ],
+        "definand": "init.analysis.points-to",
+        "arguments": [
+          { "tag": "var", "index": 0 },
+          { "tag": "var", "index": 3 }
+        ]
+      }
+    }
+  ],
+  "rules": [
+    {
+      "path": "root.Addr.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": { "entity": "root.Addr", "rowId": null, "values": [] }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": "root.Ref.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": { "entity": "root.Ref", "rowId": null, "values": [] }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": "root.Field.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": { "entity": "root.Field", "rowId": null, "values": [] }
+          }
+        ],
+        "consequents": []
+      }
+    },
+    {
+      "path": "root.assign.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["x", { "tag": "rowId", "path": "root.Ref" }],
+          ["y", { "tag": "rowId", "path": "root.Ref" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.assign",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "root.assign-to-field.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["x", { "tag": "rowId", "path": "root.Ref" }],
+          ["f", { "tag": "rowId", "path": "root.Field" }],
+          ["y", { "tag": "rowId", "path": "root.Ref" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.assign-to-field",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Field",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "path": "root.assign-from-field.foreignKey",
+      "value": {
+        "ruleVariant": "enforced",
+        "vars": [
+          ["x", { "tag": "rowId", "path": "root.Ref" }],
+          ["y", { "tag": "rowId", "path": "root.Ref" }],
+          ["f", { "tag": "rowId", "path": "root.Field" }]
+        ],
+        "antecedents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.assign-from-field",
+              "rowId": null,
+              "values": [
+                { "column": 0, "term": { "tag": "var", "index": 0 } },
+                { "column": 1, "term": { "tag": "var", "index": 1 } },
+                { "column": 2, "term": { "tag": "var", "index": 2 } }
+              ]
+            }
+          }
+        ],
+        "consequents": [
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 0 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Ref",
+              "rowId": { "tag": "var", "index": 1 },
+              "values": []
+            }
+          },
+          {
+            "tag": "atom",
+            "atom": {
+              "entity": "root.Field",
+              "rowId": { "tag": "var", "index": 2 },
+              "values": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -11,8 +11,8 @@ use super::operators::{
 use super::schema::{DbspTupleContext, SchemaTuple, StreamSchema, TupleKey};
 use crate::relational::expr::MultiWayEquiJoinExpr;
 use crate::relational::incremental::dbsp::{
-    AsDbspRelation, DbspInput, DbspRelation, OrdIndexedStreamInputHandle, new_ord_indexed_stream,
-    new_relation,
+    AsDbspRelation, DbspInput, DbspRelation, OrdIndexedStreamInputHandle, ZWeight,
+    new_constant_stream, new_ord_indexed_stream, new_relation,
 };
 use crate::relational::schema::TableSchema;
 use crate::{
@@ -25,9 +25,9 @@ use crate::{
     },
     relational::catalog::SourceSchemas,
     relational::expr::{
-        AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr, RelExpr, RelExprVisitor,
-        SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
+        AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr, DistinctExpr,
+        EquiJoinExpr, FixedPointIterExpr, OutputExpr, OutputKind, ProjectionExpr, RelExpr,
+        RelExprVisitor, SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
     },
     relational::incremental::dbsp::{
         DbspError, DbspInputs, DbspOutput, NestedCircuit, OrdIndexedNestedStream, RootCircuit,
@@ -58,6 +58,41 @@ impl Source {
         Source {
             schema: StreamSchema::from(table),
             handle,
+            stream: StreamWrapper::from(stream),
+        }
+    }
+}
+
+/// The position of a constant in [`DbspInterpreter::constants`]. Assigned by
+/// content, so two occurrences of the same constant share one index — and with
+/// it one wired stream.
+type ConstantIdx = usize;
+
+/// Every _distinct_ [`ConstantExpr`] of the plan, in the order a pre-order walk
+/// first reached it, with the root stream its rows were wired into.
+type Constants = Vec<(ConstantExpr, Constant)>;
+
+/// Unlike [`Source`], it does not carry a handle for inputting data.
+struct Constant {
+    schema: StreamSchema,
+    stream: StreamWrapper,
+}
+
+impl Constant {
+    /// Wire a constant's rows into a root stream. Unlike [`Source::new`] there
+    /// is no handle: the rows are in the plan, so nothing feeds this relation
+    /// and `feed` must not be able to reach it. See [`new_constant_stream`]
+    /// for how a bag of rows becomes a delta.
+    fn new(expr: &ConstantExpr, root_circuit: &RootCircuit) -> Self {
+        let schema = StreamSchema::from(expr.schema());
+        let rows = expr.rows().iter().map(|(row, copies)| {
+            let weight = ZWeight::try_from(copies.get())
+                .expect("ConstantExpr::validate rejects a multiplicity beyond i64::MAX");
+            (row.clone(), weight)
+        });
+        let stream = new_constant_stream(root_circuit, &schema, rows);
+        Constant {
+            schema,
             stream: StreamWrapper::from(stream),
         }
     }
@@ -94,6 +129,9 @@ enum ImportKey {
     Var(VariableSlot),
     /// A [`SourceExpr`] leaf, keyed by source name.
     Source(SourceId),
+    /// A [`ConstantExpr`] leaf, keyed by its position among the plan's
+    /// constants which is a content-derived identity, see [`ConstantIdx`].
+    Constant(ConstantIdx),
 }
 
 /// State that only exists while walking a [`FixedPointIterExpr`] step body,
@@ -116,8 +154,12 @@ pub struct DbspInterpreter<E: RowScalarEngine = TreeWalk> {
     engine: E,
     /// Every input stream the plan needs, keyed by the [`SourceId`] its
     /// [`SourceExpr`] leaves name it by. Wired once in [`new`](Self::new) from
-    /// the schemas the pipeline resolved, so a leaf is *bound* here.
+    /// the schemas the pipeline resolved, so a leaf is _bound_ here.
     sources: Sources,
+    /// Every constant the plan carries, wired in [`new`](Self::new) alongside
+    /// the sources and for the same reason. Looked up by content, so any plan
+    /// referring to the same constant `N` times still builds just one stream.
+    constants: Constants,
     /// Output read handles collected while walking the plan, one per
     /// [`OutputExpr`] tap, in plan order. The backend drains these after
     /// interpretation to wire the runtime's named outputs.
@@ -131,29 +173,53 @@ pub struct DbspInterpreter<E: RowScalarEngine = TreeWalk> {
 }
 
 impl<E: RowScalarEngine> DbspInterpreter<E> {
-    /// Wires one root input stream per source the plan names, up front.
+    /// Wires one root stream per relation leaf of the plan, up front: an input
+    /// per source it names, and a constant per bag of rows it carries.
     ///
-    /// Eagerly rather than on first visit, because DBSP refuses a root input
-    /// once a nested circuit is under construction: wiring everything before
-    /// interpretation starts is what lets a [`FixedPointIterExpr`] step body
-    /// reach a source at all, without a pre-pass hoisting that body's sources
-    /// out by hand. `sources` came from a walk of this same plan, so the set is
-    /// the same one lazy wiring would have reached.
+    /// Eagerly rather than on first visit, because adding a root node once a
+    /// nested circuit is under construction is not safe: DBSP hands out an input
+    /// handle through `&mut RootCircuit`, which the nested circuit's constructor
+    /// closure has already borrowed, and a node added to the parent from inside
+    /// that closure lands at a position its assigned id no longer matches.
+    /// Wiring everything before interpretation starts is what lets a
+    /// [`FixedPointIterExpr`] step body reach a source or a constant at all,
+    /// without a pre-pass hoisting that body's leaves out by hand. Both
+    /// arguments came from a walk of this same plan, so the sets are the ones
+    /// lazy wiring would have reached.
     ///
-    /// Sorted by [`SourceId`], so that circuit construction does not inherit the
-    /// iteration order of a [`HashMap`].
-    pub fn new(root_circuit: RootCircuit, engine: E, sources: SourceSchemas) -> Self {
-        let mut root_circuit = root_circuit;
-        let mut wired = Sources::with_capacity(sources.len());
+    /// Sources are sorted by [`SourceId`], so that circuit construction does not
+    /// inherit the iteration order of a [`HashMap`]; `constants` arrive in plan
+    /// order, which is deterministic already.
+    pub fn new(
+        mut root_circuit: RootCircuit,
+        engine: E,
+        sources: SourceSchemas,
+        constants: Vec<ConstantExpr>,
+    ) -> Self {
+        let mut wired_sources = Sources::with_capacity(sources.len());
         let mut sources: Vec<_> = sources.into_iter().collect();
         sources.sort_by(|(left, _), (right, _)| left.as_str().cmp(right.as_str()));
         for (id, table) in sources {
-            wired.insert(id, Source::new(&table, &mut root_circuit));
+            wired_sources.insert(id, Source::new(&table, &mut root_circuit));
         }
+
+        let mut wired_constants = Constants::with_capacity(constants.len());
+        for expr in constants {
+            // Two occurrences of the same constant are the same relation (the
+            // node's `PartialEq` is bag equality), so they share one stream.
+            // This is where they are deduped.
+            if wired_constants.iter().any(|(wired, _)| *wired == expr) {
+                continue;
+            }
+            let constant = Constant::new(&expr, &root_circuit);
+            wired_constants.push((expr, constant));
+        }
+
         Self {
             root_circuit,
             engine,
-            sources: wired,
+            sources: wired_sources,
+            constants: wired_constants,
             sinks: Vec::new(),
             step: None,
         }
@@ -250,9 +316,10 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
 {
     fn visit_source_expr(&mut self, expr: &SourceExpr, ctx: VisitorCtx) -> ExprVisitorResult {
         // Every source the plan names was wired in `new`, so this only binds the
-        // leaf to its stream. Exactly one stream per source, however many leaves name
-        // it. Snapshot stream and schema to drop the borrow on `sources` before
-        // any `&mut self` call below.
+        // leaf to its stream. Exactly one stream per source, however many leaves
+        // name it.
+        // We snapshot the stream and schema to drop the borrow on `sources`
+        // before any `&mut self` call below.
         let (schema, root_stream) = {
             let source = self.sources.get(&expr.id).ok_or_else(|| {
                 BuildError::new(format!(
@@ -266,6 +333,35 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         // `delta0`'d into the nested circuit, just like an outer variable.
         let relation = if self.step.is_some() {
             self.bridge_import(ImportKey::Source(expr.id.clone()), schema, &root_stream)
+        } else {
+            new_relation(schema, root_stream)
+        };
+        Ok(Value::Relation(relation))
+    }
+
+    fn visit_constant_expr(&mut self, expr: &ConstantExpr, ctx: VisitorCtx) -> ExprVisitorResult {
+        // Every constant the plan carries was wired in `new`, so this only binds
+        // the leaf to its respective stream, similar to `visit_source_expr`.
+        // We snapshot the stream and schema to drop the borrow on `constants`
+        // before any `&mut self` call below.
+        let (index, schema, root_stream) = {
+            let index = self
+                .constants
+                .iter()
+                .position(|(wired, _)| wired == expr)
+                .ok_or_else(|| {
+                    BuildError::new(format!(
+                        "the constant relation {expr} is not among the wired constants"
+                    ))
+                })?;
+            let (_, constant) = &self.constants[index];
+            (index, constant.schema.clone(), constant.stream.clone())
+        };
+        // Inside a fixed-point step the constant is an outer relation and must
+        // be `delta0`'d into the nested circuit, just like a source. Being
+        // loop-invariant, it enters at the first iteration and never changes.
+        let relation = if self.step.is_some() {
+            self.bridge_import(ImportKey::Constant(index), schema, &root_stream)
         } else {
             new_relation(schema, root_stream)
         };
@@ -602,10 +698,12 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             (accumulator.stream().clone(), accumulator.schema().clone())
         };
 
-        // A source referenced inside the step needs no special handling: DBSP
-        // forbids adding a root input once a nested circuit is under
-        // construction, but `new` wired every one of them before interpretation
-        // began. Inside the step each is `delta0`'d like any outer relation.
+        // A source or constant referenced inside the step needs no special
+        // handling: Adding a root node once a nested circuit is under
+        // construction is not safe with DBSP (see `new`), but `new` wired
+        // every relation leaf of the plan before interpretation began and thus,
+        // has already been constructed at this point. Inside the step each
+        // relation leaf is `delta0`'d like any outer relation.
 
         // DBSP does not allow outputting a stream attached to a child circuit.
         pre_order(&expr.step.stmts)

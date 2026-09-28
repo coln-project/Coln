@@ -14,7 +14,7 @@ value: G => sig
   empty : (x : G.V) -> t x x
   cons : (x : G.V) -> (y : G.V) -> (z : G.V) -> (e : G.E x y) -> t y z -> t x z
 end
-realm named Graph
+realm named PathsRealm
 lowered: flatrealm
   entities
     table root.V := []

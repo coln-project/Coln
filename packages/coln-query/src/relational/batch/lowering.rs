@@ -18,15 +18,16 @@
 //! the wrong type) is a lowering error, so the engine never sees an
 //! ill-typed program.
 //!
-//! Scope of this slice: purely relational plans. Sources, equi joins on
-//! columns (chains are flattened into one n-ary rule body), multi-way
-//! equi joins (FLIR's native n-ary node, consumed directly), cartesian
-//! products, projections onto columns and literals, equality selections
-//! against literals, unions, distinct, and fixed points whose step is a
-//! single relational expression. Everything that needs the scalar engine
-//! (computed columns, general conditions) and the remaining operators
-//! (anti join, difference) fail with a clear error instead of a wrong
-//! answer.
+//! Scope of this slice: purely relational plans. Sources, constants
+//! (materialized into base tables here, see [`ConstantTable`]), equi
+//! joins on columns (chains are flattened into one n-ary rule body),
+//! multi-way equi joins (FLIR's native n-ary node, consumed directly),
+//! cartesian products, projections onto columns and literals, equality
+//! selections against literals, unions, distinct, and fixed points whose
+//! step is a single relational expression. Everything that needs the
+//! scalar engine (computed columns, general conditions) and the
+//! remaining operators (anti join, difference) fail with a clear error
+//! instead of a wrong answer.
 //!
 //! The tests at the bottom build up in difficulty and double as a guided
 //! tour of the translation.
@@ -39,15 +40,17 @@ use coln_batch::query::{Atom, Term};
 use coln_batch::rule::{Program, Rule};
 use coln_batch::types::{Column, ScalarType, Schema, Value};
 
-use super::values::{batch_schema, literal_value};
+use super::values::{batch_schema, engine_value, literal_value};
 use crate::host::QueryIr;
 use crate::host::expr::Expr;
 use crate::host::operator::Operator;
 use crate::host::stmt::{Stmt, VarStmt};
 use crate::relational::catalog::SourceSchemas;
 use crate::relational::expr::{
-    EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, OutputKind, RelExpr, SourceExpr,
+    ConstantExpr, EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, Multiplicity, OutputKind,
+    RelExpr, SourceExpr,
 };
+use crate::relational::relation::Tuple;
 
 /// The result of lowering a logical plan.
 #[derive(Debug)]
@@ -56,10 +59,31 @@ pub struct LoweredPlan {
     pub program: Program,
     /// Source id (schema name) to its schema, in tuple order.
     pub sources: HashMap<String, Schema>,
+    /// The plan's [`ConstantExpr`] leaves, materialized: their rows are in the
+    /// plan, so unlike a source there is nothing to wait for.
+    pub constants: Vec<ConstantTable>,
     /// Sink id to the derived relation `output` reads.
     pub outputs: HashMap<String, String>,
     /// Schema per relation, sources and derived alike.
     pub schemas: HashMap<String, Schema>,
+}
+
+/// A constant of the plan, as far as lowering can take it: a named, typed base
+/// table whose rows are known.
+///
+/// Not a [`Relation`](coln_batch::relation::Relation) yet, because encoding its
+/// values into keys interns strings, and the dictionary those codes must agree
+/// with is the runtime's — it is shared with every fed row. So the runtime
+/// encodes this against its own dictionary (see [`BatchRuntime`](super::BatchRuntime)).
+#[derive(Debug)]
+pub struct ConstantTable {
+    /// Synthetic: nothing addresses a constant, so the name only has to be
+    /// unique among the program's relations and recognisable in a rule dump.
+    /// The `__` prefix is the convention that keeps it clear of a source (a
+    /// catalog path) and of a derived relation (a plan variable's name).
+    pub name: String,
+    pub schema: Schema,
+    pub rows: Vec<Vec<Value>>,
 }
 
 /// Lower a plan (its statement list) into a [`LoweredPlan`]. `sources`
@@ -83,11 +107,19 @@ pub fn lower(ir: &QueryIr, sources: &SourceSchemas) -> Result<LoweredPlan> {
     for (name, info) in &lowerer.env {
         schemas.insert(name.clone(), info.schema.clone());
     }
+    for (_, constant) in &lowerer.constants {
+        schemas.insert(constant.name.clone(), constant.schema.clone());
+    }
     Ok(LoweredPlan {
         program: Program {
             rules: lowerer.rules,
         },
         sources: lowerer.sources,
+        constants: lowerer
+            .constants
+            .into_iter()
+            .map(|(_, constant)| constant)
+            .collect(),
         outputs: lowerer.outputs,
         schemas,
     })
@@ -214,6 +246,10 @@ struct Lowerer {
     available_sources: HashMap<String, Schema>,
     /// The subset of `available_sources` the plan actually uses.
     sources: HashMap<String, Schema>,
+    /// One entry per *distinct* constant the plan carries, in the order it was
+    /// first reached: the node, and the base table its rows were turned into.
+    /// Keyed by content, so two occurrences of one constant share a relation.
+    constants: Vec<(ConstantExpr, ConstantTable)>,
     env: HashMap<String, RelInfo>,
     outputs: HashMap<String, String>,
 }
@@ -383,6 +419,7 @@ impl Lowerer {
             }
             Expr::Relational(rel) => match rel {
                 RelExpr::Source(source) => self.lower_source(source, frame),
+                RelExpr::Constant(constant) => self.lower_constant(constant, frame),
                 RelExpr::Alias(alias) => {
                     let inner = self.lower_rel(&alias.relation, frame)?;
                     let mut names = inner.names.clone();
@@ -445,6 +482,65 @@ impl Lowerer {
             relation: id,
             schema,
         };
+        Ok(self.scope_from_atom(&info, frame))
+    }
+
+    /// A constant is a base table too — the plan just happens to carry its rows
+    /// instead of naming someone who feeds them, so it is materialized here and
+    /// then read exactly like a source.
+    ///
+    /// Two mismatches between the plan's constants and a coln-batch base table
+    /// bite here, and both fail loudly rather than computing something slightly
+    /// wrong: a coln-batch relation is a *set*, so a row held more than once has
+    /// nowhere to put its copies; and its data is column-major with the row
+    /// count read off the first column, so a relation with no columns cannot
+    /// hold a row at all — which is precisely the unit relation.
+    fn lower_constant(&mut self, constant: &ConstantExpr, frame: &mut Frame) -> Result<Scope> {
+        if let Some((_, table)) = self
+            .constants
+            .iter()
+            .find(|(lowered, _)| lowered == constant)
+        {
+            let info = RelInfo {
+                relation: table.name.clone(),
+                schema: table.schema.clone(),
+            };
+            return Ok(self.scope_from_atom(&info, frame));
+        }
+        let schema = batch_schema(constant.schema())
+            .with_context(|| format!("in the constant relation {constant}"))?;
+        if schema.arity() == 0 && !constant.is_empty() {
+            bail!(
+                "batch lowering cannot represent the constant relation {constant}: a \
+                 coln-batch relation stores its data column by column, so one with no \
+                 columns cannot hold a row"
+            );
+        }
+        let mut rows = Vec::with_capacity(constant.rows().len());
+        for (row, copies) in constant.rows() {
+            if *copies != Multiplicity::ONE {
+                bail!(
+                    "batch lowering cannot represent the constant relation {constant}: \
+                     coln-batch relations are sets, so row {} cannot be held {} times",
+                    row.data_to_string(),
+                    copies.get()
+                );
+            }
+            rows.push(
+                row.data
+                    .iter()
+                    .map(engine_value)
+                    .collect::<Result<Vec<_>>>()
+                    .with_context(|| format!("in the constant relation {constant}"))?,
+            );
+        }
+        let name = format!("__const{}", self.constants.len());
+        let info = RelInfo {
+            relation: name.clone(),
+            schema: schema.clone(),
+        };
+        self.constants
+            .push((constant.clone(), ConstantTable { name, schema, rows }));
         Ok(self.scope_from_atom(&info, frame))
     }
 
@@ -814,8 +910,11 @@ mod tests {
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DistinctExpr, JoinVariable, OutputExpr,
         ProjectionExpr, SelectionExpr, SinkId, SourceId, UnionExpr,
     };
+    use crate::relational::relation::TupleValue;
     use crate::relational::schema::{Column as PlanColumn, EntityRef, TableSchema};
-    use crate::scalarial::ScalarType as PlanType;
+    use crate::scalarial::{ScalarType as PlanType, ScalarTypedValue};
+    use crate::test_utils::table_schema;
+    use crate::tuple;
     use coln_batch::fixpoint::{self, Exec};
     use coln_batch::generic_join;
     use coln_batch::query::Catalog;
@@ -945,6 +1044,21 @@ mod tests {
 
     fn rows(relation: &Relation) -> Vec<Vec<u64>> {
         (0..relation.len()).map(|i| relation.row(i)).collect()
+    }
+
+    /// The plan's constants encoded into a catalog of their own, the way
+    /// [`BatchBackend::build`](super::super::BatchBackend) does it.
+    fn constant_catalog(plan: &LoweredPlan) -> Catalog {
+        let mut edb = Catalog::new();
+        for constant in &plan.constants {
+            edb.insert_rows(
+                constant.name.clone(),
+                constant.schema.clone(),
+                constant.rows.clone(),
+            )
+            .unwrap();
+        }
+        edb
     }
 
     /// The `person` table with typed rows, in a catalog of its own.
@@ -1636,5 +1750,94 @@ mod tests {
         ])
         .unwrap_err();
         assert!(err.to_string().contains("different schemas"), "{err}");
+    }
+
+    /// Step 17: a constant is a base table the plan brought with it. Nothing
+    /// feeds it, so lowering materializes it right here and the rule body reads
+    /// it exactly as it reads a source.
+    #[test]
+    fn s17_a_constant_becomes_a_materialized_base_table() {
+        let pairs = table_schema("pairs", [("a", PlanType::Uint), ("b", PlanType::Uint)], []);
+        let constant = ConstantExpr::set(pairs, [tuple!(1u64, 2u64), tuple!(3u64, 4u64)]).unwrap();
+        let plan = lower_plan(vec![let_rel("pairs", constant), out("pairs")]).unwrap();
+
+        // One materialized table, and the body reads it under the synthetic
+        // name — nothing addresses a constant, so the name only has to be
+        // unique and recognisable.
+        assert_eq!(plan.constants.len(), 1);
+        assert_eq!(plan.constants[0].name, "__const0");
+        assert_eq!(plan.constants[0].schema.names(), vec!["a", "b"]);
+        assert_eq!(plan.program.rules[0].body[0].relation, "__const0");
+        assert_eq!(plan.schemas["__const0"].names(), vec!["a", "b"]);
+
+        // The runtime encodes these into the catalog it hands the fixpoint,
+        // alongside the fed sources (see `BatchRuntime::materialize_sources`
+        // and `BatchBackend::build`), which is what this mimics.
+        let result = run(&plan, constant_catalog(&plan));
+        assert_eq!(
+            rows(result.get("pairs").unwrap()),
+            vec![vec![1, 2], vec![3, 4]]
+        );
+    }
+
+    /// Step 18: a constant carries values of any type the engine stores, not
+    /// just the ones that happen to be their own key. Strings are the case that
+    /// shows it: the engine compares dictionary codes, so a constant's strings
+    /// are interned when the runtime encodes it and decoded again on the way
+    /// out, exactly like a fed row's.
+    #[test]
+    fn s18_a_constant_carries_every_type_the_engine_stores() {
+        let words = table_schema(
+            "words",
+            [("w", PlanType::String), ("n", PlanType::Iint)],
+            [],
+        );
+        let constant =
+            ConstantExpr::set(words, [tuple!("ann", -5i64), tuple!("bob", 30i64)]).unwrap();
+        let plan = lower_plan(vec![let_rel("words", constant), out("words")]).unwrap();
+
+        assert_eq!(
+            plan.constants[0].schema.types(),
+            vec![ScalarType::String, ScalarType::Iint]
+        );
+
+        let result = run(&plan, constant_catalog(&plan));
+        assert_eq!(
+            result.rows_of("words").unwrap(),
+            vec![
+                vec![Value::String("ann".into()), Value::Iint(-5)],
+                vec![Value::String("bob".into()), Value::Iint(30)],
+            ]
+        );
+    }
+
+    /// Step 19: where the plan's constants and a coln-batch base table do not
+    /// line up, lowering says so instead of quietly dropping copies or rows.
+    #[test]
+    fn s19_a_constant_this_backend_cannot_represent_fails_loudly() {
+        // coln-batch relations are sets, so copies have nowhere to go.
+        let twice = ConstantExpr::set(
+            table_schema("ones", [("a", PlanType::Uint)], []),
+            [tuple!(1u64), tuple!(1u64)],
+        )
+        .unwrap();
+        let err = lower_plan(vec![let_rel("ones", twice)]).unwrap_err();
+        assert!(format!("{err:#}").contains("sets"));
+
+        // A relation stored column by column reads its row count off the first
+        // column, so with no columns it cannot hold a row — which is exactly
+        // what the unit relation is.
+        let err = lower_plan(vec![let_rel("unit", ConstantExpr::unit())]).unwrap_err();
+        assert!(format!("{err:#}").contains("cannot hold a row"));
+
+        // `Null` is the one plan type the engine does not store, in a constant
+        // as much as in a schema or a fed row.
+        let nulls = ConstantExpr::set(
+            table_schema("nulls", [("n", PlanType::Null)], []),
+            [TupleValue::new(vec![ScalarTypedValue::Null(())])],
+        )
+        .unwrap();
+        let err = lower_plan(vec![let_rel("nulls", nulls)]).unwrap_err();
+        assert!(format!("{err:#}").contains("does not store null values"));
     }
 }

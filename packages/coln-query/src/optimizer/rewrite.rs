@@ -68,9 +68,9 @@ use crate::{
         stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitorOwn, VarStmt},
     },
     relational::expr::{
-        AliasExpr, AntiJoinExpr, CartesianProductExpr, DifferenceExpr, DistinctExpr, EquiJoinExpr,
-        FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr, ProjectionExpr,
-        RelExpr, RelExprVisitorOwn, RelKind, SelectionExpr, SourceExpr, UnionExpr,
+        AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr, DistinctExpr,
+        EquiJoinExpr, FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr,
+        ProjectionExpr, RelExpr, RelExprVisitorOwn, RelKind, SelectionExpr, SourceExpr, UnionExpr,
     },
 };
 
@@ -382,6 +382,10 @@ impl ExprVisitorOwn<VisitorResult<Expr>, ()> for Rewriter<'_> {
 /// [`Rewriter::child`], on the way in.
 impl RelExprVisitorOwn<VisitorResult<Expr>, ()> for Rewriter<'_> {
     fn visit_source_expr(&mut self, expr: Box<SourceExpr>, _ctx: ()) -> VisitorResult<Expr> {
+        self.offer(expr.into(), Direction::BottomUp)
+    }
+
+    fn visit_constant_expr(&mut self, expr: Box<ConstantExpr>, _ctx: ()) -> VisitorResult<Expr> {
         self.offer(expr.into(), Direction::BottomUp)
     }
 

@@ -11,11 +11,14 @@ use crate::error::{BuildError, LoweringError, RuntimeError};
 use crate::relational::incremental::dbsp::DbspOutputDelta;
 use crate::{
     host::{
-        HostInterpreter, InterpreterContext, QueryIr, resolver::ResolvedCode, variable::Environment,
+        HostInterpreter, InterpreterContext, QueryIr,
+        resolver::ResolvedCode,
+        variable::Environment,
+        walk::{Node, pre_order},
     },
     relational::{
         catalog::SourceSchemas,
-        expr::{OutputKind, SinkId, SourceId},
+        expr::{ConstantExpr, OutputKind, SinkId, SourceId},
     },
     scalarial::{RowScalarEngine, TreeWalk},
 };
@@ -74,6 +77,14 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
         sources: SourceSchemas,
     ) -> Result<DbspRuntime, Self::Error> {
         let engine = self.scalar_engine;
+        // Both kinds of relation leaf have to be wired before the plan is
+        // walked (see `DbspInterpreter::new`). A source names itself, so
+        // `sources` already lists them; a constant carries its rows, so the
+        // plan is the only place to find one.
+        let constants: Vec<ConstantExpr> = pre_order(plan.as_code())
+            .filter_map(Node::as_constant)
+            .cloned()
+            .collect();
         let (handle, (inputs, outputs)) =
             CircuitRuntime::init_circuit(threads, move |root_circuit| {
                 // The plan is already resolved, so we interpret directly (no
@@ -82,8 +93,12 @@ impl<E: RowScalarEngine + Send> Backend for DbspBackend<E> {
                 // DBSP requires because it runs it once per worker thread.
                 let mut environment = Environment::default();
                 let mut ctx = InterpreterContext::new(&mut environment);
-                let mut interpreter =
-                    DbspInterpreter::new(root_circuit.clone(), engine.clone(), sources.clone());
+                let mut interpreter = DbspInterpreter::new(
+                    root_circuit.clone(),
+                    engine.clone(),
+                    sources.clone(),
+                    constants.clone(),
+                );
                 // Walk the plan for its side effects: each `SourceExpr` leaf
                 // wires a fresh input stream (deduplicated by name) and each
                 // `OutputExpr` tap wires an output read handle. The plan's final

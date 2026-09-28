@@ -43,7 +43,7 @@
 
 use crate::{
     host::{expr::Expr, stmt::Stmt},
-    relational::expr::{EquiJoinExpr, OutputExpr, RelExpr, SourceExpr},
+    relational::expr::{ConstantExpr, EquiJoinExpr, OutputExpr, RelExpr, SourceExpr},
 };
 
 /// A borrowed pointer to a node of any of the three mutually recursive node
@@ -136,6 +136,8 @@ impl<'a> Node<'a> {
         match rel {
             // A plan leaf: it only *names* an extensional relation.
             RelExpr::Source(_) => {}
+            // The other plan leaf: its rows are data it carries, not nodes.
+            RelExpr::Constant(_) => {}
             RelExpr::Output(expr) => out.push(Node::from(&expr.relation)),
             RelExpr::Alias(expr) => out.push(Node::from(&expr.relation)),
             RelExpr::Distinct(expr) => out.push(Node::from(&expr.relation)),
@@ -239,7 +241,16 @@ impl<'a> Node<'a> {
         })
     }
 
-    /// The [`SourceExpr`] leaf this node is, if any. What a plan-wide output
+    /// The [`ConstantExpr`] leaf this node is, if any. The counterpart of
+    /// [`as_source`](Self::as_source) on the other kind of leaf.
+    pub fn as_constant(self) -> Option<&'a ConstantExpr> {
+        self.as_rel().and_then(|expr| match expr {
+            RelExpr::Constant(constant) => Some(constant.as_ref()),
+            _ => None,
+        })
+    }
+
+    /// The [`OutputExpr`] tap this node is, if any. What a plan-wide output
     /// discovery filters a [walk](Walk) on.
     pub fn as_output(self) -> Option<&'a OutputExpr> {
         self.as_rel().and_then(|expr| match expr {

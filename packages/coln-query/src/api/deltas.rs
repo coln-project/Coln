@@ -6,6 +6,7 @@
 //! [ZRow], [TableDelta], [StoreDelta], and [DerivedDataDelta].
 
 use crate::relational::schema::EntityRef;
+use indexmap::{IndexMap, IndexSet};
 // Re-exported, not merely imported: [`ZRow::new`] takes a [`TupleValue`] built
 // from [`ScalarTypedValue`]s, so a caller outside this crate cannot construct
 // one of the deltas this module is about without both names in reach.
@@ -15,7 +16,7 @@ use crate::utils::cli_table::{
     Cell, CellStruct, CliReport, CliTableRow, Justify, PositionalHeader, ToCliReport,
     ZWeightedHeader,
 };
-use std::{borrow::Borrow, iter};
+use std::{borrow::Borrow, iter, marker::PhantomData};
 
 pub type ZWeight = i64;
 
@@ -173,13 +174,10 @@ impl<'a> IntoIterator for &'a TableDelta {
 }
 
 #[cfg(test)]
-impl<T: AsRef<[ZRow]>> PartialEq<(&'static str, T)> for TableDelta {
-    fn eq(&self, other: &(&'static str, T)) -> bool {
-        let entity = other.0;
-        let data = other.1.as_ref();
-        self.for_entity().id() == entity
-            && self.delta().len() == data.len()
-            && self.delta().iter().all(|row| data.contains(row))
+impl<T: AsRef<[ZRow]>> PartialEq<T> for TableDelta {
+    fn eq(&self, other: &T) -> bool {
+        let data = other.as_ref();
+        self.delta().len() == data.len() && self.delta().iter().all(|row| data.contains(row))
     }
 }
 
@@ -286,35 +284,105 @@ impl ToCliReport for StoreDelta {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MaybeUnconsolidated(());
+#[derive(Debug, Clone, Copy)]
+pub struct Consolidated(());
+
 /// An update of the IDB, that is, insertions or deletions of derived facts.
-#[derive(Default, Clone, Debug)]
-pub struct DerivedDataDelta {
+#[derive(Clone, Debug)]
+pub struct DerivedDataDelta<Marker> {
     /// Contains the delta in the IDB after applying a delta in the EDB (the
     /// latter is a [`StoreDelta`]).
     inner: Vec<TableDelta>,
+    marker: PhantomData<Marker>,
 }
 
-impl DerivedDataDelta {
-    pub fn empty() -> Self {
-        Self { inner: Vec::new() }
+impl Default for DerivedDataDelta<Consolidated> {
+    fn default() -> Self {
+        DerivedDataDelta::<Consolidated>::empty()
     }
+}
+
+impl<Marker> DerivedDataDelta<Marker> {
     pub fn is_empty(&self) -> bool {
         self.inner.iter().all(|table_delta| table_delta.is_empty())
-    }
-    pub fn new(deltas: impl IntoIterator<Item = TableDelta>) -> Self {
-        Self {
-            inner: deltas.into_iter().collect(),
-        }
-    }
-    pub fn extend(&mut self, deltas: impl IntoIterator<Item = TableDelta>) {
-        self.inner.extend(deltas);
     }
     pub fn into_table_deltas(self) -> Vec<TableDelta> {
         self.inner
     }
+    pub fn is_consolidated(&self) -> bool {
+        let mut map = IndexSet::new();
+        for table_delta in self.inner.iter() {
+            if !map.insert(table_delta.for_entity()) {
+                return false;
+            }
+        }
+        true
+    }
 }
 
-impl ToCliReport for DerivedDataDelta {
+impl DerivedDataDelta<Consolidated> {
+    pub fn empty() -> Self {
+        Self {
+            inner: Vec::new(),
+            marker: PhantomData,
+        }
+    }
+    /// This count is equal to the count of distinct [`TableDelta`]s.
+    pub fn size(&self) -> usize {
+        self.inner.len()
+    }
+    /// The caller has to make sure that the provided [`TableDelta`]s are new.
+    pub fn unsafe_extend(&mut self, deltas: impl IntoIterator<Item = TableDelta>) {
+        self.inner.extend(deltas);
+    }
+}
+
+impl DerivedDataDelta<MaybeUnconsolidated> {
+    pub fn new(deltas: impl IntoIterator<Item = TableDelta>) -> Self {
+        Self {
+            inner: deltas.into_iter().collect(),
+            marker: PhantomData,
+        }
+    }
+    /// In case there are multiple [`TableDelta`]s for the same entity,
+    /// this count is larger than the amount of updated entities.
+    pub fn size(&self) -> usize {
+        self.inner.len()
+    }
+    pub fn extend(&mut self, deltas: impl IntoIterator<Item = TableDelta>) {
+        self.inner.extend(deltas);
+    }
+    /// Having called this function ensures that in case there are multiple
+    /// [`TableDelta`]s for the same [Entity](EntityRef), there is only one
+    /// [`TableDelta`] for each [Entity](EntityRef) left. Duplicated entries
+    /// have been merged into one.
+    pub fn consolidate(mut self) -> DerivedDataDelta<Consolidated> {
+        let upper_bound = self.size();
+        let consolidated = self.inner.iter_mut().fold(
+            IndexMap::<&EntityRef, TableDelta>::with_capacity(upper_bound),
+            |mut acc, table_delta| {
+                acc.entry(&table_delta.entity)
+                    .and_modify(|slot| slot.extend(std::mem::take(&mut table_delta.inner)))
+                    .or_insert(TableDelta::new(
+                        table_delta.for_entity().clone(),
+                        std::mem::take(&mut table_delta.inner),
+                    ));
+                acc
+            },
+        );
+        DerivedDataDelta::<Consolidated> {
+            inner: consolidated
+                .into_iter()
+                .map(|(_, consolidated_table_delta)| consolidated_table_delta)
+                .collect(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<Marker> ToCliReport for DerivedDataDelta<Marker> {
     fn to_cli_report(&self) -> std::io::Result<CliReport> {
         let mut report = CliReport::new("DerivedDataDelta");
         report.extend(
@@ -324,6 +392,19 @@ impl ToCliReport for DerivedDataDelta {
                 .collect::<std::io::Result<Vec<_>>>()?,
         );
         Ok(report)
+    }
+}
+
+#[cfg(test)]
+impl<T: Into<EntityRef>> std::ops::Index<T> for DerivedDataDelta<Consolidated> {
+    type Output = TableDelta;
+
+    fn index(&self, index: T) -> &Self::Output {
+        let index = index.into();
+        self.inner
+            .iter()
+            .find(|table_delta| table_delta.for_entity() == &index)
+            .unwrap_or_else(|| panic!("Entity '{index}' not found"))
     }
 }
 

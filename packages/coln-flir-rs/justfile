@@ -35,8 +35,8 @@ transitive-closure.coln \
 transitive-closure-set.coln \
 triangle.coln \
 bipartite-trans-closure.coln \
-tricky-clique-pair.output \
-tricky-self-clique.output \
+tricky-clique-pair.coln \
+tricky-self-clique.coln \
 "
 
 # (Re)generate FLIRs in tests/data.
