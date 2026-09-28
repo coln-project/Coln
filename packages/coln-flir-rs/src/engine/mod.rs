@@ -3,4 +3,5 @@
 pub mod packed;
 pub mod schema;
 pub mod table;
+pub mod tuple;
 pub mod txn_val;
