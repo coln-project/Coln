@@ -14,22 +14,16 @@
 //! are **EDB** (stored input). An IDB relation may also have initial
 //! facts in the catalog; they are treated as already-derived rows.
 //!
-//! What a derived relation holds follows Z-set semantics: its initial facts
-//! plus the rows every rule derives, each rule's rows weighted as the
-//! executors weigh a query result (see [`crate::generic_join`]). Two rules
-//! deriving the same row give it weight 2, and so do two ways of deriving
-//! it in one rule. A rule of weight -1 takes its rows away instead, which
-//! makes a Z-set difference, and a relation declared in
-//! [`Program::distinct`] keeps every row of positive weight once.
-//! **Recursion is the exception.** A relation that depends on itself,
-//! directly or through others, is a set: every row it holds has weight 1,
-//! which is what makes the fixpoint finite on cycles. Its rules cannot
-//! take rows away.
+//! A derived relation is a Z-set: its initial facts plus what every rule
+//! derives, weighted like a query result (see [`crate::generic_join`]) and
+//! multiplied by the rule's [`Rule::weight`], so a rule of weight -1
+//! subtracts. [`Program::distinct`] turns a relation into a set.
+//! **Recursion is the exception:** a relation that depends on itself,
+//! directly or through others, is always a set, which keeps the fixpoint
+//! finite on cycles, and its rules cannot subtract.
 //!
-//! The derived relations fall into **strata**, the groups of relations
-//! that depend on each other. [`Program::compile`] orders them so that
-//! every stratum comes after the strata it reads; a stratum is recursive
-//! if its relations depend on themselves.
+//! The derived relations fall into **strata**, groups of relations that
+//! depend on each other, evaluated in dependency order.
 //!
 //! Derived relations are typed like stored ones. Their schemas come from
 //! the catalog when initial facts exist (an empty relation with a schema
@@ -54,18 +48,16 @@ pub struct Rule {
     pub var_names: Vec<String>,
     pub head: Atom,
     pub body: Vec<Atom>,
-    /// What the rule's rows count for in the head relation: the weight of
-    /// every row the body derives is multiplied by it. 1 adds the rows, -1
-    /// takes them away. Never 0, and positive in a recursive relation.
+    /// Multiplies the weight of every row the body derives: 1 adds the
+    /// rows, -1 takes them away. Never 0, and positive in a recursion.
     pub weight: Weight,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Program {
     pub rules: Vec<Rule>,
-    /// Derived relations that are sets: once their rules are added up,
-    /// every row of positive weight is kept once and every other row
-    /// dropped (the Z-set `distinct`). Recursive relations are sets anyway.
+    /// Derived relations to reduce to sets with the Z-set `distinct` once
+    /// their rules are added up. Recursive relations are sets anyway.
     pub distinct: BTreeSet<String>,
 }
 
@@ -141,15 +133,13 @@ impl LoweredRule {
     }
 }
 
-/// A group of derived relations that depend on each other, evaluated
-/// together.
+/// Derived relations that depend on each other, evaluated together.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Stratum {
     /// The relations, sorted by name.
     pub relations: Vec<String>,
-    /// Whether the relations depend on themselves. A recursive stratum is
-    /// computed as a fixpoint over sets; a non-recursive one holds a
-    /// single relation, evaluated once with its weights.
+    /// Whether the relations depend on themselves. If not, the stratum
+    /// holds one relation.
     pub recursive: bool,
     /// Positions in [`CompiledProgram::rules`] of the rules defining the
     /// relations.
@@ -340,21 +330,18 @@ impl Program {
                 Ok(schema.types().into_iter().map(Some).collect())
             })?;
 
-            // Body literals are interned so the executors find their keys.
             for atom in &query.atoms {
-                for term in &atom.terms {
-                    if let Term::Lit(value) = term {
-                        value.to_key(dict);
-                    }
-                }
-            }
-
-            for atom in &rule.body {
                 if atom.relation.starts_with(DELTA_PREFIX) {
                     bail!(
                         "relation name {} uses the reserved prefix {DELTA_PREFIX}",
                         atom.relation
                     );
+                }
+                // Body literals are interned so the executors find their keys.
+                for term in &atom.terms {
+                    if let Term::Lit(value) = term {
+                        value.to_key(dict);
+                    }
                 }
             }
             rules.push(LoweredRule {
@@ -367,30 +354,21 @@ impl Program {
         }
 
         let strata = stratify(&idb_schemas, &rules);
-        for stratum in strata.iter().filter(|s| s.recursive) {
+        for stratum in &strata {
             for &i in &stratum.rules {
-                let rule = &rules[i];
-                if rule.weight < 0 {
+                let rule = &mut rules[i];
+                if stratum.recursive && rule.weight < 0 {
                     bail!(
-                        "a rule for {} has weight {}, but {} is recursive; recursion \
+                        "a rule for {0} has weight {1}, but {0} is recursive; recursion \
                          computes sets and cannot take rows away",
                         rule.head_relation,
-                        rule.weight,
-                        rule.head_relation
+                        rule.weight
                     );
                 }
+                rule.recursive_positions = (0..rule.query.atoms.len())
+                    .filter(|&p| stratum.relations.contains(&rule.query.atoms[p].relation))
+                    .collect();
             }
-        }
-        let stratum_of: BTreeMap<&str, usize> = strata
-            .iter()
-            .enumerate()
-            .flat_map(|(i, s)| s.relations.iter().map(move |r| (r.as_str(), i)))
-            .collect();
-        for rule in &mut rules {
-            let own = stratum_of[rule.head_relation.as_str()];
-            rule.recursive_positions = (0..rule.query.atoms.len())
-                .filter(|&i| stratum_of.get(rule.query.atoms[i].relation.as_str()) == Some(&own))
-                .collect();
         }
 
         Ok(CompiledProgram {

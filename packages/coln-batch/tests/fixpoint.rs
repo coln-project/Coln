@@ -569,10 +569,7 @@ fn recursion_rejects_rows_of_non_positive_weight() {
         .err()
         .expect("weight -2 must be rejected")
         .to_string();
-    assert!(
-        err.contains("initial facts of the recursive relation ancestor"),
-        "{err}"
-    );
+    assert!(err.contains("ancestor holds a row of weight -2"), "{err}");
 }
 
 #[test]

@@ -25,11 +25,9 @@
 //! The search runs on keys (see [`crate::types`]); literals are encoded
 //! once up front and the result carries the typed schema of the head.
 //!
-//! Weights: a binding of all variables matches one row per atom, and it
-//! weighs the product of those rows' weights. That product is known only
-//! at the end of the search, where every atom is narrowed to the rows equal
-//! to the binding. Projecting onto the head then adds up the weights of the
-//! bindings that agree on it.
+//! A complete binding weighs the product of the weights of the rows it
+//! matches, one per atom; the projection onto the head adds up the weights
+//! of the bindings that agree on it.
 
 use std::ops::Range;
 
@@ -70,11 +68,8 @@ pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
             }
         }
 
-        // The one place the join reads a table. `order` is chosen per query
-        // (literal columns first, then variables in elimination order), so
-        // one query can ask for the same table in two orders. From here on
-        // the join only calls `len`, `value`, `lower_bound` and
-        // `equal_range`.
+        // The order depends on the query, so one query may ask for the
+        // same table in two orders.
         let table = tables.sorted(&atom.relation, &order)?;
         atoms.push(AtomExec {
             table,
@@ -148,9 +143,8 @@ impl<T: SortedTable> Solver<'_, T> {
         weights: &mut Vec<Weight>,
     ) {
         if v == self.query.num_vars() {
-            // Every column of every atom is bound, so each range holds the
-            // rows equal to the binding: a single row in a table in normal
-            // form.
+            // Every column is bound, so each range holds the copies of the
+            // one row its atom matches.
             let mut weight: Weight = 1;
             for (a, r) in self.atoms.iter().zip(ranges.iter()) {
                 let matched = r

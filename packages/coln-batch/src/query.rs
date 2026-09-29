@@ -367,34 +367,26 @@ pub fn check(query: &Query, tables: &dyn Tables) -> Result<Typing> {
 /// Check the query against `tables` and encode its literals with their
 /// dictionary.
 pub(crate) fn prepare(query: &Query, tables: &dyn Tables) -> Result<Prepared> {
-    let typing = check(query, tables)?;
-    let schema = typing.head_schema(query);
-    let mut atoms = Vec::with_capacity(query.atoms.len());
-    for atom in &query.atoms {
-        let mut terms = Vec::with_capacity(atom.terms.len());
-        for term in &atom.terms {
-            terms.push(match term {
-                Term::Var(v) => KeyTerm::Var(*v),
-                Term::Lit(value) => match value.key_if_known(tables.dictionary()) {
-                    Some(key) => KeyTerm::Lit(key),
-                    None => {
-                        return Ok(Prepared {
-                            schema,
-                            atoms: None,
-                        });
-                    }
-                },
-            });
-        }
-        atoms.push(KeyAtom {
-            relation: atom.relation.clone(),
-            terms,
-        });
-    }
-    Ok(Prepared {
-        schema,
-        atoms: Some(atoms),
-    })
+    let schema = check(query, tables)?.head_schema(query);
+    let atoms = query
+        .atoms
+        .iter()
+        .map(|atom| {
+            let terms = atom
+                .terms
+                .iter()
+                .map(|term| match term {
+                    Term::Var(v) => Some(KeyTerm::Var(*v)),
+                    Term::Lit(value) => value.key_if_known(tables.dictionary()).map(KeyTerm::Lit),
+                })
+                .collect::<Option<_>>()?;
+            Some(KeyAtom {
+                relation: atom.relation.clone(),
+                terms,
+            })
+        })
+        .collect();
+    Ok(Prepared { schema, atoms })
 }
 
 #[cfg(test)]

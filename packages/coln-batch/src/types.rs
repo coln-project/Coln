@@ -29,8 +29,8 @@
 //! Range predicates over strings would need an order-preserving
 //! dictionary; none are supported yet.
 //!
-//! Next to its keys every row carries a [`Weight`]: how often the row is
-//! present. That makes a relation a Z-set, see [`crate::relation`].
+//! Every row also carries a [`Weight`], which makes a relation a Z-set
+//! (see [`crate::relation`]).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -40,13 +40,10 @@ use anyhow::{Result, bail};
 /// A cell as the engine stores it. See the module docs for the encoding.
 pub type Key = u64;
 
-/// How often a row is present, the same `i64` the incremental engine uses.
-/// A set has weight 1 on every row, a positive weight counts copies, a
-/// negative one takes copies away, and a row of weight 0 is absent.
-///
-/// Weights are added and multiplied with overflow checks: leaving the range
-/// of `i64` panics instead of wrapping around to a wrong answer. Counting
-/// derivations never gets there; only huge weights in the input can.
+/// How often a row is present, an `i64` like the incremental engine's: 1
+/// in a set, more for copies, negative for rows taken away. Sums and
+/// products panic on overflow instead of wrapping around; counting
+/// derivations never gets there, only huge input weights can.
 pub type Weight = i64;
 
 /// `a + b`, panicking on overflow (see [`Weight`]).

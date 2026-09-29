@@ -8,10 +8,10 @@
 //! paper (Zhang et al., POPL 2022) and the accompanying benchmark
 //! notebooks: purely random data almost never produces matches, so we
 //! *plant* a controlled number of matches and surround them with random
-//! noise rows. Generated relations are sets (duplicates are dropped, every
-//! row has weight 1), so `planted`/`noise` are approximate upper bounds,
-//! not exact row counts. Tests that need exact ground truth should compute it with a
-//! brute-force reference join at small scale.
+//! noise rows. Generated relations are sets (duplicates dropped, every row
+//! with weight 1), so `planted`/`noise` are approximate upper bounds, not
+//! exact row counts. Tests that need exact ground truth should compute it
+//! with a brute-force reference join at small scale.
 
 use crate::relation::Relation;
 use crate::rng::SplitMix64;

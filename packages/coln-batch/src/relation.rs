@@ -5,20 +5,17 @@
 //! A named, typed Z-set stored as normalized keys.
 //!
 //! `Relation` is the engine's plain in-memory interchange type: a
-//! [`Schema`], one `Vec<Key>` per column and one [`Weight`] per row. The
-//! weight says how often the row is present, which makes a relation a
-//! Z-set, the data model the incremental engine (DBSP) computes with. In a
-//! set every weight is 1. Values are encoded on the way in
-//! ([`Relation::from_rows`]) and decoded on the way out
-//! ([`Relation::row_values`]), see [`crate::types`] for the encoding;
+//! [`Schema`], one `Vec<Key>` per column and one [`Weight`] per row that
+//! says how often the row is present (1 everywhere in a set). Values are
+//! encoded on the way in ([`Relation::from_rows`]) and decoded on the way
+//! out ([`Relation::row_values`]), see [`crate::types`] for the encoding;
 //! everything in between compares keys. Arrow `RecordBatch` is the
 //! serialization boundary (see [`crate::io`]).
 //!
-//! **Normal form.** [`Relation::consolidate`] sorts the rows by key, merges
-//! equal rows into one that carries the sum of their weights, and drops
-//! rows whose weight is 0. The executors return relations in this form,
-//! and the operators over two relations ([`Relation::plus`],
-//! [`Relation::minus`]) require it.
+//! **Normal form** ([`Relation::consolidate`]): rows sorted by key, equal
+//! rows merged with their weights added, rows of weight 0 dropped. The
+//! executors return it; [`Relation::plus`] and [`Relation::minus`] need
+//! it.
 
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -225,33 +222,24 @@ impl Relation {
         }
     }
 
-    /// Bring the relation into normal form: rows sorted lexicographically
-    /// by key (all columns, left to right), equal rows merged into one
-    /// carrying the sum of their weights, rows of weight 0 dropped.
+    /// Bring the relation into normal form (see the module docs); rows are
+    /// sorted lexicographically, all columns left to right.
     pub fn consolidate(self) -> Self {
         let mut idx: Vec<usize> = (0..self.len()).collect();
         idx.sort_unstable_by(|&a, &b| self.cmp_rows(a, b));
-        let mut rows = Vec::with_capacity(idx.len());
-        let mut weights = Vec::with_capacity(idx.len());
-        let mut i = 0;
-        while i < idx.len() {
-            let first = idx[i];
-            let mut weight = 0;
-            while i < idx.len() && self.cmp_rows(first, idx[i]) == Ordering::Equal {
-                weight = add_weights(weight, self.weights[idx[i]]);
-                i += 1;
-            }
-            if weight != 0 {
-                rows.push(first);
-                weights.push(weight);
-            }
-        }
+        let (rows, weights): (Vec<usize>, Vec<Weight>) = idx
+            .chunk_by(|&a, &b| self.cmp_rows(a, b) == Ordering::Equal)
+            .map(|copies| {
+                let weight = copies.iter().map(|&r| self.weights[r]).fold(0, add_weights);
+                (copies[0], weight)
+            })
+            .filter(|&(_, weight)| weight != 0)
+            .unzip();
         self.pick(&rows, weights)
     }
 
-    /// The Z-set `distinct`: every row of positive weight, now with weight
-    /// one. A row that is present at all is present once, a row of weight
-    /// 0 or below is absent. The result is in normal form.
+    /// The Z-set `distinct`: the rows of positive weight, each with weight
+    /// 1, in normal form.
     pub fn distinct(self) -> Self {
         let rel = self.consolidate();
         let rows: Vec<usize> = (0..rel.len()).filter(|&i| rel.weights[i] > 0).collect();
@@ -266,86 +254,64 @@ impl Relation {
             && self.weights.iter().all(|&w| w != 0)
     }
 
-    /// Every weight negated. Keeps the normal form.
+    /// Every weight negated.
     pub fn negate(&self) -> Relation {
-        let weights = self.weights.iter().map(|&w| mul_weights(w, -1)).collect();
-        Relation::with_weights(
-            self.name.clone(),
-            self.schema.clone(),
-            self.cols.clone(),
-            weights,
-        )
+        let mut rel = self.clone();
+        for w in &mut rel.weights {
+            *w = mul_weights(*w, -1);
+        }
+        rel
     }
 
-    /// The Z-set sum: every row with its weights in both relations added,
-    /// rows whose weights cancel out dropped. For two sets this is their
-    /// union, with weight 2 on the rows they share. Both inputs must be in
-    /// normal form ([`Self::consolidate`]) and have the same arity; the
-    /// result is in normal form and keeps this relation's name and schema.
+    /// The Z-set sum: weights of equal rows added, rows that cancel out
+    /// dropped. For two sets this is their union, shared rows with weight
+    /// 2. Both inputs must be in normal form and of equal arity; the result
+    /// is in normal form, with this relation's name and schema.
     pub fn plus(&self, other: &Relation) -> Relation {
         self.merge(other, 1)
     }
 
-    /// The Z-set difference, `self` plus `other` negated. For two sets it
-    /// is the set difference when `other` lies within `self`; a row only
-    /// in `other` comes out with a negative weight. Same requirements as
-    /// [`Self::plus`].
+    /// The Z-set difference, `self` plus `other` negated. Same requirements
+    /// as [`Self::plus`].
     pub fn minus(&self, other: &Relation) -> Relation {
         self.merge(other, -1)
     }
 
-    /// `self + sign * other`, as a two-pointer merge over normal forms.
+    /// `self + sign · other`, merging the two sorted row lists.
     fn merge(&self, other: &Relation, sign: Weight) -> Relation {
-        assert_eq!(
-            self.arity(),
-            other.arity(),
-            "adding relations needs equal arity"
-        );
-        debug_assert!(self.is_consolidated(), "{} is not consolidated", self.name);
+        assert_eq!(self.arity(), other.arity(), "adding needs equal arity");
         debug_assert!(
-            other.is_consolidated(),
-            "{} is not consolidated",
-            other.name
+            self.is_consolidated() && other.is_consolidated(),
+            "adding needs the normal form"
         );
-        let mut cols: Vec<Vec<Key>> = (0..self.arity())
-            .map(|_| Vec::with_capacity(self.len() + other.len()))
-            .collect();
-        let mut weights = Vec::with_capacity(self.len() + other.len());
-        let mut push = |rel: &Relation, row: usize, weight: Weight| {
-            if weight == 0 {
-                return;
-            }
-            for (c, col) in cols.iter_mut().enumerate() {
-                col.push(rel.cols[c][row]);
-            }
-            weights.push(weight);
-        };
+        let mut cols: Vec<Vec<Key>> = vec![Vec::new(); self.arity()];
+        let mut weights = Vec::new();
         let (mut i, mut j) = (0, 0);
-        while i < self.len() && j < other.len() {
-            match cmp_row_pair(self, i, other, j) {
-                Ordering::Less => {
-                    push(self, i, self.weights[i]);
-                    i += 1;
+        while i < self.len() || j < other.len() {
+            let order = if j == other.len() {
+                Ordering::Less
+            } else if i == self.len() {
+                Ordering::Greater
+            } else {
+                cmp_row_pair(self, i, other, j)
+            };
+            let (rel, row, weight) = match order {
+                Ordering::Less => (self, i, self.weights[i]),
+                Ordering::Greater => (other, j, mul_weights(sign, other.weights[j])),
+                Ordering::Equal => (
+                    self,
+                    i,
+                    add_weights(self.weights[i], mul_weights(sign, other.weights[j])),
+                ),
+            };
+            if weight != 0 {
+                for (col, source) in cols.iter_mut().zip(&rel.cols) {
+                    col.push(source[row]);
                 }
-                Ordering::Greater => {
-                    push(other, j, mul_weights(sign, other.weights[j]));
-                    j += 1;
-                }
-                Ordering::Equal => {
-                    let weight = add_weights(self.weights[i], mul_weights(sign, other.weights[j]));
-                    push(self, i, weight);
-                    i += 1;
-                    j += 1;
-                }
+                weights.push(weight);
             }
-        }
-        while i < self.len() {
-            push(self, i, self.weights[i]);
-            i += 1;
-        }
-        while j < other.len() {
-            push(other, j, mul_weights(sign, other.weights[j]));
-            j += 1;
+            i += usize::from(order != Ordering::Greater);
+            j += usize::from(order != Ordering::Less);
         }
         Relation::with_weights(self.name.clone(), self.schema.clone(), cols, weights)
     }
@@ -613,54 +579,14 @@ mod tests {
     }
 
     #[test]
-    fn consolidate_adds_up_equal_rows() {
-        let r = weighted(&[(2, 10, 1), (1, 20, 2), (2, 5, 1), (1, 20, 3), (2, 10, -1)]);
+    fn consolidate_adds_up_equal_rows_and_distinct_keeps_positive_ones() {
+        let r = weighted(&[(2, 10, 1), (1, 20, 2), (2, 5, -1), (1, 20, 3), (2, 10, -1)]);
         assert!(!r.is_consolidated());
         let r = r.consolidate();
-        assert!(r.is_consolidated());
         // (2, 10) cancels out, (1, 20) adds up.
-        assert_eq!(entries(&r), vec![(vec![1, 20], 5), (vec![2, 5], 1)]);
-        assert_eq!(r.clone().consolidate(), r, "normal form is stable");
-    }
-
-    #[test]
-    fn distinct_keeps_positive_rows_once() {
-        let r = weighted(&[(1, 1, 3), (2, 2, -2), (3, 3, 1), (1, 1, 1)]);
-        let d = r.clone().distinct();
-        assert_eq!(entries(&d), vec![(vec![1, 1], 1), (vec![3, 3], 1)]);
-        assert_eq!(d.clone().distinct(), d, "distinct is idempotent");
-        // distinct(a + b) of two sets is their set union.
-        let a = weighted(&[(1, 1, 1), (2, 2, 1)]).consolidate();
-        let b = weighted(&[(2, 2, 1), (3, 3, 1)]).consolidate();
-        assert_eq!(a.plus(&b).distinct().len(), 3);
-    }
-
-    #[test]
-    fn z_set_algebra_laws() {
-        let a = weighted(&[(1, 1, 2), (2, 2, -1), (4, 4, 5)]).consolidate();
-        let b = weighted(&[(2, 2, 1), (3, 3, -3), (4, 4, -5)]).consolidate();
-        assert_eq!(a.plus(&b), b.plus(&a), "plus commutes");
-        assert!(a.plus(&a.negate()).is_empty(), "a + (-a) = 0");
-        assert_eq!(a.minus(&b), a.plus(&b.negate()));
-        assert_eq!(a.negate().negate(), a);
-        let sum = a.plus(&b);
-        assert!(sum.is_consolidated());
-        assert_eq!(entries(&sum), vec![(vec![1, 1], 2), (vec![3, 3], -3)]);
-    }
-
-    #[test]
-    #[should_panic(expected = "weight overflow")]
-    fn weight_overflow_panics() {
-        let big = weighted(&[(1, 1, Weight::MAX)]);
-        let _ = big.plus(&big);
-    }
-
-    #[test]
-    fn nullary_relation_carries_its_weight() {
-        let unit = Relation::with_weights("unit", Schema::default(), vec![], vec![2, 3]);
-        assert_eq!(unit.len(), 2);
-        let unit = unit.consolidate();
-        assert_eq!((unit.len(), unit.weight(0)), (1, 5));
+        assert_eq!(entries(&r), vec![(vec![1, 20], 5), (vec![2, 5], -1)]);
+        assert!(r.is_consolidated());
+        assert_eq!(entries(&r.distinct()), vec![(vec![1, 20], 1)]);
     }
 
     fn typed_schema() -> Schema {

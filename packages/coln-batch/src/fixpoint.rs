@@ -6,30 +6,21 @@
 //! nothing new can be derived (the least fixpoint; in Coln terms, the
 //! initial model).
 //!
-//! A program is evaluated stratum by stratum, in the order
-//! [`Program::compile`] puts them (see [`crate::rule`] for the semantics):
-//!
-//! - A **non-recursive** stratum holds one relation. Its rules run once
-//!   over complete inputs, and the relation is its initial facts plus the
-//!   rows every rule derives, with their weights (a rule of weight -1
-//!   subtracts). If the relation is declared distinct, it keeps every row
-//!   of positive weight once.
-//! - A **recursive** stratum is a fixpoint over sets. Every round ends with
-//!   a Z-set `distinct`, so a row derived twice is still one fact and the
-//!   iteration stops on cycles. For the same reason its inputs, the
-//!   relations its rules read from outside it and its initial facts, must
-//!   not hold a row of negative weight: a fixpoint over sets cannot take
-//!   rows away. What counts is a row's net weight, the sum over its stored
-//!   copies; a row whose copies cancel out is absent.
+//! A program is evaluated stratum by stratum, in dependency order (see
+//! [`crate::rule`] for the semantics).
+//! A non-recursive stratum runs its rules once, with their weights. A
+//! recursive stratum iterates to a fixpoint over sets: every round ends
+//! with a Z-set `distinct`, so a fact derived twice is still one fact and
+//! the iteration stops on cycles. Such a fixpoint cannot take rows away, so
+//! nothing it reads, initial facts included, may hold a row of negative
+//! net weight (the sum over the row's stored copies).
 //!
 //! Two strategies for the recursive strata, over the same machinery:
 //!
 //! - [`semi_naive`] — the real evaluator. Round 1 evaluates every rule of
 //!   the stratum once; every later round evaluates, per rule and per body
 //!   atom of the same stratum, a rewritten body in which that atom reads
-//!   only the **delta** (the rows that were new in the previous round).
-//!   Facts derived again are not new, so work per round shrinks with the
-//!   delta.
+//!   only the **delta** (the facts that were new in the previous round).
 //! - [`naive`] — the test oracle. Re-evaluates every rule of the stratum
 //!   against the full totals every round. Correct by inspection, wasteful
 //!   by design.
@@ -57,7 +48,7 @@ use anyhow::{Result, bail};
 use crate::query::{Catalog, Layered, Query, Tables};
 use crate::relation::Relation;
 use crate::rule::{CompiledProgram, LoweredRule, Program, Stratum, delta_name};
-use crate::types::{Schema, add_weights};
+use crate::types::Schema;
 
 /// A query executor, e.g. `generic_join::execute` or
 /// `binary_join::execute`.
@@ -172,31 +163,22 @@ impl StratumEval<'_> {
         &self.compiled.idb_schemas[relation]
     }
 
-    /// The facts the input holds for a derived relation, in normal form;
-    /// empty if it holds none.
+    /// The facts the input holds for a derived relation; empty if none.
     fn initial(&self, relation: &str) -> Result<Relation> {
-        let schema = self.schema(relation).clone();
         if self.edb.schema(relation).is_err() {
-            return Ok(Relation::empty(relation, schema));
+            return Ok(Relation::empty(relation, self.schema(relation).clone()));
         }
-        let identity: Vec<usize> = (0..schema.arity()).collect();
-        let table = self.edb.sorted(relation, &identity)?;
-        Ok(Relation::from_table(relation, schema, &*table)?.consolidate())
+        read(self.edb, relation)
     }
 
     /// A non-recursive stratum: its one relation is its initial facts plus
-    /// what every rule derives, weights and all, reduced to a set if it is
-    /// declared distinct.
+    /// what its rules derive, reduced to a set if it is declared distinct.
     fn once(&self, local: &mut Catalog, stats: &mut FixpointStats) -> Result<()> {
         let [relation] = self.stratum.relations.as_slice() else {
             unreachable!("a non-recursive stratum holds one relation");
         };
-        let mut total = self.initial(relation)?;
-        let work = Layered::new(local, self.edb);
-        for rule in self.rules() {
-            let result = (self.exec)(&rule.query, &work)?;
-            total = total.plus(&rule.materialize_head(&result, self.schema(relation)));
-        }
+        let derived = self.derive(&Layered::new(local, self.edb), false)?;
+        let mut total = self.initial(relation)?.plus(&derived[relation]);
         if self.compiled.distinct.contains(relation) {
             total = total.distinct();
         }
@@ -209,148 +191,113 @@ impl StratumEval<'_> {
     /// A recursive stratum: iterate its rules to the least fixpoint over
     /// sets, semi-naively or naively.
     fn fixpoint(&self, local: &mut Catalog, semi: bool, stats: &mut FixpointStats) -> Result<()> {
-        self.check_inputs(&Layered::new(local, self.edb))?;
-
+        let outside: BTreeSet<&str> = self
+            .rules()
+            .flat_map(|rule| &rule.query.atoms)
+            .map(|atom| atom.relation.as_str())
+            .filter(|name| !self.stratum.relations.iter().any(|r| r == name))
+            .collect();
+        for name in outside {
+            self.refuse_negative(&read(&Layered::new(local, self.edb), name)?)?;
+        }
         // Initial facts count as already derived.
         let mut totals: BTreeMap<String, Relation> = BTreeMap::new();
         for relation in &self.stratum.relations {
             let initial = self.initial(relation)?;
-            if let Some(&weight) = initial.weights.iter().find(|&&w| w < 0) {
-                bail!(
-                    "the initial facts of the recursive relation {relation} hold a row of \
-                     weight {weight}; recursion computes sets and cannot take rows away"
-                );
-            }
+            self.refuse_negative(&initial)?;
             totals.insert(relation.clone(), initial.distinct());
-        }
-        for rel in totals.values() {
-            local.insert(rel.clone());
         }
 
         // Round 1 is always a full (naive) evaluation: it fires the rules
         // that read nothing of this stratum and folds in the initial facts.
-        let staging = self.derive_full(&Layered::new(local, self.edb))?;
-        let mut deltas = self.merge_round(&mut totals, staging, stats)?;
-
         // TODO(perf): every round re-runs the executors, which ask for
         // sorted tables over the growing totals again. Persistent indexes
         // behind `SortedTable` would remove this rebuild.
-        while deltas.values().any(|d| !d.is_empty()) {
+        let mut deltas: Option<BTreeMap<String, Relation>> = None;
+        loop {
             // Publish the previous round's state.
             for rel in totals.values() {
                 local.insert(rel.clone());
             }
-            if semi {
-                for (name, delta) in &deltas {
+            let from_deltas = semi && deltas.is_some();
+            if from_deltas {
+                for (name, delta) in deltas.iter().flatten() {
                     let mut rel = delta.clone();
                     rel.name = delta_name(name);
                     local.insert(rel);
                 }
             }
-
-            let work = Layered::new(local, self.edb);
-            let staging = if semi {
-                self.derive_from_deltas(&work)?
-            } else {
-                self.derive_full(&work)?
-            };
-            deltas = self.merge_round(&mut totals, staging, stats)?;
+            let staging = self.derive(&Layered::new(local, self.edb), from_deltas)?;
+            let new = self.merge_round(&mut totals, staging, stats)?;
+            if new.values().all(Relation::is_empty) {
+                break;
+            }
+            deltas = Some(new);
         }
-
         for rel in totals.into_values() {
             local.insert(rel);
         }
         Ok(())
     }
 
-    /// No relation a recursive stratum reads from outside itself may hold
-    /// a row of negative net weight, like its initial facts. A table may
-    /// hold a row in several copies; sorted by all columns, the copies are
-    /// adjacent, and their weights add up to the row's net weight.
-    fn check_inputs(&self, work: &dyn Tables) -> Result<()> {
-        let inputs: BTreeSet<&str> = self
-            .rules()
-            .flat_map(|rule| &rule.query.atoms)
-            .map(|atom| atom.relation.as_str())
-            .filter(|name| !self.stratum.relations.iter().any(|r| r == name))
-            .collect();
-        for name in inputs {
-            let arity = work.schema(name)?.arity();
-            let identity: Vec<usize> = (0..arity).collect();
-            // TODO(perf): an in-memory catalog sorts a copy just to read the
-            // weights.
-            let table = work.sorted(name, &identity)?;
-            let mut start = 0;
-            while start < table.len() {
-                let same =
-                    |r: usize| (0..arity).all(|c| table.value(r, c) == table.value(start, c));
-                let end = (start + 1..table.len())
-                    .find(|&r| !same(r))
-                    .unwrap_or(table.len());
-                let net = (start..end).map(|r| table.weight(r)).fold(0, add_weights);
-                if net < 0 {
-                    bail!(
-                        "{name} holds a row of weight {net} and is read by the recursive \
-                         relations {}; recursion computes sets and cannot take rows away",
-                        self.stratum.relations.join(", ")
-                    );
-                }
-                start = end;
-            }
+    /// A fixpoint over sets cannot take rows away: refuse an input that
+    /// holds a row of negative weight.
+    fn refuse_negative(&self, input: &Relation) -> Result<()> {
+        if let Some(&weight) = input.weights.iter().find(|&&w| w < 0) {
+            bail!(
+                "{} holds a row of weight {weight} and feeds the recursion over {}; \
+                 recursion computes sets and cannot take rows away",
+                input.name,
+                self.stratum.relations.join(", ")
+            );
         }
         Ok(())
     }
 
-    /// Evaluate every rule of the stratum against the current totals.
-    fn derive_full(&self, work: &dyn Tables) -> Result<BTreeMap<String, Relation>> {
-        let mut staging = self.empty_staging();
-        for rule in self.rules() {
-            let result = (self.exec)(&rule.query, work)?;
-            accumulate(
-                &mut staging,
-                rule.materialize_head(&result, self.schema(&rule.head_relation)),
-            );
-        }
-        Ok(staging)
-    }
-
-    /// Evaluate, per rule and per body atom of this stratum, the
-    /// delta-rewritten body.
-    fn derive_from_deltas(&self, work: &dyn Tables) -> Result<BTreeMap<String, Relation>> {
-        let mut staging = self.empty_staging();
-        for rule in self.rules() {
-            for &position in &rule.recursive_positions {
-                let query = rule.query_with_delta(position);
-                let result = (self.exec)(&query, work)?;
-                accumulate(
-                    &mut staging,
-                    rule.materialize_head(&result, self.schema(&rule.head_relation)),
-                );
-            }
-        }
-        Ok(staging)
-    }
-
-    fn empty_staging(&self) -> BTreeMap<String, Relation> {
-        self.stratum
+    /// Evaluate the stratum's rules against `work`, every rule once, or with
+    /// `from_deltas` once per body atom of this stratum, that atom reading
+    /// the delta.
+    fn derive(&self, work: &dyn Tables, from_deltas: bool) -> Result<BTreeMap<String, Relation>> {
+        let mut staging: BTreeMap<String, Relation> = self
+            .stratum
             .relations
             .iter()
             .map(|name| {
-                let schema = self.schema(name).clone();
-                (name.clone(), Relation::empty(name.clone(), schema))
+                (
+                    name.clone(),
+                    Relation::empty(name.clone(), self.schema(name).clone()),
+                )
             })
-            .collect()
+            .collect();
+        for rule in self.rules() {
+            let queries = if from_deltas {
+                rule.recursive_positions
+                    .iter()
+                    .map(|&position| rule.query_with_delta(position))
+                    .collect()
+            } else {
+                vec![rule.query.clone()]
+            };
+            for query in &queries {
+                let result = (self.exec)(query, work)?;
+                let derived = rule.materialize_head(&result, self.schema(&rule.head_relation));
+                let entry = staging
+                    .get_mut(&rule.head_relation)
+                    .expect("the rule's head belongs to the stratum");
+                *entry = entry.plus(&derived);
+            }
+        }
+        Ok(staging)
     }
 
     /// Fold one round of derivations into the totals; returns the new
     /// deltas and updates the statistics.
     ///
-    /// A recursion over sets only grows. Should a round lose a fact
-    /// anyway, which takes a table that changes its weights while it is
-    /// read, the evaluation stops with an error rather than oscillate
-    /// forever. And a round adds exactly its delta to the totals; an
-    /// assertion checks that too, so that a fault in the Z-set operations
-    /// fails fast instead of making the iteration endless.
+    /// A recursion over sets only grows, and a round adds exactly its delta.
+    /// A lost fact, which takes a table that changes while it is read,
+    /// stops the evaluation with an error; the second property is asserted.
+    /// Either way a broken round fails instead of making the iteration
+    /// endless.
     fn merge_round(
         &self,
         totals: &mut BTreeMap<String, Relation>,
@@ -361,8 +308,6 @@ impl StratumEval<'_> {
         let mut new_facts = 0;
         for name in &self.stratum.relations {
             let total = totals.get_mut(name).expect("totals cover the stratum");
-            // The facts known after this round are a set again, and the
-            // delta is what the round added to them.
             let next = total.plus(&staging[name]).distinct();
             let delta = next.minus(total);
             if delta.weights.iter().any(|&w| w < 0) {
@@ -387,9 +332,11 @@ impl StratumEval<'_> {
     }
 }
 
-fn accumulate(staging: &mut BTreeMap<String, Relation>, derived: Relation) {
-    let entry = staging
-        .get_mut(&derived.name)
-        .expect("head relation belongs to the stratum");
-    *entry = entry.plus(&derived);
+/// `relation` as `tables` serves it, in normal form: copies of a row add
+/// up to its net weight.
+fn read(tables: &dyn Tables, relation: &str) -> Result<Relation> {
+    let schema = tables.schema(relation)?.clone();
+    let identity: Vec<usize> = (0..schema.arity()).collect();
+    let table = tables.sorted(relation, &identity)?;
+    Ok(Relation::from_table(relation, schema, &*table)?.consolidate())
 }
