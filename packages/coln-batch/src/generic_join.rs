@@ -107,7 +107,7 @@ pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
     let mut out: Vec<Key> = Vec::new();
     solver.solve(0, &mut ranges, &mut binding, &mut out);
 
-    Ok(Relation::from_flat_rows("result", prepared.schema, &out).sorted_dedup())
+    Ok(Relation::from_flat_rows("result", prepared.schema, &out).distinct())
 }
 
 /// One atom, ready for execution: its sorted index plus the mapping from

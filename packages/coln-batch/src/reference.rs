@@ -41,7 +41,7 @@ pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
     let mut out: Vec<Key> = Vec::new();
     search(query, &atoms, &tables, 0, &mut binding, &mut out);
 
-    Ok(Relation::from_flat_rows("result", prepared.schema, &out).sorted_dedup())
+    Ok(Relation::from_flat_rows("result", prepared.schema, &out).distinct())
 }
 
 fn search(

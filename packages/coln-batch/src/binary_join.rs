@@ -139,7 +139,7 @@ pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
             out.push(row[c]);
         }
     }
-    Ok(Relation::from_flat_rows("result", schema, &out).sorted_dedup())
+    Ok(Relation::from_flat_rows("result", schema, &out).distinct())
 }
 
 #[cfg(test)]

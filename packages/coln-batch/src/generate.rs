@@ -8,9 +8,9 @@
 //! paper (Zhang et al., POPL 2022) and the accompanying benchmark
 //! notebooks: purely random data almost never produces matches, so we
 //! *plant* a controlled number of matches and surround them with random
-//! noise rows. Generated relations are deduplicated (relations are sets),
-//! so `planted`/`noise` are approximate upper bounds, not exact row
-//! counts. Tests that need exact ground truth should compute it with a
+//! noise rows. Generated relations are sets (duplicates are dropped, every
+//! row has weight 1), so `planted`/`noise` are approximate upper bounds,
+//! not exact row counts. Tests that need exact ground truth should compute it with a
 //! brute-force reference join at small scale.
 
 use crate::relation::Relation;
@@ -46,7 +46,7 @@ pub fn triangle(nodes: u64, noise_edges: usize, planted: usize, seed: u64) -> [R
         push(&mut h, rng.below(nodes), rng.below(nodes));
     }
     let rel = |name: &str, [a, b]: [Vec<u64>; 2]| {
-        Relation::new(name, ["src", "dst"], vec![a, b]).sorted_dedup()
+        Relation::new(name, ["src", "dst"], vec![a, b]).distinct()
     };
     [rel("R_f", f), rel("R_g", g), rel("R_h", h)]
 }
@@ -86,8 +86,8 @@ pub fn f_g_pattern(eclasses: u64, noise: usize, planted: usize, seed: u64) -> [R
     let [f0, f1, f2] = f;
     let [g0, g1] = g;
     [
-        Relation::new("R_f", ["id", "c1", "c2"], vec![f0, f1, f2]).sorted_dedup(),
-        Relation::new("R_g", ["id", "c1"], vec![g0, g1]).sorted_dedup(),
+        Relation::new("R_f", ["id", "c1", "c2"], vec![f0, f1, f2]).distinct(),
+        Relation::new("R_g", ["id", "c1"], vec![g0, g1]).distinct(),
     ]
 }
 
@@ -117,7 +117,7 @@ pub fn dag(nodes: u64, edges: usize, seed: u64) -> Relation {
         src.push(a);
         dst.push(b);
     }
-    Relation::new("parent", ["parent", "child"], vec![src, dst]).sorted_dedup()
+    Relation::new("parent", ["parent", "child"], vec![src, dst]).distinct()
 }
 
 /// The schema of [`labeled_edges`]: `edge(src: uint, dst: uint,
@@ -157,7 +157,7 @@ pub fn labeled_edges(
     });
     Relation::from_rows("edge", labeled_edges_schema(), rows, dict)
         .expect("generated rows match the schema")
-        .sorted_dedup()
+        .distinct()
 }
 
 #[cfg(test)]

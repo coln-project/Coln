@@ -91,7 +91,13 @@ impl LoweredRule {
                 HeadCol::Lit(x) => vec![*x; result.len()],
             })
             .collect();
-        Relation::with_schema(self.head_relation.clone(), schema.clone(), cols).sorted_dedup()
+        Relation::with_weights(
+            self.head_relation.clone(),
+            schema.clone(),
+            cols,
+            result.weights.clone(),
+        )
+        .distinct()
     }
 }
 

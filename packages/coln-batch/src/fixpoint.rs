@@ -118,7 +118,7 @@ fn evaluate(program: &Program, edb: &dyn Tables, exec: Exec, semi: bool) -> Resu
         let rel = if edb.schema(name).is_ok() {
             let identity: Vec<usize> = (0..schema.arity()).collect();
             let initial = edb.sorted(name, &identity)?;
-            Relation::from_table(name.clone(), schema.clone(), &*initial)?.sorted_dedup()
+            Relation::from_table(name.clone(), schema.clone(), &*initial)?.distinct()
         } else {
             Relation::empty(name.clone(), schema.clone())
         };
@@ -224,7 +224,7 @@ fn accumulate(staging: &mut BTreeMap<String, Relation>, derived: Relation) {
     let entry = staging
         .get_mut(&derived.name)
         .expect("head relation is a known IDB relation");
-    *entry = entry.union(&derived);
+    *entry = entry.plus(&derived);
 }
 
 /// Fold one round of derivations into the totals; returns the new deltas
@@ -239,9 +239,12 @@ fn merge_round(
     let mut new_facts = 0;
     for name in compiled.idb_schemas.keys() {
         let total = totals.get_mut(name).expect("totals cover all IDB");
-        let delta = staging[name].minus(total);
+        // The facts known after this round are a set again, and the delta
+        // is what the round added to them.
+        let next = total.plus(&staging[name]).distinct();
+        let delta = next.minus(total);
         new_facts += delta.len();
-        *total = total.union(&delta);
+        *total = next;
         deltas.insert(name.clone(), delta);
     }
     stats.rounds += 1;

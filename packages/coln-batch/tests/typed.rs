@@ -350,7 +350,7 @@ fn edge_values_of_every_type_join() {
         // T sorted by key decodes in ascending value order.
         if ty != ScalarType::String {
             let t = cat.get("T").unwrap();
-            let sorted_by_key = t.clone().sorted_dedup();
+            let sorted_by_key = t.clone().consolidate();
             let in_key_order: Vec<Value> = (0..sorted_by_key.len())
                 .map(|i| sorted_by_key.value(i, 0, cat.dictionary()).unwrap())
                 .collect();
