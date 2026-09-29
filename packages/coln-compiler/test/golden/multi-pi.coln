@@ -77,8 +77,6 @@ def eq-dep-tail-backward (F : Int -> Set) (f : (^c x : Int) -> (^c y : Int) -> (
 
 ## Bad cases:
 
-def eq-multi-2 : (x y : Int) -> Int := x => y => 19
-
 attr expected-error "E0300"
 def eq-too-few : (x : Int) -> Int := eq-multi-2
 

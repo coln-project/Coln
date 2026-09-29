@@ -1,0 +1,100 @@
+-- elaborated
+global entry named parameter_shadowing
+in mode: Conjunctive
+type: (x : Int) -> (x : Int) -> Int
+value: x => x => x
+global entry named lambda_shadowing
+in mode: Conjunctive
+type: (x : Int) -> (y : Int) -> Int
+value: x => x => x
+global entry named PiShadowing
+in mode: Conjunctive
+type: Theory
+value: (x : Int) -> (x : Int) -> Set
+global entry named FieldArgumentShadowing
+in mode: Conjunctive
+type: (x : Int) -> Theory
+value: x => sig
+  x : Int
+end
+global entry named top
+in mode: Conjunctive
+type: Int
+value: 19
+global entry named param_top_shadowing
+in mode: Conjunctive
+type: (top : Int) -> Int
+value: top => 34
+global entry named ParamTopTheory
+in mode: Conjunctive
+type: (top : Int) -> Theory
+value: top => sig
+end
+global entry named Pair
+in mode: Conjunctive
+type: Set
+value: sig
+  x : Int
+  y : Int
+end
+global entry named Nasty
+in mode: Conjunctive
+type: Theory
+value: sig
+  B : Set
+  E : B -> Set
+  n : (b : B) -> (b : E b) -> Int
+end
+global entry named NastyParam
+in mode: Conjunctive
+type: (b : Int) -> Theory
+value: b => sig
+  E : Int -> Set
+  b : E b
+end
+realm named PairRealm
+lowered: flatrealm
+  entities
+    table root := [a.x : Int, a.y : Int] primarykey []
+  end
+  definitions
+  end
+  rules
+    enforced root.foreignKey a.x a.y := root [a.x ↦ a.x, a.y ↦ a.y] ⊢ ⊤
+    monitored root.total := ⊤ ⊢ root []
+  end
+end
+realm named ShadowRealm
+lowered: flatrealm
+  entities
+    table root := [a.x : Int, a.y : Int] primarykey []
+  end
+  definitions
+  end
+  rules
+    enforced root.foreignKey a.x a.y := root [a.x ↦ a.x, a.y ↦ a.y] ⊢ ⊤
+    monitored root.total := ⊤ ⊢ root []
+  end
+end
+
+-- messages
+
+expected error[E0208]: duplicate definition of Pair
+44 | def Pair : Set := sig
+44 |     ^^^^
+
+expected error[E0209]: duplicate record field x
+53 |   x : String
+53 |   ^
+
+expected error[E0208]: duplicate definition of ShadowRealm
+61 | realm ShadowRealm @ Pair
+61 |       ^^^^^^^^^^^
+
+expected error[E0208]: duplicate definition of root
+66 |   def root : Pair := struct
+66 |       ^^^^
+
+expected error[E0208]: duplicate definition of thing
+79 |   def thing : Pair := struct
+79 |       ^^^^^
