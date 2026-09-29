@@ -37,3 +37,47 @@ theory NastyParam (b : Int) := sig
   E : Int -> Set
   b : E b
 end
+
+## Forbidden examples
+
+attr expected-error "E0208"
+def Pair : Set := sig
+  x : String
+  y : String
+end
+
+attr expected-error "E0209"
+def ShadowField : Set := sig
+  x : Int
+  # TODO: the expected-error should go here
+  x : String
+end
+
+# Banish him to the
+realm ShadowRealm @ Pair
+end
+
+attr expected-error "E0208"
+realm ShadowRealm @ Pair
+end
+
+attr expected-error "E0208"
+realm ShadowRoot @ Pair
+  def root : Pair := struct
+    x := 1
+    y := 2
+  end
+end
+
+attr expected-error "E0208"
+realm ShadowRealmDefinition @ Pair
+  def thing : Pair := struct
+    x := 1
+    y := 2
+  end
+
+  def thing : Pair := struct
+    x := 3
+    y := 4
+  end
+end
