@@ -17,12 +17,17 @@ eval :: (V.HasEvaluation c, Compile a b) => V.Locals -> a c -> V.Evaluation b c
 eval = flip compile
 
 compileAbs :: (V.HasEvaluation c, Compile a b) => S.Abs a c -> V.Locals -> V.Clo b c
-compileAbs (S.Abs x t) = do
+compileAbs (S.Abs (Named x) t) = do
   let k = compile t
   \vs -> V.Clo x vs k
-compileAbs (S.AbsConst t) = do
+compileAbs (S.Abs Anonymous t) = do
   let k = compile t
   V.CloConst . k
+
+compileMultiAbs :: (V.HasEvaluation c, Compile a b) => S.MultiAbs a c -> V.Locals -> V.MultiClo b c
+compileMultiAbs (S.MultiAbs xs t) = do
+  let k = compile t
+  \vs -> V.MultiClo xs vs k
 
 instance Compile S.El V.El where
   compile = \case
@@ -54,7 +59,7 @@ instance Compile S.El V.El where
 compileFunctionType :: S.FunctionType S.Ty -> V.Locals -> V.FunctionType
 compileFunctionType ft = do
   let k_dom = compile ft.dom
-  let k_cod = compileAbs ft.cod
+  let k_cod = compileMultiAbs ft.cod
   \vs -> V.FunctionType ft.variant (k_dom vs) (k_cod vs)
 
 compileRecordType :: S.RecordType S.Ty -> V.Locals -> V.RecordType

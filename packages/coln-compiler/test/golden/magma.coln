@@ -1,4 +1,4 @@
 theory Magma := sig
   car : Set
-  mul : (x : car) -> (y : car) -> car
+  mul : (x y : car) -> car
 end
