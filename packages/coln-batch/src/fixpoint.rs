@@ -230,7 +230,7 @@ impl StratumEval<'_> {
         // Round 1 is always a full (naive) evaluation: it fires the rules
         // that read nothing of this stratum and folds in the initial facts.
         let staging = self.derive_full(&Layered::new(local, self.edb))?;
-        let mut deltas = self.merge_round(&mut totals, staging, stats);
+        let mut deltas = self.merge_round(&mut totals, staging, stats)?;
 
         // TODO(perf): every round re-runs the executors, which ask for
         // sorted tables over the growing totals again. Persistent indexes
@@ -254,7 +254,7 @@ impl StratumEval<'_> {
             } else {
                 self.derive_full(&work)?
             };
-            deltas = self.merge_round(&mut totals, staging, stats);
+            deltas = self.merge_round(&mut totals, staging, stats)?;
         }
 
         for rel in totals.into_values() {
@@ -344,12 +344,19 @@ impl StratumEval<'_> {
 
     /// Fold one round of derivations into the totals; returns the new
     /// deltas and updates the statistics.
+    ///
+    /// A recursion over sets only grows. Should a round lose a fact
+    /// anyway, which takes a table that changes its weights while it is
+    /// read, the evaluation stops with an error rather than oscillate
+    /// forever. And a round adds exactly its delta to the totals; an
+    /// assertion checks that too, so that a fault in the Z-set operations
+    /// fails fast instead of making the iteration endless.
     fn merge_round(
         &self,
         totals: &mut BTreeMap<String, Relation>,
         staging: BTreeMap<String, Relation>,
         stats: &mut FixpointStats,
-    ) -> BTreeMap<String, Relation> {
+    ) -> Result<BTreeMap<String, Relation>> {
         let mut deltas = BTreeMap::new();
         let mut new_facts = 0;
         for name in &self.stratum.relations {
@@ -358,13 +365,25 @@ impl StratumEval<'_> {
             // delta is what the round added to them.
             let next = total.plus(&staging[name]).distinct();
             let delta = next.minus(total);
+            if delta.weights.iter().any(|&w| w < 0) {
+                bail!(
+                    "the recursive relation {name} lost a fact in round {}; a recursion \
+                     over sets can only grow, so an input changed while it was read",
+                    stats.rounds + 1
+                );
+            }
+            assert_eq!(
+                next.len(),
+                total.len() + delta.len(),
+                "a round must add exactly its new facts to {name}"
+            );
             new_facts += delta.len();
             *total = next;
             deltas.insert(name.clone(), delta);
         }
         stats.rounds += 1;
         stats.new_facts_per_round.push(new_facts);
-        deltas
+        Ok(deltas)
     }
 }
 

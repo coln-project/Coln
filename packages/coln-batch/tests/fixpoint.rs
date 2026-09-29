@@ -7,10 +7,11 @@
 //! with exact expected results where we know them, weights included.
 
 use coln_batch::fixpoint::{self, Exec};
-use coln_batch::query::{Atom, Catalog, Term};
+use coln_batch::query::{Atom, Catalog, Tables, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rule::{Program, Rule};
-use coln_batch::types::{Schema, Value, Weight};
+use coln_batch::table::{ArrowSortedTable, ColId, SortedTable};
+use coln_batch::types::{Dictionary, Schema, Value, Weight};
 use coln_batch::{binary_join, fixtures, generate, generic_join, reference};
 
 /// Run the program under every (strategy × executor) combination and
@@ -759,4 +760,61 @@ fn recursion_reads_the_net_weight_of_stored_copies() {
         .expect("net weight -1 must be refused")
         .to_string();
     assert!(err.contains("parent holds a row of weight -1"), "{err}");
+}
+
+/// A source that breaks its promise to keep a table as it is while a query
+/// reads it: after `honest` requests it serves every row of `catalog` with
+/// its weight negated, as if the rows had been taken away meanwhile.
+struct Changing {
+    catalog: Catalog,
+    honest: usize,
+    served: std::cell::Cell<usize>,
+}
+
+impl Tables for Changing {
+    fn schema(&self, relation: &str) -> anyhow::Result<&Schema> {
+        Tables::schema(&self.catalog, relation)
+    }
+
+    fn sorted(&self, relation: &str, order: &[ColId]) -> anyhow::Result<Box<dyn SortedTable + '_>> {
+        let served = self.served.get();
+        self.served.set(served + 1);
+        let mut rel = self.catalog.get(relation)?.clone();
+        if served >= self.honest {
+            for w in &mut rel.weights {
+                *w = -*w;
+            }
+        }
+        Ok(Box::new(ArrowSortedTable::from_relation(
+            &rel,
+            order.to_vec(),
+        )?))
+    }
+
+    fn dictionary(&self) -> &Dictionary {
+        self.catalog.dictionary()
+    }
+}
+
+#[test]
+fn a_recursion_whose_input_changes_stops_with_an_error() {
+    // parent: 0 -> 1 -> 2 and 0 -> 2. The first three requests (the input
+    // check and round one) see the edges; round two reads them taken away
+    // and would silently lose the fact (0, 2) that round one derived.
+    let mut catalog = Catalog::new();
+    catalog.insert(parent(vec![vec![0, 1, 0], vec![1, 2, 2]]));
+    let source = Changing {
+        catalog,
+        honest: 3,
+        served: std::cell::Cell::new(0),
+    };
+    let err = fixpoint::semi_naive_over(
+        &fixtures::ancestor_program(),
+        &source,
+        generic_join::execute as Exec,
+    )
+    .err()
+    .expect("a lost fact must stop the recursion")
+    .to_string();
+    assert!(err.contains("ancestor lost a fact in round 2"), "{err}");
 }
