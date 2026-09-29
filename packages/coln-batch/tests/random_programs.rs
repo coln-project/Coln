@@ -5,7 +5,9 @@
 //! Randomized differential testing for recursion: generated Datalog
 //! programs over generated data, evaluated with every strategy and
 //! executor combination. All four runs must agree on every derived
-//! relation. Termination is guaranteed by the tiny value domains.
+//! relation, weights included. Stored rows carry random positive weights,
+//! as a snapshot does. Termination is guaranteed by the tiny value
+//! domains.
 //!
 //! Relations carry random column types and rules are generated
 //! well-typed; every derived relation is declared in the catalog (an
@@ -21,7 +23,7 @@ use coln_batch::query::{Atom, Catalog, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rng::SplitMix64;
 use coln_batch::rule::{Program, Rule};
-use coln_batch::types::{Column, ScalarType, Schema, Value};
+use coln_batch::types::{Column, ScalarType, Schema, Value, Weight};
 use coln_batch::{binary_join, generic_join};
 
 const CASES: u64 = 150;
@@ -72,16 +74,24 @@ fn random_rows(rng: &mut SplitMix64, schema: &Schema, max_rows: u64) -> Vec<Vec<
         .collect()
 }
 
-/// 1..=2 stored relations, arity 1..=2, 0..=10 rows each.
+/// 1..=2 stored relations, arity 1..=2, 0..=10 rows each, of weight
+/// 1..=3.
 fn random_edb(rng: &mut SplitMix64) -> (Catalog, Vec<(String, Schema)>) {
     let mut cat = Catalog::new();
     let mut rels = Vec::new();
     for r in 0..1 + rng.below(2) {
         let arity = 1 + rng.below(2) as usize;
         let schema = random_schema(rng, arity);
-        let rows = random_rows(rng, &schema, 10);
+        let rows: Vec<(Vec<Value>, Weight)> = random_rows(rng, &schema, 10)
+            .into_iter()
+            .map(|row| (row, 1 + rng.below(3) as Weight))
+            .collect();
         let name = format!("E{r}");
-        cat.insert_rows(name.clone(), schema.clone(), rows).unwrap();
+        let rel =
+            Relation::from_weighted_rows(name.clone(), schema.clone(), rows, cat.dictionary_mut())
+                .unwrap()
+                .consolidate();
+        cat.insert(rel);
         rels.push((name, schema));
     }
     (cat, rels)
@@ -192,6 +202,7 @@ fn random_program(
 #[test]
 fn random_programs_all_combinations_agree() {
     let mut non_empty = 0;
+    let mut weighted = 0;
     for case in 0..CASES {
         let mut rng = SplitMix64::new(case);
         let (mut edb, edb_rels) = random_edb(&mut rng);
@@ -243,8 +254,8 @@ fn random_programs_all_combinations_agree() {
         for (name, cat) in &others {
             for idb in &idb_names {
                 assert_eq!(
-                    base.get(idb).unwrap().cols,
-                    cat.get(idb).unwrap().cols,
+                    base.get(idb).unwrap(),
+                    cat.get(idb).unwrap(),
                     "case {case}: {name} disagrees on {idb}"
                 );
             }
@@ -261,8 +272,15 @@ fn random_programs_all_combinations_agree() {
             if !rel.is_empty() {
                 non_empty += 1;
             }
+            if rel.weights.iter().any(|&w| w != 1) {
+                weighted += 1;
+            }
         }
     }
     // Guard against a degenerate generator.
     assert!(non_empty >= CASES / 10, "only {non_empty} non-empty cases");
+    assert!(
+        weighted >= CASES / 20,
+        "only {weighted} derived relations with a weight other than 1"
+    );
 }

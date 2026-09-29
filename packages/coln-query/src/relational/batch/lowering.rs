@@ -431,7 +431,8 @@ impl Lowerer {
                         names,
                     })
                 }
-                // coln-batch results are sets already, distinct is free.
+                // The backend reports every result row once (see `Snapshot`),
+                // so distinct changes nothing it shows.
                 RelExpr::Distinct(distinct) => self.lower_rel(&distinct.relation, frame),
                 RelExpr::Projection(projection) => {
                     let inner = self.lower_rel(&projection.relation, frame)?;
@@ -511,9 +512,8 @@ impl Lowerer {
             .with_context(|| format!("in the constant relation {constant}"))?;
         if schema.arity() == 0 && !constant.is_empty() {
             bail!(
-                "batch lowering cannot represent the constant relation {constant}: a \
-                 coln-batch relation stores its data column by column, so one with no \
-                 columns cannot hold a row"
+                "batch lowering does not support the constant relation {constant} yet: \
+                 it holds a row without columns"
             );
         }
         let mut rows = Vec::with_capacity(constant.rows().len());
@@ -521,7 +521,8 @@ impl Lowerer {
             if *copies != Multiplicity::ONE {
                 bail!(
                     "batch lowering cannot represent the constant relation {constant}: \
-                     coln-batch relations are sets, so row {} cannot be held {} times",
+                     this backend lowers constants as sets for now, so row {} cannot be \
+                     held {} times",
                     row.data_to_string(),
                     copies.get()
                 );
@@ -1170,8 +1171,8 @@ mod tests {
         assert_eq!(rows(result.get("tagged").unwrap()), vec![vec![3, 7]]);
     }
 
-    /// Step 4: distinct is free. coln-batch results are sets already, so
-    /// the operator lowers to nothing at all.
+    /// Step 4: distinct is free. The backend reports every result row once,
+    /// so the operator lowers to nothing at all.
     #[test]
     fn s04_distinct_is_free() {
         let plain = lower_plan(vec![
@@ -1815,7 +1816,8 @@ mod tests {
     /// line up, lowering says so instead of quietly dropping copies or rows.
     #[test]
     fn s19_a_constant_this_backend_cannot_represent_fails_loudly() {
-        // coln-batch relations are sets, so copies have nowhere to go.
+        // This backend lowers constants as sets for now, so copies have
+        // nowhere to go.
         let twice = ConstantExpr::set(
             table_schema("ones", [("a", PlanType::Uint)], []),
             [tuple!(1u64), tuple!(1u64)],
@@ -1824,11 +1826,10 @@ mod tests {
         let err = lower_plan(vec![let_rel("ones", twice)]).unwrap_err();
         assert!(format!("{err:#}").contains("sets"));
 
-        // A relation stored column by column reads its row count off the first
-        // column, so with no columns it cannot hold a row — which is exactly
-        // what the unit relation is.
+        // The unit relation holds one row without columns, which this backend
+        // does not lower yet.
         let err = lower_plan(vec![let_rel("unit", ConstantExpr::unit())]).unwrap_err();
-        assert!(format!("{err:#}").contains("cannot hold a row"));
+        assert!(format!("{err:#}").contains("a row without columns"));
 
         // `Null` is the one plan type the engine does not store, in a constant
         // as much as in a schema or a fed row.

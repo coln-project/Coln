@@ -14,6 +14,19 @@
 //! are **EDB** (stored input). An IDB relation may also have initial
 //! facts in the catalog; they are treated as already-derived rows.
 //!
+//! What a derived relation holds follows Z-set semantics: its initial facts
+//! plus the rows every rule derives, each rule's rows weighted as the
+//! executors weigh a query result (see [`crate::generic_join`]). Two rules
+//! deriving the same row give it weight 2, and so do two ways of deriving
+//! it in one rule. **Recursion is the exception.** A relation that depends
+//! on itself, directly or through others, is a set: every row it holds
+//! has weight 1, which is what makes the fixpoint finite on cycles.
+//!
+//! The derived relations fall into **strata**, the groups of relations
+//! that depend on each other. [`Program::compile`] orders them so that
+//! every stratum comes after the strata it reads; a stratum is recursive
+//! if its relations depend on themselves.
+//!
 //! Derived relations are typed like stored ones. Their schemas come from
 //! the catalog when initial facts exist (an empty relation with a schema
 //! is a plain declaration), otherwise they are inferred from the rules:
@@ -22,7 +35,7 @@
 //! typed; a column no rule pins down is an error, resolved by declaring
 //! the relation in the catalog.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Result, bail};
 
@@ -68,8 +81,10 @@ pub(crate) struct LoweredRule {
     pub query: Query,
     pub head_relation: String,
     pub head_cols: Vec<HeadCol>,
-    /// Body positions whose relation is an IDB relation.
-    pub idb_positions: Vec<usize>,
+    /// Body positions whose relation belongs to the rule's own stratum. In
+    /// a recursive stratum these are the atoms that read the previous
+    /// round's delta; in a non-recursive one there are none.
+    pub recursive_positions: Vec<usize>,
 }
 
 impl LoweredRule {
@@ -81,7 +96,8 @@ impl LoweredRule {
         q
     }
 
-    /// Turn a body-query result into rows of the head relation.
+    /// Turn a body-query result into rows of the head relation, keeping the
+    /// result's weights. The rows come out in normal form.
     pub fn materialize_head(&self, result: &Relation, schema: &Schema) -> Relation {
         let cols = self
             .head_cols
@@ -97,8 +113,23 @@ impl LoweredRule {
             cols,
             result.weights.clone(),
         )
-        .distinct()
+        .consolidate()
     }
+}
+
+/// A group of derived relations that depend on each other, evaluated
+/// together.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Stratum {
+    /// The relations, sorted by name.
+    pub relations: Vec<String>,
+    /// Whether the relations depend on themselves. A recursive stratum is
+    /// computed as a fixpoint over sets; a non-recursive one holds a
+    /// single relation, evaluated once with its weights.
+    pub recursive: bool,
+    /// Positions in [`CompiledProgram::rules`] of the rules defining the
+    /// relations.
+    pub rules: Vec<usize>,
 }
 
 /// A validated, lowered program, ready for fixpoint evaluation.
@@ -108,6 +139,8 @@ pub(crate) struct CompiledProgram {
     /// IDB relation name → schema (from initial facts if present, else
     /// column names from the first defining rule head and inferred types).
     pub idb_schemas: BTreeMap<String, Schema>,
+    /// The derived relations grouped into strata, in evaluation order.
+    pub strata: Vec<Stratum>,
 }
 
 /// A derived relation's schema while its types are being inferred.
@@ -281,27 +314,137 @@ impl Program {
                 }
             }
 
-            let mut idb_positions = Vec::new();
-            for (i, atom) in rule.body.iter().enumerate() {
+            for atom in &rule.body {
                 if atom.relation.starts_with(DELTA_PREFIX) {
                     bail!(
                         "relation name {} uses the reserved prefix {DELTA_PREFIX}",
                         atom.relation
                     );
                 }
-                if idb_schemas.contains_key(&atom.relation) {
-                    idb_positions.push(i);
-                }
             }
             rules.push(LoweredRule {
                 query,
                 head_relation: rule.head.relation.clone(),
                 head_cols,
-                idb_positions,
+                recursive_positions: Vec::new(),
             });
         }
 
-        Ok(CompiledProgram { rules, idb_schemas })
+        let strata = stratify(&idb_schemas, &rules);
+        let stratum_of: BTreeMap<&str, usize> = strata
+            .iter()
+            .enumerate()
+            .flat_map(|(i, s)| s.relations.iter().map(move |r| (r.as_str(), i)))
+            .collect();
+        for rule in &mut rules {
+            let own = stratum_of[rule.head_relation.as_str()];
+            rule.recursive_positions = (0..rule.query.atoms.len())
+                .filter(|&i| stratum_of.get(rule.query.atoms[i].relation.as_str()) == Some(&own))
+                .collect();
+        }
+
+        Ok(CompiledProgram {
+            rules,
+            idb_schemas,
+            strata,
+        })
+    }
+}
+
+/// Group the derived relations into strata: the strongly connected
+/// components of the graph in which every derived relation points to the
+/// derived relations its rules read. Tarjan's algorithm completes a
+/// component only after every component it reaches, so the strata come out
+/// in evaluation order, each after the ones it reads.
+fn stratify(idb: &BTreeMap<String, Schema>, rules: &[LoweredRule]) -> Vec<Stratum> {
+    let mut reads: BTreeMap<&str, BTreeSet<&str>> = idb
+        .keys()
+        .map(|name| (name.as_str(), BTreeSet::new()))
+        .collect();
+    for rule in rules {
+        for atom in &rule.query.atoms {
+            if idb.contains_key(&atom.relation) {
+                reads
+                    .get_mut(rule.head_relation.as_str())
+                    .expect("every head is a derived relation")
+                    .insert(atom.relation.as_str());
+            }
+        }
+    }
+
+    let mut tarjan = Tarjan {
+        reads: &reads,
+        index: BTreeMap::new(),
+        low: BTreeMap::new(),
+        stack: Vec::new(),
+        components: Vec::new(),
+    };
+    for &name in reads.keys() {
+        if !tarjan.index.contains_key(name) {
+            tarjan.visit(name);
+        }
+    }
+
+    tarjan
+        .components
+        .into_iter()
+        .map(|mut relations| {
+            relations.sort_unstable();
+            let recursive = relations.len() > 1 || reads[relations[0]].contains(relations[0]);
+            let rules = (0..rules.len())
+                .filter(|&i| relations.contains(&rules[i].head_relation.as_str()))
+                .collect();
+            Stratum {
+                relations: relations.into_iter().map(str::to_owned).collect(),
+                recursive,
+                rules,
+            }
+        })
+        .collect()
+}
+
+/// State of Tarjan's strongly connected components algorithm.
+struct Tarjan<'a> {
+    reads: &'a BTreeMap<&'a str, BTreeSet<&'a str>>,
+    /// Visiting order of every relation seen so far.
+    index: BTreeMap<&'a str, usize>,
+    /// The smallest index reachable from a relation through relations on
+    /// the stack.
+    low: BTreeMap<&'a str, usize>,
+    stack: Vec<&'a str>,
+    /// Finished components, dependencies first.
+    components: Vec<Vec<&'a str>>,
+}
+
+impl<'a> Tarjan<'a> {
+    fn visit(&mut self, v: &'a str) {
+        let index = self.index.len();
+        self.index.insert(v, index);
+        self.low.insert(v, index);
+        self.stack.push(v);
+        let reads = self.reads;
+        for &w in &reads[v] {
+            let reached = if !self.index.contains_key(w) {
+                self.visit(w);
+                self.low[w]
+            } else if self.stack.contains(&w) {
+                self.index[w]
+            } else {
+                continue;
+            };
+            if reached < self.low[v] {
+                self.low.insert(v, reached);
+            }
+        }
+        if self.low[v] == index {
+            let root = self
+                .stack
+                .iter()
+                .rposition(|&x| x == v)
+                .expect("a relation stays on the stack until its component is done");
+            let component = self.stack.split_off(root);
+            self.components.push(component);
+        }
     }
 }
 
@@ -370,11 +513,88 @@ mod tests {
     fn compiles_ancestor() {
         let compiled = ancestor_rules().compile_in(&mut edb()).unwrap();
         assert_eq!(compiled.rules.len(), 2);
-        assert_eq!(compiled.rules[0].idb_positions, Vec::<usize>::new());
-        assert_eq!(compiled.rules[1].idb_positions, vec![1]);
+        assert_eq!(compiled.rules[0].recursive_positions, Vec::<usize>::new());
+        assert_eq!(compiled.rules[1].recursive_positions, vec![1]);
+        assert_eq!(
+            compiled.strata,
+            vec![Stratum {
+                relations: vec!["ancestor".into()],
+                recursive: true,
+                rules: vec![0, 1],
+            }]
+        );
         let schema = &compiled.idb_schemas["ancestor"];
         assert_eq!(schema.names(), vec!["x", "y"]);
         assert_eq!(schema.types(), vec![ScalarType::Uint, ScalarType::Uint]);
+    }
+
+    /// `head(vars) ← body(vars), …` over the variables `0..`, all uint.
+    fn rule(head: (&str, &[usize]), body: &[(&str, &[usize])]) -> Rule {
+        let atom = |(relation, vars): (&str, &[usize])| Atom {
+            relation: relation.into(),
+            terms: vars.iter().map(|&v| Term::Var(v)).collect(),
+        };
+        let num_vars = body
+            .iter()
+            .flat_map(|(_, vars)| vars.iter())
+            .max()
+            .map_or(0, |&v| v + 1);
+        Rule {
+            var_names: (0..num_vars).map(|v| format!("v{v}")).collect(),
+            head: atom(head),
+            body: body.iter().copied().map(atom).collect(),
+        }
+    }
+
+    #[test]
+    fn strata_come_in_dependency_order() {
+        let program = Program {
+            rules: vec![
+                // reach: recursive over parent.
+                rule(("reach", &[0, 1]), &[("parent", &[0, 1])]),
+                rule(
+                    ("reach", &[0, 2]),
+                    &[("reach", &[0, 1]), ("parent", &[1, 2])],
+                ),
+                // pairs: reads reach, but not itself.
+                rule(
+                    ("pairs", &[0, 1]),
+                    &[("reach", &[0, 1]), ("reach", &[1, 0])],
+                ),
+                // sym: recursive over pairs.
+                rule(("sym", &[0, 1]), &[("pairs", &[0, 1])]),
+                rule(("sym", &[0, 2]), &[("sym", &[0, 1]), ("sym", &[1, 2])]),
+                // a and b: recursive through each other.
+                rule(("a", &[0]), &[("parent", &[0, 1])]),
+                rule(("a", &[0]), &[("b", &[0])]),
+                rule(("b", &[0]), &[("a", &[0])]),
+            ],
+        };
+        let compiled = program.compile_in(&mut edb()).unwrap();
+        let strata: Vec<(Vec<&str>, bool)> = compiled
+            .strata
+            .iter()
+            .map(|s| {
+                (
+                    s.relations.iter().map(String::as_str).collect(),
+                    s.recursive,
+                )
+            })
+            .collect();
+        assert_eq!(
+            strata,
+            vec![
+                (vec!["a", "b"], true),
+                (vec!["reach"], true),
+                (vec!["pairs"], false),
+                (vec!["sym"], true),
+            ]
+        );
+        // Only atoms of the rule's own stratum read deltas.
+        assert_eq!(compiled.rules[1].recursive_positions, vec![0]);
+        assert_eq!(compiled.rules[2].recursive_positions, Vec::<usize>::new());
+        assert_eq!(compiled.rules[4].recursive_positions, vec![0, 1]);
+        assert_eq!(compiled.rules[6].recursive_positions, vec![0]);
     }
 
     #[test]

@@ -6,15 +6,29 @@
 //! nothing new can be derived (the least fixpoint; in Coln terms, the
 //! initial model).
 //!
-//! Two strategies over the same machinery:
+//! A program is evaluated stratum by stratum, in the order
+//! [`Program::compile`] puts them (see [`crate::rule`] for the semantics):
 //!
-//! - [`semi_naive`] — the real evaluator. Round 1 evaluates every rule
-//!   once; every later round evaluates, per rule and per IDB body atom,
-//!   a rewritten body in which that atom reads only the **delta** (the
-//!   rows that were new in the previous round). Facts derived twice are
-//!   removed by set difference, so work per round shrinks with the delta.
-//! - [`naive`] — the test oracle. Re-evaluates every rule against the
-//!   full totals every round. Correct by inspection, wasteful by design.
+//! - A **non-recursive** stratum holds one relation. Its rules run once
+//!   over complete inputs, and the relation is its initial facts plus the
+//!   rows every rule derives, with their weights.
+//! - A **recursive** stratum is a fixpoint over sets. Every round ends with
+//!   a Z-set `distinct`, so a row derived twice is still one fact and the
+//!   iteration stops on cycles. For the same reason its inputs, the
+//!   relations its rules read from outside it and its initial facts, must
+//!   have positive weights: a fixpoint over sets cannot take rows away.
+//!
+//! Two strategies for the recursive strata, over the same machinery:
+//!
+//! - [`semi_naive`] — the real evaluator. Round 1 evaluates every rule of
+//!   the stratum once; every later round evaluates, per rule and per body
+//!   atom of the same stratum, a rewritten body in which that atom reads
+//!   only the **delta** (the rows that were new in the previous round).
+//!   Facts derived again are not new, so work per round shrinks with the
+//!   delta.
+//! - [`naive`] — the test oracle. Re-evaluates every rule of the stratum
+//!   against the full totals every round. Correct by inspection, wasteful
+//!   by design.
 //!
 //! Rule bodies are executed by one of the crate's query executors (the
 //! [`Exec`] parameter), so recursion composes with both the hash-join
@@ -25,32 +39,35 @@
 //! storage layer serving its own sorted tables ([`semi_naive_over`]). The
 //! derived relations live in a catalog of their own, layered on top of the
 //! input, so the input is not copied. The one exception: facts the input
-//! already holds for a derived relation seed that relation's totals.
+//! already holds for a derived relation seed that relation.
 //!
 //! Known limitation, deliberate for now: an in-memory catalog sorts a copy
 //! per request, so long fixpoints re-sort the growing totals every round.
 //! Persistent, incrementally maintained indexes behind the `SortedTable`
 //! trait would remove that.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use crate::query::{Catalog, Layered, Query, Tables};
 use crate::relation::Relation;
-use crate::rule::{CompiledProgram, Program, delta_name};
+use crate::rule::{CompiledProgram, LoweredRule, Program, Stratum, delta_name};
 use crate::types::Schema;
 
 /// A query executor, e.g. `generic_join::execute` or
 /// `binary_join::execute`.
 pub type Exec = fn(&Query, &dyn Tables) -> Result<Relation>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FixpointStats {
-    /// Number of evaluation rounds, including the final one that derives
-    /// nothing new.
+    /// Number of evaluation rounds over all strata: one per non-recursive
+    /// stratum, and for every recursive stratum its rounds including the
+    /// final one that derives nothing new.
     pub rounds: usize,
-    /// New facts per round, summed over all IDB relations.
+    /// Rows added per round, summed over the relations of the stratum: all
+    /// rows of a non-recursive relation, the new facts of a recursive
+    /// round.
     pub new_facts_per_round: Vec<usize>,
 }
 
@@ -111,143 +128,229 @@ fn evaluate(program: &Program, edb: &dyn Tables, exec: Exec, semi: bool) -> Resu
     *local.dictionary_mut() = edb.dictionary().clone();
     let compiled = program.compile(edb, local.dictionary_mut())?;
 
-    // Initial totals: facts the input already holds for a derived relation
-    // count as already derived; otherwise start empty.
-    let mut totals: BTreeMap<String, Relation> = BTreeMap::new();
-    for (name, schema) in &compiled.idb_schemas {
-        let rel = if edb.schema(name).is_ok() {
-            let identity: Vec<usize> = (0..schema.arity()).collect();
-            let initial = edb.sorted(name, &identity)?;
-            Relation::from_table(name.clone(), schema.clone(), &*initial)?.distinct()
-        } else {
-            Relation::empty(name.clone(), schema.clone())
+    let mut stats = FixpointStats::default();
+    for stratum in &compiled.strata {
+        let eval = StratumEval {
+            compiled: &compiled,
+            stratum,
+            edb,
+            exec,
         };
-        totals.insert(name.clone(), rel);
-    }
-    for rel in totals.values() {
-        local.insert(rel.clone());
-    }
-
-    let mut stats = FixpointStats {
-        rounds: 0,
-        new_facts_per_round: Vec::new(),
-    };
-
-    // Round 1 is always a full (naive) evaluation: it fires the
-    // non-recursive rules and folds in any initial IDB facts.
-    let staging = derive_full(&compiled, &Layered::new(&local, edb), exec)?;
-    let mut deltas = merge_round(&compiled, &mut totals, staging, &mut stats);
-
-    // TODO(perf): every round re-runs the executors, which ask for sorted
-    // tables over the growing totals again. Persistent indexes behind
-    // `SortedTable` would remove this rebuild.
-    while deltas.values().any(|d| !d.is_empty()) {
-        // Publish the previous round's state.
-        for rel in totals.values() {
-            local.insert(rel.clone());
-        }
-        if semi {
-            for (name, delta) in &deltas {
-                let mut rel = delta.clone();
-                rel.name = delta_name(name);
-                local.insert(rel);
-            }
-        }
-
-        let work = Layered::new(&local, edb);
-        let staging = if semi {
-            derive_from_deltas(&compiled, &work, exec)?
+        if stratum.recursive {
+            eval.fixpoint(&mut local, semi, &mut stats)?;
         } else {
-            derive_full(&compiled, &work, exec)?
-        };
-        deltas = merge_round(&compiled, &mut totals, staging, &mut stats);
+            eval.once(&mut local, &mut stats)?;
+        }
     }
 
     let mut catalog = Catalog::new();
     *catalog.dictionary_mut() = local.dictionary().clone();
-    for rel in totals.into_values() {
-        catalog.insert(rel);
+    for name in compiled.idb_schemas.keys() {
+        catalog.insert(local.get(name)?.clone());
     }
     Ok(FixpointResult { catalog, stats })
 }
 
-/// Evaluate every rule against the current totals.
-fn derive_full(
-    compiled: &CompiledProgram,
-    work: &dyn Tables,
+/// One stratum under evaluation, with what every step needs.
+struct StratumEval<'a> {
+    compiled: &'a CompiledProgram,
+    stratum: &'a Stratum,
+    edb: &'a dyn Tables,
     exec: Exec,
-) -> Result<BTreeMap<String, Relation>> {
-    let mut staging = empty_staging(compiled);
-    for rule in &compiled.rules {
-        let result = exec(&rule.query, work)?;
-        accumulate(
-            &mut staging,
-            rule.materialize_head(&result, schema(compiled, rule)),
-        );
-    }
-    Ok(staging)
 }
 
-/// Evaluate, per rule and per IDB body atom, the delta-rewritten body.
-fn derive_from_deltas(
-    compiled: &CompiledProgram,
-    work: &dyn Tables,
-    exec: Exec,
-) -> Result<BTreeMap<String, Relation>> {
-    let mut staging = empty_staging(compiled);
-    for rule in &compiled.rules {
-        for &position in &rule.idb_positions {
-            let query = rule.query_with_delta(position);
-            let result = exec(&query, work)?;
+impl StratumEval<'_> {
+    fn rules(&self) -> impl Iterator<Item = &LoweredRule> {
+        self.stratum.rules.iter().map(|&i| &self.compiled.rules[i])
+    }
+
+    fn schema(&self, relation: &str) -> &Schema {
+        &self.compiled.idb_schemas[relation]
+    }
+
+    /// The facts the input holds for a derived relation, in normal form;
+    /// empty if it holds none.
+    fn initial(&self, relation: &str) -> Result<Relation> {
+        let schema = self.schema(relation).clone();
+        if self.edb.schema(relation).is_err() {
+            return Ok(Relation::empty(relation, schema));
+        }
+        let identity: Vec<usize> = (0..schema.arity()).collect();
+        let table = self.edb.sorted(relation, &identity)?;
+        Ok(Relation::from_table(relation, schema, &*table)?.consolidate())
+    }
+
+    /// A non-recursive stratum: its one relation is its initial facts plus
+    /// what every rule derives, weights and all.
+    fn once(&self, local: &mut Catalog, stats: &mut FixpointStats) -> Result<()> {
+        let [relation] = self.stratum.relations.as_slice() else {
+            unreachable!("a non-recursive stratum holds one relation");
+        };
+        let mut total = self.initial(relation)?;
+        let work = Layered::new(local, self.edb);
+        for rule in self.rules() {
+            let result = (self.exec)(&rule.query, &work)?;
+            total = total.plus(&rule.materialize_head(&result, self.schema(relation)));
+        }
+        stats.rounds += 1;
+        stats.new_facts_per_round.push(total.len());
+        local.insert(total);
+        Ok(())
+    }
+
+    /// A recursive stratum: iterate its rules to the least fixpoint over
+    /// sets, semi-naively or naively.
+    fn fixpoint(&self, local: &mut Catalog, semi: bool, stats: &mut FixpointStats) -> Result<()> {
+        self.check_inputs(&Layered::new(local, self.edb))?;
+
+        // Initial facts count as already derived.
+        let mut totals: BTreeMap<String, Relation> = BTreeMap::new();
+        for relation in &self.stratum.relations {
+            let initial = self.initial(relation)?;
+            if let Some(&weight) = initial.weights.iter().find(|&&w| w <= 0) {
+                bail!(
+                    "the initial facts of the recursive relation {relation} hold a row of \
+                     weight {weight}; recursion computes sets and needs positive weights"
+                );
+            }
+            totals.insert(relation.clone(), initial.distinct());
+        }
+        for rel in totals.values() {
+            local.insert(rel.clone());
+        }
+
+        // Round 1 is always a full (naive) evaluation: it fires the rules
+        // that read nothing of this stratum and folds in the initial facts.
+        let staging = self.derive_full(&Layered::new(local, self.edb))?;
+        let mut deltas = self.merge_round(&mut totals, staging, stats);
+
+        // TODO(perf): every round re-runs the executors, which ask for
+        // sorted tables over the growing totals again. Persistent indexes
+        // behind `SortedTable` would remove this rebuild.
+        while deltas.values().any(|d| !d.is_empty()) {
+            // Publish the previous round's state.
+            for rel in totals.values() {
+                local.insert(rel.clone());
+            }
+            if semi {
+                for (name, delta) in &deltas {
+                    let mut rel = delta.clone();
+                    rel.name = delta_name(name);
+                    local.insert(rel);
+                }
+            }
+
+            let work = Layered::new(local, self.edb);
+            let staging = if semi {
+                self.derive_from_deltas(&work)?
+            } else {
+                self.derive_full(&work)?
+            };
+            deltas = self.merge_round(&mut totals, staging, stats);
+        }
+
+        for rel in totals.into_values() {
+            local.insert(rel);
+        }
+        Ok(())
+    }
+
+    /// Every relation a recursive stratum reads from outside itself must
+    /// have positive weights, like its initial facts.
+    fn check_inputs(&self, work: &dyn Tables) -> Result<()> {
+        let inputs: BTreeSet<&str> = self
+            .rules()
+            .flat_map(|rule| &rule.query.atoms)
+            .map(|atom| atom.relation.as_str())
+            .filter(|name| !self.stratum.relations.iter().any(|r| r == name))
+            .collect();
+        for name in inputs {
+            let identity: Vec<usize> = (0..work.schema(name)?.arity()).collect();
+            // TODO(perf): an in-memory catalog sorts a copy just to read the
+            // weights.
+            let table = work.sorted(name, &identity)?;
+            if let Some(row) = (0..table.len()).find(|&r| table.weight(r) <= 0) {
+                bail!(
+                    "{name} holds a row of weight {} and is read by the recursive relations \
+                     {}; recursion computes sets and needs positive weights",
+                    table.weight(row),
+                    self.stratum.relations.join(", ")
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Evaluate every rule of the stratum against the current totals.
+    fn derive_full(&self, work: &dyn Tables) -> Result<BTreeMap<String, Relation>> {
+        let mut staging = self.empty_staging();
+        for rule in self.rules() {
+            let result = (self.exec)(&rule.query, work)?;
             accumulate(
                 &mut staging,
-                rule.materialize_head(&result, schema(compiled, rule)),
+                rule.materialize_head(&result, self.schema(&rule.head_relation)),
             );
         }
+        Ok(staging)
     }
-    Ok(staging)
-}
 
-fn schema<'a>(compiled: &'a CompiledProgram, rule: &crate::rule::LoweredRule) -> &'a Schema {
-    &compiled.idb_schemas[&rule.head_relation]
-}
+    /// Evaluate, per rule and per body atom of this stratum, the
+    /// delta-rewritten body.
+    fn derive_from_deltas(&self, work: &dyn Tables) -> Result<BTreeMap<String, Relation>> {
+        let mut staging = self.empty_staging();
+        for rule in self.rules() {
+            for &position in &rule.recursive_positions {
+                let query = rule.query_with_delta(position);
+                let result = (self.exec)(&query, work)?;
+                accumulate(
+                    &mut staging,
+                    rule.materialize_head(&result, self.schema(&rule.head_relation)),
+                );
+            }
+        }
+        Ok(staging)
+    }
 
-fn empty_staging(compiled: &CompiledProgram) -> BTreeMap<String, Relation> {
-    compiled
-        .idb_schemas
-        .iter()
-        .map(|(name, schema)| (name.clone(), Relation::empty(name.clone(), schema.clone())))
-        .collect()
+    fn empty_staging(&self) -> BTreeMap<String, Relation> {
+        self.stratum
+            .relations
+            .iter()
+            .map(|name| {
+                let schema = self.schema(name).clone();
+                (name.clone(), Relation::empty(name.clone(), schema))
+            })
+            .collect()
+    }
+
+    /// Fold one round of derivations into the totals; returns the new
+    /// deltas and updates the statistics.
+    fn merge_round(
+        &self,
+        totals: &mut BTreeMap<String, Relation>,
+        staging: BTreeMap<String, Relation>,
+        stats: &mut FixpointStats,
+    ) -> BTreeMap<String, Relation> {
+        let mut deltas = BTreeMap::new();
+        let mut new_facts = 0;
+        for name in &self.stratum.relations {
+            let total = totals.get_mut(name).expect("totals cover the stratum");
+            // The facts known after this round are a set again, and the
+            // delta is what the round added to them.
+            let next = total.plus(&staging[name]).distinct();
+            let delta = next.minus(total);
+            new_facts += delta.len();
+            *total = next;
+            deltas.insert(name.clone(), delta);
+        }
+        stats.rounds += 1;
+        stats.new_facts_per_round.push(new_facts);
+        deltas
+    }
 }
 
 fn accumulate(staging: &mut BTreeMap<String, Relation>, derived: Relation) {
     let entry = staging
         .get_mut(&derived.name)
-        .expect("head relation is a known IDB relation");
+        .expect("head relation belongs to the stratum");
     *entry = entry.plus(&derived);
-}
-
-/// Fold one round of derivations into the totals; returns the new deltas
-/// and updates the statistics.
-fn merge_round(
-    compiled: &CompiledProgram,
-    totals: &mut BTreeMap<String, Relation>,
-    staging: BTreeMap<String, Relation>,
-    stats: &mut FixpointStats,
-) -> BTreeMap<String, Relation> {
-    let mut deltas = BTreeMap::new();
-    let mut new_facts = 0;
-    for name in compiled.idb_schemas.keys() {
-        let total = totals.get_mut(name).expect("totals cover all IDB");
-        // The facts known after this round are a set again, and the delta
-        // is what the round added to them.
-        let next = total.plus(&staging[name]).distinct();
-        let delta = next.minus(total);
-        new_facts += delta.len();
-        *total = next;
-        deltas.insert(name.clone(), delta);
-    }
-    stats.rounds += 1;
-    stats.new_facts_per_round.push(new_facts);
-    deltas
 }

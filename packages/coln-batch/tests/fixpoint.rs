@@ -4,13 +4,13 @@
 
 //! Differential testing for recursive evaluation: semi-naive must agree
 //! with the naive oracle, with either query executor underneath — and
-//! with exact expected results where we know them.
+//! with exact expected results where we know them, weights included.
 
 use coln_batch::fixpoint::{self, Exec};
 use coln_batch::query::{Atom, Catalog, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rule::{Program, Rule};
-use coln_batch::types::Value;
+use coln_batch::types::{Schema, Value, Weight};
 use coln_batch::{binary_join, fixtures, generate, generic_join, reference};
 
 /// Run the program under every (strategy × executor) combination and
@@ -42,8 +42,8 @@ fn agree(program: &Program, edb: &Catalog, idb_names: &[&str]) -> Catalog {
     for (name, other) in &runs[1..] {
         for idb in idb_names {
             assert_eq!(
-                base.get(idb).unwrap().cols,
-                other.get(idb).unwrap().cols,
+                base.get(idb).unwrap(),
+                other.get(idb).unwrap(),
                 "{name} disagrees with {base_name} on {idb}"
             );
         }
@@ -109,8 +109,8 @@ fn recursion_also_works_with_the_reference_executor() {
         .unwrap()
         .catalog;
     assert_eq!(
-        via_reference.get("ancestor").unwrap().cols,
-        via_generic.get("ancestor").unwrap().cols
+        via_reference.get("ancestor").unwrap(),
+        via_generic.get("ancestor").unwrap()
     );
 }
 
@@ -316,9 +316,8 @@ fn overlapping_rules_do_not_duplicate() {
 }
 
 #[test]
-fn nonrecursive_program_stops_after_two_rounds() {
-    // No derived relation in any body: round one fires everything, round
-    // two derives nothing and stops.
+fn nonrecursive_program_runs_once() {
+    // No derived relation reads itself, so its rule runs a single time.
     let program = Program {
         rules: vec![Rule {
             var_names: vec!["x".into(), "y".into()],
@@ -336,7 +335,8 @@ fn nonrecursive_program_stops_after_two_rounds() {
 
     let result = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec).unwrap();
     assert_eq!(result.catalog.get("copy").unwrap().len(), 3);
-    assert_eq!(result.stats.new_facts_per_round, vec![3, 0]);
+    assert_eq!(result.stats.rounds, 1);
+    assert_eq!(result.stats.new_facts_per_round, vec![3]);
 
     agree(&program, &edb, &["copy"]);
 }
@@ -456,4 +456,178 @@ fn head_literals_can_be_strings() {
             vec![Value::Uint(1), "seen".into()],
         ]
     );
+}
+
+/// `head(vars) ← body(vars), …` over the variables `0..`, all uint.
+fn rule(head: (&str, &[usize]), body: &[(&str, &[usize])]) -> Rule {
+    let atom = |(relation, vars): (&str, &[usize])| Atom {
+        relation: relation.into(),
+        terms: vars.iter().map(|&v| Term::Var(v)).collect(),
+    };
+    let num_vars = body
+        .iter()
+        .flat_map(|(_, vars)| vars.iter())
+        .max()
+        .map_or(0, |&v| v + 1);
+    Rule {
+        var_names: (0..num_vars).map(|v| format!("v{v}")).collect(),
+        head: atom(head),
+        body: body.iter().copied().map(atom).collect(),
+    }
+}
+
+fn weighted(name: &str, rows: &[(u64, u64, Weight)]) -> Relation {
+    Relation::with_weights(
+        name,
+        Schema::uint(["x", "y"]),
+        vec![
+            rows.iter().map(|r| r.0).collect(),
+            rows.iter().map(|r| r.1).collect(),
+        ],
+        rows.iter().map(|r| r.2).collect(),
+    )
+}
+
+fn entries(rel: &Relation) -> Vec<(Vec<u64>, Weight)> {
+    (0..rel.len())
+        .map(|i| (rel.row(i), rel.weight(i)))
+        .collect()
+}
+
+#[test]
+fn nonrecursive_relations_keep_their_weights() {
+    // Two ways from 0 to 3, over 1 and over 2, and a second rule that
+    // derives (0, 3) once more.
+    let mut edb = Catalog::new();
+    edb.insert(parent(vec![vec![0, 0, 1, 2], vec![1, 2, 3, 3]]));
+    edb.insert(Relation::new("hub", ["x", "y"], vec![vec![0], vec![3]]));
+    let program = Program {
+        rules: vec![
+            rule(
+                ("two_hop", &[0, 2]),
+                &[("parent", &[0, 1]), ("parent", &[1, 2])],
+            ),
+            rule(("two_hop", &[0, 1]), &[("hub", &[0, 1])]),
+        ],
+    };
+    let result = agree(&program, &edb, &["two_hop"]);
+    assert_eq!(
+        entries(result.get("two_hop").unwrap()),
+        vec![(vec![0, 3], 3)]
+    );
+}
+
+#[test]
+fn weights_count_what_recursion_derived() {
+    // ancestor is a set. Projecting it onto the ancestor counts the
+    // descendants: 0 -> 1 -> 2 -> 3.
+    let edb = fixtures::ancestor_chain_catalog(4);
+    let mut program = fixtures::ancestor_program();
+    program
+        .rules
+        .push(rule(("descendants", &[0]), &[("ancestor", &[0, 1])]));
+    let result = agree(&program, &edb, &["ancestor", "descendants"]);
+    let ancestor = result.get("ancestor").unwrap();
+    assert_eq!(ancestor.len(), 6);
+    assert!(ancestor.weights.iter().all(|&w| w == 1));
+    assert_eq!(
+        entries(result.get("descendants").unwrap()),
+        vec![(vec![0], 3), (vec![1], 2), (vec![2], 1)]
+    );
+}
+
+#[test]
+fn recursion_over_weighted_input_is_a_set() {
+    // Every edge of the cycle is present more than once; the closure is
+    // the same set as over single edges.
+    let mut edb = Catalog::new();
+    edb.insert(weighted("parent", &[(0, 1, 2), (1, 2, 2), (2, 0, 3)]));
+    let program = fixtures::ancestor_program();
+    let result = agree(&program, &edb, &["ancestor"]);
+    let ancestor = result.get("ancestor").unwrap();
+    assert_eq!(ancestor.len(), 9);
+    assert!(ancestor.weights.iter().all(|&w| w == 1));
+}
+
+#[test]
+fn recursion_rejects_rows_of_non_positive_weight() {
+    let program = fixtures::ancestor_program();
+    let mut edb = Catalog::new();
+    edb.insert(weighted("parent", &[(0, 1, 1), (1, 2, -1)]));
+    for result in [
+        fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec),
+        fixpoint::naive(&program, &edb, generic_join::execute as Exec),
+    ] {
+        let err = result
+            .err()
+            .expect("weight -1 must be rejected")
+            .to_string();
+        assert!(err.contains("parent holds a row of weight -1"), "{err}");
+    }
+
+    // Initial facts of a recursive relation are an input too.
+    let mut edb = fixtures::ancestor_chain_catalog(3);
+    edb.insert(weighted("ancestor", &[(7, 8, -2)]));
+    let err = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec)
+        .err()
+        .expect("weight -2 must be rejected")
+        .to_string();
+    assert!(
+        err.contains("initial facts of the recursive relation ancestor"),
+        "{err}"
+    );
+}
+
+#[test]
+fn strata_run_in_dependency_order() {
+    // reach is recursive over parent. cycle_node reads reach once, without
+    // recursion, and counts how many nodes share a cycle with each node.
+    // on_cycle is recursive again, over cycle_node: a set, whatever the
+    // weights it reads. Edges: 0 -> 1 -> 2 -> 1 and 3 -> 3.
+    let mut edb = Catalog::new();
+    edb.insert(parent(vec![vec![0, 1, 2, 3], vec![1, 2, 1, 3]]));
+    let program = Program {
+        rules: vec![
+            rule(("reach", &[0, 1]), &[("parent", &[0, 1])]),
+            rule(
+                ("reach", &[0, 2]),
+                &[("reach", &[0, 1]), ("parent", &[1, 2])],
+            ),
+            rule(
+                ("cycle_node", &[0]),
+                &[("reach", &[0, 1]), ("reach", &[1, 0])],
+            ),
+            rule(
+                ("on_cycle", &[0, 1]),
+                &[("cycle_node", &[0]), ("parent", &[0, 1])],
+            ),
+            rule(
+                ("on_cycle", &[0, 2]),
+                &[("on_cycle", &[0, 1]), ("parent", &[1, 2])],
+            ),
+        ],
+    };
+    let result = agree(&program, &edb, &["reach", "cycle_node", "on_cycle"]);
+    assert_eq!(
+        rows(result.get("reach").unwrap()),
+        vec![
+            vec![0, 1],
+            vec![0, 2],
+            vec![1, 1],
+            vec![1, 2],
+            vec![2, 1],
+            vec![2, 2],
+            vec![3, 3]
+        ]
+    );
+    assert_eq!(
+        entries(result.get("cycle_node").unwrap()),
+        vec![(vec![1], 2), (vec![2], 2), (vec![3], 1)]
+    );
+    let on_cycle = result.get("on_cycle").unwrap();
+    assert_eq!(
+        rows(on_cycle),
+        vec![vec![1, 1], vec![1, 2], vec![2, 1], vec![2, 2], vec![3, 3]]
+    );
+    assert!(on_cycle.weights.iter().all(|&w| w == 1));
 }
