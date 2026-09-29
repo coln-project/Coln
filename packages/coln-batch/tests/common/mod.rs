@@ -2,25 +2,80 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Test machinery shared by the Z-set suites: random inputs of every shape,
-//! and a definition of what queries and programs compute that does not
-//! depend on the engine.
+//! Test machinery shared by the test suites: hand-built inputs, random
+//! inputs of every shape, and a definition of what queries and programs
+//! compute that does not depend on the engine.
 //!
 //! The definition works on decoded values and uses no engine code. It tries
 //! every combination of stored rows, multiplies weights as `i128`, and
-//! finds the recursive relations by a transitive closure instead of
-//! Tarjan's algorithm. It is slow on purpose and short enough to check by
-//! eye; the tests compare the engine against it.
+//! finds recursion by a transitive closure instead of Tarjan's algorithm.
+//! It is slow on purpose and short enough to check by eye.
 
 #![allow(dead_code)] // every test crate uses a different part of it
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use coln_batch::fixpoint::Exec;
 use coln_batch::query::{Atom, Catalog, Query, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rng::SplitMix64;
 use coln_batch::rule::{Program, Rule};
 use coln_batch::types::{Column, Dictionary, ScalarType, Schema, Value, Weight};
+use coln_batch::{binary_join, generic_join, reference};
+
+// ---------------------------------------------------------------------------
+// Hand-built inputs
+
+pub const EXECUTORS: [(&str, Exec); 3] = [
+    ("oracle", reference::execute as Exec),
+    ("binary join", binary_join::execute as Exec),
+    ("generic join", generic_join::execute as Exec),
+];
+
+pub fn atom(relation: &str, terms: Vec<Term>) -> Atom {
+    Atom {
+        relation: relation.into(),
+        terms,
+    }
+}
+
+/// `head(vars) ← body(vars), …` over the uint variables `0..`, weight 1.
+pub fn rule(head: (&str, &[usize]), body: &[(&str, &[usize])]) -> Rule {
+    let vars = |vars: &[usize]| vars.iter().map(|&v| Term::Var(v)).collect();
+    let num_vars = body
+        .iter()
+        .flat_map(|(_, vars)| vars.iter())
+        .max()
+        .map_or(0, |&v| v + 1);
+    Rule {
+        var_names: (0..num_vars).map(|v| format!("v{v}")).collect(),
+        head: atom(head.0, vars(head.1)),
+        body: body.iter().map(|&(r, v)| atom(r, vars(v))).collect(),
+        weight: 1,
+    }
+}
+
+/// `rule` with another weight.
+pub fn weighing(weight: Weight, rule: Rule) -> Rule {
+    Rule { weight, ..rule }
+}
+
+/// A relation of uint columns `c0, c1, …` holding `rows` as given: in that
+/// order, with those weights.
+pub fn stored(name: &str, arity: usize, rows: &[(&[u64], Weight)]) -> Relation {
+    let cols = (0..arity)
+        .map(|c| rows.iter().map(|(row, _)| row[c]).collect())
+        .collect();
+    let schema = Schema::uint((0..arity).map(|c| format!("c{c}")));
+    Relation::with_weights(name, schema, cols, rows.iter().map(|&(_, w)| w).collect())
+}
+
+/// The rows of a relation of uint columns with their weights, in order.
+pub fn entries(rel: &Relation) -> Vec<(Vec<u64>, Weight)> {
+    (0..rel.len())
+        .map(|i| (rel.row(i), rel.weight(i)))
+        .collect()
+}
 
 // ---------------------------------------------------------------------------
 // Z-sets of decoded rows
@@ -40,7 +95,7 @@ pub fn stored_rows(rel: &Relation, dict: &Dictionary) -> Rows {
 }
 
 /// Add up the weights of equal rows and drop the rows that cancel out.
-pub fn zset(rows: impl IntoIterator<Item = (Vec<Value>, i128)>) -> ZSet {
+fn zset(rows: impl IntoIterator<Item = (Vec<Value>, i128)>) -> ZSet {
     let mut z = ZSet::new();
     for (row, weight) in rows {
         *z.entry(row).or_insert(0) += weight;
@@ -62,12 +117,8 @@ pub fn support(z: &ZSet) -> ZSet {
         .collect()
 }
 
-pub fn plus(a: &ZSet, b: &ZSet) -> ZSet {
+fn plus(a: &ZSet, b: &ZSet) -> ZSet {
     zset(a.iter().chain(b).map(|(row, w)| (row.clone(), *w)))
-}
-
-pub fn scale(z: &ZSet, k: i128) -> ZSet {
-    zset(z.iter().map(|(row, w)| (row.clone(), w * k)))
 }
 
 fn as_rows(z: &ZSet) -> Rows {
@@ -80,7 +131,7 @@ fn as_rows(z: &ZSet) -> Rows {
 /// Every binding of `num_vars` variables that one stored row per atom
 /// produces, with the product of those rows' weights. A literal matches an
 /// equal value; a variable matches the same value wherever it occurs.
-pub fn bindings(
+fn bindings(
     atoms: &[Atom],
     num_vars: usize,
     stored: &BTreeMap<String, Rows>,
@@ -134,7 +185,7 @@ pub fn query_definition(query: &Query, stored: &BTreeMap<String, Rows>) -> ZSet 
 
 /// What a rule derives, by definition: every binding of its body adds its
 /// weight, times the rule's, to the head row it fills in.
-pub fn rule_definition(rule: &Rule, stored: &BTreeMap<String, Rows>) -> ZSet {
+fn rule_definition(rule: &Rule, stored: &BTreeMap<String, Rows>) -> ZSet {
     let head = |binding: &[Value]| -> Vec<Value> {
         rule.head
             .terms
@@ -282,21 +333,18 @@ pub fn program_definition(program: &Program, stored: &BTreeMap<String, Rows>) ->
             continue;
         }
 
+        // A recursion computes sets: it may neither subtract nor read a row
+        // of negative weight, from outside or among its initial facts.
         let group_rules: Vec<&Rule> = group.iter().flat_map(|name| rules_of(name)).collect();
-        if group_rules.iter().any(|r| r.weight < 0) {
-            return Outcome::Refused("recursion computes sets");
-        }
-        let negative = |z: &ZSet| z.values().any(|w| *w < 0);
-        let read_outside: BTreeSet<&str> = group_rules
+        let negative = |z: ZSet| z.values().any(|w| *w < 0);
+        let reads_negative = group_rules
             .iter()
             .flat_map(|r| &r.body)
-            .map(|atom| atom.relation.as_str())
-            .filter(|name| !group.iter().any(|g| g == name))
-            .collect();
-        if read_outside
-            .iter()
-            .any(|name| negative(&zset(input[*name].clone())))
-            || group.iter().any(|name| negative(&initial(name)))
+            .filter(|atom| !group.contains(&atom.relation))
+            .any(|atom| negative(zset(input[&atom.relation].clone())));
+        if group_rules.iter().any(|r| r.weight < 0)
+            || reads_negative
+            || group.iter().any(|name| negative(initial(name)))
         {
             return Outcome::Refused("recursion computes sets");
         }
@@ -333,7 +381,7 @@ pub fn program_definition(program: &Program, stored: &BTreeMap<String, Rows>) ->
 // ---------------------------------------------------------------------------
 // Random inputs
 
-pub const TYPES: [ScalarType; 5] = [
+const TYPES: [ScalarType; 5] = [
     ScalarType::Uint,
     ScalarType::Iint,
     ScalarType::String,
@@ -348,7 +396,7 @@ pub fn pick<T: Copy>(rng: &mut SplitMix64, items: &[T]) -> T {
 /// A random value of `ty`: mostly from a domain small enough that equal
 /// values meet often, now and then the type's extremes, the empty string
 /// or a non-ASCII one.
-pub fn value(rng: &mut SplitMix64, ty: ScalarType) -> Value {
+fn value(rng: &mut SplitMix64, ty: ScalarType) -> Value {
     let rare = rng.below(8);
     match ty {
         ScalarType::Uint => match rare {
@@ -376,7 +424,7 @@ pub fn value(rng: &mut SplitMix64, ty: ScalarType) -> Value {
 
 /// A value for a literal: like [`value`], but a string is sometimes one
 /// no relation holds.
-pub fn literal(rng: &mut SplitMix64, ty: ScalarType) -> Value {
+fn literal(rng: &mut SplitMix64, ty: ScalarType) -> Value {
     if ty == ScalarType::String && rng.below(10) == 0 {
         Value::from("nowhere")
     } else {
@@ -386,7 +434,7 @@ pub fn literal(rng: &mut SplitMix64, ty: ScalarType) -> Value {
 
 /// A random weight. Signed weights include negative ones and, for rows
 /// stored as they come, 0.
-pub fn weight(rng: &mut SplitMix64, signed: bool) -> Weight {
+fn weight(rng: &mut SplitMix64, signed: bool) -> Weight {
     if signed {
         pick(rng, &[1, 1, 2, 3, 5, -1, -2, 0])
     } else {

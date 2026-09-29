@@ -10,26 +10,27 @@
 //!
 //! Every strategy and executor is held against the definition in `common`,
 //! refusals included, and against laws that need no definition: the order
-//! of the rules does not matter, a rule may be split into two whose
-//! weights add up to its own, declaring a relation distinct that nothing
-//! reads only reduces it to a set, the way rows are stored does not
-//! matter, and scaling positive input leaves every recursive relation as
-//! it is. Each case seeds its own [`SplitMix64`], so a failing case number
-//! reproduces in isolation.
+//! of the rules does not matter, a rule may be split into two whose weights
+//! add up to its own, declaring a relation distinct that nothing reads only
+//! reduces it to a set, the way rows are stored does not matter, and
+//! scaling positive input leaves every recursion as it is. Each case seeds
+//! its own [`SplitMix64`], so a failing case number reproduces in
+//! isolation.
 
 mod common;
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 
 use coln_batch::fixpoint::{self, Exec, FixpointResult};
-use coln_batch::query::{Atom, Catalog, Term};
+use coln_batch::query::Catalog;
 use coln_batch::relation::Relation;
 use coln_batch::rng::SplitMix64;
-use coln_batch::rule::{Program, Rule};
-use coln_batch::types::{Schema, Weight};
-use coln_batch::{binary_join, generic_join, reference};
+use coln_batch::rule::Program;
+use coln_batch::types::Weight;
+use coln_batch::{binary_join, fixtures, generic_join, reference};
 
-use common::{Outcome, Storage, ZSet};
+use common::{Outcome, ProgramCase, Storage, ZSet, entries, rule, stored, weighing};
 
 const CASES: u64 = 1000;
 
@@ -39,29 +40,25 @@ type Strategy = fn(&Program, &Catalog, Exec) -> anyhow::Result<FixpointResult>;
 const RUNS: [(&str, Strategy, Exec); 5] = [
     (
         "semi-naive, generic join",
-        fixpoint::semi_naive as Strategy,
-        generic_join::execute as Exec,
+        fixpoint::semi_naive,
+        generic_join::execute,
     ),
     (
         "semi-naive, binary join",
-        fixpoint::semi_naive as Strategy,
-        binary_join::execute as Exec,
+        fixpoint::semi_naive,
+        binary_join::execute,
     ),
     (
         "semi-naive, oracle",
-        fixpoint::semi_naive as Strategy,
-        reference::execute as Exec,
+        fixpoint::semi_naive,
+        reference::execute,
     ),
     (
         "naive, generic join",
-        fixpoint::naive as Strategy,
-        generic_join::execute as Exec,
+        fixpoint::naive,
+        generic_join::execute,
     ),
-    (
-        "naive, binary join",
-        fixpoint::naive as Strategy,
-        binary_join::execute as Exec,
-    ),
+    ("naive, binary join", fixpoint::naive, binary_join::execute),
 ];
 
 /// The derived relations a run produced, decoded, or its error message.
@@ -82,16 +79,29 @@ fn got(result: anyhow::Result<FixpointResult>, derived: &[String]) -> Got {
 /// The main run: semi-naive over the generic join.
 fn evaluate(program: &Program, edb: &Catalog, derived: &[String]) -> Got {
     got(
-        fixpoint::semi_naive(program, edb, generic_join::execute as Exec),
+        fixpoint::semi_naive(program, edb, generic_join::execute),
         derived,
     )
 }
 
-fn random_case(case: u64) -> (SplitMix64, common::ProgramCase) {
-    let mut rng = SplitMix64::new(case);
-    let signed = rng.below(2) == 0;
-    let program_case = common::program_case(&mut rng, signed);
-    (rng, program_case)
+/// Run `check` on every case in `cases`, with the case's generator for
+/// further choices.
+fn each_case(cases: Range<u64>, mut check: impl FnMut(u64, &mut SplitMix64, &ProgramCase)) {
+    for case in cases {
+        let mut rng = SplitMix64::new(case);
+        let signed = rng.below(2) == 0;
+        let c = common::program_case(&mut rng, signed);
+        check(case, &mut rng, &c);
+    }
+}
+
+/// Two outcomes agree: the same values, or both refused.
+fn assert_same(a: &Got, b: &Got, what: &str) {
+    match (a, b) {
+        (Ok(a), Ok(b)) => assert_eq!(a, b, "{what}"),
+        (Err(_), Err(_)) => {}
+        _ => panic!("{what}: {a:?} against {b:?}"),
+    }
 }
 
 /// How much of the space of programs a run of cases covered.
@@ -105,12 +115,9 @@ struct Coverage {
     mixed: usize,
 }
 
-/// Hold every strategy and executor against the definition on the given
-/// cases, refusals included.
-fn against_the_definition(cases: std::ops::Range<u64>) -> Coverage {
+fn against_the_definition(cases: Range<u64>) -> Coverage {
     let mut seen = Coverage::default();
-    for case in cases {
-        let (_, c) = random_case(case);
+    each_case(cases, |case, _, c| {
         let expected = common::program_definition(&c.program, &common::stored_catalog(&c.edb));
         let recursive = common::recursive_relations(&c.program);
         for (name, strategy, exec) in RUNS {
@@ -130,31 +137,29 @@ fn against_the_definition(cases: std::ops::Range<u64>) -> Coverage {
                         c.program, c.edb
                     );
                     for relation in &recursive {
-                        assert!(
-                            result[relation].values().all(|&w| w == 1),
-                            "case {case}: {name}: the recursive {relation} is not a set"
-                        );
+                        let set = result[relation].values().all(|&w| w == 1);
+                        assert!(set, "case {case}: {name}: {relation} is not a set");
                     }
                 }
             }
         }
-        match &expected {
-            Outcome::Refused(_) => seen.refused += 1,
-            Outcome::Derived(values) => {
-                seen.evaluated += 1;
-                let non_empty = |name: &String| !values[name].is_empty();
-                seen.recursion += usize::from(recursive.iter().any(non_empty));
-                seen.negative += usize::from(values.values().any(|z| z.values().any(|&w| w < 0)));
-                seen.distinct += usize::from(c.program.distinct.iter().any(non_empty));
-                seen.mixed += usize::from(
-                    recursive.iter().any(non_empty)
-                        && c.derived
-                            .iter()
-                            .any(|d| !recursive.contains(d) && non_empty(d)),
-                );
-            }
-        }
-    }
+        let Outcome::Derived(values) = &expected else {
+            seen.refused += 1;
+            return;
+        };
+        let non_empty = |name: &String| !values[name].is_empty();
+        let recursion = recursive.iter().any(non_empty);
+        seen.evaluated += 1;
+        seen.recursion += usize::from(recursion);
+        seen.negative += usize::from(values.values().any(|z| z.values().any(|&w| w < 0)));
+        seen.distinct += usize::from(c.program.distinct.iter().any(non_empty));
+        seen.mixed += usize::from(
+            recursion
+                && c.derived
+                    .iter()
+                    .any(|d| !recursive.contains(d) && non_empty(d)),
+        );
+    });
     seen
 }
 
@@ -165,30 +170,18 @@ fn random_programs_match_the_definition() {
     let cases = CASES as usize;
     assert!(
         seen.evaluated >= cases * 2 / 5,
-        "only {} evaluated",
+        "{} evaluated",
         seen.evaluated
     );
-    assert!(seen.refused >= cases / 20, "only {} refused", seen.refused);
+    assert!(seen.refused >= cases / 20, "{} refused", seen.refused);
     assert!(
         seen.recursion >= cases / 10,
-        "only {} recursions",
+        "{} recursions",
         seen.recursion
     );
-    assert!(
-        seen.negative >= cases / 20,
-        "only {} negative results",
-        seen.negative
-    );
-    assert!(
-        seen.distinct >= cases / 20,
-        "only {} distinct relations",
-        seen.distinct
-    );
-    assert!(
-        seen.mixed >= cases / 40,
-        "only {} mixed programs",
-        seen.mixed
-    );
+    assert!(seen.negative >= cases / 20, "{} negative", seen.negative);
+    assert!(seen.distinct >= cases / 20, "{} distinct", seen.distinct);
+    assert!(seen.mixed >= cases / 40, "{} mixed", seen.mixed);
 }
 
 /// The same check on 50 000 further cases.
@@ -197,75 +190,54 @@ fn random_programs_match_the_definition() {
 #[ignore = "large; run explicitly (use --release)"]
 fn random_programs_match_the_definition_at_scale() {
     let seen = against_the_definition(CASES..CASES + 50_000);
-    assert!(
-        seen.recursion >= 5_000,
-        "only {} recursions",
-        seen.recursion
-    );
-}
-
-/// Two outcomes agree: the same values, or both refused.
-fn assert_same(a: &Got, b: &Got, what: &str) {
-    match (a, b) {
-        (Ok(a), Ok(b)) => assert_eq!(a, b, "{what}"),
-        (Err(_), Err(_)) => {}
-        _ => panic!("{what}: {a:?} against {b:?}"),
-    }
+    assert!(seen.recursion >= 5_000, "{} recursions", seen.recursion);
 }
 
 #[test]
 fn the_order_of_the_rules_does_not_matter() {
-    for case in 0..CASES {
-        let (mut rng, c) = random_case(case);
+    each_case(0..CASES, |case, rng, c| {
         let mut shuffled = c.program.clone();
-        common::shuffle(&mut rng, &mut shuffled.rules);
+        common::shuffle(rng, &mut shuffled.rules);
         assert_same(
             &evaluate(&c.program, &c.edb, &c.derived),
             &evaluate(&shuffled, &c.edb, &c.derived),
             &format!("case {case}"),
         );
-    }
+    });
 }
 
 #[test]
 fn a_rule_splits_into_two_whose_weights_add_up_to_its_own() {
     let mut checked = 0;
-    for case in 0..CASES {
-        let (mut rng, c) = random_case(case);
+    each_case(0..CASES, |case, rng, c| {
+        // Only outside a recursion, where rules may subtract.
         let recursive = common::recursive_relations(&c.program);
         let candidates: Vec<usize> = (0..c.program.rules.len())
             .filter(|&i| !recursive.contains(&c.program.rules[i].head.relation))
             .collect();
         if candidates.is_empty() {
-            continue;
+            return;
         }
-        let i = common::pick(&mut rng, &candidates);
+        let i = common::pick(rng, &candidates);
         let rule = c.program.rules[i].clone();
         let part: Weight = if rule.weight == -1 { 1 } else { -1 };
         let mut split = c.program.clone();
         split.rules[i].weight = rule.weight - part;
-        split.rules.push(Rule {
-            weight: part,
-            ..rule
-        });
+        split.rules.push(weighing(part, rule));
         assert_same(
             &evaluate(&c.program, &c.edb, &c.derived),
             &evaluate(&split, &c.edb, &c.derived),
             &format!("case {case}, rule {i}"),
         );
         checked += 1;
-    }
-    assert!(
-        checked >= CASES as usize * 2 / 5,
-        "only {checked} rules split"
-    );
+    });
+    assert!(checked >= CASES as usize * 2 / 5, "{checked} rules split");
 }
 
 #[test]
 fn declaring_a_relation_distinct_that_nothing_reads_reduces_it_to_a_set() {
     let mut checked = 0;
-    for case in 0..CASES {
-        let (_, c) = random_case(case);
+    each_case(0..CASES, |case, _, c| {
         let read: Vec<&str> = c
             .program
             .rules
@@ -277,73 +249,72 @@ fn declaring_a_relation_distinct_that_nothing_reads_reduces_it_to_a_set() {
         for sink in c.derived.iter().filter(|d| !read.contains(&d.as_str())) {
             let mut declared = c.program.clone();
             declared.distinct.insert(sink.clone());
-            let after = evaluate(&declared, &c.edb, &c.derived);
             let expected = before.clone().map(|mut values| {
                 let set = common::support(&values[sink]);
                 values.insert(sink.clone(), set);
                 values
             });
+            let after = evaluate(&declared, &c.edb, &c.derived);
             assert_same(&after, &expected, &format!("case {case}, {sink}"));
             checked += 1;
         }
-    }
+    });
     assert!(
         checked >= CASES as usize / 4,
-        "only {checked} relations declared"
+        "{checked} relations declared"
     );
-}
-
-/// `c.edb` with every relation stored anew in a random form.
-fn restored(rng: &mut SplitMix64, edb: &Catalog) -> Catalog {
-    let mut cat = Catalog::new();
-    for name in edb.names() {
-        let rel = edb.get(name).unwrap();
-        let rows = (0..rel.len())
-            .map(|i| (rel.row_values(i, edb.dictionary()).unwrap(), rel.weight(i)))
-            .collect();
-        let storage = common::pick(
-            rng,
-            &[Storage::Consolidated, Storage::Copies, Storage::Units],
-        );
-        common::store(rng, &mut cat, name, &rel.schema, rows, storage);
-    }
-    cat
 }
 
 #[test]
 fn how_the_input_is_stored_does_not_matter() {
-    for case in 0..CASES {
-        let (mut rng, c) = random_case(case);
-        let other = restored(&mut rng, &c.edb);
+    each_case(0..CASES, |case, rng, c| {
+        let mut other = Catalog::new();
+        for name in c.edb.names() {
+            let rel = c.edb.get(name).unwrap();
+            let rows = (0..rel.len())
+                .map(|i| {
+                    (
+                        rel.row_values(i, c.edb.dictionary()).unwrap(),
+                        rel.weight(i),
+                    )
+                })
+                .collect();
+            let storage = common::pick(
+                rng,
+                &[Storage::Consolidated, Storage::Copies, Storage::Units],
+            );
+            common::store(rng, &mut other, name, &rel.schema, rows, storage);
+        }
         let a = evaluate(&c.program, &c.edb, &c.derived);
         let b = evaluate(&c.program, &other, &c.derived);
         assert_same(&a, &b, &format!("case {case}"));
-    }
+    });
 }
 
 #[test]
 fn scaling_positive_input_leaves_every_recursion_as_it_is() {
     let mut checked = 0;
     for case in 0..CASES {
-        let mut rng = SplitMix64::new(case);
-        let c = common::program_case(&mut rng, false);
+        let c = common::program_case(&mut SplitMix64::new(case), false);
         if c.program.rules.iter().any(|r| r.weight < 0) {
             continue;
         }
         let mut scaled = c.edb.clone();
-        for name in c.edb.names() {
-            if c.derived.iter().any(|d| d == name) {
-                continue;
-            }
+        for name in c
+            .edb
+            .names()
+            .into_iter()
+            .filter(|n| !c.derived.iter().any(|d| d == n))
+        {
             let mut rel = c.edb.get(name).unwrap().clone();
             for w in &mut rel.weights {
                 *w *= 3;
             }
             scaled.insert(rel);
         }
-        let recursive = common::recursive_relations(&c.program);
         let before = evaluate(&c.program, &c.edb, &c.derived).unwrap();
         let after = evaluate(&c.program, &scaled, &c.derived).unwrap();
+        let recursive = common::recursive_relations(&c.program);
         for relation in &recursive {
             assert_eq!(before[relation], after[relation], "case {case}, {relation}");
         }
@@ -351,47 +322,22 @@ fn scaling_positive_input_leaves_every_recursion_as_it_is() {
     }
     assert!(
         checked >= CASES as usize / 10,
-        "only {checked} recursions checked"
+        "{checked} recursions checked"
     );
 }
 
 // ---------------------------------------------------------------------------
 // Hand-picked cases
 
-/// `head(vars) ← body(vars), …` over the variables `0..`, all uint.
-fn rule(head: (&str, &[usize]), body: &[(&str, &[usize])]) -> Rule {
-    let atom = |(relation, vars): (&str, &[usize])| Atom {
-        relation: relation.into(),
-        terms: vars.iter().map(|&v| Term::Var(v)).collect(),
-    };
-    let num_vars = body
-        .iter()
-        .flat_map(|(_, vars)| vars.iter())
-        .max()
-        .map_or(0, |&v| v + 1);
-    Rule {
-        var_names: (0..num_vars).map(|v| format!("v{v}")).collect(),
-        head: atom(head),
-        body: body.iter().copied().map(atom).collect(),
-        weight: 1,
+fn catalog(relations: impl IntoIterator<Item = Relation>) -> Catalog {
+    let mut cat = Catalog::new();
+    for rel in relations {
+        cat.insert(rel);
     }
+    cat
 }
 
-fn weighing(weight: Weight, rule: Rule) -> Rule {
-    Rule { weight, ..rule }
-}
-
-/// A relation of uint columns with given rows and weights, stored as is.
-fn stored(name: &str, arity: usize, rows: &[(&[u64], Weight)]) -> Relation {
-    let cols = (0..arity)
-        .map(|c| rows.iter().map(|(row, _)| row[c]).collect())
-        .collect();
-    let schema = Schema::uint((0..arity).map(|c| format!("c{c}")));
-    Relation::with_weights(name, schema, cols, rows.iter().map(|&(_, w)| w).collect())
-}
-
-/// Every run must agree; returns the derived relation `name` as (row,
-/// weight) pairs.
+/// Every run must agree on `program`; returns `name`'s entries.
 fn derived(program: &Program, edb: &Catalog, name: &str) -> Vec<(Vec<u64>, Weight)> {
     let results: Vec<Relation> = RUNS
         .iter()
@@ -405,11 +351,10 @@ fn derived(program: &Program, edb: &Catalog, name: &str) -> Vec<(Vec<u64>, Weigh
     for (result, (run, ..)) in results.iter().zip(RUNS).skip(1) {
         assert_eq!(&results[0], result, "{run} disagrees on {name}");
     }
-    let r = &results[0];
-    (0..r.len()).map(|i| (r.row(i), r.weight(i))).collect()
+    entries(&results[0])
 }
 
-/// Every run must refuse the program, with `phrase` in its message.
+/// Every run must refuse `program`, with `phrase` in its message.
 fn refused(program: &Program, edb: &Catalog, phrase: &str) {
     for (run, strategy, exec) in RUNS {
         let err = strategy(program, edb, exec)
@@ -420,34 +365,39 @@ fn refused(program: &Program, edb: &Catalog, phrase: &str) {
     }
 }
 
-fn chain(edges: &[(u64, u64)]) -> Relation {
-    let rows: Vec<(&[u64], Weight)> = Vec::new();
-    let mut rel = stored("parent", 2, &rows);
-    for &(a, b) in edges {
-        rel.cols[0].push(a);
-        rel.cols[1].push(b);
-        rel.weights.push(1);
-    }
-    rel
+fn edges(pairs: &[[u64; 2]]) -> Relation {
+    let rows: Vec<(&[u64], Weight)> = pairs.iter().map(|pair| (&pair[..], 1)).collect();
+    stored("parent", 2, &rows)
 }
 
-fn ancestor() -> Vec<Rule> {
-    vec![
-        rule(("ancestor", &[0, 1]), &[("parent", &[0, 1])]),
+#[test]
+fn a_weighted_relation_adds_up_its_rules_and_distinct_keeps_each_row_once() {
+    // Two ways from 0 to 3, over 1 and over 2, and a second rule that
+    // derives (0, 3) once more.
+    let edb = catalog([
+        edges(&[[0, 1], [0, 2], [1, 3], [2, 3]]),
+        stored("hub", 2, &[(&[0, 3], 1)]),
+    ]);
+    let mut program = Program::new(vec![
         rule(
-            ("ancestor", &[0, 2]),
-            &[("parent", &[0, 1]), ("ancestor", &[1, 2])],
+            ("two_hop", &[0, 2]),
+            &[("parent", &[0, 1]), ("parent", &[1, 2])],
         ),
-    ]
+        rule(("two_hop", &[0, 1]), &[("hub", &[0, 1])]),
+    ]);
+    assert_eq!(derived(&program, &edb, "two_hop"), vec![(vec![0, 3], 3)]);
+    program.distinct.insert("two_hop".into());
+    assert_eq!(derived(&program, &edb, "two_hop"), vec![(vec![0, 3], 1)]);
 }
 
 #[test]
 fn initial_facts_add_to_what_a_weighted_relation_derives() {
-    // Two ways from 0 to 3 give (0, 3) weight 2; initial facts of weight -2
-    // cancel it, and a row only among the initial facts stays.
-    let mut edb = Catalog::new();
-    edb.insert(chain(&[(0, 1), (0, 2), (1, 3), (2, 3)]));
-    edb.insert(stored("two_hop", 2, &[(&[0, 3], -2), (&[5, 5], 4)]));
+    // (0, 3) derived twice, and initial facts of weight -2 cancel it; a row
+    // only among the initial facts stays.
+    let edb = catalog([
+        edges(&[[0, 1], [0, 2], [1, 3], [2, 3]]),
+        stored("two_hop", 2, &[(&[0, 3], -2), (&[5, 5], 4)]),
+    ]);
     let program = Program::new(vec![rule(
         ("two_hop", &[0, 2]),
         &[("parent", &[0, 1]), ("parent", &[1, 2])],
@@ -456,72 +406,124 @@ fn initial_facts_add_to_what_a_weighted_relation_derives() {
 }
 
 #[test]
-fn initial_facts_of_a_recursive_relation_count_once() {
-    let mut edb = Catalog::new();
-    edb.insert(chain(&[(0, 1)]));
-    edb.insert(stored("ancestor", 2, &[(&[7, 8], 2), (&[0, 1], 3)]));
-    let program = Program::new(ancestor());
+fn a_derived_relation_may_hold_nothing_but_initial_facts() {
+    let edb = catalog([
+        stored("empty", 1, &[]),
+        stored("seen", 1, &[(&[1], 2), (&[2], -1)]),
+    ]);
+    let program = Program::new(vec![rule(("seen", &[0]), &[("empty", &[0])])]);
     assert_eq!(
-        derived(&program, &edb, "ancestor"),
-        vec![(vec![0, 1], 1), (vec![7, 8], 1)]
+        derived(&program, &edb, "seen"),
+        vec![(vec![1], 2), (vec![2], -1)]
     );
 }
 
 #[test]
-fn a_subtraction_anywhere_in_a_mutual_recursion_is_refused() {
-    // even(y) ← succ(x, y), odd(x) subtracts; odd reads even back, so the
-    // subtraction sits inside the recursion.
-    let mut edb = Catalog::new();
-    edb.insert(stored("succ", 2, &[(&[0, 1], 1), (&[1, 2], 1)]));
-    edb.insert(stored("even", 1, &[(&[0], 1)]));
+fn a_rule_of_weight_minus_one_subtracts() {
+    // diff = a - b: a row only in b comes out negative.
+    let edb = catalog([
+        stored("a", 2, &[(&[1, 1], 1), (&[2, 2], 1)]),
+        stored("b", 2, &[(&[2, 2], 1), (&[3, 3], 1)]),
+    ]);
     let program = Program::new(vec![
-        rule(("odd", &[1]), &[("succ", &[0, 1]), ("even", &[0])]),
+        rule(("diff", &[0, 1]), &[("a", &[0, 1])]),
+        weighing(-1, rule(("diff", &[0, 1]), &[("b", &[0, 1])])),
+    ]);
+    assert_eq!(
+        derived(&program, &edb, "diff"),
+        vec![(vec![1, 1], 1), (vec![3, 3], -1)]
+    );
+}
+
+#[test]
+fn an_anti_join_subtracts_a_distinct_semi_join() {
+    // leaf(x) ← node(x), minus node(x), has_child(x): the nodes without a
+    // child. 0 has two children, so has_child must be distinct, or leaf
+    // would take 0 away twice.
+    let edb = catalog([
+        edges(&[[0, 1], [0, 2], [1, 2], [2, 3]]),
+        stored("node", 1, &[(&[0], 1), (&[1], 1), (&[2], 1), (&[3], 1)]),
+    ]);
+    let mut program = Program::new(vec![
+        rule(("has_child", &[0]), &[("parent", &[0, 1])]),
+        rule(("leaf", &[0]), &[("node", &[0])]),
         weighing(
             -1,
-            rule(("even", &[1]), &[("succ", &[0, 1]), ("odd", &[0])]),
+            rule(("leaf", &[0]), &[("node", &[0]), ("has_child", &[0])]),
         ),
     ]);
-    refused(&program, &edb, "even is recursive");
+    assert_eq!(
+        derived(&program, &edb, "leaf"),
+        vec![(vec![0], -1), (vec![3], 1)]
+    );
+    program.distinct.insert("has_child".into());
+    assert_eq!(derived(&program, &edb, "leaf"), vec![(vec![3], 1)]);
 }
 
 #[test]
-fn a_recursive_rule_of_weight_two_still_derives_a_set() {
-    let mut edb = Catalog::new();
-    edb.insert(chain(&[(0, 1), (1, 2), (2, 0)]));
-    let mut rules = ancestor();
-    rules[1].weight = 2;
-    let result = derived(&Program::new(rules), &edb, "ancestor");
-    assert_eq!(result.len(), 9);
-    assert!(result.iter().all(|(_, w)| *w == 1));
+fn weights_count_what_a_recursion_derived() {
+    // ancestor is a set; projected onto the ancestor it counts the
+    // descendants: 0 -> 1 -> 2 -> 3.
+    let edb = fixtures::ancestor_chain_catalog(4);
+    let mut program = fixtures::ancestor_program();
+    program
+        .rules
+        .push(rule(("descendants", &[0]), &[("ancestor", &[0, 1])]));
+    let ancestor = derived(&program, &edb, "ancestor");
+    assert_eq!(ancestor.len(), 6);
+    assert!(ancestor.iter().all(|(_, w)| *w == 1));
+    assert_eq!(
+        derived(&program, &edb, "descendants"),
+        vec![(vec![0], 3), (vec![1], 2), (vec![2], 1)]
+    );
 }
 
 #[test]
-fn a_recursion_may_read_a_distinct_relation() {
-    // edge counts both directions of every parent pair; declared distinct,
-    // it is a set, and reach closes over it.
-    let mut edb = Catalog::new();
-    edb.insert(chain(&[(0, 1), (1, 0), (1, 2)]));
-    let mut program = Program::new(vec![
-        rule(("edge", &[0, 1]), &[("parent", &[0, 1])]),
-        rule(("edge", &[1, 0]), &[("parent", &[0, 1])]),
-        rule(("reach", &[0, 1]), &[("edge", &[0, 1])]),
-        rule(("reach", &[0, 2]), &[("reach", &[0, 1]), ("edge", &[1, 2])]),
+fn strata_run_in_dependency_order() {
+    // reach is recursive over parent. cycle_node reads reach without
+    // recursion and counts the nodes sharing a cycle with each node.
+    // on_cycle is recursive again, over cycle_node: a set, whatever the
+    // weights it reads. Edges: 0 -> 1 -> 2 -> 1 and 3 -> 3.
+    let edb = catalog([edges(&[[0, 1], [1, 2], [2, 1], [3, 3]])]);
+    let program = Program::new(vec![
+        rule(("reach", &[0, 1]), &[("parent", &[0, 1])]),
+        rule(
+            ("reach", &[0, 2]),
+            &[("reach", &[0, 1]), ("parent", &[1, 2])],
+        ),
+        rule(
+            ("cycle_node", &[0]),
+            &[("reach", &[0, 1]), ("reach", &[1, 0])],
+        ),
+        rule(
+            ("on_cycle", &[0, 1]),
+            &[("cycle_node", &[0]), ("parent", &[0, 1])],
+        ),
+        rule(
+            ("on_cycle", &[0, 2]),
+            &[("on_cycle", &[0, 1]), ("parent", &[1, 2])],
+        ),
     ]);
-    let counted = derived(&program, &edb, "edge");
-    assert!(counted.contains(&(vec![0, 1], 2)), "{counted:?}");
-    program.distinct.insert("edge".into());
-    let edge = derived(&program, &edb, "edge");
-    assert!(edge.iter().all(|(_, w)| *w == 1));
-    let reach = derived(&program, &edb, "reach");
-    assert_eq!(reach.len(), 9, "0, 1 and 2 all reach each other: {reach:?}");
+    let set = |pairs: &[[u64; 2]]| pairs.iter().map(|p| (p.to_vec(), 1)).collect::<Vec<_>>();
+    assert_eq!(
+        derived(&program, &edb, "reach"),
+        set(&[[0, 1], [0, 2], [1, 1], [1, 2], [2, 1], [2, 2], [3, 3]])
+    );
+    assert_eq!(
+        derived(&program, &edb, "cycle_node"),
+        vec![(vec![1], 2), (vec![2], 2), (vec![3], 1)]
+    );
+    assert_eq!(
+        derived(&program, &edb, "on_cycle"),
+        set(&[[1, 1], [1, 2], [2, 1], [2, 2], [3, 3]])
+    );
 }
 
 #[test]
 fn weights_travel_through_a_chain_of_strata() {
     // r0(x) ← e(x), and r(i+1)(x) ← r(i)(x) with weight 2, ten times: the
-    // row of weight 3 arrives with weight 3 · 2¹⁰.
-    let mut edb = Catalog::new();
-    edb.insert(stored("e", 1, &[(&[4], 3)]));
+    // row of weight 3 arrives with weight 3 · 2¹⁰, one round per stratum.
+    let edb = catalog([stored("e", 1, &[(&[4], 3)])]);
     let mut rules = vec![rule(("r0", &[0]), &[("e", &[0])])];
     for i in 0..10 {
         let (from, to) = (format!("r{i}"), format!("r{}", i + 1));
@@ -529,19 +531,17 @@ fn weights_travel_through_a_chain_of_strata() {
     }
     let program = Program::new(rules);
     assert_eq!(derived(&program, &edb, "r10"), vec![(vec![4], 3 * 1024)]);
-    let stats = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec)
+    let stats = fixpoint::semi_naive(&program, &edb, generic_join::execute)
         .unwrap()
         .stats;
-    assert_eq!(stats.rounds, 11, "one round per stratum");
-    assert_eq!(stats.new_facts_per_round, vec![1; 11]);
+    assert_eq!((stats.rounds, stats.new_facts_per_round), (11, vec![1; 11]));
 }
 
 #[test]
 fn statistics_count_every_stratum() {
     // copy (3 rows, one round) comes first, then ancestor over copy: one
     // round per path length plus the final empty one.
-    let mut edb = Catalog::new();
-    edb.insert(chain(&[(0, 1), (1, 2), (2, 3)]));
+    let edb = catalog([edges(&[[0, 1], [1, 2], [2, 3]])]);
     let program = Program::new(vec![
         rule(("copy", &[0, 1]), &[("parent", &[0, 1])]),
         rule(("ancestor", &[0, 1]), &[("copy", &[0, 1])]),
@@ -553,21 +553,115 @@ fn statistics_count_every_stratum() {
     for (run, strategy, exec) in RUNS {
         let stats = strategy(&program, &edb, exec).unwrap().stats;
         assert_eq!(stats.new_facts_per_round, vec![3, 3, 2, 1, 0], "{run}");
-        assert_eq!(stats.rounds, 5, "{run}");
-        assert_eq!(stats.total_new_facts(), 9, "{run}");
+        assert_eq!((stats.rounds, stats.total_new_facts()), (5, 9), "{run}");
     }
 }
 
 #[test]
-fn a_derived_relation_may_start_from_nothing_but_initial_facts() {
-    // The rule reads an empty relation, so only the initial facts remain,
-    // with their weights.
-    let mut edb = Catalog::new();
-    edb.insert(stored("empty", 1, &[]));
-    edb.insert(stored("seen", 1, &[(&[1], 2), (&[2], -1)]));
-    let program = Program::new(vec![rule(("seen", &[0]), &[("empty", &[0])])]);
+fn a_recursion_is_a_set_whatever_its_input_weighs() {
+    let all_once = |rows: Vec<(Vec<u64>, Weight)>| rows.iter().all(|(_, w)| *w == 1);
+    // Every edge of the cycle is present more than once.
+    let edb = catalog([stored(
+        "parent",
+        2,
+        &[(&[0, 1], 2), (&[1, 2], 2), (&[2, 0], 3)],
+    )]);
+    let ancestor = derived(&fixtures::ancestor_program(), &edb, "ancestor");
+    assert!(ancestor.len() == 9 && all_once(ancestor));
+    // A rule that counts twice.
+    let mut doubled = fixtures::ancestor_program();
+    doubled.rules[1].weight = 2;
+    let ancestor = derived(&doubled, &edb, "ancestor");
+    assert!(ancestor.len() == 9 && all_once(ancestor));
+    // Initial facts of weight 2 and 3 count once.
+    let edb = catalog([
+        edges(&[[0, 1]]),
+        stored("ancestor", 2, &[(&[7, 8], 2), (&[0, 1], 3)]),
+    ]);
     assert_eq!(
-        derived(&program, &edb, "seen"),
-        vec![(vec![1], 2), (vec![2], -1)]
+        derived(&fixtures::ancestor_program(), &edb, "ancestor"),
+        vec![(vec![0, 1], 1), (vec![7, 8], 1)]
     );
+}
+
+#[test]
+fn a_recursion_may_read_a_distinct_relation() {
+    // edge counts both directions of every parent pair; declared distinct,
+    // it is a set, and reach closes over it: 0, 1 and 2 reach each other.
+    let edb = catalog([edges(&[[0, 1], [1, 0], [1, 2]])]);
+    let mut program = Program::new(vec![
+        rule(("edge", &[0, 1]), &[("parent", &[0, 1])]),
+        rule(("edge", &[1, 0]), &[("parent", &[0, 1])]),
+        rule(("reach", &[0, 1]), &[("edge", &[0, 1])]),
+        rule(("reach", &[0, 2]), &[("reach", &[0, 1]), ("edge", &[1, 2])]),
+    ]);
+    assert!(derived(&program, &edb, "edge").contains(&(vec![0, 1], 2)));
+    program.distinct.insert("edge".into());
+    assert!(derived(&program, &edb, "edge").iter().all(|(_, w)| *w == 1));
+    assert_eq!(derived(&program, &edb, "reach").len(), 9);
+}
+
+#[test]
+fn a_recursion_cannot_subtract() {
+    let mut program = fixtures::ancestor_program();
+    program.rules[1].weight = -1;
+    refused(
+        &program,
+        &fixtures::ancestor_chain_catalog(3),
+        "ancestor is recursive",
+    );
+
+    // even(y) ← succ(x, y), odd(x) subtracts; odd reads even back, so the
+    // subtraction sits inside a recursion of two relations.
+    let edb = catalog([
+        stored("succ", 2, &[(&[0, 1], 1), (&[1, 2], 1)]),
+        stored("even", 1, &[(&[0], 1)]),
+    ]);
+    let program = Program::new(vec![
+        rule(("odd", &[1]), &[("succ", &[0, 1]), ("even", &[0])]),
+        weighing(
+            -1,
+            rule(("even", &[1]), &[("succ", &[0, 1]), ("odd", &[0])]),
+        ),
+    ]);
+    refused(&program, &edb, "even is recursive");
+}
+
+#[test]
+fn a_recursion_refuses_input_of_negative_net_weight() {
+    let ancestor = fixtures::ancestor_program();
+    let edb = catalog([stored("parent", 2, &[(&[0, 1], 1), (&[1, 2], -1)])]);
+    refused(&ancestor, &edb, "parent holds a row of weight -1");
+    // Initial facts are input too.
+    let edb = catalog([edges(&[[0, 1]]), stored("ancestor", 2, &[(&[7, 8], -2)])]);
+    refused(&ancestor, &edb, "ancestor holds a row of weight -2");
+    // So is a negative row that a subtraction feeds into the recursion.
+    let edb = catalog([edges(&[[0, 1]]), stored("banned", 2, &[(&[5, 6], 1)])]);
+    let program = Program::new(vec![
+        rule(("allowed", &[0, 1]), &[("parent", &[0, 1])]),
+        weighing(-1, rule(("allowed", &[0, 1]), &[("banned", &[0, 1])])),
+        rule(("reach", &[0, 1]), &[("allowed", &[0, 1])]),
+        rule(
+            ("reach", &[0, 2]),
+            &[("reach", &[0, 1]), ("allowed", &[1, 2])],
+        ),
+    ]);
+    refused(&program, &edb, "allowed holds a row of weight -1");
+
+    // What counts is the net weight of a row's copies: (0, 1) is stored
+    // with 2 and -1, an edge; (1, 2) with 1 and -1, no edge at all.
+    let copies = [
+        (&[0, 1][..], 2),
+        (&[1, 2], 1),
+        (&[0, 1], -1),
+        (&[1, 2], -1),
+        (&[2, 3], 1),
+    ];
+    let edb = catalog([stored("parent", 2, &copies)]);
+    assert_eq!(
+        derived(&ancestor, &edb, "ancestor"),
+        vec![(vec![0, 1], 1), (vec![2, 3], 1)]
+    );
+    let edb = catalog([stored("parent", 2, &[(&[0, 1], 1), (&[0, 1], -2)])]);
+    refused(&ancestor, &edb, "parent holds a row of weight -1");
 }

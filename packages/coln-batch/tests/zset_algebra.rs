@@ -47,35 +47,27 @@ fn raw(rng: &mut SplitMix64, arity: usize) -> Relation {
     Relation::with_weights("r", schema, cols, weights)
 }
 
-/// The model of a relation: every row with the sum of its weights, rows of
-/// sum 0 left out.
-fn model(rel: &Relation) -> BTreeMap<Vec<Key>, i128> {
-    let mut m = BTreeMap::new();
-    for i in 0..rel.len() {
-        *m.entry(rel.row(i)).or_insert(0) += i128::from(rel.weight(i));
+/// What a relation means, whatever its form: every row with the sum of its
+/// weights, rows of sum 0 left out.
+type Model = BTreeMap<Vec<Key>, i128>;
+
+fn model(rows: impl IntoIterator<Item = (Vec<Key>, i128)>) -> Model {
+    let mut m = Model::new();
+    for (row, w) in rows {
+        *m.entry(row).or_insert(0) += w;
     }
     m.retain(|_, w| *w != 0);
     m
 }
 
-fn entries(rel: &Relation) -> BTreeMap<Vec<Key>, i128> {
+fn rows(rel: &Relation, sign: i128) -> impl Iterator<Item = (Vec<Key>, i128)> + '_ {
+    (0..rel.len()).map(move |i| (rel.row(i), sign * i128::from(rel.weight(i))))
+}
+
+/// The rows of a relation in normal form, as its model.
+fn entries(rel: &Relation) -> Model {
     assert!(rel.is_consolidated(), "not in normal form: {rel:?}");
-    (0..rel.len())
-        .map(|i| (rel.row(i), i128::from(rel.weight(i))))
-        .collect()
-}
-
-fn model_plus(
-    a: &BTreeMap<Vec<Key>, i128>,
-    b: &BTreeMap<Vec<Key>, i128>,
-    sign: i128,
-) -> BTreeMap<Vec<Key>, i128> {
-    let mut m = a.clone();
-    for (row, w) in b {
-        *m.entry(row.clone()).or_insert(0) += sign * w;
-    }
-    m.retain(|_, w| *w != 0);
-    m
+    rows(rel, 1).collect()
 }
 
 /// Case `case`: three random relations of one random arity.
@@ -91,7 +83,7 @@ fn consolidate_matches_the_model() {
     for case in 0..CASES {
         let (mut rng, [r, _, _]) = three(case);
         let normal = r.clone().consolidate();
-        assert_eq!(entries(&normal), model(&r), "case {case}");
+        assert_eq!(entries(&normal), model(rows(&r, 1)), "case {case}");
         assert_eq!(
             normal.clone().consolidate(),
             normal,
@@ -131,12 +123,12 @@ fn plus_and_minus_obey_the_laws_of_z_sets() {
 
         assert_eq!(
             entries(&a.plus(&b)),
-            model_plus(&model(&a), &model(&b), 1),
+            model(rows(&a, 1).chain(rows(&b, 1))),
             "case {case}"
         );
         assert_eq!(
             entries(&a.minus(&b)),
-            model_plus(&model(&a), &model(&b), -1),
+            model(rows(&a, 1).chain(rows(&b, -1))),
             "case {case}"
         );
         assert_eq!(a.plus(&b), b.plus(&a), "case {case}: plus commutes");
@@ -172,7 +164,7 @@ fn distinct_keeps_the_rows_of_positive_weight_once() {
     for case in 0..CASES {
         let (_, [a, b, _]) = three(case);
         let d = a.clone().distinct();
-        let expected: BTreeMap<Vec<Key>, i128> = model(&a)
+        let expected: Model = model(rows(&a, 1))
             .into_iter()
             .filter(|(_, w)| *w > 0)
             .map(|(row, _)| (row, 1))
@@ -187,9 +179,9 @@ fn distinct_keeps_the_rows_of_positive_weight_once() {
 
         // Over two sets, distinct of the sum is the union.
         let (x, y) = (a.distinct(), b.distinct());
-        let union: BTreeMap<Vec<Key>, i128> = model(&x)
+        let union: Model = model(rows(&x, 1))
             .into_keys()
-            .chain(model(&y).into_keys())
+            .chain(model(rows(&y, 1)).into_keys())
             .map(|row| (row, 1))
             .collect();
         assert_eq!(entries(&x.plus(&y).distinct()), union, "case {case}");

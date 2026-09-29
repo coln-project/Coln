@@ -17,24 +17,21 @@ mod common;
 use std::collections::BTreeMap;
 
 use anyhow::{Context, Result};
-use coln_batch::fixpoint::{self, Exec};
+use coln_batch::fixpoint;
 use coln_batch::query::{Catalog, Tables};
 use coln_batch::rng::SplitMix64;
 use coln_batch::table::{ColId, RowIdx, SortedTable, check_contract};
 use coln_batch::types::{Dictionary, Key, Schema, Weight};
-use coln_batch::{binary_join, generic_join, reference};
+
+use common::EXECUTORS;
 
 const CASES: u64 = 300;
 
-const EXECUTORS: [(&str, Exec); 3] = [
-    ("oracle", reference::execute as Exec),
-    ("binary join", binary_join::execute as Exec),
-    ("generic join", generic_join::execute as Exec),
-];
+type Rows = Vec<(Vec<Key>, Weight)>;
 
 /// `rows` sorted by the columns of `order`, then by all columns, so that
 /// copies of a row end up next to each other.
-fn sorted_by<T>(mut rows: Vec<(Vec<Key>, T)>, order: &[ColId]) -> Vec<(Vec<Key>, T)> {
+fn sorted_by(mut rows: Rows, order: &[ColId]) -> Rows {
     rows.sort_by(|(a, _), (b, _)| {
         let key = |row: &Vec<Key>| order.iter().map(|&c| row[c]).collect::<Vec<_>>();
         key(a).cmp(&key(b)).then_with(|| a.cmp(b))
@@ -71,7 +68,7 @@ impl SortedTable for MinimalTable {
 struct CopiesTable {
     arity: usize,
     order: Vec<ColId>,
-    rows: Vec<(Vec<Key>, Weight)>,
+    rows: Rows,
 }
 
 impl CopiesTable {
@@ -138,7 +135,7 @@ enum Kind {
 struct Store {
     kind: Kind,
     schemas: BTreeMap<String, Schema>,
-    rows: BTreeMap<String, Vec<(Vec<Key>, Weight)>>,
+    rows: BTreeMap<String, Rows>,
     dict: Dictionary,
 }
 
@@ -158,21 +155,17 @@ impl Store {
             let mut stored = Vec::new();
             for i in 0..normal.len() {
                 let (row, w) = (normal.row(i), normal.weight(i));
-                match rng.below(3) {
-                    0 if kind == Kind::Copies => {
+                let copies = match (kind, rng.below(3)) {
+                    (Kind::Copies, 0) => {
                         let part = if w == 2 { 3 } else { 2 };
-                        stored.push((row.clone(), part));
-                        stored.push((row, w - part));
+                        vec![part, w - part]
                     }
-                    1 if kind == Kind::Copies => {
-                        stored.push((row.clone(), w + 1));
-                        stored.push((row.clone(), -2));
-                        stored.push((row, 1));
-                    }
-                    _ => stored.push((row, w)),
-                }
+                    (Kind::Copies, 1) => vec![w + 1, -2, 1],
+                    _ => vec![w],
+                };
+                let copies = copies.into_iter().filter(|&c| c != 0);
+                stored.extend(copies.map(|c| (row.clone(), c)));
             }
-            stored.retain(|(_, w)| *w != 0);
             schemas.insert(name.to_owned(), rel.schema.clone());
             rows.insert(name.to_owned(), stored);
         }
