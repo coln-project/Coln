@@ -87,8 +87,8 @@ impl Relation {
         }
     }
 
-    /// Copy the rows of a sorted table, keys as they are and in its sort
-    /// order, every row with weight 1.
+    /// Copy the rows of a sorted table with their weights, keys as they are
+    /// and in its sort order.
     pub fn from_table(
         name: impl Into<String>,
         schema: Schema,
@@ -105,7 +105,7 @@ impl Relation {
         let cols = (0..table.arity())
             .map(|c| (0..table.len()).map(|r| table.value(r, c)).collect())
             .collect();
-        let weights = vec![1; table.len()];
+        let weights = (0..table.len()).map(|r| table.weight(r)).collect();
         Ok(Self::with_weights(name, schema, cols, weights))
     }
 
@@ -351,8 +351,13 @@ impl Relation {
     }
 
     /// Build a relation from row-major flat keys (`schema.arity()` values
-    /// per row), every row with weight 1.
-    pub fn from_flat_rows(name: impl Into<String>, schema: Schema, flat: &[Key]) -> Self {
+    /// per row) and one weight per row.
+    pub fn from_flat_rows(
+        name: impl Into<String>,
+        schema: Schema,
+        flat: &[Key],
+        weights: Vec<Weight>,
+    ) -> Self {
         let width = schema.arity();
         assert!(width > 0, "from_flat_rows needs at least one column");
         assert_eq!(flat.len() % width, 0, "flat data must be whole rows");
@@ -363,7 +368,7 @@ impl Relation {
                 cols[c].push(x);
             }
         }
-        Self::with_schema(name, schema, cols)
+        Self::with_weights(name, schema, cols, weights)
     }
 
     /// Decode into an Arrow batch: `Uint` becomes `UInt64`, `Iint`

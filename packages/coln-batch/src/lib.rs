@@ -8,7 +8,8 @@
 //!
 //! 1. the value types ([`types`]): typed schemas and values at the
 //!    boundary, normalized `u64` keys inside, strings through a
-//!    dictionary,
+//!    dictionary, and a weight per row that makes every relation a Z-set
+//!    ([`relation`]),
 //! 2. deterministic test-data generators for e-matching-style join
 //!    workloads ([`generate`]),
 //! 3. Arrow IPC persistence for that test data ([`io`]),

@@ -7,7 +7,7 @@
 
 use coln_batch::query::{Atom, Catalog, Query, Term};
 use coln_batch::relation::Relation;
-use coln_batch::types::{Column, ScalarType, Schema, Value};
+use coln_batch::types::{Column, ScalarType, Schema, Value, Weight};
 use coln_batch::{binary_join, fixtures, generic_join, reference};
 
 /// Run all three executors and require identical results.
@@ -130,8 +130,8 @@ fn hand_cases() {
 #[test]
 fn edge_cases() {
     let mut cat = Catalog::new();
-    // (2,3) appears twice: relations are sets, so duplicate input rows
-    // must not reach the output.
+    // (2,3) appears twice, so the relation is not in normal form: its two
+    // copies add up to weight 2.
     cat.insert(Relation::new(
         "R",
         ["a", "b"],
@@ -159,8 +159,8 @@ fn edge_cases() {
     };
     assert_eq!(agree_with_oracle(&empty_join, &cat).len(), 0);
 
-    // Projection collapses rows (set semantics): x=1 and x=2 each stem
-    // from two body rows but appear once.
+    // Projection collapses rows and adds up their weights: x=1 and x=2
+    // each stem from two body rows.
     let proj = Query {
         var_names: vec!["x".into(), "y".into()],
         atoms: vec![atom("R", vec![Term::Var(x), Term::Var(y)])],
@@ -168,14 +168,103 @@ fn edge_cases() {
     };
     let r = agree_with_oracle(&proj, &cat);
     assert_eq!((r.len(), r.row(0), r.row(1)), (2, vec![1], vec![2]));
+    assert_eq!(r.weights, vec![2, 2]);
 
-    // Duplicate input rows do not survive into the output.
+    // Duplicate input rows come out as one row carrying both copies.
     let scan = Query {
         var_names: vec!["x".into(), "y".into()],
         atoms: vec![atom("R", vec![Term::Var(x), Term::Var(y)])],
         head: vec![x, y],
     };
-    assert_eq!(agree_with_oracle(&scan, &cat).len(), 3);
+    let r = agree_with_oracle(&scan, &cat);
+    assert_eq!(r.len(), 3);
+    assert_eq!(r.weights, vec![1, 1, 2]);
+}
+
+fn weighted(name: &str, rows: &[(u64, u64, Weight)]) -> Relation {
+    Relation::with_weights(
+        name,
+        Schema::uint(["a", "b"]),
+        vec![
+            rows.iter().map(|r| r.0).collect(),
+            rows.iter().map(|r| r.1).collect(),
+        ],
+        rows.iter().map(|r| r.2).collect(),
+    )
+}
+
+/// Weights: a join multiplies them, a projection adds them up, and
+/// weights that cancel out remove the row.
+#[test]
+fn weighted_cases() {
+    let mut cat = Catalog::new();
+    // Edge (1,2) is present twice, edge (2,3) three times.
+    cat.insert(weighted("E", &[(1, 2, 2), (2, 3, 3)]));
+    // Three ways from 1 to 3, one of them taken away.
+    cat.insert(weighted("P", &[(1, 5, 1), (1, 6, 1), (1, 7, -1)]));
+    cat.insert(weighted("Q", &[(5, 3, 1), (6, 3, 1), (7, 3, 1)]));
+    // Two rows for x=1 that cancel out, one for x=2.
+    cat.insert(weighted("C", &[(1, 6, 1), (1, 7, -1), (2, 8, 1)]));
+    cat.insert(Relation::with_weights(
+        "F",
+        Schema::uint(["a"]),
+        vec![vec![9]],
+        vec![4],
+    ));
+    let (x, y, z) = (0, 1, 2);
+
+    // Two hops: 2 · 3 = 6 ways from 1 to 3.
+    let two_hop = Query {
+        var_names: vec!["x".into(), "y".into(), "z".into()],
+        atoms: vec![
+            atom("E", vec![Term::Var(x), Term::Var(y)]),
+            atom("E", vec![Term::Var(y), Term::Var(z)]),
+        ],
+        head: vec![x, z],
+    };
+    let r = agree_with_oracle(&two_hop, &cat);
+    assert_eq!((r.len(), r.row(0), r.weight(0)), (1, vec![1, 3], 6));
+
+    // Every path keeps its own weight, the negative one included.
+    let paths = Query {
+        var_names: vec!["x".into(), "y".into(), "z".into()],
+        atoms: vec![
+            atom("P", vec![Term::Var(x), Term::Var(y)]),
+            atom("Q", vec![Term::Var(y), Term::Var(z)]),
+        ],
+        head: vec![x, y, z],
+    };
+    let r = agree_with_oracle(&paths, &cat);
+    assert_eq!(r.weights, vec![1, 1, -1]);
+
+    // Projected onto its ends, the paths add up to 1 + 1 - 1.
+    let ends = Query {
+        head: vec![x, z],
+        ..paths.clone()
+    };
+    let r = agree_with_oracle(&ends, &cat);
+    assert_eq!((r.len(), r.row(0), r.weight(0)), (1, vec![1, 3], 1));
+
+    // Weights that cancel out remove the row.
+    let cancel = Query {
+        var_names: vec!["x".into(), "y".into()],
+        atoms: vec![atom("C", vec![Term::Var(x), Term::Var(y)])],
+        head: vec![x],
+    };
+    let r = agree_with_oracle(&cancel, &cat);
+    assert_eq!((r.len(), r.row(0), r.weight(0)), (1, vec![2], 1));
+
+    // An atom of literals only multiplies by the weight of its row.
+    let scaled = Query {
+        var_names: vec!["x".into(), "y".into()],
+        atoms: vec![
+            atom("E", vec![Term::Var(x), Term::Var(y)]),
+            atom("F", vec![Term::lit(9u64)]),
+        ],
+        head: vec![x, y],
+    };
+    let r = agree_with_oracle(&scaled, &cat);
+    assert_eq!(r.weights, vec![8, 12]);
 }
 
 #[test]

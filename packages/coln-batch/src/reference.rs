@@ -9,17 +9,20 @@
 //! where it establishes ground truth for the real executors. The
 //! implementation is deliberately minimal so that its correctness can be
 //! verified by inspection. It compares keys like the real executors;
-//! key equality is value equality within a column type.
+//! key equality is value equality within a column type. A combination of
+//! rows weighs the product of their weights.
 
 use anyhow::Result;
 
 use crate::query::{KeyAtom, KeyTerm, Query, Tables, prepare};
 use crate::relation::Relation;
 use crate::table::SortedTable;
-use crate::types::Key;
+use crate::types::{Key, Weight, mul_weights};
 
 /// Evaluate `query` against `tables` by exhaustive search. Returns the
-/// projected result, sorted and deduplicated (set semantics).
+/// projected result as a Z-set in normal form: a head row weighs the sum,
+/// over the combinations of rows that produce it, of their weights'
+/// product.
 ///
 /// It reads each relation by a plain scan in schema order and uses none of
 /// the searches, so it also serves to cross-check a storage layer's tables.
@@ -38,24 +41,36 @@ pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
     let tables: Vec<&dyn SortedTable> = scanned.iter().map(|t| &**t).collect();
 
     let mut binding: Vec<Option<Key>> = vec![None; query.num_vars()];
-    let mut out: Vec<Key> = Vec::new();
-    search(query, &atoms, &tables, 0, &mut binding, &mut out);
+    let mut out = Output::default();
+    search(query, &atoms, &tables, 0, 1, &mut binding, &mut out);
 
-    Ok(Relation::from_flat_rows("result", prepared.schema, &out).distinct())
+    Ok(Relation::from_flat_rows("result", prepared.schema, &out.keys, out.weights).consolidate())
 }
 
+/// The head rows found so far, flat, with one weight per row.
+#[derive(Default)]
+struct Output {
+    keys: Vec<Key>,
+    weights: Vec<Weight>,
+}
+
+/// Extend the combination of rows chosen for the atoms before `atom_idx`,
+/// which weighs `weight`, by every row of the next atom that fits.
 fn search(
     query: &Query,
     atoms: &[KeyAtom],
     tables: &[&dyn SortedTable],
     atom_idx: usize,
+    weight: Weight,
     binding: &mut Vec<Option<Key>>,
-    out: &mut Vec<Key>,
+    out: &mut Output,
 ) {
     if atom_idx == atoms.len() {
         for &v in &query.head {
-            out.push(binding[v].expect("head variable bound (validated)"));
+            out.keys
+                .push(binding[v].expect("head variable bound (validated)"));
         }
+        out.weights.push(weight);
         return;
     }
     let atom = &atoms[atom_idx];
@@ -86,7 +101,8 @@ fn search(
                 },
             }
         }
-        search(query, atoms, tables, atom_idx + 1, binding, out);
+        let weight = mul_weights(weight, table.weight(r));
+        search(query, atoms, tables, atom_idx + 1, weight, binding, out);
         undo(binding, &newly_bound);
     }
 }

@@ -219,15 +219,15 @@ impl Catalog {
         self.map.insert(rel.name.clone(), rel);
     }
 
-    /// Encode typed rows into a new relation (a set: sorted, each row once
-    /// with weight 1) and insert it.
+    /// Encode typed rows into a new relation in normal form and insert it.
+    /// Every listed row counts once, so a row listed twice has weight 2.
     pub fn insert_rows(
         &mut self,
         name: impl Into<String>,
         schema: Schema,
         rows: impl IntoIterator<Item = Vec<Value>>,
     ) -> Result<()> {
-        let rel = Relation::from_rows(name, schema, rows, &mut self.dict)?.distinct();
+        let rel = Relation::from_rows(name, schema, rows, &mut self.dict)?.consolidate();
         self.insert(rel);
         Ok(())
     }
