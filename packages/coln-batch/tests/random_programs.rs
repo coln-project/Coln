@@ -6,8 +6,10 @@
 //! programs over generated data, evaluated with every strategy and
 //! executor combination. All four runs must agree on every derived
 //! relation, weights included. Stored rows carry random positive weights,
-//! as a snapshot does. Termination is guaranteed by the tiny value
-//! domains.
+//! as a snapshot does; some rules subtract and some derived relations are
+//! declared distinct. A program that asks a recursion to take rows away
+//! must be rejected by all four runs alike. Termination is guaranteed by
+//! the tiny value domains.
 //!
 //! Relations carry random column types and rules are generated
 //! well-typed; every derived relation is declared in the catalog (an
@@ -18,7 +20,7 @@
 //! seeds its own [`SplitMix64`], so a failing case number reproduces in
 //! isolation.
 
-use coln_batch::fixpoint::{self, Exec, FixpointResult};
+use coln_batch::fixpoint::{self, Exec};
 use coln_batch::query::{Atom, Catalog, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rng::SplitMix64;
@@ -26,7 +28,7 @@ use coln_batch::rule::{Program, Rule};
 use coln_batch::types::{Column, ScalarType, Schema, Value, Weight};
 use coln_batch::{binary_join, generic_join};
 
-const CASES: u64 = 150;
+const CASES: u64 = 400;
 /// Unsigned values are drawn from `0..DOMAIN`, small so joins hit often
 /// and every closure stays finite and small.
 const DOMAIN: u64 = 6;
@@ -194,15 +196,24 @@ fn random_program(
                 terms: head_terms,
             },
             body: atoms,
+            weight: if rng.below(5) == 0 { -1 } else { 1 },
         });
     }
-    (Program { rules }, idb)
+    let mut program = Program::new(rules);
+    for (name, _) in &idb {
+        if rng.below(4) == 0 {
+            program.distinct.insert(name.clone());
+        }
+    }
+    (program, idb)
 }
 
 #[test]
 fn random_programs_all_combinations_agree() {
     let mut non_empty = 0;
     let mut weighted = 0;
+    let mut subtracting = 0;
+    let mut rejected = 0;
     for case in 0..CASES {
         let mut rng = SplitMix64::new(case);
         let (mut edb, edb_rels) = random_edb(&mut rng);
@@ -220,45 +231,61 @@ fn random_programs_all_combinations_agree() {
         }
         let idb_names: Vec<&str> = idb.iter().map(|(name, _)| name.as_str()).collect();
 
-        let run = |name: &str, r: anyhow::Result<FixpointResult>| -> Catalog {
-            r.unwrap_or_else(|e| panic!("case {case}: {name} failed: {e}\n{program:#?}"))
-                .catalog
-        };
-        let base = run(
-            "semi+generic",
-            fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec),
-        );
-        let others = [
+        let runs: Vec<(&str, Result<Catalog, String>)> = [
+            (
+                "semi+generic",
+                fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec),
+            ),
             (
                 "semi+binary",
-                run(
-                    "semi+binary",
-                    fixpoint::semi_naive(&program, &edb, binary_join::execute as Exec),
-                ),
+                fixpoint::semi_naive(&program, &edb, binary_join::execute as Exec),
             ),
             (
                 "naive+generic",
-                run(
-                    "naive+generic",
-                    fixpoint::naive(&program, &edb, generic_join::execute as Exec),
-                ),
+                fixpoint::naive(&program, &edb, generic_join::execute as Exec),
             ),
             (
                 "naive+binary",
-                run(
-                    "naive+binary",
-                    fixpoint::naive(&program, &edb, binary_join::execute as Exec),
-                ),
+                fixpoint::naive(&program, &edb, binary_join::execute as Exec),
             ),
-        ];
-        for (name, cat) in &others {
+        ]
+        .into_iter()
+        .map(|(name, r)| (name, r.map(|r| r.catalog).map_err(|e| e.to_string())))
+        .collect();
+        let base = match &runs[0].1 {
+            Ok(base) => base,
+            Err(err) => {
+                // The one legitimate failure: a recursion asked to take rows
+                // away. Every run must refuse it the same way.
+                assert!(
+                    err.contains("recursion computes sets"),
+                    "case {case}: semi+generic failed: {err}\n{program:#?}"
+                );
+                for (name, other) in &runs[1..] {
+                    assert_eq!(
+                        other.as_ref().err(),
+                        Some(err),
+                        "case {case}: {name} does not fail alike"
+                    );
+                }
+                rejected += 1;
+                continue;
+            }
+        };
+        for (name, other) in &runs[1..] {
+            let other = other
+                .as_ref()
+                .unwrap_or_else(|e| panic!("case {case}: {name} failed: {e}\n{program:#?}"));
             for idb in &idb_names {
                 assert_eq!(
                     base.get(idb).unwrap(),
-                    cat.get(idb).unwrap(),
+                    other.get(idb).unwrap(),
                     "case {case}: {name} disagrees on {idb}"
                 );
             }
+        }
+        if program.rules.iter().any(|rule| rule.weight < 0) {
+            subtracting += 1;
         }
         for (name, schema) in &idb {
             let rel = base.get(name).unwrap();
@@ -283,4 +310,9 @@ fn random_programs_all_combinations_agree() {
         weighted >= CASES / 20,
         "only {weighted} derived relations with a weight other than 1"
     );
+    assert!(
+        subtracting >= CASES / 20,
+        "only {subtracting} evaluated programs with a subtracting rule"
+    );
+    assert!(rejected <= CASES / 2, "{rejected} programs rejected");
 }

@@ -22,9 +22,11 @@
 //!    hash-join chain ([`binary_join`]) and a worst-case-optimal generic
 //!    join ([`generic_join`]), differential-tested against each other and
 //!    against the oracle,
-//! 7. recursive Datalog: rules and programs ([`rule`]) evaluated to the
-//!    least fixpoint with semi-naive iteration ([`fixpoint`]), again
-//!    differential-tested (semi-naive vs. naive, per executor).
+//! 7. recursive Datalog: rules and programs ([`rule`]) evaluated stratum
+//!    by stratum, non-recursive relations once with their weights and
+//!    recursive ones as sets to the least fixpoint with semi-naive
+//!    iteration ([`fixpoint`]), again differential-tested (semi-naive vs.
+//!    naive, per executor).
 
 pub mod binary_join;
 pub mod fixpoint;

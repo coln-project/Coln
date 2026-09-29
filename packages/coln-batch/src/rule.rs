@@ -18,9 +18,13 @@
 //! plus the rows every rule derives, each rule's rows weighted as the
 //! executors weigh a query result (see [`crate::generic_join`]). Two rules
 //! deriving the same row give it weight 2, and so do two ways of deriving
-//! it in one rule. **Recursion is the exception.** A relation that depends
-//! on itself, directly or through others, is a set: every row it holds
-//! has weight 1, which is what makes the fixpoint finite on cycles.
+//! it in one rule. A rule of weight -1 takes its rows away instead, which
+//! makes a Z-set difference, and a relation declared in
+//! [`Program::distinct`] keeps every row of positive weight once.
+//! **Recursion is the exception.** A relation that depends on itself,
+//! directly or through others, is a set: every row it holds has weight 1,
+//! which is what makes the fixpoint finite on cycles. Its rules cannot
+//! take rows away.
 //!
 //! The derived relations fall into **strata**, the groups of relations
 //! that depend on each other. [`Program::compile`] orders them so that
@@ -41,7 +45,7 @@ use anyhow::{Result, bail};
 
 use crate::query::{Atom, Query, Tables, Term, infer_var_types};
 use crate::relation::Relation;
-use crate::types::{Column, Dictionary, Key, ScalarType, Schema};
+use crate::types::{Column, Dictionary, Key, ScalarType, Schema, Weight, mul_weights};
 
 #[derive(Clone, Debug)]
 pub struct Rule {
@@ -50,11 +54,29 @@ pub struct Rule {
     pub var_names: Vec<String>,
     pub head: Atom,
     pub body: Vec<Atom>,
+    /// What the rule's rows count for in the head relation: the weight of
+    /// every row the body derives is multiplied by it. 1 adds the rows, -1
+    /// takes them away. Never 0, and positive in a recursive relation.
+    pub weight: Weight,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Program {
     pub rules: Vec<Rule>,
+    /// Derived relations that are sets: once their rules are added up,
+    /// every row of positive weight is kept once and every other row
+    /// dropped (the Z-set `distinct`). Recursive relations are sets anyway.
+    pub distinct: BTreeSet<String>,
+}
+
+impl Program {
+    /// A program of `rules`, with no relation declared distinct.
+    pub fn new(rules: Vec<Rule>) -> Self {
+        Self {
+            rules,
+            distinct: BTreeSet::new(),
+        }
+    }
 }
 
 /// Reserved name prefix for the per-round delta relations of semi-naive
@@ -81,6 +103,8 @@ pub(crate) struct LoweredRule {
     pub query: Query,
     pub head_relation: String,
     pub head_cols: Vec<HeadCol>,
+    /// The rule's weight, see [`Rule::weight`].
+    pub weight: Weight,
     /// Body positions whose relation belongs to the rule's own stratum. In
     /// a recursive stratum these are the atoms that read the previous
     /// round's delta; in a non-recursive one there are none.
@@ -96,8 +120,8 @@ impl LoweredRule {
         q
     }
 
-    /// Turn a body-query result into rows of the head relation, keeping the
-    /// result's weights. The rows come out in normal form.
+    /// Turn a body-query result into rows of the head relation, their
+    /// weights multiplied by the rule's. The rows come out in normal form.
     pub fn materialize_head(&self, result: &Relation, schema: &Schema) -> Relation {
         let cols = self
             .head_cols
@@ -107,13 +131,13 @@ impl LoweredRule {
                 HeadCol::Lit(x) => vec![*x; result.len()],
             })
             .collect();
-        Relation::with_weights(
-            self.head_relation.clone(),
-            schema.clone(),
-            cols,
-            result.weights.clone(),
-        )
-        .consolidate()
+        let weights = result
+            .weights
+            .iter()
+            .map(|&w| mul_weights(w, self.weight))
+            .collect();
+        Relation::with_weights(self.head_relation.clone(), schema.clone(), cols, weights)
+            .consolidate()
     }
 }
 
@@ -141,6 +165,8 @@ pub(crate) struct CompiledProgram {
     pub idb_schemas: BTreeMap<String, Schema>,
     /// The derived relations grouped into strata, in evaluation order.
     pub strata: Vec<Stratum>,
+    /// The derived relations declared distinct, see [`Program::distinct`].
+    pub distinct: BTreeSet<String>,
 }
 
 /// A derived relation's schema while its types are being inferred.
@@ -170,6 +196,9 @@ impl Program {
             let name = &rule.head.relation;
             if name.starts_with(DELTA_PREFIX) {
                 bail!("relation name {name} uses the reserved prefix {DELTA_PREFIX}");
+            }
+            if rule.weight == 0 {
+                bail!("a rule for {name} has weight 0, so it would derive nothing");
             }
             let arity = rule.head.terms.len();
             if let Some(existing) = partial.get(name) {
@@ -205,6 +234,12 @@ impl Program {
                 }
             };
             partial.insert(name.clone(), schema);
+        }
+
+        for name in &self.distinct {
+            if !partial.contains_key(name) {
+                bail!("{name} is declared distinct, but no rule derives it");
+            }
         }
 
         // Infer derived column types until nothing changes. Each pass
@@ -326,11 +361,26 @@ impl Program {
                 query,
                 head_relation: rule.head.relation.clone(),
                 head_cols,
+                weight: rule.weight,
                 recursive_positions: Vec::new(),
             });
         }
 
         let strata = stratify(&idb_schemas, &rules);
+        for stratum in strata.iter().filter(|s| s.recursive) {
+            for &i in &stratum.rules {
+                let rule = &rules[i];
+                if rule.weight < 0 {
+                    bail!(
+                        "a rule for {} has weight {}, but {} is recursive; recursion \
+                         computes sets and cannot take rows away",
+                        rule.head_relation,
+                        rule.weight,
+                        rule.head_relation
+                    );
+                }
+            }
+        }
         let stratum_of: BTreeMap<&str, usize> = strata
             .iter()
             .enumerate()
@@ -347,6 +397,7 @@ impl Program {
             rules,
             idb_schemas,
             strata,
+            distinct: self.distinct.clone(),
         })
     }
 }
@@ -475,38 +526,38 @@ mod tests {
     }
 
     fn ancestor_rules() -> Program {
-        Program {
-            rules: vec![
-                Rule {
-                    var_names: vec!["x".into(), "y".into()],
-                    head: Atom {
-                        relation: "ancestor".into(),
-                        terms: vec![Term::Var(0), Term::Var(1)],
-                    },
-                    body: vec![Atom {
+        Program::new(vec![
+            Rule {
+                var_names: vec!["x".into(), "y".into()],
+                head: Atom {
+                    relation: "ancestor".into(),
+                    terms: vec![Term::Var(0), Term::Var(1)],
+                },
+                body: vec![Atom {
+                    relation: "parent".into(),
+                    terms: vec![Term::Var(0), Term::Var(1)],
+                }],
+                weight: 1,
+            },
+            Rule {
+                var_names: vec!["x".into(), "y".into(), "z".into()],
+                head: Atom {
+                    relation: "ancestor".into(),
+                    terms: vec![Term::Var(0), Term::Var(2)],
+                },
+                body: vec![
+                    Atom {
                         relation: "parent".into(),
                         terms: vec![Term::Var(0), Term::Var(1)],
-                    }],
-                },
-                Rule {
-                    var_names: vec!["x".into(), "y".into(), "z".into()],
-                    head: Atom {
-                        relation: "ancestor".into(),
-                        terms: vec![Term::Var(0), Term::Var(2)],
                     },
-                    body: vec![
-                        Atom {
-                            relation: "parent".into(),
-                            terms: vec![Term::Var(0), Term::Var(1)],
-                        },
-                        Atom {
-                            relation: "ancestor".into(),
-                            terms: vec![Term::Var(1), Term::Var(2)],
-                        },
-                    ],
-                },
-            ],
-        }
+                    Atom {
+                        relation: "ancestor".into(),
+                        terms: vec![Term::Var(1), Term::Var(2)],
+                    },
+                ],
+                weight: 1,
+            },
+        ])
     }
 
     #[test]
@@ -543,33 +594,32 @@ mod tests {
             var_names: (0..num_vars).map(|v| format!("v{v}")).collect(),
             head: atom(head),
             body: body.iter().copied().map(atom).collect(),
+            weight: 1,
         }
     }
 
     #[test]
     fn strata_come_in_dependency_order() {
-        let program = Program {
-            rules: vec![
-                // reach: recursive over parent.
-                rule(("reach", &[0, 1]), &[("parent", &[0, 1])]),
-                rule(
-                    ("reach", &[0, 2]),
-                    &[("reach", &[0, 1]), ("parent", &[1, 2])],
-                ),
-                // pairs: reads reach, but not itself.
-                rule(
-                    ("pairs", &[0, 1]),
-                    &[("reach", &[0, 1]), ("reach", &[1, 0])],
-                ),
-                // sym: recursive over pairs.
-                rule(("sym", &[0, 1]), &[("pairs", &[0, 1])]),
-                rule(("sym", &[0, 2]), &[("sym", &[0, 1]), ("sym", &[1, 2])]),
-                // a and b: recursive through each other.
-                rule(("a", &[0]), &[("parent", &[0, 1])]),
-                rule(("a", &[0]), &[("b", &[0])]),
-                rule(("b", &[0]), &[("a", &[0])]),
-            ],
-        };
+        let program = Program::new(vec![
+            // reach: recursive over parent.
+            rule(("reach", &[0, 1]), &[("parent", &[0, 1])]),
+            rule(
+                ("reach", &[0, 2]),
+                &[("reach", &[0, 1]), ("parent", &[1, 2])],
+            ),
+            // pairs: reads reach, but not itself.
+            rule(
+                ("pairs", &[0, 1]),
+                &[("reach", &[0, 1]), ("reach", &[1, 0])],
+            ),
+            // sym: recursive over pairs.
+            rule(("sym", &[0, 1]), &[("pairs", &[0, 1])]),
+            rule(("sym", &[0, 2]), &[("sym", &[0, 1]), ("sym", &[1, 2])]),
+            // a and b: recursive through each other.
+            rule(("a", &[0]), &[("parent", &[0, 1])]),
+            rule(("a", &[0]), &[("b", &[0])]),
+            rule(("b", &[0]), &[("a", &[0])]),
+        ]);
         let compiled = program.compile_in(&mut edb()).unwrap();
         let strata: Vec<(Vec<&str>, bool)> = compiled
             .strata
@@ -619,6 +669,24 @@ mod tests {
         let mut p = ancestor_rules();
         p.rules[0].head.relation = "__delta_ancestor".into();
         assert!(p.compile_in(&mut edb()).is_err());
+
+        // A rule of weight 0.
+        let mut p = ancestor_rules();
+        p.rules[0].weight = 0;
+        let err = p.compile_in(&mut edb()).unwrap_err().to_string();
+        assert!(err.contains("weight 0"), "{err}");
+
+        // A subtracting rule of a recursive relation.
+        let mut p = ancestor_rules();
+        p.rules[1].weight = -1;
+        let err = p.compile_in(&mut edb()).unwrap_err().to_string();
+        assert!(err.contains("ancestor is recursive"), "{err}");
+
+        // Distinct for a relation no rule derives.
+        let mut p = ancestor_rules();
+        p.distinct.insert("parent".into());
+        let err = p.compile_in(&mut edb()).unwrap_err().to_string();
+        assert!(err.contains("parent is declared distinct"), "{err}");
     }
 
     fn typed_edb() -> Catalog {
@@ -639,38 +707,38 @@ mod tests {
     /// reach(x, y, l) ← edge(x, y, l); reach(x, z, l) ← reach(x, y, l), edge(y, z, l)
     fn labeled_reach() -> Program {
         let (x, y, z, l) = (0, 1, 2, 3);
-        Program {
-            rules: vec![
-                Rule {
-                    var_names: vec!["x".into(), "y".into(), "l".into()],
-                    head: Atom {
+        Program::new(vec![
+            Rule {
+                var_names: vec!["x".into(), "y".into(), "l".into()],
+                head: Atom {
+                    relation: "reach".into(),
+                    terms: vec![Term::Var(0), Term::Var(1), Term::Var(2)],
+                },
+                body: vec![Atom {
+                    relation: "edge".into(),
+                    terms: vec![Term::Var(0), Term::Var(1), Term::Var(2)],
+                }],
+                weight: 1,
+            },
+            Rule {
+                var_names: vec!["x".into(), "y".into(), "z".into(), "l".into()],
+                head: Atom {
+                    relation: "reach".into(),
+                    terms: vec![Term::Var(x), Term::Var(z), Term::Var(l)],
+                },
+                body: vec![
+                    Atom {
                         relation: "reach".into(),
-                        terms: vec![Term::Var(0), Term::Var(1), Term::Var(2)],
+                        terms: vec![Term::Var(x), Term::Var(y), Term::Var(l)],
                     },
-                    body: vec![Atom {
+                    Atom {
                         relation: "edge".into(),
-                        terms: vec![Term::Var(0), Term::Var(1), Term::Var(2)],
-                    }],
-                },
-                Rule {
-                    var_names: vec!["x".into(), "y".into(), "z".into(), "l".into()],
-                    head: Atom {
-                        relation: "reach".into(),
-                        terms: vec![Term::Var(x), Term::Var(z), Term::Var(l)],
+                        terms: vec![Term::Var(y), Term::Var(z), Term::Var(l)],
                     },
-                    body: vec![
-                        Atom {
-                            relation: "reach".into(),
-                            terms: vec![Term::Var(x), Term::Var(y), Term::Var(l)],
-                        },
-                        Atom {
-                            relation: "edge".into(),
-                            terms: vec![Term::Var(y), Term::Var(z), Term::Var(l)],
-                        },
-                    ],
-                },
-            ],
-        }
+                ],
+                weight: 1,
+            },
+        ])
     }
 
     #[test]
@@ -720,19 +788,18 @@ mod tests {
     #[test]
     fn rejects_uninferable_columns_unless_declared() {
         // p(x) ← p(x): nothing pins down the type of p.
-        let program = Program {
-            rules: vec![Rule {
-                var_names: vec!["x".into()],
-                head: Atom {
-                    relation: "p".into(),
-                    terms: vec![Term::Var(0)],
-                },
-                body: vec![Atom {
-                    relation: "p".into(),
-                    terms: vec![Term::Var(0)],
-                }],
+        let program = Program::new(vec![Rule {
+            var_names: vec!["x".into()],
+            head: Atom {
+                relation: "p".into(),
+                terms: vec![Term::Var(0)],
+            },
+            body: vec![Atom {
+                relation: "p".into(),
+                terms: vec![Term::Var(0)],
             }],
-        };
+            weight: 1,
+        }]);
         let err = program
             .compile_in(&mut Catalog::new())
             .unwrap_err()

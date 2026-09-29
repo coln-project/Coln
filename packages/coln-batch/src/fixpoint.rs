@@ -11,7 +11,9 @@
 //!
 //! - A **non-recursive** stratum holds one relation. Its rules run once
 //!   over complete inputs, and the relation is its initial facts plus the
-//!   rows every rule derives, with their weights.
+//!   rows every rule derives, with their weights (a rule of weight -1
+//!   subtracts). If the relation is declared distinct, it keeps every row
+//!   of positive weight once.
 //! - A **recursive** stratum is a fixpoint over sets. Every round ends with
 //!   a Z-set `distinct`, so a row derived twice is still one fact and the
 //!   iteration stops on cycles. For the same reason its inputs, the
@@ -181,7 +183,8 @@ impl StratumEval<'_> {
     }
 
     /// A non-recursive stratum: its one relation is its initial facts plus
-    /// what every rule derives, weights and all.
+    /// what every rule derives, weights and all, reduced to a set if it is
+    /// declared distinct.
     fn once(&self, local: &mut Catalog, stats: &mut FixpointStats) -> Result<()> {
         let [relation] = self.stratum.relations.as_slice() else {
             unreachable!("a non-recursive stratum holds one relation");
@@ -191,6 +194,9 @@ impl StratumEval<'_> {
         for rule in self.rules() {
             let result = (self.exec)(&rule.query, &work)?;
             total = total.plus(&rule.materialize_head(&result, self.schema(relation)));
+        }
+        if self.compiled.distinct.contains(relation) {
+            total = total.distinct();
         }
         stats.rounds += 1;
         stats.new_facts_per_round.push(total.len());

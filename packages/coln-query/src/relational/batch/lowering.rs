@@ -111,9 +111,7 @@ pub fn lower(ir: &QueryIr, sources: &SourceSchemas) -> Result<LoweredPlan> {
         schemas.insert(constant.name.clone(), constant.schema.clone());
     }
     Ok(LoweredPlan {
-        program: Program {
-            rules: lowerer.rules,
-        },
+        program: Program::new(lowerer.rules),
         sources: lowerer.sources,
         constants: lowerer
             .constants
@@ -870,6 +868,7 @@ impl Lowerer {
                 terms: head_terms,
             },
             body,
+            weight: 1,
         });
         Ok(())
     }

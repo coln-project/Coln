@@ -136,19 +136,18 @@ fn empty_edb_terminates_with_empty_idb() {
 #[test]
 fn head_literals_work() {
     // flagged(x, 1) ← parent(x, y) — a head with a literal column.
-    let program = Program {
-        rules: vec![coln_batch::rule::Rule {
-            var_names: vec!["x".into(), "y".into()],
-            head: Atom {
-                relation: "flagged".into(),
-                terms: vec![Term::Var(0), Term::lit(1u64)],
-            },
-            body: vec![Atom {
-                relation: "parent".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            }],
+    let program = Program::new(vec![coln_batch::rule::Rule {
+        var_names: vec!["x".into(), "y".into()],
+        head: Atom {
+            relation: "flagged".into(),
+            terms: vec![Term::Var(0), Term::lit(1u64)],
+        },
+        body: vec![Atom {
+            relation: "parent".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
         }],
-    };
+        weight: 1,
+    }]);
     let edb = fixtures::ancestor_chain_catalog(4);
     let result = agree(&program, &edb, &["flagged"]);
     assert_eq!(
@@ -221,10 +220,9 @@ fn mutual_recursion_over_two_relations() {
                 terms: vec![Term::Var(0)],
             },
         ],
+        weight: 1,
     };
-    let program = Program {
-        rules: vec![step("odd", "even"), step("even", "odd")],
-    };
+    let program = Program::new(vec![step("odd", "even"), step("even", "odd")]);
 
     let result = agree(&program, &edb, &["even", "odd"]);
     assert_eq!(
@@ -240,38 +238,38 @@ fn idb_only_body_closes_in_fewer_rounds() {
     // path lengths double per round and the chain closes in fewer rounds
     // than its length.
     let k = 8;
-    let program = Program {
-        rules: vec![
-            Rule {
-                var_names: vec!["x".into(), "y".into()],
-                head: Atom {
+    let program = Program::new(vec![
+        Rule {
+            var_names: vec!["x".into(), "y".into()],
+            head: Atom {
+                relation: "reach".into(),
+                terms: vec![Term::Var(0), Term::Var(1)],
+            },
+            body: vec![Atom {
+                relation: "parent".into(),
+                terms: vec![Term::Var(0), Term::Var(1)],
+            }],
+            weight: 1,
+        },
+        Rule {
+            var_names: vec!["x".into(), "y".into(), "z".into()],
+            head: Atom {
+                relation: "reach".into(),
+                terms: vec![Term::Var(0), Term::Var(2)],
+            },
+            body: vec![
+                Atom {
                     relation: "reach".into(),
                     terms: vec![Term::Var(0), Term::Var(1)],
                 },
-                body: vec![Atom {
-                    relation: "parent".into(),
-                    terms: vec![Term::Var(0), Term::Var(1)],
-                }],
-            },
-            Rule {
-                var_names: vec!["x".into(), "y".into(), "z".into()],
-                head: Atom {
+                Atom {
                     relation: "reach".into(),
-                    terms: vec![Term::Var(0), Term::Var(2)],
+                    terms: vec![Term::Var(1), Term::Var(2)],
                 },
-                body: vec![
-                    Atom {
-                        relation: "reach".into(),
-                        terms: vec![Term::Var(0), Term::Var(1)],
-                    },
-                    Atom {
-                        relation: "reach".into(),
-                        terms: vec![Term::Var(1), Term::Var(2)],
-                    },
-                ],
-            },
-        ],
-    };
+            ],
+            weight: 1,
+        },
+    ]);
     let edb = fixtures::ancestor_chain_catalog(k);
 
     let result = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec).unwrap();
@@ -309,6 +307,7 @@ fn overlapping_rules_do_not_duplicate() {
                 terms: vec![Term::Var(1), Term::Var(2)],
             },
         ],
+        weight: 1,
     });
     let edb = fixtures::ancestor_chain_catalog(5);
     let result = agree(&program, &edb, &["ancestor"]);
@@ -318,19 +317,18 @@ fn overlapping_rules_do_not_duplicate() {
 #[test]
 fn nonrecursive_program_runs_once() {
     // No derived relation reads itself, so its rule runs a single time.
-    let program = Program {
-        rules: vec![Rule {
-            var_names: vec!["x".into(), "y".into()],
-            head: Atom {
-                relation: "copy".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            },
-            body: vec![Atom {
-                relation: "parent".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            }],
+    let program = Program::new(vec![Rule {
+        var_names: vec!["x".into(), "y".into()],
+        head: Atom {
+            relation: "copy".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
+        },
+        body: vec![Atom {
+            relation: "parent".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
         }],
-    };
+        weight: 1,
+    }]);
     let edb = fixtures::ancestor_chain_catalog(4);
 
     let result = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec).unwrap();
@@ -434,19 +432,18 @@ fn labeled_reachability_is_typed() {
 fn head_literals_can_be_strings() {
     // tagged(x, "seen") ← parent(x, y): the head literal enters the
     // dictionary at compile time and decodes on the way out.
-    let program = Program {
-        rules: vec![Rule {
-            var_names: vec!["x".into(), "y".into()],
-            head: Atom {
-                relation: "tagged".into(),
-                terms: vec![Term::Var(0), Term::lit("seen")],
-            },
-            body: vec![Atom {
-                relation: "parent".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            }],
+    let program = Program::new(vec![Rule {
+        var_names: vec!["x".into(), "y".into()],
+        head: Atom {
+            relation: "tagged".into(),
+            terms: vec![Term::Var(0), Term::lit("seen")],
+        },
+        body: vec![Atom {
+            relation: "parent".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
         }],
-    };
+        weight: 1,
+    }]);
     let edb = fixtures::ancestor_chain_catalog(3);
     let result = agree(&program, &edb, &["tagged"]);
     assert_eq!(
@@ -473,6 +470,7 @@ fn rule(head: (&str, &[usize]), body: &[(&str, &[usize])]) -> Rule {
         var_names: (0..num_vars).map(|v| format!("v{v}")).collect(),
         head: atom(head),
         body: body.iter().copied().map(atom).collect(),
+        weight: 1,
     }
 }
 
@@ -501,15 +499,13 @@ fn nonrecursive_relations_keep_their_weights() {
     let mut edb = Catalog::new();
     edb.insert(parent(vec![vec![0, 0, 1, 2], vec![1, 2, 3, 3]]));
     edb.insert(Relation::new("hub", ["x", "y"], vec![vec![0], vec![3]]));
-    let program = Program {
-        rules: vec![
-            rule(
-                ("two_hop", &[0, 2]),
-                &[("parent", &[0, 1]), ("parent", &[1, 2])],
-            ),
-            rule(("two_hop", &[0, 1]), &[("hub", &[0, 1])]),
-        ],
-    };
+    let program = Program::new(vec![
+        rule(
+            ("two_hop", &[0, 2]),
+            &[("parent", &[0, 1]), ("parent", &[1, 2])],
+        ),
+        rule(("two_hop", &[0, 1]), &[("hub", &[0, 1])]),
+    ]);
     let result = agree(&program, &edb, &["two_hop"]);
     assert_eq!(
         entries(result.get("two_hop").unwrap()),
@@ -586,27 +582,25 @@ fn strata_run_in_dependency_order() {
     // weights it reads. Edges: 0 -> 1 -> 2 -> 1 and 3 -> 3.
     let mut edb = Catalog::new();
     edb.insert(parent(vec![vec![0, 1, 2, 3], vec![1, 2, 1, 3]]));
-    let program = Program {
-        rules: vec![
-            rule(("reach", &[0, 1]), &[("parent", &[0, 1])]),
-            rule(
-                ("reach", &[0, 2]),
-                &[("reach", &[0, 1]), ("parent", &[1, 2])],
-            ),
-            rule(
-                ("cycle_node", &[0]),
-                &[("reach", &[0, 1]), ("reach", &[1, 0])],
-            ),
-            rule(
-                ("on_cycle", &[0, 1]),
-                &[("cycle_node", &[0]), ("parent", &[0, 1])],
-            ),
-            rule(
-                ("on_cycle", &[0, 2]),
-                &[("on_cycle", &[0, 1]), ("parent", &[1, 2])],
-            ),
-        ],
-    };
+    let program = Program::new(vec![
+        rule(("reach", &[0, 1]), &[("parent", &[0, 1])]),
+        rule(
+            ("reach", &[0, 2]),
+            &[("reach", &[0, 1]), ("parent", &[1, 2])],
+        ),
+        rule(
+            ("cycle_node", &[0]),
+            &[("reach", &[0, 1]), ("reach", &[1, 0])],
+        ),
+        rule(
+            ("on_cycle", &[0, 1]),
+            &[("cycle_node", &[0]), ("parent", &[0, 1])],
+        ),
+        rule(
+            ("on_cycle", &[0, 2]),
+            &[("on_cycle", &[0, 1]), ("parent", &[1, 2])],
+        ),
+    ]);
     let result = agree(&program, &edb, &["reach", "cycle_node", "on_cycle"]);
     assert_eq!(
         rows(result.get("reach").unwrap()),
@@ -630,4 +624,112 @@ fn strata_run_in_dependency_order() {
         vec![vec![1, 1], vec![1, 2], vec![2, 1], vec![2, 2], vec![3, 3]]
     );
     assert!(on_cycle.weights.iter().all(|&w| w == 1));
+}
+
+/// The same rule with another weight.
+fn weighing(weight: Weight, rule: Rule) -> Rule {
+    Rule { weight, ..rule }
+}
+
+#[test]
+fn a_rule_of_weight_minus_one_subtracts() {
+    // diff = a - b, as Z-sets: a row only in b comes out negative.
+    let mut edb = Catalog::new();
+    edb.insert(Relation::new("a", ["x", "y"], vec![vec![1, 2], vec![1, 2]]));
+    edb.insert(Relation::new("b", ["x", "y"], vec![vec![2, 3], vec![2, 3]]));
+    let program = Program::new(vec![
+        rule(("diff", &[0, 1]), &[("a", &[0, 1])]),
+        weighing(-1, rule(("diff", &[0, 1]), &[("b", &[0, 1])])),
+    ]);
+    let result = agree(&program, &edb, &["diff"]);
+    assert_eq!(
+        entries(result.get("diff").unwrap()),
+        vec![(vec![1, 1], 1), (vec![3, 3], -1)]
+    );
+}
+
+#[test]
+fn anti_join_is_a_subtraction_of_a_distinct_semi_join() {
+    // leaf(x) ← node(x), minus node(x), has_child(x): the nodes without a
+    // child. 0 has two children, so has_child must be distinct, or leaf
+    // would take 0 away twice.
+    let mut edb = Catalog::new();
+    edb.insert(parent(vec![vec![0, 0, 1, 2], vec![1, 2, 2, 3]]));
+    edb.insert(Relation::new("node", ["x"], vec![vec![0, 1, 2, 3]]));
+    let mut program = Program::new(vec![
+        rule(("has_child", &[0]), &[("parent", &[0, 1])]),
+        rule(("leaf", &[0]), &[("node", &[0])]),
+        weighing(
+            -1,
+            rule(("leaf", &[0]), &[("node", &[0]), ("has_child", &[0])]),
+        ),
+    ]);
+
+    let as_bag = agree(&program, &edb, &["leaf"]);
+    assert_eq!(
+        entries(as_bag.get("leaf").unwrap()),
+        vec![(vec![0], -1), (vec![3], 1)]
+    );
+
+    program.distinct.insert("has_child".into());
+    let result = agree(&program, &edb, &["has_child", "leaf"]);
+    assert_eq!(
+        entries(result.get("has_child").unwrap()),
+        vec![(vec![0], 1), (vec![1], 1), (vec![2], 1)]
+    );
+    assert_eq!(entries(result.get("leaf").unwrap()), vec![(vec![3], 1)]);
+}
+
+#[test]
+fn a_distinct_relation_keeps_each_row_once() {
+    // Without the declaration (0, 3) weighs 3, see
+    // `nonrecursive_relations_keep_their_weights`.
+    let mut edb = Catalog::new();
+    edb.insert(parent(vec![vec![0, 0, 1, 2], vec![1, 2, 3, 3]]));
+    edb.insert(Relation::new("hub", ["x", "y"], vec![vec![0], vec![3]]));
+    let mut program = Program::new(vec![
+        rule(
+            ("two_hop", &[0, 2]),
+            &[("parent", &[0, 1]), ("parent", &[1, 2])],
+        ),
+        rule(("two_hop", &[0, 1]), &[("hub", &[0, 1])]),
+    ]);
+    program.distinct.insert("two_hop".into());
+    let result = agree(&program, &edb, &["two_hop"]);
+    assert_eq!(
+        entries(result.get("two_hop").unwrap()),
+        vec![(vec![0, 3], 1)]
+    );
+}
+
+#[test]
+fn recursion_cannot_take_rows_away() {
+    // A subtracting rule inside the recursion is rejected up front.
+    let mut program = fixtures::ancestor_program();
+    program.rules[1].weight = -1;
+    let edb = fixtures::ancestor_chain_catalog(3);
+    let err = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec)
+        .err()
+        .expect("a subtracting recursive rule must be rejected")
+        .to_string();
+    assert!(err.contains("ancestor is recursive"), "{err}");
+
+    // So is a negative row that a subtraction feeds into a recursion.
+    let mut edb = Catalog::new();
+    edb.insert(parent(vec![vec![0], vec![1]]));
+    edb.insert(Relation::new("banned", ["x", "y"], vec![vec![5], vec![6]]));
+    let program = Program::new(vec![
+        rule(("allowed", &[0, 1]), &[("parent", &[0, 1])]),
+        weighing(-1, rule(("allowed", &[0, 1]), &[("banned", &[0, 1])])),
+        rule(("reach", &[0, 1]), &[("allowed", &[0, 1])]),
+        rule(
+            ("reach", &[0, 2]),
+            &[("reach", &[0, 1]), ("allowed", &[1, 2])],
+        ),
+    ]);
+    let err = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec)
+        .err()
+        .expect("a negative input to the recursion must be rejected")
+        .to_string();
+    assert!(err.contains("allowed holds a row of weight -1"), "{err}");
 }
