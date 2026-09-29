@@ -10,7 +10,10 @@ mod translation;
 
 use crate::{
     error::SyntaxError,
-    frontend::analysis::{ExecutionOrder, static_analysis_pipeline},
+    frontend::{
+        analysis::{ExecutionOrder, static_analysis_pipeline},
+        translation::Translator,
+    },
     host::{QueryIr, expr::Literal, operator::Operator},
     relational::schema::Column,
     scalarial::ScalarType,
@@ -43,7 +46,7 @@ trait LogicalProgram {
         &'a self,
         exec_order: ExecutionOrder<'a, Self::Predicate>,
     ) -> Result<QueryIr, SyntaxError> {
-        todo!()
+        Translator::new().run(&exec_order)
     }
 }
 
@@ -291,6 +294,16 @@ pub trait Rule: Identifiable<Self::Identifier> + fmt::Debug {
     /// The atoms of the rule's _body_. The head is _not_ among them, as
     /// otherwise, every rule would be falsely classified as self-recursive.
     fn atoms(&self) -> impl Iterator<Item = &Self::Atom>;
+
+    /// The atoms of the rule's _body_ which are _not_ negated.
+    fn positive_atoms(&self) -> impl Iterator<Item = &Self::Atom> {
+        self.atoms().filter(|atom| atom.is_positive())
+    }
+
+    /// The atoms of the rule's _body_ which are negated.
+    fn negative_atoms(&self) -> impl Iterator<Item = &Self::Atom> {
+        self.atoms().filter(|atom| atom.is_negative())
+    }
 
     /// The conditions of the rule's body. Conditions constrain a variable's
     /// domain.

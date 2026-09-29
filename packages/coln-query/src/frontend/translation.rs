@@ -44,13 +44,13 @@ use crate::{
     },
     relational::{
         expr::{
-            FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr, OutputKind,
-            ProjectionExpr, RelationIdx, SelectionExpr, SinkId, SourceExpr, UnionExpr,
+            AntiJoinExpr, FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr,
+            OutputKind, ProjectionExpr, RelationIdx, SelectionExpr, SinkId, SourceExpr, UnionExpr,
         },
         schema::Column,
     },
 };
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, hash_map::Entry};
 
 /// The rule type of a program's predicates, and the pieces hanging off it. Named
@@ -218,31 +218,37 @@ impl<'a, P: Predicate> Translator<'a, P> {
         }))
     }
 
-    /// A rule's body: its atoms joined on the variables they share, filtered by
-    /// its conditions.
+    /// Translates a rule's body. First, the body's atoms are partitioned
+    /// according to their polarity. Each partition is then handled by
+    /// [Self::conjunctive_fragment] which joins its atoms on the variables
+    /// they share. If there is a fragment with a negative polarity, an
+    /// [`AntiJoinExpr`] is added. Otherwise, the fragment with positive
+    /// polarity is used as is. Finally, the rule's [Rule::conditions()] are
+    /// applied on top of the expression as a [SelectionExpr].
     pub fn conjunctive_query(&self, rule: &P::Rule) -> Result<Expr, SyntaxError> {
-        let plans = rule
-            .atoms()
-            .map(|atom| self.atom(atom))
-            .collect::<Result<Vec<_>, SyntaxError>>()?;
-        if plans.is_empty() {
-            return Err(SyntaxError::new(format!(
-                "Rule '{}' has an empty body, so there is no relation to derive from",
-                rule.id(),
-            )));
-        }
+        let positive_fragment = self
+            .conjunctive_fragment(rule.positive_atoms())?
+            .ok_or_else(|| {
+                SyntaxError::new(format!(
+                    "Rule '{}' has an empty body of positive atoms",
+                    rule.id()
+                ))
+            })?;
+        let negative_fragment = self.conjunctive_fragment(rule.negative_atoms())?;
 
-        let on = join_variables(&plans);
-        let mut relations: Vec<Expr> = plans.into_iter().map(|plan| plan.relation).collect();
-        let joined = match relations.len() {
-            // A single atom has nothing to join against, and the join operators
-            // require at least two relations.
-            1 => relations.pop().expect("length checked"),
-            _ => Expr::from(MultiWayEquiJoinExpr::new(relations, on, None)?),
+        let conjunctive = if let Some(negative_fragment) = negative_fragment {
+            let on = antijoin_variables(&positive_fragment, &negative_fragment);
+            Expr::from(AntiJoinExpr {
+                left: positive_fragment.relation,
+                right: negative_fragment.relation,
+                on,
+            })
+        } else {
+            positive_fragment.relation
         };
 
         // All conditions become one condition by ANDing them, and a rule with
-        // none keeps `joined` unwrapped rather than gaining a vacuous selection.
+        // none keeps `conjunctive` unwrapped rather than gaining a vacuous selection.
         Ok(rule
             .conditions()
             .map(condition)
@@ -254,12 +260,47 @@ impl<'a, P: Predicate> Translator<'a, P> {
                 })
             })
             .into_iter()
-            .fold(joined, |relation, condition| {
+            .fold(conjunctive, |relation, condition| {
                 Expr::from(SelectionExpr {
                     relation,
                     condition,
                 })
             }))
+    }
+
+    /// A conjunctive fragment encompasses all atoms with the same polarity.
+    /// Concretely, that is all atoms of a rule's body which are either
+    /// non-negated (positive polarity) or negated (negative polarity).
+    fn conjunctive_fragment<'r>(
+        &self,
+        atoms: impl IntoIterator<Item = &'r AtomOf<P>>,
+    ) -> Result<Option<FragmentPlan<'r, P::Identifier>>, SyntaxError>
+    where
+        AtomOf<P>: 'r,
+    {
+        let plans = atoms
+            .into_iter()
+            .map(|atom| self.atom(atom))
+            .collect::<Result<Vec<_>, SyntaxError>>()?;
+        if plans.is_empty() {
+            return Ok(None);
+        }
+
+        let on = join_variables(&plans);
+        let (mut relations, vars): (Vec<Expr>, Vec<Vec<&P::Identifier>>) = plans
+            .into_iter()
+            .map(|plan| (plan.relation, plan.variables))
+            .collect();
+        let joined = match relations.len() {
+            // A single atom has nothing to join against, and the join operators
+            // require at least two relations.
+            1 => relations.pop().expect("length checked"),
+            _ => Expr::from(MultiWayEquiJoinExpr::new(relations, on, None)?),
+        };
+        Ok(Some(FragmentPlan {
+            relation: joined,
+            variables: vars.into_iter().flatten().collect(),
+        }))
     }
 
     /// One atom: the relation it names, filtered by what it pins down locally
@@ -335,10 +376,23 @@ impl<'a, P: Predicate> Translator<'a, P> {
     }
 }
 
+/// The relational plan for a conjunctive fragment, plus the variables it puts
+/// into scope.
+///
+/// Reporting the variables is what lets the enclosing conjunctive query derive
+/// its antijoin condition without re-deriving it from the
+/// [`MultiWayEquiJoinExpr`] just built.
+struct FragmentPlan<'r, I> {
+    relation: Expr,
+    /// In the order the fragment binds them, deduplicated.
+    variables: IndexSet<&'r I>,
+}
+
 /// The relational plan for one atom, plus the variables its projection exposes.
 ///
 /// Reporting the variables is what lets the enclosing conjunctive query derive
-/// its join condition without re-deriving it from the projection just built.
+/// its join condition without re-deriving it from the [`ProjectionExpr`] just
+/// built.
 struct AtomPlan<'r, I> {
     relation: Expr,
     /// In the order the atom binds them, each exposed under its own name.
@@ -414,6 +468,19 @@ fn join_variables<I: Identifier>(plans: &[AtomPlan<'_, I>]) -> Vec<JoinVariable>
                 .into_iter()
                 .map(|relation| (relation, Expr::from(VarExpr::new(variable.to_string()))))
                 .collect(),
+        })
+        .collect()
+}
+
+fn antijoin_variables<I: Identifier>(
+    left: &FragmentPlan<I>,
+    right: &FragmentPlan<I>,
+) -> Vec<(Expr, Expr)> {
+    left.variables
+        .intersection(&right.variables)
+        .map(|shared_var| {
+            let shared_var = Expr::from(VarExpr::new(shared_var.to_string()));
+            (shared_var.clone(), shared_var)
         })
         .collect()
 }
