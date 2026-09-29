@@ -733,3 +733,30 @@ fn recursion_cannot_take_rows_away() {
         .to_string();
     assert!(err.contains("allowed holds a row of weight -1"), "{err}");
 }
+
+#[test]
+fn recursion_reads_the_net_weight_of_stored_copies() {
+    // parent stores (0, 1) twice, with weights 2 and -1: net 1, an edge.
+    // (1, 2) is stored with weights 1 and -1: net 0, no edge at all.
+    // Neither is an error.
+    let mut edb = Catalog::new();
+    edb.insert(weighted(
+        "parent",
+        &[(0, 1, 2), (1, 2, 1), (0, 1, -1), (1, 2, -1), (2, 3, 1)],
+    ));
+    let program = fixtures::ancestor_program();
+    let result = agree(&program, &edb, &["ancestor"]);
+    assert_eq!(
+        rows(result.get("ancestor").unwrap()),
+        vec![vec![0, 1], vec![2, 3]]
+    );
+
+    // Copies that add up to a negative weight are refused.
+    let mut edb = Catalog::new();
+    edb.insert(weighted("parent", &[(0, 1, 1), (0, 1, -2)]));
+    let err = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec)
+        .err()
+        .expect("net weight -1 must be refused")
+        .to_string();
+    assert!(err.contains("parent holds a row of weight -1"), "{err}");
+}

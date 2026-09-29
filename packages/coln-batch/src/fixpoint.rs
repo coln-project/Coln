@@ -18,7 +18,9 @@
 //!   a Z-set `distinct`, so a row derived twice is still one fact and the
 //!   iteration stops on cycles. For the same reason its inputs, the
 //!   relations its rules read from outside it and its initial facts, must
-//!   have positive weights: a fixpoint over sets cannot take rows away.
+//!   not hold a row of negative weight: a fixpoint over sets cannot take
+//!   rows away. What counts is a row's net weight, the sum over its stored
+//!   copies; a row whose copies cancel out is absent.
 //!
 //! Two strategies for the recursive strata, over the same machinery:
 //!
@@ -55,7 +57,7 @@ use anyhow::{Result, bail};
 use crate::query::{Catalog, Layered, Query, Tables};
 use crate::relation::Relation;
 use crate::rule::{CompiledProgram, LoweredRule, Program, Stratum, delta_name};
-use crate::types::Schema;
+use crate::types::{Schema, add_weights};
 
 /// A query executor, e.g. `generic_join::execute` or
 /// `binary_join::execute`.
@@ -213,10 +215,10 @@ impl StratumEval<'_> {
         let mut totals: BTreeMap<String, Relation> = BTreeMap::new();
         for relation in &self.stratum.relations {
             let initial = self.initial(relation)?;
-            if let Some(&weight) = initial.weights.iter().find(|&&w| w <= 0) {
+            if let Some(&weight) = initial.weights.iter().find(|&&w| w < 0) {
                 bail!(
                     "the initial facts of the recursive relation {relation} hold a row of \
-                     weight {weight}; recursion computes sets and needs positive weights"
+                     weight {weight}; recursion computes sets and cannot take rows away"
                 );
             }
             totals.insert(relation.clone(), initial.distinct());
@@ -261,8 +263,10 @@ impl StratumEval<'_> {
         Ok(())
     }
 
-    /// Every relation a recursive stratum reads from outside itself must
-    /// have positive weights, like its initial facts.
+    /// No relation a recursive stratum reads from outside itself may hold
+    /// a row of negative net weight, like its initial facts. A table may
+    /// hold a row in several copies; sorted by all columns, the copies are
+    /// adjacent, and their weights add up to the row's net weight.
     fn check_inputs(&self, work: &dyn Tables) -> Result<()> {
         let inputs: BTreeSet<&str> = self
             .rules()
@@ -271,17 +275,27 @@ impl StratumEval<'_> {
             .filter(|name| !self.stratum.relations.iter().any(|r| r == name))
             .collect();
         for name in inputs {
-            let identity: Vec<usize> = (0..work.schema(name)?.arity()).collect();
+            let arity = work.schema(name)?.arity();
+            let identity: Vec<usize> = (0..arity).collect();
             // TODO(perf): an in-memory catalog sorts a copy just to read the
             // weights.
             let table = work.sorted(name, &identity)?;
-            if let Some(row) = (0..table.len()).find(|&r| table.weight(r) <= 0) {
-                bail!(
-                    "{name} holds a row of weight {} and is read by the recursive relations \
-                     {}; recursion computes sets and needs positive weights",
-                    table.weight(row),
-                    self.stratum.relations.join(", ")
-                );
+            let mut start = 0;
+            while start < table.len() {
+                let same =
+                    |r: usize| (0..arity).all(|c| table.value(r, c) == table.value(start, c));
+                let end = (start + 1..table.len())
+                    .find(|&r| !same(r))
+                    .unwrap_or(table.len());
+                let net = (start..end).map(|r| table.weight(r)).fold(0, add_weights);
+                if net < 0 {
+                    bail!(
+                        "{name} holds a row of weight {net} and is read by the recursive \
+                         relations {}; recursion computes sets and cannot take rows away",
+                        self.stratum.relations.join(", ")
+                    );
+                }
+                start = end;
             }
         }
         Ok(())
