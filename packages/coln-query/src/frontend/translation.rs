@@ -30,8 +30,8 @@
 //! Output(Union(path))` reads the rule and only then shadows it, which is fine.
 
 use super::{
-    AggregateRules, Atom, Bind, Component, Cond, Identifiable, Identifier, Lit, Predicate, Rule,
-    TypedVar,
+    AggregateRules, Atom, Bind, Component, Cond, IdOf, Identifiable, Identifier, Lit, Predicate,
+    Rule, TypedVar,
 };
 use crate::{
     error::SyntaxError,
@@ -58,6 +58,9 @@ use std::collections::{HashMap, hash_map::Entry};
 type RuleOf<P> = <P as AggregateRules>::Rule;
 type AtomOf<P> = <RuleOf<P> as Rule>::Atom;
 type CondOf<P> = <RuleOf<P> as Rule>::Cond;
+/// The identifier naming a variable, which is a space of its own: a predicate
+/// is named across rules, a variable only within one.
+type VarIdOf<P> = IdOf<<AtomOf<P> as Atom>::Var>;
 
 pub(super) struct Translator<'a, P: Predicate> {
     /// The IDB, keyed the way an atom looks a relation up. Consulted before the
@@ -274,7 +277,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     fn conjunctive_fragment<'r>(
         &self,
         atoms: impl IntoIterator<Item = &'r AtomOf<P>>,
-    ) -> Result<Option<FragmentPlan<'r, P::Identifier>>, SyntaxError>
+    ) -> Result<Option<FragmentPlan<'r, VarIdOf<P>>>, SyntaxError>
     where
         AtomOf<P>: 'r,
     {
@@ -287,7 +290,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
         }
 
         let on = join_variables(&plans);
-        let (mut relations, vars): (Vec<Expr>, Vec<Vec<&P::Identifier>>) = plans
+        let (mut relations, vars): (Vec<Expr>, Vec<Vec<&VarIdOf<P>>>) = plans
             .into_iter()
             .map(|plan| (plan.relation, plan.variables))
             .collect();
@@ -305,7 +308,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
 
     /// One atom: the relation it names, filtered by what it pins down locally
     /// and projected onto the variables it brings into scope.
-    fn atom<'r>(&self, atom: &'r AtomOf<P>) -> Result<AtomPlan<'r, P::Identifier>, SyntaxError> {
+    fn atom<'r>(&self, atom: &'r AtomOf<P>) -> Result<AtomPlan<'r, VarIdOf<P>>, SyntaxError> {
         let name = atom.id();
         // The IDB is consulted first: a predicate shadows a base relation of
         // the same name. A derived relation is bound to a host variable rather

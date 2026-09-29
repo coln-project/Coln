@@ -23,13 +23,27 @@ use std::fmt;
 
 pub trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash::Hash {}
 
-pub trait Identifiable<Identifier> {
-    fn id(&self) -> &Identifier;
+pub trait Identifiable {
+    type Identifier: Identifier;
+
+    fn id(&self) -> &Self::Identifier;
 }
 
+/// The identifier of something [`Identifiable`]. Named because the path is
+/// unreadable wherever the identifiable type is itself an associated type.
+pub type IdOf<T> = <T as Identifiable>::Identifier;
+
+/// The identifier naming a predicate, spelled as the rules referencing it spell
+/// it: an [`Atom`]'s identifier _is_ a predicate reference, which makes the
+/// rule's atoms the origin of this space rather than the predicates themselves.
+///
+/// Distinct from `IdOf<R>`, which names the rule itself. A frontend keeping
+/// rule names apart from predicate names instantiates the two differently;
+/// plain Datalog may pass the same type for both.
+pub type PredIdOf<R> = IdOf<<R as Rule>::Atom>;
+
 trait LogicalProgram {
-    type Identifier: Identifier;
-    type Predicate: Predicate<Identifier = Self::Identifier>;
+    type Predicate: Predicate;
 
     /// All predicates of the program, each exactly once and in no particular
     /// order. Together they form the IDB.
@@ -51,8 +65,7 @@ trait LogicalProgram {
 }
 
 trait AggregateRules {
-    type Identifier: Identifier;
-    type Rule: Rule<Identifier = Self::Identifier>;
+    type Rule: Rule;
 
     /// All rules that contribute to the definition of this [`Predicate`], or,
     /// for a [`Component`], of all of its members.
@@ -62,8 +75,9 @@ trait AggregateRules {
     /// itself. See [`Component::rec_rules`].
     fn rules(&self) -> impl Iterator<Item = &Self::Rule>;
 
-    /// If any rule references the `identifier`.
-    fn references(&self, identifier: &Self::Identifier) -> bool {
+    /// If any rule references the `identifier`, which names a predicate and is
+    /// hence not the space a rule's own [`id`](Identifiable::id) lives in.
+    fn references(&self, identifier: &PredIdOf<Self::Rule>) -> bool {
         self.rules().any(|rule| rule.references(identifier))
     }
 }
@@ -72,7 +86,7 @@ trait AggregateRules {
 /// the predicates reference each other (mutual recursion) and therefore form
 /// a component.
 trait Component: AggregateRules {
-    type Predicate: Predicate<Identifier = Self::Identifier>;
+    type Predicate: Predicate<Rule = Self::Rule>;
 
     fn members(&self) -> impl Iterator<Item = &Self::Predicate>;
 
@@ -115,7 +129,16 @@ trait Component: AggregateRules {
 
 /// A predicate is either defined by one or multiple rules (part of the IDB),
 /// or it is given externally (part of the EDB).
-trait Predicate: Identifiable<Self::Identifier> + AggregateRules {
+///
+/// A predicate is named in the space its rules' atoms reference it by, which is
+/// what lets a rule reference a predicate at all: [`is_self_recursive`] hands
+/// this predicate's own [`id`](Identifiable::id) to
+/// [`AggregateRules::references`], and a [`Component`] hands it its members'.
+/// Note that this is [`PredIdOf`] and not `IdOf<Self::Rule>`: a rule's own name
+/// is a space of its own.
+///
+/// [`is_self_recursive`]: Self::is_self_recursive
+trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + AggregateRules {
     /// The columns this predicate's relation exposes, in order. Every rule's
     /// head fills exactly these, positionally.
     ///
@@ -157,8 +180,7 @@ impl<I, R> DatalogProgram<I, R> {
     }
 }
 
-impl<I: Identifier, R: Rule<Identifier = I>> LogicalProgram for DatalogProgram<I, R> {
-    type Identifier = I;
+impl<I: Identifier, R: Rule<Atom: Atom<Identifier = I>>> LogicalProgram for DatalogProgram<I, R> {
     type Predicate = RulePredicate<I, R>;
 
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
@@ -174,7 +196,7 @@ pub struct RulePredicate<I, R> {
     rules: Vec<R>,
 }
 
-impl<I: Identifier, R: Rule<Identifier = I>> RulePredicate<I, R> {
+impl<I: Identifier, R: Rule> RulePredicate<I, R> {
     /// Slots `rules` into the predicates `declarations` declares, each rule
     /// paired with the definand naming the predicate it derives.
     ///
@@ -232,7 +254,7 @@ struct UnmatchedRules<I, R> {
     rules: Vec<(I, R)>,
 }
 
-impl<I: Identifier, R: Rule<Identifier = I>> fmt::Display for UnmatchedRules<I, R> {
+impl<I: Identifier, R: Rule> fmt::Display for UnmatchedRules<I, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.rules
             .iter()
@@ -249,14 +271,15 @@ impl<I: Identifier, R: Rule<Identifier = I>> fmt::Display for UnmatchedRules<I, 
     }
 }
 
-impl<I: Identifier, R> Identifiable<I> for RulePredicate<I, R> {
+impl<I: Identifier, R> Identifiable for RulePredicate<I, R> {
+    type Identifier = I;
+
     fn id(&self) -> &I {
         &self.name
     }
 }
 
-impl<I: Identifier, R: Rule<Identifier = I>> AggregateRules for RulePredicate<I, R> {
-    type Identifier = I;
+impl<I: Identifier, R: Rule> AggregateRules for RulePredicate<I, R> {
     type Rule = R;
 
     fn rules(&self) -> impl Iterator<Item = &Self::Rule> {
@@ -264,7 +287,7 @@ impl<I: Identifier, R: Rule<Identifier = I>> AggregateRules for RulePredicate<I,
     }
 }
 
-impl<I: Identifier, R: Rule<Identifier = I>> Predicate for RulePredicate<I, R> {
+impl<I: Identifier, R: Rule<Atom: Atom<Identifier = I>>> Predicate for RulePredicate<I, R> {
     fn columns(&self) -> impl Iterator<Item = &Column> {
         self.columns.iter()
     }
@@ -273,13 +296,23 @@ impl<I: Identifier, R: Rule<Identifier = I>> Predicate for RulePredicate<I, R> {
 /// A rule contains atoms and conditions, sometimes united under the umbrella
 /// term _proposition_.
 ///
+/// [`Identifiable::id`] names the _rule_, in a space of its own: the predicates
+/// a rule references are named by its [`atoms`](Self::atoms), which is
+/// [`PredIdOf<Self>`](PredIdOf) and deliberately unrelated to `Self::Identifier`.
+/// Nothing but diagnostics and [IR variable names] reads a rule's own name.
+///
 /// [`fmt::Debug`] so that anything carrying rules around — [`UnmatchedRules`],
 /// say — can be unwrapped and printed without a frontend having to be asked
 /// for it a second time.
-pub trait Rule: Identifiable<Self::Identifier> + fmt::Debug {
-    type Identifier: Identifier;
-    type Atom: Atom<Identifier = Self::Identifier>;
-    type Cond: Cond;
+///
+/// [IR variable names]: super::frontend::translation
+pub trait Rule: Identifiable + fmt::Debug {
+    type Atom: Atom;
+    /// A condition constrains a variable some atom of the same rule binds, so
+    /// the two have to be the very same type. Only [`Cond::Var`] is pinned:
+    /// literals name nothing and are only ever read out as a [`Literal`], so a
+    /// condition is free to carry them differently than an atom does.
+    type Cond: Cond<Var = <Self::Atom as Atom>::Var>;
 
     /// The atom this rule derives, its _definand_. Its
     /// [`bindings`](Atom::bindings) say which term fills each of the derived
@@ -309,14 +342,16 @@ pub trait Rule: Identifiable<Self::Identifier> + fmt::Debug {
     /// domain.
     fn conditions(&self) -> impl Iterator<Item = &Self::Cond>;
 
-    fn references(&self, identifier: &Self::Identifier) -> bool {
+    /// If the rule references the predicate `identifier` names. Takes a
+    /// predicate name, not a rule name, which is why it is [`PredIdOf`] rather
+    /// than `Self::Identifier`.
+    fn references(&self, identifier: &PredIdOf<Self>) -> bool {
         self.atoms().find(|atom| atom.id() == identifier).is_some()
     }
 }
 
 pub trait Cond: fmt::Debug {
-    type Identifier: Identifier;
-    type Var: TypedVar<Identifier = Self::Identifier>;
+    type Var: TypedVar;
     type Lit: Lit;
 
     fn operator(&self) -> impl Into<Operator>;
@@ -324,9 +359,8 @@ pub trait Cond: fmt::Debug {
     fn right(&self) -> Bind<&Self::Var, &Self::Lit>;
 }
 
-pub trait Atom: Identifiable<Self::Identifier> + fmt::Debug {
-    type Identifier: Identifier;
-    type Var: TypedVar<Identifier = Self::Identifier>;
+pub trait Atom: Identifiable + fmt::Debug {
+    type Var: TypedVar;
     type Lit: Lit;
 
     fn is_positive(&self) -> bool;
@@ -362,9 +396,7 @@ pub enum Bind<Var, Lit> {
     Lit(Lit),
 }
 
-pub trait TypedVar: Identifiable<Self::Identifier> + fmt::Debug {
-    type Identifier: Identifier;
-
+pub trait TypedVar: Identifiable + fmt::Debug {
     fn name(&self) -> &Self::Identifier {
         self.id()
     }
@@ -459,9 +491,9 @@ mod tests {
         let predicates = RulePredicate::group(
             declarations(&["path"]),
             vec![
-                ("path".to_owned(), rule("r0", "base_case", &["edge"])),
+                ("path".into(), rule("r0", "base_case", &["edge"])),
                 (
-                    "path".to_owned(),
+                    "path".into(),
                     rule("r1", "transitive_closure", &["path", "edge"]),
                 ),
             ],
@@ -480,7 +512,7 @@ mod tests {
             vec![
                 derives("path", "r0", &["edge"]),
                 derives("pathh", "r1", &["edge"]),
-                ("paths".to_owned(), rule("r2", "path", &["path", "edge"])),
+                ("paths".into(), rule("r2", "path", &["path", "edge"])),
             ],
         )
         .expect_err("two definands name undeclared predicates");
@@ -493,7 +525,7 @@ mod tests {
 
     #[test]
     fn grouping_nothing_yields_no_predicates() {
-        let nothing = Vec::<(String, TestRule)>::new();
+        let nothing = Vec::<(PredicateName, TestRule)>::new();
         let predicates =
             RulePredicate::group(declarations(&[]), nothing).expect("nothing to mismatch");
         assert!(predicates.is_empty());

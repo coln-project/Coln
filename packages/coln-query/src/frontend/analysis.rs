@@ -4,14 +4,13 @@
 
 //! This module does static analysis of a Datalog program.
 
-use std::fmt;
-
 use super::graph_utils::gabow;
-use super::{AggregateRules, Component, Identifiable, LogicalProgram, Predicate, Rule};
+use super::{AggregateRules, Component, IdOf, Identifiable, LogicalProgram, Predicate, Rule};
 use crate::frontend::Atom;
 use crate::frontend::graph_utils::vertex_degrees;
 use anyhow::bail;
 use indexmap::IndexMap;
+use std::fmt;
 
 pub(super) fn static_analysis_pipeline<'a, LP: LogicalProgram>(
     logical_program: &'a LP,
@@ -56,7 +55,6 @@ pub(super) struct PredicateComponent<'a, P> {
 }
 
 impl<P: Predicate> AggregateRules for PredicateComponent<'_, P> {
-    type Identifier = P::Identifier;
     type Rule = P::Rule;
 
     fn rules(&self) -> impl Iterator<Item = &Self::Rule> {
@@ -79,7 +77,7 @@ impl<P: Predicate> Component for PredicateComponent<'_, P> {
 /// edge `p1 -> p2`, whenever `p1` depends on `p2`, that is, `p1` mentions `p2`
 /// in one of its body's [atoms](Atom).
 struct PredicateDependencyGraph<'a, LP: LogicalProgram> {
-    predicates: IndexMap<&'a LP::Identifier, &'a LP::Predicate>,
+    predicates: IndexMap<&'a IdOf<LP::Predicate>, &'a LP::Predicate>,
     adjacency: Adjacency<EdgeLabel>,
 }
 
@@ -89,7 +87,7 @@ impl<'a, LP: LogicalProgram> PredicateDependencyGraph<'a, LP> {
         // computed later, and the map's keys are what atoms are tested against
         // to compute the dependencies. This mapping is local to this function,
         // so the node ids are stable only within the context of this function.
-        let predicates: IndexMap<&'a LP::Identifier, &'a LP::Predicate> = program
+        let predicates: IndexMap<&'a IdOf<LP::Predicate>, &'a LP::Predicate> = program
             .predicates()
             .map(|predicate| (predicate.id(), predicate))
             // TODO: This silently overwrites.

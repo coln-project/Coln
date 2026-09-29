@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Test scaffolding for this layer: a [`LogicalProgram`] implemented over plain
-//! strings, plus builders that let a test read as the Datalog it stands for.
+//! Test scaffolding for this layer: a [`LogicalProgram`] over the three
+//! identifier spaces declared below, plus builders that let a test read as the
+//! Datalog it stands for.
 //!
 //! Shared by the tests of [`super`] and of [`super::translation`], which is why
 //! it sits in a module of its own rather than inside either one's `mod tests`.
@@ -12,14 +13,61 @@ use super::*;
 use crate::{relational::schema::TableSchema, test_utils::table_schema};
 use std::collections::{HashMap, HashSet};
 
-impl Identifier for String {}
+/// Declares an identifier space: a name that is a type of its own, so that
+/// handing one space's name where another belongs fails to compile.
+macro_rules! name_space {
+    ($(#[$doc:meta])* $name:ident) => {
+        $(#[$doc])*
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        pub(super) struct $name(String);
+
+        impl $name {
+            pub(super) fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(name: &str) -> Self {
+                Self(name.to_owned())
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+
+        impl Identifier for $name {}
+    };
+}
+
+name_space! {
+    /// What an [`Atom`] references and a [`Predicate`] is declared under. Names
+    /// a base relation of the EDB just as well: an atom cannot tell one from a
+    /// derived predicate by its name alone, which is the whole point of the
+    /// shadowing [`Translator`](super::translation) resolves.
+    PredicateName
+}
+
+name_space! {
+    /// A rule's own name. Read by diagnostics and by the IR variable names
+    /// translation mints, never to reference anything.
+    RuleName
+}
+
+name_space! {
+    /// A variable, in scope only within the one rule binding it.
+    VarName
+}
 
 /// A predicate named `name`, defined by one rule per entry in `rules`,
 /// each rule listing the names its atoms reference. A name that is not a
 /// predicate of the program stands for a base table from the EDB.
 pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
     TestPredicate {
-        name: name.to_owned(),
+        name: name.into(),
         columns: columns(),
         rules: rules
             .iter()
@@ -36,7 +84,7 @@ pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
 /// the tests that only look at the reference graph need.
 pub(super) fn rule(name: &str, head: &str, atoms: &[&str]) -> TestRule {
     TestRule {
-        name: name.to_owned(),
+        name: name.into(),
         head: atom(head),
         atoms: atoms.iter().map(|atom_spec| atom(atom_spec)).collect(),
     }
@@ -64,15 +112,13 @@ pub(super) fn atom(spec: &str) -> TestAtom {
         .map(|(position, term)| {
             let bind = match term.parse::<u64>() {
                 Ok(value) => Bind::Lit(TestLit(Literal::Uint(value))),
-                Err(_) => Bind::Var(TestTypedVar {
-                    name: term.to_owned(),
-                }),
+                Err(_) => Bind::Var(TestTypedVar { name: term.into() }),
             };
             (position, bind)
         })
         .collect();
     TestAtom {
-        name: name.trim().to_owned(),
+        name: name.trim().into(),
         positive,
         bindings,
     }
@@ -82,7 +128,7 @@ pub(super) fn atom(spec: &str) -> TestAtom {
 /// [`RulePredicate::group`] takes. The rule heads an atom named after the
 /// definand, which is the ordinary case; pass an explicit pair where the
 /// two have to differ.
-pub(super) fn derives(head: &str, name: &str, atoms: &[&str]) -> (String, TestRule) {
+pub(super) fn derives(head: &str, name: &str, atoms: &[&str]) -> (PredicateName, TestRule) {
     (atom(head).name, rule(name, head, atoms))
 }
 
@@ -136,10 +182,10 @@ pub(super) fn columns() -> Vec<Column> {
 }
 
 /// A declaration for each `name`, all sharing [`columns`].
-pub(super) fn declarations(names: &[&str]) -> Vec<(String, Vec<Column>)> {
+pub(super) fn declarations(names: &[&str]) -> Vec<(PredicateName, Vec<Column>)> {
     names
         .iter()
-        .map(|name| ((*name).to_owned(), columns()))
+        .map(|name| ((*name).into(), columns()))
         .collect()
 }
 
@@ -162,7 +208,6 @@ pub(super) struct TestLogicalProgram {
 }
 
 impl LogicalProgram for TestLogicalProgram {
-    type Identifier = String;
     type Predicate = TestPredicate;
 
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
@@ -172,23 +217,24 @@ impl LogicalProgram for TestLogicalProgram {
 
 /// The tests use [`RulePredicate`] itself as their [`Predicate`], so the
 /// scaffolding stops at the rule level.
-pub(super) type TestPredicate = RulePredicate<String, TestRule>;
+pub(super) type TestPredicate = RulePredicate<PredicateName, TestRule>;
 
 #[derive(Debug)]
 pub(super) struct TestRule {
-    name: String,
+    name: RuleName,
     head: TestAtom,
     atoms: Vec<TestAtom>,
 }
 
-impl Identifiable<String> for TestRule {
-    fn id(&self) -> &String {
+impl Identifiable for TestRule {
+    type Identifier = RuleName;
+
+    fn id(&self) -> &RuleName {
         &self.name
     }
 }
 
 impl Rule for TestRule {
-    type Identifier = String;
     type Atom = TestAtom;
     type Cond = TestCond;
 
@@ -207,19 +253,20 @@ impl Rule for TestRule {
 
 #[derive(Debug)]
 pub(super) struct TestAtom {
-    name: String,
+    name: PredicateName,
     positive: bool,
     bindings: Vec<(usize, Bind<TestTypedVar, TestLit>)>,
 }
 
-impl Identifiable<String> for TestAtom {
-    fn id(&self) -> &String {
+impl Identifiable for TestAtom {
+    type Identifier = PredicateName;
+
+    fn id(&self) -> &PredicateName {
         &self.name
     }
 }
 
 impl Atom for TestAtom {
-    type Identifier = String;
     type Var = TestTypedVar;
     type Lit = TestLit;
 
@@ -236,18 +283,18 @@ impl Atom for TestAtom {
 
 #[derive(Debug)]
 pub(super) struct TestTypedVar {
-    name: String,
+    name: VarName,
 }
 
-impl Identifiable<String> for TestTypedVar {
-    fn id(&self) -> &String {
+impl Identifiable for TestTypedVar {
+    type Identifier = VarName;
+
+    fn id(&self) -> &VarName {
         &self.name
     }
 }
 
 impl TypedVar for TestTypedVar {
-    type Identifier = String;
-
     fn ty(&self) -> ScalarType {
         ScalarType::Uint
     }
@@ -272,7 +319,6 @@ pub(super) struct TestCond {
 }
 
 impl Cond for TestCond {
-    type Identifier = String;
     type Var = TestTypedVar;
     type Lit = TestLit;
 
@@ -311,9 +357,9 @@ pub(super) fn edb() -> HashMap<String, TableSchema> {
 }
 
 /// A predicate declaration, every column of it a `Uint`.
-pub(super) fn declare(name: &str, columns: &[&str]) -> (String, Vec<Column>) {
+pub(super) fn declare(name: &str, columns: &[&str]) -> (PredicateName, Vec<Column>) {
     (
-        name.to_owned(),
+        name.into(),
         columns
             .iter()
             .map(|column| Column::new(*column, ScalarType::Uint))
