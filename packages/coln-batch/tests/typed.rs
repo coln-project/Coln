@@ -6,18 +6,20 @@
 //! type the engine knows.
 //!
 //! A `u64` instance (relations, literals, expected results) is mapped
-//! cell by cell through an injective function into each type. The typed
-//! run must then produce exactly the image of the `u64` result under the
-//! same function, on every executor and every fixpoint strategy. Beyond
-//! that, one query mixes three types across its columns, and the edge
-//! values of every type (extremes, empty and non-ASCII strings) go
-//! through a join instead of only through a round trip.
+//! cell by cell through an injective function into each type, weights
+//! untouched. The typed run must then produce exactly the image of the
+//! `u64` result under the same function, with the same weights, on every
+//! executor and every fixpoint strategy; every query also runs over a
+//! weighted copy of its instance. Beyond that, one query mixes three types
+//! across its columns, and the edge values of every type (extremes, empty
+//! and non-ASCII strings) go through a join instead of only through a
+//! round trip.
 
 use coln_batch::fixpoint::{self, Exec, FixpointResult};
 use coln_batch::query::{Atom, Catalog, Query, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rule::Program;
-use coln_batch::types::{Column, ScalarType, Schema, Value};
+use coln_batch::types::{Column, ScalarType, Schema, Value, Weight};
 use coln_batch::{binary_join, fixtures, generate, generic_join, reference};
 
 /// A fixpoint strategy, `semi_naive` or `naive`.
@@ -60,7 +62,7 @@ fn lift_row(row: &[u64], types: &[ScalarType]) -> Vec<Value> {
 }
 
 /// Every relation of a `u64` catalog, lifted column by column into the
-/// types `types_of` assigns to it.
+/// types `types_of` assigns to it, every row keeping its weight.
 fn lift_catalog(base: &Catalog, types_of: impl Fn(&str, usize) -> ScalarType) -> Catalog {
     let mut lifted = Catalog::new();
     for name in base.names() {
@@ -73,12 +75,28 @@ fn lift_catalog(base: &Catalog, types_of: impl Fn(&str, usize) -> ScalarType) ->
                 .zip(&types)
                 .map(|(column, &ty)| Column::new(column.name.clone(), ty)),
         );
-        let rows: Vec<Vec<Value>> = (0..rel.len())
-            .map(|i| lift_row(&rel.row(i), &types))
+        let rows: Vec<(Vec<Value>, Weight)> = (0..rel.len())
+            .map(|i| (lift_row(&rel.row(i), &types), rel.weight(i)))
             .collect();
-        lifted.insert_rows(name, schema, rows).unwrap();
+        let rel =
+            Relation::from_weighted_rows(name, schema, rows, lifted.dictionary_mut()).unwrap();
+        lifted.insert(rel);
     }
     lifted
+}
+
+/// The same relations with weights: row `i` weighs `i % 3 + 1`, negated
+/// for every fourth row.
+fn weighted(base: &Catalog) -> Catalog {
+    let mut weighted = base.clone();
+    for name in base.names() {
+        let mut rel = base.get(name).unwrap().clone();
+        for (i, w) in rel.weights.iter_mut().enumerate() {
+            *w = (i % 3 + 1) as Weight * if i % 4 == 3 { -1 } else { 1 };
+        }
+        weighted.insert(rel);
+    }
+    weighted
 }
 
 /// A query's unsigned literals lifted into `ty`.
@@ -94,10 +112,25 @@ fn lift_query(query: &Query, ty: ScalarType) -> Query {
     lifted
 }
 
-/// The rows of a `u64` relation lifted into `types`, sorted by value.
-fn lifted_rows(rel: &Relation, types: &[ScalarType]) -> Vec<Vec<Value>> {
-    let mut rows: Vec<Vec<Value>> = (0..rel.len())
-        .map(|i| lift_row(&rel.row(i), types))
+/// The rows of a `u64` relation lifted into `types`, with their weights,
+/// sorted by value.
+fn lifted_entries(rel: &Relation, types: &[ScalarType]) -> Vec<(Vec<Value>, Weight)> {
+    let mut rows: Vec<(Vec<Value>, Weight)> = (0..rel.len())
+        .map(|i| (lift_row(&rel.row(i), types), rel.weight(i)))
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// A typed relation decoded with its weights, sorted by value.
+fn decoded_entries(rel: &Relation, catalog: &Catalog) -> Vec<(Vec<Value>, Weight)> {
+    let mut rows: Vec<(Vec<Value>, Weight)> = (0..rel.len())
+        .map(|i| {
+            (
+                rel.row_values(i, catalog.dictionary()).unwrap(),
+                rel.weight(i),
+            )
+        })
         .collect();
     rows.sort();
     rows
@@ -188,29 +221,31 @@ fn same_query_every_type() {
         let mut cases = literal_cases();
         cases.extend(fixture_cases(ty));
         for (name, query, base) in cases {
-            let expected_u64 = reference::execute(&query, &base).unwrap();
-            let types = vec![ty; expected_u64.arity()];
-            let expected = lifted_rows(&expected_u64, &types);
+            for base in [weighted(&base), base] {
+                let expected_u64 = reference::execute(&query, &base).unwrap();
+                let types = vec![ty; expected_u64.arity()];
+                let expected = lifted_entries(&expected_u64, &types);
 
-            let lifted = lift_catalog(&base, |_, _| ty);
-            let lifted_query = lift_query(&query, ty);
-            for (executor, exec) in [
-                ("oracle", reference::execute as Exec),
-                ("binary join", binary_join::execute as Exec),
-                ("generic join", generic_join::execute as Exec),
-            ] {
-                let result = exec(&lifted_query, &lifted)
-                    .unwrap_or_else(|e| panic!("{name} over {ty}: {executor} failed: {e}"));
-                assert_eq!(
-                    result.schema.types(),
-                    types,
-                    "{name} over {ty}: {executor} result schema"
-                );
-                assert_eq!(
-                    decoded(&result, &lifted),
-                    expected,
-                    "{name} over {ty}: {executor} result"
-                );
+                let lifted = lift_catalog(&base, |_, _| ty);
+                let lifted_query = lift_query(&query, ty);
+                for (executor, exec) in [
+                    ("oracle", reference::execute as Exec),
+                    ("binary join", binary_join::execute as Exec),
+                    ("generic join", generic_join::execute as Exec),
+                ] {
+                    let result = exec(&lifted_query, &lifted)
+                        .unwrap_or_else(|e| panic!("{name} over {ty}: {executor} failed: {e}"));
+                    assert_eq!(
+                        result.schema.types(),
+                        types,
+                        "{name} over {ty}: {executor} result schema"
+                    );
+                    assert_eq!(
+                        decoded_entries(&result, &lifted),
+                        expected,
+                        "{name} over {ty}: {executor} result"
+                    );
+                }
             }
         }
     }
@@ -231,7 +266,7 @@ fn same_program_every_type() {
         let expected_u64 = fixpoint::semi_naive(&program, &base, generic_join::execute as Exec)
             .unwrap()
             .catalog;
-        let expected = lifted_rows(expected_u64.get("ancestor").unwrap(), &[ty, ty]);
+        let expected = lifted_entries(expected_u64.get("ancestor").unwrap(), &[ty, ty]);
         assert!(expected.len() > 1, "the instance must derive something");
 
         let lifted = lift_catalog(&base, |_, _| ty);
@@ -248,7 +283,7 @@ fn same_program_every_type() {
                 let ancestor = result.catalog.get("ancestor").unwrap();
                 assert_eq!(ancestor.schema.types(), vec![ty, ty]);
                 assert_eq!(
-                    decoded(ancestor, &result.catalog),
+                    decoded_entries(ancestor, &result.catalog),
                     expected,
                     "{name} + {executor} over {ty}"
                 );
@@ -268,11 +303,15 @@ fn mixed_types_in_one_query() {
         _ => unreachable!(),
     };
     let query = fixtures::triangle_query();
-    let base = fixtures::triangle_catalog(6, 30, 6, 9);
+    let base = weighted(&fixtures::triangle_catalog(6, 30, 6, 9));
     let expected_u64 = reference::execute(&query, &base).unwrap();
     let head_types = [ScalarType::Uint, ScalarType::String, ScalarType::Iint];
-    let expected = lifted_rows(&expected_u64, &head_types);
+    let expected = lifted_entries(&expected_u64, &head_types);
     assert!(!expected.is_empty());
+    assert!(
+        expected.iter().any(|(_, w)| *w != 1),
+        "weights must travel too"
+    );
 
     let lifted = lift_catalog(&base, types_of);
     for (executor, exec) in [
@@ -282,7 +321,7 @@ fn mixed_types_in_one_query() {
     ] {
         let result = exec(&query, &lifted).unwrap();
         assert_eq!(result.schema.types(), head_types, "{executor}");
-        assert_eq!(decoded(&result, &lifted), expected, "{executor}");
+        assert_eq!(decoded_entries(&result, &lifted), expected, "{executor}");
     }
 }
 

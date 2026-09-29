@@ -818,3 +818,22 @@ fn a_recursion_whose_input_changes_stops_with_an_error() {
     .to_string();
     assert!(err.contains("ancestor lost a fact in round 2"), "{err}");
 }
+
+#[test]
+fn semi_naive_reads_the_delta_at_every_recursive_position() {
+    // p, q and r depend on each other. r(3) needs p(3) and q(3), and q(3)
+    // arrives one round after p(3): in that round only the second atom of
+    // r's rule reads anything new.
+    let mut edb = Catalog::new();
+    edb.insert(Relation::new("e", ["x"], vec![vec![3]]));
+    let program = Program::new(vec![
+        rule(("p", &[0]), &[("e", &[0])]),
+        rule(("q", &[0]), &[("p", &[0])]),
+        rule(("r", &[0]), &[("p", &[0]), ("q", &[0])]),
+        rule(("p", &[0]), &[("e", &[0]), ("r", &[1])]),
+    ]);
+    let result = agree(&program, &edb, &["p", "q", "r"]);
+    for name in ["p", "q", "r"] {
+        assert_eq!(rows(result.get(name).unwrap()), vec![vec![3]], "{name}");
+    }
+}
