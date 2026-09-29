@@ -19,15 +19,15 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 
-use crate::query::{Catalog, KeyTerm, Query, VarId};
+use crate::query::{KeyTerm, Query, Tables, VarId, prepare};
 use crate::relation::Relation;
-use crate::table::{ArrowSortedTable, SortedTable};
+use crate::table::SortedTable;
 use crate::types::Key;
 
-/// Evaluate `query` against `catalog` with a chain of hash joins. Returns
+/// Evaluate `query` against `tables` with a chain of hash joins. Returns
 /// the projected result, sorted and deduplicated (set semantics).
-pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
-    let prepared = catalog.prepare(query)?;
+pub fn execute(query: &Query, tables: &dyn Tables) -> Result<Relation> {
+    let prepared = prepare(query, tables)?;
     let Some(key_atoms) = prepared.atoms else {
         return Ok(Relation::empty("result", prepared.schema));
     };
@@ -41,12 +41,12 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
     let mut data: Vec<Key> = Vec::new();
 
     for atom in &key_atoms {
-        let rel = catalog.get(&atom.relation)?;
-        let identity: Vec<usize> = (0..rel.arity()).collect();
-        // TODO(perf): from_relation sorts O(N log N) even though the hash
-        // join only scans; add a scan-only constructor (or take pre-sorted
-        // tables from storage) when performance work starts.
-        let table = ArrowSortedTable::from_relation(rel, identity)?;
+        let arity = tables.schema(&atom.relation)?.arity();
+        let identity: Vec<usize> = (0..arity).collect();
+        // TODO(perf): the hash join only scans, yet an in-memory catalog
+        // sorts O(N log N) to serve this; a scan-only request would spare
+        // that when performance work starts.
+        let table = tables.sorted(&atom.relation, &identity)?;
 
         // Classify the atom's columns.
         let mut lit_checks: Vec<(usize, Key)> = Vec::new(); // (atom col, key)
@@ -145,7 +145,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query::{Atom, Term};
+    use crate::query::{Atom, Catalog, Term};
 
     #[test]
     fn two_atom_chain() {

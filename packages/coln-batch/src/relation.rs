@@ -21,6 +21,7 @@ use arrow::array::{
 use arrow::datatypes::{DataType, Field, Schema as ArrowSchema};
 use arrow::record_batch::RecordBatch;
 
+use crate::table::SortedTable;
 use crate::types::{Column, Dictionary, Key, ScalarType, Schema, Value};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +57,27 @@ impl Relation {
             schema,
             cols,
         }
+    }
+
+    /// Copy the rows of a sorted table, keys as they are and in its sort
+    /// order.
+    pub fn from_table(
+        name: impl Into<String>,
+        schema: Schema,
+        table: &(impl SortedTable + ?Sized),
+    ) -> Result<Self> {
+        let name = name.into();
+        if table.arity() != schema.arity() {
+            bail!(
+                "{name}: the table has {} columns, the schema has {}",
+                table.arity(),
+                schema.arity()
+            );
+        }
+        let cols = (0..table.arity())
+            .map(|c| (0..table.len()).map(|r| table.value(r, c)).collect())
+            .collect();
+        Ok(Self::with_schema(name, schema, cols))
     }
 
     /// An empty relation with the given schema.
