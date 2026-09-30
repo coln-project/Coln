@@ -1,4 +1,3 @@
-
 //! Table APIs exposed by the store and expected by query engines
 
 use std::ops::Range;
@@ -96,4 +95,3 @@ pub trait SortedTable {
         Some(start..end)
     }
 }
-
