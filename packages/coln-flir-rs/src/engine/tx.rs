@@ -6,7 +6,7 @@ use specta::Type;
 use crate::{
     hash::CommitHash,
     public::PublicRowId,
-    value::{NativeScalar, Tuple},
+    tuple::{NativeScalar, Tuple},
 };
 
 /// A temporary row ID that is valid only within a transaction.

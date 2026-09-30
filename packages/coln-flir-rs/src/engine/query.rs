@@ -6,7 +6,7 @@ use crate::{
         schema::BaseTableSchema,
     },
     public::PublicTuple,
-    value::{QueryScalar, Tuple},
+    tuple::{QueryScalar, Tuple},
 };
 
 pub type QueryScalarValue = QueryScalar;
