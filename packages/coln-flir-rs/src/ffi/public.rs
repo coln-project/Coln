@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::{
-    engine::tx_val::{TxRowId, TxTuple},
+    engine::tx::{TxRowId, TxTuple},
     ffi::hash::CommitHash,
-    value::{NativeScalar, Tuple},
+    tuple::{NativeScalar, Tuple},
 };
 
 /// The unique id that identifies each row in a table.
