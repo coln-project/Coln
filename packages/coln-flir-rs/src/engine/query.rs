@@ -1,13 +1,15 @@
 use std::iter;
 
 use crate::{
-    PublicTuple,
     engine::{
         packed::{PackedRowId, StoreScalarValue, StoreTuple},
         schema::BaseTableSchema,
     },
-    value::{QueryScalarValue, Tuple},
+    public::PublicTuple,
+    value::{QueryScalar, Tuple},
 };
+
+pub type QueryScalarValue = QueryScalar;
 
 pub struct QueryTuple(Tuple<QueryScalarValue>);
 
@@ -23,24 +25,27 @@ impl From<StoreTuple> for QueryTuple {
                     let counter = QueryScalarValue::U32(row_id.counter);
                     iter::once(hash).chain(Some(counter))
                 }
-                StoreScalarValue::U64(scalar) => {
-                    iter::once(QueryScalarValue::U64(scalar)).chain(None)
-                }
-                StoreScalarValue::U32(scalar) => {
-                    iter::once(QueryScalarValue::U32(scalar)).chain(None)
-                }
-                StoreScalarValue::I64(scalar) => {
-                    iter::once(QueryScalarValue::I64(scalar)).chain(None)
-                }
-                StoreScalarValue::I32(scalar) => {
-                    iter::once(QueryScalarValue::I32(scalar)).chain(None)
-                }
-                StoreScalarValue::String(scalar) => {
-                    iter::once(QueryScalarValue::String(scalar)).chain(None)
+                v @ (StoreScalarValue::U64(_)
+                | StoreScalarValue::U32(_)
+                | StoreScalarValue::I64(_)
+                | StoreScalarValue::I32(_)
+                | StoreScalarValue::String(_)) => {
+                    iter::once(QueryScalar::try_from(v).expect("non rowid scalar should match"))
+                        .chain(None)
                 }
             })
             .collect();
         Self(Tuple { inner })
+    }
+}
+
+impl IntoIterator for QueryTuple {
+    type Item = QueryScalarValue;
+
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
@@ -53,9 +58,65 @@ impl QueryTuple {
     pub fn into_store(
         self,
         _schema: &BaseTableSchema,
-        _alloc: impl FnMut() -> PackedRowId,
+        _id_alloc: impl FnMut() -> PackedRowId,
     ) -> StoreTuple {
         todo!()
+        // self.into_iter()
+        //     .map(|zrow| {
+        //         let row_id = id_alloc();
+        //         if zrow.zweight() > 0 {
+        //             let mut val_iter = zrow.into_row().data.into_iter();
+        //             let mut packed_val = Vec::new();
+
+        //             for col in &self.schema().columns {
+        //                 match col.col_type {
+        //                     ir::ColType::RowId { .. } => {
+        //                         let ScalarTypedValue::Uint(commit_idx) =
+        //                             val_iter.next().expect("coln-query returns valid data")
+        //                         else {
+        //                             panic!("invalid data from coln-query");
+        //                         };
+        //                         let ScalarTypedValue::Uint(counter) =
+        //                             val_iter.next().expect("coln-query returns valid data")
+        //                         else {
+        //                             panic!("invalid data from coln-query");
+        //                         };
+        //                         packed_val.push(PackedValue::Id(PackedRowId {
+        //                             commit_idx: commit_idx as u32,
+        //                             counter: counter as u32,
+        //                         }));
+        //                     }
+        //                     ir::ColType::BuiltinTy {
+        //                         builtin_ty: ir::BuiltinTy::BuiltinInt,
+        //                     } => {
+        //                         let ScalarTypedValue::String(s) = val_iter.next().unwrap() else {
+        //                             panic!("invalid data from coln-query");
+        //                         };
+        //                         packed_val.push(PackedValue::Str(s));
+        //                     }
+        //                     ir::ColType::BuiltinTy {
+        //                         builtin_ty: ir::BuiltinTy::BuiltinStr,
+        //                     } => {
+        //                         let ScalarTypedValue::Iint(i) = val_iter.next().unwrap() else {
+        //                             panic!("invalid data from coln-query");
+        //                         };
+        //                         packed_val.push(PackedValue::Int(i as i32));
+        //                     }
+        //                 }
+        //             }
+
+        //             PackedOp::Add {
+        //                 row_id,
+        //                 values: packed_val.into(),
+        //             }
+        //         } else if zrow.zweight() < 0 {
+        //             // TODO don't know how to remove yet
+        //             todo!()
+        //         } else {
+        //             unreachable!("zero zweight impossible")
+        //         }
+        //     })
+        //     .collect()
     }
 
     pub fn into_public(self, _schema: &BaseTableSchema) -> PublicTuple {

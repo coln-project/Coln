@@ -1,0 +1,77 @@
+use std::fmt;
+
+use ena::unify::UnifyValue;
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+use crate::{
+    engine::tx_val::{TxRowId, TxTuple},
+    ffi::hash::CommitHash,
+    value::{NativeScalar, Tuple},
+};
+
+/// The unique id that identifies each row in a table.
+///
+/// It is managed by the database and read-only for the user.
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Serialize, Deserialize, Type)]
+pub struct PublicRowId {
+    pub commit: CommitHash,
+    pub counter: u32,
+}
+
+impl fmt::Display for PublicRowId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in &self.commit.0[..6] {
+            write!(f, "{byte:02x}")?;
+        }
+        write!(f, ":{}", self.counter)
+    }
+}
+
+// For id canonicalisation id coln-store, too lazy to use newtype in coln-store
+impl UnifyValue for PublicRowId {
+    type Error = ena::unify::NoError;
+
+    fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
+        Ok((value1).min(value2).clone())
+    }
+}
+
+pub type PublicScalarValue = NativeScalar<PublicRowId>;
+
+/// A public facing value, consumed by the FFI/user, where the row_ids are resolved
+/// to be (hash, counter)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct PublicTuple(pub(crate) Tuple<PublicScalarValue>);
+
+impl PublicTuple {
+    pub fn from_tx(tuple: TxTuple, promote: impl Fn(TxRowId) -> PublicRowId) -> Self {
+        let inner = tuple
+            .0
+            .inner
+            .into_iter()
+            .map(|scalar| scalar.0.map(&promote))
+            .collect();
+        Self(Tuple { inner })
+    }
+}
+
+impl fmt::Display for PublicTuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("(")?;
+        for (i, scalar) in self.0.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            match scalar {
+                NativeScalar::RowId(id) => write!(f, "{id}")?,
+                NativeScalar::U64(x) => write!(f, "{x}")?,
+                NativeScalar::U32(x) => write!(f, "{x}")?,
+                NativeScalar::I64(x) => write!(f, "{x}")?,
+                NativeScalar::I32(x) => write!(f, "{x}")?,
+                NativeScalar::String(s) => write!(f, "{s:?}")?,
+            }
+        }
+        f.write_str(")")
+    }
+}

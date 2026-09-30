@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::{
-    PublicRowId,
-    value::{NativeScalar, Tuple},
     hash::CommitHash,
+    public::PublicRowId,
+    value::{NativeScalar, Tuple},
 };
 
 /// A temporary row ID that is valid only within a transaction.
