@@ -11,7 +11,7 @@ use specta::Type;
 use std::{fmt, iter};
 use subenum::subenum;
 
-// Only indirectly exposed to the public through [`WireTxTuple`],
+// Only indirectly exposed to the public through [`TxTuple`],
 // [`PublicTuple`], [`StoreTuple`], [`QueryTuple`]. If we ever want to switch
 // to a different layout (smallvec, for instance), these types benefit
 // immediately.
@@ -19,29 +19,19 @@ pub struct Tuple<ScalarValue> {
     inner: Vec<ScalarValue>,
 }
 
-// Placeholder but imagine this to be the main entrypoint to coln-store.
-type ColnStore = ();
+pub struct TxTuple(Tuple<TxScalarValue>);
 
-pub struct WireTxTuple(Tuple<WireTxScalarValue>);
-
+/// A public facing value, consumed by the FFI/user, where the row_ids are resolved
+/// to be (hash, counter)
 pub struct PublicTuple(Tuple<PublicScalarValue>);
 
 impl PublicTuple {
-    pub fn from_wire(tuple: WireTxTuple, coln_store: &mut ColnStore) -> Self {
+    pub fn from_tx(tuple: TxTuple, promote: impl Fn(TxRowId) -> PublicRowId) -> Self {
         let inner = tuple
             .0
             .inner
             .into_iter()
-            .map(|scalar| match scalar {
-                WireTxScalarValue::U64(scalar) => PublicScalarValue::U64(scalar),
-                WireTxScalarValue::U32(scalar) => PublicScalarValue::U32(scalar),
-                WireTxScalarValue::I64(scalar) => PublicScalarValue::I64(scalar),
-                WireTxScalarValue::I32(scalar) => PublicScalarValue::I32(scalar),
-                WireTxScalarValue::String(scalar) => PublicScalarValue::String(scalar),
-                WireTxScalarValue::RowId(row_id) => PublicScalarValue::RowId(todo!(
-                    "Call into coln-store's API to resolve the row id to a public one"
-                )),
-            })
+            .map(|scalar| scalar.map(&promote))
             .collect();
         Self(Tuple { inner })
     }
@@ -50,21 +40,12 @@ impl PublicTuple {
 pub struct StoreTuple(Tuple<StoreScalarValue>);
 
 impl StoreTuple {
-    pub fn from_public(tuple: PublicTuple, coln_store: &mut ColnStore) -> Self {
+    pub fn from_public(tuple: PublicTuple, pack: impl Fn(PublicRowId) -> PackedRowId) -> Self {
         let inner = tuple
             .0
             .inner
             .into_iter()
-            .map(|scalar| match scalar {
-                PublicScalarValue::U64(scalar) => StoreScalarValue::U64(scalar),
-                PublicScalarValue::U32(scalar) => StoreScalarValue::U32(scalar),
-                PublicScalarValue::I64(scalar) => StoreScalarValue::I64(scalar),
-                PublicScalarValue::I32(scalar) => StoreScalarValue::I32(scalar),
-                PublicScalarValue::String(scalar) => StoreScalarValue::String(scalar),
-                PublicScalarValue::RowId(row_id) => StoreScalarValue::RowId(todo!(
-                    "Call into coln-store's API to resolve the row id to a packed one"
-                )),
-            })
+            .map(|scalar| scalar.map(&pack))
             .collect();
         Self(Tuple { inner })
     }
@@ -72,9 +53,9 @@ impl StoreTuple {
 
 pub struct QueryTuple(Tuple<QueryScalarValue>);
 
-impl QueryTuple {
-    pub fn from_store(tuple: StoreTuple) -> QueryTuple {
-        let inner = tuple
+impl From<StoreTuple> for QueryTuple {
+    fn from(value: StoreTuple) -> Self {
+        let inner = value
             .0
             .inner
             .into_iter()
@@ -103,7 +84,23 @@ impl QueryTuple {
             .collect();
         Self(Tuple { inner })
     }
-    pub fn into_public(self, coln_store: &mut ColnStore, schema: &BaseTableSchema) -> PublicTuple {
+}
+
+impl QueryTuple {
+    // @Leo we also need to convert a query tuple, i.e. a tuple in the derived view
+    // into a store tuple to be put into a view table.
+    // The allocate function is a bit of a leaky abstraction.... In short, we need to
+    // allocate row ids for these derived tuples, but only the store knows how to do that
+    // This probably needs schema as well.
+    pub fn into_store(
+        self,
+        schema: &BaseTableSchema,
+        alloc: impl FnMut() -> PackedRowId,
+    ) -> StoreTuple {
+        todo!()
+    }
+
+    pub fn into_public(self, schema: &BaseTableSchema) -> PublicTuple {
         // This for tuples bubbling upwards, that is, tuples which belong to
         // derived views. They do not contain a row id themselves but may
         // contain several foreign keys with row ids. This function needs to
@@ -117,27 +114,39 @@ impl QueryTuple {
     }
 }
 
-#[subenum(WireTxScalar, PublicScalar, StoreScalar, QueryScalar)]
+#[subenum(QueryScalar)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NativeScalar<RowId, T: NativeScalarMap> {
-    #[subenum(WireTxScalar, PublicScalar, StoreScalar)]
     RowId(RowId),
     /// Unsigned 64-bit integer.
-    #[subenum(WireTxScalar, PublicScalar, StoreScalar, QueryScalar)]
+    #[subenum(QueryScalar)]
     U64(T::U64),
     /// Unsigned 32-bit integer.
-    #[subenum(WireTxScalar, PublicScalar, StoreScalar, QueryScalar)]
+    #[subenum(QueryScalar)]
     U32(T::U32),
     /// Signed 64-bit integer.
-    #[subenum(WireTxScalar, PublicScalar, StoreScalar, QueryScalar)]
+    #[subenum(QueryScalar)]
     I64(T::I64),
     /// Signed 32-bit integer.
-    #[subenum(WireTxScalar, PublicScalar, StoreScalar, QueryScalar)]
+    #[subenum(QueryScalar)]
     I32(T::I32),
     /// String.
-    #[subenum(WireTxScalar, PublicScalar, StoreScalar, QueryScalar)]
+    #[subenum(QueryScalar)]
     String(T::String),
     // Add more :)
+}
+
+impl<R1, T: NativeScalarMap> NativeScalar<R1, T> {
+    pub fn map<R2, F: Fn(R1) -> R2>(self, f: F) -> NativeScalar<R2, T> {
+        match self {
+            NativeScalar::RowId(r1) => NativeScalar::RowId(f(r1)),
+            NativeScalar::U64(x) => NativeScalar::U64(x),
+            NativeScalar::U32(x) => NativeScalar::U32(x),
+            NativeScalar::I64(x) => NativeScalar::I64(x),
+            NativeScalar::I32(x) => NativeScalar::I32(x),
+            NativeScalar::String(s) => NativeScalar::String(s),
+        }
+    }
 }
 
 pub trait NativeScalarMap {
@@ -166,16 +175,17 @@ impl NativeScalarMap for TypeMap {
     type String = ();
 }
 
-pub type WireTxScalarValue = WireTxScalar<WireRowId, ValueMap>;
-pub type PublicScalarValue = PublicScalar<PublicRowId, ValueMap>;
-pub type StoreScalarValue = StoreScalar<PackedRowId, ValueMap>;
+pub type TxScalarValue = NativeScalar<TxRowId, ValueMap>;
+pub type PublicScalarValue = NativeScalar<PublicRowId, ValueMap>;
+pub type StoreScalarValue = NativeScalar<PackedRowId, ValueMap>;
 pub type QueryScalarValue = QueryScalar<ValueMap>;
 
+// TODO move them to schema.rs?
 // The type representations are useful in schema.rs.
 
-pub type WireTxScalarType = WireTxScalar<(), TypeMap>;
-pub type PublicScalarType = PublicScalar<(), TypeMap>;
-pub type StoreScalarType = StoreScalar<(), TypeMap>;
+pub type TxScalarType = NativeScalar<(), TypeMap>;
+pub type PublicScalarType = NativeScalar<(), TypeMap>;
+pub type StoreScalarType = NativeScalar<(), TypeMap>;
 pub type QueryScalarType = QueryScalar<TypeMap>;
 
 // Different row id representations.
@@ -240,21 +250,21 @@ impl From<u32> for PendingRowId {
 /// to be resolved at a later point in time.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
 #[serde(tag = "type", content = "value")]
-pub enum WireRowId {
+pub enum TxRowId {
     Existing(PublicRowId),
     Pending(PendingRowId),
 }
 
-impl WireRowId {
+impl TxRowId {
     pub fn resolve(self, commit: CommitHash) -> PublicRowId {
         match self {
-            WireRowId::Existing(existing_id) => existing_id,
-            WireRowId::Pending(pending_id) => pending_id.resolve(commit),
+            TxRowId::Existing(existing_id) => existing_id,
+            TxRowId::Pending(pending_id) => pending_id.resolve(commit),
         }
     }
 }
 
-impl From<PublicRowId> for WireRowId {
+impl From<PublicRowId> for TxRowId {
     fn from(value: PublicRowId) -> Self {
         Self::Existing(value)
     }
