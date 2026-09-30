@@ -1,6 +1,10 @@
-use crate::{PublicTuple, ffi::PublicRowId, ir::Path};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+
+use crate::{
+    ir::Path,
+    public::{PublicRowId, PublicTuple},
+};
 
 #[derive(Debug, Type, Serialize, Deserialize)]
 pub struct WhereClause {

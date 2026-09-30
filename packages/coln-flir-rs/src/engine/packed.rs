@@ -1,10 +1,8 @@
 //! Packed representation of ids
 //! Internally used by storage and query engines
 
-use crate::{
-    PublicRowId, PublicTuple,
-    value::{NativeScalar, Tuple},
-};
+use crate::public::{PublicRowId, PublicTuple};
+use crate::value::{NativeScalar, Tuple};
 
 /// A compact [`RowId`] representation that dictionary-encodes commit hashes.
 ///
@@ -47,7 +45,7 @@ impl IntoIterator for StoreTuple {
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.inner.into_iter()
+        self.0.into_iter()
     }
 }
 
@@ -56,38 +54,12 @@ impl<'a> IntoIterator for &'a StoreTuple {
     type IntoIter = std::slice::Iter<'a, StoreScalarValue>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.inner.iter()
+        self.0.iter()
     }
 }
 
 impl FromIterator<StoreScalarValue> for StoreTuple {
     fn from_iter<T: IntoIterator<Item = StoreScalarValue>>(iter: T) -> Self {
-        Self(Tuple {
-            inner: iter.into_iter().collect(),
-        })
+        Self(iter.into_iter().collect())
     }
 }
-
-pub struct PackedRowView {
-    pub row_id: PackedRowId,
-    pub values: StoreTuple,
-}
-
-// TODO @Leo perhaps move your TupleValue definitions here as well
-// Or maybe it's sufficient to define just one representation to save some computation
-// impl From<PackedRowView> for coln_query::api::deltas::TupleValue {
-//     fn from(packed_view: PackedRowView) -> Self {
-//         let PackedRowView { row_id, values } = packed_view;
-//         std::iter::once(StoreScalarValue::Id(row_id))
-//             .chain(values)
-//             .flat_map(|values| match values {
-//                 StoreScalarValue::Id(prid) => vec![
-//                     ScalarTypedValue::Uint(prid.commit_idx as u64),
-//                     ScalarTypedValue::Uint(prid.counter as u64),
-//                 ],
-//                 StoreScalarValue::Int(i) => vec![ScalarTypedValue::Iint(i as i64)],
-//                 StoreScalarValue::Str(s) => vec![ScalarTypedValue::String(s)],
-//             })
-//             .collect()
-//     }
-// }
