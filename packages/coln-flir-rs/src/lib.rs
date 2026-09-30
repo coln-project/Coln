@@ -7,6 +7,6 @@ pub mod ffi;
 pub mod ir;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
-pub mod value;
+pub mod tuple;
 
 pub use ffi::*;

@@ -2,7 +2,7 @@
 //! Internally used by storage and query engines
 
 use crate::public::{PublicRowId, PublicTuple};
-use crate::value::{NativeScalar, Tuple};
+use crate::tuple::{NativeScalar, Tuple};
 
 /// A compact [`RowId`] representation that dictionary-encodes commit hashes.
 ///
