@@ -1,7 +1,10 @@
 //! Packed representation of ids
 //! Internally used by storage and query engines
 
-use crate::value::Value;
+use crate::{
+    PublicRowId, PublicTuple,
+    value::{NativeScalar, Tuple},
+};
 
 /// A compact [`RowId`] representation that dictionary-encodes commit hashes.
 ///
@@ -16,52 +19,58 @@ pub struct PackedRowId {
     pub counter: u32,
 }
 
-pub type PackedValue = Value<PackedRowId>;
+pub type StoreScalarValue = NativeScalar<PackedRowId>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PackedTuple(Vec<PackedValue>);
+pub struct StoreTuple(pub(super) Tuple<StoreScalarValue>);
 
-impl std::ops::Deref for PackedTuple {
-    type Target = [PackedValue];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl StoreTuple {
+    pub fn from_public(tuple: PublicTuple, pack: impl Fn(PublicRowId) -> PackedRowId) -> Self {
+        let inner = tuple
+            .0
+            .inner
+            .into_iter()
+            .map(|scalar| scalar.map(&pack))
+            .collect();
+        Self(Tuple { inner })
     }
 }
 
-impl From<Vec<PackedValue>> for PackedTuple {
-    fn from(values: Vec<PackedValue>) -> Self {
-        Self(values)
+impl From<Vec<StoreScalarValue>> for StoreTuple {
+    fn from(values: Vec<StoreScalarValue>) -> Self {
+        Self(Tuple { inner: values })
     }
 }
 
-impl IntoIterator for PackedTuple {
-    type Item = PackedValue;
+impl IntoIterator for StoreTuple {
+    type Item = StoreScalarValue;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.0.inner.into_iter()
     }
 }
 
-impl<'a> IntoIterator for &'a PackedTuple {
-    type Item = &'a PackedValue;
-    type IntoIter = std::slice::Iter<'a, PackedValue>;
+impl<'a> IntoIterator for &'a StoreTuple {
+    type Item = &'a StoreScalarValue;
+    type IntoIter = std::slice::Iter<'a, StoreScalarValue>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        self.0.inner.iter()
     }
 }
 
-impl FromIterator<PackedValue> for PackedTuple {
-    fn from_iter<T: IntoIterator<Item = PackedValue>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
+impl FromIterator<StoreScalarValue> for StoreTuple {
+    fn from_iter<T: IntoIterator<Item = StoreScalarValue>>(iter: T) -> Self {
+        Self(Tuple {
+            inner: iter.into_iter().collect(),
+        })
     }
 }
 
 pub struct PackedRowView {
     pub row_id: PackedRowId,
-    pub values: PackedTuple,
+    pub values: StoreTuple,
 }
 
 // TODO @Leo perhaps move your TupleValue definitions here as well
@@ -69,15 +78,15 @@ pub struct PackedRowView {
 // impl From<PackedRowView> for coln_query::api::deltas::TupleValue {
 //     fn from(packed_view: PackedRowView) -> Self {
 //         let PackedRowView { row_id, values } = packed_view;
-//         std::iter::once(PackedValue::Id(row_id))
+//         std::iter::once(StoreScalarValue::Id(row_id))
 //             .chain(values)
 //             .flat_map(|values| match values {
-//                 PackedValue::Id(prid) => vec![
+//                 StoreScalarValue::Id(prid) => vec![
 //                     ScalarTypedValue::Uint(prid.commit_idx as u64),
 //                     ScalarTypedValue::Uint(prid.counter as u64),
 //                 ],
-//                 PackedValue::Int(i) => vec![ScalarTypedValue::Iint(i as i64)],
-//                 PackedValue::Str(s) => vec![ScalarTypedValue::String(s)],
+//                 StoreScalarValue::Int(i) => vec![ScalarTypedValue::Iint(i as i64)],
+//                 StoreScalarValue::Str(s) => vec![ScalarTypedValue::String(s)],
 //             })
 //             .collect()
 //     }
