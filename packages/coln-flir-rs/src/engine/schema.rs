@@ -167,7 +167,7 @@ impl From<ir::BuiltinTy> for NativeScalarType {
 }
 
 // TODO @ Leo I think we should have a common notion of what a tuple is.
-// right now I have PackedRowView, and you have TableDelta? 
+// right now I have PackedRowView, and you have TableDelta?
 // We should define them here and then write conversion method to and from what is
 // expected by coln-query and coln-store
 // Same for transactions, see rw.rs
