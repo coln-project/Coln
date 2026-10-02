@@ -4,13 +4,14 @@
 
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
-use coln_flir_rs::WireValue;
+use coln_flir_rs::engine::packed::StoreScalarValue;
 use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
 use coln_store::{
+    IdLookup,
     store::{Store, frag::FragmentSync},
     txn::rw::StoreWrite,
 };
@@ -84,13 +85,16 @@ fn sedimentree_id(store: &Store) -> SedimentreeId {
 
 fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i32)> {
     let table = store.table_at(&Path::from("T")).expect("T table");
+    let lookup = store.id_lookup();
     table
         .scan()
         .map(|row| {
-            let id = row.row_id;
-            let value = match &row.values[0] {
-                WireValue::Int(value) => *value,
-                other => panic!("expected int cell, got {other:?}"),
+            let id = lookup
+                .unpacked(&row.row_id())
+                .expect("row id commit is interned");
+            let value = match row.values() {
+                [StoreScalarValue::I32(value)] => *value,
+                other => panic!("expected a single int cell, got {other:?}"),
             };
             (id.commit, id.counter, value)
         })

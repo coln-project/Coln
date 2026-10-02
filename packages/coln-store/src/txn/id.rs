@@ -3,16 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_flir_rs::{
-    WireRowId,
-    engine::txn_val::{TempRowId, TxnWireRowId, TxnWireTuple},
+    engine::tx::{PendingRowId, TxRowId, TxTuple},
     hash::CommitHash,
+    public::PublicRowId,
 };
 
 use crate::{op::Op, table::TableOid};
-
-pub fn empty_row() -> TxnWireTuple {
-    TxnWireTuple(Vec::new())
-}
 
 pub trait Promote {
     /// Promoting pending ids to Wire ids, after successful transactions
@@ -20,11 +16,11 @@ pub trait Promote {
     //  Will not check validity, callers is responsible for calling it with valid pending ids
     fn promote(
         &self,
-        pending_ids: impl IntoIterator<Item = TxnWireRowId>,
+        pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
-    ) -> Vec<WireRowId>;
+    ) -> Vec<PublicRowId>;
 
-    fn promote_one(&self, pending_id: impl Into<TxnWireRowId>, hash: CommitHash) -> WireRowId {
+    fn promote_one(&self, pending_id: impl Into<TxRowId>, hash: CommitHash) -> PublicRowId {
         self.promote(std::iter::once(pending_id.into()), hash)
             .pop()
             .expect("ond id to promote")
@@ -35,9 +31,9 @@ pub trait Promote {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum PendingOp {
     Add {
-        row_id: TempRowId,
+        row_id: PendingRowId,
         table: TableOid,
-        values: TxnWireTuple,
+        values: TxTuple,
     },
 }
 
@@ -53,7 +49,7 @@ impl PendingOp {
                 table,
                 values: values
                     .into_iter()
-                    .map(|value| value.map_owned(|i| i.resolve(commit)))
+                    .map(|value| value.map(|i| i.resolve(commit)))
                     .collect(),
             },
         }

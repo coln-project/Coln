@@ -5,11 +5,11 @@
 //! This module expresses the different schema views according to coln-compiler,
 //! coln-store, and coln-query in code.
 
-use std::ops::Range;
+use std::{fmt, ops::Range};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ir::{self, Path};
+use crate::{ir::{self, BuiltinTy, ColType, Path}, tuple::{NativeScalar, QueryScalar}};
 
 #[derive(Debug, Clone)]
 pub struct BaseTableSchema {
@@ -382,6 +382,43 @@ impl From<&[StoreEngineCol]> for QueryEngineCols {
         )
     }
 }
+
+pub type TxScalarType = NativeScalar<(), (), (), (), (), ()>;
+pub type PublicScalarType = NativeScalar<(), (), (), (), (), ()>;
+pub type StoreScalarType = NativeScalar<(), (), (), (), (), ()>;
+pub type QueryScalarType = QueryScalar<(), (), (), (), ()>;
+
+
+impl fmt::Display for StoreScalarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            StoreScalarType::RowId(()) => "entity id",
+            StoreScalarType::U64(()) => "u64",
+            StoreScalarType::U32(()) => "u32",
+            StoreScalarType::I64(()) => "i64",
+            StoreScalarType::I32(()) => "i32",
+            StoreScalarType::String(()) => "string",
+        })
+    }
+}
+
+
+// TODO @Leo when you are fixing schema.rs, can you fix this as well?
+impl From<&ColType> for StoreScalarType {
+    fn from(col_type: &ColType) -> Self {
+        match col_type {
+            ColType::RowId { .. } => StoreScalarType::RowId(()),
+            ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt,
+            } => StoreScalarType::I32(()),
+            ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinStr,
+            } => StoreScalarType::String(()),
+        }
+    }
+}
+
+
 
 /// A Coln theory source file contains theory definitions and (multiple) realm definitions
 /// Each realm corresponds will be compiled to one IR file, this struct stores

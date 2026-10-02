@@ -8,11 +8,12 @@ pub mod frag;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 use coln_flir_rs::engine::schema::ColnDef;
-use coln_flir_rs::engine::txn_val::TxnWireRowId;
+use coln_flir_rs::engine::tx::TxRowId;
 use coln_flir_rs::hash::CommitHash;
+use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
 use coln_flir_rs::query::WhereClause;
-use coln_flir_rs::{WireRowId, WireRowView, WireTuple, WireValue};
 use tracing::info;
 
 use crate::commit::Commit;
@@ -20,6 +21,7 @@ use crate::commit::graph::CommitGraph;
 use crate::commit::wire::RootCommitData;
 use crate::ir::{self, FlatRealm};
 use crate::op::Op;
+pub use crate::pack::id_packer::IdLookup;
 use crate::pack::{IdPacker, IdPackerSnapshot};
 use crate::rollback::Rollback;
 use crate::rowing::{self, RowingSnapshot};
@@ -181,19 +183,26 @@ impl Store {
     }
 
     // Used by txn to finalise live ids
-    pub(crate) fn canonical_row_id(&self, row_id: &WireRowId) -> Option<WireRowId> {
-        let packed = self.id_packer.lookup_row_id(row_id)?;
+    pub(crate) fn canonical_row_id(&self, row_id: &PublicRowId) -> Option<PublicRowId> {
+        let packed = self.id_packer.packed(row_id)?;
         let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
         Some(self.id_packer.unpack_row_id(canonical))
     }
+
+    /// Read-only access to the id dictionary, for converting between public
+    /// and packed row ids.
+    pub fn id_lookup(&self) -> &impl IdLookup {
+        &self.id_packer
+    }
 }
+
 impl Store {
     // Helper methods for StoreRead
 
     pub(crate) fn scan_table_iter(
         &self,
         table_path: &ir::Path,
-    ) -> Option<impl Iterator<Item = WireRowView> + '_> {
+    ) -> Option<impl Iterator<Item = StoreTuple> + '_> {
         self.table_at(table_path).map(|table| table.scan())
     }
 
@@ -203,8 +212,8 @@ impl Store {
     pub(crate) fn row_by_id_inner(
         &self,
         table: &ir::Path,
-        row_id: &WireRowId,
-    ) -> Option<WireRowView> {
+        row_id: &PackedRowId,
+    ) -> Option<StoreTuple> {
         self.table_at(table)?.row_by_id(row_id)
     }
 
@@ -214,7 +223,7 @@ impl Store {
         &self,
         query: &WhereClause,
         select: &[u32],
-    ) -> Result<Vec<WireTuple>, StoreError> {
+    ) -> Result<Vec<StoreTuple>, StoreError> {
         let select: HashSet<u32> = select.iter().copied().collect();
         let t = self
             .table_at(&query.table_name)
@@ -224,25 +233,21 @@ impl Store {
         let v = self
             .all_row_id_inner(query)?
             .into_iter()
-            .map(|r| {
-                t.row_by_id(&r)
-                    .expect("index_seek return valid rowid")
-                    .values
-            })
+            .map(|r| t.row_by_id(&r).expect("index_seek return valid rowid"))
             .map(|vs| {
                 vs.into_iter()
                     .enumerate()
                     .filter_map(|(i, v)| select.contains(&(i as u32)).then_some(v))
-                    .collect::<WireTuple>()
+                    .collect::<StoreTuple>()
             })
-            .collect::<Vec<WireTuple>>();
+            .collect::<Vec<StoreTuple>>();
         Ok(v)
     }
 
     pub(crate) fn all_row_id_inner(
         &self,
         query: &WhereClause,
-    ) -> Result<Vec<WireRowId>, StoreError> {
+    ) -> Result<Vec<PackedRowId>, StoreError> {
         let WhereClause {
             table_name,
             values,
@@ -253,8 +258,28 @@ impl Store {
             .ok_or(ValidationError::UnknownTable {
                 path: table_name.clone(),
             })?;
+        // TODO `WhereClause` should carry packed values and row ids, with the
+        // packing done at a higher layer. Packing here means every lookup pays
+        // for the dictionary lookups, and the store API leaks public types.
+        //
+        // An ID whose commit hash was never interned cannot match any stored
+        // row, so an unpackable key or row id yields no results.
+        let Some(key) = values
+            .iter()
+            .map(|v| self.id_packer.try_pack_value(v))
+            .collect::<Option<StoreTuple>>()
+        else {
+            return Ok(Vec::new());
+        };
+        let row_id = match row_id {
+            Some(id) => match self.id_packer.packed(id) {
+                Some(packed) => Some(packed),
+                None => return Ok(Vec::new()),
+            },
+            None => None,
+        };
         let row_ids = t
-            .index_seek(values)?
+            .index_seek(&key)?
             .filter(|r| row_id.as_ref().is_none_or(|id| id == r))
             .collect();
         Ok(row_ids)
@@ -264,20 +289,20 @@ impl Store {
 // Autocommit method that opens up a txn, does a single operations
 // then immediately closes the txn
 impl StoreRead for Store {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
         let txn = self.ro_transaction();
         txn.scan_table(table)
     }
 
-    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
         self.ro_transaction().row_by_id(table, row_id)
     }
 
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
         self.ro_transaction().all_proj(query, select)
     }
 
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
         self.ro_transaction().all_row_id(query)
     }
 }
@@ -349,15 +374,15 @@ impl Store {
 impl Promote for Store {
     fn promote(
         &self,
-        pending_ids: impl IntoIterator<Item = TxnWireRowId>,
+        pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
-    ) -> Vec<WireRowId> {
+    ) -> Vec<PublicRowId> {
         pending_ids
             .into_iter()
             .map(|pending| {
                 let wire_id = match pending {
-                    TxnWireRowId::Pending(pending) => pending.resolve(hash),
-                    TxnWireRowId::Existing(row_id) => row_id,
+                    TxRowId::Pending(pending) => pending.resolve(hash),
+                    TxRowId::Existing(row_id) => row_id,
                 };
                 self.canonical_row_id(&wire_id).unwrap_or(wire_id)
             })
@@ -668,7 +693,7 @@ impl Store {
 
     // TODO also need to validate that ids in op is referring to an existing id
     fn validate_commit_ops(&self, ops: &[Op]) -> Result<(), StoreError> {
-        let mut pending_pk: HashMap<TableOid, Vec<Vec<WireValue>>> = HashMap::new();
+        let mut pending_pk: HashMap<TableOid, Vec<Vec<PublicScalarValue>>> = HashMap::new();
 
         for op in ops {
             let Op::Add { table, values, .. } = op;

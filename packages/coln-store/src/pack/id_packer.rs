@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::engine::packed::PackedValue;
-use coln_flir_rs::{WireRowId, WireValue};
+use coln_flir_rs::engine::packed::StoreScalarValue;
+use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
 
 use crate::commit::hash_dict::HashMapper;
 use crate::op::Op;
@@ -17,8 +17,35 @@ pub(crate) struct IdPacker {
     snapshot_len: Option<usize>,
 }
 
+/// A readonly trait that packs and unpacks row_id.
+/// Does not change what is in the current ids.
+pub trait IdLookup {
+    fn packed(&self, id: &PublicRowId) -> Option<PackedRowId>;
+
+    fn unpacked(&self, id: &PackedRowId) -> Option<PublicRowId>;
+}
+
 #[must_use]
 pub(crate) struct IdPackerSnapshot;
+
+impl IdLookup for IdPacker {
+    /// Packs `id` without interning its commit hash.
+    ///
+    /// Returns `None` when the commit hash has not already been interned.
+    fn packed(&self, id: &PublicRowId) -> Option<PackedRowId> {
+        Some(PackedRowId {
+            commit_idx: self.dict.index(id.commit)?,
+            counter: id.counter,
+        })
+    }
+
+    fn unpacked(&self, id: &PackedRowId) -> Option<PublicRowId> {
+        Some(PublicRowId {
+            commit: self.dict.hash_at(id.commit_idx)?,
+            counter: id.counter,
+        })
+    }
+}
 
 impl IdPacker {
     pub(crate) fn new() -> Self {
@@ -29,54 +56,31 @@ impl IdPacker {
     }
 
     /// Packs `id`, interning its commit hash if it is new.
-    pub(crate) fn pack_row_id(&mut self, id: WireRowId) -> PackedRowId {
+    pub(crate) fn pack_row_id(&mut self, id: PublicRowId) -> PackedRowId {
         PackedRowId {
             commit_idx: self.dict.insert(id.commit),
             counter: id.counter,
         }
     }
 
-    /// Packs `id` without interning its commit hash.
-    ///
-    /// Returns `None` when the commit hash has not already been interned.
-    pub(crate) fn lookup_row_id(&self, id: &WireRowId) -> Option<PackedRowId> {
-        Some(PackedRowId {
-            commit_idx: self.dict.index(id.commit)?,
-            counter: id.counter,
-        })
+    pub(crate) fn unpack_row_id(&self, id: PackedRowId) -> PublicRowId {
+        self.unpacked(&id)
+            .expect("packed row id commit hash was interned on insert")
     }
 
-    pub(crate) fn unpack_row_id(&self, id: PackedRowId) -> WireRowId {
-        WireRowId {
-            commit: self
-                .dict
-                .hash_at(id.commit_idx)
-                .expect("packed row id commit hash was interned on insert"),
-            counter: id.counter,
-        }
-    }
-
-    pub(crate) fn pack_value(&mut self, value: WireValue) -> PackedValue {
-        match value {
-            WireValue::Id(id) => PackedValue::Id(self.pack_row_id(id)),
-            WireValue::Int(value) => PackedValue::Int(value),
-            WireValue::Str(value) => PackedValue::Str(value),
-        }
+    pub(crate) fn pack_value(&mut self, value: PublicScalarValue) -> StoreScalarValue {
+        value.map(|id| self.pack_row_id(id))
     }
 
     /// Packs a cell without modifying the dictionary.
     ///
     /// Returns `None` when an ID cell's commit hash has not been interned.
-    pub(crate) fn try_pack_value(&self, value: &WireValue) -> Option<PackedValue> {
-        Some(match value {
-            WireValue::Id(id) => PackedValue::Id(self.lookup_row_id(id)?),
-            WireValue::Int(value) => PackedValue::Int(*value),
-            WireValue::Str(value) => PackedValue::Str(value.clone()),
-        })
+    pub(crate) fn try_pack_value(&self, value: &PublicScalarValue) -> Option<StoreScalarValue> {
+        value.clone().try_map(|id| self.packed(&id))
     }
 
-    pub(crate) fn unpack_value(&self, value: PackedValue) -> WireValue {
-        value.map_owned(|id| self.unpack_row_id(id))
+    pub(crate) fn unpack_value(&self, value: StoreScalarValue) -> PublicScalarValue {
+        value.map(|id| self.unpack_row_id(id))
     }
 
     pub(crate) fn pack_op(&mut self, op: Op) -> PackedOp {
@@ -144,12 +148,10 @@ mod tests {
         packer.rollback_to(snapshot);
 
         assert_eq!(
-            packer
-                .lookup_row_id(&row_id_from(1, 0))
-                .map(|id| id.commit_idx),
+            packer.packed(&row_id_from(1, 0)).map(|id| id.commit_idx),
             Some(0)
         );
-        assert_eq!(packer.lookup_row_id(&row_id_from(2, 0)), None);
+        assert_eq!(packer.packed(&row_id_from(2, 0)), None);
         assert_eq!(packer.pack_row_id(row_id_from(3, 0)).commit_idx, 1);
     }
 
@@ -162,10 +164,45 @@ mod tests {
         packer.commit(snapshot);
 
         assert_eq!(
-            packer
-                .lookup_row_id(&row_id_from(1, 0))
-                .map(|id| id.commit_idx),
+            packer.packed(&row_id_from(1, 0)).map(|id| id.commit_idx),
             Some(0)
         );
+    }
+
+    /// Distinct commit hashes are interned once, and id cells unpack to the
+    /// public ids that were packed.
+    #[test]
+    fn pack_interns_each_commit_hash_once_and_round_trips() {
+        let mut packer = IdPacker::new();
+        let rows = [
+            (row_id_from(1, 0), row_id_from(3, 7), row_id_from(4, 8)),
+            (row_id_from(2, 1), row_id_from(3, 9), row_id_from(1, 0)),
+            (row_id_from(1, 2), row_id_from(2, 1), row_id_from(3, 7)),
+        ];
+        let packed: Vec<_> = rows
+            .iter()
+            .cloned()
+            .map(|(rid, src, dst)| {
+                (
+                    packer.pack_row_id(rid),
+                    packer.pack_value(PublicScalarValue::RowId(src)),
+                    packer.pack_value(PublicScalarValue::RowId(dst)),
+                )
+            })
+            .collect();
+
+        for ((rid, src, dst), (packed_rid, packed_src, packed_dst)) in rows.into_iter().zip(packed)
+        {
+            assert_eq!(packer.unpack_row_id(packed_rid), rid);
+            assert_eq!(
+                packer.unpack_value(packed_src),
+                PublicScalarValue::RowId(src)
+            );
+            assert_eq!(
+                packer.unpack_value(packed_dst),
+                PublicScalarValue::RowId(dst)
+            );
+        }
+        assert_eq!(packer.len(), 4);
     }
 }

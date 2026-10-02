@@ -4,15 +4,17 @@
 
 use std::{collections::BTreeSet, sync::Once};
 
+use coln_flir_rs::engine::packed::StoreScalarValue;
 use coln_flir_rs::engine::schema::ColnDef;
-use coln_flir_rs::engine::txn_val::TxnWireValue;
+use coln_flir_rs::engine::tx::TxTuple;
 use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{self, FlatRealm, Path};
-use coln_flir_rs::{WireRowId, WireValue};
+use coln_flir_rs::public::PublicRowId;
 use coln_store::{
+    IdLookup,
     commit::pst,
     store::{Store, error::StoreError},
-    txn::{empty_row, id::Promote, rw::StoreWrite},
+    txn::{id::Promote, rw::StoreWrite},
 };
 use rstest::{fixture, rstest};
 use tracing_subscriber::EnvFilter;
@@ -51,21 +53,17 @@ fn graph_coln_def() -> ColnDef {
 }
 
 struct GraphData {
-    v1: WireRowId,
-    v2: WireRowId,
+    v1: PublicRowId,
+    v2: PublicRowId,
 }
-
 fn add_basic_data_to_graph(store: &mut Store) -> Result<GraphData, StoreError> {
     let gv = Path::from("root.V");
     let ge = Path::from("root.E");
 
     let mut tx = store.transaction();
-    let v1 = tx.add(&gv, empty_row())?;
-    let v2 = tx.add(&gv, empty_row())?;
-    tx.add(
-        &ge,
-        vec![TxnWireValue::Id(v1.clone()), TxnWireValue::Id(v2.clone())],
-    )?;
+    let v1 = tx.add(&gv, TxTuple::empty())?;
+    let v2 = tx.add(&gv, TxTuple::empty())?;
+    tx.add(&ge, vec![v1.clone(), v2.clone()])?;
     let h = tx.commit()?;
     let [v1, v2] = store.promote(vec![v1, v2], h).try_into().unwrap();
 
@@ -74,23 +72,30 @@ fn add_basic_data_to_graph(store: &mut Store) -> Result<GraphData, StoreError> {
 
 fn add_graph_vertex(store: &mut Store) -> Result<CommitHash, StoreError> {
     let mut tx = store.transaction();
-    tx.add(&Path::from("root.V"), empty_row())?;
+    tx.add(&Path::from("root.V"), TxTuple::empty())?;
     tx.commit()
 }
 
 fn add_graph_edge(
     store: &mut Store,
-    v1: WireRowId,
-    v2: WireRowId,
+    v1: PublicRowId,
+    v2: PublicRowId,
 ) -> Result<CommitHash, StoreError> {
     let gv = Path::from("root.V");
     let ge = Path::from("root.E");
     let tv = store.table_at(&gv).expect("root.V table");
-    let v1 = tv.row_by_id(&v1).expect("vertex 1");
-    let v2 = tv.row_by_id(&v2).expect("vertex 2");
+    let ids = store.id_lookup();
+    let v1 = tv
+        .row_by_id(&ids.packed(&v1).expect("v1 is packed"))
+        .expect("vertex 1");
+    let v2 = tv
+        .row_by_id(&ids.packed(&v2).expect("v2 is packed"))
+        .expect("vertex 2");
+    let v1 = ids.unpacked(&v1.row_id()).expect("v1 is unpacked");
+    let v2 = ids.unpacked(&v2.row_id()).expect("v2 is unpacked");
 
     let mut txn = store.transaction();
-    txn.add(&ge, vec![v1.row_id, v2.row_id])?;
+    txn.add(&ge, vec![v1, v2])?;
     txn.commit()
 }
 
@@ -147,17 +152,20 @@ fn test_add_edge_referencing_vertices_from_previous_commit(
 
     let edges = store.table_at(&Path::from("root.E")).expect("root.E table");
     assert_eq!(edges.row_count(), 2);
-    let second_edge = WireRowId {
-        commit: edge_commit,
-        counter: 0,
-    };
+    let ids = store.id_lookup();
+    let second_edge = ids
+        .packed(&PublicRowId {
+            commit: edge_commit,
+            counter: 0,
+        })
+        .expect("second edge is packed");
     let row = edges.row_by_id(&second_edge).expect("second edge row");
-    assert_eq!(row.row_id, second_edge);
+    assert_eq!(row.row_id(), second_edge);
     assert_eq!(
-        row.values,
-        vec![
-            WireValue::Id(data.v1.clone()),
-            WireValue::Id(data.v2.clone())
+        row.values(),
+        [
+            StoreScalarValue::RowId(ids.packed(&data.v1).expect("v1 is packed")),
+            StoreScalarValue::RowId(ids.packed(&data.v2).expect("v2 is packed")),
         ]
     );
 }
@@ -233,13 +241,17 @@ fn test_divergent_commits_merge_between_stores(
     assert_eq!(left_edges.row_count(), 2);
     assert_eq!(right_edges.row_count(), 2);
 
+    // Packed ids follow each store's dictionary insertion order, so compare
+    // the unpacked ids.
     let left_row_ids = left_vertices
         .scan()
-        .map(|row| row.row_id)
-        .collect::<BTreeSet<_>>();
+        .map(|row| left.id_lookup().unpacked(&row.row_id()))
+        .collect::<Option<BTreeSet<_>>>()
+        .expect("left row ids are unpacked");
     let right_row_ids = right_vertices
         .scan()
-        .map(|row| row.row_id)
-        .collect::<BTreeSet<_>>();
+        .map(|row| right.id_lookup().unpacked(&row.row_id()))
+        .collect::<Option<BTreeSet<_>>>()
+        .expect("right row ids are unpacked");
     assert_eq!(left_row_ids, right_row_ids);
 }

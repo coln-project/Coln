@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use coln_flir_rs::engine::txn_val::TxnWireValue;
+use coln_flir_rs::engine::tx::TxScalarValue;
 use coln_flir_rs::ir::{self, BuiltinTy};
 use hexane::{Codec, PackError, lebsize};
 
@@ -145,26 +145,27 @@ impl hexane::PrefixValue for ValueMeta {
 
 /// Writes to the buffer `out` the encoded data, and returns the corresponding
 /// `ValueMeta` representation
-pub(crate) fn encode_prim_value(
-    value: &TxnWireValue,
+pub(crate) fn encode_prim_value<T: Into<TxScalarValue>>(
+    value: T,
     prim: &BuiltinTy,
     out: &mut Vec<u8>,
 ) -> Result<ValueMeta, CodecError> {
+    let value = value.into();
     match prim {
         BuiltinTy::BuiltinInt => {
-            let TxnWireValue::Int(i) = value else {
+            let TxScalarValue::I32(i) = value else {
                 return Err(CodecError::SchemaError(format!(
                     "expected int, got {value:?}"
                 )));
             };
 
-            leb128::write::signed(out, *i as i64)
+            leb128::write::signed(out, i as i64)
                 .map_err(|e| CodecError::DataFormatError(e.to_string()))?;
 
-            Ok(ValueMeta::new(ValueType::Leb, lebsize(*i as i64) as usize))
+            Ok(ValueMeta::new(ValueType::Leb, lebsize(i as i64) as usize))
         }
         BuiltinTy::BuiltinStr => {
-            let TxnWireValue::Str(s) = value else {
+            let TxScalarValue::String(s) = value else {
                 return Err(CodecError::SchemaError(format!(
                     "expected string, got {value:?}"
                 )));
@@ -181,7 +182,7 @@ pub(crate) fn decode_prim_value(
     meta: ValueMeta,
     prim: &BuiltinTy,
     bytes: &[u8],
-) -> Result<TxnWireValue, CodecError> {
+) -> Result<TxScalarValue, CodecError> {
     let ty = meta.type_code();
     if !ty.is_valid_for(prim) {
         return Err(CodecError::SchemaError(format!(
@@ -199,12 +200,12 @@ pub(crate) fn decode_prim_value(
                     "trailing bytes in leb value".into(),
                 ));
             }
-            Ok(TxnWireValue::Int(i as i32))
+            Ok(TxScalarValue::I32(i as i32))
         }
         ValueType::String => {
             let s = std::str::from_utf8(bytes)
                 .map_err(|_| CodecError::DataFormatError("value column: invalid utf-8".into()))?;
-            Ok(TxnWireValue::Str(s.to_owned()))
+            Ok(TxScalarValue::String(s.to_owned()))
         }
         other => Err(CodecError::DataFormatError(format!(
             "unsupported value type code {other:?}"
