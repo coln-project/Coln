@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::ops::Deref;
+use std::{fmt, ops::Deref};
 use subenum::subenum;
 
 // Only indirectly exposed to the public through [`TxTuple`],
@@ -16,6 +16,12 @@ use subenum::subenum;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct Tuple<ScalarValue> {
     pub(crate) inner: Vec<ScalarValue>,
+}
+
+impl<V> Tuple<V> {
+    pub fn iter(&self) -> std::slice::Iter<'_, V> {
+        self.inner.iter()
+    }
 }
 
 impl<T> Deref for Tuple<T> {
@@ -53,7 +59,7 @@ impl<V> FromIterator<V> for Tuple<V> {
 }
 
 #[subenum(QueryScalar)]
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Type)]
 pub enum NativeScalar<
     RowId,
     U64 = u64,
@@ -75,8 +81,34 @@ pub enum NativeScalar<
     String(String),
 }
 
+impl<RowId: fmt::Display> fmt::Display for NativeScalar<RowId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RowId(id) => write!(f, "{id}"),
+            Self::U64(x) => write!(f, "{x}"),
+            Self::U32(x) => write!(f, "{x}"),
+            Self::I64(x) => write!(f, "{x}"),
+            Self::I32(x) => write!(f, "{x}"),
+            Self::String(s) => write!(f, "{s:?}"),
+        }
+    }
+}
+
+impl<R> NativeScalar<R> {
+    pub fn typ(&self) -> NativeScalar<(), (), (), (), (), ()> {
+        match self {
+            NativeScalar::RowId(_) => NativeScalar::RowId(()),
+            NativeScalar::U64(_) => NativeScalar::U64(()),
+            NativeScalar::U32(_) => NativeScalar::U32(()),
+            NativeScalar::I64(_) => NativeScalar::I64(()),
+            NativeScalar::I32(_) => NativeScalar::I32(()),
+            NativeScalar::String(_) => NativeScalar::String(()),
+        }
+    }
+}
+
 impl<R1> NativeScalar<R1> {
-    pub fn map<R2, F: Fn(R1) -> R2>(self, f: F) -> NativeScalar<R2> {
+    pub fn map<R2, F: FnOnce(R1) -> R2>(self, f: F) -> NativeScalar<R2> {
         use NativeScalar::*;
         match self {
             RowId(r1) => RowId(f(r1)),
@@ -87,12 +119,52 @@ impl<R1> NativeScalar<R1> {
             String(s) => String(s),
         }
     }
+
+    /// Maps the row id, returning `None` when `f` fails. Non-id scalars are
+    /// always passed through.
+    pub fn try_map<R2, F: FnOnce(R1) -> Option<R2>>(self, f: F) -> Option<NativeScalar<R2>> {
+        use NativeScalar::*;
+        Some(match self {
+            RowId(r1) => RowId(f(r1)?),
+            U64(x) => U64(x),
+            U32(x) => U32(x),
+            I64(x) => I64(x),
+            I32(x) => I32(x),
+            String(s) => String(s),
+        })
+    }
+}
+
+impl<RowId> From<u64> for NativeScalar<RowId> {
+    fn from(value: u64) -> Self {
+        NativeScalar::U64(value)
+    }
+}
+impl<RowId> From<u32> for NativeScalar<RowId> {
+    fn from(value: u32) -> Self {
+        NativeScalar::U32(value)
+    }
+}
+impl<RowId> From<i64> for NativeScalar<RowId> {
+    fn from(value: i64) -> Self {
+        NativeScalar::I64(value)
+    }
+}
+impl<RowId> From<i32> for NativeScalar<RowId> {
+    fn from(value: i32) -> Self {
+        NativeScalar::I32(value)
+    }
+}
+impl<RowId> From<String> for NativeScalar<RowId> {
+    fn from(value: String) -> Self {
+        NativeScalar::String(value)
+    }
+}
+impl<RowId> From<&str> for NativeScalar<RowId> {
+    fn from(value: &str) -> Self {
+        NativeScalar::String(value.to_owned())
+    }
 }
 
 // TODO move them to schema.rs?
 // The type representations are useful in schema.rs.
-
-pub type TxScalarType = NativeScalar<(), (), (), (), (), ()>;
-pub type PublicScalarType = NativeScalar<(), (), (), (), (), ()>;
-pub type StoreScalarType = NativeScalar<(), (), (), (), (), ()>;
-pub type QueryScalarType = QueryScalar<(), (), (), (), ()>;

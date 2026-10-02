@@ -1,11 +1,15 @@
 use std::fmt;
+use std::ops::Deref;
 
 use ena::unify::UnifyValue;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::{
-    engine::tx::{TxRowId, TxTuple},
+    engine::{
+        packed::{PackedRowId, StoreTuple},
+        tx::{TxRowId, TxTuple},
+    },
     ffi::hash::CommitHash,
     tuple::{NativeScalar, Tuple},
 };
@@ -50,9 +54,33 @@ impl PublicTuple {
             .0
             .inner
             .into_iter()
-            .map(|scalar| scalar.0.map(&promote))
+            .map(|scalar| scalar.map(&promote))
             .collect();
         Self(Tuple { inner })
+    }
+
+    pub fn from_store(tuple: StoreTuple, unpack: impl Fn(PackedRowId) -> PublicRowId) -> Self {
+        let inner = tuple
+            .0
+            .inner
+            .into_iter()
+            .map(|scalar| scalar.map(&unpack))
+            .collect();
+        Self(Tuple { inner })
+    }
+}
+
+impl Deref for PublicTuple {
+    type Target = [PublicScalarValue];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Vec<PublicScalarValue>> for PublicTuple {
+    fn from(values: Vec<PublicScalarValue>) -> Self {
+        Self(Tuple { inner: values })
     }
 }
 

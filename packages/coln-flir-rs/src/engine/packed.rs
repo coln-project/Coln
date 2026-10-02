@@ -1,6 +1,9 @@
 //! Packed representation of ids
 //! Internally used by storage and query engines
 
+use std::fmt;
+use std::ops::Deref;
+
 use crate::public::{PublicRowId, PublicTuple};
 use crate::tuple::{NativeScalar, Tuple};
 
@@ -17,10 +20,19 @@ pub struct PackedRowId {
     pub counter: u32,
 }
 
+impl fmt::Display for PackedRowId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Mirrors `PublicRowId`'s `<commit>:<counter>` shape, but the commit
+        // part is a dictionary index rather than a hash prefix, so prefix it
+        // with `#` to make clear this id is only meaningful store-locally.
+        write!(f, "#{}:{}", self.commit_idx, self.counter)
+    }
+}
+
 pub type StoreScalarValue = NativeScalar<PackedRowId>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StoreTuple(pub(super) Tuple<StoreScalarValue>);
+pub struct StoreTuple(pub(crate) Tuple<StoreScalarValue>);
 
 impl StoreTuple {
     pub fn from_public(tuple: PublicTuple, pack: impl Fn(PublicRowId) -> PackedRowId) -> Self {
@@ -31,6 +43,37 @@ impl StoreTuple {
             .map(|scalar| scalar.map(&pack))
             .collect();
         Self(Tuple { inner })
+    }
+
+    /// A stored row with `row_id` in column 0 followed by `values`.
+    pub fn from_id_values(
+        row_id: PackedRowId,
+        values: impl IntoIterator<Item = StoreScalarValue>,
+    ) -> Self {
+        std::iter::once(StoreScalarValue::RowId(row_id))
+            .chain(values)
+            .collect()
+    }
+
+    /// The row id a stored row leads with.
+    pub fn row_id(&self) -> PackedRowId {
+        match self.first() {
+            Some(StoreScalarValue::RowId(id)) => *id,
+            other => panic!("stored rows lead with their row id, got {other:?}"),
+        }
+    }
+
+    /// The schema columns of a stored row, without the leading row id.
+    pub fn values(&self) -> &[StoreScalarValue] {
+        &self[1..]
+    }
+}
+
+impl Deref for StoreTuple {
+    type Target = [StoreScalarValue];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

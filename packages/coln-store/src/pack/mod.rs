@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-mod id_packer;
-use coln_flir_rs::engine::packed::{PackedRowId, PackedTuple};
+pub mod id_packer;
+use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 pub(crate) use id_packer::{IdPacker, IdPackerSnapshot};
 
 /// Packed representation of an operation staged for a table.
@@ -11,7 +11,7 @@ pub(crate) use id_packer::{IdPacker, IdPackerSnapshot};
 pub(crate) enum PackedOp {
     Add {
         row_id: PackedRowId,
-        values: PackedTuple,
+        values: StoreTuple,
     },
     Delete {
         row_id: PackedRowId,

@@ -92,8 +92,8 @@ fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::engine::packed::{StoreScalarValue, StoreTuple};
     use coln_flir_rs::hash::{CommitHash, HASH_SIZE};
-    use coln_flir_rs::{WireRowView, WireValue};
     use rstest::{fixture, rstest};
 
     use super::*;
@@ -101,6 +101,7 @@ mod tests {
     use crate::commit::chunk::{ChunkType, Header};
     use crate::commit::wire::{CommitData, RootCommitData};
     use crate::ir::Path;
+    use crate::pack::id_packer::IdLookup;
     use crate::test_utils::non_empty_root_commit_data;
     use crate::txn::id::Promote;
     use crate::txn::rw::{StoreRead, StoreWrite};
@@ -338,12 +339,16 @@ mod tests {
         let bytes = encode_store(&store).unwrap();
         let restored = decode_store(&bytes).unwrap();
 
+        let packed = restored
+            .id_lookup()
+            .packed(&row_id)
+            .expect("restored store interned the commit hash");
         assert_eq!(
-            restored.row_by_id(&table, &row_id),
-            Some(WireRowView {
-                row_id,
-                values: vec![WireValue::Int(99)],
-            })
+            restored.row_by_id(&table, &packed),
+            Some(StoreTuple::from(vec![
+                StoreScalarValue::RowId(packed),
+                StoreScalarValue::I32(99),
+            ]))
         );
         assert_eq!(
             restored.commits().parents_of(&commit),

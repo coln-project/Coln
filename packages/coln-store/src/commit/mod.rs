@@ -15,7 +15,7 @@ pub mod wire;
 use std::borrow::Cow;
 
 use coln_flir_rs::{
-    engine::txn_val::{TxnWireRowId, TxnWireValue},
+    engine::tx::{TxRowId, TxScalarValue},
     hash::CommitHash,
 };
 
@@ -216,7 +216,7 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
     for op in pending {
         let PendingOp::Add { values, .. } = op;
         for value in values {
-            if let TxnWireValue::Id(TxnWireRowId::Existing(row_id)) = value {
+            if let TxScalarValue::RowId(TxRowId::Existing(row_id)) = value {
                 hash_mapper.insert(row_id.commit);
             }
         }
@@ -225,10 +225,10 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 
 #[cfg(test)]
 mod tests {
-    use coln_flir_rs::WireRowId;
-    use coln_flir_rs::engine::txn_val::{TempRowId, TxnWireRowId, TxnWireValue};
+    use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue};
     use coln_flir_rs::hash::HASH_SIZE;
     use coln_flir_rs::ir::Schema;
+    use coln_flir_rs::public::PublicRowId;
     use rstest::{fixture, rstest};
 
     use super::*;
@@ -356,23 +356,23 @@ mod tests {
     fn decode_data_preserves_payload_metadata_and_ops(table_metadata: TestTableMetadata) {
         let dep = zero_hash();
         let deps = vec![dep];
-        let rid = WireRowId {
+        let rid = PublicRowId {
             commit: dep,
             counter: 7,
         };
         let pending = vec![
             PendingOp::Add {
-                row_id: TempRowId(0),
+                row_id: PendingRowId(0),
                 table: 0,
                 values: vec![1i32].into(),
             },
             PendingOp::Add {
-                row_id: TempRowId(1),
+                row_id: PendingRowId(1),
                 table: 1,
                 values: vec![
-                    TxnWireValue::Id(TxnWireRowId::Existing(rid)),
-                    TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
-                    TxnWireValue::Str("x".into()),
+                    TxScalarValue::RowId(TxRowId::Existing(rid)),
+                    TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
+                    TxScalarValue::String("x".into()),
                 ]
                 .into(),
             },
@@ -474,7 +474,7 @@ mod tests {
     #[rstest]
     fn different_ops_produce_different_hashes(table_metadata: TestTableMetadata) {
         let op = PendingOp::Add {
-            row_id: TempRowId(0),
+            row_id: PendingRowId(0),
             table: 0,
             values: vec![42].into(),
         };
@@ -484,7 +484,7 @@ mod tests {
         .expect("build a");
 
         let op2 = PendingOp::Add {
-            row_id: TempRowId(0),
+            row_id: PendingRowId(0),
             table: 0,
             values: vec![99].into(),
         };
@@ -548,22 +548,22 @@ mod tests {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = WireRowId {
+        let rid = PublicRowId {
             commit: dep,
             counter: 7,
         };
         let op0 = PendingOp::Add {
-            row_id: TempRowId(0),
+            row_id: PendingRowId(0),
             table: 0,
             values: vec![1i32].into(),
         };
         let op1 = PendingOp::Add {
-            row_id: TempRowId(1),
+            row_id: PendingRowId(1),
             table: 1,
             values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
-                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
-                TxnWireValue::Str("x".into()),
+                TxScalarValue::RowId(TxRowId::Existing(rid)),
+                TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
+                TxScalarValue::String("x".into()),
             ]
             .into(),
         };
@@ -595,22 +595,22 @@ mod tests {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = WireRowId {
+        let rid = PublicRowId {
             commit: dep,
             counter: 7,
         };
         let op0 = PendingOp::Add {
-            row_id: TempRowId(0),
+            row_id: PendingRowId(0),
             table: 0,
             values: vec![1i32].into(),
         };
         let op1 = PendingOp::Add {
-            row_id: TempRowId(1),
+            row_id: PendingRowId(1),
             table: 1,
             values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
-                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
-                TxnWireValue::Str("x".into()),
+                TxScalarValue::RowId(TxRowId::Existing(rid)),
+                TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
+                TxScalarValue::String("x".into()),
             ]
             .into(),
         };
@@ -637,35 +637,35 @@ mod tests {
     fn other_hashes_contain_right_hashes(table_metadata: TestTableMetadata) {
         let ha = CommitHash([1u8; HASH_SIZE]);
         let hb = CommitHash([2u8; HASH_SIZE]);
-        let rid_a = WireRowId {
+        let rid_a = PublicRowId {
             commit: ha,
             counter: 0,
         };
-        let rid_b = WireRowId {
+        let rid_b = PublicRowId {
             commit: hb,
             counter: 3,
         };
         // also point to ha
-        let rid_a_later = WireRowId {
+        let rid_a_later = PublicRowId {
             commit: ha,
             counter: 99,
         };
 
         let op0 = PendingOp::Add {
-            row_id: TempRowId(0),
+            row_id: PendingRowId(0),
             table: 0,
             values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a.clone())),
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a.clone())),
+                TxScalarValue::RowId(TxRowId::Existing(rid_a.clone())),
+                TxScalarValue::RowId(TxRowId::Existing(rid_a.clone())),
             ]
             .into(),
         };
         let op1 = PendingOp::Add {
-            row_id: TempRowId(1),
+            row_id: PendingRowId(1),
             table: 0,
             values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_b)),
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a_later)),
+                TxScalarValue::RowId(TxRowId::Existing(rid_b)),
+                TxScalarValue::RowId(TxRowId::Existing(rid_a_later)),
             ]
             .into(),
         };
@@ -681,7 +681,7 @@ mod tests {
         );
 
         let op_int = PendingOp::Add {
-            row_id: TempRowId(0),
+            row_id: PendingRowId(0),
             table: 0,
             values: vec![42].into(),
         };

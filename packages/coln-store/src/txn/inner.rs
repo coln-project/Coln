@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_flir_rs::{
-    engine::txn_val::{TempRowId, TxnWireRowId, TxnWireTuple},
+    engine::tx::{PendingRowId, TxRowId, TxTuple},
     hash::{self, CommitHash},
     ir,
 };
@@ -35,16 +35,16 @@ impl TxnInner {
         }
     }
 
-    fn next_id(&self) -> TempRowId {
-        TempRowId::from(self.pending.len() as u32)
+    fn next_id(&self) -> PendingRowId {
+        PendingRowId::from(self.pending.len() as u32)
     }
 
     fn add_cell_values(
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TempRowId, StoreError> {
+        values: impl Into<TxTuple>,
+    ) -> Result<PendingRowId, StoreError> {
         let t = store
             .table_at(table)
             .map(|t| t.inner())
@@ -66,10 +66,10 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TxnWireRowId, StoreError> {
+        values: impl Into<TxTuple>,
+    ) -> Result<TxRowId, StoreError> {
         let temp_id = self.add_cell_values(store, table, values)?;
-        let handle = TxnWireRowId::Pending(temp_id);
+        let handle = TxRowId::Pending(temp_id);
         Ok(handle)
     }
 
@@ -79,8 +79,8 @@ impl TxnInner {
         &mut self,
         store: &Store,
         table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TempRowId, StoreError> {
+        values: impl Into<TxTuple>,
+    ) -> Result<PendingRowId, StoreError> {
         self.add_cell_values(store, table, values)
     }
 

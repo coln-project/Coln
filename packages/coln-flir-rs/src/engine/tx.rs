@@ -56,18 +56,17 @@ impl From<PublicRowId> for TxRowId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TxScalarValue(pub(crate) NativeScalar<TxRowId>);
+pub type TxScalarValue = NativeScalar<TxRowId>;
 
 impl From<TxRowId> for TxScalarValue {
     fn from(value: TxRowId) -> Self {
-        TxScalarValue(NativeScalar::RowId(value))
+        NativeScalar::RowId(value)
     }
 }
 
 impl From<PublicRowId> for TxScalarValue {
     fn from(value: PublicRowId) -> Self {
-        TxScalarValue(NativeScalar::RowId(TxRowId::from(value)))
+        NativeScalar::RowId(TxRowId::from(value))
     }
 }
 
