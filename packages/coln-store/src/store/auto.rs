@@ -7,13 +7,14 @@
 //!
 
 use coln_flir_rs::{
-    WireRowId, WireRowView, WireTuple,
     engine::{
+        packed::{PackedRowId, StoreTuple},
         schema::ColnDef,
-        txn_val::{TxnWireRowId, TxnWireTuple},
+        tx::{TxRowId, TxTuple},
     },
     hash::CommitHash,
     ir::{self, FlatRealm},
+    public::PublicRowId,
     query::WhereClause,
 };
 
@@ -32,33 +33,29 @@ pub struct AutoStore {
 }
 
 impl StoreRead for AutoStore {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
         self.txn.as_ref().expect("open txn").scan_table(table)
     }
 
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_proj(query, select)
-    }
-
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_row_id(query)
-    }
-
-    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
         self.txn
             .as_ref()
             .expect("open txn")
             .row_by_id(table, row_id)
     }
+
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
+        self.txn.as_ref().expect("open txn").all_proj(query, select)
+    }
+
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
+        self.txn.as_ref().expect("open txn").all_row_id(query)
+    }
 }
 
 impl StoreWrite for AutoStore {
-    fn add(
-        &mut self,
-        table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TxnWireRowId, StoreError> {
-        self.txn.as_mut().expect("open_txn").add(table, values)
+    fn add(&mut self, table: &ir::Path, values: impl Into<TxTuple>) -> Result<TxRowId, StoreError> {
+        self.txn.as_mut().expect("open txn").add(table, values)
     }
 }
 
@@ -128,9 +125,9 @@ impl AutoStore {
 impl Promote for AutoStore {
     fn promote(
         &self,
-        pending_ids: impl IntoIterator<Item = TxnWireRowId>,
+        pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
-    ) -> Vec<WireRowId> {
+    ) -> Vec<PublicRowId> {
         self.store
             .as_ref()
             .expect("closed txn")
@@ -149,6 +146,7 @@ impl Drop for AutoStore {
 #[cfg(test)]
 mod tests {
 
+    use coln_flir_rs::engine::packed::StoreScalarValue;
     use coln_flir_rs::ir::Path;
     use rstest::rstest;
 
@@ -162,17 +160,22 @@ mod tests {
         let path = Path::from("T");
 
         store.transaction();
-        let pending_id = store.add(&path, vec![1i32]).expect("add");
-        let h = store.commit().expect("commit");
-        let row_id = store.promote_one(pending_id, h);
+        store.add(&path, vec![1i32]).expect("add");
+        store.commit().expect("commit");
+
+        // The commit hash is the first one interned, so it packs as index 0.
+        let row_id = PackedRowId {
+            commit_idx: 0,
+            counter: 0,
+        };
 
         store.transaction();
         assert_eq!(
             store.row_by_id(&path, &row_id),
-            Some(WireRowView {
-                row_id,
-                values: vec![1i32.into()],
-            })
+            Some(StoreTuple::from(vec![
+                StoreScalarValue::RowId(row_id),
+                StoreScalarValue::I32(1),
+            ]))
         );
 
         store.add(&path, vec![2i32]).expect("add pending");

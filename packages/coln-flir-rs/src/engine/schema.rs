@@ -5,10 +5,13 @@
 //! This module expresses the different schema views according to coln-compiler,
 //! coln-store, and coln-query in code.
 
-use crate::ir::{self, Path};
+use crate::{
+    ir::{self, BuiltinTy, ColType, Path},
+    tuple::{NativeScalar, QueryScalar},
+};
 use either::Either;
 use serde::{Deserialize, Serialize};
-use std::{marker::PhantomData, ops::Range};
+use std::{fmt, marker::PhantomData, ops::Range};
 
 /// Typestate marker whether the [`ColnSchema`] represents a ground table
 /// and, therefore, has (implicit) row ids.
@@ -496,6 +499,39 @@ impl QueryEngineCols {
                 })
                 .collect(),
         )
+    }
+}
+
+pub type TxScalarType = NativeScalar<(), (), (), (), (), ()>;
+pub type PublicScalarType = NativeScalar<(), (), (), (), (), ()>;
+pub type StoreScalarType = NativeScalar<(), (), (), (), (), ()>;
+pub type QueryScalarType = QueryScalar<(), (), (), (), ()>;
+
+impl fmt::Display for StoreScalarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            StoreScalarType::RowId(()) => "entity id",
+            StoreScalarType::U64(()) => "u64",
+            StoreScalarType::U32(()) => "u32",
+            StoreScalarType::I64(()) => "i64",
+            StoreScalarType::I32(()) => "i32",
+            StoreScalarType::String(()) => "string",
+        })
+    }
+}
+
+// TODO @Leo when you are fixing schema.rs, can you fix this as well?
+impl From<&ColType> for StoreScalarType {
+    fn from(col_type: &ColType) -> Self {
+        match col_type {
+            ColType::RowId { .. } => StoreScalarType::RowId(()),
+            ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinInt,
+            } => StoreScalarType::I32(()),
+            ColType::BuiltinTy {
+                builtin_ty: BuiltinTy::BuiltinStr,
+            } => StoreScalarType::String(()),
+        }
     }
 }
 

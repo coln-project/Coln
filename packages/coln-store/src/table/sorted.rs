@@ -4,7 +4,9 @@
 
 use std::ops::Range;
 
-use crate::table::{self, TableHandle};
+use coln_flir_rs::engine::packed::StoreScalarValue;
+
+use crate::table::TableHandle;
 
 pub type RowIdx = usize;
 pub type ColIdx = usize;
@@ -120,7 +122,7 @@ impl<'a> TableHandle<'a> {
 }
 
 impl<'a> SortedTable for SortedCopy<'a> {
-    type Value = table::PackedValue;
+    type Value = StoreScalarValue;
 
     /// Number of columns, including rowid column
     fn arity(&self) -> usize {

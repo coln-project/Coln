@@ -16,4 +16,6 @@ pub mod table;
 mod test_utils;
 pub mod txn;
 
+pub use pack::id_packer::IdLookup;
+
 use coln_flir_rs::ir;

@@ -11,7 +11,7 @@ use rstest::fixture;
 use crate::{commit::wire::root::RootCommitData, store::Store, txn::rw::StoreWrite};
 
 mod rowid {
-    use coln_flir_rs::{WireRowId, hash::CommitHash};
+    use coln_flir_rs::{hash::CommitHash, public::PublicRowId};
 
     use super::*;
 
@@ -19,20 +19,20 @@ mod rowid {
     pub(crate) fn row_id_from(
         #[default(0)] commit_byte: u8,
         #[default(0)] counter: u32,
-    ) -> WireRowId {
-        WireRowId {
+    ) -> PublicRowId {
+        PublicRowId {
             commit: CommitHash([commit_byte; 32]),
             counter,
         }
     }
 
     #[fixture]
-    pub(crate) fn zerocounter_row_id(#[default(0)] byte: u8) -> WireRowId {
+    pub(crate) fn zerocounter_row_id(#[default(0)] byte: u8) -> PublicRowId {
         row_id_from(byte, 0)
     }
 
     #[fixture]
-    pub(crate) fn zerohash_row_id(#[default(0)] counter: u32) -> WireRowId {
+    pub(crate) fn zerohash_row_id(#[default(0)] counter: u32) -> PublicRowId {
         row_id_from(0, counter)
     }
 }

@@ -2,17 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::engine::packed::{PackedRowView, PackedTuple, PackedValue};
-use coln_flir_rs::{WireRowId, WireRowView, WireValue};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 
 use crate::ir;
 use crate::ir::Schema;
-#[cfg(test)]
 use crate::op::Op;
-use crate::pack::IdPacker;
+use crate::pack::{IdPacker, PackedOp};
 use crate::rowing::Rowing;
-#[cfg(test)]
-use crate::table::PackedOp;
+
 use crate::table::index::IndexMeta;
 use crate::table::{Table, TableOid, ValidationError};
 
@@ -62,32 +59,15 @@ impl<'a> TableHandle<'a> {
     // This function will canonicalise the row_id on read, but will not change it
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
-    pub fn row_by_id(&self, row_id: &WireRowId) -> Option<WireRowView> {
-        let packed_row_id = self.id_packer.lookup_row_id(row_id)?;
-        let packed_row_id = self
-            .canonicaliser
-            .canonical_id(&packed_row_id, self.id_packer);
+    pub fn row_by_id(&self, row_id: &PackedRowId) -> Option<StoreTuple> {
+        let canonical_id = self.canonicaliser.canonical_id(&row_id, self.id_packer);
 
         self.inner
-            .row_by_idx(self.inner.packed_rowid_idx(packed_row_id)?)
-            .map(|packed_view| self.unpack_row_view(packed_view))
+            .row_by_idx(self.inner.packed_rowid_idx(canonical_id)?)
     }
 
-    pub fn scan(self) -> impl Iterator<Item = WireRowView> + 'a {
-        self.inner
-            .scan()
-            .map(move |packed_view| self.unpack_row_view(packed_view))
-    }
-
-    fn unpack_row_view(&self, packed_view: PackedRowView) -> WireRowView {
-        WireRowView {
-            row_id: self.id_packer.unpack_row_id(packed_view.row_id),
-            values: packed_view
-                .values
-                .into_iter()
-                .map(|packed_value| self.id_packer.unpack_value(packed_value))
-                .collect(),
-        }
+    pub fn scan(self) -> impl Iterator<Item = StoreTuple> + 'a {
+        self.inner.scan()
     }
 
     pub fn index_meta(self) -> IndexMeta<'a> {
@@ -96,27 +76,9 @@ impl<'a> TableHandle<'a> {
 
     pub fn index_seek(
         self,
-        key: &[WireValue],
-    ) -> Result<impl Iterator<Item = WireRowId>, ValidationError> {
-        let packed_key = key
-            .iter()
-            .map(|wire_val: &WireValue| match wire_val {
-                WireValue::Id(wire_id) => {
-                    let packed = self.id_packer.lookup_row_id(wire_id).ok_or(
-                        ValidationError::InvalidRowId {
-                            wire_id: wire_id.clone(),
-                        },
-                    )?;
-                    Ok(PackedValue::Id(packed))
-                }
-                WireValue::Int(i) => Ok(PackedValue::Int(*i)),
-                WireValue::Str(s) => Ok(PackedValue::Str(s.clone())),
-            })
-            .collect::<Result<PackedTuple, _>>()?;
-        Ok(self
-            .inner
-            .index_seek(&packed_key)?
-            .map(|packed_id| self.id_packer.unpack_row_id(packed_id)))
+        key: &StoreTuple,
+    ) -> Result<impl Iterator<Item = PackedRowId>, ValidationError> {
+        Ok(self.inner.index_seek(key)?)
     }
 
     pub fn unique_columns(self) -> Option<usize> {
@@ -138,15 +100,14 @@ impl<'a> TableHandle<'a> {
     }
 }
 
-#[cfg(test)]
-pub(crate) struct TableMut<'a> {
+pub struct TableMut<'a> {
     inner: &'a mut Table,
     id_packer: &'a mut IdPacker,
     rowing: &'a mut Rowing,
 }
 
-#[cfg(test)]
 impl<'a> TableMut<'a> {
+    #[cfg(test)]
     pub(crate) fn new(
         inner: &'a mut Table,
         id_packer: &'a mut IdPacker,
@@ -159,41 +120,36 @@ impl<'a> TableMut<'a> {
         }
     }
 
-    pub(crate) fn stage(&mut self, op: Op) {
+    pub fn stage(&mut self, op: Op) {
         debug_assert_eq!(op.table(), self.inner.oid());
         let op = self.id_packer.pack_op(op);
         self.inner.stage_update(op);
     }
 
-    pub(crate) fn stage_delete(&mut self, row_id: WireRowId) {
-        let row_id = self.id_packer.pack_row_id(row_id);
+    pub fn stage_delete(&mut self, row_id: PackedRowId) {
         self.inner.stage_update(PackedOp::Delete { row_id });
     }
 
-    pub(crate) fn apply_staged(&mut self) -> Result<(), ValidationError> {
+    pub fn apply_staged(&mut self) -> Result<(), ValidationError> {
         self.inner.apply_staged_ops(self.rowing)
     }
 
-    pub(crate) fn insert_row(
+    pub fn insert_row(
         &mut self,
-        values: Vec<WireValue>,
-        row_id: WireRowId,
+        values: StoreTuple,
+        row_id: PackedRowId,
     ) -> Result<(), ValidationError> {
-        let row_id = self.id_packer.pack_row_id(row_id);
-        let values = values
-            .into_iter()
-            .map(|value| self.id_packer.pack_value(value))
-            .collect();
         self.inner.insert_row(values, row_id, self.rowing)
     }
 
-    pub(crate) fn rebuild(&mut self) {
+    pub fn rebuild(&mut self) {
         self.inner.rebuild(self.rowing, self.id_packer);
     }
 }
 
 #[cfg(test)]
 mod test {
+    use coln_flir_rs::engine::packed::StoreScalarValue;
     use coln_flir_rs::{hash::CommitHash, ir::Path};
     use rstest::rstest;
 
@@ -202,18 +158,28 @@ mod test {
 
     #[rstest]
     fn row_by_id_finds_committed_row(commit_int_store: (Store, CommitHash)) {
-        let (store, commit) = commit_int_store;
+        let (store, _commit) = commit_int_store;
         let path = Path::from("T");
-        let row_id = WireRowId { commit, counter: 0 };
+        // The commit hash is the first one interned, so it packs as index 0.
+        let row_id = PackedRowId {
+            commit_idx: 0,
+            counter: 0,
+        };
         let table = store.table_at(&path).expect("table exists");
 
         assert_eq!(
             table.row_by_id(&row_id),
-            Some(WireRowView {
-                row_id,
-                values: vec![42i32.into()],
-            })
+            Some(StoreTuple::from(vec![
+                StoreScalarValue::RowId(row_id),
+                StoreScalarValue::I32(42),
+            ]))
         );
-        assert_eq!(table.row_by_id(&WireRowId { commit, counter: 1 }), None);
+        assert_eq!(
+            table.row_by_id(&PackedRowId {
+                commit_idx: 0,
+                counter: 1,
+            }),
+            None
+        );
     }
 }

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::{WireRowId, WireValue};
+use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
 
 use crate::table::TableOid;
 
@@ -11,9 +11,9 @@ pub const OP_KIND_ADD: u32 = 0;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Op {
     Add {
-        row_id: WireRowId,
+        row_id: PublicRowId,
         table: TableOid,
-        values: Vec<WireValue>,
+        values: Vec<PublicScalarValue>,
     },
     // Delete {
     //     row_id: RowId,
@@ -22,7 +22,7 @@ pub enum Op {
 }
 
 impl Op {
-    pub fn id(&self) -> WireRowId {
+    pub fn id(&self) -> PublicRowId {
         match self {
             Op::Add { row_id, .. } => row_id.clone(),
         }
