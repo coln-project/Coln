@@ -11,9 +11,9 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use coln_flir_rs::WireRowId;
 use coln_flir_rs::engine::schema::ColnDef;
-use coln_flir_rs::engine::txn_val::{TempRowId, TxnWireRowId, TxnWireTuple, TxnWireValue};
+use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue, TxTuple};
+use coln_flir_rs::public::PublicRowId;
 
 use crate::commit::pst::{decode_store, encode_store};
 use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm};
@@ -392,7 +392,7 @@ pub fn add_rows(
     store: &mut Store,
     table_name: &str,
     raw_rows: &[Vec<String>],
-) -> Result<Vec<WireRowId>> {
+) -> Result<Vec<PublicRowId>> {
     let table_path = crate::ir::Path::from(table_name);
     let oid = store
         .resolve_table(&table_path)
@@ -421,7 +421,7 @@ pub fn add_rows(
 
 /// Parse and commit a batch transaction, allowing later rows to refer to earlier bindings.
 pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Result<String> {
-    let mut bindings: HashMap<String, TempRowId> = HashMap::new();
+    let mut bindings: HashMap<String, PendingRowId> = HashMap::new();
     let mut pending = Vec::new();
 
     for (index, a) in assignments.iter().enumerate() {
@@ -460,7 +460,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
             values.push(v);
         }
 
-        let temp_id = TempRowId::from(index as u32);
+        let temp_id = PendingRowId::from(index as u32);
         bindings.insert(a.name.clone(), temp_id);
         pending.push((a.name.clone(), table_path, values, temp_id));
     }
@@ -479,7 +479,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<TxnWireTuple> {
+fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<TxTuple> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         bail!(
@@ -493,10 +493,10 @@ fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<Txn
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, column)| -> Result<TxnWireValue> {
+        .map(|(idx, column)| -> Result<TxScalarValue> {
             let raw = &raw_values[idx];
             parse_cell_value(&column.col_type, raw)
-                .map(|v| v.map_owned(TxnWireRowId::Existing))
+                .map(|v| v.map(TxRowId::Existing))
                 .map_err(|message| anyhow!("column {idx}: {message}"))
         })
         .collect()

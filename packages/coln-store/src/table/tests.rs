@@ -2,21 +2,23 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::WireRowView;
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, StoreTuple};
+use coln_flir_rs::public::PublicScalarValue;
 use rstest::{fixture, rstest};
 
 use super::*;
 use crate::ir::{self, Path};
 use crate::ir::{BuiltinTy, ColType};
 use crate::op::Op;
+use crate::pack::id_packer::IdLookup;
 use crate::table::handle::TableMut;
 use crate::test_utils::{
     id_col_type, id_schema, idonly_schema, int_schema, memoized_int_schema, row_id_from,
     zerohash_row_id,
 };
 
-/// A [`Table`] paired with its own dictionary, packing mutations at the
-/// same boundary as [`Store`](crate::store::Store).
+/// A [`Table`] with the dictionary and canonicaliser [`TableHandle`] and
+/// [`TableMut`] require. These tests pass [`PackedRowId`]s straight through.
 struct TestTable {
     table: Table,
     dict: IdPacker,
@@ -45,18 +47,15 @@ fn test_table(
     }
 }
 
-/// Rows recorded in the packed rebuild index, converted for assertions.
-fn referring_rows(test_table: &TestTable, child: &WireRowId) -> Vec<WireRowId> {
-    let Some(child) = test_table.dict.lookup_row_id(child) else {
-        return Vec::new();
-    };
+/// Rows recorded in the rebuild index against `child`, in packed-id order.
+fn referring_rows(test_table: &TestTable, child: PackedRowId) -> Vec<PackedRowId> {
     let mut rows = test_table
         .table
         .rebuild_index
         .get(&child)
         .into_iter()
         .flatten()
-        .map(|row_id| test_table.dict.unpack_row_id(*row_id))
+        .copied()
         .collect::<Vec<_>>();
     rows.sort_unstable();
     rows
@@ -71,34 +70,32 @@ fn row_count_matches_inserts_when_schema_has_no_columns(
     assert!(test_table.table.cols.is_empty());
     assert_eq!(test_table.handle().row_count(), 0);
 
-    let r0 = zerohash_row_id(0);
+    let r0 = PackedRowId {
+        commit_idx: 0,
+        counter: 0,
+    };
     test_table
         .as_mut()
-        .insert_row(vec![], r0.clone())
+        .insert_row(StoreTuple::from(vec![]), r0)
         .expect("id-only row is valid");
     assert_eq!(test_table.handle().row_count(), 1);
     assert_eq!(
-        test_table
-            .handle()
-            .row_by_id(&r0)
-            .expect("rowid present")
-            .row_id,
-        r0
+        test_table.handle().row_by_id(&r0),
+        Some(StoreTuple::from(vec![StoreScalarValue::RowId(r0)]))
     );
 
-    let r1 = zerohash_row_id(1);
+    let r1 = PackedRowId {
+        commit_idx: 0,
+        counter: 1,
+    };
     test_table
         .as_mut()
-        .insert_row(vec![], r1.clone())
+        .insert_row(StoreTuple::from(vec![]), r1)
         .expect("id-only row is valid");
     assert_eq!(test_table.handle().row_count(), 2);
     assert_eq!(
-        test_table
-            .handle()
-            .row_by_id(&r1)
-            .expect("rowid present")
-            .row_id,
-        r1
+        test_table.handle().row_by_id(&r1),
+        Some(StoreTuple::from(vec![StoreScalarValue::RowId(r1)]))
     );
 }
 
@@ -106,61 +103,72 @@ fn row_count_matches_inserts_when_schema_has_no_columns(
 fn rollback_removes_applied_rows_and_index_entries(
     #[with("rollback", int_schema(vec!["value"], Some(vec![0])))] mut test_table: TestTable,
 ) {
-    let existing = zerohash_row_id(0);
-    let first_added = zerohash_row_id(1);
-    let second_added = zerohash_row_id(2);
+    let existing = PackedRowId {
+        commit_idx: 0,
+        counter: 0,
+    };
+    let first_public = zerohash_row_id(1);
+    let second_public = zerohash_row_id(2);
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Int(1)], existing.clone())
+        .insert_row(StoreTuple::from(vec![StoreScalarValue::I32(1)]), existing)
         .expect("existing row is valid");
 
     let snapshot = test_table.table.snapshot();
     test_table.as_mut().stage(Op::Add {
-        row_id: first_added.clone(),
+        row_id: first_public.clone(),
         table: 0,
-        values: vec![WireValue::Int(2)],
+        values: vec![PublicScalarValue::I32(2)],
     });
     test_table.as_mut().stage(Op::Add {
-        row_id: second_added.clone(),
+        row_id: second_public.clone(),
         table: 0,
-        values: vec![WireValue::Int(3)],
+        values: vec![PublicScalarValue::I32(3)],
     });
     test_table
         .as_mut()
         .apply_staged()
         .expect("the added rows have distinct keys");
+    // Staging the zerohash commit interns it at index 0, which `existing` uses.
+    let first_added = test_table
+        .dict
+        .packed(&first_public)
+        .expect("stage interned the row id");
+    let second_added = test_table
+        .dict
+        .packed(&second_public)
+        .expect("stage interned the row id");
 
     assert_eq!(test_table.handle().row_count(), 3);
     assert_eq!(
         test_table
             .table
-            .validate_insert(&[WireValue::Int(2)], &test_table.dict),
+            .validate_insert(&[PublicScalarValue::I32(2)], &test_table.dict),
         Err(ValidationError::DuplicatePrimaryKey)
     );
 
     test_table.table.rollback_to(snapshot);
 
-    let handle = test_table.handle();
-    assert_eq!(handle.row_count(), 1);
+    assert_eq!(test_table.handle().row_count(), 1);
     assert_eq!(
-        handle
-            .row_by_id(&existing)
-            .expect("existing row present")
-            .row_id,
-        existing
+        test_table.handle().row_by_id(&existing),
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::RowId(existing),
+            StoreScalarValue::I32(1)
+        ]))
     );
-    assert_eq!(handle.row_by_id(&first_added), None);
-    assert_eq!(handle.row_by_id(&second_added), None);
+    assert_eq!(test_table.handle().row_by_id(&first_added), None);
+    assert_eq!(test_table.handle().row_by_id(&second_added), None);
     assert!(
         test_table
             .table
-            .validate_insert(&[WireValue::Int(2)], &test_table.dict)
+            .validate_insert(&[PublicScalarValue::I32(2)], &test_table.dict)
             .is_ok()
     );
     assert!(
         test_table
             .table
-            .validate_insert(&[WireValue::Int(3)], &test_table.dict)
+            .validate_insert(&[PublicScalarValue::I32(3)], &test_table.dict)
             .is_ok()
     );
     assert!(test_table.table.undo_log.is_none());
@@ -173,19 +181,25 @@ fn rollback_removes_applied_rows_and_index_entries(
 fn staged_delete_removes_row_and_undo_restores_it(
     #[with("deleting", int_schema(vec!["value"], Some(vec![0])))] mut test_table: TestTable,
 ) {
-    let kept = zerohash_row_id(0);
-    let removed = zerohash_row_id(1);
+    let kept = PackedRowId {
+        commit_idx: 0,
+        counter: 0,
+    };
+    let removed = PackedRowId {
+        commit_idx: 0,
+        counter: 1,
+    };
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Int(1)], kept.clone())
+        .insert_row(StoreTuple::from(vec![StoreScalarValue::I32(1)]), kept)
         .expect("kept row is valid");
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Int(2)], removed.clone())
+        .insert_row(StoreTuple::from(vec![StoreScalarValue::I32(2)]), removed)
         .expect("removed row is valid");
 
     let snapshot = test_table.table.snapshot();
-    test_table.as_mut().stage_delete(removed.clone());
+    test_table.as_mut().stage_delete(removed);
     test_table
         .as_mut()
         .apply_staged()
@@ -197,26 +211,25 @@ fn staged_delete_removes_row_and_undo_restores_it(
     assert!(
         test_table
             .table
-            .validate_insert(&[WireValue::Int(2)], &test_table.dict)
+            .validate_insert(&[PublicScalarValue::I32(2)], &test_table.dict)
             .is_ok()
     );
 
     test_table.table.rollback_to(snapshot);
 
-    let handle = test_table.handle();
-    assert_eq!(handle.row_count(), 2);
-    assert!(handle.row_by_id(&kept).is_some());
+    assert_eq!(test_table.handle().row_count(), 2);
+    assert!(test_table.handle().row_by_id(&kept).is_some());
     assert_eq!(
-        handle.row_by_id(&removed),
-        Some(WireRowView {
-            row_id: removed,
-            values: vec![WireValue::Int(2)],
-        })
+        test_table.handle().row_by_id(&removed),
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::RowId(removed),
+            StoreScalarValue::I32(2)
+        ]))
     );
     assert_eq!(
         test_table
             .table
-            .validate_insert(&[WireValue::Int(2)], &test_table.dict),
+            .validate_insert(&[PublicScalarValue::I32(2)], &test_table.dict),
         Err(ValidationError::DuplicatePrimaryKey)
     );
 }
@@ -231,33 +244,42 @@ fn rebuild_index_tracks_rows_referring_to_an_id(
     #[with("edge", id_schema(vec!["left", "right"], None, id_col_type(Path::from("T"))))]
     mut test_table: TestTable,
 ) {
-    let a = row_id_from(1, 0);
-    let b = row_id_from(1, 1);
-    let pair = zerohash_row_id(0);
-    let doubled = zerohash_row_id(1);
+    let a = PackedRowId {
+        commit_idx: 1,
+        counter: 0,
+    };
+    let b = PackedRowId {
+        commit_idx: 1,
+        counter: 1,
+    };
+    let pair = PackedRowId {
+        commit_idx: 0,
+        counter: 0,
+    };
+    let doubled = PackedRowId {
+        commit_idx: 0,
+        counter: 1,
+    };
 
     test_table
         .as_mut()
         .insert_row(
-            vec![WireValue::Id(a.clone()), WireValue::Id(b.clone())],
-            pair.clone(),
+            StoreTuple::from(vec![StoreScalarValue::RowId(a), StoreScalarValue::RowId(b)]),
+            pair,
         )
         .expect("pair row is valid");
     test_table
         .as_mut()
         .insert_row(
-            vec![WireValue::Id(a.clone()), WireValue::Id(a.clone())],
-            doubled.clone(),
+            StoreTuple::from(vec![StoreScalarValue::RowId(a), StoreScalarValue::RowId(a)]),
+            doubled,
         )
         .expect("doubled row is valid");
 
     // `doubled` refers to `a` twice but is recorded against it once, so a
     // rebuild pass restages it once rather than deleting it twice.
-    assert_eq!(
-        referring_rows(&test_table, &a),
-        vec![pair.clone(), doubled.clone()]
-    );
-    assert_eq!(referring_rows(&test_table, &b), vec![pair.clone()]);
+    assert_eq!(referring_rows(&test_table, a), vec![pair, doubled]);
+    assert_eq!(referring_rows(&test_table, b), vec![pair]);
 
     test_table.as_mut().stage_delete(pair);
     test_table
@@ -265,8 +287,8 @@ fn rebuild_index_tracks_rows_referring_to_an_id(
         .apply_staged()
         .expect("a delete cannot duplicate a key");
 
-    assert_eq!(referring_rows(&test_table, &a), vec![doubled.clone()]);
-    assert!(referring_rows(&test_table, &b).is_empty());
+    assert_eq!(referring_rows(&test_table, a), vec![doubled]);
+    assert!(referring_rows(&test_table, b).is_empty());
 
     test_table.as_mut().stage_delete(doubled);
     test_table
@@ -285,16 +307,19 @@ fn full_rebuild_rewrites_stale_id_cells(
     #[with("edge", id_schema(vec!["child"], None, id_col_type(Path::from("T"))))]
     mut test_table: TestTable,
 ) {
-    let canonical_child = row_id_from(1, 0);
-    let stale_child = row_id_from(2, 0);
-    let owner = zerohash_row_id(0);
+    // Rowing picks the canonical id by comparing unpacked commit hashes, so
+    // these ids have to be interned. Hash byte 1 sorts before byte 2.
+    let owner = test_table.dict.pack_row_id(zerohash_row_id(0));
+    let stale_child = test_table.dict.pack_row_id(row_id_from(2, 0));
+    let canonical_child = test_table.dict.pack_row_id(row_id_from(1, 0));
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Id(stale_child.clone())], owner.clone())
+        .insert_row(
+            StoreTuple::from(vec![StoreScalarValue::RowId(stale_child)]),
+            owner,
+        )
         .expect("owner row is valid");
 
-    let stale_child = test_table.dict.lookup_row_id(&stale_child).unwrap();
-    let canonical_child = test_table.dict.pack_row_id(canonical_child);
     test_table
         .rowing
         .stage_union(0, stale_child, canonical_child);
@@ -303,13 +328,12 @@ fn full_rebuild_rewrites_stale_id_cells(
     test_table.as_mut().rebuild();
     test_table.as_mut().apply_staged().unwrap();
 
-    let handle = test_table.handle();
     assert_eq!(
-        handle.row_by_id(&owner),
-        Some(WireRowView {
-            row_id: owner,
-            values: vec![WireValue::Id(row_id_from(1, 0))],
-        })
+        test_table.handle().row_by_id(&owner),
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::RowId(owner),
+            StoreScalarValue::RowId(canonical_child)
+        ]))
     );
 }
 
@@ -317,28 +341,29 @@ fn full_rebuild_rewrites_stale_id_cells(
 fn full_rebuild_collapses_a_displaced_row_onto_its_canonical_row(
     #[with("term", memoized_int_schema(vec!["value"], None))] mut test_table: TestTable,
 ) {
-    let canonical = row_id_from(1, 0);
-    let displaced = row_id_from(2, 0);
+    // Rowing picks the canonical id by comparing unpacked commit hashes, so
+    // these ids have to be interned. Hash byte 1 sorts before byte 2.
+    let canonical = test_table.dict.pack_row_id(row_id_from(1, 0));
+    let displaced = test_table.dict.pack_row_id(row_id_from(2, 0));
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Int(7)], displaced)
+        .insert_row(StoreTuple::from(vec![StoreScalarValue::I32(7)]), displaced)
         .expect("displaced row is valid");
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Int(7)], canonical.clone())
+        .insert_row(StoreTuple::from(vec![StoreScalarValue::I32(7)]), canonical)
         .expect("canonical row is valid");
     test_table.rowing.apply_unions(&test_table.dict);
 
     test_table.as_mut().rebuild();
     test_table.as_mut().apply_staged().unwrap();
 
-    let handle = test_table.handle();
     assert_eq!(
-        handle.row_by_id(&canonical),
-        Some(WireRowView {
-            row_id: canonical,
-            values: vec![WireValue::Int(7)],
-        })
+        test_table.handle().row_by_id(&canonical),
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::RowId(canonical),
+            StoreScalarValue::I32(7)
+        ]))
     );
 }
 
@@ -350,19 +375,28 @@ fn rollback_restores_rebuild_index_entries(
     #[with("edge", id_schema(vec!["left", "right"], None, id_col_type(Path::from("T"))))]
     mut test_table: TestTable,
 ) {
-    let a = row_id_from(1, 0);
-    let b = row_id_from(1, 1);
-    let row = zerohash_row_id(0);
+    let a = PackedRowId {
+        commit_idx: 1,
+        counter: 0,
+    };
+    let b = PackedRowId {
+        commit_idx: 1,
+        counter: 1,
+    };
+    let row = PackedRowId {
+        commit_idx: 0,
+        counter: 0,
+    };
     test_table
         .as_mut()
         .insert_row(
-            vec![WireValue::Id(a.clone()), WireValue::Id(b.clone())],
-            row.clone(),
+            StoreTuple::from(vec![StoreScalarValue::RowId(a), StoreScalarValue::RowId(b)]),
+            row,
         )
         .expect("row is valid");
 
     let snapshot = test_table.table.snapshot();
-    test_table.as_mut().stage_delete(row.clone());
+    test_table.as_mut().stage_delete(row);
     test_table
         .as_mut()
         .apply_staged()
@@ -371,35 +405,39 @@ fn rollback_restores_rebuild_index_entries(
 
     test_table.table.rollback_to(snapshot);
 
-    assert_eq!(referring_rows(&test_table, &a), vec![row.clone()]);
-    assert_eq!(referring_rows(&test_table, &b), vec![row]);
+    assert_eq!(referring_rows(&test_table, a), vec![row]);
+    assert_eq!(referring_rows(&test_table, b), vec![row]);
 }
 
 #[rstest]
 fn commit_snapshot_keeps_rows_and_discards_undo_log(
     #[with("commit_snapshot", int_schema(vec!["value"], None))] mut test_table: TestTable,
 ) {
-    let row_id = zerohash_row_id(0);
+    let public_id = zerohash_row_id(0);
 
     let snapshot = test_table.table.snapshot();
     test_table.as_mut().stage(Op::Add {
-        row_id: row_id.clone(),
+        row_id: public_id.clone(),
         table: 0,
-        values: vec![WireValue::Int(7)],
+        values: vec![PublicScalarValue::I32(7)],
     });
     test_table
         .as_mut()
         .apply_staged()
         .expect("a table without a primary key accepts the row");
     test_table.table.commit(snapshot);
+    let row_id = test_table
+        .dict
+        .packed(&public_id)
+        .expect("stage interned the row id");
 
     assert_eq!(test_table.handle().row_count(), 1);
     assert_eq!(
         test_table.handle().row_by_id(&row_id),
-        Some(WireRowView {
-            row_id,
-            values: vec![WireValue::Int(7)],
-        })
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::RowId(row_id),
+            StoreScalarValue::I32(7)
+        ]))
     );
     assert!(test_table.table.undo_log.is_none());
 }
@@ -412,7 +450,7 @@ fn rollback_discards_updates_staged_after_snapshot(
     test_table.as_mut().stage(Op::Add {
         row_id: zerohash_row_id(0),
         table: 0,
-        values: vec![WireValue::Int(7)],
+        values: vec![PublicScalarValue::I32(7)],
     });
     test_table.table.rollback_to(snapshot);
 
@@ -427,11 +465,17 @@ fn empty_primary_key_rejects_second_row(
 ) {
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Int(0)], zerohash_row_id(0))
+        .insert_row(
+            StoreTuple::from(vec![StoreScalarValue::I32(0)]),
+            PackedRowId {
+                commit_idx: 0,
+                counter: 0,
+            },
+        )
         .expect("first singleton row is valid");
     assert_eq!(test_table.handle().row_count(), 1);
 
-    let values1 = vec![WireValue::Int(1)];
+    let values1 = vec![PublicScalarValue::I32(1)];
     let err = test_table
         .table
         .validate_insert(&values1, &test_table.dict)
@@ -462,32 +506,35 @@ fn row_read_helpers_return_row_id_and_cells(
     })]
     mut test_table: TestTable,
 ) {
-    let row_id = zerohash_row_id(0);
+    let row_id = PackedRowId {
+        commit_idx: 0,
+        counter: 0,
+    };
     test_table
         .as_mut()
         .insert_row(
-            vec![WireValue::Int(7), WireValue::Str("x".to_string())],
-            row_id.clone(),
+            StoreTuple::from(vec![
+                StoreScalarValue::I32(7),
+                StoreScalarValue::String("x".to_string()),
+            ]),
+            row_id,
         )
         .expect("row is valid");
 
-    let handle = test_table.handle();
+    // The handle leads with the row id; the table's own lookup returns cells only.
     assert_eq!(
-        handle.row_by_id(&row_id),
-        Some(WireRowView {
-            row_id: row_id.clone(),
-            values: vec![WireValue::Int(7), WireValue::Str("x".to_string())],
-        })
+        test_table.handle().row_by_id(&row_id),
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::RowId(row_id),
+            StoreScalarValue::I32(7),
+            StoreScalarValue::String("x".to_string()),
+        ]))
     );
-    let packed = test_table
-        .dict
-        .lookup_row_id(&row_id)
-        .expect("insert packed the row id");
     assert_eq!(
-        test_table.table.row_by_id(packed),
-        Some(PackedTuple::from(vec![
-            PackedValue::Int(7),
-            PackedValue::Str("x".to_string())
+        test_table.table.row_by_id(row_id),
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::I32(7),
+            StoreScalarValue::String("x".to_string())
         ]))
     );
     assert!(test_table.table.row_by_idx(1).is_none());
@@ -498,106 +545,137 @@ fn row_read_helpers_return_row_id_and_cells(
 fn row_by_id_finds_inserted_row(
     #[with("T", int_schema(vec!["c0"], None))] mut test_table: TestTable,
 ) {
-    let row_id = zerohash_row_id(0);
+    let row_id = PackedRowId {
+        commit_idx: 0,
+        counter: 0,
+    };
     test_table
         .as_mut()
-        .insert_row(vec![WireValue::Int(42)], row_id.clone())
+        .insert_row(StoreTuple::from(vec![StoreScalarValue::I32(42)]), row_id)
         .expect("row is valid");
 
-    let handle = test_table.handle();
     assert_eq!(
-        handle.row_by_id(&row_id),
-        Some(WireRowView {
-            row_id,
-            values: vec![WireValue::Int(42)],
-        })
+        test_table.handle().row_by_id(&row_id),
+        Some(StoreTuple::from(vec![
+            StoreScalarValue::RowId(row_id),
+            StoreScalarValue::I32(42)
+        ]))
     );
-    assert_eq!(handle.row_by_id(&zerohash_row_id(1)), None);
+    assert_eq!(
+        test_table.handle().row_by_id(&PackedRowId {
+            commit_idx: 0,
+            counter: 1
+        }),
+        None
+    );
 }
 
-/// Row ids and id cells survive the pack/unpack round trip across rows
-/// from different commits.
-#[rstest]
-fn packed_row_ids_round_trip_across_commits(
-    #[with("edges", id_schema(vec!["src", "dst"], None, id_col_type(Path::from("T"))))]
-    mut test_table: TestTable,
-) {
-    let rows = [
-        (row_id_from(1, 0), row_id_from(3, 7), row_id_from(4, 8)),
-        (row_id_from(2, 1), row_id_from(3, 9), row_id_from(1, 0)),
-        (row_id_from(1, 2), row_id_from(2, 1), row_id_from(3, 7)),
-    ];
-    for (rid, src, dst) in rows.iter().cloned() {
-        test_table
-            .as_mut()
-            .insert_row(vec![WireValue::Id(src), WireValue::Id(dst)], rid)
-            .expect("row is valid");
-    }
-
-    let handle = test_table.handle();
-    for (rid, src, dst) in rows.iter().cloned() {
-        assert_eq!(
-            handle.row_by_id(&rid),
-            Some(WireRowView {
-                row_id: rid,
-                values: vec![WireValue::Id(src), WireValue::Id(dst)],
-            })
-        );
-    }
-
-    // Four distinct commit hashes, each interned exactly once.
-    assert_eq!(test_table.dict.len(), 4);
-}
-
-/// Rows are stored sorted by packed row id regardless of insertion order,
-/// and `row_position` reports presence and absence accordingly.
+/// Rows are stored sorted by packed row id regardless of insertion order.
 #[rstest]
 fn rows_stay_sorted_by_row_id(
     #[with("sorted", int_schema(vec!["c0"], None))] mut test_table: TestTable,
 ) {
-    // Commit A is interned first, so its rows sort before commit B's, and
-    // counters order rows within a commit.
+    // `(commit_idx, counter)` is the storage order.
     let rows = [
-        (row_id_from(1, 5), 0),
-        (row_id_from(2, 0), 1),
-        (row_id_from(1, 0), 2),
-        (row_id_from(2, 7), 3),
-        (row_id_from(1, 2), 4),
+        (
+            PackedRowId {
+                commit_idx: 0,
+                counter: 5,
+            },
+            0,
+        ),
+        (
+            PackedRowId {
+                commit_idx: 1,
+                counter: 0,
+            },
+            1,
+        ),
+        (
+            PackedRowId {
+                commit_idx: 0,
+                counter: 0,
+            },
+            2,
+        ),
+        (
+            PackedRowId {
+                commit_idx: 1,
+                counter: 7,
+            },
+            3,
+        ),
+        (
+            PackedRowId {
+                commit_idx: 0,
+                counter: 2,
+            },
+            4,
+        ),
     ];
-    for (rid, v) in rows.iter().cloned() {
+    for &(rid, v) in &rows {
         test_table
             .as_mut()
-            .insert_row(vec![WireValue::Int(v)], rid)
+            .insert_row(StoreTuple::from(vec![StoreScalarValue::I32(v)]), rid)
             .expect("row is valid");
     }
 
-    let handle = test_table.handle();
-    let stored: Vec<WireRowId> = handle.scan().map(|row| row.row_id).collect();
+    let stored_row_ids = test_table
+        .handle()
+        .scan()
+        .map(|row| row.row_id())
+        .collect::<Vec<_>>();
     assert_eq!(
-        stored,
+        stored_row_ids,
         vec![
-            row_id_from(1, 0),
-            row_id_from(1, 2),
-            row_id_from(1, 5),
-            row_id_from(2, 0),
-            row_id_from(2, 7),
+            PackedRowId {
+                commit_idx: 0,
+                counter: 0
+            },
+            PackedRowId {
+                commit_idx: 0,
+                counter: 2
+            },
+            PackedRowId {
+                commit_idx: 0,
+                counter: 5
+            },
+            PackedRowId {
+                commit_idx: 1,
+                counter: 0
+            },
+            PackedRowId {
+                commit_idx: 1,
+                counter: 7
+            },
         ]
     );
 
     // Cells moved together with their row ids.
-    for (rid, v) in rows.iter().cloned() {
+    for (rid, v) in rows {
         assert_eq!(
-            handle.row_by_id(&rid),
-            Some(WireRowView {
-                row_id: rid,
-                values: vec![WireValue::Int(v)],
-            })
+            test_table.handle().row_by_id(&rid),
+            Some(StoreTuple::from(vec![
+                StoreScalarValue::RowId(rid),
+                StoreScalarValue::I32(v)
+            ]))
         );
     }
 
-    // Absent ids: known commit with unused counter, and unknown commit.
-    assert_eq!(handle.row_by_id(&row_id_from(1, 3)), None);
-    assert_eq!(handle.row_by_id(&row_id_from(9, 0)), None);
+    assert_eq!(
+        test_table.handle().row_by_id(&PackedRowId {
+            commit_idx: 0,
+            counter: 3
+        }),
+        None
+    );
+    assert_eq!(
+        test_table.handle().row_by_id(&PackedRowId {
+            commit_idx: 2,
+            counter: 0
+        }),
+        None
+    );
 }
 
 /// Primary key comparison works on dictionary-encoded id columns, and an
@@ -610,16 +688,25 @@ fn primary_key_detects_duplicates_in_id_columns(
     )]
     mut test_table: TestTable,
 ) {
-    let src = row_id_from(3, 7);
+    let src_public = row_id_from(3, 7);
+    let src = test_table.dict.pack_row_id(src_public.clone());
+    let dst = test_table.dict.pack_row_id(row_id_from(4, 8));
+    let row_id = test_table.dict.pack_row_id(row_id_from(1, 0));
     test_table
         .as_mut()
         .insert_row(
-            vec![WireValue::Id(src.clone()), WireValue::Id(row_id_from(4, 8))],
-            row_id_from(1, 0),
+            StoreTuple::from(vec![
+                StoreScalarValue::RowId(src),
+                StoreScalarValue::RowId(dst),
+            ]),
+            row_id,
         )
         .expect("row is valid");
 
-    let duplicate = vec![WireValue::Id(src), WireValue::Id(row_id_from(4, 9))];
+    let duplicate = vec![
+        PublicScalarValue::RowId(src_public),
+        PublicScalarValue::RowId(row_id_from(4, 9)),
+    ];
     assert_eq!(
         test_table
             .table
@@ -628,8 +715,8 @@ fn primary_key_detects_duplicates_in_id_columns(
     );
 
     let unseen_commit = vec![
-        WireValue::Id(row_id_from(9, 7)),
-        WireValue::Id(row_id_from(4, 8)),
+        PublicScalarValue::RowId(row_id_from(9, 7)),
+        PublicScalarValue::RowId(row_id_from(4, 8)),
     ];
     assert!(
         test_table
@@ -648,25 +735,47 @@ fn multi_column_primary_key_checks_all_columns(
 ) {
     let rows = [(3, 1), (1, 2), (1, 1), (2, 1), (2, 2)];
     for (i, (a, b)) in rows.into_iter().enumerate() {
-        let values = vec![WireValue::Int(a), WireValue::Int(b), WireValue::Int(0)];
+        let values = vec![
+            PublicScalarValue::I32(a),
+            PublicScalarValue::I32(b),
+            PublicScalarValue::I32(0),
+        ];
         test_table
             .table
             .validate_insert(&values, &test_table.dict)
             .expect("unique pair");
         test_table
             .as_mut()
-            .insert_row(values, zerohash_row_id(i as u32))
+            .insert_row(
+                StoreTuple::from(vec![
+                    StoreScalarValue::I32(a),
+                    StoreScalarValue::I32(b),
+                    StoreScalarValue::I32(0),
+                ]),
+                PackedRowId {
+                    commit_idx: 0,
+                    counter: i as u32,
+                },
+            )
             .expect("row is valid");
     }
 
     for (a, b) in rows {
-        let dup = vec![WireValue::Int(a), WireValue::Int(b), WireValue::Int(9)];
+        let dup = vec![
+            PublicScalarValue::I32(a),
+            PublicScalarValue::I32(b),
+            PublicScalarValue::I32(9),
+        ];
         assert_eq!(
             test_table.table.validate_insert(&dup, &test_table.dict),
             Err(ValidationError::DuplicatePrimaryKey)
         );
     }
-    let fresh = vec![WireValue::Int(3), WireValue::Int(2), WireValue::Int(0)];
+    let fresh = vec![
+        PublicScalarValue::I32(3),
+        PublicScalarValue::I32(2),
+        PublicScalarValue::I32(0),
+    ];
     assert!(
         test_table
             .table
@@ -691,27 +800,37 @@ fn string_primary_key_detects_duplicates(
     mut test_table: TestTable,
 ) {
     for (i, name) in ["b", "a", "c"].into_iter().enumerate() {
-        let values = vec![WireValue::Str(name.to_string())];
+        let values = vec![PublicScalarValue::String(name.to_string())];
         test_table
             .table
             .validate_insert(&values, &test_table.dict)
             .expect("unique name");
         test_table
             .as_mut()
-            .insert_row(values, zerohash_row_id(i as u32))
+            .insert_row(
+                StoreTuple::from(vec![StoreScalarValue::String(name.to_string())]),
+                PackedRowId {
+                    commit_idx: 0,
+                    counter: i as u32,
+                },
+            )
             .expect("row is valid");
     }
 
     assert_eq!(
-        test_table
-            .table
-            .validate_insert(&[WireValue::Str("a".to_string())], &test_table.dict),
+        test_table.table.validate_insert(
+            &[PublicScalarValue::String("a".to_string())],
+            &test_table.dict
+        ),
         Err(ValidationError::DuplicatePrimaryKey)
     );
     assert!(
         test_table
             .table
-            .validate_insert(&[WireValue::Str("d".to_string())], &test_table.dict)
+            .validate_insert(
+                &[PublicScalarValue::String("d".to_string())],
+                &test_table.dict
+            )
             .is_ok()
     );
 }
@@ -746,15 +865,25 @@ fn pk_insert_benchmark(
     let n = 50_000;
     let start = std::time::Instant::now();
     for i in 0..n {
-        let row_id = zerohash_row_id(i as u32);
-        let values = vec![WireValue::Id(row_id.clone()), WireValue::Int(i)];
+        let public_id = zerohash_row_id(i as u32);
+        let row_id = test_table.dict.pack_row_id(public_id.clone());
+        let values = vec![
+            PublicScalarValue::RowId(public_id),
+            PublicScalarValue::I32(i),
+        ];
         test_table
             .table
             .validate_insert(&values, &test_table.dict)
             .expect("keys are unique");
         test_table
             .as_mut()
-            .insert_row(values, row_id)
+            .insert_row(
+                StoreTuple::from(vec![
+                    StoreScalarValue::RowId(row_id),
+                    StoreScalarValue::I32(i),
+                ]),
+                row_id,
+            )
             .expect("row is valid");
     }
     println!("inserted {n} rows with pk check in {:?}", start.elapsed());
@@ -770,10 +899,19 @@ fn table_index_non_index_give_same_results(
     mut test_table: TestTable,
 ) {
     for value in [7, 8] {
-        let row_id = zerohash_row_id(test_table.handle().row_count() as u32);
+        let row_id = PackedRowId {
+            commit_idx: 0,
+            counter: test_table.handle().row_count() as u32,
+        };
         test_table
             .as_mut()
-            .insert_row(vec![WireValue::Int(value), WireValue::Int(value)], row_id)
+            .insert_row(
+                StoreTuple::from(vec![
+                    StoreScalarValue::I32(value),
+                    StoreScalarValue::I32(value),
+                ]),
+                row_id,
+            )
             .expect("row is valid");
     }
     let index = test_table
@@ -785,13 +923,14 @@ fn table_index_non_index_give_same_results(
     for value in [7, 9] {
         let indexed = test_table
             .handle()
-            .index_seek(&[WireValue::Int(value)])
+            .index_seek(&StoreTuple::from(vec![StoreScalarValue::I32(value)]))
             .expect("valid index lookup")
             .collect::<Vec<_>>();
+        // Scanned rows lead with the row id, so the `plain` column is at 2.
         let scanned = test_table
             .handle()
             .scan()
-            .filter_map(|r| (r.values[1] == WireValue::Int(value)).then_some(r.row_id))
+            .filter_map(|row| (row[2] == StoreScalarValue::I32(value)).then(|| row.row_id()))
             .collect::<Vec<_>>();
         assert_eq!(indexed, scanned);
     }
@@ -819,18 +958,29 @@ fn debug_dumps_rows(
     })]
     mut test_table: TestTable,
 ) {
+    // Dump prints unpacked row ids, so the commits have to be interned.
+    let first = zerohash_row_id(0);
+    let second = zerohash_row_id(1);
+    let first_packed = test_table.dict.pack_row_id(first.clone());
+    let second_packed = test_table.dict.pack_row_id(second.clone());
     test_table
         .as_mut()
         .insert_row(
-            vec![WireValue::Int(7), WireValue::Str("x".to_string())],
-            zerohash_row_id(0),
+            StoreTuple::from(vec![
+                StoreScalarValue::I32(7),
+                StoreScalarValue::String("x".to_string()),
+            ]),
+            first_packed,
         )
         .expect("first row is valid");
     test_table
         .as_mut()
         .insert_row(
-            vec![WireValue::Int(8), WireValue::Str("y".to_string())],
-            zerohash_row_id(1),
+            StoreTuple::from(vec![
+                StoreScalarValue::I32(8),
+                StoreScalarValue::String("y".to_string()),
+            ]),
+            second_packed,
         )
         .expect("second row is valid");
 
@@ -842,8 +992,7 @@ fn debug_dumps_rows(
                 "[0] row_id={} | c0=7 | c1=\"x\"\n",
                 "[1] row_id={} | c0=8 | c1=\"y\"\n",
             ),
-            zerohash_row_id(0),
-            zerohash_row_id(1),
+            first, second,
         )
     );
 }

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::WireRowId;
+use coln_flir_rs::public::PublicRowId;
 use ena::unify::{InPlaceUnificationTable, UnifyKey};
 
 pub(super) type UnionFind = InPlaceUnificationTable<NodeId>;
@@ -11,7 +11,7 @@ pub(super) type UnionFind = InPlaceUnificationTable<NodeId>;
 pub(super) struct NodeId(u32);
 
 impl UnifyKey for NodeId {
-    type Value = WireRowId;
+    type Value = PublicRowId;
 
     fn index(&self) -> u32 {
         self.0

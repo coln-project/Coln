@@ -5,12 +5,11 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use coln_flir_rs::{
-    WireValue,
-    engine::packed::{PackedRowId, PackedValue},
-};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue};
+use coln_flir_rs::engine::schema::StoreScalarType;
+use coln_flir_rs::public::PublicScalarValue;
 
-use crate::{pack::IdPacker, table::CellKind};
+use crate::pack::IdPacker;
 
 /// Columnar storage for [`PackedRowId`]s, split into two parallel columns.
 ///
@@ -93,20 +92,30 @@ impl IdColumn {
 }
 
 /// One column of typed storage. The variant is fixed by the schema column type.
-/// Each id is 8 bytes instead of a 40-byte [`WireValue`].
+/// Each id is 8 bytes instead of a 40-byte [`PublicScalarValue`].
+///
+/// `I32` cells are widened to `i64` in storage and narrowed back on read.
+/// Widening keeps the sort order that [`Column::scope_to_value`] relies on,
+/// which a `u32` bit cast would not.
 #[derive(Debug, Clone)]
 pub(super) enum Column {
     Id(IdColumn),
-    Int(hexane::Column<i64>), // TODO: change to i32
+    U64(hexane::Column<u64>),
+    I64(hexane::Column<i64>),
+    I32(hexane::Column<i64>), // TODO change to i32 when hexane supports it
+    U32(hexane::Column<u32>),
     Str(hexane::Column<String>),
 }
 
 impl Column {
-    pub(super) fn new(kind: CellKind) -> Self {
+    pub(super) fn new(kind: StoreScalarType) -> Self {
         match kind {
-            CellKind::RowId => Column::Id(IdColumn::new()),
-            CellKind::Int => Column::Int(hexane::Column::<i64>::new()),
-            CellKind::Str => Column::Str(hexane::Column::<String>::new()),
+            StoreScalarType::RowId(()) => Column::Id(IdColumn::new()),
+            StoreScalarType::U64(()) => Column::U64(hexane::Column::new()),
+            StoreScalarType::I64(()) => Column::I64(hexane::Column::new()),
+            StoreScalarType::I32(()) => Column::I32(hexane::Column::new()),
+            StoreScalarType::U32(()) => Column::U32(hexane::Column::new()),
+            StoreScalarType::String(()) => Column::Str(hexane::Column::new()),
         }
     }
 
@@ -114,67 +123,84 @@ impl Column {
     ///
     /// Panics on a type mismatch, which `Table::validate_insert` rules out
     /// before rows reach storage.
-    pub(super) fn insert(&mut self, row: usize, value: PackedValue) {
+    pub(super) fn insert(&mut self, row: usize, value: StoreScalarValue) {
         match (self, value) {
-            (Column::Id(cells), PackedValue::Id(id)) => cells.insert(row, id),
-            (Column::Int(cells), PackedValue::Int(value)) => cells.insert(row, value as i64),
-            (Column::Str(cells), PackedValue::Str(value)) => cells.insert(row, value),
-            (column, value) => panic!(
-                "cell type mismatch: column stores {:?}, got {value:?}",
-                CellKind::from(&*column)
-            ),
+            (Column::Id(cells), StoreScalarValue::RowId(id)) => cells.insert(row, id),
+            (Column::U64(cells), StoreScalarValue::U64(value)) => cells.insert(row, value),
+            (Column::I64(cells), StoreScalarValue::I64(value)) => cells.insert(row, value),
+            (Column::I32(cells), StoreScalarValue::I32(value)) => {
+                cells.insert(row, i64::from(value))
+            }
+            (Column::U32(cells), StoreScalarValue::U32(value)) => cells.insert(row, value),
+            (Column::Str(cells), StoreScalarValue::String(value)) => cells.insert(row, value),
+            (_column, value) => {
+                panic!("cell type mismatch: column does not store {}", value.typ(),)
+            }
         }
     }
 
     pub(super) fn remove(&mut self, row: usize) {
         match self {
             Column::Id(cells) => cells.remove(row),
-            Column::Int(cells) => cells.remove(row),
+            Column::U64(cells) => cells.remove(row),
+            Column::I64(cells) | Column::I32(cells) => cells.remove(row),
+            Column::U32(cells) => cells.remove(row),
             Column::Str(cells) => cells.remove(row),
         }
     }
 
-    pub(super) fn get(&self, row: usize, packer: &IdPacker) -> Option<WireValue> {
+    /// Cell at `row` with its row id resolved through `packer`.
+    pub(super) fn get(&self, row: usize, packer: &IdPacker) -> Option<PublicScalarValue> {
+        self.get_packed(row)
+            .map(|value| value.map(|id| packer.unpack_row_id(id)))
+    }
+
+    /// Cell at `row` as stored, with packed row ids.
+    pub(super) fn get_packed(&self, row: usize) -> Option<StoreScalarValue> {
         match self {
-            Column::Id(cells) => cells
+            Column::Id(cells) => cells.get(row).map(StoreScalarValue::RowId),
+            Column::U64(cells) => cells.get(row).map(StoreScalarValue::U64),
+            Column::I64(cells) => cells.get(row).map(StoreScalarValue::I64),
+            Column::I32(cells) => cells.get(row).map(|value| {
+                StoreScalarValue::I32(
+                    i32::try_from(value).expect("i32 column only stores widened i32 values"),
+                )
+            }),
+            Column::U32(cells) => cells.get(row).map(StoreScalarValue::U32),
+            Column::Str(cells) => cells
                 .get(row)
-                .map(|id| WireValue::Id(packer.unpack_row_id(id))),
-            Column::Int(cells) => cells.get(row).map(|i| WireValue::Int(i as i32)),
-            Column::Str(cells) => cells.get(row).map(|s| WireValue::Str(s.to_owned())),
+                .map(|s| StoreScalarValue::String(s.to_owned())),
         }
     }
 
-    pub(super) fn get_packed(&self, row: usize) -> Option<PackedValue> {
-        match self {
-            Column::Id(cells) => cells.get(row).map(PackedValue::Id),
-            Column::Int(cells) => cells.get(row).map(|i| PackedValue::Int(i as i32)),
-            Column::Str(cells) => cells.get(row).map(|s| PackedValue::Str(s.to_owned())),
-        }
-    }
-
-    pub(super) fn scope_to_value(&self, value: &PackedValue, range: Range<usize>) -> Range<usize> {
+    pub(super) fn scope_to_value(
+        &self,
+        value: &StoreScalarValue,
+        range: Range<usize>,
+    ) -> Range<usize> {
         match (self, value) {
-            (Column::Id(column), PackedValue::Id(value)) => column.scope_to_value(*value, range),
-            (Column::Int(column), PackedValue::Int(value)) => {
-                column.scope_to_value(*value as i64, range)
+            (Column::Id(column), StoreScalarValue::RowId(value)) => {
+                column.scope_to_value(*value, range)
             }
-            (Column::Str(column), PackedValue::Str(value)) => {
+            (Column::U64(column), StoreScalarValue::U64(value)) => {
+                column.scope_to_value(*value, range)
+            }
+            (Column::I64(column), StoreScalarValue::I64(value)) => {
+                column.scope_to_value(*value, range)
+            }
+            (Column::I32(column), StoreScalarValue::I32(value)) => {
+                column.scope_to_value(i64::from(*value), range)
+            }
+            (Column::U32(column), StoreScalarValue::U32(value)) => {
+                column.scope_to_value(*value, range)
+            }
+            (Column::Str(column), StoreScalarValue::String(value)) => {
                 column.scope_to_value(value.as_str(), range)
             }
-            (column, value) => panic!(
-                "index key type mismatch: column stores {:?}, got {value:?}",
-                CellKind::from(column)
+            (_column, value) => panic!(
+                "index key type mismatch: column does not store {}",
+                value.typ()
             ),
-        }
-    }
-}
-
-impl From<&Column> for CellKind {
-    fn from(column: &Column) -> Self {
-        match column {
-            Column::Id(_) => CellKind::RowId,
-            Column::Int(_) => CellKind::Int,
-            Column::Str(_) => CellKind::Str,
         }
     }
 }

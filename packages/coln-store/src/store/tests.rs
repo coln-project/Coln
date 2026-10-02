@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::engine::packed::StoreScalarValue;
+use coln_flir_rs::public::PublicTuple;
 use rstest::rstest;
 
 use super::*;
@@ -9,7 +11,6 @@ use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Materialization, Path, Schema},
     txn::rw::{StoreRead, StoreWrite},
 };
-
 mod tables {
     use super::*;
 
@@ -118,43 +119,46 @@ mod writes {
 
 mod reads {
 
+    use coln_flir_rs::engine::tx::TxTuple;
+
     use super::*;
     use crate::test_utils::{int_schema, nodes_edges_store};
-    use crate::txn::empty_row;
 
     // Tests that store.all() returns all values satisfy requirements.
     // Test with/without rowid, and the table should contain duplicate values as well
-    // Test with/without select
+    // Test with/without select. `select` indexes the row tuple, so column 0 is
+    // the row id and schema columns start at 1.
     #[rstest]
-    fn store_all_returns_all_rows(#[from(nodes_edges_store)] store: Store) {
-        let mut store = store.auto();
+    fn store_all_returns_all_rows(#[from(nodes_edges_store)] mut store: Store) {
         let nodes = Path::from("Nodes");
         let edges = Path::from("Edges");
 
-        store.transaction();
-        let n0 = store.add(&nodes, empty_row()).expect("n0");
-        let n1 = store.add(&nodes, empty_row()).expect("n1");
+        let mut txn = store.transaction();
+        let n0 = txn.add(&nodes, TxTuple::empty()).expect("n0");
+        let n1 = txn.add(&nodes, TxTuple::empty()).expect("n1");
 
-        let e0 = store.add(&edges, vec![n0.clone()]).expect("e0");
-        store
-            .add(&edges, vec![n0.clone()])
+        let e0 = txn.add(&edges, vec![n0.clone()]).expect("e0");
+        txn.add(&edges, vec![n0.clone()])
             .expect("duplicate edge to n0");
-        store.add(&edges, vec![n1.clone()]).expect("e2");
-        let h = store.commit().expect("txn success");
+        txn.add(&edges, vec![n1.clone()]).expect("e2");
+        let h = txn.commit().expect("txn success");
         let [n0_id, n1_id, e0_id] = store.promote(vec![n0, n1, e0], h).try_into().unwrap();
+        let n0_packed = store.id_lookup().packed(&n0_id).expect("n0 is packed");
+        let n1_packed = store.id_lookup().packed(&n1_id).expect("n1 is packed");
+        let e0_packed = store.id_lookup().packed(&e0_id).expect("e0 is packed");
 
-        let n0_col = vec![WireValue::Id(n0_id)];
-        let n1_col = vec![WireValue::Id(n1_id)];
+        let n0_col = StoreTuple::from(vec![StoreScalarValue::RowId(n0_packed)]);
+        let n1_col = StoreTuple::from(vec![StoreScalarValue::RowId(n1_packed)]);
+        let no_cols = StoreTuple::from(vec![]);
 
         let all_edges = WhereClause {
             table_name: edges.clone(),
             row_id: None,
-            values: vec![],
+            values: PublicTuple::from(vec![]),
         };
-        store.transaction();
         assert_eq!(
             store
-                .all_proj(&all_edges, &[0])
+                .all_proj(&all_edges, &[1])
                 .expect("all edge node columns"),
             vec![n0_col.clone(), n0_col.clone(), n1_col.clone()]
         );
@@ -162,23 +166,32 @@ mod reads {
             store
                 .all_proj(&all_edges, &[])
                 .expect("all edges with empty select"),
-            vec![vec![], vec![], vec![]]
+            vec![no_cols.clone(), no_cols.clone(), no_cols.clone()]
         );
 
         let by_row_id = WhereClause {
             table_name: edges,
             row_id: Some(e0_id),
-            values: vec![],
+            values: PublicTuple::from(vec![]),
         };
         assert_eq!(
-            store.all_proj(&by_row_id, &[0]).expect("edge e0"),
+            store
+                .all_proj(&by_row_id, &[0, 1])
+                .expect("edge e0 with its id"),
+            vec![StoreTuple::from_id_values(
+                e0_packed,
+                vec![StoreScalarValue::RowId(n0_packed)]
+            )]
+        );
+        assert_eq!(
+            store.all_proj(&by_row_id, &[1]).expect("edge e0"),
             vec![n0_col]
         );
         assert_eq!(
             store
                 .all_proj(&by_row_id, &[])
                 .expect("edge e0 with empty select"),
-            vec![vec![]]
+            vec![no_cols]
         );
     }
 
@@ -193,27 +206,33 @@ mod reads {
         let mut store = Store::new();
         store.create_table(path.clone(), schema).expect("create T");
 
-        let mut store = store.auto();
-        store.transaction();
+        let mut txn = store.transaction();
+        txn.add(&path, vec![1i32, 10, 100]).expect("r0");
+        txn.add(&path, vec![1i32, 10, 101]).expect("r1");
+        txn.add(&path, vec![1i32, 20, 200]).expect("r2");
+        txn.add(&path, vec![2i32, 10, 300]).expect("r3");
+        txn.commit().expect("txn success");
 
-        store.add(&path, vec![1i32, 10, 100]).expect("r0");
-        store.add(&path, vec![1i32, 10, 101]).expect("r1");
-        store.add(&path, vec![1i32, 20, 200]).expect("r2");
-        store.add(&path, vec![2i32, 10, 300]).expect("r3");
-        store.commit().expect("txn success");
-
-        let r0 = vec![1i32.into(), 10.into(), 100.into()];
-        let r1 = vec![1i32.into(), 10.into(), 101.into()];
-        let r2 = vec![1i32.into(), 20.into(), 200.into()];
-        let r3 = vec![2i32.into(), 10.into(), 300.into()];
-        let cols = [0, 1, 2];
+        let ints = |values: &[i32]| -> StoreTuple {
+            values.iter().map(|v| StoreScalarValue::I32(*v)).collect()
+        };
+        let r0 = ints(&[1, 10, 100]);
+        let r1 = ints(&[1, 10, 101]);
+        let r2 = ints(&[1, 20, 200]);
+        let r3 = ints(&[2, 10, 300]);
+        // Skip column 0, the row id, and select the three schema columns.
+        let cols = [1, 2, 3];
 
         let query = |values: Vec<i32>| WhereClause {
             table_name: path.clone(),
             row_id: None,
-            values: values.into_iter().map(WireValue::from).collect(),
+            values: PublicTuple::from(
+                values
+                    .into_iter()
+                    .map(PublicScalarValue::from)
+                    .collect::<Vec<_>>(),
+            ),
         };
-        store.transaction();
 
         assert_eq!(
             store.all_proj(&query(vec![]), &cols).expect("empty prefix"),
@@ -221,7 +240,7 @@ mod reads {
         );
         assert_eq!(
             store
-                .all_proj(&query(vec![1]), &cols)
+                .all_proj(&query(vec![1i32]), &cols)
                 .expect("first column"),
             vec![r0.clone(), r1.clone(), r2.clone()]
         );
@@ -245,7 +264,7 @@ mod reads {
         );
         assert_eq!(
             store
-                .all_proj(&query(vec![2]), &cols)
+                .all_proj(&query(vec![2i32]), &cols)
                 .expect("other first column"),
             vec![r3]
         );
@@ -253,7 +272,7 @@ mod reads {
             store
                 .all_proj(&query(vec![10]), &cols)
                 .expect("10 is a later-column value, not a col0 prefix"),
-            Vec::<Vec<WireValue>>::new()
+            Vec::<StoreTuple>::new()
         );
         assert!(
             store.all_proj(&query(vec![1, 10, 100, 0]), &cols).is_err(),
@@ -278,13 +297,17 @@ mod query {
     fn scan_table_returns_rows_for_known_table(commit_int_store: (Store, CommitHash)) {
         let path = Path::from("T");
         let (store, commit) = commit_int_store;
+        let row_id = store
+            .id_lookup()
+            .packed(&PublicRowId { commit, counter: 0 })
+            .expect("committed id is packed");
 
         assert_eq!(
             store.scan_table(&path).expect("known table"),
-            vec![WireRowView {
-                row_id: WireRowId { commit, counter: 0 },
-                values: vec![42i32.into()],
-            }]
+            vec![StoreTuple::from_id_values(
+                row_id,
+                vec![StoreScalarValue::I32(42)]
+            )]
         );
     }
 }
@@ -390,7 +413,7 @@ mod rowing {
         store
     }
 
-    fn add_op(store: &Store, table: &str, rid: WireRowId, values: Vec<WireValue>) -> Op {
+    fn add_op(store: &Store, table: &str, rid: PublicRowId, values: Vec<PublicScalarValue>) -> Op {
         Op::Add {
             row_id: rid,
             table: store
@@ -415,7 +438,7 @@ mod rowing {
             &store,
             "Term",
             t_high.clone(),
-            vec![WireValue::Int(7)],
+            vec![PublicScalarValue::I32(7)],
         )];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
 
@@ -426,13 +449,16 @@ mod rowing {
                 &store,
                 "Plus",
                 plus.clone(),
-                vec![WireValue::Id(t_high.clone()), WireValue::Id(t_high.clone())],
+                vec![
+                    PublicScalarValue::RowId(t_high.clone()),
+                    PublicScalarValue::RowId(t_high.clone()),
+                ],
             ),
             add_op(
                 &store,
                 "Note",
                 note.clone(),
-                vec![WireValue::Id(t_high.clone())],
+                vec![PublicScalarValue::RowId(t_high.clone())],
             ),
         ];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
@@ -443,42 +469,58 @@ mod rowing {
             &store,
             "Term",
             t_low.clone(),
-            vec![WireValue::Int(7)],
+            vec![PublicScalarValue::I32(7)],
         )];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
 
         // The stored row is now t_low; the stale id t_high resolves to it.
-        let term_path = Path::from("Term");
-        let term_view: Option<WireRowView> = Some(WireRowView {
-            row_id: t_low.clone(),
-            values: vec![WireValue::Int(7)],
-        });
-        let term = store.table_at(&term_path).expect("Term");
-        assert_eq!(term.row_by_id(&t_low), term_view);
-        assert_eq!(term.row_by_id(&t_high), term_view);
-        // An id that was never observed still misses.
-        assert_eq!(term.row_by_id(&row_id_from(9, 0)), None);
+        let t_low_packed = store.id_lookup().packed(&t_low).expect("t_low is packed");
+        let term_row = Some(StoreTuple::from_id_values(
+            t_low_packed,
+            vec![StoreScalarValue::I32(7)],
+        ));
+        let term = store.table_at(&Path::from("Term")).expect("Term");
+        assert_eq!(term.row_by_id(&t_low_packed), term_row);
+        assert_eq!(
+            term.row_by_id(&store.id_lookup().packed(&t_high).expect("t_high is packed")),
+            term_row
+        );
+        // An id that was never observed still misses, whether its commit is
+        // unknown to the store or only its counter is.
+        assert_eq!(store.id_lookup().packed(&row_id_from(9, 0)), None);
+        assert_eq!(
+            term.row_by_id(&PackedRowId {
+                counter: 9,
+                ..t_low_packed
+            }),
+            None
+        );
 
         // Both referencing tables now name the new canonical id.
+        let plus_packed = store.id_lookup().packed(&plus).expect("plus is packed");
         assert_eq!(
             store
                 .table_at(&Path::from("Plus"))
                 .expect("Plus")
-                .row_by_id(&plus),
-            Some(WireRowView {
-                row_id: plus,
-                values: vec![WireValue::Id(t_low.clone()), WireValue::Id(t_low.clone())],
-            })
+                .row_by_id(&plus_packed),
+            Some(StoreTuple::from_id_values(
+                plus_packed,
+                vec![
+                    StoreScalarValue::RowId(t_low_packed),
+                    StoreScalarValue::RowId(t_low_packed),
+                ],
+            ))
         );
+        let note_packed = store.id_lookup().packed(&note).expect("note is packed");
         assert_eq!(
             store
                 .table_at(&Path::from("Note"))
                 .expect("Note")
-                .row_by_id(&note),
-            Some(WireRowView {
-                row_id: note,
-                values: vec![WireValue::Id(t_low)],
-            })
+                .row_by_id(&note_packed),
+            Some(StoreTuple::from_id_values(
+                note_packed,
+                vec![StoreScalarValue::RowId(t_low_packed)]
+            ))
         );
     }
 
@@ -500,38 +542,64 @@ mod rowing {
         let keep = row_id_from(3, 0);
         let dup = row_id_from(4, 0);
         let ops = vec![
-            add_op(&store, "Term", t_low.clone(), vec![WireValue::Int(7)]),
-            add_op(&store, "Term", t_high.clone(), vec![WireValue::Int(7)]),
+            add_op(
+                &store,
+                "Term",
+                t_low.clone(),
+                vec![PublicScalarValue::I32(7)],
+            ),
+            add_op(
+                &store,
+                "Term",
+                t_high.clone(),
+                vec![PublicScalarValue::I32(7)],
+            ),
             add_op(
                 &store,
                 "Plus",
                 keep.clone(),
-                vec![WireValue::Id(t_high.clone()), WireValue::Id(t_high.clone())],
+                vec![
+                    PublicScalarValue::RowId(t_high.clone()),
+                    PublicScalarValue::RowId(t_high.clone()),
+                ],
             ),
             add_op(
                 &store,
                 "Plus",
                 dup.clone(),
-                vec![WireValue::Id(t_high.clone()), WireValue::Id(t_high)],
+                vec![
+                    PublicScalarValue::RowId(t_high.clone()),
+                    PublicScalarValue::RowId(t_high),
+                ],
             ),
         ];
         apply_ops_and_rebuild(&mut store, ops)
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap();
-        let plus: Vec<WireRowView> = store.scan_table(&Path::from("Plus")).unwrap();
+        let terms = store.scan_table(&Path::from("Term")).unwrap();
+        let plus = store.scan_table(&Path::from("Plus")).unwrap();
         assert_eq!(terms.len(), 1);
         assert_eq!(plus.len(), 1);
 
         // The surviving row keeps the canonical id and names canonical children.
-        assert_eq!(plus[0].row_id, keep);
+        let t_low_packed = store.id_lookup().packed(&t_low).expect("t_low is packed");
         assert_eq!(
-            plus[0].values,
-            [WireValue::Id(t_low.clone()), WireValue::Id(t_low)]
+            plus[0].row_id(),
+            store.id_lookup().packed(&keep).expect("keep is packed")
+        );
+        assert_eq!(
+            plus[0].values(),
+            [
+                StoreScalarValue::RowId(t_low_packed),
+                StoreScalarValue::RowId(t_low_packed)
+            ]
         );
         // Both stale ids still resolve to what replaced them.
         let plus_tbl = store.table_at(&Path::from("Plus")).expect("Plus");
-        assert_eq!(plus_tbl.row_by_id(&dup), plus_tbl.row_by_id(&keep));
+        assert_eq!(
+            plus_tbl.row_by_id(&store.id_lookup().packed(&dup).expect("dup is packed")),
+            plus_tbl.row_by_id(&store.id_lookup().packed(&keep).expect("keep is packed"))
+        );
     }
 
     /// A row holding two displaced ids is recorded against both of them, so a
@@ -547,31 +615,62 @@ mod rowing {
         let u_high = row_id_from(2, 1);
         let plus = row_id_from(3, 0);
         let ops = vec![
-            add_op(&store, "Term", t_low.clone(), vec![WireValue::Int(7)]),
-            add_op(&store, "Term", u_low.clone(), vec![WireValue::Int(8)]),
-            add_op(&store, "Term", t_high.clone(), vec![WireValue::Int(7)]),
-            add_op(&store, "Term", u_high.clone(), vec![WireValue::Int(8)]),
+            add_op(
+                &store,
+                "Term",
+                t_low.clone(),
+                vec![PublicScalarValue::I32(7)],
+            ),
+            add_op(
+                &store,
+                "Term",
+                u_low.clone(),
+                vec![PublicScalarValue::I32(8)],
+            ),
+            add_op(
+                &store,
+                "Term",
+                t_high.clone(),
+                vec![PublicScalarValue::I32(7)],
+            ),
+            add_op(
+                &store,
+                "Term",
+                u_high.clone(),
+                vec![PublicScalarValue::I32(8)],
+            ),
             add_op(
                 &store,
                 "Plus",
                 plus.clone(),
-                vec![WireValue::Id(t_high), WireValue::Id(u_high)],
+                vec![
+                    PublicScalarValue::RowId(t_high),
+                    PublicScalarValue::RowId(u_high),
+                ],
             ),
         ];
         apply_ops_and_rebuild(&mut store, ops)
             .expect("duplicates merge rather than failing the commit");
 
-        let terms: Vec<WireRowView> = store.scan_table(&Path::from("Term")).unwrap();
+        let terms = store.scan_table(&Path::from("Term")).unwrap();
         assert_eq!(terms.len(), 2);
+        let plus_packed = store.id_lookup().packed(&plus).expect("plus is packed");
         assert_eq!(
             store
                 .table_at(&Path::from("Plus"))
                 .expect("Plus")
-                .row_by_id(&plus),
-            Some(WireRowView {
-                row_id: plus,
-                values: vec![WireValue::Id(t_low), WireValue::Id(u_low)],
-            })
+                .row_by_id(&plus_packed),
+            Some(StoreTuple::from_id_values(
+                plus_packed,
+                vec![
+                    StoreScalarValue::RowId(
+                        store.id_lookup().packed(&t_low).expect("t_low is packed")
+                    ),
+                    StoreScalarValue::RowId(
+                        store.id_lookup().packed(&u_low).expect("u_low is packed")
+                    ),
+                ],
+            ))
         );
     }
 
@@ -584,22 +683,22 @@ mod rowing {
         let mult_path = Path::from("Mult");
 
         let mut txn = store.transaction();
-        let t7 = txn.add(&term_path, vec![7]).unwrap();
-        let t8 = txn.add(&term_path, vec![8]).unwrap();
+        let t7 = txn.add(&term_path, vec![7i32]).unwrap();
+        let t8 = txn.add(&term_path, vec![8i32]).unwrap();
         let tp = txn.add(&plus_path, vec![t7, t8]).unwrap();
         txn.add(&mult_path, vec![tp.clone(), tp]).unwrap();
         txn.commit().unwrap();
 
         let mut txn2 = store.transaction();
-        let t7 = txn2.add(&term_path, vec![7]).unwrap();
-        let t8 = txn2.add(&term_path, vec![8]).unwrap();
+        let t7 = txn2.add(&term_path, vec![7i32]).unwrap();
+        let t8 = txn2.add(&term_path, vec![8i32]).unwrap();
         let tp = txn2.add(&plus_path, vec![t7, t8]).unwrap();
         txn2.add(&mult_path, vec![tp.clone(), tp]).unwrap();
         txn2.commit().unwrap();
 
-        let terms: Vec<WireRowView> = store.scan_table(&term_path).unwrap();
-        let plus: Vec<WireRowView> = store.scan_table(&plus_path).unwrap();
-        let mult: Vec<WireRowView> = store.scan_table(&mult_path).unwrap();
+        let terms = store.scan_table(&term_path).unwrap();
+        let plus = store.scan_table(&plus_path).unwrap();
+        let mult = store.scan_table(&mult_path).unwrap();
 
         // The second commit adds no rows: every row it names is structurally
         // identical to one the first commit already stored.
@@ -608,24 +707,28 @@ mod rowing {
         assert_eq!(mult.len(), 1);
 
         let term_id = |value: i32| {
-            let matching: Vec<&WireRowView> = terms
+            let matching: Vec<&StoreTuple> = terms
                 .iter()
-                .filter(|row| row.values == [value.into()])
+                .filter(|row| row.values() == [StoreScalarValue::I32(value)])
                 .collect();
             assert_eq!(matching.len(), 1, "exactly one Term({value})");
-            matching[0].row_id.clone()
+            matching[0].row_id()
         };
         let t7 = term_id(7);
         let t8 = term_id(8);
 
         // Each surviving row references the canonical id of its children, not the
         // duplicate the second commit allocated for them.
-        assert_eq!(plus[0].values, [WireValue::Id(t7), WireValue::Id(t8)]);
         assert_eq!(
-            mult[0].values,
+            plus[0].values(),
+            [StoreScalarValue::RowId(t7), StoreScalarValue::RowId(t8)]
+        );
+        let plus_id = plus[0].row_id();
+        assert_eq!(
+            mult[0].values(),
             [
-                WireValue::Id(plus[0].row_id.clone()),
-                WireValue::Id(plus[0].row_id.clone())
+                StoreScalarValue::RowId(plus_id),
+                StoreScalarValue::RowId(plus_id)
             ]
         );
     }
@@ -644,9 +747,9 @@ mod rowing {
         let f = Path::from("F");
 
         let mut first = store.transaction();
-        let t1 = first.add(&term, vec![1]).expect("Term(1)");
-        let t2 = first.add(&term, vec![2]).expect("Term(2)");
-        first.add(&term, vec![3]).expect("Term(3)");
+        let t1 = first.add(&term, vec![1i32]).expect("Term(1)");
+        let t2 = first.add(&term, vec![2i32]).expect("Term(2)");
+        first.add(&term, vec![3i32]).expect("Term(3)");
         first.add(&f, vec![t1, t2]).expect("F(Term1, Term2)");
         first.commit().expect("x is mapped only once");
 
@@ -660,8 +763,8 @@ mod rowing {
         // the two Term(1) rows canonicalise onto one id and F's x cell is
         // rewritten, which is why the check cannot live in the pre-apply pass.
         let mut second = store.transaction();
-        let t1_again = second.add(&term, vec![1]).expect("Term(1)");
-        let t4 = second.add(&term, vec![4]).expect("Term(4)");
+        let t1_again = second.add(&term, vec![1i32]).expect("Term(1)");
+        let t4 = second.add(&term, vec![4i32]).expect("Term(4)");
         second.add(&f, vec![t1_again, t4]).expect("F(Term1, Term4)");
 
         let err = second.commit().unwrap_err();
@@ -687,12 +790,12 @@ mod commits {
 
     /// Replayed commits mint their own row ids, so these tests can only
     /// compare the values a scan reports.
-    fn row_values(store: &Store, table: &Path) -> Vec<Vec<WireValue>> {
+    fn row_values(store: &Store, table: &Path) -> Vec<Vec<StoreScalarValue>> {
         store
             .scan_table(table)
             .expect("table")
-            .into_iter()
-            .map(|row| row.values)
+            .iter()
+            .map(|row| row.values().to_vec())
             .collect()
     }
 
@@ -779,7 +882,7 @@ mod commits {
         assert_eq!(restored.pending_commits_len(), 0);
         assert_eq!(
             row_values(&restored, &Path::from("T")),
-            vec![vec![WireValue::Int(99)]]
+            vec![vec![StoreScalarValue::I32(99)]]
         );
         assert_eq!(restored.heads(), vec![commit]);
     }
@@ -798,7 +901,7 @@ mod commits {
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
-            vec![vec![WireValue::Int(99)]]
+            vec![vec![StoreScalarValue::I32(99)]]
         );
         assert_eq!(target.heads(), source.heads());
     }
@@ -819,7 +922,10 @@ mod commits {
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
-            vec![vec![WireValue::Int(1)], vec![WireValue::Int(2)]]
+            vec![
+                vec![StoreScalarValue::I32(1)],
+                vec![StoreScalarValue::I32(2)]
+            ]
         );
         assert_eq!(target.heads(), source.heads());
     }
@@ -841,7 +947,7 @@ mod commits {
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
-            vec![vec![WireValue::Int(5)]]
+            vec![vec![StoreScalarValue::I32(5)]]
         );
     }
 
@@ -890,7 +996,7 @@ mod commits {
         // The blocked commit's row never landed, so only the first row is stored.
         assert_eq!(
             row_values(&target, &Path::from("T")),
-            vec![vec![WireValue::Int(1)]]
+            vec![vec![StoreScalarValue::I32(1)]]
         );
         assert_eq!(target.heads(), vec![first]);
     }
@@ -925,7 +1031,10 @@ mod commits {
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
-            vec![vec![1i32.into()], vec![2i32.into()]]
+            vec![
+                vec![StoreScalarValue::I32(1)],
+                vec![StoreScalarValue::I32(2)]
+            ]
         );
         assert_eq!(target.heads(), vec![second]);
     }

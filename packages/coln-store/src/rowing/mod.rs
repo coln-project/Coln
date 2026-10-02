@@ -16,7 +16,7 @@ use coln_flir_rs::engine::packed::PackedRowId;
 use ena::unify::{InPlace, Snapshot};
 
 use crate::{
-    pack::IdPacker,
+    pack::{IdPacker, id_packer::IdLookup},
     rollback::Rollback,
     rowing::uf::{NodeId, UnionFind},
     table::TableOid,
@@ -108,7 +108,7 @@ impl Rowing {
             let displaced = canonical1.max(canonical2);
             self.displaced.push(
                 id_packer
-                    .lookup_row_id(&displaced)
+                    .packed(&displaced)
                     .expect("displaced row id was packed before union"),
             );
         }
@@ -122,7 +122,7 @@ impl Rowing {
         };
         let canonical = self.uf.borrow_mut().probe_value(key);
         id_packer
-            .lookup_row_id(&canonical)
+            .packed(&canonical)
             .expect("canonical row id was packed before union")
     }
 
@@ -146,7 +146,7 @@ impl Rowing {
 
 #[cfg(test)]
 mod tests {
-    use coln_flir_rs::WireRowId;
+    use coln_flir_rs::public::PublicRowId;
     use rstest::rstest;
 
     use crate::test_utils::zerocounter_row_id;
@@ -157,13 +157,13 @@ mod tests {
     fn union_uses_unpacked_order_and_records_displaced_id(
         #[from(zerocounter_row_id)]
         #[with(1)]
-        low_id: WireRowId,
+        low_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(2)]
-        high_id: WireRowId,
+        high_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(3)]
-        unseen_id: WireRowId,
+        unseen_id: PublicRowId,
     ) {
         let mut packer = IdPacker::new();
         let low = packer.pack_row_id(low_id);
@@ -188,13 +188,13 @@ mod tests {
     fn transitive_union_displaces_each_previous_canonical_id(
         #[from(zerocounter_row_id)]
         #[with(1)]
-        low_id: WireRowId,
+        low_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(2)]
-        middle_id: WireRowId,
+        middle_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(3)]
-        high_id: WireRowId,
+        high_id: PublicRowId,
     ) {
         let mut packer = IdPacker::new();
         let low = packer.pack_row_id(low_id);
@@ -215,10 +215,10 @@ mod tests {
     fn rollback_restores_union_state(
         #[from(zerocounter_row_id)]
         #[with(1)]
-        low_id: WireRowId,
+        low_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(2)]
-        high_id: WireRowId,
+        high_id: PublicRowId,
     ) {
         let mut packer = IdPacker::new();
         let low = packer.pack_row_id(low_id);
@@ -239,16 +239,16 @@ mod tests {
     fn clearing_displaced_keeps_canonical_ids_and_empties_the_worklist(
         #[from(zerocounter_row_id)]
         #[with(1)]
-        first_id: WireRowId,
+        first_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(2)]
-        second_id: WireRowId,
+        second_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(3)]
-        third_id: WireRowId,
+        third_id: PublicRowId,
         #[from(zerocounter_row_id)]
         #[with(4)]
-        fourth_id: WireRowId,
+        fourth_id: PublicRowId,
     ) {
         let mut packer = IdPacker::new();
         let first = packer.pack_row_id(first_id);
