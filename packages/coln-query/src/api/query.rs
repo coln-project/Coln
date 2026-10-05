@@ -3,56 +3,53 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! This module converts coln's flattened lowered intermediate representation
-//! (FLIR) into a query program expressed in
-//! [`Statements`](crate::host::stmt::Stmt),
-//! using [`HostExprs`](crate::host::expr::Expr) and
-//! [`RelExprs`](crate::relational::expr::RelExpr).
+//! (FLIR) into a [logical program (Datalog)](LogicalProgram) and into
+//! [QueryIr] which can eventually be executed by the query engine(s).
 
 use crate::error::SyntaxError;
-use crate::host::QueryIr;
-use crate::host::expr::{BinaryExpr, Expr, Literal, LiteralExpr, VarExpr};
-use crate::host::operator::Operator;
-use crate::host::stmt::{BlockStmt, ExprStmt, Stmt, VarStmt};
+use crate::frontend::{self, Identifiable, LogicalProgram, RulePredicate};
+use crate::host::{
+    QueryIr,
+    expr::{self, Literal},
+    operator::Operator,
+};
 use crate::program::QueryProgram;
-use crate::relational::catalog::Catalog;
-use crate::relational::expr::{
-    AntiJoinExpr, FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr, OutputKind,
-    ProjectionExpr, RelationIdx, SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
+use crate::relational::{
+    catalog::Catalog,
+    expr::{SinkId, SourceId},
+    schema::{Column, EntityRef, TableSchema},
 };
-use crate::relational::schema::{Column, EntityRef, TableSchema};
 use crate::scalarial::ScalarType;
-use coln_flir_rs::ir::{
-    self, Atom, DefinitionEntry, El, EntityVariant, Equality, FlatRealm, Path, Prop, RuleEntry,
-    TableEntry,
-};
-use coln_flir_rs::schema::{
-    BaseTableSchema, CompilerColIdx, NativeScalarType, QueryEngineCol, QueryEngineScalarType,
-    StoreEngineCols,
+use coln_flir_rs::{
+    ir::{self, El, FlatRealm},
+    schema::{
+        BaseTable, ColnSchema, ColnSchemaWrapper, CompilerColIdx, DerivedView, NativeScalarType,
+        QueryEngineCol, QueryEngineScalarType, ResolveCompilerIdxToQueryView, RuleVars,
+        StoreEngineCols,
+    },
 };
 use indexmap::IndexMap;
 use std::borrow::Cow;
-use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap};
 
 type BaseTableName = EntityRef;
 type DerivedViewName = EntityRef;
 type ConstraintName = EntityRef;
 
-// TODO: Maybe rename BaseTableSchema into ColnSchema?
-type DerivedViewSchema = BaseTableSchema;
-
-/// coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to.
+/// Coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to.
 ///
 /// The [`Catalog`] half is served straight out of [`base_tables`](Self::base_tables),
 /// which stores FLIR's own richer [`BaseTableSchema`] which includes the schema
 /// view according to coln-compiler and coln-store next coln-query's.
 #[derive(Debug)]
 pub struct FlirProgram {
-    /// The (raw, that is, unresolved, unoptimized) statements themselves.
+    /// The logical query program which is essentially Datalog.
+    predicates: Vec<RulePredicate<FlirRule>>,
+    /// The raw, that is, unresolved and unoptimized, query IR statements
+    /// restating [Self::predicates] in relational algebra.
     code: QueryIr,
     /// The declared base tables. Doubles as this program's [`Catalog`]: every
     /// [`SourceExpr`] the lowering mints names one of these.
-    base_tables: HashMap<BaseTableName, BaseTableSchema>,
+    base_tables: IndexMap<BaseTableName, PredicateMeta<BaseTable>>,
     /// Any materialized, maintained, derived view. Doubles as this program's
     /// [`Catalog`] but for adhoc-queries, which are allowed to read from the
     /// materialized views, too, as opposed to the incrementally-maintained
@@ -62,46 +59,21 @@ pub struct FlirProgram {
     /// that what [`definition_entries`](Self::definition_entries) writes is
     /// exactly what [`derived_view_var_expr`](Self::derived_view_var_expr)
     /// reads.
-    derived_views: HashMap<DerivedViewName, DerivedViewMeta>,
+    derived_views: IndexMap<DerivedViewName, PredicateMeta<DerivedView>>,
     /// The constraints the program itself defines, that is, one per declared
     /// constraint, which is an enforced or monitored rule.
-    constraints: HashMap<ConstraintName, ConstraintMeta>,
+    constraints: IndexMap<ConstraintName, ConstraintMeta>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DerivedViewMeta {
-    // TODO: These two could eventually be melt into one, I think, but make sure
-    // that coln_schema's query engine view actually agrees with the TableSchema!
-    coln_schema: DerivedViewSchema,
-    /// Only known once the query has been fully defined through some chased
-    /// rules.
-    output_schema: Option<TableSchema>,
-}
-
-impl DerivedViewMeta {
-    fn declare(coln_schema: DerivedViewSchema) -> Self {
-        Self {
-            coln_schema,
-            output_schema: None,
-        }
-    }
-    /// Only after this has been provided a derived view is safe to reference
-    /// from other rules. Otherwise, it has only been declared upfront but its
-    /// computation and, therefore, its effective table schema is not yet known.
-    fn go_live(&mut self, table_schema: TableSchema) {
-        self.output_schema = Some(table_schema)
-    }
-    fn is_live(&self) -> bool {
-        self.output_schema.is_some()
-    }
-    pub fn coln_schema(&self) -> &DerivedViewSchema {
-        &self.coln_schema
-    }
+pub struct PredicateMeta<Marker> {
+    coln_schema: ColnSchema<Marker>,
+    output_schema: TableSchema,
 }
 
 #[derive(Debug)]
 pub struct ConstraintMeta {
-    kind: ir::RuleVariant, // TODO: actually never a RuleVariant::Chased!
+    kind: ir::RuleVariant,
     output_schema: TableSchema,
 }
 
@@ -120,22 +92,14 @@ impl ConstraintMeta {
     }
 }
 
-/// Projects FLIR's per-engine schema down to the one thing the layers below
-/// share: the query engine's columns, and the table's key(s) restated over
-/// them.
-///
-/// Both halves change coordinates on the way. The columns are the *query*
-/// engine's view, where a row id has already flattened into a hash and a
-/// counter column; FLIR states its keys as indices into the *compiler's*
-/// view, so each component of a key travels through
-/// [`resolve_query_col_range`](BaseTableSchema::resolve_query_col_range) to
-/// become the one or two positions it occupies here.
+/// Projects FLIR's schema down to the one thing the layers below share:
+/// the query engine's columns, and the table's key(s) restated over them.
 ///
 /// The implicit row id leads the list of keys: it is the only key a base table
 /// is guaranteed to have and to be unique on, so a backend that can index by
 /// just one key (DBSP) picks it by taking the first.
-impl From<&BaseTableSchema> for TableSchema {
-    fn from(value: &BaseTableSchema) -> Self {
+impl From<&ColnSchema<BaseTable>> for TableSchema {
+    fn from(value: &ColnSchema<BaseTable>) -> Self {
         let columns = value
             .query_cols()
             .inner()
@@ -143,19 +107,24 @@ impl From<&BaseTableSchema> for TableSchema {
             .map(|col| Column::new(col.name().to_string(), *col.ty()))
             .collect();
         let row_id_key = value
-            .resolve_query_col_range(CompilerColIdx::for_row_id())
+            .resolve_query_cols(CompilerColIdx::for_row_id())
+            .map(|(idx, _)| idx.0)
             .collect();
-        let declared_keys = value
-            .primary_keys()
-            .iter()
-            // The compiler reports a table without a declared primary key as one
-            // empty key rather than no key at all.
-            .filter(|key| !key.is_empty())
-            .map(|key| {
-                key.iter()
-                    .flat_map(|idx| value.resolve_query_col_range(*idx))
-                    .collect()
-            });
+        let declared_keys = value.primary_keys().iter().filter_map(|key| {
+            if !key.is_empty() {
+                Some(
+                    key.iter()
+                        .flat_map(|idx| value.resolve_query_cols(*idx).map(|(idx, _)| idx.0))
+                        .collect(),
+                )
+            } else {
+                // The compiler reports an empty primary key to denote that
+                // there can be at most one row. This is a coln-store concern,
+                // coln-query ignores this, as this provides no way to uniquely
+                // identify an element.
+                None
+            }
+        });
         TableSchema::new(
             EntityRef::from(value.name()),
             columns,
@@ -164,523 +133,119 @@ impl From<&BaseTableSchema> for TableSchema {
     }
 }
 
-impl FlirProgram {
-    fn empty() -> Self {
-        Self {
-            code: QueryIr::default(),
-            base_tables: HashMap::new(),
-            derived_views: HashMap::new(),
-            constraints: HashMap::new(),
-        }
-    }
-    pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
-        let mut builder = FlirProgram::empty();
-        for table in &flat_realm.tables {
-            builder.table_declaration(table)?;
-        }
-        builder.definition_entries(&flat_realm.definitions)?;
-        for rule in &flat_realm.rules {
-            if rule.rule.consequents.is_empty() {
-                // The compiler does not clean up after the lowering and emits
-                // useless rules after lowering, so we vacuum-clean here instead.
-                continue;
+/// For a derived view, we lack the implicit row id primary key.
+impl From<&ColnSchema<DerivedView>> for TableSchema {
+    fn from(value: &ColnSchema<DerivedView>) -> Self {
+        let columns = value
+            .query_cols()
+            .inner()
+            .iter()
+            .map(|col| Column::new(col.name().to_string(), *col.ty()))
+            .collect();
+        let declared_keys = value.primary_keys().iter().filter_map(|key| {
+            if !key.is_empty() {
+                Some(
+                    key.iter()
+                        .flat_map(|idx| match idx {
+                            CompilerColIdx::RowId => {
+                                panic!("Extra primary key specified as RowId idx")
+                            }
+                            CompilerColIdx::Column(idx) => {
+                                value.resolve_query_cols(*idx).map(|(idx, _)| idx.0)
+                            }
+                        })
+                        .collect(),
+                )
+            } else {
+                // The compiler reports an empty primary key to denote that
+                // there can be at most one row. This is a coln-store concern,
+                // coln-query ignores this, as this provides no way to uniquely
+                // identify an element.
+                None
             }
-            builder.constraint_declaration(rule)?;
+        });
+        TableSchema::new(
+            EntityRef::from(value.name()),
+            columns,
+            declared_keys.collect(),
+        )
+    }
+}
+
+impl FlirProgram {
+    pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
+        let mut ctx = FlirContext::default();
+
+        let edb_rules: Vec<FlirRule> = flat_realm
+            .tables
+            .iter()
+            .flat_map(|table| {
+                let edb_predicate = ctx.feed_table_declaration(table)?;
+                Some(FlirRule::from(edb_predicate))
+            })
+            .collect();
+
+        let derived_view_rules: Vec<FlirRule> = flat_realm
+            .definitions
+            .iter()
+            .map(|definition| {
+                let rule = FlirChasedRule::new(definition, &mut ctx)?;
+                Ok(FlirRule::from(rule))
+            })
+            .collect::<Result<_, SyntaxError>>()?;
+
+        let constraint_rules: Vec<FlirRule> = flat_realm
+            .rules
+            .iter()
+            .flat_map(|rule| {
+                if rule.rule.consequents.is_empty() {
+                    None
+                } else {
+                    Some(
+                        FlirConstraint::new(rule, &mut ctx)
+                            .map(|constraint| FlirRule::from(constraint)),
+                    )
+                }
+            })
+            .collect::<Result<_, SyntaxError>>()?;
+
+        let mut rules = edb_rules;
+        rules.extend(derived_view_rules);
+        rules.extend(constraint_rules);
+
+        let predicates = RulePredicate::group(ctx.declarations(), rules).map_err(|unmatched| {
+            SyntaxError::new(format!("Unmatched rules with no definand {unmatched}"))
+        })?;
+
+        fn remap<P, M>(map: impl IntoIterator<Item = (P, M)>) -> IndexMap<EntityRef, M>
+        where
+            EntityRef: From<P>,
+        {
+            map.into_iter()
+                .map(|(path, meta)| (EntityRef::from(path), meta))
+                .collect()
         }
-        Ok(builder)
+
+        let mut program = FlirProgram {
+            predicates: predicates,
+            code: QueryIr::new(vec![]),
+            base_tables: remap(ctx.base_tables),
+            derived_views: remap(ctx.derived_views),
+            constraints: remap(ctx.constraints),
+        };
+
+        let execution_order = program.verify()?;
+        program.code = program.prepare(execution_order)?;
+
+        Ok(program)
     }
 
     pub fn constraint_meta(&self, sink: &SinkId) -> Option<&ConstraintMeta> {
         self.constraints.get(&ConstraintName::from(sink))
     }
 
-    pub fn derived_view_meta(&self, sink: &SinkId) -> Option<&DerivedViewMeta> {
+    pub fn derived_view_meta(&self, sink: &SinkId) -> Option<&PredicateMeta<DerivedView>> {
         self.derived_views.get(&DerivedViewName::from(sink))
-    }
-
-    fn table_declaration(&mut self, table_entry: &TableEntry) -> Result<(), SyntaxError> {
-        match &table_entry.table.entity_variant {
-            EntityVariant::Table => self.base_table_declaration(table_entry),
-            EntityVariant::View { materialization } => match materialization {
-                ir::Materialization::Materialized => self.derived_view_declaration(table_entry),
-                ir::Materialization::Memoized => {
-                    // This is wrong but accounting for a bug in coln-compiler
-                    // at the moment: Some derived views are falsely classified
-                    // as memoized instead of materialized.
-                    self.derived_view_declaration(table_entry)
-                }
-                ir::Materialization::Recomputed => unimplemented!(
-                    "How to handle derived views which are recomputed? Ignore in coln-query?"
-                ),
-            },
-            EntityVariant::Index { method, columns } => {
-                unimplemented!("[Not-yet specified] Indexes")
-            }
-        }
-    }
-    fn base_table_declaration(&mut self, table_entry: &ir::TableEntry) -> Result<(), SyntaxError> {
-        let name = BaseTableName::from(&table_entry.path);
-        let coln_schema =
-            Option::<BaseTableSchema>::from(table_entry).expect("Broken precondition");
-        if self.base_tables.insert(name.clone(), coln_schema).is_some() {
-            return Err(SyntaxError::new(format!(
-                "Base table {name} defined multiple times"
-            )));
-        }
-        Ok(())
-    }
-    fn derived_view_declaration(
-        &mut self,
-        table_entry: &ir::TableEntry,
-    ) -> Result<(), SyntaxError> {
-        let name = DerivedViewName::from(&table_entry.path);
-        let coln_schema =
-            Option::<DerivedViewSchema>::from(table_entry).expect("Broken precondition");
-        if self
-            .derived_views
-            .insert(name.clone(), DerivedViewMeta::declare(coln_schema))
-            .is_some()
-        {
-            return Err(SyntaxError::new(format!(
-                "Derived view {name} defined multiple times"
-            )));
-        }
-        Ok(())
-    }
-
-    fn definition_entries(&mut self, entries: &[DefinitionEntry]) -> Result<(), SyntaxError> {
-        let predicates = DefinitionGroups::from(entries);
-        for clique in &predicates.inner {
-            debug_assert_eq!(clique.len(), 1, "No mutual recursion yet");
-            // For mutual recursion: Combine non-rec and rec rules into one
-            // predicate and then the algorithm should work the same, except for
-            // how to return the accumulators back up with multiple recursands?
-            let predicate = clique.first().expect("Only cliques with one member");
-
-            if predicate.non_rec_rules.is_empty() {
-                return Err(SyntaxError::new(
-                    "Clique with no base case. Shall we just ignore it?",
-                ));
-            }
-
-            let (base_combining_expr, base_stmts) =
-                self.definitions(&predicate.name, &predicate.non_rec_rules)?;
-            self.code.extend(base_stmts);
-            if !predicate.is_recursive() {
-                self.code.push(Stmt::from(VarStmt {
-                    name: predicate.name.to_string(),
-                    initializer: Some(Expr::from(OutputExpr {
-                        id: SinkId::from(predicate.name.to_string()),
-                        kind: OutputKind::Channel,
-                        relation: base_combining_expr,
-                    })),
-                }));
-                continue;
-            }
-
-            let (step_combining_expr, mut step_stmts) =
-                self.definitions(&predicate.name, &predicate.rec_rules)?;
-            step_stmts.push(Stmt::from(ExprStmt {
-                expr: step_combining_expr,
-            }));
-            let fixed_point_iter_expr = FixedPointIterExpr {
-                accumulator: (predicate.name.to_string(), base_combining_expr),
-                step: BlockStmt { stmts: step_stmts },
-            };
-            self.code.push(Stmt::from(VarStmt {
-                name: predicate.name.to_string(),
-                initializer: Some(Expr::from(OutputExpr {
-                    id: SinkId::from(predicate.name.to_string()),
-                    kind: OutputKind::Channel,
-                    relation: Expr::from(fixed_point_iter_expr),
-                })),
-            }));
-        }
-        Ok(())
-    }
-
-    fn definitions(
-        &mut self,
-        definand: &Definand,
-        definitions: &[FriendlyDefinition],
-    ) -> Result<(Expr, Vec<Stmt>), SyntaxError> {
-        let (mut var_exprs, stmts): (Vec<Expr>, Vec<Stmt>) = definitions.iter().try_fold(
-            (Vec::<Expr>::new(), Vec::<Stmt>::new()),
-            |(mut var_exprs, mut stmts), definition| {
-                let (var_stmt, binding) = self.definition(definand, definition)?;
-                var_exprs.push(Expr::from(VarExpr::new(var_stmt.name.clone())));
-                stmts.push(Stmt::from(var_stmt));
-                Ok((var_exprs, stmts))
-            },
-        )?;
-        let combining_expr = if var_exprs.len() == 1 {
-            var_exprs.pop().expect("checked")
-        } else {
-            Expr::from(UnionExpr {
-                relations: var_exprs,
-            })
-        };
-        Ok((combining_expr, stmts))
-    }
-
-    /// Translates a single [rule](FriendlyDefinition) in isolation.
-    fn definition(
-        &mut self,
-        definand: &Definand,
-        definition: &FriendlyDefinition,
-    ) -> Result<(VarStmt, Vec<Binding>), SyntaxError> {
-        let (expr, bindings) = self.conjunctive_query(&definition.antecedent, &definition.vars)?;
-
-        let argument_expr = definition
-            .arguments
-            .iter()
-            .flat_map(|argument| self.term(argument, &definition.vars).unwrap())
-            .collect::<Vec<_>>();
-        let derived_view_meta = self
-            .derived_views
-            .get(&DerivedViewName::from(definand))
-            .expect("Unknown definant");
-        let derived_view_coln_schema = derived_view_meta.coln_schema();
-        let compiler_cols = derived_view_coln_schema.compiler_cols().inner();
-        debug_assert_eq!(compiler_cols.len(), definition.arguments.len(),);
-        let query_cols = derived_view_coln_schema.query_cols().inner();
-        // TODO: Ugly minus two due to the implicit row id
-        debug_assert_eq!(query_cols.len() - 2, argument_expr.len());
-
-        let projection = ProjectionExpr {
-            relation: expr,
-            attributes: query_cols
-                .iter()
-                // TODO: Ugly skip of implicit row ids which are not a thing
-                // for derived views, so actually the BaseTableSchema has to
-                // be adjusted but time..
-                .skip(2)
-                .zip(argument_expr)
-                .map(|(query_col, argument_expr)| (query_col.name().to_string(), argument_expr))
-                .collect(),
-        };
-        Ok((
-            VarStmt {
-                name: definition.path.to_string(),
-                initializer: Some(Expr::from(projection)),
-            },
-            bindings, // TODO: Correct bindings after the projection, still?
-        ))
-    }
-
-    fn constraint_declaration(&mut self, rule_entry: &RuleEntry) -> Result<(), SyntaxError> {
-        let name = DerivedViewName::from(&rule_entry.path);
-        let Some(rule) = FriendlyRule::from(&rule_entry.rule) else {
-            // The rule is filtered out but not an error case.
-            return Ok(());
-        };
-        let (stmt, output_bindings) = self.constraint(name.id().to_string(), &rule)?;
-        self.code.push(stmt);
-        let constraint_meta =
-            ConstraintMeta::new(rule.kind, rule_output_schema(&name, &output_bindings));
-        if self
-            .constraints
-            .insert(name.clone(), constraint_meta)
-            .is_some()
-        {
-            return Err(SyntaxError::new(format!(
-                "Rule {name} defined multiple times"
-            )));
-        }
-        Ok(())
-    }
-    /// Lowers one rule into the statement that binds its name, and reports the
-    /// [`Binding`]s of the relation that statement evaluates to, so the caller
-    /// can describe the rule's output schema.
-    fn constraint(
-        &mut self,
-        name: String,
-        rule: &FriendlyRule,
-    ) -> Result<(Stmt, Vec<Binding>), SyntaxError> {
-        let (left, left_bindings) = self.conjunctive_query(&rule.antecedent, &rule.vars)?;
-        let (right, right_bindings) = self.conjunctive_query(&rule.consequent, &rule.vars)?;
-        let rule_as_stmt = Stmt::from(VarStmt {
-            name: name.clone(),
-            initializer: Some(Expr::from(OutputExpr {
-                id: SinkId::from(name),
-                kind: OutputKind::Channel,
-                relation: Expr::from(AntiJoinExpr {
-                    left,
-                    right,
-                    on: antijoin_key(&left_bindings, &right_bindings),
-                }),
-            })),
-        });
-        // An antijoin carries the left relation's tuple through unchanged, so
-        // the rule's output is shaped by its antecedents.
-        Ok((rule_as_stmt, left_bindings))
-    }
-    /// Lowers one side of a rule into a relational expression, and reports which
-    /// variable parts that expression binds so the enclosing [`AntiJoinExpr`]
-    /// can work out what to compare on.
-    fn conjunctive_query(
-        &mut self,
-        query: &ConjunctiveQuery,
-        vars: &[FriendlyVar],
-    ) -> Result<(Expr, Vec<Binding>), SyntaxError> {
-        if query.atoms.is_empty() {
-            return Err(SyntaxError::new(
-                "FLIR emits conjunctive query with no atom",
-            ));
-        }
-
-        let plans = query
-            .atoms
-            .iter()
-            .map(|atom| self.atom(atom, vars))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // A part bound by several atoms is a single binding of the conjunctive
-        // query as a whole, because the join keeps one active copy of it. We
-        // keep the first, matching the join's left-to-right shadowing.
-        let mut bindings: BTreeMap<(ir::VarIdx, VarPart), Binding> = BTreeMap::new();
-        for plan in &plans {
-            for binding in &plan.bindings {
-                bindings
-                    .entry((binding.var, binding.part))
-                    .or_insert_with(|| binding.clone());
-            }
-        }
-        let bindings = bindings.into_values().collect();
-
-        let on = join_variables(&plans);
-        let mut relations: Vec<Expr> = plans.into_iter().map(|plan| plan.relation).collect();
-        let joined_atoms = if relations.len() == 1 {
-            // A single atom has nothing to join against, and the join operators
-            // require at least two relations.
-            relations.pop().expect("Length checked")
-        } else {
-            Expr::from(MultiWayEquiJoinExpr::new(relations, on, None)?)
-        };
-
-        let with_conditions = query
-            .conditions
-            .iter()
-            .map(|condition| self.selection(condition, vars))
-            // All conditions get compiled into one condition by ANDing them.
-            .try_reduce(|left, right| {
-                Expr::from(BinaryExpr {
-                    operator: Operator::And,
-                    left,
-                    right,
-                })
-            })?
-            .into_iter()
-            // We fold the Option: If there are no conditions at all, we return
-            // `joined_atoms` as is and otherwise, we wrap it in a SelectionExpr
-            // whose condition embodies all conditions.
-            .fold(joined_atoms, |joined_atoms, conditions| {
-                Expr::from(SelectionExpr {
-                    relation: joined_atoms,
-                    condition: conditions,
-                })
-            });
-
-        Ok((with_conditions, bindings))
-    }
-    /// Generates a condition which possibly expands to two ANDed conditions
-    /// due to row ids being flattening to two variables.
-    ///
-    /// Currently, the compiler only supports equality conditions.
-    fn selection(
-        &mut self,
-        condition: &Equality,
-        vars: &[FriendlyVar],
-    ) -> Result<Expr, SyntaxError> {
-        let left = self.term(&condition.left, vars)?;
-        let right = self.term(&condition.right, vars)?;
-        // Things get a bit ugly unfortunately due to the flattening of row ids.
-        let conditions: Box<dyn Iterator<Item = (Expr, Expr)>> = match (left.len(), right.len()) {
-            (2, 2) => {
-                // This case compares two row ids which expand to two variables
-                // each and thus we have to create two conditions.
-                // The underlying condition has to be true for both the hash
-                // _and_ the counter. In code that translates to the diagonal of
-                // the terms.
-                let diagonal = left.into_iter().zip(right);
-                Box::new(diagonal)
-            }
-            _ => {
-                // This case deals with comparing:
-                // 1. An already flat variable with a literal.
-                // But also covers two nonsense cases at the moment:
-                // 1. A row id with a literal or an already flat variable.
-                // 2. Two literals.
-                // In code this boils down to computing all pairs of the terms.
-                let cartesian_product = left
-                    .into_iter()
-                    .flat_map(|left| right.iter().map(move |right| (left.clone(), right.clone())));
-                Box::new(cartesian_product)
-            }
-        };
-
-        Ok(conditions
-            .map(|(left, right)| {
-                Expr::from(BinaryExpr {
-                    operator: Operator::Equal,
-                    left,
-                    right,
-                })
-            })
-            .reduce(|acc, condition| {
-                Expr::from(BinaryExpr {
-                    operator: Operator::And,
-                    left: acc,
-                    right: condition,
-                })
-            })
-            .expect("A FLIR condition must produce at least one condition"))
-    }
-    fn atom(&mut self, atom: &Atom, vars: &[FriendlyVar]) -> Result<AtomPlan, SyntaxError> {
-        let (source, schema): (Expr, &BaseTableSchema) =
-            if let Some((source_expr, schema)) = self.base_table_source_expr(&atom.entity) {
-                (Expr::from(source_expr), schema)
-            } else if let Some(result) = self.derived_view_var_expr(&atom.entity) {
-                // TODO: Add context to errors by stating which atom we are processing.
-                let (var_expr, schema) = result?;
-                (Expr::from(var_expr), schema)
-            } else {
-                return Err(SyntaxError::new(format!(
-                    "Atom references undeclared entity '{}'",
-                    atom.entity
-                )));
-            };
-
-        let mut binder = AtomBinder::default();
-
-        // The row id, if this atom brings it into scope.
-        if let Some(row_id) = &atom.row_id {
-            match row_id {
-                ir::El::Var { index } => {
-                    let var = friendly_var(vars, *index)?;
-                    if !var.is_row_id() {
-                        return Err(SyntaxError::new(
-                            "FLIR wants to assign a row id to a variable of native scalar type",
-                        ));
-                    }
-                    binder.bind(
-                        *index,
-                        var,
-                        schema.resolve_query_cols(CompilerColIdx::for_row_id()),
-                    )?;
-                }
-                ir::El::Lit { lit: _ } => {
-                    // Matching [`ir::Atom::row_id`]'s own note: a literal row id
-                    // is not something we can express.
-                    return Err(SyntaxError::new(
-                        "FLIR equates a row id with a literal, which is not supported",
-                    ));
-                }
-            }
-        }
-
-        // The value columns this atom constrains or brings into scope.
-        for value in &atom.values {
-            let mut columns = schema.resolve_query_cols(CompilerColIdx::from(value.column));
-            match &value.term {
-                ir::El::Lit { lit } => {
-                    let column = columns.next().ok_or_else(|| {
-                        SyntaxError::new("FLIR compares a literal against a column that does not resolve to any query column")
-                    })?;
-                    binder.conditions.push(Expr::from(BinaryExpr {
-                        operator: Operator::Equal,
-                        left: Expr::from(VarExpr::new(column.name().as_ref())),
-                        right: Expr::from(LiteralExpr::from(Literal::from(lit))),
-                    }));
-                }
-                ir::El::Var { index } => {
-                    binder.bind(*index, friendly_var(vars, *index)?, columns)?;
-                }
-            }
-        }
-
-        let with_selection = binder
-            .conditions
-            .into_iter()
-            .reduce(|acc, condition| {
-                Expr::from(BinaryExpr {
-                    operator: Operator::And,
-                    left: acc,
-                    right: condition,
-                })
-            })
-            .into_iter()
-            .fold(source, |source, root_condition| {
-                Expr::from(SelectionExpr {
-                    relation: source,
-                    condition: root_condition,
-                })
-            });
-
-        let relation = Expr::from(ProjectionExpr {
-            relation: with_selection,
-            attributes: binder.attributes,
-        });
-
-        Ok(AtomPlan {
-            relation,
-            bindings: binder.bindings,
-        })
-    }
-    /// Now called [`El`] instead of `Term` in FLIR.
-    fn term(&mut self, el: &El, vars: &[FriendlyVar]) -> Result<Vec<Expr>, SyntaxError> {
-        match el {
-            El::Lit { lit } => Ok(vec![Expr::from(LiteralExpr::from(Literal::from(lit)))]),
-            El::Var { index } => Ok(friendly_var(vars, *index)?
-                .parts()
-                .map(|(_part, name)| Expr::from(VarExpr::new(name)))
-                .collect()),
-        }
-    }
-    /// If the entity referenced by `Path` is part of the extensional database
-    /// (EDB) and present in the base tables, the function returns a
-    /// [`SourceExpr`] referencing that entity. Otherwise, [`None`] is returned.
-    fn base_table_source_expr(&mut self, name: &Path) -> Option<(SourceExpr, &BaseTableSchema)> {
-        self.base_tables
-            .get(&BaseTableName::from(name))
-            .map(|base_table_schema| {
-                // The leaf names the table; `Catalog::source_schema` below is
-                // what turns that name back into a schema, and both sides go
-                // through `BaseTableSchema::name` so they cannot disagree.
-                (
-                    SourceExpr::new(base_table_schema.name().to_string()),
-                    base_table_schema,
-                )
-            })
-    }
-    /// If the entity referenced by `Path` is part of the intensional database
-    /// (IDB) and present in the derived views, the function returns a
-    /// [`VarExpr`] referencing that entity. Otherwise, [`None`] is returned.
-    ///
-    /// If the derived view is known but not yet [live](DerivedViewMeta::is_live),
-    /// `Some(Err)` is returned.
-    fn derived_view_var_expr(
-        &mut self,
-        name: &Path,
-    ) -> Option<Result<(VarExpr, &DerivedViewSchema), SyntaxError>> {
-        self.derived_views
-            .get(&DerivedViewName::from(name))
-            .map(|derived_view_meta| {
-                Ok((
-                    VarExpr::new(name.to_string()),
-                    derived_view_meta.coln_schema(),
-                ))
-                // if !derived_view_meta.is_live() {
-                //     Err(SyntaxError::new(format!(
-                //         "Referencing the derived view '{name}' prior to having finished formulating its query"
-                //     )))
-                // } else {
-                //     Ok((
-                //         VarExpr::new(name.to_string()),
-                //         derived_view_meta.coln_schema(),
-                //     ))
-                // }
-            })
     }
 }
 
@@ -695,7 +260,15 @@ impl Catalog for FlirProgram {
     fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>> {
         self.base_tables
             .get(&BaseTableName::from(id))
-            .map(|base_table_schema| Cow::Owned(TableSchema::from(base_table_schema)))
+            .map(|meta| Cow::Borrowed(&meta.output_schema))
+    }
+}
+
+impl LogicalProgram for FlirProgram {
+    type Predicate = RulePredicate<FlirRule>;
+
+    fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
+        self.predicates.iter()
     }
 }
 
@@ -709,473 +282,617 @@ impl QueryProgram for FlirProgram {
     }
 }
 
-type Definand = ir::Path;
+impl frontend::Identifier for ir::Path {}
+impl frontend::Identifier for &ir::Path {}
 
-/// [`DefinitionEntries`](ir::DefinitionEntry) grouped by their [`Definand`].
-struct DefinitionGroups {
-    /// The inner vec is a clique, that is, a group of predicates who are
-    /// mutually recursive. They form a strongly connected component (SCC) of
-    /// the predicate graph.
-    inner: Vec<Vec<Predicate>>,
+#[derive(Default)]
+struct FlirContext {
+    base_tables: IndexMap<ir::Path, PredicateMeta<BaseTable>>,
+    derived_views: IndexMap<ir::Path, PredicateMeta<DerivedView>>,
+    constraints: IndexMap<ir::Path, ConstraintMeta>,
+    rule_vars: Option<RuleVars>,
 }
 
-impl DefinitionGroups {
-    fn from(definition_entries: &[ir::DefinitionEntry]) -> DefinitionGroups {
-        // Keyed by definand for grouping, ordered by first definition for the
-        // cliques handed out below.
-        let mut predicates: IndexMap<&Definand, Predicate> =
-            IndexMap::with_capacity(definition_entries.len());
-
-        for definition_entry in definition_entries {
-            let definand = &definition_entry.definition.definand;
-            let predicate = predicates
-                .entry(definand)
-                .or_insert_with(|| Predicate::empty(definand.clone()));
-            let friendly_definition =
-                FriendlyDefinition::from(&definition_entry.path, &definition_entry.definition);
-            let is_self_recursive = friendly_definition.is_recursive_with(definand);
-            if is_self_recursive {
-                predicate.rec_rules.push(friendly_definition);
-            } else {
-                predicate.non_rec_rules.push(friendly_definition);
-            }
+impl FlirContext {
+    fn enter_rule_scope<'a>(
+        &'a mut self,
+        vars: &Vec<(ir::ColName, ir::ColType)>,
+    ) -> RuleScopeGuard<'a> {
+        self.rule_vars = Some(RuleVars::new(vars));
+        RuleScopeGuard { inner: self }
+    }
+    fn schema(&self, entity: &ir::Path) -> Option<impl ResolveCompilerIdxToQueryView> {
+        self.base_tables
+            .get(entity)
+            .map(|meta| ColnSchemaWrapper::BaseTable(&meta.coln_schema))
+            .or_else(|| {
+                Some(ColnSchemaWrapper::DerivedView(
+                    self.derived_views
+                        .get(entity)
+                        .map(|meta| &meta.coln_schema)?,
+                ))
+            })
+    }
+    fn feed_table_declaration<'a>(
+        &mut self,
+        declaration: &'a ir::TableEntry,
+    ) -> Option<FlirEdbPredicate<'a>> {
+        let entity = &declaration.path;
+        if let Some(edb_predicate) = FlirEdbPredicate::new(declaration, self) {
+            return Some(edb_predicate);
         }
-        // TODO: Sorting of the predicates for mutual recursion and execution
-        // order. For now we cheat and don't compute exec order and every
-        // predicate ends up in its own isolated clique because we don't support
-        // mutual recursion at the moment.
-        let inner = predicates
-            .into_values()
-            .map(|predicate| vec![predicate])
-            .collect();
-        Self { inner }
-    }
-}
-
-/// TODO: Plan for mutually recursive rules:
-/// [`Predicate`] models one "Datalog" predicate which is defined through
-/// multiple rules. It partitions its rules into non-recursive rules and
-/// recursive rules (may they be self- or mutually-recursive).
-/// Then, compute the SCCs in reverse topological order on top of the
-/// Predicates to get an evaluation order.
-/// Then, within one SCC combine all DefinitionGroups' non-recursive rules
-/// into the FixedPointIter's accumulator and combine the recursive rules
-/// into the FixedPointIter's step.
-///
-/// TODO: Outsource into a middle layer, sitting between the query engine's IR
-/// and the FLIR or maybe a Datalog frontend. Every frontend can then use the
-/// `PredicateMeta` generic to add arbitrary per-frontend metadata,
-/// such as the a FLIR's rule kind. Add a RuleMeta.
-#[derive(Debug)]
-struct Predicate {
-    /// The name (unique identifier) of the predicate.
-    name: ir::Path,
-    /// Contains non-recursive rules.
-    non_rec_rules: Vec<FriendlyDefinition>,
-    /// Contains both self-recursive and mutually-recursive rules.
-    rec_rules: Vec<FriendlyDefinition>,
-}
-
-impl Predicate {
-    fn empty(name: ir::Path) -> Self {
-        Self {
-            name,
-            non_rec_rules: Vec::new(),
-            rec_rules: Vec::new(),
-        }
-    }
-    fn is_recursive(&self) -> bool {
-        !self.rec_rules.is_empty()
-    }
-}
-
-/// A wrapper around [`ir::Definition`] but friendlier because:
-///
-/// 1. It creates the wrapper type [`FriendlyVar`]s for a rule's
-///    [`ir::Rule::vars`].
-/// 2. It converts [`ir::Definition::antecedents`] into a [`ConjunctiveQuery`].
-///
-/// Similar to [`FriendlyRule`] but it does not know a consequent nor a rule kind.
-/// TODO: Unite both [`FriendlyRule`] and [`FriendlyDefinition`] in one rule
-/// type of the fronend-neutral middle layer and solve the variable expansion
-/// problem beforehand.
-#[derive(Debug)]
-struct FriendlyDefinition {
-    path: ir::Path,
-    vars: Vec<FriendlyVar>,
-    antecedent: ConjunctiveQuery,
-    arguments: Vec<ir::El>,
-}
-
-impl FriendlyDefinition {
-    fn from(path: &ir::Path, definition: &ir::Definition) -> FriendlyDefinition {
-        let vars = definition.vars.iter().map(FriendlyVar::from).collect();
-        let antecedent = ConjunctiveQuery::from(&definition.antecedents);
-        Self {
-            path: path.clone(),
-            vars,
-            antecedent,
-            arguments: definition.arguments.clone(),
-        }
-    }
-    fn is_recursive_with(&self, definand: &Definand) -> bool {
-        self.antecedent
-            .atoms()
-            .iter()
-            .find(|atom| &atom.entity == definand)
-            .is_some()
-    }
-}
-
-/// Just like [`ir::Rule`] but friendlier because:
-///
-/// 1. Meaningless rules with an empty [consequent](ir::Rule::consequents) are
-///    skipped.
-/// 2. It creates the wrapper type [`FriendlyVar`]s for a rule's
-///    [`ir::Rule::vars`].
-/// 3. It converts [`ir::Rule::antecedents`] and [`ir::Rule::consequents`] into
-///    a [`ConjunctiveQuery`], each.
-struct FriendlyRule {
-    kind: ir::RuleVariant,
-    vars: Vec<FriendlyVar>,
-    antecedent: ConjunctiveQuery,
-    consequent: ConjunctiveQuery,
-}
-
-impl FriendlyRule {
-    fn from(rule: &ir::Rule) -> Option<FriendlyRule> {
-        if rule.consequents.is_empty() {
+        if let Some(derived_view_schema) = Option::<ColnSchema<DerivedView>>::from(declaration) {
+            self.derived_views.insert(
+                entity.clone(),
+                PredicateMeta {
+                    output_schema: TableSchema::from(&derived_view_schema),
+                    coln_schema: derived_view_schema,
+                },
+            );
             return None;
         }
-        let vars = rule.vars.iter().map(FriendlyVar::from).collect();
-        let antecedent = ConjunctiveQuery::from(&rule.antecedents);
-        let consequent = ConjunctiveQuery::from(&rule.consequents);
-        Some(FriendlyRule {
-            kind: rule.rule_variant,
-            vars,
-            antecedent,
-            consequent,
-        })
+        panic!(
+            "Table declaration for '{entity}' neither valid as a base table nor as a derived view"
+        )
     }
-}
-
-/// Prepares either a [left-hand side](ir::Rule::antecedents) or a
-/// [right-hand side](ir::Rule::consequents) of a [`ir::Rule`] for inclusion
-/// in an antijoin by partitioning a `Vec<Prop>` into atoms and conditions.
-/// This is useful because applying all atoms first, guarantees that every
-/// variable a condition may refer to is in scope already.
-#[derive(Debug)]
-struct ConjunctiveQuery {
-    atoms: Vec<ir::Atom>,
-    // Currently, only equality conditions are part of the FLIR.
-    conditions: Vec<ir::Equality>,
-}
-
-impl ConjunctiveQuery {
-    fn from(props: &[Prop]) -> Self {
-        let (atoms, conditions) =
-            props
-                .iter()
-                .fold((vec![], vec![]), |(mut atoms, mut conditions), prop| {
-                    match prop {
-                        ir::Prop::Atom { atom } => atoms.push(atom.clone()),
-                        ir::Prop::Eq { equality } => conditions.push(equality.clone()),
-                    }
-                    (atoms, conditions)
-                });
-        Self { atoms, conditions }
-    }
-    pub fn atoms(&self) -> &Vec<ir::Atom> {
-        &self.atoms
-    }
-}
-
-/// A wrapper type around ([`ir::Path`], [`ir::ColType`]).
-#[derive(Debug)]
-struct FriendlyVar {
-    name: ir::Path,
-    ty: ir::ColType, // either a row id or a builtin type
-}
-
-impl<'a> From<&'a (ir::Path, ir::ColType)> for FriendlyVar {
-    fn from((path, col_type): &'a (ir::Path, ir::ColType)) -> Self {
-        Self {
-            name: path.clone(),
-            ty: col_type.clone(),
-        }
-    }
-}
-
-impl FriendlyVar {
-    fn is_row_id(&self) -> bool {
-        matches!(self.ty, ir::ColType::RowId { path: _ })
-    }
-    /// The attribute name(s) this variable expands to in an atom's projected
-    /// schema: one for a builtin scalar type, two for a row id, which flattens
-    /// into a commit hash and a counter column.
-    ///
-    /// This is the single place that flattening happens, and its order matches
-    /// the order
-    /// [`resolve_query_cols`](BaseTableSchema::resolve_query_cols) yields the
-    /// corresponding columns in, so the two can be zipped.
-    fn parts(&self) -> impl Iterator<Item = (VarPart, String)> {
-        match &self.ty {
-            ir::ColType::BuiltinTy { builtin_ty: _ } => {
-                vec![(VarPart::Scalar, self.name.to_string())]
-            }
-            ir::ColType::RowId { path: _ } => vec![
-                (
-                    VarPart::RowIdHash,
-                    self.name
-                        .clone()
-                        .append(StoreEngineCols::HASH_COL_SUFFIX)
-                        .to_string(),
-                ),
-                (
-                    VarPart::RowIdCtr,
-                    self.name
-                        .clone()
-                        .append(StoreEngineCols::CTR_COL_SUFFIX)
-                        .to_string(),
-                ),
-            ],
-        }
-        .into_iter()
-    }
-}
-
-/// Which of the attributes a FLIR variable expands to, see
-/// [`FriendlyVar::parts`]. The derived ordering keeps a row id's two halves
-/// adjacent and in flattening order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum VarPart {
-    /// The variable in its entirety. It is of a builtin scalar type.
-    Scalar,
-    /// The commit-hash half of a row id.
-    RowIdHash,
-    /// The counter half of a row id.
-    RowIdCtr,
-}
-
-/// One attribute an atom's projection exposes, tagged with the FLIR variable it
-/// originates from.
-///
-/// The join condition of a conjunctive query is derived by grouping these on
-/// [`var`](Self::var) and [`part`](Self::part) rather than on
-/// [`name`](Self::name): the variable index is exact and free, whereas grouping
-/// by name would additionally assume that rendering [`ir::Path`]s into strings
-/// is injective, and would have to tell a row id's two halves apart by parsing
-/// their suffixes back off.
-#[derive(Clone, Debug)]
-struct Binding {
-    var: ir::VarIdx,
-    part: VarPart,
-    /// The attribute's name in the atom's projected schema.
-    name: String,
-    /// The type of the query column this part is bound to. Taken from the
-    /// column rather than from the FLIR variable, because that is where a row
-    /// id's halves have already been resolved to their query-engine types.
-    scalar_type: ScalarType,
-}
-
-/// The relational plan for one FLIR [`Atom`], together with the [`Binding`]s
-/// its projection exposes.
-///
-/// Reporting the bindings is what lets the enclosing conjunctive query derive
-/// its join variables without re-deriving them from the projection it just
-/// built.
-struct AtomPlan {
-    /// Essentially, a `Projection(Selection(atom's source relation))`.
-    relation: Expr,
-    /// The [`Binding`]s of the plan.
-    bindings: Vec<Binding>,
-}
-
-/// Accumulates what one atom contributes while its row id and value terms are
-/// walked.
-#[derive(Default)]
-struct AtomBinder {
-    /// Conditions local to this atom: literal comparisons, plus the equalities
-    /// that a variable repeated within this one atom gives rise to, that is,
-    /// `atom(x, x)`.
-    conditions: Vec<Expr>,
-    /// The atom's projection, mapping each bound variable part onto the query
-    /// column carrying it.
-    attributes: Vec<(String, Expr)>,
-    bindings: Vec<Binding>,
-    /// The query column each variable part was *first* bound to in this atom, so
-    /// a repeated occurrence can be turned into an equality against it.
-    bound: HashMap<(ir::VarIdx, VarPart), String>,
-}
-
-impl AtomBinder {
-    /// Binds `var`'s parts to `columns`, which must resolve to one query column
-    /// per part.
-    fn bind<'a>(
-        &mut self,
-        index: ir::VarIdx,
-        var: &FriendlyVar,
-        columns: impl Iterator<Item = &'a QueryEngineCol>,
-    ) -> Result<(), SyntaxError> {
-        let parts: Vec<(VarPart, String)> = var.parts().collect();
-        let columns: Vec<&QueryEngineCol> = columns.collect();
-        if parts.len() != columns.len() {
-            return Err(SyntaxError::new(format!(
-                "FLIR binds variable '{}', which flattens into {} column(s), to a \
-                 column resolving to {} query column(s)",
-                var.name,
-                parts.len(),
-                columns.len()
-            )));
-        }
-        for ((part, name), column) in parts.into_iter().zip(columns) {
-            let scalar_type = ScalarType::from(*column.ty());
-            let column = column.name().to_string();
-            match self.bound.entry((index, part)) {
-                Entry::Vacant(slot) => {
-                    self.attributes
-                        .push((name.clone(), Expr::from(VarExpr::new(column.clone()))));
-                    self.bindings.push(Binding {
-                        var: index,
-                        part,
-                        name,
-                        scalar_type,
-                    });
-                    slot.insert(column);
-                }
-                Entry::Occupied(first) => {
-                    // The variable is repeated within this single atom, as in
-                    // `R(x, x)`. That is a local equality condition on this one
-                    // relation rather than a join condition, and the projection
-                    // has to expose the attribute exactly once — two attributes
-                    // of the same name would collide in the projected schema.
-                    self.conditions.push(Expr::from(BinaryExpr {
-                        operator: Operator::Equal,
-                        left: Expr::from(VarExpr::new(first.get().clone())),
-                        right: Expr::from(VarExpr::new(column)),
-                    }));
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-/// The schema of the relation a rule evaluates to.
-///
-/// Its columns are the parts the rule's output binds, in the
-/// `(VarIdx, VarPart)` order [`FlirProgram::conjunctive_query`] reports
-/// them in, and their types come from the query columns those parts resolve to
-/// rather than from the FLIR variables — a row id's two halves reach the query
-/// engine as plain unsigned integers, which the variable's [`ir::ColType`] does
-/// not say.
-fn rule_output_schema(name: &EntityRef, bindings: &[Binding]) -> TableSchema {
-    TableSchema::new(
-        name.clone(),
-        bindings
+    fn declarations(&self) -> impl Iterator<Item = (ir::Path, Vec<Column>)> {
+        let base_table_declarations = self
+            .base_tables
             .iter()
-            .map(|binding| Column::new(binding.name.clone(), binding.scalar_type))
-            .collect(),
-        // A rule declares no key of its own, and nothing consumes the primary
-        // keys of a derived relation yet. The row id parts it binds would be the
-        // candidate once something does.
-        vec![],
-    )
+            .map(|(path, meta)| (path, &meta.output_schema));
+        let derived_view_declarations = self
+            .derived_views
+            .iter()
+            .map(|(path, meta)| (path, &meta.output_schema));
+        let constraint_declarations = self
+            .constraints
+            .iter()
+            .map(|(path, meta)| (path, &meta.output_schema));
+        base_table_declarations
+            .chain(derived_view_declarations.chain(constraint_declarations))
+            .map(|(path, schema)| (path.clone(), schema.columns().iter().cloned().collect()))
+    }
 }
 
-fn friendly_var(vars: &[FriendlyVar], index: ir::VarIdx) -> Result<&FriendlyVar, SyntaxError> {
-    vars.get(index as usize)
-        .ok_or_else(|| SyntaxError::new(format!("FLIR var idx {index} out of bounds")))
+struct RuleScopeGuard<'a> {
+    inner: &'a mut FlirContext,
 }
 
-/// Derives the join condition of a conjunctive query: one [`JoinVariable`] per
-/// variable part that more than one atom binds.
-///
-/// A part bound by a single atom is dropped. It is not an equality class, so it
-/// is not part of a join condition — it reaches the output through its atom's
-/// schema, which is also how it stays available to an enclosing antijoin.
-///
-/// Grouping runs through a [`BTreeMap`] keyed on `(VarIdx, VarPart)`, so the
-/// resulting order follows the FLIR variable indices instead of a hash order.
-/// Plans have to be reproducible for a given input.
-fn join_variables(plans: &[AtomPlan]) -> Vec<JoinVariable> {
-    let mut occurrences: BTreeMap<(ir::VarIdx, VarPart), Vec<(RelationIdx, String)>> =
-        BTreeMap::new();
-    for (relation, plan) in plans.iter().enumerate() {
-        for binding in &plan.bindings {
-            occurrences
-                .entry((binding.var, binding.part))
-                .or_default()
-                .push((relation, binding.name.clone()));
+impl RuleScopeGuard<'_> {
+    fn rule_vars(&self) -> &RuleVars {
+        self.inner.rule_vars.as_ref().expect("within scope guard")
+    }
+}
+
+trait ResolveFlirVarIdx {
+    fn resolve_flir_var_idx(&self, idx: ir::VarIdx) -> (FlirVar, Option<FlirVar>);
+    fn query_vars(&self) -> impl Iterator<Item = FlirVar>;
+}
+
+impl ResolveFlirVarIdx for RuleScopeGuard<'_> {
+    fn resolve_flir_var_idx(&self, idx: ir::VarIdx) -> (FlirVar, Option<FlirVar>) {
+        let mut vars = self
+            .rule_vars()
+            .resolve_query_cols(idx)
+            .map(|col| FlirVar::from(col));
+        (vars.next().expect("At least one variable"), vars.next())
+    }
+    fn query_vars(&self) -> impl Iterator<Item = FlirVar> {
+        self.rule_vars()
+            .query_cols()
+            .inner()
+            .iter()
+            .map(|col| FlirVar::from(col))
+    }
+}
+
+impl std::ops::Deref for RuleScopeGuard<'_> {
+    type Target = FlirContext;
+    fn deref(&self) -> &Self::Target {
+        self.inner
+    }
+}
+
+impl std::ops::DerefMut for RuleScopeGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+    }
+}
+
+impl Drop for RuleScopeGuard<'_> {
+    fn drop(&mut self) {
+        self.inner.rule_vars = None;
+    }
+}
+
+/// The mother type combining [`FlirEdbPredicate`], [`FlirChasedRule`], and
+/// [`FlirConstraint`] to expose them all as a [`frontend::Rule`].
+#[derive(Debug)]
+pub struct FlirRule {
+    id: ir::Path,
+    head: FlirAtom,
+    body: Vec<FlirAtom>,
+    conditions: Vec<FlirCond>,
+}
+
+impl From<FlirEdbPredicate<'_>> for FlirRule {
+    fn from(predicate: FlirEdbPredicate<'_>) -> Self {
+        FlirRule {
+            id: predicate.id().clone(),
+            head: predicate.head,
+            body: Vec::new(),
+            conditions: Vec::new(),
         }
     }
-    occurrences
-        .into_values()
-        .filter(|occurrences| occurrences.len() > 1)
-        .map(|occurrences| JoinVariable {
-            // Every atom projects a given part onto the same name, so the first
-            // occurrence's name is the shared output name — and it is the copy
-            // the join keeps active, since shadowing favours the earlier
-            // relation.
-            name: occurrences[0].1.clone(),
-            occurrences: occurrences
-                .into_iter()
-                .map(|(relation, name)| (relation, Expr::from(VarExpr::new(name))))
-                .collect(),
-        })
-        .collect()
 }
 
-/// The key an [`AntiJoinExpr`] between the two sides of a rule compares on:
-/// every variable part that both sides bind.
-///
-/// Note that a part occurring only once *within* a side belongs here all the
-/// same. It is not a join variable of that side's conjunctive query, but it is
-/// bound by that side's schema, and the antijoin does have to compare on it.
-fn antijoin_key(left: &[Binding], right: &[Binding]) -> Vec<(Expr, Expr)> {
-    let right: BTreeMap<(ir::VarIdx, VarPart), &str> = right
-        .iter()
-        .map(|binding| ((binding.var, binding.part), binding.name.as_str()))
-        .collect();
-    left.iter()
-        .filter_map(|binding| {
-            right
-                .get(&(binding.var, binding.part))
-                .map(|counterpart| (binding.name.as_str(), *counterpart))
-        })
-        .map(|(left, right)| {
-            (
-                Expr::from(VarExpr::new(left)),
-                Expr::from(VarExpr::new(right)),
-            )
-        })
-        .collect()
-}
-
-pub trait TryReduce<T, E>: Iterator<Item = Result<T, E>> {
-    /// Reduces to a single item, short-circuiting on the first [`Err`].
-    ///
-    /// Unlike collecting into a `Vec` first, nothing is allocated, and unlike
-    /// [`Iterator::reduce`] the items may fail. Note that `f` itself is
-    /// infallible: the fallibility belongs to the items, not to the step that
-    /// combines two of them.
-    fn try_reduce(mut self, mut f: impl FnMut(T, T) -> T) -> Result<Option<T>, E>
-    where
-        Self: Sized,
-    {
-        let Some(first) = self.next().transpose()? else {
-            return Ok(None);
-        };
-        self.try_fold(first, |acc, item| Ok(f(acc, item?)))
-            .map(Some)
+impl From<FlirChasedRule<'_>> for FlirRule {
+    fn from(rule: FlirChasedRule<'_>) -> Self {
+        FlirRule {
+            id: rule.id().clone(),
+            head: rule.head,
+            body: rule.body,
+            conditions: rule.conditions,
+        }
     }
 }
 
-impl<I, T, E> TryReduce<T, E> for I where I: Iterator<Item = Result<T, E>> {}
+impl From<FlirConstraint<'_>> for FlirRule {
+    fn from(constraint: FlirConstraint<'_>) -> Self {
+        FlirRule {
+            id: constraint.id().clone(),
+            head: constraint.head,
+            body: constraint.body,
+            conditions: constraint.conditions,
+        }
+    }
+}
+
+impl Identifiable for FlirRule {
+    type Identifier = ir::Path;
+    fn id(&self) -> &Self::Identifier {
+        &self.id
+    }
+}
+
+impl frontend::Rule for FlirRule {
+    type Atom = FlirAtom;
+    type Cond = FlirCond;
+
+    fn head(&self) -> &Self::Atom {
+        &self.head
+    }
+
+    fn atoms(&self) -> impl Iterator<Item = &Self::Atom> {
+        self.body.iter()
+    }
+
+    fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
+        self.conditions.iter()
+    }
+}
+
+#[derive(Debug)]
+struct FlirEdbPredicate<'a> {
+    base_table: &'a ir::TableEntry,
+    head: FlirAtom,
+}
+
+impl<'a> FlirEdbPredicate<'a> {
+    fn new(base_table: &'a ir::TableEntry, ctx: &mut FlirContext) -> Option<FlirEdbPredicate<'a>> {
+        let schema = Option::<ColnSchema<BaseTable>>::from(base_table)?;
+        let head = FlirAtom::new_head(
+            base_table.path.clone(),
+            schema
+                .query_cols()
+                .inner()
+                .iter()
+                .map(|col| frontend::Bind::Var(FlirVar::from(col)))
+                .collect(),
+        );
+        ctx.base_tables.insert(
+            base_table.path.clone(),
+            PredicateMeta {
+                output_schema: TableSchema::from(&schema),
+                coln_schema: schema,
+            },
+        );
+        Some(Self { base_table, head })
+    }
+}
+
+impl Identifiable for FlirEdbPredicate<'_> {
+    type Identifier = ir::Path;
+    fn id(&self) -> &Self::Identifier {
+        &self.base_table.path
+    }
+}
+
+#[derive(Debug)]
+struct FlirChasedRule<'a> {
+    rule: &'a ir::DefinitionEntry,
+    head: FlirAtom,
+    body: Vec<FlirAtom>,
+    conditions: Vec<FlirCond>,
+}
+
+impl<'a> FlirChasedRule<'a> {
+    /// Returns `None` if the [rule's definand](ir::Definition::definand) has
+    /// not been declared in the `ctx`.
+    fn new(rule: &'a ir::DefinitionEntry, ctx: &mut FlirContext) -> Result<Self, SyntaxError> {
+        let definand = &rule.definition.definand;
+        let schema = ctx
+            .derived_views
+            .get(definand)
+            .ok_or_else(|| SyntaxError::new(format!("Chased rule specifies unknown {definand}")))?;
+        assert_eq!(
+            rule.definition.arguments.len(),
+            schema.coln_schema.compiler_cols().inner().len(),
+            "Number of supplied arguments does not match the definand's definition"
+        );
+        let rule_scope = ctx.enter_rule_scope(&rule.definition.vars);
+        let head = FlirAtom::new_head(
+            definand.clone(),
+            rule.definition
+                .arguments
+                .iter()
+                .flat_map(|argument| resolve_element(argument, &rule_scope))
+                .collect(),
+        );
+        let (body, conditions) = resolve_props(&rule.definition.antecedents, false, &rule_scope)?;
+        Ok(FlirChasedRule {
+            rule,
+            head,
+            body,
+            conditions,
+        })
+    }
+}
+
+impl Identifiable for FlirChasedRule<'_> {
+    type Identifier = ir::Path;
+    fn id(&self) -> &Self::Identifier {
+        &self.rule.path
+    }
+}
+
+#[derive(Debug)]
+struct FlirConstraint<'a> {
+    rule: &'a ir::RuleEntry,
+    head: FlirAtom,
+    body: Vec<FlirAtom>,
+    conditions: Vec<FlirCond>,
+}
+
+impl<'a> FlirConstraint<'a> {
+    fn new(rule: &'a ir::RuleEntry, ctx: &mut FlirContext) -> Result<Self, SyntaxError> {
+        let mut rule_scope = ctx.enter_rule_scope(&rule.rule.vars);
+        let (schema_columns, head_fields): (Vec<_>, Vec<_>) = rule_scope
+            .query_vars()
+            .map(|var| {
+                (
+                    Column::from(var.clone()),
+                    frontend::Bind::<FlirVar, FlirLit>::Var(var),
+                )
+            })
+            .collect();
+        let output_schema = TableSchema::new(EntityRef::from(&rule.path), schema_columns, vec![]);
+        rule_scope.constraints.insert(
+            rule.path.clone(),
+            ConstraintMeta::new(rule.rule.rule_variant, output_schema),
+        );
+        // TODO: Verify that all vars are covered by the antecedent, or if not,
+        // filter the vars to only include the antecedent's vars.
+        let head = FlirAtom::new_head(rule.path.clone(), head_fields);
+        let (mut atoms, mut conditions) =
+            resolve_props(&rule.rule.antecedents, false, &rule_scope)?;
+        let (negated_atoms, negative_conditions) =
+            resolve_props(&rule.rule.consequents, true, &rule_scope)?;
+        atoms.extend(negated_atoms);
+        conditions.extend(negative_conditions);
+        Ok(Self {
+            rule,
+            head,
+            body: atoms,
+            conditions,
+        })
+    }
+}
+
+impl Identifiable for FlirConstraint<'_> {
+    type Identifier = ir::Path;
+    fn id(&self) -> &Self::Identifier {
+        &self.rule.path
+    }
+}
+
+#[derive(Debug)]
+pub struct FlirAtom {
+    name: ir::Path,
+    negated: bool,
+    /// Note: The bindings are sparsely defined.
+    bindings: Vec<(usize, frontend::Bind<FlirVar, FlirLit>)>,
+}
+
+impl FlirAtom {
+    fn new_head(name: ir::Path, fields: Vec<frontend::Bind<FlirVar, FlirLit>>) -> FlirAtom {
+        FlirAtom {
+            name,
+            negated: false,
+            bindings: fields.into_iter().enumerate().collect(),
+        }
+    }
+    fn from_atom(
+        atom: &ir::Atom,
+        negated: bool,
+        resolver: &RuleScopeGuard,
+    ) -> Result<FlirAtom, SyntaxError> {
+        let mut bindings = Vec::with_capacity(
+            if atom.row_id.is_some() {
+                StoreEngineCols::ROW_ID_COLS
+            } else {
+                0
+            } + atom.values.len(),
+        );
+        let entity = &atom.entity;
+        let schema = resolver
+            .schema(entity)
+            .ok_or_else(|| SyntaxError::new(format!("No schema for {entity}")))?;
+        let mut bind = |idx: CompilerColIdx, el: &ir::El| -> Result<(), SyntaxError> {
+            // The index comes from the query schema but the name comes from the variable.
+            let query_cols = schema
+                .resolve_query_cols(idx)
+                .ok_or_else(|| SyntaxError::new("Invalid compiler index"))?;
+            let vars = resolve_element(el, resolver);
+            assert_eq!(
+                query_cols.len(),
+                vars.len(),
+                "Mismatch between resolved vars and resolved columns"
+            );
+            bindings.extend(query_cols.map(|(idx, _col)| idx.0).zip(vars));
+            Ok(())
+        };
+        if let Some(row_id) = &atom.row_id {
+            bind(CompilerColIdx::RowId, row_id)?;
+        }
+        for binding in &atom.values {
+            bind(CompilerColIdx::Column(binding.column), &binding.term)?;
+        }
+        Ok(FlirAtom {
+            name: entity.clone(),
+            negated,
+            bindings,
+        })
+    }
+}
+
+impl Identifiable for FlirAtom {
+    type Identifier = ir::Path;
+    fn id(&self) -> &Self::Identifier {
+        &self.name
+    }
+}
+
+impl frontend::Atom for FlirAtom {
+    type Var = FlirVar;
+    type Lit = FlirLit;
+
+    fn is_positive(&self) -> bool {
+        !self.negated
+    }
+
+    fn bindings(&self) -> impl Iterator<Item = (usize, frontend::Bind<&Self::Var, &Self::Lit>)> {
+        self.bindings
+            .iter()
+            .map(|(idx, bind)| (*idx, bind.as_ref()))
+    }
+}
+
+fn resolve_props(
+    props: &Vec<ir::Prop>,
+    negated: bool,
+    resolver: &RuleScopeGuard,
+) -> Result<(Vec<FlirAtom>, Vec<FlirCond>), SyntaxError> {
+    let (body, conditions): (Vec<FlirAtom>, Vec<FlirCond>) = props.iter().try_fold(
+        (Vec::new(), Vec::new()),
+        |(mut body, mut conditions), prop| {
+            match prop {
+                ir::Prop::Atom { atom } => body.push(FlirAtom::from_atom(atom, negated, resolver)?),
+                ir::Prop::Eq { equality } => conditions.extend(FlirCond::new(
+                    if negated {
+                        Operator::NotEqual
+                    } else {
+                        Operator::Equal
+                    },
+                    &equality.left,
+                    &equality.right,
+                    resolver,
+                )),
+            };
+            Ok((body, conditions))
+        },
+    )?;
+    Ok((body, conditions))
+}
+
+struct MaybePair<T>(pub T, pub Option<T>);
+
+impl<T> MaybePair<T> {
+    fn single(first: T) -> Self {
+        Self(first, None)
+    }
+    fn maybe(pair: (T, Option<T>)) -> Self {
+        Self(pair.0, pair.1)
+    }
+    fn into_inner(self) -> (T, Option<T>) {
+        (self.0, self.1)
+    }
+    fn len(&self) -> usize {
+        1 + (self.1.is_some() as usize)
+    }
+}
+
+impl<T> IntoIterator for MaybePair<T> {
+    type Item = T;
+    type IntoIter = std::iter::Chain<std::iter::Once<T>, std::option::IntoIter<T>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::once(self.0).chain(self.1.into_iter())
+    }
+}
+
+fn resolve_element(
+    el: &ir::El,
+    resolver: &impl ResolveFlirVarIdx,
+) -> MaybePair<frontend::Bind<FlirVar, FlirLit>> {
+    match el {
+        El::Lit { lit } => MaybePair::single(frontend::Bind::Lit(FlirLit { inner: lit.clone() })),
+        El::Var { index } => {
+            let (first, second) = resolver.resolve_flir_var_idx(*index);
+            MaybePair::maybe((
+                frontend::Bind::Var(first),
+                second.map(|var| frontend::Bind::Var(var)),
+            ))
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FlirCond {
+    operator: Operator,
+    left: frontend::Bind<FlirVar, FlirLit>,
+    right: frontend::Bind<FlirVar, FlirLit>,
+}
+
+impl FlirCond {
+    /// A single condition the FLIR can turn out to be two conditions because
+    /// of row ids spreading into two variables.
+    fn new(
+        operator: Operator,
+        left: &ir::El,
+        right: &ir::El,
+        resolver: &impl ResolveFlirVarIdx,
+    ) -> MaybePair<Self> {
+        let (left, left2) = resolve_element(left, resolver).into_inner();
+        let (right, right2) = resolve_element(right, resolver).into_inner();
+        let second = match (left2, right2) {
+            // Neither left nor right is a row id variable (or row id literal).
+            // One condition is enough.
+            (None, None) => None,
+            // Left is a row id variable, spreading into two variables.
+            // This case should not happen, as comparing a row id variable
+            // to a non row id literal is invalid.
+            (Some(left), None) => Some(Self {
+                operator,
+                left,
+                right: right.clone(),
+            }),
+            // Right is a row id variable, spreading into two variables.
+            // This case should not happen, as comparing a row id variable
+            // to a non row id literal is invalid.
+            (None, Some(right)) => Some(Self {
+                operator,
+                left: left.clone(),
+                right,
+            }),
+            // We compare two variables which are row ids. We need a second
+            // condition.
+            (Some(left), Some(right)) => Some(Self {
+                operator,
+                left,
+                right,
+            }),
+        };
+        let first = Self {
+            operator,
+            left,
+            right,
+        };
+        MaybePair::maybe((first, second))
+    }
+}
+
+impl frontend::Cond for FlirCond {
+    type Var = FlirVar;
+    type Lit = FlirLit;
+
+    fn operator(&self) -> impl Into<Operator> {
+        self.operator
+    }
+    fn left(&self) -> frontend::Bind<&Self::Var, &Self::Lit> {
+        self.left.as_ref()
+    }
+    fn right(&self) -> frontend::Bind<&Self::Var, &Self::Lit> {
+        self.right.as_ref()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FlirVar {
+    name: ir::Path,
+    ty: ScalarType,
+}
+
+impl From<&QueryEngineCol> for FlirVar {
+    fn from(value: &QueryEngineCol) -> Self {
+        Self {
+            name: value.name().clone(),
+            ty: value.ty().clone().into(),
+        }
+    }
+}
+
+impl From<FlirVar> for Column {
+    fn from(value: FlirVar) -> Self {
+        Column::new(value.name, value.ty)
+    }
+}
+
+impl frontend::Identifiable for FlirVar {
+    type Identifier = ir::Path;
+
+    fn id(&self) -> &Self::Identifier {
+        &self.name
+    }
+}
+
+impl frontend::TypedVar for FlirVar {
+    fn ty(&self) -> ScalarType {
+        self.ty
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FlirLit {
+    inner: ir::Lit,
+}
+
+impl From<&ir::Lit> for FlirLit {
+    fn from(value: &ir::Lit) -> Self {
+        Self {
+            inner: value.clone(),
+        }
+    }
+}
+
+impl frontend::Lit for FlirLit {
+    fn to_literal(&self) -> expr::Literal {
+        match &self.inner {
+            ir::Lit::Int { value } => expr::Literal::Iint(*value as i64),
+            ir::Lit::String { value } => expr::Literal::String(value.clone()),
+        }
+    }
+}
 
 impl From<&ir::Path> for EntityRef {
     fn from(value: &ir::Path) -> Self {
         EntityRef::from(value.to_string())
+    }
+}
+
+impl From<ir::Path> for EntityRef {
+    fn from(value: ir::Path) -> Self {
+        EntityRef::from(value.0)
     }
 }
 
@@ -1212,654 +929,6 @@ impl From<QueryEngineScalarType> for ScalarType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::relational::expr::RelExpr;
-    use crate::test_utils::flir_builders::{
-        atom, atom_props, builtin_int, equality, lit_term, rule_entry, table_entry, var_term,
-    };
-
-    /// The one base table these tests declare, and the entity every atom here is
-    /// over. The shared builders are told a name; this is the only one needed.
-    const T: &str = "t";
-
-    /// A builder with one base table `t` whose columns are given as
-    /// `(name, type)` pairs, so [`FlirProgram::atom`] can be driven
-    /// directly.
-    fn builder_with_table(columns: Vec<(&str, ir::ColType)>) -> FlirProgram {
-        let mut builder = FlirProgram::empty();
-        builder
-            .table_declaration(&table_entry(T, columns))
-            .expect("A single base table declaration must succeed");
-        builder
-    }
-
-    /// Destructures the `Projection(Selection?(Source))` shape an atom lowers to.
-    fn assert_projection(expr: &Expr) -> &ProjectionExpr {
-        match expr {
-            Expr::Relational(RelExpr::Projection(projection)) => projection,
-            other => panic!("Expected a relational projection expression, got {other:?}"),
-        }
-    }
-
-    /// The selection an atom's local conditions produce, if it has any.
-    fn maybe_assert_selection(expr: &Expr) -> Option<&SelectionExpr> {
-        match expr {
-            Expr::Relational(RelExpr::Selection(selection)) => Some(selection),
-            _ => None,
-        }
-    }
-
-    fn attribute_names(projection: &ProjectionExpr) -> Vec<&str> {
-        projection
-            .attributes
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect()
-    }
-
-    #[test]
-    fn declaring_the_same_base_table_twice_is_an_error() {
-        // `HashMap::insert` returns the previous value, so the check's direction
-        // matters: the first declaration must pass and the second must not.
-        let mut builder = FlirProgram::empty();
-        let entry = table_entry(T, vec![("a", builtin_int())]);
-        builder
-            .table_declaration(&entry)
-            .expect("The first declaration of a base table must succeed");
-        assert!(
-            builder.table_declaration(&entry).is_err(),
-            "A second declaration of the same base table must be rejected"
-        );
-    }
-
-    #[test]
-    fn an_atom_projects_each_bound_variable_onto_its_column() {
-        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
-        let vars = vec![scalar_var("x"), scalar_var("y")];
-        let plan = builder
-            .atom(
-                &atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
-                &vars,
-            )
-            .expect("A well-formed atom lowers");
-
-        assert_eq!(
-            attribute_names(assert_projection(&plan.relation)),
-            vec!["x", "y"]
-        );
-        assert_eq!(plan.bindings.len(), 2);
-        // No local conditions, so no selection between projection and source.
-        assert!(maybe_assert_selection(&assert_projection(&plan.relation).relation).is_none());
-    }
-
-    #[test]
-    fn a_literal_becomes_a_local_condition_rather_than_a_binding() {
-        let mut builder = builder_with_table(vec![("a", builtin_int())]);
-        let plan = builder
-            .atom(&atom(T, None, vec![(0, lit_term(42))]), &[])
-            .expect("An atom comparing a column to a literal lowers");
-
-        assert!(plan.bindings.is_empty());
-        assert!(attribute_names(assert_projection(&plan.relation)).is_empty());
-        assert!(
-            maybe_assert_selection(&assert_projection(&plan.relation).relation).is_some(),
-            "The literal must become a selection beneath the projection"
-        );
-    }
-
-    #[test]
-    fn a_variable_repeated_within_one_atom_is_bound_once_and_equated() {
-        // `t(x, x)` must not project two attributes called `x` — they would
-        // collide in the projected schema. The repetition is a local equality
-        // condition on this one relation instead, which is also what keeps the
-        // join's relation indices distinct per variable.
-        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
-        let vars = vec![scalar_var("x")];
-        let plan = builder
-            .atom(
-                &atom(T, None, vec![(0, var_term(0)), (1, var_term(0))]),
-                &vars,
-            )
-            .expect("A repeated variable lowers");
-
-        assert_eq!(
-            attribute_names(assert_projection(&plan.relation)),
-            vec!["x"]
-        );
-        assert_eq!(plan.bindings.len(), 1);
-
-        let selection = maybe_assert_selection(&assert_projection(&plan.relation).relation)
-            .expect("The repetition must produce a selection");
-        match &selection.condition {
-            Expr::Binary(binary) => {
-                assert_eq!(binary.operator, Operator::Equal);
-                assert_ne!(
-                    binary.left, binary.right,
-                    "The equality must compare the two distinct columns"
-                );
-            }
-            other => panic!("Expected an equality condition, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_row_id_variable_binds_both_of_its_halves() {
-        let mut builder = builder_with_table(vec![(
-            "a",
-            ir::ColType::RowId {
-                path: ir::Path::from("other"),
-            },
-        )]);
-        let vars = vec![row_id_var("x")];
-        let plan = builder
-            .atom(&atom(T, None, vec![(0, var_term(0))]), &vars)
-            .expect("A row id valued column lowers");
-
-        assert_eq!(plan.bindings.len(), 2);
-        assert_eq!(attribute_names(assert_projection(&plan.relation)).len(), 2);
-        assert_eq!(
-            plan.bindings
-                .iter()
-                .map(|binding| binding.part)
-                .collect::<Vec<_>>(),
-            vec![VarPart::RowIdHash, VarPart::RowIdCtr]
-        );
-    }
-
-    #[test]
-    fn binding_a_row_id_to_a_scalar_variable_is_an_error() {
-        let mut builder = builder_with_table(vec![("a", builtin_int())]);
-        let vars = vec![scalar_var("x")];
-        assert!(
-            builder
-                .atom(&atom(T, Some(var_term(0)), vec![]), &vars)
-                .is_err()
-        );
-    }
-
-    /// An enforced rule `antecedents => consequents` over the given variables,
-    /// both sides being nothing but atoms. Every rule these tests state has that
-    /// shape; [`flir::rule_entry`](crate::test_helper::flir::rule_entry) is the
-    /// general form.
-    fn enforced_rule<'a>(
-        name: &str,
-        vars: impl IntoIterator<Item = (&'a str, ir::ColType)>,
-        antecedents: Vec<ir::Atom>,
-        consequents: Vec<ir::Atom>,
-    ) -> ir::RuleEntry {
-        rule_entry(
-            name,
-            ir::RuleVariant::Enforced,
-            vars,
-            atom_props(antecedents),
-            atom_props(consequents),
-        )
-    }
-
-    #[test]
-    fn a_flat_realm_lowers_into_a_program() {
-        let realm = FlatRealm {
-            tables: vec![table_entry(
-                T,
-                vec![("a", builtin_int()), ("b", builtin_int())],
-            )],
-            definitions: vec![],
-            rules: vec![enforced_rule(
-                "r",
-                [("x", builtin_int()), ("y", builtin_int())],
-                // t(x, y) and t(x, _) share `x`, so the body is a real join.
-                vec![
-                    atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
-                    atom(T, None, vec![(0, var_term(0))]),
-                ],
-                vec![atom(T, None, vec![(0, var_term(0))])],
-            )],
-        };
-
-        let builder = FlirProgram::from_flat_realm(&realm).expect("The realm lowers");
-
-        assert_eq!(builder.code().len(), 1, "One rule is one statement");
-        let schema = &builder
-            .constraints
-            .get(&EntityRef::from(&ir::Path::from("r")))
-            .expect("The rule must be registered under its own name")
-            .output_schema;
-        // The antecedents bind `x` and `y`, so both are output columns, with the
-        // types of the query columns they resolve to.
-        assert_eq!(
-            schema
-                .columns()
-                .iter()
-                .map(|column| (column.name(), column.scalar_type()))
-                .collect::<Vec<_>>(),
-            vec![("x", ScalarType::Iint), ("y", ScalarType::Iint)]
-        );
-    }
-
-    #[test]
-    fn a_lowered_program_passes_the_resolver() {
-        // Whatever the lowering emits has to be a well-formed program: every
-        // variable resolves, and every relational operator's invariants hold.
-        // This is what actually reaches `MultiWayEquiJoinExpr::validate`.
-        //
-        // It stops short of `Pipeline::runtime`, which would go on to build the
-        // DBSP circuit and hit the backend's `unimplemented!` for multi way
-        // joins — that needs the fold-into-binary-joins pass.
-        let realm = FlatRealm {
-            tables: vec![table_entry(
-                T,
-                vec![("a", builtin_int()), ("b", builtin_int())],
-            )],
-            definitions: vec![],
-            rules: vec![enforced_rule(
-                "r",
-                [("x", builtin_int()), ("y", builtin_int())],
-                vec![
-                    atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
-                    atom(T, None, vec![(0, var_term(0))]),
-                ],
-                vec![atom(T, None, vec![(0, var_term(0))])],
-            )],
-        };
-        let builder = FlirProgram::from_flat_realm(&realm).expect("The realm lowers");
-
-        crate::host::resolver::ResolvedCode::from(builder.code)
-            .expect("The lowered program must resolve");
-    }
-
-    #[test]
-    fn declaring_the_same_rule_twice_is_an_error() {
-        let rule = enforced_rule(
-            "r",
-            [("x", builtin_int())],
-            vec![atom(T, None, vec![(0, var_term(0))])],
-            vec![atom(T, None, vec![(0, var_term(0))])],
-        );
-        let realm = FlatRealm {
-            tables: vec![table_entry(T, vec![("a", builtin_int())])],
-            definitions: vec![],
-            rules: vec![rule.clone(), rule],
-        };
-        assert!(FlirProgram::from_flat_realm(&realm).is_err());
-    }
-
-    fn multi_way_join(expr: &Expr) -> &MultiWayEquiJoinExpr {
-        match expr {
-            Expr::Relational(rel) => match rel {
-                RelExpr::MultiWayEquiJoin(join) => join,
-                other => panic!("Expected a multi way equi join, got {other:?}"),
-            },
-            other => panic!("Expected a relational expression, got {other:?}"),
-        }
-    }
-
-    fn conjunctive_query(atoms: Vec<ir::Atom>, conditions: Vec<ir::Equality>) -> ConjunctiveQuery {
-        ConjunctiveQuery { atoms, conditions }
-    }
-
-    fn assert_selection(expr: &Expr) -> &SelectionExpr {
-        match maybe_assert_selection(expr) {
-            Some(selection) => selection,
-            None => panic!("Expected a relational selection expression, got {expr:?}"),
-        }
-    }
-
-    #[test]
-    fn a_single_atom_conjunctive_query_needs_no_join() {
-        // There is nothing to equate across atoms, and the join operators reject
-        // fewer than two relations, so the atom must come through as-is.
-        let mut builder = builder_with_table(vec![("a", builtin_int())]);
-        let query = conjunctive_query(vec![atom(T, None, vec![(0, var_term(0))])], vec![]);
-        let (expr, bindings) = builder
-            .conjunctive_query(&query, &[scalar_var("x")])
-            .expect("A one-atom conjunctive query lowers");
-
-        assert_eq!(attribute_names(assert_projection(&expr)), vec!["x"]);
-        assert_eq!(bindings.len(), 1);
-    }
-
-    #[test]
-    fn two_atoms_sharing_a_variable_lower_to_a_join_on_that_variable() {
-        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
-        // t(x, y) and t(x, z): `x` is shared, `y` and `z` are not.
-        let query = conjunctive_query(
-            vec![
-                atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
-                atom(T, None, vec![(0, var_term(0)), (1, var_term(2))]),
-            ],
-            vec![],
-        );
-        let vars = vec![scalar_var("x"), scalar_var("y"), scalar_var("z")];
-        let (expr, bindings) = builder
-            .conjunctive_query(&query, &vars)
-            .expect("A two-atom conjunctive query lowers");
-
-        let join = multi_way_join(&expr);
-        assert_eq!(join.relations.len(), 2);
-        assert_eq!(
-            summary(&join.on),
-            vec![("x".to_string(), vec![0, 1])],
-            "Only the shared variable may appear in the join condition"
-        );
-        // `y` and `z` are still bound by the query as a whole, which is what
-        // keeps them available to an enclosing antijoin.
-        assert_eq!(bindings.len(), 3);
-        assert!(join.validate().is_ok());
-    }
-
-    #[test]
-    fn two_atoms_sharing_nothing_lower_to_a_cartesian_product() {
-        let mut builder = builder_with_table(vec![("a", builtin_int())]);
-        let query = conjunctive_query(
-            vec![
-                atom(T, None, vec![(0, var_term(0))]),
-                atom(T, None, vec![(0, var_term(1))]),
-            ],
-            vec![],
-        );
-        let vars = vec![scalar_var("x"), scalar_var("y")];
-        let (expr, _bindings) = builder
-            .conjunctive_query(&query, &vars)
-            .expect("Atoms sharing no variable still lower");
-
-        assert!(
-            multi_way_join(&expr).on.is_empty(),
-            "An empty join condition is how a cartesian product is expressed"
-        );
-    }
-
-    #[test]
-    fn several_conditions_lower_to_one_selection_on_top_of_the_join() {
-        // The conditions are ANDed into a single condition, so exactly one
-        // selection sits on top of the join rather than one selection per
-        // condition chained after another.
-        let mut builder = builder_with_table(vec![("a", builtin_int()), ("b", builtin_int())]);
-        // t(x, y) and t(x, z), with `y = 1` and `z = 2`.
-        let query = conjunctive_query(
-            vec![
-                atom(T, None, vec![(0, var_term(0)), (1, var_term(1))]),
-                atom(T, None, vec![(0, var_term(0)), (1, var_term(2))]),
-            ],
-            vec![
-                equality(var_term(1), lit_term(1)),
-                equality(var_term(2), lit_term(2)),
-            ],
-        );
-        let vars = vec![scalar_var("x"), scalar_var("y"), scalar_var("z")];
-        let (expr, _bindings) = builder
-            .conjunctive_query(&query, &vars)
-            .expect("A conjunctive query with conditions lowers");
-
-        let selection = assert_selection(&expr);
-        // What sits directly beneath the selection is the join itself, and not
-        // another selection carrying the second condition.
-        multi_way_join(&selection.relation);
-        match &selection.condition {
-            Expr::Binary(and) => {
-                assert_eq!(and.operator, Operator::And);
-                for side in [&and.left, &and.right] {
-                    match side {
-                        Expr::Binary(equality) => assert_eq!(equality.operator, Operator::Equal),
-                        other => panic!("Expected an equality condition, got {other:?}"),
-                    }
-                }
-            }
-            other => panic!("Expected the two conditions to be ANDed, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_conjunctive_query_without_atoms_is_an_error() {
-        let mut builder = builder_with_table(vec![("a", builtin_int())]);
-        assert!(
-            builder
-                .conjunctive_query(&conjunctive_query(vec![], vec![]), &[])
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn an_atom_over_an_undeclared_entity_is_an_error() {
-        let mut builder = builder_with_table(vec![("a", builtin_int())]);
-        let atom = ir::Atom {
-            entity: ir::Path::from("nonexistent"),
-            row_id: None,
-            values: vec![],
-        };
-        assert!(builder.atom(&atom, &[]).is_err());
-    }
-
-    fn scalar_var(name: &str) -> FriendlyVar {
-        FriendlyVar {
-            name: ir::Path::from(name),
-            ty: ir::ColType::BuiltinTy {
-                builtin_ty: ir::BuiltinTy::BuiltinInt,
-            },
-        }
-    }
-
-    fn row_id_var(name: &str) -> FriendlyVar {
-        FriendlyVar {
-            name: ir::Path::from(name),
-            ty: ir::ColType::RowId {
-                path: ir::Path::from("some_table"),
-            },
-        }
-    }
-
-    fn binding(var: ir::VarIdx, part: VarPart, name: &str) -> Binding {
-        Binding {
-            var,
-            part,
-            name: name.to_string(),
-            // Irrelevant to join-variable and antijoin-key derivation; the
-            // schema tests below assert on types via `atom` instead.
-            scalar_type: ScalarType::Null,
-        }
-    }
-
-    /// An [`AtomPlan`] whose relation is a stand-in: only the bindings matter to
-    /// [`join_variables`] and [`antijoin_key`].
-    fn plan(bindings: Vec<Binding>) -> AtomPlan {
-        AtomPlan {
-            relation: Expr::from(VarExpr::new("atom")),
-            bindings,
-        }
-    }
-
-    /// The relation indices and output name of each derived join variable.
-    fn summary(variables: &[JoinVariable]) -> Vec<(String, Vec<RelationIdx>)> {
-        variables
-            .iter()
-            .map(|variable| {
-                (
-                    variable.name.clone(),
-                    variable
-                        .occurrences
-                        .iter()
-                        .map(|(relation, _)| *relation)
-                        .collect(),
-                )
-            })
-            .collect()
-    }
-
-    #[test]
-    fn a_scalar_variable_flattens_into_one_part() {
-        let parts: Vec<(VarPart, String)> = scalar_var("x").parts().collect();
-        assert_eq!(parts, vec![(VarPart::Scalar, "x".to_string())]);
-    }
-
-    #[test]
-    fn a_row_id_variable_flattens_into_a_hash_and_a_counter_part() {
-        let var = row_id_var("x");
-        let parts: Vec<VarPart> = var.parts().map(|(part, _)| part).collect();
-        assert_eq!(parts, vec![VarPart::RowIdHash, VarPart::RowIdCtr]);
-        // The names have to differ, or the projection would collide with itself.
-        let names: Vec<String> = var.parts().map(|(_, name)| name).collect();
-        assert_ne!(names[0], names[1]);
-        assert!(names.iter().all(|name| name.contains('x')));
-    }
-
-    #[test]
-    fn a_variable_shared_by_two_atoms_becomes_one_join_variable() {
-        let plans = vec![
-            plan(vec![binding(0, VarPart::Scalar, "x")]),
-            plan(vec![binding(0, VarPart::Scalar, "x")]),
-        ];
-        assert_eq!(
-            summary(&join_variables(&plans)),
-            vec![("x".to_string(), vec![0, 1])]
-        );
-    }
-
-    #[test]
-    fn a_variable_bound_by_a_single_atom_is_not_a_join_variable() {
-        // It constrains nothing, and it still reaches the output through its
-        // atom's schema — which is what keeps it available to the antijoin.
-        let plans = vec![
-            plan(vec![
-                binding(0, VarPart::Scalar, "x"),
-                binding(1, VarPart::Scalar, "lonely"),
-            ]),
-            plan(vec![binding(0, VarPart::Scalar, "x")]),
-        ];
-        assert_eq!(
-            summary(&join_variables(&plans)),
-            vec![("x".to_string(), vec![0, 1])]
-        );
-    }
-
-    #[test]
-    fn atoms_sharing_no_variable_yield_an_empty_join_condition() {
-        let plans = vec![
-            plan(vec![binding(0, VarPart::Scalar, "x")]),
-            plan(vec![binding(1, VarPart::Scalar, "y")]),
-        ];
-        assert!(join_variables(&plans).is_empty());
-    }
-
-    #[test]
-    fn a_shared_row_id_variable_yields_one_join_variable_per_half() {
-        // Equality on a row id is equality on the hash *and* the counter, so the
-        // two halves are two independent equality classes.
-        let plans = vec![
-            plan(vec![
-                binding(0, VarPart::RowIdHash, "xRowIdHash"),
-                binding(0, VarPart::RowIdCtr, "xRowIdCtr"),
-            ]),
-            plan(vec![
-                binding(0, VarPart::RowIdHash, "xRowIdHash"),
-                binding(0, VarPart::RowIdCtr, "xRowIdCtr"),
-            ]),
-        ];
-        assert_eq!(
-            summary(&join_variables(&plans)),
-            vec![
-                ("xRowIdHash".to_string(), vec![0, 1]),
-                ("xRowIdCtr".to_string(), vec![0, 1]),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_variable_shared_by_three_atoms_has_three_occurrences() {
-        let plans = vec![
-            plan(vec![binding(0, VarPart::Scalar, "x")]),
-            plan(vec![binding(0, VarPart::Scalar, "x")]),
-            plan(vec![binding(0, VarPart::Scalar, "x")]),
-        ];
-        assert_eq!(
-            summary(&join_variables(&plans)),
-            vec![("x".to_string(), vec![0, 1, 2])]
-        );
-    }
-
-    #[test]
-    fn join_variables_are_ordered_by_flir_variable_index() {
-        // Not by the order the atoms happened to bind them in, so that the same
-        // input always lowers to the same plan.
-        let plans = vec![
-            plan(vec![
-                binding(2, VarPart::Scalar, "c"),
-                binding(0, VarPart::Scalar, "a"),
-            ]),
-            plan(vec![
-                binding(0, VarPart::Scalar, "a"),
-                binding(2, VarPart::Scalar, "c"),
-                binding(1, VarPart::Scalar, "b"),
-            ]),
-            plan(vec![binding(1, VarPart::Scalar, "b")]),
-        ];
-        let names: Vec<String> = join_variables(&plans)
-            .into_iter()
-            .map(|variable| variable.name)
-            .collect();
-        assert_eq!(names, vec!["a", "b", "c"]);
-    }
-
-    #[test]
-    fn derived_join_variables_satisfy_the_join_operator_invariants() {
-        // The two halves of this change have to fit: whatever `join_variables`
-        // derives must be constructible, which is the check that no singleton
-        // and no repeated relation index slips through.
-        let plans = vec![
-            plan(vec![
-                binding(0, VarPart::Scalar, "x"),
-                binding(1, VarPart::Scalar, "only_here"),
-            ]),
-            plan(vec![
-                binding(0, VarPart::Scalar, "x"),
-                binding(2, VarPart::Scalar, "y"),
-            ]),
-            plan(vec![binding(2, VarPart::Scalar, "y")]),
-        ];
-        let on = join_variables(&plans);
-        let relations = plans.into_iter().map(|plan| plan.relation).collect();
-        MultiWayEquiJoinExpr::new(relations, on, None)
-            .expect("Derived join variables must satisfy the operator's invariants");
-    }
-
-    #[test]
-    fn the_antijoin_key_is_the_intersection_of_both_sides() {
-        let left = vec![
-            binding(0, VarPart::Scalar, "shared"),
-            binding(1, VarPart::Scalar, "left_only"),
-        ];
-        let right = vec![
-            binding(0, VarPart::Scalar, "shared"),
-            binding(2, VarPart::Scalar, "right_only"),
-        ];
-        let key = antijoin_key(&left, &right);
-        assert_eq!(key.len(), 1);
-        assert_eq!(
-            key[0],
-            (
-                Expr::from(VarExpr::new("shared")),
-                Expr::from(VarExpr::new("shared"))
-            )
-        );
-    }
-
-    #[test]
-    fn the_antijoin_key_matches_parts_rather_than_variables() {
-        // Both sides bind variable 0, but the hash half only appears on the
-        // left, so only the counter half may be compared.
-        let left = vec![
-            binding(0, VarPart::RowIdHash, "xRowIdHash"),
-            binding(0, VarPart::RowIdCtr, "xRowIdCtr"),
-        ];
-        let right = vec![binding(0, VarPart::RowIdCtr, "xRowIdCtr")];
-        let key = antijoin_key(&left, &right);
-        assert_eq!(key.len(), 1);
-        assert_eq!(key[0].0, Expr::from(VarExpr::new("xRowIdCtr")));
-    }
-
-    #[test]
-    fn disjoint_sides_produce_an_empty_antijoin_key() {
-        let left = vec![binding(0, VarPart::Scalar, "x")];
-        let right = vec![binding(1, VarPart::Scalar, "y")];
-        assert!(antijoin_key(&left, &right).is_empty());
-    }
 
     fn translate_json_flir(file_name: &str) -> FlirProgram {
         let flat_realm = coln_flir_rs::test_utils::load_theory_from_json(file_name);

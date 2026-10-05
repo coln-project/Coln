@@ -42,7 +42,7 @@ pub type IdOf<T> = <T as Identifiable>::Identifier;
 /// plain Datalog may pass the same type for both.
 pub type PredIdOf<R> = IdOf<<R as Rule>::Atom>;
 
-trait LogicalProgram {
+pub trait LogicalProgram {
     type Predicate: Predicate;
 
     /// All predicates of the program, each exactly once and in no particular
@@ -64,7 +64,7 @@ trait LogicalProgram {
     }
 }
 
-trait AggregateRules {
+pub trait AggregateRules {
     type Rule: Rule;
 
     /// All rules that contribute to the definition of this [`Predicate`], or,
@@ -138,7 +138,7 @@ trait Component: AggregateRules {
 /// is a space of its own.
 ///
 /// [`is_self_recursive`]: Self::is_self_recursive
-trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + AggregateRules {
+pub trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + AggregateRules {
     /// The columns this predicate's relation exposes, in order. Every rule's
     /// head fills exactly these, positionally.
     ///
@@ -150,9 +150,14 @@ trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + AggregateRule
     fn columns(&self) -> impl Iterator<Item = &Column>;
 
     /// A predicate is a predicate of the EDB (base table, externally given)
-    /// if it does not contain any rule.
+    /// if it does contain only a single rule with no atoms in its body.
     fn is_edb_predicate(&self) -> bool {
-        self.rules().next().is_none()
+        let mut iter = self.rules();
+        let first_is_edb = iter
+            .next()
+            .map_or(false, |rule| rule.atoms().next().is_none());
+        let is_only = iter.next().is_none();
+        is_only && first_is_edb
     }
 
     /// A predicate is a predicate of the IDB (derived view, defined by rules)
@@ -170,18 +175,18 @@ trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + AggregateRule
 }
 
 #[derive(Debug)]
-pub struct DatalogProgram<I, R> {
-    predicates: Vec<RulePredicate<I, R>>,
+pub struct DatalogProgram<R: Rule> {
+    predicates: Vec<RulePredicate<R>>,
 }
 
-impl<I, R> DatalogProgram<I, R> {
-    pub fn new(predicates: Vec<RulePredicate<I, R>>) -> Self {
+impl<R: Rule> DatalogProgram<R> {
+    pub fn new(predicates: Vec<RulePredicate<R>>) -> Self {
         Self { predicates }
     }
 }
 
-impl<I: Identifier, R: Rule<Atom: Atom<Identifier = I>>> LogicalProgram for DatalogProgram<I, R> {
-    type Predicate = RulePredicate<I, R>;
+impl<R: Rule> LogicalProgram for DatalogProgram<R> {
+    type Predicate = RulePredicate<R>;
 
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
         self.predicates.iter()
@@ -189,22 +194,23 @@ impl<I: Identifier, R: Rule<Atom: Atom<Identifier = I>>> LogicalProgram for Data
 }
 
 /// A [`Predicate`] assembled from the rules defining it.
+///
+/// Named in [`PredIdOf<R>`](PredIdOf) rather than a parameter of its own, so
+/// that its name and its rules' definands share one space by construction.
 #[derive(Debug)]
-pub struct RulePredicate<I, R> {
-    name: I,
+pub struct RulePredicate<R: Rule> {
+    name: PredIdOf<R>,
     columns: Vec<Column>,
     rules: Vec<R>,
 }
 
-impl<I: Identifier, R: Rule> RulePredicate<I, R> {
+impl<R: Rule> RulePredicate<R> {
     /// Slots `rules` into the predicates `declarations` declares, each rule
-    /// paired with the definand naming the predicate it derives.
+    /// into the one its [`definand`](Rule::definand) names.
     ///
-    /// The definand is always explicit, whether or not a frontend keeps it
-    /// distinct from the rule's own name. FLIR does, for provenance; plain
-    /// Datalog does not and passes the rule's name for both. Asking for it
-    /// outright spares the layer having to tell those conventions apart, and
-    /// spares a frontend from having to fit either.
+    /// The definand is read off the rule's head, never off the rule's own
+    /// name. FLIR keeps the two apart, for provenance; plain Datalog does not
+    /// and names the rule after its head. Either way, grouping does not care.
     ///
     /// The declarations define which predicates exist, in which order, and with
     /// which columns; a rule only says which one it contributes to. That name
@@ -216,13 +222,13 @@ impl<I: Identifier, R: Rule> RulePredicate<I, R> {
     ///
     /// Fails if any rule's definand matches no declaration.
     /// All offenders are collected, not just the first.
-    fn group(
-        declarations: impl IntoIterator<Item = (I, Vec<Column>)>,
-        rules: impl IntoIterator<Item = (I, R)>,
-    ) -> Result<Vec<Self>, UnmatchedRules<I, R>> {
+    pub fn group(
+        declarations: impl IntoIterator<Item = (PredIdOf<R>, Vec<Column>)>,
+        rules: impl IntoIterator<Item = R>,
+    ) -> Result<Vec<Self>, UnmatchedRules<R>> {
         // Keyed by name for slotting rules in, ordered by declaration for
         // handing the predicates back.
-        let mut predicates: IndexMap<I, Self> = declarations
+        let mut predicates: IndexMap<PredIdOf<R>, Self> = declarations
             .into_iter()
             .map(|(name, columns)| {
                 let predicate = Self {
@@ -233,11 +239,12 @@ impl<I: Identifier, R: Rule> RulePredicate<I, R> {
                 (name, predicate)
             })
             .collect();
-        let mut unmatched: Vec<(I, R)> = Vec::new();
-        for (definand, rule) in rules {
-            match predicates.get_mut(&definand) {
+        let mut unmatched: Vec<R> = Vec::new();
+        for rule in rules {
+            let definand = rule.definand();
+            match predicates.get_mut(definand) {
                 Some(predicate) => predicate.rules.push(rule),
-                None => unmatched.push((definand, rule)),
+                None => unmatched.push(rule),
             }
         }
         match unmatched.is_empty() {
@@ -247,39 +254,35 @@ impl<I: Identifier, R: Rule> RulePredicate<I, R> {
     }
 }
 
-/// The rules [`RulePredicate::group`] could not place, each with the
-/// definand that named no declared predicate.
+/// The rules [`RulePredicate::group`] could not place.
 #[derive(Debug)]
-struct UnmatchedRules<I, R> {
-    rules: Vec<(I, R)>,
+pub struct UnmatchedRules<R> {
+    rules: Vec<R>,
 }
 
-impl<I: Identifier, R: Rule> fmt::Display for UnmatchedRules<I, R> {
+impl<R: Rule> fmt::Display for UnmatchedRules<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.rules
-            .iter()
-            .enumerate()
-            .try_for_each(|(idx, (name, rule))| {
-                let separator = if idx == 0 { "" } else { "; " };
-                write!(
-                    f,
-                    "{separator}rule '{}' derives '{}', which no declaration names",
-                    rule.id(),
-                    name,
-                )
-            })
+        self.rules.iter().enumerate().try_for_each(|(idx, rule)| {
+            let separator = if idx == 0 { "" } else { "; " };
+            write!(
+                f,
+                "{separator}rule '{}' derives '{}', which no declaration names",
+                rule.id(),
+                rule.definand()
+            )
+        })
     }
 }
 
-impl<I: Identifier, R> Identifiable for RulePredicate<I, R> {
-    type Identifier = I;
+impl<R: Rule> Identifiable for RulePredicate<R> {
+    type Identifier = PredIdOf<R>;
 
-    fn id(&self) -> &I {
+    fn id(&self) -> &Self::Identifier {
         &self.name
     }
 }
 
-impl<I: Identifier, R: Rule> AggregateRules for RulePredicate<I, R> {
+impl<R: Rule> AggregateRules for RulePredicate<R> {
     type Rule = R;
 
     fn rules(&self) -> impl Iterator<Item = &Self::Rule> {
@@ -287,7 +290,7 @@ impl<I: Identifier, R: Rule> AggregateRules for RulePredicate<I, R> {
     }
 }
 
-impl<I: Identifier, R: Rule<Atom: Atom<Identifier = I>>> Predicate for RulePredicate<I, R> {
+impl<R: Rule> Predicate for RulePredicate<R> {
     fn columns(&self) -> impl Iterator<Item = &Column> {
         self.columns.iter()
     }
@@ -316,13 +319,14 @@ pub trait Rule: Identifiable + fmt::Debug {
 
     /// The atom this rule derives, its _definand_. Its
     /// [`bindings`](Atom::bindings) say which term fills each of the derived
-    /// predicate's [`columns`](Predicate::columns).
-    ///
-    /// Its identifier plays no part in grouping: [`RulePredicate::group`] takes
-    /// the definand's name as an argument of its own, so a frontend keeping
-    /// a rule's name and its definand apart need not encode one in the
-    /// other. Note that [`Identifiable::id`] names the _rule_.
+    /// predicate's [`columns`](Predicate::columns), and its identifier is
+    /// what [`RulePredicate::group`] slots the rule by. Note that
+    /// [`Identifiable::id`] names the _rule_, not the predicate it derives.
     fn head(&self) -> &Self::Atom;
+
+    fn definand(&self) -> &PredIdOf<Self> {
+        self.head().id()
+    }
 
     /// The atoms of the rule's _body_. The head is _not_ among them, as
     /// otherwise, every rule would be falsely classified as self-recursive.
@@ -390,10 +394,19 @@ pub trait Atom: Identifiable + fmt::Debug {
 }
 
 /// Binds something to either a variable or a literal value.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Bind<Var, Lit> {
     Var(Var),
     Lit(Lit),
+}
+
+impl<Var, Lit> Bind<Var, Lit> {
+    pub fn as_ref(&self) -> Bind<&Var, &Lit> {
+        match self {
+            Bind::Var(var) => Bind::Var(var),
+            Bind::Lit(lit) => Bind::Lit(lit),
+        }
+    }
 }
 
 pub trait TypedVar: Identifiable + fmt::Debug {
@@ -422,9 +435,9 @@ mod tests {
         let predicates = RulePredicate::group(
             declarations(&["path", "reachable"]),
             vec![
-                derives("path", "r0", &["edge"]),
-                derives("reachable", "r1", &["path"]),
-                derives("path", "r2", &["path", "edge"]),
+                rule("r0", "path", &["edge"]),
+                rule("r1", "reachable", &["path"]),
+                rule("r2", "path", &["path", "edge"]),
             ],
         )
         .expect("every definand names a declared predicate");
@@ -437,13 +450,13 @@ mod tests {
     #[test]
     fn rules_may_carry_their_predicate_s_own_name() {
         // The Datalog convention: a frontend that does not name rules apart
-        // passes the predicate's name for both, so the rules of one predicate
-        // are indistinguishable by name. Grouping does not care either way.
+        // names each after its head, so the rules of one predicate are
+        // indistinguishable by name. Grouping does not care either way.
         let predicates = RulePredicate::group(
             declarations(&["path"]),
             vec![
-                derives("path", "path", &["edge"]),
-                derives("path", "path", &["path", "edge"]),
+                rule("path", "path", &["edge"]),
+                rule("path", "path", &["path", "edge"]),
             ],
         )
         .expect("every definand names a declared predicate");
@@ -460,8 +473,8 @@ mod tests {
         let predicates = RulePredicate::group(
             declarations(&["path", "reachable"]),
             vec![
-                derives("reachable", "r0", &["path"]),
-                derives("path", "r1", &["edge"]),
+                rule("r0", "reachable", &["path"]),
+                rule("r1", "path", &["edge"]),
             ],
         )
         .expect("every definand names a declared predicate");
@@ -475,7 +488,7 @@ mod tests {
     fn a_declared_predicate_without_rules_stays_empty() {
         let predicates = RulePredicate::group(
             declarations(&["path", "unused"]),
-            vec![derives("path", "r0", &["edge"])],
+            vec![rule("r0", "path", &["edge"])],
         )
         .expect("every definand names a declared predicate");
         assert_eq!(
@@ -485,34 +498,15 @@ mod tests {
     }
 
     #[test]
-    fn the_definand_decides_where_a_rule_lands_not_its_head() {
-        // Both rules head an atom named after neither the predicate nor
-        // themselves, so only the definand can be placing them.
-        let predicates = RulePredicate::group(
-            declarations(&["path"]),
-            vec![
-                ("path".into(), rule("r0", "base_case", &["edge"])),
-                (
-                    "path".into(),
-                    rule("r1", "transitive_closure", &["path", "edge"]),
-                ),
-            ],
-        )
-        .expect("both definands name a declared predicate");
-        assert_eq!(grouping_of(&predicates), vec![("path", vec!["r0", "r1"])]);
-    }
-
-    #[test]
     fn a_rule_deriving_no_declared_predicate_is_rejected() {
         // Both offenders are reported, not just the first, and each is named
-        // by its definand. `r2`'s head says `path`, which *is* declared, so
-        // reporting the head would point at the wrong thing.
+        // by its definand.
         let error = RulePredicate::group(
             declarations(&["path"]),
             vec![
-                derives("path", "r0", &["edge"]),
-                derives("pathh", "r1", &["edge"]),
-                ("paths".into(), rule("r2", "path", &["path", "edge"])),
+                rule("r0", "path", &["edge"]),
+                rule("r1", "pathh", &["edge"]),
+                rule("r2", "paths", &["path", "edge"]),
             ],
         )
         .expect_err("two definands name undeclared predicates");
@@ -525,7 +519,7 @@ mod tests {
 
     #[test]
     fn grouping_nothing_yields_no_predicates() {
-        let nothing = Vec::<(PredicateName, TestRule)>::new();
+        let nothing = Vec::<TestRule>::new();
         let predicates =
             RulePredicate::group(declarations(&[]), nothing).expect("nothing to mismatch");
         assert!(predicates.is_empty());

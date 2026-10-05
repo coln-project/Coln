@@ -47,7 +47,7 @@ enum EdgeLabel {
 /// A strongly connected component (SCC) and contains predicates referencing
 /// each other through some cycle.
 #[derive(Debug)]
-pub(super) struct PredicateComponent<'a, P> {
+pub struct PredicateComponent<'a, P> {
     /// All predicates within the SCC.
     members: Vec<&'a P>,
     /// Edges within a component.

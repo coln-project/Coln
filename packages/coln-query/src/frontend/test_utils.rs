@@ -124,14 +124,6 @@ pub(super) fn atom(spec: &str) -> TestAtom {
     }
 }
 
-/// A rule paired with the definand it derives, the shape
-/// [`RulePredicate::group`] takes. The rule heads an atom named after the
-/// definand, which is the ordinary case; pass an explicit pair where the
-/// two have to differ.
-pub(super) fn derives(head: &str, name: &str, atoms: &[&str]) -> (PredicateName, TestRule) {
-    (atom(head).name, rule(name, head, atoms))
-}
-
 /// A program whose EDB holds every name the predicates reference but do not
 /// define, so that it is free of dangling references by construction.
 pub(super) fn program(predicates: Vec<TestPredicate>) -> TestLogicalProgram {
@@ -217,7 +209,7 @@ impl LogicalProgram for TestLogicalProgram {
 
 /// The tests use [`RulePredicate`] itself as their [`Predicate`], so the
 /// scaffolding stops at the rule level.
-pub(super) type TestPredicate = RulePredicate<PredicateName, TestRule>;
+pub(super) type TestPredicate = RulePredicate<TestRule>;
 
 #[derive(Debug)]
 pub(super) struct TestRule {

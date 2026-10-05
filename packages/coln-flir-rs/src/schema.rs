@@ -5,11 +5,26 @@
 //! This module expresses the different schema views according to coln-compiler,
 //! coln-store, and coln-query in code.
 
+use either::Either;
+
 use crate::ir::{self, Path};
-use std::ops::Range;
+use std::{marker::PhantomData, ops::Range};
+
+/// Typestate marker whether the [`ColnSchema`] represents a base table
+/// and, therefore, has (implicit) row ids.
+#[derive(Debug, Clone)]
+pub struct BaseTable(());
+/// Typestate marker whether the [`ColnSchema`] represents a derived view
+/// and, therefore, does _not_ have (implicit) row ids.
+#[derive(Debug, Clone)]
+pub struct DerivedView(());
 
 #[derive(Debug, Clone)]
-pub struct BaseTableSchema {
+pub struct ColnSchema<Marker> {
+    /// Indicates whether this table schema is for a base table (by using the
+    /// [`BaseTable`] marker) or a derived view (by using the [`DerivedView`]
+    /// marker).
+    marker: PhantomData<Marker>,
     /// The table's unique identifier/name.
     name: ir::Path,
     /// Fields of the table in their physical order from the perspective
@@ -26,7 +41,7 @@ pub struct BaseTableSchema {
     primary_keys: Vec<Vec<CompilerColIdx>>,
 }
 
-impl BaseTableSchema {
+impl<Marker> ColnSchema<Marker> {
     /// The name of the base table.
     pub fn name(&self) -> &ir::Path {
         &self.name
@@ -41,6 +56,9 @@ impl BaseTableSchema {
             CompilerColIdx::Column(idx) => Some(&self.cols_compiler.0[idx as usize]),
         }
     }
+    pub fn storage_cols(&self) -> &StoreEngineCols {
+        &self.cols_store
+    }
     pub fn get_storage_col(&self, idx: StoreEngineColIdx) -> &StoreEngineCol {
         &self.cols_store.0[idx.0]
     }
@@ -50,53 +68,6 @@ impl BaseTableSchema {
     pub fn get_query_col(&self, idx: QueryEngineColIdx) -> &QueryEngineCol {
         &self.cols_query.0[idx.0]
     }
-    /// Given a [`CompilerColIdx`] from the FLIR, indexing into the columns of
-    /// the compiler view, what are the corresponding column(s) according to the
-    /// query engine's view? This translation is necessary because row ids
-    /// flatten into two columns from the perspective of the query engine,
-    /// hence, a (compiler) index resolving to a row id column can result in
-    /// two columns. A (compiler) index to a non row id column results in
-    /// exactly one column.
-    pub fn resolve_query_cols(&self, idx: CompilerColIdx) -> impl Iterator<Item = &QueryEngineCol> {
-        self.resolve_query_col_range(idx)
-            .map(|idx| &self.cols_query.0[idx])
-    }
-    /// The same translation as [`resolve_query_cols`](Self::resolve_query_cols),
-    /// but as the *indices* into the query engine's column view rather than the
-    /// columns themselves. What a consumer restating one of this table's
-    /// [`primary_keys`](Self::primary_keys) in the query engine's view needs,
-    /// since a key is a list of column positions.
-    pub fn resolve_query_col_range(&self, idx: CompilerColIdx) -> Range<usize> {
-        match idx {
-            CompilerColIdx::RowId => 0..StoreEngineCols::ROW_ID_COLS,
-            CompilerColIdx::Column(target_idx) => {
-                assert!(
-                    (target_idx as usize) < self.cols_compiler.0.len(),
-                    "Compiler idx out of bounds"
-                );
-                // We account for the implicit row id columns by offsetting.
-                let mut query_idx = StoreEngineCols::ROW_ID_COLS;
-                let mut iter = self.cols_compiler.0.iter().enumerate();
-                let target_col = loop {
-                    let (idx, col) = iter.next().unwrap();
-                    if idx >= target_idx as usize {
-                        break col;
-                    }
-                    match &col.ty {
-                        // A column of a native scalar type also takes just one column.
-                        ir::ColType::BuiltinTy { builtin_ty: _ } => query_idx += 1,
-                        // A row id flattens into multiple columns in the query engine's
-                        // view, so we have to advance more columns.
-                        ir::ColType::RowId { path: _ } => query_idx += StoreEngineCols::ROW_ID_COLS,
-                    };
-                };
-                match &target_col.ty {
-                    ir::ColType::BuiltinTy { builtin_ty: _ } => query_idx..query_idx + 1,
-                    ir::ColType::RowId { path: _ } => query_idx..query_idx + 2,
-                }
-            }
-        }
-    }
     /// The list of (compound) primary key(s), given as indexes into the
     /// compiler's column view.
     ///
@@ -105,20 +76,17 @@ impl BaseTableSchema {
     pub fn primary_keys(&self) -> &Vec<Vec<CompilerColIdx>> {
         &self.primary_keys
     }
-}
-
-impl From<&ir::TableEntry> for Option<BaseTableSchema> {
-    fn from(value: &ir::TableEntry) -> Self {
-        let path = &value.path;
-        let schema = &value.table;
-        if matches!(schema.entity_variant, ir::EntityVariant::Index { .. }) {
-            return None; // Only base tables and derived views allowed.
-        }
-        let columns_compiler = CompilerCols::from(schema.columns.as_slice());
-        let columns_store = StoreEngineCols::from(columns_compiler.0.as_slice());
-        let columns_query = QueryEngineCols::from(columns_store.0.as_slice());
-        let primary_key = schema
-            .primary_key
+    fn new(
+        name: &ir::Path,
+        columns: &[ir::ColumnEntry],
+        primary_keys: &Option<Vec<ir::ColumnIdx>>,
+        with_implicit_row_id: bool,
+    ) -> Self {
+        let cols_compiler =
+            CompilerCols::from(columns.iter().map(|col| (&col.path, &col.col_type)));
+        let cols_store = StoreEngineCols::from(cols_compiler.0.as_slice(), with_implicit_row_id);
+        let cols_query = QueryEngineCols::from(cols_store.0.as_slice());
+        let primary_key = primary_keys
             .as_ref()
             // Currently, `null` in JSON becomes the empty vector.
             .map_or(Vec::new(), |compound_primary_key| {
@@ -129,13 +97,174 @@ impl From<&ir::TableEntry> for Option<BaseTableSchema> {
             });
         // Currently, the compiler supports only a single primary key.
         let primary_keys = vec![primary_key];
-        Some(BaseTableSchema {
-            name: path.clone(),
-            cols_compiler: columns_compiler,
-            cols_store: columns_store,
-            cols_query: columns_query,
+        ColnSchema {
+            name: name.clone(),
+            cols_compiler,
+            cols_store,
+            cols_query,
             primary_keys,
-        })
+            marker: PhantomData,
+        }
+    }
+}
+
+impl ColnSchema<BaseTable> {
+    pub fn resolve_query_cols(
+        &self,
+        idx: CompilerColIdx,
+    ) -> impl ExactSizeIterator<Item = (QueryEngineColIdx, &QueryEngineCol)> {
+        let query_range = match idx {
+            CompilerColIdx::RowId => 0..StoreEngineCols::ROW_ID_COLS,
+            CompilerColIdx::Column(target_idx) => {
+                compiler_idx_to_query_idx(self.compiler_cols(), target_idx as usize, true)
+            }
+        };
+        query_range.map(|query_idx| (QueryEngineColIdx(query_idx), &self.cols_query.0[query_idx]))
+    }
+}
+
+impl ColnSchema<DerivedView> {
+    pub fn resolve_query_cols(
+        &self,
+        idx: ir::ColumnIdx,
+    ) -> impl ExactSizeIterator<Item = (QueryEngineColIdx, &QueryEngineCol)> {
+        let query_range = compiler_idx_to_query_idx(self.compiler_cols(), idx as usize, false);
+        query_range.map(|query_idx| (QueryEngineColIdx(query_idx), &self.cols_query.0[query_idx]))
+    }
+}
+
+pub trait ResolveCompilerIdxToQueryView {
+    /// Given a [`CompilerColIdx`] from the FLIR, indexing into the columns of
+    /// the compiler view, what are the corresponding column(s) according to the
+    /// query engine's view? This translation is necessary because row ids
+    /// flatten into two columns from the perspective of the query engine,
+    /// hence, a (compiler) index resolving to a row id column can result in
+    /// two columns. A (compiler) index to a non row id column results in
+    /// exactly one column.
+    fn resolve_query_cols(
+        &self,
+        idx: CompilerColIdx,
+    ) -> Option<impl ExactSizeIterator<Item = (QueryEngineColIdx, &QueryEngineCol)>>;
+}
+
+pub enum ColnSchemaWrapper<'a> {
+    BaseTable(&'a ColnSchema<BaseTable>),
+    DerivedView(&'a ColnSchema<DerivedView>),
+}
+
+impl ResolveCompilerIdxToQueryView for ColnSchemaWrapper<'_> {
+    fn resolve_query_cols(
+        &self,
+        idx: CompilerColIdx,
+    ) -> Option<impl ExactSizeIterator<Item = (QueryEngineColIdx, &QueryEngineCol)>> {
+        match self {
+            ColnSchemaWrapper::BaseTable(base) => {
+                Some(base.resolve_query_cols(idx)).map(Either::Left)
+            }
+            ColnSchemaWrapper::DerivedView(view) => match idx {
+                CompilerColIdx::RowId => None,
+                CompilerColIdx::Column(idx) => {
+                    Some(view.resolve_query_cols(idx)).map(Either::Right)
+                }
+            },
+        }
+    }
+}
+
+impl From<&ir::TableEntry> for Option<ColnSchema<BaseTable>> {
+    fn from(value: &ir::TableEntry) -> Self {
+        let schema = &value.table;
+        if !matches!(schema.entity_variant, ir::EntityVariant::Table { .. }) {
+            return None; // Only base tables allowed.
+        }
+        Some(ColnSchema::new(
+            &value.path,
+            &schema.columns,
+            &schema.primary_key,
+            true,
+        ))
+    }
+}
+
+impl From<&ir::TableEntry> for Option<ColnSchema<DerivedView>> {
+    fn from(value: &ir::TableEntry) -> Self {
+        let schema = &value.table;
+        if !matches!(schema.entity_variant, ir::EntityVariant::View { .. }) {
+            return None; // Only derived views allowed.
+        }
+        Some(ColnSchema::new(
+            &value.path,
+            &schema.columns,
+            &schema.primary_key,
+            false,
+        ))
+    }
+}
+
+pub struct RuleVars {
+    cols_compiler: CompilerCols,
+    cols_query: QueryEngineCols,
+}
+
+impl RuleVars {
+    pub fn new(vars: &Vec<(ir::ColName, ir::ColType)>) -> Self {
+        let cols_compiler = CompilerCols::from(vars.iter().map(|var| (&var.0, &var.1)));
+        // The storage view must be computed to obtain the query view
+        // at the moment.
+        let cols_store = StoreEngineCols::from(cols_compiler.0.as_slice(), false);
+        let cols_query = QueryEngineCols::from(cols_store.0.as_slice());
+        Self {
+            cols_compiler,
+            cols_query,
+        }
+    }
+    pub fn query_cols(&self) -> &QueryEngineCols {
+        &self.cols_query
+    }
+    /// Given a [`ir::VarIdx`] from the FLIR, indexing into the vars array of
+    /// a rule, what are the corresponding column(s)/variables according to the
+    /// query engine's view? This translation is necessary because row ids
+    /// flatten into two columns from the perspective of the query engine,
+    /// hence, a (compiler) index resolving to a row id column can result in
+    /// two columns/variables.
+    pub fn resolve_query_cols(&self, idx: ir::VarIdx) -> impl Iterator<Item = &QueryEngineCol> {
+        let range = compiler_idx_to_query_idx(&self.cols_compiler, idx as usize, false);
+        self.cols_query.0[range].iter()
+    }
+}
+
+fn compiler_idx_to_query_idx(
+    compiler_cols: &CompilerCols,
+    target_idx: usize,
+    account_for_implicit_row_id: bool,
+) -> Range<usize> {
+    assert!(
+        target_idx < compiler_cols.0.len(),
+        "Compiler idx out of bounds"
+    );
+    // We account for the implicit row id columns by offsetting.
+    let mut query_idx = if account_for_implicit_row_id {
+        StoreEngineCols::ROW_ID_COLS
+    } else {
+        0
+    };
+    let mut iter = compiler_cols.0.iter().enumerate();
+    let target_col = loop {
+        let (idx, col) = iter.next().unwrap();
+        if idx >= target_idx as usize {
+            break col;
+        }
+        match &col.ty {
+            // A column of a native scalar type also takes just one column.
+            ir::ColType::BuiltinTy { builtin_ty: _ } => query_idx += 1,
+            // A row id flattens into multiple columns in the query engine's
+            // view, so we have to advance more columns.
+            ir::ColType::RowId { path: _ } => query_idx += StoreEngineCols::ROW_ID_COLS,
+        };
+    };
+    match &target_col.ty {
+        ir::ColType::BuiltinTy { builtin_ty: _ } => query_idx..query_idx + 1,
+        ir::ColType::RowId { path: _ } => query_idx..query_idx + StoreEngineCols::ROW_ID_COLS,
     }
 }
 
@@ -246,6 +375,22 @@ impl CompilerCols {
     pub fn inner(&self) -> &[CompilerCol] {
         &self.0
     }
+    fn from<'a>(ir_cols: impl IntoIterator<Item = (&'a ir::ColName, &'a ir::ColType)>) -> Self {
+        CompilerCols(
+            ir_cols
+                .into_iter()
+                // It's an one-to-one mapping from FLIR's JSON representation
+                // to this intermediate representation.
+                .map(|(name, col_type)| CompilerCol {
+                    name: name.clone(),
+                    ty: col_type.clone(),
+                    // Foreign keys are encoded in the `ty` for a CompilerColumn.
+                    // Hence, references becomes the unit type.
+                    references: (),
+                })
+                .collect(),
+        )
+    }
 }
 
 pub type StoreEngineCol = Col<StoreEngineScalarType, Option<ir::Path>>;
@@ -299,46 +444,11 @@ impl StoreEngineCols {
             },
         ]
     }
-}
-
-pub type QueryEngineCol = Col<QueryEngineScalarType, Option<ir::Path>>;
-
-#[derive(Copy, Clone, Debug)]
-pub struct QueryEngineColIdx(usize);
-
-#[derive(Debug, Clone)]
-pub struct QueryEngineCols(Vec<QueryEngineCol>);
-
-impl QueryEngineCols {
-    pub fn inner(&self) -> &[QueryEngineCol] {
-        &self.0
-    }
-}
-
-// Conversions from one view into another view.
-
-impl From<&[ir::ColumnEntry]> for CompilerCols {
-    fn from(ir_cols: &[ir::ColumnEntry]) -> Self {
-        CompilerCols(
-            ir_cols
-                .iter()
-                // It's an one-to-one mapping from FLIR's JSON representation
-                // to this intermediate representation.
-                .map(|col| CompilerCol {
-                    name: col.path.clone(),
-                    ty: col.col_type.clone(),
-                    // Foreign keys are encoded in the `ty` for a CompilerColumn.
-                    // Hence, references becomes the unit type.
-                    references: (),
-                })
-                .collect(),
-        )
-    }
-}
-
-impl From<&[CompilerCol]> for StoreEngineCols {
-    fn from(compiler_cols: &[CompilerCol]) -> Self {
-        let prepended_row_id_cols = StoreEngineCols::implicit_row_id_cols().into_iter();
+    fn from(compiler_cols: &[CompilerCol], with_implicit_row_id: bool) -> Self {
+        let implicit = with_implicit_row_id
+            .then(|| StoreEngineCols::implicit_row_id_cols())
+            .into_iter()
+            .flatten();
         let schema_cols = compiler_cols.iter().flat_map(|col| {
             let name = col.name.clone();
             let (first, second) = match &col.ty {
@@ -357,11 +467,22 @@ impl From<&[CompilerCol]> for StoreEngineCols {
             };
             std::iter::once(first).chain(second)
         });
-        StoreEngineCols(prepended_row_id_cols.chain(schema_cols).collect())
+        StoreEngineCols(implicit.chain(schema_cols).collect())
     }
 }
 
-impl From<&[StoreEngineCol]> for QueryEngineCols {
+pub type QueryEngineCol = Col<QueryEngineScalarType, Option<ir::Path>>;
+
+#[derive(Copy, Clone, Debug)]
+pub struct QueryEngineColIdx(pub usize);
+
+#[derive(Debug, Clone)]
+pub struct QueryEngineCols(Vec<QueryEngineCol>);
+
+impl QueryEngineCols {
+    pub fn inner(&self) -> &[QueryEngineCol] {
+        &self.0
+    }
     fn from(store_engine_cols: &[StoreEngineCol]) -> Self {
         QueryEngineCols(
             store_engine_cols
