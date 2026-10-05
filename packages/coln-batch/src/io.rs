@@ -9,9 +9,10 @@
 //! [`crate::table::SortedTable`] trait, so swapping the substrate later
 //! does not touch the join code.
 //!
-//! Files hold decoded values (see [`Relation::to_record_batch`] for the
-//! Arrow types), so a relation saved from one catalog loads into any
-//! other; strings are re-interned into the loading catalog's dictionary.
+//! Files hold decoded values and the row weights (see
+//! [`Relation::to_record_batch`] for the Arrow types), so a relation saved
+//! from one catalog loads into any other; strings are re-interned into the
+//! loading catalog's dictionary.
 
 use std::fs::File;
 use std::path::Path;
@@ -48,6 +49,7 @@ pub fn load_relation(name: &str, path: &Path, dict: &mut Dictionary) -> Result<R
                 for (dst, src) in acc.cols.iter_mut().zip(part.cols) {
                     dst.extend(src);
                 }
+                acc.weights.extend(part.weights);
             }
         }
     }

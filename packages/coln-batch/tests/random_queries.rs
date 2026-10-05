@@ -12,13 +12,16 @@
 //! queries are generated well-typed: a variable only stands in columns
 //! of its type, a literal matches its column. The value domains are
 //! deliberately small: matching and non-matching joins, empty relations,
-//! cross products and unsatisfied literals all occur naturally.
+//! cross products and unsatisfied literals all occur naturally. Rows carry
+//! random weights, negative ones included, so the executors must also
+//! agree on how often every result row is present.
 //! Each case seeds its own [`SplitMix64`], so a failing case number
 //! reproduces in isolation.
 
 use coln_batch::query::{Atom, Catalog, Query, Term};
+use coln_batch::relation::Relation;
 use coln_batch::rng::SplitMix64;
-use coln_batch::types::{Column, ScalarType, Schema, Value};
+use coln_batch::types::{Column, ScalarType, Schema, Value, Weight};
 use coln_batch::{binary_join, generic_join, reference};
 
 const CASES: u64 = 250;
@@ -26,6 +29,8 @@ const CASES: u64 = 250;
 /// common; the other types have domains of similar size.
 const DOMAIN: u64 = 8;
 const WORDS: [&str; 6] = ["ant", "bee", "cat", "dog", "eel", "fox"];
+/// Row weights, drawn uniformly: mostly positive, some negative.
+const WEIGHTS: [Weight; 6] = [1, 1, 2, 3, -1, -2];
 const TYPES: [ScalarType; 5] = [
     ScalarType::Uint,
     ScalarType::Iint,
@@ -57,7 +62,7 @@ fn random_value(rng: &mut SplitMix64, ty: ScalarType) -> Value {
 }
 
 /// Random catalog: 1..=4 relations, arity 1..=3 with random column types,
-/// 0..=20 rows each (zero-row relations included deliberately).
+/// 0..=20 weighted rows each (zero-row relations included deliberately).
 fn random_catalog(rng: &mut SplitMix64) -> (Catalog, Vec<(String, Schema)>) {
     let mut cat = Catalog::new();
     let mut rels = Vec::new();
@@ -66,17 +71,22 @@ fn random_catalog(rng: &mut SplitMix64) -> (Catalog, Vec<(String, Schema)>) {
         let schema =
             Schema::new((0..arity).map(|c| Column::new(format!("c{c}"), random_type(rng))));
         let rows = rng.below(21);
-        let rows: Vec<Vec<Value>> = (0..rows)
+        let rows: Vec<(Vec<Value>, Weight)> = (0..rows)
             .map(|_| {
-                schema
+                let row = schema
                     .types()
                     .into_iter()
                     .map(|ty| random_value(rng, ty))
-                    .collect()
+                    .collect();
+                (row, WEIGHTS[rng.below(WEIGHTS.len() as u64) as usize])
             })
             .collect();
         let name = format!("R{r}");
-        cat.insert_rows(name.clone(), schema.clone(), rows).unwrap();
+        let rel =
+            Relation::from_weighted_rows(name.clone(), schema.clone(), rows, cat.dictionary_mut())
+                .unwrap()
+                .consolidate();
+        cat.insert(rel);
         rels.push((name, schema));
     }
     (cat, rels)
@@ -153,6 +163,7 @@ fn random_queries_agree_with_oracle() {
     let mut ran = 0;
     let mut non_empty = 0;
     let mut string_results = 0;
+    let mut weighted_results = 0;
     for case in 0..CASES {
         let mut rng = SplitMix64::new(case);
         let (cat, rels) = random_catalog(&mut rng);
@@ -180,11 +191,15 @@ fn random_queries_agree_with_oracle() {
                 "case {case}: decoded row does not match the result schema"
             );
         }
+        assert!(oracle.is_consolidated(), "case {case}: not in normal form");
         ran += 1;
         if !oracle.is_empty() {
             non_empty += 1;
             if oracle.schema.types().contains(&ScalarType::String) {
                 string_results += 1;
+            }
+            if oracle.weights.iter().any(|&w| w != 1) {
+                weighted_results += 1;
             }
         }
     }
@@ -198,5 +213,9 @@ fn random_queries_agree_with_oracle() {
     assert!(
         string_results >= CASES / 40,
         "only {string_results} non-empty results with string columns"
+    );
+    assert!(
+        weighted_results >= CASES / 10,
+        "only {weighted_results} results with a weight other than 1"
     );
 }

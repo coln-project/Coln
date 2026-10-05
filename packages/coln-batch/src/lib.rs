@@ -8,7 +8,7 @@
 //!
 //! 1. the value types ([`types`]): typed schemas and values at the
 //!    boundary, normalized `u64` keys inside, strings through a
-//!    dictionary,
+//!    dictionary, a weight per row that makes a relation a Z-set,
 //! 2. deterministic test-data generators for e-matching-style join
 //!    workloads ([`generate`]),
 //! 3. Arrow IPC persistence for that test data ([`io`]),
@@ -21,9 +21,10 @@
 //!    hash-join chain ([`binary_join`]) and a worst-case-optimal generic
 //!    join ([`generic_join`]), differential-tested against each other and
 //!    against the oracle,
-//! 7. recursive Datalog: rules and programs ([`rule`]) evaluated to the
-//!    least fixpoint with semi-naive iteration ([`fixpoint`]), again
-//!    differential-tested (semi-naive vs. naive, per executor).
+//! 7. recursive Datalog: rules and programs ([`rule`]) evaluated stratum
+//!    by stratum to the least fixpoint with semi-naive iteration
+//!    ([`fixpoint`]), again differential-tested (semi-naive vs. naive, per
+//!    executor).
 
 pub mod binary_join;
 pub mod fixpoint;

@@ -14,6 +14,9 @@
 //! Data is read exclusively through the [`SortedTable`] trait (a plain
 //! scan here — hash joins need no ordering), so any storage back end works.
 //! Like every executor it works on keys (see [`crate::types`]).
+//!
+//! Weights travel with the intermediate result: a row of bindings weighs
+//! the product of the weights of the rows it was joined from.
 
 use std::collections::HashMap;
 
@@ -22,10 +25,11 @@ use anyhow::Result;
 use crate::query::{Catalog, KeyTerm, Query, VarId};
 use crate::relation::Relation;
 use crate::table::{ArrowSortedTable, SortedTable};
-use crate::types::Key;
+use crate::types::{Key, Weight, add_weights, mul_weights};
 
 /// Evaluate `query` against `catalog` with a chain of hash joins. Returns
-/// the projected result, sorted and deduplicated (set semantics).
+/// the projected result as a Z-set in normal form, with the same weights
+/// as [`crate::generic_join::execute`].
 pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
     let prepared = catalog.prepare(query)?;
     let Some(key_atoms) = prepared.atoms else {
@@ -33,12 +37,14 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
     };
     let schema = prepared.schema;
 
-    // Intermediate result: `n_rows` rows of `width` keys; `bound[v]`
-    // gives the column of variable v. Starts as a single zero-width row.
+    // Intermediate result: `n_rows` rows of `width` keys, one weight per
+    // row; `bound[v]` gives the column of variable v. Starts as a single
+    // zero-width row of weight 1.
     let mut bound: Vec<Option<usize>> = vec![None; query.num_vars()];
     let mut width = 0usize;
     let mut n_rows = 1usize;
     let mut data: Vec<Key> = Vec::new();
+    let mut weights: Vec<Weight> = vec![1];
 
     for atom in &key_atoms {
         let rel = catalog.get(&atom.relation)?;
@@ -91,10 +97,19 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         }
 
         // An atom that binds nothing new and shares nothing acts as a
-        // pure existence filter.
+        // filter: every row of bindings is multiplied by the total weight
+        // of the atom's matching rows.
         if key_pairs.is_empty() && new_vars.is_empty() {
-            if index.is_empty() {
+            let factor = index
+                .values()
+                .flatten()
+                .map(|&r| table.weight(r))
+                .fold(0, add_weights);
+            if factor == 0 {
                 return Ok(Relation::empty("result", schema));
+            }
+            for w in &mut weights {
+                *w = mul_weights(*w, factor);
             }
             continue;
         }
@@ -102,6 +117,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         // Probe.
         let new_width = width + new_vars.len();
         let mut out: Vec<Key> = Vec::new();
+        let mut out_weights: Vec<Weight> = Vec::new();
         for i in 0..n_rows {
             let row = &data[i * width..(i + 1) * width];
             let key: Vec<Key> = key_pairs.iter().map(|&(icol, _)| row[icol]).collect();
@@ -111,6 +127,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
                     for &(_, c) in &new_vars {
                         out.push(table.value(r, c));
                     }
+                    out_weights.push(mul_weights(weights[i], table.weight(r)));
                 }
             }
         }
@@ -120,7 +137,8 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
         }
         width = new_width;
         data = out;
-        n_rows = data.len() / width;
+        weights = out_weights;
+        n_rows = weights.len();
         if n_rows == 0 {
             return Ok(Relation::empty("result", schema));
         }
@@ -139,7 +157,7 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
             out.push(row[c]);
         }
     }
-    Ok(Relation::from_flat_rows("result", schema, &out).sorted_dedup())
+    Ok(Relation::from_flat_rows("result", schema, &out, weights).consolidate())
 }
 
 #[cfg(test)]

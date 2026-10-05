@@ -4,13 +4,15 @@
 
 //! Differential testing for recursive evaluation: semi-naive must agree
 //! with the naive oracle, with either query executor underneath — and
-//! with exact expected results where we know them.
+//! with exact expected results where we know them. The Z-set semantics of
+//! programs is tested in `zset_programs.rs`.
 
 use coln_batch::fixpoint::{self, Exec};
 use coln_batch::query::{Atom, Catalog, Term};
 use coln_batch::relation::Relation;
 use coln_batch::rule::{Program, Rule};
 use coln_batch::types::Value;
+
 use coln_batch::{binary_join, fixtures, generate, generic_join, reference};
 
 /// Run the program under every (strategy × executor) combination and
@@ -42,8 +44,8 @@ fn agree(program: &Program, edb: &Catalog, idb_names: &[&str]) -> Catalog {
     for (name, other) in &runs[1..] {
         for idb in idb_names {
             assert_eq!(
-                base.get(idb).unwrap().cols,
-                other.get(idb).unwrap().cols,
+                base.get(idb).unwrap(),
+                other.get(idb).unwrap(),
                 "{name} disagrees with {base_name} on {idb}"
             );
         }
@@ -109,8 +111,8 @@ fn recursion_also_works_with_the_reference_executor() {
         .unwrap()
         .catalog;
     assert_eq!(
-        via_reference.get("ancestor").unwrap().cols,
-        via_generic.get("ancestor").unwrap().cols
+        via_reference.get("ancestor").unwrap(),
+        via_generic.get("ancestor").unwrap()
     );
 }
 
@@ -136,19 +138,18 @@ fn empty_edb_terminates_with_empty_idb() {
 #[test]
 fn head_literals_work() {
     // flagged(x, 1) ← parent(x, y) — a head with a literal column.
-    let program = Program {
-        rules: vec![coln_batch::rule::Rule {
-            var_names: vec!["x".into(), "y".into()],
-            head: Atom {
-                relation: "flagged".into(),
-                terms: vec![Term::Var(0), Term::lit(1u64)],
-            },
-            body: vec![Atom {
-                relation: "parent".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            }],
+    let program = Program::new(vec![coln_batch::rule::Rule {
+        var_names: vec!["x".into(), "y".into()],
+        head: Atom {
+            relation: "flagged".into(),
+            terms: vec![Term::Var(0), Term::lit(1u64)],
+        },
+        body: vec![Atom {
+            relation: "parent".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
         }],
-    };
+        weight: 1,
+    }]);
     let edb = fixtures::ancestor_chain_catalog(4);
     let result = agree(&program, &edb, &["flagged"]);
     assert_eq!(
@@ -221,10 +222,9 @@ fn mutual_recursion_over_two_relations() {
                 terms: vec![Term::Var(0)],
             },
         ],
+        weight: 1,
     };
-    let program = Program {
-        rules: vec![step("odd", "even"), step("even", "odd")],
-    };
+    let program = Program::new(vec![step("odd", "even"), step("even", "odd")]);
 
     let result = agree(&program, &edb, &["even", "odd"]);
     assert_eq!(
@@ -240,38 +240,38 @@ fn idb_only_body_closes_in_fewer_rounds() {
     // path lengths double per round and the chain closes in fewer rounds
     // than its length.
     let k = 8;
-    let program = Program {
-        rules: vec![
-            Rule {
-                var_names: vec!["x".into(), "y".into()],
-                head: Atom {
+    let program = Program::new(vec![
+        Rule {
+            var_names: vec!["x".into(), "y".into()],
+            head: Atom {
+                relation: "reach".into(),
+                terms: vec![Term::Var(0), Term::Var(1)],
+            },
+            body: vec![Atom {
+                relation: "parent".into(),
+                terms: vec![Term::Var(0), Term::Var(1)],
+            }],
+            weight: 1,
+        },
+        Rule {
+            var_names: vec!["x".into(), "y".into(), "z".into()],
+            head: Atom {
+                relation: "reach".into(),
+                terms: vec![Term::Var(0), Term::Var(2)],
+            },
+            body: vec![
+                Atom {
                     relation: "reach".into(),
                     terms: vec![Term::Var(0), Term::Var(1)],
                 },
-                body: vec![Atom {
-                    relation: "parent".into(),
-                    terms: vec![Term::Var(0), Term::Var(1)],
-                }],
-            },
-            Rule {
-                var_names: vec!["x".into(), "y".into(), "z".into()],
-                head: Atom {
+                Atom {
                     relation: "reach".into(),
-                    terms: vec![Term::Var(0), Term::Var(2)],
+                    terms: vec![Term::Var(1), Term::Var(2)],
                 },
-                body: vec![
-                    Atom {
-                        relation: "reach".into(),
-                        terms: vec![Term::Var(0), Term::Var(1)],
-                    },
-                    Atom {
-                        relation: "reach".into(),
-                        terms: vec![Term::Var(1), Term::Var(2)],
-                    },
-                ],
-            },
-        ],
-    };
+            ],
+            weight: 1,
+        },
+    ]);
     let edb = fixtures::ancestor_chain_catalog(k);
 
     let result = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec).unwrap();
@@ -309,6 +309,7 @@ fn overlapping_rules_do_not_duplicate() {
                 terms: vec![Term::Var(1), Term::Var(2)],
             },
         ],
+        weight: 1,
     });
     let edb = fixtures::ancestor_chain_catalog(5);
     let result = agree(&program, &edb, &["ancestor"]);
@@ -316,27 +317,26 @@ fn overlapping_rules_do_not_duplicate() {
 }
 
 #[test]
-fn nonrecursive_program_stops_after_two_rounds() {
-    // No derived relation in any body: round one fires everything, round
-    // two derives nothing and stops.
-    let program = Program {
-        rules: vec![Rule {
-            var_names: vec!["x".into(), "y".into()],
-            head: Atom {
-                relation: "copy".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            },
-            body: vec![Atom {
-                relation: "parent".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            }],
+fn nonrecursive_program_runs_once() {
+    // No derived relation reads itself, so its rule runs a single time.
+    let program = Program::new(vec![Rule {
+        var_names: vec!["x".into(), "y".into()],
+        head: Atom {
+            relation: "copy".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
+        },
+        body: vec![Atom {
+            relation: "parent".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
         }],
-    };
+        weight: 1,
+    }]);
     let edb = fixtures::ancestor_chain_catalog(4);
 
     let result = fixpoint::semi_naive(&program, &edb, generic_join::execute as Exec).unwrap();
     assert_eq!(result.catalog.get("copy").unwrap().len(), 3);
-    assert_eq!(result.stats.new_facts_per_round, vec![3, 0]);
+    assert_eq!(result.stats.rounds, 1);
+    assert_eq!(result.stats.new_facts_per_round, vec![3]);
 
     agree(&program, &edb, &["copy"]);
 }
@@ -434,19 +434,18 @@ fn labeled_reachability_is_typed() {
 fn head_literals_can_be_strings() {
     // tagged(x, "seen") ← parent(x, y): the head literal enters the
     // dictionary at compile time and decodes on the way out.
-    let program = Program {
-        rules: vec![Rule {
-            var_names: vec!["x".into(), "y".into()],
-            head: Atom {
-                relation: "tagged".into(),
-                terms: vec![Term::Var(0), Term::lit("seen")],
-            },
-            body: vec![Atom {
-                relation: "parent".into(),
-                terms: vec![Term::Var(0), Term::Var(1)],
-            }],
+    let program = Program::new(vec![Rule {
+        var_names: vec!["x".into(), "y".into()],
+        head: Atom {
+            relation: "tagged".into(),
+            terms: vec![Term::Var(0), Term::lit("seen")],
+        },
+        body: vec![Atom {
+            relation: "parent".into(),
+            terms: vec![Term::Var(0), Term::Var(1)],
         }],
-    };
+        weight: 1,
+    }]);
     let edb = fixtures::ancestor_chain_catalog(3);
     let result = agree(&program, &edb, &["tagged"]);
     assert_eq!(

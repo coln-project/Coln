@@ -124,38 +124,38 @@ pub fn labeled_catalog(nodes: u64, edges: usize, labels: &[&str], seed: u64) -> 
 /// ```
 pub fn ancestor_program() -> Program {
     let (x, y, z) = (0, 1, 2);
-    Program {
-        rules: vec![
-            Rule {
-                var_names: vec!["x".into(), "y".into()],
-                head: Atom {
-                    relation: "ancestor".into(),
-                    terms: vec![Term::Var(x), Term::Var(y)],
-                },
-                body: vec![Atom {
+    Program::new(vec![
+        Rule {
+            var_names: vec!["x".into(), "y".into()],
+            head: Atom {
+                relation: "ancestor".into(),
+                terms: vec![Term::Var(x), Term::Var(y)],
+            },
+            body: vec![Atom {
+                relation: "parent".into(),
+                terms: vec![Term::Var(x), Term::Var(y)],
+            }],
+            weight: 1,
+        },
+        Rule {
+            var_names: vec!["x".into(), "y".into(), "z".into()],
+            head: Atom {
+                relation: "ancestor".into(),
+                terms: vec![Term::Var(x), Term::Var(z)],
+            },
+            body: vec![
+                Atom {
                     relation: "parent".into(),
                     terms: vec![Term::Var(x), Term::Var(y)],
-                }],
-            },
-            Rule {
-                var_names: vec!["x".into(), "y".into(), "z".into()],
-                head: Atom {
-                    relation: "ancestor".into(),
-                    terms: vec![Term::Var(x), Term::Var(z)],
                 },
-                body: vec![
-                    Atom {
-                        relation: "parent".into(),
-                        terms: vec![Term::Var(x), Term::Var(y)],
-                    },
-                    Atom {
-                        relation: "ancestor".into(),
-                        terms: vec![Term::Var(y), Term::Var(z)],
-                    },
-                ],
-            },
-        ],
-    }
+                Atom {
+                    relation: "ancestor".into(),
+                    terms: vec![Term::Var(y), Term::Var(z)],
+                },
+            ],
+            weight: 1,
+        },
+    ])
 }
 
 /// Catalog with a chain 0 → 1 → … → k-1 as the `parent` relation. The
@@ -181,41 +181,41 @@ pub fn ancestor_dag_catalog(nodes: u64, edges: usize, seed: u64) -> Catalog {
 /// ```
 pub fn labeled_reach_program() -> Program {
     let (x, y, z, l, w) = (0, 1, 2, 3, 4);
-    Program {
-        rules: vec![
-            Rule {
-                var_names: vec!["x".into(), "y".into(), "l".into(), "w".into()],
-                head: Atom {
+    Program::new(vec![
+        Rule {
+            var_names: vec!["x".into(), "y".into(), "l".into(), "w".into()],
+            head: Atom {
+                relation: "reach".into(),
+                terms: vec![Term::Var(0), Term::Var(1), Term::Var(2)],
+            },
+            body: vec![Atom {
+                relation: "edge".into(),
+                terms: vec![Term::Var(0), Term::Var(1), Term::Var(2), Term::Var(3)],
+            }],
+            weight: 1,
+        },
+        Rule {
+            var_names: ["x", "y", "z", "l", "w"]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+            head: Atom {
+                relation: "reach".into(),
+                terms: vec![Term::Var(x), Term::Var(z), Term::Var(l)],
+            },
+            body: vec![
+                Atom {
                     relation: "reach".into(),
-                    terms: vec![Term::Var(0), Term::Var(1), Term::Var(2)],
+                    terms: vec![Term::Var(x), Term::Var(y), Term::Var(l)],
                 },
-                body: vec![Atom {
+                Atom {
                     relation: "edge".into(),
-                    terms: vec![Term::Var(0), Term::Var(1), Term::Var(2), Term::Var(3)],
-                }],
-            },
-            Rule {
-                var_names: ["x", "y", "z", "l", "w"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect(),
-                head: Atom {
-                    relation: "reach".into(),
-                    terms: vec![Term::Var(x), Term::Var(z), Term::Var(l)],
+                    terms: vec![Term::Var(y), Term::Var(z), Term::Var(l), Term::Var(w)],
                 },
-                body: vec![
-                    Atom {
-                        relation: "reach".into(),
-                        terms: vec![Term::Var(x), Term::Var(y), Term::Var(l)],
-                    },
-                    Atom {
-                        relation: "edge".into(),
-                        terms: vec![Term::Var(y), Term::Var(z), Term::Var(l), Term::Var(w)],
-                    },
-                ],
-            },
-        ],
-    }
+            ],
+            weight: 1,
+        },
+    ])
 }
 
 #[cfg(test)]

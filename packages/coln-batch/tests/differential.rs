@@ -130,8 +130,8 @@ fn hand_cases() {
 #[test]
 fn edge_cases() {
     let mut cat = Catalog::new();
-    // (2,3) appears twice: relations are sets, so duplicate input rows
-    // must not reach the output.
+    // (2,3) appears twice, so the relation is not in normal form: its two
+    // copies add up to weight 2.
     cat.insert(Relation::new(
         "R",
         ["a", "b"],
@@ -159,8 +159,8 @@ fn edge_cases() {
     };
     assert_eq!(agree_with_oracle(&empty_join, &cat).len(), 0);
 
-    // Projection collapses rows (set semantics): x=1 and x=2 each stem
-    // from two body rows but appear once.
+    // Projection collapses rows and adds up their weights: x=1 and x=2
+    // each stem from two body rows.
     let proj = Query {
         var_names: vec!["x".into(), "y".into()],
         atoms: vec![atom("R", vec![Term::Var(x), Term::Var(y)])],
@@ -168,14 +168,17 @@ fn edge_cases() {
     };
     let r = agree_with_oracle(&proj, &cat);
     assert_eq!((r.len(), r.row(0), r.row(1)), (2, vec![1], vec![2]));
+    assert_eq!(r.weights, vec![2, 2]);
 
-    // Duplicate input rows do not survive into the output.
+    // Duplicate input rows come out as one row carrying both copies.
     let scan = Query {
         var_names: vec!["x".into(), "y".into()],
         atoms: vec![atom("R", vec![Term::Var(x), Term::Var(y)])],
         head: vec![x, y],
     };
-    assert_eq!(agree_with_oracle(&scan, &cat).len(), 3);
+    let r = agree_with_oracle(&scan, &cat);
+    assert_eq!(r.len(), 3);
+    assert_eq!(r.weights, vec![1, 1, 2]);
 }
 
 #[test]
