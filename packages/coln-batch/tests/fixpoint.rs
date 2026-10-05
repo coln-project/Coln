@@ -7,6 +7,8 @@
 //! with exact expected results where we know them. The Z-set semantics of
 //! programs is tested in `zset_programs.rs`.
 
+mod common;
+
 use coln_batch::fixpoint::{self, Exec};
 use coln_batch::query::{Atom, Catalog, Term};
 use coln_batch::relation::Relation;
@@ -14,6 +16,7 @@ use coln_batch::rule::{Program, Rule};
 use coln_batch::types::Value;
 
 use coln_batch::{binary_join, fixtures, generate, generic_join, reference};
+use common::rule;
 
 /// Run the program under every (strategy × executor) combination and
 /// require identical IDB results; returns the semi-naive/generic one.
@@ -455,4 +458,23 @@ fn head_literals_can_be_strings() {
             vec![Value::Uint(1), "seen".into()],
         ]
     );
+}
+
+#[test]
+fn semi_naive_reads_the_delta_at_every_recursive_position() {
+    // p, q and r depend on each other. r(3) needs p(3) and q(3), and q(3)
+    // arrives one round after p(3): in that round only the second atom of
+    // r's rule reads anything new.
+    let mut edb = Catalog::new();
+    edb.insert(Relation::new("e", ["x"], vec![vec![3]]));
+    let program = Program::new(vec![
+        rule(("p", &[0]), &[("e", &[0])]),
+        rule(("q", &[0]), &[("p", &[0])]),
+        rule(("r", &[0]), &[("p", &[0]), ("q", &[0])]),
+        rule(("p", &[0]), &[("e", &[0]), ("r", &[1])]),
+    ]);
+    let result = agree(&program, &edb, &["p", "q", "r"]);
+    for name in ["p", "q", "r"] {
+        assert_eq!(rows(result.get(name).unwrap()), vec![vec![3]], "{name}");
+    }
 }
