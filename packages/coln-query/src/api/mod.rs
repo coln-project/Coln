@@ -570,7 +570,7 @@ mod test {
             .expect_pending_and_commit();
         let resolved = committed.take_soft_violations();
         assert_eq!(
-            appeared
+            resolved
                 .iter()
                 .map(|delta| delta.for_entity().id())
                 .collect::<Vec<_>>(),

@@ -520,15 +520,16 @@ impl<'a> FlirChasedRule<'a> {
     /// not been declared in the `ctx`.
     fn new(rule: &'a ir::DefinitionEntry, ctx: &mut FlirContext) -> Result<Self, SyntaxError> {
         let definand = &rule.definition.definand;
-        let schema = ctx
-            .derived_views
-            .get(definand)
-            .ok_or_else(|| SyntaxError::new(format!("Chased rule specifies unknown {definand}")))?;
-        assert_eq!(
-            rule.definition.arguments.len(),
-            schema.coln_schema.compiler_cols().inner().len(),
-            "Number of supplied arguments does not match the definand's definition"
-        );
+        let schema = ctx.derived_views.get(definand).ok_or_else(|| {
+            SyntaxError::new(format!("rule derives undeclared predicate '{definand}'"))
+        })?;
+        let arguments = rule.definition.arguments.len();
+        let columns = schema.coln_schema.compiler_cols().inner().len();
+        if arguments != columns {
+            return Err(SyntaxError::new(format!(
+                "head supplies {arguments} argument(s) to '{definand}', which has {columns} column(s)"
+            )));
+        }
         let rule_scope = ctx.enter_rule_scope(&rule.definition.vars);
         let head = FlirAtom::new_head(
             definand.clone(),
@@ -647,11 +648,14 @@ impl FlirAtom {
                 ))
             })?;
             let vars = resolve_element(el, resolver);
-            assert_eq!(
-                query_cols.len(),
-                vars.len(),
-                "Mismatch between resolved vars and resolved columns"
-            );
+            if query_cols.len() != vars.len() {
+                return Err(SyntaxError::new(format!(
+                    "atom over '{entity}' binds {} term(s) to compiler column {idx:?}, \
+                     which spans {} query column(s)",
+                    vars.len(),
+                    query_cols.len(),
+                )));
+            }
             bindings.extend(query_cols.map(|(idx, _col)| idx.0).zip(vars));
             Ok(())
         };
