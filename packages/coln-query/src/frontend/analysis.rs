@@ -279,7 +279,7 @@ impl<'a, P> QuotientGraph<'a, P> {
                     data: label,
                 } in adjacency
                 {
-                    if matches!(EdgeLabel::Negative, label) {
+                    if matches!(label, EdgeLabel::Negative) {
                         return false;
                     }
                 }
