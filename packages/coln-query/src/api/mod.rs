@@ -587,4 +587,57 @@ mod test {
 
         Ok(())
     }
+
+    /// `∀x. t(x) ⇒ ∃y. u(y)`: the consequent shares no variable with the
+    /// antecedent, so it holds or fails as a whole. Every row of `t` violates
+    /// the rule for as long as `u` is empty, and none does once it is not.
+    ///
+    /// `y` is the consequent's own, so a violation carries `x` only: there is
+    /// no `y` that a violation could name.
+    #[test]
+    fn a_consequent_sharing_no_variable_holds_or_fails_as_a_whole() -> Result<()> {
+        use test_utils::{flir_builders as flir, monitored_flir::row};
+        let realm = coln_flir_rs::ir::FlatRealm {
+            tables: ["t", "u"]
+                .map(|name| flir::table_entry(name, vec![("a", flir::builtin_int())]))
+                .into(),
+            definitions: vec![],
+            rules: vec![flir::rule_entry(
+                "m",
+                coln_flir_rs::ir::RuleVariant::Monitored,
+                [("x", flir::builtin_int()), ("y", flir::builtin_int())],
+                flir::atom_props(vec![flir::atom("t", None, vec![(0, flir::var_term(0))])]),
+                flir::atom_props(vec![flir::atom("u", None, vec![(0, flir::var_term(1))])]),
+            )],
+        };
+        let mut coln_query = ColnQuery::init(&realm)?;
+        let insert = |table, row| {
+            let mut tx = Tx::empty();
+            tx.insert(Some(TableDelta::new(
+                table,
+                [ZRow::new(1, row).expect("non-zero zweight")],
+            )));
+            tx
+        };
+
+        let mut committed = insert("t", row(0, 0, 7))
+            .try_commit(&mut coln_query)?
+            .expect_pending_and_commit();
+        assert_eq!(
+            committed.take_soft_violations().into_inner(),
+            vec![TableDelta::new("m", [zrow!(1[7_i64])])],
+            "with `u` empty, the row of `t` violates the rule"
+        );
+
+        let mut committed = insert("u", row(0, 1, 8))
+            .try_commit(&mut coln_query)?
+            .expect_pending_and_commit();
+        assert_eq!(
+            committed.take_soft_violations().into_inner(),
+            vec![TableDelta::new("m", [zrow!(-1[7_i64])])],
+            "a row of `u`, whichever, resolves the violation"
+        );
+
+        Ok(())
+    }
 }

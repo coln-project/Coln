@@ -53,6 +53,18 @@ pub trait LogicalProgram {
     /// order. Together they form the IDB.
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate>;
 
+    /// If the program exposes `predicate`'s relation as an output. One that is
+    /// not is still computed for the predicates reading it, but reports
+    /// nowhere, like a helper predicate a frontend introduces.
+    ///
+    /// Asked of the program rather than of the predicate, because which
+    /// relations a program exposes is a property of the program as a whole.
+    /// By default, every IDB predicate is an output: the EDB is the program's
+    /// input.
+    fn is_output(&self, predicate: &Self::Predicate) -> bool {
+        predicate.is_idb_predicate()
+    }
+
     fn verify<'a>(&'a self) -> Result<ExecutionOrder<'a, Self::Predicate>, SyntaxError>
     where
         Self: Sized,
@@ -65,7 +77,12 @@ pub trait LogicalProgram {
         &'a self,
         exec_order: ExecutionOrder<'a, Self::Predicate>,
     ) -> Result<QueryIr, SyntaxError> {
-        Translator::new().run(&exec_order)
+        let outputs = self
+            .predicates()
+            .filter(|predicate| self.is_output(predicate))
+            .map(Identifiable::id)
+            .collect();
+        Translator::new(outputs).run(&exec_order)
     }
 
     /// The program in Datalog notation. See [`display`] for the notation.

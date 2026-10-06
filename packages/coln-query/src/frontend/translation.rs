@@ -57,7 +57,7 @@ use crate::{
     },
 };
 use indexmap::{IndexMap, IndexSet};
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 /// The rule type of a program's predicates, and the pieces hanging off it. Named
 /// because the paths through the associated types are otherwise unreadable.
@@ -73,13 +73,17 @@ pub(super) struct Translator<'a, P: Predicate> {
     /// EDB, which is what lets a predicate shadow a base relation of the same
     /// name.
     predicates: IndexMap<&'a P::Identifier, &'a P>,
+    /// The predicates whose relation is bound to an output sink. Any other is
+    /// bound to a plain host variable only.
+    outputs: HashSet<&'a P::Identifier>,
     ir: QueryIr,
 }
 
 impl<'a, P: Predicate> Translator<'a, P> {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(outputs: HashSet<&'a P::Identifier>) -> Self {
         Self {
             predicates: IndexMap::new(),
+            outputs,
             ir: QueryIr::default(),
         }
     }
@@ -154,13 +158,17 @@ impl<'a, P: Predicate> Translator<'a, P> {
             }
         };
 
-        self.ir.push(Stmt::from(VarStmt {
-            name: predicate.id().to_string(),
-            initializer: Some(Expr::from(OutputExpr {
+        let initializer = match self.outputs.contains(predicate.id()) {
+            true => Expr::from(OutputExpr {
                 id: SinkId::from(predicate.id().to_string()),
                 kind: OutputKind::Channel,
                 relation,
-            })),
+            }),
+            false => relation,
+        };
+        self.ir.push(Stmt::from(VarStmt {
+            name: predicate.id().to_string(),
+            initializer: Some(initializer),
         }));
         Ok(())
     }
@@ -241,29 +249,30 @@ impl<'a, P: Predicate> Translator<'a, P> {
         }))
     }
 
-    /// Translates a rule's body. First, the body's atoms are partitioned
-    /// according to their polarity. Each partition is then handled by
-    /// [Self::conjunctive_fragment] which joins its atoms on the variables
-    /// they share. If there is a fragment with a negative polarity, an
-    /// [`AntiJoinExpr`] is added. Otherwise, the fragment with positive
-    /// polarity is used as is. Finally, the rule's [Rule::conditions()] are
-    /// applied on top of the expression as a [SelectionExpr].
+    /// Translates a rule's body. First, [Self::conjunctive_fragment] joins
+    /// the body's positive atoms on the variables they share. Then, each
+    /// negated atom removes what it matches by an [`AntiJoinExpr`] of its own,
+    /// on the variables it shares with the positive atoms. Finally, the rule's
+    /// [Rule::conditions()] are applied on top of the expression as a
+    /// [SelectionExpr].
+    ///
+    /// One antijoin per negated atom is what makes `!r(x), !s(x)` mean
+    /// `¬r ∧ ¬s`, as in Datalog. Joining the negated atoms and antijoining once
+    /// would compute `¬(r ∧ s)` instead.
     pub fn conjunctive_query(&self, rule: &P::Rule) -> Result<Expr, SyntaxError> {
         let positive_fragment = self
             .conjunctive_fragment(rule.positive_atoms())?
             .ok_or_else(|| SyntaxError::new("body has no positive atoms"))?;
-        let negative_fragment = self.conjunctive_fragment(rule.negative_atoms())?;
 
-        let conjunctive = if let Some(negative_fragment) = negative_fragment {
-            let on = antijoin_variables(&positive_fragment, &negative_fragment);
-            Expr::from(AntiJoinExpr {
-                left: positive_fragment.relation,
-                right: negative_fragment.relation,
-                on,
-            })
-        } else {
-            positive_fragment.relation
-        };
+        let mut conjunctive = positive_fragment.relation;
+        for atom in rule.negative_atoms() {
+            let negated = self.atom(atom)?;
+            conjunctive = Expr::from(AntiJoinExpr {
+                on: antijoin_variables(&positive_fragment.variables, &negated.variables),
+                left: conjunctive,
+                right: negated.relation,
+            });
+        }
 
         // All conditions become one condition by ANDing them, and a rule with
         // none keeps `conjunctive` unwrapped rather than gaining a vacuous selection.
@@ -286,9 +295,8 @@ impl<'a, P: Predicate> Translator<'a, P> {
             }))
     }
 
-    /// A conjunctive fragment encompasses all atoms with the same polarity.
-    /// Concretely, that is all atoms of a rule's body which are either
-    /// non-negated (positive polarity) or negated (negative polarity).
+    /// A conjunctive fragment joins `atoms` on the variables they share. A
+    /// rule's positive atoms form one; each negated atom stands on its own.
     fn conjunctive_fragment<'r>(
         &self,
         atoms: impl IntoIterator<Item = &'r AtomOf<P>>,
@@ -490,12 +498,13 @@ fn join_variables<I: Identifier>(plans: &[AtomPlan<'_, I>]) -> Vec<JoinVariable>
         .collect()
 }
 
-fn antijoin_variables<I: Identifier>(
-    left: &FragmentPlan<I>,
-    right: &FragmentPlan<I>,
-) -> Vec<(Expr, Expr)> {
-    left.variables
-        .intersection(&right.variables)
+/// The variables a negated atom shares with the positive atoms, which are the
+/// ones its antijoin matches on. A variable only the negated atom binds is
+/// existential and matches anything.
+fn antijoin_variables<I: Identifier>(positive: &IndexSet<&I>, negated: &[&I]) -> Vec<(Expr, Expr)> {
+    negated
+        .iter()
+        .filter(|var| positive.contains(*var))
         .map(|shared_var| {
             let shared_var = Expr::from(VarExpr::new(shared_var.to_string()));
             (shared_var.clone(), shared_var)
@@ -583,7 +592,7 @@ mod tests {
             stmt::Stmt,
             walk::{Node, pre_order},
         },
-        relational::expr::RelExpr,
+        relational::expr::{RelExpr, RelKind},
     };
 
     #[test]
@@ -691,5 +700,57 @@ mod tests {
             "the step rebinds the accumulator '{accumulator}':\n{}",
             ir.to_tree()
         );
+    }
+
+    #[test]
+    fn each_negated_atom_is_antijoined_on_its_own() {
+        // `!r(x), !s(x)` is `¬r ∧ ¬s`, so two antijoins. Joining the negated
+        // atoms first and antijoining once would compute `¬(r ∧ s)` instead.
+        let predicates = RulePredicate::group(
+            ["q", "r", "s", "p"].map(|name| declare(name, &["x"])),
+            [
+                rule("q0", "q(x)", &[]),
+                rule("r0", "r(x)", &[]),
+                rule("s0", "s(x)", &[]),
+                rule("p0", "p(x)", &["q(x)", "!r(x)", "!s(x)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let ir = program
+            .prepare(program.verify().expect("the program is stratifiable"))
+            .expect("a rule with negated atoms translates");
+
+        let antijoins = pre_order(&ir)
+            .filter_map(Node::as_rel)
+            .filter(|rel_expr| rel_expr.kind() == RelKind::AntiJoin)
+            .count();
+        assert_eq!(antijoins, 2, "{}", ir.to_tree());
+    }
+
+    #[test]
+    fn a_negated_atom_may_share_no_variable_with_the_body() {
+        // `h` has no columns, so `!h()` antijoins on nothing: `p` holds
+        // wherever `q` does, as long as `h` holds nowhere.
+        let predicates = RulePredicate::group(
+            [
+                declare("q", &["x"]),
+                declare("r", &["x"]),
+                declare("h", &[]),
+                declare("p", &["x"]),
+            ],
+            [
+                rule("q0", "q(x)", &[]),
+                rule("r0", "r(x)", &[]),
+                rule("h0", "h()", &["r(y)"]),
+                rule("p0", "p(x)", &["q(x)", "!h()"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        if let Err(error) = program.prepare(program.verify().expect("the program is stratifiable"))
+        {
+            panic!("a nullary negated atom translates:\n{error:#}");
+        }
     }
 }

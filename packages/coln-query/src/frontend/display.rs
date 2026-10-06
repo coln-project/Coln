@@ -13,10 +13,12 @@
 //!
 //! ```text
 //! .decl path(x: uint, y: uint)
+//! .output path
 //! path(x, y) :- edge(x, y).
 //! path(x, z) :- path(x, y), edge(y, z), !blocked(z), z != 3.
 //!
 //! .decl path(x: uint, y: uint)
+//! .output path
 //! // r0
 //! path(x, y) :-
 //!     edge(x, y).
@@ -31,7 +33,7 @@
 //! atom does not know its relation's arity, so trailing unbound positions are
 //! lost. A [`head`](Rule::head) is dense and hence unaffected.
 
-use super::{Atom, Bind, Cond, Lit, LogicalProgram, Predicate, Rule, TypedVar};
+use super::{Atom, Bind, Cond, Identifiable, Lit, LogicalProgram, Predicate, Rule, TypedVar};
 use crate::host::operator::Operator;
 use std::fmt::{self, Display};
 
@@ -50,7 +52,10 @@ pub struct RuleDisplay<'a, R>(pub(super) &'a R);
 /// it as given externally and says nothing a reader would recognize as Datalog.
 pub struct PredicateDisplay<'a, P>(pub(super) &'a P);
 
-/// A [`LogicalProgram`] as its predicates, separated by blank lines.
+/// A [`LogicalProgram`] as its predicates, separated by blank lines. Each
+/// predicate the program [outputs](LogicalProgram::is_output) carries an
+/// `.output` directive below its `.decl`, which only the program can tell:
+/// a [`PredicateDisplay`] on its own prints none.
 pub struct ProgramDisplay<'a, L>(pub(super) &'a L);
 
 impl<A: Atom> Display for AtomDisplay<'_, A> {
@@ -104,24 +109,44 @@ impl<R: Rule> Display for RuleDisplay<'_, R> {
 
 impl<P: Predicate> Display for PredicateDisplay<'_, P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let predicate = self.0;
-        write!(f, ".decl {}(", predicate.id())?;
-        separated(f, predicate.columns(), ", ")?;
-        f.write_str(")")?;
-        if predicate.is_edb_predicate() {
-            return Ok(());
-        }
-        predicate.rules().try_for_each(|rule| {
-            f.write_str("\n")?;
-            RuleDisplay(rule).fmt(f)
-        })
+        declaration(f, self.0)?;
+        rules(f, self.0)
     }
 }
 
 impl<L: LogicalProgram> Display for ProgramDisplay<'_, L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        separated(f, self.0.predicates().map(PredicateDisplay), "\n\n")
+        let program = self.0;
+        let predicates = program.predicates().map(|predicate| {
+            fmt::from_fn(move |f| {
+                declaration(f, predicate)?;
+                if program.is_output(predicate) {
+                    write!(f, "\n.output {}", predicate.id())?;
+                }
+                rules(f, predicate)
+            })
+        });
+        separated(f, predicates, "\n\n")
     }
+}
+
+/// A predicate's `.decl` line.
+fn declaration<P: Predicate>(f: &mut fmt::Formatter<'_>, predicate: &P) -> fmt::Result {
+    write!(f, ".decl {}(", predicate.id())?;
+    separated(f, predicate.columns(), ", ")?;
+    f.write_str(")")
+}
+
+/// A predicate's rules, each on a line of its own. An EDB predicate has none
+/// worth printing, see [`PredicateDisplay`].
+fn rules<P: Predicate>(f: &mut fmt::Formatter<'_>, predicate: &P) -> fmt::Result {
+    if predicate.is_edb_predicate() {
+        return Ok(());
+    }
+    predicate.rules().try_for_each(|rule| {
+        f.write_str("\n")?;
+        RuleDisplay(rule).fmt(f)
+    })
 }
 
 /// A rule's body is made of propositions: atoms and conditions alike.
@@ -279,10 +304,12 @@ mod tests {
         assert_eq!(
             format!("{:#}", program.display()),
             ".decl path(x: uint)\n\
+             .output path\n\
              // path#0\n\
              path() :-\n    edge().\n\
              \n\
              .decl reachable(x: uint)\n\
+             .output reachable\n\
              // reachable#0\n\
              reachable() :-\n    path()."
         );
