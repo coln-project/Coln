@@ -59,7 +59,7 @@ pub trait LogicalProgram {
     {
         // println!("{}", self.display());
         println!("{:#}", self.display());
-        static_analysis_pipeline(self).map_err(|e| SyntaxError::new(e.to_string()))
+        static_analysis_pipeline(self)
     }
 
     fn prepare<'a>(

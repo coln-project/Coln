@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use crate::relational::incremental::dbsp::DbspError;
+use std::fmt;
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
@@ -28,18 +29,92 @@ pub enum QueryEngineError {
     Runtime(#[from] RuntimeError),
 }
 
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
-#[error("{message}")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// An error that occurs during parsing or static analysis at compile time.
+///
+/// Carries the [`Frame`]s it was raised within, so that the function raising
+/// it only has to say what it knows itself: each caller that knows more adds
+/// its frame [`within`](Self::within) on the way up.
+///
+/// `{}` renders the frames as a one-line prefix, outermost first. `{:#}` puts
+/// the message first and each frame on a line of its own, in full.
 pub struct SyntaxError {
     // TODO: source location
-    pub message: String,
+    message: String,
+    /// Innermost first, as frames are added on the way up.
+    context: Vec<Frame>,
 }
 
 impl SyntaxError {
     pub fn new<T: Into<String>>(message: T) -> Self {
         Self {
             message: message.into(),
+            context: Vec::new(),
+        }
+    }
+
+    /// The error as raised, without any of its frames.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// The frames the error was raised within, outermost first.
+    pub fn context(&self) -> impl Iterator<Item = &Frame> {
+        self.context.iter().rev()
+    }
+
+    /// Adds `frame` around the frames the error already carries.
+    pub fn within(mut self, frame: Frame) -> Self {
+        self.context.push(frame);
+        self
+    }
+}
+
+impl fmt::Display for SyntaxError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match f.alternate() {
+            true => {
+                // Innermost first, like a backtrace reads.
+                f.write_str(&self.message)?;
+                self.context
+                    .iter()
+                    .try_for_each(|frame| write!(f, "\n  {frame:#}"))
+            }
+            false => {
+                self.context()
+                    .try_for_each(|frame| write!(f, "{frame}: "))?;
+                f.write_str(&self.message)
+            }
+        }
+    }
+}
+
+impl std::error::Error for SyntaxError {}
+
+/// Something a [`SyntaxError`] was raised within.
+///
+/// Names are rendered to strings when the frame is made: the frontend's
+/// identifiers are generic, and the error is not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Frame {
+    Predicate {
+        name: String,
+    },
+    Rule {
+        name: String,
+        /// The rule in Datalog notation, shown by `{:#}` only.
+        text: String,
+    },
+}
+
+impl fmt::Display for Frame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Frame::Predicate { name } => write!(f, "in predicate '{name}'"),
+            Frame::Rule { name, text } => match f.alternate() {
+                true => write!(f, "in rule '{name}': {text}"),
+                false => write!(f, "in rule '{name}'"),
+            },
         }
     }
 }
@@ -85,8 +160,9 @@ impl LoweringError {
 /// [`SyntaxError`] by nature, but it surfaces here.
 impl From<SyntaxError> for LoweringError {
     fn from(value: SyntaxError) -> Self {
+        // Rendered, so that the frames survive the conversion.
         Self {
-            message: value.message,
+            message: value.to_string(),
         }
     }
 }
@@ -116,8 +192,9 @@ impl RewriteError {
 /// reason a lowering does.
 impl From<SyntaxError> for RewriteError {
     fn from(value: SyntaxError) -> Self {
+        // Rendered, so that the frames survive the conversion.
         Self {
-            message: value.message,
+            message: value.to_string(),
         }
     }
 }

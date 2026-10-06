@@ -6,20 +6,21 @@
 
 use super::graph_utils::gabow;
 use super::{AggregateRules, Component, IdOf, Identifiable, LogicalProgram, Predicate, Rule};
+use crate::error::SyntaxError;
 use crate::frontend::Atom;
 use crate::frontend::graph_utils::vertex_degrees;
-use anyhow::bail;
 use indexmap::IndexMap;
 use std::fmt;
 
 pub(super) fn static_analysis_pipeline<'a, LP: LogicalProgram>(
     logical_program: &'a LP,
-) -> Result<ExecutionOrder<'a, LP::Predicate>, anyhow::Error> {
+) -> Result<ExecutionOrder<'a, LP::Predicate>, SyntaxError> {
     let predicate_dep_graph = PredicateDependencyGraph::from_logical_program(logical_program);
     let quotient_graph =
         QuotientGraph::<LP::Predicate>::from_predicate_dep_graph(&predicate_dep_graph);
     if !quotient_graph.is_stratifiable() {
-        bail!("Not stratifiable") // TODO: Nice error reporting.
+        // TODO: Nice error reporting.
+        return Err(SyntaxError::new("not stratifiable"));
     }
     Ok(quotient_graph.into_execution_order())
 }

@@ -34,7 +34,7 @@ use super::{
     Rule, TypedVar,
 };
 use crate::{
-    error::SyntaxError,
+    error::{Frame, SyntaxError},
     frontend::{ExecutionOrder, analysis::PredicateComponent},
     host::{
         QueryIr,
@@ -113,11 +113,11 @@ impl<'a, P: Predicate> Translator<'a, P> {
             .partition(|(_, rule)| !component.references_member(rule));
 
         if non_rec.is_empty() {
-            return Err(SyntaxError::new(format!(
-                "Predicate '{}' has no base case: every rule of it reads the component \
-                 it is part of, so nothing ever seeds the iteration",
-                predicate.id(),
-            )));
+            return Err(SyntaxError::new(
+                "no base case: every rule reads the component the predicate is part of, \
+                 so nothing ever seeds the iteration",
+            )
+            .within(predicate_frame(predicate)));
         }
 
         let (base, base_stmts) = self.rules(predicate, &non_rec)?;
@@ -161,7 +161,13 @@ impl<'a, P: Predicate> Translator<'a, P> {
         let mut relations: Vec<Expr> = Vec::with_capacity(rules.len());
         let mut stmts: Vec<Stmt> = Vec::with_capacity(rules.len());
         for (name, rule) in rules {
-            let initializer = self.rule(predicate, rule)?;
+            // The one place that knows both, so everything below reports only
+            // what it knows itself.
+            let initializer = self.rule(predicate, rule).map_err(|error| {
+                error
+                    .within(rule_frame(*rule))
+                    .within(predicate_frame(predicate))
+            })?;
             relations.push(Expr::from(VarExpr::new(name.clone())));
             stmts.push(Stmt::from(VarStmt {
                 name: name.clone(),
@@ -188,17 +194,13 @@ impl<'a, P: Predicate> Translator<'a, P> {
         for (position, bind) in rule.head().bindings() {
             let slot = terms.get_mut(position).ok_or_else(|| {
                 SyntaxError::new(format!(
-                    "Rule '{}' fills column {position} of predicate '{}', which has {} column(s)",
-                    rule.id(),
-                    predicate.id(),
+                    "head fills column {position} of a predicate with {} column(s)",
                     columns.len(),
                 ))
             })?;
             if slot.is_some() {
                 return Err(SyntaxError::new(format!(
-                    "Rule '{}' fills column {position} of predicate '{}' more than once",
-                    rule.id(),
-                    predicate.id(),
+                    "head fills column {position} more than once",
                 )));
             }
             *slot = Some(bound_expr(bind));
@@ -211,10 +213,8 @@ impl<'a, P: Predicate> Translator<'a, P> {
             .map(|(position, (column, term))| match term {
                 Some(term) => Ok((column.name().to_string(), term)),
                 None => Err(SyntaxError::new(format!(
-                    "Rule '{}' leaves column {position} ('{}') of predicate '{}' unfilled",
-                    rule.id(),
+                    "head leaves column {position} ('{}') unfilled",
                     column.name(),
-                    predicate.id(),
                 ))),
             })
             .collect::<Result<Vec<_>, SyntaxError>>()?;
@@ -235,12 +235,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     pub fn conjunctive_query(&self, rule: &P::Rule) -> Result<Expr, SyntaxError> {
         let positive_fragment = self
             .conjunctive_fragment(rule.positive_atoms())?
-            .ok_or_else(|| {
-                SyntaxError::new(format!(
-                    "Rule '{}' has an empty body of positive atoms",
-                    rule.id()
-                ))
-            })?;
+            .ok_or_else(|| SyntaxError::new("body has no positive atoms"))?;
         let negative_fragment = self.conjunctive_fragment(rule.negative_atoms())?;
 
         let conjunctive = if let Some(negative_fragment) = negative_fragment {
@@ -331,7 +326,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
                 // TODO: Should not return an Err but something like
                 // expect("program not in execution order or predicate has not been registered")
                 return Err(SyntaxError::new(format!(
-                    "Atom references undeclared entity '{name}'"
+                    "atom references undeclared entity '{name}'"
                 )));
             }
         };
@@ -340,7 +335,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
         for (position, bind) in atom.bindings() {
             let column = columns.get(position).ok_or_else(|| {
                 SyntaxError::new(format!(
-                    "Atom '{name}' binds position {position} of a relation with {} column(s)",
+                    "atom '{name}' binds position {position} of a relation with {} column(s)",
                     columns.len(),
                 ))
             })?;
@@ -517,6 +512,19 @@ fn equals(left: Expr, right: Expr) -> Expr {
     })
 }
 
+fn predicate_frame<P: Predicate>(predicate: &P) -> Frame {
+    Frame::Predicate {
+        name: predicate.id().to_string(),
+    }
+}
+
+fn rule_frame<R: Rule>(rule: &R) -> Frame {
+    Frame::Rule {
+        name: rule.id().to_string(),
+        text: rule.display().to_string(),
+    }
+}
+
 /// Hands out an IR variable name per rule, unique within the predicate.
 #[derive(Default)]
 struct Names {
@@ -552,5 +560,52 @@ impl Names {
 
 #[cfg(test)]
 mod tests {
-    // TODO:
+    use super::super::{LogicalProgram, RulePredicate, test_utils::*};
+    use crate::error::Frame;
+
+    #[test]
+    fn an_error_names_the_rule_and_predicate_it_was_raised_within() {
+        // The head fills a second column of a one-column predicate, which only
+        // the rule's translation notices.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x"]), declare("path", &["x"])],
+            [
+                rule("e0", "edge(x)", &[]),
+                rule("r0", "path(x, y)", &["edge(x)", "edge(y)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let error = program
+            .prepare(program.verify().expect("the program is stratifiable"))
+            .expect_err("the head overfills its predicate");
+
+        assert_eq!(
+            error.message(),
+            "head fills column 1 of a predicate with 1 column(s)"
+        );
+        assert_eq!(
+            error.context().collect::<Vec<_>>(),
+            [
+                &Frame::Predicate {
+                    name: "path".to_string()
+                },
+                &Frame::Rule {
+                    name: "r0".to_string(),
+                    text: "path(x, y) :- edge(x), edge(y).".to_string(),
+                },
+            ]
+        );
+        assert_eq!(
+            error.to_string(),
+            "in predicate 'path': in rule 'r0': \
+             head fills column 1 of a predicate with 1 column(s)"
+        );
+        assert_eq!(
+            format!("{error:#}"),
+            "head fills column 1 of a predicate with 1 column(s)\n  \
+             in rule 'r0': path(x, y) :- edge(x), edge(y).\n  \
+             in predicate 'path'"
+        );
+    }
 }
