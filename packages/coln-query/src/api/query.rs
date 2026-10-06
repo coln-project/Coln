@@ -6,7 +6,7 @@
 //! (FLIR) into a [logical program (Datalog)](LogicalProgram) and into
 //! [QueryIr] which can eventually be executed by the query engine(s).
 
-use crate::error::SyntaxError;
+use crate::error::{Frame, SyntaxError};
 use crate::frontend::{self, Identifiable, LogicalProgram, RulePredicate};
 use crate::host::{
     QueryIr,
@@ -189,7 +189,8 @@ impl FlirProgram {
             .definitions
             .iter()
             .map(|definition| {
-                let rule = FlirChasedRule::new(definition, &mut ctx)?;
+                let rule = FlirChasedRule::new(definition, &mut ctx)
+                    .map_err(|error| error.within(rule_frame(&definition.path)))?;
                 Ok(FlirRule::from(rule))
             })
             .collect::<Result<_, SyntaxError>>()?;
@@ -201,7 +202,11 @@ impl FlirProgram {
                 if rule.rule.consequents.is_empty() {
                     None
                 } else {
-                    Some(FlirConstraint::new(rule, &mut ctx).map(FlirRule::from))
+                    Some(
+                        FlirConstraint::new(rule, &mut ctx)
+                            .map(FlirRule::from)
+                            .map_err(|error| error.within(rule_frame(&rule.path))),
+                    )
                 }
             })
             .collect::<Result<_, SyntaxError>>()?;
@@ -533,7 +538,8 @@ impl<'a> FlirChasedRule<'a> {
                 .flat_map(|argument| resolve_element(argument, &rule_scope))
                 .collect(),
         );
-        let (body, conditions) = resolve_props(&rule.definition.antecedents, false, &rule_scope)?;
+        let (body, conditions) =
+            resolve_propositions(&rule.definition.antecedents, false, &rule_scope)?;
         Ok(FlirChasedRule {
             rule,
             head,
@@ -579,9 +585,9 @@ impl<'a> FlirConstraint<'a> {
         // filter the vars to only include the antecedent's vars.
         let head = FlirAtom::new_head(rule.path.clone(), head_fields);
         let (mut atoms, mut conditions) =
-            resolve_props(&rule.rule.antecedents, false, &rule_scope)?;
+            resolve_propositions(&rule.rule.antecedents, false, &rule_scope)?;
         let (negated_atoms, negative_conditions) =
-            resolve_props(&rule.rule.consequents, true, &rule_scope)?;
+            resolve_propositions(&rule.rule.consequents, true, &rule_scope)?;
         atoms.extend(negated_atoms);
         conditions.extend(negative_conditions);
         Ok(Self {
@@ -629,14 +635,17 @@ impl FlirAtom {
             } + atom.values.len(),
         );
         let entity = &atom.entity;
-        let schema = resolver
-            .schema(entity)
-            .ok_or_else(|| SyntaxError::new(format!("No schema for {entity}")))?;
+        let schema = resolver.schema(entity).ok_or_else(|| {
+            SyntaxError::new(format!("atom over '{entity}' has no schema declared"))
+        })?;
         let mut bind = |idx: CompilerColIdx, el: &ir::El| -> Result<(), SyntaxError> {
             // The index comes from the query schema but the name comes from the variable.
-            let query_cols = schema
-                .resolve_query_cols(idx)
-                .ok_or_else(|| SyntaxError::new("Invalid compiler index"))?;
+            let query_cols = schema.resolve_query_cols(idx).ok_or_else(|| {
+                SyntaxError::new(format!(
+                    "atom over '{entity}' binds compiler column {idx:?} \
+                     but its schema does not resolve it"
+                ))
+            })?;
             let vars = resolve_element(el, resolver);
             assert_eq!(
                 query_cols.len(),
@@ -682,12 +691,21 @@ impl frontend::Atom for FlirAtom {
     }
 }
 
-fn resolve_props(
-    props: &[ir::Prop],
+/// A rule still being built from the FLIR, and hence named but not yet
+/// printable as Datalog.
+fn rule_frame(path: &ir::Path) -> Frame {
+    Frame::Rule {
+        name: path.to_string(),
+        text: None,
+    }
+}
+
+fn resolve_propositions(
+    propositions: &[ir::Prop],
     negated: bool,
     resolver: &RuleScopeGuard,
 ) -> Result<(Vec<FlirAtom>, Vec<FlirCond>), SyntaxError> {
-    let (body, conditions): (Vec<FlirAtom>, Vec<FlirCond>) = props.iter().try_fold(
+    let (body, conditions): (Vec<FlirAtom>, Vec<FlirCond>) = propositions.iter().try_fold(
         (Vec::new(), Vec::new()),
         |(mut body, mut conditions), prop| {
             match prop {
@@ -923,8 +941,9 @@ mod tests {
 
     fn translate_json_flir(file_name: &str) -> FlirProgram {
         let flat_realm = coln_flir_rs::test_utils::load_theory_from_json(file_name);
-        FlirProgram::from_flat_realm(&flat_realm)
-            .unwrap_or_else(|err| panic!("{file_name} is convertible to a query program {err}"))
+        FlirProgram::from_flat_realm(&flat_realm).unwrap_or_else(|err| {
+            panic!("{file_name} is convertible to a query program but: {err}")
+        })
     }
 
     #[test]
@@ -955,7 +974,12 @@ mod tests {
         println!("{}", program.to_tree());
     }
 
+    /// Expected to panic until a compiler bug is fixed: the compiler emits an
+    /// atom binding the row id of the derived view `init.trans-closure.connected`
+    /// (in rule `init.trans-closure.snoc.collect`), but derived views carry no row id.
+    /// Once the compiler is fixed, this test fails and drop the `should_panic`.
     #[test]
+    #[should_panic(expected = "binds compiler column RowId")]
     fn transitive_closure_set_flir() {
         let program = translate_json_flir("TransitiveClosureSetRealm.json");
         println!("{:#}", program.display());

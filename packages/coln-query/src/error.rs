@@ -102,8 +102,10 @@ pub enum Frame {
     },
     Rule {
         name: String,
-        /// The rule in Datalog notation, shown by `{:#}` only.
-        text: String,
+        /// The rule in Datalog notation, shown by `{:#}` only. Absent when the
+        /// error is raised before the rule exists in that form, for instance,
+        /// when a frontend is still building it.
+        text: Option<String>,
     },
 }
 
@@ -111,9 +113,9 @@ impl fmt::Display for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Frame::Predicate { name } => write!(f, "in predicate '{name}'"),
-            Frame::Rule { name, text } => match f.alternate() {
-                true => write!(f, "in rule '{name}': {text}"),
-                false => write!(f, "in rule '{name}'"),
+            Frame::Rule { name, text } => match (f.alternate(), text) {
+                (true, Some(text)) => write!(f, "in rule '{name}': {text}"),
+                _ => write!(f, "in rule '{name}'"),
             },
         }
     }

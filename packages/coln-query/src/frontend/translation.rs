@@ -537,7 +537,7 @@ fn predicate_frame<P: Predicate>(predicate: &P) -> Frame {
 fn rule_frame<R: Rule>(rule: &R) -> Frame {
     Frame::Rule {
         name: rule.id().to_string(),
-        text: rule.display().to_string(),
+        text: Some(rule.display().to_string()),
     }
 }
 
@@ -615,7 +615,7 @@ mod tests {
                 },
                 &Frame::Rule {
                     name: "r0".to_string(),
-                    text: "path(x, y) :- edge(x), edge(y).".to_string(),
+                    text: Some("path(x, y) :- edge(x), edge(y).".to_string()),
                 },
             ]
         );
