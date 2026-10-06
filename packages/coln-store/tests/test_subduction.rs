@@ -4,7 +4,7 @@
 
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
-use coln_flir_rs::engine::packed::StoreScalarValue;
+use coln_flir_rs::engine::packed::{StoreScalarValue, WithRowId};
 use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{
@@ -170,8 +170,8 @@ async fn subduction_storage_can_exchange_coln_commit_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left);
 
     let left_commit = add_row(&mut left, 1)?;
@@ -218,8 +218,8 @@ async fn subduction_sync_coln_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left_store = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
 
     let left_commit = add_row(&mut left_store, 1)?;
@@ -354,8 +354,8 @@ async fn subduction_websocket_sync_coln_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left_store = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
     assert_eq!(root_hash(&left_store).0, root_hash(&right_store).0);
 

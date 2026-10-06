@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue, TxTuple};
+use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue};
 use coln_flir_rs::ffi::public::PublicRowId;
 use coln_flir_rs::hash::{CommitHash, HASH_SIZE};
 use hexane::{Column, DeltaColumn};
@@ -21,9 +21,8 @@ use crate::{
         utils::read_slice,
     },
     ir::{BuiltinTy, ColType, Path, Schema},
-    op::OP_KIND_ADD,
+    op::{OP_KIND_ADD, PendingOp},
     table::{TableMeta, TableOid},
-    txn::PendingOp,
 };
 
 // TODO change this to i32 when we support it as a column type
@@ -160,22 +159,19 @@ where
     let mut op_kinds = Vec::with_capacity(pending.len());
 
     for op in pending {
-        match op {
-            PendingOp::Add { table, .. } => {
-                let group_index = if let Some(index) = groups
-                    .iter()
-                    .position(|(group_table, _)| group_table == table)
-                {
-                    index
-                } else {
-                    groups.push((*table, Vec::new()));
-                    groups.len() - 1
-                };
-                groups[group_index].1.push(op);
-                table_sequence.push(group_index as u32);
-                op_kinds.push(OP_KIND_ADD);
-            }
-        }
+        let table = op.table();
+        let group_index = if let Some(index) = groups
+            .iter()
+            .position(|(group_table, _)| *group_table == table)
+        {
+            index
+        } else {
+            groups.push((table, Vec::new()));
+            groups.len() - 1
+        };
+        groups[group_index].1.push(op);
+        table_sequence.push(group_index as u32);
+        op_kinds.push(OP_KIND_ADD);
     }
 
     let mut buf = Vec::new();
@@ -293,14 +289,11 @@ fn encode_op_group(
     ops: &[&PendingOp],
     hash_mapper: &HashMapper,
 ) -> Result<Vec<u8>, CodecError> {
-    let mut rows: Vec<&TxTuple> = Vec::with_capacity(ops.len());
+    let mut rows: Vec<&[TxScalarValue]> = Vec::with_capacity(ops.len());
     for op in ops {
-        let PendingOp::Add {
-            table: op_table,
-            values,
-            ..
-        } = op;
-        if *op_table != table_oid {
+        let op_table = op.table();
+        let values = op.column_values();
+        if op_table != table_oid {
             return Err(CodecError::SchemaError(format!(
                 "op group table mismatch: expected oid {table_oid}, got {op_table}"
             )));
@@ -326,7 +319,7 @@ fn encode_op_group(
     for (column_index, col_entry) in schema.columns.iter().enumerate() {
         let values = rows
             .iter()
-            .map(|row| row.as_slice()[column_index].clone())
+            .map(|row| row[column_index].clone())
             .collect::<Vec<_>>();
         let blob = encode_txn_value_column(values, &col_entry.col_type, hash_mapper)?;
         commit_leb128::write_len_prefixed_bytes(&mut buf, &blob);
@@ -451,11 +444,11 @@ where
             .into();
         group_offsets[group_idx] += 1;
 
-        pending.push(PendingOp::Add {
-            row_id: PendingRowId(op_idx as u32),
-            table: group.table,
+        pending.push(PendingOp::add(
+            PendingRowId(op_idx as u32),
+            group.table,
             values,
-        });
+        ));
     }
 
     for (group_idx, (offset, group)) in group_offsets.iter().zip(&groups).enumerate() {
@@ -652,6 +645,7 @@ mod tests {
     use super::*;
     use crate::commit::wire::prim::ValueType;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
+    use coln_flir_rs::engine::tx::TxTuple;
 
     #[test]
     fn txn_row_ref_column_round_trips_existing_and_pending_refs() {
@@ -854,10 +848,10 @@ mod tests {
         let mut hash_mapper = HashMapper::new();
         hash_mapper.insert(ha);
         let ops = [
-            PendingOp::Add {
-                row_id: PendingRowId(0),
-                table: table_oid,
-                values: vec![
+            PendingOp::add(
+                PendingRowId(0),
+                table_oid,
+                vec![
                     1i32.into(),
                     "a".into(),
                     TxScalarValue::RowId(TxRowId::Existing(PublicRowId {
@@ -866,17 +860,17 @@ mod tests {
                     })),
                 ]
                 .into(),
-            },
-            PendingOp::Add {
-                row_id: PendingRowId(1),
-                table: table_oid,
-                values: vec![
+            ),
+            PendingOp::add(
+                PendingRowId(1),
+                table_oid,
+                vec![
                     2i32.into(),
                     "b".into(),
                     TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
                 ]
                 .into(),
-            },
+            ),
         ];
         let op_refs: Vec<&PendingOp> = ops.iter().collect();
 
@@ -923,11 +917,7 @@ mod tests {
             columns: vec![],
             primary_key: None,
         };
-        let op = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 1,
-            values: TxTuple::empty(),
-        };
+        let op = PendingOp::add(PendingRowId(0), 1, TxTuple::empty());
         let err = encode_op_group(&Path::from("T"), 0, &schema, &[&op], &HashMapper::new())
             .expect_err("table mismatch");
         assert!(matches!(err, CodecError::SchemaError(_)));
@@ -946,11 +936,7 @@ mod tests {
             }],
             primary_key: None,
         };
-        let op = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: TxTuple::empty(),
-        };
+        let op = PendingOp::add(PendingRowId(0), 0, TxTuple::empty());
         let err = encode_op_group(&table, 0, &schema, &[&op], &HashMapper::new())
             .expect_err("column count mismatch");
         assert!(matches!(err, CodecError::SchemaError(_)));
@@ -993,21 +979,9 @@ mod tests {
             },
         ];
         let pending = vec![
-            PendingOp::Add {
-                row_id: PendingRowId(0),
-                table: 0,
-                values: vec![1i32].into(),
-            },
-            PendingOp::Add {
-                row_id: PendingRowId(1),
-                table: 1,
-                values: vec!["x"].into(),
-            },
-            PendingOp::Add {
-                row_id: PendingRowId(2),
-                table: 0,
-                values: vec![2i32].into(),
-            },
+            PendingOp::add(PendingRowId(0), 0, vec![1i32].into()),
+            PendingOp::add(PendingRowId(1), 1, vec!["x"].into()),
+            PendingOp::add(PendingRowId(2), 0, vec![2i32].into()),
         ];
 
         let encoded = encode_commit_body(
@@ -1106,21 +1080,9 @@ mod tests {
         let decode_table_meta =
             |path: &Path| schemas.iter().copied().find(|meta| meta.path == path);
         let pending = vec![
-            PendingOp::Add {
-                row_id: PendingRowId(0),
-                table: 0,
-                values: vec![1i32].into(),
-            },
-            PendingOp::Add {
-                row_id: PendingRowId(1),
-                table: 1,
-                values: vec!["x"].into(),
-            },
-            PendingOp::Add {
-                row_id: PendingRowId(2),
-                table: 0,
-                values: vec![2i32].into(),
-            },
+            PendingOp::add(PendingRowId(0), 0, vec![1i32].into()),
+            PendingOp::add(PendingRowId(1), 1, vec!["x"].into()),
+            PendingOp::add(PendingRowId(2), 0, vec![2i32].into()),
         ];
 
         let encoded = encode_commit_body(&pending, encode_table_meta, &HashMapper::new())
@@ -1141,11 +1103,7 @@ mod tests {
             columns: vec![],
             primary_key: None,
         };
-        let pending = vec![PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: TxTuple::empty(),
-        }];
+        let pending = vec![PendingOp::add(PendingRowId(0), 0, TxTuple::empty())];
         let encoded = encode_commit_body(
             &pending,
             |oid| {
@@ -1167,11 +1125,7 @@ mod tests {
 
     #[test]
     fn commit_body_rejects_missing_schema() {
-        let pending = vec![PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: TxTuple::empty(),
-        }];
+        let pending = vec![PendingOp::add(PendingRowId(0), 0, TxTuple::empty())];
 
         let err =
             encode_commit_body(&pending, |_| None, &HashMapper::new()).expect_err("missing schema");

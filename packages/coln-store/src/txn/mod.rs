@@ -3,8 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod id;
-mod inner;
-mod owned;
+pub(crate) mod inner;
 pub mod rw;
 mod timestamp;
 
@@ -18,9 +17,7 @@ use coln_flir_rs::engine::{
 };
 use coln_flir_rs::{engine::tx::TxRowId, hash::CommitHash, ir, query::WhereClause};
 
-pub(crate) use id::PendingOp;
 use inner::TxnInner;
-pub use owned::OwnedTransaction;
 
 pub struct ReadOnly<'a> {
     store: &'a Store,
@@ -86,9 +83,10 @@ impl<'a> Transaction<ReadWrite<'a>> {
     }
 
     pub fn commit(mut self) -> Result<CommitHash, StoreError> {
-        let h = self.inner.commit(self.mode.store);
+        let prepared = self.inner.try_commit(self.mode.store)?;
+        let h = TxnInner::commit(self.mode.store, prepared);
         self.open = false;
-        h
+        Ok(h)
     }
 
     // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreError> {
@@ -404,9 +402,11 @@ mod tests {
             .map(|c| c.hash())
             .collect();
 
-        let empty = store.transaction().commit().expect("empty commit");
-
-        assert!(!store.commits().contains(&empty));
+        let error = store.transaction().commit().expect_err("empty commit");
+        assert!(matches!(
+            error,
+            StoreError::Commit(crate::store::error::CommitApplyError::EmptyCommit)
+        ));
         assert_eq!(
             store.commits().root_commit().expect("root commit").hash(),
             root

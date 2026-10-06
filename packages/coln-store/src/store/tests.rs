@@ -2,13 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::engine::packed::StoreScalarValue;
-use coln_flir_rs::public::PublicTuple;
+use coln_flir_rs::engine::packed::{StoreScalarValue, WithRowId};
+use coln_flir_rs::public::{PublicScalarValue, PublicTuple};
 use rstest::rstest;
 
 use super::*;
 use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Materialization, Path, Schema},
+    op::PublicOp,
     txn::rw::{StoreRead, StoreWrite},
 };
 mod tables {
@@ -82,7 +83,7 @@ mod root_metadata {
     fn json_ir_serializes_root_ir(non_empty_root_commit_data: RootCommitData) {
         let root = non_empty_root_commit_data;
         let expected = serde_json::to_string(&root.ir).expect("serialize expected IR");
-        let store = Store::try_from_ir(root.ir, root.coln_def).expect("build store");
+        let store = Store::try_from_ir(&root.ir, root.coln_def).expect("build store");
 
         assert_eq!(store.json_ir().expect("serialize store IR"), expected);
     }
@@ -92,7 +93,7 @@ mod root_metadata {
         let root = non_empty_root_commit_data;
         let expected_theory = root.coln_def.theory.clone();
         let expected_realm = root.coln_def.realm.clone();
-        let store = Store::try_from_ir(root.ir, root.coln_def).expect("build store");
+        let store = Store::try_from_ir(&root.ir, root.coln_def).expect("build store");
 
         let actual = store.coln_def().expect("read Coln definition");
         assert_eq!(actual.theory, expected_theory);
@@ -110,6 +111,7 @@ mod writes {
 
         store.transaction();
         store.add(&path, vec![42i32]).expect("add row");
+        store.try_commit().expect("prepare");
         store.commit().expect("txn success");
 
         store.transaction();
@@ -413,17 +415,23 @@ mod rowing {
         store
     }
 
-    fn add_op(store: &Store, table: &str, rid: PublicRowId, values: Vec<PublicScalarValue>) -> Op {
-        Op::Add {
-            row_id: rid,
+    fn add_op(
+        store: &Store,
+        table: &str,
+        rid: PublicRowId,
+        values: Vec<PublicScalarValue>,
+    ) -> PublicOp {
+        PublicOp::Add {
             table: store
                 .resolve_table(&Path::from(table))
                 .expect("test table exists"),
-            values,
+            values: std::iter::once(PublicScalarValue::RowId(rid))
+                .chain(values)
+                .collect(),
         }
     }
 
-    fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<Op>) -> Result<(), StoreError> {
+    fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<PublicOp>) -> Result<(), StoreError> {
         store.apply_commit_ops(ops)?;
         store.rebuild_to_fixpoint()
     }
@@ -897,7 +905,9 @@ mod commits {
         let (source, _) = source;
 
         let commits = source.commits_after(&target.heads());
-        target.apply_commits(commits).expect("apply commits");
+        target
+            .apply_commits_unchecked(commits)
+            .expect("apply commits");
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
@@ -918,7 +928,9 @@ mod commits {
 
         let mut commits = source.commits_after(&target.heads());
         commits.reverse();
-        target.apply_commits(commits).expect("apply commits");
+        target
+            .apply_commits_unchecked(commits)
+            .expect("apply commits");
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
@@ -941,9 +953,11 @@ mod commits {
 
         let commits = source.commits_after(&target.heads());
         target
-            .apply_commits(commits.clone())
+            .apply_commits_unchecked(commits.clone())
             .expect("first apply commits");
-        target.apply_commits(commits).expect("second apply commits");
+        target
+            .apply_commits_unchecked(commits)
+            .expect("second apply commits");
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
@@ -966,7 +980,7 @@ mod commits {
             .clone();
 
         let leftover = target
-            .apply_commits([second_commit])
+            .apply_commits_unchecked([second_commit])
             .expect("skip missing dependency");
         let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
 
@@ -988,7 +1002,7 @@ mod commits {
         let third_commit = source.commit_by_hash(&third).expect("third commit").clone();
 
         let leftover = target
-            .apply_commits([first_commit, third_commit])
+            .apply_commits_unchecked([first_commit, third_commit])
             .expect("apply ready commits");
         let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
 

@@ -34,6 +34,23 @@ pub type StoreScalarValue = NativeScalar<PackedRowId>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreTuple(pub(crate) Tuple<StoreScalarValue>);
 
+pub trait WithRowId {
+    type RowId;
+    fn row_id(&self) -> Self::RowId;
+}
+
+impl WithRowId for StoreTuple {
+    type RowId = PackedRowId;
+
+    /// The row id a stored row leads with.
+    fn row_id(&self) -> Self::RowId {
+        match self.first() {
+            Some(StoreScalarValue::RowId(id)) => *id,
+            other => panic!("stored rows lead with their row id, got {other:?}"),
+        }
+    }
+}
+
 impl StoreTuple {
     pub fn from_public(tuple: PublicTuple, pack: impl Fn(PublicRowId) -> PackedRowId) -> Self {
         let inner = tuple
@@ -55,14 +72,6 @@ impl StoreTuple {
             .collect()
     }
 
-    /// The row id a stored row leads with.
-    pub fn row_id(&self) -> PackedRowId {
-        match self.first() {
-            Some(StoreScalarValue::RowId(id)) => *id,
-            other => panic!("stored rows lead with their row id, got {other:?}"),
-        }
-    }
-
     /// The schema columns of a stored row, without the leading row id.
     pub fn values(&self) -> &[StoreScalarValue] {
         &self[1..]
@@ -79,7 +88,7 @@ impl Deref for StoreTuple {
 
 impl From<Vec<StoreScalarValue>> for StoreTuple {
     fn from(values: Vec<StoreScalarValue>) -> Self {
-        Self(Tuple { inner: values })
+        Self(values.into())
     }
 }
 

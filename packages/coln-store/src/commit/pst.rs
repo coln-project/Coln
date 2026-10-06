@@ -109,7 +109,7 @@ mod tests {
     #[fixture]
     fn int_store(non_empty_root_commit_data: RootCommitData) -> Store {
         let RootCommitData { ir, coln_def } = non_empty_root_commit_data;
-        Store::try_from_ir(ir, coln_def).expect("store")
+        Store::try_from_ir(&ir, coln_def).expect("store")
     }
 
     fn store_envelope(framed_chunks: &[Vec<u8>]) -> Vec<u8> {

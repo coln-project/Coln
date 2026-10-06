@@ -19,7 +19,7 @@ use std::fmt::Write;
 
 use crate::ir;
 use crate::ir::Schema;
-use crate::pack::{IdPacker, PackedOp};
+use crate::pack::IdPacker;
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
 use crate::table::col::{Column, IdColumn};
@@ -27,6 +27,19 @@ use crate::table::index::{IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 
 pub type TableOid = usize;
+
+// TODO can probably unify this with the op definition, when we have deletion in Op.
+/// An operation on a single table, using dictionary-encoded row IDs.
+#[derive(Debug, Clone)]
+pub(crate) enum TableOp {
+    Add {
+        row_id: PackedRowId,
+        values: StoreTuple,
+    },
+    Delete {
+        row_id: PackedRowId,
+    },
+}
 
 /// Borrowed identity and schema for a registered table.
 #[derive(Debug, Clone, Copy)]
@@ -94,7 +107,7 @@ pub struct Table {
     index: TableIndex,
 
     // buffering rollback
-    pending_updates: Vec<PackedOp>,
+    pending_updates: Vec<TableOp>,
     undo_log: Option<Vec<UndoOp>>,
 
     // structural identification
@@ -345,7 +358,7 @@ impl Rollback for Table {
 
 impl Table {
     /// Stage an already packed operation without changing the materialised table.
-    pub(crate) fn stage_update(&mut self, op: PackedOp) {
+    pub(crate) fn stage_update(&mut self, op: TableOp) {
         self.pending_updates.push(op);
     }
 
@@ -358,7 +371,7 @@ impl Table {
 
     fn apply_ops(
         &mut self,
-        ops: impl IntoIterator<Item = PackedOp>,
+        ops: impl IntoIterator<Item = TableOp>,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
         for op in ops {
@@ -370,13 +383,13 @@ impl Table {
         Ok(())
     }
 
-    fn apply_op(&mut self, op: PackedOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
+    fn apply_op(&mut self, op: TableOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
         match op {
-            PackedOp::Add { row_id, values } => {
+            TableOp::Add { row_id, values } => {
                 self.insert_row(values, row_id, rowing)?;
                 Ok(UndoOp::UndoAdd { row_id })
             }
-            PackedOp::Delete { row_id } => {
+            TableOp::Delete { row_id } => {
                 let values = self.remove_packed(row_id);
                 Ok(UndoOp::UndoDelete { row_id, values })
             }
@@ -418,9 +431,9 @@ impl Table {
                     "collapsing {old:?} onto {new_rid:?} would discard differing cells"
                 );
 
-                self.stage_update(PackedOp::Delete { row_id: old });
+                self.stage_update(TableOp::Delete { row_id: old });
                 if !collapses {
-                    self.stage_update(PackedOp::Add {
+                    self.stage_update(TableOp::Add {
                         row_id: new_rid,
                         values: new_cells,
                     });
@@ -443,8 +456,8 @@ impl Table {
                     continue;
                 }
 
-                self.stage_update(PackedOp::Delete { row_id });
-                self.stage_update(PackedOp::Add {
+                self.stage_update(TableOp::Delete { row_id });
+                self.stage_update(TableOp::Add {
                     row_id,
                     values: new_cells,
                 });
@@ -491,9 +504,9 @@ impl Table {
                 "collapsing {old_row_id:?} onto {new_row_id:?} would discard differing cells"
             );
 
-            self.stage_update(PackedOp::Delete { row_id: old_row_id });
+            self.stage_update(TableOp::Delete { row_id: old_row_id });
             if !collapses {
-                self.stage_update(PackedOp::Add {
+                self.stage_update(TableOp::Add {
                     row_id: new_row_id,
                     values: new_cells,
                 });
