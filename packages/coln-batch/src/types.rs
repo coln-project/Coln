@@ -28,6 +28,9 @@
 //! needs equality only, and equality is what the dictionary preserves.
 //! Range predicates over strings would need an order-preserving
 //! dictionary; none are supported yet.
+//!
+//! Every row also carries a [`Weight`], which makes a relation a Z-set
+//! (see [`crate::relation`]).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -36,6 +39,24 @@ use anyhow::{Result, bail};
 
 /// A cell as the engine stores it. See the module docs for the encoding.
 pub type Key = u64;
+
+/// How often a row is present, an `i64` like the incremental engine's: 1
+/// in a set, more for copies, negative for rows taken away. Sums and
+/// products panic on overflow instead of wrapping around; counting
+/// derivations never gets there, only huge input weights can.
+pub type Weight = i64;
+
+/// `a + b`, panicking on overflow (see [`Weight`]).
+pub(crate) fn add_weights(a: Weight, b: Weight) -> Weight {
+    a.checked_add(b)
+        .unwrap_or_else(|| panic!("weight overflow: {a} + {b}"))
+}
+
+/// `a * b`, panicking on overflow (see [`Weight`]).
+pub(crate) fn mul_weights(a: Weight, b: Weight) -> Weight {
+    a.checked_mul(b)
+        .unwrap_or_else(|| panic!("weight overflow: {a} * {b}"))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ScalarType {

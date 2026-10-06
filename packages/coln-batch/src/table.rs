@@ -15,6 +15,9 @@
 //! whose order is the natural order of the column's type, with strings
 //! standing in by dictionary code. The executors compare keys only; a
 //! back end serving typed values maps them to keys the same way.
+//!
+//! Every row also has a **weight** (see [`Weight`]). A table that does not
+//! say otherwise is a set, as stored rows with their own row ids are.
 
 use std::cmp::Ordering;
 use std::ops::Range;
@@ -23,7 +26,7 @@ use anyhow::{Result, bail};
 use arrow::record_batch::RecordBatch;
 
 use crate::relation::Relation;
-use crate::types::{Dictionary, Key, Schema};
+use crate::types::{Dictionary, Key, Schema, Weight};
 
 /// Column id, in *schema* order (position in the relation's column list).
 pub type ColId = usize;
@@ -57,6 +60,13 @@ pub trait SortedTable {
     /// Cell access, as a key. `row` is a position in *sorted* order
     /// (`0..len()`); `col` is a column id in *schema* order.
     fn value(&self, row: RowIdx, col: ColId) -> Key;
+
+    /// The weight of the row at sorted position `row`, never 0. Defaults
+    /// to 1, which makes the table a set. Rows may repeat; the executors
+    /// add up the weights of equal rows.
+    fn weight(&self, _row: RowIdx) -> Weight {
+        1
+    }
 
     /// First position in `lo..hi` whose value in sort column `depth`
     /// (i.e. schema column `sort_order()[depth]`) is `>= v`.
@@ -117,11 +127,13 @@ pub struct ArrowSortedTable {
     sort_order: Vec<ColId>,
     /// Schema-ordered columns; rows are in sorted order.
     cols: Vec<Vec<Key>>,
+    /// One weight per row, in sorted order.
+    weights: Vec<Weight>,
 }
 
 impl ArrowSortedTable {
-    /// Build from a [`Relation`], sorting its rows by `sort_order`
-    /// (which must be a permutation of `0..relation.arity()`).
+    /// Build from a [`Relation`], sorting its rows (with their weights) by
+    /// `sort_order`, which must be a permutation of `0..relation.arity()`.
     pub fn from_relation(rel: &Relation, sort_order: Vec<ColId>) -> Result<Self> {
         let arity = rel.arity();
         let mut seen = vec![false; arity];
@@ -155,11 +167,13 @@ impl ArrowSortedTable {
         let cols = (0..arity)
             .map(|c| idx.iter().map(|&i| rel.cols[c][i]).collect())
             .collect();
+        let weights = idx.iter().map(|&i| rel.weights[i]).collect();
         Ok(Self {
             name: rel.name.clone(),
             schema: rel.schema.clone(),
             sort_order,
             cols,
+            weights,
         })
     }
 
@@ -192,7 +206,7 @@ impl SortedTable for ArrowSortedTable {
     }
 
     fn len(&self) -> usize {
-        self.cols.first().map_or(0, Vec::len)
+        self.weights.len()
     }
 
     fn sort_order(&self) -> &[ColId] {
@@ -202,14 +216,18 @@ impl SortedTable for ArrowSortedTable {
     fn value(&self, row: RowIdx, col: ColId) -> Key {
         self.cols[col][row]
     }
+
+    fn weight(&self, row: RowIdx) -> Weight {
+        self.weights[row]
+    }
 }
 
 /// Brute-force conformance check for [`SortedTable`] implementations.
 ///
-/// Verifies (a) `sort_order` is a permutation, (b) rows are sorted, and
-/// (c) `lower_bound`/`upper_bound`/`equal_range` agree with linear scans
-/// on every prefix range, walking ranges exactly the way the generic
-/// join will. The cost is roughly quadratic, so restrict it to small
+/// Verifies (a) `sort_order` is a permutation, (b) rows are sorted, (c)
+/// no row has weight 0, and (d) `lower_bound`/`upper_bound`/`equal_range`
+/// agree with linear scans on every prefix range, walking ranges exactly
+/// the way the generic join will. The cost is roughly quadratic, so restrict it to small
 /// instances in tests. Storage implementations can run this against
 /// their own indexes to validate the contract.
 pub fn check_contract<T: SortedTable>(t: &T) {
@@ -239,6 +257,9 @@ pub fn check_contract<T: SortedTable>(t: &T) {
             t.len(),
             "rows must be unique under a declared primary key"
         );
+    }
+    for r in 0..t.len() {
+        assert_ne!(t.weight(r), 0, "row {r} has weight 0");
     }
     let sort_key = |row: RowIdx| -> Vec<Key> { order.iter().map(|&c| t.value(row, c)).collect() };
     for r in 1..t.len() {
@@ -368,6 +389,27 @@ mod tests {
             assert_eq!(t.schema(), &e.schema);
             check_contract(&t);
         }
+    }
+
+    #[test]
+    fn weights_follow_their_rows() {
+        let rel = Relation::with_weights(
+            "t",
+            Schema::uint(["a", "b"]),
+            vec![vec![2, 1, 3], vec![10, 20, 5]],
+            vec![-1, 2, 7],
+        );
+        let t = ArrowSortedTable::from_relation(&rel, vec![1, 0]).unwrap();
+        let rows: Vec<(Key, Weight)> = (0..t.len()).map(|r| (t.value(r, 1), t.weight(r))).collect();
+        assert_eq!(rows, vec![(5, 7), (10, -1), (20, 2)]);
+        check_contract(&t);
+    }
+
+    #[test]
+    #[should_panic(expected = "has weight 0")]
+    fn contract_rejects_weight_zero() {
+        let rel = Relation::with_weights("t", Schema::uint(["a"]), vec![vec![1, 2]], vec![1, 0]);
+        check_contract(&ArrowSortedTable::from_relation(&rel, vec![0]).unwrap());
     }
 
     #[test]

@@ -22,6 +22,10 @@
 //!
 //! The search runs on keys (see [`crate::types`]); literals are encoded
 //! once up front and the result carries the typed schema of the head.
+//!
+//! A complete binding weighs the product of the weights of the rows it
+//! matches, one per atom; the projection onto the head adds up the weights
+//! of the bindings that agree on it.
 
 use std::ops::Range;
 
@@ -30,10 +34,12 @@ use anyhow::Result;
 use crate::query::{Catalog, KeyTerm, Query, VarId};
 use crate::relation::Relation;
 use crate::table::{ArrowSortedTable, SortedTable};
-use crate::types::Key;
+use crate::types::{Key, Weight, add_weights, mul_weights};
 
 /// Evaluate `query` against `catalog` with the generic join. Returns the
-/// projected result, sorted and deduplicated (set semantics).
+/// projected result as a Z-set in normal form: a head row weighs the sum,
+/// over the bindings that produce it, of the product of the weights of the
+/// rows each binding matches.
 pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
     let prepared = catalog.prepare(query)?;
     let Some(key_atoms) = prepared.atoms else {
@@ -103,9 +109,10 @@ pub fn execute(query: &Query, catalog: &Catalog) -> Result<Relation> {
     };
     let mut binding = vec![0 as Key; query.num_vars()];
     let mut out: Vec<Key> = Vec::new();
-    solver.solve(0, &mut ranges, &mut binding, &mut out);
+    let mut weights: Vec<Weight> = Vec::new();
+    solver.solve(0, &mut ranges, &mut binding, &mut out, &mut weights);
 
-    Ok(Relation::from_flat_rows("result", prepared.schema, &out).sorted_dedup())
+    Ok(Relation::from_flat_rows("result", prepared.schema, &out, weights).consolidate())
 }
 
 /// One atom, ready for execution: its sorted index plus the mapping from
@@ -134,10 +141,24 @@ impl<T: SortedTable> Solver<'_, T> {
         ranges: &mut [Range<usize>],
         binding: &mut [Key],
         out: &mut Vec<Key>,
+        weights: &mut Vec<Weight>,
     ) {
         if v == self.query.num_vars() {
-            for &h in &self.query.head {
-                out.push(binding[h]);
+            // Every column is bound, so each range holds the copies of the
+            // one row its atom matches.
+            let mut weight: Weight = 1;
+            for (a, r) in self.atoms.iter().zip(ranges.iter()) {
+                let matched = r
+                    .clone()
+                    .map(|row| a.table.weight(row))
+                    .fold(0, add_weights);
+                weight = mul_weights(weight, matched);
+            }
+            if weight != 0 {
+                for &h in &self.query.head {
+                    out.push(binding[h]);
+                }
+                weights.push(weight);
             }
             return;
         }
@@ -187,7 +208,7 @@ impl<T: SortedTable> Solver<'_, T> {
                 }
                 if ok {
                     binding[v] = cand;
-                    self.solve(v + 1, ranges, binding, out);
+                    self.solve(v + 1, ranges, binding, out, weights);
                 }
                 for (p, r) in saved {
                     ranges[p] = r;
