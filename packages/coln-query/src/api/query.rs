@@ -201,10 +201,7 @@ impl FlirProgram {
                 if rule.rule.consequents.is_empty() {
                     None
                 } else {
-                    Some(
-                        FlirConstraint::new(rule, &mut ctx)
-                            .map(|constraint| FlirRule::from(constraint)),
-                    )
+                    Some(FlirConstraint::new(rule, &mut ctx).map(FlirRule::from))
                 }
             })
             .collect::<Result<_, SyntaxError>>()?;
@@ -227,7 +224,7 @@ impl FlirProgram {
         }
 
         let mut program = FlirProgram {
-            predicates: predicates,
+            predicates,
             code: QueryIr::new(vec![]),
             base_tables: remap(ctx.base_tables),
             derived_views: remap(ctx.derived_views),
@@ -296,7 +293,7 @@ struct FlirContext {
 impl FlirContext {
     fn enter_rule_scope<'a>(
         &'a mut self,
-        vars: &Vec<(ir::ColName, ir::ColType)>,
+        vars: &[(ir::ColName, ir::ColType)],
     ) -> RuleScopeGuard<'a> {
         self.rule_vars = Some(RuleVars::new(vars));
         RuleScopeGuard { inner: self }
@@ -350,7 +347,7 @@ impl FlirContext {
             .map(|(path, meta)| (path, &meta.output_schema));
         base_table_declarations
             .chain(derived_view_declarations.chain(constraint_declarations))
-            .map(|(path, schema)| (path.clone(), schema.columns().iter().cloned().collect()))
+            .map(|(path, schema)| (path.clone(), schema.columns().to_vec()))
     }
 }
 
@@ -371,10 +368,7 @@ trait ResolveFlirVarIdx {
 
 impl ResolveFlirVarIdx for RuleScopeGuard<'_> {
     fn resolve_flir_var_idx(&self, idx: ir::VarIdx) -> (FlirVar, Option<FlirVar>) {
-        let mut vars = self
-            .rule_vars()
-            .resolve_query_cols(idx)
-            .map(|col| FlirVar::from(col));
+        let mut vars = self.rule_vars().resolve_query_cols(idx).map(FlirVar::from);
         (vars.next().expect("At least one variable"), vars.next())
     }
     fn query_vars(&self) -> impl Iterator<Item = FlirVar> {
@@ -382,7 +376,7 @@ impl ResolveFlirVarIdx for RuleScopeGuard<'_> {
             .query_cols()
             .inner()
             .iter()
-            .map(|col| FlirVar::from(col))
+            .map(FlirVar::from)
     }
 }
 
@@ -689,7 +683,7 @@ impl frontend::Atom for FlirAtom {
 }
 
 fn resolve_props(
-    props: &Vec<ir::Prop>,
+    props: &[ir::Prop],
     negated: bool,
     resolver: &RuleScopeGuard,
 ) -> Result<(Vec<FlirAtom>, Vec<FlirCond>), SyntaxError> {
@@ -737,7 +731,7 @@ impl<T> IntoIterator for MaybePair<T> {
     type IntoIter = std::iter::Chain<std::iter::Once<T>, std::option::IntoIter<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        std::iter::once(self.0).chain(self.1.into_iter())
+        std::iter::once(self.0).chain(self.1)
     }
 }
 
@@ -749,10 +743,7 @@ fn resolve_element(
         El::Lit { lit } => MaybePair::single(frontend::Bind::Lit(FlirLit { inner: lit.clone() })),
         El::Var { index } => {
             let (first, second) = resolver.resolve_flir_var_idx(*index);
-            MaybePair::maybe((
-                frontend::Bind::Var(first),
-                second.map(|var| frontend::Bind::Var(var)),
-            ))
+            MaybePair::maybe((frontend::Bind::Var(first), second.map(frontend::Bind::Var)))
         }
     }
 }
@@ -837,7 +828,7 @@ impl From<&QueryEngineCol> for FlirVar {
     fn from(value: &QueryEngineCol) -> Self {
         Self {
             name: value.name().clone(),
-            ty: value.ty().clone().into(),
+            ty: (*value.ty()).into(),
         }
     }
 }

@@ -93,6 +93,10 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// predicate to the union of them, wrapped in a fixed point if the component
     /// is recursive.
     fn component(&mut self, component: &'a PredicateComponent<'a, P>) -> Result<(), SyntaxError> {
+        if let Some(edb_predicate) = component.is_edb_component() {
+            self.predicates.insert(edb_predicate.id(), edb_predicate);
+            return Ok(());
+        }
         let mut members = component.members();
         let predicate = members.next().expect("a component has at least one member");
         if members.next().is_some() {

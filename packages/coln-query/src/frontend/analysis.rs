@@ -29,7 +29,7 @@ type NodeIdx = usize;
 type Neighbors<EdgeData> = Vec<AdjacentNode<EdgeData>>;
 type Adjacency<EdgeData> = Vec<Neighbors<EdgeData>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AdjacentNode<Data> {
     /// To which node the adjacent node is pointing.
     node: NodeIdx,
@@ -46,7 +46,7 @@ enum EdgeLabel {
 
 /// A strongly connected component (SCC) and contains predicates referencing
 /// each other through some cycle.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PredicateComponent<'a, P> {
     /// All predicates within the SCC.
     members: Vec<&'a P>,

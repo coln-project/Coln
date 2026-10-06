@@ -158,14 +158,10 @@ impl ResolveCompilerIdxToQueryView for ColnSchemaWrapper<'_> {
         idx: CompilerColIdx,
     ) -> Option<impl ExactSizeIterator<Item = (QueryEngineColIdx, &QueryEngineCol)>> {
         match self {
-            ColnSchemaWrapper::BaseTable(base) => {
-                Some(base.resolve_query_cols(idx)).map(Either::Left)
-            }
+            ColnSchemaWrapper::BaseTable(base) => Some(Either::Left(base.resolve_query_cols(idx))),
             ColnSchemaWrapper::DerivedView(view) => match idx {
                 CompilerColIdx::RowId => None,
-                CompilerColIdx::Column(idx) => {
-                    Some(view.resolve_query_cols(idx)).map(Either::Right)
-                }
+                CompilerColIdx::Column(idx) => Some(Either::Right(view.resolve_query_cols(idx))),
             },
         }
     }
@@ -174,7 +170,7 @@ impl ResolveCompilerIdxToQueryView for ColnSchemaWrapper<'_> {
 impl From<&ir::TableEntry> for Option<ColnSchema<BaseTable>> {
     fn from(value: &ir::TableEntry) -> Self {
         let schema = &value.table;
-        if !matches!(schema.entity_variant, ir::EntityVariant::Table { .. }) {
+        if !matches!(schema.entity_variant, ir::EntityVariant::Table) {
             return None; // Only base tables allowed.
         }
         Some(ColnSchema::new(
@@ -207,7 +203,7 @@ pub struct RuleVars {
 }
 
 impl RuleVars {
-    pub fn new(vars: &Vec<(ir::ColName, ir::ColType)>) -> Self {
+    pub fn new(vars: &[(ir::ColName, ir::ColType)]) -> Self {
         let cols_compiler = CompilerCols::from(vars.iter().map(|var| (&var.0, &var.1)));
         // The storage view must be computed to obtain the query view
         // at the moment.
@@ -251,7 +247,7 @@ fn compiler_idx_to_query_idx(
     let mut iter = compiler_cols.0.iter().enumerate();
     let target_col = loop {
         let (idx, col) = iter.next().unwrap();
-        if idx >= target_idx as usize {
+        if idx >= target_idx {
             break col;
         }
         match &col.ty {
@@ -446,7 +442,7 @@ impl StoreEngineCols {
     }
     fn from(compiler_cols: &[CompilerCol], with_implicit_row_id: bool) -> Self {
         let implicit = with_implicit_row_id
-            .then(|| StoreEngineCols::implicit_row_id_cols())
+            .then(StoreEngineCols::implicit_row_id_cols)
             .into_iter()
             .flatten();
         let schema_cols = compiler_cols.iter().flat_map(|col| {

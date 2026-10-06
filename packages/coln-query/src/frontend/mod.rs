@@ -90,6 +90,23 @@ trait Component: AggregateRules {
 
     fn members(&self) -> impl Iterator<Item = &Self::Predicate>;
 
+    /// Returns `Some(Predicate)` if the component contains an EDB predicate.
+    /// Otherwise, `None` is returned. A component representing an EDB predicate
+    /// must only contain a single [predicate](Self::members) for which
+    /// [Predicate::is_edb_predicate()] is `true`. If these conditions are met,
+    /// this function returns exactly that predicate.
+    fn is_edb_component(&self) -> Option<&Self::Predicate> {
+        let mut iter = self.members();
+        if let Some(predicate) = iter.next()
+            && predicate.is_edb_predicate()
+            && iter.next().is_none()
+        {
+            Some(predicate)
+        } else {
+            None
+        }
+    }
+
     /// The rules referencing a member of this component. Those are what make
     /// the component recursive, whether a rule references the very predicate it
     /// defines (self recursion) or another member (mutual recursion).
@@ -155,7 +172,7 @@ pub trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + Aggregate
         let mut iter = self.rules();
         let first_is_edb = iter
             .next()
-            .map_or(false, |rule| rule.atoms().next().is_none());
+            .is_some_and(|rule| rule.atoms().next().is_none());
         let is_only = iter.next().is_none();
         is_only && first_is_edb
     }
