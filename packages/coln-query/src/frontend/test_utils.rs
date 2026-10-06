@@ -77,25 +77,55 @@ pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
     }
 }
 
-/// A rule called `name`, deriving the atom `head` from the body `atoms`.
+/// A rule called `name`, deriving the atom `head` from the `body`.
 ///
 /// Each is an [`atom`] spec, so `rule("r0", "path(x, y)", &["edge(x, y)"])`
 /// reads as the rule it stands for. A bare name binds nothing, which is all
-/// the tests that only look at the reference graph need.
-pub(super) fn rule(name: &str, head: &str, atoms: &[&str]) -> TestRule {
+/// the tests that only look at the reference graph need. A body spec that
+/// reads as a [`cond`] is a condition instead.
+pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> TestRule {
     TestRule {
         name: name.into(),
         head: atom(head),
-        atoms: atoms.iter().map(|atom_spec| atom(atom_spec)).collect(),
+        atoms: body
+            .iter()
+            .filter(|spec| cond(spec).is_none())
+            .map(|spec| atom(spec))
+            .collect(),
+        conditions: body.iter().filter_map(|spec| cond(spec)).collect(),
     }
+}
+
+/// A condition written as `term operator term`, if `spec` is one: three
+/// whitespace-separated parts, the middle a comparison's symbol. The terms
+/// read as in an [`atom`].
+fn cond(spec: &str) -> Option<TestCond> {
+    let [left, operator, right] = spec.split_whitespace().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let operator = [
+        Operator::Equal,
+        Operator::NotEqual,
+        Operator::Less,
+        Operator::LessEqual,
+        Operator::Greater,
+        Operator::GreaterEqual,
+    ]
+    .into_iter()
+    .find(|candidate| candidate.symbol() == operator)?;
+    Some(TestCond {
+        operator,
+        left: term(left),
+        right: term(right),
+    })
 }
 
 /// An atom written as `name(term, term, …)`, or as a bare `name` when it
 /// binds nothing. A leading `!` negates it.
 ///
-/// A term that parses as a number is a literal, `_` leaves that position
-/// unbound (the sparseness [`Atom::bindings`] allows), and anything else is
-/// a variable.
+/// A term that parses as a number or is in double quotes is a literal, `_`
+/// leaves that position unbound (the sparseness [`Atom::bindings`] allows),
+/// and anything else is a variable.
 pub(super) fn atom(spec: &str) -> TestAtom {
     let (spec, positive) = spec
         .strip_prefix('!')
@@ -106,21 +136,26 @@ pub(super) fn atom(spec: &str) -> TestAtom {
     let bindings = terms
         .split(',')
         .map(str::trim)
-        .filter(|term| !term.is_empty())
+        .filter(|spec| !spec.is_empty())
         .enumerate()
-        .filter(|(_, term)| *term != "_")
-        .map(|(position, term)| {
-            let bind = match term.parse::<u64>() {
-                Ok(value) => Bind::Lit(TestLit(Literal::Uint(value))),
-                Err(_) => Bind::Var(TestTypedVar { name: term.into() }),
-            };
-            (position, bind)
-        })
+        .filter(|(_, spec)| *spec != "_")
+        .map(|(position, spec)| (position, term(spec)))
         .collect();
     TestAtom {
         name: name.trim().into(),
         positive,
         bindings,
+    }
+}
+
+fn term(spec: &str) -> Bind<TestTypedVar, TestLit> {
+    let string = spec
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'));
+    match (string, spec.parse::<u64>()) {
+        (Some(string), _) => Bind::Lit(TestLit(Literal::String(string.into()))),
+        (None, Ok(value)) => Bind::Lit(TestLit(Literal::Uint(value))),
+        (None, Err(_)) => Bind::Var(TestTypedVar { name: spec.into() }),
     }
 }
 
@@ -216,6 +251,7 @@ pub(super) struct TestRule {
     name: RuleName,
     head: TestAtom,
     atoms: Vec<TestAtom>,
+    conditions: Vec<TestCond>,
 }
 
 impl Identifiable for TestRule {
@@ -239,7 +275,7 @@ impl Rule for TestRule {
     }
 
     fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
-        std::iter::empty()
+        self.conditions.iter()
     }
 }
 
@@ -301,8 +337,7 @@ impl Lit for TestLit {
     }
 }
 
-/// Conditions play no part in the reference graph, so the test programs
-/// carry none and this type exists only to satisfy [`Rule::Cond`].
+/// A condition, as [`rule`] reads one off a body spec like `x < 3`.
 #[derive(Debug)]
 pub(super) struct TestCond {
     operator: Operator,

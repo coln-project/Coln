@@ -229,7 +229,9 @@ impl From<()> for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Literal::String(value) => write!(f, "{value}"),
+            // Quoted and escaped, as a bare string would be indistinguishable
+            // from a variable of the same name.
+            Literal::String(value) => write!(f, "{value:?}"),
             Literal::Uint(value) => write!(f, "{value}"),
             Literal::Iint(value) => write!(f, "{value}"),
             Literal::Bool(value) => write!(f, "{value}"),

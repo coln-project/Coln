@@ -948,6 +948,7 @@ mod tests {
     #[test]
     fn transitive_closure_flir() {
         let program = translate_json_flir("TransitiveClosureRealm.json");
+        println!("{:#}", program.display());
         println!("{}", program.to_tree());
     }
 

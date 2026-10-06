@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 mod analysis;
+mod display;
 mod graph_utils;
 #[cfg(test)]
 mod test_utils;
@@ -12,6 +13,9 @@ use crate::{
     error::SyntaxError,
     frontend::{
         analysis::{ExecutionOrder, static_analysis_pipeline},
+        display::{
+            AtomDisplay, CondDisplay, PredicateDisplay, ProgramDisplay, RuleDisplay, separated,
+        },
         translation::Translator,
     },
     host::{QueryIr, expr::Literal, operator::Operator},
@@ -53,6 +57,8 @@ pub trait LogicalProgram {
     where
         Self: Sized,
     {
+        // println!("{}", self.display());
+        println!("{:#}", self.display());
         static_analysis_pipeline(self).map_err(|e| SyntaxError::new(e.to_string()))
     }
 
@@ -61,6 +67,14 @@ pub trait LogicalProgram {
         exec_order: ExecutionOrder<'a, Self::Predicate>,
     ) -> Result<QueryIr, SyntaxError> {
         Translator::new().run(&exec_order)
+    }
+
+    /// The program in Datalog notation. See [`display`] for the notation.
+    fn display(&self) -> ProgramDisplay<'_, Self>
+    where
+        Self: Sized,
+    {
+        ProgramDisplay(self)
     }
 }
 
@@ -189,6 +203,14 @@ pub trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + Aggregate
     fn is_self_recursive(&self) -> bool {
         self.references(self.id())
     }
+
+    /// The predicate in Datalog notation. See [`display`] for the notation.
+    fn display(&self) -> PredicateDisplay<'_, Self>
+    where
+        Self: Sized,
+    {
+        PredicateDisplay(self)
+    }
 }
 
 #[derive(Debug)]
@@ -279,15 +301,17 @@ pub struct UnmatchedRules<R> {
 
 impl<R: Rule> fmt::Display for UnmatchedRules<R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.rules.iter().enumerate().try_for_each(|(idx, rule)| {
-            let separator = if idx == 0 { "" } else { "; " };
-            write!(
-                f,
-                "{separator}rule '{}' derives '{}', which no declaration names",
-                rule.id(),
-                rule.definand()
-            )
-        })
+        let messages = self.rules.iter().map(|rule| {
+            fmt::from_fn(move |f| {
+                write!(
+                    f,
+                    "rule '{}' derives '{}', which no declaration names",
+                    rule.id(),
+                    rule.definand()
+                )
+            })
+        });
+        separated(f, messages, "; ")
     }
 }
 
@@ -369,6 +393,14 @@ pub trait Rule: Identifiable + fmt::Debug {
     fn references(&self, identifier: &PredIdOf<Self>) -> bool {
         self.atoms().find(|atom| atom.id() == identifier).is_some()
     }
+
+    /// The rule in Datalog notation. See [`display`] for the notation.
+    fn display(&self) -> RuleDisplay<'_, Self>
+    where
+        Self: Sized,
+    {
+        RuleDisplay(self)
+    }
 }
 
 pub trait Cond: fmt::Debug {
@@ -378,6 +410,14 @@ pub trait Cond: fmt::Debug {
     fn operator(&self) -> impl Into<Operator>;
     fn left(&self) -> Bind<&Self::Var, &Self::Lit>;
     fn right(&self) -> Bind<&Self::Var, &Self::Lit>;
+
+    /// The condition in Datalog notation. See [`display`] for the notation.
+    fn display(&self) -> CondDisplay<'_, Self>
+    where
+        Self: Sized,
+    {
+        CondDisplay(self)
+    }
 }
 
 pub trait Atom: Identifiable + fmt::Debug {
@@ -407,6 +447,14 @@ pub trait Atom: Identifiable + fmt::Debug {
             Bind::Var(var) => Some(var),
             Bind::Lit(_) => None,
         })
+    }
+
+    /// The atom in Datalog notation. See [`display`] for the notation.
+    fn display(&self) -> AtomDisplay<'_, Self>
+    where
+        Self: Sized,
+    {
+        AtomDisplay(self)
     }
 }
 
