@@ -23,11 +23,17 @@
 //! suffixing a counter where it has to. A frontend whose rule names are already
 //! distinct (e.g. FLIR's rules) keeps them untouched.
 //!
-//! The predicate's own name needs no such treatment, and a single-rule
-//! predicate may share its rule's name: the predicate's statement comes after
-//! the rule's, and [`Resolver`](crate::host::resolver) resolves an initializer
-//! before declaring the name it binds, so `var path = …; var path =
-//! Output(Union(path))` reads the rule and only then shadows it, which is fine.
+//! No rule is ever bound under its predicate's own name either, as the same
+//! shadowing strikes inside a recursive predicate's fixed point: its step reads
+//! the accumulator under the predicate's name, so in `var path = …; var path#1
+//! = … path …` the second rule reads the first rule's result rather than the
+//! accumulator. The predicate's name is therefore taken before any rule is
+//! named, and a rule carrying it gets a suffix like any other duplicate.
+//!
+//! Outside a fixed point, sharing the name would be harmless: the predicate's
+//! statement comes after its rules', and [`Resolver`](crate::host::resolver)
+//! resolves an initializer before declaring the name it binds. Taking the name
+//! regardless keeps one rule for both cases.
 
 use super::{
     AggregateRules, Atom, Bind, Component, Cond, IdOf, Identifiable, Identifier, Lit, Predicate,
@@ -93,10 +99,16 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// predicate to the union of them, wrapped in a fixed point if the component
     /// is recursive.
     fn component(&mut self, component: &'a PredicateComponent<'a, P>) -> Result<(), SyntaxError> {
-        if let Some(edb_predicate) = component.is_edb_component() {
-            self.predicates.insert(edb_predicate.id(), edb_predicate);
+        // A component's members are in scope for its own rules: inside the
+        // fixed point, each name reads the accumulator bound under it.
+        self.predicates
+            .extend(component.members().map(|member| (member.id(), member)));
+
+        if component.is_edb_component().is_some() {
+            // An EDB predicate needs no translation but only registration above.
             return Ok(());
         }
+
         let mut members = component.members();
         let predicate = members.next().expect("a component has at least one member");
         if members.next().is_some() {
@@ -107,6 +119,11 @@ impl<'a, P: Predicate> Translator<'a, P> {
         // rules they belong to. See the module docs for why a rule's own
         // identifier is not always usable as an IR variable name.
         let mut names = Names::default();
+        // Minted (but ignored) first, so that no rule is ever bound under a
+        // predicate's name. See the module docs for why.
+        component.members().for_each(|member| {
+            names.mint(member.id());
+        });
         let (non_rec, rec): (Vec<_>, Vec<_>) = component
             .rules()
             .map(|rule| (names.mint(rule.id()), rule))
@@ -137,7 +154,6 @@ impl<'a, P: Predicate> Translator<'a, P> {
             }
         };
 
-        self.predicates.insert(predicate.id(), predicate);
         self.ir.push(Stmt::from(VarStmt {
             name: predicate.id().to_string(),
             initializer: Some(Expr::from(OutputExpr {
@@ -561,7 +577,14 @@ impl Names {
 #[cfg(test)]
 mod tests {
     use super::super::{LogicalProgram, RulePredicate, test_utils::*};
-    use crate::error::Frame;
+    use crate::{
+        error::Frame,
+        host::{
+            stmt::Stmt,
+            walk::{Node, pre_order},
+        },
+        relational::expr::RelExpr,
+    };
 
     #[test]
     fn an_error_names_the_rule_and_predicate_it_was_raised_within() {
@@ -606,6 +629,67 @@ mod tests {
             "head fills column 1 of a predicate with 1 column(s)\n  \
              in rule 'r0': path(x, y) :- edge(x), edge(y).\n  \
              in predicate 'path'"
+        );
+    }
+
+    #[test]
+    fn a_self_recursive_rule_reads_its_own_predicate() {
+        // `r1` references `path` while `path` itself is being translated, so
+        // the atom has to find the predicate before its translation finishes.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("r0", "path(x, y)", &["edge(x, y)"]),
+                rule("r1", "path(x, z)", &["path(x, y)", "edge(y, z)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let execution_order = program.verify().expect("the program is stratifiable");
+        if let Err(error) = program.prepare(execution_order) {
+            panic!("a self-recursive predicate translates:\n{error:#}");
+        }
+    }
+
+    #[test]
+    fn no_rule_in_a_fixed_point_step_shadows_the_accumulator() {
+        // The recursive rules are named after their predicate, as plain
+        // Datalog names them, and the base rule is not, so it does not take
+        // the bare name first. Were a recursive rule bound under `path` inside
+        // the step, every recursive rule after it would read that rule's
+        // result rather than the accumulator.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("base", "path(x, y)", &["edge(x, y)"]),
+                rule("path", "path(x, z)", &["path(x, y)", "edge(y, z)"]),
+                rule("path", "path(x, z)", &["edge(x, y)", "path(y, z)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let ir = program
+            .prepare(program.verify().expect("the program is stratifiable"))
+            .expect("a self-recursive predicate translates");
+
+        let fixed_point = pre_order(&ir)
+            .filter_map(Node::as_rel)
+            .find_map(|rel_expr| match rel_expr {
+                RelExpr::FixedPointIter(fixed_point) => Some(fixed_point),
+                _ => None,
+            })
+            .expect("a recursive predicate iterates to a fixed point");
+        let (accumulator, _) = &fixed_point.accumulator;
+        let shadows = fixed_point.step.stmts.iter().any(|stmt| match stmt {
+            Stmt::Var(var) => var.name == *accumulator,
+            _ => false,
+        });
+        assert!(
+            !shadows,
+            "the step rebinds the accumulator '{accumulator}':\n{}",
+            ir.to_tree()
         );
     }
 }

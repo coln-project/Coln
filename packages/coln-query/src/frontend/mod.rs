@@ -57,7 +57,6 @@ pub trait LogicalProgram {
     where
         Self: Sized,
     {
-        // println!("{}", self.display());
         println!("{:#}", self.display());
         static_analysis_pipeline(self)
     }

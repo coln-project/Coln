@@ -930,18 +930,21 @@ mod tests {
     #[test]
     fn graph_flir() {
         let program = translate_json_flir("GraphRealm.json");
+        println!("{:#}", program.display());
         println!("{}", program.to_tree());
     }
 
     #[test]
     fn graph_of_graphs_flir() {
         let program = translate_json_flir("GraphOfGraphsRealm.json");
+        println!("{:#}", program.display());
         println!("{}", program.to_tree());
     }
 
     #[test]
     fn triangle_flir() {
         let program = translate_json_flir("TriangleRealm.json");
+        println!("{:#}", program.display());
         println!("{}", program.to_tree());
     }
 
@@ -955,6 +958,7 @@ mod tests {
     #[test]
     fn transitive_closure_set_flir() {
         let program = translate_json_flir("TransitiveClosureSetRealm.json");
+        println!("{:#}", program.display());
         println!("{}", program.to_tree());
     }
 }
