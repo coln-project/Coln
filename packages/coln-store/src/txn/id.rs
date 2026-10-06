@@ -2,13 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::{
-    engine::tx::{PendingRowId, TxRowId, TxTuple},
-    hash::CommitHash,
-    public::PublicRowId,
-};
-
-use crate::{op::Op, table::TableOid};
+use coln_flir_rs::{engine::tx::TxRowId, hash::CommitHash, public::PublicRowId};
 
 pub trait Promote {
     /// Promoting pending ids to Wire ids, after successful transactions
@@ -24,34 +18,5 @@ pub trait Promote {
         self.promote(std::iter::once(pending_id.into()), hash)
             .pop()
             .expect("ond id to promote")
-    }
-}
-
-/// An operation staged within a transaction.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum PendingOp {
-    Add {
-        row_id: PendingRowId,
-        table: TableOid,
-        values: TxTuple,
-    },
-}
-
-impl PendingOp {
-    pub(crate) fn resolve(self, commit: CommitHash) -> Op {
-        match self {
-            PendingOp::Add {
-                row_id,
-                table,
-                values,
-            } => Op::Add {
-                row_id: row_id.resolve(commit),
-                table,
-                values: values
-                    .into_iter()
-                    .map(|value| value.map(|i| i.resolve(commit)))
-                    .collect(),
-            },
-        }
     }
 }

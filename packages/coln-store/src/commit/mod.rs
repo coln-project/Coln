@@ -28,9 +28,9 @@ use crate::{
         wire::{CommitData, RootCommitData},
     },
     ir::Path,
-    op::Op,
+    op::PendingOp,
+    op::PublicOp,
     table::{TableMeta, TableOid},
-    txn::PendingOp,
 };
 
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
@@ -194,7 +194,7 @@ impl<'a> Commit<'a> {
     /// neither the commit nor `table_meta_for`, hence the 'static.
     ///
     /// Root commits carry no ops and yield an empty iterator.
-    pub(crate) fn resolved_ops<'s, F>(&self, table_meta_for: F) -> Result<Vec<Op>, CodecError>
+    pub(crate) fn resolved_ops<'s, F>(&self, table_meta_for: F) -> Result<Vec<PublicOp>, CodecError>
     where
         F: Fn(&Path) -> Option<TableMeta<'s>>,
     {
@@ -214,8 +214,7 @@ impl<'a> Commit<'a> {
 // collects all the hashes that are mentioned in the ops.
 fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
     for op in pending {
-        let PendingOp::Add { values, .. } = op;
-        for value in values {
+        for value in op.column_values() {
             if let TxScalarValue::RowId(TxRowId::Existing(row_id)) = value {
                 hash_mapper.insert(row_id.commit);
             }
@@ -228,7 +227,7 @@ mod tests {
     use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue};
     use coln_flir_rs::hash::HASH_SIZE;
     use coln_flir_rs::ir::Schema;
-    use coln_flir_rs::public::PublicRowId;
+    use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
     use rstest::{fixture, rstest};
 
     use super::*;
@@ -361,21 +360,17 @@ mod tests {
             counter: 7,
         };
         let pending = vec![
-            PendingOp::Add {
-                row_id: PendingRowId(0),
-                table: 0,
-                values: vec![1i32].into(),
-            },
-            PendingOp::Add {
-                row_id: PendingRowId(1),
-                table: 1,
-                values: vec![
-                    TxScalarValue::RowId(TxRowId::Existing(rid)),
+            PendingOp::add(PendingRowId(0), 0, vec![1i32].into()),
+            PendingOp::add(
+                PendingRowId(1),
+                1,
+                vec![
+                    TxScalarValue::RowId(TxRowId::Existing(rid.clone())),
                     TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
                     TxScalarValue::String("x".into()),
                 ]
                 .into(),
-            },
+            ),
         ];
         let original = Commit::from_commit_data(
             data(deps.clone(), Author::foo(), 42, Some("hi"), pending.clone()),
@@ -399,11 +394,22 @@ mod tests {
         // Ops are decoded from the payload on demand and resolve against the
         // commit hash.
         let hash = decoded.hash();
-        let expected: Vec<Op> = pending.into_iter().map(|op| op.resolve(hash)).collect();
-        let got: Vec<Op> = decoded
+        let expected: Vec<PublicOp> = pending.into_iter().map(|op| op.resolve(hash)).collect();
+        let got: Vec<PublicOp> = decoded
             .resolved_ops(|path| table_metadata.payload_for_path(path))
             .expect("resolve ops");
         assert_eq!(got, expected);
+        assert_eq!(got[0].id(), PendingRowId(0).resolve(hash));
+        let PublicOp::Add { values, .. } = &got[1];
+        assert_eq!(
+            &values[..],
+            &[
+                PublicScalarValue::RowId(PendingRowId(1).resolve(hash)),
+                PublicScalarValue::RowId(rid),
+                PublicScalarValue::RowId(PendingRowId(0).resolve(hash)),
+                PublicScalarValue::String("x".into()),
+            ]
+        );
     }
 
     #[test]
@@ -473,21 +479,13 @@ mod tests {
 
     #[rstest]
     fn different_ops_produce_different_hashes(table_metadata: TestTableMetadata) {
-        let op = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: vec![42].into(),
-        };
+        let op = PendingOp::add(PendingRowId(0), 0, vec![42].into());
         let a = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op]), |oid| {
             table_metadata.int_for_oid(oid)
         })
         .expect("build a");
 
-        let op2 = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: vec![99].into(),
-        };
+        let op2 = PendingOp::add(PendingRowId(0), 0, vec![99].into());
         let b = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op2]), |oid| {
             table_metadata.int_for_oid(oid)
         })
@@ -552,21 +550,17 @@ mod tests {
             commit: dep,
             counter: 7,
         };
-        let op0 = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: vec![1i32].into(),
-        };
-        let op1 = PendingOp::Add {
-            row_id: PendingRowId(1),
-            table: 1,
-            values: vec![
+        let op0 = PendingOp::add(PendingRowId(0), 0, vec![1i32].into());
+        let op1 = PendingOp::add(
+            PendingRowId(1),
+            1,
+            vec![
                 TxScalarValue::RowId(TxRowId::Existing(rid)),
                 TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
                 TxScalarValue::String("x".into()),
             ]
             .into(),
-        };
+        );
         let pending = vec![op0, op1];
         let commit = Commit::from_commit_data(
             data(deps.clone(), author, 42, Some("hi"), pending.clone()),
@@ -599,21 +593,17 @@ mod tests {
             commit: dep,
             counter: 7,
         };
-        let op0 = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: vec![1i32].into(),
-        };
-        let op1 = PendingOp::Add {
-            row_id: PendingRowId(1),
-            table: 1,
-            values: vec![
+        let op0 = PendingOp::add(PendingRowId(0), 0, vec![1i32].into());
+        let op1 = PendingOp::add(
+            PendingRowId(1),
+            1,
+            vec![
                 TxScalarValue::RowId(TxRowId::Existing(rid)),
                 TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
                 TxScalarValue::String("x".into()),
             ]
             .into(),
-        };
+        );
         let pending = vec![op0, op1];
         let commit =
             Commit::from_commit_data(data(deps, author, 42, Some("hi"), pending.clone()), |oid| {
@@ -651,24 +641,24 @@ mod tests {
             counter: 99,
         };
 
-        let op0 = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: vec![
+        let op0 = PendingOp::add(
+            PendingRowId(0),
+            0,
+            vec![
                 TxScalarValue::RowId(TxRowId::Existing(rid_a.clone())),
                 TxScalarValue::RowId(TxRowId::Existing(rid_a.clone())),
             ]
             .into(),
-        };
-        let op1 = PendingOp::Add {
-            row_id: PendingRowId(1),
-            table: 0,
-            values: vec![
+        );
+        let op1 = PendingOp::add(
+            PendingRowId(1),
+            0,
+            vec![
                 TxScalarValue::RowId(TxRowId::Existing(rid_b)),
                 TxScalarValue::RowId(TxRowId::Existing(rid_a_later)),
             ]
             .into(),
-        };
+        );
         let commit = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op0, op1]),
             |oid| table_metadata.entity_pair_for_oid(oid),
@@ -680,11 +670,7 @@ mod tests {
             "hash dict lists each referenced commit once, in first-seen order"
         );
 
-        let op_int = PendingOp::Add {
-            row_id: PendingRowId(0),
-            table: 0,
-            values: vec![42].into(),
-        };
+        let op_int = PendingOp::add(PendingRowId(0), 0, vec![42].into());
         let no_row_refs =
             Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op_int]), |oid| {
                 table_metadata.int_for_oid(oid)

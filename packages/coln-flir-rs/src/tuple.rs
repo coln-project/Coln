@@ -58,6 +58,12 @@ impl<V> FromIterator<V> for Tuple<V> {
     }
 }
 
+impl<V> From<Vec<V>> for Tuple<V> {
+    fn from(value: Vec<V>) -> Self {
+        Self { inner: value }
+    }
+}
+
 #[subenum(QueryScalar)]
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Type)]
 pub enum NativeScalar<
