@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::engine::packed::StoreScalarValue;
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, WithRowId};
 use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
 
 use crate::commit::hash_dict::HashMapper;
-use crate::op::Op;
-use crate::pack::{PackedOp, PackedRowId};
+use crate::op::{PackedOp, PublicOp};
 use crate::rollback::Rollback;
+use crate::table::TableOp;
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]
@@ -83,16 +83,29 @@ impl IdPacker {
         value.map(|id| self.unpack_row_id(id))
     }
 
-    pub(crate) fn pack_op(&mut self, op: Op) -> PackedOp {
+    pub(crate) fn table_op(&mut self, op: PublicOp) -> TableOp {
         match op {
-            Op::Add { row_id, values, .. } => {
-                let row_id = self.pack_row_id(row_id);
+            PublicOp::Add { values, .. } => {
+                let row_id = self.pack_row_id(values.row_id());
                 let values = values
                     .into_iter()
+                    .skip(1)
                     .map(|value| self.pack_value(value))
                     .collect();
-                PackedOp::Add { row_id, values }
+                TableOp::Add { row_id, values }
             }
+        }
+    }
+
+    pub(crate) fn pack_op(&mut self, op: PublicOp) -> PackedOp {
+        match op {
+            PublicOp::Add { table, values } => PackedOp::Add {
+                table,
+                values: values
+                    .into_iter()
+                    .map(|value| self.pack_value(value))
+                    .collect(),
+            },
         }
     }
 
@@ -136,6 +149,48 @@ impl Rollback for IdPacker {
 mod tests {
     use super::*;
     use crate::test_utils::row_id_from;
+
+    #[test]
+    fn pack_op_preserves_table_and_values_and_interns_ids() {
+        let mut packer = IdPacker::new();
+        let existing = packer.pack_row_id(row_id_from(1, 0));
+        let values = vec![
+            PublicScalarValue::RowId(row_id_from(2, 7)),
+            PublicScalarValue::U64(42),
+            PublicScalarValue::RowId(row_id_from(1, 9)),
+            PublicScalarValue::RowId(row_id_from(2, 8)),
+        ];
+
+        let PackedOp::Add {
+            table,
+            values: packed,
+        } = packer.pack_op(PublicOp::Add {
+            table: 3,
+            values: values.clone().into(),
+        });
+
+        assert_eq!(table, 3);
+        assert_eq!(
+            packed.row_id(),
+            PackedRowId {
+                commit_idx: 1,
+                counter: 7
+            }
+        );
+        assert_eq!(
+            packed[2],
+            StoreScalarValue::RowId(PackedRowId {
+                commit_idx: existing.commit_idx,
+                counter: 9,
+            })
+        );
+        assert_eq!(packer.len(), 2);
+        let unpacked: Vec<_> = packed
+            .into_iter()
+            .map(|value| packer.unpack_value(value))
+            .collect();
+        assert_eq!(unpacked, values);
+    }
 
     #[test]
     fn rollback_removes_hashes_added_after_snapshot() {

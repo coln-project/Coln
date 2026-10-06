@@ -330,7 +330,7 @@ pub fn load_schema(ir_path: &Path, coln_path: &Path, realm: &str) -> Result<Load
     };
     let summary = SchemaSummary::from_theory(ir_path.to_path_buf(), &theory);
     let store = Store::try_from_ir(
-        theory,
+        &theory,
         ColnDef {
             theory: coln_source,
             realm: realm.to_owned(),

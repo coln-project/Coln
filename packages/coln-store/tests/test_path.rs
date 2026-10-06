@@ -4,7 +4,7 @@
 
 use std::{collections::BTreeSet, sync::Once};
 
-use coln_flir_rs::engine::packed::StoreScalarValue;
+use coln_flir_rs::engine::packed::{StoreScalarValue, WithRowId};
 use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::engine::tx::TxTuple;
 use coln_flir_rs::hash::CommitHash;
@@ -143,7 +143,7 @@ fn test_add_edge_referencing_vertices_from_previous_commit(
     #[from(graph_ir)] theory: &FlatRealm,
     #[from(graph_coln_def)] coln_def: &ColnDef,
 ) {
-    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
+    let mut store = Store::try_from_ir(theory, coln_def.clone()).expect("valid theory");
 
     let data = add_basic_data_to_graph(&mut store).expect("add basic data");
 
@@ -175,7 +175,7 @@ fn test_persist_roundtrip(
     #[from(graph_ir)] theory: &FlatRealm,
     #[from(graph_coln_def)] coln_def: &ColnDef,
 ) {
-    let mut store = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
+    let mut store = Store::try_from_ir(theory, coln_def.clone()).expect("valid theory");
 
     let r = add_basic_data_to_graph(&mut store);
     assert!(r.is_ok());
@@ -199,18 +199,16 @@ fn test_divergent_commits_merge_between_stores(
     #[from(graph_ir)] theory: &FlatRealm,
     #[from(graph_coln_def)] coln_def: &ColnDef,
 ) {
-    let mut base = Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid theory");
+    let mut base = Store::try_from_ir(theory, coln_def.clone()).expect("valid theory");
     let data = add_basic_data_to_graph(&mut base).expect("add shared baseline data");
 
-    let mut left =
-        Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid left-hand theory");
-    let mut right =
-        Store::try_from_ir(theory.clone(), coln_def.clone()).expect("valid right-hand theory");
+    let mut left = Store::try_from_ir(theory, coln_def.clone()).expect("valid left-hand theory");
+    let mut right = Store::try_from_ir(theory, coln_def.clone()).expect("valid right-hand theory");
     let baseline_commits = base.commits_after(&left.heads());
-    left.apply_commits(baseline_commits.clone())
+    left.apply_commits_unchecked(baseline_commits.clone())
         .expect("apply shared baseline to left");
     right
-        .apply_commits(baseline_commits)
+        .apply_commits_unchecked(baseline_commits)
         .expect("apply shared baseline to right");
 
     // Divergent ops: a new vertex on the left, a second edge on the right.

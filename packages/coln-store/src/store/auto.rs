@@ -4,10 +4,13 @@
 
 //! A Store that manages a transaction for the user.
 //! But the user is still responsible for starting/finishing transactions
-//!
+//! This module has lots of panic because AutoStore is used by the TS FFI, which
+//! does not know anything about lifetime, and so cannot have a typesafe interface
+//! Therefore the user is expected to do the right thing.
 
 use coln_flir_rs::{
     engine::{
+        op::TabPathOp,
         packed::{PackedRowId, StoreTuple},
         schema::ColnDef,
         tx::{TxRowId, TxTuple},
@@ -19,52 +22,62 @@ use coln_flir_rs::{
 };
 
 use crate::{
-    store::{Store, error::StoreError, frag::FragmentSync},
+    IdLookup,
+    rollback::Rollback,
+    store::{
+        Store,
+        commit::{BatchInner, Prepared},
+        error::StoreError,
+        frag::{CommitChunk, FragmentSync},
+    },
     txn::{
-        OwnedTransaction,
         id::Promote,
+        inner::TxnInner,
         rw::{StoreRead, StoreWrite},
     },
 };
 
+enum AutoState {
+    Idle,
+    Transaction(TxnInner),
+    Prepared(BatchInner<Prepared>),
+}
+
 pub struct AutoStore {
-    txn: Option<OwnedTransaction>,
-    store: Option<Store>,
+    store: Store,
+    state: AutoState,
 }
 
 impl StoreRead for AutoStore {
     fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
-        self.txn.as_ref().expect("open txn").scan_table(table)
+        self.store.scan_table(table)
     }
 
     fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
-        self.txn
-            .as_ref()
-            .expect("open txn")
-            .row_by_id(table, row_id)
+        self.store.row_by_id(table, row_id)
     }
 
     fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_proj(query, select)
+        self.store.all_proj(query, select)
     }
 
     fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_row_id(query)
+        self.store.all_row_id(query)
     }
 }
 
 impl StoreWrite for AutoStore {
     fn add(&mut self, table: &ir::Path, values: impl Into<TxTuple>) -> Result<TxRowId, StoreError> {
-        self.txn.as_mut().expect("open txn").add(table, values)
+        let AutoState::Transaction(txn) = &mut self.state else {
+            panic!("open txn")
+        };
+        txn.add(&mut self.store, table, values)
     }
 }
 
 impl FragmentSync for AutoStore {
-    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<super::frag::CommitChunk> {
-        self.store
-            .as_ref()
-            .expect("closed txn")
-            .commit_chunks_after(have_heads)
+    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
+        self.store.commit_chunks_after(have_heads)
     }
 
     // TODO allow this after we have a good concurrency control theory
@@ -74,44 +87,56 @@ impl FragmentSync for AutoStore {
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
     ) -> Result<(), StoreError> {
-        self.store
-            .as_mut()
-            .expect("closed txn")
-            .apply_chunk_bytes(chunk_bytes)
+        self.store.apply_chunk_bytes(chunk_bytes)
     }
 }
 
 impl AutoStore {
-    pub fn try_from_ir(ir: FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
+    pub fn try_from_ir(ir: &FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
         let store = Store::try_from_ir(ir, coln_def)?;
         Ok(Self::new(store))
     }
 
     pub fn new(store: Store) -> Self {
         Self {
-            txn: None,
-            store: Some(store),
+            store,
+            state: AutoState::Idle,
         }
     }
 
     pub fn transaction(&mut self) {
-        self.txn = Some(self.store.take().expect("closed txn").into_transaction());
+        let deps = self.store.commits().heads().copied().collect();
+        self.state = AutoState::Transaction(TxnInner::new(deps));
+    }
+
+    pub fn try_commit(&mut self) -> Result<Vec<TabPathOp>, StoreError> {
+        let AutoState::Transaction(txn) = &mut self.state else {
+            panic!("open txn")
+        };
+        let prepared = txn.try_commit(&mut self.store)?;
+        let table_ops = prepared.table_ops().to_vec();
+        self.state = AutoState::Prepared(prepared);
+        Ok(table_ops)
     }
 
     pub fn commit(&mut self) -> Result<CommitHash, StoreError> {
-        let (res, store) = match self.txn.take().expect("open txn").commit() {
-            Ok((hash, store)) => (Ok(hash), store),
-            Err((err, store)) => (Err(err), store),
+        let state = std::mem::replace(&mut self.state, AutoState::Idle);
+        let AutoState::Prepared(prepared) = state else {
+            panic!("tried commit");
         };
-        self.store = Some(store);
-        self.txn = None;
-        res
+        Ok(TxnInner::commit(&mut self.store, prepared))
     }
 
     pub fn abort(&mut self) {
-        let store = self.txn.take().expect("open txn").abort();
-        self.store = Some(store);
-        self.txn = None;
+        match std::mem::replace(&mut self.state, AutoState::Idle) {
+            AutoState::Idle => {
+                panic!("should not abort without starting a txn");
+            }
+            AutoState::Transaction(mut txn) => txn.abort(),
+            AutoState::Prepared(prepared) => {
+                self.store.rollback_to(prepared.prepared_commit().snapshot);
+            }
+        }
     }
 
     pub fn try_from_commit_bytes(
@@ -119,6 +144,10 @@ impl AutoStore {
     ) -> Result<Self, StoreError> {
         let store = Store::try_from_commit_bytes(chunk_bytes)?;
         Ok(store.auto())
+    }
+
+    pub fn id_lookup(&self) -> &impl IdLookup {
+        self.store.id_lookup()
     }
 }
 
@@ -128,18 +157,15 @@ impl Promote for AutoStore {
         pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
     ) -> Vec<PublicRowId> {
-        self.store
-            .as_ref()
-            .expect("closed txn")
-            .promote(pending_ids, hash)
+        self.store.promote(pending_ids, hash)
     }
 }
 
 impl Drop for AutoStore {
     fn drop(&mut self) {
-        if self.txn.is_some() {
+        if matches!(self.state, AutoState::Prepared(..)) {
             self.abort();
-        }
+        };
     }
 }
 
@@ -161,6 +187,7 @@ mod tests {
 
         store.transaction();
         store.add(&path, vec![1i32]).expect("add");
+        store.try_commit().expect("prepare");
         store.commit().expect("commit");
 
         // The commit hash is the first one interned, so it packs as index 0.

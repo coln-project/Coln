@@ -2,14 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, StoreTuple};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, StoreTuple, WithRowId};
 use coln_flir_rs::public::PublicScalarValue;
 use rstest::{fixture, rstest};
 
 use super::*;
 use crate::ir::{self, Path};
 use crate::ir::{BuiltinTy, ColType};
-use crate::op::Op;
+use crate::op::PublicOp;
 use crate::pack::id_packer::IdLookup;
 use crate::table::handle::TableMut;
 use crate::test_utils::{
@@ -115,15 +115,21 @@ fn rollback_removes_applied_rows_and_index_entries(
         .expect("existing row is valid");
 
     let snapshot = test_table.table.snapshot();
-    test_table.as_mut().stage(Op::Add {
-        row_id: first_public.clone(),
+    test_table.as_mut().stage(PublicOp::Add {
         table: 0,
-        values: vec![PublicScalarValue::I32(2)],
+        values: vec![
+            PublicScalarValue::RowId(first_public.clone()),
+            PublicScalarValue::I32(2),
+        ]
+        .into(),
     });
-    test_table.as_mut().stage(Op::Add {
-        row_id: second_public.clone(),
+    test_table.as_mut().stage(PublicOp::Add {
         table: 0,
-        values: vec![PublicScalarValue::I32(3)],
+        values: vec![
+            PublicScalarValue::RowId(second_public.clone()),
+            PublicScalarValue::I32(3),
+        ]
+        .into(),
     });
     test_table
         .as_mut()
@@ -416,10 +422,13 @@ fn commit_snapshot_keeps_rows_and_discards_undo_log(
     let public_id = zerohash_row_id(0);
 
     let snapshot = test_table.table.snapshot();
-    test_table.as_mut().stage(Op::Add {
-        row_id: public_id.clone(),
+    test_table.as_mut().stage(PublicOp::Add {
         table: 0,
-        values: vec![PublicScalarValue::I32(7)],
+        values: vec![
+            PublicScalarValue::RowId(public_id.clone()),
+            PublicScalarValue::I32(7),
+        ]
+        .into(),
     });
     test_table
         .as_mut()
@@ -447,10 +456,13 @@ fn rollback_discards_updates_staged_after_snapshot(
     #[with("staged_rollback", int_schema(vec!["value"], None))] mut test_table: TestTable,
 ) {
     let snapshot = test_table.table.snapshot();
-    test_table.as_mut().stage(Op::Add {
-        row_id: zerohash_row_id(0),
+    test_table.as_mut().stage(PublicOp::Add {
         table: 0,
-        values: vec![PublicScalarValue::I32(7)],
+        values: vec![
+            PublicScalarValue::RowId(zerohash_row_id(0)),
+            PublicScalarValue::I32(7),
+        ]
+        .into(),
     });
     test_table.table.rollback_to(snapshot);
 

@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::engine::tx::TxTuple;
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::{
     store::{ColnDef, auto::AutoStore},
     txn::{
-        empty_row,
         id::Promote,
         rw::{StoreRead, StoreWrite, WhereClause},
     },
@@ -34,13 +34,13 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
     let mut auto_store = AutoStore::try_from_ir(ir, coln_def).expect("create store successful");
     auto_store.transaction();
     let va = auto_store
-        .add(&Path::from("root.V"), empty_row())
+        .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
     let vb = auto_store
-        .add(&Path::from("root.V"), empty_row())
+        .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
     let vc = auto_store
-        .add(&Path::from("root.V"), empty_row())
+        .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
 
     // TODO change the API so user does not need to clone

@@ -6,12 +6,12 @@ use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 
 use crate::ir;
 use crate::ir::Schema;
-use crate::op::Op;
-use crate::pack::{IdPacker, PackedOp};
+use crate::op::PublicOp;
+use crate::pack::IdPacker;
 use crate::rowing::Rowing;
 
 use crate::table::index::IndexMeta;
-use crate::table::{Table, TableOid, ValidationError};
+use crate::table::{Table, TableOid, TableOp, ValidationError};
 
 /// A [`Table`] together with the store-wide hash dictionary and canonicaliser,
 /// for read-only access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -120,14 +120,14 @@ impl<'a> TableMut<'a> {
         }
     }
 
-    pub fn stage(&mut self, op: Op) {
+    pub fn stage(&mut self, op: PublicOp) {
         debug_assert_eq!(op.table(), self.inner.oid());
-        let op = self.id_packer.pack_op(op);
+        let op = self.id_packer.table_op(op);
         self.inner.stage_update(op);
     }
 
     pub fn stage_delete(&mut self, row_id: PackedRowId) {
-        self.inner.stage_update(PackedOp::Delete { row_id });
+        self.inner.stage_update(TableOp::Delete { row_id });
     }
 
     pub fn apply_staged(&mut self) -> Result<(), ValidationError> {
