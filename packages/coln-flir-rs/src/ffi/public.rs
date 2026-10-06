@@ -7,7 +7,7 @@ use specta::Type;
 
 use crate::{
     engine::{
-        packed::{PackedRowId, StoreTuple},
+        packed::{PackedRowId, StoreTuple, WithRowId},
         tx::{TxRowId, TxTuple},
     },
     ffi::hash::CommitHash,
@@ -48,6 +48,18 @@ pub type PublicScalarValue = NativeScalar<PublicRowId>;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct PublicTuple(pub(crate) Tuple<PublicScalarValue>);
 
+impl WithRowId for PublicTuple {
+    type RowId = PublicRowId;
+
+    /// The row id a stored row leads with.
+    fn row_id(&self) -> Self::RowId {
+        match self.first() {
+            Some(PublicScalarValue::RowId(id)) => id.clone(),
+            other => panic!("stored rows lead with their row id, got {other:?}"),
+        }
+    }
+}
+
 impl PublicTuple {
     pub fn from_tx(tuple: TxTuple, promote: impl Fn(TxRowId) -> PublicRowId) -> Self {
         let inner = tuple
@@ -80,7 +92,22 @@ impl Deref for PublicTuple {
 
 impl From<Vec<PublicScalarValue>> for PublicTuple {
     fn from(values: Vec<PublicScalarValue>) -> Self {
-        Self(Tuple { inner: values })
+        Self(values.into())
+    }
+}
+
+impl FromIterator<PublicScalarValue> for PublicTuple {
+    fn from_iter<T: IntoIterator<Item = PublicScalarValue>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl IntoIterator for PublicTuple {
+    type Item = PublicScalarValue;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

@@ -36,8 +36,8 @@ Quick examples:
 - Do not use em dashes. Restructure the sentence, or use a colon or semicolon.
 - Avoid colorful adjectives and adverbs. Write "TCP proxy" not "lightweight TCP proxy", and "scoring components" not "transparent scoring components".
 - Use noun phrases for checklist items, not imperative verbs. Write "redundant index detection" not "detect redundant indexes".
-- Headings in Markdown files must be in title case. Minor words such as "a", "an", "the", "and", "but", "or", "for", "in", "on", "at", "to", "by",
-  and "of" stay lowercase unless they are the first word.
+- Headings in Markdown files must be in title case. Minor words such as "a", "an", "the", "and", "but", "or", "for", "in", "on", "at", "to", "by", and "of" stay lowercase unless they are the first word.
+- After making show the code diff of the important changes in the chat for me to review.
 
 ## Repository Layout
 

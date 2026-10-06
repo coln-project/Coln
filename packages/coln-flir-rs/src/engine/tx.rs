@@ -1,9 +1,12 @@
 //! For dealing with temporary ids in the middle of a transactions
 
+use std::ops::Deref;
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::{
+    engine::packed::WithRowId,
     hash::CommitHash,
     public::PublicRowId,
     tuple::{NativeScalar, Tuple},
@@ -74,6 +77,13 @@ impl From<PublicRowId> for TxScalarValue {
 #[serde(transparent)]
 pub struct TxTuple(pub(crate) Tuple<TxScalarValue>);
 
+impl Deref for TxTuple {
+    type Target = [TxScalarValue];
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl FromIterator<TxScalarValue> for TxTuple {
     fn from_iter<T: IntoIterator<Item = TxScalarValue>>(iter: T) -> Self {
         let mut t = TxTuple(Tuple { inner: Vec::new() });
@@ -87,6 +97,22 @@ impl FromIterator<TxScalarValue> for TxTuple {
 impl<T: Into<TxScalarValue>> From<Vec<T>> for TxTuple {
     fn from(value: Vec<T>) -> Self {
         value.into_iter().map(T::into).collect()
+    }
+}
+
+impl WithRowId for TxTuple {
+    type RowId = PendingRowId;
+
+    fn row_id(&self) -> Self::RowId {
+        match self.first() {
+            Some(TxScalarValue::RowId(id)) => {
+                let TxRowId::Pending(id) = id else {
+                    panic!("tx scalar value must start with a pending id")
+                };
+                id.clone()
+            }
+            other => panic!("TxTuple lead with their row id, got {other:?}"),
+        }
     }
 }
 

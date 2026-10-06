@@ -30,7 +30,7 @@ fn coln_def() -> ColnDef {
 
 #[rstest]
 fn batch_block_matches_apply_batch_for_graph_fixture(theory: FlatRealm, coln_def: ColnDef) {
-    let mut store = Store::try_from_ir(theory, coln_def).expect("valid theory");
+    let mut store = Store::try_from_ir(&theory, coln_def).expect("valid theory");
 
     let assignments = vec![
         BatchAssignment {

@@ -29,4 +29,6 @@ pub enum CommitApplyError {
     ConflictPayload(CommitHash),
     #[error("Root commit {0} cannot be applied")]
     RootCommit(CommitHash),
+    #[error("empty commit not allowed")]
+    EmptyCommit,
 }
