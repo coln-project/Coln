@@ -166,7 +166,7 @@ impl<'a, P> QuotientGraph<'a, P> {
             .map(|component| {
                 let inter_edges_neighbors: Neighbors<EdgeLabel> = Vec::new();
                 let intra_edges_adjacency: Adjacency<EdgeLabel> =
-                    (0..components.len()).map(|_| Vec::new()).collect();
+                    (0..component.len()).map(|_| Vec::new()).collect();
                 let members = component
                     .iter()
                     .map(|member| {
@@ -345,5 +345,25 @@ impl<P: Predicate> fmt::Display for NegativeCycle<'_, P> {
             self.predicate.id(),
             self.identifier,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_utils::*;
+    use super::*;
+
+    #[test]
+    fn a_component_may_have_more_members_than_the_program_has_components() {
+        // One component of three members, and no EDB relation that would add
+        // components of its own.
+        let program = program(vec![
+            pred("p", &[&["q"]]),
+            pred("q", &[&["r"]]),
+            pred("r", &[&["p"]]),
+        ]);
+        let execution_order =
+            static_analysis_pipeline(&program).expect("a positive cycle is stratifiable");
+        assert_eq!(execution_order.len(), 1);
     }
 }
