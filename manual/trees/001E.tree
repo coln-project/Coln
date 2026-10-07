@@ -11,7 +11,7 @@
 \kw{end}
 }
 
-\p{If we have \code{m : StateMachine}, then \code{m.next} is a function that sends elements of \code{m.input} to elements of \code{m.output}.}
+\p{If we have \code{m : SimpleMachine}, then \code{m.next} is a function that sends elements of \code{m.input} to elements of \code{m.output}.}
 
 % Instance Example
 
@@ -38,3 +38,9 @@
 % Instance Example
 
 \p{Now, there are some ontological problems with this database schema. We cannot ask whether a person is nice one year and naughty the other year, because the nice and naughty sets for each year are disjoint. What we would really like is there to be \em{one} set of people, and then in different years they might be nice or naughty. This can be accomplished with [relations](001G).}
+
+\mvrnote{Applying functions}
+
+\mvrnote{Curried functions}
+
+\mvrnote{Dependent functions}

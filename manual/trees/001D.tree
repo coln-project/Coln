@@ -7,12 +7,20 @@
 \kw{theory} PopulatedSantaList := \kw{sig}
   Naughty : Set
   Nice : Set
-  charlie : Nice
   veruca : Naughty
+  charlie : Nice
 \kw{end}
 }
 
 \p{An element \code{m} of \code{PopulatedSantaList} consists of two collections, \code{m.Naughty} and \code{m.Nice}, along with specific elements \code{m.charlie} in \code{m.Nice} and \code{m.veruca} in \code{m.Naughty}.}
+
+\p{So, there are three layers of things here that we must be careful to distinguish:
+\ol{
+  \li{The universe \code{Set} which is the abstract type of collections,}
+  \li{A particular set \code{m.Naughty : Set} which is specified by model \code{m},}
+  \li{A particular element of that set \code{m.veruca : m.Naughty}, also specified by the model \code{m}.}
+}
+}
 
 \dbexample{
   \p{\strong{Table \code{PopulatedSantaList.Naughty}}}

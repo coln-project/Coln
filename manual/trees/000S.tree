@@ -19,4 +19,7 @@
 but can be composed to build complex combinatorial structures of sets,
 functions and relations.}
 
+% Views
+\transclude{0035}
+
 \transclude{0036}

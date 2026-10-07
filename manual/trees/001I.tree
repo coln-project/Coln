@@ -10,7 +10,7 @@
   fwd : X -> Y
   bwd : Y -> X
   bwd-fwd : (x : X) -> bwd (fwd x) = x
-  fwd-bwd : (y : Y) -> fwd (bwd x) = x
+  fwd-bwd : (y : Y) -> fwd (bwd y) = y
 \kw{end}
 }
 

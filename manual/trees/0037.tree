@@ -1,0 +1,33 @@
+\title{Rules for levels}
+\import{prelude}
+
+\ul{
+  \li{Both \code{String} and \code{Int} are sets.}
+  \li{Any element \code{X : Set} is a set and any \code{P : Prop} is a proposition.}
+  \li{The universes \code{Set} and \code{Prop} are themselves theories.}
+  \li{For any \em{set} \code{X} and two elements \code{x} and \code{y}, the equality type \code{x = y} is a proposition.}
+  \li{The level of a record type is the largest level of all its fields. For example, the record type:
+    \pre{
+      \kw{sig}
+        name : String
+        age : Int
+      \kw{end}
+    }
+    is a \em{set} because both \code{String} and \code{Int} are sets, and the record type
+    \pre{
+      \kw{sig}
+        V : Set
+        v0 v1 : V
+      \kw{end}
+    }
+    is a \em{theory}, because \code{Set} is a theory (even though) \code{V} itself is a set. The empty record type is a \em{proposition}.}
+  \li{Functions are quite restricted, and are always at least theory level. For any \em{set} \code{X} and dependent \em{theory} \code{Y x}, the function type \code{(x : X) -> Y x} is a \em{theory}. (Recall that any proposition or set can silently be considered a theory, if necessary.) Otherwise, it is a top-level type. As examples:
+    \ul{
+      \li{\code{Int -> Int} is a theory: its domain and codomain are sets.}
+      \li{\code{Int -> Set} is a theory: its domain is a set and its codomain is a theory.}
+      \li{\code{Set -> Int} is a top-level type: its domain is a theory.}
+      \li{\code{Set -> Set} is a top-level type: its domain is a theory.}
+    }
+    We have encountered these top-level functions previously using a more pleasant syntax as [parameterised theories](0034).
+  }
+}

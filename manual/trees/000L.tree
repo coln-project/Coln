@@ -10,8 +10,5 @@
 % Levels
 \transclude{0033}
 
-% Sets as views
-\transclude{0035}
-
 % Inductive types
 \transclude{001N}

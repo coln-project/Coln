@@ -1,6 +1,8 @@
 \title{Elements of record types as views}
 \import{prelude}
 
+\p{Thus far, we have not yet built \em{elements} of record types or function types inside a Coln file, only given examples of describing types the themselves. If one is using Coln purely to describe a database schema then there is no need for more.}
+
 \p{If a theory is given by a record type (using \code{\kw{sig} ... \kw{end}}), then we can produce a model of it using \code{\kw{struct} ... \kw{end}}, setting all of its fields. For example, we can reward the wrong children with the following code (using \code{SantaList} from [[001C]]).}
 
 \pre{%
@@ -22,3 +24,14 @@
 }
 
 \p{Intuitively, this assigns \code{naughty} to the set of children naughty in that year, and similarly with \code{nice}. The \code{\kw{sig}} syntax is just as in [[001H]], using the curly-brace inline syntax. And \code{m.list y .naughty child} is just a sequence of function applications and field projection. Walking through the types, we have \code{m.list : m.person -> SantaListOver m.person}, so \code{m .list y : SantaListOver m.person} and then \code{m.list y .naughty : m.person -> Prop} and finally \code{m.list y .naughty child : Prop}.}
+
+
+% \p{We can also capture more traditional database queries in this way. Suppose we have the following database.}
+
+% \pre{%
+% \kw{theory} Database := \kw{sig}
+%   Person : Set
+%   name : Person -> String
+%   age  : Person -> Int
+% \kw{end}
+% }

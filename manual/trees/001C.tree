@@ -60,3 +60,5 @@
 }
 
 \p{Each element of a collection is represented by a row with its own opaque row-id.}
+
+\mvrnote{We have not yet explained how to introduce elements of a record type \em{inside} a Coln file. This we leave to [[TODO]], where we interpret such elements as "views" of one theory into another.}

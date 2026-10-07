@@ -6,6 +6,8 @@
 \transclude{002H}
 % Coln as a type theory
 \transclude{000L}
+% Coln as a logic programming language
+\transclude{0038}
 % Coln as a database language
 \transclude{000M}
 % Coln in practice
