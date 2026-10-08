@@ -10,45 +10,107 @@ use crate::error::SyntaxError;
 use crate::frontend::Atom;
 use crate::frontend::graph_utils::vertex_degrees;
 use indexmap::{IndexMap, IndexSet};
-use std::fmt;
+use std::{fmt, marker::PhantomData};
 
-pub(super) fn static_analysis_pipeline<'a, LP: LogicalProgram>(
-    logical_program: &'a LP,
-) -> Result<Analysis<'a, LP::Predicate>, SyntaxError> {
-    let dependencies = PredicateDependencyGraph::from_logical_program(logical_program);
+/// Builds the program's graphs, checking nothing. See [`Analysis::verify`].
+pub(super) fn analyze<LP: LogicalProgram>(program: &LP) -> Analysis<'_, LP::Predicate> {
+    let dependencies = PredicateDependencyGraph::from_logical_program(program);
     let quotient = QuotientGraph::from_predicate_dep_graph(&dependencies);
-    if !quotient.is_stratifiable() {
-        // TODO: Nice error reporting.
-        return Err(SyntaxError::new("not stratifiable"));
-    }
-    Ok(Analysis {
+    Analysis {
         dependencies,
         quotient,
-    })
+        state: PhantomData,
+    }
 }
 
 /// The program's components in the order to evaluate them in, each after
 /// every component it depends on.
 pub(super) type ExecutionOrder<'a, P> = [PredicateComponent<'a, P>];
 
-/// What [`LogicalProgram::verify`] found out about a program: its predicate
-/// dependency graph, and the quotient graph of components laid over it.
+/// An [`Analysis`] state: the graphs are built, but the program may be invalid.
+pub struct Unchecked;
+
+/// An [`Analysis`] state: the program passed every check, so it may be
+/// translated.
+pub struct Verified;
+
+/// What static analysis finds out about a program: its predicate dependency
+/// graph, and the quotient graph of components laid over it.
 ///
-/// Built once, and consumed by [`LogicalProgram::prepare`], which only needs
-/// the [`execution_order`](Self::execution_order). Until then, the graphs can
-/// be read through [`components`](Self::components) and [`edges`](Self::edges),
-/// which speak in predicates rather than in the graphs' node indices.
-pub struct Analysis<'a, P: Identifiable> {
+/// [`LogicalProgram::analyze`] builds one in the [`Unchecked`] state, which
+/// [`verify`](Analysis::verify) turns into the [`Verified`] state if the
+/// program is valid. Only a verified analysis offers an
+/// [`execution_order`](Analysis::execution_order), and only it is accepted by
+/// [`LogicalProgram::prepare`]: a program cannot be translated unchecked.
+///
+/// In either state, the graphs can be read through
+/// [`components`](Self::components) and [`edges`](Self::edges), which speak
+/// in predicates rather than in the graphs' node indices, and drawn with
+/// [`dot`](Self::dot). That includes the graphs of an invalid program, which
+/// [`Rejected`] hands back.
+pub struct Analysis<'a, P: Identifiable, S = Unchecked> {
     dependencies: PredicateDependencyGraph<'a, P>,
     quotient: QuotientGraph<'a, P>,
+    state: PhantomData<S>,
 }
 
-impl<'a, P: Predicate> Analysis<'a, P> {
+impl<'a, P: Predicate> Analysis<'a, P, Unchecked> {
+    /// Checks the program: it has to be stratifiable. On failure, the analysis
+    /// comes back along with the error, so that it can still be inspected.
+    pub fn verify(self) -> Result<Analysis<'a, P, Verified>, Rejected<'a, P>> {
+        if !self.quotient.is_stratifiable() {
+            // TODO: Nice error reporting.
+            return Err(Rejected {
+                error: SyntaxError::new("not stratifiable"),
+                analysis: Box::new(self),
+            });
+        }
+        Ok(Analysis {
+            dependencies: self.dependencies,
+            quotient: self.quotient,
+            state: PhantomData,
+        })
+    }
+}
+
+impl<'a, P: Predicate> Analysis<'a, P, Verified> {
     pub(super) fn execution_order(&self) -> &ExecutionOrder<'a, P> {
         &self.quotient.components
     }
+}
 
-    /// The components, in [execution order](Self::execution_order).
+/// An [`Analysis`] whose program failed [verification](Analysis::verify),
+/// along with why.
+///
+/// Deliberately not convertible into a [`SyntaxError`] by `?`: an impl of
+/// `From` for it makes `?` ambiguous wherever the error type is inferred.
+/// Take [`error`](Self::error) instead.
+pub struct Rejected<'a, P: Identifiable> {
+    pub error: SyntaxError,
+    /// Boxed to keep the error path of a verification small.
+    pub analysis: Box<Analysis<'a, P>>,
+}
+
+/// Shows the error only, so that a rejection can be `unwrap`ped.
+impl<P: Identifiable> fmt::Debug for Rejected<'_, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Rejected")
+            .field("error", &self.error)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Shows nothing of the graphs, which [`dot`](Analysis::dot) draws instead,
+/// so that a verification can be `unwrap`ped either way.
+impl<P: Identifiable, S> fmt::Debug for Analysis<'_, P, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Analysis").finish_non_exhaustive()
+    }
+}
+
+impl<'a, P: Predicate, S> Analysis<'a, P, S> {
+    /// The components, each after every component it depends on, which is the
+    /// order a [`Verified`] analysis executes them in.
     pub(super) fn components(&self) -> impl Iterator<Item = ComponentView<'_, 'a, P>> {
         let quotient = &self.quotient;
         quotient
@@ -92,7 +154,7 @@ impl<'a, P: Predicate> Analysis<'a, P> {
 
 /// A component of an [`Analysis`], as its graphs place it.
 pub(super) struct ComponentView<'g, 'a, P> {
-    /// Its position in the [execution order](Analysis::execution_order).
+    /// Its position in the order of [`components`](Analysis::components).
     pub(super) position: usize,
     pub(super) component: &'g PredicateComponent<'a, P>,
     /// Depends on no other component, that is, an input of the dataflow.
@@ -443,8 +505,26 @@ mod tests {
             pred("q", &[&["r"]]),
             pred("r", &[&["p"]]),
         ]);
-        let analysis =
-            static_analysis_pipeline(&program).expect("a positive cycle is stratifiable");
+        let analysis = analyze(&program)
+            .verify()
+            .expect("a positive cycle is stratifiable");
         assert_eq!(analysis.execution_order().len(), 1);
+    }
+
+    #[test]
+    fn a_rejected_program_hands_its_analysis_back() {
+        // `p` negates itself, so `p` has no stratification.
+        let program = program(vec![pred("q", &[&[]]), pred("p", &[&["q", "!p"]])]);
+        let rejected = analyze(&program)
+            .verify()
+            .expect_err("a negative cycle is not stratifiable");
+        assert_eq!(rejected.error.message(), "not stratifiable");
+        assert!(
+            rejected
+                .analysis
+                .edges()
+                .any(|edge| edge.negative && edge.intra),
+            "the analysis still shows the negative cycle"
+        );
     }
 }

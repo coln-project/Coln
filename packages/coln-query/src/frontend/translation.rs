@@ -59,6 +59,31 @@ use crate::{
 use indexmap::{IndexMap, IndexSet};
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 
+/// Code translated from a program that passed
+/// [verification](super::Analysis::verify), as
+/// [`LogicalProgram::prepare`](super::LogicalProgram::prepare) hands it out.
+///
+/// Its field is private, so this module's translator is the only source of
+/// one: whatever takes a `Prepared` rather than a bare [`QueryIr`] takes code
+/// of a verified program. Which program, the type does not say.
+#[derive(Debug)]
+pub struct Prepared(QueryIr);
+
+impl Prepared {
+    pub fn into_code(self) -> QueryIr {
+        self.0
+    }
+}
+
+/// Reading the code certifies nothing, so that is free.
+impl std::ops::Deref for Prepared {
+    type Target = QueryIr;
+
+    fn deref(&self) -> &QueryIr {
+        &self.0
+    }
+}
+
 /// The rule type of a program's predicates, and the pieces hanging off it. Named
 /// because the paths through the associated types are otherwise unreadable.
 type RuleOf<P> = <P as AggregateRules>::Rule;
@@ -92,11 +117,11 @@ impl<'a, P: Predicate> Translator<'a, P> {
     pub(super) fn run(
         mut self,
         program: &'a ExecutionOrder<'a, P>,
-    ) -> Result<QueryIr, SyntaxError> {
+    ) -> Result<Prepared, SyntaxError> {
         for component in program.iter() {
             self.component(component)?;
         }
-        Ok(self.ir)
+        Ok(Prepared(self.ir))
     }
 
     /// Emits one component: a statement per rule, then the statement binding the

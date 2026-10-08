@@ -10,6 +10,7 @@ mod test_utils;
 mod translation;
 mod visualize;
 
+pub use translation::Prepared;
 // Unused until a caller outside this module renders an analysis.
 #[allow(unused_imports)]
 pub use visualize::Columns;
@@ -17,13 +18,13 @@ pub use visualize::Columns;
 use crate::{
     error::SyntaxError,
     frontend::{
-        analysis::{Analysis, ExecutionOrder, static_analysis_pipeline},
+        analysis::{Analysis, ExecutionOrder, Rejected, Verified, analyze},
         display::{
             AtomDisplay, CondDisplay, PredicateDisplay, ProgramDisplay, RuleDisplay, separated,
         },
         translation::Translator,
     },
-    host::{QueryIr, expr::Literal, operator::Operator},
+    host::{expr::Literal, operator::Operator},
     relational::schema::Column,
     scalarial::ScalarType,
 };
@@ -59,8 +60,8 @@ pub trait LogicalProgram {
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate>;
 
     /// If the program exposes `predicate`'s relation as an output. One that is
-    /// not is still computed for the predicates reading it, but reports
-    /// nowhere, like a helper predicate a frontend introduces.
+    /// not is either dead code or computed for the predicates reading it,
+    /// but reports nowhere, like a helper predicate a frontend may introduce.
     ///
     /// Asked of the program rather than of the predicate, because which
     /// relations a program exposes is a property of the program as a whole.
@@ -70,20 +71,35 @@ pub trait LogicalProgram {
         predicate.is_idb_predicate()
     }
 
-    fn verify<'a>(&'a self) -> Result<Analysis<'a, Self::Predicate>, SyntaxError>
+    /// Builds the program's graphs, checking nothing, so that even an invalid
+    /// program's can be inspected. See [`Analysis`].
+    fn analyze(&self) -> Analysis<'_, Self::Predicate>
     where
         Self: Sized,
     {
-        println!("{:#}", self.display());
-        static_analysis_pipeline(self)
+        analyze(self)
     }
 
+    /// Builds the program's graphs and checks the program, which is what
+    /// [`prepare`](Self::prepare) requires. Shorthand for
+    /// `self.analyze().verify()`.
+    fn verify(
+        &self,
+    ) -> Result<Analysis<'_, Self::Predicate, Verified>, Rejected<'_, Self::Predicate>>
+    where
+        Self: Sized,
+    {
+        self.analyze().verify()
+    }
+
+    /// Translates the program, which only a [`Verified`] analysis permits, so
+    /// the [`Prepared`] code it returns is known to stem from a valid program.
     /// Consumes the `analysis`, so its graphs only live until the program is
     /// translated.
     fn prepare<'a>(
         &'a self,
-        analysis: Analysis<'a, Self::Predicate>,
-    ) -> Result<QueryIr, SyntaxError> {
+        analysis: Analysis<'a, Self::Predicate, Verified>,
+    ) -> Result<Prepared, SyntaxError> {
         let outputs = self
             .predicates()
             .filter(|predicate| self.is_output(predicate))

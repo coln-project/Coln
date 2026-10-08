@@ -146,17 +146,22 @@ impl ColnQuery {
                 // The sink has not reported anything in this iteration.
                 continue;
             }
-            if let Some(derived_view_meta) = self.flir_program.derived_view_meta(sink_id) {
+            if let Some(derived_view_meta) = self.flir_program.logical().derived_view_meta(sink_id)
+            {
                 // Safety: Due to every sink being unique, we have at most one
                 // TableDelta per output entity.
                 derived_data_delta.unsafe_extend(Some(delta));
             } else {
-                let sink_meta = self.flir_program.constraint_meta(sink_id).ok_or_else(|| {
-                    RuntimeError::new(format!(
-                        "Bug: FLIR program does not know output sink {}",
-                        sink_id
-                    ))
-                })?;
+                let sink_meta = self
+                    .flir_program
+                    .logical()
+                    .constraint_meta(sink_id)
+                    .ok_or_else(|| {
+                        RuntimeError::new(format!(
+                            "Bug: FLIR program does not know output sink {}",
+                            sink_id
+                        ))
+                    })?;
                 match sink_meta.kind() {
                     // How to deal with the schema mismatch between coln-query,
                     // coln-store, and coln-compiler? Reporting may require the

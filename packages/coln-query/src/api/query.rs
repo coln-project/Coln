@@ -7,7 +7,7 @@
 //! [QueryIr] which can eventually be executed by the query engine(s).
 
 use crate::error::{Frame, SyntaxError};
-use crate::frontend::{self, Identifiable, LogicalProgram, RulePredicate};
+use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, RulePredicate};
 use crate::host::{
     QueryIr,
     expr::{self, Literal},
@@ -36,19 +36,35 @@ type BaseTableName = EntityRef;
 type DerivedViewName = EntityRef;
 type ConstraintName = EntityRef;
 
-/// Coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to.
+/// Coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to,
+/// ready to run.
 ///
-/// The [`Catalog`] half is served straight out of [`base_tables`](Self::base_tables),
-/// which stores FLIR's own richer [`ColnSchema<BaseTable>`](ColnSchema) which includes the schema
+/// The only way to one is [`new`](Self::new), which takes [`Prepared`] code
+/// only, so a `FlirProgram`'s code always stems from a verified program. For a
+/// program that may be invalid, stop at its [`FlirLogicalProgram`].
+///
+/// The [`Catalog`] half is served straight out of the logical program's
+/// [`base_tables`](FlirLogicalProgram::base_tables), which stores FLIR's own
+/// richer [`ColnSchema<BaseTable>`](ColnSchema) which includes the schema
 /// view according to coln-compiler and coln-store next coln-query's.
 #[derive(Debug)]
 pub struct FlirProgram {
+    logical: FlirLogicalProgram,
+    /// The raw, that is, unresolved and unoptimized, query IR statements
+    /// restating the logical program in relational algebra.
+    code: QueryIr,
+}
+
+/// What a [`FlatRealm`] lowers to as a [`LogicalProgram`], that is, before
+/// it is checked and translated into a [`FlirProgram`].
+///
+/// Its [analysis](LogicalProgram::analyze) can be inspected, and drawn, even
+/// if the program turns out invalid.
+#[derive(Debug)]
+pub struct FlirLogicalProgram {
     /// The logical query program which is essentially Datalog.
     predicates: Vec<RulePredicate<FlirRule>>,
-    /// The raw, that is, unresolved and unoptimized, query IR statements
-    /// restating [Self::predicates] in relational algebra.
-    code: QueryIr,
-    /// The declared base tables. Doubles as this program's [`Catalog`]: every
+    /// The declared base tables. Doubles as the [`FlirProgram`]'s [`Catalog`]: every
     /// [`SourceExpr`](crate::relational::expr::SourceExpr) the lowering mints
     /// names one of these.
     base_tables: IndexMap<BaseTableName, PredicateMeta<BaseTable>>,
@@ -174,6 +190,37 @@ impl From<&ColnSchema<DerivedView>> for TableSchema {
 }
 
 impl FlirProgram {
+    /// Lowers `flat_realm` all the way: [`FlirLogicalProgram::from_flat_realm`],
+    /// then [verification](LogicalProgram::verify) and
+    /// [translation](LogicalProgram::prepare), then [`new`](Self::new).
+    pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
+        let logical = FlirLogicalProgram::from_flat_realm(flat_realm)?;
+        let analysis = logical.verify().map_err(|rejected| rejected.error)?;
+        let code = logical.prepare(analysis)?;
+        Ok(Self::new(logical, code))
+    }
+
+    /// Pairs `logical` with the `code` its [`prepare`](LogicalProgram::prepare)
+    /// returned. Takes [`Prepared`] code only, so the code is known to stem
+    /// from a verified program. That it stems from `logical`, rather than from
+    /// another program, is up to the caller.
+    ///
+    /// Translating first and pairing after is what lets the caller keep the
+    /// [analysis](LogicalProgram::analyze) to itself until then, to inspect
+    /// or draw it, without building it twice.
+    pub fn new(logical: FlirLogicalProgram, code: Prepared) -> Self {
+        FlirProgram {
+            logical,
+            code: code.into_code(),
+        }
+    }
+
+    pub fn logical(&self) -> &FlirLogicalProgram {
+        &self.logical
+    }
+}
+
+impl FlirLogicalProgram {
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
         let mut ctx = FlirContext::default();
 
@@ -227,18 +274,12 @@ impl FlirProgram {
                 .collect()
         }
 
-        let mut program = FlirProgram {
+        Ok(FlirLogicalProgram {
             predicates,
-            code: QueryIr::new(vec![]),
             base_tables: remap(ctx.base_tables),
             derived_views: remap(ctx.derived_views),
             constraints: remap(ctx.constraints),
-        };
-
-        let analysis = program.verify()?;
-        program.code = program.prepare(analysis)?;
-
-        Ok(program)
+        })
     }
 
     pub fn constraint_meta(&self, sink: &SinkId) -> Option<&ConstraintMeta> {
@@ -258,15 +299,17 @@ impl Catalog for FlirProgram {
     /// Only base tables answer here: a rule's output is bound to a host variable
     /// and referenced by [`VarExpr`](expr::VarExpr), never by a
     /// [`SourceExpr`](crate::relational::expr::SourceExpr), so
-    /// [`derived_views`](Self::derived_views) is no part of the catalog.
+    /// [`derived_views`](FlirLogicalProgram::derived_views) is no part of the
+    /// catalog.
     fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>> {
-        self.base_tables
+        self.logical
+            .base_tables
             .get(&BaseTableName::from(id))
             .map(|meta| Cow::Borrowed(&meta.output_schema))
     }
 }
 
-impl LogicalProgram for FlirProgram {
+impl LogicalProgram for FlirLogicalProgram {
     type Predicate = RulePredicate<FlirRule>;
 
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
@@ -1051,39 +1094,76 @@ impl From<QueryEngineScalarType> for ScalarType {
 mod tests {
     use super::*;
 
-    fn translate_json_flir(file_name: &str) -> FlirProgram {
+    /// Lowers `file_name` step by step, rather than by
+    /// [`FlirProgram::from_flat_realm`], such that the reason is shown:
+    /// a rejected program's quotient graph is part of the panic message along
+    /// with its validation error (e.g. non-stratifiable).
+    fn query_program_from_json_flir(file_name: &str) -> FlirProgram {
+        let logical = logical_program_from_json_flir(file_name);
+        let verified = logical.verify().unwrap_or_else(|rejected| {
+            panic!(
+                "{file_name} an invalid logical program: {}\n{}",
+                rejected.error,
+                rejected.analysis.dot(frontend::Columns::Hidden)
+            )
+        });
+        let code = logical
+            .prepare(verified)
+            .unwrap_or_else(|err| panic!("{file_name} cannot be translated into query ir: {err}"));
+        FlirProgram::new(logical, code)
+    }
+
+    fn logical_program_from_json_flir(file_name: &str) -> FlirLogicalProgram {
         let flat_realm = coln_flir_rs::test_utils::load_theory_from_json(file_name);
-        FlirProgram::from_flat_realm(&flat_realm).unwrap_or_else(|err| {
-            panic!("{file_name} is convertible to a query program but: {err}")
+        FlirLogicalProgram::from_flat_realm(&flat_realm).unwrap_or_else(|err| {
+            panic!("{file_name} can be JSON-parsed but no (unverified) logical program can be made of it: {err}")
         })
     }
 
     #[test]
-    fn graph_flir() {
-        let program = translate_json_flir("GraphRealm.json");
-        println!("{:#}", program.display());
+    fn graph_flir() -> Result<(), SyntaxError> {
+        let logical = logical_program_from_json_flir("GraphRealm.json");
+        println!("{:#}", logical.display());
+        let analysis = logical.analyze();
+        println!("{:#}", analysis.dot(frontend::Columns::Hidden));
+        println!("{:#}", analysis.dot(frontend::Columns::Shown));
+        let code = logical.prepare(analysis.verify().expect("program is valid"))?;
+        let program = FlirProgram::new(logical, code);
         println!("{}", program.to_tree());
+        Ok(())
     }
 
     #[test]
-    fn graph_of_graphs_flir() {
-        let program = translate_json_flir("GraphOfGraphsRealm.json");
-        println!("{:#}", program.display());
+    fn graph_of_graphs_flir() -> Result<(), SyntaxError> {
+        let logical = logical_program_from_json_flir("GraphOfGraphsRealm.json");
+        println!("{:#}", logical.display());
+        let analysis = logical.analyze();
+        println!("{:#}", analysis.dot(frontend::Columns::Hidden));
+        println!("{:#}", analysis.dot(frontend::Columns::Shown));
+        let code = logical.prepare(analysis.verify().expect("program is valid"))?;
+        let program = FlirProgram::new(logical, code);
         println!("{}", program.to_tree());
+        Ok(())
     }
 
     #[test]
     fn triangle_flir() {
-        let program = translate_json_flir("TriangleRealm.json");
-        println!("{:#}", program.display());
+        let program = query_program_from_json_flir("TriangleRealm.json");
+        println!("{:#}", program.logical().display());
         println!("{}", program.to_tree());
     }
 
     #[test]
-    fn transitive_closure_flir() {
-        let program = translate_json_flir("TransitiveClosureRealm.json");
-        println!("{:#}", program.display());
+    fn transitive_closure_flir() -> Result<(), SyntaxError> {
+        let logical = logical_program_from_json_flir("TransitiveClosureRealm.json");
+        println!("{:#}", logical.display());
+        let analysis = logical.analyze();
+        println!("{:#}", analysis.dot(frontend::Columns::Hidden));
+        println!("{:#}", analysis.dot(frontend::Columns::Shown));
+        let code = logical.prepare(analysis.verify().expect("program is valid"))?;
+        let program = FlirProgram::new(logical, code);
         println!("{}", program.to_tree());
+        Ok(())
     }
 
     /// Expected to panic until a compiler bug is fixed: the compiler emits an
@@ -1091,10 +1171,10 @@ mod tests {
     /// (in rule `init.trans-closure.snoc.collect`), but derived views carry no row id.
     /// Once the compiler is fixed, this test fails and drop the `should_panic`.
     #[test]
-    #[should_panic(expected = "binds compiler column RowId")]
+    // #[should_panic(expected = "binds compiler column RowId")]
     fn transitive_closure_set_flir() {
-        let program = translate_json_flir("TransitiveClosureSetRealm.json");
-        println!("{:#}", program.display());
+        let program = query_program_from_json_flir("TransitiveClosureSetRealm.json");
+        println!("{:#}", program.logical().display());
         println!("{}", program.to_tree());
     }
 }

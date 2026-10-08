@@ -24,8 +24,8 @@ use super::{
 use std::{collections::HashMap, fmt};
 
 /// See the [module docs](self).
-pub struct Dot<'g, 'a, P: Identifiable> {
-    analysis: &'g Analysis<'a, P>,
+pub struct Dot<'g, 'a, P: Identifiable, S> {
+    analysis: &'g Analysis<'a, P, S>,
     columns: Columns,
 }
 
@@ -36,9 +36,10 @@ pub enum Columns {
     Hidden,
 }
 
-impl<'a, P: Predicate> Analysis<'a, P> {
-    /// The analysis in GraphViz's DOT language, as for `dot -Tsvg`.
-    pub fn dot(&self, columns: Columns) -> Dot<'_, 'a, P> {
+impl<'a, P: Predicate, S> Analysis<'a, P, S> {
+    /// The analysis in GraphViz's DOT language, as for `dot -Tsvg`. In either
+    /// state, so that an invalid program's graphs can be drawn, too.
+    pub fn dot(&self, columns: Columns) -> Dot<'_, 'a, P, S> {
         Dot {
             analysis: self,
             columns,
@@ -156,15 +157,14 @@ impl fmt::Display for Edge {
     }
 }
 
-impl<P: Predicate> fmt::Display for Dot<'_, '_, P> {
+impl<P: Predicate, S> fmt::Display for Dot<'_, '_, P, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let analysis = self.analysis;
         // Node ids are minted rather than taken from the predicates' names,
         // which may contain anything. The names go into labels instead.
         let nodes: HashMap<&P::Identifier, usize> = analysis
-            .execution_order()
-            .iter()
-            .flat_map(Component::members)
+            .components()
+            .flat_map(|view| view.component.members())
             .enumerate()
             .map(|(node, predicate)| (predicate.id(), node))
             .collect();
