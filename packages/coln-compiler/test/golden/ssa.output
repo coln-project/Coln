@@ -4,7 +4,7 @@ in mode: Conjunctive
 type: (X : Set) -> (R : (x : X) -> (y : X) -> Set) -> (P : X -> X -> Set) -> Theory
 value: X => R => P => sig
   refl : (x : X) -> P x x
-  snoc : (x : X) -> (y : X) -> (z : X) -> P x y -> R y z -> P x z
+  snoc : (x y z : X) -> P x y -> R y z -> P x z
 end
 global entry named LinearOrder
 in mode: Conjunctive
@@ -19,7 +19,7 @@ value: sig
   prev/next : (x : car) -> prev (next x) = x
   follows : car -> car -> Set
   follows/is-trans-closure : IsTransClosure car (x => y => next x = y) follows
-  acyclic : (x : car) -> (y : car) -> follows x y -> follows y x -> x = y
+  acyclic : (x y : car) -> follows x y -> follows y x -> x = y
   first-is-top : (x : car) -> follows first x
   last-is-bot : (x : car) -> follows x last
 end

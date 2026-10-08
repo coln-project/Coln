@@ -12,9 +12,19 @@ import Coln.Core.Value qualified as V
 -- Abstractions
 --------------------------------------------------------------------------------
 
-data Abs (f :: Case -> Type) (c :: Case) = Abs Name (f c) | AbsConst (f c)
+data Abs (f :: Case -> Type) (c :: Case) = Abs
+  { binding :: AbsEntry
+  , body :: f c
+  }
 
 deriving instance (Show (f c)) => Show (Abs f c)
+
+data MultiAbs (f :: Case -> Type) (c :: Case) = MultiAbs
+  { bindings :: [AbsEntry]
+  , body :: f c
+  }
+
+deriving instance (Show (f c)) => Show (MultiAbs f c)
 
 data MemoedGlobal = MemoedGlobal
   { name :: Name
@@ -43,14 +53,14 @@ deriving instance Show (El c)
 data FunctionType ty = FunctionType
   { variant :: FunctionVariant
   , dom :: ty N
-  , cod :: Abs ty N
+  , cod :: MultiAbs ty N
   }
 
 deriving instance (Show (ty N)) => Show (FunctionType ty)
 
 data RecordType ty = RecordType
   { level :: Level
-  , fieldTypes :: Dict (ty N)
+  , fieldTypes :: MultiDict (ty N)
   }
 
 deriving instance (Show (ty N)) => Show (RecordType ty)

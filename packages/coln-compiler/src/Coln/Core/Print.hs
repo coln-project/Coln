@@ -14,6 +14,7 @@ import Coln.Core.Params
 import Coln.Core.Readback
 import Coln.Core.Syntax
 import Coln.Frontend.Notation
+import Data.Maybe (mapMaybe)
 import Data.String (fromString)
 import Data.Text qualified as T
 import FNotation qualified as N
@@ -48,9 +49,9 @@ instance ToNotation (El e) where
     GlobalVar mg -> N.Ident mg.name ()
     Code _ ty -> toNotation xs ty
     App _ f t -> N.Juxt (toNotation xs f) (toNotation xs t)
-    Lam _ _ (Abs x t) ->
+    Lam _ _ (Abs (Named x) t) ->
       N.Infix (N.Ident x ()) (N.Keyword "=>" ()) (toNotation (xs :> x) t)
-    Lam _ _ (AbsConst t) ->
+    Lam _ _ (Abs Anonymous t) ->
       N.Infix (N.Ident "_" ()) (N.Keyword "=>" ()) (toNotation xs t)
     Proj _ t f -> N.Juxt (toNotation xs t) (N.Field f ())
     Cons _ d ->
@@ -65,26 +66,38 @@ instance ToNotation (El e) where
 nbinding :: Name -> N.Ntn0 -> N.Ntn0
 nbinding x n = N.Infix (N.Ident x ()) (N.Keyword ":" ()) n
 
+multibinding :: [AbsEntry] -> N.Ntn0 -> N.Ntn0
+multibinding xs n = N.Infix (foldl1 N.Juxt idents) (N.Keyword ":" ()) n
+ where
+  idents = flip fmap xs \case
+    Anonymous -> N.Ident "_" ()
+    Named x -> N.Ident x ()
+
 instance ToNotation (Ty e) where
   toNotation xs = \case
     U u -> N.Keyword (fromString $ show $ pretty u) ()
     Decode _ t -> toNotation xs t
     Function f -> case f.cod of
-      Abs x b ->
-        N.Infix
-          (nbinding x (toNotation xs f.dom))
-          (N.Keyword "->" ())
-          (toNotation (xs :> x) b)
-      AbsConst b ->
+      MultiAbs [Anonymous] b ->
+        -- This does need to be a special case so ordinary functions can be simply (A -> B)
         N.Infix
           (toNotation xs f.dom)
           (N.Keyword "->" ())
           (toNotation xs b)
+      MultiAbs ns b ->
+        N.Infix
+          (multibinding ns (toNotation xs f.dom))
+          (N.Keyword "->" ())
+          (toNotation (xs <> fromList names) b)
+       where
+        names = flip mapMaybe ns \case
+          Anonymous -> Nothing
+          Named n -> Just n
     Record r -> N.Block "sig" Nothing (go xs $ toList r.fieldTypes) ()
      where
       go _ [] = []
-      go xs' ((y, a) : pairs') =
-        nbinding y (toNotation xs' a) : go (xs' :> y) pairs'
+      go xs' ((ys, a) : pairs') =
+        multibinding (fmap Named ys) (toNotation xs' a) : go (xs' <> fromList ys) pairs'
     Eq eq ->
       N.Infix
         (toNotation xs eq.lhs)
