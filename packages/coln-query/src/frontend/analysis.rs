@@ -9,23 +9,108 @@ use super::{AggregateRules, Component, IdOf, Identifiable, LogicalProgram, Predi
 use crate::error::SyntaxError;
 use crate::frontend::Atom;
 use crate::frontend::graph_utils::vertex_degrees;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::fmt;
 
 pub(super) fn static_analysis_pipeline<'a, LP: LogicalProgram>(
     logical_program: &'a LP,
-) -> Result<ExecutionOrder<'a, LP::Predicate>, SyntaxError> {
-    let predicate_dep_graph = PredicateDependencyGraph::from_logical_program(logical_program);
-    let quotient_graph =
-        QuotientGraph::<LP::Predicate>::from_predicate_dep_graph(&predicate_dep_graph);
-    if !quotient_graph.is_stratifiable() {
+) -> Result<Analysis<'a, LP::Predicate>, SyntaxError> {
+    let dependencies = PredicateDependencyGraph::from_logical_program(logical_program);
+    let quotient = QuotientGraph::from_predicate_dep_graph(&dependencies);
+    if !quotient.is_stratifiable() {
         // TODO: Nice error reporting.
         return Err(SyntaxError::new("not stratifiable"));
     }
-    Ok(quotient_graph.into_execution_order())
+    Ok(Analysis {
+        dependencies,
+        quotient,
+    })
 }
 
-pub(super) type ExecutionOrder<'a, P> = Vec<PredicateComponent<'a, P>>;
+/// The program's components in the order to evaluate them in, each after
+/// every component it depends on.
+pub(super) type ExecutionOrder<'a, P> = [PredicateComponent<'a, P>];
+
+/// What [`LogicalProgram::verify`] found out about a program: its predicate
+/// dependency graph, and the quotient graph of components laid over it.
+///
+/// Built once, and consumed by [`LogicalProgram::prepare`], which only needs
+/// the [`execution_order`](Self::execution_order). Until then, the graphs can
+/// be read through [`components`](Self::components) and [`edges`](Self::edges),
+/// which speak in predicates rather than in the graphs' node indices.
+pub struct Analysis<'a, P: Identifiable> {
+    dependencies: PredicateDependencyGraph<'a, P>,
+    quotient: QuotientGraph<'a, P>,
+}
+
+impl<'a, P: Predicate> Analysis<'a, P> {
+    pub(super) fn execution_order(&self) -> &ExecutionOrder<'a, P> {
+        &self.quotient.components
+    }
+
+    /// The components, in [execution order](Self::execution_order).
+    pub(super) fn components(&self) -> impl Iterator<Item = ComponentView<'_, 'a, P>> {
+        let quotient = &self.quotient;
+        quotient
+            .components
+            .iter()
+            .enumerate()
+            .map(|(position, component)| ComponentView {
+                position,
+                component,
+                is_source: quotient.sources.contains(&position),
+                is_sink: quotient.sinks.contains(&position),
+            })
+    }
+
+    /// Every dependency between two predicates, once per polarity: a
+    /// predicate reading another in several atoms of the same polarity
+    /// depends on it once.
+    pub(super) fn edges(&self) -> impl Iterator<Item = DependencyEdge<'a, P>> {
+        let dependencies = &self.dependencies;
+        let component_of = &self.quotient.component_of;
+        let distinct: IndexSet<(NodeIdx, NodeIdx, EdgeLabel)> = dependencies
+            .adjacency
+            .iter()
+            .enumerate()
+            .flat_map(|(from, neighbors)| {
+                neighbors
+                    .iter()
+                    .map(move |neighbor| (from, neighbor.node, neighbor.data))
+            })
+            .collect();
+        distinct
+            .into_iter()
+            .map(move |(from, to, label)| DependencyEdge {
+                from: dependencies.predicate(from),
+                to: dependencies.predicate(to),
+                negative: matches!(label, EdgeLabel::Negative),
+                intra: component_of[from] == component_of[to],
+            })
+    }
+}
+
+/// A component of an [`Analysis`], as its graphs place it.
+pub(super) struct ComponentView<'g, 'a, P> {
+    /// Its position in the [execution order](Analysis::execution_order).
+    pub(super) position: usize,
+    pub(super) component: &'g PredicateComponent<'a, P>,
+    /// Depends on no other component, that is, an input of the dataflow.
+    pub(super) is_source: bool,
+    /// No other component depends on it, that is, an output of the dataflow.
+    pub(super) is_sink: bool,
+}
+
+/// A dependency of predicate `from` on predicate `to`, which `from` mentions
+/// in one of its body's atoms.
+pub(super) struct DependencyEdge<'a, P> {
+    pub(super) from: &'a P,
+    pub(super) to: &'a P,
+    /// Mentioned in a negated atom.
+    pub(super) negative: bool,
+    /// Both ends belong to the same component.
+    pub(super) intra: bool,
+}
 type NodeIdx = usize;
 type Neighbors<EdgeData> = Vec<AdjacentNode<EdgeData>>;
 type Adjacency<EdgeData> = Vec<Neighbors<EdgeData>>;
@@ -37,7 +122,7 @@ struct AdjacentNode<Data> {
     data: Data,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum EdgeLabel {
     /// An edge is positive if its dependency `predA -> predB` is not negated.
     Positive,
@@ -77,18 +162,17 @@ impl<P: Predicate> Component for PredicateComponent<'_, P> {
 /// A graph in which every vertex is a [LogicalProgram::Predicate] and each
 /// edge `p1 -> p2`, whenever `p1` depends on `p2`, that is, `p1` mentions `p2`
 /// in one of its body's [atoms](Atom).
-struct PredicateDependencyGraph<'a, LP: LogicalProgram> {
-    predicates: IndexMap<&'a IdOf<LP::Predicate>, &'a LP::Predicate>,
+struct PredicateDependencyGraph<'a, P: Identifiable> {
+    predicates: IndexMap<&'a IdOf<P>, &'a P>,
     adjacency: Adjacency<EdgeLabel>,
 }
 
-impl<'a, LP: LogicalProgram> PredicateDependencyGraph<'a, LP> {
-    fn from_logical_program(program: &'a LP) -> PredicateDependencyGraph<'a, LP> {
+impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
+    fn from_logical_program<LP: LogicalProgram<Predicate = P>>(program: &'a LP) -> Self {
         // A predicate's position in `predicates` is its node id in the graphs
         // computed later, and the map's keys are what atoms are tested against
-        // to compute the dependencies. This mapping is local to this function,
-        // so the node ids are stable only within the context of this function.
-        let predicates: IndexMap<&'a IdOf<LP::Predicate>, &'a LP::Predicate> = program
+        // to compute the dependencies.
+        let predicates: IndexMap<&'a IdOf<P>, &'a P> = program
             .predicates()
             .map(|predicate| (predicate.id(), predicate))
             // TODO: This silently overwrites.
@@ -121,6 +205,14 @@ impl<'a, LP: LogicalProgram> PredicateDependencyGraph<'a, LP> {
             adjacency,
         }
     }
+
+    /// The predicate at node `idx`.
+    fn predicate(&self, idx: NodeIdx) -> &'a P {
+        self.predicates
+            .get_index(idx)
+            .map(|(_, predicate)| *predicate)
+            .expect("valid node idx")
+    }
 }
 
 /// The QuotientGraph is guaranteed to be a directed acyclic graph (DAG).
@@ -145,10 +237,8 @@ struct QuotientGraph<'a, P> {
     sinks: Vec<NodeIdx>,
 }
 
-impl<'a, P> QuotientGraph<'a, P> {
-    fn from_predicate_dep_graph<LP: LogicalProgram>(
-        graph: &PredicateDependencyGraph<'a, LP>,
-    ) -> QuotientGraph<'a, LP::Predicate> {
+impl<'a, P: Predicate> QuotientGraph<'a, P> {
+    fn from_predicate_dep_graph(graph: &PredicateDependencyGraph<'a, P>) -> Self {
         let gabow::Sccs {
             components,
             component_of,
@@ -161,7 +251,7 @@ impl<'a, P> QuotientGraph<'a, P> {
         );
         let (mut inter_adjacency, mut predicate_components): (
             Adjacency<EdgeLabel>,
-            Vec<PredicateComponent<LP::Predicate>>,
+            Vec<PredicateComponent<P>>,
         ) = components
             .iter()
             .map(|component| {
@@ -170,14 +260,8 @@ impl<'a, P> QuotientGraph<'a, P> {
                     (0..component.len()).map(|_| Vec::new()).collect();
                 let members = component
                     .iter()
-                    .map(|member| {
-                        *graph
-                            .predicates
-                            .get_index(*member)
-                            .expect("valid node idx")
-                            .1
-                    })
-                    .collect::<Vec<&LP::Predicate>>();
+                    .map(|member| graph.predicate(*member))
+                    .collect::<Vec<&P>>();
                 let predicate_component = PredicateComponent {
                     members,
                     intra_adjacency: intra_edges_adjacency,
@@ -309,10 +393,6 @@ impl<'a, P> QuotientGraph<'a, P> {
     fn dead_code_analysis() {
         todo!("Some day do dead code analysis")
     }
-
-    fn into_execution_order(self) -> ExecutionOrder<'a, P> {
-        self.components
-    }
 }
 
 // TODO: Report negative cycles properly.
@@ -363,8 +443,8 @@ mod tests {
             pred("q", &[&["r"]]),
             pred("r", &[&["p"]]),
         ]);
-        let execution_order =
+        let analysis =
             static_analysis_pipeline(&program).expect("a positive cycle is stratifiable");
-        assert_eq!(execution_order.len(), 1);
+        assert_eq!(analysis.execution_order().len(), 1);
     }
 }

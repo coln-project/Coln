@@ -235,8 +235,8 @@ impl FlirProgram {
             constraints: remap(ctx.constraints),
         };
 
-        let execution_order = program.verify()?;
-        program.code = program.prepare(execution_order)?;
+        let analysis = program.verify()?;
+        program.code = program.prepare(analysis)?;
 
         Ok(program)
     }

@@ -8,11 +8,16 @@ mod graph_utils;
 #[cfg(test)]
 mod test_utils;
 mod translation;
+mod visualize;
+
+// Unused until a caller outside this module renders an analysis.
+#[allow(unused_imports)]
+pub use visualize::Columns;
 
 use crate::{
     error::SyntaxError,
     frontend::{
-        analysis::{ExecutionOrder, static_analysis_pipeline},
+        analysis::{Analysis, ExecutionOrder, static_analysis_pipeline},
         display::{
             AtomDisplay, CondDisplay, PredicateDisplay, ProgramDisplay, RuleDisplay, separated,
         },
@@ -65,7 +70,7 @@ pub trait LogicalProgram {
         predicate.is_idb_predicate()
     }
 
-    fn verify<'a>(&'a self) -> Result<ExecutionOrder<'a, Self::Predicate>, SyntaxError>
+    fn verify<'a>(&'a self) -> Result<Analysis<'a, Self::Predicate>, SyntaxError>
     where
         Self: Sized,
     {
@@ -73,16 +78,18 @@ pub trait LogicalProgram {
         static_analysis_pipeline(self)
     }
 
+    /// Consumes the `analysis`, so its graphs only live until the program is
+    /// translated.
     fn prepare<'a>(
         &'a self,
-        exec_order: ExecutionOrder<'a, Self::Predicate>,
+        analysis: Analysis<'a, Self::Predicate>,
     ) -> Result<QueryIr, SyntaxError> {
         let outputs = self
             .predicates()
             .filter(|predicate| self.is_output(predicate))
             .map(Identifiable::id)
             .collect();
-        Translator::new(outputs).run(&exec_order)
+        Translator::new(outputs).run(analysis.execution_order())
     }
 
     /// The program in Datalog notation. See [`display`] for the notation.
