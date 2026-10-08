@@ -1093,24 +1093,36 @@ impl From<QueryEngineScalarType> for ScalarType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::dump::Dump;
 
     /// Lowers `file_name` step by step, rather than by
-    /// [`FlirProgram::from_flat_realm`], such that the reason is shown:
-    /// a rejected program's quotient graph is part of the panic message along
-    /// with its validation error (e.g. non-stratifiable).
+    /// [`FlirProgram::from_flat_realm`], dumping every stage on the way: the
+    /// Datalog, the analysis drawn with and without columns, and the query IR.
+    ///
+    /// The graphs are dumped before verification, so a rejected program's are,
+    /// too. Its panic message then only carries the validation error.
     fn query_program_from_json_flir(file_name: &str) -> FlirProgram {
+        let dump = Dump::new(file_name.trim_end_matches(".json"));
         let logical = logical_program_from_json_flir(file_name);
-        let verified = logical.verify().unwrap_or_else(|rejected| {
+        dump.write("program.dl", format_args!("{:#}", logical.display()));
+        let analysis = logical.analyze();
+        dump.write(
+            "graph_noschema.dot",
+            analysis.dot(frontend::Columns::Hidden),
+        );
+        dump.write("graph_schema.dot", analysis.dot(frontend::Columns::Shown));
+        let verified = analysis.verify().unwrap_or_else(|rejected| {
             panic!(
-                "{file_name} an invalid logical program: {}\n{}",
-                rejected.error,
-                rejected.analysis.dot(frontend::Columns::Hidden)
+                "{file_name} is an invalid logical program: {}",
+                rejected.error
             )
         });
         let code = logical
             .prepare(verified)
             .unwrap_or_else(|err| panic!("{file_name} cannot be translated into query ir: {err}"));
-        FlirProgram::new(logical, code)
+        let program = FlirProgram::new(logical, code);
+        dump.write("query.plan", program.to_tree());
+        program
     }
 
     fn logical_program_from_json_flir(file_name: &str) -> FlirLogicalProgram {
@@ -1121,60 +1133,32 @@ mod tests {
     }
 
     #[test]
-    fn graph_flir() -> Result<(), SyntaxError> {
-        let logical = logical_program_from_json_flir("GraphRealm.json");
-        println!("{:#}", logical.display());
-        let analysis = logical.analyze();
-        println!("{:#}", analysis.dot(frontend::Columns::Hidden));
-        println!("{:#}", analysis.dot(frontend::Columns::Shown));
-        let code = logical.prepare(analysis.verify().expect("program is valid"))?;
-        let program = FlirProgram::new(logical, code);
-        println!("{}", program.to_tree());
-        Ok(())
+    fn graph_flir() {
+        query_program_from_json_flir("GraphRealm.json");
     }
 
     #[test]
-    fn graph_of_graphs_flir() -> Result<(), SyntaxError> {
-        let logical = logical_program_from_json_flir("GraphOfGraphsRealm.json");
-        println!("{:#}", logical.display());
-        let analysis = logical.analyze();
-        println!("{:#}", analysis.dot(frontend::Columns::Hidden));
-        println!("{:#}", analysis.dot(frontend::Columns::Shown));
-        let code = logical.prepare(analysis.verify().expect("program is valid"))?;
-        let program = FlirProgram::new(logical, code);
-        println!("{}", program.to_tree());
-        Ok(())
+    fn graph_of_graphs_flir() {
+        query_program_from_json_flir("GraphOfGraphsRealm.json");
     }
 
     #[test]
     fn triangle_flir() {
-        let program = query_program_from_json_flir("TriangleRealm.json");
-        println!("{:#}", program.logical().display());
-        println!("{}", program.to_tree());
+        query_program_from_json_flir("TriangleRealm.json");
     }
 
     #[test]
-    fn transitive_closure_flir() -> Result<(), SyntaxError> {
-        let logical = logical_program_from_json_flir("TransitiveClosureRealm.json");
-        println!("{:#}", logical.display());
-        let analysis = logical.analyze();
-        println!("{:#}", analysis.dot(frontend::Columns::Hidden));
-        println!("{:#}", analysis.dot(frontend::Columns::Shown));
-        let code = logical.prepare(analysis.verify().expect("program is valid"))?;
-        let program = FlirProgram::new(logical, code);
-        println!("{}", program.to_tree());
-        Ok(())
+    fn transitive_closure_flir() {
+        query_program_from_json_flir("TransitiveClosureRealm.json");
     }
 
-    /// Expected to panic until a compiler bug is fixed: the compiler emits an
-    /// atom binding the row id of the derived view `init.trans-closure.connected`
-    /// (in rule `init.trans-closure.snoc.collect`), but derived views carry no row id.
-    /// Once the compiler is fixed, this test fails and drop the `should_panic`.
+    /// Expected to panic until larger issue is resolved: Taking an initial
+    /// model with a `Set` codomain requires giving up the clear EDB/IDB split,
+    /// and interacting between them during query runtime.
+    /// Once this is resolved, this test fails and drop the `should_panic`.
     #[test]
-    // #[should_panic(expected = "binds compiler column RowId")]
+    #[should_panic(expected = "binds compiler column RowId")]
     fn transitive_closure_set_flir() {
-        let program = query_program_from_json_flir("TransitiveClosureSetRealm.json");
-        println!("{:#}", program.logical().display());
-        println!("{}", program.to_tree());
+        query_program_from_json_flir("TransitiveClosureSetRealm.json");
     }
 }

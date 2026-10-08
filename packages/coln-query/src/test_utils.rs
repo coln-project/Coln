@@ -22,6 +22,60 @@ use crate::{
 use std::borrow::Cow;
 use std::fmt::Debug;
 
+/// For dumping test artefacts to either stdout or a file under
+/// `${CARGO_TARGET_DIR}/test_artefacts` if [`DUMP_VAR`](dump::DUMP_VAR) is set.
+pub mod dump {
+    use std::fmt;
+    use std::path::PathBuf;
+
+    /// The environment variable that, if defined, sends a test's [`Dump`] to
+    /// files rather than to stdout.
+    pub const DUMP_VAR: &str = "COLN_QUERY_TEST_DUMP";
+
+    /// Where a test's debugging artefacts go: if [`DUMP_VAR`] is set, into files
+    /// under `target/test_artefacts/<name>/`, otherwise to stdout.
+    ///
+    /// The target directory is found from the test binary, which sits in
+    /// `target/<profile>/deps/`, as Cargo only tells integration tests where it
+    /// is. That also respects a relocated `CARGO_TARGET_DIR`.
+    ///
+    /// Tests run in parallel, so each should dump under a `name` of its own.
+    pub struct Dump {
+        name: String,
+        dir: Option<PathBuf>,
+    }
+
+    impl Dump {
+        pub fn new(name: &str) -> Self {
+            let dir = std::env::var_os(DUMP_VAR).map(|_| {
+                let exe = std::env::current_exe().expect("the test binary has a path");
+                let target = exe
+                    .ancestors()
+                    .nth(3)
+                    .expect("the test binary sits in target/<profile>/deps");
+                let dir = target.join("test_artefacts").join(name);
+                std::fs::create_dir_all(&dir).expect("the artefact directory is creatable");
+                println!("dumping {name} into {}", dir.display());
+                dir
+            });
+            Dump {
+                name: name.to_owned(),
+                dir,
+            }
+        }
+
+        /// Writes `content` to the file `file`, or prints it under a header
+        /// naming that file.
+        pub fn write(&self, file: &str, content: impl fmt::Display) {
+            match &self.dir {
+                Some(dir) => std::fs::write(dir.join(file), content.to_string())
+                    .expect("the artefact is writable"),
+                None => println!("--- {}/{file} ---\n{content}", self.name),
+            }
+        }
+    }
+}
+
 /// Builders for FLIR by hand, for the realms no `.json` fixture covers — a
 /// monitored rule today, since coln-compiler does not emit one yet.
 ///
