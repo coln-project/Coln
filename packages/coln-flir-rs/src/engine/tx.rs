@@ -1,4 +1,8 @@
-//! For dealing with temporary ids in the middle of a transactions
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! For dealing with temporary ids in the middle of a transaction.
 
 use std::ops::Deref;
 

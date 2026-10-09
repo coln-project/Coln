@@ -118,14 +118,8 @@ impl fmt::Display for PublicTuple {
             if i > 0 {
                 f.write_str(", ")?;
             }
-            match scalar {
-                NativeScalar::RowId(id) => write!(f, "{id}")?,
-                NativeScalar::U64(x) => write!(f, "{x}")?,
-                NativeScalar::U32(x) => write!(f, "{x}")?,
-                NativeScalar::I64(x) => write!(f, "{x}")?,
-                NativeScalar::I32(x) => write!(f, "{x}")?,
-                NativeScalar::String(s) => write!(f, "{s:?}")?,
-            }
+            // Reuse the generic impl on NativeScalar.
+            write!(f, "{scalar}")?;
         }
         f.write_str(")")
     }

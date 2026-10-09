@@ -48,7 +48,7 @@ impl<O: Clone, T: Clone + WithRowId> Op<O, T> {
 type TableDelta = ();
 
 impl FromIterator<TabPathOp> for TableDelta {
-    fn from_iter<T: IntoIterator<Item = TabPathOp>>(ops: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = TabPathOp>>(_ops: T) -> Self {
         todo!()
         // let zrows: Vec<ZRow> = ops
         //     .into_iter()
