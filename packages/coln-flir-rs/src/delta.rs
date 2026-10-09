@@ -76,6 +76,14 @@ impl<Tuple> ZRow<Tuple> {
     pub fn consolidate(self) -> Option<Self> {
         self.is_consolidated().then_some(self)
     }
+    /// Converts the contained tuple via `f`, keeping the
+    /// [`zweight`](Self::zweight) as is.
+    pub fn try_map<U, E>(self, f: impl FnOnce(Tuple) -> Result<U, E>) -> Result<ZRow<U>, E> {
+        Ok(ZRow {
+            zweight: self.zweight,
+            tuple: f(self.tuple)?,
+        })
+    }
 }
 
 impl<Tuple: fmt::Display> fmt::Display for ZRow<Tuple> {
@@ -138,6 +146,19 @@ impl<Tuple> TableDelta<Tuple> {
             .filter_map(|zrow| zrow.consolidate())
             .collect();
         self
+    }
+    /// Converts each contained tuple via `f`, which also receives the
+    /// [entity](Self::for_entity()) the tuple belongs to.
+    pub fn try_map<U, E>(
+        self,
+        mut f: impl FnMut(&ir::Path, Tuple) -> Result<U, E>,
+    ) -> Result<TableDelta<U>, E> {
+        let Self { entity, inner } = self;
+        let inner = inner
+            .into_iter()
+            .map(|zrow| zrow.try_map(|tuple| f(&entity, tuple)))
+            .collect::<Result<_, _>>()?;
+        Ok(TableDelta { entity, inner })
     }
 }
 
@@ -206,6 +227,23 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
     pub fn retract(mut self) -> Self {
         self.inner.iter_mut().for_each(|table| table.retract());
         self
+    }
+    /// Converts each contained tuple via `f`, which also receives the
+    /// [entity](TableDelta::for_entity()) the tuple belongs to. The `Marker`
+    /// is preserved as entities are left untouched.
+    pub fn try_map<U, E>(
+        self,
+        mut f: impl FnMut(&ir::Path, Tuple) -> Result<U, E>,
+    ) -> Result<StoreDelta<Marker, U>, E> {
+        let inner = self
+            .inner
+            .into_iter()
+            .map(|table_delta| table_delta.try_map(&mut f))
+            .collect::<Result<_, _>>()?;
+        Ok(StoreDelta {
+            inner,
+            marker: PhantomData,
+        })
     }
 }
 
