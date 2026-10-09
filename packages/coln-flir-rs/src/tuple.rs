@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! Depending on the layer, a tuple (think a row) can contain different values
 //! for scalars. For instance, coln-query does _not_ support a column which
 //! contains a pair. The pair needs to be flattened into two columns first.
@@ -101,7 +105,7 @@ impl<RowId: fmt::Display> fmt::Display for NativeScalar<RowId> {
 }
 
 impl<R> NativeScalar<R> {
-    pub fn typ(&self) -> NativeScalar<(), (), (), (), (), ()> {
+    pub fn ty(&self) -> NativeScalar<(), (), (), (), (), ()> {
         match self {
             NativeScalar::RowId(_) => NativeScalar::RowId(()),
             NativeScalar::U64(_) => NativeScalar::U64(()),
@@ -171,6 +175,3 @@ impl<RowId> From<&str> for NativeScalar<RowId> {
         NativeScalar::String(value.to_owned())
     }
 }
-
-// TODO move them to schema.rs?
-// The type representations are useful in schema.rs.

@@ -271,7 +271,7 @@ impl Table {
 
         for (i, (col_entry, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
             let expected = StoreScalarType::from(&col_entry.col_type);
-            let got = value.typ();
+            let got = value.ty();
             if expected != got {
                 return Err(ValidationError::TypeMismatch {
                     column: i,
