@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! The storage engine's [tuple](StorageTuple) and its supported
+//! The storage engine's [tuple](StoreTuple) and its supported
 //! [scalar values](StoreScalarValue). Also, how row ids are represented in
 //! the storage engine: [PackedRowId].
 
@@ -12,13 +12,12 @@ use std::ops::Deref;
 use crate::public::{PublicRowId, PublicTuple};
 use crate::tuple::{NativeScalar, Tuple};
 
-/// A compact [`RowId`] representation that dictionary-encodes commit hashes.
+/// A compact row id representation that dictionary-encodes commit hashes.
 ///
-/// This is only meaningful together with the store-wide
-/// [`IdPacker`](crate::id_packer::IdPacker) that produced it, so it never
-/// crosses the store boundary. Packed ids order by `(commit_idx, counter)`,
-/// which depends on dictionary insertion order. Deterministic ordering across
-/// stores must compare unpacked [`RowId`]s.
+/// This is only meaningful together with coln-store's id packer which produced
+/// it, so it never crosses the store boundary. Packed ids order by
+/// `(commit_idx, counter)`, which depends on dictionary insertion order.
+/// Deterministic ordering across stores must compare unpacked row ids.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
 pub struct PackedRowId {
     pub commit_idx: u32,

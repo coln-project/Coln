@@ -9,7 +9,6 @@ use crate::{
     ir::{self, BuiltinTy, ColType, Path},
     tuple::{NativeScalar, QueryScalar},
 };
-<<<<<<< HEAD
 use either::Either;
 use serde::{Deserialize, Serialize};
 use std::{fmt, marker::PhantomData, ops::Range};
@@ -22,10 +21,6 @@ pub struct BaseTable(());
 /// and, therefore, does _not_ have (implicit) row ids.
 #[derive(Debug, Clone)]
 pub struct DerivedView(());
-=======
-use serde::{Deserialize, Serialize};
-use std::{fmt, ops::Range};
->>>>>>> cc12d94c ([coln-flir-rs] chore: cleanups (licenses, display impl reuse, formatting))
 
 #[derive(Debug, Clone)]
 pub struct ColnSchema<Marker> {

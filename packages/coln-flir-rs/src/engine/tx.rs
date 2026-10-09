@@ -113,7 +113,7 @@ impl WithRowId for TxTuple {
                 let TxRowId::Pending(id) = id else {
                     panic!("tx scalar value must start with a pending id")
                 };
-                id.clone()
+                *id
             }
             other => panic!("TxTuple lead with their row id, got {other:?}"),
         }
