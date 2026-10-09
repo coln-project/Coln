@@ -186,14 +186,14 @@ impl<'a, Tuple> IntoIterator for &'a TableDelta<Tuple> {
 /// same entity are guaranteed to be collapsed into one but never across
 /// entities. Example:
 ///
-/// ```
+/// ```text
 /// T1 u
 /// T1 v
 /// T2 w
 /// T1 x
 /// ```
 /// becomes
-/// ```
+/// ```text
 /// T1 (u, v)
 /// T2 w
 /// T1 x      // T2 prevents this one from being collapsed into the earlier T1.
@@ -325,14 +325,14 @@ impl<Tuple> StoreDelta<PartialConsolidated, Tuple> {
     /// Note that this changes the order of **[`ZRow`]s** _across entities_ but
     /// not _within an entity_. Also, the order of the entities themselves is
     /// preserved. Example:
-    /// ```
+    /// ```text
     /// T1 u
     /// T1 v
     /// T2 w
     /// T1 x
     /// ```
     /// becomes
-    /// ```
+    /// ```text
     /// T1 (u, v, x) // T1's zrows keep their order.
     /// T2 w         // T2 still comes after T1.
     ///              // But global order is now u, v, x, w and not u, v, w, x.
@@ -364,5 +364,92 @@ impl<Tuple> StoreDelta<PartialConsolidated, Tuple> {
 impl<Tuple> FromIterator<TableDelta<Tuple>> for StoreDelta<PartialConsolidated, Tuple> {
     fn from_iter<T: IntoIterator<Item = TableDelta<Tuple>>>(iter: T) -> Self {
         Self::new(iter)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn table(entity: &str, tuples: &[&'static str]) -> TableDelta<&'static str> {
+        TableDelta::new(
+            entity,
+            tuples.iter().map(|&tuple| ZRow::new_unchecked(1, tuple)),
+        )
+    }
+
+    /// Flattens a [`StoreDelta`] into its entities and their tuples, in order.
+    fn layout<Marker>(
+        store_delta: StoreDelta<Marker, &'static str>,
+    ) -> Vec<(String, Vec<&'static str>)> {
+        store_delta
+            .into_table_deltas()
+            .into_iter()
+            .map(|table_delta| {
+                let entity = table_delta.for_entity().to_string();
+                let tuples = table_delta.into_iter().map(ZRow::into_tuple).collect();
+                (entity, tuples)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn new_merges_adjacent_deltas_of_same_entity_only() {
+        let store_delta = StoreDelta::new([
+            table("T1", &["u"]),
+            table("T1", &["v"]),
+            table("T2", &["w"]),
+            table("T1", &["x"]),
+        ]);
+
+        assert_eq!(store_delta.size(), 3);
+        assert!(!store_delta.is_fully_consolidated());
+        assert_eq!(
+            layout(store_delta),
+            [
+                ("T1".to_string(), vec!["u", "v"]),
+                ("T2".to_string(), vec!["w"]),
+                ("T1".to_string(), vec!["x"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn extend_merges_into_last_existing_delta() {
+        let mut store_delta = StoreDelta::new([table("T1", &["u"])]);
+        store_delta.extend([table("T1", &["v"]), table("T2", &["w"])]);
+        store_delta.push(table("T2", &["x"]));
+
+        assert_eq!(
+            layout(store_delta),
+            [
+                ("T1".to_string(), vec!["u", "v"]),
+                ("T2".to_string(), vec!["w", "x"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn consolidate_merges_across_entities_preserving_order() {
+        let store_delta = StoreDelta::new([
+            table("T1", &["u"]),
+            table("T1", &["v"]),
+            table("T2", &["w"]),
+            table("T1", &["x"]),
+            table("T3", &["y"]),
+            table("T2", &["z"]),
+        ])
+        .consolidate();
+
+        assert_eq!(store_delta.size(), 3);
+        assert!(store_delta.is_fully_consolidated());
+        assert_eq!(
+            layout(store_delta),
+            [
+                ("T1".to_string(), vec!["u", "v", "x"]),
+                ("T2".to_string(), vec!["w", "z"]),
+                ("T3".to_string(), vec!["y"]),
+            ]
+        );
     }
 }
