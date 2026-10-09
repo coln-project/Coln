@@ -149,14 +149,11 @@ impl<Tuple> TableDelta<Tuple> {
     }
     /// Converts each contained tuple via `f`, which also receives the
     /// [entity](Self::for_entity()) the tuple belongs to.
-    pub fn try_map<U, E>(
-        self,
-        mut f: impl FnMut(&ir::Path, Tuple) -> Result<U, E>,
-    ) -> Result<TableDelta<U>, E> {
+    pub fn try_map<U, E>(self, f: impl Fn(Tuple) -> Result<U, E>) -> Result<TableDelta<U>, E> {
         let Self { entity, inner } = self;
         let inner = inner
             .into_iter()
-            .map(|zrow| zrow.try_map(|tuple| f(&entity, tuple)))
+            .map(|zrow| zrow.try_map(|tuple| f(tuple)))
             .collect::<Result<_, _>>()?;
         Ok(TableDelta { entity, inner })
     }
@@ -199,12 +196,12 @@ impl<'a, Tuple> IntoIterator for &'a TableDelta<Tuple> {
 /// T1 x      // T2 prevents this one from being collapsed into the earlier T1.
 /// ```
 #[derive(Debug, Clone, Copy)]
-pub struct PartialConsolidated(());
+pub struct PartialConsolidated;
 /// A marker indicating that the [`TableDelta`]s stored in [`StoreDelta`]
 /// are guaranteed to be [fully consolidated](StoreDelta::is_fully_consolidated()).
 /// See [StoreDelta::consolidate()] for its meaning.
 #[derive(Debug, Clone, Copy)]
-pub struct Consolidated(());
+pub struct Consolidated;
 
 /// An update of the EDB or IDB, that is, insertions or deletions of either
 /// base or derived facts. The context determines of which exactly.
@@ -214,9 +211,9 @@ pub struct StoreDelta<Marker, Tuple> {
     marker: PhantomData<Marker>,
 }
 
-impl<Tuple> Default for StoreDelta<Consolidated, Tuple> {
+impl<M, Tuple> Default for StoreDelta<M, Tuple> {
     fn default() -> Self {
-        StoreDelta::<Consolidated, Tuple>::empty()
+        StoreDelta::<M, Tuple>::empty()
     }
 }
 
@@ -250,32 +247,32 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
     /// is preserved as entities are left untouched.
     pub fn try_map<U, E>(
         self,
-        mut f: impl FnMut(&ir::Path, Tuple) -> Result<U, E>,
+        f: impl Fn(Tuple) -> Result<U, E>,
     ) -> Result<StoreDelta<Marker, U>, E> {
         let inner = self
             .inner
             .into_iter()
-            .map(|table_delta| table_delta.try_map(&mut f))
+            .map(|table_delta| table_delta.try_map(&f))
             .collect::<Result<_, _>>()?;
         Ok(StoreDelta {
             inner,
             marker: PhantomData,
         })
     }
-}
 
-impl<Tuple> StoreDelta<Consolidated, Tuple> {
     pub fn empty() -> Self {
         Self {
             inner: Vec::new(),
             marker: PhantomData,
         }
     }
-    /// This count is guaranteed to be equal to the count of distinct,
-    /// contained [`TableDelta`]s.
+
+    /// The number of TableDelta's currently in the store, whether consolidated
+    /// or not
     pub fn size(&self) -> usize {
         self.inner.len()
     }
+
     /// The caller has to make sure that the provided [`TableDelta`]s are not
     /// from an entity which is already present.
     pub fn unsafe_extend(&mut self, deltas: impl IntoIterator<Item = TableDelta<Tuple>>) {
@@ -310,11 +307,7 @@ impl<Tuple> StoreDelta<PartialConsolidated, Tuple> {
             self.inner.push(delta);
         }
     }
-    /// In case there are multiple [`TableDelta`]s for the same entity,
-    /// this count is larger than the amount of updated entities.
-    pub fn size(&self) -> usize {
-        self.inner.len()
-    }
+
     /// Having called this function ensures that in case there are multiple
     /// [`TableDelta`]s for the same [Entity](ir::Path), there is only one
     /// [`TableDelta`] for each [Entity](ir::Path) left. Duplicated entries
