@@ -8,7 +8,7 @@
 use crate::{
     engine::{
         packed::{PackedRowId, StoreScalarValue, StoreTuple},
-        schema::BaseTableSchema,
+        schema::{ColnSchema, DerivedView},
     },
     public::PublicTuple,
     tuple::{QueryScalar, Tuple},
@@ -68,7 +68,7 @@ impl QueryTuple {
     // become the `schema` param here guiding the conversion.
     pub fn into_store(
         self,
-        _schema: &BaseTableSchema,
+        _schema: &ColnSchema<DerivedView>,
         _id_alloc: impl FnMut() -> PackedRowId,
     ) -> StoreTuple {
         todo!()
@@ -130,7 +130,7 @@ impl QueryTuple {
         //     .collect()
     }
 
-    pub fn into_public(self, _schema: &BaseTableSchema) -> PublicTuple {
+    pub fn into_public(self, _schema: &ColnSchema<DerivedView>) -> PublicTuple {
         // This for tuples bubbling upwards, that is, tuples which belong to
         // derived views. They do not contain a row id themselves but may
         // contain several foreign keys with row ids. This function needs to

@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+pub mod delta;
 pub mod engine;
 pub mod ffi;
 pub mod ir;
