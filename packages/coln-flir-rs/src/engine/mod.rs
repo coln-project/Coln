@@ -4,6 +4,7 @@
 
 //! Data structures expected by database engines or internal libraries
 
+pub mod delta;
 pub mod op;
 pub mod packed;
 pub mod query;
