@@ -1071,6 +1071,7 @@ dependencies = [
  "coln-flir-rs",
  "ena",
  "hex",
+ "indexmap",
  "serde",
  "serde_json",
  "specta",
