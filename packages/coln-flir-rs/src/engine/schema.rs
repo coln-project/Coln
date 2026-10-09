@@ -9,6 +9,7 @@ use crate::{
     ir::{self, BuiltinTy, ColType, Path},
     tuple::{NativeScalar, QueryScalar},
 };
+<<<<<<< HEAD
 use either::Either;
 use serde::{Deserialize, Serialize};
 use std::{fmt, marker::PhantomData, ops::Range};
@@ -21,6 +22,10 @@ pub struct BaseTable(());
 /// and, therefore, does _not_ have (implicit) row ids.
 #[derive(Debug, Clone)]
 pub struct DerivedView(());
+=======
+use serde::{Deserialize, Serialize};
+use std::{fmt, ops::Range};
+>>>>>>> cc12d94c ([coln-flir-rs] chore: cleanups (licenses, display impl reuse, formatting))
 
 #[derive(Debug, Clone)]
 pub struct ColnSchema<Marker> {
@@ -533,10 +538,10 @@ impl From<&ColType> for StoreScalarType {
     }
 }
 
-/// A Coln theory source file contains theory definitions and (multiple) realm definitions
-/// Each realm corresponds will be compiled to one IR file, this struct stores
-/// which realm the IR is referring to
-/// It is stored as literal string and uninterpreted in the root commit of the store.
+/// A Coln theory source file contains theory definitions and (multiple) realm
+/// definitions. Each realm corresponds will be compiled to one IR file,
+/// this struct stores which realm the IR is referring to. It is stored as
+/// literal string and uninterpreted in the root commit of the store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColnDef {
     pub theory: String,
