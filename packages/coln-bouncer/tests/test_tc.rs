@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::engine::tx::TxTuple;
+use coln_flir_rs::engine::{schema::ColnDef, tx::TxTuple};
 use coln_flir_rs::ir::{FlatRealm, Path};
+use coln_flir_rs::{public::PublicScalarValue, query::WhereClause};
 use coln_store::{
-    store::{ColnDef, auto::AutoStore},
+    store::auto::AutoStore,
     txn::{
         id::Promote,
-        rw::{StoreRead, StoreWrite, WhereClause},
+        rw::{StoreRead, StoreWrite},
     },
-    value::Value,
 };
 use rstest::{fixture, rstest};
 
@@ -31,7 +31,7 @@ fn coln_def() -> ColnDef {
 
 #[rstest]
 fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
-    let mut auto_store = AutoStore::try_from_ir(ir, coln_def).expect("create store successful");
+    let mut auto_store = AutoStore::try_from_ir(&ir, coln_def).expect("create store successful");
     auto_store.transaction();
     let va = auto_store
         .add(&Path::from("root.V"), TxTuple::empty())
@@ -51,6 +51,7 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
         .add(&Path::from("root.E"), vec![vb.clone(), vc.clone()])
         .expect("add edge successful");
 
+    auto_store.try_commit().expect("prepare success");
     let h = auto_store.commit().expect("commit success");
     let [va, vb] = auto_store.promote(vec![va, vb], h).try_into().unwrap();
 
@@ -60,7 +61,7 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
             &WhereClause {
                 table_name: Path::from("init.trans-closure.connected"),
                 row_id: None,
-                values: vec![Value::Id(va), Value::Id(vb)],
+                values: vec![PublicScalarValue::RowId(va), PublicScalarValue::RowId(vb)].into(),
             },
             &[1, 2],
         )

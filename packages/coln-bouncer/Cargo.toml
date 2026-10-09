@@ -15,3 +15,5 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+rstest = "0.26.1"
+serde_json.workspace = true
