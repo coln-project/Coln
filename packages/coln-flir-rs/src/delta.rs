@@ -181,11 +181,28 @@ impl<'a, Tuple> IntoIterator for &'a TableDelta<Tuple> {
 }
 
 /// A marker indicating that the [`TableDelta`]s stored in [`StoreDelta`]
-/// may be [unconsolidated](StoreDelta::is_consolidated()).
+/// may be not [fully consolidated](StoreDelta::is_fully_consolidated()) but
+/// still partially consolidated. This means that subsequent insertions for the
+/// same entity are guaranteed to be collapsed into one but never across
+/// entities. Example:
+///
+/// ```
+/// T1 u
+/// T1 v
+/// T2 w
+/// T1 x
+/// ```
+/// becomes
+/// ```
+/// T1 (u, v)
+/// T2 w
+/// T1 x      // T2 prevents this one from being collapsed into the earlier T1.
+/// ```
 #[derive(Debug, Clone, Copy)]
-pub struct MaybeUnconsolidated(());
+pub struct PartialConsolidated(());
 /// A marker indicating that the [`TableDelta`]s stored in [`StoreDelta`]
-/// are guaranteed to be [consolidated](StoreDelta::is_consolidated()).
+/// are guaranteed to be [fully consolidated](StoreDelta::is_fully_consolidated()).
+/// See [StoreDelta::consolidate()] for its meaning.
 #[derive(Debug, Clone, Copy)]
 pub struct Consolidated(());
 
@@ -212,7 +229,7 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
     }
     /// Returns `true` if there is exactly one [`TableDelta`] for each
     /// [`TableDelta::for_entity()`].
-    pub fn is_consolidated(&self) -> bool {
+    pub fn is_fully_consolidated(&self) -> bool {
         let mut map = IndexSet::new();
         for table_delta in self.inner.iter() {
             if !map.insert(table_delta.for_entity()) {
@@ -266,11 +283,31 @@ impl<Tuple> StoreDelta<Consolidated, Tuple> {
     }
 }
 
-impl<Tuple> StoreDelta<MaybeUnconsolidated, Tuple> {
+impl<Tuple> StoreDelta<PartialConsolidated, Tuple> {
     pub fn new(deltas: impl IntoIterator<Item = TableDelta<Tuple>>) -> Self {
-        Self {
-            inner: deltas.into_iter().collect(),
+        let mut store_delta = Self {
+            inner: Vec::new(),
             marker: PhantomData,
+        };
+        store_delta.extend(deltas);
+        store_delta
+    }
+    pub fn extend(&mut self, deltas: impl IntoIterator<Item = TableDelta<Tuple>>) {
+        let deltas = deltas.into_iter();
+        // Merging adjacent deltas of the same entity only shrinks the count,
+        // so the iterator's length is an upper bound on what we push.
+        self.inner.reserve(deltas.size_hint().0);
+        for delta in deltas {
+            self.push(delta);
+        }
+    }
+    pub fn push(&mut self, delta: TableDelta<Tuple>) {
+        if let Some(last) = self.inner.last_mut()
+            && last.for_entity() == delta.for_entity()
+        {
+            last.extend(delta.inner);
+        } else {
+            self.inner.push(delta);
         }
     }
     /// In case there are multiple [`TableDelta`]s for the same entity,
@@ -278,13 +315,28 @@ impl<Tuple> StoreDelta<MaybeUnconsolidated, Tuple> {
     pub fn size(&self) -> usize {
         self.inner.len()
     }
-    pub fn extend(&mut self, deltas: impl IntoIterator<Item = TableDelta<Tuple>>) {
-        self.inner.extend(deltas);
-    }
     /// Having called this function ensures that in case there are multiple
     /// [`TableDelta`]s for the same [Entity](ir::Path), there is only one
     /// [`TableDelta`] for each [Entity](ir::Path) left. Duplicated entries
     /// have been merged into one.
+    ///
+    /// # Safety
+    ///
+    /// Note that this changes the order of **[`ZRow`]s** _across entities_ but
+    /// not _within an entity_. Also, the order of the entities themselves is
+    /// preserved. Example:
+    /// ```
+    /// T1 u
+    /// T1 v
+    /// T2 w
+    /// T1 x
+    /// ```
+    /// becomes
+    /// ```
+    /// T1 (u, v, x) // T1's zrows keep their order.
+    /// T2 w         // T2 still comes after T1.
+    ///              // But global order is now u, v, x, w and not u, v, w, x.
+    /// ```
     pub fn consolidate(mut self) -> StoreDelta<Consolidated, Tuple> {
         let upper_bound = self.size();
         let consolidated = self.inner.iter_mut().fold(
@@ -309,7 +361,7 @@ impl<Tuple> StoreDelta<MaybeUnconsolidated, Tuple> {
     }
 }
 
-impl<Tuple> FromIterator<TableDelta<Tuple>> for StoreDelta<MaybeUnconsolidated, Tuple> {
+impl<Tuple> FromIterator<TableDelta<Tuple>> for StoreDelta<PartialConsolidated, Tuple> {
     fn from_iter<T: IntoIterator<Item = TableDelta<Tuple>>>(iter: T) -> Self {
         Self::new(iter)
     }
