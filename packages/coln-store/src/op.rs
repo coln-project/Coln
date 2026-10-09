@@ -4,21 +4,74 @@
 
 use coln_flir_rs::{
     engine::{
-        op::Op,
-        packed::StoreTuple,
+        delta::{TableDelta, ZRow},
+        packed::{StoreTuple, WithRowId},
         tx::{PendingRowId, TxRowId, TxScalarValue, TxTuple},
     },
     hash::CommitHash,
+    ir,
     public::PublicTuple,
 };
 
 use crate::table::TableOid;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Op<Oid: Clone, T: Clone + WithRowId> {
+    Add { table: Oid, values: T },
+    // Delete {
+    //     row_id: RowId,
+    //     table: TableOid,
+    // }, // TODO Delete + Update
+}
+
+impl<O: Clone, T: Clone + WithRowId> Op<O, T> {
+    pub fn id(&self) -> T::RowId {
+        match self {
+            Op::Add { values, .. } => values.row_id(),
+        }
+    }
+
+    pub fn values(&self) -> &T {
+        match self {
+            Op::Add { values, .. } => values,
+        }
+    }
+
+    pub fn table(&self) -> O {
+        match self {
+            Op::Add { table, .. } => table.clone(),
+        }
+    }
+
+    pub fn map_oid<O2: Clone>(self, f: impl FnOnce(O) -> O2) -> Op<O2, T> {
+        match self {
+            Op::Add { table, values } => Op::Add {
+                table: f(table),
+                values,
+            },
+        }
+    }
+}
 
 pub const OP_KIND_ADD: u32 = 0;
 
 pub type PublicOp = Op<TableOid, PublicTuple>;
 
 pub type PackedOp = Op<TableOid, StoreTuple>;
+
+impl From<Op<ir::Path, StoreTuple>> for ZRow<StoreTuple> {
+    fn from(value: Op<ir::Path, StoreTuple>) -> Self {
+        match value {
+            Op::Add { values, .. } => ZRow::new_unchecked(1, values),
+        }
+    }
+}
+
+impl From<Op<ir::Path, StoreTuple>> for TableDelta<StoreTuple> {
+    fn from(op: Op<ir::Path, StoreTuple>) -> Self {
+        Self::new(op.table(), std::iter::once(op.into()))
+    }
+}
 
 /// An operation staged within a transaction.
 // Needs newtype because of we want resolve function on it

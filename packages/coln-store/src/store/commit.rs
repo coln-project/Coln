@@ -4,7 +4,8 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use coln_flir_rs::engine::op::TabPathOp;
+use coln_flir_rs::engine::delta::{PartialConsolidated, StoreDelta};
+use coln_flir_rs::engine::packed::StoreTuple;
 use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::public::PublicScalarValue;
 use tracing::info;
@@ -347,8 +348,8 @@ impl<'a> CommitBatch<'a, Prepared> {
         self.inner.prepared_hash()
     }
 
-    pub fn table_ops(&self) -> &[TabPathOp] {
-        self.inner.table_ops()
+    pub fn store_delta(&mut self) -> StoreDelta<PartialConsolidated, StoreTuple> {
+        self.inner.store_delta()
     }
 }
 
@@ -391,14 +392,14 @@ impl BatchInner<Unprepared> {
             }
         };
 
-        let table_ops: Vec<TabPathOp> = ops
+        let sd: StoreDelta<PartialConsolidated, StoreTuple> = ops
             .iter()
             .map(|op| {
                 let packed = store.id_packer.pack_op(op.clone());
                 let meta = store
                     .table_meta(op.table())
                     .expect("prechecked commit with valid table oid");
-                packed.map_oid(|_| meta.path.clone())
+                packed.map_oid(|_| meta.path.clone()).into()
             })
             .collect();
 
@@ -416,8 +417,8 @@ impl BatchInner<Unprepared> {
         Ok(Some(BatchInner {
             prepared: Prepared(PreparedCommit {
                 commit: original,
-                snapshot: snapshot,
-                table_ops,
+                snapshot,
+                sd,
             }),
             pending: self.pending,
             ready: self.ready,
@@ -482,9 +483,10 @@ impl BatchInner<Prepared> {
         prepared.commit.hash()
     }
 
-    pub(super) fn table_ops(&self) -> &[TabPathOp] {
-        let Prepared(prepared) = &self.prepared;
-        &prepared.table_ops
+    /// Takes the store_delta out of the BatchInner, so can only be called once!
+    pub(super) fn store_delta(&mut self) -> StoreDelta<PartialConsolidated, StoreTuple> {
+        let Prepared(prepared) = &mut self.prepared;
+        std::mem::take(&mut prepared.sd)
     }
 }
 
@@ -499,7 +501,7 @@ impl<S: PrepareState> BatchInner<S> {
 pub struct PreparedCommit {
     pub(crate) commit: Commit<'static>,
     pub(crate) snapshot: StoreSnapshot,
-    pub(crate) table_ops: Vec<TabPathOp>,
+    pub(crate) sd: StoreDelta<PartialConsolidated, StoreTuple>,
 }
 
 #[cfg(test)]
@@ -561,16 +563,22 @@ mod tests {
         let commit = source.commit_by_hash(&hash).expect("source commit").clone();
         let batch = target.prepare_commits([commit]).expect("prepare batch");
 
-        let prepared = batch
+        let mut prepared = batch
             .prepare_next()
             .expect("prepare succeeds")
             .expect("ready commit");
 
         assert_eq!(prepared.prepared_hash(), hash);
-        assert_eq!(prepared.table_ops().len(), 1);
-        let TabPathOp::Add { table, values } = &prepared.table_ops()[0];
-        assert_eq!(table, &Path::from("T"));
-        assert_eq!(values.values(), [StoreScalarValue::I32(42)]);
+        let deltas = prepared.store_delta().clone().into_table_deltas();
+        assert_eq!(deltas.len(), 1);
+        assert_eq!(deltas[0].for_entity(), &Path::from("T"));
+        assert_eq!(deltas[0].delta().len(), 1);
+        let row = &deltas[0].delta()[0];
+        assert_eq!(row.zweight(), 1);
+        assert_eq!(
+            row.clone().into_tuple().values(),
+            [StoreScalarValue::I32(42)]
+        );
         assert!(!prepared.store.commits.contains(&hash));
 
         let batch = prepared.reject_prepared();
@@ -690,10 +698,16 @@ mod tests {
             .prepared_commit();
 
         assert_eq!(prepared.commit.hash(), hash);
-        assert_eq!(prepared.table_ops.len(), 1);
-        let TabPathOp::Add { table, values } = &prepared.table_ops[0];
-        assert_eq!(table, &Path::from("T"));
-        assert_eq!(values.values(), [StoreScalarValue::I32(7)]);
+        let deltas = prepared.sd.into_table_deltas();
+        assert_eq!(deltas.len(), 1);
+        assert_eq!(deltas[0].for_entity(), &Path::from("T"));
+        assert_eq!(deltas[0].delta().len(), 1);
+        let row = &deltas[0].delta()[0];
+        assert_eq!(row.zweight(), 1);
+        assert_eq!(
+            row.clone().into_tuple().values(),
+            [StoreScalarValue::I32(7)]
+        );
         assert_eq!(target.scan_table(&Path::from("T")).expect("table").len(), 1);
         assert!(target.commit_by_hash(&hash).is_none());
 

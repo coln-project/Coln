@@ -10,7 +10,7 @@
 
 use coln_flir_rs::{
     engine::{
-        op::TabPathOp,
+        delta::{PartialConsolidated, StoreDelta},
         packed::{PackedRowId, StoreTuple},
         schema::ColnDef,
         tx::{TxRowId, TxTuple},
@@ -109,14 +109,16 @@ impl AutoStore {
         self.state = AutoState::Transaction(TxnInner::new(deps));
     }
 
-    pub fn try_commit(&mut self) -> Result<Vec<TabPathOp>, StoreError> {
+    pub fn try_commit(
+        &mut self,
+    ) -> Result<StoreDelta<PartialConsolidated, StoreTuple>, StoreError> {
         let AutoState::Transaction(txn) = &mut self.state else {
             panic!("open txn")
         };
-        let prepared = txn.try_commit(&mut self.store)?;
-        let table_ops = prepared.table_ops().to_vec();
+        let mut prepared = txn.try_commit(&mut self.store)?;
+        let delta = prepared.store_delta();
         self.state = AutoState::Prepared(prepared);
-        Ok(table_ops)
+        Ok(delta)
     }
 
     pub fn commit(&mut self) -> Result<CommitHash, StoreError> {
@@ -187,7 +189,16 @@ mod tests {
 
         store.transaction();
         store.add(&path, vec![1i32]).expect("add");
-        store.try_commit().expect("prepare");
+        let delta = store.try_commit().expect("prepare");
+        let tables = delta.into_table_deltas();
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].for_entity(), &path);
+        assert_eq!(tables[0].delta().len(), 1);
+        assert_eq!(tables[0].delta()[0].zweight(), 1);
+        assert_eq!(
+            tables[0].delta()[0].clone().into_tuple(),
+            store.scan_table(&path).expect("T")[0],
+        );
         store.commit().expect("commit");
 
         // The commit hash is the first one interned, so it packs as index 0.
