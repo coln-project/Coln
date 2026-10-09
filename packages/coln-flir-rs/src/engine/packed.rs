@@ -1,5 +1,10 @@
-//! Packed representation of ids
-//! Internally used by storage and query engines
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! The storage engine's [tuple](StorageTuple) and its supported
+//! [scalar values](StoreScalarValue). Also, how row ids are represented in
+//! the storage engine: [PackedRowId].
 
 use std::fmt;
 use std::ops::Deref;

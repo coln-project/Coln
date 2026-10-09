@@ -1,4 +1,8 @@
-//! Table APIs exposed by the store and expected by query engines
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! Table APIs exposed by the store and expected by the batch query engine.
 
 use std::ops::Range;
 

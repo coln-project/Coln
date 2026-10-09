@@ -134,7 +134,7 @@ impl Column {
             (Column::U32(cells), StoreScalarValue::U32(value)) => cells.insert(row, value),
             (Column::Str(cells), StoreScalarValue::String(value)) => cells.insert(row, value),
             (_column, value) => {
-                panic!("cell type mismatch: column does not store {}", value.typ(),)
+                panic!("cell type mismatch: column does not store {}", value.ty(),)
             }
         }
     }
@@ -199,7 +199,7 @@ impl Column {
             }
             (_column, value) => panic!(
                 "index key type mismatch: column does not store {}",
-                value.typ()
+                value.ty()
             ),
         }
     }

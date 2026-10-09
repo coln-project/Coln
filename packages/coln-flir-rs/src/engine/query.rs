@@ -1,4 +1,9 @@
-use std::iter;
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+//! The query engine's [tuple](QueryTuple) and its supported
+//! [scalar values](QueryScalarValue).
 
 use crate::{
     engine::{
@@ -8,6 +13,7 @@ use crate::{
     public::PublicTuple,
     tuple::{QueryScalar, Tuple},
 };
+use std::iter;
 
 pub type QueryScalarValue = QueryScalar;
 
@@ -55,6 +61,11 @@ impl QueryTuple {
     // The allocate function is a bit of a leaky abstraction.... In short, we need to
     // allocate row ids for these derived tuples, but only the store knows how to do that
     // This probably needs schema as well.
+    //
+    // @Vincent: If we rebase on top of https://github.com/coln-project/Coln/tree/coln-query/logical-query-program-abstraction
+    // there is not only a schema for base tables (with implicit row ids) but
+    // also a schema for derived views (without implicit row ids). This can
+    // become the `schema` param here guiding the conversion.
     pub fn into_store(
         self,
         _schema: &BaseTableSchema,

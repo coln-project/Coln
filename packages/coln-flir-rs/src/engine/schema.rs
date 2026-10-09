@@ -5,11 +5,12 @@
 //! This module expresses the different schema views according to coln-compiler,
 //! coln-store, and coln-query in code.
 
-use std::{fmt, ops::Range};
-
+use crate::{
+    ir::{self, BuiltinTy, ColType, Path},
+    tuple::{NativeScalar, QueryScalar},
+};
 use serde::{Deserialize, Serialize};
-
-use crate::{ir::{self, BuiltinTy, ColType, Path}, tuple::{NativeScalar, QueryScalar}};
+use std::{fmt, ops::Range};
 
 #[derive(Debug, Clone)]
 pub struct BaseTableSchema {
@@ -388,7 +389,6 @@ pub type PublicScalarType = NativeScalar<(), (), (), (), (), ()>;
 pub type StoreScalarType = NativeScalar<(), (), (), (), (), ()>;
 pub type QueryScalarType = QueryScalar<(), (), (), (), ()>;
 
-
 impl fmt::Display for StoreScalarType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -401,7 +401,6 @@ impl fmt::Display for StoreScalarType {
         })
     }
 }
-
 
 // TODO @Leo when you are fixing schema.rs, can you fix this as well?
 impl From<&ColType> for StoreScalarType {
@@ -418,12 +417,10 @@ impl From<&ColType> for StoreScalarType {
     }
 }
 
-
-
-/// A Coln theory source file contains theory definitions and (multiple) realm definitions
-/// Each realm corresponds will be compiled to one IR file, this struct stores
-/// which realm the IR is referring to
-/// It is stored as literal string and uninterpreted in the root commit of the store.
+/// A Coln theory source file contains theory definitions and (multiple) realm
+/// definitions. Each realm corresponds will be compiled to one IR file,
+/// this struct stores which realm the IR is referring to. It is stored as
+/// literal string and uninterpreted in the root commit of the store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColnDef {
     pub theory: String,
