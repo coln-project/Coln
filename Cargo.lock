@@ -1061,6 +1061,8 @@ dependencies = [
  "coln-query",
  "coln-store",
  "criterion",
+ "rstest",
+ "serde_json",
  "thiserror 2.0.20",
 ]
 

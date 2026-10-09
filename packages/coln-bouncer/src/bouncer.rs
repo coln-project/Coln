@@ -1,8 +1,8 @@
 //! The top level APIs exposed by the coln backend database to the user and FFI
 use coln_flir_rs::{
     engine::{
-        op::TabPathOp,
         packed::StoreTuple,
+        query::QueryTuple,
         schema::ColnDef,
         tx::{TxRowId, TxTuple},
     },
@@ -13,13 +13,12 @@ use coln_flir_rs::{
 };
 use coln_query::api::{
     ColnQuery,
-    deltas::{StoreDelta, TableDelta, ZRow},
-    error::ColnQueryError,
+    deltas::StoreDelta,
     transaction::{TryCommitErr, TryCommitOk, Tx},
     violations::ViolationsDelta,
 };
 use coln_store::{
-    store::{IdLookup, Store, auto::AutoStore},
+    store::{IdLookup, auto::AutoStore},
     txn::rw::{StoreRead, StoreWrite},
 };
 
@@ -281,10 +280,14 @@ impl DbWrite for Bouncer {
     }
 
     fn commit(&mut self) -> Result<ViolationsDelta, BouncerError> {
-        let tuples = self.store.try_commit()?;
+        let store_delta = self
+            .store
+            .try_commit()?
+            .try_map(|st| Ok(QueryTuple::from(st)))?;
+
         let mut tx = Tx::new(StoreDelta::empty());
         // TODO convert TabPathOp into TableDelta
-        tx.insert(std::iter::once(TableDelta::new("SomeTable", [])));
+        tx.insert(store_delta);
 
         match tx.try_commit(&mut self.query) {
             Ok(TryCommitOk::Pending(pending)) => {
