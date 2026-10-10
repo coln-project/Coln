@@ -230,12 +230,14 @@ pub trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + Aggregate
     }
 
     /// A predicate is a predicate of the EDB (base table, externally given)
-    /// if it does contain only a single rule with no atoms in its body.
+    /// if it does contain only a single rule with an empty body: no atoms, and
+    /// no conditions either. That rule declares the relation rather than
+    /// deriving it, so its head binds nothing.
     fn is_edb_predicate(&self) -> bool {
         let mut iter = self.rules();
-        let first_is_edb = iter
-            .next()
-            .is_some_and(|rule| rule.atoms().next().is_none());
+        let first_is_edb = iter.next().is_some_and(|rule| {
+            rule.atoms().next().is_none() && rule.conditions().next().is_none()
+        });
         let is_only = iter.next().is_none();
         is_only && first_is_edb
     }
@@ -428,7 +430,7 @@ pub trait Rule: Identifiable + fmt::Debug {
     }
 
     /// The atoms of the rule's _body_ which are negated.
-    fn negative_atoms(&self) -> impl Iterator<Item = &Self::Atom> {
+    fn negated_atoms(&self) -> impl Iterator<Item = &Self::Atom> {
         self.atoms().filter(|atom| atom.is_negative())
     }
 
@@ -459,6 +461,17 @@ pub trait Cond: fmt::Debug {
     fn operator(&self) -> impl Into<Operator>;
     fn left(&self) -> Bind<&Self::Var, &Self::Lit>;
     fn right(&self) -> Bind<&Self::Var, &Self::Lit>;
+
+    /// The variables this condition constrains. Unlike an [`Atom`]'s, they are
+    /// not brought into scope but have to be bound by a positive atom.
+    fn vars(&self) -> impl Iterator<Item = &Self::Var> {
+        [self.left(), self.right()]
+            .into_iter()
+            .filter_map(|bind| match bind {
+                Bind::Var(var) => Some(var),
+                Bind::Lit(_) => None,
+            })
+    }
 
     /// The condition in Datalog notation. See [`display`] for the notation.
     fn display(&self) -> CondDisplay<'_, Self>

@@ -61,8 +61,9 @@ name_space! {
 }
 
 /// A predicate named `name` over [`columns`], defined by one rule per entry in
-/// `rules`, each rule listing the names its atoms reference. Each head fills
-/// the one column with `x`, as verification requires a head to be dense.
+/// `rules`, each rule listing the names its atoms reference, negated ones with
+/// a leading `!`. Every atom, the head included, fills the one column with
+/// `x`, so a rule with a positive atom is well-formed and safe.
 pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
     let head = format!("{name}(x)");
     TestPredicate {
@@ -71,7 +72,11 @@ pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
         rules: rules
             .iter()
             .enumerate()
-            .map(|(idx, atoms)| rule(&format!("{name}#{idx}"), &head, atoms))
+            .map(|(idx, names)| {
+                let atoms: Vec<String> = names.iter().map(|name| format!("{name}(x)")).collect();
+                let atoms: Vec<&str> = atoms.iter().map(String::as_str).collect();
+                rule(&format!("{name}#{idx}"), &head, &atoms)
+            })
             .collect(),
     }
 }

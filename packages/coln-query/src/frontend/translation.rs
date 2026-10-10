@@ -56,7 +56,7 @@ use crate::{
         schema::Column,
     },
 };
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 /// Code translated from a program that passed
@@ -261,27 +261,29 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// Translates a rule's body. First, [Self::conjunctive_fragment] joins
     /// the body's positive atoms on the variables they share. Then, each
     /// negated atom removes what it matches by an [`AntiJoinExpr`] of its own,
-    /// on the variables it shares with the positive atoms. Finally, the rule's
-    /// [Rule::conditions()] are applied on top of the expression as a
+    /// on all of its variables, which the positive atoms bind. Finally, the
+    /// rule's [Rule::conditions()] are applied on top of the expression as a
     /// [SelectionExpr].
     ///
     /// One antijoin per negated atom is what makes `!r(x), !s(x)` mean
     /// `¬r ∧ ¬s`, as in Datalog. Joining the negated atoms and antijoining once
     /// would compute `¬(r ∧ s)` instead.
     pub fn conjunctive_query(&self, rule: &P::Rule) -> Result<Expr, SyntaxError> {
-        let positive_fragment = self
+        // Verification leaves only variable-free rules without positive atoms,
+        // like `p() :- !h().`, which have nothing to antijoin against yet.
+        let conjunctive = self
             .conjunctive_fragment(rule.positive_atoms())?
             .ok_or_else(|| SyntaxError::new("body has no positive atoms"))?;
-
-        let mut conjunctive = positive_fragment.relation;
-        for atom in rule.negative_atoms() {
-            let negated = self.atom(atom)?;
-            conjunctive = Expr::from(AntiJoinExpr {
-                on: antijoin_variables(&positive_fragment.variables, &negated.variables),
-                left: conjunctive,
-                right: negated.relation,
-            });
-        }
+        let conjunctive = rule
+            .negated_atoms()
+            .try_fold(conjunctive, |acc, negated_atom| {
+                let negated_atom = self.atom(negated_atom)?;
+                Ok(Expr::from(AntiJoinExpr {
+                    on: antijoin_variables(&negated_atom.variables),
+                    left: acc,
+                    right: negated_atom.relation,
+                }))
+            })?;
 
         // All conditions become one condition by ANDing them, and a rule with
         // none keeps `conjunctive` unwrapped rather than gaining a vacuous selection.
@@ -309,7 +311,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     fn conjunctive_fragment<'r>(
         &self,
         atoms: impl IntoIterator<Item = &'r AtomOf<P>>,
-    ) -> Result<Option<FragmentPlan<'r, VarIdOf<P>>>, SyntaxError>
+    ) -> Result<Option<Expr>, SyntaxError>
     where
         AtomOf<P>: 'r,
     {
@@ -322,20 +324,14 @@ impl<'a, P: Predicate> Translator<'a, P> {
         }
 
         let on = join_variables(&plans);
-        let (mut relations, vars): (Vec<Expr>, Vec<Vec<&VarIdOf<P>>>) = plans
-            .into_iter()
-            .map(|plan| (plan.relation, plan.variables))
-            .collect();
+        let mut relations: Vec<Expr> = plans.into_iter().map(|plan| plan.relation).collect();
         let joined = match relations.len() {
             // A single atom has nothing to join against, and the join operators
             // require at least two relations.
             1 => relations.pop().expect("length checked"),
             _ => Expr::from(MultiWayEquiJoinExpr::new(relations, on, None)?),
         };
-        Ok(Some(FragmentPlan {
-            relation: joined,
-            variables: vars.into_iter().flatten().collect(),
-        }))
+        Ok(Some(joined))
     }
 
     /// One atom: the relation it names, filtered by what it pins down locally
@@ -400,18 +396,6 @@ impl<'a, P: Predicate> Translator<'a, P> {
             variables: binder.variables,
         })
     }
-}
-
-/// The relational plan for a conjunctive fragment, plus the variables it puts
-/// into scope.
-///
-/// Reporting the variables is what lets the enclosing conjunctive query derive
-/// its antijoin condition without re-deriving it from the
-/// [`MultiWayEquiJoinExpr`] just built.
-struct FragmentPlan<'r, I> {
-    relation: Expr,
-    /// In the order the fragment binds them, deduplicated.
-    variables: IndexSet<&'r I>,
 }
 
 /// The relational plan for one atom, plus the variables its projection exposes.
@@ -498,13 +482,12 @@ fn join_variables<I: Identifier>(plans: &[AtomPlan<'_, I>]) -> Vec<JoinVariable>
         .collect()
 }
 
-/// The variables a negated atom shares with the positive atoms, which are the
-/// ones its antijoin matches on. A variable only the negated atom binds is
-/// existential and matches anything.
-fn antijoin_variables<I: Identifier>(positive: &IndexSet<&I>, negated: &[&I]) -> Vec<(Expr, Expr)> {
+/// The variables a negated atom matches on in its antijoin, which are all of
+/// its own: verification made negation safe, so all negated variables are
+/// guaranteed to be bound by some positive atom.
+fn antijoin_variables<I: Identifier>(negated: &[&I]) -> Vec<(Expr, Expr)> {
     negated
         .iter()
-        .filter(|var| positive.contains(*var))
         .map(|shared_var| {
             let shared_var = Expr::from(VarExpr::new(shared_var.to_string()));
             (shared_var.clone(), shared_var)
@@ -597,13 +580,14 @@ mod tests {
 
     #[test]
     fn an_error_names_the_rule_and_predicate_it_was_raised_within() {
-        // The body negates its only atom, which only the rule's translation
-        // notices.
+        // The body negates its only atom. Being variable-free, the rule is
+        // safe, so only its translation notices that nothing is left to
+        // antijoin against.
         let predicates = RulePredicate::group(
-            [declare("edge", &["x"]), declare("path", &["x"])],
+            [declare("blocked", &[]), declare("open", &[])],
             [
-                rule("e0", "edge(x)", &[]),
-                rule("r0", "path(x)", &["!edge(x)"]),
+                rule("b0", "blocked()", &[]),
+                rule("r0", "open()", &["!blocked()"]),
             ],
         )
         .expect("every definand names a declared predicate");
@@ -617,23 +601,23 @@ mod tests {
             error.context().collect::<Vec<_>>(),
             [
                 &Frame::Predicate {
-                    name: "path".to_string()
+                    name: "open".to_string()
                 },
                 &Frame::Rule {
                     name: "r0".to_string(),
-                    text: Some("path(x) :- !edge(x).".to_string()),
+                    text: Some("open() :- !blocked().".to_string()),
                 },
             ]
         );
         assert_eq!(
             error.to_string(),
-            "in predicate 'path': in rule 'r0': body has no positive atoms"
+            "in predicate 'open': in rule 'r0': body has no positive atoms"
         );
         assert_eq!(
             format!("{error:#}"),
             "body has no positive atoms\n  \
-             in rule 'r0': path(x) :- !edge(x).\n  \
-             in predicate 'path'"
+             in rule 'r0': open() :- !blocked().\n  \
+             in predicate 'open'"
         );
     }
 

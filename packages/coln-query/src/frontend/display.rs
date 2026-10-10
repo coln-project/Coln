@@ -306,12 +306,12 @@ mod tests {
             ".decl path(x: uint)\n\
              .output path\n\
              // path#0\n\
-             path(x) :-\n    edge().\n\
+             path(x) :-\n    edge(x).\n\
              \n\
              .decl reachable(x: uint)\n\
              .output reachable\n\
              // reachable#0\n\
-             reachable(x) :-\n    path()."
+             reachable(x) :-\n    path(x)."
         );
     }
 }

@@ -6,13 +6,15 @@
 
 use super::display::separated;
 use super::graph_utils::gabow;
-use super::{AggregateRules, Component, IdOf, Identifiable, LogicalProgram, Predicate, Rule};
+use super::{
+    AggregateRules, Component, Cond, IdOf, Identifiable, LogicalProgram, Predicate, Rule, TypedVar,
+};
 use crate::error::SyntaxError;
 use crate::frontend::Atom;
 use crate::frontend::graph_utils::vertex_degrees;
 use crate::relational::schema::Column;
 use indexmap::{IndexMap, IndexSet, map::Entry};
-use std::{collections::HashSet, fmt, marker::PhantomData};
+use std::{collections::HashSet, fmt, iter, marker::PhantomData};
 
 /// Builds the program's graphs, checking nothing. See [`Analysis::verify`].
 pub(super) fn analyze<LP: LogicalProgram>(program: &LP) -> Analysis<'_, LP::Predicate> {
@@ -300,8 +302,9 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
 
     /// Everything that makes the program ill-formed, regardless of what its
     /// graphs look like: duplicate declarations, atoms referencing no
-    /// predicate, and atoms whose bindings do not fit the arity of the
-    /// predicate they reference. See [`Malformation`].
+    /// predicate, atoms whose bindings do not fit the arity of the predicate
+    /// they reference, and variables no positive atom binds. See
+    /// [`Malformation`].
     ///
     /// A head is checked against the predicate whose rule it heads.
     fn malformations(&self) -> Vec<Malformation<'a, P>> {
@@ -314,6 +317,7 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
             predicate.rules().flat_map(move |rule| {
                 let site = Site { predicate, rule };
                 site.head_malformations()
+                    .chain(site.unbound_variables())
                     .chain(self.body_malformations(site))
             })
         });
@@ -591,7 +595,72 @@ impl<'a, P: Predicate> Site<'a, P> {
             });
         misplaced_bindings(self, head, self.predicate).chain(unfilled)
     }
+
+    /// The variables the rule uses but leaves unbound, each reported once per
+    /// [`Occurrence`]. Only a positive body atom binds a variable, which
+    /// makes the rule
+    ///
+    /// - _range restricted_ if each variable of its head is bound,
+    /// - _safe_ in its negation if each variable of a negated atom is bound,
+    /// - and _safe_ in its comparisons if each variable of a condition is bound.
+    ///
+    /// Strict for negation: a variable only a negated atom mentions is not
+    /// read as existential. A frontend wanting any value there leaves the
+    /// position unbound instead, so that a misspelled variable cannot silently
+    /// turn into one.
+    ///
+    /// An EDB predicate's rule is exempt, as it declares the relation rather
+    /// than deriving it, and its head binds nothing.
+    fn unbound_variables(self) -> Vec<Malformation<'a, P>> {
+        if self.predicate.is_edb_predicate() {
+            return Vec::new();
+        }
+        let rule = self.rule;
+        let bound: HashSet<&IdOf<VarOf<P>>> = rule
+            .positive_atoms()
+            .flat_map(Atom::vars)
+            .map(Identifiable::id)
+            .collect();
+        let bound = &bound;
+        let occurrences = iter::once((Occurrence::Head, rule.head().vars().collect::<Vec<_>>()))
+            .chain(
+                rule.negated_atoms()
+                    .map(|atom| (Occurrence::Negated(atom), atom.vars().collect())),
+            )
+            .chain(
+                rule.conditions()
+                    .map(|cond| (Occurrence::Condition(cond), cond.vars().collect())),
+            );
+        occurrences
+            .flat_map(|(occurrence, vars)| {
+                let mut reported = HashSet::new();
+                vars.into_iter()
+                    .filter(move |var| !bound.contains(var.id()) && reported.insert(var.id()))
+                    .map(move |var| Malformation::Unbound {
+                        site: self,
+                        var,
+                        occurrence,
+                    })
+            })
+            .collect()
+    }
 }
+
+/// Where a rule uses a variable that only a positive body atom can bind.
+enum Occurrence<'a, P: Predicate> {
+    Head,
+    Negated(&'a AtomOf<P>),
+    Condition(&'a CondOf<P>),
+}
+
+// Derived, they would demand `P: Clone` and `P: Copy`.
+impl<P: Predicate> Clone for Occurrence<'_, P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P: Predicate> Copy for Occurrence<'_, P> {}
 
 /// The bindings of `atom`, which `site`'s rule contains, that do not fit
 /// `referenced`, the predicate it references: positions beyond its arity, and
@@ -624,6 +693,8 @@ fn misplaced_bindings<'a, P: Predicate>(
 }
 
 type AtomOf<P> = <<P as AggregateRules>::Rule as Rule>::Atom;
+type CondOf<P> = <<P as AggregateRules>::Rule as Rule>::Cond;
+type VarOf<P> = <AtomOf<P> as Atom>::Var;
 
 /// What makes a program ill-formed, as reported by
 /// [`PredicateDependencyGraph::malformations`]. Borrows the offending site
@@ -659,6 +730,13 @@ enum Malformation<'a, P: Predicate> {
         site: Site<'a, P>,
         position: usize,
         column: &'a Column,
+    },
+    /// A variable no positive body atom binds, used where it has to be bound.
+    /// See [`Site::unbound_variables`].
+    Unbound {
+        site: Site<'a, P>,
+        var: &'a VarOf<P>,
+        occurrence: Occurrence<'a, P>,
     },
 }
 
@@ -720,6 +798,20 @@ impl<P: Predicate> fmt::Display for Malformation<'_, P> {
                     "leaves column {position} ('{}') of its head unfilled",
                     column.name()
                 )
+            }
+            Malformation::Unbound {
+                site,
+                var,
+                occurrence,
+            } => {
+                in_rule(f, site)?;
+                write!(f, "uses '{}' ", var.name())?;
+                match occurrence {
+                    Occurrence::Head => f.write_str("in its head")?,
+                    Occurrence::Negated(atom) => write!(f, "in negated '{}'", atom.id())?,
+                    Occurrence::Condition(cond) => write!(f, "in '{}'", cond.display())?,
+                }
+                f.write_str(", which no positive atom binds")
             }
         }
     }
@@ -793,6 +885,102 @@ mod tests {
             "rule 'r0' of predicate 'path' binds position 2 of 'edge', which has 2 column(s); \
              rule 'r1' of predicate 'path' binds position 0 of 'edge' more than once; \
              rule 'r2' of predicate 'path' references 'blocked', which names no predicate"
+        );
+    }
+
+    #[test]
+    fn a_head_variable_has_to_be_bound_by_a_positive_atom() {
+        // `r1` uses `y` twice in its head, which is reported once. `r2` binds
+        // `y` in a negated atom only, which does not count.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("r0", "path(x, y)", &["edge(x, z)"]),
+                rule("r1", "path(y, y)", &["edge(x, x)"]),
+                rule("r2", "path(x, y)", &["edge(x, x)", "!edge(x, y)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let rejected = program
+            .verify()
+            .expect_err("every rule of `path` leaves a head variable unbound");
+        assert_eq!(
+            rejected.error.message(),
+            "rule 'r0' of predicate 'path' uses 'y' in its head, which no positive atom binds; \
+             rule 'r1' of predicate 'path' uses 'y' in its head, which no positive atom binds; \
+             rule 'r2' of predicate 'path' uses 'y' in its head, which no positive atom binds; \
+             rule 'r2' of predicate 'path' uses 'y' in negated 'edge', which no positive atom binds"
+        );
+    }
+
+    #[test]
+    fn a_negated_variable_has_to_be_bound_by_a_positive_atom() {
+        // `z` is not read as existential, as the strict reading of safety
+        // demands. `_` is what leaves a position open.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("r0", "path(x, y)", &["edge(x, y)", "!edge(y, z)"]),
+                rule("r1", "path(x, y)", &["edge(x, y)", "!edge(y, _)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let rejected = program
+            .verify()
+            .expect_err("`r0` negates an unbound variable");
+        assert_eq!(
+            rejected.error.message(),
+            "rule 'r0' of predicate 'path' uses 'z' in negated 'edge', which no positive atom binds"
+        );
+    }
+
+    #[test]
+    fn a_condition_s_variable_has_to_be_bound_by_a_positive_atom() {
+        // A condition binds nothing, not even an equality: `r1`'s `y` stays
+        // unbound in its head, too.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("r0", "path(x, y)", &["edge(x, y)", "x < z"]),
+                rule("r1", "path(x, y)", &["edge(x, _)", "y == x"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let rejected = program
+            .verify()
+            .expect_err("every rule of `path` constrains an unbound variable");
+        assert_eq!(
+            rejected.error.message(),
+            "rule 'r0' of predicate 'path' uses 'z' in 'x < z', which no positive atom binds; \
+             rule 'r1' of predicate 'path' uses 'y' in its head, which no positive atom binds; \
+             rule 'r1' of predicate 'path' uses 'y' in 'y == x', which no positive atom binds"
+        );
+    }
+
+    #[test]
+    fn only_a_rule_with_an_empty_body_declares_an_edb_predicate() {
+        // `edge`'s head binds nothing, which is fine for a declaration. `small`
+        // has a condition, so it is derived, and its head has to be bound.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("small", &["x"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("s0", "small(x)", &["x < 3"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let rejected = program.verify().expect_err("`small` is no EDB predicate");
+        assert_eq!(
+            rejected.error.message(),
+            "rule 's0' of predicate 'small' uses 'x' in its head, which no positive atom binds; \
+             rule 's0' of predicate 'small' uses 'x' in 'x < 3', which no positive atom binds"
         );
     }
 
