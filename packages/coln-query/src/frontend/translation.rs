@@ -235,38 +235,22 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// its predicate declares.
     fn rule(&self, predicate: &P, rule: &P::Rule) -> Result<Expr, SyntaxError> {
         let relation = self.conjunctive_query(rule)?;
-        let columns: Vec<&Column> = predicate.columns().collect();
 
-        // A head is dense over its predicate's columns: every column filled,
-        // and none of them twice.
-        let mut terms: Vec<Option<Expr>> = (0..columns.len()).map(|_| None).collect();
+        // Verification ensured that the head is dense over its predicate's
+        // columns: every column filled, and none of them twice (but not
+        // guaranteed to be sorted).
+        let mut terms: Vec<Option<Expr>> = (0..predicate.arity()).map(|_| None).collect();
         for (position, bind) in rule.head().bindings() {
-            let slot = terms.get_mut(position).ok_or_else(|| {
-                SyntaxError::new(format!(
-                    "head fills column {position} of a predicate with {} column(s)",
-                    columns.len(),
-                ))
-            })?;
-            if slot.is_some() {
-                return Err(SyntaxError::new(format!(
-                    "head fills column {position} more than once",
-                )));
-            }
-            *slot = Some(bound_expr(bind));
+            terms[position] = Some(bound_expr(bind));
         }
-
-        let attributes = columns
-            .iter()
+        let attributes = predicate
+            .columns()
             .zip(terms)
-            .enumerate()
-            .map(|(position, (column, term))| match term {
-                Some(term) => Ok((column.name().to_string(), term)),
-                None => Err(SyntaxError::new(format!(
-                    "head leaves column {position} ('{}') unfilled",
-                    column.name(),
-                ))),
+            .map(|(column, term)| {
+                let term = term.expect("verified head fills every column");
+                (column.name().to_string(), term)
             })
-            .collect::<Result<Vec<_>, SyntaxError>>()?;
+            .collect();
 
         Ok(Expr::from(ProjectionExpr {
             relation,
@@ -361,33 +345,24 @@ impl<'a, P: Predicate> Translator<'a, P> {
         // The IDB is consulted first: a predicate shadows a base relation of
         // the same name. A derived relation is bound to a host variable rather
         // than being a source leaf, because its rows are computed, not fed in.
-        let (relation, columns): (Expr, Vec<Column>) = match self.predicates.get(name) {
-            Some(predicate) => {
-                let columns: Vec<Column> = predicate.columns().cloned().collect();
-                let expr = if predicate.is_edb_predicate() {
-                    Expr::from(SourceExpr::new(name.to_string()))
-                } else {
-                    Expr::from(VarExpr::new(name.to_string()))
-                };
-                (expr, columns)
-            }
-            None => {
-                // TODO: Should not return an Err but something like
-                // expect("program not in execution order or predicate has not been registered")
-                return Err(SyntaxError::new(format!(
-                    "atom references undeclared entity '{name}'"
-                )));
-            }
+        // Verification resolved every atom to a predicate, and the execution
+        // order registers it before any rule reading it is translated.
+        let predicate = self
+            .predicates
+            .get(name)
+            .expect("verified atom references a predicate of an earlier or the same component");
+        let relation = if predicate.is_edb_predicate() {
+            Expr::from(SourceExpr::new(name.to_string()))
+        } else {
+            Expr::from(VarExpr::new(name.to_string()))
         };
+        let columns: Vec<&Column> = predicate.columns().collect();
 
         let mut binder = AtomBinder::new();
         for (position, bind) in atom.bindings() {
-            let column = columns.get(position).ok_or_else(|| {
-                SyntaxError::new(format!(
-                    "atom '{name}' binds position {position} of a relation with {} column(s)",
-                    columns.len(),
-                ))
-            })?;
+            // Verification ensures each atom's bindings are within the
+            // predicate's arity.
+            let column = columns[position];
             match bind {
                 // A literal in an atom pins that column down: a local selection
                 // on this one relation rather than anything the join sees.
@@ -622,25 +597,22 @@ mod tests {
 
     #[test]
     fn an_error_names_the_rule_and_predicate_it_was_raised_within() {
-        // The head fills a second column of a one-column predicate, which only
-        // the rule's translation notices.
+        // The body negates its only atom, which only the rule's translation
+        // notices.
         let predicates = RulePredicate::group(
             [declare("edge", &["x"]), declare("path", &["x"])],
             [
                 rule("e0", "edge(x)", &[]),
-                rule("r0", "path(x, y)", &["edge(x)", "edge(y)"]),
+                rule("r0", "path(x)", &["!edge(x)"]),
             ],
         )
         .expect("every definand names a declared predicate");
         let program = program(predicates);
         let error = program
-            .prepare(program.verify().expect("the program is stratifiable"))
-            .expect_err("the head overfills its predicate");
+            .prepare(program.verify().expect("the program is valid"))
+            .expect_err("the body has no positive atoms");
 
-        assert_eq!(
-            error.message(),
-            "head fills column 1 of a predicate with 1 column(s)"
-        );
+        assert_eq!(error.message(), "body has no positive atoms");
         assert_eq!(
             error.context().collect::<Vec<_>>(),
             [
@@ -649,19 +621,18 @@ mod tests {
                 },
                 &Frame::Rule {
                     name: "r0".to_string(),
-                    text: Some("path(x, y) :- edge(x), edge(y).".to_string()),
+                    text: Some("path(x) :- !edge(x).".to_string()),
                 },
             ]
         );
         assert_eq!(
             error.to_string(),
-            "in predicate 'path': in rule 'r0': \
-             head fills column 1 of a predicate with 1 column(s)"
+            "in predicate 'path': in rule 'r0': body has no positive atoms"
         );
         assert_eq!(
             format!("{error:#}"),
-            "head fills column 1 of a predicate with 1 column(s)\n  \
-             in rule 'r0': path(x, y) :- edge(x), edge(y).\n  \
+            "body has no positive atoms\n  \
+             in rule 'r0': path(x) :- !edge(x).\n  \
              in predicate 'path'"
         );
     }

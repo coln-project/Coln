@@ -10,8 +10,6 @@
 //! it sits in a module of its own rather than inside either one's `mod tests`.
 
 use super::*;
-use crate::{relational::schema::TableSchema, test_utils::table_schema};
-use std::collections::{HashMap, HashSet};
 
 /// Declares an identifier space: a name that is a type of its own, so that
 /// handing one space's name where another belongs fails to compile.
@@ -62,17 +60,18 @@ name_space! {
     VarName
 }
 
-/// A predicate named `name`, defined by one rule per entry in `rules`,
-/// each rule listing the names its atoms reference. A name that is not a
-/// predicate of the program stands for a base table from the EDB.
+/// A predicate named `name` over [`columns`], defined by one rule per entry in
+/// `rules`, each rule listing the names its atoms reference. Each head fills
+/// the one column with `x`, as verification requires a head to be dense.
 pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
+    let head = format!("{name}(x)");
     TestPredicate {
         name: name.into(),
         columns: columns(),
         rules: rules
             .iter()
             .enumerate()
-            .map(|(idx, atoms)| rule(&format!("{name}#{idx}"), name, atoms))
+            .map(|(idx, atoms)| rule(&format!("{name}#{idx}"), &head, atoms))
             .collect(),
     }
 }
@@ -125,7 +124,8 @@ fn cond(spec: &str) -> Option<TestCond> {
 ///
 /// A term that parses as a number or is in double quotes is a literal, `_`
 /// leaves that position unbound (the sparseness [`Atom::bindings`] allows),
-/// and anything else is a variable.
+/// and anything else is a variable. A term written `position: term` binds
+/// that position rather than its own, which lets an atom bind one twice.
 pub(super) fn atom(spec: &str) -> TestAtom {
     let (spec, positive) = spec
         .strip_prefix('!')
@@ -139,7 +139,13 @@ pub(super) fn atom(spec: &str) -> TestAtom {
         .filter(|spec| !spec.is_empty())
         .enumerate()
         .filter(|(_, spec)| *spec != "_")
-        .map(|(position, spec)| (position, term(spec)))
+        .map(|(position, spec)| {
+            let explicit = spec
+                .split_once(':')
+                .and_then(|(position, spec)| Some((position.trim().parse().ok()?, spec.trim())));
+            let (position, spec) = explicit.unwrap_or((position, spec));
+            (position, term(spec))
+        })
         .collect();
     TestAtom {
         name: name.trim().into(),
@@ -159,51 +165,16 @@ fn term(spec: &str) -> Bind<TestTypedVar, TestLit> {
     }
 }
 
-/// A program whose EDB holds every name the predicates reference but do not
-/// define, so that it is free of dangling references by construction.
+/// A program of exactly `predicates`. An EDB relation is a predicate, too,
+/// one whose only rule has an empty body, so a test declares the EDB it reads
+/// among `predicates`: a name no predicate is declared under dangles, and
+/// verification rejects the program.
 pub(super) fn program(predicates: Vec<TestPredicate>) -> TestLogicalProgram {
-    let defined: HashSet<&str> = predicates
-        .iter()
-        .map(|predicate| predicate.name.as_str())
-        .collect();
-    let base_relations = predicates
-        .iter()
-        .flat_map(|predicate| predicate.rules.iter())
-        .flat_map(|rule| rule.atoms.iter())
-        .map(|atom| atom.name.as_str())
-        .filter(|name| !defined.contains(name))
-        .map(edb_entry)
-        .collect();
-    TestLogicalProgram {
-        predicates,
-        base_relations,
-    }
+    TestLogicalProgram { predicates }
 }
 
-/// A program whose EDB holds exactly `base_relations`, for the cases where
-/// that matters.
-pub(super) fn program_over(
-    predicates: Vec<TestPredicate>,
-    base_relations: &[&str],
-) -> TestLogicalProgram {
-    TestLogicalProgram {
-        predicates,
-        base_relations: base_relations.iter().copied().map(edb_entry).collect(),
-    }
-}
-
-/// A base relation paired with its schema. The columns play no part in
-/// grouping, resolution or stratification, so one keyed column stands in
-/// for whatever shape a translation test will want later.
-pub(super) fn edb_entry(name: &str) -> (String, TableSchema) {
-    (
-        name.to_owned(),
-        table_schema(name, [("x", ScalarType::Uint)], ["x"]),
-    )
-}
-
-/// The declared columns of a test predicate, matching [`edb_entry`]'s
-/// single column so heads and base relations line up.
+/// The declared columns of a test predicate: a single one, which [`pred`]'s
+/// heads fill with `x`.
 pub(super) fn columns() -> Vec<Column> {
     vec![Column::new("x", ScalarType::Uint)]
 }
@@ -231,7 +202,6 @@ pub(super) fn grouping_of(predicates: &[TestPredicate]) -> Vec<(&str, Vec<&str>)
 
 pub(super) struct TestLogicalProgram {
     predicates: Vec<TestPredicate>,
-    base_relations: HashMap<String, TableSchema>,
 }
 
 impl LogicalProgram for TestLogicalProgram {
@@ -367,20 +337,6 @@ pub(super) fn borrow<Var, Lit>(bind: &Bind<Var, Lit>) -> Bind<&Var, &Lit> {
         Bind::Var(var) => Bind::Var(var),
         Bind::Lit(lit) => Bind::Lit(lit),
     }
-}
-
-/// The EDB every translation test runs against.
-pub(super) fn edb() -> HashMap<String, TableSchema> {
-    [
-        (
-            "edge",
-            vec![("from", ScalarType::Uint), ("to", ScalarType::Uint)],
-        ),
-        ("node", vec![("id", ScalarType::Uint)]),
-    ]
-    .into_iter()
-    .map(|(name, columns)| (name.to_owned(), table_schema(name, columns, [])))
-    .collect()
 }
 
 /// A predicate declaration, every column of it a `Uint`.

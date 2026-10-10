@@ -4,13 +4,15 @@
 
 //! This module does static analysis of a Datalog program.
 
+use super::display::separated;
 use super::graph_utils::gabow;
 use super::{AggregateRules, Component, IdOf, Identifiable, LogicalProgram, Predicate, Rule};
 use crate::error::SyntaxError;
 use crate::frontend::Atom;
 use crate::frontend::graph_utils::vertex_degrees;
-use indexmap::{IndexMap, IndexSet};
-use std::{fmt, marker::PhantomData};
+use crate::relational::schema::Column;
+use indexmap::{IndexMap, IndexSet, map::Entry};
+use std::{collections::HashSet, fmt, marker::PhantomData};
 
 /// Builds the program's graphs, checking nothing. See [`Analysis::verify`].
 pub(super) fn analyze<LP: LogicalProgram>(program: &LP) -> Analysis<'_, LP::Predicate> {
@@ -55,9 +57,22 @@ pub struct Analysis<'a, P: Identifiable, S = Unchecked> {
 }
 
 impl<'a, P: Predicate> Analysis<'a, P, Unchecked> {
-    /// Checks the program: it has to be stratifiable. On failure, the analysis
-    /// comes back along with the error, so that it can still be inspected.
+    /// Checks the program: it has to be well-formed (see [`Malformation`]),
+    /// and stratifiable. On failure, the analysis comes back along with the
+    /// error, so that it can still be inspected.
+    ///
+    /// Well-formedness is checked first, since a malformed program's graphs
+    /// miss what is malformed: a dangling negated atom adds no edge, so it
+    /// cannot break a stratification either.
     pub fn verify(self) -> Result<Analysis<'a, P, Verified>, Rejected<'a, P>> {
+        let malformations = self.dependencies.malformations();
+        if !malformations.is_empty() {
+            let message = fmt::from_fn(|f| separated(f, &malformations, "; ")).to_string();
+            return Err(Rejected {
+                error: SyntaxError::new(message),
+                analysis: Box::new(self),
+            });
+        }
         if !self.quotient.is_stratifiable() {
             // TODO: Nice error reporting.
             return Err(Rejected {
@@ -226,20 +241,34 @@ impl<P: Predicate> Component for PredicateComponent<'_, P> {
 /// in one of its body's [atoms](Atom).
 struct PredicateDependencyGraph<'a, P: Identifiable> {
     predicates: IndexMap<&'a IdOf<P>, &'a P>,
+    /// Predicates declared under a name an earlier predicate already took.
+    /// They are no vertices, so that every name resolves to one predicate.
+    duplicates: Vec<&'a P>,
     adjacency: Adjacency<EdgeLabel>,
 }
 
 impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
+    /// Builds the graph, leaving out what [`malformations`] reports: a
+    /// duplicate declaration is no vertex, and an atom referencing no
+    /// predicate is no edge.
+    ///
+    /// [`malformations`]: Self::malformations
     fn from_logical_program<LP: LogicalProgram<Predicate = P>>(program: &'a LP) -> Self {
         // A predicate's position in `predicates` is its node id in the graphs
         // computed later, and the map's keys are what atoms are tested against
         // to compute the dependencies.
-        let predicates: IndexMap<&'a IdOf<P>, &'a P> = program
-            .predicates()
-            .map(|predicate| (predicate.id(), predicate))
-            // TODO: This silently overwrites.
-            .collect();
-        // TODO: What if an atom is dangling?
+        // The first declaration of a name wins, the ones after it are kept
+        // aside for verification to report.
+        let mut predicates: IndexMap<&'a IdOf<P>, &'a P> = IndexMap::new();
+        let mut duplicates: Vec<&'a P> = Vec::new();
+        for predicate in program.predicates() {
+            match predicates.entry(predicate.id()) {
+                Entry::Vacant(slot) => {
+                    slot.insert(predicate);
+                }
+                Entry::Occupied(_) => duplicates.push(predicate),
+            }
+        }
         let adjacency: Adjacency<EdgeLabel> = predicates
             .values()
             .map(|predicate| {
@@ -264,8 +293,46 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
             .collect();
         Self {
             predicates,
+            duplicates,
             adjacency,
         }
+    }
+
+    /// Everything that makes the program ill-formed, regardless of what its
+    /// graphs look like: duplicate declarations, atoms referencing no
+    /// predicate, and atoms whose bindings do not fit the arity of the
+    /// predicate they reference. See [`Malformation`].
+    ///
+    /// A head is checked against the predicate whose rule it heads.
+    fn malformations(&self) -> Vec<Malformation<'a, P>> {
+        let duplicates = self
+            .duplicates
+            .iter()
+            .copied()
+            .map(|predicate| Malformation::DuplicateDeclaration { predicate });
+        let rules = self.predicates.values().copied().flat_map(|predicate| {
+            predicate.rules().flat_map(move |rule| {
+                let site = Site { predicate, rule };
+                site.head_malformations()
+                    .chain(self.body_malformations(site))
+            })
+        });
+        duplicates.chain(rules).collect()
+    }
+
+    /// What is wrong with the body atoms of `site`'s rule: each has to
+    /// reference a predicate, and fit that predicate's arity.
+    fn body_malformations(&self, site: Site<'a, P>) -> impl Iterator<Item = Malformation<'a, P>> {
+        site.rule.atoms().flat_map(move |atom| {
+            let referenced = self.predicates.get(atom.id()).copied();
+            let dangling = referenced
+                .is_none()
+                .then_some(Malformation::Dangling { site, atom });
+            let misplaced = referenced
+                .into_iter()
+                .flat_map(move |referenced| misplaced_bindings(site, atom, referenced));
+            dangling.into_iter().chain(misplaced)
+        })
     }
 
     /// The predicate at node `idx`.
@@ -491,9 +558,176 @@ impl<P: Predicate> fmt::Display for NegativeCycle<'_, P> {
     }
 }
 
+/// A rule, along with the predicate it belongs to, for a diagnostic to point at.
+struct Site<'a, P: Predicate> {
+    predicate: &'a P,
+    rule: &'a P::Rule,
+}
+
+// Derived, they would demand `P: Clone` and `P: Copy`.
+impl<P: Predicate> Clone for Site<'_, P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P: Predicate> Copy for Site<'_, P> {}
+
+impl<'a, P: Predicate> Site<'a, P> {
+    /// What is wrong with the rule's head: it has to fit the arity of the
+    /// predicate it belongs to, and fill each of its columns.
+    fn head_malformations(self) -> impl Iterator<Item = Malformation<'a, P>> {
+        let head = self.rule.head();
+        let filled: HashSet<usize> = head.bindings().map(|(position, _)| position).collect();
+        let unfilled = self
+            .predicate
+            .columns()
+            .enumerate()
+            .filter(move |(position, _)| !filled.contains(position))
+            .map(move |(position, column)| Malformation::ColumnUnfilled {
+                site: self,
+                position,
+                column,
+            });
+        misplaced_bindings(self, head, self.predicate).chain(unfilled)
+    }
+}
+
+/// The bindings of `atom`, which `site`'s rule contains, that do not fit
+/// `referenced`, the predicate it references: positions beyond its arity, and
+/// positions bound before.
+fn misplaced_bindings<'a, P: Predicate>(
+    site: Site<'a, P>,
+    atom: &'a AtomOf<P>,
+    referenced: &'a P,
+) -> impl Iterator<Item = Malformation<'a, P>> {
+    let arity = referenced.arity();
+    let mut bound: HashSet<usize> = HashSet::new();
+    atom.bindings().filter_map(move |(position, _)| {
+        if position >= arity {
+            Some(Malformation::PositionOutOfRange {
+                site,
+                atom,
+                position,
+                arity,
+            })
+        } else if !bound.insert(position) {
+            Some(Malformation::PositionRepeated {
+                site,
+                atom,
+                position,
+            })
+        } else {
+            None
+        }
+    })
+}
+
+type AtomOf<P> = <<P as AggregateRules>::Rule as Rule>::Atom;
+
+/// What makes a program ill-formed, as reported by
+/// [`PredicateDependencyGraph::malformations`]. Borrows the offending site
+/// from the program so that a diagnostic can point at it.
+///
+/// Unlike a [`NegativeCycle`], a malformation is visible without the graphs,
+/// but it leaves them incomplete: a duplicate declaration is no vertex, and a
+/// dangling atom no edge.
+enum Malformation<'a, P: Predicate> {
+    /// A predicate declared under a name an earlier predicate already took.
+    DuplicateDeclaration { predicate: &'a P },
+    /// A body atom referencing a name no predicate is declared under.
+    Dangling {
+        site: Site<'a, P>,
+        atom: &'a AtomOf<P>,
+    },
+    /// An atom binding a position its predicate has no column at.
+    PositionOutOfRange {
+        site: Site<'a, P>,
+        atom: &'a AtomOf<P>,
+        position: usize,
+        arity: usize,
+    },
+    /// An atom binding a position more than once.
+    PositionRepeated {
+        site: Site<'a, P>,
+        atom: &'a AtomOf<P>,
+        position: usize,
+    },
+    /// A head leaving a column of its predicate unfilled, with nothing to
+    /// project into it.
+    ColumnUnfilled {
+        site: Site<'a, P>,
+        position: usize,
+        column: &'a Column,
+    },
+}
+
+impl<P: Predicate> fmt::Display for Malformation<'_, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let in_rule = |f: &mut fmt::Formatter<'_>, site: &Site<'_, P>| {
+            write!(
+                f,
+                "rule '{}' of predicate '{}' ",
+                site.rule.id(),
+                site.predicate.id()
+            )
+        };
+        match self {
+            Malformation::DuplicateDeclaration { predicate } => {
+                write!(
+                    f,
+                    "predicate '{}' is declared more than once",
+                    predicate.id()
+                )
+            }
+            Malformation::Dangling { site, atom } => {
+                in_rule(f, site)?;
+                write!(f, "references '{}', which names no predicate", atom.id())
+            }
+            Malformation::PositionOutOfRange {
+                site,
+                atom,
+                position,
+                arity,
+            } => {
+                in_rule(f, site)?;
+                write!(
+                    f,
+                    "binds position {position} of '{}', which has {arity} column(s)",
+                    atom.id()
+                )
+            }
+            Malformation::PositionRepeated {
+                site,
+                atom,
+                position,
+            } => {
+                in_rule(f, site)?;
+                write!(
+                    f,
+                    "binds position {position} of '{}' more than once",
+                    atom.id()
+                )
+            }
+            Malformation::ColumnUnfilled {
+                site,
+                position,
+                column,
+            } => {
+                in_rule(f, site)?;
+                write!(
+                    f,
+                    "leaves column {position} ('{}') of its head unfilled",
+                    column.name()
+                )
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::super::test_utils::*;
+    use super::super::{LogicalProgram, RulePredicate, test_utils::*};
     use super::*;
 
     #[test]
@@ -509,6 +743,67 @@ mod tests {
             .verify()
             .expect("a positive cycle is stratifiable");
         assert_eq!(analysis.execution_order().len(), 1);
+    }
+
+    #[test]
+    fn a_head_has_to_fill_exactly_its_predicate_s_columns() {
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("r0", "path(x)", &["edge(x, y)"]),
+                rule("r1", "path(x, y, z)", &["edge(x, y)", "edge(y, z)"]),
+                rule("r2", "path(0: x, 0: y)", &["edge(x, y)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let rejected = program
+            .verify()
+            .expect_err("every rule of `path` has a malformed head");
+        assert_eq!(
+            rejected.error.message(),
+            "rule 'r0' of predicate 'path' leaves column 1 ('y') of its head unfilled; \
+             rule 'r1' of predicate 'path' binds position 2 of 'path', which has 2 column(s); \
+             rule 'r2' of predicate 'path' binds position 0 of 'path' more than once; \
+             rule 'r2' of predicate 'path' leaves column 1 ('y') of its head unfilled"
+        );
+    }
+
+    #[test]
+    fn a_body_atom_has_to_fit_the_predicate_it_references() {
+        // `r2`'s dangling atom is negated, which the graphs alone would miss:
+        // it adds no edge, so it breaks no stratification either.
+        let predicates = RulePredicate::group(
+            [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
+            [
+                rule("e0", "edge(x, y)", &[]),
+                rule("r0", "path(x, y)", &["edge(x, y, z)"]),
+                rule("r1", "path(x, y)", &["edge(0: x, 0: y)"]),
+                rule("r2", "path(x, y)", &["edge(x, y)", "!blocked(x, y)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let rejected = program
+            .verify()
+            .expect_err("every rule of `path` has a malformed body atom");
+        assert_eq!(
+            rejected.error.message(),
+            "rule 'r0' of predicate 'path' binds position 2 of 'edge', which has 2 column(s); \
+             rule 'r1' of predicate 'path' binds position 0 of 'edge' more than once; \
+             rule 'r2' of predicate 'path' references 'blocked', which names no predicate"
+        );
+    }
+
+    #[test]
+    fn a_predicate_may_be_declared_only_once() {
+        let program = program(vec![pred("p", &[&[]]), pred("p", &[&[]])]);
+        let rejected = program.verify().expect_err("`p` is declared twice");
+        assert_eq!(
+            rejected.error.message(),
+            "predicate 'p' is declared more than once"
+        );
     }
 
     #[test]

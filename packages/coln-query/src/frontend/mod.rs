@@ -219,6 +219,16 @@ pub trait Predicate: Identifiable<Identifier = PredIdOf<Self::Rule>> + Aggregate
     /// others.
     fn columns(&self) -> impl Iterator<Item = &Column>;
 
+    /// The number of [`columns`](Self::columns), which bounds the positions
+    /// an atom referencing this predicate may bind.
+    ///
+    /// Counting is O(1) for a `columns` returning a slice iterator, which
+    /// overrides [`Iterator::count`]. An implementor whose `columns` is
+    /// costlier to count overrides this instead.
+    fn arity(&self) -> usize {
+        self.columns().count()
+    }
+
     /// A predicate is a predicate of the EDB (base table, externally given)
     /// if it does contain only a single rule with no atoms in its body.
     fn is_edb_predicate(&self) -> bool {
@@ -475,9 +485,14 @@ pub trait Atom: Identifiable + fmt::Debug {
     /// is what keeps an atom over a wide relation cheap and spares Datalog's
     /// `_` any representation at all.
     ///
+    /// Each position is below the referenced predicate's
+    /// [`arity`](Predicate::arity) and occurs at most once.
+    ///
     /// A rule's [`head`](Rule::head) is the exception and has to be dense,
     /// covering every one of its predicate's [`columns`](Predicate::columns)
     /// exactly once: a column no head fills has nothing to project into it.
+    ///
+    /// [Verification](Analysis::verify) checks all of this.
     fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)>;
 
     /// All variables brought into scope by this [`Atom`].
