@@ -46,7 +46,7 @@
 use super::{
     expr::{
         AssignExpr, BinaryExpr, CallExpr, Expr, ExprVisitor, FunctionExpr, GetIndexExpr,
-        GroupingExpr, Literal, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
+        GroupingExpr, LiteralExpr, TupleExpr, UnaryExpr, VarExpr,
     },
     stmt::{BlockStmt, ExprStmt, Stmt, StmtVisitor, VarStmt},
     variable::VariableSlot,
@@ -248,12 +248,7 @@ impl StmtVisitor<(), ()> for TreePrinter<'_> {
 
 impl ExprVisitor<(), ()> for TreePrinter<'_> {
     fn visit_literal_expr(&mut self, expr: &LiteralExpr, ctx: ()) {
-        match &expr.value {
-            // `Literal`'s own `Display` prints a string bare, which would make
-            // it indistinguishable from a variable.
-            Literal::String(value) => emit!(self, "Literal \"{}\"", escaped(value)),
-            value => emit!(self, "Literal {value}"),
-        }
+        emit!(self, "Literal {}", expr.value);
     }
 
     fn visit_tuple_expr(&mut self, expr: &TupleExpr, ctx: ()) {

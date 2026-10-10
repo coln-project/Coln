@@ -2,52 +2,135 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Test scaffolding for this layer: a [`LogicalProgram`] implemented over plain
-//! strings, plus builders that let a test read as the Datalog it stands for.
+//! Test scaffolding for this layer: a [`LogicalProgram`] over the three
+//! identifier spaces declared below, plus builders that let a test read as the
+//! Datalog it stands for.
 //!
 //! Shared by the tests of [`super`] and of [`super::translation`], which is why
 //! it sits in a module of its own rather than inside either one's `mod tests`.
 
 use super::*;
-use crate::{relational::schema::TableSchema, test_utils::table_schema};
-use std::collections::{HashMap, HashSet};
 
-impl Identifier for String {}
+/// Declares an identifier space: a name that is a type of its own, so that
+/// handing one space's name where another belongs fails to compile.
+macro_rules! name_space {
+    ($(#[$doc:meta])* $name:ident) => {
+        $(#[$doc])*
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        pub(super) struct $name(String);
 
-/// A predicate named `name`, defined by one rule per entry in `rules`,
-/// each rule listing the names its atoms reference. A name that is not a
-/// predicate of the program stands for a base table from the EDB.
+        impl $name {
+            pub(super) fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(name: &str) -> Self {
+                Self(name.to_owned())
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+
+        impl Identifier for $name {}
+    };
+}
+
+name_space! {
+    /// What an [`Atom`] references and a [`Predicate`] is declared under. Names
+    /// a base relation of the EDB just as well: an atom cannot tell one from a
+    /// derived predicate by its name alone, which is the whole point of the
+    /// shadowing [`Translator`](super::translation) resolves.
+    PredicateName
+}
+
+name_space! {
+    /// A rule's own name. Read by diagnostics and by the IR variable names
+    /// translation mints, never to reference anything.
+    RuleName
+}
+
+name_space! {
+    /// A variable, in scope only within the one rule binding it.
+    VarName
+}
+
+/// A predicate named `name` over [`columns`], defined by one rule per entry in
+/// `rules`, each rule listing the names its atoms reference, negated ones with
+/// a leading `!`. Every atom, the head included, fills the one column with
+/// `x`, so a rule with a positive atom is well-formed and safe.
 pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
+    let head = format!("{name}(x)");
     TestPredicate {
-        name: name.to_owned(),
+        name: name.into(),
         columns: columns(),
         rules: rules
             .iter()
             .enumerate()
-            .map(|(idx, atoms)| rule(&format!("{name}#{idx}"), name, atoms))
+            .map(|(idx, names)| {
+                let atoms: Vec<String> = names.iter().map(|name| format!("{name}(x)")).collect();
+                let atoms: Vec<&str> = atoms.iter().map(String::as_str).collect();
+                rule(&format!("{name}#{idx}"), &head, &atoms)
+            })
             .collect(),
     }
 }
 
-/// A rule called `name`, deriving the atom `head` from the body `atoms`.
+/// A rule called `name`, deriving the atom `head` from the `body`.
 ///
 /// Each is an [`atom`] spec, so `rule("r0", "path(x, y)", &["edge(x, y)"])`
 /// reads as the rule it stands for. A bare name binds nothing, which is all
-/// the tests that only look at the reference graph need.
-pub(super) fn rule(name: &str, head: &str, atoms: &[&str]) -> TestRule {
+/// the tests that only look at the reference graph need. A body spec that
+/// reads as a [`cond`] is a condition instead.
+pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> TestRule {
     TestRule {
-        name: name.to_owned(),
+        name: name.into(),
         head: atom(head),
-        atoms: atoms.iter().map(|atom_spec| atom(atom_spec)).collect(),
+        atoms: body
+            .iter()
+            .filter(|spec| cond(spec).is_none())
+            .map(|spec| atom(spec))
+            .collect(),
+        conditions: body.iter().filter_map(|spec| cond(spec)).collect(),
     }
+}
+
+/// A condition written as `term operator term`, if `spec` is one: three
+/// whitespace-separated parts, the middle a comparison's symbol. The terms
+/// read as in an [`atom`].
+fn cond(spec: &str) -> Option<TestCond> {
+    let [left, operator, right] = spec.split_whitespace().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let operator = [
+        Operator::Equal,
+        Operator::NotEqual,
+        Operator::Less,
+        Operator::LessEqual,
+        Operator::Greater,
+        Operator::GreaterEqual,
+    ]
+    .into_iter()
+    .find(|candidate| candidate.symbol() == operator)?;
+    Some(TestCond {
+        operator,
+        left: term(left),
+        right: term(right),
+    })
 }
 
 /// An atom written as `name(term, term, …)`, or as a bare `name` when it
 /// binds nothing. A leading `!` negates it.
 ///
-/// A term that parses as a number is a literal, `_` leaves that position
-/// unbound (the sparseness [`Atom::bindings`] allows), and anything else is
-/// a variable.
+/// A term that parses as a number or is in double quotes is a literal, `_`
+/// leaves that position unbound (the sparseness [`Atom::bindings`] allows),
+/// and anything else is a variable. A term written `position: term` binds
+/// that position rather than its own, which lets an atom bind one twice.
 pub(super) fn atom(spec: &str) -> TestAtom {
     let (spec, positive) = spec
         .strip_prefix('!')
@@ -58,88 +141,54 @@ pub(super) fn atom(spec: &str) -> TestAtom {
     let bindings = terms
         .split(',')
         .map(str::trim)
-        .filter(|term| !term.is_empty())
+        .filter(|spec| !spec.is_empty())
         .enumerate()
-        .filter(|(_, term)| *term != "_")
-        .map(|(position, term)| {
-            let bind = match term.parse::<u64>() {
-                Ok(value) => Bind::Lit(TestLit(Literal::Uint(value))),
-                Err(_) => Bind::Var(TestTypedVar {
-                    name: term.to_owned(),
-                }),
-            };
-            (position, bind)
+        .filter(|(_, spec)| *spec != "_")
+        .map(|(position, spec)| {
+            let explicit = spec
+                .split_once(':')
+                .and_then(|(position, spec)| Some((position.trim().parse().ok()?, spec.trim())));
+            let (position, spec) = explicit.unwrap_or((position, spec));
+            (position, term(spec))
         })
         .collect();
     TestAtom {
-        name: name.trim().to_owned(),
+        name: name.trim().into(),
         positive,
         bindings,
     }
 }
 
-/// A rule paired with the definand it derives, the shape
-/// [`RulePredicate::group`] takes. The rule heads an atom named after the
-/// definand, which is the ordinary case; pass an explicit pair where the
-/// two have to differ.
-pub(super) fn derives(head: &str, name: &str, atoms: &[&str]) -> (String, TestRule) {
-    (atom(head).name, rule(name, head, atoms))
+fn term(spec: &str) -> Bind<TestTypedVar, TestLit> {
+    let string = spec
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'));
+    match (string, spec.parse::<u64>()) {
+        (Some(string), _) => Bind::Lit(TestLit(Literal::String(string.into()))),
+        (None, Ok(value)) => Bind::Lit(TestLit(Literal::Uint(value))),
+        (None, Err(_)) => Bind::Var(TestTypedVar { name: spec.into() }),
+    }
 }
 
-/// A program whose EDB holds every name the predicates reference but do not
-/// define, so that it is free of dangling references by construction.
+/// A program of exactly `predicates`. An EDB relation is a predicate, too,
+/// one whose only rule has an empty body, so a test declares the EDB it reads
+/// among `predicates`: a name no predicate is declared under dangles, and
+/// verification rejects the program.
 pub(super) fn program(predicates: Vec<TestPredicate>) -> TestLogicalProgram {
-    let defined: HashSet<&str> = predicates
-        .iter()
-        .map(|predicate| predicate.name.as_str())
-        .collect();
-    let base_relations = predicates
-        .iter()
-        .flat_map(|predicate| predicate.rules.iter())
-        .flat_map(|rule| rule.atoms.iter())
-        .map(|atom| atom.name.as_str())
-        .filter(|name| !defined.contains(name))
-        .map(edb_entry)
-        .collect();
-    TestLogicalProgram {
-        predicates,
-        base_relations,
-    }
+    TestLogicalProgram { predicates }
 }
 
-/// A program whose EDB holds exactly `base_relations`, for the cases where
-/// that matters.
-pub(super) fn program_over(
-    predicates: Vec<TestPredicate>,
-    base_relations: &[&str],
-) -> TestLogicalProgram {
-    TestLogicalProgram {
-        predicates,
-        base_relations: base_relations.iter().copied().map(edb_entry).collect(),
-    }
-}
-
-/// A base relation paired with its schema. The columns play no part in
-/// grouping, resolution or stratification, so one keyed column stands in
-/// for whatever shape a translation test will want later.
-pub(super) fn edb_entry(name: &str) -> (String, TableSchema) {
-    (
-        name.to_owned(),
-        table_schema(name, [("x", ScalarType::Uint)], ["x"]),
-    )
-}
-
-/// The declared columns of a test predicate, matching [`edb_entry`]'s
-/// single column so heads and base relations line up.
+/// The declared columns of a test predicate: a single one, which [`pred`]'s
+/// heads fill with `x`.
 pub(super) fn columns() -> Vec<Column> {
     vec![Column::new("x", ScalarType::Uint)]
 }
 
 /// A declaration for each `name`, all sharing [`columns`].
-pub(super) fn declarations(names: &[&str]) -> Vec<(String, Vec<Column>)> {
+pub(super) fn declarations(names: &[&str]) -> Vec<(PredicateName, Vec<Column>)> {
     names
         .iter()
-        .map(|name| ((*name).to_owned(), columns()))
+        .map(|name| ((*name).into(), columns()))
         .collect()
 }
 
@@ -158,11 +207,9 @@ pub(super) fn grouping_of(predicates: &[TestPredicate]) -> Vec<(&str, Vec<&str>)
 
 pub(super) struct TestLogicalProgram {
     predicates: Vec<TestPredicate>,
-    base_relations: HashMap<String, TableSchema>,
 }
 
 impl LogicalProgram for TestLogicalProgram {
-    type Identifier = String;
     type Predicate = TestPredicate;
 
     fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
@@ -172,23 +219,25 @@ impl LogicalProgram for TestLogicalProgram {
 
 /// The tests use [`RulePredicate`] itself as their [`Predicate`], so the
 /// scaffolding stops at the rule level.
-pub(super) type TestPredicate = RulePredicate<String, TestRule>;
+pub(super) type TestPredicate = RulePredicate<TestRule>;
 
 #[derive(Debug)]
 pub(super) struct TestRule {
-    name: String,
+    name: RuleName,
     head: TestAtom,
     atoms: Vec<TestAtom>,
+    conditions: Vec<TestCond>,
 }
 
-impl Identifiable<String> for TestRule {
-    fn id(&self) -> &String {
+impl Identifiable for TestRule {
+    type Identifier = RuleName;
+
+    fn id(&self) -> &RuleName {
         &self.name
     }
 }
 
 impl Rule for TestRule {
-    type Identifier = String;
     type Atom = TestAtom;
     type Cond = TestCond;
 
@@ -201,25 +250,26 @@ impl Rule for TestRule {
     }
 
     fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
-        std::iter::empty()
+        self.conditions.iter()
     }
 }
 
 #[derive(Debug)]
 pub(super) struct TestAtom {
-    name: String,
+    name: PredicateName,
     positive: bool,
     bindings: Vec<(usize, Bind<TestTypedVar, TestLit>)>,
 }
 
-impl Identifiable<String> for TestAtom {
-    fn id(&self) -> &String {
+impl Identifiable for TestAtom {
+    type Identifier = PredicateName;
+
+    fn id(&self) -> &PredicateName {
         &self.name
     }
 }
 
 impl Atom for TestAtom {
-    type Identifier = String;
     type Var = TestTypedVar;
     type Lit = TestLit;
 
@@ -236,18 +286,18 @@ impl Atom for TestAtom {
 
 #[derive(Debug)]
 pub(super) struct TestTypedVar {
-    name: String,
+    name: VarName,
 }
 
-impl Identifiable<String> for TestTypedVar {
-    fn id(&self) -> &String {
+impl Identifiable for TestTypedVar {
+    type Identifier = VarName;
+
+    fn id(&self) -> &VarName {
         &self.name
     }
 }
 
 impl TypedVar for TestTypedVar {
-    type Identifier = String;
-
     fn ty(&self) -> ScalarType {
         ScalarType::Uint
     }
@@ -262,8 +312,7 @@ impl Lit for TestLit {
     }
 }
 
-/// Conditions play no part in the reference graph, so the test programs
-/// carry none and this type exists only to satisfy [`Rule::Cond`].
+/// A condition, as [`rule`] reads one off a body spec like `x < 3`.
 #[derive(Debug)]
 pub(super) struct TestCond {
     operator: Operator,
@@ -272,7 +321,6 @@ pub(super) struct TestCond {
 }
 
 impl Cond for TestCond {
-    type Identifier = String;
     type Var = TestTypedVar;
     type Lit = TestLit;
 
@@ -296,24 +344,10 @@ pub(super) fn borrow<Var, Lit>(bind: &Bind<Var, Lit>) -> Bind<&Var, &Lit> {
     }
 }
 
-/// The EDB every translation test runs against.
-pub(super) fn edb() -> HashMap<String, TableSchema> {
-    [
-        (
-            "edge",
-            vec![("from", ScalarType::Uint), ("to", ScalarType::Uint)],
-        ),
-        ("node", vec![("id", ScalarType::Uint)]),
-    ]
-    .into_iter()
-    .map(|(name, columns)| (name.to_owned(), table_schema(name, columns, [])))
-    .collect()
-}
-
 /// A predicate declaration, every column of it a `Uint`.
-pub(super) fn declare(name: &str, columns: &[&str]) -> (String, Vec<Column>) {
+pub(super) fn declare(name: &str, columns: &[&str]) -> (PredicateName, Vec<Column>) {
     (
-        name.to_owned(),
+        name.into(),
         columns
             .iter()
             .map(|column| Column::new(*column, ScalarType::Uint))
