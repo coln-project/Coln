@@ -431,7 +431,7 @@ pub trait Rule: Identifiable + fmt::Debug {
 
     /// The atoms of the rule's _body_ which are negated.
     fn negated_atoms(&self) -> impl Iterator<Item = &Self::Atom> {
-        self.atoms().filter(|atom| atom.is_negative())
+        self.atoms().filter(|atom| atom.is_negated())
     }
 
     /// The conditions of the rule's body. Conditions constrain a variable's
@@ -487,7 +487,7 @@ pub trait Atom: Identifiable + fmt::Debug {
     type Lit: Lit;
 
     fn is_positive(&self) -> bool;
-    fn is_negative(&self) -> bool {
+    fn is_negated(&self) -> bool {
         !self.is_positive()
     }
 

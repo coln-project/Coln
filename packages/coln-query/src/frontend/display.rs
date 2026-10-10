@@ -61,7 +61,7 @@ pub struct ProgramDisplay<'a, L>(pub(super) &'a L);
 impl<A: Atom> Display for AtomDisplay<'_, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let atom = self.0;
-        if atom.is_negative() {
+        if atom.is_negated() {
             f.write_str("!")?;
         }
         write!(f, "{}(", atom.id())?;
