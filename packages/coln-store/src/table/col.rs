@@ -5,8 +5,7 @@
 use std::cmp::Ordering;
 use std::ops::Range;
 
-use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue};
-use coln_flir_rs::engine::schema::StoreScalarType;
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarType, StoreScalarValue};
 use coln_flir_rs::public::PublicScalarValue;
 
 use crate::pack::IdPacker;
@@ -110,7 +109,7 @@ pub(super) enum Column {
 impl Column {
     pub(super) fn new(kind: StoreScalarType) -> Self {
         match kind {
-            StoreScalarType::RowId(()) => Column::Id(IdColumn::new()),
+            StoreScalarType::RowId(_) => Column::Id(IdColumn::new()),
             StoreScalarType::U64(()) => Column::U64(hexane::Column::new()),
             StoreScalarType::I64(()) => Column::I64(hexane::Column::new()),
             StoreScalarType::I32(()) => Column::I32(hexane::Column::new()),
