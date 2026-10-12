@@ -153,7 +153,7 @@ impl<Tuple> TableDelta<Tuple> {
         let Self { entity, inner } = self;
         let inner = inner
             .into_iter()
-            .map(|zrow| zrow.try_map(|tuple| f(tuple)))
+            .map(|zrow| zrow.try_map(&f))
             .collect::<Result<_, _>>()?;
         Ok(TableDelta { entity, inner })
     }

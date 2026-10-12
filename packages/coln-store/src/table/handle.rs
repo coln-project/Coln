@@ -60,7 +60,7 @@ impl<'a> TableHandle<'a> {
     // See `row_by_handle` which will actually canonicalise the handle.
     // We need both because the TS FFI does not deal with handles.
     pub fn row_by_id(&self, row_id: &PackedRowId) -> Option<StoreTuple> {
-        let canonical_id = self.canonicaliser.canonical_id(&row_id, self.id_packer);
+        let canonical_id = self.canonicaliser.canonical_id(row_id, self.id_packer);
 
         self.inner
             .row_by_idx(self.inner.packed_rowid_idx(canonical_id)?)
@@ -78,7 +78,7 @@ impl<'a> TableHandle<'a> {
         self,
         key: &StoreTuple,
     ) -> Result<impl Iterator<Item = PackedRowId>, ValidationError> {
-        Ok(self.inner.index_seek(key)?)
+        self.inner.index_seek(key)
     }
 
     pub fn unique_columns(self) -> Option<usize> {
