@@ -8,10 +8,9 @@ pub(crate) mod index;
 pub mod sorted;
 mod undo;
 
-use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, StoreTuple};
-use coln_flir_rs::engine::schema::StoreScalarType;
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarType, StoreScalarValue, StoreTuple};
 use coln_flir_rs::ir::{EntityVariant, Materialization};
-use coln_flir_rs::public::PublicScalarValue;
+use coln_flir_rs::public::{PublicScalarType, PublicScalarValue};
 pub use handle::TableHandle;
 
 use std::collections::{HashMap, HashSet};
@@ -57,7 +56,7 @@ pub enum ValidationError {
     TypeMismatch {
         column: usize,
         expected: StoreScalarType,
-        got: StoreScalarType,
+        got: PublicScalarType,
     },
     #[error("duplicate primary key")]
     DuplicatePrimaryKey,
@@ -272,7 +271,7 @@ impl Table {
         for (i, (col_entry, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
             let expected = StoreScalarType::from(&col_entry.col_type);
             let got = value.ty();
-            if expected != got {
+            if !expected.sloppy_eq(&got) {
                 return Err(ValidationError::TypeMismatch {
                     column: i,
                     expected,

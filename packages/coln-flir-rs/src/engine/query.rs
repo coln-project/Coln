@@ -17,6 +17,9 @@ use std::iter;
 
 pub type QueryScalarValue = QueryScalar;
 
+/// The _type_ representing the supported scalar values by coln-query.
+pub type QueryScalarType = QueryScalar<(), (), (), (), ()>;
+
 pub struct QueryTuple(Tuple<QueryScalarValue>);
 
 impl From<StoreTuple> for QueryTuple {

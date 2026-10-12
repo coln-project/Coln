@@ -124,7 +124,7 @@ impl TableIndex {
 
 #[cfg(test)]
 mod tests {
-    use coln_flir_rs::engine::schema::StoreScalarType;
+    use coln_flir_rs::engine::packed::StoreScalarType;
     use rstest::{fixture, rstest};
 
     use super::*;

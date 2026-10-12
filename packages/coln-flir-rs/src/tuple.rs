@@ -8,6 +8,7 @@
 //! This module provides the base scalar value and the generic tuple representations
 //! on which other modules can build.
 
+use crate::ir;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{fmt, ops::Deref};
@@ -68,6 +69,18 @@ impl<V> From<Vec<V>> for Tuple<V> {
     }
 }
 
+/// Every supported row id must implement this to also specify a representation
+/// of its type next the representation of its values and the demanded subtraits.
+///
+/// Note: For non row id types we use () as their type representation.
+pub trait ScalarKind: fmt::Display {
+    /// The _type_ of the scalar.
+    type Ty: fmt::Display + Copy;
+
+    /// Create the type which belongs to this value.
+    fn ty(instance: &Self) -> Self::Ty;
+}
+
 #[subenum(QueryScalar)]
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Type)]
 pub enum NativeScalar<
@@ -104,19 +117,6 @@ impl<RowId: fmt::Display> fmt::Display for NativeScalar<RowId> {
     }
 }
 
-impl<R> NativeScalar<R> {
-    pub fn ty(&self) -> NativeScalar<(), (), (), (), (), ()> {
-        match self {
-            NativeScalar::RowId(_) => NativeScalar::RowId(()),
-            NativeScalar::U64(_) => NativeScalar::U64(()),
-            NativeScalar::U32(_) => NativeScalar::U32(()),
-            NativeScalar::I64(_) => NativeScalar::I64(()),
-            NativeScalar::I32(_) => NativeScalar::I32(()),
-            NativeScalar::String(_) => NativeScalar::String(()),
-        }
-    }
-}
-
 impl<R1> NativeScalar<R1> {
     pub fn map<R2, F: FnOnce(R1) -> R2>(self, f: F) -> NativeScalar<R2> {
         use NativeScalar::*;
@@ -145,6 +145,56 @@ impl<R1> NativeScalar<R1> {
     }
 }
 
+pub type NativeScalarType<RowId> = NativeScalar<RowId, (), (), (), (), ()>;
+
+impl<RowId: ScalarKind> NativeScalar<RowId> {
+    pub fn ty(&self) -> NativeScalarType<RowId::Ty> {
+        match self {
+            NativeScalar::RowId(row_id) => NativeScalar::RowId(ScalarKind::ty(row_id)),
+            NativeScalar::U64(_) => NativeScalar::U64(()),
+            NativeScalar::U32(_) => NativeScalar::U32(()),
+            NativeScalar::I64(_) => NativeScalar::I64(()),
+            NativeScalar::I32(_) => NativeScalar::I32(()),
+            NativeScalar::String(_) => NativeScalar::String(()),
+        }
+    }
+}
+
+impl<RowId: fmt::Display> fmt::Display for NativeScalarType<RowId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RowId(id) => write!(f, "{id}"),
+            Self::U64(_) => write!(f, "u64"),
+            Self::U32(_) => write!(f, "u32"),
+            Self::I64(_) => write!(f, "i64"),
+            Self::I32(_) => write!(f, "i32"),
+            Self::String(_) => write!(f, "string"),
+        }
+    }
+}
+
+impl<T1> NativeScalarType<T1> {
+    pub fn sloppy_eq<T2>(&self, other: &NativeScalarType<T2>) -> bool {
+        match (self, other) {
+            (NativeScalarType::RowId(_), NativeScalar::RowId(_)) => true,
+            (NativeScalarType::U64(_), NativeScalar::U64(_)) => true,
+            (NativeScalarType::U32(_), NativeScalar::U32(_)) => true,
+            (NativeScalarType::I64(_), NativeScalar::I64(_)) => true,
+            (NativeScalarType::I32(_), NativeScalar::I32(_)) => true,
+            (NativeScalarType::String(_), NativeScalar::String(_)) => true,
+            _ => false,
+        }
+    }
+}
+
+impl<RowId> From<ir::Lit> for NativeScalar<RowId> {
+    fn from(value: ir::Lit) -> Self {
+        match value {
+            ir::Lit::Int { value } => NativeScalar::I32(value),
+            ir::Lit::String { value } => NativeScalar::String(value),
+        }
+    }
+}
 impl<RowId> From<u64> for NativeScalar<RowId> {
     fn from(value: u64) -> Self {
         NativeScalar::U64(value)

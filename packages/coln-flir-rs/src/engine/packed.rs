@@ -9,8 +9,9 @@
 use std::fmt;
 use std::ops::Deref;
 
+use crate::ir;
 use crate::public::{PublicRowId, PublicTuple};
-use crate::tuple::{NativeScalar, Tuple};
+use crate::tuple::{NativeScalar, NativeScalarType, ScalarKind, Tuple};
 
 /// A compact row id representation that dictionary-encodes commit hashes.
 ///
@@ -34,6 +35,41 @@ impl fmt::Display for PackedRowId {
 }
 
 pub type StoreScalarValue = NativeScalar<PackedRowId>;
+
+impl ScalarKind for PackedRowId {
+    type Ty = PackedRowIdType;
+
+    fn ty(_instance: &Self) -> Self::Ty {
+        PackedRowIdType(())
+    }
+}
+
+/// The _type_ representing all instances of a [`PackedRowId`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct PackedRowIdType(());
+
+impl fmt::Display for PackedRowIdType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PackedRowId")
+    }
+}
+
+/// The _type_ representing the supported scalar values by coln-store.
+pub type StoreScalarType = NativeScalarType<PackedRowIdType>;
+
+impl From<&ir::ColType> for StoreScalarType {
+    fn from(col_type: &ir::ColType) -> Self {
+        match col_type {
+            ir::ColType::RowId { .. } => StoreScalarType::RowId(PackedRowIdType(())),
+            ir::ColType::BuiltinTy {
+                builtin_ty: ir::BuiltinTy::BuiltinInt,
+            } => StoreScalarType::I32(()),
+            ir::ColType::BuiltinTy {
+                builtin_ty: ir::BuiltinTy::BuiltinStr,
+            } => StoreScalarType::String(()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreTuple(pub(crate) Tuple<StoreScalarValue>);

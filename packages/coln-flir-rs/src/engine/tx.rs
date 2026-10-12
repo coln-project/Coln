@@ -4,7 +4,7 @@
 
 //! For dealing with temporary ids in the middle of a transaction.
 
-use std::ops::Deref;
+use std::{fmt, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -13,7 +13,7 @@ use crate::{
     engine::packed::WithRowId,
     hash::CommitHash,
     public::PublicRowId,
-    tuple::{NativeScalar, Tuple},
+    tuple::{NativeScalar, NativeScalarType, ScalarKind, Tuple},
 };
 
 /// A temporary row ID that is valid only within a transaction.
@@ -63,6 +63,15 @@ impl From<PublicRowId> for TxRowId {
     }
 }
 
+impl fmt::Display for TxRowId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TxRowId::Existing(public) => write!(f, "existing {public}"),
+            TxRowId::Pending(pending) => write!(f, "pending {}", pending.0),
+        }
+    }
+}
+
 pub type TxScalarValue = NativeScalar<TxRowId>;
 
 impl From<TxRowId> for TxScalarValue {
@@ -76,6 +85,28 @@ impl From<PublicRowId> for TxScalarValue {
         NativeScalar::RowId(TxRowId::from(value))
     }
 }
+
+impl ScalarKind for TxRowId {
+    type Ty = TxRowIdType;
+
+    fn ty(_instance: &Self) -> Self::Ty {
+        TxRowIdType(())
+    }
+}
+
+/// The _type_ representing all instances of a [`TxRowId`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct TxRowIdType(());
+
+impl fmt::Display for TxRowIdType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TxRowId")
+    }
+}
+
+/// The _type_ representing the supported scalar values visible to the external
+/// world mid of transaction.
+pub type TxScalarType = NativeScalarType<TxRowIdType>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

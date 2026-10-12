@@ -8,7 +8,7 @@ use coln_flir_rs::{
     public::{PublicRowId, PublicTuple},
     query::WhereClause,
 };
-use coln_query::api::violations::{Violations, ViolationsDelta};
+use coln_query::api::violations::ViolationsDelta;
 
 use crate::error::{BouncerError, UserError};
 
