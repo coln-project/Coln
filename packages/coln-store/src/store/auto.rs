@@ -71,7 +71,7 @@ impl StoreWrite for AutoStore {
         let AutoState::Transaction(txn) = &mut self.state else {
             panic!("open txn")
         };
-        txn.add(&mut self.store, table, values)
+        txn.add(&self.store, table, values)
     }
 }
 
