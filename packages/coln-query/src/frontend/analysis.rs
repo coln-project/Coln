@@ -11,6 +11,8 @@ use super::{
 };
 use crate::error::SyntaxError;
 use crate::frontend::Atom;
+#[cfg(debug_assertions)]
+use crate::frontend::graph_utils::VertexDegree;
 use crate::frontend::graph_utils::vertex_degrees;
 use crate::relational::schema::Column;
 use indexmap::{IndexMap, IndexSet, map::Entry};
@@ -438,14 +440,7 @@ impl<'a, P: Predicate> QuotientGraph<'a, P> {
                 .map(|neighbors| neighbors.iter().map(|neighbor| neighbor.node).collect())
                 .collect::<Vec<Vec<NodeIdx>>>(),
         );
-        debug_assert!(
-            vertex_degrees[0].out_degree == 0,
-            "first SCC must be a source by construction"
-        );
-        debug_assert!(
-            vertex_degrees[vertex_degrees.len() - 1].in_degree == 0,
-            "last SCC must be a sink by construction"
-        );
+        basic_component_check(&vertex_degrees);
         QuotientGraph {
             components: predicate_components,
             component_of,
@@ -814,6 +809,20 @@ impl<P: Predicate> fmt::Display for Malformation<'_, P> {
                 f.write_str(", which no positive atom binds")
             }
         }
+    }
+}
+
+#[cfg(debug_assertions)]
+fn basic_component_check(vertex_degrees: &[VertexDegree]) {
+    if !vertex_degrees.is_empty() {
+        debug_assert!(
+            vertex_degrees.first().expect("bounds checked").out_degree == 0,
+            "first SCC must be a source by construction"
+        );
+        debug_assert!(
+            vertex_degrees.last().expect("bounds checked").in_degree == 0,
+            "last SCC must be a sink by construction"
+        );
     }
 }
 

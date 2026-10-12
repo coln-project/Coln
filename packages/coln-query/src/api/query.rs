@@ -1132,6 +1132,19 @@ mod tests {
         })
     }
 
+    /// This test is important because coln-store does some tests with an empty
+    /// FLIR. Better to catch issues here early.
+    #[test]
+    fn empty_flir() -> Result<(), SyntaxError> {
+        let flir = ir::FlatRealm {
+            rules: Vec::new(),
+            definitions: Vec::new(),
+            tables: Vec::new(),
+        };
+        let program = FlirProgram::from_flat_realm(&flir)?;
+        Ok(())
+    }
+
     #[test]
     fn graph_flir() {
         query_program_from_json_flir("GraphRealm.json");
