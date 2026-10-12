@@ -2,20 +2,17 @@
 name = "coln-flir-rs"
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
 description = "The Rust definitions of the Coln language first order logic intermediate representation."
-repository = "https://github.com/coln-project/Coln"
 readme = "README.md"
-
+repository = "https://github.com/coln-project/Coln"
+license = "MIT OR Apache-2.0"
 
 exclude = ["/.gitignore"]
 
 [lib]
 
-[features]
-test-utils = []
-
 [dependencies]
+either.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 specta.workspace = true
@@ -24,3 +21,6 @@ specta.workspace = true
 # This is a self-referential dev-dependency to have the feature-gated
 # test-utils be available in this crate's integration tests, too.
 coln-flir-rs = { path = ".", features = ["test-utils"] }
+
+[features]
+test-utils = []

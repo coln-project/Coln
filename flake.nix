@@ -223,6 +223,7 @@
             esbuild
             forester
             fourmolu
+            graphviz
             haskell-wasm.wasm32-wasi-cabal-9_14
             haskell-wasm.wasm32-wasi-ghc-9_14
             haskell.compiler.ghc912

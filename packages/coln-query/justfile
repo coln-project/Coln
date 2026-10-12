@@ -36,6 +36,23 @@ alias t := test-verbose
 test-verbose *TESTS:
     cargo nextest run -p {{ crate }} --all-targets --nocapture {{ TESTS }}
 
+# Dump tests' artefacts into target/test_artefacts and render any graphviz graph
+# as SVG. Renders even if tests fail, as those are the ones worth a look, but
+# exits with the tests' status.
+test-dump *TESTS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v dot > /dev/null || { echo "dot not found: enter the dev shell, which has graphviz" >&2; exit 1; }
+    status=0
+    COLN_QUERY_TEST_DUMP=1 cargo nextest run -p {{ crate }} --all-targets --no-fail-fast {{ TESTS }} || status=$?
+    target="$(cargo metadata --format-version 1 --no-deps | jq -r .target_directory)"
+    shopt -s nullglob
+    for graph in "$target"/test_artefacts/*/*.dot; do
+        dot -Tsvg "$graph" -o "${graph%.dot}.svg"
+        echo "rendered ${graph%.dot}.svg"
+    done
+    exit "$status"
+
 # Build the docs.
 doc:
     cargo doc -p {{ crate }}

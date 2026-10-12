@@ -17,7 +17,7 @@ exclude = [
 ]
 
 [dependencies]
-anyhow = { workspace = true }
+anyhow.workspace = true
 cli-table = "0.4.9"
 # The batch backend lowers plans into coln-batch Datalog programs and
 # executes them with its engine. Data flows store -> pipeline -> batch,
@@ -25,7 +25,8 @@ cli-table = "0.4.9"
 coln-batch = { path = "../coln-batch" }
 coln-flir-rs = { path = "../coln-flir-rs" }
 dbsp = "0.305.0"
-indexmap = { workspace = true }
+either.workspace = true
+indexmap.workspace = true
 rkyv = {
   version = "0.7.46",
   default-features = false,
@@ -48,7 +49,7 @@ size-of = {
     "xxhash-xxh3",
   ]
 }
-thiserror = { workspace = true }
+thiserror.workspace = true
 
 [dev-dependencies]
 # Import coln-flir-rs again but with the test-utils feature flag to have
