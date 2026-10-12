@@ -15,7 +15,7 @@ use crate::{
         tx::{TxRowId, TxTuple},
     },
     ffi::hash::CommitHash,
-    tuple::{NativeScalar, Tuple},
+    tuple::{NativeScalar, NativeScalarType, ScalarKind, Tuple},
 };
 
 /// The unique id that identifies each row in a table.
@@ -46,6 +46,28 @@ impl UnifyValue for PublicRowId {
 }
 
 pub type PublicScalarValue = NativeScalar<PublicRowId>;
+
+impl ScalarKind for PublicRowId {
+    type Ty = PublicRowIdType;
+
+    fn ty(_instance: &Self) -> Self::Ty {
+        PublicRowIdType(())
+    }
+}
+
+/// The _type_ representing all instances of a [`PublicRowId`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct PublicRowIdType(());
+
+impl fmt::Display for PublicRowIdType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PublicRowId")
+    }
+}
+
+/// The _type_ representing the supported scalar values visible to the external
+/// world.
+pub type PublicScalarType = NativeScalarType<PublicRowIdType>;
 
 /// A public facing value, consumed by the FFI/user, where the row_ids are resolved
 /// to be (hash, counter)
