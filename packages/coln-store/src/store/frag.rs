@@ -2,8 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::hash::CommitHash;
+
 use crate::{
-    commit::{Commit, chunk::Chunk, error::CodecError, hash::CommitHash},
+    commit::{Commit, chunk::Chunk, error::CodecError},
     store::{Store, error::StoreError},
 };
 
@@ -60,7 +62,8 @@ impl FragmentSync for Store {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let pending_commits = std::mem::take(&mut self.pending_commits);
-        let unapplied = self.apply_commits(new_commits.into_iter().chain(pending_commits))?;
+        let unapplied =
+            self.apply_commits_unchecked(new_commits.into_iter().chain(pending_commits))?;
 
         self.pending_commits = unapplied;
         Ok(())
@@ -103,7 +106,7 @@ impl Store {
 
         let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
         let root_payload = root_commit.root_payload()?;
-        let mut store = Store::try_from_ir(root_payload.ir, root_payload.coln_def)?;
+        let mut store = Store::try_from_ir(&root_payload.ir, root_payload.coln_def)?;
 
         let mut commits = Vec::new();
         for chunk in chunks {
@@ -119,7 +122,7 @@ impl Store {
             commits.push(commit);
         }
 
-        let pending_commits = store.apply_commits(commits)?;
+        let pending_commits = store.apply_commits_unchecked(commits)?;
         store.pending_commits = pending_commits;
         Ok(store)
     }

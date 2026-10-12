@@ -4,63 +4,80 @@
 
 //! A Store that manages a transaction for the user.
 //! But the user is still responsible for starting/finishing transactions
-//!
+//! This module has lots of panic because AutoStore is used by the TS FFI, which
+//! does not know anything about lifetime, and so cannot have a typesafe interface
+//! Therefore the user is expected to do the right thing.
 
-use coln_flir_rs::ir::{self, FlatRealm};
+use coln_flir_rs::{
+    engine::{
+        delta::{PartialConsolidated, StoreDelta},
+        packed::{PackedRowId, StoreTuple},
+        schema::ColnDef,
+        tx::{TxRowId, TxTuple},
+    },
+    hash::CommitHash,
+    ir::{self, FlatRealm},
+    public::PublicRowId,
+    query::WhereClause,
+};
 
 use crate::{
-    commit::hash::CommitHash,
-    store::{ColnDef, Store, error::StoreError, frag::FragmentSync},
-    table::{WireRowId, cell::WireTuple, handle::WireRowView},
+    IdLookup,
+    rollback::Rollback,
+    store::{
+        Store,
+        commit::{BatchInner, Prepared},
+        error::StoreError,
+        frag::{CommitChunk, FragmentSync},
+    },
     txn::{
-        OwnedTransaction, TxnWireRowId,
-        id::{Promote, TxnWireTuple},
-        rw::{StoreRead, StoreWrite, WhereClause},
+        id::Promote,
+        inner::TxnInner,
+        rw::{StoreRead, StoreWrite},
     },
 };
 
+enum AutoState {
+    Idle,
+    Transaction(TxnInner),
+    Prepared(BatchInner<Prepared>),
+}
+
 pub struct AutoStore {
-    txn: Option<OwnedTransaction>,
-    store: Option<Store>,
+    store: Store,
+    state: AutoState,
 }
 
 impl StoreRead for AutoStore {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
-        self.txn.as_ref().expect("open txn").scan_table(table)
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
+        self.store.scan_table(table)
     }
 
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_proj(query, select)
+    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
+        self.store.row_by_id(table, row_id)
     }
 
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<crate::table::WireRowId>, StoreError> {
-        self.txn.as_ref().expect("open txn").all_row_id(query)
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
+        self.store.all_proj(query, select)
     }
 
-    fn row_by_id(&self, table: &ir::Path, row_id: &crate::table::WireRowId) -> Option<WireRowView> {
-        self.txn
-            .as_ref()
-            .expect("open txn")
-            .row_by_id(table, row_id)
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
+        self.store.all_row_id(query)
     }
 }
 
 impl StoreWrite for AutoStore {
-    fn add(
-        &mut self,
-        table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TxnWireRowId, StoreError> {
-        self.txn.as_mut().expect("open_txn").add(table, values)
+    fn add(&mut self, table: &ir::Path, values: impl Into<TxTuple>) -> Result<TxRowId, StoreError> {
+        let AutoState::Transaction(txn) = &mut self.state else {
+            panic!("open txn")
+        };
+        txn.add(&self.store, table, values)
     }
 }
 
 impl FragmentSync for AutoStore {
-    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<super::frag::CommitChunk> {
-        self.store
-            .as_ref()
-            .expect("closed txn")
-            .commit_chunks_after(have_heads)
+    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
+        self.store.commit_chunks_after(have_heads)
     }
 
     // TODO allow this after we have a good concurrency control theory
@@ -70,44 +87,58 @@ impl FragmentSync for AutoStore {
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
     ) -> Result<(), StoreError> {
-        self.store
-            .as_mut()
-            .expect("closed txn")
-            .apply_chunk_bytes(chunk_bytes)
+        self.store.apply_chunk_bytes(chunk_bytes)
     }
 }
 
 impl AutoStore {
-    pub fn try_from_ir(ir: FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
+    pub fn try_from_ir(ir: &FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
         let store = Store::try_from_ir(ir, coln_def)?;
         Ok(Self::new(store))
     }
 
     pub fn new(store: Store) -> Self {
         Self {
-            txn: None,
-            store: Some(store),
+            store,
+            state: AutoState::Idle,
         }
     }
 
     pub fn transaction(&mut self) {
-        self.txn = Some(self.store.take().expect("closed txn").into_transaction());
+        let deps = self.store.commits().heads().copied().collect();
+        self.state = AutoState::Transaction(TxnInner::new(deps));
+    }
+
+    pub fn try_commit(
+        &mut self,
+    ) -> Result<StoreDelta<PartialConsolidated, StoreTuple>, StoreError> {
+        let AutoState::Transaction(txn) = &mut self.state else {
+            panic!("open txn")
+        };
+        let mut prepared = txn.try_commit(&mut self.store)?;
+        let delta = prepared.store_delta();
+        self.state = AutoState::Prepared(prepared);
+        Ok(delta)
     }
 
     pub fn commit(&mut self) -> Result<CommitHash, StoreError> {
-        let (res, store) = match self.txn.take().expect("open txn").commit() {
-            Ok((hash, store)) => (Ok(hash), store),
-            Err((err, store)) => (Err(err), store),
+        let state = std::mem::replace(&mut self.state, AutoState::Idle);
+        let AutoState::Prepared(prepared) = state else {
+            panic!("tried commit");
         };
-        self.store = Some(store);
-        self.txn = None;
-        res
+        Ok(TxnInner::commit(&mut self.store, prepared))
     }
 
     pub fn abort(&mut self) {
-        let store = self.txn.take().expect("open txn").abort();
-        self.store = Some(store);
-        self.txn = None;
+        match std::mem::replace(&mut self.state, AutoState::Idle) {
+            AutoState::Idle => {
+                panic!("should not abort without starting a txn");
+            }
+            AutoState::Transaction(mut txn) => txn.abort(),
+            AutoState::Prepared(prepared) => {
+                self.store.rollback_to(prepared.prepared_commit().snapshot);
+            }
+        }
     }
 
     pub fn try_from_commit_bytes(
@@ -116,32 +147,34 @@ impl AutoStore {
         let store = Store::try_from_commit_bytes(chunk_bytes)?;
         Ok(store.auto())
     }
+
+    pub fn id_lookup(&self) -> &impl IdLookup {
+        self.store.id_lookup()
+    }
 }
 
 impl Promote for AutoStore {
     fn promote(
         &self,
-        pending_ids: impl IntoIterator<Item = TxnWireRowId>,
+        pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
-    ) -> Vec<WireRowId> {
-        self.store
-            .as_ref()
-            .expect("closed txn")
-            .promote(pending_ids, hash)
+    ) -> Vec<PublicRowId> {
+        self.store.promote(pending_ids, hash)
     }
 }
 
 impl Drop for AutoStore {
     fn drop(&mut self) {
-        if self.txn.is_some() {
+        if matches!(self.state, AutoState::Prepared(..)) {
             self.abort();
-        }
+        };
     }
 }
 
 #[cfg(test)]
 mod tests {
 
+    use coln_flir_rs::engine::packed::StoreScalarValue;
     use coln_flir_rs::ir::Path;
     use rstest::rstest;
 
@@ -155,17 +188,32 @@ mod tests {
         let path = Path::from("T");
 
         store.transaction();
-        let pending_id = store.add(&path, vec![1i32]).expect("add");
-        let h = store.commit().expect("commit");
-        let row_id = store.promote_one(pending_id, h);
+        store.add(&path, vec![1i32]).expect("add");
+        let delta = store.try_commit().expect("prepare");
+        let tables = delta.into_table_deltas();
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].for_entity(), &path);
+        assert_eq!(tables[0].delta().len(), 1);
+        assert_eq!(tables[0].delta()[0].zweight(), 1);
+        assert_eq!(
+            tables[0].delta()[0].clone().into_tuple(),
+            store.scan_table(&path).expect("T")[0],
+        );
+        store.commit().expect("commit");
+
+        // The commit hash is the first one interned, so it packs as index 0.
+        let row_id = PackedRowId {
+            commit_idx: 0,
+            counter: 0,
+        };
 
         store.transaction();
         assert_eq!(
             store.row_by_id(&path, &row_id),
-            Some(WireRowView {
-                row_id,
-                values: vec![1i32.into()],
-            })
+            Some(StoreTuple::from(vec![
+                StoreScalarValue::RowId(row_id),
+                StoreScalarValue::I32(1),
+            ]))
         );
 
         store.add(&path, vec![2i32]).expect("add pending");

@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::table::{PackedRowId, PackedTuple};
+use crate::table::{PackedRowId, StoreTuple};
 
 // Undo operations for each variant in the `Op` enum.
 #[derive(Debug)]
@@ -12,6 +12,6 @@ pub(super) enum UndoOp {
     }, // undo add means delete the row_id
     UndoDelete {
         row_id: PackedRowId,
-        values: PackedTuple,
+        values: StoreTuple,
     }, // undo delete means add back the row
 }

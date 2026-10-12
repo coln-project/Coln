@@ -2,42 +2,30 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir::{self, Path};
-use serde::{Deserialize, Serialize};
-use specta::Type;
+use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
+use coln_flir_rs::engine::tx::TxTuple;
+use coln_flir_rs::{ir, query::WhereClause};
 
-use crate::{
-    store::error::{QueryError, StoreError},
-    table::{WireRowId, WireValue, cell::WireTuple, handle::WireRowView},
-    txn::{TxnWireRowId, id::TxnWireTuple},
-};
-
-#[derive(Debug, Type, Serialize, Deserialize)]
-pub struct WhereClause {
-    pub table_name: Path,
-    pub row_id: Option<WireRowId>,
-    pub values: Vec<WireValue>, // A prefix of column values
-}
+use crate::{store::error::StoreError, txn::TxRowId};
 
 pub trait StoreRead {
     // Return a vec for external world
-    // TODO we might want another version of the API which does vectorised processing model for query processing
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>>;
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>>;
 
-    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView>;
+    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple>;
 
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError>;
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError>;
 
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError>;
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError>;
 
-    fn one_proj(&self, query: &WhereClause, select: &[u32]) -> Result<WireTuple, StoreError> {
+    fn one_proj(&self, query: &WhereClause, select: &[u32]) -> Result<StoreTuple, StoreError> {
         let mut all_tuples = self.all_proj(query, select)?;
         if all_tuples.len() == 1 {
             Ok(all_tuples.pop().unwrap())
         } else if all_tuples.is_empty() {
-            Err(QueryError::ZeroMatchingTuple.into())
+            todo!("implement this in coln bouncer")
         } else {
-            Err(QueryError::MultipleMatchingTuple.into())
+            todo!("implement this in coln bouncer")
         }
     }
 
@@ -47,9 +35,5 @@ pub trait StoreRead {
 }
 
 pub trait StoreWrite {
-    fn add(
-        &mut self,
-        table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TxnWireRowId, StoreError>;
+    fn add(&mut self, table: &ir::Path, values: impl Into<TxTuple>) -> Result<TxRowId, StoreError>;
 }

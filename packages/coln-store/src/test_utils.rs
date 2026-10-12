@@ -8,34 +8,31 @@ use coln_flir_rs::ir::{
 };
 use rstest::fixture;
 
-use crate::{
-    commit::{hash::CommitHash, wire::root::RootCommitData},
-    store::{ColnDef, Store},
-    table::WireRowId,
-    txn::rw::StoreWrite,
-};
+use crate::{commit::wire::root::RootCommitData, store::Store, txn::rw::StoreWrite};
 
 mod rowid {
+    use coln_flir_rs::{hash::CommitHash, public::PublicRowId};
+
     use super::*;
 
     #[fixture]
     pub(crate) fn row_id_from(
         #[default(0)] commit_byte: u8,
         #[default(0)] counter: u32,
-    ) -> WireRowId {
-        WireRowId {
+    ) -> PublicRowId {
+        PublicRowId {
             commit: CommitHash([commit_byte; 32]),
             counter,
         }
     }
 
     #[fixture]
-    pub(crate) fn zerocounter_row_id(#[default(0)] byte: u8) -> WireRowId {
+    pub(crate) fn zerocounter_row_id(#[default(0)] byte: u8) -> PublicRowId {
         row_id_from(byte, 0)
     }
 
     #[fixture]
-    pub(crate) fn zerohash_row_id(#[default(0)] counter: u32) -> WireRowId {
+    pub(crate) fn zerohash_row_id(#[default(0)] counter: u32) -> PublicRowId {
         row_id_from(0, counter)
     }
 }
@@ -124,6 +121,8 @@ mod schema {
 }
 
 mod root {
+    use coln_flir_rs::engine::schema::ColnDef;
+
     use super::*;
 
     #[fixture]
@@ -214,6 +213,9 @@ mod root {
 }
 
 mod store {
+    use coln_flir_rs::engine::schema::ColnDef;
+    use coln_flir_rs::hash::CommitHash;
+
     use crate::store::auto::AutoStore;
 
     use super::root::empty_colndef;

@@ -1,0 +1,20 @@
+[package]
+name = "coln-bouncer"
+edition = "2024"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+coln-store = { path = "../coln-store" }
+coln-query = { path = "../coln-query" }
+coln-flir-rs = { path = "../coln-flir-rs" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+rstest = "0.26.1"
+serde_json.workspace = true

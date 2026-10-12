@@ -4,13 +4,15 @@
 
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
+use coln_flir_rs::engine::packed::{StoreScalarValue, WithRowId};
+use coln_flir_rs::engine::schema::ColnDef;
+use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
 use coln_store::{
-    commit::hash::CommitHash,
-    store::{ColnDef, Store, frag::FragmentSync},
-    table::WireValue,
+    IdLookup,
+    store::{Store, frag::FragmentSync},
     txn::rw::StoreWrite,
 };
 use future_form::Sendable;
@@ -83,13 +85,16 @@ fn sedimentree_id(store: &Store) -> SedimentreeId {
 
 fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i32)> {
     let table = store.table_at(&Path::from("T")).expect("T table");
+    let lookup = store.id_lookup();
     table
         .scan()
         .map(|row| {
-            let id = row.row_id;
-            let value = match &row.values[0] {
-                WireValue::Int(value) => *value,
-                other => panic!("expected int cell, got {other:?}"),
+            let id = lookup
+                .unpacked(&row.row_id())
+                .expect("row id commit is interned");
+            let value = match row.values() {
+                [StoreScalarValue::I32(value)] => *value,
+                other => panic!("expected a single int cell, got {other:?}"),
             };
             (id.commit, id.counter, value)
         })
@@ -165,8 +170,8 @@ async fn subduction_storage_can_exchange_coln_commit_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left);
 
     let left_commit = add_row(&mut left, 1)?;
@@ -213,8 +218,8 @@ async fn subduction_sync_coln_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left_store = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
 
     let left_commit = add_row(&mut left_store, 1)?;
@@ -349,8 +354,8 @@ async fn subduction_websocket_sync_coln_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left_store = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
     assert_eq!(root_hash(&left_store).0, root_hash(&right_store).0);
 

@@ -5,8 +5,9 @@
 use std::collections::HashMap;
 use std::io::Write;
 
+use coln_flir_rs::hash::{CommitHash, HASH_SIZE};
+
 use crate::commit::error::CodecError;
-use crate::commit::hash::{CommitHash, HASH_SIZE};
 use crate::commit::leb128 as commit_leb128;
 use crate::commit::utils::read_slice;
 

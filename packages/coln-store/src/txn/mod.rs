@@ -3,26 +3,21 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod id;
-mod inner;
-mod owned;
+pub(crate) mod inner;
 pub mod rw;
 mod timestamp;
 
 use crate::{
-    commit::hash::CommitHash,
     store::{Store, error::StoreError},
-    table::{WireRowId, cell::WireTuple, handle::WireRowView},
-    txn::{
-        id::TxnWireTuple,
-        rw::{StoreRead, StoreWrite, WhereClause},
-    },
+    txn::rw::{StoreRead, StoreWrite},
 };
-use coln_flir_rs::ir;
+use coln_flir_rs::engine::{
+    packed::{PackedRowId, StoreTuple},
+    tx::{PendingRowId, TxTuple},
+};
+use coln_flir_rs::{engine::tx::TxRowId, hash::CommitHash, ir, query::WhereClause};
 
-pub(crate) use id::{PendingOp, TempRowId};
-pub use id::{TxnWireRowId, TxnWireValue, empty_row};
 use inner::TxnInner;
-pub use owned::OwnedTransaction;
 
 pub struct ReadOnly<'a> {
     store: &'a Store,
@@ -82,18 +77,21 @@ impl<'a> Transaction<ReadWrite<'a>> {
     pub(crate) fn add_internal(
         &mut self,
         table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TempRowId, StoreError> {
+        values: impl Into<TxTuple>,
+    ) -> Result<PendingRowId, StoreError> {
         self.inner.add_internal(self.mode.store, table, values)
     }
 
     pub fn commit(mut self) -> Result<CommitHash, StoreError> {
-        let h = self.inner.commit(self.mode.store);
+        let prepared = self.inner.try_commit(self.mode.store)?;
+        let h = TxnInner::commit(self.mode.store, prepared);
         self.open = false;
-        h
+        Ok(h)
     }
 
-    // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreIntError> { ... }
+    // pub fn commit_with(mut self, opts: CommitOptions) -> Result<CommitHash, StoreError> {
+    //     unimplemented!()
+    //  }
 
     pub fn abort(mut self) {
         self.open = false;
@@ -102,32 +100,28 @@ impl<'a> Transaction<ReadWrite<'a>> {
 }
 
 impl<M: Mode> StoreRead for Transaction<M> {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
         self.mode
             .store()
             .scan_table_iter(table)
             .map(|rows| rows.collect())
     }
 
-    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
+    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
         self.mode.store().row_by_id_inner(table, row_id)
     }
 
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
+    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
         self.mode.store().all_proj_inner(query, select)
     }
 
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
+    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
         self.mode.store().all_row_id_inner(query)
     }
 }
 
 impl StoreWrite for Transaction<ReadWrite<'_>> {
-    fn add(
-        &mut self,
-        table: &ir::Path,
-        values: impl Into<TxnWireTuple>,
-    ) -> Result<TxnWireRowId, StoreError> {
+    fn add(&mut self, table: &ir::Path, values: impl Into<TxTuple>) -> Result<TxRowId, StoreError> {
         self.inner.add(self.mode.store(), table, values)
     }
 }
@@ -143,14 +137,15 @@ impl<M> Drop for Transaction<M> {
 
 #[cfg(test)]
 mod tests {
-
+    use coln_flir_rs::engine::packed::StoreScalarValue;
     use rstest::rstest;
 
     use super::*;
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
-    use crate::table::{ValidationError, WireValue};
+    use crate::pack::id_packer::IdLookup;
+    use crate::table::ValidationError;
     use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int_store};
-    use crate::txn::id::{Promote, empty_row};
+    use crate::txn::id::Promote;
 
     #[rstest]
     fn validates_then_applies(#[from(single_int_store)] mut store: Store) {
@@ -221,14 +216,14 @@ mod tests {
         let mut txn = store.transaction();
         let row_id = txn.add(&path, vec![42i32]).expect("add");
         let h = txn.commit().expect("commit");
-        let row_id = store.promote_one(row_id, h);
+        let row_id = store
+            .id_lookup()
+            .packed(&store.promote_one(row_id, h))
+            .unwrap();
 
         assert_eq!(
             store.row_by_id(&path, &row_id),
-            Some(WireRowView {
-                row_id,
-                values: vec![42i32.into()],
-            })
+            Some(StoreTuple::from_id_values(row_id, vec![42i32.into()]))
         );
     }
 
@@ -240,10 +235,8 @@ mod tests {
         let edges = Path::from("Edges");
 
         let mut tx = store.transaction();
-        let node_temp = tx.add(&nodes, empty_row()).expect("add node");
-        let edge_temp = tx
-            .add(&edges, vec![TxnWireValue::Id(node_temp.clone())])
-            .expect("add edge");
+        let node_temp = tx.add(&nodes, TxTuple::empty()).expect("add node");
+        let edge_temp = tx.add(&edges, vec![node_temp.clone()]).expect("add edge");
         let h = tx.commit().expect("commit");
         let ids = store.promote([node_temp, edge_temp], h);
         let [node_id, edge_id] = ids.try_into().unwrap();
@@ -252,12 +245,15 @@ mod tests {
         assert_eq!(node_id.counter, 0);
         assert_eq!(edge_id.commit, h);
         assert_eq!(edge_id.counter, 1);
+
+        let node_id = store.id_lookup().packed(&node_id).unwrap();
+        let edge_id = store.id_lookup().packed(&edge_id).unwrap();
         assert_eq!(
             store.row_by_id(&edges, &edge_id),
-            Some(WireRowView {
-                row_id: edge_id,
-                values: vec![WireValue::Id(node_id)],
-            })
+            Some(StoreTuple::from_id_values(
+                edge_id,
+                vec![StoreScalarValue::RowId(node_id)]
+            ))
         );
     }
 
@@ -269,26 +265,28 @@ mod tests {
         let edges = Path::from("Edges");
 
         let mut tx = store.transaction();
-        let node = tx.add(&nodes, empty_row()).expect("add node");
+        let node = tx.add(&nodes, TxTuple::empty()).expect("add node");
         let first_commit = tx.commit().expect("commit node");
 
         let node_id = store.promote_one(node, first_commit);
         assert_eq!(node_id.commit, first_commit);
 
         let mut tx = store.transaction();
-        let edge = tx
-            .add(&edges, vec![TxnWireValue::Id(node_id.clone().into())])
-            .expect("add edge");
+        let edge = tx.add(&edges, vec![node_id.clone()]).expect("add edge");
         let h = tx.commit().expect("commit edge");
 
-        let edge_id = store.promote_one(edge, h);
+        let edge_id = store
+            .id_lookup()
+            .packed(&store.promote_one(edge, h))
+            .unwrap();
+        let node_id = store.id_lookup().packed(&node_id).unwrap();
 
         assert_eq!(
             store.row_by_id(&edges, &edge_id),
-            Some(WireRowView {
-                row_id: edge_id,
-                values: vec![WireValue::Id(node_id)],
-            })
+            Some(StoreTuple::from_id_values(
+                edge_id,
+                vec![StoreScalarValue::RowId(node_id)]
+            ))
         );
     }
 
@@ -319,8 +317,15 @@ mod tests {
 
         // Reads return the canonical id. Promoting an already-existing id
         // also canonicalises, so a stale first id catches up.
-        let view = store.row_by_id(&term, &first).expect("class row is stored");
-        assert_eq!(view.row_id, stored);
+        let view = store
+            .row_by_id(&term, &store.id_lookup().packed(&first).unwrap())
+            .expect("class row is stored");
+        assert_eq!(
+            view.first(),
+            Some(&StoreScalarValue::RowId(
+                store.id_lookup().packed(&stored).unwrap()
+            ))
+        );
         let first = store.promote_one(first, h1);
         assert_eq!(first, stored);
     }
@@ -369,15 +374,15 @@ mod tests {
         let mut tx = store.transaction();
         let pending_id = tx.add(&path, vec![1i32]).expect("add");
         let h = tx.commit().expect("commit");
-        let row_id = store.promote_one(pending_id, h);
+        let row_id = store
+            .id_lookup()
+            .packed(&store.promote_one(pending_id, h))
+            .unwrap();
 
         let mut tx = store.transaction();
         assert_eq!(
             tx.row_by_id(&path, &row_id),
-            Some(WireRowView {
-                row_id,
-                values: vec![1i32.into()],
-            })
+            Some(StoreTuple::from_id_values(row_id, vec![1i32.into()]))
         );
 
         tx.add(&path, vec![2i32]).expect("add pending");
@@ -397,9 +402,11 @@ mod tests {
             .map(|c| c.hash())
             .collect();
 
-        let empty = store.transaction().commit().expect("empty commit");
-
-        assert!(!store.commits().contains(&empty));
+        let error = store.transaction().commit().expect_err("empty commit");
+        assert!(matches!(
+            error,
+            StoreError::Commit(crate::store::error::CommitApplyError::EmptyCommit)
+        ));
         assert_eq!(
             store.commits().root_commit().expect("root commit").hash(),
             root

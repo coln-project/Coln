@@ -2,26 +2,23 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-pub mod cell;
 mod col;
 pub mod handle;
 pub(crate) mod index;
 pub mod sorted;
 mod undo;
 
-pub use cell::{CellKind, WireRowId, WireValue};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarType, StoreScalarValue, StoreTuple};
 use coln_flir_rs::ir::{EntityVariant, Materialization};
+use coln_flir_rs::public::{PublicScalarType, PublicScalarValue};
 pub use handle::TableHandle;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-#[cfg(not(target_arch = "wasm32"))]
-use coln_query::api::deltas::{ScalarTypedValue, TableDelta, ZRow};
-
 use crate::ir;
 use crate::ir::Schema;
-use crate::pack::{IdPacker, PackedOp, PackedRowId, PackedRowView, PackedTuple, PackedValue};
+use crate::pack::IdPacker;
 use crate::rollback::Rollback;
 use crate::rowing::Rowing;
 use crate::table::col::{Column, IdColumn};
@@ -29,6 +26,19 @@ use crate::table::index::{IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 
 pub type TableOid = usize;
+
+// TODO can probably unify this with the op definition, when we have deletion in Op.
+/// An operation on a single table, using dictionary-encoded row IDs.
+#[derive(Debug, Clone)]
+pub(crate) enum TableOp {
+    Add {
+        row_id: PackedRowId,
+        values: StoreTuple,
+    },
+    Delete {
+        row_id: PackedRowId,
+    },
+}
 
 /// Borrowed identity and schema for a registered table.
 #[derive(Debug, Clone, Copy)]
@@ -45,8 +55,8 @@ pub enum ValidationError {
     #[error("type mismatch at column {column}: expected {expected}, got {got}")]
     TypeMismatch {
         column: usize,
-        expected: CellKind,
-        got: CellKind,
+        expected: StoreScalarType,
+        got: PublicScalarType,
     },
     #[error("duplicate primary key")]
     DuplicatePrimaryKey,
@@ -67,8 +77,8 @@ pub enum ValidationError {
     InvalidIndexKey { expected: usize, got: usize },
     #[error("lookup column {column} is outside the table's {column_count} columns")]
     InvalidLookupColumn { column: usize, column_count: usize },
-    #[error("passed in row id is not valid {wire_id}")]
-    InvalidRowId { wire_id: WireRowId },
+    #[error("passed in row id is not valid {packed_id}")]
+    InvalidRowId { packed_id: PackedRowId },
 }
 
 /// Columnar store: `cols[i]` is all values for schema column `i` (same length per column).
@@ -96,7 +106,7 @@ pub struct Table {
     index: TableIndex,
 
     // buffering rollback
-    pending_updates: Vec<PackedOp>,
+    pending_updates: Vec<TableOp>,
     undo_log: Option<Vec<UndoOp>>,
 
     // structural identification
@@ -112,7 +122,7 @@ impl Table {
         let cols = schema
             .columns
             .iter()
-            .map(|column| Column::new(CellKind::from(&column.col_type)))
+            .map(|column| Column::new(StoreScalarType::from(&column.col_type)))
             .collect();
 
         let pk = match &schema.primary_key {
@@ -179,7 +189,7 @@ impl Table {
 
     /// O(N * log S) as first find out the index from the row_id, and then do a
     /// lookup on each column
-    pub(crate) fn row_by_id(&self, row_id: PackedRowId) -> Option<PackedTuple> {
+    pub(crate) fn row_by_id(&self, row_id: PackedRowId) -> Option<StoreTuple> {
         let row_idx = self.row_ids.position(row_id).ok()?;
         (0..self.schema.columns.len())
             .map(|col_idx| {
@@ -190,13 +200,12 @@ impl Table {
             .collect()
     }
 
-    pub(crate) fn row_by_idx(&self, row_idx: usize) -> Option<PackedRowView> {
+    pub(crate) fn row_by_idx(&self, row_idx: usize) -> Option<StoreTuple> {
         let row_id = self.row_id_by_idx(row_idx)?;
         let values = (0..self.schema.columns.len())
             .map(|col_idx| self.cell_by_idx(row_idx, col_idx))
-            .collect::<Option<PackedTuple>>()?;
-
-        Some(PackedRowView { row_id, values })
+            .collect::<Option<StoreTuple>>()?;
+        Some(StoreTuple::from_id_values(row_id, values))
     }
 
     /// Row id at a given physical row index.
@@ -206,7 +215,7 @@ impl Table {
 
     /// Cell at `(row_idx, col_idx)` in columnar storage.
     /// O(1) to locate the column, roughly O(log S) to find by index in a slab.
-    pub(crate) fn cell_by_idx(&self, row_idx: usize, col_idx: usize) -> Option<PackedValue> {
+    pub(crate) fn cell_by_idx(&self, row_idx: usize, col_idx: usize) -> Option<StoreScalarValue> {
         self.cols
             .get(col_idx)
             .and_then(|col| col.get_packed(row_idx))
@@ -217,13 +226,13 @@ impl Table {
         self.row_ids.position(row_id).ok()
     }
 
-    pub(crate) fn scan(&self) -> impl Iterator<Item = PackedRowView> {
+    pub(crate) fn scan(&self) -> impl Iterator<Item = StoreTuple> {
         (0..self.row_count()).filter_map(move |row_idx| self.row_by_idx(row_idx))
     }
 
     pub(crate) fn index_seek<'s>(
         &'s self,
-        key: &PackedTuple,
+        key: &StoreTuple,
     ) -> Result<impl Iterator<Item = PackedRowId> + use<'s>, ValidationError> {
         if key.len() > self.index.key_cols().len() {
             return Err(ValidationError::InvalidIndexKey {
@@ -252,7 +261,7 @@ impl Table {
     /// Checks schema and primary-key constraints against rows already stored.
     pub(crate) fn validate_insert(
         &self,
-        values: &[WireValue],
+        values: &[PublicScalarValue],
         dict: &IdPacker,
     ) -> Result<(), ValidationError> {
         // duplicated as txn::add(), but this is cheap enough we can afford to
@@ -260,13 +269,21 @@ impl Table {
         self.validate_column_count(values.len())?;
 
         for (i, (col_entry, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
-            value.matches_schema(&col_entry.col_type, i)?;
+            let expected = StoreScalarType::from(&col_entry.col_type);
+            let got = value.ty();
+            if !expected.sloppy_eq(&got) {
+                return Err(ValidationError::TypeMismatch {
+                    column: i,
+                    expected,
+                    got,
+                });
+            }
         }
 
         if let Some(cols) = &self.pk {
             let Some(key) = (0..*cols)
                 .map(|ci| dict.try_pack_value(&values[ci]))
-                .collect::<Option<PackedTuple>>()
+                .collect::<Option<StoreTuple>>()
             else {
                 // If we cannot pack, then the primary key should be absent, so no need to check
                 return Ok(());
@@ -281,7 +298,10 @@ impl Table {
     /// Values at primary-key columns for this row.
     /// A primary key definition would occur in tables that do not end up in Query
     /// An empty primary key means the table would have at most one row.
-    pub(crate) fn primary_key_values(&self, values: &[WireValue]) -> Option<Vec<WireValue>> {
+    pub(crate) fn primary_key_values(
+        &self,
+        values: &[PublicScalarValue],
+    ) -> Option<Vec<PublicScalarValue>> {
         self.schema.primary_key.as_ref().and_then(|pk| {
             if pk.is_empty() {
                 Some(Vec::new())
@@ -337,24 +357,12 @@ impl Rollback for Table {
 
 impl Table {
     /// Stage an already packed operation without changing the materialised table.
-    pub(crate) fn stage_update(&mut self, op: PackedOp) {
+    pub(crate) fn stage_update(&mut self, op: TableOp) {
         self.pending_updates.push(op);
     }
 
     // Apply the staged updates to the table. Rollback support will record
     // inverse operations separately before these operations are consumed.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn apply_staged_ops(
-        &mut self,
-        rowing: &mut Rowing,
-    ) -> Result<TableDelta, ValidationError> {
-        let ops = std::mem::take(&mut self.pending_updates);
-        let delta = self.table_delta_from_ops(ops.clone());
-        self.apply_ops(ops, rowing)?;
-        Ok(delta)
-    }
-
-    #[cfg(target_arch = "wasm32")]
     pub(crate) fn apply_staged_ops(&mut self, rowing: &mut Rowing) -> Result<(), ValidationError> {
         let ops = std::mem::take(&mut self.pending_updates);
         self.apply_ops(ops, rowing)
@@ -362,7 +370,7 @@ impl Table {
 
     fn apply_ops(
         &mut self,
-        ops: impl IntoIterator<Item = PackedOp>,
+        ops: impl IntoIterator<Item = TableOp>,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
         for op in ops {
@@ -374,103 +382,13 @@ impl Table {
         Ok(())
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn table_delta_from_ops(&self, ops: impl IntoIterator<Item = PackedOp>) -> TableDelta {
-        let zrows: Vec<ZRow> = ops
-            .into_iter()
-            .map(|op| match op {
-                PackedOp::Add { row_id, values } => {
-                    let tuple = PackedRowView { row_id, values }.into();
-                    ZRow::new(1, tuple).unwrap()
-                }
-                PackedOp::Delete { row_id } => {
-                    let values = self
-                        .row_by_id(row_id)
-                        .expect("element to delete should exist");
-                    let tuple = PackedRowView { row_id, values }.into();
-                    ZRow::new(-1, tuple).unwrap()
-                }
-            })
-            .collect();
-
-        TableDelta::new(self.path().to_string(), zrows)
-    }
-
-    // This conversion needs table schema, therefore cannot be done with From trait
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(crate) fn ops_from_table_delta<F>(
-        &self,
-        td: TableDelta,
-        mut id_allocate: F,
-    ) -> Vec<PackedOp>
-    where
-        F: FnMut() -> PackedRowId,
-    {
-        td.into_iter()
-            .map(|zrow| {
-                let row_id = id_allocate();
-                if zrow.zweight() > 0 {
-                    let mut val_iter = zrow.into_row().data.into_iter();
-                    let mut packed_val = Vec::new();
-
-                    for col in &self.schema().columns {
-                        match col.col_type {
-                            ir::ColType::RowId { .. } => {
-                                let ScalarTypedValue::Uint(commit_idx) =
-                                    val_iter.next().expect("coln-query returns valid data")
-                                else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                let ScalarTypedValue::Uint(counter) =
-                                    val_iter.next().expect("coln-query returns valid data")
-                                else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                packed_val.push(PackedValue::Id(PackedRowId {
-                                    commit_idx: commit_idx as u32,
-                                    counter: counter as u32,
-                                }));
-                            }
-                            ir::ColType::BuiltinTy {
-                                builtin_ty: ir::BuiltinTy::BuiltinInt,
-                            } => {
-                                let ScalarTypedValue::String(s) = val_iter.next().unwrap() else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                packed_val.push(PackedValue::Str(s));
-                            }
-                            ir::ColType::BuiltinTy {
-                                builtin_ty: ir::BuiltinTy::BuiltinStr,
-                            } => {
-                                let ScalarTypedValue::Iint(i) = val_iter.next().unwrap() else {
-                                    panic!("invalid data from coln-query");
-                                };
-                                packed_val.push(PackedValue::Int(i as i32));
-                            }
-                        }
-                    }
-
-                    PackedOp::Add {
-                        row_id,
-                        values: packed_val.into(),
-                    }
-                } else if zrow.zweight() < 0 {
-                    // TODO don't know how to remove yet
-                    todo!()
-                } else {
-                    unreachable!("zero zweight impossible")
-                }
-            })
-            .collect()
-    }
-
-    fn apply_op(&mut self, op: PackedOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
+    fn apply_op(&mut self, op: TableOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
         match op {
-            PackedOp::Add { row_id, values } => {
+            TableOp::Add { row_id, values } => {
                 self.insert_row(values, row_id, rowing)?;
                 Ok(UndoOp::UndoAdd { row_id })
             }
-            PackedOp::Delete { row_id } => {
+            TableOp::Delete { row_id } => {
                 let values = self.remove_packed(row_id);
                 Ok(UndoOp::UndoDelete { row_id, values })
             }
@@ -512,9 +430,9 @@ impl Table {
                     "collapsing {old:?} onto {new_rid:?} would discard differing cells"
                 );
 
-                self.stage_update(PackedOp::Delete { row_id: old });
+                self.stage_update(TableOp::Delete { row_id: old });
                 if !collapses {
-                    self.stage_update(PackedOp::Add {
+                    self.stage_update(TableOp::Add {
                         row_id: new_rid,
                         values: new_cells,
                     });
@@ -537,8 +455,8 @@ impl Table {
                     continue;
                 }
 
-                self.stage_update(PackedOp::Delete { row_id });
-                self.stage_update(PackedOp::Add {
+                self.stage_update(TableOp::Delete { row_id });
+                self.stage_update(TableOp::Add {
                     row_id,
                     values: new_cells,
                 });
@@ -554,14 +472,18 @@ impl Table {
             let row_stale = stale.contains(&old_row_id);
             let cells_stale = self.cols.iter().any(|column| match column {
                 Column::Id(ids) => stale.contains(&ids.at(row_idx)),
-                Column::Int(_) | Column::Str(_) => false,
+                Column::U64(_)
+                | Column::I64(_)
+                | Column::I32(_)
+                | Column::U32(_)
+                | Column::Str(_) => false,
             });
             if !row_stale && !cells_stale {
                 continue;
             }
 
             let new_row_id = rowing.canonical_id(&old_row_id, id_packer);
-            let old_cells: PackedTuple = self
+            let old_cells: StoreTuple = self
                 .cols
                 .iter()
                 .map(|column| {
@@ -581,9 +503,9 @@ impl Table {
                 "collapsing {old_row_id:?} onto {new_row_id:?} would discard differing cells"
             );
 
-            self.stage_update(PackedOp::Delete { row_id: old_row_id });
+            self.stage_update(TableOp::Delete { row_id: old_row_id });
             if !collapses {
-                self.stage_update(PackedOp::Add {
+                self.stage_update(TableOp::Add {
                     row_id: new_row_id,
                     values: new_cells,
                 });
@@ -597,29 +519,19 @@ impl Table {
 
     /// Rewrite every id cell to its canonical id, leaving other cells alone.
     fn canonicalise_cells(
-        values: &PackedTuple,
+        values: &StoreTuple,
         rowing: &Rowing,
         id_packer: &IdPacker,
-    ) -> PackedTuple {
+    ) -> StoreTuple {
         values
             .iter()
             .map(|cell| match cell {
-                PackedValue::Id(id) => PackedValue::Id(rowing.canonical_id(id, id_packer)),
+                StoreScalarValue::RowId(id) => {
+                    StoreScalarValue::RowId(rowing.canonical_id(id, id_packer))
+                }
                 other => other.clone(),
             })
             .collect()
-    }
-
-    /// ids referred by this row.
-    #[expect(dead_code)]
-    fn referenced_ids(values: &PackedTuple) -> impl Iterator<Item = PackedRowId> {
-        values
-            .iter()
-            .enumerate()
-            .filter_map(|(i, cell)| match cell {
-                PackedValue::Id(id) if !values[..i].contains(cell) => Some(*id),
-                _ => None,
-            })
     }
 }
 
@@ -631,7 +543,7 @@ impl Table {
     /// Only does primary key check, but no other validation.
     pub(super) fn insert_row(
         &mut self,
-        values: PackedTuple,
+        values: StoreTuple,
         row_id: PackedRowId,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
@@ -664,7 +576,7 @@ impl Table {
     }
 
     /// Place a row in columnar storage and every index, with no validation
-    fn insert_packed(&mut self, values: PackedTuple, row_id: PackedRowId) {
+    fn insert_packed(&mut self, values: StoreTuple, row_id: PackedRowId) {
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
         self.index.insert(values.clone(), row_id);
@@ -684,7 +596,7 @@ impl Table {
     }
 
     /// Take a row out of columnar storage and every index, returning its cells
-    fn remove_packed(&mut self, row_id: PackedRowId) -> PackedTuple {
+    fn remove_packed(&mut self, row_id: PackedRowId) -> StoreTuple {
         let row_idx = self
             .row_ids
             .position(row_id)

@@ -5,9 +5,9 @@
 //! This module expresses the different schema views according to coln-compiler,
 //! coln-store, and coln-query in code.
 
-use either::Either;
-
 use crate::ir::{self, Path};
+use either::Either;
+use serde::{Deserialize, Serialize};
 use std::{marker::PhantomData, ops::Range};
 
 /// Typestate marker whether the [`ColnSchema`] represents a base table
@@ -494,5 +494,21 @@ impl QueryEngineCols {
                 })
                 .collect(),
         )
+    }
+}
+
+/// A Coln theory source file contains theory definitions and (multiple) realm
+/// definitions. Each realm corresponds will be compiled to one IR file,
+/// this struct stores which realm the IR is referring to. It is stored as
+/// literal string and uninterpreted in the root commit of the store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColnDef {
+    pub theory: String,
+    pub realm: String,
+}
+
+impl ColnDef {
+    pub fn new(theory: String, realm: String) -> Self {
+        Self { theory, realm }
     }
 }

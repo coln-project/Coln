@@ -15,6 +15,7 @@ pub mod table;
 #[cfg(test)]
 mod test_utils;
 pub mod txn;
-pub mod value;
+
+pub use pack::id_packer::IdLookup;
 
 use coln_flir_rs::ir;
