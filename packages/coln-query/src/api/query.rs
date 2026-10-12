@@ -564,7 +564,7 @@ struct FlirChasedRule<'a> {
 }
 
 impl<'a> FlirChasedRule<'a> {
-    /// Returns `None` if the [rule's definand](ir::Definition::definand) has
+    /// Returns `Err` if the [rule's definand](ir::Definition::definand) has
     /// not been declared in the `ctx`.
     fn new(rule: &'a ir::DefinitionEntry, ctx: &mut FlirContext) -> Result<Self, SyntaxError> {
         let definand = &rule.definition.definand;
@@ -622,11 +622,12 @@ impl Identifiable for FlirChasedRule<'_> {
 /// are what the negated atom matches on. A variable only the consequent binds
 /// is projected away, which makes it existential.
 ///
-/// The helper's body is the consequent alone if that stands as a rule of its
-/// own: it has an atom, and its atoms bind every variable its conditions use.
-/// Otherwise, as for `∀x. t(x) ⇒ x == 1`, the antecedent joins the body. That
-/// changes nothing, as the constraint's rule requires the antecedent anyway,
-/// but costs computing it twice, which is why it is not done throughout.
+/// The helper's body is the given consequent alone if it stands as a rule on
+/// its own, that is, its atoms bind every variable its conditions use.
+/// Otherwise, as for `∀x. t(x) ⇒ x == 1`, the antecedent joins the consquent
+/// rule's body. That changes nothing, as the constraint's rule requires the
+/// antecedent anyway, but costs computing it twice, which is why it is not
+/// done if not required.
 #[derive(Debug)]
 struct FlirConstraint<'a> {
     rule: &'a ir::RuleEntry,
@@ -644,6 +645,12 @@ impl<'a> FlirConstraint<'a> {
         let (consequent_atoms, consequent_conditions) =
             resolve_propositions(&rule.rule.consequents, &rule_scope)?;
 
+        // TODO: Potential optimization with a single conjunct by not creating
+        // a helper predicate but negating the single conjunct. Watch out though,
+        // as this optimization is incompatible with empty antecedent rules
+        // because then negation safety is violated, as any existential variable
+        // in the consequent does not appear positively in any of the (empty)
+        // antecedent's (positive) atoms.
         let (helper_atoms, helper_conditions) =
             match stands_alone(&consequent_atoms, &consequent_conditions) {
                 true => (consequent_atoms, consequent_conditions),
@@ -730,15 +737,14 @@ impl<'a> FlirConstraint<'a> {
     }
 }
 
-/// If `atoms` and `conditions` stand as a rule body of their own: there is an
-/// atom to read from, and the atoms bind every variable the conditions use.
+/// If `atoms` and `conditions` stand as a rule body of their own:
+/// All conditions' variables are bound by some atom in `atoms`.
 fn stands_alone(atoms: &[FlirAtom], conditions: &[FlirCond]) -> bool {
     let bound = bound_vars(atoms);
-    !atoms.is_empty()
-        && conditions
-            .iter()
-            .flat_map(FlirCond::vars)
-            .all(|var| bound.contains(var.id()))
+    conditions
+        .iter()
+        .flat_map(FlirCond::vars)
+        .all(|var| bound.contains(var.id()))
 }
 
 /// The names of the variables `atoms` bind.

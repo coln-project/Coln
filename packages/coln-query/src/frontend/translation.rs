@@ -50,8 +50,9 @@ use crate::{
     },
     relational::{
         expr::{
-            AntiJoinExpr, FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr, OutputExpr,
-            OutputKind, ProjectionExpr, RelationIdx, SelectionExpr, SinkId, SourceExpr, UnionExpr,
+            AntiJoinExpr, ConstantExpr, FixedPointIterExpr, JoinVariable, MultiWayEquiJoinExpr,
+            OutputExpr, OutputKind, ProjectionExpr, RelationIdx, SelectionExpr, SinkId, SourceExpr,
+            UnionExpr,
         },
         schema::Column,
     },
@@ -269,11 +270,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// `¬r ∧ ¬s`, as in Datalog. Joining the negated atoms and antijoining once
     /// would compute `¬(r ∧ s)` instead.
     pub fn conjunctive_query(&self, rule: &P::Rule) -> Result<Expr, SyntaxError> {
-        // Verification leaves only variable-free rules without positive atoms,
-        // like `p() :- !h().`, which have nothing to antijoin against yet.
-        let conjunctive = self
-            .conjunctive_fragment(rule.positive_atoms())?
-            .ok_or_else(|| SyntaxError::new("body has no positive atoms"))?;
+        let conjunctive = self.conjunctive_fragment(rule.positive_atoms())?;
         let conjunctive = rule
             .negated_atoms()
             .try_fold(conjunctive, |acc, negated_atom| {
@@ -308,10 +305,18 @@ impl<'a, P: Predicate> Translator<'a, P> {
 
     /// A conjunctive fragment joins `atoms` on the variables they share. A
     /// rule's positive atoms form one; each negated atom stands on its own.
+    ///
+    /// No atoms at all join to the [unit](ConstantExpr::unit) relation, the
+    /// join's neutral element, just as an empty conjunction is `true`. That is
+    /// the body of a rule with an empty antecedent, like `m() :- !c().`, which
+    /// holds as long as `c` is empty.
+    /// [Static program verification](mod@super::analysis) guarantees that such
+    /// a rule does not contain a variable, as otherwise the range restriction
+    /// or negation safety would not hold.
     fn conjunctive_fragment<'r>(
         &self,
         atoms: impl IntoIterator<Item = &'r AtomOf<P>>,
-    ) -> Result<Option<Expr>, SyntaxError>
+    ) -> Result<Expr, SyntaxError>
     where
         AtomOf<P>: 'r,
     {
@@ -319,19 +324,16 @@ impl<'a, P: Predicate> Translator<'a, P> {
             .into_iter()
             .map(|atom| self.atom(atom))
             .collect::<Result<Vec<_>, SyntaxError>>()?;
-        if plans.is_empty() {
-            return Ok(None);
-        }
 
         let on = join_variables(&plans);
         let mut relations: Vec<Expr> = plans.into_iter().map(|plan| plan.relation).collect();
-        let joined = match relations.len() {
+        Ok(match relations.len() {
+            0 => Expr::from(ConstantExpr::unit()),
             // A single atom has nothing to join against, and the join operators
             // require at least two relations.
             1 => relations.pop().expect("length checked"),
             _ => Expr::from(MultiWayEquiJoinExpr::new(relations, on, None)?),
-        };
-        Ok(Some(joined))
+        })
     }
 
     /// One atom: the relation it names, filtered by what it pins down locally
@@ -572,6 +574,7 @@ mod tests {
     use crate::{
         error::Frame,
         host::{
+            expr::Expr,
             stmt::Stmt,
             walk::{Node, pre_order},
         },
@@ -579,10 +582,39 @@ mod tests {
     };
 
     #[test]
-    fn an_error_names_the_rule_and_predicate_it_was_raised_within() {
-        // The body negates its only atom. Being variable-free, the rule is
-        // safe, so only its translation notices that nothing is left to
-        // antijoin against.
+    fn an_error_names_the_predicate_it_was_raised_within() {
+        // `p` only ever reads itself. That is valid Datalog, `p` is merely
+        // empty, so only translation notices that nothing seeds its fixed
+        // point.
+        let predicates =
+            RulePredicate::group([declare("p", &["x"])], [rule("r0", "p(x)", &["p(x)"])])
+                .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let error = program
+            .prepare(program.verify().expect("the program is valid"))
+            .expect_err("`p` has no base case");
+
+        let message = "no base case: every rule reads the component the predicate is \
+                       part of, so nothing ever seeds the iteration";
+        assert_eq!(error.message(), message);
+        assert_eq!(
+            error.context().collect::<Vec<_>>(),
+            [&Frame::Predicate {
+                name: "p".to_string()
+            }]
+        );
+        assert_eq!(error.to_string(), format!("in predicate 'p': {message}"));
+        assert_eq!(
+            format!("{error:#}"),
+            format!("{message}\n  in predicate 'p'")
+        );
+    }
+
+    #[test]
+    fn an_empty_antecedent_antijoins_from_the_unit_relation() {
+        // `open` holds exactly while `blocked` is empty: with no positive atom
+        // to join, the body is the unit relation, which the negation antijoins
+        // on nothing.
         let predicates = RulePredicate::group(
             [declare("blocked", &[]), declare("open", &[])],
             [
@@ -592,33 +624,23 @@ mod tests {
         )
         .expect("every definand names a declared predicate");
         let program = program(predicates);
-        let error = program
+        let ir = program
             .prepare(program.verify().expect("the program is valid"))
-            .expect_err("the body has no positive atoms");
+            .expect("a rule with an empty antecedent translates");
 
-        assert_eq!(error.message(), "body has no positive atoms");
-        assert_eq!(
-            error.context().collect::<Vec<_>>(),
-            [
-                &Frame::Predicate {
-                    name: "open".to_string()
-                },
-                &Frame::Rule {
-                    name: "r0".to_string(),
-                    text: Some("open() :- !blocked().".to_string()),
-                },
-            ]
+        let antijoin = pre_order(&ir)
+            .filter_map(Node::as_rel)
+            .find_map(|rel_expr| match rel_expr {
+                RelExpr::AntiJoin(antijoin) => Some(antijoin),
+                _ => None,
+            })
+            .expect("the negation becomes an antijoin");
+        assert!(
+            matches!(&antijoin.left, Expr::Relational(RelExpr::Constant(constant)) if constant.is_unit()),
+            "the antijoin's left operand is not the unit relation:\n{}",
+            ir.to_tree()
         );
-        assert_eq!(
-            error.to_string(),
-            "in predicate 'open': in rule 'r0': body has no positive atoms"
-        );
-        assert_eq!(
-            format!("{error:#}"),
-            "body has no positive atoms\n  \
-             in rule 'r0': open() :- !blocked().\n  \
-             in predicate 'open'"
-        );
+        assert!(antijoin.on.is_empty(), "{}", ir.to_tree());
     }
 
     #[test]
