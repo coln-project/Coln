@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 //! The top level APIs exposed by the coln backend database to the user and FFI
 use coln_flir_rs::{
     engine::{
