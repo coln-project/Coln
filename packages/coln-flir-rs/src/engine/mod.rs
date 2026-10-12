@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Data structures expected by database engines or internal libraries
+//! Data structures expected by database engines or internal libraries.
 
 pub mod delta;
 pub mod packed;
