@@ -1,18 +1,31 @@
-\title{Elements of record types as views}
+\title{Definitions as translations}
 \import{prelude}
 
-\p{Thus far, we have not yet built \em{elements} of record types or function types inside a Coln file, only given examples of describing types the themselves. If one is using Coln purely to describe a database schema then there is no need for more.}
-
-\p{If a theory is given by a record type (using \code{\kw{sig} ... \kw{end}}), then we can produce a model of it using \code{\kw{struct} ... \kw{end}}, setting all of its fields. For example, we can reward the wrong children with the following code (using \code{SantaList} from [[001C]]).}
+\p{Elements of a record type\code{\kw{sig} ... \kw{end}} are introduced by writing \code{\kw{struct} ... \kw{end}} and providing an element for all its fields. For example:}
 
 \pre{%
-\kw{def} santa-mixup (m : SantaList) : SantaList := \kw{struct}
+\kw{theory} PersonDeets := \kw{sig}
+  first-name : String
+  last-name : String
+\kw{end}
+
+\kw{def} a-guy : PersonDeets := \kw{struct}
+  first-name := "Charlie"
+  last-name := "Bucket"
+\kw{end}
+}
+
+\p{When using \code{\kw{struct}}, one must give all the fields of the original record type in the same order as they were originally defined.}
+
+\p{As with queries, the real power comes when definitions may take arguments, allowing us to transform a model of one theory into a model of another.}
+
+\pre{%
+\kw{def} name-mixup (m : SantaList) : SantaList := \kw{struct}
   naughty := m.nice
   nice := m.naughty
 \kw{end}
 }
 
-\p{When using \code{\kw{struct}}, one must give all the fields of the original record type in the same order as they were originally defined.}
 
 \p{With some slightly more complex code, we can produce a model of \code{SantaList} from a model of \code{SantaLists} and a choice of year.}
 
@@ -26,12 +39,20 @@
 \p{Intuitively, this assigns \code{naughty} to the set of children naughty in that year, and similarly with \code{nice}. The \code{\kw{sig}} syntax is just as in [[001H]], using the curly-brace inline syntax. And \code{m.list y .naughty child} is just a sequence of function applications and field projection. Walking through the types, we have \code{m.list : m.person -> SantaListOver m.person}, so \code{m .list y : SantaListOver m.person} and then \code{m.list y .naughty : m.person -> Prop} and finally \code{m.list y .naughty child : Prop}.}
 
 
-% \p{We can also capture more traditional database queries in this way. Suppose we have the following database.}
+\p{Elements of a function type \code{(x : A) -> B} are introduced using the lambda syntax \code{x => a} (similar to anonymous functions in JavaScript).}
 
-% \pre{%
-% \kw{theory} Database := \kw{sig}
-%   Person : Set
-%   name : Person -> String
-%   age  : Person -> Int
-% \kw{end}
-% }
+\p{As an example, we can produce the graph of a function, which is a binary relation on the domain and codomain.}
+
+\pre{%
+\kw{def} graph (X : Set) (Y : Set) (f : X -> Y) : X -> Y -> Prop :=
+  x => y => f x = y
+}
+
+\p{We can also now start make non-trivial translations of theories that involve function types. For instance, we can write a translation of a state-machine into a new state-machine that runs at double speed.}
+
+\pre{%
+\kw{def} double-time (m : StateMachine) : StateMachine := \kw{struct}
+  state := m.state
+  next := x => m.next (m.next x)
+\kw{end}
+}

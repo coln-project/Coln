@@ -10,6 +10,7 @@
 \transclude{001C}
 \transclude{001D}
 \transclude{001E}
+\transclude{003A}
 \transclude{0034}
 \transclude{001G}
 \transclude{001I}
@@ -18,8 +19,3 @@
 [[001E]], [[0034]], [[001G]] and [[001I]]) are individually simple,
 but can be composed to build complex combinatorial structures of sets,
 functions and relations.}
-
-% Views
-\transclude{0035}
-
-\transclude{0036}

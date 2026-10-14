@@ -10,5 +10,11 @@
 % Levels
 \transclude{0033}
 
+% Views
+\transclude{0035}
+
+% Worked Example
+\transclude{0036}
+
 % Inductive types
 \transclude{001N}

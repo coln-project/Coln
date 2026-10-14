@@ -3,8 +3,6 @@
 
 \p{There is a type \code{Set}, whose elements are collections of things.}
 
-% In particular we have \code{String : Set} and \code{Int : Set}.
-
 \p{As a database schema, this produces a table of completely abstract row-ids, with no associated data.}
 
 \pre{%
@@ -27,3 +25,5 @@
   }
   }
 }
+
+\p{ \mvrnote{smooth} In particular we have \code{String : Set} and \code{Int : Set}.}

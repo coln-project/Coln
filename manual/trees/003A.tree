@@ -1,0 +1,47 @@
+\title{Dependent function types}
+\import{prelude}
+
+\p{Coln is a dependently typed language; this means that the definition of a type is permitted to refer to elements of other types. In fact, we have seen this a lot already without remarking on it, in that later fields of a record are permitted to refer to earlier ones when describing their type. From [[001D]], we had:}
+
+\pre{%
+\kw{theory} PopulatedSantaList := \kw{sig}
+  Naughty : Set
+  Nice : Set
+  veruca : Naughty
+  charlie : Nice
+\kw{end}
+}
+
+\p{This is already a dependent record: the \em{type} of the field \code{veruca} refers to the \em{element} \code{Naughty}, which only exists because we declared it to previously.}
+
+\p{Besides dependent records, Coln also includes dependent functions; these are functions where the type of the output is permitted to depend on the element that the function is provided as input. The syntax for these is \code{(x : A) -> B}, where \code{B} allowed to mention \code{x}.}
+
+\p{There are especially useful when dealing with families of types:}
+
+\pre{%
+\kw{theory} SantaLists := \kw{sig}
+  list : Set
+  naughty : list -> Set
+  nice : list -> Set
+
+  ironic-comeuppance : (l : list) -> naughty l -> String
+\kw{end}
+}
+
+% Instance example
+
+\p{Here, we wish to store an outcome for each of the naughty children, regardless of which list they are on. Again this is stored as a three-column table. The improvement over a non-dependent function is that the constraints ensure that each entry of the \code{naughty} column is correctly paired with the \code{list} element that it belongs to.}
+
+\p{We are not restricted to simply using variables when constructing a dependent type.}
+
+\pre{%
+\kw{theory} Foo := \kw{sig}
+  state : \kwi{Set}
+  problem : state -> \kwi{Set}
+  next : state -> state
+
+  warning-message : (s : state) -> problem (next s) -> \kwi{String}
+\kw{end}
+}
+
+\p{Here this gives, for every state and every problem that is associated with the \em{next} state, a string.}

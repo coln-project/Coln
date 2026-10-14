@@ -1,0 +1,43 @@
+\title{Definitions as Queries}
+\import{prelude}
+
+\scope{
+\put\transclude/toc{false}
+\subtree[001A]{
+
+  \taxon{Slogan}
+  \title{Sets are queries, elements are results}
+
+  \p{A \em{query} on a theory is a way of turning a model of the theory (i.e. actual database instance) into a set. Applying this to a particular model gives an actual set, and elements of that set are the results of the query.}
+}}
+
+\p{That is, a query on some theory \code{T} is just definition that has the following shape:}
+
+\pre{%
+\kw{def} my-query (m : T) : \kw{Set} := ...
+}
+
+\p{Here are some simple cases. Given database containing a graph, we might want to query for the full set of vertices. For this, we can project the field of the model directly.}
+
+\pre{%
+\kw{theory} Graph := \kw{sig}
+  V : Set
+  E : V -> V -> Set
+\kw{end}
+
+\kw{def} its-vertices (m : Graph) : \kw{Set} := m.V
+}
+
+\p{Or, to constrain the results according to the value of a column, we might apply a function that returns a set:}
+
+\pre{%
+\kw{theory} Layered := \kw{sig}
+  layer : Int -> Set
+\kw{end}
+
+\kw{def} for-millenium (m : Layered) : \kw{Set} := m.layer 2000
+}
+
+\p{For more complicated queries, we can use the type constructors we've seen.}
+
+\transclude{001J}
