@@ -6,11 +6,11 @@
 \p{As a database schema, this produces a table of completely abstract row-ids, with no associated data.}
 
 \pre{%
-\kw{theory} Widget := Set
+\kw{theory} GoldenTicket := Set
 }
 
 \dbexample{
-  \p{\strong{Table \code{Widget}}}
+  \p{\strong{Table \code{GoldenTicket}}}
 
   \table{
     \row{\hcell{RowID}}

@@ -4,18 +4,20 @@
 \p{Coln also provides the facility for functions at the \em{theory} level, which enables code reuse between database schemas. As a simple example:}
 
 \pre{%
-\kw{theory} StateMachineOn (state : Set) := \kw{sig}
-  next : state -> state
+\kw{theory} ProcessOn (Stage : Set) := \kw{sig}
+  next : Stage -> Stage
 \kw{end}
 }
 
 \pre{%
 \kw{theory} Factory := \kw{sig}
-  steps : Set
-  chocolate-recipe : StateMachineOn steps
-  rooms : Set
-  boat-ride : StateMachineOn rooms
+  Step : Set
+  chocolate-recipe : ProcessOn Step
+  Room : Set
+  boat-ride : ProcessOn Room
 \kw{end}
 }
 
 % Example instance
+
+\mvrnote{TODO: more examples.}

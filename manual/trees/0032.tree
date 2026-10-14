@@ -77,26 +77,27 @@ m.john.set(john)
 \p{Concretely, in TypeScript, we could use this like}
 
 \pre{%
-\kw{const} m = StateMachine.create()
-\kw{const} [x,y] = [m.state.add(), m.state.add()]
+\kw{const} m = BoatRide.create()
+\kw{const} [x,y] = [m.Stop.add(), m.Stop.add()]
 m.next(x).set(y)
 m.next(y).set(y)
 }
 
-\p{Note that at the point where we have added \code{x} and \code{y} but not yet set the values of \code{next} for them, \code{m} is not a valid instance for \code{StateMachine}. In fact, in general it is inevitable that in the process of building a model one may pass through an invalid state. Thus, validity is only checked at certain points; we discuss validity more in a later section.\todo}
+\p{Note that at the point where we have added \code{x} and \code{y} but not yet set the values of \code{next} for them, \code{m} is not a valid instance for \code{BoatRide}. In fact, in general it is inevitable that in the process of building a model one may pass through an invalid state. Thus, validity is only checked at certain points; we discuss validity more in a later section.\todo}
 
-\p{From TypeScript, we could use a model \code{m} of \code{SantaLists} in the following way.}
+\p{From TypeScript, we could use a model \code{m} of \code{TourSchedule} in the following way.}
 
 \pre{%
-\kw{const} y2025 = m.year.add()
-\kw{const} bob = m.list(y2025).nice.add()
+\kw{const} departure = m.Departure.add()
+m.year(departure).set({ tag: "int", value: 2025 })
+\kw{const} charlie = m.participants(departure).Child.add()
 }
 
-\p{From TypeScript, using a model of \code{Drama} would look like:}
+\p{From TypeScript, using a model of \code{Family} would look like:}
 
 \pre{%
-\kw{const} [john, mary] = [m.person.add(), m.person.add()]
-m.jealous_of(john)(mary).makeTrue()
+\kw{const} [charlie, grandpa_joe] = [m.Person.add(), m.Person.add()]
+m.is_descendant_of(charlie)(grandpa_joe).makeTrue()
 }
 
 \p{Note that because names in f-notation can contain characters like \code{-} that are not allowed in TypeScript, we have to \em{mangle} the Coln name to create the TypeScript API. As \code{person_of} is also a valid name in Coln, a theory could have both \code{person-of} and \code{person_of} fields. In this case, emitting the TypeScript FFI would emit an error. The suggested fix is to not have fields that differ only by choice of hyphen/underscore, because that is bad and confusing in any case.}
@@ -115,17 +116,17 @@ m.list(y2026).naughty(john).makeTrue()
 \p{We saw [earlier](001E) one way in which a model of a theory might be incomplete; a function might not yet be defined for given values of its inputs. Here we have a similar situation. For instance, we might have written:}
 
 \pre{%
-\kw{const} [john, mary, sue] =
-  [m.person.add(), m.person.add(), m.person.add()]
-m.jealous_of(john)(mary).makeTrue()
-m.jealous_of(mary)(sue).makeTrue()
+\kw{const} [charlie, parent, grandpa_joe] =
+  [m.Person.add(), m.Person.add(), m.Person.add()]
+m.is_descendant_of(charlie)(parent).makeTrue()
+m.is_descendant_of(parent)(grandpa_joe).makeTrue()
 }
 
-\p{When checking validity of \code{m} after executing this code, Coln will report that \code{jealous-of/is-transitive john mary sue _ _ : jealous-of mary sue} is not satisfied (though, Coln does not know what names we have given to these variables in TypeScript, so it would actually print out the row identifiers instead of the names).\todo Unlike with \code{next} in the [section on functions](001E), to fix this we don't need to touch \code{jealous-of/is-transitive}. Instead, we can just run \code{m.jealous_of(john)(sue).makeTrue()}, and the model will be valid again. This is because if the codomain of a function is a proposition, there is ultimately only one possible way for that function to exist, and thus the function need not be explicitly defined. We discuss how this works in a later section.\todo}
+\p{When checking validity of a model \code{m} of \code{TransitiveFamily} after executing this code, Coln will report that \code{is-descendant-of/is-transitive charlie parent grandpa_joe _ _ : is-descendant-of charlie grandpa_joe} is not satisfied (though, Coln does not know what names we have given to these variables in TypeScript, so it would actually print out the row identifiers instead of the names).\todo Unlike with \code{next} in the [section on functions](001E), to fix this we don't need to touch \code{is-descendant-of/is-transitive}. Instead, we can just run \code{m.is_descendant_of(charlie)(grandpa_joe).makeTrue()}, and the model will be valid again. This is because if the codomain of a function is a proposition, there is ultimately only one possible way for that function to exist, and thus the function need not be explicitly defined. We discuss how this works in a later section.\todo}
 
-\p{In TypeScript, \code{jealousy-triangle} is compiled to a function that takes in a model of \code{Drama} and returns a \code{ReadonlySet}.\todo The elements \code{v} of this \code{ReadonlySet} are \code{Value}s with the \code{"tuple"} tag, which have fields \code{a},\code{b},\code{c} that are elements of \code{m.person}, such that \code{m.jealous-of(v.value.a)(v.value.b).isTrue()}, and so on. The value \code{v} will also have \code{v.value.a_b}, but it will just be \code{null}, thought of as the unique element of the singleton set.}
+\p{In TypeScript, \code{ancestry-cycle} is compiled to a function that takes in a model of \code{Family} and returns a \code{ReadonlySet}.\todo This query checks for suspicious cycles in the ancestry data. The elements \code{v} of this \code{ReadonlySet} are \code{Value}s with the \code{"tuple"} tag, which have fields \code{a},\code{b},\code{c} that are elements of \code{m.Person}, such that \code{m.is_descendant_of(v.value.a)(v.value.b).isTrue()}, and so on. The value \code{v} will also have \code{v.value.a_b}, but it will just be \code{null}, thought of as the unique element of the singleton set.}
 
-\p{Iterating through the elements of \code{jealousy_triangle(m)} will be faster than the naive approach of a triply-nested for-loop over \code{m.person} and then filtering out using \code{m.jealous-of}, because Coln can \em{plan} the query and take advantage of fast join algorithms on the \code{m.jealous-of} table.\todo}
+\p{Iterating through the elements of \code{ancestry_cycle(m)} will be faster than the naive approach of a triply-nested for-loop over \code{m.Person} and then filtering out using \code{m.is_descendant_of}, because Coln can \em{plan} the query and take advantage of fast join algorithms on the \code{is-descendant-of} table.\todo}
 
 \p{From TypeScript, we have the interface}
 

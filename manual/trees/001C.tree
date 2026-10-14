@@ -4,16 +4,16 @@
 \p{Record types compose multiple types into a single type, whose elements consist of elements of each of the individual pieces. A record type declaration consists of a list of \em{fields}, each with its own type. A record is formed by a \code{\kw{sig} ... \kw{end}} block, with one field per line. For instance:}
 
 \pre{%
-\kw{theory} PersonDeets := \kw{sig}
+\kw{theory} PersonDetails := \kw{sig}
   name : String
   age : Int
 \kw{end}
 }
 
-\p{An instance of \code{PersonDeets} stores \em{one person}'s name and age. The two fields become columns in a single table:}
+\p{An instance of \code{PersonDetails} stores \em{one person}'s name and age. The two fields become columns in a single table:}
 
 \dbexample{
-  \p{\strong{Table \code{PersonDeets}}}
+  \p{\strong{Table \code{PersonDetails}}}
 
   \table{
     \row{\hcell{\code{name : String}} \hcell{\code{age : Int}}}
@@ -23,37 +23,37 @@
 
   \p{\strong{Constraints:}}
   \ul{
-    \li{\code{PersonDeets} has exactly one row.}
+    \li{\code{PersonDetails} has exactly one row.}
   }
 }
 
 \p{Fields can also be collections, by giving them the type \code{Set}:}
 
 \pre{%
-\kw{theory} SantaList := \kw{sig}
-  Naughty : Set
-  Nice : Set
+\kw{theory} Tour := \kw{sig}
+  Child : Set
+  Adult : Set
 \kw{end}
 }
 
-\p{Elements of \code{SantaList} consist of a pair of a collection of naughty things and a collection of nice things.}
+\p{Elements of \code{Tour} consist of a pair of a collection of children and a collection of adults.}
 
 \dbexample{
-  \p{\strong{Table \code{SantaList.Naughty}}}
+  \p{\strong{Table \code{Tour.Child}}}
 
   \table{
     \row{\hcell{Row ID}}
   }{
-    \row{\cell{\code{b1}}}
+    \row{\cell{\code{c1}}}
   }
 
-  \p{\strong{Table \code{SantaList.Nice}}}
+  \p{\strong{Table \code{Tour.Adult}}}
 
   \table{
     \row{\hcell{Row ID}}
   }{
-    \row{\cell{\code{g1}}}
-    \row{\cell{\code{g2}}}
+    \row{\cell{\code{a1}}}
+    \row{\cell{\code{a2}}}
   }
 
   \p{\strong{Constraints:} None.}

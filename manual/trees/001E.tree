@@ -4,14 +4,14 @@
 \p{An element of a function type \code{A -> B} assigns for each element of \code{A}, an element of \code{B}.}
 
 \pre{%
-\kw{theory} SimpleMachine := \kw{sig}
-  input : Set
-  output : Set
-  next : input -> output
+\kw{theory} AccompaniedTour := \kw{sig}
+  Child : Set
+  Adult : Set
+  accompanying-adult : Child -> Adult
 \kw{end}
 }
 
-\p{If we have \code{m : SimpleMachine}, then \code{m.next} is a function that sends elements of \code{m.input} to elements of \code{m.output}.}
+\p{If we have \code{m : AccompaniedTour}, then \code{m.accompanying-adult} is a function that sends elements of \code{m.Child} to elements of \code{m.Adult}.}
 
 \p{In most programming languages that contain function types, they are thought of as \em{procedures} for producing an output given an input. In Coln, a record field with function type is ultimately stored as a table that associates an output to each possible input. Coln also outputs constraints that ensure that this table really does behave as a function: each possible input is associated with one output.}
 
@@ -20,66 +20,68 @@
 \p{These can certainly use the same collection on both sides.}
 
 \pre{%
-\kw{theory} StateMachine := \kw{sig}
-  state : Set
-  next : state -> state
+\kw{theory} BoatRide := \kw{sig}
+  Stop : Set
+  next : Stop -> Stop
 \kw{end}
 }
+
+\p{Each stop has a next stop. The final stop can map to itself, representing the boat remaining at the landing.}
 
 % Instance Example
 
 \p{But that is not all functions can do. Though there are some restrictions (see [[Levels]]), the input and output types of a function can be general types, and not just those that we have declared as fields. We can do the following:}
 
 \pre{%
-\kw{theory} SantaLists := \kw{sig}
-  list : Set
-  year : list -> Int
-  naughty : list -> Set
-  nice : list -> Set
+\kw{theory} TourSchedule := \kw{sig}
+  Departure : Set
+  year : Departure -> Int
+  Child : Departure -> Set
+  Adult : Departure -> Set
 \kw{end}
 }
 
 % Instance Example
 
-\p{Here the \code{naughty} and \code{nice} fields are \em{families} of collections, indexed by the elements of the collection \code{list}. In this case, we are saying that \code{naughty} is a not a single \code{Set}, but a separate \code{Set} for each element of \code{list}.}
+\p{Here the \code{Child} and \code{Adult} fields are \em{families} of collections, indexed by the elements of the collection \code{Departure}. In this case, we are saying that \code{Child} is not a single \code{Set}, but a separate \code{Set} for each element of \code{Departure}.}
 
-\p{Coln is nice and compositional, so rather than writing out \code{naughty} and \code{nice} as new, separate fields in \code{SantaLists}, we might prefer to re-use the theory \code{SantaList} that we already defined:}
+\p{Coln is nice and compositional, so rather than writing out \code{Child} and \code{Adult} as new, separate fields in \code{TourSchedule}, we might prefer to re-use the theory \code{Tour} that we already defined:}
 
 \pre{%
-\kw{theory} SantaLists := \kw{sig}
-  list : Set
-  year : list -> Int
-  kids : list -> SantaList
+\kw{theory} TourSchedule := \kw{sig}
+  Departure : Set
+  year : Departure -> Int
+  participants : Departure -> Tour
 \kw{end}
 }
 
 % Instance Example, or skip if the same
 
-\collapsedaside{Now, there are some ontological problems with this database schema. We cannot ask whether a person is nice one year and naughty the other year, because the nice and naughty sets for each year are disjoint. What we would really like is there to be \em{one} set of people, and then in different years they might be nice or naughty. This can be accomplished with [relations](001G).}
+\collapsedaside{We cannot ask whether the same child participates in two departures, because each departure has a separate collection of children. To track children across departures, we would need \em{one} shared set of children, and a relation recording which departures each child participates in. This can be accomplished with [relations](001G).}
 
-\p{To apply a function to an argument, we juxtapose the two. For example, we might want to choose a specific nice child in a particular year:}
+\p{To apply a function to an argument, we juxtapose the two. For example, we might want to specify a sweet on a particular floor:}
 
 \pre{
-\kw{theory} Foo := \kw{sig}
-  list : Int -> Set
-  millennium-champ : list 2000
+\kw{theory} FactoryFloors := \kw{sig}
+  Sweet-on-floor : Int -> Set
+  everlasting-gobstopper : Sweet-on-floor 3
 \kw{end}
 }
 
 % Instance Example
 
-\p{To write a function that takes multiple arguments, the preferred method in Coln is to use the [curried](https://en.wikipedia.org/wiki/Currying) style. That is, a function accepting both an \code{Int} and a \code{String} is written as \code{Int -> (String -> Result)}. We associate function arrows to the \em{right}, so that we can skip the parentheses in this case.}
+\p{To write a function that takes multiple arguments, the preferred method in Coln is to use the [curried](https://en.wikipedia.org/wiki/Currying) style. That is, a function accepting both an \code{Int} and a \code{String} is written as \code{Int -> (String -> Result)}. We associate function arrows to the \em{right}, so that we can skip the parentheses in this case. For example:}
 
 \pre{
-\kw{theory} Bar := \kw{sig}
-  func : Int -> String -> Int
+\kw{theory} FactoryStock := \kw{sig}
+  Sweet-on-floor-with-flavour : Int -> String -> Set
 \kw{end}
 }
 
 % Instance Example
 
-\p{Conceptually, applying \code{func} to an integer gives back a function that awaits a string. Providing that string, we finally get back the output element of \code{Int}. This repeated application is still done by juxtaposition: we might write \code{(func 2000) "Hello"}. Function application associates to the \em{left}, so again we can leave off the parentheses and write \code{func 2000 "Hello"}.}
+\p{Conceptually, applying \code{Sweet-on-floor-with-flavour} to an integer gives back a function that awaits a string. Providing that string, we finally get back a collection of sweets. This repeated application is still done by juxtaposition: we might write \code{(Sweet-on-floor-with-flavour 3) "chocolate"}. Function application associates to the \em{left}, so again we can leave off the parentheses and write \code{Sweet-on-floor-with-flavour 3 "chocolate"}.}
 
-\p{As a database, \code{func} is ultimately lowered to a table with three columns, two for the inputs and one for the output.}
+\p{As a database, \code{Sweet-on-floor-with-flavour} is ultimately lowered to a table with two columns, one for the floor and one for the flavour. Each row ID represents a sweet in the collection specified by those two values.}
 
 \collapsedaside{It is also possible to define a function that accepts a genuine pair as an argument, but we defer the syntax for this to \mvrnote{TODO}.}

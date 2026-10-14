@@ -3,13 +3,13 @@
 
 \p{There is an additional type-of-types \code{Prop} whose elements are simpler than those of \code{Set}; its elements are collections that themselves have \em{at most one} element. One can think of \code{Prop} as the type of [truth values](TODO). An element of \code{Prop} which is an inhabited collection corresponds to \code{true}, and an element which is an empty collection corresponds to \code{false}.}
 
-\p{While on its own \code{Prop} is boring, the real power comes from combining it with function types. For instance, we can rewrite \code{SantaLists} so that the same person may appear on lists in different years. Rather than having two sets, one for \code{nice} and one for \code{naughty}, we have a single set (of all the children), and two families of propositions over that set: one for whether the child is nice, and one for whether the child is naughty. (In this this schema, nothing stops a single child from being \em{both} nice and naughty.)}
+\p{While on its own \code{Prop} is boring, the real power comes from combining it with function types. For instance, we can describe whether each child is nice or naughty. We have a single set (of all the children), and two families of propositions over that set: one for whether the child is nice, and one for whether the child is naughty. (In this schema, nothing stops a single child from being \em{both} nice and naughty.)}
 
 \pre{%
-\kw{theory} SantaLists := \kw{sig}
-  child : Set
-  is-naughty : child -> Prop
-  is-nice : child -> Prop
+\kw{theory} ChildBehaviour := \kw{sig}
+  Child : Set
+  is-naughty : Child -> Prop
+  is-nice : Child -> Prop
 \kw{end}
 }
 
@@ -20,15 +20,15 @@
 \p{Just as we saw in [[001D]], we can specify theories that demand that the sets/propositions we've declared actually have some inhabitants:}
 
 \pre{
-\kw{theory} SantaLists := \kw{sig}
-  child : Set
-  is-naughty : child -> Prop
-  is-nice : child -> Prop
+\kw{theory} ChildBehaviour := \kw{sig}
+  Child : Set
+  is-naughty : Child -> Prop
+  is-nice : Child -> Prop
 
-  veruca : child
+  veruca : Child
   spoilt-rotten : is-naughty veruca
 
-  charlie : child
+  charlie : Child
   returned-gobstopper : is-nice charlie
 \kw{end}
 }
@@ -42,28 +42,28 @@
 \p{We call a function whose codomain is \code{Prop} a \defcase{relation}. Here, \code{is-naughty} and \code{is-nice} are \em{unary} relations, because each takes in one argument. Here is another example, this time of a \em{binary} relation.}
 
 \pre{%
-\kw{theory} Drama := \kw{sig}
-  person : Set
-  jealous-of : person -> person -> Prop
+\kw{theory} Family := \kw{sig}
+  Person : Set
+  is-descendant-of : Person -> Person -> Prop
 \kw{end}
 }
 
 \p{An element of a proposition can be thought of as a witness that the
 proposition is true. We can use this to put \em{laws} in our database.
-For instance, we can require that jealousy is transitive in any valid instance of the schema:}
+For instance, we can require that the descendant relation is transitive in any valid instance of the schema:}
 
 \pre{%
-\kw{theory} ExtraDrama := \kw{sig}
-  person : Set
-  jealous-of : person -> person -> Prop
+\kw{theory} TransitiveFamily := \kw{sig}
+  Person : Set
+  is-descendant-of : Person -> Person -> Prop
 
-  jealous-of/is-transitive : (a b c : person) ->
-    jealous-of a b -> jealous-of b c -> jealous-of a c
+  is-descendant-of/is-transitive : (a b c : Person) ->
+    is-descendant-of a b -> is-descendant-of b c -> is-descendant-of a c
 \kw{end}
 }
 
 % Example instance
 
-\p{If we read the third field in words, this says that for any three people \code{a}, \code{b}, \code{c}, if the propositions "\code{a} is jealous of \code{b}" and "\code{b} is jealous of \code{c}" hold, then "\code{a} is jealous of \code{c}" holds. Because the output of this field is in \code{Prop}, the field is transformed into a constraint and not materialised as a table.}
+\p{If we read the third field in words, this says that for any three people \code{a}, \code{b}, \code{c}, if the propositions "\code{a} is a descendant of \code{b}" and "\code{b} is a descendant of \code{c}" hold, then "\code{a} is a descendant of \code{c}" holds. Because the output of this field is in \code{Prop}, the field is transformed into a constraint and not materialised as a table.}
 
-\p{Coln does not automatically derive the resulting facts; this law becomes a constraint on the user-supplied instances that the Coln database will accept. (But see \mvrnote{TODO} later for how we \em{can} derive facts like this automatically!)}
+\p{Coln does not automatically derive all facts that follow from a collection of laws; this law becomes a constraint on the user-supplied instances that the Coln database will accept. (But see \mvrnote{TODO} later for how we \em{can} derive facts like this automatically!)}
