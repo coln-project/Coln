@@ -36,7 +36,7 @@
 
   \p{An exception is made for "immediate" field accessors, written \code{a.b} with no intervening whitespace between an expression and a field projection. This is parsed the as \code{a .b} but with higher precedence than ordinary juxtaposition, so that \code{f a.x a.y} is \code{f (a .x) (a .y)} rather than \code{f a .x a .y}.}
 
-  \p{\defcase{Infix application} is two expressions with a symbolic identifier or keyword between them, like \code{a : Int}.}
+  \p{\defcase{Infix application} is two expressions with a symbolic identifier or keyword between them, like \code{a : \kwi{Int}}.}
 
   \p{Juxtaposition binds tighter than infix application, thus \code{f x + y} is \code{(f x) + y}. The binding strength and associativity of infix application is determined by a custom precedence table.}
 
@@ -64,11 +64,11 @@
   \title{Declarations and blocks}
 
   \p{A \defcase{declaration} consists of a [declaration token](0014) followed by an expression. For example}
-  \pre{\kw{def} x : Int := 5}
+  \pre{\kw{def} x : \kwi{Int} := 5}
   \p{is a declaration, which could be parenthesized as}
-  \pre{\kw{def} ((x : Int) := 5)}
+  \pre{\kw{def} ((x : \kwi{Int}) := 5)}
   \p{\mvrnote{These are unused currently?} A declaration may be \em{modified} by prefixing it with modification tokens, as in}
-  \pre{\kw{pub} \kw{def} x : Int := 5}
+  \pre{\kw{pub} \kw{def} x : \kwi{Int} := 5}
   \p{These modifiers form part of the overall declaration.}
 
   \p{A \defcase{block} consists of a [block token](0014) followed by either}
@@ -78,12 +78,12 @@
   }
   \p{An example of the first variant is}
   \pre{\kw{sig}
-  x : Int
+  x : \kwi{Int}
   \kw{def} x-plus-1 := x + 1
   y : is-odd x-plus-1
 \kw{end}}
   \p{An example of the second variant is}
-  \pre{\kw{sig} { x : Int; \kw{def} x-plus-1 := x + 1; y : is-odd x-plus-1 }}
+  \pre{\kw{sig} { x : \kwi{Int}; \kw{def} x-plus-1 := x + 1; y : is-odd x-plus-1 }}
 
   \p{Blocks may appear within expressions, but declarations may not; declarations may only appear within blocks.}
 

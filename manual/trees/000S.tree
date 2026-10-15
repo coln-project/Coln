@@ -3,7 +3,7 @@
 
 \p{In this section, we describe informally the various type constructors available in Coln.}
 
-\p{As we introduce each new type construction, we demonstrate the database schema produced by the Coln compiler, together with a valid instance of that schema. Click the "Example" heading to expand it. \mvrnote{forward link to more details}}
+\p{As we introduce each new type construction, we demonstrate the database schema produced by the Coln compiler, together with a valid instance of that schema. Click the "Example" heading to expand it. \mvrnote{forward link to more details on realms/exporting}}
 
 \transclude{0031}
 \transclude{001B}

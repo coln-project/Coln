@@ -3,7 +3,7 @@
 
 \p{\mvrnote{Are we calling the "top" level types "metatheories" now?}}
 
-\p{Types cannot be combined in arbitrary ways and still have a sensible database interpretation; the simplest example is the type \code{Set -> String}, which cannot hope to store information for every possible abstract collection. The interpretations supported by each type in a Coln program are tracked by a system of \defcase{type levels}.}
+\p{Types cannot be combined in arbitrary ways and still have a sensible database interpretation; the simplest example is the type \code{\kwi{Set} -> \kwi{String}}, which cannot hope to store information for every possible abstract collection. The interpretations supported by each type in a Coln program are tracked by a system of \defcase{type levels}.}
 
 \p{Every type in a Coln program has a \defcase{level}, which dictates the positions in a Coln program it may appear. Types at all levels use the same syntax, but some operations will only succeed for types of a given level. That is, to be valid a Coln program must be both type-correct (types line up wherever they are used together) and level-correct (inputs to constructions have the permitted levels). This is checked by the compiler, and any issues will produce an error during [elaboration](000O).}
 

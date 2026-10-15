@@ -5,7 +5,7 @@
 
 \p{\mvrnote{typescript here}}
 
-\p{In TypeScript, models of \code{Set} store collections of \code{Value}s, where \code{Value} is defined in the following way}
+\p{In TypeScript, models of \code{\kwi{Set}} store collections of \code{Value}s, where \code{Value} is defined in the following way}
 
 \pre{%
 \kw{const} RowId = {
@@ -22,7 +22,7 @@
 
 \p{All elements in the collection should be of the same type (e.g. all row ids, all strings, etc.) but for simplicity all sets share the same untyped API involving \code{Value}s.}
 
-\p{A TypeScript value \code{m} that refers to a model of \code{Set} satisfies the following interface}
+\p{A TypeScript value \code{m} that refers to a model of \code{\kwi{Set}} satisfies the following interface}
 
 \pre{%
 \kw{interface} ReadonlySet {
@@ -48,7 +48,7 @@
 assert(m.has(a))
 }
 
-\p{More precisely, if we have a model \code{m} of \code{SantaList} in TypeScript, then \code{m.naughty} and \code{m.nice} are both models of \code{Set}. If \code{m} is readonly, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadonlySet}, and if \code{m} is read-write, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadWriteSet}. The following TypeScript code should run without errors if \code{m} is a read-write model of \code{SantaList}.}
+\p{More precisely, if we have a model \code{m} of \code{SantaList} in TypeScript, then \code{m.naughty} and \code{m.nice} are both models of \code{\kwi{Set}}. If \code{m} is readonly, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadonlySet}, and if \code{m} is read-write, then \code{m.naughty} and \code{m.nice} will satisfy \code{ReadWriteSet}. The following TypeScript code should run without errors if \code{m} is a read-write model of \code{SantaList}.}
 
 \pre{%
 \kw{const} alice = m.nice.add()

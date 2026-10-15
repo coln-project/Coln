@@ -34,10 +34,10 @@
 \row{\cell{\code{let}} \cell{\code{Decl}}}
 % \row{\cell{\code{open}} \cell{\code{Decl}}}
 % \row{\cell{\code{import}} \cell{\code{Decl}}}
-\row{\cell{\code{Set}} \cell{\code{AKeyword}}}
-\row{\cell{\code{Prop}} \cell{\code{AKeyword}}}
-\row{\cell{\code{Int}} \cell{\code{AKeyword}}}
-\row{\cell{\code{String}} \cell{\code{AKeyword}}}
+\row{\cell{\code{\kwi{Set}}} \cell{\code{AKeyword}}}
+\row{\cell{\code{\kwi{Prop}}} \cell{\code{AKeyword}}}
+\row{\cell{\code{\kwi{Int}}} \cell{\code{AKeyword}}}
+\row{\cell{\code{\kwi{String}}} \cell{\code{AKeyword}}}
 % \row{\cell{\code{Inductive}} \cell{\code{AKeyword}}}
 % \row{\cell{\code{init}} \cell{\code{AKeyword}}}
 \row{\cell{\code{:=}} \cell{\code{SKeyword}}}

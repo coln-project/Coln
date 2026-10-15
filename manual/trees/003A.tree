@@ -5,8 +5,8 @@
 
 \pre{%
 \kw{theory} TourWithGuests := \kw{sig}
-  Child : Set
-  Adult : Set
+  Child : \kwi{Set}
+  Adult : \kwi{Set}
   charlie : Child
   grandpa-joe : Adult
 \kw{end}
@@ -20,27 +20,112 @@
 
 \pre{%
 \kw{theory} TourOutcomes := \kw{sig}
-  Departure : Set
-  Child : Departure -> Set
+  Departure : \kwi{Set}
+  Child : Departure -> \kwi{Set}
 
-  ironic-comeuppance : (d : Departure) -> Child d -> String
+  ironic-comeuppance : (d : Departure) -> Child d -> \kwi{String}
 \kw{end}
 }
 
-% Instance example
+\dbexample{
+  \p{\strong{Table \code{root.Departure}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{d1}}}
+    \row{\cell{\code{d2}}}
+  }
+
+  \p{\strong{Table \code{root.Child}}}
+
+  \table{
+    \row{\hcell{Row ID} \hcell{\code{a : root.Departure}}}
+  }{
+    \row{\cell{\code{c1}} \cell{\code{d1}}}
+    \row{\cell{\code{c2}} \cell{\code{d1}}}
+    \row{\cell{\code{c3}} \cell{\code{d2}}}
+  }
+
+  \p{\strong{Table \code{root.ironic-comeuppance}}}
+
+  \table{
+    \row{\hcell{\code{d : root.Departure}} \hcell{\code{a : root.Child}} \hcell{\code{b : \kwi{String}}}}
+  }{
+    \row{\cell{\code{d1}} \cell{\code{c1}} \cell{\code{"blueberry inflation"}}}
+    \row{\cell{\code{d1}} \cell{\code{c2}} \cell{\code{"down the rubbish chute"}}}
+    \row{\cell{\code{d2}} \cell{\code{c3}} \cell{\code{"taffy-pulling"}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in column \code{a} of \code{root.Child} is a row ID in \code{root.Departure}.}
+    \li{Each row of \code{root.ironic-comeuppance} pairs a departure in column \code{d} with a child belonging to that departure in column \code{a}.}
+    \li{Every pair of a departure and a child belonging to it appears exactly once in \code{root.ironic-comeuppance}.}
+  }
+}
 
 \p{Here, we wish to store an outcome for each child on each departure. Again this is stored as a three-column table. The improvement over a non-dependent function is that the constraints ensure that each entry of the \code{Child} column is correctly paired with the \code{Departure} element that it belongs to.}
 
-\p{We are not restricted to simply using variables when constructing a dependent type. Here's an example where we use the first argument as an input to a function, selecting one \code{Set} in an indexed family:}
+\p{We are not restricted to simply using variables when constructing a dependent type. Here's an example where we use the first argument as an input to a function, selecting one \code{\kwi{Set}} in an indexed family:}
 
 \pre{%
-\kw{theory} BoatRideWarnings := \kw{sig}
+\kw{theory} BoatRideSong := \kw{sig}
   Stop : \kwi{Set}
   Hazard : Stop -> \kwi{Set}
   next : Stop -> Stop
 
   ominous-stanza : (s : Stop) -> Hazard (next s) -> \kwi{String}
 \kw{end}
+}
+
+\dbexample{
+  \p{\strong{Table \code{root.Stop}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{s1}}}
+    \row{\cell{\code{s2}}}
+    \row{\cell{\code{s3}}}
+  }
+
+  \p{\strong{Table \code{root.Hazard}}}
+
+  \table{
+    \row{\hcell{Row ID} \hcell{\code{a : root.Stop}}}
+  }{
+    \row{\cell{\code{h1}} \cell{\code{s2}}}
+    \row{\cell{\code{h2}} \cell{\code{s2}}}
+  }
+
+  \p{\strong{Table \code{root.next}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Stop}} \hcell{\code{b : root.Stop}}}
+  }{
+    \row{\cell{\code{s1}} \cell{\code{s2}}}
+    \row{\cell{\code{s2}} \cell{\code{s3}}}
+    \row{\cell{\code{s3}} \cell{\code{s3}}}
+  }
+
+  \p{\strong{Table \code{root.ominous-stanza}}}
+
+  \table{
+    \row{\hcell{\code{s : root.Stop}} \hcell{\code{a : root.Hazard}} \hcell{\code{b : \kwi{String}}}}
+  }{
+    \row{\cell{\code{s1}} \cell{\code{h1}} \cell{\code{"There's no earthly way of knowing..."}}}
+    \row{\cell{\code{s1}} \cell{\code{h2}} \cell{\code{"Which direction we are going..."}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in column \code{a} of \code{root.Hazard} is a row ID in \code{root.Stop}.}
+    \li{Each value in columns \code{a} and \code{b} of \code{root.next} is a row ID in \code{root.Stop}.}
+    \li{Every row ID in \code{root.Stop} appears exactly once in column \code{a} of \code{root.next}.}
+    \li{Each row of \code{root.ominous-stanza} pairs a stop in column \code{s} with a hazard at its next stop in column \code{a}.}
+    \li{Every pair of a stop and a hazard at its next stop appears exactly once in \code{root.ominous-stanza}.}
+  }
 }
 
 \p{Here this gives, for every stop and every hazard that is associated with the \em{next} stop, a string.}

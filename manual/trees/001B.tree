@@ -1,16 +1,16 @@
 \title{The type of sets}
 \import{prelude}
 
-\p{There is a type \code{Set}, whose elements are collections of things.}
+\p{There is a type \code{\kwi{Set}}, whose elements are collections of things.}
 
 \p{As a database schema, this produces a table of completely abstract row-ids, with no associated data.}
 
 \pre{%
-\kw{theory} GoldenTicket := Set
+\kw{theory} GoldenTicket := \kwi{Set}
 }
 
 \dbexample{
-  \p{\strong{Table \code{GoldenTicket}}}
+  \p{\strong{Table \code{root}}}
 
   \table{
     \row{\hcell{RowID}}
@@ -26,4 +26,4 @@
   }
 }
 
-\p{ \mvrnote{smooth} In particular we have \code{String : Set} and \code{Int : Set}.}
+\p{ \mvrnote{smooth} In particular we have \code{\kwi{String} : \kwi{Set}} and \code{\kwi{Int} : \kwi{Set}}.}

@@ -1,12 +1,12 @@
 \title{Sets as fields}
 \import{prelude}
 
-\p{An element \code{A : Set} may be used directly as a type. Elements of \code{Set} are supposed to correspond to collections of things, so an element of \code{A} as a type is just an element of the collection \code{A} is supposed to be. For example, consider the following theory.}
+\p{An element \code{A : \kwi{Set}} may be used directly as a type. Elements of \code{\kwi{Set}} are supposed to correspond to collections of things, so an element of \code{A} as a type is just an element of the collection \code{A} is supposed to be. For example, consider the following theory.}
 
 \pre{%
 \kw{theory} TourWithGuests := \kw{sig}
-  Child : Set
-  Adult : Set
+  Child : \kwi{Set}
+  Adult : \kwi{Set}
   charlie : Child
   grandpa-joe : Adult
 \kw{end}
@@ -16,14 +16,14 @@
 
 \p{So, there are three layers of things here that we must be careful to distinguish:
 \ol{
-  \li{The universe \code{Set} which is the abstract type of collections,}
-  \li{A particular set \code{m.Child : Set} which is specified by the model \code{m},}
+  \li{The universe \code{\kwi{Set}} which is the abstract type of collections,}
+  \li{A particular set \code{m.Child : \kwi{Set}} which is specified by the model \code{m},}
   \li{A particular element of that set \code{m.charlie : m.Child}, also specified by the model \code{m}.}
 }
 }
 
 \dbexample{
-  \p{\strong{Table \code{TourWithGuests.Child}}}
+  \p{\strong{Table \code{root.Child}}}
 
   \table{
     \row{\hcell{Row ID}}
@@ -31,7 +31,7 @@
     \row{\cell{\code{c1}}}
   }
 
-  \p{\strong{Table \code{TourWithGuests.Adult}}}
+  \p{\strong{Table \code{root.Adult}}}
 
   \table{
     \row{\hcell{Row ID}}
@@ -40,29 +40,29 @@
     \row{\cell{\code{a2}}}
   }
 
-  \p{\strong{Table \code{TourWithGuests.grandpa-joe}}}
+  \p{\strong{Table \code{root.grandpa-joe}}}
 
   \table{
-    \row{\hcell{\code{root : Adult}}}
+    \row{\hcell{\code{a : root.Adult}}}
   }{
     \row{\cell{\code{a1}}}
   }
 
-  \p{\strong{Table \code{TourWithGuests.charlie}}}
+  \p{\strong{Table \code{root.charlie}}}
 
   \table{
-    \row{\hcell{\code{root : Child}}}
+    \row{\hcell{\code{a : root.Child}}}
   }{
     \row{\cell{\code{c1}}}
   }
 
   \p{\strong{Constraints:}}
   \ul{
-    \li{The \code{grandpa-joe} and \code{charlie} tables each have exactly one row.}
-    \li{The value in \code{grandpa-joe.root} is a row ID in \code{Adult}.}
-    \li{The value in \code{charlie.root} is a row ID in \code{Child}.}
+    \li{The \code{root.grandpa-joe} and \code{root.charlie} tables each have exactly one row.}
+    \li{The value in \code{root.grandpa-joe.a} is a row ID in \code{root.Adult}.}
+    \li{The value in \code{root.charlie.a} is a row ID in \code{root.Child}.}
   }
-  \p{Here, \code{grandpa-joe} selects \code{a1} from \code{Adult}, and \code{charlie} selects \code{c1} from \code{Child}.}
+  \p{Here, \code{grandpa-joe} selects \code{a1} from \code{root.Adult}, and \code{charlie} selects \code{c1} from \code{root.Child}.}
 }
 
 \p{In particular, records in Coln may be \em{dependent}: the types of later fields may refer to earlier fields, as is the case for \code{grandpa-joe} and \code{charlie}.}

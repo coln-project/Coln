@@ -6,12 +6,12 @@
 
 \pre{%
 \kw{theory} Family := \kw{sig}
-  Person : Set
-  is-descendant-of : Person -> Person -> Prop
+  Person : \kwi{Set}
+  is-descendant-of : Person -> Person -> \kwi{Prop}
 \kw{end}
 
 \kw{theory} TransitiveExtension (@ind m : Family) := \kw{sig}
-  is-descendant-of/closure : m.Person -> m.Person -> Prop
+  is-descendant-of/closure : m.Person -> m.Person -> \kwi{Prop}
   include : (x y : m.Person) ->
     m.is-descendant-of x y ->
     is-descendant-of/closure x y

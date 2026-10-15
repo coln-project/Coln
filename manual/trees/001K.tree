@@ -5,8 +5,8 @@
 
 \pre{%
 \kw{theory} PersonName := \kw{sig}
-  first-name : String
-  last-name : String
+  first-name : \kwi{String}
+  last-name : \kwi{String}
 \kw{end}
 
 \kw{def} charlies-name : PersonName := \kw{struct}
@@ -29,8 +29,8 @@
 
 \pre{%
 \kw{theory} Relatives := \kw{sig}
-  Ancestor : Set
-  Descendant : Set
+  Ancestor : \kwi{Set}
+  Descendant : \kwi{Set}
 \kw{end}
 
 \kw{def} relatives-of (m : Family) (p : m.Person) : Relatives := \kw{struct}
@@ -45,7 +45,7 @@
 \kw{end}
 }
 
-\p{\mvrnote{update} Intuitively, this assigns \code{naughty} to the set of children naughty in that year, and similarly with \code{nice}. The \code{\kw{sig}} syntax is just as in [[001H]], using the curly-brace inline syntax. And \code{m.list y .naughty child} is just a sequence of function applications and field projection. Walking through the types, we have \code{m.list : m.person -> SantaListOver m.person}, so \code{m .list y : SantaListOver m.person} and then \code{m.list y .naughty : m.person -> Prop} and finally \code{m.list y .naughty child : Prop}.}
+\p{\mvrnote{update} Intuitively, this assigns \code{naughty} to the set of children naughty in that year, and similarly with \code{nice}. The \code{\kw{sig}} syntax is just as in [[001H]], using the curly-brace inline syntax. And \code{m.list y .naughty child} is just a sequence of function applications and field projection. Walking through the types, we have \code{m.list : m.person -> SantaListOver m.person}, so \code{m .list y : SantaListOver m.person} and then \code{m.list y .naughty : m.person -> \kwi{Prop}} and finally \code{m.list y .naughty child : \kwi{Prop}}.}
 
 
 \p{Elements of a function type \code{(x : A) -> B} are introduced using the lambda syntax \code{x => a} (similar to anonymous functions in JavaScript).}
@@ -53,7 +53,7 @@
 \p{As an example, we can produce the graph of a function, which is a binary relation on the domain and codomain.}
 
 \pre{%
-\kw{def} graph (X : Set) (Y : Set) (f : X -> Y) : X -> Y -> Prop :=
+\kw{def} graph (X : \kwi{Set}) (Y : \kwi{Set}) (f : X -> Y) : X -> Y -> \kwi{Prop} :=
   x => y => f x = y
 }
 

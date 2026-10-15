@@ -5,7 +5,7 @@
 \p{As [sets are theories](001D), we might try to produce a point of any set via the following definition.}
 
 \pre{%
-\kw{ind} \kw{def} something-from-nothing (A : Set) : A := \kw{init} A
+\kw{ind} \kw{def} something-from-nothing (A : \kwi{Set}) : A := \kw{init} A
 }
 
 \p{However, this would make Coln inconsistent by allowing us to produce a point in the [empty set](001Q).}

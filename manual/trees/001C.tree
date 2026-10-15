@@ -5,41 +5,41 @@
 
 \pre{%
 \kw{theory} PersonDetails := \kw{sig}
-  name : String
-  age : Int
+  name : \kwi{String}
+  age : \kwi{Int}
 \kw{end}
 }
 
 \p{An instance of \code{PersonDetails} stores \em{one person}'s name and age. The two fields become columns in a single table:}
 
 \dbexample{
-  \p{\strong{Table \code{PersonDetails}}}
+  \p{\strong{Table \code{root}}}
 
   \table{
-    \row{\hcell{\code{name : String}} \hcell{\code{age : Int}}}
+    \row{\hcell{\code{a.name : \kwi{String}}} \hcell{\code{a.age : \kwi{Int}}}}
   }{
     \row{\cell{\code{"Wonka"}} \cell{38}}
   }
 
   \p{\strong{Constraints:}}
   \ul{
-    \li{\code{PersonDetails} has exactly one row.}
+    \li{\code{root} has exactly one row.}
   }
 }
 
-\p{Fields can also be collections, by giving them the type \code{Set}:}
+\p{Fields can also be collections, by giving them the type \code{\kwi{Set}}:}
 
 \pre{%
 \kw{theory} Tour := \kw{sig}
-  Child : Set
-  Adult : Set
+  Child : \kwi{Set}
+  Adult : \kwi{Set}
 \kw{end}
 }
 
 \p{Elements of \code{Tour} consist of a pair of a collection of children and a collection of adults.}
 
 \dbexample{
-  \p{\strong{Table \code{Tour.Child}}}
+  \p{\strong{Table \code{root.Child}}}
 
   \table{
     \row{\hcell{Row ID}}
@@ -47,7 +47,7 @@
     \row{\cell{\code{c1}}}
   }
 
-  \p{\strong{Table \code{Tour.Adult}}}
+  \p{\strong{Table \code{root.Adult}}}
 
   \table{
     \row{\hcell{Row ID}}

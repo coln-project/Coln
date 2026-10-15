@@ -5,8 +5,8 @@
 
 \pre{%
 \kw{theory} AccompaniedTour := \kw{sig}
-  Child : Set
-  Adult : Set
+  Child : \kwi{Set}
+  Adult : \kwi{Set}
   accompanying-adult : Child -> Adult
 \kw{end}
 }
@@ -15,73 +15,213 @@
 
 \p{In most programming languages that contain function types, they are thought of as \em{procedures} for producing an output given an input. In Coln, a record field with function type is ultimately stored as a table that associates an output to each possible input. Coln also outputs constraints that ensure that this table really does behave as a function: each possible input is associated with one output.}
 
-% Instance Example
+\dbexample{
+  \p{\strong{Table \code{root.Child}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{c1}}}
+    \row{\cell{\code{c2}}}
+  }
+
+  \p{\strong{Table \code{root.Adult}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{a1}}}
+    \row{\cell{\code{a2}}}
+  }
+
+  \p{\strong{Table \code{root.accompanying-adult}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Child}} \hcell{\code{b : root.Adult}}}
+  }{
+    \row{\cell{\code{c1}} \cell{\code{a1}}}
+    \row{\cell{\code{c2}} \cell{\code{a1}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in column \code{a} is a row ID in \code{root.Child}.}
+    \li{Each value in column \code{b} is a row ID in \code{root.Adult}.}
+    \li{Every row ID in \code{root.Child} appears exactly once in column \code{a}.}
+  }
+}
 
 \p{These can certainly use the same collection on both sides.}
 
 \pre{%
 \kw{theory} BoatRide := \kw{sig}
-  Stop : Set
+  Stop : \kwi{Set}
   next : Stop -> Stop
 \kw{end}
 }
 
-\p{Each stop has a next stop. The final stop can map to itself, representing the boat remaining at the landing.}
+\dbexample{
+  \p{\strong{Table \code{root.Stop}}}
 
-% Instance Example
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{s1}}}
+    \row{\cell{\code{s2}}}
+    \row{\cell{\code{s3}}}
+  }
+
+  \p{\strong{Table \code{root.next}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Stop}} \hcell{\code{b : root.Stop}}}
+  }{
+    \row{\cell{\code{s1}} \cell{\code{s2}}}
+    \row{\cell{\code{s2}} \cell{\code{s3}}}
+    \row{\cell{\code{s3}} \cell{\code{s3}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in columns \code{a} and \code{b} is a row ID in \code{root.Stop}.}
+    \li{Every row ID in \code{root.Stop} appears exactly once in column \code{a}.}
+  }
+}
 
 \p{But that is not all functions can do. Though there are some restrictions (see [[Levels]]), the input and output types of a function can be general types, and not just those that we have declared as fields. We can do the following:}
 
 \pre{%
 \kw{theory} TourSchedule := \kw{sig}
-  Departure : Set
-  year : Departure -> Int
-  Child : Departure -> Set
-  Adult : Departure -> Set
+  Departure : \kwi{Set}
+  year : Departure -> \kwi{Int}
+  Child : Departure -> \kwi{Set}
+  Adult : Departure -> \kwi{Set}
 \kw{end}
 }
 
-% Instance Example
+\dbexample{
+  \p{\strong{Table \code{root.Departure}}}
 
-\p{Here the \code{Child} and \code{Adult} fields are \em{families} of collections, indexed by the elements of the collection \code{Departure}. In this case, we are saying that \code{Child} is not a single \code{Set}, but a separate \code{Set} for each element of \code{Departure}.}
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{d1}}}
+    \row{\cell{\code{d2}}}
+  }
+
+  \p{\strong{Table \code{root.year}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Departure}} \hcell{\code{b : \kwi{Int}}}}
+  }{
+    \row{\cell{\code{d1}} \cell{1964}}
+    \row{\cell{\code{d2}} \cell{1964}}
+  }
+
+  \p{\strong{Table \code{root.Child}}}
+
+  \table{
+    \row{\hcell{Row ID} \hcell{\code{a : root.Departure}}}
+  }{
+    \row{\cell{\code{c1}} \cell{\code{d1}}}
+    \row{\cell{\code{c2}} \cell{\code{d1}}}
+    \row{\cell{\code{c3}} \cell{\code{d2}}}
+  }
+
+  \p{\strong{Table \code{root.Adult}}}
+
+  \table{
+    \row{\hcell{Row ID} \hcell{\code{a : root.Departure}}}
+  }{
+    \row{\cell{\code{a1}} \cell{\code{d1}}}
+    \row{\cell{\code{a2}} \cell{\code{d2}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in column \code{a} of \code{root.year}, \code{root.Child}, and \code{root.Adult} is a row ID in \code{root.Departure}.}
+    \li{Every row ID in \code{root.Departure} appears exactly once in column \code{a} of \code{root.year}.}
+  }
+}
+
+\p{Here the \code{Child} and \code{Adult} fields are \em{families} of collections, indexed by the elements of the collection \code{Departure}. In this case, we are saying that \code{Child} is not a single \code{\kwi{Set}}, but a separate \code{\kwi{Set}} for each element of \code{Departure}.}
 
 \p{Coln is nice and compositional, so rather than writing out \code{Child} and \code{Adult} as new, separate fields in \code{TourSchedule}, we might prefer to re-use the theory \code{Tour} that we already defined:}
 
 \pre{%
 \kw{theory} TourSchedule := \kw{sig}
-  Departure : Set
-  year : Departure -> Int
+  Departure : \kwi{Set}
+  year : Departure -> \kwi{Int}
   participants : Departure -> Tour
 \kw{end}
 }
 
-% Instance Example, or skip if the same
+\dbexample{
+  \p{The instance above can be reused almost unchanged, renaming \code{root.Child} to \code{root.participants.Child} and \code{root.Adult} to \code{root.participants.Adult}.}
+}
 
 \collapsedaside{We cannot ask whether the same child participates in two departures, because each departure has a separate collection of children. To track children across departures, we would need \em{one} shared set of children, and a relation recording which departures each child participates in. This can be accomplished with [relations](001G).}
 
-\p{To apply a function to an argument, we juxtapose the two. For example, we might want to specify a sweet on a particular floor:}
+\p{To apply a function to an argument, we juxtapose the two. For example, we might want to specify a sweet in a particular room:}
 
 \pre{
-\kw{theory} FactoryFloors := \kw{sig}
-  Sweet-on-floor : Int -> Set
-  everlasting-gobstopper : Sweet-on-floor 3
+\kw{theory} FactoryRooms := \kw{sig}
+  Sweet-in-room : \kwi{Int} -> \kwi{Set}
+  everlasting-gobstopper : Sweet-in-room 3
 \kw{end}
 }
 
-% Instance Example
+\dbexample{
+  \p{\strong{Table \code{root.Sweet-in-room}}}
 
-\p{To write a function that takes multiple arguments, the preferred method in Coln is to use the [curried](https://en.wikipedia.org/wiki/Currying) style. That is, a function accepting both an \code{Int} and a \code{String} is written as \code{Int -> (String -> Result)}. We associate function arrows to the \em{right}, so that we can skip the parentheses in this case. For example:}
+  \table{
+    \row{\hcell{Row ID} \hcell{\code{a : \kwi{Int}}}}
+  }{
+    \row{\cell{\code{s1}} \cell{3}}
+    \row{\cell{\code{s2}} \cell{3}}
+    \row{\cell{\code{s3}} \cell{7}}
+  }
+
+  \p{\strong{Table \code{root.everlasting-gobstopper}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Sweet-in-room}}}
+  }{
+    \row{\cell{\code{s1}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{\code{root.everlasting-gobstopper} has exactly one row.}
+    \li{Its value in column \code{a} is a row ID in \code{root.Sweet-in-room} whose room number is 3.}
+  }
+}
+
+\p{To write a function that takes multiple arguments, the preferred method in Coln is to use the [curried](https://en.wikipedia.org/wiki/Currying) style. That is, a function accepting both an \code{\kwi{Int}} and a \code{\kwi{String}} is written as \code{\kwi{Int} -> (\kwi{String} -> Result)}. We associate function arrows to the \em{right}, so that we can skip the parentheses in this case. For example:}
 
 \pre{
 \kw{theory} FactoryStock := \kw{sig}
-  Sweet-on-floor-with-flavour : Int -> String -> Set
+  Sweet-in-room-with-flavour : \kwi{Int} -> \kwi{String} -> \kwi{Set}
 \kw{end}
 }
 
-% Instance Example
+\dbexample{
+  \p{\strong{Table \code{root.Sweet-in-room-with-flavour}}}
 
-\p{Conceptually, applying \code{Sweet-on-floor-with-flavour} to an integer gives back a function that awaits a string. Providing that string, we finally get back a collection of sweets. This repeated application is still done by juxtaposition: we might write \code{(Sweet-on-floor-with-flavour 3) "chocolate"}. Function application associates to the \em{left}, so again we can leave off the parentheses and write \code{Sweet-on-floor-with-flavour 3 "chocolate"}.}
+  \table{
+    \row{\hcell{Row ID} \hcell{\code{a : \kwi{Int}}} \hcell{\code{b : \kwi{String}}}}
+  }{
+    \row{\cell{\code{s1}} \cell{3} \cell{\code{"snozzberry"}}}
+    \row{\cell{\code{s2}} \cell{3} \cell{\code{"snozzberry"}}}
+    \row{\cell{\code{s3}} \cell{3} \cell{\code{"frobscottle"}}}
+    \row{\cell{\code{s4}} \cell{7} \cell{\code{"snozzberry"}}}
+  }
 
-\p{As a database, \code{Sweet-on-floor-with-flavour} is ultimately lowered to a table with two columns, one for the floor and one for the flavour. Each row ID represents a sweet in the collection specified by those two values.}
+  \p{\strong{Constraints:} None.}
+}
+
+\p{Conceptually, applying \code{Sweet-in-room-with-flavour} to an integer gives back a function that awaits a string. Providing that string, we finally get back a collection of sweets. This repeated application is still done by juxtaposition: we might write \code{(Sweet-in-room-with-flavour 3) "snozzberry"}. Function application associates to the \em{left}, so again we can leave off the parentheses and write \code{Sweet-in-room-with-flavour 3 "snozzberry"}.}
+
+\p{As a database, \code{Sweet-in-room-with-flavour} is ultimately lowered to a table with three columns: one for the room number, one for the flavour, and a row ID. Each row ID represents a sweet in the collection specified by the first two values.}
 
 \collapsedaside{It is also possible to define a function that accepts a genuine pair as an argument, but we defer the syntax for this to \mvrnote{TODO}.}

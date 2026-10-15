@@ -2,33 +2,33 @@
 \import{prelude}
 
 \p{Coln includes two base types for demonstration purposes:
-\code{String} and \code{Int}. An element of \code{String} is a single
-string and an element of \code{Int} is a single (machine) integer.
+\code{\kwi{String}} and \code{\kwi{Int}}. An element of \code{\kwi{String}} is a single
+string and an element of \code{\kwi{Int}} is a single (machine) integer.
 Both are ultimately stored as a single database column. As we saw
 previously, we can use one of these types as a very simple schema:}
 
 \pre{%
-\kw{theory} FavouriteNumber := Int
+\kw{theory} FavouriteNumber := \kwi{Int}
 }
 
 \dbexample{
-  \p{\strong{Table \code{FavouriteNumber}}}
+  \p{\strong{Table \code{root}}}
 
   \table{
-    \row{\hcell{\code{root : Int}}}
+    \row{\hcell{\code{a : \kwi{Int}}}}
   }{
     \row{\cell{19}}
   }
 
 \p{\strong{Constraints:}
 \ul{
-  \li{\code{FavouriteNumber} has exactly one row.}
+  \li{\code{root} has exactly one row.}
 }
 }
 }
 
-\p{This is the schema of a \em{single} \code{Int}, rather than the schema of a table of \code{Int}s. Not so useful by itself, but we will soon be forming more complicated theories out of simple pieces like this.}
+\p{This is the schema of a \em{single} \code{\kwi{Int}}, rather than the schema of a table of \code{\kwi{Int}}s. Not so useful by itself, but we will soon be forming more complicated theories out of simple pieces like this.}
 
-\collapsedaside{A word of caution: the user is not currently prevented from writing theories that would require an infinite amount of storage to produce a valid instance of, for example, the theory of [functions](001E) \code{String -> String}.}
+\collapsedaside{A word of caution: the user is not currently prevented from writing theories that would require an infinite amount of storage to produce a valid instance of, for example, the theory of [functions](001E) \code{\kwi{String} -> \kwi{String}}.}
 
 % \p{The solution to this problem requires building up a little more theory, so we do not address it right now, and instead continue on to give a full account of the “purely combinatorial” fragment of Coln. \mvrnote{Has the fix here actually been figured out?}}
