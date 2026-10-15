@@ -1,23 +1,94 @@
-\title{Equality types as theories}
+\title{Equality types}
 \import{prelude}
 
-\p{Another way of creating interesting propositions is with \defcase{equality}. Given two elements \code{a0} and \code{a1} of a set \code{A}, there is a proposition \code{a0 = a1} which is true if and only if \code{a0} is equal to \code{a1}.}
+\p{Besides using a \code{\kwi{Prop}} asserted as a field, the other method of forming a proposition is \defcase{equality}. Given two elements \code{a0} and \code{a1} of \em{any} set \code{A : \kwi{Set}}, there is a proposition \code{(a0 = a1) : \kwi{Prop}} which is true (i.e. has an element) exactly when \code{a0} is equal to \code{a1}.}
 
-\p{We can use this to write down laws in our theories that involve equality. For instance, we can write down the theory of a two-way mapping (mathematically known as a \em{bijection}) in the following way}
+\p{We can use this to write down laws in our theories that involve equality. For instance:}
 
 \pre{%
-\kw{theory} TwoWayMapping (X : Set) (Y : Set) := \kw{sig}
-  fwd : X -> Y
-  bwd : Y -> X
-  bwd-fwd : (x : X) -> bwd (fwd x) = x
-  fwd-bwd : (y : Y) -> fwd (bwd x) = x
+\kw{theory} CharliesBar := \kw{sig}
+  ChocolateBar : \kwi{Set}
+  Contents : \kwi{Set}
+  unwrap : ChocolateBar -> Contents
+  charlies-bar : ChocolateBar
+  golden-ticket : Contents
+  plot-armour : unwrap charlies-bar = golden-ticket
 \kw{end}
 }
 
-\p{Another example of equality usage is when we assert that a relation is a partial function, by saying that if \code{x} is related to both \code{y0} and \code{y1} then \code{y0} must be equal to \code{y1}.}
+\dbexample{
+  \p{\strong{Table \code{root.ChocolateBar}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{b1}}}
+    \row{\cell{\code{b2}}}
+  }
+
+  \p{\strong{Table \code{root.Contents}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{c1}}}
+    \row{\cell{\code{c2}}}
+  }
+
+  \p{\strong{Table \code{root.unwrap}}}
+
+  \table{
+    \row{\hcell{\code{a : root.ChocolateBar}} \hcell{\code{b : root.Contents}}}
+  }{
+    \row{\cell{\code{b1}} \cell{\code{c1}}}
+    \row{\cell{\code{b2}} \cell{\code{c2}}}
+  }
+
+  \p{\strong{Table \code{root.charlies-bar}}}
+
+  \table{
+    \row{\hcell{\code{a : root.ChocolateBar}}}
+  }{
+    \row{\cell{\code{b1}}}
+  }
+
+  \p{\strong{Table \code{root.golden-ticket}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Contents}}}
+  }{
+    \row{\cell{\code{c1}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in columns \code{a} and \code{b} of \code{root.unwrap} is a row ID in \code{root.ChocolateBar} and \code{root.Contents}, respectively.}
+    \li{Every row ID in \code{root.ChocolateBar} appears exactly once in column \code{a} of \code{root.unwrap}.}
+    \li{The \code{root.charlies-bar} and \code{root.golden-ticket} tables each have exactly one row.}
+    \li{Their values in column \code{a} are row IDs in \code{root.ChocolateBar} and \code{root.Contents}, respectively.}
+    \li{The contents associated with Charlie's bar by \code{root.unwrap} must equal the value selected by \code{root.golden-ticket}.}
+  }
+}
+
+\p{The field \code{plot-armour} becomes an equality constraint on the stored values, with no additional table.}
+
+\p{More practically, we can use a dependent function to require an equation to hold for every input of some function, as in the theory of a bijection:}
 
 \pre{%
-\kw{theory} IsPartialFunction (X : Set) (Y : Set) (R : X -> Y -> Prop) := 
+\kw{theory} Bijection (X : \kwi{Set}) (Y : \kwi{Set}) := \kw{sig}
+  fwd : X -> Y
+  bwd : Y -> X
+  bwd-fwd : (^c x : X) -> bwd (fwd x) = x
+  fwd-bwd : (^c y : Y) -> fwd (bwd y) = y
+\kw{end}
+}
+
+\p{\mvrnote{TODO} The \code{^c} annotations select conjunctive binders in Coln's mode system. We defer discussion of modes to [[001N]].}
+
+\p{Another possible example of equality usage is asserting that a relation (in the sense of a function into \code{\kwi{Prop}}) is a partial function. For this, we require that if \code{x} is related to both \code{y0} and \code{y1}, then \code{y0} must be equal to \code{y1}.}
+
+\pre{%
+\kw{theory} IsPartialFunction (X : \kwi{Set}) (Y : \kwi{Set}) (R : X -> Y -> \kwi{Prop}) :=
   (x : X) -> (y0 y1 : Y) -> R x y0 -> R x y1 -> y0 = y1
 }
 

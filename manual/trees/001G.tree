@@ -1,81 +1,160 @@
 \title{Propositions and relations}
 \import{prelude}
 
-\p{There is a theory \code{Prop} which is even more boring than \code{Set}; it is the theory of a set with at most one element. One could think of it also as a truth value: inhabited means true and empty means false. From TypeScript, we have the interface}
+\p{There is an additional type-of-types \code{\kwi{Prop}} whose elements are simpler than those of \code{\kwi{Set}}; its elements are collections that themselves have \em{at most one} element. One can think of \code{\kwi{Prop}} as the type of [truth values](TODO). An element of \code{\kwi{Prop}} which is an inhabited collection corresponds to \code{true}, and an element which is an empty collection corresponds to \code{false}.}
+
+\p{While on its own \code{\kwi{Prop}} is boring, the real power comes from combining it with function types. For instance, we can describe whether each child is nice or naughty. We have a single set (of all the children), and two families of propositions over that set: one for whether the child is nice, and one for whether the child is naughty. (In this schema, nothing stops a single child from being \em{both} nice and naughty.)}
 
 \pre{%
-\kw{interface} ReadonlyProp {
-  isTrue(): boolean;
-}
-
-\kw{interface} ReadWriteProp \kw{extends} ReadonlyProp {
-  makeTrue(): void;
-}
-}
-
-\p{While on its own \code{Prop} is boring, we can combine it with function types to make it more interesting. For instance, we can now rewrite \code{SantaLists} so that the same person may appear on lists in different years.}
-
-\pre{%
-\kw{theory} SantaListOver (person : Set) := \kw{sig}
-  naughty : person -> Prop
-  nice : person -> Prop
-\kw{end}
-
-\kw{theory} SantaLists := \kw{sig}
-  year : Set
-  children : Set
-  list : year -> SantaListOver children
+\kw{theory} ChildBehaviour := \kw{sig}
+  Child : \kwi{Set}
+  is-naughty : Child -> \kwi{Prop}
+  is-nice : Child -> \kwi{Prop}
 \kw{end}
 }
 
-\p{Here we have also introduced an additional feature: a theory can have \em{parameters}, which are models of other theories. In this case, \code{SantaList} now takes in a parameter \code{person} which is a model of \code{Set}. We instantiate this parameter with \code{children} in \code{SantaLists}.}
+\dbexample{
+  \p{\strong{Table \code{root.Child}}}
 
-\p{In TypeScript, we could interact with a read-write model \code{m} of this new \code{SantaLists} in the following way.}
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{c1}}}
+    \row{\cell{\code{c2}}}
+    \row{\cell{\code{c3}}}
+  }
 
-\pre{%
-\kw{const} john = m.children.add()
-\kw{const} y2025 = m.year.add()
-\kw{const} y2026 = m.year.add()
-m.list(y2025).nice(john).makeTrue()
-m.list(y2026).naughty(john).makeTrue()
+  \p{\strong{Table \code{root.is-naughty}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Child}}}
+  }{
+    \row{\cell{\code{c1}}}
+    \row{\cell{\code{c3}}}
+  }
+
+  \p{\strong{Table \code{root.is-nice}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Child}}}
+  }{
+    \row{\cell{\code{c2}}}
+    \row{\cell{\code{c3}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in column \code{a} of either relation table is a row ID in \code{root.Child}.}
+    \li{Each child appears at most once in column \code{a} of each relation table.}
+  }
 }
 
-\p{We call a function whose codomain is \code{Prop} a \defcase{relation}. \code{m.list(y2025).nice} is a \em{unary} relation because it takes in one argument. Here is another example, this time of a \em{binary} relation.}
+\p{Each of \code{is-naughty} and \code{is-nice} are lowered to their own database table, similarly to fields that end in \code{\kwi{Set}}. The only difference is that a primary key constraint is added, enforcing that each child has \em{at most one} row claiming that he/she \code{is-nice}, and \em{at most one} row claiming that he/she \code{is-naughty}.}
 
-\pre{%
-\kw{theory} Drama := \kw{sig}
-  person : Set
-  jealous-of : person -> person -> Prop
+\p{Just as we saw in [[001D]], we can specify theories that demand that the sets/propositions we've declared actually have some inhabitants:}
+
+\pre{
+\kw{theory} ChildBehaviour := \kw{sig}
+  Child : \kwi{Set}
+  is-naughty : Child -> \kwi{Prop}
+  is-nice : Child -> \kwi{Prop}
+
+  veruca : Child
+  spoilt-rotten : is-naughty veruca
+
+  charlie : Child
+  returned-gobstopper : is-nice charlie
 \kw{end}
 }
 
-\p{From TypeScript, using a model of \code{Drama} would look like:}
+\dbexample{
+  \p{Keep the three tables from the preceding instance and add:}
 
-\pre{%
-\kw{const} [john, mary] = [m.person.add(), m.person.add()]
-m.jealous_of(john)(mary).makeTrue()
+  \p{\strong{Table \code{root.veruca}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Child}}}
+  }{
+    \row{\cell{\code{c1}}}
+  }
+
+  \p{\strong{Table \code{root.charlie}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Child}}}
+  }{
+    \row{\cell{\code{c2}}}
+  }
+
+  \p{\strong{Additional constraints:}}
+  \ul{
+    \li{The \code{root.veruca} and \code{root.charlie} tables each have exactly one row.}
+    \li{Each value in column \code{a} of these tables is a row ID in \code{root.Child}.}
+    \li{The value in \code{root.veruca.a} appears in column \code{a} of \code{root.is-naughty}.}
+    \li{The value in \code{root.charlie.a} appears in column \code{a} of \code{root.is-nice}.}
+  }
 }
 
-\p{Note that because names in fnotation can contain characters like \code{-} that are not allowed in TypeScript, we have to \em{mangle} the Coln name to create the TypeScript API. As \code{person_of} is also a valid name in Coln, a theory could have both \code{person-of} and \code{person_of} fields. In this case, emitting the TypeScript FFI would emit an error. The suggested fix is to not have fields that differ only by choice of hyphen/underscore, because that is bad and confusing in any case.}
+\p{Here we see an important optimisation applied by the Coln compiler. When an \em{element} of \code{\kwi{Prop}} is used as a field, or more generally as the input or output type of a function, Coln converts the field into a constraint rather than an additional table to be stored. So \code{spoilt-rotten} becomes a constraint that forces \code{is-naughty} to contain \code{veruca} in the relation, but does not have to itself be stored as a table.}
 
-\p{Just like a set is a theory, a proposition is also a theory; a model of the proposition can be thought of as a witness that the proposition is true. We can use this to put \em{laws} in our database. For instance, we can make jealousy be transitive.}
+\p{Note that this doesn't apply to \code{is-naughty} and \code{is-nice} themselves; they are functions into \code{\kwi{Prop}} itself, and not functions into propositions.}
+
+\p{We call a function whose codomain is \code{\kwi{Prop}} a \defcase{relation}. Here, \code{is-naughty} and \code{is-nice} are \em{unary} relations, because each takes in one argument. Here is another example, this time of a \em{binary} relation.}
 
 \pre{%
-\kw{theory} ExtraDrama := \kw{sig}
-  person : Set
-  jealous-of : person -> person -> Prop
-  jealous-of/is-transitive : (a b c : person) ->
-    jealous-of a b -> jealous-of b c -> jealous-of a c
+\kw{theory} Family := \kw{sig}
+  Person : \kwi{Set}
+  is-descendant-of : Person -> Person -> \kwi{Prop}
 \kw{end}
 }
 
-\p{We saw [earlier](001E) one way in which a model of a theory might be incomplete; a function might not yet be defined for given values of its inputs. Here we have a similar situation. For instance, we might have written:}
+\dbexample{
+  \p{\strong{Table \code{root.Person}}}
 
-\pre{%
-\kw{const} [john, mary, sue] =
-  [m.person.add(), m.person.add(), m.person.add()]
-m.jealous_of(john)(mary).makeTrue()
-m.jealous_of(mary)(sue).makeTrue()
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{p1}}}
+    \row{\cell{\code{p2}}}
+    \row{\cell{\code{p3}}}
+  }
+
+  \p{\strong{Table \code{root.is-descendant-of}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Person}} \hcell{\code{b : root.Person}}}
+  }{
+    \row{\cell{\code{p1}} \cell{\code{p2}}}
+    \row{\cell{\code{p1}} \cell{\code{p3}}}
+    \row{\cell{\code{p2}} \cell{\code{p3}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in columns \code{a} and \code{b} is a row ID in \code{root.Person}.}
+    \li{Each pair of people appears at most once in \code{root.is-descendant-of}.}
+  }
 }
 
-\p{When checking validity of \code{m} after executing this code, Coln will report that \code{jealous-of/is-transitive john mary sue _ _ : jealous-of mary sue} is not satisfied (though, Coln does not know what names we have given to these variables in TypeScript, so it would actually print out the row identifiers instead of the names).\todo Unlike with \code{next} in the [section on functions](001E), to fix this we don't need to touch \code{jealous-of/is-transitive}. Instead, we can just run \code{m.jealous_of(john)(sue).makeTrue()}, and the model will be valid again. This is because if the codomain of a function is a proposition, there is ultimately only one possible way for that function to exist, and thus the function need not be explicitly defined. We discuss how this works in a later section.\todo}
+\p{An element of a proposition can be thought of as a witness that the
+proposition is true. We can use this to put \em{laws} in our database.
+For instance, we can require that the descendant relation is transitive in any valid instance of the schema:}
+
+\pre{%
+\kw{theory} TransitiveFamily := \kw{sig}
+  Person : \kwi{Set}
+  is-descendant-of : Person -> Person -> \kwi{Prop}
+
+  is-descendant-of/is-transitive : (a b c : Person) -> is-descendant-of a b -> is-descendant-of b c -> is-descendant-of a c
+\kw{end}
+}
+
+\dbexample{
+  \p{The tables and constraints of the previous instance, plus:}
+
+  \p{\strong{Constraints:} Whenever the relation contains \code{(x, y)} and \code{(y, z)}, it must also contain \code{(x, z)}.}
+}
+
+\p{If we read the third field in words, this says that for any three people \code{a}, \code{b}, \code{c}, if the propositions "\code{a} is a descendant of \code{b}" and "\code{b} is a descendant of \code{c}" hold, then "\code{a} is a descendant of \code{c}" holds. Because the output of this field is in \code{\kwi{Prop}}, the field is transformed into a constraint and not materialised as a table.}
+
+\p{Coln does not automatically derive all facts that follow from a collection of laws; this law becomes a constraint on the user-supplied instances that the Coln database will accept. (But see \mvrnote{TODO} later for how we \em{can} derive facts like this automatically!)}

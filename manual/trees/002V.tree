@@ -1,0 +1,22 @@
+\title{Record types}
+\import{prelude}
+
+\p{In the Coln implementation, we have general #{n}-ary record types with named fields. However, for the sake of simplicity, here we only cover binary dependent records, also known as #{\Sigma}-types.}
+
+##{\begin{align*}
+  &\Sigma \colon \{\Gamma \colon \ms{Con}\} \to (A \colon \ms{Ty}\,\Gamma) \to (\ms{Ty}\,(\Gamma \ext A)) \to \ms{Ty}\,\Gamma \\
+  &\ms{Tm}\,\Gamma\,(\Sigma\,A\,B) \cong (a \colon \ms{Tm}\,\Gamma\,A) \times \ms{Tm}\,\Gamma\,(B[(1_\Gamma, a)])
+\end{align*}}
+
+\p{This is fairly straightforward to give semantics to. Fix some elephant theory #{\Gamma}, and let #{A \colon (\groth \Gamma)\op \to \ms{CAT}}, #{B \colon (\groth \Gamma \ext A)\op \to \ms{CAT}}. Then #{(\Sigma\,A\,B) \colon (\groth \Gamma)\op \to \ms{CAT}} may be defined by}
+
+##{(\Sigma\,A\,B)(\mc{E},M) = (a \colon A(\mc{E},M)) \times B(\mc{E},(M,a))}
+
+\p{It is straightforward to then interpret the projections, etc.}
+
+##{\begin{align*}
+  &\Sigma \colon \{\Gamma \colon \ms{Con}\} \to (A \colon \ms{Ty}\,\Gamma) \to (\ms{Ty}\,(\Gamma \ext A)) \to \ms{Ty}\,\Gamma \quad \check \\
+  &\ms{Tm}\,\Gamma\,(\Sigma\,A\,B) \cong (a \colon \ms{Tm}\,\Gamma\,A) \times \ms{Tm}\,\Gamma\,(B[(1_\Gamma, a)]) \quad \check
+\end{align*}}
+
+\p{Slightly less trivial to verify is that #{\Sigma} preserves the levels of its constituent types.}

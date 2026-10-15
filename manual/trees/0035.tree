@@ -1,0 +1,26 @@
+\title{Definitions}
+\import{prelude}
+
+\p{So far, we have built types that describe database schemas. But we can us all the same constructors to describe queries on these databases, and translations between database schemas.}
+
+\p{To make such definitions, we use the following syntax. This is close to the syntax used for declaring theories themselves, but we allow ourselves to specify the output type of our declaration.}
+
+\pre{%
+\kw{def} my-def : X := ...
+}
+
+\p{Like theories, we allow these declarations to take parameters.}
+
+\pre{%
+\kw{def} my-def (x : X) (y : Y) : Z := ...
+}
+
+% Definitions as queries
+\transclude{0039}
+
+\p{Thus far, we have not yet built \em{elements} of record types or function types inside a Coln file, only given examples of the types the themselves. If one is using Coln purely to describe a database schema then there is no need for more.}
+
+\p{Defining elements comes in handy when translating data from one schema to another.}
+
+% Definitions as translations
+\transclude{001K}

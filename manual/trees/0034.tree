@@ -1,0 +1,171 @@
+\title{Parameterised theories}
+\import{prelude}
+
+\p{Coln also provides the facility for defining functions at the \em{theory} level, which enables code reuse between database schemas. Here's a simple example:}
+
+\pre{%
+\kw{theory} ProcessOn (Stage : \kwi{Set}) := \kw{sig}
+  next : Stage -> Stage
+\kw{end}
+}
+
+\pre{%
+\kw{theory} Factory := \kw{sig}
+  Step : \kwi{Set}
+  chocolate-recipe : ProcessOn Step
+  Room : \kwi{Set}
+  boat-ride : ProcessOn Room
+\kw{end}
+}
+
+\p{In this case, \code{ProcessOn} is not lowered to a schema: it does not make sense to do so for a parameterised theory. Only once it is fully applied in \code{Factory} does it have a sensible schema interpretation. The two uses of \code{ProcessOn} each have their own \code{next} table which references the appropriate \code{Stage} table.}
+
+\dbexample{
+  \p{\strong{Table \code{root.Step}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{s1}}}
+    \row{\cell{\code{s2}}}
+    \row{\cell{\code{s3}}}
+  }
+
+  \p{\strong{Table \code{root.chocolate-recipe.next}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Step}} \hcell{\code{b : root.Step}}}
+  }{
+    \row{\cell{\code{s1}} \cell{\code{s2}}}
+    \row{\cell{\code{s2}} \cell{\code{s3}}}
+    \row{\cell{\code{s3}} \cell{\code{s3}}}
+  }
+
+  \p{\strong{Table \code{root.Room}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{r1}}}
+    \row{\cell{\code{r2}}}
+  }
+
+  \p{\strong{Table \code{root.boat-ride.next}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Room}} \hcell{\code{b : root.Room}}}
+  }{
+    \row{\cell{\code{r1}} \cell{\code{r2}}}
+    \row{\cell{\code{r2}} \cell{\code{r2}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in columns \code{a} and \code{b} of \code{root.chocolate-recipe.next} is a row ID in \code{root.Step}.}
+    \li{Every row ID in \code{root.Step} appears exactly once in column \code{a} of \code{root.chocolate-recipe.next}.}
+    \li{Each value in columns \code{a} and \code{b} of \code{root.boat-ride.next} is a row ID in \code{root.Room}.}
+    \li{Every row ID in \code{root.Room} appears exactly once in column \code{a} of \code{root.boat-ride.next}.}
+  }
+}
+
+\p{We can also supply the same input to two uses of a parameterised theory:}
+
+\pre{%
+\kw{theory} FactoryRoutes := \kw{sig}
+  Room : \kwi{Set}
+  boat-ride : ProcessOn Room
+  glass-elevator : ProcessOn Room
+\kw{end}
+}
+
+\p{Here, the boat ride and glass elevator have independent \code{next} functions over the same collection \code{Room}.}
+
+\dbexample{
+  \p{\strong{Table \code{root.Room}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{r1}}}
+    \row{\cell{\code{r2}}}
+    \row{\cell{\code{r3}}}
+  }
+
+  \p{\strong{Table \code{root.boat-ride.next}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Room}} \hcell{\code{b : root.Room}}}
+  }{
+    \row{\cell{\code{r1}} \cell{\code{r2}}}
+    \row{\cell{\code{r2}} \cell{\code{r3}}}
+    \row{\cell{\code{r3}} \cell{\code{r3}}}
+  }
+
+  \p{\strong{Table \code{root.glass-elevator.next}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Room}} \hcell{\code{b : root.Room}}}
+  }{
+    \row{\cell{\code{r1}} \cell{\code{r3}}}
+    \row{\cell{\code{r2}} \cell{\code{r1}}}
+    \row{\cell{\code{r3}} \cell{\code{r3}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in columns \code{a} and \code{b} of both \code{next} tables is a row ID in \code{root.Room}.}
+    \li{Every row ID in \code{root.Room} appears exactly once in column \code{a} of each \code{next} table.}
+  }
+}
+
+\p{Parameters need not be elements of \code{\kwi{Set}}; we can use parameters with any type. We might use this to factor a complicated theory into smaller pieces. Consider the \code{Tour} theory from [[001C]]. We might choose to define a separate theory \code{Outcome} that just captures the outcome of a \code{Tour}, and then a third theory that pairs them together:}
+
+\pre{%
+\kw{theory} Tour := \kw{sig}
+  Child : \kwi{Set}
+  Adult : \kwi{Set}
+\kw{end}
+
+\kw{theory} Outcome (tour : Tour) := \kw{sig}
+  ironic-comeuppance : tour.Child -> \kwi{String}
+\kw{end}
+
+\kw{theory} Narrative := \kw{sig}
+  tour : Tour
+  outcome : Outcome tour
+\kw{end}
+}
+
+\dbexample{
+  \p{\strong{Table \code{root.tour.Child}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{c1}}}
+    \row{\cell{\code{c2}}}
+  }
+
+  \p{\strong{Table \code{root.tour.Adult}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{a1}}}
+  }
+
+  \p{\strong{Table \code{root.outcome.ironic-comeuppance}}}
+
+  \table{
+    \row{\hcell{\code{a : root.tour.Child}} \hcell{\code{b : \kwi{String}}}}
+  }{
+    \row{\cell{\code{c1}} \cell{\code{"blueberry inflation"}}}
+    \row{\cell{\code{c2}} \cell{\code{"down the rubbish chute"}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{Each value in column \code{a} of \code{root.outcome.ironic-comeuppance} is a row ID in \code{root.tour.Child}.}
+    \li{Every row ID in \code{root.tour.Child} appears exactly once in column \code{a} of \code{root.outcome.ironic-comeuppance}.}
+  }
+}

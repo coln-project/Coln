@@ -1,31 +1,68 @@
-\title{Sets as theories}
+\title{Sets as fields}
 \import{prelude}
 
-\p{A model \code{A : Set} may itself be used as a theory. A model of \code{A} is just an element of \code{A} (remember that a model of \code{Set} is a collection of things). For example, consider the following theory.}
+\p{An element \code{A : \kwi{Set}} may be used directly as a type. Elements of \code{\kwi{Set}} are supposed to correspond to collections of things, so an element of \code{A} as a type is just an element of the collection \code{A} is supposed to be. For example, consider the following theory.}
 
 \pre{%
-\kw{theory} PopulatedSantaList := \kw{sig}
-  list : SantaList
-  john : list.nice
-  mary : list.naughty
+\kw{theory} TourWithGuests := \kw{sig}
+  Child : \kwi{Set}
+  Adult : \kwi{Set}
+  charlie : Child
+  grandpa-joe : Adult
 \kw{end}
 }
 
-\p{A model \code{m} of \code{PopulatedSantaList} consists of a model \code{m.list} of \code{SantaList}, along with specific elements \code{m.john} in \code{m.list.nice} and \code{m.mary} in \code{m.list.naughty}.}
+\p{An element \code{m} of \code{TourWithGuests} consists of two collections, \code{m.Child} and \code{m.Adult}, along with specific elements \code{m.grandpa-joe} in \code{m.Adult} and \code{m.charlie} in \code{m.Child}.}
 
-\p{In TypeScript, an element of a set comes along with a getter, and if it is read-write, also a setter. So if \code{m} is a TypeScript variable accessing a model of \code{PopulatedSantaList}, then we should have:} 
-
-\pre{assert(m.list.nice.has(m.john.get()))}
-
-\p{If \code{m} is \em{incomplete}, then \code{m.john.get()} might return \code{null}. This would be the case in a freshly-created model, as in}
-
-\pre{\kw{const} m = PopulatedSantaList.create()}
-
-\p{This can be remedied by using \code{.set()}, as in}
-
-\pre{%
-\kw{const} john = m.list.nice.add()
-m.john.set(john)
+\p{So, there are three layers of things here that we must be careful to distinguish:
+\ol{
+  \li{The universe \code{\kwi{Set}} which is the abstract type of collections,}
+  \li{A particular set \code{m.Child : \kwi{Set}} which is specified by the model \code{m},}
+  \li{A particular element of that set \code{m.charlie : m.Child}, also specified by the model \code{m}.}
+}
 }
 
-\p{Note that \code{m.john.set(x)} would throw an exception if \code{x} were not in \code{m.list.nice}.}
+\dbexample{
+  \p{\strong{Table \code{root.Child}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{c1}}}
+  }
+
+  \p{\strong{Table \code{root.Adult}}}
+
+  \table{
+    \row{\hcell{Row ID}}
+  }{
+    \row{\cell{\code{a1}}}
+    \row{\cell{\code{a2}}}
+  }
+
+  \p{\strong{Table \code{root.grandpa-joe}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Adult}}}
+  }{
+    \row{\cell{\code{a1}}}
+  }
+
+  \p{\strong{Table \code{root.charlie}}}
+
+  \table{
+    \row{\hcell{\code{a : root.Child}}}
+  }{
+    \row{\cell{\code{c1}}}
+  }
+
+  \p{\strong{Constraints:}}
+  \ul{
+    \li{The \code{root.grandpa-joe} and \code{root.charlie} tables each have exactly one row.}
+    \li{The value in \code{root.grandpa-joe.a} is a row ID in \code{root.Adult}.}
+    \li{The value in \code{root.charlie.a} is a row ID in \code{root.Child}.}
+  }
+  \p{Here, \code{grandpa-joe} selects \code{a1} from \code{root.Adult}, and \code{charlie} selects \code{c1} from \code{root.Child}.}
+}
+
+\p{In particular, records in Coln may be \em{dependent}: the types of later fields may refer to earlier fields, as is the case for \code{grandpa-joe} and \code{charlie}.}

@@ -1,0 +1,22 @@
+\title{Second-Order Generalised Algebraic Theories: Signatures and First-Order Semantics}
+\author{ambrus-kaposi}
+\author{szumi-xie}
+\date{2024}
+\taxon{reference}
+\meta{doi}{10.4230/LIPICS.FSCD.2024.10}
+\meta{bibtex}{\verb>>|
+@inproceedings{kaposi-2024-secondorder,
+	doi = {10.4230/LIPICS.FSCD.2024.10},
+	url = {https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.FSCD.2024.10},
+	author = {Kaposi, Ambrus and Xie, Szumi},
+	keywords = {Type theory, universal algebra, inductive types, quotient inductive types, higher-order abstract syntax, logical framework, Theory of computation → Type theory},
+	language = {en},
+	title = {Second-Order Generalised Algebraic Theories: Signatures and First-Order Semantics},
+	journal = {LIPIcs, Volume 299, FSCD 2024},
+	volume = {299},
+	pages = {10:1-10:24},
+	publisher = {Schloss Dagstuhl – Leibniz-Zentrum für Informatik},
+	year = {2024},
+	copyright = {Creative Commons Attribution 4.0 International license}
+}
+>>}

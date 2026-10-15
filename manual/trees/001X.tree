@@ -6,10 +6,10 @@
 
 \pre{%
 \kw{theory} BagOfGraphs/normal := \kw{sig}
-  graph-id : Set
-  graph-for/vertex : graph-id -> Set
+  graph-id : \kwi{Set}
+  graph-for/vertex : graph-id -> \kwi{Set}
   graph-for/edge :
-    (i : graph-id) -> graph-for/vertex i -> graph-for/vertex i -> Set
+    (i : graph-id) -> graph-for/vertex i -> graph-for/vertex i -> \kwi{Set}
 \kw{end}
 
 \kw{def} from-normal (m : BagOfGraphs/normal) : BagOfGraphs := \kw{struct}
