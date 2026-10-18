@@ -4,8 +4,9 @@
 
 import { NodeStore } from "../src/typescript/index.js"
 import { readFile } from "node:fs/promises"
-import { TransitiveClosureRealm  } from "./bindings/TransitiveClosureRealm.js"
+import { createRealm } from "./bindings/TransitiveClosureRealm.js"
 import { ManagedStore } from "@coln-project/interface"
+import * as runtime from "@coln-project/interface"
 
 const ir: string = await readFile(
   new URL("./TransitiveClosureRealm.json", import.meta.url),
@@ -19,6 +20,8 @@ const realmDef = {
 }
 
 const store = new ManagedStore(new NodeStore(realmDef))
+
+const TransitiveClosureRealm = createRealm(runtime)
 
 const gr = new TransitiveClosureRealm(store)
 

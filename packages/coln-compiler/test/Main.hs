@@ -34,7 +34,7 @@ import Test.Tasty.HUnit (testCase, (@?=))
 import Prelude hiding (lex, read)
 
 knownCrashingElaboratorTests :: [String]
-knownCrashingElaboratorTests = ["empty"]
+knownCrashingElaboratorTests = []
 
 knownCrashingTypeScriptTests :: [String]
 knownCrashingTypeScriptTests =

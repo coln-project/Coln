@@ -1,23 +1,25 @@
-import * as runtime from "@coln-project/interface";
+import type * as Runtime from "@coln-project/interface";
 
-export class TRealm {
-  root: {
-    A: runtime.MutableSet<runtime.RowId<"root.A">>,
-    B: (a: runtime.RowId<"root.A">) => runtime.MutableProp,
-    R: (a: runtime.RowId<"root.A">) => (b: null) => runtime.MutableSet<runtime.RowId<"root.R">>
-  };
-
-  constructor(mstore: runtime.ManagedStore) {
-    this.root = {
-      A: (new runtime.BaseSet(mstore, "root.A", [])),
-      B: (a: runtime.RowId<"root.A">) => {
-        return (new runtime.BaseProp(mstore, "root.B", [a]));
-      },
-      R: (a: runtime.RowId<"root.A">) => {
-        return (b: null) => {
-          return (new runtime.BaseSet(mstore, "root.R", [a]));
-        };
-      }
+export function createRealm(runtime: typeof Runtime) {
+  return class TRealm {
+    root: {
+      A: Runtime.MutableSet<Runtime.RowId<"root.A">>,
+      B: (a: Runtime.RowId<"root.A">) => Runtime.MutableProp,
+      R: (a: Runtime.RowId<"root.A">) => (b: null) => Runtime.MutableSet<Runtime.RowId<"root.R">>
     };
-  }
+
+    constructor(mstore: Runtime.ManagedStore) {
+      this.root = {
+        A: (new runtime.BaseSet(mstore, "root.A", [])),
+        B: (a: Runtime.RowId<"root.A">) => {
+          return (new runtime.BaseProp(mstore, "root.B", [a]));
+        },
+        R: (a: Runtime.RowId<"root.A">) => {
+          return (b: null) => {
+            return (new runtime.BaseSet(mstore, "root.R", [a]));
+          };
+        }
+      };
+    }
+  };
 }

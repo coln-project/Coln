@@ -1,14 +1,16 @@
-import * as runtime from "@coln-project/interface";
+import type * as Runtime from "@coln-project/interface";
 
-export class TRealm {
-  root: { V: runtime.MutableProp, E: (a: null) => runtime.MutableProp };
+export function createRealm(runtime: typeof Runtime) {
+  return class TRealm {
+    root: { V: Runtime.MutableProp, E: (a: null) => Runtime.MutableProp };
 
-  constructor(mstore: runtime.ManagedStore) {
-    this.root = {
-      V: (new runtime.BaseProp(mstore, "root.V", [])),
-      E: (a: null) => {
-        return (new runtime.BaseProp(mstore, "root.E", []));
-      }
-    };
-  }
+    constructor(mstore: Runtime.ManagedStore) {
+      this.root = {
+        V: (new runtime.BaseProp(mstore, "root.V", [])),
+        E: (a: null) => {
+          return (new runtime.BaseProp(mstore, "root.E", []));
+        }
+      };
+    }
+  };
 }

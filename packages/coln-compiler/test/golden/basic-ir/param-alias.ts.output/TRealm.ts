@@ -1,29 +1,31 @@
-import * as runtime from "@coln-project/interface";
+import type * as Runtime from "@coln-project/interface";
 
-export class TRealm {
-  root: {
-    model: { X: runtime.MutableSet<runtime.RowId<"root.model.X">> },
-    boxed: (a: {
-      key: number,
-      modelValue: runtime.RowId<"root.model.X">,
-      value: string
-    }) => runtime.MutableSet<runtime.RowId<"root.boxed">>
-  };
-
-  constructor(mstore: runtime.ManagedStore) {
-    this.root = {
-      model: { X: (new runtime.BaseSet(mstore, "root.model.X", [])) },
+export function createRealm(runtime: typeof Runtime) {
+  return class TRealm {
+    root: {
+      model: { X: Runtime.MutableSet<Runtime.RowId<"root.model.X">> },
       boxed: (a: {
         key: number,
-        modelValue: runtime.RowId<"root.model.X">,
+        modelValue: Runtime.RowId<"root.model.X">,
         value: string
-      }) => {
-        return (new runtime.BaseSet(
-          mstore,
-          "root.boxed",
-          [a.key, a.modelValue, a.value]
-        ));
-      }
+      }) => Runtime.MutableSet<Runtime.RowId<"root.boxed">>
     };
-  }
+
+    constructor(mstore: Runtime.ManagedStore) {
+      this.root = {
+        model: { X: (new runtime.BaseSet(mstore, "root.model.X", [])) },
+        boxed: (a: {
+          key: number,
+          modelValue: Runtime.RowId<"root.model.X">,
+          value: string
+        }) => {
+          return (new runtime.BaseSet(
+            mstore,
+            "root.boxed",
+            [a.key, a.modelValue, a.value]
+          ));
+        }
+      };
+    }
+  };
 }

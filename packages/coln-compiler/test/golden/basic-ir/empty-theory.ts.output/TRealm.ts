@@ -1,22 +1,24 @@
-import * as runtime from "@coln-project/interface";
+import type * as Runtime from "@coln-project/interface";
 
-export class TRealm {
-  root: runtime.MutableRef<{}>;
+export function createRealm(runtime: typeof Runtime) {
+  return class TRealm {
+    root: Runtime.MutableRef<{}>;
 
-  constructor(mstore: runtime.ManagedStore) {
-    this.root = (new runtime.BaseTableRef(
-      mstore,
-      "root",
-      [],
-      [0],
-      {
-        flatten: (a: {}) => {
-          return [];
-        },
-        reconstruct: (result: runtime.WireTuple) => {
-          return {};
+    constructor(mstore: Runtime.ManagedStore) {
+      this.root = (new runtime.BaseTableRef(
+        mstore,
+        "root",
+        [],
+        [0],
+        {
+          flatten: (a: {}) => {
+            return [];
+          },
+          reconstruct: (result: Runtime.WireTuple) => {
+            return {};
+          }
         }
-      }
-    ));
-  }
+      ));
+    }
+  };
 }
