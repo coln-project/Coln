@@ -35,6 +35,7 @@ data Ty
   | ListTy Ty
   | RecordTy [(Id, Ty)]
   | NullTy
+  | TypeOf El
 
 data Binding = Binding {name :: Id, ty :: Ty}
 
@@ -58,6 +59,7 @@ data El
   | Object [(Id, El)]
   | Null
   | Coerce El Ty
+  | ClassExpr Class
 
 data Statement
   = Let Id El
@@ -110,6 +112,7 @@ data Declaration
 
 data Import
   = ImportQualified Id DDoc
+  | ImportTypeQualified Id DDoc
   | ImportSpecific Id DDoc
   | ImportSpecificExported Id DDoc
 

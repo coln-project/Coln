@@ -23,22 +23,25 @@ mangle = TS.Id . mangleToDoc
 runtime :: TS.Id -> TS.QId
 runtime x = TS.QId ["runtime"] x
 
+runtimeTy :: TS.Id -> TS.QId
+runtimeTy x = TS.QId ["Runtime"] x
+
 setInterface :: TS.Ty -> TS.Ty
-setInterface ty = TS.TyConst (runtime "Set") [ty]
+setInterface ty = TS.TyConst (runtimeTy "Set") [ty]
 
 mutableSetInterface :: TS.Ty -> TS.Ty
-mutableSetInterface ty = TS.TyConst (runtime "MutableSet") [ty]
+mutableSetInterface ty = TS.TyConst (runtimeTy "MutableSet") [ty]
 
 propInterface :: TS.Ty
-propInterface = TS.TyConst (runtime "Prop") []
+propInterface = TS.TyConst (runtimeTy "Prop") []
 
 mutablePropInterface :: TS.Ty
-mutablePropInterface = TS.TyConst (runtime "MutableProp") []
+mutablePropInterface = TS.TyConst (runtimeTy "MutableProp") []
 
 refInterface :: DefinitionType -> TS.Ty -> TS.Ty
 refInterface dty ty = case dty of
-  Base -> TS.TyConst (runtime "MutableRef") [ty]
-  View -> TS.TyConst (runtime "Ref") [ty]
+  Base -> TS.TyConst (runtimeTy "MutableRef") [ty]
+  View -> TS.TyConst (runtimeTy "Ref") [ty]
 
 tnString :: TableName -> TS.El
 tnString = TS.String . pretty . (.name)
@@ -104,7 +107,7 @@ instance Reconstructable TS.Id TS.El where
           (TS.Const (runtime "RowId"))
           [ TS.Object
               [ ("type", TS.String "Existing")
-              , ("value", TS.Coerce t (TS.TyConst (runtime "WireRowId") []))
+              , ("value", TS.Coerce t (TS.TyConst (runtimeTy "WireRowId") []))
               ]
           , tnString tn
           ]
@@ -151,7 +154,7 @@ constructAdapter e sh = do
           (TS.Block [] (Just (TS.List $ toList params.paramVals)))
   let reconstruct =
         TS.Lam
-          (TS.Binding resultVar (TS.TyConst (runtime "WireTuple") []))
+          (TS.Binding resultVar (TS.TyConst (runtimeTy "WireTuple") []))
           (TS.Block [] (Just reconstructed))
   Adapter flatten reconstruct params.numParams
 
@@ -303,8 +306,16 @@ genRealmClass x r =
     (TS.Binding "root" (genTy (Base, r.rootType)) : [TS.Binding (mangle x) (genTy (View, ty)) | (x, (_, ty)) <- OMap.assocs r.auxillaries])
     (genRealmConstructor r)
 
+genRealmFactory :: Name -> SIR.Realm -> TS.FunctionDef
+genRealmFactory x r =
+  TS.FunctionDef
+    "createRealm"
+    [TS.Binding "runtime" (TS.TypeOf (TS.Const "Runtime"))]
+    Nothing
+    (TS.Block [] (Just (TS.ClassExpr (genRealmClass x r))))
+
 genRealmModule :: Name -> SIR.Realm -> TS.Module
 genRealmModule x r = do
   TS.Module
-    [TS.ImportQualified "runtime" "@coln-project/interface"]
-    [TS.Exported $ TS.DClass $ genRealmClass x r]
+    [TS.ImportTypeQualified "Runtime" "@coln-project/interface"]
+    [TS.Exported $ TS.DFunctionDef $ genRealmFactory x r]
