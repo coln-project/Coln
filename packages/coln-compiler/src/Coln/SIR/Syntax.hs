@@ -32,6 +32,7 @@ data Prop
 
 data ScalarType
   = RowId TableName
+  | Union TableName
   | BuiltinTy BuiltinTy
   deriving (Eq, Show, Generic)
 

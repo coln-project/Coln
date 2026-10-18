@@ -4,6 +4,14 @@
 
 module Coln.SIR.Separate where
 
+import Control.Arrow (second)
+import Control.Monad.Reader.Class
+import Control.Monad.State.Class
+import Control.Monad.RWS.Strict
+import Data.Key (mapAccumWithKeyL)
+import Data.Maybe (mapMaybe, maybeToList)
+import Data.Map.Ordered qualified as OMap
+
 import Coln.Common
 import Coln.Core.Params
 import Coln.MIR.Layout (argName)
@@ -13,9 +21,6 @@ import Coln.MIR.Value qualified as V
 import Coln.SIR.Realm
 import Coln.SIR.Syntax qualified as S
 
-import Control.Arrow (second)
-import Data.Key (mapAccumWithKeyL)
-import Data.Maybe (mapMaybe, maybeToList)
 
 type CtxLen = Int
 
@@ -24,7 +29,7 @@ class Separate a b | a -> b where
 
 instance Separate V.Head (S.El Set) where
   separate n = \case
-    V.Var (FId i) -> S.Var (BId (n - i - 1))
+    V.Var i -> S.Var (reverseId n i)
     V.Lookup tn args ret -> case shapeOf ret of
       S.Unstored -> S.Erased
       sh -> S.Lookup tn (separate n <$> args) sh
@@ -98,6 +103,8 @@ instance Separate (V.Ty N Set) S.Query where
   separate n a =
     S.Query (shapeOf a) (S.Abs Nothing (propAt (n + 1) a (V.local (FId n))))
 
+-- We don't need the whole `Maybe Trie` dance!
+
 defsOf :: [(Name, S.Query)] -> S.Prop -> Maybe (Trie Definition)
 defsOf cols = \case
   S.Atom tn _ args -> Just $ Leaf $ Definition cols tn args
@@ -109,7 +116,45 @@ defsOf cols = \case
       _ -> Just $ Node $ fromList pairs
   S.Eq _ _ _ -> panic "not supported: path constructor"
 
-separateGenerator :: TableName -> V.Generator -> (Maybe (Trie Entity), Maybe (Trie Definition), Maybe (Trie Rule))
+-- We should refactor this to essentially be in a monad where we can emit
+-- entities, definitions, etc?
+
+newtype GeneratorWriter a = GeneratorWriter
+  { runGeneratorWriter :: RWS Path () (Generators (OMap TableName)) a
+  }
+  deriving (Functor, Applicative, Monad, MonadReader Path, MonadState (Generators (OMap Path)))
+
+emitEntity :: Entity -> GeneratorWriter ()
+emitEntity e = do
+  p <- ask
+  modify (\gs -> gs { entities = gs.entities OMap.>| (tableName p, e) })
+
+emitDefinition :: Name -> Definition -> GeneratorWriter ()
+emitDefinition x d = do
+  p <- ask
+  modify (\gs -> gs { definitions = gs.definitions OMap.>| (tableName $ p :> x, d) })
+
+emitLaw :: Maybe Name -> Law -> GeneratorWriter ()
+emitLaw mx l = do
+  p <- ask
+  let p' = case mx of
+        Just x -> p :> x
+        Nothing -> p
+  modify (\gs -> gs { laws = gs.laws OMap.>| (tableName p', l) })
+
+emitUnion :: GeneratorWriter ()
+emitUnion = do
+  p <- ask
+  modify (\gs -> gs { unions = gs.unions OMap.>| (tableName p, BwdNil) })
+
+emitCaseFor :: TableName -> GeneratorWriter ()
+emitCaseFor tn = do
+  p <- ask
+  modify $ \gs -> do
+   let u = elemAt gs.unions tn
+   gs { unions = gs.unions OMap.|> (tn, u :> tableName p) }
+
+separateGenerator :: TableName -> V.Generator -> GeneratorWriter ()
 separateGenerator tn gen = do
   let names = toList gen.paramNames
   let argNum = length names
@@ -121,52 +166,52 @@ separateGenerator tn gen = do
             SSetU -> Nothing
             SPropU -> Just [0 .. argNum - 1]
       let entityVariant = case gen.providence of
-            Holy -> View Memoized
+            Holy -> View Materialized
             Profane -> Table
-      let entity = Entity entityVariant (second (.shape) <$> cols) primaryKey
-      let atom = S.Atom tn S.Erased [S.Var (BId $ argNum - i - 1) | i <- [0 .. argNum - 1]]
-      let foreignKey = Rule Enforced Consequent (zip names septys) atom S.trueProp
-      let rules = case gen.providence of
-            Holy -> Nothing
-            Profane -> Just $ Node $ fromList [("foreignKey", Leaf foreignKey)]
-      (Just $ Leaf entity, Nothing, rules)
+      emitEntity (Entity entityVariant (second (.shape) <$> cols) primaryKey)
+      case gen.providence of
+        Holy -> pure ()
+        Profane -> do
+          let atom = S.Atom tn S.Erased [S.Var (BId $ argNum - i - 1) | i <- [0 .. argNum - 1]]
+          emitLaw
+            (Just "foreignKey")
+            (Rule Enforced Consequent (zip names septys) atom S.trueProp)
     V.GenLift a -> case hlevelOf a of
-      HUnit -> (Nothing, Nothing, Nothing)
+      HUnit -> pure () 
       HProp -> do
         let codProp = propAt argNum a V.Erased
         case gen.providence of
-          Holy -> do
-            (Nothing, defsOf cols codProp, Nothing)
-          Profane -> do
-            let rule = Rule Monitored Antecedent cols S.trueProp codProp
-            (Nothing, Nothing, Just $ Leaf rule)
+          Holy -> defsOf cols codProp
+          Profane ->
+            emitLaw Nothing (Rule Monitored Antecedent cols S.trueProp codProp)
       HSet -> do
         let resultName = freshNameFor names
         let resultQ = separate argNum a
 
         case gen.providence of
           Holy -> do
-            let view = Entity (View Memoized) (second (.shape) <$> cols) (Just [0 .. argNum - 1])
+            emitEntity $ Entity Hashcons (second (.shape) <$> cols) (Just [0 .. argNum - 1])
 
-            let collect = Definition cols tn [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
+            let atom = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
+            emitLaw
+              (Just "foreignKey")
+              (Rule Enforced Consequent cols S.trueProp atom)
 
-            let domProp = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
+            let domProp = S.Atom tn S.Erased 
             let domQ = S.Query S.Unstored (S.Abs Nothing domProp)
             let codProp = propAt (argNum + 1) a V.Erased
-            let construct = defsOf (cols ++ [(resultName, domQ)]) codProp
-            (Just $ Leaf view, Just $ Node $ fromList $ ("collect", Leaf collect) : (maybeToList . sequence) ("construct", construct), Nothing)
+            defsOf (cols ++ [(resultName, domQ)]) codProp
           Profane -> do
             let allCols = cols ++ [(resultName, resultQ)]
-            let table = Entity Table (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
+            emitEntity $ Entity Table (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
 
             let foreignKeyAnte = S.Atom tn S.Erased [S.Var (BId (argNum - i)) | i <- [0 .. argNum]]
-            let foreignKey = Rule Enforced Consequent allCols foreignKeyAnte S.trueProp
+            emitLaw
+              (Just "foreignKey")
+              (Rule Enforced Consequent allCols foreignKeyAnte S.trueProp)
 
             let totalCons = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
-            let total = Rule Monitored Antecedent cols S.trueProp totalCons
-
-            (Just $ Leaf table, Nothing, Just $ Node $ fromList [("foreignKey", Leaf foreignKey), ("total", Leaf total)])
+            emitLaw
+              (Just "total")
+              (Rule Monitored Antecedent cols S.trueProp totalCons)
       _ -> panic "bad h-level of cod"
-
--- separateRealm :: V.Realm -> Realm
--- separateRealm r = _

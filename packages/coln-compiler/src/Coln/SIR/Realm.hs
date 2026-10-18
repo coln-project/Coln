@@ -6,25 +6,38 @@ module Coln.SIR.Realm where
 
 import Coln.Common
 import Coln.Core.Params
-
 import Coln.SIR.Syntax
 
 import Data.Aeson qualified as AE
 import GHC.Generics
+import Data.Functor.Barbie
 
 data Materialization
   = Recomputed
-  | Memoized
   | Materialized
+
+-- Thoughts on what the entity variant should be
+
+-- We could have a Hashcons EntityVariant
+
+-- The big question is around types, I think. Namely, what is the tablename
+-- associated with the row id for a syntax tree?
+
+-- Also, we need to explicitly declare the enum of tags, I think
 
 data EntityVariant
   = Table
+  | Hashcons
   | View Materialization
 
 data Entity = Entity
   { entityVariant :: EntityVariant
   , columns :: [(Name, Shape)]
   , primaryKey :: Maybe [Int]
+  }
+
+data Union = Union
+  { variants :: Bwd TableName
   }
 
 data Definition = Definition
@@ -46,12 +59,23 @@ data Rule = Rule
   , consequent :: Prop
   }
 
+data Generators f = Generators
+  { entities :: f Entity
+  , unions :: f Union
+  , definitions :: f Definition
+  , rules :: f Rule
+  }
+
+instance FunctorB Generators where
+  bmap f gs = Generators
+    { entities = f gs.entities
+    , unions = f gs.unions
+    , definitions = f gs.definitions
+    , rules = f gs.rules
+    }
+
 data Realm = Realm
-  { entities :: OMap TableName Entity
-  , definitions :: OMap TableName Definition
-  , rules :: OMap TableName Rule
-  , root :: El Theory
-  , rootType :: TheoryShape
+  { generators :: Generators (OMap TableName)
   , auxillaries :: OMap Name (El Theory, TheoryShape)
   }
 

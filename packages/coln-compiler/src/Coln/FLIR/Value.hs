@@ -88,6 +88,7 @@ data Query = Query
 
 data Realm = Realm
   { entities :: OMap TableName Entity
+  , unions :: OMap TableName [TableName]
   , definitions :: OMap TableName Definition
   , rules :: OMap TableName Rule
   }
