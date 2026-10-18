@@ -61,13 +61,22 @@ library
     Coln.MIR.Syntax
     Coln.MIR.Top
     Coln.MIR.Value
-    Coln.Report
     Coln.SIR.Cache
     Coln.SIR.Realm
     Coln.SIR.Separate
     Coln.SIR.Syntax
     Coln.SIR.Top
     Coln.Top
+    Coln.Util.Bwd
+    Coln.Util.Containers
+    Coln.Util.Debug
+    Coln.Util.Dict
+    Coln.Util.Fresh
+    Coln.Util.Match
+    Coln.Util.PartialOrd
+    Coln.Util.Report
+    Coln.Util.Strings
+    Coln.Util.Trie
 
   hs-source-dirs: src
   default-language: GHC2024
@@ -104,6 +113,7 @@ library
 
   build-depends:
     aeson,
+    barbies,
     base,
     bytestring,
     containers,

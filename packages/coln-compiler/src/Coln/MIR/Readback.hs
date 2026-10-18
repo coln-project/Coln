@@ -19,7 +19,7 @@ class Readback a b | a -> b where
 
 instance Readback V.Head (S.El N Set) where
   readb n = \case
-    V.Var (FId i) -> S.Var (BId (n - i - 1))
+    V.Var i -> S.Var (reverseId n i)
     V.Lookup x args a -> S.Lookup x (readb n <$> args) (readb n a)
 
 instance Readback (V.El N Set) (S.El N Set) where

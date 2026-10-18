@@ -104,7 +104,7 @@ declare p sc = \case
     let (gt, m) = declareEvaluation p sc' (V.appClo clo v)
     (gt, M.lam sc.locals (M.fromV sc.len dom) (S.Abs x m.stx))
   V.Cons fields -> do
-    let (gts, ms) = unzip $ for (toList fields) $ \(x, v) ->
+    let (gts, ms) = unzip $ flip map (toList fields) $ \(x, v) ->
           declareEvaluation (p :> x) sc v
     (Node $ withHead fields gts, M.cons $ withHead fields ms)
   V.Init a -> layout p Holy sc a
