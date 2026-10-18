@@ -8,7 +8,7 @@ import Coln.Diagnostics (ColnCode (..))
 import Coln.Frontend.Notation (lexConfig, readConfig)
 import Coln.Frontend.Parser (top)
 import Coln.LSP.Types (AnalyzedBuffer (..), LSPBufferInfo (..), LSPState)
-import Coln.Report (DiagnosticEnv (DiagnosticEnv))
+import Coln.Util.Report (DiagnosticEnv (DiagnosticEnv))
 import Control.Exception (SomeException (..), evaluate)
 import Control.Monad.Catch (MonadCatch, catch)
 import Control.Monad.Trans
