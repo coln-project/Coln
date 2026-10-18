@@ -1,18 +1,22 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Util.Dict where
 
 import Prelude hiding (lookup)
 
-import FNotation (Name)
-import Data.Vector.Strict qualified as V
-import Data.Vector.Strict (Vector)
+import Data.Key (FoldableWithKey (..), Key, Keyed (..), TraversableWithKey (..))
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Vector.Fusion.Bundle qualified as Bundle
 import Data.Vector.Generic (stream, unstreamM)
-import Data.Map.Strict qualified as Map
-import Data.Map.Strict (Map)
-import Data.Key (Key, Keyed (..), FoldableWithKey (..), TraversableWithKey (..))
+import Data.Vector.Strict (Vector)
+import Data.Vector.Strict qualified as V
+import FNotation (Name)
 
-import Coln.Util.Debug
 import Coln.Util.Containers
+import Coln.Util.Debug
 
 data DictHead = DictHead
   { byName :: Map Name Int

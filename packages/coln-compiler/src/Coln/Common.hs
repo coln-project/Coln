@@ -23,7 +23,7 @@ module Coln.Common (
   module Coln.Util.PartialOrd,
   module Coln.Util.Report,
   module Coln.Util.Strings,
-  module Coln.Util.Trie
+  module Coln.Util.Trie,
 )
 where
 

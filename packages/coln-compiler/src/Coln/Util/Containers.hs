@@ -1,11 +1,15 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Util.Containers where
 
-import Data.Vector.Strict qualified as V
-import Data.Vector.Strict (Vector)
-import Data.Map.Ordered qualified as OMap
-import Data.Map.Ordered (OMap)
-import Data.List.NonEmpty qualified as NE
 import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NE
+import Data.Map.Ordered (OMap)
+import Data.Map.Ordered qualified as OMap
+import Data.Vector.Strict (Vector)
+import Data.Vector.Strict qualified as V
 
 import Coln.Util.Debug
 

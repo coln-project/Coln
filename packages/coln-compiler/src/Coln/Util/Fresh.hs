@@ -1,9 +1,13 @@
+-- SPDX-FileCopyrightText: 2026 Coln contributors
+--
+-- SPDX-License-Identifier: Apache-2.0 OR MIT
+
 module Coln.Util.Fresh where
 
-import FNotation (Name (..))
-import Data.Set qualified as Set
 import Data.Map.Strict qualified as Map
-import Data.String (IsString(..))
+import Data.Set qualified as Set
+import Data.String (IsString (..))
+import FNotation (Name (..))
 
 import Coln.Util.Bwd
 import Coln.Util.Containers
