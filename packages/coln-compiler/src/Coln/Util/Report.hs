@@ -2,7 +2,7 @@
 --
 -- SPDX-License-Identifier: Apache-2.0 OR MIT
 
-module Coln.Report where
+module Coln.Util.Report where
 
 import Control.Exception (Exception, throwIO)
 import Data.Functor.Contravariant (Contravariant (contramap))
