@@ -1,0 +1,41 @@
+theory Graph := sig
+  vertex : Set
+  edge : vertex -> vertex -> Set
+end
+
+def triangle (G : Graph) : Set := sig
+  a b c : G.vertex
+  ab : G.edge a b
+  bc : G.edge b c
+  ac : G.edge a c
+end
+
+theory NamesFor (X : Set) := X -> String
+
+theory GraphWithNames := sig
+  graph : Graph
+  vertex-names : NamesFor graph.vertex
+  edge-names : (v0 v1 : graph.vertex) -> NamesFor (graph.edge v0 v1)
+end
+
+theory SetWithNames := sig
+  elt : Set
+  names : NamesFor elt
+end
+
+theory GraphUsingSWN := sig
+  vertex : SetWithNames
+  edge : vertex.elt -> vertex.elt -> SetWithNames
+end
+
+def underlying-graph (G : GraphUsingSWN) : Graph := struct
+  vertex := G.vertex.elt
+  edge := v0 => v1 => (G.edge v0 v1).elt
+end
+
+def repackage (G : GraphUsingSWN) : GraphWithNames := struct
+  graph := underlying-graph G
+  vertex-names := G.vertex.names
+  edge-names := v0 => v1 => (G.edge v0 v1).names
+end
+
