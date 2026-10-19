@@ -1,9 +1,11 @@
-import * as runtime from "@coln-project/interface";
+import type * as Runtime from "@coln-project/interface";
 
-export class TRealm {
-  root: { V: runtime.MutableSet<runtime.RowId<"root.V">> };
+export function createRealm(runtime: typeof Runtime) {
+  return class TRealm {
+    root: { V: Runtime.MutableSet<Runtime.RowId<"root.V">> };
 
-  constructor(mstore: runtime.ManagedStore) {
-    this.root = { V: (new runtime.BaseSet(mstore, "root.V", [])) };
-  }
+    constructor(mstore: Runtime.ManagedStore) {
+      this.root = { V: (new runtime.BaseSet(mstore, "root.V", [])) };
+    }
+  };
 }

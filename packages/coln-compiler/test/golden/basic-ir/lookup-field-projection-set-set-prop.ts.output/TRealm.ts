@@ -1,59 +1,61 @@
-import * as runtime from "@coln-project/interface";
+import type * as Runtime from "@coln-project/interface";
 
-export class TRealm {
-  root: {
-    A: runtime.MutableSet<runtime.RowId<"root.A">>,
-    B: runtime.MutableSet<runtime.RowId<"root.B">>,
-    E: (a: runtime.RowId<"root.B">) => runtime.MutableProp,
-    x: runtime.MutableRef<runtime.RowId<"root.A">>,
-    next: (a: runtime.RowId<"root.A">) => runtime.MutableRef<runtime.RowId<"root.B">>,
-    edge: runtime.MutableRef<null>
-  };
+export function createRealm(runtime: typeof Runtime) {
+  return class TRealm {
+    root: {
+      A: Runtime.MutableSet<Runtime.RowId<"root.A">>,
+      B: Runtime.MutableSet<Runtime.RowId<"root.B">>,
+      E: (a: Runtime.RowId<"root.B">) => Runtime.MutableProp,
+      x: Runtime.MutableRef<Runtime.RowId<"root.A">>,
+      next: (a: Runtime.RowId<"root.A">) => Runtime.MutableRef<Runtime.RowId<"root.B">>,
+      edge: Runtime.MutableRef<null>
+    };
 
-  constructor(mstore: runtime.ManagedStore) {
-    this.root = {
-      A: (new runtime.BaseSet(mstore, "root.A", [])),
-      B: (new runtime.BaseSet(mstore, "root.B", [])),
-      E: (a: runtime.RowId<"root.B">) => {
-        return (new runtime.BaseProp(mstore, "root.E", [a]));
-      },
-      x: (new runtime.BaseTableRef(
-        mstore,
-        "root.x",
-        [],
-        [0, 1],
-        {
-          flatten: (a: runtime.RowId<"root.A">) => {
-            return [a];
-          },
-          reconstruct: (result: runtime.WireTuple) => {
-            return (new runtime.RowId(
-              { type: "Existing", value: result[0] as runtime.WireRowId },
-              "root.A"
-            ));
-          }
-        }
-      )),
-      next: (a: runtime.RowId<"root.A">) => {
-        return (new runtime.BaseTableRef(
+    constructor(mstore: Runtime.ManagedStore) {
+      this.root = {
+        A: (new runtime.BaseSet(mstore, "root.A", [])),
+        B: (new runtime.BaseSet(mstore, "root.B", [])),
+        E: (a: Runtime.RowId<"root.B">) => {
+          return (new runtime.BaseProp(mstore, "root.E", [a]));
+        },
+        x: (new runtime.BaseTableRef(
           mstore,
-          "root.next",
-          [a],
-          [1, 2],
+          "root.x",
+          [],
+          [0, 1],
           {
-            flatten: (a: runtime.RowId<"root.B">) => {
+            flatten: (a: Runtime.RowId<"root.A">) => {
               return [a];
             },
-            reconstruct: (result: runtime.WireTuple) => {
+            reconstruct: (result: Runtime.WireTuple) => {
               return (new runtime.RowId(
-                { type: "Existing", value: result[0] as runtime.WireRowId },
-                "root.B"
+                { type: "Existing", value: result[0] as Runtime.WireRowId },
+                "root.A"
               ));
             }
           }
-        ));
-      },
-      edge: (new runtime.ConstRef(null))
-    };
-  }
+        )),
+        next: (a: Runtime.RowId<"root.A">) => {
+          return (new runtime.BaseTableRef(
+            mstore,
+            "root.next",
+            [a],
+            [1, 2],
+            {
+              flatten: (a: Runtime.RowId<"root.B">) => {
+                return [a];
+              },
+              reconstruct: (result: Runtime.WireTuple) => {
+                return (new runtime.RowId(
+                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  "root.B"
+                ));
+              }
+            }
+          ));
+        },
+        edge: (new runtime.ConstRef(null))
+      };
+    }
+  };
 }

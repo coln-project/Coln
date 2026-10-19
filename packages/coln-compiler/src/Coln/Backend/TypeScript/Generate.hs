@@ -20,31 +20,34 @@ import Coln.SIR.Syntax qualified as SIR
 mangle :: Name -> TS.Id
 mangle = TS.Id . mangleToDoc
 
-runtime :: TS.Id -> TS.QId
-runtime x = TS.QId ["runtime"] x
+runtime :: TS.Id -> TS.El
+runtime x = TS.Const (TS.QId ["runtime"] x)
+
+runtimeTy :: TS.Id -> [TS.Ty] -> TS.Ty
+runtimeTy x = TS.TyConst (TS.QId ["Runtime"] x)
 
 setInterface :: TS.Ty -> TS.Ty
-setInterface ty = TS.TyConst (runtime "Set") [ty]
+setInterface ty = runtimeTy "Set" [ty]
 
 mutableSetInterface :: TS.Ty -> TS.Ty
-mutableSetInterface ty = TS.TyConst (runtime "MutableSet") [ty]
+mutableSetInterface ty = runtimeTy "MutableSet" [ty]
 
 propInterface :: TS.Ty
-propInterface = TS.TyConst (runtime "Prop") []
+propInterface = runtimeTy "Prop" []
 
 mutablePropInterface :: TS.Ty
-mutablePropInterface = TS.TyConst (runtime "MutableProp") []
+mutablePropInterface = runtimeTy "MutableProp" []
 
 refInterface :: DefinitionType -> TS.Ty -> TS.Ty
 refInterface dty ty = case dty of
-  Base -> TS.TyConst (runtime "MutableRef") [ty]
-  View -> TS.TyConst (runtime "Ref") [ty]
+  Base -> runtimeTy "MutableRef" [ty]
+  View -> runtimeTy "Ref" [ty]
 
 tnString :: TableName -> TS.El
 tnString = TS.String . pretty . (.name)
 
 rowId :: TableName -> TS.Ty
-rowId x = TS.TyConst (runtime "RowId") [TS.Singleton $ tnString x]
+rowId x = runtimeTy "RowId" [TS.Singleton $ tnString x]
 
 class GenTy a where
   genTy :: a -> TS.Ty
@@ -101,10 +104,10 @@ instance Reconstructable TS.Id TS.El where
       SIR.BuiltinTy _ -> t
       SIR.RowId tn ->
         TS.New
-          (TS.Const (runtime "RowId"))
+          (runtime "RowId")
           [ TS.Object
               [ ("type", TS.String "Existing")
-              , ("value", TS.Coerce t (TS.TyConst (runtime "WireRowId") []))
+              , ("value", TS.Coerce t (runtimeTy "WireRowId" []))
               ]
           , tnString tn
           ]
@@ -151,7 +154,7 @@ constructAdapter e sh = do
           (TS.Block [] (Just (TS.List $ toList params.paramVals)))
   let reconstruct =
         TS.Lam
-          (TS.Binding resultVar (TS.TyConst (runtime "WireTuple") []))
+          (TS.Binding resultVar (runtimeTy "WireTuple" []))
           (TS.Block [] (Just reconstructed))
   Adapter flatten reconstruct params.numParams
 
@@ -182,7 +185,7 @@ rowIdSet env tn cols dty u = do
         (View, SPropU) -> "ViewProp"
         (View, SSetU) -> "InductiveViewSet"
   TS.New
-    (TS.Const (runtime className))
+    (runtime className)
     [ env.store
     , tnString tn
     , TS.List $ snd $ flattenParams $ createTSArgs env tn cols
@@ -192,7 +195,7 @@ projSet :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> SUniverse Set Theo
 projSet env tn cols retShape u = case u of
   SPropU ->
     TS.New
-      (TS.Const (runtime "ViewProp"))
+      (runtime "ViewProp")
       [ env.store
       , tnString tn
       , TS.List $ snd $ flattenParams $ createTSArgs env tn cols
@@ -201,7 +204,7 @@ projSet env tn cols retShape u = case u of
     let (n, tsParams) = flattenParams $ createTSArgs env tn cols
     let adapter = constructAdapter env retShape
     TS.New
-      (TS.Const (runtime "ConjunctiveViewSet"))
+      (runtime "ConjunctiveViewSet")
       [ env.store
       , tnString tn
       , TS.List tsParams
@@ -217,7 +220,7 @@ baseTableRef env tn cols retShape = do
   let (n, tsParams) = flattenParams $ createTSArgs env tn cols
   let adapter = constructAdapter env retShape
   TS.New
-    (TS.Const (runtime "BaseTableRef"))
+    (runtime "BaseTableRef")
     [ env.store
     , tnString tn
     , TS.List tsParams
@@ -233,7 +236,7 @@ viewRef env tn cols retShape = do
   let (n, tsParams) = flattenParams $ createTSArgs env tn cols
   let adapter = constructAdapter env retShape
   TS.New
-    (TS.Const (runtime "ViewRef"))
+    (runtime "ViewRef")
     [ env.store
     , tnString tn
     , TS.List tsParams
@@ -264,7 +267,7 @@ instance GenEl (DefinitionType, SIR.El Theory) where
     SIR.Cons fields -> TS.Object $ [(mangle x, genEl e (dty, t)) | (x, t) <- toList fields]
 
 wrapConstRef :: AccessType -> TS.El -> TS.El
-wrapConstRef (Reference _) t = TS.New (TS.Const (runtime "ConstRef")) [t]
+wrapConstRef (Reference _) t = TS.New (runtime "ConstRef") [t]
 wrapConstRef Value t = t
 
 instance GenEl (AccessType, SIR.El Set) where
@@ -282,7 +285,7 @@ instance GenEl (AccessType, SIR.El Set) where
 
 genRealmConstructor :: SIR.Realm -> TS.Constructor
 genRealmConstructor r = do
-  let args = [TS.Binding "mstore" (TS.TyConst (runtime "ManagedStore") [])]
+  let args = [TS.Binding "mstore" (runtimeTy "ManagedStore" [])]
   let env = emptyTSEnv r (TS.Var "mstore")
   let auxillaryAssignments = [TS.Assign (TS.QId ["this"] (mangle x)) (genEl env (View, v)) | (x, (v, _)) <- OMap.assocs $ r.auxillaries]
   let body =
@@ -303,8 +306,16 @@ genRealmClass x r =
     (TS.Binding "root" (genTy (Base, r.rootType)) : [TS.Binding (mangle x) (genTy (View, ty)) | (x, (_, ty)) <- OMap.assocs r.auxillaries])
     (genRealmConstructor r)
 
+genRealmFactory :: Name -> SIR.Realm -> TS.FunctionDef
+genRealmFactory x r =
+  TS.FunctionDef
+    "createRealm"
+    [TS.Binding "runtime" (TS.TypeOf (TS.Const "Runtime"))]
+    Nothing
+    (TS.Block [] (Just (TS.ClassExpr (genRealmClass x r))))
+
 genRealmModule :: Name -> SIR.Realm -> TS.Module
 genRealmModule x r = do
   TS.Module
-    [TS.ImportQualified "runtime" "@coln-project/interface"]
-    [TS.Exported $ TS.DClass $ genRealmClass x r]
+    [TS.ImportTypeQualified "Runtime" "@coln-project/interface"]
+    [TS.Exported $ TS.DFunctionDef $ genRealmFactory x r]

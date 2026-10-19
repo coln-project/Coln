@@ -331,7 +331,9 @@ lex :: ConfTable Kind -> Reporter LexerCode -> File -> IO (V.Vector Token)
 lex config reporter file = do
   pos <- newIORef 0
   prev <- newIORef 0
-  iter <- newIORef $ TU.iter file.contents 0
+  iter <- newIORef $ case TU.lengthWord8 file.contents of
+    0 -> TU.Iter '\0' 0
+    _ -> TU.iter file.contents 0
   out <- bufferWithCapacity (TU.lengthWord8 file.contents + 1)
   let st = LexState pos prev iter out file reporter config
   run st True

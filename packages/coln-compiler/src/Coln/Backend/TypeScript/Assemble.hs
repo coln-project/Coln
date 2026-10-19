@@ -50,6 +50,7 @@ instance Assemble Ty where
   asm (Singleton v) = asm v
   asm (RecordTy fields) = blocked $ punctuate "," [asm x <> ":" <+> asm ty | (x, ty) <- fields]
   asm NullTy = "null"
+  asm (TypeOf v) = "typeof" <+> asm v
 
 instance Assemble Binding where
   asm b = asm b.name <> ":" <+> asm b.ty
@@ -79,6 +80,7 @@ instance Assemble El where
     blocked $ punctuate "," [asm x <> ":" <+> asm t | (x, t) <- fields]
   asm Null = "null"
   asm (Coerce t ty) = asm t <+> "as" <+> asm ty
+  asm (ClassExpr c) = asm c
 
 instance Assemble Statement where
   asm (Let x t) = "const" <+> asm x <+> "=" <+> asm t <> ";"
@@ -156,6 +158,8 @@ instance Assemble Import where
   asm = \case
     ImportQualified x from ->
       "import * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
+    ImportTypeQualified x from ->
+      "import type * as" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
     ImportSpecific x from ->
       "import" <+> asm x <+> "from" <+> surround from "\"" "\"" <> ";"
     ImportSpecificExported x from ->
