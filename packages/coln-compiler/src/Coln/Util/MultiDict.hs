@@ -6,11 +6,8 @@ module Coln.Util.MultiDict where
 
 import Prelude hiding (lookup)
 
-import Data.Key (FoldableWithKey (..), Key, Keyed (..), TraversableWithKey (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Vector.Fusion.Bundle qualified as Bundle
-import Data.Vector.Generic (stream, unstreamM)
 import Data.Vector.Strict (Vector)
 import Data.Vector.Strict qualified as V
 import FNotation (Name)
@@ -58,7 +55,6 @@ instance Foldable MultiDict where
   foldMap f d = foldMap f d.values
   foldr f s d = foldr f s d.values
   foldl' f s d = foldl' f s d.values
-  toList d = V.toList d.values
 
 instance Traversable MultiDict where
   traverse f d = fmap (\x -> d{values = x}) $ traverse f d.values
