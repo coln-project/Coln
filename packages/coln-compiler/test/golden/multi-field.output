@@ -1,0 +1,93 @@
+-- elaborated
+global entry named Field
+in mode: Conjunctive
+type: Theory
+value: sig
+  B : Set
+  x : B
+  y : B
+  z w : B
+  P : Prop
+  p : P
+  q : P
+  r s : P
+end
+global entry named SimpleSets
+in mode: Conjunctive
+type: Theory
+value: sig
+  B : Set
+  x : B
+  y z : B
+  w : B
+end
+global entry named simple-model
+in mode: Conjunctive
+type: SimpleSets
+value: [B := Int, x := 41, y := 19, z := 34, w := 38]
+global entry named OnlyGroup
+in mode: Conjunctive
+type: Set
+value: sig
+  a b : Int
+end
+global entry named only-group-model
+in mode: Conjunctive
+type: OnlyGroup
+value: [a := 7, b := 11]
+global entry named Bound
+in mode: Conjunctive
+type: Theory
+value: sig
+  x y : Int
+  p : x = x
+  q : y = y
+end
+global entry named Q
+in mode: Conjunctive
+type: Prop
+value: sig
+end
+global entry named SimpleProps
+in mode: Conjunctive
+type: Theory
+value: sig
+  x : Q
+  y z : Q
+  w : Q
+end
+global entry named q
+in mode: Conjunctive
+type: Q
+value: []
+global entry named prop-model
+in mode: Conjunctive
+type: SimpleProps
+value: [x := q, y := q, z := q, w := q]
+global entry named SomeSet
+in mode: Conjunctive
+type: Theory
+value: sig
+  T : Set
+end
+realm named MultiFieldRealm
+lowered: flatrealm
+  entities
+    table root.T := []
+    view view.pair := [pair.a : root.T, pair.b : root.T] primarykey [
+      pair.a,
+      pair.b
+    ]
+  end
+  definitions
+    chased view.pair.definition pair.a pair.b := pair.a ∈ root.T [] ∧ pair.b ∈ root.T [] ⊢ view.pair [
+      pair.a ↦ pair.a,
+      pair.b ↦ pair.b
+    ]
+  end
+  rules
+    enforced root.T.foreignKey := root.T [] ⊢ ⊤
+  end
+end
+
+-- messages

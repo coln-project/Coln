@@ -40,8 +40,15 @@ instance Readback (V.Description V.El) (S.El D) where
 
 readbClo :: (Readback (V.Evaluation a c) (b c)) => CtxLen -> V.Ty N -> V.Clo a c -> S.Abs b c
 readbClo n dom = \case
-  V.Clo x l f -> S.Abs x $ readb (n + 1) (f (V.LSnoc l $ V.local (FId n) dom))
-  V.CloConst t -> S.AbsConst $ readb n t
+  V.Clo x l f -> S.Abs (Named x) $ readb (n + 1) (f (V.LSnoc l $ V.local (FId n) dom))
+  V.CloConst t -> S.Abs Anonymous $ readb n t
+
+readbMultiClo :: (Readback (V.Evaluation a c) (b c)) => CtxLen -> V.Ty N -> V.MultiClo a c -> S.MultiAbs b c
+readbMultiClo n dom (V.MultiClo xs l f) =
+  S.MultiAbs xs $ readb (n + namedCount) (f (V.LSnocChunk l locals))
+ where
+  namedCount = length $ filter isNamedEntry xs
+  locals = Vector.generate namedCount $ \i -> V.local (FId (n + i)) dom
 
 instance (V.HasEvaluation c) => Readback (V.El c) (S.El c) where
   readb n = \case
@@ -61,7 +68,7 @@ instance Readback V.FunctionType (S.FunctionType S.Ty) where
     S.FunctionType
       { S.variant = f.variant
       , S.dom = readb n f.dom
-      , S.cod = readbClo n f.dom f.cod
+      , S.cod = readbMultiClo n f.dom f.cod
       }
 
 instance Readback V.RecordType (S.RecordType S.Ty) where
@@ -69,18 +76,18 @@ instance Readback V.RecordType (S.RecordType S.Ty) where
     S.RecordType
       { S.level = r.level
       , S.fieldTypes =
-          Dict
+          MultiDict
             { head = r.fieldTypes.head
-            , values = Vector.fromList $ go n r.capture r.fieldTypes.values
+            , values = Vector.fromList $ go n r.capture (toList r.fieldTypes)
             }
       }
    where
-    go i ls fs =
-      if Vector.null fs
-        then []
-        else do
-          let ty = Vector.head fs ls
-          readb i ty : go (i + 1) (V.LSnoc ls $ V.local (FId i) ty) (Vector.tail fs)
+    go _ _ [] = []
+    go i ls ((names, fieldTy) : rest) = do
+      let ty = fieldTy ls
+      let count = length names
+      let locals = Vector.generate count $ \j -> V.local (FId (i + j)) ty
+      readb i ty : go (i + count) (V.LSnocChunk ls locals) rest
 
 instance Readback V.EqualityType (S.EqualityType S.El S.Ty) where
   readb n eq =
