@@ -1,5 +1,5 @@
 {
-  "name": "@coln-project/runtime",
+  "name": "@coln-project/wasm-runtime",
   "version": "0.1.0",
   "private": true,
   "author": "Coln contributors",
@@ -23,7 +23,7 @@
   },
   "wasm-bodge": {
     "wrapper": {
-      "entry": "./src/ts/index.ts"
+      "entry": "./src/typescript/index.ts"
     }
   },
   "devDependencies": {
@@ -92,7 +92,7 @@
       "require": "./dist/cjs/web.cjs"
     },
     "./bindings/slim": {
-      "types": "./dist/wasm_bindgen/web/coln_js_runtime.d.ts",
+      "types": "./dist/wasm_bindgen/web/coln_wasm_runtime.d.ts",
       "import": "./dist/esm/slim.js",
       "require": "./dist/cjs/slim.cjs"
     }
@@ -116,7 +116,7 @@
       "require": "./dist/cjs/web.cjs"
     },
     "#wasm-bodge/bindings/slim": {
-      "types": "./dist/wasm_bindgen/web/coln_js_runtime.d.ts",
+      "types": "./dist/wasm_bindgen/web/coln_wasm_runtime.d.ts",
       "import": "./dist/esm/slim.js",
       "require": "./dist/cjs/slim.cjs"
     }
