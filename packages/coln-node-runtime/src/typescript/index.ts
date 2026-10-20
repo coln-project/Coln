@@ -12,7 +12,7 @@ type RealmDef = {
 }
 
 export class NodeStore implements types.Store {
-  underlying: native.AutoStoreWrapper
+  underlying: native.StoreWrapper
   
   constructor(def: RealmDef) {
     this.underlying = native.storeFromIr(def.ir, def.coln_source, def.realm_name)
