@@ -11,7 +11,7 @@ type RealmDef = {
   realm_name: string
 }
 
-export class NodeStore implements types.Store {
+export class WasmStore implements types.Store {
   underlying: native.StoreWrapper
   
   constructor(def: RealmDef) {

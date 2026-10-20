@@ -1,9 +1,13 @@
-use coln_flir_rs::ir;
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use crate::store::ColnDef;
 use crate::store::auto::AutoStore;
 use crate::txn::id::TxnWireTuple;
 use crate::txn::rw::StoreRead;
 use crate::txn::rw::StoreWrite;
+use coln_flir_rs::ir;
 
 pub struct WireStore {
     store: AutoStore,

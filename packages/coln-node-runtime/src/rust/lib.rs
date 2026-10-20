@@ -16,11 +16,14 @@ fn as_napi_error(s: String) -> Error<Status> {
 }
 
 #[napi]
-pub fn store_from_ir(ir_json: String, coln_source: String, realm_name: String) -> Result<StoreWrapper> {
+pub fn store_from_ir(
+    ir_json: String,
+    coln_source: String,
+    realm_name: String,
+) -> Result<StoreWrapper> {
     let store = WireStore::from_ir(ir_json, coln_source, realm_name).map_err(as_napi_error)?;
     Ok(StoreWrapper { store })
 }
-
 
 #[napi]
 impl StoreWrapper {

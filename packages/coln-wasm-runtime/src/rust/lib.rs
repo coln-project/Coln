@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Coln contributors
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
-use wasm_bindgen::prelude::*;
 use coln_store::store::wire::WireStore;
+use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub struct StoreWrapper {
@@ -10,7 +10,11 @@ pub struct StoreWrapper {
 }
 
 #[wasm_bindgen]
-pub fn store_from_ir(ir_json: String, coln_source: String, realm_name: String) -> Result<StoreWrapper, String> {
+pub fn store_from_ir(
+    ir_json: String,
+    coln_source: String,
+    realm_name: String,
+) -> Result<StoreWrapper, String> {
     let store = WireStore::from_ir(ir_json, coln_source, realm_name)?;
     Ok(StoreWrapper { store })
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@coln-project/runtime",
+  "name": "@coln-project/wasm-runtime",
   "version": "0.1.0",
   "private": true,
   "author": "Coln contributors",
