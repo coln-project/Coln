@@ -65,7 +65,7 @@ export class ManagedStore {
     return this.base.all_row_id(query)
   }
 
-  one_proj(query: WhereClause, select: [number]): WireTuple {
+  one_proj(query: WhereClause, select: number[]): WireTuple {
     return this.base.one_proj(query, select)
   }
 

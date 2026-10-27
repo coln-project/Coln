@@ -20,7 +20,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         x: (new runtime.ConstRef(null)),
         next: (a: null) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.next",
             [],

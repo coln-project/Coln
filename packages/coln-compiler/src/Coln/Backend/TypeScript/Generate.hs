@@ -101,7 +101,7 @@ instance Reconstructable TS.Id TS.El where
   atIndex res i = do
     let t = TS.Index (TS.Var res) i
     \case
-      SIR.BuiltinTy _ -> t
+      SIR.BuiltinTy ty -> TS.Coerce t (genTy ty)
       SIR.RowId tn ->
         TS.New
           (runtime "RowId")
@@ -183,7 +183,7 @@ rowIdSet env tn cols dty u = do
         (Base, SPropU) -> "BaseProp"
         (Base, SSetU) -> "BaseSet"
         (View, SPropU) -> "ViewProp"
-        (View, SSetU) -> "InductiveViewSet"
+        (View, SSetU) -> "BaseSet"
   TS.New
     (runtime className)
     [ env.store
@@ -220,7 +220,7 @@ baseTableRef env tn cols retShape = do
   let (n, tsParams) = flattenParams $ createTSArgs env tn cols
   let adapter = constructAdapter env retShape
   TS.New
-    (runtime "BaseTableRef")
+    (runtime "BaseRef")
     [ env.store
     , tnString tn
     , TS.List tsParams

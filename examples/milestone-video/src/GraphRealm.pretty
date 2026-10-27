@@ -1,0 +1,57 @@
+flatrealm
+  entities
+    table root.vertex.elt := []
+    table root.vertex.name := [a : root.vertex.elt, b : String] primarykey [a]
+    table root.edge.elt := [a : root.vertex.elt, b : root.vertex.elt]
+    table root.edge.name := [
+      a : root.vertex.elt,
+      b : root.vertex.elt,
+      c : root.edge.elt,
+      d : String
+    ] primarykey [a, b, c]
+    view init.trans-closure.rel := [
+      a : root.vertex.elt,
+      b : root.vertex.elt
+    ] primarykey [a, b]
+  end
+  definitions
+    chased init.trans-closure.incl a b c := a ∈ root.vertex.elt [] ∧ b ∈ root.vertex.elt [] ∧ c ∈ root.edge.elt [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ init.trans-closure.rel [a ↦ a, b ↦ b]
+    chased init.trans-closure.trans a b c := a ∈ root.vertex.elt [] ∧ b ∈ root.vertex.elt [] ∧ c ∈ root.vertex.elt [] ∧ init.trans-closure.rel [
+      a ↦ a,
+      b ↦ b
+    ] ∧ init.trans-closure.rel [a ↦ b, b ↦ c] ⊢ init.trans-closure.rel [
+      a ↦ a,
+      b ↦ c
+    ]
+  end
+  rules
+    enforced root.vertex.elt.foreignKey := root.vertex.elt [] ⊢ ⊤
+    enforced root.vertex.name.foreignKey a b := root.vertex.name [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.vertex.elt []
+    monitored root.vertex.name.total a := a ∈ root.vertex.elt [] ⊢ root.vertex.name [
+      a ↦ a
+    ]
+    enforced root.edge.elt.foreignKey a b := root.edge.elt [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ a ∈ root.vertex.elt [] ∧ b ∈ root.vertex.elt []
+    enforced root.edge.name.foreignKey a b c d := root.edge.name [
+      a ↦ a,
+      b ↦ b,
+      c ↦ c,
+      d ↦ d
+    ] ⊢ a ∈ root.vertex.elt [] ∧ b ∈ root.vertex.elt [] ∧ c ∈ root.edge.elt [
+      a ↦ a,
+      b ↦ b
+    ]
+    monitored root.edge.name.total a b c := a ∈ root.vertex.elt [] ∧ b ∈ root.vertex.elt [] ∧ c ∈ root.edge.elt [
+      a ↦ a,
+      b ↦ b
+    ] ⊢ root.edge.name [a ↦ a, b ↦ b, c ↦ c]
+  end
+end

@@ -1,0 +1,4 @@
+generate-bindings:
+    cabal run coln-cli -- generate-ts examples.coln -o src
+    cabal run coln-cli -- generate-ir examples.coln -o src
+

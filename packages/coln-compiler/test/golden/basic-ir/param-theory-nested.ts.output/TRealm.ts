@@ -11,7 +11,7 @@ export function createRealm(runtime: typeof Runtime) {
       this.root = {
         X: (new runtime.BaseSet(mstore, "root.X", [])),
         outer: {
-          inner: (new runtime.BaseTableRef(
+          inner: (new runtime.BaseRef(
             mstore,
             "root.outer.inner",
             [],

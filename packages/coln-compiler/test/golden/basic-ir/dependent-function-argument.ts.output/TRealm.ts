@@ -22,7 +22,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         f: (a: Runtime.RowId<"root.A">) => {
           return (b: Runtime.RowId<"root.B">) => {
-            return (new runtime.BaseTableRef(
+            return (new runtime.BaseRef(
               mstore,
               "root.f",
               [a, b],

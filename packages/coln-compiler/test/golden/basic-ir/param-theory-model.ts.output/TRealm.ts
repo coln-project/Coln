@@ -10,7 +10,7 @@ export function createRealm(runtime: typeof Runtime) {
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
         model: { X: (new runtime.BaseSet(mstore, "root.model.X", [])) },
-        pointed: (new runtime.BaseTableRef(
+        pointed: (new runtime.BaseRef(
           mstore,
           "root.pointed",
           [],

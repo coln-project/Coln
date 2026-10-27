@@ -16,7 +16,7 @@ export interface MutableRef<T> extends Ref<T> {
 }
 
 export class BaseRef<T> implements MutableRef<T> {
-  constructor(private store: ManagedStore, private table_name: Path, private bound: LiveTuple, private select: [number], private adaptor: Adaptor<T>) {}
+  constructor(private store: ManagedStore, private table_name: Path, private bound: LiveTuple, private select: number[], private adaptor: Adaptor<T>) {}
   
   value(): T {
     return this.adaptor.reconstruct(this.store.one_proj({

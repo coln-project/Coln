@@ -12,8 +12,8 @@ export interface Store {
   commit(): CommitHash
   abort(): null
 
-  all(query: WhereClause, select: [number]): [WireTuple]
-  one(query: WhereClause, select: [number]): WireTuple
+  all(query: WhereClause, select: number[]): [WireTuple]
+  one(query: WhereClause, select: number[]): WireTuple
   exists(query: WhereClause): boolean
   
   add(table_name: Path, values: WireTuple): WireRowId

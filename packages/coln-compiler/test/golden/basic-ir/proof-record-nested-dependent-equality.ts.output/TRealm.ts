@@ -14,7 +14,7 @@ export function createRealm(runtime: typeof Runtime) {
       this.root = {
         X: (new runtime.BaseSet(mstore, "root.X", [])),
         result: (expected: Runtime.RowId<"root.X">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.result",
             [expected],
