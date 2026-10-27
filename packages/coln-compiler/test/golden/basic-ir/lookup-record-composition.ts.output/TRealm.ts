@@ -18,7 +18,7 @@ export function createRealm(runtime: typeof Runtime) {
       this.root = {
         X: (new runtime.BaseSet(mstore, "root.X", [])),
         key: (a: Runtime.RowId<"root.X">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.key",
             [a],
@@ -28,7 +28,7 @@ export function createRealm(runtime: typeof Runtime) {
                 return [a.rank];
               },
               reconstruct: (result: Runtime.WireTuple) => {
-                return { rank: result[0] };
+                return { rank: result[0] as number };
               }
             }
           ));
@@ -37,7 +37,7 @@ export function createRealm(runtime: typeof Runtime) {
           return (new runtime.BaseSet(mstore, "root.PayloadAt", [a]));
         },
         slot: (x: Runtime.RowId<"root.X">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.slot",
             [x],
@@ -57,7 +57,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         payload: (rank: number) => {
           return (a: Runtime.RowId<"root.PayloadAt">) => {
-            return (new runtime.BaseTableRef(
+            return (new runtime.BaseRef(
               mstore,
               "root.payload",
               [rank, a],
@@ -67,7 +67,7 @@ export function createRealm(runtime: typeof Runtime) {
                   return [a.name];
                 },
                 reconstruct: (result: Runtime.WireTuple) => {
-                  return { name: result[0] };
+                  return { name: result[0] as string };
                 }
               }
             ));
@@ -77,7 +77,7 @@ export function createRealm(runtime: typeof Runtime) {
           return (new runtime.BaseSet(mstore, "root.E", [a]));
         },
         edge: (x: Runtime.RowId<"root.X">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.edge",
             [x],

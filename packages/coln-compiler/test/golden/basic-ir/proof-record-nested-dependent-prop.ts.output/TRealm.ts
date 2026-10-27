@@ -12,7 +12,7 @@ export function createRealm(runtime: typeof Runtime) {
         P: (a: number) => {
           return (new runtime.BaseProp(mstore, "root.P", [a]));
         },
-        package: (new runtime.BaseTableRef(
+        package: (new runtime.BaseRef(
           mstore,
           "root.package",
           [],
@@ -22,7 +22,7 @@ export function createRealm(runtime: typeof Runtime) {
               return [a.value];
             },
             reconstruct: (result: Runtime.WireTuple) => {
-              return { value: result[0], evidence: { proof: null } };
+              return { value: result[0] as number, evidence: { proof: null } };
             }
           }
         ))

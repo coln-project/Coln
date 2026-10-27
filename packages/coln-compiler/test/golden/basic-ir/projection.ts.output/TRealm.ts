@@ -21,7 +21,7 @@ export function createRealm(runtime: typeof Runtime) {
           first: Runtime.RowId<"root.X">,
           second: Runtime.RowId<"root.X">
         }) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.r",
             [p.first, p.second],

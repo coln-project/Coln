@@ -12,7 +12,7 @@ export function createRealm(runtime: typeof Runtime) {
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
         V: (new runtime.BaseSet(mstore, "root.V", [])),
-        x: (new runtime.BaseTableRef(
+        x: (new runtime.BaseRef(
           mstore,
           "root.x",
           [],
@@ -29,7 +29,7 @@ export function createRealm(runtime: typeof Runtime) {
             }
           }
         )),
-        y: (new runtime.BaseTableRef(
+        y: (new runtime.BaseRef(
           mstore,
           "root.y",
           [],

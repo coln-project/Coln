@@ -13,7 +13,7 @@ export function createRealm(runtime: typeof Runtime) {
         X: (new runtime.BaseSet(mstore, "root.X", [])),
         Y: (new runtime.BaseSet(mstore, "root.Y", [])),
         next: (a: Runtime.RowId<"root.X">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.next",
             [a],
