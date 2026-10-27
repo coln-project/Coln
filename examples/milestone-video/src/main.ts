@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 import { NodeStore } from "@coln-project/node-runtime"
 import { ManagedStore } from "@coln-project/interface"
 import { readFile } from "node:fs/promises"
