@@ -4,9 +4,17 @@
 
 import { NodeStore } from "../src/typescript/index.js"
 import { readFile } from "node:fs/promises"
+<<<<<<< HEAD
 import { createRealm } from "./bindings/TransitiveClosureRealm.js"
 import { ManagedStore } from "@coln-project/interface"
 import * as runtime from "@coln-project/interface"
+=======
+import { createRealm  } from "./bindings/TransitiveClosureRealm.js"
+import { ManagedStore } from "@coln-project/interface"
+import * as colnInterface from "@coln-project/interface"
+
+const TransitiveClosureRealm = createRealm(colnInterface)
+>>>>>>> 32e3e860 (code for milestone video)
 
 const ir: string = await readFile(
   new URL("./TransitiveClosureRealm.json", import.meta.url),

@@ -1,9 +1,22 @@
 {
   "name": "@coln-project/node-runtime",
+  "scripts": {
+    "build": "tsc; mkdir -p dist/native; napi build --platform --esm -o dist/native",
+    "prepack": "npm run build"
+  },
   "napi": {
     "binaryName": "coln-node-runtime"
   },
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/src/typescript/index.d.ts",
+      "import": "./dist/src/typescript/index.js"
+    }
+  },
   "dependencies": {
     "@coln-project/interface": "link:../coln-js-interface"
   },

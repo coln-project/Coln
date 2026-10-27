@@ -1,0 +1,27 @@
+{
+  "name": "milestone-video",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "main": "tsc; node dist/src/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.4.0",
+      "onFail": "download"
+    }
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^26.6.5"
+  },
+  "dependencies": {
+    "@coln-project/interface": "link:../../packages/coln-js-interface",
+    "@coln-project/node-runtime": "link:../../packages/coln-node-runtime"
+  }
+}

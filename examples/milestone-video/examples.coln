@@ -3,39 +3,54 @@ theory Graph := sig
   edge : vertex -> vertex -> Set
 end
 
-def triangle (G : Graph) : Set := sig
-  a b c : G.vertex
-  ab : G.edge a b
-  bc : G.edge b c
-  ac : G.edge a c
-end
-
-theory NamesFor (X : Set) := X -> String
-
 theory GraphWithNames := sig
   graph : Graph
-  vertex-names : NamesFor graph.vertex
-  edge-names : (v0 v1 : graph.vertex) -> NamesFor (graph.edge v0 v1)
+  vertex-name : graph.vertex -> String
+  edge-name : (v0 v1 : graph.vertex) -> graph.edge v0 v1 -> String
 end
 
-theory SetWithNames := sig
+theory NamedSet := sig
   elt : Set
-  names : NamesFor elt
+  name : elt -> String
 end
 
-theory GraphUsingSWN := sig
-  vertex : SetWithNames
-  edge : vertex.elt -> vertex.elt -> SetWithNames
+theory GraphOverNamedSets := sig
+  vertex : NamedSet
+  edge : vertex.elt -> vertex.elt -> NamedSet
 end
 
-def underlying-graph (G : GraphUsingSWN) : Graph := struct
-  vertex := G.vertex.elt
-  edge := v0 => v1 => (G.edge v0 v1).elt
+theory TransitiveExtension (^i G : Graph) := sig
+  rel : G.vertex -> G.vertex -> Prop
+  incl : (a b : G.vertex) -> G.edge a b -> rel a b
+  trans : (a b c : G.vertex) -> rel a b -> rel b c -> rel a c
 end
 
-def repackage (G : GraphUsingSWN) : GraphWithNames := struct
-  graph := underlying-graph G
-  vertex-names := G.vertex.names
-  edge-names := v0 => v1 => (G.edge v0 v1).names
+theory MonoidOn (X : Set) := sig
+  zero : X
+  plus : X -> X -> X
+end
+
+theory FlowExprInterface (^i G : Graph) := sig
+  t : G.vertex -> Set
+  is-monoid : MonoidOn t
+  const : (v : G.vertex) -> Int -> t v
+  flow : (a b : G.vertex) -> G.edge a b -> t b
+end
+
+realm GraphRealm @ GraphOverNamedSets
+  def graph-with-names : GraphWithNames := struct
+    graph := struct
+      vertex := root.vertex.elt
+      edge := v0 => v1 => (root.edge v0 v1).elt
+    end
+    vertex-name := root.vertex.name
+    edge-name := v0 => v1 => (root.edge v0 v1).name
+  end
+
+  def g : Graph := graph-with-names.graph
+
+  ind def trans-closure : TransitiveExtension g := init (TransitiveExtension g)
+
+  ind def FlowExpr : FlowExprInterface g := init (FlowExprInterface g)
 end
 
