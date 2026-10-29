@@ -14,7 +14,7 @@ import FNotation (Name)
 
 import Coln.Util.Containers
 import Coln.Util.Debug
-import Coln.Util.Dict
+import Coln.Util.Dict (KeyIndex (..))
 
 -- MultiDict with grouped Names
 --------------------------------------------------------------------------------

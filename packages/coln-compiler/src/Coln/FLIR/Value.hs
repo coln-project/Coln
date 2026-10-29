@@ -86,9 +86,13 @@ data Query = Query
   , props :: [Prop]
   }
 
+data Union = Union
+  { tables :: Bwd TableName
+  }
+
 data Realm = Realm
   { entities :: OMap TableName Entity
-  , unions :: OMap TableName [TableName]
+  , unions :: OMap TableName Union
   , definitions :: OMap TableName Definition
   , rules :: OMap TableName Rule
   }

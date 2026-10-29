@@ -10,7 +10,7 @@ import Coln.SIR.Syntax
 
 import Data.Aeson qualified as AE
 import GHC.Generics
-import Data.Functor.Barbie
+
 
 data Materialization
   = Recomputed
@@ -59,23 +59,15 @@ data Rule = Rule
   , consequent :: Prop
   }
 
-data Generators f = Generators
-  { entities :: f Entity
-  , unions :: f Union
-  , definitions :: f Definition
-  , rules :: f Rule
+data Generators = Generators
+  { entities :: OMap TableName Entity
+  , unions :: OMap TableName Union
+  , definitions :: OMap TableName Definition
+  , rules :: OMap TableName Rule
   }
 
-instance FunctorB Generators where
-  bmap f gs = Generators
-    { entities = f gs.entities
-    , unions = f gs.unions
-    , definitions = f gs.definitions
-    , rules = f gs.rules
-    }
-
 data Realm = Realm
-  { generators :: Generators (OMap TableName)
+  { generators :: Generators
   , auxillaries :: OMap Name (El Theory, TheoryShape)
   }
 

@@ -1,0 +1,226 @@
+\documentclass{scrartcl}
+
+\usepackage{prelude}
+
+\title{First-order Logic Intermediate Representation: Technical Specification}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\section{Introduction}
+
+This document is intended as a reference specification for FLIR (First-order Logic Intermediate Representation). FLIR is the language emitted by the Coln compiler.
+
+This document covers the grammar of FLIR and its intended semantics. It does not cover the production of FLIR from the Coln language, or the precise details of the implementation for these semantics.
+
+\section{Grammar}
+
+The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref{fig:grammar}. The grammar in Figure~\ref{fig:lexical-structure} expresses the token structure, assuming a primitive notion of \syntax{<escapedstring>} corresponding to a string with escaped characters as according to the JSON specification. The grammar in Figure~\ref{fig:grammar} expresses the tree structure of FLIR.
+
+\begin{figure}
+  \grammarindent6em
+  \begin{grammar}
+    <digit> ::= `0' | $\cdots$ | `9'
+
+    <int> ::= <digit>+
+
+    <varid> ::= `%' <int>
+
+    <letter> ::= <GeneralCategory:UppercaseLetter>
+      \alt <GeneralCategory:LowercaseLetter>
+      \alt <GeneralCategory:TitlecaseLetter>
+      \alt <GeneralCategory:ModifierLetter>
+      \alt <GeneralCategory:ModifierLetter>
+      \alt <GeneralCategory:MathSymbol>
+      \alt <GeneralCategory:CurrencySymbol>
+      \alt <GeneralCategory:ModifierSymbol>
+      \alt <GeneralCategory:OtherSymbol>
+      \alt `.' | `/'
+
+    <word> ::= <letter> (<letter> | <digit>)*
+
+    <name> ::= `\'' <word>
+
+    <string> ::= `"' <escapedstring> `"'
+  \end{grammar}
+  \caption{Lexical Structure of FLIR}
+  \label{fig:lexical-structure}
+\end{figure}
+
+\begin{figure}
+  \grammarindent6em
+  \begin{grammar}
+    <coltype> ::= `int'
+    \alt `string'
+    \alt <name>
+
+    <args> ::= `(' <coltype>* `)'
+
+    <primarykey> ::= `(' `primarykey' <int> `)'
+
+    <table> ::= `(' `ground' <args> <primarykey> `)'
+      \alt `(' `hashcons' <args> `)'
+      \alt `(' `view' <args> `)'
+
+    <union> ::= `(' `union' <name>* `)'
+
+    <term> ::= <varid> | <int> | <string>
+
+    <idarg> ::= `(' `id' <term> `)'
+
+    <atom> ::= `(' <name> <idarg>? <term>* `)'
+
+    <prop> ::= <atom> | `(' `=' <coltype> <term> <term> `)'
+
+    <props> ::= `(' <prop>* `)'
+
+    <rule> ::= `(' `rule' <args> <props> <atom> `)'
+
+    <status> ::= `enforced' | `monitored'
+
+    <law> ::= `(' `law' <status> <args> <props> <props> `)'
+    
+    <topbody> ::= <table>
+    \alt <union>
+    \alt <rule>
+    \alt <law>
+
+    <topelt> ::= `(' <name> <topbody> `)'
+
+    <top> ::= <topelt>*
+  \end{grammar}
+  \caption{Grammar for FLIR}
+  \label{fig:grammar}
+\end{figure}
+
+\begin{figure}
+\begin{verbatim}
+('vertex
+ (ground ()))
+('edge
+ (ground ('vertex 'vertex)))
+('vertex.foreignKey
+ (law ('vertex) (('vertex (id %0))) ()))
+('edge.foreignKey
+ (law ('vertex 'vertex 'edge)
+  (('edge (id %2) %0 %1))
+  (() (('vertex (id %0)) ('vertex (id %1))))))
+\end{verbatim}
+  \caption{Schema for Graphs}
+  \label{fig:graph-schema}
+\end{figure}
+
+\section{Tables}
+
+There are three types of tables in FLIR: ground tables, hashcons tables, and view tables.
+
+\begin{definition}
+  A \defcase{ground table} contains the actual data of the database. That is, a commit logically speaking is only about the changes to the ground tables (though, for efficiency reasons we may cache changes to other tables).
+
+  Ground tables may have \emph{primary keys}: see Definition~\ref{def:primary-key}.
+\end{definition}
+
+\begin{definition}
+  A \defcase{hashcons table}, logically speaking, ``contains everything that it is allowed to contain.'' That is, if an entry in a hashcons table is allowed by the \emph{laws} (\S\ref{sec:laws}), then it should be considered to logically exist. However, it should only be in the table \emph{once}; this may be implemented by deduplication (hence the name hashcons), or alternatively just by implementing equality with structural comparison rather than id comparison.
+
+  In practice, users make explicit inserts into hashcons tables; these inserts should be seen as ``scratchwork'' that is only relevant to commits when inserts into ground tables reference the ids produced by the inserts into hashcons tables.
+\end{definition}
+
+\begin{definition}
+  A \defcase{view table}, logically speaking, ``contains everything that it is supposed to contain.'' The \emph{rules} (\S\ref{sec:rules}) of the schema explain how to push data from the ground tables into the view tables.
+\end{definition}
+
+Conceptually speaking, hashcons and view tables are quite similar. However, from a database perspective, their validity is maintained in different ways. View tables are valid ``by construction'' in a sense; they only have in them what the rules say should be in them. The user never inserts into a view table, so the database engine doesn't have to check that an arbitrary insert is valid. On the other hand, the hashcons tables are inserted into manually, so the database engine must check that an arbitrary insert is valid (law enforcement), but the database engine need not eagerly create its own inserts into hashcons tables.
+
+Tables have row ids which allow unambiguous access to individual rows of the table. Row ids for views are only used internally, but row ids for ground and hashcons tables can be referenced in other tables. Each row id is unique across the database; two tables may not share row ids.
+
+Each table has a list of columns. A column may either be of primitive type (\syntax{`int'} or \syntax{`string'}), or it may be of row id or union type, referred to by \syntax{<name>}.
+
+\begin{definition} \label{def:primary-key}
+  A ground table may have a \defcase{primary key}. The primary key is specified by an integer that identifies a prefix of the columns, the values of which must uniquely identify rows.
+\end{definition}
+
+\begin{figure}
+\begin{verbatim}
+('vertex
+ (ground ()))
+('edge
+ (ground ('vertex 'vertex) (primarykey 2)))
+('vertex.foreignKey
+ (law ('vertex) (('vertex (id %0))) ()))
+('edge.foreignKey
+ (law ('vertex 'vertex 'edge)
+  (('edge (id %2) %0 %1))
+  (() (('vertex (id %0)) ('vertex (id %1))))))
+\end{verbatim}
+  \caption{Simple directed graph schema}
+  \label{fig:simple-digraph}
+\end{figure}
+
+\begin{example}
+  In Figure~\ref{fig:simple-digraph}, the \verb|(primarykey 2)| primary key constraint says that for any two vertices there may be at most one edge between them.
+\end{example}
+
+Mathmatically speaking, a table may be seen as a function from its set of row ids to tuples with entry types given by the column types.
+
+\section{Unions} \label{sec:unions}
+
+\begin{definition}
+  A \defcase{union} declares a new column type, the allowable values of which are the union of the row ids for tables listed in the \emph{variants} of the union.
+\end{definition}
+
+Given an element of union type, its corresponding table is unambiguous because each row id belongs to at most one table. However, it may be desirable to make the process of looking up the corresponding table more efficient; this may be achieved in a variety of ways.
+
+\section{Propositions} \label{sec:propositions}
+
+\begin{definition} \label{def:term}
+  A \defcase{term} is either a literal string, literal integer, or a variable, identified by its position in the context (\verb|%0| is the first variable in the context, \verb|%1| the second variable, etc.).
+\end{definition}
+
+\begin{definition} \label{def:atomic-proposition}
+  An \defcase{atomic proposition} consists of a table name along with an optional row id specification (\syntax{<idarg>}) and a sequence of terms. The terms are written in order of the columns of the table, so the number of terms may not exceed the number of columns. The semantics of an atomic proposition is that a row exists in the named table with given id (if provided), and given column values.
+\end{definition}
+
+\begin{definition} \label{def:equality-proposition}
+  An \defcase{equality proposition} consists of a column type along with two terms of that type. The semantics of an equality proposition are that the two provided terms are equal.
+\end{definition}
+
+A proposition is either an atomic or equality proposition.
+
+In general, we often use a sequence of propositions (\syntax{props}): this should be interpreted as the \emph{conjunction} (\(\wedge\)) of all propositions in the sequence.
+
+\section{Rules} \label{sec:rules}
+
+\begin{definition}
+  A \defcase{rule} consists of
+  \begin{itemize}
+    \item A sequence of types for bound variables (which are identified by index into this sequence, see Definition~\ref{def:term}).
+    \item An \defcase{antecedent}, which is a conjunction of propositions.
+    \item A \defcase{consequent}, which is a single atomic proposition whose head is a view table.
+  \end{itemize}
+\end{definition}
+
+The semantics of a rules is that for every assignment of variables such that the antecedent holds, a row should be inserted into the view table identified by the consequent.
+
+\section{Laws} \label{sec:laws}
+
+\begin{definition}
+  A \defcase{law} consists of
+  \begin{itemize}
+    \item A status, which may either be \verb|enforced| or \verb|monitored|.
+    \item A sequence of types for bound variables (which are identified by index into this sequence, see Definition~\ref{def:term}).
+    \item An \defcase{antecedent}, which is a conjunction of propositions.
+    \item A \defcase{consequent}, which is a conjunction of propositions.
+  \end{itemize}
+\end{definition}
+
+The semantics of a law is that for every assignment of variables such that the antecedent holds, the consequent should also hold.
+
+An enforced law (law with status \verb|enforced|) must hold at all times, including in the presence of merge conflicts. A database in violation of enforced laws is an error.
+
+A monitored law (law with status \verb|monitored|) may sometimes not hold; a database in violation of monitored laws may be seen as a ``work in progress'' towards a valid database.
+
+\end{document}

@@ -120,9 +120,9 @@ defsOf cols = \case
 -- entities, definitions, etc?
 
 newtype GeneratorWriter a = GeneratorWriter
-  { runGeneratorWriter :: RWS Path () (Generators (OMap TableName)) a
+  { runGeneratorWriter :: RWS Path () Generators a
   }
-  deriving (Functor, Applicative, Monad, MonadReader Path, MonadState (Generators (OMap Path)))
+  deriving (Functor, Applicative, Monad, MonadReader Path, MonadState Generators)
 
 emitEntity :: Entity -> GeneratorWriter ()
 emitEntity e = do
@@ -134,25 +134,25 @@ emitDefinition x d = do
   p <- ask
   modify (\gs -> gs { definitions = gs.definitions OMap.>| (tableName $ p :> x, d) })
 
-emitLaw :: Maybe Name -> Law -> GeneratorWriter ()
-emitLaw mx l = do
+emitRule :: Maybe Name -> Rule -> GeneratorWriter ()
+emitRule mx l = do
   p <- ask
   let p' = case mx of
         Just x -> p :> x
         Nothing -> p
-  modify (\gs -> gs { laws = gs.laws OMap.>| (tableName p', l) })
+  modify (\gs -> gs { rules = gs.rules OMap.>| (tableName p', l) })
 
 emitUnion :: GeneratorWriter ()
 emitUnion = do
   p <- ask
-  modify (\gs -> gs { unions = gs.unions OMap.>| (tableName p, BwdNil) })
+  modify (\gs -> gs { unions = gs.unions OMap.>| (tableName p, Union BwdNil) })
 
 emitCaseFor :: TableName -> GeneratorWriter ()
 emitCaseFor tn = do
   p <- ask
   modify $ \gs -> do
    let u = elemAt gs.unions tn
-   gs { unions = gs.unions OMap.|> (tn, u :> tableName p) }
+   gs { unions = gs.unions OMap.|> (tn, Union (u.tables :> tableName p)) }
 
 separateGenerator :: TableName -> V.Generator -> GeneratorWriter ()
 separateGenerator tn gen = do
@@ -173,7 +173,7 @@ separateGenerator tn gen = do
         Holy -> pure ()
         Profane -> do
           let atom = S.Atom tn S.Erased [S.Var (BId $ argNum - i - 1) | i <- [0 .. argNum - 1]]
-          emitLaw
+          emitRule
             (Just "foreignKey")
             (Rule Enforced Consequent (zip names septys) atom S.trueProp)
     V.GenLift a -> case hlevelOf a of
@@ -183,7 +183,7 @@ separateGenerator tn gen = do
         case gen.providence of
           Holy -> defsOf cols codProp
           Profane ->
-            emitLaw Nothing (Rule Monitored Antecedent cols S.trueProp codProp)
+            emitRule Nothing (Rule Monitored Antecedent cols S.trueProp codProp)
       HSet -> do
         let resultName = freshNameFor names
         let resultQ = separate argNum a
@@ -193,7 +193,7 @@ separateGenerator tn gen = do
             emitEntity $ Entity Hashcons (second (.shape) <$> cols) (Just [0 .. argNum - 1])
 
             let atom = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
-            emitLaw
+            emitRule
               (Just "foreignKey")
               (Rule Enforced Consequent cols S.trueProp atom)
 
@@ -206,12 +206,12 @@ separateGenerator tn gen = do
             emitEntity $ Entity Table (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
 
             let foreignKeyAnte = S.Atom tn S.Erased [S.Var (BId (argNum - i)) | i <- [0 .. argNum]]
-            emitLaw
+            emitRule
               (Just "foreignKey")
               (Rule Enforced Consequent allCols foreignKeyAnte S.trueProp)
 
             let totalCons = S.Atom tn S.Erased [S.Var (BId (argNum - i - 1)) | i <- [0 .. argNum - 1]]
-            emitLaw
+            emitRule
               (Just "total")
               (Rule Monitored Antecedent cols S.trueProp totalCons)
       _ -> panic "bad h-level of cod"
