@@ -4,6 +4,8 @@
 
 use crate::relational::schema::TableSchema;
 use crate::scalarial::{ScalarType, ScalarTypedValue};
+use coln_flir_rs::engine::delta::ZRow;
+pub use coln_flir_rs::engine::delta::ZWeight;
 use dbsp::{never_none, never_roaring_filter};
 use std::{
     any::Any,
@@ -12,6 +14,10 @@ use std::{
     fmt::{self, Debug, Display},
     rc::Rc,
 };
+
+/// This is the `ZRow` type coln-query uses internally, based on the
+/// [shared `ZRow` type](ZRow). Its tuple type is [`TupleValue`].
+pub type ZRowInt = ZRow<TupleValue>;
 
 pub trait Tuple: FromIterator<ScalarTypedValue> {
     /// The empty tuple is also called the _unit tuple_.

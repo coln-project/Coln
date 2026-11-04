@@ -17,7 +17,6 @@ use coln_flir_rs::{
 };
 use coln_query::api::{
     ColnQuery,
-    deltas::StoreDelta,
     transaction::{TryCommitErr, TryCommitOk, Tx},
     violations::ViolationsDelta,
 };
@@ -284,14 +283,9 @@ impl DbWrite for Bouncer {
     }
 
     fn commit(&mut self) -> Result<ViolationsDelta, BouncerError> {
-        let store_delta = self
-            .store
-            .try_commit()?
-            .try_map(|st| Ok(QueryTuple::from(st)))?;
+        let store_delta = self.store.try_commit()?.map(|st| QueryTuple::from(st));
 
-        let mut tx = Tx::new(StoreDelta::empty());
-        // TODO convert TabPathOp into TableDelta
-        tx.insert(store_delta);
+        let tx = Tx::new(store_delta);
 
         match tx.try_commit(&mut self.query) {
             Ok(TryCommitOk::Pending(pending)) => {

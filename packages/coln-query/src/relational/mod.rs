@@ -34,12 +34,12 @@ pub mod relation;
 pub mod schema;
 
 use crate::{
-    api::deltas::ZRow,
     error::{BuildError, LoweringError, RuntimeError},
     host::{QueryIr, resolver::ResolvedCode},
     relational::{
         catalog::SourceSchemas,
         expr::{SinkId, SourceId},
+        relation::ZRowInt,
     },
 };
 pub use relation::{RelationRef, TupleValue};
@@ -109,7 +109,7 @@ pub trait Runtime {
     fn feed(
         &mut self,
         source: &SourceId,
-        rows: impl IntoIterator<Item = ZRow>,
+        rows: impl IntoIterator<Item = ZRowInt>,
     ) -> Result<bool, Self::Error>;
 
     /// Advance the computation over everything fed since the last commit.

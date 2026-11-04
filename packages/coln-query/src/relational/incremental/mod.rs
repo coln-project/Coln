@@ -6,9 +6,9 @@
 //! and [`Runtime`], which is [`DbspRuntime`].
 
 use super::{Backend, Runtime};
-use crate::api::deltas::ZRow;
 use crate::error::{BuildError, LoweringError, RuntimeError};
 use crate::relational::incremental::dbsp::DbspOutputDelta;
+use crate::relational::relation::ZRowInt;
 use crate::{
     host::{
         HostInterpreter, InterpreterContext, QueryIr,
@@ -163,7 +163,7 @@ impl Runtime for DbspRuntime {
     fn feed(
         &mut self,
         source: &SourceId,
-        rows: impl IntoIterator<Item = ZRow>,
+        rows: impl IntoIterator<Item = ZRowInt>,
     ) -> Result<bool, Self::Error> {
         self.inputs.get(source).map_or_else(
             || Ok(false),
