@@ -2,18 +2,197 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! An interface for a [Transaction](Tx). A transaction can be in exactly one
-//! state of [Prepare], [Pending], [Committed], [Aborted], [Rejected].
+//! Data structures used to define an interface for a database [Transaction](Tx).
+//! A transaction can be in exactly one state of [Prepare], [Pending],
+//! [Committed], [Aborted], [Rejected].
+//!
+//! Key data structures for passing deltas of row-oriented data are  [ZRowExt],
+//! [TableDelta], [StoreDelta], and [DerivedDataDelta]. [TxStore] is used only
+//! internally and implemented by [ColnQuery](super::ColnQuery) to process
+//! [transactions](Tx).
 
 use super::{
-    deltas::{DerivedDataDelta, StoreDelta, TableDelta},
     error::UnsafeApplyError,
-    store::TxStore,
     violations::{ViolationsDelta, ViolationsSet},
 };
-use crate::api::deltas::Consolidated;
-pub use crate::utils::cli_table::{CliReport, ToCliReport};
+use crate::relational::TupleValue;
+use crate::scalarial::ScalarTypedValue;
+use crate::utils::cli_table::CliTableHeader;
+use crate::utils::cli_table::{
+    Cell, CellStruct, CliReport, CliTableRow, Justify, PositionalHeader, ToCliReport,
+    ZWeightedHeader,
+};
+use coln_flir_rs::engine::delta::Consolidated;
+pub use coln_flir_rs::engine::{
+    delta::{
+        PartialConsolidated, StoreDelta as StoreDeltaLib, TableDelta as TableDeltaLib, ZRow,
+        ZWeight,
+    },
+    query::{QueryScalarValue, QueryTuple},
+};
 use std::io;
+use std::iter;
+
+impl From<QueryScalarValue> for ScalarTypedValue {
+    fn from(value: QueryScalarValue) -> Self {
+        match value {
+            QueryScalarValue::U64(value) => ScalarTypedValue::Uint(value),
+            QueryScalarValue::U32(value) => ScalarTypedValue::Uint(value as u64), // TODO: More scalar types in query engine.
+            QueryScalarValue::I64(value) => ScalarTypedValue::Iint(value),
+            QueryScalarValue::I32(value) => ScalarTypedValue::Iint(value as i64), // TODO: More scalar types in query engine.
+            QueryScalarValue::String(value) => ScalarTypedValue::String(value),
+        }
+    }
+}
+
+impl From<ScalarTypedValue> for QueryScalarValue {
+    fn from(value: ScalarTypedValue) -> Self {
+        match value {
+            ScalarTypedValue::String(value) => QueryScalarValue::String(value),
+            ScalarTypedValue::Uint(value) => QueryScalarValue::U64(value),
+            ScalarTypedValue::Iint(value) => QueryScalarValue::I64(value),
+            ScalarTypedValue::Bool(_) | ScalarTypedValue::Char(_) | ScalarTypedValue::Null(_) => {
+                panic!("Query produced data type which is unsupported by coln")
+            }
+        }
+    }
+}
+
+impl From<QueryTuple> for TupleValue {
+    fn from(value: QueryTuple) -> Self {
+        value.into_iter().map(ScalarTypedValue::from).collect()
+    }
+}
+
+impl From<TupleValue> for QueryTuple {
+    fn from(value: TupleValue) -> Self {
+        value.data.into_iter().map(QueryScalarValue::from).collect()
+    }
+}
+
+/// This is the `ZRow` type coln-query receives and outputs externally, based
+/// on the [shared `ZRow` type](ZRow). Its tuple type is [`QueryTuple`].
+/// Internally, coln-query uses [`crate::relational::relation::ZRowInt`].
+pub type ZRowExt = ZRow<QueryTuple>;
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! zrow {
+    ( $zweight:literal [$($key:expr),* $(,)?]) => {{
+        let tuple = [$( QueryScalarValue::from($key) ),*].into_iter().collect::<QueryTuple>();
+        ZRowExt::new($zweight, tuple).expect("non-zero zweight")
+    }};
+}
+
+impl CliTableRow for TupleValue {
+    fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<> {
+        self.data
+            .iter()
+            .map(|field| {
+                let justification = match field {
+                    ScalarTypedValue::String(_) => Justify::Left,
+                    _ => Justify::Right,
+                };
+                field.to_string().cell().justify(justification)
+            })
+            // Collected so that the iterator owns its cells instead of
+            // borrowing the row it was built from.
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
+impl CliTableRow for QueryTuple {
+    fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<> {
+        self.inner()
+            .iter()
+            .map(|field| {
+                let justification = match field {
+                    QueryScalarValue::String(_) => Justify::Left,
+                    _ => Justify::Right,
+                };
+                field.to_string().cell().justify(justification)
+            })
+            // Collected so that the iterator owns its cells instead of
+            // borrowing the row it was built from.
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
+impl<Tuple: CliTableRow> CliTableRow for ZRow<Tuple> {
+    /// The `zweight` is prepended to the `row`.
+    fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<Tuple> {
+        iter::once(self.zweight().to_string().cell().justify(Justify::Right))
+            .chain(self.tuple().as_cli_table_row())
+    }
+}
+
+pub type TableDelta = TableDeltaLib<QueryTuple>;
+
+trait TableDeltaExt {
+    fn cli_table_header(&self) -> impl CliTableHeader;
+}
+
+impl TableDeltaExt for TableDelta {
+    /// A base table delta carries no schema, so its columns are numbered by
+    /// position, with the arity taken from the first row.
+    fn cli_table_header(&self) -> impl CliTableHeader {
+        let columns = self
+            .delta()
+            .first()
+            .map_or(0, |row| row.tuple().inner().arity());
+        ZWeightedHeader(PositionalHeader::new(columns))
+    }
+}
+
+impl ToCliReport for TableDelta {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::untitled();
+        report.section(
+            self.for_entity().to_string(),
+            self.cli_table_header(),
+            self.delta(),
+        )?;
+        Ok(report)
+    }
+}
+
+/// An update of the EDB, that is, insertions or deletions of base facts.
+///
+/// Ideally, there is at most one entry per table.
+pub type StoreDelta = StoreDeltaLib<PartialConsolidated, QueryTuple>;
+
+/// An update of the IDB, that is, insertions or deletions of derived facts.
+pub type DerivedDataDelta<Marker> = StoreDeltaLib<Marker, QueryTuple>;
+
+impl<Marker> ToCliReport for DerivedDataDelta<Marker> {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::new("StoreDelta");
+        report.extend(
+            self.deltas()
+                .iter()
+                .map(|delta| delta.to_cli_report())
+                .collect::<std::io::Result<Vec<_>>>()?,
+        );
+        Ok(report)
+    }
+}
+
+/// A generic transactional engine/store. Implemented by
+/// [`ColnQuery`](super::ColnQuery), callable only from within this crate.
+pub trait TxStore {
+    type Error: std::error::Error + Clone;
+
+    /// Executes and applies the transaction given by the updates in `delta`.
+    fn apply(&mut self, delta: StoreDelta) -> Result<TxOutcome, Self::Error>;
+    /// Undoes the last transaction by rolling back every state change caused
+    /// by that transaction. Should only fail in exceptional circumstances.
+    fn rollback(&mut self) -> Result<(), Self::Error>;
+    /// Commits the last transaction. Possibly, a no-op or do some cleanup.
+    /// Should only fail in exceptional circumstances.
+    fn commit(&mut self) -> Result<(), Self::Error>;
+}
 
 /// The query engine's primary API is a transaction represented as a state
 /// machine with the following five states:
@@ -174,8 +353,8 @@ pub struct Rejected {
 ///
 /// A monitored (soft) violation is tolerated and committed, so *that* set
 /// accumulates across transactions, and the engine reports it relative to what
-/// was already there: a positive [`ZWeight`](super::deltas::ZWeight) is a
-/// violation that appeared, a negative one a violation this transaction resolved.
+/// was already there: a positive [`ZWeight`] is a violation that appeared,
+/// a negative one a violation this transaction resolved.
 /// Which is the right shape, because the engine does not keep the set
 /// (the caller does, and a caller can only maintain one if needed).
 /// To know whether any monitored violation is currently outstanding,
@@ -273,9 +452,11 @@ impl Tx<Prepare> {
             },
         }
     }
-    pub fn new(store_delta: StoreDelta) -> Self {
+    pub fn new(store_delta: impl Into<StoreDelta>) -> Self {
         Tx {
-            state: Prepare { delta: store_delta },
+            state: Prepare {
+                delta: store_delta.into(),
+            },
         }
     }
     /// Convenience method to add data beyond initialization.

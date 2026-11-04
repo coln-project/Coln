@@ -44,6 +44,9 @@ impl<Tuple> ZRow<Tuple> {
     pub fn zweight(&self) -> ZWeight {
         self.zweight
     }
+    pub fn tuple(&self) -> &Tuple {
+        &self.tuple
+    }
     pub fn into_tuple(self) -> Tuple {
         self.tuple
     }
@@ -75,6 +78,14 @@ impl<Tuple> ZRow<Tuple> {
     /// Otherwise, `Some(self)` is returned.
     pub fn consolidate(self) -> Option<Self> {
         self.is_consolidated().then_some(self)
+    }
+    /// Converts the contained tuple via `f`, keeping the
+    /// [`zweight`](Self::zweight) as is.
+    pub fn map<U>(self, f: impl FnOnce(Tuple) -> U) -> ZRow<U> {
+        ZRow {
+            zweight: self.zweight,
+            tuple: f(self.tuple),
+        }
     }
     /// Converts the contained tuple via `f`, keeping the
     /// [`zweight`](Self::zweight) as is.
@@ -126,12 +137,12 @@ impl<Tuple> TableDelta<Tuple> {
     pub fn iter(&self) -> impl Iterator<Item = &ZRow<Tuple>> {
         self.into_iter()
     }
-    pub fn into_delta(self) -> Vec<ZRow<Tuple>> {
-        self.inner
+    pub fn into_parts(self) -> (ir::Path, Vec<ZRow<Tuple>>) {
+        (self.entity, self.inner)
     }
     /// Retracts all contained [`ZRow`]s.
     fn retract(&mut self) {
-        self.inner.iter_mut().for_each(|delta| delta.retract());
+        self.inner.iter_mut().for_each(|zrow| zrow.retract());
     }
     /// If each contained [`ZRow::zweight()`] is non-zero.
     pub fn is_consolidated(&self) -> bool {
@@ -146,6 +157,16 @@ impl<Tuple> TableDelta<Tuple> {
             .filter_map(|zrow| zrow.consolidate())
             .collect();
         self
+    }
+    /// Converts each contained tuple via `f`, which also receives the
+    /// [entity](Self::for_entity()) the tuple belongs to.
+    pub fn map<U>(self, f: impl Fn(Tuple) -> U) -> TableDelta<U> {
+        let Self { entity, inner } = self;
+        let inner = inner
+            .into_iter()
+            .map(|zrow| zrow.map(&f))
+            .collect::<Vec<ZRow<U>>>();
+        TableDelta { entity, inner }
     }
     /// Converts each contained tuple via `f`, which also receives the
     /// [entity](Self::for_entity()) the tuple belongs to.
@@ -195,31 +216,34 @@ impl<'a, Tuple> IntoIterator for &'a TableDelta<Tuple> {
 /// T2 w
 /// T1 x      // T2 prevents this one from being collapsed into the earlier T1.
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PartialConsolidated;
 /// A marker indicating that the [`TableDelta`]s stored in [`StoreDelta`]
 /// are guaranteed to be [fully consolidated](StoreDelta::is_fully_consolidated()).
 /// See [StoreDelta::consolidate()] for its meaning.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Consolidated;
 
 /// An update of the EDB or IDB, that is, insertions or deletions of either
 /// base or derived facts. The context determines of which exactly.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoreDelta<Marker, Tuple> {
     inner: Vec<TableDelta<Tuple>>,
     marker: PhantomData<Marker>,
 }
 
-impl<M, Tuple> Default for StoreDelta<M, Tuple> {
+impl<Marker, Tuple> Default for StoreDelta<Marker, Tuple> {
     fn default() -> Self {
-        StoreDelta::<M, Tuple>::empty()
+        StoreDelta::<Marker, Tuple>::empty()
     }
 }
 
 impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
     pub fn is_empty(&self) -> bool {
         self.inner.iter().all(|table_delta| table_delta.is_empty())
+    }
+    pub fn deltas(&self) -> &[TableDelta<Tuple>] {
+        &self.inner
     }
     pub fn into_table_deltas(self) -> Vec<TableDelta<Tuple>> {
         self.inner
@@ -245,6 +269,20 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
     /// Converts each contained tuple via `f`, which also receives the
     /// [entity](TableDelta::for_entity()) the tuple belongs to. The `Marker`
     /// is preserved as entities are left untouched.
+    pub fn map<U>(self, f: impl Fn(Tuple) -> U) -> StoreDelta<Marker, U> {
+        let inner = self
+            .inner
+            .into_iter()
+            .map(|table_delta| table_delta.map(&f))
+            .collect::<Vec<TableDelta<U>>>();
+        StoreDelta {
+            inner,
+            marker: PhantomData,
+        }
+    }
+    /// Converts each contained tuple via `f`, which also receives the
+    /// [entity](TableDelta::for_entity()) the tuple belongs to. The `Marker`
+    /// is preserved as entities are left untouched.
     pub fn try_map<U, E>(
         self,
         f: impl Fn(Tuple) -> Result<U, E>,
@@ -259,14 +297,12 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
             marker: PhantomData,
         })
     }
-
     pub fn empty() -> Self {
         Self {
             inner: Vec::new(),
             marker: PhantomData,
         }
     }
-
     /// The number of TableDelta's currently in the store, whether consolidated
     /// or not
     pub fn size(&self) -> usize {
@@ -360,6 +396,29 @@ impl<Tuple> FromIterator<TableDelta<Tuple>> for StoreDelta<PartialConsolidated, 
     }
 }
 
+/// This comparison does deliberately _not_ check for equality with an entity.
+/// This is usually covered by the indexing below in tests.
+#[cfg(feature = "test-utils")]
+impl<T: AsRef<[ZRow<Tuple>]>, Tuple: PartialEq> PartialEq<T> for TableDelta<Tuple> {
+    fn eq(&self, other: &T) -> bool {
+        let data = other.as_ref();
+        self.delta().len() == data.len() && self.delta().iter().all(|row| data.contains(row))
+    }
+}
+
+#[cfg(feature = "test-utils")]
+impl<T: Into<ir::Path>, Tuple> std::ops::Index<T> for StoreDelta<Consolidated, Tuple> {
+    type Output = TableDelta<Tuple>;
+
+    fn index(&self, index: T) -> &Self::Output {
+        let index = index.into();
+        self.deltas()
+            .iter()
+            .find(|table_delta| table_delta.for_entity() == &index)
+            .unwrap_or_else(|| panic!("Entity '{index}' not found"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,6 +428,13 @@ mod tests {
             entity,
             tuples.iter().map(|&tuple| ZRow::new_unchecked(1, tuple)),
         )
+    }
+
+    #[test]
+    fn retracting_twice_restores_the_original_state() {
+        let store_delta = StoreDelta::new([table("Table1", &["a"]), table("Table2", &["b"])]);
+
+        assert_eq!(store_delta, store_delta.clone().retract().retract());
     }
 
     /// Flattens a [`StoreDelta`] into its entities and their tuples, in order.
