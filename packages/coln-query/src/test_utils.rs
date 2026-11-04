@@ -6,7 +6,6 @@
 //! It provides helpers for testing and benchmarking purposes.
 
 use crate::{
-    api::deltas::ZRow,
     host::QueryIr,
     program::QueryProgram,
     relational::{
@@ -14,7 +13,7 @@ use crate::{
         catalog::{Catalog, SourceSchemas},
         expr::SourceId,
         incremental::{dbsp::ZWeight, schema::TupleKey},
-        relation::Tuple,
+        relation::{Tuple, ZRowInt},
         schema::{Column, EntityRef, TableSchema},
     },
     scalarial::{ScalarType, ScalarTypedValue},
@@ -207,8 +206,10 @@ pub mod flir_builders {
 /// which is the pair of transactions the monitored semantics turn on.
 pub mod monitored_flir {
     use super::flir_builders;
-    use crate::{relational::TupleValue, scalarial::ScalarTypedValue};
-    use coln_flir_rs::ir;
+    use coln_flir_rs::{
+        engine::query::{QueryScalarValue, QueryTuple},
+        ir,
+    };
 
     /// The one ground table.
     pub const TABLE: &str = "t";
@@ -244,11 +245,11 @@ pub mod monitored_flir {
 
     /// One row of [`TABLE`]: the implicit row id, which reaches the query engine
     /// as its two halves, followed by the declared column `a`.
-    pub fn row(row_id_hash: u64, row_id_ctr: u64, a: i64) -> TupleValue {
+    pub fn row(row_id_hash: u64, row_id_ctr: u64, a: i64) -> QueryTuple {
         [
-            ScalarTypedValue::from(row_id_hash),
-            ScalarTypedValue::from(row_id_ctr),
-            ScalarTypedValue::from(a),
+            QueryScalarValue::from(row_id_hash),
+            QueryScalarValue::from(row_id_ctr),
+            QueryScalarValue::from(a),
         ]
         .into_iter()
         .collect()
@@ -256,12 +257,11 @@ pub mod monitored_flir {
 }
 
 pub mod flir {
-    use crate::{
-        api::deltas::{StoreDelta, TableDelta, ZRow},
-        relational::{TupleValue, schema::EntityRef},
-        scalarial::ScalarTypedValue,
+    use crate::api::transaction::{StoreDelta, TableDelta, ZRowExt};
+    use coln_flir_rs::{
+        engine::query::{QueryScalarValue, QueryTuple},
+        ir,
     };
-    use coln_flir_rs::ir;
     use std::{collections::HashMap, marker::PhantomData};
 
     /// A realm of the compiler's golden test suite, as a marker type: it names
@@ -280,7 +280,7 @@ pub mod flir {
     pub struct Flir<R> {
         hash: u64,
         ctr: u64,
-        ground_tables: HashMap<EntityRef, TableDelta>,
+        ground_tables: HashMap<ir::Path, TableDelta>,
         phantom: PhantomData<R>,
     }
 
@@ -309,7 +309,11 @@ pub mod flir {
         pub fn next_epoch(&mut self) -> StoreDelta {
             self.hash += 1;
             self.ctr = 0;
-            let store_delta: StoreDelta = self.ground_tables.drain().collect();
+            let store_delta: StoreDelta = self
+                .ground_tables
+                .drain()
+                .map(|(_, table_delta)| table_delta)
+                .collect();
             debug_assert!(self.ground_tables.is_empty());
             store_delta
         }
@@ -318,20 +322,19 @@ pub mod flir {
             self.ctr += 1;
             ctr
         }
-        fn with_zweight(zweight: i64, row: TupleValue) -> ZRow {
-            ZRow::new(zweight, row).expect("non-zero zweight")
+        fn with_zweight(zweight: i64, row: QueryTuple) -> ZRowExt {
+            ZRowExt::new(zweight, row).expect("non-zero zweight")
         }
         fn table_delta<E>(&mut self, entry: &E) -> &mut TableDelta
         where
             E: EntityPath<R>,
         {
-            let entity_ref = EntityRef::from(&E::ir_path());
-            if !self.ground_tables.contains_key(&entity_ref) {
-                let entitiy_ref = entity_ref.clone();
+            let ir_path = E::ir_path();
+            if !self.ground_tables.contains_key(&ir_path) {
                 self.ground_tables
-                    .insert(entitiy_ref.clone(), TableDelta::new(entitiy_ref, []));
+                    .insert(ir_path.clone(), TableDelta::new(ir_path.clone(), []));
             }
-            self.ground_tables.get_mut(&entity_ref).expect("just added")
+            self.ground_tables.get_mut(&ir_path).expect("just added")
         }
         fn insert_to_table_delta<E>(&mut self, entry: &E)
         where
@@ -374,7 +377,7 @@ pub mod flir {
     }
 
     pub trait Entity {
-        fn to_row(&self) -> TupleValue;
+        fn to_row(&self) -> QueryTuple;
         fn row_id(&self) -> RowId;
     }
 
@@ -417,13 +420,13 @@ pub mod flir {
     }
 
     impl Entity for Row {
-        fn to_row(&self) -> TupleValue {
+        fn to_row(&self) -> QueryTuple {
             std::iter::once(&self.row_id)
                 .chain(&self.references)
                 .flat_map(|row_id| {
                     [
-                        ScalarTypedValue::from(row_id.hash()),
-                        ScalarTypedValue::from(row_id.ctr()),
+                        QueryScalarValue::from(row_id.hash()),
+                        QueryScalarValue::from(row_id.ctr()),
                     ]
                 })
                 .collect()
@@ -460,7 +463,7 @@ pub mod flir {
             }
 
             impl Entity for $entity {
-                fn to_row(&self) -> TupleValue {
+                fn to_row(&self) -> QueryTuple {
                     self.0.to_row()
                 }
 
@@ -611,10 +614,10 @@ impl QueryProgram for TestProgram {
 
 /// Convenience: turn input entities (with per-row z-weights) into the value rows
 /// that [`crate::relational::Runtime::feed`] expects.
-pub fn rows<E: InputRel>(entities: impl IntoIterator<Item = (E, ZWeight)>) -> Vec<ZRow> {
+pub fn rows<E: InputRel>(entities: impl IntoIterator<Item = (E, ZWeight)>) -> Vec<ZRowInt> {
     entities
         .into_iter()
-        .map(|(entity, weight)| ZRow::new(weight, entity.into()).expect("non-zero zweight"))
+        .map(|(entity, weight)| ZRowInt::new(weight, entity.into()).expect("non-zero zweight"))
         .collect()
 }
 
@@ -622,14 +625,14 @@ pub fn rows<E: InputRel>(entities: impl IntoIterator<Item = (E, ZWeight)>) -> Ve
 pub fn rows_with_weight<E: InputRel>(
     entities: impl IntoIterator<Item = E>,
     weight: ZWeight,
-) -> Vec<ZRow> {
+) -> Vec<ZRowInt> {
     entities
         .into_iter()
-        .map(|entity| ZRow::new(weight, entity.into()).expect("non-zero zweight"))
+        .map(|entity| ZRowInt::new(weight, entity.into()).expect("non-zero zweight"))
         .collect()
 }
 
-pub trait InputRel: Into<TupleKey> + Into<TupleValue> + Clone + Debug {
+pub trait InputRel: Into<TupleValue> + Clone + Debug {
     fn schema() -> TableSchema;
 
     /// The name a plan's [`SourceExpr`](crate::relational::expr::SourceExpr)

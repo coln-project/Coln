@@ -27,6 +27,9 @@ impl<V> Tuple<V> {
     pub fn iter(&self) -> std::slice::Iter<'_, V> {
         self.inner.iter()
     }
+    pub fn arity(&self) -> usize {
+        self.inner.len()
+    }
 }
 
 impl<T> Deref for Tuple<T> {
@@ -104,19 +107,6 @@ pub enum NativeScalar<
     String(String),
 }
 
-impl<RowId: fmt::Display> fmt::Display for NativeScalar<RowId> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::RowId(id) => write!(f, "{id}"),
-            Self::U64(x) => write!(f, "{x}"),
-            Self::U32(x) => write!(f, "{x}"),
-            Self::I64(x) => write!(f, "{x}"),
-            Self::I32(x) => write!(f, "{x}"),
-            Self::String(s) => write!(f, "{s:?}"),
-        }
-    }
-}
-
 impl<R1> NativeScalar<R1> {
     pub fn map<R2, F: FnOnce(R1) -> R2>(self, f: F) -> NativeScalar<R2> {
         use NativeScalar::*;
@@ -145,7 +135,7 @@ impl<R1> NativeScalar<R1> {
     }
 }
 
-pub type NativeScalarType<RowId> = NativeScalar<RowId, (), (), (), (), ()>;
+pub type NativeScalarType<RowIdType> = NativeScalar<RowIdType, (), (), (), (), ()>;
 
 impl<RowId: ScalarKind> NativeScalar<RowId> {
     pub fn ty(&self) -> NativeScalarType<RowId::Ty> {
@@ -160,7 +150,7 @@ impl<RowId: ScalarKind> NativeScalar<RowId> {
     }
 }
 
-impl<RowId: fmt::Display> fmt::Display for NativeScalarType<RowId> {
+impl<RowIdType: fmt::Display> fmt::Display for NativeScalarType<RowIdType> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RowId(id) => write!(f, "{id}"),
@@ -175,15 +165,15 @@ impl<RowId: fmt::Display> fmt::Display for NativeScalarType<RowId> {
 
 impl<T1> NativeScalarType<T1> {
     pub fn sloppy_eq<T2>(&self, other: &NativeScalarType<T2>) -> bool {
-        match (self, other) {
-            (NativeScalarType::RowId(_), NativeScalar::RowId(_)) => true,
-            (NativeScalarType::U64(_), NativeScalar::U64(_)) => true,
-            (NativeScalarType::U32(_), NativeScalar::U32(_)) => true,
-            (NativeScalarType::I64(_), NativeScalar::I64(_)) => true,
-            (NativeScalarType::I32(_), NativeScalar::I32(_)) => true,
-            (NativeScalarType::String(_), NativeScalar::String(_)) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (NativeScalarType::RowId(_), NativeScalar::RowId(_))
+                | (NativeScalarType::U64(_), NativeScalar::U64(_))
+                | (NativeScalarType::U32(_), NativeScalar::U32(_))
+                | (NativeScalarType::I64(_), NativeScalar::I64(_))
+                | (NativeScalarType::I32(_), NativeScalar::I32(_))
+                | (NativeScalarType::String(_), NativeScalar::String(_))
+        )
     }
 }
 
@@ -195,33 +185,65 @@ impl<RowId> From<ir::Lit> for NativeScalar<RowId> {
         }
     }
 }
-impl<RowId> From<u64> for NativeScalar<RowId> {
-    fn from(value: u64) -> Self {
-        NativeScalar::U64(value)
-    }
+
+/// Implements [`fmt::Display`] for a scalar enum carrying the primitive
+/// variants of [`NativeScalar`] and, if `$row_id` is given, its row id.
+macro_rules! impl_display {
+    ($target:ty $(, $row_id:ident)?) => {
+        impl$(<$row_id: fmt::Display>)? fmt::Display for $target {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self {
+                    $(Self::RowId(id) => <$row_id as fmt::Display>::fmt(id, f),)?
+                    Self::U64(x) => write!(f, "{x}"),
+                    Self::U32(x) => write!(f, "{x}"),
+                    Self::I64(x) => write!(f, "{x}"),
+                    Self::I32(x) => write!(f, "{x}"),
+                    Self::String(s) => write!(f, "{s:?}"),
+                }
+            }
+        }
+    };
 }
-impl<RowId> From<u32> for NativeScalar<RowId> {
-    fn from(value: u32) -> Self {
-        NativeScalar::U32(value)
-    }
+
+impl_display!(NativeScalar<RowId>, RowId);
+impl_display!(QueryScalar);
+
+/// Implements `From<primitive>` for a scalar enum carrying the primitive
+/// variants of [`NativeScalar`].
+macro_rules! impl_from_primitives {
+    ($target:ty $(, $generic:ident)?) => {
+        impl$(<$generic>)? From<u64> for $target {
+            fn from(value: u64) -> Self {
+                Self::U64(value)
+            }
+        }
+        impl$(<$generic>)? From<u32> for $target {
+            fn from(value: u32) -> Self {
+                Self::U32(value)
+            }
+        }
+        impl$(<$generic>)? From<i64> for $target {
+            fn from(value: i64) -> Self {
+                Self::I64(value)
+            }
+        }
+        impl$(<$generic>)? From<i32> for $target {
+            fn from(value: i32) -> Self {
+                Self::I32(value)
+            }
+        }
+        impl$(<$generic>)? From<String> for $target {
+            fn from(value: String) -> Self {
+                Self::String(value)
+            }
+        }
+        impl$(<$generic>)? From<&str> for $target {
+            fn from(value: &str) -> Self {
+                Self::String(value.to_owned())
+            }
+        }
+    };
 }
-impl<RowId> From<i64> for NativeScalar<RowId> {
-    fn from(value: i64) -> Self {
-        NativeScalar::I64(value)
-    }
-}
-impl<RowId> From<i32> for NativeScalar<RowId> {
-    fn from(value: i32) -> Self {
-        NativeScalar::I32(value)
-    }
-}
-impl<RowId> From<String> for NativeScalar<RowId> {
-    fn from(value: String) -> Self {
-        NativeScalar::String(value)
-    }
-}
-impl<RowId> From<&str> for NativeScalar<RowId> {
-    fn from(value: &str) -> Self {
-        NativeScalar::String(value.to_owned())
-    }
-}
+
+impl_from_primitives!(NativeScalar<RowId>, RowId);
+impl_from_primitives!(QueryScalar);

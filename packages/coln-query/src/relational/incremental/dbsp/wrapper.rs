@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::api::deltas::ZRow;
 use crate::relational::incremental::schema::{ColumnSelector, SchemaTuple, StreamSchema, TupleKey};
-use crate::relational::relation::{self, Relation, RelationData, RelationRef, TupleValue};
+use crate::relational::relation::{self, Relation, RelationData, RelationRef, TupleValue, ZRowInt};
 use crate::scalarial::ScalarTypedValue;
 use crate::utils::cli_table::{
     ChainedHeader, CliReport, CliTableHeader, TableDisplay, ToCliReport, ToCliTableIterExt,
@@ -345,13 +344,13 @@ impl DbspInput {
     /// Feed a batch of value tuples (with z-weights) into this input. The tuple
     /// key is derived from the value by picking the schema's key fields, so
     /// callers only supply the value, matching the neutral `Runtime::feed`.
-    pub fn feed(&self, rows: impl IntoIterator<Item = ZRow>) {
+    pub fn feed(&self, rows: impl IntoIterator<Item = ZRowInt>) {
         let key_indices = key_indices(&self.schema);
         let mut batch = rows
             .into_iter()
             .map(|row_delta| {
                 let zweight = row_delta.zweight();
-                let row = row_delta.into_row();
+                let row = row_delta.into_tuple();
                 Tup2(key_of(&key_indices, &row), Tup2(row, zweight))
             })
             .collect();
@@ -476,13 +475,13 @@ impl<'a> OutputView<'a> {
             (zweight, row)
         })
     }
-    pub fn to_zrows(self) -> impl Iterator<Item = ZRow> + 'a {
+    pub fn to_zrows(self) -> impl Iterator<Item = ZRowInt> + 'a {
         self.rows()
-            .filter_map(|(zweight, row)| ZRow::new(zweight, TupleValue::new(row)))
+            .filter_map(|(zweight, row)| ZRowInt::new(zweight, TupleValue::new(row)))
     }
-    fn to_zrows_unchecked(self) -> impl Iterator<Item = ZRow> + 'a {
+    fn to_zrows_unchecked(self) -> impl Iterator<Item = ZRowInt> + 'a {
         self.rows()
-            .map(|(zweight, row)| ZRow::new_unchecked(zweight, TupleValue::new(row)))
+            .map(|(zweight, row)| ZRowInt::new_unchecked(zweight, TupleValue::new(row)))
     }
     pub fn to_zset(self) -> OrdZSet<TupleValue> {
         let keys = self

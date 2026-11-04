@@ -15,11 +15,13 @@ use crate::{
 };
 use std::iter;
 
+/// The _value_ of a scalar in coln-query.
 pub type QueryScalarValue = QueryScalar;
 
 /// The _type_ representing the supported scalar values by coln-query.
 pub type QueryScalarType = QueryScalar<(), (), (), (), ()>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryTuple(Tuple<QueryScalarValue>);
 
 impl From<StoreTuple> for QueryTuple {
@@ -48,17 +50,10 @@ impl From<StoreTuple> for QueryTuple {
     }
 }
 
-impl IntoIterator for QueryTuple {
-    type Item = QueryScalarValue;
-
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 impl QueryTuple {
+    pub fn inner(&self) -> &Tuple<QueryScalarValue> {
+        &self.0
+    }
     // @Leo we also need to convert a query tuple, i.e. a tuple in the derived view
     // into a store tuple to be put into a view table.
     // The allocate function is a bit of a leaky abstraction.... In short, we need to
@@ -144,5 +139,20 @@ impl QueryTuple {
         // to also accomodate DerivedViews which do not have a row id on their own
         // (which BaseTableSchema currently assumes).
         todo!("Call into coln-store's API")
+    }
+}
+
+impl IntoIterator for QueryTuple {
+    type Item = QueryScalarValue;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl FromIterator<QueryScalarValue> for QueryTuple {
+    fn from_iter<T: IntoIterator<Item = QueryScalarValue>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
     }
 }

@@ -7,23 +7,22 @@
 
 use crate::{
     api::{
-        deltas::{DerivedDataDelta, StoreDelta, TableDelta, ZRowIterExt},
         error::ColnQueryError,
-        store::TxStore,
-        transaction::{DataDelta, TxOutcome},
+        transaction::{DataDelta, DerivedDataDelta, StoreDelta, TableDelta, TxOutcome, TxStore},
         violations::{ViolationsDelta, ViolationsSet},
     },
     error::{QueryEngineError, RuntimeError},
     pipeline::Pipeline,
-    relational::{Runtime, expr::SourceId, incremental::DbspRuntime},
+    relational::{Runtime, TupleValue, expr::SourceId, incremental::DbspRuntime},
 };
-use coln_flir_rs::ir::{self, FlatRealm};
+use coln_flir_rs::{
+    engine::query::QueryTuple,
+    ir::{self, FlatRealm},
+};
 use query::FlirProgram;
 
-pub mod deltas;
 pub mod error;
 pub mod query;
-mod store;
 pub mod transaction;
 pub mod violations;
 
@@ -116,9 +115,12 @@ impl ColnQuery {
     }
     fn internal_apply(&mut self, delta: StoreDelta) -> Result<(), QueryEngineError> {
         for delta in delta.into_table_deltas() {
-            let source_id = SourceId::from(delta.for_entity());
-            let delta = delta.into_delta().into_iter();
-            let effective = self.incremental_runtime.feed(&source_id, delta)?;
+            let (entity, delta) = delta.into_parts();
+            let source_id = SourceId::from(entity.0);
+            let effective = self.incremental_runtime.feed(
+                &source_id,
+                delta.into_iter().map(|zrow| zrow.map(TupleValue::from)),
+            )?;
             if !effective {
                 // TODO: Find a solution for logging.
                 println!("Delta references unknown source '{}'", source_id);
@@ -141,7 +143,13 @@ impl ColnQuery {
         // ongoing commit and they don't leak into the next commit.
         let drained: Vec<_> = self.incremental_runtime.all_outputs().collect();
         for (sink_id, delta) in drained {
-            let delta = TableDelta::new(sink_id, delta.view().to_zrows());
+            let delta = TableDelta::new(
+                ir::Path::from(&sink_id.0),
+                delta
+                    .view()
+                    .to_zrows()
+                    .map(|zrow| zrow.map(QueryTuple::from)),
+            );
             if delta.is_empty() {
                 // The sink has not reported anything in this iteration.
                 continue;
@@ -176,7 +184,7 @@ impl ColnQuery {
                         // circuit without checking: `unsafe_apply` returning an
                         // `UnsafeApplyError` is the one that can.
                         debug_assert!(
-                            delta.iter().retractions().next().is_none(),
+                            delta.iter().find(|zrow| zrow.is_retraction()).is_none(),
                             "enforced rule {} retracts a violation it never reported",
                             delta.for_entity()
                         );
@@ -198,7 +206,7 @@ impl ColnQuery {
             return Ok(TxOutcome::HardViolationsSet(hard_violations));
         }
         // At least be warned if output deltas are not consolidated.
-        debug_assert!(derived_data_delta.is_consolidated());
+        debug_assert!(derived_data_delta.is_fully_consolidated());
         Ok(TxOutcome::DerivedDataDelta(DataDelta::new(
             derived_data_delta,
             soft_violations,
@@ -237,21 +245,16 @@ impl TxStore for ColnQuery {
 mod test {
     use super::*;
     use crate::{
-        api::{
-            deltas::{TableDelta, ZRow},
-            transaction::{ToCliReport, TryCommitErr, TryCommitOk, Tx},
-        },
-        relational::TupleValue,
-        scalarial::ScalarTypedValue,
+        api::transaction::{QueryScalarValue, TableDelta, TryCommitErr, TryCommitOk, Tx, ZRowExt},
         test_utils::{
             self,
             flir::{self, Flir, JsonFlir},
         },
+        utils::cli_table::ToCliReport,
         zrow,
     };
     use anyhow::{Error, Result};
 
-    /// @Vincent, does this API work for you?
     fn main_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
@@ -260,7 +263,7 @@ mod test {
         };
         let mut coln_query = ColnQuery::init(&flat_realm)?;
 
-        let mut tx = Tx::new(StoreDelta::empty());
+        let mut tx = Tx::empty();
         // You can add deltas for tables until you call try_commit() on the tx.
         tx.insert(std::iter::once(TableDelta::new("SomeTable", [])));
 
@@ -304,7 +307,6 @@ mod test {
         Ok(())
     }
 
-    /// @Vincent, does this API work for you?
     fn restart_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
@@ -396,7 +398,7 @@ mod test {
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "root.E.foreignKey");
+        assert_eq!(violation.for_entity(), "root.E.foreignKey");
         assert_eq!(violation.delta().len(), 3);
 
         let mut tx3 = Tx::empty();
@@ -409,7 +411,7 @@ mod test {
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "root.E.foreignKey");
+        assert_eq!(violation.for_entity(), "root.E.foreignKey");
         assert_eq!(violation.delta().len(), 1);
 
         Ok(())
@@ -477,10 +479,10 @@ mod test {
         assert_eq!(derived_data_table_deltas.len(), 1);
         let trans_closure_delta = derived_data_table_deltas.pop().expect("checked");
         assert_eq!(
-            trans_closure_delta.for_entity().id(),
+            trans_closure_delta.for_entity(),
             "init.trans-closure.connected"
         );
-        let trans_closure_delta = trans_closure_delta.into_delta();
+        let (entity, trans_closure_delta) = trans_closure_delta.into_parts();
         assert_eq!(trans_closure_delta.len(), 10);
 
         let mut tx1 = Tx::empty();
@@ -496,7 +498,8 @@ mod test {
                 .into_table_deltas()
                 .pop()
                 .expect("one delta only")
-                .into_delta()
+                .into_parts()
+                .1
                 .len(),
             5
         );
@@ -506,18 +509,18 @@ mod test {
 
     /// A derived row of `weight` over the `rows` it references, in column
     /// order: a view row has no row id of its own.
-    fn derived_row(weight: i64, rows: &[&dyn flir::Entity]) -> ZRow {
-        let tuple: TupleValue = rows
+    fn derived_row(weight: i64, rows: &[&dyn flir::Entity]) -> ZRowExt {
+        let tuple: QueryTuple = rows
             .iter()
             .flat_map(|row| {
                 let row_id = row.row_id();
                 [
-                    ScalarTypedValue::from(row_id.hash()),
-                    ScalarTypedValue::from(row_id.ctr()),
+                    QueryScalarValue::from(row_id.hash()),
+                    QueryScalarValue::from(row_id.ctr()),
                 ]
             })
             .collect();
-        ZRow::new(weight, tuple).expect("non-zero zweight")
+        ZRowExt::new(weight, tuple).expect("non-zero zweight")
     }
 
     #[test]
@@ -675,7 +678,7 @@ mod test {
             let mut tx = Tx::empty();
             tx.insert(Some(TableDelta::new(
                 TABLE,
-                [ZRow::new(zweight, offending.clone()).expect("non-zero zweight")],
+                [ZRowExt::new(zweight, offending.clone()).expect("non-zero zweight")],
             )));
             tx
         };
@@ -689,7 +692,7 @@ mod test {
         assert_eq!(
             appeared
                 .iter()
-                .map(|delta| delta.for_entity().id())
+                .map(|delta| delta.for_entity())
                 .collect::<Vec<_>>(),
             vec![RULE],
             "the monitored rule must report on its own sink"
@@ -697,7 +700,7 @@ mod test {
         assert!(
             appeared
                 .iter()
-                .all(|table| table.iter().all(ZRow::is_assertion)),
+                .all(|table| table.iter().all(ZRowExt::is_assertion)),
             "a violation that appeared is asserted, not retracted: {appeared}"
         );
 
@@ -709,7 +712,7 @@ mod test {
         assert_eq!(
             resolved
                 .iter()
-                .map(|delta| delta.for_entity().id())
+                .map(|delta| delta.for_entity())
                 .collect::<Vec<_>>(),
             vec![RULE],
             "the monitored rule must report on its own sink and a retraction of \
@@ -718,7 +721,7 @@ mod test {
         assert!(
             resolved
                 .iter()
-                .all(|table| table.iter().all(ZRow::is_retraction)),
+                .all(|table| table.iter().all(ZRowExt::is_retraction)),
             "repairing a violation must not read as introducing one: {resolved}"
         );
 
@@ -752,7 +755,7 @@ mod test {
             let mut tx = Tx::empty();
             tx.insert(Some(TableDelta::new(
                 table,
-                [ZRow::new(1, row).expect("non-zero zweight")],
+                [ZRowExt::new(1, row).expect("non-zero zweight")],
             )));
             tx
         };
