@@ -11,7 +11,7 @@ use coln_flir_rs::{
         tx::{TxRowId, TxTuple},
     },
     hash::CommitHash,
-    ir,
+    ir::{self},
     public::{PublicRowId, PublicTuple},
     query::WhereClause,
 };
@@ -22,7 +22,10 @@ use coln_query::api::{
 };
 use coln_store::{
     store::{IdLookup, auto::AutoStore},
-    txn::rw::{StoreRead, StoreWrite},
+    txn::{
+        id::Promote,
+        rw::{StoreRead, StoreWrite},
+    },
 };
 
 use crate::{
@@ -48,150 +51,6 @@ impl Bouncer {
     pub fn new(ir: ir::FlatRealm, coln_def: ColnDef) -> Self {
         Self::try_new(ir, coln_def).expect("init success")
     }
-
-    // fn apply_derived_view(
-    //     &mut self,
-    //     derived: DerivedDataDelta,
-    //     commit: &Commit<'_>,
-    // ) -> Result<(), StoreError> {
-    //     let mut cnt = commit.num_ops as u32;
-    //     let delta = derived.into_table_deltas();
-    //     for td in delta {
-    //         let oid = self.resolve_table(&td.for_entity().id().into()).ok_or(
-    //             ValidationError::UnknownTable {
-    //                 path: td.for_entity().id().into(),
-    //             },
-    //         )?;
-    //         let table = self.tables.get_mut(&oid).expect("resolved correct table");
-
-    //         let id_allocate = || {
-    //             let row_id = PublicRowId {
-    //                 commit: commit.hash(),
-    //                 counter: cnt,
-    //             };
-    //             cnt += 1;
-    //             self.store
-    //                 .id_lookup()
-    //                 .packed(&row_id)
-    //                 .expect("hash already packed")
-    //         };
-
-    //         let ops = table.ops_from_table_delta(td, id_allocate);
-
-    //         ops.into_iter().for_each(|op| table.stage_update(op));
-    //         table.apply_staged_ops(&mut self.rowing)?;
-    //     }
-    //     Ok(())
-    // }
-
-    // // This conversion needs table schema, therefore cannot be done with From trait
-    // pub(crate) fn ops_from_table_delta<F>(
-    //     &self,
-    //     td: TableDelta,
-    //     mut id_allocate: F,
-    // ) -> Vec<PackedOp>
-    // where
-    //     F: FnMut() -> PackedRowId,
-    // {
-    //     td.into_iter()
-    //         .map(|zrow| {
-    //             let row_id = id_allocate();
-    //             if zrow.zweight() > 0 {
-    //                 let mut val_iter = zrow.into_row().data.into_iter();
-    //                 let mut packed_val = Vec::new();
-
-    //                 for col in &self.schema().columns {
-    //                     match col.col_type {
-    //                         ir::ColType::RowId { .. } => {
-    //                             let ScalarTypedValue::Uint(commit_idx) =
-    //                                 val_iter.next().expect("coln-query returns valid data")
-    //                             else {
-    //                                 panic!("invalid data from coln-query");
-    //                             };
-    //                             let ScalarTypedValue::Uint(counter) =
-    //                                 val_iter.next().expect("coln-query returns valid data")
-    //                             else {
-    //                                 panic!("invalid data from coln-query");
-    //                             };
-    //                             packed_val.push(PackedValue::Id(PackedRowId {
-    //                                 commit_idx: commit_idx as u32,
-    //                                 counter: counter as u32,
-    //                             }));
-    //                         }
-    //                         ir::ColType::BuiltinTy {
-    //                             builtin_ty: ir::BuiltinTy::BuiltinInt,
-    //                         } => {
-    //                             let ScalarTypedValue::String(s) = val_iter.next().unwrap() else {
-    //                                 panic!("invalid data from coln-query");
-    //                             };
-    //                             packed_val.push(PackedValue::Str(s));
-    //                         }
-    //                         ir::ColType::BuiltinTy {
-    //                             builtin_ty: ir::BuiltinTy::BuiltinStr,
-    //                         } => {
-    //                             let ScalarTypedValue::Iint(i) = val_iter.next().unwrap() else {
-    //                                 panic!("invalid data from coln-query");
-    //                             };
-    //                             packed_val.push(PackedValue::Int(i as i32));
-    //                         }
-    //                     }
-    //                 }
-
-    //                 PackedOp::Add {
-    //                     row_id,
-    //                     values: packed_val.into(),
-    //                 }
-    //             } else if zrow.zweight() < 0 {
-    //                 // TODO don't know how to remove yet
-    //                 todo!()
-    //             } else {
-    //                 unreachable!("zero zweight impossible")
-    //             }
-    //         })
-    //         .collect()
-    // }
-
-    // fn table_delta_from_ops(&self, ops: impl IntoIterator<Item = PackedOp>) -> TableDelta {
-    //     let zrows: Vec<ZRow> = ops
-    //         .into_iter()
-    //         .map(|op| match op {
-    //             PackedOp::Add { row_id, values } => {
-    //                 let tuple = PackedRowView { row_id, values }.into();
-    //                 ZRow::new(1, tuple).unwrap()
-    //             }
-    //             PackedOp::Delete { row_id } => {
-    //                 let values = self
-    //                     .row_by_id(row_id)
-    //                     .expect("element to delete should exist");
-    //                 let tuple = PackedRowView { row_id, values }.into();
-    //                 ZRow::new(-1, tuple).unwrap()
-    //             }
-    //         })
-    //         .collect();
-
-    //     TableDelta::new(self.path().to_string(), zrows)
-    // }
-
-    // fn check_rules(&mut self) -> Result<DerivedDataDelta, StoreError> {
-    //     match query_tx.try_commit(&mut self.cq) {
-    //         Ok(TryCommitOk::Pending(pending)) => {
-    //             let mut committed = pending.commit()?;
-    //             let derived = committed.take_derived_data_delta();
-    //             let monitored_constraints = committed.take_soft_violations();
-    //             if !monitored_constraints.is_empty() {
-    //                 tracing::warn!("monitored constraint violation {}", monitored_constraints);
-    //             }
-    //             Ok(derived)
-    //         }
-    //         Ok(TryCommitOk::Rejected(mut rejected)) => {
-    //             let violations = rejected.take_hard_violations();
-    //             Err(error::RuleViolation::HardViolation(violations).into())
-    //         }
-    //         Err(TryCommitErr::TxApplyError(err)) | Err(TryCommitErr::RollbackError(err)) => {
-    //             Err(err.into())
-    //         }
-    //     }
-    // }
 }
 
 impl coln_store::store::frag::FragmentSync for Bouncer {
@@ -277,24 +136,58 @@ impl DbRead for Bouncer {
     }
 }
 
+pub struct CommitResult {
+    pub monitored_constraints: ViolationsDelta,
+    pub cmt_hash: CommitHash,
+}
+
 impl DbWrite for Bouncer {
     fn transaction(&mut self) {
         self.store.transaction();
     }
 
-    fn commit(&mut self) -> Result<ViolationsDelta, BouncerError> {
-        let store_delta = self.store.try_commit()?.map(|st| QueryTuple::from(st));
+    fn commit(&mut self) -> Result<CommitResult, BouncerError> {
+        let store_delta = self.store.try_commit()?.map(|td| td.map(QueryTuple::from));
 
+        let mut num_ops = store_delta.size() as u32;
         let tx = Tx::new(store_delta);
 
         match tx.try_commit(&mut self.query) {
             Ok(TryCommitOk::Pending(pending)) => {
                 let mut committed = pending.commit()?;
+                let cmt_hash = self.store.commit()?;
                 let derived_data_delta = committed.take_derived_data_delta();
+
+                let mut id_alloc = || {
+                    let row_id = PublicRowId {
+                        commit: cmt_hash,
+                        counter: num_ops,
+                    };
+                    num_ops += 1;
+                    self.store
+                        .id_lookup()
+                        .packed(&row_id)
+                        .expect("hash already packed")
+                };
+
+                let derived_data_delta_store = derived_data_delta.map(|td| {
+                    let table_schema = self
+                        .store
+                        .inner()
+                        .table_at(td.for_entity())
+                        .expect("valid schema from conl-query")
+                        .schema();
+                    td.map(|qt| qt.into_store(table_schema, &mut id_alloc))
+                });
+
                 let monitored_constraints = committed.take_soft_violations();
-                // TODO convert TableDelta back into TabPathOp
-                // TODO and apply them
-                Ok(monitored_constraints)
+                self.store
+                    .inner_mut()
+                    .apply_derived_view(derived_data_delta_store)?;
+                Ok(CommitResult {
+                    monitored_constraints,
+                    cmt_hash,
+                })
             }
             Ok(TryCommitOk::Rejected(mut rejected)) => {
                 // A hard constraint has been violated.
@@ -324,5 +217,15 @@ impl DbWrite for Bouncer {
         values: impl Into<TxTuple>,
     ) -> Result<TxRowId, BouncerError> {
         Ok(self.store.add(table, values)?)
+    }
+}
+
+impl Promote for Bouncer {
+    fn promote(
+        &self,
+        pending_ids: impl IntoIterator<Item = TxRowId>,
+        hash: CommitHash,
+    ) -> Vec<PublicRowId> {
+        self.store.promote(pending_ids, hash)
     }
 }

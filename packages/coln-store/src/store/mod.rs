@@ -9,7 +9,8 @@ pub mod frag;
 
 use std::collections::{HashMap, HashSet};
 
-use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
+use coln_flir_rs::engine::delta::{Consolidated, StoreDelta};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, StoreTuple};
 use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::engine::tx::TxRowId;
 use coln_flir_rs::hash::CommitHash;
@@ -307,13 +308,7 @@ impl StoreRead for Store {
 }
 
 impl Store {
-    // create stores from theory and transactions on stores
-
-    fn graph_with_root_commit(root_commit: RootCommitData) -> Result<CommitGraph, CodecError> {
-        let mut graph = CommitGraph::new();
-        graph.add_commit(Commit::from_root_data(&root_commit)?);
-        Ok(graph)
-    }
+    // create stores from theory
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
@@ -346,6 +341,37 @@ impl Store {
             rowing: rowing::Rowing::new(),
             pending_commits: Vec::new(),
         })
+    }
+
+    fn graph_with_root_commit(root_commit: RootCommitData) -> Result<CommitGraph, CodecError> {
+        let mut graph = CommitGraph::new();
+        graph.add_commit(Commit::from_root_data(&root_commit)?);
+        Ok(graph)
+    }
+}
+
+impl Store {
+    // ? Derived data can be consolidated/reordered, I think, probably does not
+    // ? matter?
+    /// Given a derived StoreDelta from coln-query, figure out how to apply these
+    /// data onto tables.
+    pub fn apply_derived_view(
+        &mut self,
+        derived: StoreDelta<Consolidated, StoreTuple>,
+    ) -> Result<(), StoreError> {
+        for td in derived.into_table_deltas() {
+            let oid =
+                self.resolve_table(&td.for_entity())
+                    .ok_or(ValidationError::UnknownTable {
+                        path: td.for_entity().clone(),
+                    })?;
+            let table = self.tables.get_mut(&oid).expect("resolved correct table");
+
+            table.stage_updates(td.into_parts().1);
+
+            table.apply_staged_ops(&mut self.rowing)?;
+        }
+        Ok(())
     }
 }
 

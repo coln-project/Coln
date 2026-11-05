@@ -8,9 +8,11 @@ use coln_flir_rs::{
     public::{PublicRowId, PublicTuple},
     query::WhereClause,
 };
-use coln_query::api::violations::ViolationsDelta;
 
-use crate::error::{BouncerError, UserError};
+use crate::{
+    bouncer::CommitResult,
+    error::{BouncerError, UserError},
+};
 
 pub trait DbRead {
     fn scan_table(&self, table: &ir::Path) -> Option<Vec<PublicTuple>>;
@@ -47,7 +49,7 @@ pub trait DbRead {
 pub trait DbWrite {
     fn transaction(&mut self);
 
-    fn commit(&mut self) -> Result<ViolationsDelta, BouncerError>;
+    fn commit(&mut self) -> Result<CommitResult, BouncerError>;
 
     fn abort(&mut self);
 
