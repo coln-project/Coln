@@ -10,7 +10,7 @@
 
 use coln_flir_rs::{
     engine::{
-        delta::{PartialConsolidated, StoreDelta},
+        delta::{Consolidated, PartialConsolidated, StoreDelta},
         packed::{PackedRowId, StoreTuple},
         schema::ColnDef,
         tx::{TxRowId, TxTuple},
@@ -151,6 +151,22 @@ impl AutoStore {
     pub fn id_lookup(&self) -> &impl IdLookup {
         self.store.id_lookup()
     }
+
+    pub fn inner(&self) -> &Store {
+        let AutoState::Idle = self.state else {
+            panic!("reading store must mean it's idle");
+        };
+        &self.store
+    }
+
+
+    pub fn inner_mut(&mut self) -> &mut Store {
+        let AutoState::Idle = self.state else {
+            panic!("reading store must mean it's idle");
+        };
+        &mut self.store
+    }
+
 }
 
 impl Promote for AutoStore {

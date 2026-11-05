@@ -8,7 +8,10 @@ pub(crate) mod index;
 pub mod sorted;
 mod undo;
 
-use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarType, StoreScalarValue, StoreTuple};
+use coln_flir_rs::engine::delta::ZRow;
+use coln_flir_rs::engine::packed::{
+    PackedRowId, StoreScalarType, StoreScalarValue, StoreTuple, WithRowId,
+};
 use coln_flir_rs::ir::{EntityVariant, Materialization};
 use coln_flir_rs::public::{PublicScalarType, PublicScalarValue};
 pub use handle::TableHandle;
@@ -26,19 +29,6 @@ use crate::table::index::{IndexMeta, TableIndex};
 use crate::table::undo::UndoOp;
 
 pub type TableOid = usize;
-
-// TODO can probably unify this with the op definition, when we have deletion in Op.
-/// An operation on a single table, using dictionary-encoded row IDs.
-#[derive(Debug, Clone)]
-pub(crate) enum TableOp {
-    Add {
-        row_id: PackedRowId,
-        values: StoreTuple,
-    },
-    Delete {
-        row_id: PackedRowId,
-    },
-}
 
 /// Borrowed identity and schema for a registered table.
 #[derive(Debug, Clone, Copy)]
@@ -106,7 +96,7 @@ pub struct Table {
     index: TableIndex,
 
     // buffering rollback
-    pending_updates: Vec<TableOp>,
+    pending_updates: Vec<ZRow<StoreTuple>>,
     undo_log: Option<Vec<UndoOp>>,
 
     // structural identification
@@ -232,7 +222,7 @@ impl Table {
 
     pub(crate) fn index_seek<'s>(
         &'s self,
-        key: &StoreTuple,
+        key: &[StoreScalarValue],
     ) -> Result<impl Iterator<Item = PackedRowId> + use<'s>, ValidationError> {
         if key.len() > self.index.key_cols().len() {
             return Err(ValidationError::InvalidIndexKey {
@@ -356,8 +346,12 @@ impl Rollback for Table {
 }
 
 impl Table {
+    pub(crate) fn stage_updates(&mut self, ops: Vec<ZRow<StoreTuple>>) {
+        self.pending_updates.extend(ops);
+    }
+
     /// Stage an already packed operation without changing the materialised table.
-    pub(crate) fn stage_update(&mut self, op: TableOp) {
+    pub(crate) fn stage_update(&mut self, op: ZRow<StoreTuple>) {
         self.pending_updates.push(op);
     }
 
@@ -370,7 +364,7 @@ impl Table {
 
     fn apply_ops(
         &mut self,
-        ops: impl IntoIterator<Item = TableOp>,
+        ops: impl IntoIterator<Item = ZRow<StoreTuple>>,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
         for op in ops {
@@ -382,16 +376,25 @@ impl Table {
         Ok(())
     }
 
-    fn apply_op(&mut self, op: TableOp, rowing: &mut Rowing) -> Result<UndoOp, ValidationError> {
-        match op {
-            TableOp::Add { row_id, values } => {
-                self.insert_row(values, row_id, rowing)?;
+    fn apply_op(
+        &mut self,
+        op: ZRow<StoreTuple>,
+        rowing: &mut Rowing,
+    ) -> Result<UndoOp, ValidationError> {
+        match op.zweight() {
+            1 => {
+                let values = op.into_tuple();
+                let row_id = values.row_id();
+                self.insert_row(values.into_column_values(), row_id, rowing)?;
                 Ok(UndoOp::UndoAdd { row_id })
             }
-            TableOp::Delete { row_id } => {
+            -1 => {
+                let values = op.into_tuple();
+                let row_id = values.row_id();
                 let values = self.remove_packed(row_id);
                 Ok(UndoOp::UndoDelete { row_id, values })
             }
+            _ => panic!("got zweight other than 1 or -1"),
         }
     }
 
@@ -430,12 +433,15 @@ impl Table {
                     "collapsing {old:?} onto {new_rid:?} would discard differing cells"
                 );
 
-                self.stage_update(TableOp::Delete { row_id: old });
+                self.stage_update(ZRow::new_unchecked(
+                    -1,
+                    StoreTuple::from_id_values(old, old_cells),
+                ));
                 if !collapses {
-                    self.stage_update(TableOp::Add {
-                        row_id: new_rid,
-                        values: new_cells,
-                    });
+                    self.stage_update(ZRow::new_unchecked(
+                        1,
+                        StoreTuple::from_id_values(new_rid, new_cells),
+                    ));
                 }
             }
 
@@ -455,11 +461,14 @@ impl Table {
                     continue;
                 }
 
-                self.stage_update(TableOp::Delete { row_id });
-                self.stage_update(TableOp::Add {
-                    row_id,
-                    values: new_cells,
-                });
+                self.stage_update(ZRow::new_unchecked(
+                    -1,
+                    StoreTuple::from_id_values(old, old_cells),
+                ));
+                self.stage_update(ZRow::new_unchecked(
+                    1,
+                    StoreTuple::from_id_values(row_id, new_cells),
+                ));
             }
         }
     }
@@ -503,12 +512,15 @@ impl Table {
                 "collapsing {old_row_id:?} onto {new_row_id:?} would discard differing cells"
             );
 
-            self.stage_update(TableOp::Delete { row_id: old_row_id });
+            self.stage_update(ZRow::new_unchecked(
+                -1,
+                StoreTuple::from_id_values(old_row_id, old_cells),
+            ));
             if !collapses {
-                self.stage_update(TableOp::Add {
-                    row_id: new_row_id,
-                    values: new_cells,
-                });
+                self.stage_update(ZRow::new_unchecked(
+                    1,
+                    StoreTuple::from_id_values(new_row_id, new_cells),
+                ));
             }
         }
     }
@@ -543,14 +555,18 @@ impl Table {
     /// Only does primary key check, but no other validation.
     pub(super) fn insert_row(
         &mut self,
-        values: StoreTuple,
+        values: impl IntoIterator<
+            Item = StoreScalarValue,
+            IntoIter = std::vec::IntoIter<StoreScalarValue>,
+        >,
         row_id: PackedRowId,
         rowing: &mut Rowing,
     ) -> Result<(), ValidationError> {
+        let values = values.into_iter();
         // Checked before anything is recorded, so a rejected row leaves behind
         // neither an index entry nor a staged union.
         if let Some(unique_cols) = self.pk
-            && self.index.contains_key(&values[..unique_cols])
+            && self.index.contains_key(&values.as_slice()[..unique_cols])
         {
             return Err(ValidationError::DuplicatePrimaryKey);
         };
@@ -559,7 +575,7 @@ impl Table {
         // ids and a later rebuild pass collapses them.
         if self.structural
             && let Some(old) = self
-                .index_seek(&values)
+                .index_seek(values.as_slice())
                 .expect("valid structural index and key structure")
                 .next()
         {
@@ -576,10 +592,19 @@ impl Table {
     }
 
     /// Place a row in columnar storage and every index, with no validation
-    fn insert_packed(&mut self, values: StoreTuple, row_id: PackedRowId) {
+    fn insert_packed(
+        &mut self,
+        values: impl IntoIterator<
+            Item = StoreScalarValue,
+            IntoIter = std::vec::IntoIter<StoreScalarValue>,
+        >,
+        row_id: PackedRowId,
+    ) {
+        let values = values.into_iter();
         debug_assert_eq!(values.len(), self.schema.columns.len());
 
-        self.index.insert(values.clone(), row_id);
+        self.index
+            .insert(values.clone().collect::<StoreTuple>(), row_id);
 
         // TODO this should only be maintained when a table needs rebuild, i.e. a structural table.
         // for child in Self::referenced_ids(&values) {
@@ -590,7 +615,7 @@ impl Table {
             Ok(pos) | Err(pos) => pos,
         };
         self.row_ids.insert(pos, row_id);
-        for (i, v) in values.into_iter().enumerate() {
+        for (i, v) in values.enumerate() {
             self.cols[i].insert(pos, v);
         }
     }

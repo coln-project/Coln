@@ -400,7 +400,9 @@ mod tests {
             .expect("resolve ops");
         assert_eq!(got, expected);
         assert_eq!(got[0].id(), PendingRowId(0).resolve(hash));
-        let PublicOp::Add { values, .. } = &got[1];
+        let PublicOp::Add { values, .. } = &got[1] else {
+            panic!("expected an add operation");
+        };
         assert_eq!(
             &values[..],
             &[

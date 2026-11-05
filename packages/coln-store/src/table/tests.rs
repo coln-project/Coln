@@ -205,7 +205,8 @@ fn staged_delete_removes_row_and_undo_restores_it(
         .expect("removed row is valid");
 
     let snapshot = test_table.table.snapshot();
-    test_table.as_mut().stage_delete(removed);
+    let tuple = test_table.handle().row_by_id(&removed).expect("row exists");
+    test_table.as_mut().stage_delete(tuple);
     test_table
         .as_mut()
         .apply_staged()
@@ -287,7 +288,8 @@ fn rebuild_index_tracks_rows_referring_to_an_id(
     assert_eq!(referring_rows(&test_table, a), vec![pair, doubled]);
     assert_eq!(referring_rows(&test_table, b), vec![pair]);
 
-    test_table.as_mut().stage_delete(pair);
+    let tuple = test_table.handle().row_by_id(&pair).expect("row exists");
+    test_table.as_mut().stage_delete(tuple);
     test_table
         .as_mut()
         .apply_staged()
@@ -296,7 +298,8 @@ fn rebuild_index_tracks_rows_referring_to_an_id(
     assert_eq!(referring_rows(&test_table, a), vec![doubled]);
     assert!(referring_rows(&test_table, b).is_empty());
 
-    test_table.as_mut().stage_delete(doubled);
+    let tuple = test_table.handle().row_by_id(&doubled).expect("row exists");
+    test_table.as_mut().stage_delete(tuple);
     test_table
         .as_mut()
         .apply_staged()
@@ -402,7 +405,8 @@ fn rollback_restores_rebuild_index_entries(
         .expect("row is valid");
 
     let snapshot = test_table.table.snapshot();
-    test_table.as_mut().stage_delete(row);
+    let tuple = test_table.handle().row_by_id(&row).expect("row exists");
+    test_table.as_mut().stage_delete(tuple);
     test_table
         .as_mut()
         .apply_staged()

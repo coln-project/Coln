@@ -240,7 +240,7 @@ impl Store {
         let mut affected = HashSet::new();
         for op in ops {
             let oid = op.table();
-            let op = self.id_packer.table_op(op);
+            let op = self.id_packer.pack_row(op);
             self.tables
                 .get_mut(&oid)
                 .expect("validated batch")
@@ -281,7 +281,10 @@ impl Store {
         let mut pending_pk: HashMap<TableOid, Vec<Vec<PublicScalarValue>>> = HashMap::new();
 
         for op in ops {
-            let PublicOp::Add { table, values, .. } = op;
+            let (table, values) = match op {
+                PublicOp::Add { table, values } => (table, values),
+                PublicOp::Delete { .. } => todo!("validate delete operations"),
+            };
             let t = self
                 .table(*table)
                 .ok_or(ValidationError::UnknownTableOid { oid: *table })?;

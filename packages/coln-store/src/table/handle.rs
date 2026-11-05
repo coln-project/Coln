@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_flir_rs::engine::delta::ZRow;
 use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 
 use crate::ir;
@@ -11,7 +12,7 @@ use crate::pack::IdPacker;
 use crate::rowing::Rowing;
 
 use crate::table::index::IndexMeta;
-use crate::table::{Table, TableOid, TableOp, ValidationError};
+use crate::table::{Table, TableOid, ValidationError};
 
 /// A [`Table`] together with the store-wide hash dictionary and canonicaliser,
 /// for read-only access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -122,12 +123,12 @@ impl<'a> TableMut<'a> {
 
     pub fn stage(&mut self, op: PublicOp) {
         debug_assert_eq!(op.table(), self.inner.oid());
-        let op = self.id_packer.table_op(op);
+        let op = self.id_packer.pack_row(op);
         self.inner.stage_update(op);
     }
 
-    pub fn stage_delete(&mut self, row_id: PackedRowId) {
-        self.inner.stage_update(TableOp::Delete { row_id });
+    pub fn stage_delete(&mut self, tuple: StoreTuple) {
+        self.inner.stage_update(ZRow::new_unchecked(-1, tuple));
     }
 
     pub fn apply_staged(&mut self) -> Result<(), ValidationError> {

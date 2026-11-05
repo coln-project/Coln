@@ -9,6 +9,7 @@
 use std::fmt;
 use std::ops::Deref;
 
+
 use crate::ir;
 use crate::public::{PublicRowId, PublicTuple};
 use crate::tuple::{NativeScalar, NativeScalarType, ScalarKind, Tuple};
@@ -74,13 +75,27 @@ impl From<&ir::ColType> for StoreScalarType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreTuple(pub(crate) Tuple<StoreScalarValue>);
 
-pub trait WithRowId {
+pub trait WithRowId:
+    Deref<Target = [Self::Scalar]>
+    + IntoIterator<Item = Self::Scalar, IntoIter = std::vec::IntoIter<Self::Scalar>>
+{
     type RowId;
+    type Scalar;
+
     fn row_id(&self) -> Self::RowId;
+
+    /// Borrow the schema columns, excluding the tuple's row ID fields.
+    fn column_values(&self) -> &[Self::Scalar];
+
+    /// Consume the tuple, returning its schema columns without the row ID fields.
+    fn into_column_values(self) -> std::vec::IntoIter<Self::Scalar>
+    where
+        Self: Sized;
 }
 
 impl WithRowId for StoreTuple {
     type RowId = PackedRowId;
+    type Scalar = StoreScalarValue;
 
     /// The row id a stored row leads with.
     fn row_id(&self) -> Self::RowId {
@@ -88,6 +103,16 @@ impl WithRowId for StoreTuple {
             Some(StoreScalarValue::RowId(id)) => *id,
             other => panic!("stored rows lead with their row id, got {other:?}"),
         }
+    }
+
+    fn column_values(&self) -> &[Self::Scalar] {
+        &self[1..]
+    }
+
+    fn into_column_values(self) -> std::vec::IntoIter<Self::Scalar> {
+        let mut values = self.into_iter();
+        values.next();
+        values
     }
 }
 

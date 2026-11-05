@@ -18,28 +18,26 @@ use crate::table::TableOid;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Op<Oid: Clone, T: Clone + WithRowId> {
     Add { table: Oid, values: T },
-    // Delete {
-    //     row_id: RowId,
-    //     table: TableOid,
-    // }, // TODO Delete + Update
+    // Retain the full tuple so deletion can produce a retraction delta.
+    Delete { table: Oid, values: T },
 }
 
 impl<O: Clone, T: Clone + WithRowId> Op<O, T> {
     pub fn id(&self) -> T::RowId {
-        match self {
-            Op::Add { values, .. } => values.row_id(),
-        }
+        self.values().row_id()
     }
 
     pub fn values(&self) -> &T {
         match self {
             Op::Add { values, .. } => values,
+            Op::Delete { values, .. } => values,
         }
     }
 
     pub fn table(&self) -> O {
         match self {
             Op::Add { table, .. } => table.clone(),
+            Op::Delete { table, .. } => table.clone(),
         }
     }
 
@@ -49,26 +47,35 @@ impl<O: Clone, T: Clone + WithRowId> Op<O, T> {
                 table: f(table),
                 values,
             },
+            Op::Delete { table, values } => Op::Delete {
+                table: f(table),
+                values,
+            },
         }
     }
 }
 
 pub const OP_KIND_ADD: u32 = 0;
+pub const OP_KIND_DELETE: u32 = 1;
 
 pub type PublicOp = Op<TableOid, PublicTuple>;
 
 pub type PackedOp = Op<TableOid, StoreTuple>;
 
-impl From<Op<ir::Path, StoreTuple>> for ZRow<StoreTuple> {
-    fn from(value: Op<ir::Path, StoreTuple>) -> Self {
+/// An operation that contains a path, used to interface with TableDelta
+pub type PackedPathOp = Op<ir::Path, StoreTuple>;
+
+impl From<PackedPathOp> for ZRow<StoreTuple> {
+    fn from(value: PackedPathOp) -> Self {
         match value {
             Op::Add { values, .. } => ZRow::new_unchecked(1, values),
+            Op::Delete { values, .. } => ZRow::new_unchecked(-1, values),
         }
     }
 }
 
-impl From<Op<ir::Path, StoreTuple>> for TableDelta<StoreTuple> {
-    fn from(op: Op<ir::Path, StoreTuple>) -> Self {
+impl From<PackedPathOp> for TableDelta<StoreTuple> {
+    fn from(op: PackedPathOp) -> Self {
         Self::new(op.table(), std::iter::once(op.into()))
     }
 }
@@ -92,14 +99,19 @@ impl PendingOp {
 
     /// Schema column values, excluding the tuple's leading row ID.
     pub(crate) fn column_values(&self) -> &[TxScalarValue] {
-        match &self.0 {
-            Op::Add { values, .. } => &values.as_slice()[1..],
-        }
+        self.0.values().column_values()
     }
 
     pub(crate) fn resolve(self, commit: CommitHash) -> PublicOp {
         match self.0 {
             Op::Add { table, values } => PublicOp::Add {
+                table,
+                values: values
+                    .into_iter()
+                    .map(|value| value.map(|id| id.resolve(commit)))
+                    .collect(),
+            },
+            Op::Delete { table, values } => PublicOp::Delete {
                 table,
                 values: values
                     .into_iter()
@@ -136,7 +148,9 @@ mod tests {
         let resolved = op.resolve(hash);
         assert_eq!(resolved.table(), 3);
         assert_eq!(resolved.id(), PendingRowId(1).resolve(hash));
-        let PublicOp::Add { values, .. } = resolved;
+        let PublicOp::Add { values, .. } = resolved else {
+            panic!("resolving an add must preserve its operation kind");
+        };
         assert_eq!(
             &values[..],
             [
@@ -154,7 +168,9 @@ mod tests {
         let op = PendingOp::add(PendingRowId(0), 3, TxTuple::empty());
         assert!(op.column_values().is_empty());
 
-        let PublicOp::Add { values, .. } = op.resolve(hash);
+        let PublicOp::Add { values, .. } = op.resolve(hash) else {
+            panic!("resolving an add must preserve its operation kind");
+        };
         assert_eq!(
             &values[..],
             [PublicScalarValue::RowId(PendingRowId(0).resolve(hash))]

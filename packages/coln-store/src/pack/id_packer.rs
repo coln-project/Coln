@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, WithRowId};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue};
 use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
 
 use crate::commit::hash_dict::HashMapper;
 use crate::op::{PackedOp, PublicOp};
 use crate::rollback::Rollback;
-use crate::table::TableOp;
+use coln_flir_rs::engine::{delta::ZRow, packed::StoreTuple};
 
 /// A packer doing dictionary encoding while supporting rollbacks.
 #[derive(Debug)]
@@ -83,23 +83,30 @@ impl IdPacker {
         value.map(|id| self.unpack_row_id(id))
     }
 
-    pub(crate) fn table_op(&mut self, op: PublicOp) -> TableOp {
-        match op {
-            PublicOp::Add { values, .. } => {
-                let row_id = self.pack_row_id(values.row_id());
-                let values = values
-                    .into_iter()
-                    .skip(1)
-                    .map(|value| self.pack_value(value))
-                    .collect();
-                TableOp::Add { row_id, values }
-            }
-        }
+    pub(crate) fn pack_row(&mut self, op: PublicOp) -> ZRow<StoreTuple> {
+        let (weight, values) = match op {
+            PublicOp::Add { values, .. } => (1, values),
+            PublicOp::Delete { values, .. } => (-1, values),
+        };
+        ZRow::new_unchecked(
+            weight,
+            values
+                .into_iter()
+                .map(|value| self.pack_value(value))
+                .collect(),
+        )
     }
 
     pub(crate) fn pack_op(&mut self, op: PublicOp) -> PackedOp {
         match op {
             PublicOp::Add { table, values } => PackedOp::Add {
+                table,
+                values: values
+                    .into_iter()
+                    .map(|value| self.pack_value(value))
+                    .collect(),
+            },
+            PublicOp::Delete { table, values } => PackedOp::Delete {
                 table,
                 values: values
                     .into_iter()
@@ -149,6 +156,7 @@ impl Rollback for IdPacker {
 mod tests {
     use super::*;
     use crate::test_utils::row_id_from;
+    use coln_flir_rs::engine::packed::WithRowId;
 
     #[test]
     fn pack_op_preserves_table_and_values_and_interns_ids() {
@@ -167,7 +175,9 @@ mod tests {
         } = packer.pack_op(PublicOp::Add {
             table: 3,
             values: values.clone().into(),
-        });
+        }) else {
+            panic!("expected PackedOp::Add");
+        };
 
         assert_eq!(table, 3);
         assert_eq!(
