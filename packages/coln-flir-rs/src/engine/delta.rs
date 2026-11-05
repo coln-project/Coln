@@ -160,21 +160,24 @@ impl<Tuple> TableDelta<Tuple> {
     }
     /// Converts each contained tuple via `f`, which also receives the
     /// [entity](Self::for_entity()) the tuple belongs to.
-    pub fn map<U>(self, f: impl Fn(Tuple) -> U) -> TableDelta<U> {
+    pub fn map<U>(self, mut f: impl FnMut(Tuple) -> U) -> TableDelta<U> {
         let Self { entity, inner } = self;
         let inner = inner
             .into_iter()
-            .map(|zrow| zrow.map(&f))
+            .map(|zrow| zrow.map(&mut f))
             .collect::<Vec<ZRow<U>>>();
         TableDelta { entity, inner }
     }
     /// Converts each contained tuple via `f`, which also receives the
     /// [entity](Self::for_entity()) the tuple belongs to.
-    pub fn try_map<U, E>(self, f: impl Fn(Tuple) -> Result<U, E>) -> Result<TableDelta<U>, E> {
+    pub fn try_map<U, E>(
+        self,
+        mut f: impl FnMut(Tuple) -> Result<U, E>,
+    ) -> Result<TableDelta<U>, E> {
         let Self { entity, inner } = self;
         let inner = inner
             .into_iter()
-            .map(|zrow| zrow.try_map(&f))
+            .map(|zrow| zrow.try_map(&mut f))
             .collect::<Result<_, _>>()?;
         Ok(TableDelta { entity, inner })
     }
@@ -269,17 +272,21 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
     /// Converts each contained tuple via `f`, which also receives the
     /// [entity](TableDelta::for_entity()) the tuple belongs to. The `Marker`
     /// is preserved as entities are left untouched.
-    pub fn map<U>(self, f: impl Fn(Tuple) -> U) -> StoreDelta<Marker, U> {
+    pub fn map<U>(
+        self,
+        f: impl FnMut(TableDelta<Tuple>) -> TableDelta<U>,
+    ) -> StoreDelta<Marker, U> {
         let inner = self
             .inner
             .into_iter()
-            .map(|table_delta| table_delta.map(&f))
-            .collect::<Vec<TableDelta<U>>>();
+            .map(f)
+            .collect();
         StoreDelta {
             inner,
             marker: PhantomData,
         }
     }
+
     /// Converts each contained tuple via `f`, which also receives the
     /// [entity](TableDelta::for_entity()) the tuple belongs to. The `Marker`
     /// is preserved as entities are left untouched.

@@ -137,6 +137,7 @@ impl<T: Into<TxScalarValue>> From<Vec<T>> for TxTuple {
 
 impl WithRowId for TxTuple {
     type RowId = PendingRowId;
+    type Scalar = TxScalarValue;
 
     fn row_id(&self) -> Self::RowId {
         match self.first() {
@@ -148,6 +149,16 @@ impl WithRowId for TxTuple {
             }
             other => panic!("TxTuple lead with their row id, got {other:?}"),
         }
+    }
+
+    fn column_values(&self) -> &[Self::Scalar] {
+        &self[1..]
+    }
+
+    fn into_column_values(self) -> std::vec::IntoIter<Self::Scalar> {
+        let mut values = self.into_iter();
+        values.next();
+        values
     }
 }
 

@@ -2,15 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+use coln_bouncer::bouncer::Bouncer;
+use coln_bouncer::rw::{DbRead, DbWrite};
 use coln_flir_rs::engine::{schema::ColnDef, tx::TxTuple};
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_flir_rs::{public::PublicScalarValue, query::WhereClause};
-use coln_store::{
-    store::auto::AutoStore,
-    txn::{
-        id::Promote,
-        rw::{StoreRead, StoreWrite},
-    },
+use coln_store::txn::{
+    id::Promote,
+    rw::{StoreRead, StoreWrite},
 };
 use rstest::{fixture, rstest};
 
@@ -31,32 +30,33 @@ fn coln_def() -> ColnDef {
 
 #[rstest]
 fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
-    let mut auto_store = AutoStore::try_from_ir(&ir, coln_def).expect("create store successful");
-    auto_store.transaction();
-    let va = auto_store
+    let mut bouncer = Bouncer::try_new(ir, coln_def).expect("create bouncer success");
+    bouncer.transaction();
+    let va = bouncer
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
-    let vb = auto_store
+    let vb = bouncer
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
-    let vc = auto_store
+    let vc = bouncer
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
 
     // TODO change the API so user does not need to clone
-    let _e1 = auto_store
+    let _e1 = bouncer
         .add(&Path::from("root.E"), vec![va.clone(), vb.clone()])
         .expect("add edge successful");
-    let _e2 = auto_store
+    let _e2 = bouncer
         .add(&Path::from("root.E"), vec![vb.clone(), vc.clone()])
         .expect("add edge successful");
 
-    auto_store.try_commit().expect("prepare success");
-    let h = auto_store.commit().expect("commit success");
-    let [va, vb] = auto_store.promote(vec![va, vb], h).try_into().unwrap();
+    let r = bouncer.commit().expect("commit success");
+    let [va, vb] = bouncer
+        .promote(vec![va, vb], r.cmt_hash)
+        .try_into()
+        .unwrap();
 
-    auto_store.transaction();
-    let connected = auto_store
+    let connected = bouncer
         .all_proj(
             &WhereClause {
                 table_name: Path::from("init.trans-closure.connected"),

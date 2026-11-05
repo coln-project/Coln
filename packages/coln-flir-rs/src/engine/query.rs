@@ -10,6 +10,7 @@ use crate::{
         packed::{PackedRowId, StoreScalarValue, StoreTuple},
         schema::{ColnSchema, DerivedView},
     },
+    ir,
     public::PublicTuple,
     tuple::{QueryScalar, Tuple},
 };
@@ -54,6 +55,7 @@ impl QueryTuple {
     pub fn inner(&self) -> &Tuple<QueryScalarValue> {
         &self.0
     }
+
     // @Leo we also need to convert a query tuple, i.e. a tuple in the derived view
     // into a store tuple to be put into a view table.
     // The allocate function is a bit of a leaky abstraction.... In short, we need to
@@ -64,68 +66,51 @@ impl QueryTuple {
     // there is not only a schema for base tables (with implicit row ids) but
     // also a schema for derived views (without implicit row ids). This can
     // become the `schema` param here guiding the conversion.
+    //
+    // @Leo: I'll use ir::Schema for now, once you have done the schema.rs integration, we can
+    // switch over. Although I feel the plain schema representation is probably enough... We will see
     pub fn into_store(
         self,
-        _schema: &ColnSchema<DerivedView>,
-        _id_alloc: impl FnMut() -> PackedRowId,
+        schema: &ir::Schema,
+        mut id_alloc: impl FnMut() -> PackedRowId,
     ) -> StoreTuple {
-        todo!()
-        // self.into_iter()
-        //     .map(|zrow| {
-        //         let row_id = id_alloc();
-        //         if zrow.zweight() > 0 {
-        //             let mut val_iter = zrow.into_row().data.into_iter();
-        //             let mut packed_val = Vec::new();
+        let mut scalars = self.into_iter();
+        let mut values = Vec::with_capacity(schema.columns.len());
 
-        //             for col in &self.schema().columns {
-        //                 match col.col_type {
-        //                     ir::ColType::RowId { .. } => {
-        //                         let ScalarTypedValue::Uint(commit_idx) =
-        //                             val_iter.next().expect("coln-query returns valid data")
-        //                         else {
-        //                             panic!("invalid data from coln-query");
-        //                         };
-        //                         let ScalarTypedValue::Uint(counter) =
-        //                             val_iter.next().expect("coln-query returns valid data")
-        //                         else {
-        //                             panic!("invalid data from coln-query");
-        //                         };
-        //                         packed_val.push(PackedValue::Id(PackedRowId {
-        //                             commit_idx: commit_idx as u32,
-        //                             counter: counter as u32,
-        //                         }));
-        //                     }
-        //                     ir::ColType::BuiltinTy {
-        //                         builtin_ty: ir::BuiltinTy::BuiltinInt,
-        //                     } => {
-        //                         let ScalarTypedValue::String(s) = val_iter.next().unwrap() else {
-        //                             panic!("invalid data from coln-query");
-        //                         };
-        //                         packed_val.push(PackedValue::Str(s));
-        //                     }
-        //                     ir::ColType::BuiltinTy {
-        //                         builtin_ty: ir::BuiltinTy::BuiltinStr,
-        //                     } => {
-        //                         let ScalarTypedValue::Iint(i) = val_iter.next().unwrap() else {
-        //                             panic!("invalid data from coln-query");
-        //                         };
-        //                         packed_val.push(PackedValue::Int(i as i32));
-        //                     }
-        //                 }
-        //             }
+        for col in &schema.columns {
+            let value = match col.col_type {
+                crate::ir::ColType::RowId { .. } => {
+                    // TODO: @Leo when you have u32 in query engine, update this as well
+                    // instead of narrowing the U64 values returned by its adapter.
+                    let commit_idx = match scalars.next() {
+                        Some(QueryScalarValue::U32(value)) => value,
+                        Some(QueryScalarValue::U64(value)) => {
+                            u32::try_from(value).expect("row id commit index must fit in a U32")
+                        }
+                        _ => panic!("row id commit index must be a U32 or U64"),
+                    };
+                    let counter = match scalars.next() {
+                        Some(QueryScalarValue::U32(value)) => value,
+                        Some(QueryScalarValue::U64(value)) => {
+                            u32::try_from(value).expect("row id counter must fit in a U32")
+                        }
+                        _ => panic!("row id counter must be a U32 or U64"),
+                    };
+                    StoreScalarValue::RowId(PackedRowId {
+                        commit_idx,
+                        counter,
+                    })
+                }
+                crate::ir::ColType::BuiltinTy { .. } => scalars
+                    .next()
+                    .expect("query tuple is missing a column")
+                    .into(),
+            };
+            values.push(value);
+        }
 
-        //             PackedOp::Add {
-        //                 row_id,
-        //                 values: packed_val.into(),
-        //             }
-        //         } else if zrow.zweight() < 0 {
-        //             // TODO don't know how to remove yet
-        //             todo!()
-        //         } else {
-        //             unreachable!("zero zweight impossible")
-        //         }
-        //     })
-        //     .collect()
+        assert!(scalars.next().is_none(), "query tuple has extra columns");
+        StoreTuple::from_id_values(id_alloc(), values)
     }
 
     pub fn into_public(self, _schema: &ColnSchema<DerivedView>) -> PublicTuple {

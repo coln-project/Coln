@@ -76,6 +76,7 @@ pub struct PublicTuple(pub(crate) Tuple<PublicScalarValue>);
 
 impl WithRowId for PublicTuple {
     type RowId = PublicRowId;
+    type Scalar = PublicScalarValue;
 
     /// The row id a stored row leads with.
     fn row_id(&self) -> Self::RowId {
@@ -83,6 +84,16 @@ impl WithRowId for PublicTuple {
             Some(PublicScalarValue::RowId(id)) => id.clone(),
             other => panic!("stored rows lead with their row id, got {other:?}"),
         }
+    }
+
+    fn column_values(&self) -> &[Self::Scalar] {
+        &self[1..]
+    }
+
+    fn into_column_values(self) -> std::vec::IntoIter<Self::Scalar> {
+        let mut values = self.into_iter();
+        values.next();
+        values
     }
 }
 
