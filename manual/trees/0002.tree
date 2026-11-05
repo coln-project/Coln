@@ -1,4 +1,5 @@
-\title{About the manual}
+\title{About the Manual}
+\taxon{Appendix}
 \import{prelude}
 
 \subtree[0004]{
@@ -69,7 +70,3 @@
 
   \p{More generally, the Coln manual should be thought of as more of a [[hyperbook]] than a [[zettelkasten]].}
 }
-
-\transclude{000B}
-
-\transclude{000I}

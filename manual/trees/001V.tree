@@ -4,7 +4,7 @@
 
 \pre{%
 \kw{theory} Graph := \kw{sig}
-  vertex : Set
-  edge : vertex -> vertex -> Set
+  vertex : \kwi{Set}
+  edge : vertex -> vertex -> \kwi{Set}
 \kw{end}
 }

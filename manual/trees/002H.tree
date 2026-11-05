@@ -1,7 +1,7 @@
 \title{What and why is Coln?}
 \import{prelude}
 
-\p{Coln is a \em{tool} for \em{logical reasoning}.}
+\p{Coln is a dependent type theory that compiles to database schemas and queries, together with a custom database based on [[automerge]] that consumes these definitions. We see Coln as a \em{tool} for \em{logical reasoning}:}
 
 \ul{
   \li{\defcase{Tool} means that Coln performs routines that answers questions.}
@@ -11,7 +11,7 @@
 
 \p{Coln is similar to both existing proof assistants and existing databases.}
 
-\p{One way of looking at Coln is that it is the result of cutting out everything from a dependent type theory that can't fit in a database, and then seeing if database technology (query planning, efficient data structures) can speed up the process of proof search for the problems which are still expressible.}
+\p{One way of looking at Coln is that it is the result of cutting out everything from a dependent type theory that can't fit in a database, and then seeing whether database technology (query planning, efficient data structures) can speed up the process of proof search for the problems which are still expressible.}
 
 \p{Another way of looking at Coln is that it is a dependently typed approach to databases, derived by first finding a denotational semantics for database languages and then using standard techniques to distill an internal language for that denotational semantics.}
 
@@ -28,3 +28,7 @@
 \p{However, the mathematics involved in a proof in a non-well-structured domain does not have this property, and if we want a systematic approach to organizing the lemmas then we should use a database that we can query in flexible ways, rather than relying on a naming convention.}
 
 \p{But there are many roads to and from Coln; the core ideas are very elementary in a certain sense and we expect to be surprised by where Coln ends up being applicable or not applicable.}
+
+\transclude{000B}
+
+\transclude{000I}

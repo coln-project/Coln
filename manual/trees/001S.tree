@@ -5,13 +5,13 @@
 \p{We can define \code{Or} in the following way.}
 
 \pre{%
-\kw{theory} Or/motive (@ind p0 : Prop) (@ind p1 : Prop) := \kw{sig}
-  implicand : Prop
+\kw{theory} Or/motive (@ind p0 : \kwi{Prop}) (@ind p1 : \kwi{Prop}) := \kw{sig}
+  implicand : \kwi{Prop}
   impl0 : p0 -> implicand
   impl1 : p1 -> implicand
 \kw{end}
 
-\kw{ind} \kw{def} Or (p0 : Prop) (p1 : Prop) : Prop :=
+\kw{ind} \kw{def} Or (p0 : \kwi{Prop}) (p1 : \kwi{Prop}) : \kwi{Prop} :=
   \kw{init} (Or/motive p0 p1) .implicand
 }
 
@@ -21,8 +21,8 @@
 
 \pre{%
 \kw{theory} HardChoice := \kw{sig}
-  likes-bananas : Prop
-  likes-apples : Prop
+  likes-bananas : \kwi{Prop}
+  likes-apples : \kwi{Prop}
   at-least-one : Or likes-bananas likes-apples
 \kw{end}
 }
@@ -33,8 +33,8 @@
 
 \pre{%
 \kw{ind} \kw{theory} HardChoice := \kw{sig}
-  likes-bananas : Prop
-  likes-apples : Prop
+  likes-bananas : \kwi{Prop}
+  likes-apples : \kwi{Prop}
   at-least-one : Or likes-bananas likes-apples
 \kw{end}
 }

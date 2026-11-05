@@ -1,13 +1,50 @@
-\taxon{Slogan}
-\title{Views are top-level functions}
+\title{Records as queries}
 \import{prelude}
 
-\p{In the [queries](001H), we saw several usages of the pattern}
+\p{The simplest use of a record as a query is to produce the cartesian product of the constituent queries. The SQL equivalent here is a \code{CROSS JOIN}.}
 
 \pre{%
-\kw{def} query (m : T) : Set := ...
+\kw{theory} Graph := \kw{sig}
+  V : \kwi{Set}
+  E : V -> V -> \kwi{Set}
+\kw{end}
+
+\kw{def} all-pairs (m : Graph) : \kwi{Set} := \kw{sig}
+  first-vertex : m.V
+  second-vertex : m.V
+\kw{end}
 }
 
-\p{\code{\kw{def}} is in fact a much more general construct; any theory can replace \code{Set} on the right, and we can take in multiple arguments.}
+\p{The power of record types as queries comes when exploiting dependency. For example, we can query for the set of all edges in the graph:}
 
-\p{In general, this allows one to create a \em{view} of a model one theory, in the form of a model of another theory.}
+\pre{
+\kw{def} all-edges (m : Graph) : \kwi{Set} := \kw{sig}
+  a : m.V
+  b : m.V
+  e : m.E a b
+\kw{end}
+}
+
+\p{Or, more interestingly, all of the self-loops:}
+
+\pre{
+\kw{def} all-loops (m : Graph) : \kwi{Set} := \kw{sig}
+  a : m.V
+  e : m.E a a
+\kw{end}
+}
+
+\p{Or all of the triangles:}
+
+\pre{
+\kw{def} all-triangles (m : Graph) : \kwi{Set} := \kw{sig}
+  a : m.V
+  b : m.V
+  c : m.V
+  f : m.E a b
+  g : m.E b c
+  h : m.E c a
+\kw{end}
+}
+
+\collapsedaside{\taxon{Aside} There is a sense in which the fields in a theory that end in \code{\kwi{Set}} are specifying the "atomic queries" that it is possible to run on the corresponding database. The more complex queries on \code{Graph} above are all specified by composing the simpler ones. In fact, in an earlier version of Coln, \code{\kwi{Set}} was written as \code{Query} to make this clear.}

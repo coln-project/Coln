@@ -4,7 +4,7 @@
 
 \pre{%
 \kw{theory} BagOfGraphs := \kw{sig}
-  graph-id : Set
+  graph-id : \kwi{Set}
   graph-for : graph-id -> Graph
 \kw{end}
 }

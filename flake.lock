@@ -1,5 +1,26 @@
 {
   "nodes": {
+    "bib2forester": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782480966,
+        "narHash": "sha256-GwnoDQZ7Atb8EFrDKheM0pGRSQR9POcLglqDd/5FeJ4=",
+        "owner": "olynch",
+        "repo": "bib2forester",
+        "rev": "1099ec2f432c37b689870002e76f20c45c3a529e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "olynch",
+        "repo": "bib2forester",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -107,6 +128,7 @@
     },
     "root": {
       "inputs": {
+        "bib2forester": "bib2forester",
         "flake-utils": "flake-utils",
         "ghc-wasm-meta": "ghc-wasm-meta",
         "nixpkgs": "nixpkgs_2",

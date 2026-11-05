@@ -1,15 +1,15 @@
-\title{Lowering for jealousy-triangle}
+\title{Lowering for ancestry-cycle}
 \import{prelude}
 
-\p{Recall from [[001H]] the query \code{jealousy-triangle} defined by}
+\p{The query \code{ancestry-cycle} looks for cycles in the recorded ancestry relation. Such cycles indicate suspicious data:}
 
 \pre{%
-\kw{def} jealousy-triangle (m : Drama) : Set := \kw{tuple}
-  a b c : m.person
-  m.jealous-of a b
-  m.jealous-of b c
-  m.jealous-of c a
+\kw{def} ancestry-cycle (m : Family) : \kwi{Set} := \kw{sig}
+  a b c : m.Person
+  m.is-descendant-of a b
+  m.is-descendant-of b c
+  m.is-descendant-of c a
 \kw{end}
 }
 
-\p{}
+\p{\mvrnote{TODO unfinished example}}

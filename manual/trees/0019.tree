@@ -3,4 +3,4 @@
 
 \p{Whitespace is generally ignored, though newlines create \code{\verb>|\n>} tokens.}
 
-\p{Line comments starting with \code{#} are considered whitespace.}
+\p{Lines starting with \code{#} are comments, and are considered whitespace.}

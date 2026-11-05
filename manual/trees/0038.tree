@@ -1,0 +1,4 @@
+\title{Coln as a logic programming language}
+\import{prelude}
+
+\mvrnote{Datalog to Coln translation.}

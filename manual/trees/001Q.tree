@@ -2,8 +2,8 @@
 \taxon{Example}
 \import{prelude}
 
-\p{The empty set is the initial model of \code{Set}.}
+\p{The empty set is the initial model of \code{\kwi{Set}}.}
 
 \pre{%
-\kw{ind} \kw{def} empty := \kw{init} Set
+\kw{ind} \kw{def} empty := \kw{init} \kwi{Set}
 }
