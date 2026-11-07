@@ -33,7 +33,7 @@ use crate::{
 enum AutoState {
     Idle,
     Transaction(TxnInner),
-    Prepared(PreparedCommit),
+    Prepared(Box<PreparedCommit>),
 }
 
 pub struct AutoStore {
@@ -94,7 +94,7 @@ impl AutoStore {
         };
         let mut prepared = txn.try_commit(&mut self.store)?;
         let delta = prepared.store_delta();
-        self.state = AutoState::Prepared(prepared);
+        self.state = AutoState::Prepared(Box::new(prepared));
         Ok(delta)
     }
 
@@ -103,7 +103,7 @@ impl AutoStore {
         let AutoState::Prepared(prepared) = state else {
             panic!("tried commit");
         };
-        Ok(TxnInner::commit(&mut self.store, prepared))
+        Ok(TxnInner::commit(&mut self.store, *prepared))
     }
 
     pub fn abort(&mut self) {

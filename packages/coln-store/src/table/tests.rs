@@ -118,7 +118,7 @@ fn rollback_removes_applied_rows_and_index_entries(
     test_table.as_mut().stage(PublicOp::Add {
         table: 0,
         values: vec![
-            PublicScalarValue::RowId(first_public.clone()),
+            PublicScalarValue::RowId(first_public),
             PublicScalarValue::I32(2),
         ]
         .into(),
@@ -126,7 +126,7 @@ fn rollback_removes_applied_rows_and_index_entries(
     test_table.as_mut().stage(PublicOp::Add {
         table: 0,
         values: vec![
-            PublicScalarValue::RowId(second_public.clone()),
+            PublicScalarValue::RowId(second_public),
             PublicScalarValue::I32(3),
         ]
         .into(),
@@ -429,7 +429,7 @@ fn commit_snapshot_keeps_rows_and_discards_undo_log(
     test_table.as_mut().stage(PublicOp::Add {
         table: 0,
         values: vec![
-            PublicScalarValue::RowId(public_id.clone()),
+            PublicScalarValue::RowId(public_id),
             PublicScalarValue::I32(7),
         ]
         .into(),
@@ -705,7 +705,7 @@ fn primary_key_detects_duplicates_in_id_columns(
     mut test_table: TestTable,
 ) {
     let src_public = row_id_from(3, 7);
-    let src = test_table.dict.pack_row_id(src_public.clone());
+    let src = test_table.dict.pack_row_id(src_public);
     let dst = test_table.dict.pack_row_id(row_id_from(4, 8));
     let row_id = test_table.dict.pack_row_id(row_id_from(1, 0));
     test_table
@@ -882,7 +882,7 @@ fn pk_insert_benchmark(
     let start = std::time::Instant::now();
     for i in 0..n {
         let public_id = zerohash_row_id(i as u32);
-        let row_id = test_table.dict.pack_row_id(public_id.clone());
+        let row_id = test_table.dict.pack_row_id(public_id);
         let values = vec![
             PublicScalarValue::RowId(public_id),
             PublicScalarValue::I32(i),
@@ -977,8 +977,8 @@ fn debug_dumps_rows(
     // Dump prints unpacked row ids, so the commits have to be interned.
     let first = zerohash_row_id(0);
     let second = zerohash_row_id(1);
-    let first_packed = test_table.dict.pack_row_id(first.clone());
-    let second_packed = test_table.dict.pack_row_id(second.clone());
+    let first_packed = test_table.dict.pack_row_id(first);
+    let second_packed = test_table.dict.pack_row_id(second);
     test_table
         .as_mut()
         .insert_row(

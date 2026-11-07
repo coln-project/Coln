@@ -364,7 +364,7 @@ mod tests {
                 PendingRowId(1),
                 1,
                 vec![
-                    TxScalarValue::RowId(TxRowId::Existing(rid.clone())),
+                    TxScalarValue::RowId(TxRowId::Existing(rid)),
                     TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
                     TxScalarValue::String("x".into()),
                 ]
@@ -646,8 +646,8 @@ mod tests {
             PendingRowId(0),
             0,
             vec![
-                TxScalarValue::RowId(TxRowId::Existing(rid_a.clone())),
-                TxScalarValue::RowId(TxRowId::Existing(rid_a.clone())),
+                TxScalarValue::RowId(TxRowId::Existing(rid_a)),
+                TxScalarValue::RowId(TxRowId::Existing(rid_a)),
             ]
             .into(),
         );

@@ -62,7 +62,7 @@ fn add_basic_data_to_graph(store: &mut Store) -> Result<GraphData, StoreError> {
     let mut tx = store.transaction();
     let v1 = tx.add(&gv, TxTuple::empty())?;
     let v2 = tx.add(&gv, TxTuple::empty())?;
-    tx.add(&ge, vec![v1.clone(), v2.clone()])?;
+    tx.add(&ge, vec![v1, v2])?;
     let h = tx.commit()?;
     let [v1, v2] = store.promote(vec![v1, v2], h).try_into().unwrap();
 
@@ -146,8 +146,8 @@ fn test_add_edge_referencing_vertices_from_previous_commit(
 
     let data = add_basic_data_to_graph(&mut store).expect("add basic data");
 
-    let edge_commit = add_graph_edge(&mut store, data.v1.clone(), data.v2.clone())
-        .expect("add edge in later transaction");
+    let edge_commit =
+        add_graph_edge(&mut store, data.v1, data.v2).expect("add edge in later transaction");
 
     let edges = store.table_at(&Path::from("root.E")).expect("root.E table");
     assert_eq!(edges.row_count(), 2);
