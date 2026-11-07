@@ -15,44 +15,50 @@ use crate::store::error::StoreError;
 const MAGIC: &[u8; 4] = b"GMst";
 const FORMAT_VERSION: u32 = 2;
 
-// ── Store-level encode/decode ───────────────────────────────────────────────
+impl Store {
+    /// Store file layout, scalar integers use LEB128:
+    ///
+    /// `[MAGIC:4][version][chunk_count]`
+    /// `[chunk_count × [chunk_header || payload]]` (see [`crate::commit::chunk::Header::write`])
+    pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
+        let commits = self.commits().iter_topological().collect::<Vec<_>>();
+        let mut buf: Vec<u8> = Vec::new();
+        buf.write_all(MAGIC)?;
+        commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
+        commit_leb128::write_len(&mut buf, commits.len());
 
-/// Store file layout, scalar integers use LEB128:
-///
-/// `[MAGIC:4][version][chunk_count]`
-/// `[chunk_count × [chunk_header || payload]]` (see [`Header::write`])
-pub fn encode_store(store: &Store) -> Result<Vec<u8>, CodecError> {
-    let commits = store.commits().iter_topological().collect::<Vec<_>>();
-    let mut buf: Vec<u8> = Vec::new();
-    buf.write_all(MAGIC)?;
-    commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
-    commit_leb128::write_len(&mut buf, commits.len());
+        for commit in commits {
+            Chunk::from(commit).write(&mut buf);
+        }
 
-    for commit in commits {
-        write_commit_chunk(&mut buf, commit);
+        Ok(buf)
     }
 
-    Ok(buf)
-}
-
-/// Decode a store from bytes produced by [`encode_store`].
-pub fn decode_store(data: &[u8]) -> Result<Store, StoreError> {
-    let encoded = read_store_envelope(data)?;
-    let store = Store::try_from_chunks(encoded.chunks)?;
-    if store.pending_commits_len() > 0 {
-        return Err(CodecError::DataContentError(
-            "store snapshot contains commits that could not be applied".into(),
-        )
-        .into());
+    /// Decode bytes produced by [`Self::encode`].
+    ///
+    /// Returns a store initialized from the root and checked data commits that
+    /// still need to be applied. No data commits are replayed by this method.
+    pub fn decode(data: &[u8]) -> Result<(Self, Vec<Commit<'static>>), StoreError> {
+        let chunks = read_store_envelope(data)?;
+        Self::try_from_chunks(chunks)
     }
-    Ok(store)
+
+    /// Restore a store without deriving data or checking rules.
+    /// Rejects snapshots whose commits cannot all be applied.
+    pub(crate) fn decode_plain(data: &[u8]) -> Result<Self, StoreError> {
+        let encoded = read_store_envelope(data)?;
+        let store = Self::try_from_chunks_plain(encoded)?;
+        if store.has_pending() {
+            return Err(CodecError::DataContentError(
+                "store snapshot contains commits that could not be applied".into(),
+            )
+            .into());
+        }
+        Ok(store)
+    }
 }
 
-struct EncodedStore {
-    chunks: Vec<Chunk>,
-}
-
-fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
+fn read_store_envelope(data: &[u8]) -> Result<Vec<Chunk>, CodecError> {
     if data.len() < MAGIC.len() {
         return Err(CodecError::DataFormatError(
             "truncated: missing magic".into(),
@@ -83,11 +89,7 @@ fn read_store_envelope(data: &[u8]) -> Result<EncodedStore, CodecError> {
         )));
     }
 
-    Ok(EncodedStore { chunks })
-}
-
-fn write_commit_chunk(buf: &mut Vec<u8>, commit: &Commit<'_>) {
-    Chunk::from(commit).write(buf)
+    Ok(chunks)
 }
 
 #[cfg(test)]
@@ -132,9 +134,8 @@ mod tests {
     }
 
     fn read_encoded_chunks(data: &[u8]) -> Vec<(u8, Vec<u8>)> {
-        let encoded = read_store_envelope(data).expect("encoded store");
-        encoded
-            .chunks
+        let chunks = read_store_envelope(data).expect("encoded store");
+        chunks
             .into_iter()
             .map(|chunk| {
                 let chunk_type = chunk.chunk_type();
@@ -180,7 +181,7 @@ mod tests {
     #[test]
     fn encode_store_writes_root_commit_chunk() {
         let store = Store::new();
-        let bytes = encode_store(&store).unwrap();
+        let bytes = store.encode().unwrap();
         let chunks = read_encoded_chunks(&bytes);
         let root = store.commits().root_commit().expect("root commit");
 
@@ -199,9 +200,16 @@ mod tests {
         let expected = store
             .commits()
             .iter_topological()
-            .map(|commit| (u8::from(commit.chunk_type()), commit.payload().to_vec()))
+            .map(|commit| {
+                let chunk_type = if commit.is_root() {
+                    ChunkType::Root
+                } else {
+                    ChunkType::Commit
+                };
+                (u8::from(chunk_type), commit.payload().to_vec())
+            })
             .collect::<Vec<_>>();
-        let bytes = encode_store(&store).unwrap();
+        let bytes = store.encode().unwrap();
         let chunks = read_encoded_chunks(&bytes);
 
         assert_eq!(chunks, expected);
@@ -213,7 +221,7 @@ mod tests {
         bytes.write_all(MAGIC).unwrap();
         commit_leb128::write_u32(&mut bytes, 999);
 
-        assert!(is_data_format_error(decode_store(&bytes)));
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
     }
 
     #[test]
@@ -225,7 +233,7 @@ mod tests {
         commit_leb128::write_len(&mut chunk, 0);
         let bytes = store_envelope(&[chunk]);
 
-        assert!(is_data_format_error(decode_store(&bytes)));
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
     }
 
     #[test]
@@ -236,28 +244,31 @@ mod tests {
         commit_leb128::write_len(&mut bytes, 1);
         bytes.write_all(&[0x47]).unwrap(); // partial chunk: not even a full magic
 
-        assert!(is_data_format_error(decode_store(&bytes)));
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
     }
 
     #[test]
     fn store_decode_rejects_trailing_bytes_after_chunks() {
-        let mut bytes = encode_store(&Store::new()).unwrap();
+        let mut bytes = Store::new().encode().unwrap();
         bytes.push(0);
 
-        assert!(is_data_format_error(decode_store(&bytes)));
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
     }
 
     #[test]
     fn store_decode_rejects_flipped_checksum_byte() {
-        let bytes = encode_store(&Store::new()).expect("encode store");
-        assert!(decode_store(&bytes).is_ok(), "baseline store should decode");
+        let bytes = Store::new().encode().expect("encode store");
+        assert!(
+            Store::decode_plain(&bytes).is_ok(),
+            "baseline store should decode"
+        );
 
         let mut corrupted = bytes.clone();
         // Skip the 4-byte chunk magic to land on the stored checksum.
         let checksum_byte = first_chunk_offset(&corrupted) + MAGIC.len();
         corrupted[checksum_byte] ^= 0xFF;
 
-        let err = decode_store(&corrupted).expect_err("checksum mismatch");
+        let err = Store::decode_plain(&corrupted).expect_err("checksum mismatch");
         assert!(matches!(
             err,
             StoreError::Encode(CodecError::ChecksumMismatch)
@@ -266,19 +277,22 @@ mod tests {
 
     #[test]
     fn store_decode_rejects_flipped_chunk_magic_byte() {
-        let bytes = encode_store(&Store::new()).expect("encode store");
-        assert!(decode_store(&bytes).is_ok(), "baseline store should decode");
+        let bytes = Store::new().encode().expect("encode store");
+        assert!(
+            Store::decode_plain(&bytes).is_ok(),
+            "baseline store should decode"
+        );
 
         let mut corrupted = bytes.clone();
         let magic_byte = first_chunk_offset(&corrupted);
         corrupted[magic_byte] ^= 0xFF;
 
-        assert!(is_data_format_error(decode_store(&corrupted)));
+        assert!(is_data_format_error(Store::decode_plain(&corrupted)));
     }
 
     #[test]
     fn store_decode_rejects_multiple_roots() {
-        let bytes = encode_store(&Store::new()).unwrap();
+        let bytes = Store::new().encode().unwrap();
         let root_payload = read_encoded_chunks(&bytes)
             .into_iter()
             .next()
@@ -287,12 +301,12 @@ mod tests {
         let framed = frame_chunk(ChunkType::Root, &root_payload);
         let bytes = store_envelope(&[framed.clone(), framed]);
 
-        assert!(is_data_format_error(decode_store(&bytes)));
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
     }
 
     #[test]
     fn store_decode_rejects_missing_dependency() {
-        let root_bytes = encode_store(&Store::new()).unwrap();
+        let root_bytes = Store::new().encode().unwrap();
         let root_chunk = read_encoded_chunks(&root_bytes)
             .into_iter()
             .next()
@@ -308,7 +322,7 @@ mod tests {
             frame_chunk(ChunkType::Commit, commit.payload()),
         ]);
 
-        assert!(is_data_content_error(decode_store(&bytes)));
+        assert!(is_data_content_error(Store::decode_plain(&bytes)));
     }
 
     #[test]
@@ -316,8 +330,8 @@ mod tests {
         let store = Store::new();
         let root = store.commits().root_commit().expect("root").hash();
 
-        let bytes = encode_store(&store).unwrap();
-        let restored = decode_store(&bytes).unwrap();
+        let bytes = store.encode().unwrap();
+        let restored = Store::decode_plain(&bytes).unwrap();
 
         assert_eq!(restored.table_count(), 0);
         assert_eq!(restored.commits().root_commit().expect("root").hash(), root);
@@ -336,8 +350,8 @@ mod tests {
         let commit = txn.commit().expect("commit");
         let row_id = store.promote_one(live_id, commit);
 
-        let bytes = encode_store(&store).unwrap();
-        let restored = decode_store(&bytes).unwrap();
+        let bytes = store.encode().unwrap();
+        let restored = Store::decode_plain(&bytes).unwrap();
 
         let packed = restored
             .id_lookup()
@@ -367,17 +381,17 @@ mod tests {
         commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
         commit_leb128::write_len(&mut bytes, 0);
 
-        assert!(is_data_format_error(decode_store(&bytes)));
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
     }
 
     #[test]
     fn store_decode_rejects_bad_magic() {
-        assert!(is_data_format_error(decode_store(b"XXXX________")));
+        assert!(is_data_format_error(Store::decode_plain(b"XXXX________")));
     }
 
     #[test]
     fn store_decode_rejects_truncated_input() {
-        assert!(decode_store(b"GM").is_err());
-        assert!(decode_store(b"GMst").is_err());
+        assert!(Store::decode_plain(b"GM").is_err());
+        assert!(Store::decode_plain(b"GMst").is_err());
     }
 }

@@ -8,7 +8,6 @@ pub mod error;
 pub mod graph;
 pub(crate) mod hash_dict;
 pub(crate) mod leb128;
-pub mod pst;
 pub(crate) mod utils;
 pub mod wire;
 

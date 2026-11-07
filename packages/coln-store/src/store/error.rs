@@ -25,8 +25,8 @@ pub enum StoreError {
 pub enum CommitApplyError {
     #[error("A commit {0} with no dependency")]
     DanglingCommit(CommitHash),
-    #[error("An existing commit has conflict payload")]
-    ConflictPayload(CommitHash),
+    #[error("An existing commit with the same hash")]
+    DuplicateCommit(CommitHash),
     #[error("Root commit {0} cannot be applied")]
     RootCommit(CommitHash),
     #[error("empty commit not allowed")]

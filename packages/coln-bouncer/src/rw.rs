@@ -53,9 +53,6 @@ pub trait DbWrite {
 
     fn abort(&mut self);
 
-    // TODO @Leo we need to define a common data structure here for representing
-    // a tuple and a rowid as used in the txn, and then convert it into what is
-    // expected by coln-store and coln-query
     fn add(
         &mut self,
         table: &ir::Path,

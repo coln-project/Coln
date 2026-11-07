@@ -789,10 +789,7 @@ mod rowing {
 }
 
 mod commits {
-    use crate::{
-        store::frag::FragmentSync,
-        test_utils::{commit_int, commit_int_store, single_int_store},
-    };
+    use crate::test_utils::{commit_int, commit_int_store, single_int_store};
 
     use super::*;
 
@@ -864,9 +861,9 @@ mod commits {
             .map(|chunk| chunk.bytes)
             .collect::<Vec<_>>();
 
-        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+        let restored = Store::try_from_commit_bytes_plain(chunks).expect("store from chunks");
 
-        assert_eq!(restored.pending_commits_len(), 0);
+        assert_eq!(restored.pending_commits.len(), 0);
         assert_eq!(restored.table_count(), 0);
         assert_eq!(restored.heads(), source.heads());
     }
@@ -885,14 +882,57 @@ mod commits {
             .collect::<Vec<_>>();
         chunks.reverse();
 
-        let restored = Store::try_from_commit_bytes(chunks).expect("store from chunks");
+        let restored = Store::try_from_commit_bytes_plain(chunks).expect("store from chunks");
 
-        assert_eq!(restored.pending_commits_len(), 0);
+        assert_eq!(restored.pending_commits.len(), 0);
         assert_eq!(
             row_values(&restored, &Path::from("T")),
             vec![vec![StoreScalarValue::I32(99)]]
         );
         assert_eq!(restored.heads(), vec![commit]);
+    }
+
+    #[rstest]
+    fn plain_constructor_keeps_missing_dependencies_pending(
+        #[from(commit_int_store)]
+        #[with(1)]
+        source: (Store, CommitHash),
+    ) {
+        let (mut source, first) = source;
+        let second = commit_int(&mut source, 2);
+        let chunks = source.commit_chunks_after(&[]);
+        let mut restored = Store::try_from_commit_bytes_plain(
+            chunks
+                .iter()
+                .filter(|chunk| chunk.hash != first)
+                .map(|chunk| chunk.bytes.as_slice()),
+        )
+        .expect("restore with missing parent");
+
+        assert_eq!(restored.pending_commits.len(), 1);
+        assert_eq!(restored.pending_commits[0].hash(), second);
+        assert!(
+            restored
+                .scan_table(&Path::from("T"))
+                .expect("table")
+                .is_empty()
+        );
+
+        restored
+            .apply_chunk_bytes_plain(
+                chunks
+                    .into_iter()
+                    .filter(|chunk| chunk.hash == first)
+                    .map(|chunk| chunk.bytes),
+            )
+            .expect("apply missing parent");
+
+        assert!(restored.pending_commits.is_empty());
+        assert_eq!(restored.heads(), source.heads());
+        assert_eq!(
+            row_values(&restored, &Path::from("T")),
+            row_values(&source, &Path::from("T"))
+        );
     }
 
     #[rstest]
@@ -905,9 +945,7 @@ mod commits {
         let (source, _) = source;
 
         let commits = source.commits_after(&target.heads());
-        target
-            .apply_commits_unchecked(commits)
-            .expect("apply commits");
+        target.apply_commits_plain(commits).expect("apply commits");
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
@@ -928,9 +966,7 @@ mod commits {
 
         let mut commits = source.commits_after(&target.heads());
         commits.reverse();
-        target
-            .apply_commits_unchecked(commits)
-            .expect("apply commits");
+        target.apply_commits_plain(commits).expect("apply commits");
 
         assert_eq!(
             row_values(&target, &Path::from("T")),
@@ -953,10 +989,10 @@ mod commits {
 
         let commits = source.commits_after(&target.heads());
         target
-            .apply_commits_unchecked(commits.clone())
+            .apply_commits_plain(commits.clone())
             .expect("first apply commits");
         target
-            .apply_commits_unchecked(commits)
+            .apply_commits_plain(commits)
             .expect("second apply commits");
 
         assert_eq!(
@@ -979,17 +1015,17 @@ mod commits {
             .expect("second commit")
             .clone();
 
-        let leftover = target
-            .apply_commits_unchecked([second_commit])
+        target
+            .apply_commits_plain([second_commit])
             .expect("skip missing dependency");
-        let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
+        let pending_hashes: Vec<_> = target.pending_commits.iter().map(Commit::hash).collect();
 
-        assert_eq!(leftover_hashes, vec![second]);
+        assert_eq!(pending_hashes, vec![second]);
         assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
     }
 
     #[rstest]
-    fn apply_commits_applies_ready_commits_and_returns_blocked_ones(
+    fn apply_commits_applies_ready_commits_and_keeps_blocked_ones_pending(
         #[from(commit_int_store)]
         #[with(1)]
         source: (Store, CommitHash),
@@ -1001,12 +1037,12 @@ mod commits {
         let first_commit = source.commit_by_hash(&first).expect("first commit").clone();
         let third_commit = source.commit_by_hash(&third).expect("third commit").clone();
 
-        let leftover = target
-            .apply_commits_unchecked([first_commit, third_commit])
+        target
+            .apply_commits_plain([first_commit, third_commit])
             .expect("apply ready commits");
-        let leftover_hashes: Vec<_> = leftover.iter().map(Commit::hash).collect();
+        let pending_hashes: Vec<_> = target.pending_commits.iter().map(Commit::hash).collect();
 
-        assert_eq!(leftover_hashes, vec![third]);
+        assert_eq!(pending_hashes, vec![third]);
         // The blocked commit's row never landed, so only the first row is stored.
         assert_eq!(
             row_values(&target, &Path::from("T")),
@@ -1016,7 +1052,7 @@ mod commits {
     }
 
     #[rstest]
-    fn apply_chunk_bytes_retries_leftover_when_missing_parent_arrives(
+    fn apply_chunk_bytes_plain_retries_pending_when_missing_parent_arrives(
         #[from(commit_int_store)]
         #[with(1)]
         source: (Store, CommitHash),
@@ -1033,13 +1069,13 @@ mod commits {
         assert_eq!(chunks.len(), 2);
 
         target
-            .apply_chunk_bytes([chunks[1].clone()])
+            .apply_chunk_bytes_plain([chunks[1].clone()])
             .expect("skip child without parent");
         assert_eq!(target.pending_commits.len(), 1);
         assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
 
         target
-            .apply_chunk_bytes(std::iter::once(chunks[0].clone()))
+            .apply_chunk_bytes_plain(std::iter::once(chunks[0].clone()))
             .expect("retry leftover with parent");
         assert!(target.pending_commits.is_empty());
 

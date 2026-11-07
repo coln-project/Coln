@@ -7,10 +7,7 @@ use coln_bouncer::rw::{DbRead, DbWrite};
 use coln_flir_rs::engine::{schema::ColnDef, tx::TxTuple};
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_flir_rs::{public::PublicScalarValue, query::WhereClause};
-use coln_store::txn::{
-    id::Promote,
-    rw::{StoreRead, StoreWrite},
-};
+use coln_store::txn::id::Promote;
 use rstest::{fixture, rstest};
 
 static TC_IR: &str = include_str!("../../coln-flir-rs/tests/data/TransitiveClosureRealm.json");

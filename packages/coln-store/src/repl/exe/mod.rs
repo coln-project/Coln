@@ -15,7 +15,6 @@ use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue, TxTuple};
 use coln_flir_rs::public::PublicRowId;
 
-use crate::commit::pst::{decode_store, encode_store};
 use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm};
 use crate::repl::{
     Session, ShellMode, Step,
@@ -157,7 +156,7 @@ pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Resul
                 .loaded
                 .as_mut()
                 .ok_or_else(|| anyhow!("no schema loaded"))?;
-            let bytes = encode_store(&loaded.store)?;
+            let bytes = loaded.store.encode()?;
             let mut path = PathBuf::from(&path);
             if path.extension().is_none() {
                 path.add_extension("colnstore");
@@ -311,7 +310,7 @@ impl SchemaSummary {
 pub fn load_store(path: &Path) -> Result<LoadedState> {
     let bytes =
         fs::read(path).with_context(|| format!("failed to read store {}", path.display()))?;
-    let store = decode_store(&bytes)
+    let store = Store::decode_plain(&bytes)
         .with_context(|| format!("failed to decode store {}", path.display()))?;
     let schema = SchemaSummary::from_store(path.to_path_buf(), &store);
     Ok(LoadedState { store, schema })

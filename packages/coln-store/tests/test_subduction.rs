@@ -10,11 +10,7 @@ use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
-use coln_store::{
-    IdLookup,
-    store::{Store, frag::FragmentSync},
-    txn::rw::StoreWrite,
-};
+use coln_store::{IdLookup, store::Store, txn::rw::StoreWrite};
 use future_form::Sendable;
 use rstest::{fixture, rstest};
 use sedimentree_core::{
@@ -191,8 +187,8 @@ async fn subduction_storage_can_exchange_coln_commit_chunks(
     let left_received = load_coln_chunk_bytes(&left_storage, sedimentree_id).await?;
     let right_received = load_coln_chunk_bytes(&right_storage, sedimentree_id).await?;
 
-    left.apply_chunk_bytes(left_received)?;
-    right.apply_chunk_bytes(right_received)?;
+    left.apply_chunk_bytes_plain(left_received)?;
+    right.apply_chunk_bytes_plain(right_received)?;
 
     assert_eq!(row_values(&left), row_values(&right));
     assert_eq!(
@@ -326,8 +322,8 @@ async fn subduction_sync_coln_chunks(
         .await?
         .unwrap();
 
-    left_store.apply_chunk_bytes(left_blobs.into_iter().map(|b| b.into_contents()))?;
-    right_store.apply_chunk_bytes(right_blobs.into_iter().map(|b| b.into_contents()))?;
+    left_store.apply_chunk_bytes_plain(left_blobs.into_iter().map(|b| b.into_contents()))?;
+    right_store.apply_chunk_bytes_plain(right_blobs.into_iter().map(|b| b.into_contents()))?;
 
     assert_eq!(row_values(&left_store), row_values(&right_store));
     assert_eq!(
@@ -519,8 +515,8 @@ async fn subduction_websocket_sync_coln_chunks(
         .await?
         .unwrap();
 
-    left_store.apply_chunk_bytes(left_blobs.into_iter().map(|b| b.into_contents()))?;
-    right_store.apply_chunk_bytes(right_blobs.into_iter().map(|b| b.into_contents()))?;
+    left_store.apply_chunk_bytes_plain(left_blobs.into_iter().map(|b| b.into_contents()))?;
+    right_store.apply_chunk_bytes_plain(right_blobs.into_iter().map(|b| b.into_contents()))?;
 
     assert_eq!(row_values(&left_store), row_values(&right_store));
     assert_eq!(

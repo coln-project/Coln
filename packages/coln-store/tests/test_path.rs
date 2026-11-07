@@ -12,7 +12,6 @@ use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_flir_rs::public::PublicRowId;
 use coln_store::{
     IdLookup,
-    commit::pst,
     store::{Store, error::StoreError},
     txn::{id::Promote, rw::StoreWrite},
 };
@@ -188,8 +187,10 @@ fn test_persist_roundtrip(
     );
 
     let content = store.dump();
-    let data = pst::encode_store(&store).expect("encoding store success");
-    let st = pst::decode_store(&data).expect("decode store success");
+    let data = store.encode().expect("encoding store success");
+    let (mut st, commits) = Store::decode(&data).expect("decode store success");
+    st.apply_commits_plain(commits)
+        .expect("replay decoded commits");
 
     assert_eq!(content, st.dump());
 }
@@ -205,10 +206,10 @@ fn test_divergent_commits_merge_between_stores(
     let mut left = Store::try_from_ir(theory, coln_def.clone()).expect("valid left-hand theory");
     let mut right = Store::try_from_ir(theory, coln_def.clone()).expect("valid right-hand theory");
     let baseline_commits = base.commits_after(&left.heads());
-    left.apply_commits_unchecked(baseline_commits.clone())
+    left.apply_commits_plain(baseline_commits.clone())
         .expect("apply shared baseline to left");
     right
-        .apply_commits_unchecked(baseline_commits)
+        .apply_commits_plain(baseline_commits)
         .expect("apply shared baseline to right");
 
     // Divergent ops: a new vertex on the left, a second edge on the right.
@@ -217,15 +218,18 @@ fn test_divergent_commits_merge_between_stores(
     let right_commit = add_graph_edge(&mut right, data.v1, data.v2).expect("right branch commit");
     let expected_heads = BTreeSet::from([left_commit, right_commit]);
 
-    let left_heads = left.merge(&right).expect("merge right into left");
+    left.apply_commits_plain(right.commits_after(&left.heads()))
+        .expect("merge right into left");
     assert_eq!(
-        left_heads.into_iter().collect::<BTreeSet<_>>(),
+        left.heads().into_iter().collect::<BTreeSet<_>>(),
         expected_heads
     );
 
-    let right_heads = right.merge(&left).expect("merge left into right");
+    right
+        .apply_commits_plain(left.commits_after(&right.heads()))
+        .expect("merge left into right");
     assert_eq!(
-        right_heads.into_iter().collect::<BTreeSet<_>>(),
+        right.heads().into_iter().collect::<BTreeSet<_>>(),
         expected_heads
     );
 
