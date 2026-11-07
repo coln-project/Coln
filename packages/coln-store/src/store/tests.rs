@@ -741,6 +741,54 @@ mod rowing {
         );
     }
 
+    #[test]
+    fn rebuild_failure_rolls_back_and_discards_only_the_failed_commit() {
+        let mut target = structural_pk_store();
+        let mut source = structural_pk_store();
+        let root = source.heads();
+        let term = Path::from("Term");
+        let f = Path::from("F");
+
+        let mut txn = target.transaction();
+        let t1 = txn.add(&term, vec![1i32]).expect("Term(1)");
+        let t2 = txn.add(&term, vec![2i32]).expect("Term(2)");
+        txn.add(&f, vec![t1, t2]).expect("F(Term1, Term2)");
+        txn.commit().expect("initial data");
+        let terms_before = target.scan_table(&term).expect("Term");
+        let f_before = target.scan_table(&f).expect("F");
+        let heads = target.heads();
+
+        // These fresh ids pass precheck. Canonicalising the two Term(1) rows
+        // during rebuild makes F's primary keys collide in the target.
+        let mut txn = source.transaction();
+        let t1 = txn.add(&term, vec![1i32]).expect("Term(1)");
+        let t4 = txn.add(&term, vec![4i32]).expect("Term(4)");
+        txn.add(&f, vec![t1, t4]).expect("F(Term1, Term4)");
+        let conflicting = txn.commit().expect("valid in source");
+        let mut txn = source.transaction();
+        txn.add(&term, vec![99i32]).expect("child's data");
+        txn.commit().expect("child commit");
+
+        let batch = target
+            .prepare_commits(source.commits_after(&root), true)
+            .expect("batch");
+        assert!(matches!(
+            batch.prepare_next(),
+            Err(StoreError::Validation(ValidationError::DuplicatePrimaryKey))
+        ));
+
+        assert_eq!(target.heads(), heads);
+        assert_eq!(target.scan_table(&term).expect("Term"), terms_before);
+        assert_eq!(target.scan_table(&f).expect("F"), f_before);
+        assert!(target.commit_by_hash(&conflicting).is_none());
+        target
+            .apply_commits_plain([])
+            .expect("failed commit must not be retried");
+        let batch = target.prepare_commits([], true).expect("remaining queue");
+        assert_eq!(batch.size(), 1);
+        assert!(!batch.has_ready());
+    }
+
     /// Tests structural tables with primary key constraints
     #[test]
     fn structural_with_primary_key() {
