@@ -139,7 +139,7 @@ mod tests {
         };
         let columns = vec![
             TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
-            TxScalarValue::RowId(TxRowId::Existing(existing.clone())),
+            TxScalarValue::RowId(TxRowId::Existing(existing)),
             TxScalarValue::I32(42),
         ];
         let op = PendingOp::add(PendingRowId(1), 3, columns.clone().into());

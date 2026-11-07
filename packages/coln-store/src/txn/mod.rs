@@ -235,7 +235,7 @@ mod tests {
 
         let mut tx = store.transaction();
         let node_temp = tx.add(&nodes, TxTuple::empty()).expect("add node");
-        let edge_temp = tx.add(&edges, vec![node_temp.clone()]).expect("add edge");
+        let edge_temp = tx.add(&edges, vec![node_temp]).expect("add edge");
         let h = tx.commit().expect("commit");
         let ids = store.promote([node_temp, edge_temp], h);
         let [node_id, edge_id] = ids.try_into().unwrap();
@@ -271,7 +271,7 @@ mod tests {
         assert_eq!(node_id.commit, first_commit);
 
         let mut tx = store.transaction();
-        let edge = tx.add(&edges, vec![node_id.clone()]).expect("add edge");
+        let edge = tx.add(&edges, vec![node_id]).expect("add edge");
         let h = tx.commit().expect("commit edge");
 
         let edge_id = store
