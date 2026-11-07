@@ -5,12 +5,13 @@
 pub mod auto;
 pub mod commit;
 pub mod error;
-pub mod frag;
+mod persist;
+mod rebuild;
 
 use std::collections::{HashMap, HashSet};
 
 use coln_flir_rs::engine::delta::{Consolidated, StoreDelta};
-use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, StoreTuple};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::engine::tx::TxRowId;
 use coln_flir_rs::hash::CommitHash;
@@ -43,6 +44,7 @@ pub struct Store {
     ir: FlatRealm,
     commits: CommitGraph,
     rowing: rowing::Rowing,
+    // buffered commits not ready to be applied to the store due to missing deps
     pending_commits: Vec<Commit<'static>>,
 }
 
@@ -175,6 +177,10 @@ impl Store {
     pub fn json_ir(&self) -> Result<String, StoreError> {
         let root = self.commits.root_commit()?.root_payload()?;
         Ok(serde_json::to_string(&root.ir).map_err(CodecError::from)?)
+    }
+
+    pub fn ir(&self) -> &ir::FlatRealm {
+        &self.ir
     }
 
     pub fn coln_def(&self) -> Result<ColnDef, StoreError> {

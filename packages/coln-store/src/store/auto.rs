@@ -10,7 +10,7 @@
 
 use coln_flir_rs::{
     engine::{
-        delta::{Consolidated, PartialConsolidated, StoreDelta},
+        delta::{PartialConsolidated, StoreDelta},
         packed::{PackedRowId, StoreTuple},
         schema::ColnDef,
         tx::{TxRowId, TxTuple},
@@ -24,12 +24,7 @@ use coln_flir_rs::{
 use crate::{
     IdLookup,
     rollback::Rollback,
-    store::{
-        Store,
-        commit::{BatchInner, Prepared},
-        error::StoreError,
-        frag::{CommitChunk, FragmentSync},
-    },
+    store::{Store, commit::PreparedCommit, error::StoreError},
     txn::{
         id::Promote,
         inner::TxnInner,
@@ -40,7 +35,7 @@ use crate::{
 enum AutoState {
     Idle,
     Transaction(TxnInner),
-    Prepared(BatchInner<Prepared>),
+    Prepared(PreparedCommit),
 }
 
 pub struct AutoStore {
@@ -72,22 +67,6 @@ impl StoreWrite for AutoStore {
             panic!("open txn")
         };
         txn.add(&self.store, table, values)
-    }
-}
-
-impl FragmentSync for AutoStore {
-    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
-        self.store.commit_chunks_after(have_heads)
-    }
-
-    // TODO allow this after we have a good concurrency control theory
-    // A current open transaction should only read data from its deps backward,
-    // But no a concurrent txn
-    fn apply_chunk_bytes(
-        &mut self,
-        chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<(), StoreError> {
-        self.store.apply_chunk_bytes(chunk_bytes)
     }
 }
 
@@ -136,16 +115,9 @@ impl AutoStore {
             }
             AutoState::Transaction(mut txn) => txn.abort(),
             AutoState::Prepared(prepared) => {
-                self.store.rollback_to(prepared.prepared_commit().snapshot);
+                self.store.rollback_to(prepared.snapshot());
             }
         }
-    }
-
-    pub fn try_from_commit_bytes(
-        chunk_bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
-    ) -> Result<Self, StoreError> {
-        let store = Store::try_from_commit_bytes(chunk_bytes)?;
-        Ok(store.auto())
     }
 
     pub fn id_lookup(&self) -> &impl IdLookup {
@@ -159,14 +131,12 @@ impl AutoStore {
         &self.store
     }
 
-
     pub fn inner_mut(&mut self) -> &mut Store {
         let AutoState::Idle = self.state else {
             panic!("reading store must mean it's idle");
         };
         &mut self.store
     }
-
 }
 
 impl Promote for AutoStore {

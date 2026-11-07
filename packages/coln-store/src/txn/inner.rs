@@ -14,7 +14,7 @@ use crate::{
     op::PendingOp,
     store::{
         Store,
-        commit::{BatchInner, Prepared},
+        commit::PreparedCommit,
         error::{CommitApplyError, StoreError},
     },
     table::ValidationError,
@@ -85,10 +85,7 @@ impl TxnInner {
         self.add_cell_values(store, table, values)
     }
 
-    pub(crate) fn try_commit(
-        &mut self,
-        store: &mut Store,
-    ) -> Result<BatchInner<Prepared>, StoreError> {
+    pub(crate) fn try_commit(&mut self, store: &mut Store) -> Result<PreparedCommit, StoreError> {
         let TxnInner {
             deps,
             author,
@@ -116,16 +113,15 @@ impl TxnInner {
             ),
             |oid| store.table_meta(oid),
         )?;
-        let batch = store.prepare_commit(cmt)?;
-        Ok(batch
-            .prepare_next(store)?
-            .expect("local commit dependencies are already in the store"))
+        let prepared = store
+            .prepare_commit(cmt)?
+            .prepare_next()?
+            .expect("local commit must be ready to apply");
+        Ok(prepared.prepared_commit())
     }
 
-    pub(crate) fn commit(store: &mut Store, prepared: BatchInner<Prepared>) -> CommitHash {
-        let hash = prepared.prepared_hash();
-        prepared.accept_prepared(store);
-        hash
+    pub(crate) fn commit(store: &mut Store, prepared: PreparedCommit) -> CommitHash {
+        prepared.accept(store)
     }
 
     pub(crate) fn abort(&mut self) {
