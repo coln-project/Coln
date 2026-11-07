@@ -79,7 +79,8 @@ impl IdPacker {
         value.clone().try_map(|id| self.packed(&id))
     }
 
-    pub(crate) fn unpack_value(&self, value: StoreScalarValue) -> PublicScalarValue {
+    #[cfg(test)]
+    fn unpack_value(&self, value: StoreScalarValue) -> PublicScalarValue {
         value.map(|id| self.unpack_row_id(id))
     }
 
@@ -175,7 +176,8 @@ mod tests {
         } = packer.pack_op(PublicOp::Add {
             table: 3,
             values: values.clone().into(),
-        }) else {
+        })
+        else {
             panic!("expected PackedOp::Add");
         };
 

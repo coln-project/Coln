@@ -18,7 +18,7 @@ pub enum BouncerError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuleViolation {
-    #[error("A hardviolation {0}")]
+    #[error("Rule violation, hard violation {0}")]
     HardViolation(ViolationsSet),
 }
 
