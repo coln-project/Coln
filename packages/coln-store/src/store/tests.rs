@@ -139,10 +139,9 @@ mod reads {
         let n0 = txn.add(&nodes, TxTuple::empty()).expect("n0");
         let n1 = txn.add(&nodes, TxTuple::empty()).expect("n1");
 
-        let e0 = txn.add(&edges, vec![n0.clone()]).expect("e0");
-        txn.add(&edges, vec![n0.clone()])
-            .expect("duplicate edge to n0");
-        txn.add(&edges, vec![n1.clone()]).expect("e2");
+        let e0 = txn.add(&edges, vec![n0]).expect("e0");
+        txn.add(&edges, vec![n0]).expect("duplicate edge to n0");
+        txn.add(&edges, vec![n1]).expect("e2");
         let h = txn.commit().expect("txn success");
         let [n0_id, n1_id, e0_id] = store.promote(vec![n0, n1, e0], h).try_into().unwrap();
         let n0_packed = store.id_lookup().packed(&n0_id).expect("n0 is packed");
@@ -445,7 +444,7 @@ mod rowing {
         let ops = vec![add_op(
             &store,
             "Term",
-            t_high.clone(),
+            t_high,
             vec![PublicScalarValue::I32(7)],
         )];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
@@ -456,18 +455,13 @@ mod rowing {
             add_op(
                 &store,
                 "Plus",
-                plus.clone(),
+                plus,
                 vec![
-                    PublicScalarValue::RowId(t_high.clone()),
-                    PublicScalarValue::RowId(t_high.clone()),
+                    PublicScalarValue::RowId(t_high),
+                    PublicScalarValue::RowId(t_high),
                 ],
             ),
-            add_op(
-                &store,
-                "Note",
-                note.clone(),
-                vec![PublicScalarValue::RowId(t_high.clone())],
-            ),
+            add_op(&store, "Note", note, vec![PublicScalarValue::RowId(t_high)]),
         ];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
 
@@ -476,7 +470,7 @@ mod rowing {
         let ops = vec![add_op(
             &store,
             "Term",
-            t_low.clone(),
+            t_low,
             vec![PublicScalarValue::I32(7)],
         )];
         apply_ops_and_rebuild(&mut store, ops).unwrap();
@@ -550,33 +544,23 @@ mod rowing {
         let keep = row_id_from(3, 0);
         let dup = row_id_from(4, 0);
         let ops = vec![
-            add_op(
-                &store,
-                "Term",
-                t_low.clone(),
-                vec![PublicScalarValue::I32(7)],
-            ),
-            add_op(
-                &store,
-                "Term",
-                t_high.clone(),
-                vec![PublicScalarValue::I32(7)],
-            ),
+            add_op(&store, "Term", t_low, vec![PublicScalarValue::I32(7)]),
+            add_op(&store, "Term", t_high, vec![PublicScalarValue::I32(7)]),
             add_op(
                 &store,
                 "Plus",
-                keep.clone(),
+                keep,
                 vec![
-                    PublicScalarValue::RowId(t_high.clone()),
-                    PublicScalarValue::RowId(t_high.clone()),
+                    PublicScalarValue::RowId(t_high),
+                    PublicScalarValue::RowId(t_high),
                 ],
             ),
             add_op(
                 &store,
                 "Plus",
-                dup.clone(),
+                dup,
                 vec![
-                    PublicScalarValue::RowId(t_high.clone()),
+                    PublicScalarValue::RowId(t_high),
                     PublicScalarValue::RowId(t_high),
                 ],
             ),
@@ -623,34 +607,14 @@ mod rowing {
         let u_high = row_id_from(2, 1);
         let plus = row_id_from(3, 0);
         let ops = vec![
-            add_op(
-                &store,
-                "Term",
-                t_low.clone(),
-                vec![PublicScalarValue::I32(7)],
-            ),
-            add_op(
-                &store,
-                "Term",
-                u_low.clone(),
-                vec![PublicScalarValue::I32(8)],
-            ),
-            add_op(
-                &store,
-                "Term",
-                t_high.clone(),
-                vec![PublicScalarValue::I32(7)],
-            ),
-            add_op(
-                &store,
-                "Term",
-                u_high.clone(),
-                vec![PublicScalarValue::I32(8)],
-            ),
+            add_op(&store, "Term", t_low, vec![PublicScalarValue::I32(7)]),
+            add_op(&store, "Term", u_low, vec![PublicScalarValue::I32(8)]),
+            add_op(&store, "Term", t_high, vec![PublicScalarValue::I32(7)]),
+            add_op(&store, "Term", u_high, vec![PublicScalarValue::I32(8)]),
             add_op(
                 &store,
                 "Plus",
-                plus.clone(),
+                plus,
                 vec![
                     PublicScalarValue::RowId(t_high),
                     PublicScalarValue::RowId(u_high),
@@ -694,14 +658,14 @@ mod rowing {
         let t7 = txn.add(&term_path, vec![7i32]).unwrap();
         let t8 = txn.add(&term_path, vec![8i32]).unwrap();
         let tp = txn.add(&plus_path, vec![t7, t8]).unwrap();
-        txn.add(&mult_path, vec![tp.clone(), tp]).unwrap();
+        txn.add(&mult_path, vec![tp, tp]).unwrap();
         txn.commit().unwrap();
 
         let mut txn2 = store.transaction();
         let t7 = txn2.add(&term_path, vec![7i32]).unwrap();
         let t8 = txn2.add(&term_path, vec![8i32]).unwrap();
         let tp = txn2.add(&plus_path, vec![t7, t8]).unwrap();
-        txn2.add(&mult_path, vec![tp.clone(), tp]).unwrap();
+        txn2.add(&mult_path, vec![tp, tp]).unwrap();
         txn2.commit().unwrap();
 
         let terms = store.scan_table(&term_path).unwrap();

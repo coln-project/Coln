@@ -366,11 +366,11 @@ impl Store {
         derived: StoreDelta<Consolidated, StoreTuple>,
     ) -> Result<(), StoreError> {
         for td in derived.into_table_deltas() {
-            let oid =
-                self.resolve_table(&td.for_entity())
-                    .ok_or(ValidationError::UnknownTable {
-                        path: td.for_entity().clone(),
-                    })?;
+            let oid = self
+                .resolve_table(td.for_entity())
+                .ok_or(ValidationError::UnknownTable {
+                    path: td.for_entity().clone(),
+                })?;
             let table = self.tables.get_mut(&oid).expect("resolved correct table");
 
             table.stage_updates(td.into_parts().1);
