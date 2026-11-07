@@ -20,6 +20,7 @@ use coln_flir_rs::query::WhereClause;
 use tracing::info;
 
 use crate::commit::Commit;
+use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::wire::RootCommitData;
 use crate::ir::{self, FlatRealm};
@@ -32,7 +33,6 @@ use crate::store::error::StoreError;
 use crate::table::{Table, TableHandle, TableOid, TableSnapshot, ValidationError};
 use crate::txn::rw::StoreRead;
 use crate::txn::{ReadOnly, ReadWrite, Transaction};
-use crate::{commit::error::CodecError, txn::id::Promote};
 
 #[derive(Debug)]
 pub struct Store {
@@ -397,8 +397,8 @@ impl Store {
     }
 }
 
-impl Promote for Store {
-    fn promote(
+impl Store {
+    pub fn promote(
         &self,
         pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
@@ -413,6 +413,12 @@ impl Promote for Store {
                 self.canonical_row_id(&wire_id).unwrap_or(wire_id)
             })
             .collect()
+    }
+
+    pub fn promote_one(&self, pending_id: impl Into<TxRowId>, hash: CommitHash) -> PublicRowId {
+        self.promote(std::iter::once(pending_id.into()), hash)
+            .pop()
+            .expect("one id to promote")
     }
 }
 

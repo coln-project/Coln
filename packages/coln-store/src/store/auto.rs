@@ -17,7 +17,6 @@ use coln_flir_rs::{
     },
     hash::CommitHash,
     ir::{self, FlatRealm},
-    public::PublicRowId,
     query::WhereClause,
 };
 
@@ -26,7 +25,6 @@ use crate::{
     rollback::Rollback,
     store::{Store, commit::PreparedCommit, error::StoreError},
     txn::{
-        id::Promote,
         inner::TxnInner,
         rw::{StoreRead, StoreWrite},
     },
@@ -136,16 +134,6 @@ impl AutoStore {
             panic!("reading store must mean it's idle");
         };
         &mut self.store
-    }
-}
-
-impl Promote for AutoStore {
-    fn promote(
-        &self,
-        pending_ids: impl IntoIterator<Item = TxRowId>,
-        hash: CommitHash,
-    ) -> Vec<PublicRowId> {
-        self.store.promote(pending_ids, hash)
     }
 }
 

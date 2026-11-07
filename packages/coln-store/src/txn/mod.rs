@@ -145,7 +145,6 @@ mod tests {
     use crate::pack::id_packer::IdLookup;
     use crate::table::ValidationError;
     use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int_store};
-    use crate::txn::id::Promote;
 
     #[rstest]
     fn validates_then_applies(#[from(single_int_store)] mut store: Store) {

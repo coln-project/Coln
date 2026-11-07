@@ -369,9 +369,6 @@ impl Store {
     }
 }
 
-
-
-
 #[cfg(test)]
 mod tests {
     use coln_flir_rs::engine::packed::{StoreScalarValue, StoreTuple};

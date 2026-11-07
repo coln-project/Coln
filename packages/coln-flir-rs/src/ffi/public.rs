@@ -21,7 +21,9 @@ use crate::{
 /// The unique id that identifies each row in a table.
 ///
 /// It is managed by the database and read-only for the user.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Serialize, Deserialize, Type)]
+#[derive(
+    Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Serialize, Deserialize, Type,
+)]
 pub struct PublicRowId {
     pub commit: CommitHash,
     pub counter: u32,
@@ -41,7 +43,7 @@ impl UnifyValue for PublicRowId {
     type Error = ena::unify::NoError;
 
     fn unify_values(value1: &Self, value2: &Self) -> Result<Self, Self::Error> {
-        Ok((value1).min(value2).clone())
+        Ok(*value1.min(value2))
     }
 }
 
@@ -81,7 +83,7 @@ impl WithRowId for PublicTuple {
     /// The row id a stored row leads with.
     fn row_id(&self) -> Self::RowId {
         match self.first() {
-            Some(PublicScalarValue::RowId(id)) => id.clone(),
+            Some(PublicScalarValue::RowId(id)) => *id,
             other => panic!("stored rows lead with their row id, got {other:?}"),
         }
     }

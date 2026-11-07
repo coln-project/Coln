@@ -4,9 +4,7 @@
 
 //! The top level APIs exposed by the coln backend database to the user and FFI
 
-pub mod persist;
-
-use core::panic;
+mod persist;
 
 use coln_flir_rs::{
     engine::{
@@ -31,10 +29,7 @@ use coln_store::{
         auto::AutoStore,
         commit::{CommitBatch, CommitChunk, Unprepared},
     },
-    txn::{
-        id::Promote,
-        rw::{StoreRead, StoreWrite},
-    },
+    txn::rw::{StoreRead, StoreWrite},
 };
 
 use crate::{
@@ -295,12 +290,15 @@ impl DbWrite for Bouncer {
     }
 }
 
-impl Promote for Bouncer {
-    fn promote(
+impl Bouncer {
+    /// Promote the id from temporary `[TxRowId]` to permanent `[PublicRowId]`.
+    /// It is the caller's responsiblity to do it after they call `[bouncer::commit]`
+    /// on a transaction.
+    pub fn promote(
         &self,
         pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
     ) -> Vec<PublicRowId> {
-        self.store.promote(pending_ids, hash)
+        self.store.inner().promote(pending_ids, hash)
     }
 }

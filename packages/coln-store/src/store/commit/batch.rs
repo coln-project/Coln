@@ -194,21 +194,17 @@ impl Drop for BatchGuard<'_> {
 
 impl BatchGuard<'_> {
     fn prepare_next(&mut self) -> Result<bool, StoreError> {
-        let Some(hash) = self.queue.ready.first().copied() else {
+        let Some(hash) = self.queue.ready.pop_first() else {
             return Ok(false);
         };
 
-        let commit = self.queue.pending[&hash].clone();
+        let commit = self
+            .queue
+            .pending
+            .remove(&hash)
+            .expect("a ready commit must also be in pending");
 
-        let PrecheckedCommit { ops, original } = match self.store.precheck_commit(commit.clone()) {
-            Ok(prechecked) => prechecked,
-            Err(error) => {
-                self.queue.pending.insert(hash, commit);
-                self.queue.ready.insert(hash);
-                return Err(error);
-            }
-        };
-
+        let PrecheckedCommit { ops, original } = self.store.precheck_commit(commit)?;
         let sd: StoreDelta<PartialConsolidated, StoreTuple> = ops
             .iter()
             .map(|op| {
@@ -228,8 +224,6 @@ impl BatchGuard<'_> {
             .and_then(|()| self.store.rebuild_to_fixpoint())
         {
             self.store.rollback_to(snapshot);
-            self.queue.pending.insert(hash, commit);
-            self.queue.ready.insert(hash);
             return Err(error);
         }
 
@@ -242,8 +236,6 @@ impl BatchGuard<'_> {
         // Preparation succeeded. Transfer ownership from the queue
         // to the active prepared slot.
         self.prepared = Some(prepared);
-        self.queue.pending.remove(&hash);
-        self.queue.ready.remove(&hash);
 
         Ok(true)
     }
@@ -363,8 +355,135 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::test_utils::{commit_int_store, single_int_store};
+    use crate::table::ValidationError;
+    use crate::test_utils::{commit_int, commit_int_store, int_schema, single_int_store};
     use crate::txn::rw::StoreRead;
+
+    #[test]
+    fn precheck_failure_discards_failed_commit_and_preserves_remaining_queue() {
+        let schema = int_schema(vec!["value"], Some(vec![0]));
+        let mut source = single_int_store(schema.clone());
+        let mut target = single_int_store(schema);
+        let first = commit_int(&mut source, 1);
+        let conflicting = commit_int(&mut source, 2);
+        let child = commit_int(&mut source, 3);
+        commit_int(&mut target, 2);
+        target
+            .apply_commits_plain([source.commit_by_hash(&first).expect("parent").clone()])
+            .expect("apply parent");
+        let heads = target.heads();
+        let rows = target.scan_table(&Path::from("T")).expect("table");
+
+        let batch = target
+            .prepare_commits(
+                [
+                    source
+                        .commit_by_hash(&conflicting)
+                        .expect("conflicting commit")
+                        .clone(),
+                    source.commit_by_hash(&child).expect("child").clone(),
+                ],
+                true,
+            )
+            .expect("batch");
+        assert!(matches!(
+            batch.prepare_next(),
+            Err(StoreError::Validation(ValidationError::DuplicatePrimaryKey))
+        ));
+
+        assert_eq!(target.heads(), heads);
+        assert_eq!(target.scan_table(&Path::from("T")).expect("table"), rows);
+        assert!(target.commit_by_hash(&conflicting).is_none());
+        target
+            .apply_commits_plain([])
+            .expect("failed commit must not be retried");
+        let batch = target.prepare_commits([], true).expect("remaining queue");
+        assert_eq!(batch.size(), 1);
+        assert!(!batch.has_ready());
+    }
+
+    #[rstest]
+    fn dropping_unprepared_batch_preserves_new_and_previously_buffered_commits(
+        #[from(commit_int_store)]
+        #[with(1)]
+        source: (Store, CommitHash),
+        #[from(single_int_store)] mut target: Store,
+    ) {
+        let (mut source, first) = source;
+        let second = commit_int(&mut source, 2);
+        let heads = target.heads();
+        drop(
+            target
+                .prepare_commits(
+                    [source.commit_by_hash(&second).expect("child").clone()],
+                    true,
+                )
+                .expect("buffer child"),
+        );
+        assert!(target.has_pending());
+
+        let batch = target
+            .prepare_commits(
+                [source.commit_by_hash(&first).expect("parent").clone()],
+                true,
+            )
+            .expect("combine parent with buffered child");
+        assert!(batch.has_ready());
+        assert_eq!(batch.size(), 2);
+        drop(batch);
+
+        assert_eq!(target.heads(), heads);
+        assert!(
+            target
+                .scan_table(&Path::from("T"))
+                .expect("table")
+                .is_empty()
+        );
+        target
+            .apply_commits_plain([])
+            .expect("retry restored queue");
+        assert_eq!(target.heads(), vec![second]);
+        assert_eq!(target.scan_table(&Path::from("T")).expect("table").len(), 2);
+        assert!(!target.has_pending());
+    }
+
+    #[rstest]
+    fn dropping_prepared_batch_after_taking_delta_rolls_back_and_preserves_commits(
+        #[from(commit_int_store)]
+        #[with(1)]
+        source: (Store, CommitHash),
+        #[from(single_int_store)] mut target: Store,
+    ) {
+        let (mut source, first) = source;
+        let second = commit_int(&mut source, 2);
+        let heads = target.heads();
+        let batch = target
+            .prepare_commits(source.commits_after(&heads), true)
+            .expect("batch");
+        let mut prepared = batch
+            .prepare_next()
+            .expect("prepare parent")
+            .expect("ready parent");
+        assert_eq!(prepared.prepared_hash(), first);
+        assert_eq!(prepared.store_delta().size(), 1);
+        drop(prepared);
+
+        assert_eq!(target.heads(), heads);
+        assert!(target.commit_by_hash(&first).is_none());
+        assert!(
+            target
+                .scan_table(&Path::from("T"))
+                .expect("table")
+                .is_empty()
+        );
+        assert!(target.has_pending());
+        target
+            .apply_commits_plain([])
+            .expect("retry parent and child");
+        assert_eq!(target.heads(), vec![second]);
+        assert_eq!(target.scan_table(&Path::from("T")).expect("table").len(), 2);
+        assert!(!target.has_pending());
+    }
 
     #[rstest]
     fn prepare_next_tentatively_applies_the_next_ready_commit(

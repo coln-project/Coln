@@ -13,7 +13,7 @@ use coln_flir_rs::public::PublicRowId;
 use coln_store::{
     IdLookup,
     store::{Store, error::StoreError},
-    txn::{id::Promote, rw::StoreWrite},
+    txn::rw::StoreWrite,
 };
 use rstest::{fixture, rstest};
 use tracing_subscriber::EnvFilter;
