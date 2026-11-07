@@ -99,8 +99,8 @@ started with.
 
 ## Store Serialization
 
-When the whole store is serialized, `commit/pst.rs` writes a store envelope with
-the magic bytes, format version, and commit count. It then writes
+When the whole store is serialized, `Store::encode` in `store/persist.rs` writes
+a store envelope with the magic bytes, format version, and commit count. It then writes
 every commit chunk in commit graph topological order. That means parents are
 written before children, with the root commit first.
 
@@ -116,6 +116,20 @@ The store envelope layout is:
 Loading reverses the process: decode the root, rebuild an empty store from its
 schemas and laws, decode the normal commits using those schemas, and apply the
 commits once their dependencies are available.
+
+For replay without the query engine, use `Store::try_from_commit_bytes_plain` to
+create a store, `Store::apply_chunk_bytes_plain` to apply encoded commits to an
+existing store, or `Store::apply_commits_plain` for already checked commits.
+These APIs validate schemas and apply commits in dependency order, but skip
+derived data and rule checks. Blocked commits stay pending and are retried on the
+next plain apply call. The internal `Store::decode_plain` method uses the same
+plain replay path, but rejects snapshots whose dependencies cannot all be
+satisfied.
+
+`Store::decode` returns a store initialized from the root and checked data
+commits that still need to be applied. Callers that need derived data and rule
+checks can prepare those commits as a `CommitBatch`, then process each prepared
+commit through bouncer before accepting it.
 
 ## Tables as Materialised Views
 

@@ -5,10 +5,11 @@
 //! Integration tests for REPL commands.
 //! Integration tests for `begin batch` … `commit` REPL semantics.
 
+use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::{
     repl::{exe::run_transact, parse::coln::BatchAssignment},
-    store::{ColnDef, Store},
+    store::Store,
 };
 use rstest::{fixture, rstest};
 
@@ -29,7 +30,7 @@ fn coln_def() -> ColnDef {
 
 #[rstest]
 fn batch_block_matches_apply_batch_for_graph_fixture(theory: FlatRealm, coln_def: ColnDef) {
-    let mut store = Store::try_from_ir(theory, coln_def).expect("valid theory");
+    let mut store = Store::try_from_ir(&theory, coln_def).expect("valid theory");
 
     let assignments = vec![
         BatchAssignment {

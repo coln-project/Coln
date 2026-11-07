@@ -40,7 +40,7 @@ mod test {
                 OutputKind, ProjectionExpr, SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
             },
             incremental::dbsp::{ZWeight, zset},
-            relation::TupleValue,
+            relation::{TupleValue, ZRowInt},
         },
         scalarial::{ScalarType, ScalarTypedValue},
         test_utils::{
@@ -1492,7 +1492,6 @@ mod test {
     /// backends.
     #[test]
     fn batch_carries_every_scalar_type() -> Result<(), anyhow::Error> {
-        use crate::api::deltas::ZRow;
         use crate::host::expr::{BinaryExpr, Literal, LiteralExpr};
         use crate::host::operator::Operator;
         use crate::relational::expr::{SelectionExpr, SourceId};
@@ -1541,7 +1540,7 @@ mod test {
                 tuple!(3_u64, -1_i64, "b", true, 'z'),
             ]
             .into_iter()
-            .map(|row| ZRow::new(1, row).expect("non-zero zweight"))
+            .map(|row| ZRowInt::new(1, row).expect("non-zero zweight"))
             .collect::<Vec<_>>()
         };
         let expected = zset! {
@@ -1577,7 +1576,6 @@ mod test {
     /// fails at build time, a null cell at feed time.
     #[test]
     fn batch_rejects_null() -> Result<(), anyhow::Error> {
-        use crate::api::deltas::ZRow;
         use crate::relational::expr::SourceId;
         use crate::relational::schema::{Column, EntityRef, TableSchema};
         use crate::scalarial::{ScalarType, ScalarTypedValue};
@@ -1608,7 +1606,7 @@ mod test {
             vec![],
         );
         let mut rt = Pipeline::batch().runtime(&mut TestProgram::new(plan(), [uint_column]))?;
-        let null_cell = ZRow::new(1, tuple!(())).expect("non-zero zweight");
+        let null_cell = ZRowInt::new(1, tuple!(())).expect("non-zero zweight");
         let err = rt.feed(&SourceId::from("t"), [null_cell]).unwrap_err();
         assert!(err.to_string().contains("null"), "got: {err}");
         let _ = ScalarTypedValue::Null(());
@@ -1618,7 +1616,7 @@ mod test {
     /// One cell of plan type `ty` for the small integer `x`, injective on
     /// the values these tests use (booleans get `0..2`). Not the identity
     /// for any type, so encoding and decoding are both exercised.
-    fn typed_cell(ty: crate::scalarial::ScalarType, x: u64) -> ScalarTypedValue {
+    fn typed_cell(ty: ScalarType, x: u64) -> ScalarTypedValue {
         use crate::scalarial::ScalarType;
         match ty {
             ScalarType::Uint => ScalarTypedValue::Uint(u64::MAX - x),
@@ -1635,18 +1633,16 @@ mod test {
         }
     }
 
-    const STORED_TYPES: [crate::scalarial::ScalarType; 5] = [
-        crate::scalarial::ScalarType::Uint,
-        crate::scalarial::ScalarType::Iint,
-        crate::scalarial::ScalarType::Bool,
-        crate::scalarial::ScalarType::Char,
-        crate::scalarial::ScalarType::String,
+    const STORED_TYPES: [ScalarType; 5] = [
+        ScalarType::Uint,
+        ScalarType::Iint,
+        ScalarType::Bool,
+        ScalarType::Char,
+        ScalarType::String,
     ];
 
     /// The table `edge(from: ty, to: ty)`.
-    fn typed_edge_schema(
-        ty: crate::scalarial::ScalarType,
-    ) -> crate::relational::schema::TableSchema {
+    fn typed_edge_schema(ty: ScalarType) -> crate::relational::schema::TableSchema {
         use crate::relational::schema::{Column, EntityRef, TableSchema};
         TableSchema::new(
             EntityRef::from("edge"),
@@ -1655,14 +1651,11 @@ mod test {
         )
     }
 
-    fn typed_edges(
-        ty: crate::scalarial::ScalarType,
-        pairs: &[(u64, u64)],
-    ) -> Vec<crate::api::deltas::ZRow> {
+    fn typed_edges(ty: ScalarType, pairs: &[(u64, u64)]) -> Vec<ZRowInt> {
         pairs
             .iter()
             .map(|&(a, b)| {
-                crate::api::deltas::ZRow::new(
+                ZRowInt::new(
                     1,
                     TupleValue {
                         data: vec![typed_cell(ty, a), typed_cell(ty, b)],
@@ -1673,10 +1666,7 @@ mod test {
             .collect()
     }
 
-    fn typed_pairs_zset(
-        ty: crate::scalarial::ScalarType,
-        pairs: &[(u64, u64)],
-    ) -> OrdZSet<TupleValue> {
+    fn typed_pairs_zset(ty: ScalarType, pairs: &[(u64, u64)]) -> OrdZSet<TupleValue> {
         OrdZSet::from_keys(
             (),
             pairs
@@ -1817,7 +1807,7 @@ mod test {
     #[test]
     fn batch_join_every_type_matches_incremental() -> Result<(), anyhow::Error> {
         for ty in STORED_TYPES {
-            let pairs: &[(u64, u64)] = if ty == crate::scalarial::ScalarType::Bool {
+            let pairs: &[(u64, u64)] = if ty == ScalarType::Bool {
                 &[(0, 1), (1, 1)]
             } else {
                 &[(0, 1), (1, 2), (2, 3), (3, 1), (4, 4)]
@@ -1859,7 +1849,7 @@ mod test {
         for ty in STORED_TYPES {
             // A fork (0 → 2 directly and via 1) and a self loop: pairs with
             // several derivations, which only a set semantics reports once.
-            let pairs: &[(u64, u64)] = if ty == crate::scalarial::ScalarType::Bool {
+            let pairs: &[(u64, u64)] = if ty == ScalarType::Bool {
                 &[(0, 1), (1, 1)]
             } else {
                 &[(0, 1), (1, 2), (0, 2), (2, 3), (3, 3)]
@@ -1900,8 +1890,6 @@ mod test {
     /// arity; both mismatches fail at feed time, naming the source.
     #[test]
     fn batch_feed_checks_cell_types() -> Result<(), anyhow::Error> {
-        use crate::api::deltas::ZRow;
-
         let plan = vec![
             Stmt::from(VarStmt {
                 name: "people".to_string(),
@@ -1912,12 +1900,12 @@ mod test {
         let mut rt =
             Pipeline::batch().runtime(&mut TestProgram::new(plan, [PersonRel::schema()]))?;
 
-        let wrong_type = ZRow::new(1, tuple!("zero", "Alice", 20_u64, 0_u64)).expect("non-zero");
+        let wrong_type = ZRowInt::new(1, tuple!("zero", "Alice", 20_u64, 0_u64)).expect("non-zero");
         let err = rt.feed(&PersonRel::id(), [wrong_type]).unwrap_err();
         assert!(err.to_string().contains("expected uint"), "got: {err}");
         assert!(err.to_string().contains("person"), "got: {err}");
 
-        let wrong_arity = ZRow::new(1, tuple!(0_u64, "Alice")).expect("non-zero");
+        let wrong_arity = ZRowInt::new(1, tuple!(0_u64, "Alice")).expect("non-zero");
         let err = rt.feed(&PersonRel::id(), [wrong_arity]).unwrap_err();
         assert!(err.to_string().contains("columns"), "got: {err}");
         Ok(())

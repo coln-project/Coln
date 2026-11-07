@@ -1053,24 +1053,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "coln-bouncer"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "coln-flir-rs",
+ "coln-query",
+ "coln-store",
+ "criterion",
+ "rstest",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "coln-flir-rs"
 version = "0.1.0"
 dependencies = [
  "coln-flir-rs",
  "either",
+ "ena",
+ "hex",
+ "indexmap",
  "serde",
  "serde_json",
  "specta",
-]
-
-[[package]]
-name = "coln-integrator"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "coln-store",
- "criterion",
- "thiserror 2.0.20",
+ "subenum",
 ]
 
 [[package]]
@@ -1112,7 +1120,6 @@ dependencies = [
  "blake3",
  "clap",
  "coln-flir-rs",
- "coln-query",
  "csv",
  "ena",
  "future_form",
@@ -1128,7 +1135,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shlex",
- "specta",
  "sqlparser",
  "subduction_core",
  "subduction_crypto",
@@ -4822,6 +4828,18 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tungstenite",
+]
+
+[[package]]
+name = "subenum"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eee3fb942ed39f3971438fcc7e05e20717e599e14c5c7cb50edd0df2a44b274"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

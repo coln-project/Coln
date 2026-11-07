@@ -2,10 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::ir;
-use coln_store::store::ColnDef;
+use coln_flir_rs::{
+    engine::{packed::StoreTuple, schema::ColnDef, tx::TxTuple},
+    ir,
+    public::PublicTuple,
+};
+use coln_store::IdLookup;
 use coln_store::store::auto::AutoStore;
-use coln_store::txn::id::TxnWireTuple;
 use coln_store::txn::rw::StoreRead;
 use coln_store::txn::rw::StoreWrite;
 use napi::bindgen_prelude::*;
@@ -14,6 +17,22 @@ use napi_derive::napi;
 #[napi]
 pub struct AutoStoreWrapper {
     store: AutoStore,
+}
+
+impl AutoStoreWrapper {
+    fn unpack_tuple(&self, tuple: StoreTuple) -> PublicTuple {
+        tuple
+            .into_iter()
+            .map(|value| {
+                value.map(|id| {
+                    self.store
+                        .id_lookup()
+                        .unpacked(&id)
+                        .expect("row ids from store can be unpacked")
+                })
+            })
+            .collect()
+    }
 }
 
 #[napi]
@@ -25,7 +44,7 @@ pub fn store_from_ir(
     let ir = serde_json::from_str(&ir_json).expect("parse flir");
     let coln_def = ColnDef::new(coln_source, realm_name);
     Ok(AutoStoreWrapper {
-        store: AutoStore::try_from_ir(ir, coln_def).expect("create store successful"),
+        store: AutoStore::try_from_ir(&ir, coln_def).expect("create store successful"),
     })
 }
 
@@ -38,6 +57,7 @@ impl AutoStoreWrapper {
 
     #[napi]
     pub fn end_transaction(&mut self) -> String {
+        self.store.try_commit().unwrap();
         serde_json::to_string(&self.store.commit().unwrap()).unwrap()
     }
 
@@ -55,6 +75,10 @@ impl AutoStoreWrapper {
                 &(serde_json::from_str::<Vec<_>>(&select).unwrap()),
             )
             .unwrap();
+        let res: Vec<_> = res
+            .into_iter()
+            .map(|tuple| self.unpack_tuple(tuple))
+            .collect();
         Ok(serde_json::to_string(&res).unwrap())
     }
 
@@ -64,6 +88,15 @@ impl AutoStoreWrapper {
             .store
             .all_row_id(&(serde_json::from_str(&query).unwrap()))
             .unwrap();
+        let res: Vec<_> = res
+            .into_iter()
+            .map(|id| {
+                self.store
+                    .id_lookup()
+                    .unpacked(&id)
+                    .expect("row ids from store can be unpacked")
+            })
+            .collect();
         Ok(serde_json::to_string(&res).unwrap())
     }
 
@@ -76,7 +109,7 @@ impl AutoStoreWrapper {
                 &(serde_json::from_str::<Vec<_>>(&select).unwrap()),
             )
             .unwrap();
-        Ok(serde_json::to_string(&res).unwrap())
+        Ok(serde_json::to_string(&self.unpack_tuple(res)).unwrap())
     }
 
     #[napi]
@@ -93,7 +126,7 @@ impl AutoStoreWrapper {
             .store
             .add(
                 &ir::Path(table_name),
-                serde_json::from_str::<TxnWireTuple>(&values).unwrap(),
+                serde_json::from_str::<TxTuple>(&values).unwrap(),
             )
             .unwrap();
         Ok(serde_json::to_string(&res).unwrap())

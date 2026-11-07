@@ -5,9 +5,9 @@
 //! This module expresses the different schema views according to coln-compiler,
 //! coln-store, and coln-query in code.
 
-use either::Either;
-
 use crate::ir::{self, Path};
+use either::Either;
+use serde::{Deserialize, Serialize};
 use std::{marker::PhantomData, ops::Range};
 
 /// Typestate marker whether the [`ColnSchema`] represents a base table
@@ -19,6 +19,16 @@ pub struct BaseTable(());
 #[derive(Debug, Clone)]
 pub struct DerivedView(());
 
+// @Leo, I think best to describe this with the [`ir::Schema`]? We kind of have
+// two representations for a schema right now.
+//
+// Also we probably need to store a map somewhere from table name to their schema,
+// so the `name` field is redundant?
+//
+// Finally the map I mentioned above for schemas, do we want to store that in
+// bouncer/store/query? Seems a bit wasteful to store three copies, but I guess
+// all of them would need to use the schema.... The alternative is to store it
+// in coln-store and provide APIs ask for the schema.
 #[derive(Debug, Clone)]
 pub struct ColnSchema<Marker> {
     /// Indicates whether this table schema is for a base table (by using the
@@ -288,6 +298,11 @@ impl From<ir::BuiltinTy> for NativeScalarType {
     }
 }
 
+// @Leo, In storage engine, commit hash and counter are always stored together,
+// so I think it makes more sense to say that a StoreEngineCol is a enum of either
+// a row id or a native value? Right now it's one of the commithahs, counter or native,
+// and it will never be the case that a column in the storage engine is commit hash.
+// (Well physically maybe, but logically speaking no.)
 /// Scalar types which are supported by coln-store.
 #[derive(Clone, Copy, Debug)]
 pub enum StoreEngineScalarType {
@@ -494,5 +509,21 @@ impl QueryEngineCols {
                 })
                 .collect(),
         )
+    }
+}
+
+/// A Coln theory source file contains theory definitions and (multiple) realm
+/// definitions. Each realm corresponds will be compiled to one IR file,
+/// this struct stores which realm the IR is referring to. It is stored as
+/// literal string and uninterpreted in the root commit of the store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColnDef {
+    pub theory: String,
+    pub realm: String,
+}
+
+impl ColnDef {
+    pub fn new(theory: String, realm: String) -> Self {
+        Self { theory, realm }
     }
 }
