@@ -9,7 +9,6 @@
 use std::fmt;
 use std::ops::Deref;
 
-
 use crate::ir;
 use crate::public::{PublicRowId, PublicTuple};
 use crate::tuple::{NativeScalar, NativeScalarType, ScalarKind, Tuple};

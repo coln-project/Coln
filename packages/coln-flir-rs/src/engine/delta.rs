@@ -276,11 +276,7 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
         self,
         f: impl FnMut(TableDelta<Tuple>) -> TableDelta<U>,
     ) -> StoreDelta<Marker, U> {
-        let inner = self
-            .inner
-            .into_iter()
-            .map(f)
-            .collect();
+        let inner = self.inner.into_iter().map(f).collect();
         StoreDelta {
             inner,
             marker: PhantomData,
