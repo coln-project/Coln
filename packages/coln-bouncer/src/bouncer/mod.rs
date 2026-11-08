@@ -43,6 +43,7 @@ pub struct Bouncer {
 }
 
 impl Bouncer {
+    /// Creates a new [`Bouncer`] from the IR `ir` and coln source `coln_def`.
     pub fn try_new(ir: ir::FlatRealm, coln_def: ColnDef) -> Result<Self, BouncerError> {
         let store = AutoStore::try_from_ir(&ir, coln_def)?;
         let query = ColnQuery::init(&ir)?;
@@ -65,10 +66,27 @@ impl Bouncer {
 }
 
 impl Bouncer {
+    pub fn coln_def(&self) -> Result<ColnDef, BouncerError> {
+        Ok(self.store.inner().coln_def()?)
+    }
+
+}
+
+impl Bouncer {
+    /// Returns the list of commits that have no dependents
+    pub fn heads(&self) -> Vec<CommitHash> {
+        self.store.inner().heads()
+    }
+
+    /// Retrieve the commits that after the `have_heads`, i.e. commits that 
+    /// (transitively dependent on them.
     pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
         self.store.inner().commit_chunks_after(have_heads)
     }
 
+    /// Given some bytes that has already been separated by commit boundary
+    /// attempt to apply them to the database.
+    /// Returns a list of monitored constraint violations, if any.
     pub fn apply_chunk_bytes(
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,

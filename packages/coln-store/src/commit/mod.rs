@@ -32,6 +32,9 @@ use crate::{
     table::{TableMeta, TableOid},
 };
 
+// TODO consider unifying this with chunk, right now it's a bit of a mess when a
+// TODO chunk is used or a commit should be used
+
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
 ///
 /// Same broad shape as Automerge’s `Change`: payload bytes plus decoded
