@@ -8,7 +8,7 @@
 //! This module provides the base scalar value and the generic tuple representations
 //! on which other modules can build.
 
-use crate::ir;
+use crate::{engine::query::QueryScalarType, ir};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{fmt, ops::Deref};
@@ -85,7 +85,7 @@ pub trait ScalarKind: fmt::Display {
 }
 
 #[subenum(QueryScalar)]
-#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Type)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Type)]
 pub enum NativeScalar<
     RowId,
     U64 = u64,
@@ -187,6 +187,25 @@ impl<RowId> From<ir::Lit> for NativeScalar<RowId> {
         }
     }
 }
+
+/// Implements `From<&ir::BuiltinTy>` for both type representations, that is,
+/// either [`NativeScalarType<RowId>`] or [`QueryScalarType`].
+macro_rules! impl_from_builtinty {
+    ($target:ty $(, $generic:ident)?) => {
+        impl$(<$generic>)? From<&ir::BuiltinTy> for $target {
+            fn from(value: &ir::BuiltinTy) -> Self {
+                use ir::BuiltinTy::*;
+                match value {
+                    BuiltinInt => Self::I32(()),
+                    BuiltinStr => Self::String(()),
+                }
+            }
+        }
+    };
+}
+
+impl_from_builtinty!(NativeScalarType<RowId>, RowId);
+impl_from_builtinty!(QueryScalarType);
 
 /// Implements [`fmt::Display`] for a scalar enum carrying the primitive
 /// variants of [`NativeScalar`] and, if `$row_id` is given, its row id.

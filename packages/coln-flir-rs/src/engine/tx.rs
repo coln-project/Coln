@@ -95,7 +95,7 @@ impl ScalarKind for TxRowId {
 }
 
 /// The _type_ representing all instances of a [`TxRowId`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct TxRowIdType(());
 
 impl fmt::Display for TxRowIdType {
