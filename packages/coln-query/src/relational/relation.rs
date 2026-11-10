@@ -4,7 +4,6 @@
 
 use crate::relational::schema::TableSchema;
 use crate::scalarial::{ScalarType, ScalarTypedValue};
-use dbsp::{never_none, never_roaring_filter};
 use std::{
     any::Any,
     cell::RefCell,
@@ -46,6 +45,8 @@ pub trait Tuple: FromIterator<ScalarTypedValue> {
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
+    feldera_macros::IsNone,
+    feldera_macros::OrdRepr,
 )]
 #[archive_attr(derive(Ord, Eq, PartialEq, PartialOrd))]
 pub struct TupleValue {
@@ -63,9 +64,6 @@ impl TupleValue {
         Self { data }
     }
 }
-
-never_none!(TupleValue);
-never_roaring_filter!(TupleValue);
 
 #[macro_export]
 macro_rules! tuple {

@@ -24,7 +24,8 @@ cli-table = "0.4.9"
 # so this direction creates no cycle.
 coln-batch = { path = "../coln-batch" }
 coln-flir-rs = { path = "../coln-flir-rs" }
-dbsp = "0.305.0"
+dbsp = "0.381.0"
+feldera-macros = "0.381.0"
 either.workspace = true
 indexmap.workspace = true
 rkyv = {

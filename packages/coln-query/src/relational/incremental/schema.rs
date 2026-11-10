@@ -29,7 +29,6 @@ use crate::{
     scalarial::ScalarTypedValue,
     utils::cli_table::{Cell, CellStruct, CliTableHeader},
 };
-use dbsp::{never_none, never_roaring_filter};
 use std::{
     collections::HashSet,
     fmt::{self, Debug, Display},
@@ -48,14 +47,13 @@ use std::{
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
+    feldera_macros::IsNone,
+    feldera_macros::OrdRepr,
 )]
 #[archive_attr(derive(Ord, Eq, PartialEq, PartialOrd))]
 pub struct TupleKey {
     pub data: Vec<ScalarTypedValue>,
 }
-
-never_none!(TupleKey);
-never_roaring_filter!(TupleKey);
 
 impl<T: Into<ScalarTypedValue>> FromIterator<T> for TupleKey {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
