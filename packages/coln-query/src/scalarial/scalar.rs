@@ -21,6 +21,7 @@ use std::fmt::{self, Display, Formatter};
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
+    feldera_macros::OrdRepr,
 )]
 #[archive_attr(derive(Ord, Eq, PartialEq, PartialOrd))]
 pub enum ScalarTypedValue {
