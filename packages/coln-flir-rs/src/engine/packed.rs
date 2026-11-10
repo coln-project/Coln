@@ -45,7 +45,7 @@ impl ScalarKind for PackedRowId {
 }
 
 /// The _type_ representing all instances of a [`PackedRowId`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct PackedRowIdType(());
 
 impl fmt::Display for PackedRowIdType {
@@ -61,12 +61,7 @@ impl From<&ir::ColType> for StoreScalarType {
     fn from(col_type: &ir::ColType) -> Self {
         match col_type {
             ir::ColType::RowId { .. } => StoreScalarType::RowId(PackedRowIdType(())),
-            ir::ColType::BuiltinTy {
-                builtin_ty: ir::BuiltinTy::BuiltinInt,
-            } => StoreScalarType::I32(()),
-            ir::ColType::BuiltinTy {
-                builtin_ty: ir::BuiltinTy::BuiltinStr,
-            } => StoreScalarType::String(()),
+            ir::ColType::BuiltinTy { builtin_ty } => StoreScalarType::from(builtin_ty),
         }
     }
 }

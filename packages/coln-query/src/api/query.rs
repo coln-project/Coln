@@ -21,10 +21,10 @@ use crate::relational::{
 };
 use crate::scalarial::ScalarType;
 use coln_flir_rs::{
+    engine::query::QueryScalarType,
     engine::schema::{
-        BaseTable, ColnSchema, ColnSchemaWrapper, CompilerColIdx, DerivedView, NativeScalarType,
-        QueryEngineCol, QueryEngineScalarType, ResolveCompilerIdxToQueryView, RuleVars,
-        StoreEngineCols,
+        BaseTable, ColnSchema, ColnSchemaWrapper, CompilerColIdx, DerivedView, QueryEngineCol,
+        QueryEngineCols, ResolveCompilerIdxToQueryView, RuleVars,
     },
     ir::{self, El, FlatRealm},
 };
@@ -782,7 +782,7 @@ impl FlirAtom {
     fn from_atom(atom: &ir::Atom, resolver: &RuleScopeGuard) -> Result<FlirAtom, SyntaxError> {
         let mut bindings = Vec::with_capacity(
             if atom.row_id.is_some() {
-                StoreEngineCols::ROW_ID_COLS
+                QueryEngineCols::ROW_ID_COLS
             } else {
                 0
             } + atom.values.len(),
@@ -1075,23 +1075,14 @@ impl From<&ir::Lit> for Literal {
     }
 }
 
-impl From<NativeScalarType> for ScalarType {
-    fn from(value: NativeScalarType) -> Self {
+impl From<QueryScalarType> for ScalarType {
+    fn from(value: QueryScalarType) -> Self {
         match value {
-            NativeScalarType::Iint => ScalarType::Iint,
-            NativeScalarType::Uint => ScalarType::Uint,
-            NativeScalarType::String => ScalarType::String,
-        }
-    }
-}
-
-impl From<QueryEngineScalarType> for ScalarType {
-    fn from(value: QueryEngineScalarType) -> Self {
-        match value {
-            // A row id's two halves reach the query engine as plain unsigned
-            // integers, so every query-engine type is a native one by this
-            // point.
-            QueryEngineScalarType::Native(native) => ScalarType::from(native),
+            QueryScalarType::I32(()) => ScalarType::Iint,
+            QueryScalarType::I64(()) => ScalarType::Iint,
+            QueryScalarType::U32(()) => ScalarType::Uint,
+            QueryScalarType::U64(()) => ScalarType::Uint,
+            QueryScalarType::String(()) => ScalarType::String,
         }
     }
 }
