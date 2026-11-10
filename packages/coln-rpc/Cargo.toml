@@ -1,20 +1,10 @@
 [package]
 name = "coln-rpc"
-edition = "2024"
 version.workspace = true
-authors.workspace = true
+edition = "2024"
 description.workspace = true
 homepage.workspace = true
 repository.workspace = true
-
-[dependencies]
-coln-flir-rs = { version = "0.1.0", path = "../coln-flir-rs" }
-coln-store = { version = "0.1.0", path = "../coln-store" }
-serde.workspace = true
-serde_json.workspace = true
-specta.workspace = true
-specta-serde = "0.0.12"
-specta-typescript = { version = "0.0.12", features = ["serde"] }
 
 [lib]
 path = "src/rust/lib.rs"
@@ -22,3 +12,12 @@ path = "src/rust/lib.rs"
 [[bin]]
 name = "export"
 path = "scripts/export.rs"
+
+[dependencies]
+coln-flir-rs = { path = "../coln-flir-rs", version = "0.1.0" }
+coln-store = { path = "../coln-store", version = "0.1.0" }
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+specta-serde = "0.0.12"
+specta-typescript = { version = "0.0.12", features = ["serde"] }
