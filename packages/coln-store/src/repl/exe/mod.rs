@@ -11,24 +11,20 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
+use coln_flir_rs::engine::schema::ColnDef;
+use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue, TxTuple};
+use coln_flir_rs::public::PublicRowId;
 
-use crate::{
-    commit::pst::{decode_store, encode_store},
-    ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm},
-    store::{ColnDef, Store},
-    table::{TableHandle, WireRowId},
-    txn::{TempRowId, TxnWireValue, id::TxnWireTuple},
-};
-use crate::{
-    repl::{
-        Session, ShellMode, Step,
-        parse::{
-            ColnCommand, MetaCommand, SqlCommand,
-            coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
-        },
+use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm};
+use crate::repl::{
+    Session, ShellMode, Step,
+    parse::{
+        ColnCommand, MetaCommand, SqlCommand,
+        coln::{self, BatchAssignment, parse_cell_value, parse_cell_value_batch},
     },
-    txn::TxnWireRowId,
 };
+use crate::store::Store;
+use crate::table::TableHandle;
 
 fn help_text(mode: ShellMode) -> String {
     let mut lines = vec![
@@ -160,7 +156,7 @@ pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Resul
                 .loaded
                 .as_mut()
                 .ok_or_else(|| anyhow!("no schema loaded"))?;
-            let bytes = encode_store(&loaded.store)?;
+            let bytes = loaded.store.encode()?;
             let mut path = PathBuf::from(&path);
             if path.extension().is_none() {
                 path.add_extension("colnstore");
@@ -314,7 +310,7 @@ impl SchemaSummary {
 pub fn load_store(path: &Path) -> Result<LoadedState> {
     let bytes =
         fs::read(path).with_context(|| format!("failed to read store {}", path.display()))?;
-    let store = decode_store(&bytes)
+    let store = Store::decode_plain(&bytes)
         .with_context(|| format!("failed to decode store {}", path.display()))?;
     let schema = SchemaSummary::from_store(path.to_path_buf(), &store);
     Ok(LoadedState { store, schema })
@@ -333,7 +329,7 @@ pub fn load_schema(ir_path: &Path, coln_path: &Path, realm: &str) -> Result<Load
     };
     let summary = SchemaSummary::from_theory(ir_path.to_path_buf(), &theory);
     let store = Store::try_from_ir(
-        theory,
+        &theory,
         ColnDef {
             theory: coln_source,
             realm: realm.to_owned(),
@@ -388,14 +384,14 @@ pub fn render_table_schema(schema: Option<&SchemaSummary>, table_name: &str) -> 
 
 fn render_ir(store: Option<&Store>) -> Result<String> {
     let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
-    Ok(store.json_ir()?)
+    Ok(store.json_ir())
 }
 
 pub fn add_rows(
     store: &mut Store,
     table_name: &str,
     raw_rows: &[Vec<String>],
-) -> Result<Vec<WireRowId>> {
+) -> Result<Vec<PublicRowId>> {
     let table_path = crate::ir::Path::from(table_name);
     let oid = store
         .resolve_table(&table_path)
@@ -424,7 +420,7 @@ pub fn add_rows(
 
 /// Parse and commit a batch transaction, allowing later rows to refer to earlier bindings.
 pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Result<String> {
-    let mut bindings: HashMap<String, TempRowId> = HashMap::new();
+    let mut bindings: HashMap<String, PendingRowId> = HashMap::new();
     let mut pending = Vec::new();
 
     for (index, a) in assignments.iter().enumerate() {
@@ -463,7 +459,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
             values.push(v);
         }
 
-        let temp_id = TempRowId::from(index as u32);
+        let temp_id = PendingRowId::from(index as u32);
         bindings.insert(a.name.clone(), temp_id);
         pending.push((a.name.clone(), table_path, values, temp_id));
     }
@@ -482,7 +478,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<TxnWireTuple> {
+fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<TxTuple> {
     let expected = table.schema().columns.len();
     if raw_values.len() != expected {
         bail!(
@@ -496,10 +492,10 @@ fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<Txn
         .columns
         .iter()
         .enumerate()
-        .map(|(idx, column)| -> Result<TxnWireValue> {
+        .map(|(idx, column)| -> Result<TxScalarValue> {
             let raw = &raw_values[idx];
             parse_cell_value(&column.col_type, raw)
-                .map(|v| v.map_owned(TxnWireRowId::Existing))
+                .map(|v| v.map(TxRowId::Existing))
                 .map_err(|message| anyhow!("column {idx}: {message}"))
         })
         .collect()
@@ -565,13 +561,7 @@ mod tests {
         assert_eq!(loaded.schema.table_count, 4);
         assert_eq!(loaded.schema.law_count, 2);
         assert_eq!(loaded.schema.tables[0].path, "root.V");
-        let root = loaded
-            .store
-            .commits()
-            .root_commit()
-            .expect("root commit")
-            .root_payload()
-            .expect("root payload");
+        let root = loaded.store.commits().root_commit().root_payload();
         assert!(root.coln_def.theory.is_empty());
         assert_eq!(root.coln_def.realm, GRAPH_REALM);
     }
@@ -579,13 +569,7 @@ mod tests {
     #[test]
     fn loads_schema_without_coln_metadata() {
         let loaded = load_schema(&graph_ir_path(), Path::new(""), "").expect("load schema");
-        let root = loaded
-            .store
-            .commits()
-            .root_commit()
-            .expect("root commit")
-            .root_payload()
-            .expect("root payload");
+        let root = loaded.store.commits().root_commit().root_payload();
 
         assert!(root.coln_def.theory.is_empty());
         assert!(root.coln_def.realm.is_empty());
@@ -606,7 +590,7 @@ mod tests {
     fn renders_ir_json() {
         let loaded = load_graph_schema();
         let rendered = render_ir(Some(&loaded.store)).expect("render ir");
-        assert_eq!(rendered, loaded.store.json_ir().expect("json ir"));
+        assert_eq!(rendered, loaded.store.json_ir());
         let parsed: FlatRealm = serde_json::from_str(&rendered).expect("parse ir json");
         assert_eq!(parsed.tables.len(), loaded.store.table_count());
         assert_eq!(parsed.rules.len(), loaded.store.rule_entries().len());

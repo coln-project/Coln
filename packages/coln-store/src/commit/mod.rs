@@ -5,30 +5,43 @@
 pub mod author;
 pub mod chunk;
 pub mod error;
+pub(crate) mod frame;
 pub mod graph;
-pub mod hash;
 pub(crate) mod hash_dict;
+pub mod header;
 pub(crate) mod leb128;
-pub mod pst;
 pub(crate) mod utils;
 pub mod wire;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, marker::PhantomData};
+
+use coln_flir_rs::{
+    engine::tx::{TxRowId, TxScalarValue},
+    hash::CommitHash,
+};
 
 use crate::{
     commit::{
         author::Author,
-        chunk::{Chunk, ChunkType, Header},
         error::CodecError,
-        hash::CommitHash,
         hash_dict::HashMapper,
+        header::{ChunkType, Header},
         wire::{CommitData, RootCommitData},
     },
     ir::Path,
-    op::Op,
+    op::PendingOp,
+    op::PublicOp,
     table::{TableMeta, TableOid},
-    txn::{PendingOp, TxnWireRowId, TxnWireValue},
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Root;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Data;
+
+// TODO consider unifying this with chunk, right now it's a bit of a mess when a
+// TODO chunk is used or a commit should be used
 
 /// A commit: canonical payload bytes, content hash, and parsed metadata.
 ///
@@ -39,14 +52,14 @@ use crate::{
 /// decoded copy of every op.
 ///
 /// [`Commit::bytes`] holds the payload only. [`Commit::header`] retains the
-/// parsed or derived chunk header, and [`Chunk`] owns framed byte encoding.
+/// parsed or derived chunk header, and [`frame::Frame`] owns framed byte encoding.
 /// The hash is
 /// `blake3(chunk_type:u8 || data_len:u64_le || payload)`, computed over the
 /// payload, so verifying a loaded commit is re-running
-/// [`crate::commit::chunk::hash`] on [`Commit::payload`] and comparing to
+/// [`crate::commit::header::hash`] on [`Commit::payload`] and comparing to
 /// [`Commit::hash`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Commit<'a> {
+pub struct Commit<'a, T> {
     /// Canonical payload bytes (the chunk body, without the header).
     bytes: Cow<'a, [u8]>,
     pub(crate) header: Header,
@@ -60,9 +73,13 @@ pub struct Commit<'a> {
     pub timestamp: i64,
     pub message: Option<String>,
     pub num_ops: usize, // not serialised to bytes
+    marker: PhantomData<T>,
 }
 
-impl Commit<'static> {
+pub type DataCommit = Commit<'static, Data>;
+pub type RootCommit = Commit<'static, Root>;
+
+impl Commit<'static, Root> {
     /// Creating the commit data structure from the deserialized root data
     pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, CodecError> {
         let bytes = wire::serialize_root(root)?;
@@ -70,6 +87,31 @@ impl Commit<'static> {
         Ok(Self::from_root_bytes(bytes))
     }
 
+    fn from_root_payload(header: Header, bytes: Vec<u8>) -> Self {
+        Commit {
+            bytes: Cow::Owned(bytes),
+            header,
+            deps: vec![],
+            author: Author::foo(),
+            timestamp: 0,
+            message: None,
+            other_hashes: vec![],
+            num_ops: 0, // root commit does not have operations
+            marker: PhantomData,
+        }
+    }
+
+    fn from_root_bytes(bytes: Vec<u8>) -> Self {
+        let header = Header::new(ChunkType::RootCommit, &bytes);
+        Self::from_root_payload(header, bytes)
+    }
+
+    pub(crate) fn root_payload(&self) -> RootCommitData {
+        wire::deserialize_root(self.payload()).expect("stored root commit contains valid data")
+    }
+}
+
+impl Commit<'static, Data> {
     pub(crate) fn from_commit_data<'s, F>(
         mut data: CommitData,
         table_meta_for: F,
@@ -84,26 +126,8 @@ impl Commit<'static> {
         Ok(Self::from_commit_bytes(bytes, data))
     }
 
-    fn from_root_bytes(bytes: Vec<u8>) -> Self {
-        let header = Header::new(ChunkType::Root, &bytes);
-        Self::from_root_payload(header, bytes)
-    }
-
-    fn from_root_payload(header: Header, bytes: Vec<u8>) -> Self {
-        Commit {
-            bytes: Cow::Owned(bytes),
-            header,
-            deps: vec![],
-            author: Author::foo(),
-            timestamp: 0,
-            message: None,
-            other_hashes: vec![],
-            num_ops: 0, // root commit does not have operations
-        }
-    }
-
     fn from_commit_bytes(bytes: Vec<u8>, data: CommitData) -> Self {
-        let header = Header::new(ChunkType::Commit, &bytes);
+        let header = Header::new(ChunkType::DataCommit, &bytes);
         Self::from_commit_payload(header, bytes, data)
     }
 
@@ -117,45 +141,34 @@ impl Commit<'static> {
             message: data.message,
             other_hashes: data.other_hashes,
             num_ops: data.pending.len(),
+            marker: PhantomData,
         }
     }
 
-    pub(crate) fn from_chunk<'s, F>(chunk: Chunk, table_meta_for: F) -> Result<Self, CodecError>
+    /// Ops of this commit with row ids resolved against the commit hash.
+    ///
+    /// Ops are not retained in decoded form: this re-decodes them from the
+    /// canonical payload, so the returned iterator owns its data and borrows
+    /// neither the commit nor `table_meta_for`, hence the 'static.
+    pub(crate) fn resolved_ops<'s, F>(&self, table_meta_for: F) -> Result<Vec<PublicOp>, CodecError>
     where
         F: Fn(&Path) -> Option<TableMeta<'s>>,
     {
-        let (header, bytes) = chunk.into_parts();
-        Self::decode_payload_with_header(header, bytes, table_meta_for)
-    }
-
-    fn decode_payload_with_header<'s, F>(
-        header: Header,
-        bytes: Vec<u8>,
-        table_meta_for: F,
-    ) -> Result<Self, CodecError>
-    where
-        F: Fn(&Path) -> Option<TableMeta<'s>>,
-    {
-        match header.chunk_type {
-            ChunkType::Root => {
-                // check we can serialize the bytes into a root payload
-                let _root = wire::deserialize_root(&bytes)?;
-                Ok(Self::from_root_payload(header, bytes))
-            }
-            ChunkType::Commit => {
-                let data = wire::deserialize(&bytes, table_meta_for)?;
-                Ok(Self::from_commit_payload(header, bytes, data))
-            }
-        }
+        let hash = self.hash();
+        let pending = wire::deserialize(self.payload(), table_meta_for)?.pending;
+        Ok(pending
+            .into_iter()
+            .map(move |pending| pending.resolve(hash))
+            .collect())
     }
 }
 
-impl<'a> Commit<'a> {
+impl<'a, T> Commit<'a, T> {
     pub fn hash(&self) -> CommitHash {
         self.header.hash
     }
 
-    /// Canonical payload bytes: the slice that [`hash`](crate::commit::chunk::hash) is run on.
+    /// Canonical payload bytes: the slice that [`hash`](crate::commit::header::hash) is run on.
     pub fn payload(&self) -> &[u8] {
         self.bytes.as_ref()
     }
@@ -164,56 +177,13 @@ impl<'a> Commit<'a> {
     pub fn into_bytes(self) -> Vec<u8> {
         self.bytes.into_owned()
     }
-
-    fn chunk_type(&self) -> ChunkType {
-        self.header.chunk_type
-    }
-
-    pub fn is_root(&self) -> bool {
-        self.chunk_type() == ChunkType::Root
-    }
-
-    pub(crate) fn root_payload(&self) -> Result<RootCommitData, CodecError> {
-        if self.chunk_type() != ChunkType::Root {
-            return Err(CodecError::ChunkMismatch {
-                expected: ChunkType::Root,
-                got: self.chunk_type(),
-            });
-        }
-
-        wire::deserialize_root(self.payload())
-    }
-
-    /// Ops of this commit with row ids resolved against the commit hash.
-    ///
-    /// Ops are not retained in decoded form: this re-decodes them from the
-    /// canonical payload, so the returned iterator owns its data and borrows
-    /// neither the commit nor `table_meta_for`, hence the 'static.
-    ///
-    /// Root commits carry no ops and yield an empty iterator.
-    pub(crate) fn resolved_ops<'s, F>(&self, table_meta_for: F) -> Result<Vec<Op>, CodecError>
-    where
-        F: Fn(&Path) -> Option<TableMeta<'s>>,
-    {
-        let hash = self.hash();
-        let pending = if self.is_root() {
-            vec![]
-        } else {
-            wire::deserialize(self.payload(), table_meta_for)?.pending
-        };
-        Ok(pending
-            .into_iter()
-            .map(move |pending| pending.resolve(hash))
-            .collect())
-    }
 }
 
 // collects all the hashes that are mentioned in the ops.
 fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
     for op in pending {
-        let PendingOp::Add { values, .. } = op;
-        for value in values {
-            if let TxnWireValue::Id(TxnWireRowId::Existing(row_id)) = value {
+        for value in op.column_values() {
+            if let TxScalarValue::RowId(TxRowId::Existing(row_id)) = value {
                 hash_mapper.insert(row_id.commit);
             }
         }
@@ -222,16 +192,17 @@ fn collect_op_hashes(pending: &[PendingOp], hash_mapper: &mut HashMapper) {
 
 #[cfg(test)]
 mod tests {
+    use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue};
+    use coln_flir_rs::hash::HASH_SIZE;
     use coln_flir_rs::ir::Schema;
+    use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
     use rstest::{fixture, rstest};
 
     use super::*;
-    use crate::commit::chunk::{Chunk, hash};
-    use crate::commit::hash::HASH_SIZE;
+    use crate::commit::{chunk::Chunk, frame::Frame, header::hash};
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, Path};
-    use crate::table::{TableMeta, TableOid, WireRowId};
+    use crate::table::{TableMeta, TableOid};
     use crate::test_utils::{id_col_type, id_schema, int_schema, non_empty_root_commit_data};
-    use crate::txn::{TempRowId, TxnWireRowId};
 
     fn zero_hash() -> CommitHash {
         CommitHash([0u8; HASH_SIZE])
@@ -333,45 +304,39 @@ mod tests {
     fn decode_root_preserves_payload_and_hash(non_empty_root_commit_data: RootCommitData) {
         let original = Commit::from_root_data(&non_empty_root_commit_data).expect("build root");
 
-        let bytes = Chunk::from(&original).encoded();
-        let chunk = Chunk::decode(&bytes).expect("decode root chunk");
-        let decoded = Commit::from_chunk(chunk, |_| None).expect("decode root");
+        let bytes = Frame::from(&original).encoded();
+        let chunk = Frame::decode(&bytes).expect("decode root chunk");
+        let decoded = Chunk::from_frame(chunk, |_| None).expect("decode root");
 
-        assert_eq!(decoded.chunk_type(), ChunkType::Root);
+        let Chunk::Root(decoded) = decoded else {
+            panic!("expected a root commit");
+        };
+        assert_eq!(decoded.header.chunk_type, ChunkType::RootCommit);
         assert_eq!(decoded.hash(), original.hash());
         assert_eq!(decoded.payload(), original.payload());
         assert!(decoded.deps.is_empty());
-        assert_eq!(
-            decoded.resolved_ops(|_| None).expect("resolve ops").len(),
-            0,
-            "root commits carry no ops"
-        );
     }
 
     #[rstest]
     fn decode_data_preserves_payload_metadata_and_ops(table_metadata: TestTableMetadata) {
         let dep = zero_hash();
         let deps = vec![dep];
-        let rid = WireRowId {
+        let rid = PublicRowId {
             commit: dep,
             counter: 7,
         };
         let pending = vec![
-            PendingOp::Add {
-                row_id: TempRowId(0),
-                table: 0,
-                values: vec![1i32].into(),
-            },
-            PendingOp::Add {
-                row_id: TempRowId(1),
-                table: 1,
-                values: vec![
-                    TxnWireValue::Id(TxnWireRowId::Existing(rid)),
-                    TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
-                    TxnWireValue::Str("x".into()),
+            PendingOp::add(PendingRowId(0), 0, vec![1i32].into()),
+            PendingOp::add(
+                PendingRowId(1),
+                1,
+                vec![
+                    TxScalarValue::RowId(TxRowId::Existing(rid)),
+                    TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
+                    TxScalarValue::String("x".into()),
                 ]
                 .into(),
-            },
+            ),
         ];
         let original = Commit::from_commit_data(
             data(deps.clone(), Author::foo(), 42, Some("hi"), pending.clone()),
@@ -379,12 +344,15 @@ mod tests {
         )
         .expect("build commit");
 
-        let bytes = Chunk::from(&original).encoded();
-        let chunk = Chunk::decode(&bytes).expect("decode commit chunk");
-        let decoded = Commit::from_chunk(chunk, |path| table_metadata.payload_for_path(path))
+        let bytes = Frame::from(&original).encoded();
+        let chunk = Frame::decode(&bytes).expect("decode commit chunk");
+        let decoded = Chunk::from_frame(chunk, |path| table_metadata.payload_for_path(path))
             .expect("decode commit");
 
-        assert_eq!(decoded.chunk_type(), ChunkType::Commit);
+        let Chunk::Data(decoded) = decoded else {
+            panic!("expected a data commit");
+        };
+        assert_eq!(decoded.header.chunk_type, ChunkType::DataCommit);
         assert_eq!(decoded.hash(), original.hash());
         assert_eq!(decoded.payload(), original.payload());
         assert_eq!(decoded.deps, deps);
@@ -395,11 +363,24 @@ mod tests {
         // Ops are decoded from the payload on demand and resolve against the
         // commit hash.
         let hash = decoded.hash();
-        let expected: Vec<Op> = pending.into_iter().map(|op| op.resolve(hash)).collect();
-        let got: Vec<Op> = decoded
+        let expected: Vec<PublicOp> = pending.into_iter().map(|op| op.resolve(hash)).collect();
+        let got: Vec<PublicOp> = decoded
             .resolved_ops(|path| table_metadata.payload_for_path(path))
             .expect("resolve ops");
         assert_eq!(got, expected);
+        assert_eq!(got[0].id(), PendingRowId(0).resolve(hash));
+        let PublicOp::Add { values, .. } = &got[1] else {
+            panic!("expected an add operation");
+        };
+        assert_eq!(
+            &values[..],
+            &[
+                PublicScalarValue::RowId(PendingRowId(1).resolve(hash)),
+                PublicScalarValue::RowId(rid),
+                PublicScalarValue::RowId(PendingRowId(0).resolve(hash)),
+                PublicScalarValue::String("x".into()),
+            ]
+        );
     }
 
     #[test]
@@ -469,21 +450,13 @@ mod tests {
 
     #[rstest]
     fn different_ops_produce_different_hashes(table_metadata: TestTableMetadata) {
-        let op = PendingOp::Add {
-            row_id: TempRowId(0),
-            table: 0,
-            values: vec![42].into(),
-        };
+        let op = PendingOp::add(PendingRowId(0), 0, vec![42].into());
         let a = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op]), |oid| {
             table_metadata.int_for_oid(oid)
         })
         .expect("build a");
 
-        let op2 = PendingOp::Add {
-            row_id: TempRowId(0),
-            table: 0,
-            values: vec![99].into(),
-        };
+        let op2 = PendingOp::add(PendingRowId(0), 0, vec![99].into());
         let b = Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op2]), |oid| {
             table_metadata.int_for_oid(oid)
         })
@@ -498,7 +471,7 @@ mod tests {
         let commit =
             Commit::from_commit_data(data(vec![], Author::foo(), 0, None, pending), |_| None)
                 .expect("build commit");
-        let expected = hash(ChunkType::Commit, commit.payload());
+        let expected = hash(ChunkType::DataCommit, commit.payload());
         assert_eq!(commit.hash(), expected);
     }
 
@@ -506,12 +479,11 @@ mod tests {
     fn root_commit_wraps_and_decodes_root_payload(non_empty_root_commit_data: RootCommitData) {
         let commit = Commit::from_root_data(&non_empty_root_commit_data).expect("build root");
 
-        assert_eq!(commit.chunk_type(), ChunkType::Root);
+        assert_eq!(commit.header.chunk_type, ChunkType::RootCommit);
         assert!(commit.deps.is_empty());
-        assert_eq!(commit.resolved_ops(|_| None).expect("resolve ops").len(), 0);
-        assert_eq!(commit.hash(), hash(ChunkType::Root, commit.payload()));
+        assert_eq!(commit.hash(), hash(ChunkType::RootCommit, commit.payload()));
 
-        let decoded = commit.root_payload().expect("decode root payload");
+        let decoded = commit.root_payload();
         let ir = &decoded.ir;
         assert_eq!(ir.tables.len(), 1);
         assert_eq!(ir.tables[0].path, Path::from("T"));
@@ -524,45 +496,26 @@ mod tests {
         assert_eq!(ir.rules[0].path, Path::from("T.non_negative"));
     }
 
-    #[test]
-    fn root_payload_rejects_data_commit() {
-        let commit =
-            Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![]), |_| None)
-                .expect("build commit");
-
-        assert!(matches!(
-            commit.root_payload(),
-            Err(CodecError::ChunkMismatch {
-                expected: ChunkType::Root,
-                got: ChunkType::Commit,
-            })
-        ));
-    }
-
     #[rstest]
     fn build_records_metadata_and_pending_ops(table_metadata: TestTableMetadata) {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = WireRowId {
+        let rid = PublicRowId {
             commit: dep,
             counter: 7,
         };
-        let op0 = PendingOp::Add {
-            row_id: TempRowId(0),
-            table: 0,
-            values: vec![1i32].into(),
-        };
-        let op1 = PendingOp::Add {
-            row_id: TempRowId(1),
-            table: 1,
-            values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
-                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
-                TxnWireValue::Str("x".into()),
+        let op0 = PendingOp::add(PendingRowId(0), 0, vec![1i32].into());
+        let op1 = PendingOp::add(
+            PendingRowId(1),
+            1,
+            vec![
+                TxScalarValue::RowId(TxRowId::Existing(rid)),
+                TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
+                TxScalarValue::String("x".into()),
             ]
             .into(),
-        };
+        );
         let pending = vec![op0, op1];
         let commit = Commit::from_commit_data(
             data(deps.clone(), author, 42, Some("hi"), pending.clone()),
@@ -591,25 +544,21 @@ mod tests {
         let dep = zero_hash();
         let deps = vec![dep];
         let author = Author::foo();
-        let rid = WireRowId {
+        let rid = PublicRowId {
             commit: dep,
             counter: 7,
         };
-        let op0 = PendingOp::Add {
-            row_id: TempRowId(0),
-            table: 0,
-            values: vec![1i32].into(),
-        };
-        let op1 = PendingOp::Add {
-            row_id: TempRowId(1),
-            table: 1,
-            values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid)),
-                TxnWireValue::Id(TxnWireRowId::Pending(TempRowId(0))),
-                TxnWireValue::Str("x".into()),
+        let op0 = PendingOp::add(PendingRowId(0), 0, vec![1i32].into());
+        let op1 = PendingOp::add(
+            PendingRowId(1),
+            1,
+            vec![
+                TxScalarValue::RowId(TxRowId::Existing(rid)),
+                TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
+                TxScalarValue::String("x".into()),
             ]
             .into(),
-        };
+        );
         let pending = vec![op0, op1];
         let commit =
             Commit::from_commit_data(data(deps, author, 42, Some("hi"), pending.clone()), |oid| {
@@ -633,38 +582,38 @@ mod tests {
     fn other_hashes_contain_right_hashes(table_metadata: TestTableMetadata) {
         let ha = CommitHash([1u8; HASH_SIZE]);
         let hb = CommitHash([2u8; HASH_SIZE]);
-        let rid_a = WireRowId {
+        let rid_a = PublicRowId {
             commit: ha,
             counter: 0,
         };
-        let rid_b = WireRowId {
+        let rid_b = PublicRowId {
             commit: hb,
             counter: 3,
         };
         // also point to ha
-        let rid_a_later = WireRowId {
+        let rid_a_later = PublicRowId {
             commit: ha,
             counter: 99,
         };
 
-        let op0 = PendingOp::Add {
-            row_id: TempRowId(0),
-            table: 0,
-            values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a.clone())),
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a.clone())),
+        let op0 = PendingOp::add(
+            PendingRowId(0),
+            0,
+            vec![
+                TxScalarValue::RowId(TxRowId::Existing(rid_a)),
+                TxScalarValue::RowId(TxRowId::Existing(rid_a)),
             ]
             .into(),
-        };
-        let op1 = PendingOp::Add {
-            row_id: TempRowId(1),
-            table: 0,
-            values: vec![
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_b)),
-                TxnWireValue::Id(TxnWireRowId::Existing(rid_a_later)),
+        );
+        let op1 = PendingOp::add(
+            PendingRowId(1),
+            0,
+            vec![
+                TxScalarValue::RowId(TxRowId::Existing(rid_b)),
+                TxScalarValue::RowId(TxRowId::Existing(rid_a_later)),
             ]
             .into(),
-        };
+        );
         let commit = Commit::from_commit_data(
             data(vec![], Author::foo(), 0, None, vec![op0, op1]),
             |oid| table_metadata.entity_pair_for_oid(oid),
@@ -676,11 +625,7 @@ mod tests {
             "hash dict lists each referenced commit once, in first-seen order"
         );
 
-        let op_int = PendingOp::Add {
-            row_id: TempRowId(0),
-            table: 0,
-            values: vec![42].into(),
-        };
+        let op_int = PendingOp::add(PendingRowId(0), 0, vec![42].into());
         let no_row_refs =
             Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![op_int]), |oid| {
                 table_metadata.int_for_oid(oid)
