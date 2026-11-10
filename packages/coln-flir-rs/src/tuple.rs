@@ -139,13 +139,14 @@ pub type NativeScalarType<RowIdType> = NativeScalar<RowIdType, (), (), (), (), (
 
 impl<RowId: ScalarKind> NativeScalar<RowId> {
     pub fn ty(&self) -> NativeScalarType<RowId::Ty> {
+        use NativeScalar::*;
         match self {
-            NativeScalar::RowId(row_id) => NativeScalar::RowId(ScalarKind::ty(row_id)),
-            NativeScalar::U64(_) => NativeScalar::U64(()),
-            NativeScalar::U32(_) => NativeScalar::U32(()),
-            NativeScalar::I64(_) => NativeScalar::I64(()),
-            NativeScalar::I32(_) => NativeScalar::I32(()),
-            NativeScalar::String(_) => NativeScalar::String(()),
+            RowId(row_id) => RowId(ScalarKind::ty(row_id)),
+            U64(_) => U64(()),
+            U32(_) => U32(()),
+            I64(_) => I64(()),
+            I32(_) => I32(()),
+            String(_) => String(()),
         }
     }
 }
@@ -165,14 +166,15 @@ impl<RowIdType: fmt::Display> fmt::Display for NativeScalarType<RowIdType> {
 
 impl<T1> NativeScalarType<T1> {
     pub fn sloppy_eq<T2>(&self, other: &NativeScalarType<T2>) -> bool {
+        use NativeScalar::*;
         matches!(
             (self, other),
-            (NativeScalarType::RowId(_), NativeScalar::RowId(_))
-                | (NativeScalarType::U64(_), NativeScalar::U64(_))
-                | (NativeScalarType::U32(_), NativeScalar::U32(_))
-                | (NativeScalarType::I64(_), NativeScalar::I64(_))
-                | (NativeScalarType::I32(_), NativeScalar::I32(_))
-                | (NativeScalarType::String(_), NativeScalar::String(_))
+            (RowId(_), RowId(_))
+                | (U64(_), U64(_))
+                | (U32(_), U32(_))
+                | (I64(_), I64(_))
+                | (I32(_), I32(_))
+                | (String(_), String(_))
         )
     }
 }
