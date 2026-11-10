@@ -8,7 +8,11 @@ use coln_flir_rs::ir::{
 };
 use rstest::fixture;
 
-use crate::{commit::wire::root::RootCommitData, store::Store, txn::rw::StoreWrite};
+use crate::{
+    commit::{DataCommit, chunk::Chunk, wire::root::RootCommitData},
+    store::Store,
+    txn::rw::StoreWrite,
+};
 
 mod rowid {
     use coln_flir_rs::{hash::CommitHash, public::PublicRowId};
@@ -389,3 +393,10 @@ pub(crate) use root::*;
 pub(crate) use rowid::*;
 pub(crate) use schema::*;
 pub(crate) use store::*;
+
+pub(crate) fn expect_data_chunk(chunk: Chunk) -> DataCommit {
+    match chunk {
+        Chunk::Data(commit) => commit,
+        Chunk::Root(_) => panic!("expected a data chunk"),
+    }
+}

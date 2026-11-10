@@ -68,7 +68,7 @@ fn empty_coln_def() -> ColnDef {
 }
 
 fn root_hash(store: &Store) -> CommitHash {
-    store.commits().root_commit().expect("root commit").hash()
+    store.commits().root_commit().hash()
 }
 
 fn commit_id(hash: CommitHash) -> CommitId {

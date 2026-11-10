@@ -7,6 +7,7 @@ use coln_flir_rs::public::{PublicScalarValue, PublicTuple};
 use rstest::rstest;
 
 use super::*;
+use crate::test_utils::expect_data_chunk;
 use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Materialization, Path, Schema},
     op::PublicOp,
@@ -85,7 +86,7 @@ mod root_metadata {
         let expected = serde_json::to_string(&root.ir).expect("serialize expected IR");
         let store = Store::try_from_ir(&root.ir, root.coln_def).expect("build store");
 
-        assert_eq!(store.json_ir().expect("serialize store IR"), expected);
+        assert_eq!(store.json_ir(), expected);
     }
 
     #[rstest]
@@ -95,7 +96,7 @@ mod root_metadata {
         let expected_realm = root.coln_def.realm.clone();
         let store = Store::try_from_ir(&root.ir, root.coln_def).expect("build store");
 
-        let actual = store.coln_def().expect("read Coln definition");
+        let actual = store.coln_def();
         assert_eq!(actual.theory, expected_theory);
         assert_eq!(actual.realm, expected_realm);
     }
@@ -734,7 +735,13 @@ mod rowing {
         txn.commit().expect("child commit");
 
         let batch = target
-            .prepare_commits(source.commits_after(&root), true)
+            .prepare_commits(
+                source
+                    .chunks_after(&root)
+                    .into_iter()
+                    .map(expect_data_chunk),
+                true,
+            )
             .expect("batch");
         assert!(matches!(
             batch.prepare_next(),
@@ -820,10 +827,9 @@ mod commits {
     fn heads_and_commit_by_hash_track_current_frontier(#[from(single_int_store)] mut store: Store) {
         let root = store.heads();
         assert_eq!(root.len(), 1);
-        assert_eq!(
-            store.commit_by_hash(&root[0]).expect("root").hash(),
-            root[0]
-        );
+        assert_eq!(store.commits().root_commit().hash(), root[0]);
+        assert!(store.commits().contains(&root[0]));
+        assert!(store.commit_by_hash(&root[0]).is_none());
 
         let commit = commit_int(&mut store, 42);
 
@@ -835,18 +841,121 @@ mod commits {
     }
 
     #[rstest]
-    fn commits_after_returns_descendants_in_topological_order(
+    fn chunks_after_returns_descendants_in_topological_order(
         #[from(single_int_store)] mut store: Store,
     ) {
         let root = store.heads();
         let first = commit_int(&mut store, 1);
         let second = commit_int(&mut store, 2);
 
-        let commits = store.commits_after(&root);
-        let hashes = commits.iter().map(Commit::hash).collect::<Vec<_>>();
+        let chunks = store.chunks_after(&root);
+        let hashes = chunks
+            .into_iter()
+            .map(expect_data_chunk)
+            .map(|commit| commit.hash())
+            .collect::<Vec<_>>();
 
         assert_eq!(hashes, vec![first, second]);
-        assert!(store.commits_after(&store.heads()).is_empty());
+        assert!(store.chunks_after(&store.heads()).is_empty());
+    }
+
+    #[test]
+    fn chunks_after_empty_heads_returns_root_without_data() {
+        let store = Store::new();
+        assert_eq!(
+            store.chunks_after(&[]),
+            vec![crate::commit::chunk::Chunk::Root(
+                store.commits().root_commit().clone()
+            )]
+        );
+        assert!(store.chunks_after(&store.heads()).is_empty());
+    }
+
+    #[rstest]
+    fn chunks_after_empty_heads_returns_root_before_data(
+        #[from(single_int_store)] mut store: Store,
+    ) {
+        use crate::commit::chunk::Chunk;
+
+        let root = store.commits().root_commit().clone();
+        let first_hash = commit_int(&mut store, 1);
+        let second_hash = commit_int(&mut store, 2);
+        let first = store.commit_by_hash(&first_hash).expect("first").clone();
+        let second = store.commit_by_hash(&second_hash).expect("second").clone();
+
+        assert_eq!(
+            store.chunks_after(&[]),
+            vec![
+                Chunk::Root(root.clone()),
+                Chunk::Data(first.clone()),
+                Chunk::Data(second.clone())
+            ]
+        );
+        assert_eq!(
+            store.chunks_after(&[root.hash()]),
+            vec![Chunk::Data(first), Chunk::Data(second.clone())]
+        );
+        assert_eq!(
+            store.chunks_after(&[CommitHash([0xff; 32])]),
+            store.chunks_after(&[])
+        );
+        assert_eq!(store.chunks_after(&[first_hash]), vec![Chunk::Data(second)]);
+        assert!(store.chunks_after(&[second_hash]).is_empty());
+    }
+
+    #[rstest]
+    fn commit_chunks_include_root_only_when_missing(#[from(single_int_store)] mut store: Store) {
+        let root = store.commits().root_commit().hash();
+        let first = commit_int(&mut store, 1);
+        let second = commit_int(&mut store, 2);
+
+        let all = store.commit_chunks_after(&[]);
+        assert_eq!(
+            all.iter().map(|chunk| chunk.hash).collect::<Vec<_>>(),
+            vec![root, first, second]
+        );
+        let after_root = store.commit_chunks_after(&[root]);
+        assert_eq!(
+            after_root
+                .iter()
+                .map(|chunk| chunk.hash)
+                .collect::<Vec<_>>(),
+            vec![first, second]
+        );
+        let after_first = store.commit_chunks_after(&[first]);
+        assert_eq!(
+            after_first
+                .iter()
+                .map(|chunk| chunk.hash)
+                .collect::<Vec<_>>(),
+            vec![second]
+        );
+        assert!(store.commit_chunks_after(&[second]).is_empty());
+    }
+
+    #[rstest]
+    fn applying_root_chunks_preserves_the_existing_root(
+        #[from(single_int_store)] mut store: Store,
+    ) {
+        let root = store.commits().root_commit().hash();
+        let known = crate::commit::frame::Frame::from(store.commits().root_commit()).encoded();
+        store
+            .apply_chunk_bytes_plain([known])
+            .expect("known root is ignored");
+
+        let foreign_store = Store::new();
+        let foreign_root = foreign_store.commits().root_commit();
+        let foreign = crate::commit::frame::Frame::from(foreign_root).encoded();
+        let error = store
+            .apply_chunk_bytes_plain([foreign])
+            .expect_err("foreign root");
+        assert!(matches!(
+            error,
+            StoreError::Commit(crate::store::error::CommitApplyError::RootCommit(hash))
+                if hash == foreign_root.hash()
+        ));
+        assert_eq!(store.commits().root_commit().hash(), root);
+        assert_eq!(store.heads(), vec![root]);
     }
 
     #[rstest]
@@ -859,7 +968,7 @@ mod commits {
         let (other, commit) = other;
 
         let commits = base.commits_added(&other);
-        let hashes = commits.iter().map(Commit::hash).collect::<Vec<_>>();
+        let hashes = commits.iter().map(DataCommit::hash).collect::<Vec<_>>();
 
         assert_eq!(hashes, vec![commit]);
     }
@@ -956,7 +1065,11 @@ mod commits {
     ) {
         let (source, _) = source;
 
-        let commits = source.commits_after(&target.heads());
+        let commits = source
+            .chunks_after(&target.heads())
+            .into_iter()
+            .map(expect_data_chunk)
+            .collect::<Vec<_>>();
         target.apply_commits_plain(commits).expect("apply commits");
 
         assert_eq!(
@@ -976,7 +1089,11 @@ mod commits {
         let (mut source, _) = source;
         commit_int(&mut source, 2);
 
-        let mut commits = source.commits_after(&target.heads());
+        let mut commits = source
+            .chunks_after(&target.heads())
+            .into_iter()
+            .map(expect_data_chunk)
+            .collect::<Vec<_>>();
         commits.reverse();
         target.apply_commits_plain(commits).expect("apply commits");
 
@@ -999,7 +1116,11 @@ mod commits {
     ) {
         let (source, _) = source;
 
-        let commits = source.commits_after(&target.heads());
+        let commits = source
+            .chunks_after(&target.heads())
+            .into_iter()
+            .map(expect_data_chunk)
+            .collect::<Vec<_>>();
         target
             .apply_commits_plain(commits.clone())
             .expect("first apply commits");
@@ -1030,7 +1151,11 @@ mod commits {
         target
             .apply_commits_plain([second_commit])
             .expect("skip missing dependency");
-        let pending_hashes: Vec<_> = target.pending_commits.iter().map(Commit::hash).collect();
+        let pending_hashes: Vec<_> = target
+            .pending_commits
+            .iter()
+            .map(DataCommit::hash)
+            .collect();
 
         assert_eq!(pending_hashes, vec![second]);
         assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
@@ -1052,7 +1177,11 @@ mod commits {
         target
             .apply_commits_plain([first_commit, third_commit])
             .expect("apply ready commits");
-        let pending_hashes: Vec<_> = target.pending_commits.iter().map(Commit::hash).collect();
+        let pending_hashes: Vec<_> = target
+            .pending_commits
+            .iter()
+            .map(DataCommit::hash)
+            .collect();
 
         assert_eq!(pending_hashes, vec![third]);
         // The blocked commit's row never landed, so only the first row is stored.

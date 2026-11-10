@@ -94,6 +94,14 @@ which is internally stored as a node in the commit graph, which is a DAG. A comm
 consists of metadata such as the time it was created and any commit messages associated
 with it, along with its main body, which is the operations as defined in the transaction.
 
+`CommitGraph` requires one `RootCommit` at construction and stores data commits
+separately. `root_commit()` returns the root directly, `get_data()` looks up data
+commits, and `iter_topological()` visits data commits only. Membership checks include
+the root, and serialization writes the root before the ordered data commits.
+`Store::chunks_after()` returns parsed root and data chunks missing from the
+supplied heads' ancestry. With no supplied heads, it returns the root first,
+followed by all data commits in dependency order.
+
 Commits are currently mainly used in the (de)serialisation of the store. Here is
 a breakdown of what happens when the user asks to serialize the store to bytes
 (so it can be stored on disk)

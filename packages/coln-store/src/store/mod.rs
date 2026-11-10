@@ -19,10 +19,10 @@ use coln_flir_rs::public::PublicRowId;
 use coln_flir_rs::query::WhereClause;
 use tracing::info;
 
-use crate::commit::Commit;
 use crate::commit::error::CodecError;
 use crate::commit::graph::CommitGraph;
 use crate::commit::wire::RootCommitData;
+use crate::commit::{DataCommit, RootCommit};
 use crate::ir::{self, FlatRealm};
 pub use crate::pack::id_packer::IdLookup;
 use crate::pack::{IdPacker, IdPackerSnapshot};
@@ -45,7 +45,7 @@ pub struct Store {
     commits: CommitGraph,
     rowing: rowing::Rowing,
     // buffered commits not ready to be applied to the store due to missing deps
-    pending_commits: Vec<Commit<'static>>,
+    pending_commits: Vec<DataCommit>,
 }
 
 pub(crate) struct StoreSnapshot {
@@ -148,7 +148,7 @@ impl Store {
 
     /// Add commit to the commit graph. This is a low level API, typically you
     /// want to use `apply_commits`
-    pub(crate) fn record_in_commit_graph(&mut self, commit: Commit<'static>) {
+    pub(crate) fn record_in_commit_graph(&mut self, commit: DataCommit) {
         self.commits.add_commit(commit);
     }
 
@@ -174,18 +174,18 @@ impl Store {
         &self.ir.rules
     }
 
-    pub fn json_ir(&self) -> Result<String, StoreError> {
-        let root = self.commits.root_commit()?.root_payload()?;
-        Ok(serde_json::to_string(&root.ir).map_err(CodecError::from)?)
+    pub fn json_ir(&self) -> String {
+        let root = self.commits.root_commit().root_payload();
+        serde_json::to_string(&root.ir).expect("stored root ir contains valid data")
     }
 
     pub fn ir(&self) -> &ir::FlatRealm {
         &self.ir
     }
 
-    pub fn coln_def(&self) -> Result<ColnDef, StoreError> {
-        let root = self.commits.root_commit()?.root_payload()?;
-        Ok(root.coln_def)
+    pub fn coln_def(&self) -> ColnDef {
+        let root = self.commits.root_commit().root_payload();
+        root.coln_def
     }
 
     // Used by txn to finalise live ids
@@ -350,9 +350,7 @@ impl Store {
     }
 
     fn graph_with_root_commit(root_commit: RootCommitData) -> Result<CommitGraph, CodecError> {
-        let mut graph = CommitGraph::new();
-        graph.add_commit(Commit::from_root_data(&root_commit)?);
-        Ok(graph)
+        Ok(CommitGraph::new(RootCommit::from_root_data(&root_commit)?))
     }
 }
 

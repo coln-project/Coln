@@ -5,13 +5,15 @@
 pub mod author;
 pub mod chunk;
 pub mod error;
+pub(crate) mod frame;
 pub mod graph;
 pub(crate) mod hash_dict;
+pub mod header;
 pub(crate) mod leb128;
 pub(crate) mod utils;
 pub mod wire;
 
-use std::borrow::Cow;
+use std::{borrow::Cow, marker::PhantomData};
 
 use coln_flir_rs::{
     engine::tx::{TxRowId, TxScalarValue},
@@ -21,9 +23,9 @@ use coln_flir_rs::{
 use crate::{
     commit::{
         author::Author,
-        chunk::{Chunk, ChunkType, Header},
         error::CodecError,
         hash_dict::HashMapper,
+        header::{ChunkType, Header},
         wire::{CommitData, RootCommitData},
     },
     ir::Path,
@@ -31,6 +33,12 @@ use crate::{
     op::PublicOp,
     table::{TableMeta, TableOid},
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Root;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Data;
 
 // TODO consider unifying this with chunk, right now it's a bit of a mess when a
 // TODO chunk is used or a commit should be used
@@ -44,14 +52,14 @@ use crate::{
 /// decoded copy of every op.
 ///
 /// [`Commit::bytes`] holds the payload only. [`Commit::header`] retains the
-/// parsed or derived chunk header, and [`Chunk`] owns framed byte encoding.
+/// parsed or derived chunk header, and [`frame::Frame`] owns framed byte encoding.
 /// The hash is
 /// `blake3(chunk_type:u8 || data_len:u64_le || payload)`, computed over the
 /// payload, so verifying a loaded commit is re-running
-/// [`crate::commit::chunk::hash`] on [`Commit::payload`] and comparing to
+/// [`crate::commit::header::hash`] on [`Commit::payload`] and comparing to
 /// [`Commit::hash`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Commit<'a> {
+pub struct Commit<'a, T> {
     /// Canonical payload bytes (the chunk body, without the header).
     bytes: Cow<'a, [u8]>,
     pub(crate) header: Header,
@@ -65,9 +73,13 @@ pub struct Commit<'a> {
     pub timestamp: i64,
     pub message: Option<String>,
     pub num_ops: usize, // not serialised to bytes
+    marker: PhantomData<T>,
 }
 
-impl Commit<'static> {
+pub type DataCommit = Commit<'static, Data>;
+pub type RootCommit = Commit<'static, Root>;
+
+impl Commit<'static, Root> {
     /// Creating the commit data structure from the deserialized root data
     pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, CodecError> {
         let bytes = wire::serialize_root(root)?;
@@ -75,6 +87,31 @@ impl Commit<'static> {
         Ok(Self::from_root_bytes(bytes))
     }
 
+    fn from_root_payload(header: Header, bytes: Vec<u8>) -> Self {
+        Commit {
+            bytes: Cow::Owned(bytes),
+            header,
+            deps: vec![],
+            author: Author::foo(),
+            timestamp: 0,
+            message: None,
+            other_hashes: vec![],
+            num_ops: 0, // root commit does not have operations
+            marker: PhantomData,
+        }
+    }
+
+    fn from_root_bytes(bytes: Vec<u8>) -> Self {
+        let header = Header::new(ChunkType::RootCommit, &bytes);
+        Self::from_root_payload(header, bytes)
+    }
+
+    pub(crate) fn root_payload(&self) -> RootCommitData {
+        wire::deserialize_root(self.payload()).expect("stored root commit contains valid data")
+    }
+}
+
+impl Commit<'static, Data> {
     pub(crate) fn from_commit_data<'s, F>(
         mut data: CommitData,
         table_meta_for: F,
@@ -89,26 +126,8 @@ impl Commit<'static> {
         Ok(Self::from_commit_bytes(bytes, data))
     }
 
-    fn from_root_bytes(bytes: Vec<u8>) -> Self {
-        let header = Header::new(ChunkType::Root, &bytes);
-        Self::from_root_payload(header, bytes)
-    }
-
-    fn from_root_payload(header: Header, bytes: Vec<u8>) -> Self {
-        Commit {
-            bytes: Cow::Owned(bytes),
-            header,
-            deps: vec![],
-            author: Author::foo(),
-            timestamp: 0,
-            message: None,
-            other_hashes: vec![],
-            num_ops: 0, // root commit does not have operations
-        }
-    }
-
     fn from_commit_bytes(bytes: Vec<u8>, data: CommitData) -> Self {
-        let header = Header::new(ChunkType::Commit, &bytes);
+        let header = Header::new(ChunkType::DataCommit, &bytes);
         Self::from_commit_payload(header, bytes, data)
     }
 
@@ -122,71 +141,8 @@ impl Commit<'static> {
             message: data.message,
             other_hashes: data.other_hashes,
             num_ops: data.pending.len(),
+            marker: PhantomData,
         }
-    }
-
-    pub(crate) fn from_chunk<'s, F>(chunk: Chunk, table_meta_for: F) -> Result<Self, CodecError>
-    where
-        F: Fn(&Path) -> Option<TableMeta<'s>>,
-    {
-        let (header, bytes) = chunk.into_parts();
-        Self::decode_payload_with_header(header, bytes, table_meta_for)
-    }
-
-    fn decode_payload_with_header<'s, F>(
-        header: Header,
-        bytes: Vec<u8>,
-        table_meta_for: F,
-    ) -> Result<Self, CodecError>
-    where
-        F: Fn(&Path) -> Option<TableMeta<'s>>,
-    {
-        match header.chunk_type {
-            ChunkType::Root => {
-                // check we can serialize the bytes into a root payload
-                let _root = wire::deserialize_root(&bytes)?;
-                Ok(Self::from_root_payload(header, bytes))
-            }
-            ChunkType::Commit => {
-                let data = wire::deserialize(&bytes, table_meta_for)?;
-                Ok(Self::from_commit_payload(header, bytes, data))
-            }
-        }
-    }
-}
-
-impl<'a> Commit<'a> {
-    pub fn hash(&self) -> CommitHash {
-        self.header.hash
-    }
-
-    /// Canonical payload bytes: the slice that [`hash`](crate::commit::chunk::hash) is run on.
-    pub fn payload(&self) -> &[u8] {
-        self.bytes.as_ref()
-    }
-
-    /// Consumes the commit and returns its payload as bytes
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.bytes.into_owned()
-    }
-
-    fn chunk_type(&self) -> ChunkType {
-        self.header.chunk_type
-    }
-
-    pub fn is_root(&self) -> bool {
-        self.chunk_type() == ChunkType::Root
-    }
-
-    pub(crate) fn root_payload(&self) -> Result<RootCommitData, CodecError> {
-        if self.chunk_type() != ChunkType::Root {
-            return Err(CodecError::ChunkMismatch {
-                expected: ChunkType::Root,
-                got: self.chunk_type(),
-            });
-        }
-
-        wire::deserialize_root(self.payload())
     }
 
     /// Ops of this commit with row ids resolved against the commit hash.
@@ -194,22 +150,32 @@ impl<'a> Commit<'a> {
     /// Ops are not retained in decoded form: this re-decodes them from the
     /// canonical payload, so the returned iterator owns its data and borrows
     /// neither the commit nor `table_meta_for`, hence the 'static.
-    ///
-    /// Root commits carry no ops and yield an empty iterator.
     pub(crate) fn resolved_ops<'s, F>(&self, table_meta_for: F) -> Result<Vec<PublicOp>, CodecError>
     where
         F: Fn(&Path) -> Option<TableMeta<'s>>,
     {
         let hash = self.hash();
-        let pending = if self.is_root() {
-            vec![]
-        } else {
-            wire::deserialize(self.payload(), table_meta_for)?.pending
-        };
+        let pending = wire::deserialize(self.payload(), table_meta_for)?.pending;
         Ok(pending
             .into_iter()
             .map(move |pending| pending.resolve(hash))
             .collect())
+    }
+}
+
+impl<'a, T> Commit<'a, T> {
+    pub fn hash(&self) -> CommitHash {
+        self.header.hash
+    }
+
+    /// Canonical payload bytes: the slice that [`hash`](crate::commit::header::hash) is run on.
+    pub fn payload(&self) -> &[u8] {
+        self.bytes.as_ref()
+    }
+
+    /// Consumes the commit and returns its payload as bytes
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.bytes.into_owned()
     }
 }
 
@@ -233,7 +199,7 @@ mod tests {
     use rstest::{fixture, rstest};
 
     use super::*;
-    use crate::commit::chunk::{Chunk, hash};
+    use crate::commit::{chunk::Chunk, frame::Frame, header::hash};
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, Path};
     use crate::table::{TableMeta, TableOid};
     use crate::test_utils::{id_col_type, id_schema, int_schema, non_empty_root_commit_data};
@@ -338,19 +304,17 @@ mod tests {
     fn decode_root_preserves_payload_and_hash(non_empty_root_commit_data: RootCommitData) {
         let original = Commit::from_root_data(&non_empty_root_commit_data).expect("build root");
 
-        let bytes = Chunk::from(&original).encoded();
-        let chunk = Chunk::decode(&bytes).expect("decode root chunk");
-        let decoded = Commit::from_chunk(chunk, |_| None).expect("decode root");
+        let bytes = Frame::from(&original).encoded();
+        let chunk = Frame::decode(&bytes).expect("decode root chunk");
+        let decoded = Chunk::from_frame(chunk, |_| None).expect("decode root");
 
-        assert_eq!(decoded.chunk_type(), ChunkType::Root);
+        let Chunk::Root(decoded) = decoded else {
+            panic!("expected a root commit");
+        };
+        assert_eq!(decoded.header.chunk_type, ChunkType::RootCommit);
         assert_eq!(decoded.hash(), original.hash());
         assert_eq!(decoded.payload(), original.payload());
         assert!(decoded.deps.is_empty());
-        assert_eq!(
-            decoded.resolved_ops(|_| None).expect("resolve ops").len(),
-            0,
-            "root commits carry no ops"
-        );
     }
 
     #[rstest]
@@ -380,12 +344,15 @@ mod tests {
         )
         .expect("build commit");
 
-        let bytes = Chunk::from(&original).encoded();
-        let chunk = Chunk::decode(&bytes).expect("decode commit chunk");
-        let decoded = Commit::from_chunk(chunk, |path| table_metadata.payload_for_path(path))
+        let bytes = Frame::from(&original).encoded();
+        let chunk = Frame::decode(&bytes).expect("decode commit chunk");
+        let decoded = Chunk::from_frame(chunk, |path| table_metadata.payload_for_path(path))
             .expect("decode commit");
 
-        assert_eq!(decoded.chunk_type(), ChunkType::Commit);
+        let Chunk::Data(decoded) = decoded else {
+            panic!("expected a data commit");
+        };
+        assert_eq!(decoded.header.chunk_type, ChunkType::DataCommit);
         assert_eq!(decoded.hash(), original.hash());
         assert_eq!(decoded.payload(), original.payload());
         assert_eq!(decoded.deps, deps);
@@ -504,7 +471,7 @@ mod tests {
         let commit =
             Commit::from_commit_data(data(vec![], Author::foo(), 0, None, pending), |_| None)
                 .expect("build commit");
-        let expected = hash(ChunkType::Commit, commit.payload());
+        let expected = hash(ChunkType::DataCommit, commit.payload());
         assert_eq!(commit.hash(), expected);
     }
 
@@ -512,12 +479,11 @@ mod tests {
     fn root_commit_wraps_and_decodes_root_payload(non_empty_root_commit_data: RootCommitData) {
         let commit = Commit::from_root_data(&non_empty_root_commit_data).expect("build root");
 
-        assert_eq!(commit.chunk_type(), ChunkType::Root);
+        assert_eq!(commit.header.chunk_type, ChunkType::RootCommit);
         assert!(commit.deps.is_empty());
-        assert_eq!(commit.resolved_ops(|_| None).expect("resolve ops").len(), 0);
-        assert_eq!(commit.hash(), hash(ChunkType::Root, commit.payload()));
+        assert_eq!(commit.hash(), hash(ChunkType::RootCommit, commit.payload()));
 
-        let decoded = commit.root_payload().expect("decode root payload");
+        let decoded = commit.root_payload();
         let ir = &decoded.ir;
         assert_eq!(ir.tables.len(), 1);
         assert_eq!(ir.tables[0].path, Path::from("T"));
@@ -528,21 +494,6 @@ mod tests {
         assert_eq!(ir.tables[0].table.primary_key, Some(vec![0]));
         assert_eq!(ir.rules.len(), 1);
         assert_eq!(ir.rules[0].path, Path::from("T.non_negative"));
-    }
-
-    #[test]
-    fn root_payload_rejects_data_commit() {
-        let commit =
-            Commit::from_commit_data(data(vec![], Author::foo(), 0, None, vec![]), |_| None)
-                .expect("build commit");
-
-        assert!(matches!(
-            commit.root_payload(),
-            Err(CodecError::ChunkMismatch {
-                expected: ChunkType::Root,
-                got: ChunkType::Commit,
-            })
-        ));
     }
 
     #[rstest]

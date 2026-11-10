@@ -12,6 +12,7 @@ use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_flir_rs::public::PublicRowId;
 use coln_store::{
     IdLookup,
+    commit::{DataCommit, chunk::Chunk},
     store::{Store, error::StoreError},
     txn::rw::StoreWrite,
 };
@@ -67,6 +68,20 @@ fn add_basic_data_to_graph(store: &mut Store) -> Result<GraphData, StoreError> {
     let [v1, v2] = store.promote(vec![v1, v2], h).try_into().unwrap();
 
     Ok(GraphData { v1, v2 })
+}
+
+fn missing_data_commits(source: &Store, target: &Store) -> Vec<DataCommit> {
+    source
+        .chunks_after(&target.heads())
+        .into_iter()
+        .filter_map(|chunk| match chunk {
+            Chunk::Data(commit) => Some(commit),
+            Chunk::Root(root) => {
+                assert_eq!(root.hash(), target.commits().root_commit().hash());
+                None
+            }
+        })
+        .collect()
 }
 
 fn add_graph_vertex(store: &mut Store) -> Result<CommitHash, StoreError> {
@@ -205,7 +220,7 @@ fn test_divergent_commits_merge_between_stores(
 
     let mut left = Store::try_from_ir(theory, coln_def.clone()).expect("valid left-hand theory");
     let mut right = Store::try_from_ir(theory, coln_def.clone()).expect("valid right-hand theory");
-    let baseline_commits = base.commits_after(&left.heads());
+    let baseline_commits = missing_data_commits(&base, &left);
     left.apply_commits_plain(baseline_commits.clone())
         .expect("apply shared baseline to left");
     right
@@ -218,7 +233,7 @@ fn test_divergent_commits_merge_between_stores(
     let right_commit = add_graph_edge(&mut right, data.v1, data.v2).expect("right branch commit");
     let expected_heads = BTreeSet::from([left_commit, right_commit]);
 
-    left.apply_commits_plain(right.commits_after(&left.heads()))
+    left.apply_commits_plain(missing_data_commits(&right, &left))
         .expect("merge right into left");
     assert_eq!(
         left.heads().into_iter().collect::<BTreeSet<_>>(),
@@ -226,7 +241,7 @@ fn test_divergent_commits_merge_between_stores(
     );
 
     right
-        .apply_commits_plain(left.commits_after(&right.heads()))
+        .apply_commits_plain(missing_data_commits(&left, &right))
         .expect("merge left into right");
     assert_eq!(
         right.heads().into_iter().collect::<BTreeSet<_>>(),

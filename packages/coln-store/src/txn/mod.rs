@@ -334,7 +334,7 @@ mod tests {
         #[from(single_int_store)] mut store: Store,
     ) {
         let path = Path::from("T");
-        let root = store.commits().root_commit().expect("root commit").hash();
+        let root = store.commits().root_commit().hash();
 
         let mut tx = store.transaction();
         tx.add(&path, vec![1i32]).expect("add first row");
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn txn_empty_commit_not_added() {
         let mut store = Store::new();
-        let root = store.commits().root_commit().expect("root commit").hash();
+        let root = store.commits().root_commit().hash();
         let heads: Vec<_> = store.commits().heads().copied().collect();
         let commits: Vec<_> = store
             .commits()
@@ -406,10 +406,7 @@ mod tests {
             error,
             StoreError::Commit(crate::store::error::CommitApplyError::EmptyCommit)
         ));
-        assert_eq!(
-            store.commits().root_commit().expect("root commit").hash(),
-            root
-        );
+        assert_eq!(store.commits().root_commit().hash(), root);
         assert_eq!(store.commits().heads().copied().collect::<Vec<_>>(), heads);
         assert_eq!(
             store
