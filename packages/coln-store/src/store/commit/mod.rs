@@ -8,9 +8,11 @@ use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::public::PublicScalarValue;
 use tracing::info;
 
-use crate::commit::Commit;
 use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
+use crate::commit::frame::Frame;
+use crate::commit::graph::CommitGraph;
+use crate::commit::{Commit, DataCommit};
 use crate::op::PublicOp;
 use crate::store::Store;
 use crate::store::error::{CommitApplyError, StoreError};
@@ -28,13 +30,24 @@ pub struct CommitChunk {
     pub bytes: Vec<u8>,
 }
 
+impl<T> From<&Commit<'_, T>> for CommitChunk {
+    fn from(commit: &Commit<'_, T>) -> Self {
+        Self {
+            hash: commit.hash(),
+            parents: commit.deps.clone(),
+            bytes: Frame::from(commit).encoded(),
+        }
+    }
+}
+
 impl Store {
     pub fn heads(&self) -> Vec<CommitHash> {
         self.commits.heads().cloned().collect()
     }
 
-    pub fn commit_by_hash(&self, hash: &CommitHash) -> Option<&Commit<'static>> {
-        self.commits.get(hash)
+    /// Look up a data commit. Access the root through [`CommitGraph::root_commit`].
+    pub fn commit_by_hash(&self, hash: &CommitHash) -> Option<&DataCommit> {
+        self.commits.get_data(hash)
     }
 
     /// Path, oid, and schema for a registered table.
@@ -46,46 +59,59 @@ impl Store {
         })
     }
 
-    /// return commits that are not ancestors of the heads
-    pub fn commits_after(&self, have_heads: &[CommitHash]) -> Vec<Commit<'static>> {
+    fn ancestors_of(&self, heads: &[CommitHash]) -> HashSet<CommitHash> {
         let mut seen = HashSet::new();
-        let mut stack = have_heads.to_vec();
-
-        while let Some(ch) = stack.pop() {
-            if !seen.insert(ch) {
+        let mut stack = heads.to_vec();
+        while let Some(hash) = stack.pop() {
+            if !seen.insert(hash) {
                 continue;
             }
-
-            if let Some(cm) = self.commit_by_hash(&ch) {
-                stack.extend(cm.deps.iter());
+            if let Some(parents) = self.commits.parents_of(&hash) {
+                stack.extend(parents.iter().copied());
             }
         }
-
-        self.commits
-            .iter_topological()
-            .filter(|cm| !seen.contains(&cm.hash()))
-            .cloned()
-            .collect::<Vec<Commit>>()
+        seen
     }
 
+    /// Root and data chunks not covered by the supplied heads, in dependency order.
+    pub fn chunks_after(&self, have_heads: &[CommitHash]) -> Vec<Chunk> {
+        let seen = self.ancestors_of(have_heads);
+        let root = self.commits.root_commit();
+        let mut chunks = Vec::new();
+
+        if !seen.contains(&root.hash()) {
+            chunks.push(Chunk::Root(root.clone()));
+        }
+
+        chunks.extend(
+            self.commits
+                .iter_topological()
+                .filter(|commit| !seen.contains(&commit.hash()))
+                .cloned()
+                .map(Chunk::Data),
+        );
+        chunks
+    }
+
+    /// Framed root and data commits missing from the supplied heads' ancestry.
     pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
-        self.commits_after(have_heads)
-            .into_iter()
-            .map(|commit| {
-                let head = commit.hash();
-                let parents = commit.deps.clone();
-                let bytes = Chunk::from(commit).encoded();
-                CommitChunk {
-                    hash: head,
-                    parents,
-                    bytes,
-                }
-            })
-            .collect()
+        let seen = self.ancestors_of(have_heads);
+        let root = self.commits.root_commit();
+        let mut chunks = Vec::new();
+        if !seen.contains(&root.hash()) {
+            chunks.push(CommitChunk::from(root));
+        }
+        chunks.extend(
+            self.commits
+                .iter_topological()
+                .filter(|commit| !seen.contains(&commit.hash()))
+                .map(CommitChunk::from),
+        );
+        chunks
     }
 
     /// Get commits in `other` that are not in `self`
-    pub fn commits_added(&self, other: &Self) -> Vec<Commit<'static>> {
+    pub fn commits_added(&self, other: &Self) -> Vec<DataCommit> {
         // a depth first search from the heads of others backwards until hashes
         // are in self
         let mut stack = other.heads();
@@ -117,25 +143,28 @@ impl Store {
         &mut self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
     ) -> Result<CommitBatch<'_, Unprepared>, StoreError> {
-        let new_commits = chunk_bytes
-            .into_iter()
-            .map(|bytes| Chunk::decode(&bytes))
-            .map(|chunk| {
-                chunk.and_then(|chunk| {
-                    Commit::from_chunk(chunk, |path| {
-                        self.resolve_table(path)
-                            .and_then(|oid| self.table_meta(oid))
-                    })
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut new_commits = Vec::new();
+        for bytes in chunk_bytes {
+            let frame = Frame::decode(&bytes)?;
+            match Chunk::from_frame(frame, |path| {
+                self.resolve_table(path)
+                    .and_then(|oid| self.table_meta(oid))
+            })? {
+                Chunk::Data(commit) => new_commits.push(commit),
+                Chunk::Root(root) => {
+                    if !self.commits.contains(&root.hash()) {
+                        return Err(CommitApplyError::RootCommit(root.hash()).into());
+                    }
+                }
+            }
+        }
         self.check_untrusted_commits(new_commits.iter())?;
         self.prepare_commits(new_commits, true)
     }
 
     pub(crate) fn prepare_commit(
         &mut self,
-        commit: Commit<'static>,
+        commit: DataCommit,
     ) -> Result<CommitBatch<'_, Unprepared>, StoreError> {
         self.prepare_commits(std::iter::once(commit), false)
     }
@@ -143,7 +172,7 @@ impl Store {
     /// Here we assume that the commits have been checked
     pub fn prepare_commits(
         &mut self,
-        new_commits: impl IntoIterator<Item = Commit<'static>>,
+        new_commits: impl IntoIterator<Item = DataCommit>,
         drain_sync: bool,
     ) -> Result<CommitBatch<'_, Unprepared>, StoreError> {
         Ok(CommitBatch::new(self, new_commits, drain_sync))
@@ -152,7 +181,7 @@ impl Store {
     /// Checks decoded commits to make sure they are sane
     fn check_untrusted_commits<'a>(
         &self,
-        commits: impl Iterator<Item = &'a Commit<'static>>,
+        commits: impl Iterator<Item = &'a DataCommit>,
     ) -> Result<(), StoreError> {
         let mut seen_hashes = HashSet::new();
         for commit in commits {
@@ -161,9 +190,6 @@ impl Store {
                 continue;
             }
 
-            if commit.is_root() {
-                return Err(CommitApplyError::RootCommit(hash).into());
-            }
             if commit.deps.is_empty() {
                 return Err(CommitApplyError::DanglingCommit(hash).into());
             }
@@ -221,7 +247,7 @@ impl Store {
     // including checks like:
     //  - data following schema format
     //  - no duplication of primary keys before hashconsing
-    fn precheck_commit(&self, cmt: Commit<'static>) -> Result<PrecheckedCommit, StoreError> {
+    fn precheck_commit(&self, cmt: DataCommit) -> Result<PrecheckedCommit, StoreError> {
         // TODO perhaps use late resolution, i.e. not resolving any ids, and when
         // we resolve, immediately make them packed.
         let ops = cmt.resolved_ops(|path| {
@@ -265,7 +291,7 @@ impl Store {
 
 struct PrecheckedCommit {
     ops: Vec<PublicOp>,
-    original: Commit<'static>,
+    original: DataCommit,
 }
 
 impl Store {
@@ -276,18 +302,18 @@ impl Store {
     /// to be applied. Callers need to make a [`CommitBatch`] out of it, and apply
     pub fn try_from_commits_bytes(
         bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
-    ) -> Result<(Self, Vec<Commit<'static>>), StoreError> {
+    ) -> Result<(Self, Vec<DataCommit>), StoreError> {
         let chunks = bytes
             .into_iter()
-            .map(|bytes| Chunk::decode(bytes.as_ref()))
+            .map(|bytes| Frame::decode(bytes.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
         Self::try_from_chunks(chunks)
     }
 
     /// Create a store from the commit chunks. Return the store and all the data commits, checked.
     pub(crate) fn try_from_chunks(
-        chunks: Vec<Chunk>,
-    ) -> Result<(Self, Vec<Commit<'static>>), StoreError> {
+        chunks: Vec<Frame>,
+    ) -> Result<(Self, Vec<DataCommit>), StoreError> {
         let roots = chunks
             .iter()
             .filter(|chunk| chunk.is_root())
@@ -304,9 +330,12 @@ impl Store {
             .into());
         }
 
-        let root_commit = Commit::from_chunk((*roots[0]).clone(), |_| None)?;
-        let root_payload = root_commit.root_payload()?;
-        let store = Store::try_from_ir(&root_payload.ir, root_payload.coln_def)?;
+        let Chunk::Root(root_commit) = Chunk::from_frame((*roots[0]).clone(), |_| None)? else {
+            unreachable!("root frames were selected above");
+        };
+        let root_payload = root_commit.root_payload();
+        let mut store = Store::try_from_ir(&root_payload.ir, root_payload.coln_def)?;
+        store.commits = CommitGraph::new(root_commit);
 
         let mut commits = Vec::new();
         for chunk in chunks {
@@ -314,11 +343,14 @@ impl Store {
                 continue;
             }
 
-            let commit = Commit::from_chunk(chunk, |path| {
+            let Chunk::Data(commit) = Chunk::from_frame(chunk, |path| {
                 store
                     .resolve_table(path)
                     .and_then(|oid| store.table_meta(oid))
-            })?;
+            })?
+            else {
+                unreachable!("root frames were skipped above");
+            };
             commits.push(commit);
         }
         store.check_untrusted_commits(commits.iter())?;
@@ -341,7 +373,7 @@ impl Store {
         Ok(store)
     }
 
-    pub(crate) fn try_from_chunks_plain(chunks: Vec<Chunk>) -> Result<Self, StoreError> {
+    pub(crate) fn try_from_chunks_plain(chunks: Vec<Frame>) -> Result<Self, StoreError> {
         let (mut store, commits) = Self::try_from_chunks(chunks)?;
         store.apply_commits_plain(commits)?;
         Ok(store)
@@ -363,7 +395,7 @@ impl Store {
     /// untrusted bytes. Commits with missing dependencies remain pending.
     pub fn apply_commits_plain(
         &mut self,
-        commits: impl IntoIterator<Item = Commit<'static>>,
+        commits: impl IntoIterator<Item = DataCommit>,
     ) -> Result<(), StoreError> {
         self.prepare_commits(commits, true)?.apply_plain()
     }

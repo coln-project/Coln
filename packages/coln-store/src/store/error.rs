@@ -5,7 +5,6 @@
 use coln_flir_rs::hash::CommitHash;
 
 use crate::commit::error::CodecError;
-use crate::commit::graph::CommitGraphError;
 use crate::table::ValidationError;
 
 /// Store integrity error
@@ -17,8 +16,6 @@ pub enum StoreError {
     Encode(#[from] CodecError),
     #[error(transparent)]
     Commit(#[from] CommitApplyError),
-    #[error(transparent)]
-    CommitGraph(#[from] CommitGraphError),
 }
 
 #[derive(Debug, thiserror::Error)]
