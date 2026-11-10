@@ -12,7 +12,7 @@ use coln_flir_rs::engine::packed::StoreTuple;
 use coln_flir_rs::hash::CommitHash;
 
 use super::PrecheckedCommit;
-use crate::commit::Commit;
+use crate::commit::DataCommit;
 use crate::rollback::Rollback;
 use crate::store::error::StoreError;
 use crate::store::{Store, StoreSnapshot};
@@ -39,10 +39,10 @@ impl<'a> CommitBatch<'a, Unprepared> {
     /// Also we take `new_commits` and will append whatever is pending to it.
     pub(super) fn new(
         store: &'a mut Store,
-        new_commits: impl IntoIterator<Item = Commit<'static>>,
+        new_commits: impl IntoIterator<Item = DataCommit>,
         drain_sync: bool,
     ) -> Self {
-        let pending: HashMap<CommitHash, Commit<'_>> = if drain_sync {
+        let pending: HashMap<CommitHash, DataCommit> = if drain_sync {
             new_commits
                 .into_iter()
                 .chain(std::mem::take(&mut store.pending_commits))
@@ -281,7 +281,7 @@ impl BatchGuard<'_> {
 
 struct BatchQueue {
     // All commits to be applied, ready or not
-    pending: HashMap<CommitHash, Commit<'static>>,
+    pending: HashMap<CommitHash, DataCommit>,
     // commits with no pending deps
     ready: BTreeSet<CommitHash>,
     // number of deps not yet accepted
@@ -318,7 +318,7 @@ impl BatchQueue {
 }
 
 pub(crate) struct PreparedCommit {
-    commit: Commit<'static>,
+    commit: DataCommit,
     snapshot: StoreSnapshot,
     sd: StoreDelta<PartialConsolidated, StoreTuple>,
 }
@@ -356,7 +356,9 @@ mod tests {
 
     use super::*;
     use crate::table::ValidationError;
-    use crate::test_utils::{commit_int, commit_int_store, int_schema, single_int_store};
+    use crate::test_utils::{
+        commit_int, commit_int_store, expect_data_chunk, int_schema, single_int_store,
+    };
     use crate::txn::rw::StoreRead;
 
     #[test]
@@ -458,7 +460,13 @@ mod tests {
         let second = commit_int(&mut source, 2);
         let heads = target.heads();
         let batch = target
-            .prepare_commits(source.commits_after(&heads), true)
+            .prepare_commits(
+                source
+                    .chunks_after(&heads)
+                    .into_iter()
+                    .map(expect_data_chunk),
+                true,
+            )
             .expect("batch");
         let mut prepared = batch
             .prepare_next()
@@ -575,7 +583,10 @@ mod tests {
     ) {
         let (mut source, first) = source;
         let second = crate::test_utils::commit_int(&mut source, 2);
-        let commits = source.commits_after(&target.heads());
+        let commits = source
+            .chunks_after(&target.heads())
+            .into_iter()
+            .map(expect_data_chunk);
         let batch = target
             .prepare_commits(commits, false)
             .expect("prepare batch");

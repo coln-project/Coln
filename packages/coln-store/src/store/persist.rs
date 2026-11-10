@@ -4,9 +4,9 @@
 
 use std::io::Write;
 
-use crate::commit::Commit;
-use crate::commit::chunk::Chunk;
+use crate::commit::DataCommit;
 use crate::commit::error::CodecError;
+use crate::commit::frame::Frame;
 use crate::commit::leb128 as commit_leb128;
 use crate::store::Store;
 use crate::store::error::StoreError;
@@ -19,16 +19,17 @@ impl Store {
     /// Store file layout, scalar integers use LEB128:
     ///
     /// `[MAGIC:4][version][chunk_count]`
-    /// `[chunk_count × [chunk_header || payload]]` (see [`crate::commit::chunk::Header::write`])
+    /// `[chunk_count × [chunk_header || payload]]` (see [`crate::commit::header::Header::write`])
     pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
         let commits = self.commits().iter_topological().collect::<Vec<_>>();
         let mut buf: Vec<u8> = Vec::new();
         buf.write_all(MAGIC)?;
         commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
-        commit_leb128::write_len(&mut buf, commits.len());
+        commit_leb128::write_len(&mut buf, commits.len() + 1);
+        Frame::from(self.commits().root_commit()).write(&mut buf);
 
         for commit in commits {
-            Chunk::from(commit).write(&mut buf);
+            Frame::from(commit).write(&mut buf);
         }
 
         Ok(buf)
@@ -38,7 +39,7 @@ impl Store {
     ///
     /// Returns a store initialized from the root and checked data commits that
     /// still need to be applied. No data commits are replayed by this method.
-    pub fn decode(data: &[u8]) -> Result<(Self, Vec<Commit<'static>>), StoreError> {
+    pub fn decode(data: &[u8]) -> Result<(Self, Vec<DataCommit>), StoreError> {
         let chunks = read_store_envelope(data)?;
         Self::try_from_chunks(chunks)
     }
@@ -58,7 +59,7 @@ impl Store {
     }
 }
 
-fn read_store_envelope(data: &[u8]) -> Result<Vec<Chunk>, CodecError> {
+fn read_store_envelope(data: &[u8]) -> Result<Vec<Frame>, CodecError> {
     if data.len() < MAGIC.len() {
         return Err(CodecError::DataFormatError(
             "truncated: missing magic".into(),
@@ -80,7 +81,7 @@ fn read_store_envelope(data: &[u8]) -> Result<Vec<Chunk>, CodecError> {
     let chunk_count = commit_leb128::read_len(data, &mut pos, "chunk count")?;
     let mut chunks = Vec::with_capacity(chunk_count);
     for _ in 0..chunk_count {
-        chunks.push(Chunk::read_at(data, &mut pos)?);
+        chunks.push(Frame::read_at(data, &mut pos)?);
     }
     if pos != data.len() {
         return Err(CodecError::DataFormatError(format!(
@@ -100,7 +101,7 @@ mod tests {
 
     use super::*;
     use crate::commit::author::Author;
-    use crate::commit::chunk::{ChunkType, Header};
+    use crate::commit::header::{ChunkType, Header};
     use crate::commit::wire::{CommitData, RootCommitData};
     use crate::ir::Path;
     use crate::pack::id_packer::IdLookup;
@@ -158,7 +159,7 @@ mod tests {
     /// Offset of the first chunk header (the start of its magic) inside an
     /// encoded store.
     fn first_chunk_offset(bytes: &[u8]) -> usize {
-        let framed = frame_chunk(ChunkType::Root, &[]);
+        let framed = frame_chunk(ChunkType::RootCommit, &[]);
         let chunk_magic = &framed[..MAGIC.len()];
         bytes
             .windows(chunk_magic.len())
@@ -182,10 +183,10 @@ mod tests {
         let store = Store::new();
         let bytes = store.encode().unwrap();
         let chunks = read_encoded_chunks(&bytes);
-        let root = store.commits().root_commit().expect("root commit");
+        let root = store.commits().root_commit();
 
         assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].0, u8::from(ChunkType::Root));
+        assert_eq!(chunks[0].0, u8::from(ChunkType::RootCommit));
         assert_eq!(chunks[0].1, root.payload());
     }
 
@@ -196,18 +197,16 @@ mod tests {
         txn.add(&table, vec![99_i32]).expect("add row");
         txn.commit().expect("commit");
 
-        let expected = store
-            .commits()
-            .iter_topological()
-            .map(|commit| {
-                let chunk_type = if commit.is_root() {
-                    ChunkType::Root
-                } else {
-                    ChunkType::Commit
-                };
-                (u8::from(chunk_type), commit.payload().to_vec())
-            })
-            .collect::<Vec<_>>();
+        let mut expected = vec![(
+            u8::from(ChunkType::RootCommit),
+            store.commits().root_commit().payload().to_vec(),
+        )];
+        expected.extend(
+            store
+                .commits()
+                .iter_topological()
+                .map(|commit| (u8::from(ChunkType::DataCommit), commit.payload().to_vec())),
+        );
         let bytes = store.encode().unwrap();
         let chunks = read_encoded_chunks(&bytes);
 
@@ -297,7 +296,7 @@ mod tests {
             .next()
             .expect("root chunk")
             .1;
-        let framed = frame_chunk(ChunkType::Root, &root_payload);
+        let framed = frame_chunk(ChunkType::RootCommit, &root_payload);
         let bytes = store_envelope(&[framed.clone(), framed]);
 
         assert!(is_data_format_error(Store::decode_plain(&bytes)));
@@ -311,14 +310,14 @@ mod tests {
             .next()
             .expect("root chunk");
         let missing = CommitHash([0xff; HASH_SIZE]);
-        let commit = Commit::from_commit_data(
+        let commit = DataCommit::from_commit_data(
             CommitData::new(vec![missing], Author::foo(), 42, None, vec![]),
             |_| None,
         )
         .expect("commit with missing dependency");
         let bytes = store_envelope(&[
-            frame_chunk(ChunkType::Root, &root_chunk.1),
-            frame_chunk(ChunkType::Commit, commit.payload()),
+            frame_chunk(ChunkType::RootCommit, &root_chunk.1),
+            frame_chunk(ChunkType::DataCommit, commit.payload()),
         ]);
 
         assert!(is_data_content_error(Store::decode_plain(&bytes)));
@@ -327,13 +326,13 @@ mod tests {
     #[test]
     fn store_round_trip_empty() {
         let store = Store::new();
-        let root = store.commits().root_commit().expect("root").hash();
+        let root = store.commits().root_commit().hash();
 
         let bytes = store.encode().unwrap();
         let restored = Store::decode_plain(&bytes).unwrap();
 
         assert_eq!(restored.table_count(), 0);
-        assert_eq!(restored.commits().root_commit().expect("root").hash(), root);
+        assert_eq!(restored.commits().root_commit().hash(), root);
         assert_eq!(
             restored.commits().heads().copied().collect::<Vec<_>>(),
             vec![root]
@@ -342,7 +341,7 @@ mod tests {
 
     #[rstest]
     fn store_round_trip_replays_commits_and_preserves_graph(#[from(int_store)] mut store: Store) {
-        let root = store.commits().root_commit().expect("root").hash();
+        let root = store.commits().root_commit().hash();
         let table = Path::from("T");
         let mut txn = store.transaction();
         let live_id = txn.add(&table, vec![99_i32]).expect("add row");

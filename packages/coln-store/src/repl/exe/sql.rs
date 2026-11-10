@@ -139,12 +139,7 @@ fn create_sql_table(
     if loaded.store.resolve_table(&path).is_some() {
         return Err(SQLModeError::TableExists { table: table_name }.into());
     }
-    if loaded
-        .store
-        .commits()
-        .iter_topological()
-        .any(|commit| !commit.is_root())
-    {
+    if loaded.store.commits().iter_topological().next().is_some() {
         return Err(SQLModeError::SchemaChangeAfterData.into());
     }
 
@@ -257,12 +252,7 @@ mod tests {
             .expect("Person table");
         assert_eq!(table.row_count(), 2);
 
-        let data_commits = loaded
-            .store
-            .commits()
-            .iter_topological()
-            .filter(|commit| !commit.is_root())
-            .count();
+        let data_commits = loaded.store.commits().iter_topological().count();
         assert_eq!(data_commits, 2, "one commit per chunk");
     }
 

@@ -10,6 +10,9 @@ use std::fmt;
 pub const HASH_SIZE: usize = 32;
 pub static ALL_ZERO_HASH: CommitHash = CommitHash([0; HASH_SIZE]);
 
+// derives Copy so users do not need to copy ids all the time to reuse them in
+// later operations.
+// Copying it does require copying 32 bytes of data though.
 #[derive(
     Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize, Type,
 )]

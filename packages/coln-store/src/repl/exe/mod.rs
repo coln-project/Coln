@@ -384,7 +384,7 @@ pub fn render_table_schema(schema: Option<&SchemaSummary>, table_name: &str) -> 
 
 fn render_ir(store: Option<&Store>) -> Result<String> {
     let store = store.ok_or_else(|| anyhow!("no schema loaded"))?;
-    Ok(store.json_ir()?)
+    Ok(store.json_ir())
 }
 
 pub fn add_rows(
@@ -561,13 +561,7 @@ mod tests {
         assert_eq!(loaded.schema.table_count, 4);
         assert_eq!(loaded.schema.law_count, 2);
         assert_eq!(loaded.schema.tables[0].path, "root.V");
-        let root = loaded
-            .store
-            .commits()
-            .root_commit()
-            .expect("root commit")
-            .root_payload()
-            .expect("root payload");
+        let root = loaded.store.commits().root_commit().root_payload();
         assert!(root.coln_def.theory.is_empty());
         assert_eq!(root.coln_def.realm, GRAPH_REALM);
     }
@@ -575,13 +569,7 @@ mod tests {
     #[test]
     fn loads_schema_without_coln_metadata() {
         let loaded = load_schema(&graph_ir_path(), Path::new(""), "").expect("load schema");
-        let root = loaded
-            .store
-            .commits()
-            .root_commit()
-            .expect("root commit")
-            .root_payload()
-            .expect("root payload");
+        let root = loaded.store.commits().root_commit().root_payload();
 
         assert!(root.coln_def.theory.is_empty());
         assert!(root.coln_def.realm.is_empty());
@@ -602,7 +590,7 @@ mod tests {
     fn renders_ir_json() {
         let loaded = load_graph_schema();
         let rendered = render_ir(Some(&loaded.store)).expect("render ir");
-        assert_eq!(rendered, loaded.store.json_ir().expect("json ir"));
+        assert_eq!(rendered, loaded.store.json_ir());
         let parsed: FlatRealm = serde_json::from_str(&rendered).expect("parse ir json");
         assert_eq!(parsed.tables.len(), loaded.store.table_count());
         assert_eq!(parsed.rules.len(), loaded.store.rule_entries().len());
