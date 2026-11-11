@@ -32,10 +32,7 @@ use coln_store::{
     txn::rw::{StoreRead, StoreWrite},
 };
 
-use crate::{
-    error::{BouncerError, RuleViolation},
-    rw::{DbRead, DbWrite},
-};
+use crate::error::{BouncerError, RuleViolation, UserError};
 
 pub struct Bouncer {
     store: AutoStore,
@@ -169,8 +166,8 @@ impl Bouncer {
     }
 }
 
-impl DbRead for Bouncer {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<PublicTuple>> {
+impl Bouncer {
+    pub fn scan_table(&self, table: &ir::Path) -> Option<Vec<PublicTuple>> {
         Some(
             self.store
                 .scan_table(table)?
@@ -180,7 +177,7 @@ impl DbRead for Bouncer {
         )
     }
 
-    fn row_by_id(&self, table: &ir::Path, row_id: &PublicRowId) -> Option<PublicTuple> {
+    pub fn row_by_id(&self, table: &ir::Path, row_id: &PublicRowId) -> Option<PublicTuple> {
         // An unknown commit hash means the row cannot exist in this store.
         let packed = self.store.id_lookup().packed(row_id)?;
         self.store
@@ -188,7 +185,10 @@ impl DbRead for Bouncer {
             .map(|st| self.unpack_store_tuple(st))
     }
 
-    fn all_proj(
+    // TODO @Leo & Jan, I am not sure about where the WhereClause should be. My feeling is that it should be
+    // handled by the query engine (a filter operation), and the store will just do the basic table scan,
+    // and the query engine can do the filtering, projection, etc
+    pub fn all_proj(
         &self,
         query: &WhereClause,
         select: &[u32],
@@ -201,7 +201,7 @@ impl DbRead for Bouncer {
             .collect())
     }
 
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PublicRowId>, BouncerError> {
+    pub fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PublicRowId>, BouncerError> {
         let id_lookup = self.store.id_lookup();
         Ok(self
             .store
@@ -213,6 +213,25 @@ impl DbRead for Bouncer {
                     .expect("row ids from store can be unpacked")
             })
             .collect())
+    }
+
+    pub fn one_proj(
+        &self,
+        query: &WhereClause,
+        select: &[u32],
+    ) -> Result<PublicTuple, BouncerError> {
+        let mut all_tuples = self.all_proj(query, select)?;
+        if all_tuples.len() == 1 {
+            Ok(all_tuples.pop().unwrap())
+        } else if all_tuples.is_empty() {
+            Err(UserError::ZeroMatchingTuple.into())
+        } else {
+            Err(UserError::MultipleMatchingTuple.into())
+        }
+    }
+
+    pub fn exists(&self, query: &WhereClause) -> Result<bool, BouncerError> {
+        self.all_row_id(query).map(|v| !v.is_empty())
     }
 }
 
@@ -263,12 +282,12 @@ impl Bouncer {
     }
 }
 
-impl DbWrite for Bouncer {
-    fn transaction(&mut self) {
+impl Bouncer {
+    pub fn transaction(&mut self) {
         self.store.transaction();
     }
 
-    fn commit(&mut self) -> Result<CommitResult, BouncerError> {
+    pub fn commit(&mut self) -> Result<CommitResult, BouncerError> {
         let store_delta = self.store.try_commit()?.map(|td| td.map(QueryTuple::from));
 
         let num_ops = store_delta.size() as u32;
@@ -298,11 +317,11 @@ impl DbWrite for Bouncer {
         }
     }
 
-    fn abort(&mut self) {
+    pub fn abort(&mut self) {
         self.store.abort();
     }
 
-    fn add(
+    pub fn add(
         &mut self,
         table: &ir::Path,
         values: impl Into<TxTuple>,

@@ -13,7 +13,6 @@ use rstest::{fixture, rstest};
 use crate::{
     bouncer::Bouncer,
     error::{BouncerError, RuleViolation},
-    rw::{DbRead, DbWrite},
 };
 
 #[fixture]

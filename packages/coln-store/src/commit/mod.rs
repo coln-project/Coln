@@ -79,7 +79,7 @@ pub struct Commit<'a, T> {
 pub type DataCommit = Commit<'static, Data>;
 pub type RootCommit = Commit<'static, Root>;
 
-impl Commit<'static, Root> {
+impl RootCommit {
     /// Creating the commit data structure from the deserialized root data
     pub(crate) fn from_root_data(root: &RootCommitData) -> Result<Self, CodecError> {
         let bytes = wire::serialize_root(root)?;
@@ -111,7 +111,7 @@ impl Commit<'static, Root> {
     }
 }
 
-impl Commit<'static, Data> {
+impl DataCommit {
     pub(crate) fn from_commit_data<'s, F>(
         mut data: CommitData,
         table_meta_for: F,
