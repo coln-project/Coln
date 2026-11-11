@@ -29,7 +29,7 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
 
     <varid> ::= `%' <int>
 
-    <hash> ::= `#' <base64digit>{44}
+    <hash> ::= `#' <base64digit>\{44\}
 
     <letter> ::= <GeneralCategory:UppercaseLetter>
       \alt <GeneralCategory:LowercaseLetter>
@@ -115,7 +115,7 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
 ('edge.foreignKey
  (law ('vertex 'vertex 'edge)
   (('edge (id %2) %0 %1))
-  (() (('vertex (id %0)) ('vertex (id %1))))))
+  (('vertex (id %0)) ('vertex (id %1)))))
 \end{verbatim}
   \caption{Schema for Graphs}
   \label{fig:graph-schema}

@@ -121,6 +121,7 @@ library
     diagnostician,
     directory,
     filepath,
+    flatparse,
     fnotation,
     hashable,
     keys,
