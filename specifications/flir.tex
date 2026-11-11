@@ -29,6 +29,8 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
 
     <varid> ::= `%' <int>
 
+    <hash> ::= `#' <base64digit>{44}
+
     <letter> ::= <GeneralCategory:UppercaseLetter>
       \alt <GeneralCategory:LowercaseLetter>
       \alt <GeneralCategory:TitlecaseLetter>
@@ -62,12 +64,14 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
     <primarykey> ::= `(' `primarykey' <int> `)'
 
     <table> ::= `(' `ground' <args> <primarykey> `)'
-      \alt `(' `hashcons' <args> `)'
+      \alt `(' `cons <args> `)'
       \alt `(' `view' <args> `)'
 
     <union> ::= `(' `union' <name>* `)'
 
-    <term> ::= <varid> | <int> | <string>
+    <litid> ::= `(' <hash> <int> `)'
+
+    <term> ::= <varid> | <int> | <string> | <litid>
 
     <idarg> ::= `(' `id' <term> `)'
 
@@ -83,14 +87,18 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
 
     <law> ::= `(' `law' <status> <args> <props> <props> `)'
     
-    <topbody> ::= <table>
+    <schemapart> ::= <table>
     \alt <union>
     \alt <rule>
     \alt <law>
 
-    <topelt> ::= `(' <name> <topbody> `)'
+    <schemadef> ::= `(' <name> <topbody> `)'
 
-    <top> ::= <topelt>*
+    <schema> ::= <schemadef>*
+
+    <mutation> ::= `(' `mutation' <atom>* `)'
+
+    <query> ::= `(' `query' <args> <props> `)'
   \end{grammar}
   \caption{Grammar for FLIR}
   \label{fig:grammar}
@@ -115,7 +123,7 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
 
 \section{Tables}
 
-There are three types of tables in FLIR: ground tables, hashcons tables, and view tables.
+There are three types of tables in FLIR: ground tables, cons tables, and view tables.
 
 \begin{definition}
   A \defcase{ground table} contains the actual data of the database. That is, a commit logically speaking is only about the changes to the ground tables (though, for efficiency reasons we may cache changes to other tables).
@@ -124,18 +132,18 @@ There are three types of tables in FLIR: ground tables, hashcons tables, and vie
 \end{definition}
 
 \begin{definition}
-  A \defcase{hashcons table}, logically speaking, ``contains everything that it is allowed to contain.'' That is, if an entry in a hashcons table is allowed by the \emph{laws} (\S\ref{sec:laws}), then it should be considered to logically exist. However, it should only be in the table \emph{once}; this may be implemented by deduplication (hence the name hashcons), or alternatively just by implementing equality with structural comparison rather than id comparison.
+  A \defcase{cons table}, logically speaking, ``contains everything that it is allowed to contain.'' That is, if an entry in a cons table is allowed by the \emph{laws} (\S\ref{sec:laws}), then it should be considered to logically exist. However, it should only be in the table \emph{once}; this may be implemented by deduplication (that is, a \emph{hash}cons), or alternatively just by implementing equality with structural comparison rather than id comparison.
 
-  In practice, users make explicit inserts into hashcons tables; these inserts should be seen as ``scratchwork'' that is only relevant to commits when inserts into ground tables reference the ids produced by the inserts into hashcons tables.
+  In practice, users make explicit inserts into cons tables; these inserts should be seen as ``scratchwork'' that is only relevant to commits when inserts into ground tables reference the ids produced by the inserts into cons tables.
 \end{definition}
 
 \begin{definition}
   A \defcase{view table}, logically speaking, ``contains everything that it is supposed to contain.'' The \emph{rules} (\S\ref{sec:rules}) of the schema explain how to push data from the ground tables into the view tables.
 \end{definition}
 
-Conceptually speaking, hashcons and view tables are quite similar. However, from a database perspective, their validity is maintained in different ways. View tables are valid ``by construction'' in a sense; they only have in them what the rules say should be in them. The user never inserts into a view table, so the database engine doesn't have to check that an arbitrary insert is valid. On the other hand, the hashcons tables are inserted into manually, so the database engine must check that an arbitrary insert is valid (law enforcement), but the database engine need not eagerly create its own inserts into hashcons tables.
+Conceptually speaking, cons and view tables are quite similar. However, from a database perspective, their validity is maintained in different ways. View tables are valid ``by construction'' in a sense; they only have in them what the rules say should be in them. The user never inserts into a view table, so the database engine doesn't have to check that an arbitrary insert is valid. On the other hand, the cons tables are inserted into manually, so the database engine must check that an arbitrary insert is valid (law enforcement), but the database engine need not eagerly create its own inserts into cons tables.
 
-Tables have row ids which allow unambiguous access to individual rows of the table. Row ids for views are only used internally, but row ids for ground and hashcons tables can be referenced in other tables. Each row id is unique across the database; two tables may not share row ids.
+Tables have row ids which allow unambiguous access to individual rows of the table. Row ids for views are only used internally, but row ids for ground and cons tables can be referenced in other tables. Each row id is unique across the database; two tables may not share row ids.
 
 Each table has a list of columns. A column may either be of primitive type (\syntax{`int'} or \syntax{`string'}), or it may be of row id or union type, referred to by \syntax{<name>}.
 
@@ -177,7 +185,7 @@ Given an element of union type, its corresponding table is unambiguous because e
 \section{Propositions} \label{sec:propositions}
 
 \begin{definition} \label{def:term}
-  A \defcase{term} is either a literal string, literal integer, or a variable, identified by its position in the context (\verb|%0| is the first variable in the context, \verb|%1| the second variable, etc.).
+  A \defcase{term} is either a literal string, literal integer, a literal row id (hash and counter), or a variable, identified by its position in the context (\verb|%0| is the first variable in the context, \verb|%1| the second variable, etc.). Literal row ids may only appear in terms used in queries (\S\ref{sec:query}) and mutations (\S\ref{sec:mutation}).
 \end{definition}
 
 \begin{definition} \label{def:atomic-proposition}
@@ -192,19 +200,6 @@ A proposition is either an atomic or equality proposition.
 
 In general, we often use a sequence of propositions (\syntax{props}): this should be interpreted as the \emph{conjunction} (\(\wedge\)) of all propositions in the sequence.
 
-\section{Rules} \label{sec:rules}
-
-\begin{definition}
-  A \defcase{rule} consists of
-  \begin{itemize}
-    \item A sequence of types for bound variables (which are identified by index into this sequence, see Definition~\ref{def:term}).
-    \item An \defcase{antecedent}, which is a conjunction of propositions.
-    \item A \defcase{consequent}, which is a single atomic proposition whose head is a view table.
-  \end{itemize}
-\end{definition}
-
-The semantics of a rules is that for every assignment of variables such that the antecedent holds, a row should be inserted into the view table identified by the consequent.
-
 \section{Laws} \label{sec:laws}
 
 \begin{definition}
@@ -217,10 +212,72 @@ The semantics of a rules is that for every assignment of variables such that the
   \end{itemize}
 \end{definition}
 
-The semantics of a law is that for every assignment of variables such that the antecedent holds, the consequent should also hold.
+The semantics of a law is that for every assignment of variables such that the antecedent holds, the consequent should also hold. In other words, a law is a statement of the form
+%
+\[ \forall \vec{x}. P(\vec{x}) \Rightarrow Q(\vec{x})\]
+%
+where \(P\) is the antecedent and \(Q\) is the consequent.
 
 An enforced law (law with status \verb|enforced|) must hold at all times, including in the presence of merge conflicts. A database in violation of enforced laws is an error.
 
 A monitored law (law with status \verb|monitored|) may sometimes not hold; a database in violation of monitored laws may be seen as a ``work in progress'' towards a valid database.
+
+\section{Rules} \label{sec:rules}
+
+\begin{definition}
+  A \defcase{rule} consists of
+  \begin{itemize}
+    \item A sequence of types for bound variables (which are identified by index into this sequence, see Definition~\ref{def:term}).
+    \item An \defcase{antecedent}, which is a conjunction of propositions.
+    \item A \defcase{consequent}, which is a single atomic proposition whose head is a view table.
+  \end{itemize}
+\end{definition}
+
+A rule acts as a ``pump'' for filling up its view table. While rules seem similar to laws, the difference is that it is a category error to speak of ``violating'' a rule; there is nothing that a user can do to violate a rule. A rule is merely a directive to the query system that says how to insert rows into view tables. Moreover, rules are the \emph{only} way to produce rows in view tables; the user may not insert into view tables directly.
+
+\section{Queries} \label{sec:query}
+
+\begin{definition}
+  A \defcase{query} consists of a context of bound variables, along with a conjunction of propositions in that context.
+\end{definition}
+
+\begin{example}
+  The following query finds all triangles in a graph.
+  \begin{verbatim}
+  (query
+   ('V 'V 'V 'E 'E 'E)
+   (('V (id %0))
+    ('V (id %1))
+    ('V (id %2))
+    ('E (id %3) %0 %1)
+    ('E (id %4) %1 %2)
+    ('E (id %5) %0 %2)))
+  \end{verbatim}
+\end{example}
+%
+\noindent The terms in a query may contain row id literals, in the case that the query is produced dynamically by a program.
+
+The results of a query is the set of all assignments of the bound variables which satisfy the propositions in the body.
+
+\section{Mutations} \label{sec:mutation}
+
+\begin{definition}
+  A \defcase{mutation} consists of a sequence of atoms, \emph{without} id parameters.
+\end{definition}
+
+\begin{example}
+  The following mutation inserts a triangle into a graph
+  \begin{verbatim}
+  (mutation
+    ('V)
+    ('V)
+    ('V)
+    ('E %0 %1)
+    ('E %1 %2)
+    ('E %0 %2))
+  \end{verbatim}
+\end{example}
+%
+\noindent A mutation is interpreted by inserting a new row in the relevant table for each atom. The row ids from previous insertions are available as variables in later insertions, so \verb|('E '%0 %1)| means insert an edge between the vertex inserted in the first instruction and the vertex inserted in the second instruction.
 
 \end{document}
