@@ -6,7 +6,6 @@ use std::collections::BTreeSet;
 
 use coln_bouncer::bouncer::Bouncer;
 use coln_bouncer::error::{BouncerError, RuleViolation};
-use coln_bouncer::rw::{DbRead, DbWrite};
 use coln_flir_rs::engine::{
     schema::ColnDef,
     tx::{TxRowId, TxTuple},

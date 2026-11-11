@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commit::error::CodecError;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct RootCommitData {
     pub(crate) ir: FlatRealm,
     pub(crate) coln_def: ColnDef,

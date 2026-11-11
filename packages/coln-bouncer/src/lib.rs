@@ -4,7 +4,6 @@
 
 pub mod bouncer;
 pub mod error;
-pub mod rw;
 
 #[cfg(test)]
 mod tests;
