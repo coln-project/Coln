@@ -264,22 +264,27 @@ pub mod flir {
     use coln_flir_rs::ir;
     use std::{collections::HashMap, marker::PhantomData};
 
+    /// A realm of the compiler's golden test suite, as a marker type: it names
+    /// the `.json` fixture and keys the paths of its tables (see
+    /// [`EntityPath`]), but holds no state of its own.
     pub trait JsonFlir {
         const NAME: &'static str;
 
-        fn load(&self) -> ir::FlatRealm {
+        fn load() -> ir::FlatRealm {
             coln_flir_rs::test_utils::load_theory_from_json(format!("{}.json", Self::NAME))
         }
     }
 
-    pub struct FlirDriver<F> {
+    /// Builds the base table deltas of the realm `R`, row by row, and hands
+    /// them out an epoch at a time.
+    pub struct Flir<R> {
         hash: u64,
         ctr: u64,
         base_tables: HashMap<EntityRef, TableDelta>,
-        phantom: PhantomData<F>,
+        phantom: PhantomData<R>,
     }
 
-    impl<F: JsonFlir> FlirDriver<F> {
+    impl<R: JsonFlir> Flir<R> {
         pub fn new() -> Self {
             Self {
                 hash: 0,
@@ -287,6 +292,10 @@ pub mod flir {
                 base_tables: HashMap::new(),
                 phantom: PhantomData,
             }
+        }
+        /// The realm `R`, see [`JsonFlir::load`].
+        pub fn load(&self) -> ir::FlatRealm {
+            R::load()
         }
         pub fn epoch(&self) -> u64 {
             self.hash
@@ -314,7 +323,7 @@ pub mod flir {
         }
         fn table_delta<E>(&mut self, entry: &E) -> &mut TableDelta
         where
-            E: EntityPath<F>,
+            E: EntityPath<R>,
         {
             let entity_ref = EntityRef::from(&E::ir_path());
             if !self.base_tables.contains_key(&entity_ref) {
@@ -326,21 +335,38 @@ pub mod flir {
         }
         fn insert_to_table_delta<E>(&mut self, entry: &E)
         where
-            E: EntityPath<F> + Entity,
+            E: EntityPath<R> + Entity,
         {
             self.table_delta(entry)
                 .extend([Self::with_zweight(1, entry.to_row())]);
         }
         fn delete_from_table_delta<E>(&mut self, entry: &E)
         where
-            E: EntityPath<F> + Entity,
+            E: EntityPath<R> + Entity,
         {
             self.table_delta(entry)
                 .extend([Self::with_zweight(-1, entry.to_row())]);
         }
+        /// Inserts the entity `entity` builds from the next row id, and hands
+        /// it back for later rows to reference.
+        pub fn insert<E>(&mut self, entity: impl FnOnce(RowId) -> E) -> E
+        where
+            E: EntityPath<R> + Entity,
+        {
+            let entity = entity(self.next_row_id());
+            self.insert_to_table_delta(&entity);
+            entity
+        }
+        pub fn remove<E>(&mut self, entity: &E)
+        where
+            E: EntityPath<R> + Entity,
+        {
+            self.delete_from_table_delta(entity);
+        }
     }
 
-    pub trait EntityPath<Flir: JsonFlir> {
+    /// The path of a base table in the realm `R`.
+    pub trait EntityPath<R: JsonFlir> {
         const PATH: &'static str;
         fn ir_path() -> ir::Path {
             ir::Path::from(Self::PATH)
@@ -352,9 +378,16 @@ pub mod flir {
         fn row_id(&self) -> RowId;
     }
 
-    impl<T: Entity> From<&T> for RowId {
-        fn from(value: &T) -> Self {
-            value.row_id()
+    /// A column referencing a row of the entity `E`: a row of that entity, or a
+    /// bare [`RowId`], which need not identify any row at all, so that a test
+    /// can reference a dangling one.
+    pub trait Reference<E> {
+        fn row_id(&self) -> RowId;
+    }
+
+    impl<E> Reference<E> for RowId {
+        fn row_id(&self) -> RowId {
+            *self
         }
     }
 
@@ -376,24 +409,24 @@ pub mod flir {
         }
     }
 
-    pub struct Vertex {
+    /// A row of a base table: its own row id, followed by the row id of each
+    /// row it references, in column order.
+    pub struct Row {
         row_id: RowId,
+        references: Vec<RowId>,
     }
 
-    impl Vertex {
-        fn new(row_id: RowId) -> Vertex {
-            Self { row_id }
-        }
-    }
-
-    impl Entity for Vertex {
+    impl Entity for Row {
         fn to_row(&self) -> TupleValue {
-            [
-                ScalarTypedValue::from(self.row_id.hash()),
-                ScalarTypedValue::from(self.row_id.ctr()),
-            ]
-            .into_iter()
-            .collect()
+            std::iter::once(&self.row_id)
+                .chain(&self.references)
+                .flat_map(|row_id| {
+                    [
+                        ScalarTypedValue::from(row_id.hash()),
+                        ScalarTypedValue::from(row_id.ctr()),
+                    ]
+                })
+                .collect()
         }
 
         fn row_id(&self) -> RowId {
@@ -401,157 +434,111 @@ pub mod flir {
         }
     }
 
-    impl EntityPath<GraphFlir> for Vertex {
-        const PATH: &'static str = "root.V";
-    }
+    /// Defines an [`Entity`] per base table, a [`Row`] that references a row
+    /// of each column's type (see [`Reference`]), at the path it has in each of
+    /// the given FLIRs.
+    macro_rules! tables {
+        (for $flirs:tt { $($entity:ident($($column:ident: $column_type:ty),*) => $path:literal),+ $(,)? }) => {
+            $( tables!(@table $flirs $entity($($column: $column_type),*) => $path); )+
+        };
+        (@table [$($flir:ty),+] $entity:ident($($column:ident: $column_type:ty),*) => $path:literal) => {
+            pub struct $entity(Row);
 
-    impl EntityPath<TriangleFlir> for Vertex {
-        const PATH: &'static str = "root.V";
-    }
-
-    impl EntityPath<TransitiveClosureFlir> for Vertex {
-        const PATH: &'static str = "root.V";
-    }
-
-    pub struct Edge {
-        row_id: RowId,
-        from: RowId,
-        to: RowId,
-    }
-
-    impl Edge {
-        pub fn new<T: Into<RowId>, U: Into<RowId>>(row_id: RowId, from: T, to: U) -> Edge {
-            Self {
-                row_id,
-                from: from.into(),
-                to: to.into(),
+            impl $entity {
+                pub fn new(row_id: RowId $(, $column: impl Reference<$column_type>)*) -> Self {
+                    Self(Row {
+                        row_id,
+                        references: vec![$($column.row_id()),*],
+                    })
+                }
             }
-        }
-    }
 
-    impl Entity for Edge {
-        fn to_row(&self) -> TupleValue {
-            [
-                ScalarTypedValue::from(self.row_id.hash()),
-                ScalarTypedValue::from(self.row_id.ctr()),
-                ScalarTypedValue::from(self.from.hash()),
-                ScalarTypedValue::from(self.from.ctr()),
-                ScalarTypedValue::from(self.to.hash()),
-                ScalarTypedValue::from(self.to.ctr()),
-            ]
-            .into_iter()
-            .collect()
-        }
-
-        fn row_id(&self) -> RowId {
-            self.row_id
-        }
-    }
-
-    impl EntityPath<GraphFlir> for Edge {
-        const PATH: &'static str = "root.E";
-    }
-
-    impl EntityPath<TriangleFlir> for Edge {
-        const PATH: &'static str = "root.E";
-    }
-
-    impl EntityPath<TransitiveClosureFlir> for Edge {
-        const PATH: &'static str = "root.E";
-    }
-
-    pub struct GraphFlir {
-        driver: FlirDriver<Self>,
-    }
-
-    impl GraphFlir {
-        pub fn new() -> Self {
-            Self {
-                driver: FlirDriver::new(),
+            impl Reference<$entity> for &$entity {
+                fn row_id(&self) -> RowId {
+                    self.0.row_id()
+                }
             }
-        }
-        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
-            &mut self.driver
-        }
-        pub fn insert_vertex(&mut self) -> Vertex {
-            let vertex = Vertex::new(self.driver.next_row_id());
-            self.driver.insert_to_table_delta(&vertex);
-            vertex
-        }
-        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
-            let edge = Edge::new(self.driver.next_row_id(), from, to);
-            self.driver.insert_to_table_delta(&edge);
-            edge
-        }
-        pub fn insert_raw_edge(&mut self, edge: Edge) -> Edge {
-            self.driver.insert_to_table_delta(&edge);
-            edge
-        }
+
+            impl Entity for $entity {
+                fn to_row(&self) -> TupleValue {
+                    self.0.to_row()
+                }
+
+                fn row_id(&self) -> RowId {
+                    self.0.row_id()
+                }
+            }
+
+            $(
+                impl EntityPath<$flir> for $entity {
+                    const PATH: &'static str = $path;
+                }
+            )+
+        };
     }
 
-    impl JsonFlir for GraphFlir {
+    tables!(for [GraphRealm, TriangleRealm, TransitiveClosureRealm] {
+        Vertex() => "root.V",
+        Edge(from: Vertex, to: Vertex) => "root.E",
+    });
+
+    tables!(for [BipartiteGraphRealm, BipartiteGraphOverRealm] {
+        Red() => "root.red",
+        Blue() => "root.blue",
+        RedBlue(a: Red, b: Blue) => "root.red-blue",
+        BlueRed(a: Blue, b: Red) => "root.blue-red",
+    });
+
+    tables!(for [BipartiteGraphOverRealm] {
+        RedOver(a: Red) => "root.red-over",
+        BlueOver(a: Blue) => "root.blue-over",
+        RedBlueOver(v: Red, a: RedOver, w: Blue, b: BlueOver) => "root.red-blue-over",
+        BlueRedOver(w: Blue, a: BlueOver, v: Red, b: RedOver) => "root.blue-red-over",
+    });
+
+    pub struct GraphRealm;
+
+    impl JsonFlir for GraphRealm {
         const NAME: &'static str = "GraphRealm";
     }
 
-    pub struct TriangleFlir {
-        driver: FlirDriver<Self>,
-    }
+    pub struct TriangleRealm;
 
-    impl TriangleFlir {
-        pub fn new() -> Self {
-            Self {
-                driver: FlirDriver::new(),
-            }
-        }
-        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
-            &mut self.driver
-        }
-        pub fn insert_vertex(&mut self) -> Vertex {
-            let vertex = Vertex::new(self.driver.next_row_id());
-            self.driver.insert_to_table_delta(&vertex);
-            vertex
-        }
-        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
-            let edge = Edge::new(self.driver.next_row_id(), from, to);
-            self.driver.insert_to_table_delta(&edge);
-            edge
-        }
-    }
-
-    impl JsonFlir for TriangleFlir {
+    impl JsonFlir for TriangleRealm {
         const NAME: &'static str = "TriangleRealm";
     }
 
-    pub struct TransitiveClosureFlir {
-        driver: FlirDriver<Self>,
-    }
+    pub struct TransitiveClosureRealm;
 
-    impl TransitiveClosureFlir {
-        pub fn new() -> Self {
-            Self {
-                driver: FlirDriver::new(),
-            }
-        }
-        pub fn driver(&mut self) -> &mut FlirDriver<Self> {
-            &mut self.driver
-        }
-        pub fn insert_vertex(&mut self) -> Vertex {
-            let vertex = Vertex::new(self.driver.next_row_id());
-            self.driver.insert_to_table_delta(&vertex);
-            vertex
-        }
-        pub fn insert_edge(&mut self, from: &Vertex, to: &Vertex) -> Edge {
-            let edge = Edge::new(self.driver.next_row_id(), from, to);
-            self.driver.insert_to_table_delta(&edge);
-            edge
-        }
-        pub fn remove_edge(&mut self, edge: &Edge) {
-            self.driver.delete_from_table_delta(edge);
-        }
-    }
-
-    impl JsonFlir for TransitiveClosureFlir {
+    impl JsonFlir for TransitiveClosureRealm {
         const NAME: &'static str = "TransitiveClosureRealm";
+    }
+
+    /// The realm of `bipartite-trans-closure.coln`: `red-red` and `blue-blue`
+    /// connect the nodes of one colour through a path via the other colour,
+    /// so each is derived from the other, and both form one component.
+    pub struct BipartiteGraphRealm;
+
+    impl JsonFlir for BipartiteGraphRealm {
+        const NAME: &'static str = "BipartiteGraphRealm";
+    }
+
+    /// The realm of `tricky-clique-pair.coln`: like [`BipartiteGraphRealm`],
+    /// but over annotated nodes, where `red-red-over` and `blue-blue-over` are
+    /// the mutually recursive pair, seeded by lifting the plain `red-red` and
+    /// `blue-blue`, which are reflexive only.
+    pub struct BipartiteGraphOverRealm;
+
+    impl JsonFlir for BipartiteGraphOverRealm {
+        const NAME: &'static str = "BipartiteGraphOverRealm";
+    }
+
+    /// The realm of `tricky-self-clique.coln`, whose component of `points-to`
+    /// and `points-to-field` has no rule reading anything but the component.
+    pub struct AnalysisRealm;
+
+    impl JsonFlir for AnalysisRealm {
+        const NAME: &'static str = "AnalysisRealm";
     }
 }
 

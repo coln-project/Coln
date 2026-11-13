@@ -245,7 +245,7 @@ mod test {
         scalarial::ScalarTypedValue,
         test_utils::{
             self,
-            flir::{self, JsonFlir},
+            flir::{self, Flir, JsonFlir},
         },
         zrow,
     };
@@ -337,16 +337,16 @@ mod test {
 
     #[test]
     fn graph_flir() -> Result<()> {
-        let mut graph_flir = test_utils::flir::GraphFlir::new();
-        let flat_realm = graph_flir.load();
+        use flir::{Edge, GraphRealm, Vertex};
+
+        let mut driver = Flir::<GraphRealm>::new();
+        let flat_realm = driver.load();
         let flir_program = FlirProgram::from_flat_realm(&flat_realm)?;
         let mut coln_query = ColnQuery::with_flir_program(flir_program)?;
 
         let mut tx0 = Tx::empty();
-        let v0 = graph_flir.insert_vertex();
-        let v1 = graph_flir.insert_vertex();
-        let v2 = graph_flir.insert_vertex();
-        tx0.insert(graph_flir.driver().next_epoch().into_table_deltas());
+        let [v0, v1, v2] = [(); 3].map(|()| driver.insert(Vertex::new));
+        tx0.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
@@ -354,9 +354,9 @@ mod test {
         assert!(tx0.take_soft_violations().is_empty());
 
         let mut tx1 = Tx::empty();
-        let e0 = graph_flir.insert_edge(&v0, &v1);
-        let e1 = graph_flir.insert_edge(&v1, &v2);
-        tx1.insert(graph_flir.driver().next_epoch().into_table_deltas());
+        driver.insert(|row_id| Edge::new(row_id, &v0, &v1));
+        driver.insert(|row_id| Edge::new(row_id, &v1, &v2));
+        tx1.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
@@ -379,27 +379,16 @@ mod test {
         assert!(tx1.take_soft_violations().is_empty());
 
         let mut tx2 = Tx::empty();
-        // Just some ints which haven't been used yet for sure.
-        let dangling_hash = 999;
-        let dangling_ctr = 999;
+        // Just some row ids which haven't been used yet for sure.
         let dangling_row_id_1 = flir::RowId::new(999, 999);
         let dangling_row_id_2 = flir::RowId::new(1000, 1000);
         // Although the vertex does not violate a contraint, this vertex must be
-        // rolled back because tx3 is invalid due to the other inserts.
-        let v_rollback = graph_flir.insert_vertex();
-        let invalid_edge_to =
-            flir::Edge::new(graph_flir.driver().next_row_id(), &v0, dangling_row_id_1);
-        let invalid_edge_from =
-            flir::Edge::new(graph_flir.driver().next_row_id(), dangling_row_id_1, &v1);
-        let invalid_edge = flir::Edge::new(
-            graph_flir.driver().next_row_id(),
-            dangling_row_id_1,
-            dangling_row_id_2,
-        );
-        graph_flir.insert_raw_edge(invalid_edge_to);
-        graph_flir.insert_raw_edge(invalid_edge_from);
-        graph_flir.insert_raw_edge(invalid_edge);
-        tx2.insert(graph_flir.driver().next_epoch().into_table_deltas());
+        // rolled back because tx2 is invalid due to the other inserts.
+        let v_rollback = driver.insert(Vertex::new);
+        driver.insert(|row_id| Edge::new(row_id, &v0, dangling_row_id_1));
+        driver.insert(|row_id| Edge::new(row_id, dangling_row_id_1, &v1));
+        driver.insert(|row_id| Edge::new(row_id, dangling_row_id_1, dangling_row_id_2));
+        tx2.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx2\n{}", tx2.to_cli_report()?);
         let mut tx2 = tx2.try_commit(&mut coln_query)?.expect_rejected();
         println!("> Tx2\n{}", tx2.to_cli_report()?);
@@ -411,8 +400,8 @@ mod test {
         assert_eq!(violation.delta().len(), 3);
 
         let mut tx3 = Tx::empty();
-        let e0 = graph_flir.insert_edge(&v0, &v_rollback);
-        tx3.insert(graph_flir.driver().next_epoch().into_table_deltas());
+        driver.insert(|row_id| Edge::new(row_id, &v0, &v_rollback));
+        tx3.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx3\n{}", tx3.to_cli_report()?);
         let mut tx3 = tx3.try_commit(&mut coln_query)?.expect_rejected();
         println!("> Tx3\n{}", tx3.to_cli_report()?);
@@ -428,18 +417,17 @@ mod test {
 
     #[test]
     fn triangle_flir() -> Result<()> {
-        let mut triangle_flir = test_utils::flir::TriangleFlir::new();
-        let mut coln_query = ColnQuery::init(&triangle_flir.load())?;
+        use flir::{Edge, TriangleRealm, Vertex};
+
+        let mut driver = Flir::<TriangleRealm>::new();
+        let mut coln_query = ColnQuery::init(&driver.load())?;
 
         let mut tx0 = Tx::empty();
-        let v0 = triangle_flir.insert_vertex();
-        let v1 = triangle_flir.insert_vertex();
-        let v2 = triangle_flir.insert_vertex();
-        let v3 = triangle_flir.insert_vertex();
-        let e1 = triangle_flir.insert_edge(&v0, &v1);
-        let e2 = triangle_flir.insert_edge(&v1, &v2);
-        let e3 = triangle_flir.insert_edge(&v2, &v3);
-        tx0.insert(triangle_flir.driver().next_epoch().into_table_deltas());
+        let [v0, v1, v2, v3] = [(); 4].map(|()| driver.insert(Vertex::new));
+        driver.insert(|row_id| Edge::new(row_id, &v0, &v1));
+        driver.insert(|row_id| Edge::new(row_id, &v1, &v2));
+        driver.insert(|row_id| Edge::new(row_id, &v2, &v3));
+        tx0.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
@@ -447,10 +435,10 @@ mod test {
         assert!(tx0.take_derived_data_delta().is_empty());
 
         let mut tx1 = Tx::empty();
-        triangle_flir.insert_edge(&v2, &v0);
-        triangle_flir.insert_edge(&v3, &v0);
-        triangle_flir.insert_edge(&v3, &v1);
-        tx1.insert(triangle_flir.driver().next_epoch().into_table_deltas());
+        driver.insert(|row_id| Edge::new(row_id, &v2, &v0));
+        driver.insert(|row_id| Edge::new(row_id, &v3, &v0));
+        driver.insert(|row_id| Edge::new(row_id, &v3, &v1));
+        tx1.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
@@ -470,23 +458,17 @@ mod test {
 
     #[test]
     fn transitive_closure_flir() -> Result<()> {
-        let mut transitive_closure_flir = test_utils::flir::TransitiveClosureFlir::new();
-        let mut coln_query = ColnQuery::init(&transitive_closure_flir.load())?;
+        use flir::{Edge, TransitiveClosureRealm, Vertex};
+
+        let mut driver = Flir::<TransitiveClosureRealm>::new();
+        let mut coln_query = ColnQuery::init(&driver.load())?;
 
         let mut tx0 = Tx::empty();
-        let v0 = transitive_closure_flir.insert_vertex();
-        let v1 = transitive_closure_flir.insert_vertex();
-        let v2 = transitive_closure_flir.insert_vertex();
-        let v3 = transitive_closure_flir.insert_vertex();
-        let e1 = transitive_closure_flir.insert_edge(&v0, &v1);
-        let e2 = transitive_closure_flir.insert_edge(&v1, &v2);
-        let e3 = transitive_closure_flir.insert_edge(&v2, &v3);
-        tx0.insert(
-            transitive_closure_flir
-                .driver()
-                .next_epoch()
-                .into_table_deltas(),
-        );
+        let [v0, v1, v2, v3] = [(); 4].map(|()| driver.insert(Vertex::new));
+        let e1 = driver.insert(|row_id| Edge::new(row_id, &v0, &v1));
+        let e2 = driver.insert(|row_id| Edge::new(row_id, &v1, &v2));
+        driver.insert(|row_id| Edge::new(row_id, &v2, &v3));
+        tx0.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
@@ -502,14 +484,9 @@ mod test {
         assert_eq!(trans_closure_delta.len(), 10);
 
         let mut tx1 = Tx::empty();
-        transitive_closure_flir.remove_edge(&e1);
-        transitive_closure_flir.remove_edge(&e2);
-        tx1.insert(
-            transitive_closure_flir
-                .driver()
-                .next_epoch()
-                .into_table_deltas(),
-        );
+        driver.remove(&e1);
+        driver.remove(&e2);
+        tx1.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
@@ -525,6 +502,161 @@ mod test {
         );
 
         Ok(())
+    }
+
+    /// A derived row of `weight` over the `rows` it references, in column
+    /// order: a view row has no row id of its own.
+    fn derived_row(weight: i64, rows: &[&dyn flir::Entity]) -> ZRow {
+        let tuple: TupleValue = rows
+            .iter()
+            .flat_map(|row| {
+                let row_id = row.row_id();
+                [
+                    ScalarTypedValue::from(row_id.hash()),
+                    ScalarTypedValue::from(row_id.ctr()),
+                ]
+            })
+            .collect();
+        ZRow::new(weight, tuple).expect("non-zero zweight")
+    }
+
+    #[test]
+    fn bipartite_trans_closure_flir() -> Result<()> {
+        use flir::{BipartiteGraphRealm, Blue, BlueRed, Red, RedBlue};
+
+        let mut driver = Flir::<BipartiteGraphRealm>::new();
+        let mut coln_query = ColnQuery::init(&driver.load())?;
+
+        // An alternating chain r0 → b0 → r1 → b1 → r2 → b2. `red-red` connects
+        // two red nodes through a `blue-blue` connection, and vice versa, so
+        // `red-red(r0, r2)` needs `blue-blue(b0, b1)`, which needs
+        // `red-red(r1, r1)`: the iteration goes around both predicates.
+        let mut tx0 = Tx::empty();
+        let [r0, r1, r2] = [(); 3].map(|()| driver.insert(Red::new));
+        let [b0, b1, b2] = [(); 3].map(|()| driver.insert(Blue::new));
+        driver.insert(|row_id| RedBlue::new(row_id, &r0, &b0));
+        let b0_r1 = driver.insert(|row_id| BlueRed::new(row_id, &b0, &r1));
+        driver.insert(|row_id| RedBlue::new(row_id, &r1, &b1));
+        driver.insert(|row_id| BlueRed::new(row_id, &b1, &r2));
+        driver.insert(|row_id| RedBlue::new(row_id, &r2, &b2));
+        tx0.insert(driver.next_epoch().into_table_deltas());
+        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
+        assert!(tx0.take_soft_violations().is_empty());
+        let derived = tx0.take_derived_data_delta();
+        assert_eq!(
+            derived["init.connection-info.red-red"],
+            [
+                derived_row(1, &[&r0, &r0]),
+                derived_row(1, &[&r1, &r1]),
+                derived_row(1, &[&r2, &r2]),
+                derived_row(1, &[&r0, &r1]),
+                derived_row(1, &[&r1, &r2]),
+                derived_row(1, &[&r0, &r2]),
+            ]
+        );
+        assert_eq!(
+            derived["init.connection-info.blue-blue"],
+            [
+                derived_row(1, &[&b0, &b0]),
+                derived_row(1, &[&b1, &b1]),
+                derived_row(1, &[&b2, &b2]),
+                derived_row(1, &[&b0, &b1]),
+                derived_row(1, &[&b1, &b2]),
+                derived_row(1, &[&b0, &b2]),
+            ]
+        );
+
+        // Cutting the chain at b0 → r1 retracts everything connecting across
+        // the cut, in both predicates.
+        let mut tx1 = Tx::empty();
+        driver.remove(&b0_r1);
+        tx1.insert(driver.next_epoch().into_table_deltas());
+        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
+        assert!(tx1.take_soft_violations().is_empty());
+        let derived = tx1.take_derived_data_delta();
+        assert_eq!(
+            derived["init.connection-info.red-red"],
+            [derived_row(-1, &[&r0, &r1]), derived_row(-1, &[&r0, &r2])]
+        );
+        assert_eq!(
+            derived["init.connection-info.blue-blue"],
+            [derived_row(-1, &[&b0, &b1]), derived_row(-1, &[&b0, &b2])]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn bipartite_graph_over_flir() -> Result<()> {
+        use flir::{
+            BipartiteGraphOverRealm, Blue, BlueOver, BlueRedOver, Red, RedBlueOver, RedOver,
+        };
+
+        let mut driver = Flir::<BipartiteGraphOverRealm>::new();
+        let mut coln_query = ColnQuery::init(&driver.load())?;
+
+        // r0 → b0 → r1 over annotated nodes. The mutually recursive pair is
+        // seeded only by lifting the reflexive `red-red` and `blue-blue` and
+        // by its own reflexive rules, which both derive the same rows.
+        let mut tx0 = Tx::empty();
+        let [r0, r1] = [(); 2].map(|()| driver.insert(Red::new));
+        let b0 = driver.insert(Blue::new);
+        let x0 = driver.insert(|row_id| RedOver::new(row_id, &r0));
+        let x1 = driver.insert(|row_id| RedOver::new(row_id, &r1));
+        let y0 = driver.insert(|row_id| BlueOver::new(row_id, &b0));
+        driver.insert(|row_id| RedBlueOver::new(row_id, &r0, &x0, &b0, &y0));
+        let b0_r1 = driver.insert(|row_id| BlueRedOver::new(row_id, &b0, &y0, &r1, &x1));
+        tx0.insert(driver.next_epoch().into_table_deltas());
+        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx0\n{}", tx0.to_cli_report()?);
+        assert!(tx0.take_soft_violations().is_empty());
+        let derived = tx0.take_derived_data_delta();
+        // The reflexive rows have two derivations each, `lift` and `refl`,
+        // which the incremental backend counts.
+        assert_eq!(
+            derived["init.connection-info.red-red-over"],
+            [
+                derived_row(2, &[&r0, &x0, &r0, &x0]),
+                derived_row(2, &[&r1, &x1, &r1, &x1]),
+                derived_row(1, &[&r0, &x0, &r1, &x1]),
+            ]
+        );
+        assert_eq!(
+            derived["init.connection-info.blue-blue-over"],
+            [derived_row(2, &[&b0, &y0, &b0, &y0])]
+        );
+
+        let mut tx1 = Tx::empty();
+        driver.remove(&b0_r1);
+        tx1.insert(driver.next_epoch().into_table_deltas());
+        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        println!("> Tx1\n{}", tx1.to_cli_report()?);
+        let derived = tx1.take_derived_data_delta();
+        assert_eq!(derived.size(), 1);
+        assert_eq!(
+            derived["init.connection-info.red-red-over"],
+            [derived_row(-1, &[&r0, &x0, &r1, &x1])]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn analysis_flir_without_base_case_is_rejected() {
+        // Every rule of the component of `points-to` and `points-to-field`
+        // reads one of the two, so nothing seeds their fixed point.
+        let error = ColnQuery::init(&flir::AnalysisRealm::load())
+            .expect_err("a component without a base case is rejected");
+        let error = format!("{error:#}");
+        assert!(error.contains("no base case"), "{error}");
+        assert!(
+            error.contains(
+                "in component {'init.analysis.points-to', 'init.analysis.points-to-field'}"
+            ),
+            "{error}"
+        );
     }
 
     /// One transaction to break a monitored rule, one to repair it. The point of

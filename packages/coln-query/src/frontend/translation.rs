@@ -19,21 +19,27 @@
 //! union operands bound to the second `r`. The first rule is emitted and then
 //! never read, and the predicate quietly loses it.
 //!
-//! Translation therefore makes each rule's name unique within its predicate,
+//! Translation therefore makes each rule's name unique within its component,
 //! suffixing a counter where it has to. A frontend whose rule names are already
-//! distinct (e.g. FLIR's rules) keeps them untouched.
+//! distinct (e.g. FLIR's rules) keeps them untouched. Unique within the
+//! predicate would not do: mutually recursive predicates iterate in one fixed
+//! point, whose step binds the recursive rules of all of them side by side.
 //!
-//! No rule is ever bound under its predicate's own name either, as the same
-//! shadowing strikes inside a recursive predicate's fixed point: its step reads
-//! the accumulator under the predicate's name, so in `var path = …; var path#1
-//! = … path …` the second rule reads the first rule's result rather than the
-//! accumulator. The predicate's name is therefore taken before any rule is
-//! named, and a rule carrying it gets a suffix like any other duplicate.
+//! No rule is ever bound under the name of a predicate of its component either,
+//! as the same shadowing can happen inside a fixed point: its step reads each
+//! accumulator under its predicate's name, so in `var path = …; var path#1 = …
+//! path …` the second rule reads the first rule's result rather than the
+//! accumulator. The predicates' names are therefore allocated before any rule
+//! is named, and a rule carrying one gets a suffix like any other duplicate.
 //!
 //! Outside a fixed point, sharing the name would be harmless: the predicate's
 //! statement comes after its rules', and [`Resolver`](crate::host::resolver)
 //! resolves an initializer before declaring the name it binds. Taking the name
 //! regardless keeps one rule for both cases.
+//!
+//! A fixed point evaluates to a tuple of its accumulators' relations, which is
+//! bound to a variable of its own, named after the component, e.g.
+//! `fixpoint(red, blue)`, before each predicate is bound to its element of it.
 
 use super::{
     AggregateRules, Atom, Bind, Component, Cond, IdOf, Identifiable, Identifier, Lit, Predicate,
@@ -44,7 +50,7 @@ use crate::{
     frontend::{ExecutionOrder, analysis::PredicateComponent},
     host::{
         QueryIr,
-        expr::{BinaryExpr, Expr, LiteralExpr, VarExpr},
+        expr::{BinaryExpr, Expr, GetIndexExpr, LiteralExpr, TupleExpr, VarExpr},
         operator::Operator,
         stmt::{BlockStmt, ExprStmt, Stmt, VarStmt},
     },
@@ -54,7 +60,7 @@ use crate::{
             OutputExpr, OutputKind, ProjectionExpr, RelationIdx, SelectionExpr, SinkId, SourceExpr,
             UnionExpr,
         },
-        schema::Column,
+        schema::{Column, EntityRef, TableSchema},
     },
 };
 use indexmap::IndexMap;
@@ -125,9 +131,13 @@ impl<'a, P: Predicate> Translator<'a, P> {
         Ok(Prepared(self.ir))
     }
 
-    /// Emits one component: a statement per rule, then the statement binding the
-    /// predicate to the union of them, wrapped in a fixed point if the component
-    /// is recursive.
+    /// Emits one component. Each member's rules are split into its base rules,
+    /// which read no member of the component, and its recursive rules, which do.
+    ///
+    /// A non-recursive component is a single predicate: a statement per rule,
+    /// then the statement binding the predicate to the union of them. A
+    /// recursive one iterates all of its members to their joint fixed point
+    /// instead, see [`Self::fixed_point`].
     fn component(&mut self, component: &'a PredicateComponent<'a, P>) -> Result<(), SyntaxError> {
         // A component's members are in scope for its own rules: inside the
         // fixed point, each name reads the accumulator bound under it.
@@ -135,14 +145,9 @@ impl<'a, P: Predicate> Translator<'a, P> {
             .extend(component.members().map(|member| (member.id(), member)));
 
         if component.is_edb_component().is_some() {
-            // An EDB predicate needs no translation but only registration above.
+            // An EDB predicate needs no translation but only the registration
+            // above in `self.predicates`.
             return Ok(());
-        }
-
-        let mut members = component.members();
-        let predicate = members.next().expect("a component has at least one member");
-        if members.next().is_some() {
-            todo!("mutual recursion in query IR")
         }
 
         // Named and split in one pass, so that the names stay aligned with the
@@ -154,36 +159,122 @@ impl<'a, P: Predicate> Translator<'a, P> {
         component.members().for_each(|member| {
             names.mint(member.id());
         });
-        let (non_rec, rec): (Vec<_>, Vec<_>) = component
-            .rules()
-            .map(|rule| (names.mint(rule.id()), rule))
-            .partition(|(_, rule)| !component.references_member(rule));
+        let members: Vec<MemberRules<'a, P>> = component
+            .members()
+            .map(|predicate| {
+                let (base, rec) = predicate
+                    .rules()
+                    .map(|rule| (names.mint(rule.id()), rule))
+                    .partition(|(_, rule)| !component.references_member(rule));
+                MemberRules {
+                    predicate,
+                    base,
+                    rec,
+                }
+            })
+            .collect();
 
-        if non_rec.is_empty() {
+        if members.iter().all(|member| member.base.is_empty()) {
             return Err(SyntaxError::new(
                 "no base case: every rule reads the component the predicate is part of, \
                  so nothing ever seeds the iteration",
             )
-            .within(predicate_frame(predicate)));
+            .within(component_frame(&members)));
         }
 
-        let (base, base_stmts) = self.rules(predicate, &non_rec)?;
-        self.ir.extend(base_stmts);
+        if members.iter().all(|member| member.rec.is_empty()) {
+            // Only a single predicate can read no member of its own component.
+            let [member] = members.as_slice() else {
+                unreachable!("a component of several predicates is recursive");
+            };
+            let (relation, stmts) = self.rules(member.predicate, &member.base)?;
+            self.ir.extend(stmts);
+            self.bind(member.predicate, relation);
+            return Ok(());
+        }
 
-        let relation = match rec.is_empty() {
-            true => base,
-            false => {
-                let (step, mut step_stmts) = self.rules(predicate, &rec)?;
-                // The step block evaluates to its last expression, which is the
-                // union of the recursive rules.
-                step_stmts.push(Stmt::from(ExprStmt { expr: step }));
-                Expr::from(FixedPointIterExpr {
-                    accumulator: (predicate.id().to_string(), base),
-                    step: BlockStmt { stmts: step_stmts },
-                })
-            }
-        };
+        self.fixed_point(&members, &mut names)
+    }
 
+    /// Emits a recursive component as one fixed point with an accumulator per
+    /// member, so that mutually recursive predicates iterate together. Each
+    /// accumulator is named after its member and seeded with the union of the
+    /// member's base rules, which are emitted ahead of the fixed point.
+    /// A member without any base rule starts out empty, as only the other
+    /// members' rules can derive its rows.
+    ///
+    /// The step binds every recursive rule of every member and evaluates to a
+    /// tuple of each member's union of them. The fixed point evaluates to a
+    /// tuple of each member's final relation in turn, which is bound to a
+    /// variable of its own, so that each member can be bound under its name.
+    fn fixed_point(
+        &mut self,
+        members: &[MemberRules<'a, P>],
+        names: &mut Names,
+    ) -> Result<(), SyntaxError> {
+        let accumulators = members
+            .iter()
+            .map(|member| {
+                let seed = match member.base.is_empty() {
+                    true => Expr::from(ConstantExpr::empty(table_schema(member.predicate))),
+                    false => {
+                        let (relation, stmts) = self.rules(member.predicate, &member.base)?;
+                        self.ir.extend(stmts);
+                        relation
+                    }
+                };
+                Ok((member.predicate.id().to_string(), seed))
+            })
+            .collect::<Result<Vec<_>, SyntaxError>>()?;
+
+        let (steps, step_stmts): (Vec<Expr>, Vec<Vec<Stmt>>) = members
+            .iter()
+            .map(|member| {
+                // Every member of a recursive component reads one: A predicate
+                // reads itself, and in a component of several, each member is
+                // reached from the others only through its own rules.
+                assert!(
+                    !member.rec.is_empty(),
+                    "every member of a recursive component has a recursive rule"
+                );
+                self.rules(member.predicate, &member.rec)
+            })
+            .collect::<Result<Vec<_>, SyntaxError>>()?
+            .into_iter()
+            .unzip();
+        let mut step_stmts: Vec<Stmt> = step_stmts.into_iter().flatten().collect();
+        // The step block evaluates to its last expression, which holds the
+        // union of each member's recursive rules in a tuple.
+        step_stmts.push(Stmt::from(ExprStmt {
+            expr: Expr::from(TupleExpr { elements: steps }),
+        }));
+
+        let ids: Vec<String> = members
+            .iter()
+            .map(|member| member.predicate.id().to_string())
+            .collect();
+        let fixed_point = names.mint(&format!("fixpoint({})", ids.join(", ")));
+        self.ir.push(Stmt::from(VarStmt {
+            name: fixed_point.clone(),
+            initializer: Some(Expr::from(FixedPointIterExpr {
+                accumulators,
+                step: BlockStmt { stmts: step_stmts },
+            })),
+        }));
+        members.iter().enumerate().for_each(|(index, member)| {
+            let relation = Expr::from(GetIndexExpr {
+                target: Expr::from(VarExpr::new(fixed_point.clone())),
+                index: Expr::from(LiteralExpr::from(index as u64)),
+            });
+            self.bind(member.predicate, relation);
+        });
+        Ok(())
+    }
+
+    /// Binds `predicate` to `relation` under its own name, which is how the
+    /// rules of later components read it, tapping it as an output if the
+    /// program exposes it.
+    fn bind(&mut self, predicate: &P, relation: Expr) {
         let initializer = match self.outputs.contains(predicate.id()) {
             true => Expr::from(OutputExpr {
                 id: SinkId::from(predicate.id().to_string()),
@@ -196,7 +287,6 @@ impl<'a, P: Predicate> Translator<'a, P> {
             name: predicate.id().to_string(),
             initializer: Some(initializer),
         }));
-        Ok(())
     }
 
     /// Binds each rule to a statement of its own and unions those bindings.
@@ -522,9 +612,42 @@ fn equals(left: Expr, right: Expr) -> Expr {
     })
 }
 
+/// One member of a component, with its rules split as
+/// [`Translator::component`] splits them, each under the IR variable name
+/// minted for it.
+struct MemberRules<'a, P: Predicate> {
+    predicate: &'a P,
+    /// The rules reading no member of the component.
+    base: Vec<(String, &'a P::Rule)>,
+    /// The rules reading some member of the component.
+    rec: Vec<(String, &'a P::Rule)>,
+}
+
+/// The schema of `predicate`'s relation, with no key, as its rules derive it.
+fn table_schema<P: Predicate>(predicate: &P) -> TableSchema {
+    TableSchema::new(
+        EntityRef::from(predicate.id().to_string()),
+        predicate.columns().cloned().collect(),
+        Vec::new(),
+    )
+}
+
 fn predicate_frame<P: Predicate>(predicate: &P) -> Frame {
     Frame::Predicate {
         name: predicate.id().to_string(),
+    }
+}
+
+/// A component of a single predicate is reported as that predicate.
+fn component_frame<P: Predicate>(members: &[MemberRules<'_, P>]) -> Frame {
+    match members {
+        [member] => predicate_frame(member.predicate),
+        _ => Frame::Component {
+            members: members
+                .iter()
+                .map(|member| member.predicate.id().to_string())
+                .collect(),
+        },
     }
 }
 
@@ -574,11 +697,12 @@ mod tests {
     use crate::{
         error::Frame,
         host::{
-            expr::Expr,
+            QueryIr,
+            expr::{Expr, Literal},
             stmt::Stmt,
             walk::{Node, pre_order},
         },
-        relational::expr::{RelExpr, RelKind},
+        relational::expr::{FixedPointIterExpr, RelExpr, RelKind},
     };
 
     #[test]
@@ -692,15 +816,175 @@ mod tests {
                 _ => None,
             })
             .expect("a recursive predicate iterates to a fixed point");
-        let (accumulator, _) = &fixed_point.accumulator;
-        let shadows = fixed_point.step.stmts.iter().any(|stmt| match stmt {
-            Stmt::Var(var) => var.name == *accumulator,
-            _ => false,
-        });
+        assert_no_accumulator_is_shadowed(fixed_point, &ir);
+    }
+
+    /// Fails if a statement of the fixed point's step rebinds one of its
+    /// accumulators, which hides it from every statement after.
+    fn assert_no_accumulator_is_shadowed(fixed_point: &FixedPointIterExpr, ir: &QueryIr) {
+        for (accumulator, _) in &fixed_point.accumulators {
+            let shadows = fixed_point.step.stmts.iter().any(|stmt| match stmt {
+                Stmt::Var(var) => var.name == *accumulator,
+                _ => false,
+            });
+            assert!(
+                !shadows,
+                "the step rebinds the accumulator '{accumulator}':\n{}",
+                ir.to_tree()
+            );
+        }
+    }
+
+    /// The single fixed point `ir` contains.
+    fn sole_fixed_point(ir: &QueryIr) -> &FixedPointIterExpr {
+        let mut fixed_points = pre_order(ir)
+            .filter_map(Node::as_rel)
+            .filter_map(|rel_expr| match rel_expr {
+                RelExpr::FixedPointIter(fixed_point) => Some(&**fixed_point),
+                _ => None,
+            });
+        let fixed_point = fixed_points
+            .next()
+            .unwrap_or_else(|| panic!("there is no fixed point:\n{}", ir.to_tree()));
         assert!(
-            !shadows,
-            "the step rebinds the accumulator '{accumulator}':\n{}",
+            fixed_points.next().is_none(),
+            "there is more than one fixed point:\n{}",
             ir.to_tree()
+        );
+        fixed_point
+    }
+
+    /// The red/blue reachability of a bipartite graph: `red(x)` holds for the
+    /// red nodes reachable from a red seed, alternating colour with every
+    /// edge. `red` and `blue` read each other, so they form one component.
+    fn red_blue(blue_has_base_case: bool) -> Vec<TestPredicate> {
+        let mut rules = vec![
+            rule("e0", "edge(x, y)", &[]),
+            rule("s0", "seed(x)", &[]),
+            rule("red_base", "red(x)", &["seed(x)"]),
+            rule("red_step", "red(y)", &["blue(x)", "edge(x, y)"]),
+            rule("blue_step", "blue(y)", &["red(x)", "edge(x, y)"]),
+        ];
+        if blue_has_base_case {
+            rules.push(rule("blue_base", "blue(x)", &["seed(x)"]));
+        }
+        RulePredicate::group(
+            [
+                declare("edge", &["x", "y"]),
+                declare("seed", &["x"]),
+                declare("red", &["x"]),
+                declare("blue", &["x"]),
+            ],
+            rules,
+        )
+        .expect("every definand names a declared predicate")
+    }
+
+    #[test]
+    fn mutually_recursive_predicates_iterate_in_one_fixed_point() {
+        let program = program(red_blue(true));
+        let ir = program
+            .prepare(program.verify().expect("the program is stratifiable"))
+            .expect("mutually recursive predicates translate");
+
+        let fixed_point = sole_fixed_point(&ir);
+        let accumulators: Vec<&str> = fixed_point
+            .accumulators
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(accumulators, ["red", "blue"], "{}", ir.to_tree());
+        assert_no_accumulator_is_shadowed(fixed_point, &ir);
+
+        // The step yields one relation per accumulator.
+        let Some(Stmt::Expr(last)) = fixed_point.step.stmts.last() else {
+            panic!("the step does not end in an expression:\n{}", ir.to_tree());
+        };
+        assert!(
+            matches!(&last.expr, Expr::Tuple(tuple) if tuple.elements.len() == 2),
+            "the step does not yield a pair:\n{}",
+            ir.to_tree()
+        );
+
+        // Each member is bound under its own name to its relation of the
+        // fixed point's tuple, and tapped as an output.
+        for (index, member) in ["red", "blue"].into_iter().enumerate() {
+            let initializer = ir
+                .iter()
+                .find_map(|stmt| match stmt {
+                    Stmt::Var(var) if var.name == member => var.initializer.as_ref(),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("'{member}' is not bound:\n{}", ir.to_tree()));
+            let Expr::Relational(RelExpr::Output(output)) = initializer else {
+                panic!("'{member}' is not an output:\n{}", ir.to_tree());
+            };
+            assert!(
+                matches!(
+                    &output.relation,
+                    Expr::GetIndex(get_index) if matches!(
+                        &get_index.index,
+                        Expr::Literal(literal) if literal.value == Literal::Uint(index as u64)
+                    )
+                ),
+                "'{member}' does not read element {index} of the fixed point:\n{}",
+                ir.to_tree()
+            );
+        }
+    }
+
+    #[test]
+    fn a_member_without_a_base_case_starts_out_empty() {
+        // Only `red` has a base rule; `blue` is derived from `red` alone.
+        let program = program(red_blue(false));
+        let ir = program
+            .prepare(program.verify().expect("the program is stratifiable"))
+            .expect("a component needs a base case in one member only");
+
+        let fixed_point = sole_fixed_point(&ir);
+        let [(_, red), (blue_name, blue)] = fixed_point.accumulators.as_slice() else {
+            panic!("there are not exactly two accumulators:\n{}", ir.to_tree());
+        };
+        assert_eq!(blue_name, "blue");
+        assert!(
+            matches!(blue, Expr::Relational(RelExpr::Constant(constant)) if constant.is_empty()),
+            "'blue' is not seeded with the empty relation:\n{}",
+            ir.to_tree()
+        );
+        assert!(
+            !matches!(red, Expr::Relational(RelExpr::Constant(_))),
+            "'red' is not seeded with its base rule:\n{}",
+            ir.to_tree()
+        );
+    }
+
+    #[test]
+    fn a_component_without_any_base_case_names_all_of_its_members() {
+        let predicates = RulePredicate::group(
+            ["edge", "p", "q"].map(|name| declare(name, &["x"])),
+            [
+                rule("e0", "edge(x)", &[]),
+                rule("p0", "p(x)", &["q(x)", "edge(x)"]),
+                rule("q0", "q(x)", &["p(x)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        let program = program(predicates);
+        let error = program
+            .prepare(program.verify().expect("the program is valid"))
+            .expect_err("neither `p` nor `q` has a base case");
+
+        assert_eq!(
+            error.context().collect::<Vec<_>>(),
+            [&Frame::Component {
+                members: vec!["p".to_string(), "q".to_string()]
+            }]
+        );
+        assert!(
+            error
+                .to_string()
+                .starts_with("in component {'p', 'q'}: no base case"),
+            "{error}"
         );
     }
 

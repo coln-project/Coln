@@ -1171,6 +1171,16 @@ mod tests {
         query_program_from_json_flir("TransitiveClosureRealm.json");
     }
 
+    #[test]
+    fn bipartite_graph_flir() {
+        query_program_from_json_flir("BipartiteGraphRealm.json");
+    }
+
+    #[test]
+    fn bipartite_graph_over_flir() {
+        query_program_from_json_flir("BipartiteGraphOverRealm.json");
+    }
+
     /// Expected to panic until larger issue is resolved: Taking an initial
     /// model with a `Set` codomain requires giving up the clear EDB/IDB split,
     /// and interacting between them during query runtime.

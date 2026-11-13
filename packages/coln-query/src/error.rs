@@ -100,6 +100,12 @@ pub enum Frame {
     Predicate {
         name: String,
     },
+    /// Mutually recursive predicates, which are evaluated together and hence
+    /// can only be reported on together.
+    Component {
+        /// The names of the component's predicates.
+        members: Vec<String>,
+    },
     Rule {
         name: String,
         /// The rule in Datalog notation, shown by `{:#}` only. Absent when the
@@ -113,6 +119,10 @@ impl fmt::Display for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Frame::Predicate { name } => write!(f, "in predicate '{name}'"),
+            Frame::Component { members } => {
+                let members: Vec<String> = members.iter().map(|name| format!("'{name}'")).collect();
+                write!(f, "in component {{{}}}", members.join(", "))
+            }
             Frame::Rule { name, text } => match (f.alternate(), text) {
                 (true, Some(text)) => write!(f, "in rule '{name}': {text}"),
                 _ => write!(f, "in rule '{name}'"),
