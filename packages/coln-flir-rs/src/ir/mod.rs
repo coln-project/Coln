@@ -17,7 +17,7 @@ impl Path {
     }
 
     pub fn append<S: AsRef<str>>(&self, segment: S) -> Self {
-        Path(format!("{}.{}", &self.0, segment.as_ref()))
+        Path(format!("{}.{}", self.0, segment.as_ref()))
     }
 }
 

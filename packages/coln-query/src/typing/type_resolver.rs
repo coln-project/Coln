@@ -227,7 +227,7 @@ impl ExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver<'_> {
         match self.visit_expr(&expr.target, ctx)? {
             ExprType::Tuple(tuple_type) => {
                 let const_index = self
-                    .const_eval_uint(&expr.target)
+                    .const_eval_uint(&expr.index)
                     .ok_or(SyntaxError::new("cannot compute tuple index statically"))?;
                 tuple_type
                     .element_type(const_index as usize)
@@ -406,8 +406,14 @@ impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver<'_> {
         expr: &FixedPointIterExpr,
         ctx: VisitorCtx,
     ) -> VisitorResult {
-        // We steal the relation's type from the accumulator's type.
-        self.visit_expr(&expr.accumulator.1, ctx)
+        // We steal each relation's type from its accumulator's type, and the
+        // node evaluates to a tuple of them.
+        let types = expr
+            .accumulators
+            .iter()
+            .map(|(_, init)| self.visit_expr(init, ctx))
+            .collect::<Result<Vec<ExprType>, _>>()?;
+        Ok(ExprType::Tuple(TupleType::from(types)))
     }
 }
 

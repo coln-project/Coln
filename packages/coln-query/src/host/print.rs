@@ -427,9 +427,15 @@ impl RelExprVisitor<(), ()> for TreePrinter<'_> {
     }
 
     fn visit_fixed_point_iter_expr(&mut self, expr: &FixedPointIterExpr, ctx: ()) {
-        // The accumulator's name binds the step body, so it belongs on this line.
-        emit!(self, "FixedPointIter {}", expr.accumulator.0);
-        let mut branches = vec![("init".to_string(), Node::from(&expr.accumulator.1))];
+        // Like a projection's attributes, each accumulator is labelled with the
+        // name it binds in the step body, in the same order the step's (last)
+        // tuple fills them.
+        self.out.push_str("FixedPointIter");
+        let mut branches: Branches = expr
+            .accumulators
+            .iter()
+            .map(|(name, init)| (format!("init({name})"), Node::from(init)))
+            .collect();
         branches.extend(sequence("step", &expr.step.stmts));
         self.branches(branches);
     }
@@ -492,24 +498,33 @@ mod tests {
                 initializer: Some(Expr::from(SourceExpr::new("edge"))),
             }),
             Stmt::from(VarStmt {
-                name: "reach".to_string(),
+                name: "fixpoint".to_string(),
                 initializer: Some(Expr::from(FixedPointIterExpr {
-                    accumulator: ("acc".to_string(), var("edge")),
+                    accumulators: vec![("acc".to_string(), var("edge"))],
                     step: BlockStmt {
-                        stmts: vec![expr_stmt(Expr::from(DistinctExpr {
-                            relation: Expr::from(UnionExpr {
-                                relations: vec![
-                                    var("acc"),
-                                    Expr::from(EquiJoinExpr {
-                                        left: var("acc"),
-                                        right: var("edge"),
-                                        on: vec![(var("y"), var("x"))],
-                                        attributes: Some(attributes(&[("x", "x"), ("y", "y")])),
-                                    }),
-                                ],
-                            }),
+                        stmts: vec![expr_stmt(Expr::from(TupleExpr {
+                            elements: vec![Expr::from(DistinctExpr {
+                                relation: Expr::from(UnionExpr {
+                                    relations: vec![
+                                        var("acc"),
+                                        Expr::from(EquiJoinExpr {
+                                            left: var("acc"),
+                                            right: var("edge"),
+                                            on: vec![(var("y"), var("x"))],
+                                            attributes: Some(attributes(&[("x", "x"), ("y", "y")])),
+                                        }),
+                                    ],
+                                }),
+                            })],
                         }))],
                     },
+                })),
+            }),
+            Stmt::from(VarStmt {
+                name: "reach".to_string(),
+                initializer: Some(Expr::from(GetIndexExpr {
+                    target: var("fixpoint"),
+                    index: Expr::from(LiteralExpr::from(0_u64)),
                 })),
             }),
             expr_stmt(Expr::from(OutputExpr {
@@ -585,20 +600,25 @@ mod tests {
             "\
 VarStmt edge
 └─ init: Source \"edge\"
-VarStmt reach
-└─ init: FixedPointIter acc
-   ├─ init: Var edge (unresolved)
+VarStmt fixpoint
+└─ init: FixedPointIter
+   ├─ init(acc): Var edge (unresolved)
    └─ step(0): ExprStmt
-      └─ expr: Distinct
-         └─ relation: Union
-            ├─ relation(0): Var acc (unresolved)
-            └─ relation(1): EquiJoin
-               ├─ left: Var acc (unresolved)
-               ├─ right: Var edge (unresolved)
-               ├─ on(0 in left): Var y (unresolved)
-               ├─ on(0 in right): Var x (unresolved)
-               ├─ select(x): Var x (unresolved)
-               └─ select(y): Var y (unresolved)
+      └─ expr: Tuple
+         └─ element(0): Distinct
+            └─ relation: Union
+               ├─ relation(0): Var acc (unresolved)
+               └─ relation(1): EquiJoin
+                  ├─ left: Var acc (unresolved)
+                  ├─ right: Var edge (unresolved)
+                  ├─ on(0 in left): Var y (unresolved)
+                  ├─ on(0 in right): Var x (unresolved)
+                  ├─ select(x): Var x (unresolved)
+                  └─ select(y): Var y (unresolved)
+VarStmt reach
+└─ init: GetIndex
+   ├─ target: Var fixpoint (unresolved)
+   └─ index: Literal 0
 ExprStmt
 └─ expr: Output \"reach\" channel
    └─ relation: Var reach (unresolved)"
@@ -612,28 +632,29 @@ ExprStmt
         // one inspects a single fixed-point step in isolation.
         let code = transitive_closure();
         let Stmt::Var(stmt) = &code[1] else {
-            unreachable!("the second statement binds `reach`")
+            unreachable!("the second statement binds `fixpoint`")
         };
         let Some(Expr::Relational(rel)) = &stmt.initializer else {
-            unreachable!("`reach` is bound to a relational expression")
+            unreachable!("`fixpoint` is bound to a relational expression")
         };
         let RelExpr::FixedPointIter(fixed_point) = rel else {
-            unreachable!("`reach` is bound to a fixed point")
+            unreachable!("`fixpoint` is bound to a fixed point")
         };
         assert_eq!(
             to_tree(&fixed_point.step.stmts),
             "\
 ExprStmt
-└─ expr: Distinct
-   └─ relation: Union
-      ├─ relation(0): Var acc (unresolved)
-      └─ relation(1): EquiJoin
-         ├─ left: Var acc (unresolved)
-         ├─ right: Var edge (unresolved)
-         ├─ on(0 in left): Var y (unresolved)
-         ├─ on(0 in right): Var x (unresolved)
-         ├─ select(x): Var x (unresolved)
-         └─ select(y): Var y (unresolved)"
+└─ expr: Tuple
+   └─ element(0): Distinct
+      └─ relation: Union
+         ├─ relation(0): Var acc (unresolved)
+         └─ relation(1): EquiJoin
+            ├─ left: Var acc (unresolved)
+            ├─ right: Var edge (unresolved)
+            ├─ on(0 in left): Var y (unresolved)
+            ├─ on(0 in right): Var x (unresolved)
+            ├─ select(x): Var x (unresolved)
+            └─ select(y): Var y (unresolved)"
         );
     }
 

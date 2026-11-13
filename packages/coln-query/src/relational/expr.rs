@@ -886,33 +886,34 @@ pub struct ThetaJoinExpr {
     pub attributes: Option<Vec<(String, Expr)>>,
 }
 
-/// Evaluates to a relation/stream again.
+/// Iterates one or more mutually recursive relation(s) to their joint fixed
+/// point. Evaluates to a tuple holding each accumulator's final relation, in
+/// the same order of [`accumulators`](FixedPointIterExpr::accumulators), even
+/// if there is only one, so that the shape never depends on the arity.
+/// An enclosing scope reads them with a
+/// [`GetIndexExpr`](crate::host::expr::GetIndexExpr).
 ///
 /// The step statements may freely reference relations defined in the enclosing
 /// scope as well as [`SourceExpr`] leaves; the backend is responsible for
 /// bringing those into the iteration (in the DBSP backend, via `delta0`). This
 /// keeps the node declarative: it describes *what* is iterated, not *how* the
 /// backend must wire outer relations in.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FixedPointIterExpr {
-    /// The accumulator is available as a variable named according to the first
-    /// tuple element in the context of the child circuit, that is,
-    /// within the the context of the [`step`](FixedPointIterExpr.step) statements.
-    /// The second tuple element must evaluate to a relation.
-    /// The accumulator also defines the schema of the fixed point computation.
-    pub accumulator: (String, Expr),
+    /// Each accumulator is available as a variable named according to the
+    /// first pair element in the context of the child circuit, that is,
+    /// within the context of the [`step`](FixedPointIterExpr::step) statements.
+    /// The second pair element is the accumulator's initial value, evaluated
+    /// in the enclosing scope. It must evaluate to a relation and defines the
+    /// accumulator's schema.
+    ///
+    /// There is at least one accumulator, and no two share a name.
+    pub accumulators: Vec<(String, Expr)>,
     /// What to do in each iteration. Runs in the context of the child circuit.
-    /// The value the last statement evaluates to becomes the accumulator of
-    /// the next iteration.
+    /// The last statement must evaluate to a tuple of exactly as many relations
+    /// as there are [`accumulators`](FixedPointIterExpr::accumulators): its
+    /// `i`th element becomes the `i`th accumulator of the next iteration.
     pub step: BlockStmt,
-}
-
-impl Eq for FixedPointIterExpr {}
-
-impl PartialEq for FixedPointIterExpr {
-    fn eq(&self, other: &Self) -> bool {
-        self.accumulator == other.accumulator && self.step == other.step
-    }
 }
 
 /// Pure dispatch contract for the relational plan layer: a provided `visit_rel`

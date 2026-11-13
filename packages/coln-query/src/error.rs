@@ -268,3 +268,47 @@ impl From<DbspError> for RuntimeError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_syntax_error_renders_the_frames_it_was_raised_within() {
+        // Frames are added innermost first, on the way up, as the translator
+        // does: the rule first, then the predicate it belongs to.
+        let message = "something is off";
+        let error = SyntaxError::new(message)
+            .within(Frame::Rule {
+                name: "r0".to_string(),
+                text: Some("p(x) :- q(x).".to_string()),
+            })
+            .within(Frame::Predicate {
+                name: "p".to_string(),
+            });
+
+        assert_eq!(error.message(), message);
+        assert_eq!(
+            error.context().collect::<Vec<_>>(),
+            [
+                &Frame::Predicate {
+                    name: "p".to_string()
+                },
+                &Frame::Rule {
+                    name: "r0".to_string(),
+                    text: Some("p(x) :- q(x).".to_string()),
+                },
+            ]
+        );
+        // One line, outermost first, without the rule's text.
+        assert_eq!(
+            error.to_string(),
+            format!("in predicate 'p': in rule 'r0': {message}")
+        );
+        // The message first, then each frame in full, like a backtrace.
+        assert_eq!(
+            format!("{error:#}"),
+            format!("{message}\n  in rule 'r0': p(x) :- q(x).\n  in predicate 'p'")
+        );
+    }
+}
