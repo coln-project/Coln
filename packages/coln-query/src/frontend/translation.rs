@@ -46,7 +46,6 @@ use super::{
     Rule, TypedVar,
 };
 use crate::{
-    error::{Frame, SyntaxError},
     frontend::{ExecutionOrder, analysis::PredicateComponent},
     host::{
         QueryIr,
@@ -121,14 +120,16 @@ impl<'a, P: Predicate> Translator<'a, P> {
     }
 
     /// Lowers `program` into the query engine's IR.
-    pub(super) fn run(
-        mut self,
-        program: &'a ExecutionOrder<'a, P>,
-    ) -> Result<Prepared, SyntaxError> {
-        for component in program.iter() {
-            self.component(component)?;
-        }
-        Ok(Prepared(self.ir))
+    ///
+    /// Infallible: the execution order is only handed out by a
+    /// [verified](super::Analysis::verify) analysis, which rejects every
+    /// program this could not translate. What this relies on is asserted
+    /// where it is relied on.
+    pub(super) fn run(mut self, program: &'a ExecutionOrder<'a, P>) -> Prepared {
+        program
+            .iter()
+            .for_each(|component| self.component(component));
+        Prepared(self.ir)
     }
 
     /// Emits one component. Each member's rules are split into its base rules,
@@ -138,7 +139,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// then the statement binding the predicate to the union of them. A
     /// recursive one iterates all of its members to their joint fixed point
     /// instead, see [`Self::fixed_point`].
-    fn component(&mut self, component: &'a PredicateComponent<'a, P>) -> Result<(), SyntaxError> {
+    fn component(&mut self, component: &'a PredicateComponent<'a, P>) {
         // A component's members are in scope for its own rules: inside the
         // fixed point, each name reads the accumulator bound under it.
         self.predicates
@@ -147,7 +148,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
         if component.is_edb_component().is_some() {
             // An EDB predicate needs no translation but only the registration
             // above in `self.predicates`.
-            return Ok(());
+            return;
         }
 
         // Named and split in one pass, so that the names stay aligned with the
@@ -174,26 +175,23 @@ impl<'a, P: Predicate> Translator<'a, P> {
             })
             .collect();
 
-        if members.iter().all(|member| member.base.is_empty()) {
-            return Err(SyntaxError::new(
-                "no base case: every rule reads the component the predicate is part of, \
-                 so nothing ever seeds the iteration",
-            )
-            .within(component_frame(&members)));
-        }
+        debug_assert!(
+            members.iter().any(|member| !member.base.is_empty()),
+            "verification rejects a component without a base case"
+        );
 
         if members.iter().all(|member| member.rec.is_empty()) {
             // Only a single predicate can read no member of its own component.
             let [member] = members.as_slice() else {
                 unreachable!("a component of several predicates is recursive");
             };
-            let (relation, stmts) = self.rules(member.predicate, &member.base)?;
+            let (relation, stmts) = self.rules(member.predicate, &member.base);
             self.ir.extend(stmts);
             self.bind(member.predicate, relation);
-            return Ok(());
+            return;
         }
 
-        self.fixed_point(&members, &mut names)
+        self.fixed_point(&members, &mut names);
     }
 
     /// Emits a recursive component as one fixed point with an accumulator per
@@ -207,25 +205,21 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// tuple of each member's union of them. The fixed point evaluates to a
     /// tuple of each member's final relation in turn, which is bound to a
     /// variable of its own, so that each member can be bound under its name.
-    fn fixed_point(
-        &mut self,
-        members: &[MemberRules<'a, P>],
-        names: &mut Names,
-    ) -> Result<(), SyntaxError> {
+    fn fixed_point(&mut self, members: &[MemberRules<'a, P>], names: &mut Names) {
         let accumulators = members
             .iter()
             .map(|member| {
                 let seed = match member.base.is_empty() {
                     true => Expr::from(ConstantExpr::empty(table_schema(member.predicate))),
                     false => {
-                        let (relation, stmts) = self.rules(member.predicate, &member.base)?;
+                        let (relation, stmts) = self.rules(member.predicate, &member.base);
                         self.ir.extend(stmts);
                         relation
                     }
                 };
-                Ok((member.predicate.id().to_string(), seed))
+                (member.predicate.id().to_string(), seed)
             })
-            .collect::<Result<Vec<_>, SyntaxError>>()?;
+            .collect();
 
         let (steps, step_stmts): (Vec<Expr>, Vec<Vec<Stmt>>) = members
             .iter()
@@ -239,8 +233,6 @@ impl<'a, P: Predicate> Translator<'a, P> {
                 );
                 self.rules(member.predicate, &member.rec)
             })
-            .collect::<Result<Vec<_>, SyntaxError>>()?
-            .into_iter()
             .unzip();
         let mut step_stmts: Vec<Stmt> = step_stmts.into_iter().flatten().collect();
         // The step block evaluates to its last expression, which holds the
@@ -268,7 +260,6 @@ impl<'a, P: Predicate> Translator<'a, P> {
             });
             self.bind(member.predicate, relation);
         });
-        Ok(())
     }
 
     /// Binds `predicate` to `relation` under its own name, which is how the
@@ -293,25 +284,14 @@ impl<'a, P: Predicate> Translator<'a, P> {
     ///
     /// The union is what the predicate evaluates to; the statements have to be
     /// emitted ahead of it, since it references them by name.
-    fn rules(
-        &self,
-        predicate: &P,
-        rules: &[(String, &P::Rule)],
-    ) -> Result<(Expr, Vec<Stmt>), SyntaxError> {
+    fn rules(&self, predicate: &P, rules: &[(String, &P::Rule)]) -> (Expr, Vec<Stmt>) {
         let mut relations: Vec<Expr> = Vec::with_capacity(rules.len());
         let mut stmts: Vec<Stmt> = Vec::with_capacity(rules.len());
         for (name, rule) in rules {
-            // The one place that knows both, so everything below reports only
-            // what it knows itself.
-            let initializer = self.rule(predicate, rule).map_err(|error| {
-                error
-                    .within(rule_frame(*rule))
-                    .within(predicate_frame(predicate))
-            })?;
             relations.push(Expr::from(VarExpr::new(name.clone())));
             stmts.push(Stmt::from(VarStmt {
                 name: name.clone(),
-                initializer: Some(initializer),
+                initializer: Some(self.rule(predicate, rule)),
             }));
         }
         let combined = match relations.len() {
@@ -319,13 +299,13 @@ impl<'a, P: Predicate> Translator<'a, P> {
             1 => relations.pop().expect("length checked"),
             _ => Expr::from(UnionExpr { relations }),
         };
-        Ok((combined, stmts))
+        (combined, stmts)
     }
 
     /// One rule: its body as a conjunctive query, projected onto the columns
     /// its predicate declares.
-    fn rule(&self, predicate: &P, rule: &P::Rule) -> Result<Expr, SyntaxError> {
-        let relation = self.conjunctive_query(rule)?;
+    fn rule(&self, predicate: &P, rule: &P::Rule) -> Expr {
+        let relation = self.conjunctive_query(rule);
 
         // Verification ensured that the head is dense over its predicate's
         // columns: every column filled, and none of them twice (but not
@@ -343,10 +323,10 @@ impl<'a, P: Predicate> Translator<'a, P> {
             })
             .collect();
 
-        Ok(Expr::from(ProjectionExpr {
+        Expr::from(ProjectionExpr {
             relation,
             attributes,
-        }))
+        })
     }
 
     /// Translates a rule's body. First, [Self::conjunctive_fragment] joins
@@ -359,23 +339,20 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// One antijoin per negated atom is what makes `!r(x), !s(x)` mean
     /// `¬r ∧ ¬s`, as in Datalog. Joining the negated atoms and antijoining once
     /// would compute `¬(r ∧ s)` instead.
-    pub fn conjunctive_query(&self, rule: &P::Rule) -> Result<Expr, SyntaxError> {
-        let conjunctive = self.conjunctive_fragment(rule.positive_atoms())?;
-        let conjunctive = rule
-            .negated_atoms()
-            .try_fold(conjunctive, |acc, negated_atom| {
-                let negated_atom = self.atom(negated_atom)?;
-                Ok(Expr::from(AntiJoinExpr {
-                    on: antijoin_variables(&negated_atom.variables),
-                    left: acc,
-                    right: negated_atom.relation,
-                }))
-            })?;
+    fn conjunctive_query(&self, rule: &P::Rule) -> Expr {
+        let conjunctive = self.conjunctive_fragment(rule.positive_atoms());
+        let conjunctive = rule.negated_atoms().fold(conjunctive, |acc, negated_atom| {
+            let negated_atom = self.atom(negated_atom);
+            Expr::from(AntiJoinExpr {
+                on: antijoin_variables(&negated_atom.variables),
+                left: acc,
+                right: negated_atom.relation,
+            })
+        });
 
         // All conditions become one condition by ANDing them, and a rule with
         // none keeps `conjunctive` unwrapped rather than gaining a vacuous selection.
-        Ok(rule
-            .conditions()
+        rule.conditions()
             .map(condition)
             .reduce(|left, right| {
                 Expr::from(BinaryExpr {
@@ -390,7 +367,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
                     relation,
                     condition,
                 })
-            }))
+            })
     }
 
     /// A conjunctive fragment joins `atoms` on the variables they share. A
@@ -403,32 +380,34 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// [Static program verification](mod@super::analysis) guarantees that such
     /// a rule does not contain a variable, as otherwise the range restriction
     /// or negation safety would not hold.
-    fn conjunctive_fragment<'r>(
-        &self,
-        atoms: impl IntoIterator<Item = &'r AtomOf<P>>,
-    ) -> Result<Expr, SyntaxError>
+    fn conjunctive_fragment<'r>(&self, atoms: impl IntoIterator<Item = &'r AtomOf<P>>) -> Expr
     where
         AtomOf<P>: 'r,
     {
-        let plans = atoms
-            .into_iter()
-            .map(|atom| self.atom(atom))
-            .collect::<Result<Vec<_>, SyntaxError>>()?;
+        let plans: Vec<_> = atoms.into_iter().map(|atom| self.atom(atom)).collect();
 
         let on = join_variables(&plans);
         let mut relations: Vec<Expr> = plans.into_iter().map(|plan| plan.relation).collect();
-        Ok(match relations.len() {
+        match relations.len() {
             0 => Expr::from(ConstantExpr::unit()),
             // A single atom has nothing to join against, and the join operators
             // require at least two relations.
             1 => relations.pop().expect("length checked"),
-            _ => Expr::from(MultiWayEquiJoinExpr::new(relations, on, None)?),
-        })
+            // Well-formed by construction: there are two relations or more,
+            // `join_variables` keeps a variable only if two of them bind it,
+            // indexes them by their position among `plans`, and groups each
+            // variable's occurrences under one entry, of which an atom
+            // contributes at most one (see `AtomBinder::bind`).
+            _ => Expr::from(
+                MultiWayEquiJoinExpr::new(relations, on, None)
+                    .expect("join variables are well-formed by construction"),
+            ),
+        }
     }
 
     /// One atom: the relation it names, filtered by what it pins down locally
     /// and projected onto the variables it brings into scope.
-    fn atom<'r>(&self, atom: &'r AtomOf<P>) -> Result<AtomPlan<'r, VarIdOf<P>>, SyntaxError> {
+    fn atom<'r>(&self, atom: &'r AtomOf<P>) -> AtomPlan<'r, VarIdOf<P>> {
         let name = atom.id();
         // The IDB is consulted first: a predicate shadows a base relation of
         // the same name. A derived relation is bound to a host variable rather
@@ -480,13 +459,13 @@ impl<'a, P: Predicate> Translator<'a, P> {
                 })
             });
 
-        Ok(AtomPlan {
+        AtomPlan {
             relation: Expr::from(ProjectionExpr {
                 relation: filtered,
                 attributes: binder.attributes,
             }),
             variables: binder.variables,
-        })
+        }
     }
 }
 
@@ -632,32 +611,6 @@ fn table_schema<P: Predicate>(predicate: &P) -> TableSchema {
     )
 }
 
-fn predicate_frame<P: Predicate>(predicate: &P) -> Frame {
-    Frame::Predicate {
-        name: predicate.id().to_string(),
-    }
-}
-
-/// A component of a single predicate is reported as that predicate.
-fn component_frame<P: Predicate>(members: &[MemberRules<'_, P>]) -> Frame {
-    match members {
-        [member] => predicate_frame(member.predicate),
-        _ => Frame::Component {
-            members: members
-                .iter()
-                .map(|member| member.predicate.id().to_string())
-                .collect(),
-        },
-    }
-}
-
-fn rule_frame<R: Rule>(rule: &R) -> Frame {
-    Frame::Rule {
-        name: rule.id().to_string(),
-        text: Some(rule.display().to_string()),
-    }
-}
-
 /// Hands out an IR variable name per rule, unique within the predicate.
 #[derive(Default)]
 struct Names {
@@ -695,7 +648,6 @@ impl Names {
 mod tests {
     use super::super::{LogicalProgram, RulePredicate, test_utils::*};
     use crate::{
-        error::Frame,
         host::{
             QueryIr,
             expr::{Expr, Literal},
@@ -704,35 +656,6 @@ mod tests {
         },
         relational::expr::{FixedPointIterExpr, RelExpr, RelKind},
     };
-
-    #[test]
-    fn an_error_names_the_predicate_it_was_raised_within() {
-        // `p` only ever reads itself. That is valid Datalog, `p` is merely
-        // empty, so only translation notices that nothing seeds its fixed
-        // point.
-        let predicates =
-            RulePredicate::group([declare("p", &["x"])], [rule("r0", "p(x)", &["p(x)"])])
-                .expect("every definand names a declared predicate");
-        let program = program(predicates);
-        let error = program
-            .prepare(program.verify().expect("the program is valid"))
-            .expect_err("`p` has no base case");
-
-        let message = "no base case: every rule reads the component the predicate is \
-                       part of, so nothing ever seeds the iteration";
-        assert_eq!(error.message(), message);
-        assert_eq!(
-            error.context().collect::<Vec<_>>(),
-            [&Frame::Predicate {
-                name: "p".to_string()
-            }]
-        );
-        assert_eq!(error.to_string(), format!("in predicate 'p': {message}"));
-        assert_eq!(
-            format!("{error:#}"),
-            format!("{message}\n  in predicate 'p'")
-        );
-    }
 
     #[test]
     fn an_empty_antecedent_antijoins_from_the_unit_relation() {
@@ -748,9 +671,7 @@ mod tests {
         )
         .expect("every definand names a declared predicate");
         let program = program(predicates);
-        let ir = program
-            .prepare(program.verify().expect("the program is valid"))
-            .expect("a rule with an empty antecedent translates");
+        let ir = program.prepare(program.verify().expect("the program is valid"));
 
         let antijoin = pre_order(&ir)
             .filter_map(Node::as_rel)
@@ -781,10 +702,8 @@ mod tests {
         )
         .expect("every definand names a declared predicate");
         let program = program(predicates);
-        let execution_order = program.verify().expect("the program is stratifiable");
-        if let Err(error) = program.prepare(execution_order) {
-            panic!("a self-recursive predicate translates:\n{error:#}");
-        }
+        // Translating panics if the atom does not find the predicate.
+        program.prepare(program.verify().expect("the program is stratifiable"));
     }
 
     #[test]
@@ -805,9 +724,7 @@ mod tests {
         )
         .expect("every definand names a declared predicate");
         let program = program(predicates);
-        let ir = program
-            .prepare(program.verify().expect("the program is stratifiable"))
-            .expect("a self-recursive predicate translates");
+        let ir = program.prepare(program.verify().expect("the program is stratifiable"));
 
         let fixed_point = pre_order(&ir)
             .filter_map(Node::as_rel)
@@ -883,9 +800,7 @@ mod tests {
     #[test]
     fn mutually_recursive_predicates_iterate_in_one_fixed_point() {
         let program = program(red_blue(true));
-        let ir = program
-            .prepare(program.verify().expect("the program is stratifiable"))
-            .expect("mutually recursive predicates translate");
+        let ir = program.prepare(program.verify().expect("the program is stratifiable"));
 
         let fixed_point = sole_fixed_point(&ir);
         let accumulators: Vec<&str> = fixed_point
@@ -937,9 +852,11 @@ mod tests {
     fn a_member_without_a_base_case_starts_out_empty() {
         // Only `red` has a base rule; `blue` is derived from `red` alone.
         let program = program(red_blue(false));
-        let ir = program
-            .prepare(program.verify().expect("the program is stratifiable"))
-            .expect("a component needs a base case in one member only");
+        let ir = program.prepare(
+            program
+                .verify()
+                .expect("a component needs a base case in one member only"),
+        );
 
         let fixed_point = sole_fixed_point(&ir);
         let [(_, red), (blue_name, blue)] = fixed_point.accumulators.as_slice() else {
@@ -959,36 +876,6 @@ mod tests {
     }
 
     #[test]
-    fn a_component_without_any_base_case_names_all_of_its_members() {
-        let predicates = RulePredicate::group(
-            ["edge", "p", "q"].map(|name| declare(name, &["x"])),
-            [
-                rule("e0", "edge(x)", &[]),
-                rule("p0", "p(x)", &["q(x)", "edge(x)"]),
-                rule("q0", "q(x)", &["p(x)"]),
-            ],
-        )
-        .expect("every definand names a declared predicate");
-        let program = program(predicates);
-        let error = program
-            .prepare(program.verify().expect("the program is valid"))
-            .expect_err("neither `p` nor `q` has a base case");
-
-        assert_eq!(
-            error.context().collect::<Vec<_>>(),
-            [&Frame::Component {
-                members: vec!["p".to_string(), "q".to_string()]
-            }]
-        );
-        assert!(
-            error
-                .to_string()
-                .starts_with("in component {'p', 'q'}: no base case"),
-            "{error}"
-        );
-    }
-
-    #[test]
     fn each_negated_atom_is_antijoined_on_its_own() {
         // `!r(x), !s(x)` is `¬r ∧ ¬s`, so two antijoins. Joining the negated
         // atoms first and antijoining once would compute `¬(r ∧ s)` instead.
@@ -1003,9 +890,7 @@ mod tests {
         )
         .expect("every definand names a declared predicate");
         let program = program(predicates);
-        let ir = program
-            .prepare(program.verify().expect("the program is stratifiable"))
-            .expect("a rule with negated atoms translates");
+        let ir = program.prepare(program.verify().expect("the program is stratifiable"));
 
         let antijoins = pre_order(&ir)
             .filter_map(Node::as_rel)
@@ -1034,9 +919,6 @@ mod tests {
         )
         .expect("every definand names a declared predicate");
         let program = program(predicates);
-        if let Err(error) = program.prepare(program.verify().expect("the program is stratifiable"))
-        {
-            panic!("a nullary negated atom translates:\n{error:#}");
-        }
+        program.prepare(program.verify().expect("the program is stratifiable"));
     }
 }

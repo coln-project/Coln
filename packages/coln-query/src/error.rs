@@ -100,12 +100,6 @@ pub enum Frame {
     Predicate {
         name: String,
     },
-    /// Mutually recursive predicates, which are evaluated together and hence
-    /// can only be reported on together.
-    Component {
-        /// The names of the component's predicates.
-        members: Vec<String>,
-    },
     Rule {
         name: String,
         /// The rule in Datalog notation, shown by `{:#}` only. Absent when the
@@ -119,10 +113,6 @@ impl fmt::Display for Frame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Frame::Predicate { name } => write!(f, "in predicate '{name}'"),
-            Frame::Component { members } => {
-                let members: Vec<String> = members.iter().map(|name| format!("'{name}'")).collect();
-                write!(f, "in component {{{}}}", members.join(", "))
-            }
             Frame::Rule { name, text } => match (f.alternate(), text) {
                 (true, Some(text)) => write!(f, "in rule '{name}': {text}"),
                 _ => write!(f, "in rule '{name}'"),
@@ -276,5 +266,49 @@ impl From<DbspError> for RuntimeError {
         Self {
             message: value.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_syntax_error_renders_the_frames_it_was_raised_within() {
+        // Frames are added innermost first, on the way up, as the translator
+        // does: the rule first, then the predicate it belongs to.
+        let message = "something is off";
+        let error = SyntaxError::new(message)
+            .within(Frame::Rule {
+                name: "r0".to_string(),
+                text: Some("p(x) :- q(x).".to_string()),
+            })
+            .within(Frame::Predicate {
+                name: "p".to_string(),
+            });
+
+        assert_eq!(error.message(), message);
+        assert_eq!(
+            error.context().collect::<Vec<_>>(),
+            [
+                &Frame::Predicate {
+                    name: "p".to_string()
+                },
+                &Frame::Rule {
+                    name: "r0".to_string(),
+                    text: Some("p(x) :- q(x).".to_string()),
+                },
+            ]
+        );
+        // One line, outermost first, without the rule's text.
+        assert_eq!(
+            error.to_string(),
+            format!("in predicate 'p': in rule 'r0': {message}")
+        );
+        // The message first, then each frame in full, like a backtrace.
+        assert_eq!(
+            format!("{error:#}"),
+            format!("{message}\n  in rule 'r0': p(x) :- q(x).\n  in predicate 'p'")
+        );
     }
 }

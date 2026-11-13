@@ -650,10 +650,10 @@ mod test {
         let error = ColnQuery::init(&flir::AnalysisRealm::load())
             .expect_err("a component without a base case is rejected");
         let error = format!("{error:#}");
-        assert!(error.contains("no base case"), "{error}");
         assert!(
             error.contains(
-                "in component {'init.analysis.points-to', 'init.analysis.points-to-field'}"
+                "component {'init.analysis.points-to', 'init.analysis.points-to-field'} \
+                 has no base case"
             ),
             "{error}"
         );

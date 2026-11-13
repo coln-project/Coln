@@ -16,7 +16,6 @@ pub use translation::Prepared;
 pub use visualize::Columns;
 
 use crate::{
-    error::SyntaxError,
     frontend::{
         analysis::{Analysis, ExecutionOrder, Rejected, Verified, analyze},
         display::{
@@ -96,10 +95,10 @@ pub trait LogicalProgram {
     /// the [`Prepared`] code it returns is known to stem from a valid program.
     /// Consumes the `analysis`, so its graphs only live until the program is
     /// translated.
-    fn prepare<'a>(
-        &'a self,
-        analysis: Analysis<'a, Self::Predicate, Verified>,
-    ) -> Result<Prepared, SyntaxError> {
+    ///
+    /// Infallible, as verification rejects everything translation could not
+    /// handle.
+    fn prepare<'a>(&'a self, analysis: Analysis<'a, Self::Predicate, Verified>) -> Prepared {
         let outputs = self
             .predicates()
             .filter(|predicate| self.is_output(predicate))

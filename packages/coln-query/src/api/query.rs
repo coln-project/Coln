@@ -195,8 +195,8 @@ impl FlirProgram {
     /// [translation](LogicalProgram::prepare), then [`new`](Self::new).
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
         let logical = FlirLogicalProgram::from_flat_realm(flat_realm)?;
-        let analysis = logical.verify().map_err(|rejected| rejected.error)?;
-        let code = logical.prepare(analysis)?;
+        let verified = logical.verify().map_err(|rejected| rejected.error)?;
+        let code = logical.prepare(verified);
         Ok(Self::new(logical, code))
     }
 
@@ -1123,9 +1123,7 @@ mod tests {
                 rejected.error
             )
         });
-        let code = logical
-            .prepare(verified)
-            .unwrap_or_else(|err| panic!("{file_name} cannot be translated into query ir: {err}"));
+        let code = logical.prepare(verified);
         let program = FlirProgram::new(logical, code);
         dump.write("query.plan", program.to_tree());
         program
