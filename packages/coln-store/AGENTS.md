@@ -48,14 +48,14 @@ Quick examples:
   - `src/table/`: column storage, row ids, cell values, and table validation.
   - `src/store/`: table registry, theory loading, law compilation, commit
     application, whole-store law checks, and store error types.
+    - `src/store/txn/`: `ReadTxn`, `WriteTxn`, pending transaction data,
+      timestamps, and the `StoreRead`/`StoreWrite` traits.
   - `src/commit/`: commit payloads, chunk framing, commit graph state, hashes,
     authorship metadata, prefix search trees, and encoding helpers.
     - `src/commit/wire/`: commit and root payload encoding and decoding.
   - `src/repl/`: REPL parsing, execution, summaries, and errors.
   - `src/rowing/`: id canonicalisation logic
   - `src/pack/`: Dictionary encoding of ids
-  - `src/txn/`: transaction state, operation types, timestamps, and the
-    user-facing transaction API.
   - `examples/`: example Coln theory files.
   - `tests/`: crate-level integration tests and fixture data.
   - `docs/`: contains some design docs for coln-store.

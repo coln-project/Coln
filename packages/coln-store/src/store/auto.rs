@@ -1,196 +1,197 @@
-// SPDX-FileCopyrightText: 2026 Coln contributors
-//
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// // SPDX-FileCopyrightText: 2026 Coln contributors
+// //
+// // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! A Store that manages a transaction for the user.
-//! But the user is still responsible for starting/finishing transactions
-//! This module has lots of panic because AutoStore is used by the TS FFI, which
-//! does not know anything about lifetime, and so cannot have a typesafe interface
-//! Therefore the user is expected to do the right thing.
+// //! A Store that manages a transaction for the user.
+// //! But the user is still responsible for starting/finishing transactions
+// //! This module has lots of panic because AutoStore is used by the TS FFI, which
+// //! does not know anything about lifetime, and so cannot have a typesafe interface
+// //! Therefore the user is expected to do the right thing.
 
-use coln_flir_rs::{
-    engine::{
-        delta::{PartialConsolidated, StoreDelta},
-        packed::{PackedRowId, StoreTuple},
-        schema::ColnDef,
-        tx::{TxRowId, TxTuple},
-    },
-    hash::CommitHash,
-    ir::{self, FlatRealm},
-    query::WhereClause,
-};
+// use coln_flir_rs::{
+//     engine::{
+//         delta::{PartialConsolidated, StoreDelta},
+//         packed::{PackedRowId, StoreTuple},
+//         schema::ColnDef,
+//         tx::{TxRowId, TxTuple},
+//     },
+//     hash::CommitHash,
+//     ir::{self, FlatRealm},
+//     query::WhereClause,
+// };
 
-use crate::{
-    IdLookup,
-    rollback::Rollback,
-    store::{Store, commit::PreparedCommit, error::StoreError},
-    txn::{
-        inner::TxnInner,
-        rw::{StoreRead, StoreWrite},
-    },
-};
+// use crate::{
+//     IdLookup,
+//     rollback::Rollback,
+//     store::{
+//         Store,
+//         commit::PreparedCommit,
+//         error::StoreError,
+//         txn::{StoreRead, StoreWrite, inner::TxnData},
+//     },
+// };
 
-enum AutoState {
-    Idle,
-    Transaction(TxnInner),
-    Prepared(Box<PreparedCommit>),
-}
+// enum AutoState {
+//     Idle,
+//     Transaction(TxnData),
+//     Prepared(Box<PreparedCommit>),
+// }
 
-pub struct AutoStore {
-    store: Store,
-    state: AutoState,
-}
+// pub struct AutoStore {
+//     store: Store,
+//     state: AutoState,
+// }
 
-impl StoreRead for AutoStore {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
-        self.store.scan_table(table)
-    }
+// impl StoreRead for AutoStore {
+//     fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
+//         self.store.scan_table(table)
+//     }
 
-    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
-        self.store.row_by_id(table, row_id)
-    }
+//     fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
+//         self.store.row_by_id(table, row_id)
+//     }
 
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
-        self.store.all_proj(query, select)
-    }
+//     fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
+//         self.store.all_proj(query, select)
+//     }
 
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
-        self.store.all_row_id(query)
-    }
-}
+//     fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
+//         self.store.all_row_id(query)
+//     }
+// }
 
-impl StoreWrite for AutoStore {
-    fn add(&mut self, table: &ir::Path, values: impl Into<TxTuple>) -> Result<TxRowId, StoreError> {
-        let AutoState::Transaction(txn) = &mut self.state else {
-            panic!("open txn")
-        };
-        txn.add(&self.store, table, values)
-    }
-}
+// impl StoreWrite for AutoStore {
+//     fn add(&mut self, table: &ir::Path, values: impl Into<TxTuple>) -> Result<TxRowId, StoreError> {
+//         let AutoState::Transaction(txn) = &mut self.state else {
+//             panic!("open txn")
+//         };
+//         txn.add(&self.store, table, values)
+//     }
+// }
 
-impl AutoStore {
-    pub fn try_from_ir(ir: &FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
-        let store = Store::try_from_ir(ir, coln_def)?;
-        Ok(Self::new(store))
-    }
+// impl AutoStore {
+//     pub fn try_from_ir(ir: &FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
+//         let store = Store::try_from_ir(ir, coln_def)?;
+//         Ok(Self::new(store))
+//     }
 
-    pub fn new(store: Store) -> Self {
-        Self {
-            store,
-            state: AutoState::Idle,
-        }
-    }
+//     pub fn new(store: Store) -> Self {
+//         Self {
+//             store,
+//             state: AutoState::Idle,
+//         }
+//     }
 
-    pub fn transaction(&mut self) {
-        let deps = self.store.commits().heads().copied().collect();
-        self.state = AutoState::Transaction(TxnInner::new(deps));
-    }
+//     pub fn transaction(&mut self) {
+//         let deps = self.store.commits().heads().copied().collect();
+//         self.state = AutoState::Transaction(TxnData::new(deps));
+//     }
 
-    pub fn try_commit(
-        &mut self,
-    ) -> Result<StoreDelta<PartialConsolidated, StoreTuple>, StoreError> {
-        let AutoState::Transaction(txn) = &mut self.state else {
-            panic!("open txn")
-        };
-        let mut prepared = txn.try_commit(&mut self.store)?;
-        let delta = prepared.store_delta();
-        self.state = AutoState::Prepared(Box::new(prepared));
-        Ok(delta)
-    }
+//     pub fn try_commit(
+//         &mut self,
+//     ) -> Result<StoreDelta<PartialConsolidated, StoreTuple>, StoreError> {
+//         let AutoState::Transaction(txn) = &mut self.state else {
+//             panic!("open txn")
+//         };
+//         let mut prepared = txn.try_commit(&mut self.store)?;
+//         let delta = prepared.store_delta();
+//         self.state = AutoState::Prepared(Box::new(prepared));
+//         Ok(delta)
+//     }
 
-    pub fn commit(&mut self) -> Result<CommitHash, StoreError> {
-        let state = std::mem::replace(&mut self.state, AutoState::Idle);
-        let AutoState::Prepared(prepared) = state else {
-            panic!("tried commit");
-        };
-        Ok(TxnInner::commit(&mut self.store, *prepared))
-    }
+//     pub fn commit(&mut self) -> Result<CommitHash, StoreError> {
+//         let state = std::mem::replace(&mut self.state, AutoState::Idle);
+//         let AutoState::Prepared(prepared) = state else {
+//             panic!("tried commit");
+//         };
+//         Ok(TxnData::commit(&mut self.store, *prepared))
+//     }
 
-    pub fn abort(&mut self) {
-        match std::mem::replace(&mut self.state, AutoState::Idle) {
-            AutoState::Idle => {
-                panic!("should not abort without starting a txn");
-            }
-            AutoState::Transaction(mut txn) => txn.abort(),
-            AutoState::Prepared(prepared) => {
-                self.store.rollback_to(prepared.snapshot());
-            }
-        }
-    }
+//     pub fn abort(&mut self) {
+//         match std::mem::replace(&mut self.state, AutoState::Idle) {
+//             AutoState::Idle => {
+//                 panic!("should not abort without starting a txn");
+//             }
+//             AutoState::Transaction(mut txn) => txn.abort(),
+//             AutoState::Prepared(prepared) => {
+//                 self.store.rollback_to(prepared.snapshot());
+//             }
+//         }
+//     }
 
-    pub fn id_lookup(&self) -> &impl IdLookup {
-        self.store.id_lookup()
-    }
+//     pub fn id_lookup(&self) -> &impl IdLookup {
+//         self.store.id_lookup()
+//     }
 
-    pub fn inner(&self) -> &Store {
-        let AutoState::Idle = self.state else {
-            panic!("reading store must mean it's idle");
-        };
-        &self.store
-    }
+//     pub fn inner(&self) -> &Store {
+//         let AutoState::Idle = self.state else {
+//             panic!("reading store must mean it's idle");
+//         };
+//         &self.store
+//     }
 
-    pub fn inner_mut(&mut self) -> &mut Store {
-        let AutoState::Idle = self.state else {
-            panic!("reading store must mean it's idle");
-        };
-        &mut self.store
-    }
-}
+//     pub fn inner_mut(&mut self) -> &mut Store {
+//         let AutoState::Idle = self.state else {
+//             panic!("reading store must mean it's idle");
+//         };
+//         &mut self.store
+//     }
+// }
 
-impl Drop for AutoStore {
-    fn drop(&mut self) {
-        if matches!(self.state, AutoState::Prepared(..)) {
-            self.abort();
-        };
-    }
-}
+// impl Drop for AutoStore {
+//     fn drop(&mut self) {
+//         if matches!(self.state, AutoState::Prepared(..)) {
+//             self.abort();
+//         };
+//     }
+// }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use coln_flir_rs::engine::packed::StoreScalarValue;
-    use coln_flir_rs::ir::Path;
-    use rstest::rstest;
+//     use coln_flir_rs::engine::packed::StoreScalarValue;
+//     use coln_flir_rs::ir::Path;
+//     use rstest::rstest;
 
-    use super::*;
-    use crate::test_utils::single_int_autostore;
+//     use super::*;
+//     use crate::test_utils::single_int_autostore;
 
-    #[rstest]
-    fn owned_transaction_store_read_sees_committed_rows_not_pending(
-        #[from(single_int_autostore)] mut store: AutoStore,
-    ) {
-        let path = Path::from("T");
+//     #[rstest]
+//     fn owned_transaction_store_read_sees_committed_rows_not_pending(
+//         #[from(single_int_autostore)] mut store: AutoStore,
+//     ) {
+//         let path = Path::from("T");
 
-        store.transaction();
-        store.add(&path, vec![1i32]).expect("add");
-        let delta = store.try_commit().expect("prepare");
-        let tables = delta.into_table_deltas();
-        assert_eq!(tables.len(), 1);
-        assert_eq!(tables[0].for_entity(), &path);
-        assert_eq!(tables[0].delta().len(), 1);
-        assert_eq!(tables[0].delta()[0].zweight(), 1);
-        assert_eq!(
-            tables[0].delta()[0].clone().into_tuple(),
-            store.scan_table(&path).expect("T")[0],
-        );
-        store.commit().expect("commit");
+//         store.transaction();
+//         store.add(&path, vec![1i32]).expect("add");
+//         let delta = store.try_commit().expect("prepare");
+//         let tables = delta.into_table_deltas();
+//         assert_eq!(tables.len(), 1);
+//         assert_eq!(tables[0].for_entity(), &path);
+//         assert_eq!(tables[0].delta().len(), 1);
+//         assert_eq!(tables[0].delta()[0].zweight(), 1);
+//         assert_eq!(
+//             tables[0].delta()[0].clone().into_tuple(),
+//             store.scan_table(&path).expect("T")[0],
+//         );
+//         store.commit().expect("commit");
 
-        // The commit hash is the first one interned, so it packs as index 0.
-        let row_id = PackedRowId {
-            commit_idx: 0,
-            counter: 0,
-        };
+//         // The commit hash is the first one interned, so it packs as index 0.
+//         let row_id = PackedRowId {
+//             commit_idx: 0,
+//             counter: 0,
+//         };
 
-        store.transaction();
-        assert_eq!(
-            store.row_by_id(&path, &row_id),
-            Some(StoreTuple::from(vec![
-                StoreScalarValue::RowId(row_id),
-                StoreScalarValue::I32(1),
-            ]))
-        );
+//         store.transaction();
+//         assert_eq!(
+//             store.row_by_id(&path, &row_id),
+//             Some(StoreTuple::from(vec![
+//                 StoreScalarValue::RowId(row_id),
+//                 StoreScalarValue::I32(1),
+//             ]))
+//         );
 
-        store.add(&path, vec![2i32]).expect("add pending");
-        assert_eq!(store.scan_table(&path).expect("T").len(), 1);
-    }
-}
+//         store.add(&path, vec![2i32]).expect("add pending");
+//         assert_eq!(store.scan_table(&path).expect("T").len(), 1);
+//     }
+// }

@@ -17,7 +17,7 @@ pub enum Chunk {
 impl Chunk {
     pub(crate) fn from_frame<'s, F>(frame: Frame, table_meta_for: F) -> Result<Self, CodecError>
     where
-        F: Fn(&Path) -> Option<TableMeta<'s>>,
+        F: Fn(&Path) -> Option<&'s TableMeta>,
     {
         let (header, bytes) = frame.into_parts();
         match header.chunk_type {

@@ -3,106 +3,41 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 pub mod auto;
+mod catalog;
 pub mod commit;
+mod data;
 pub mod error;
 mod persist;
 mod rebuild;
+pub mod txn;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use coln_flir_rs::engine::delta::{Consolidated, StoreDelta};
-use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 use coln_flir_rs::engine::schema::ColnDef;
-use coln_flir_rs::engine::tx::TxRowId;
-use coln_flir_rs::hash::CommitHash;
-use coln_flir_rs::public::PublicRowId;
-use coln_flir_rs::query::WhereClause;
+use parking_lot::RwLock;
 use tracing::info;
 
+use crate::commit::chunk::Chunk;
 use crate::commit::error::CodecError;
+use crate::commit::frame::Frame;
 use crate::commit::graph::CommitGraph;
 use crate::commit::wire::RootCommitData;
 use crate::commit::{DataCommit, RootCommit};
 use crate::ir::{self, FlatRealm};
+use crate::pack::IdPacker;
 pub use crate::pack::id_packer::IdLookup;
-use crate::pack::{IdPacker, IdPackerSnapshot};
-use crate::rollback::Rollback;
-use crate::rowing::{self, RowingSnapshot};
-use crate::store::auto::AutoStore;
+use crate::rowing::Rowing;
+use crate::store::catalog::Catalog;
+use crate::store::data::StoreData;
 use crate::store::error::StoreError;
-use crate::table::{Table, TableHandle, TableOid, TableSnapshot, ValidationError};
-use crate::txn::rw::StoreRead;
-use crate::txn::{ReadOnly, ReadWrite, Transaction};
+pub use crate::store::txn::{ReadTxn, WriteTxn};
+use crate::table::{Table, TableMeta, TableOid};
 
 #[derive(Debug)]
 pub struct Store {
-    path_to_oid: HashMap<ir::Path, TableOid>,
-    /// Oids are dense and tables are never dropped, so the next oid is `tables.len()`.
-    tables: HashMap<TableOid, Table>,
-    id_packer: IdPacker,
-    /// Source rule entries retained for persistence. Compiled form lives in `rules`.
-    ir: FlatRealm,
-    commits: CommitGraph,
-    rowing: rowing::Rowing,
-    // buffered commits not ready to be applied to the store due to missing deps
-    pending_commits: Vec<DataCommit>,
-}
-
-pub(crate) struct StoreSnapshot {
-    tables: Vec<(TableOid, TableSnapshot)>,
-    id_packer: IdPackerSnapshot,
-    rowing: RowingSnapshot,
-}
-
-impl Rollback for Store {
-    type Snapshot = StoreSnapshot;
-
-    fn snapshot(&mut self) -> Self::Snapshot {
-        let tables = self
-            .tables
-            .iter_mut()
-            .map(|(&oid, table)| (oid, table.snapshot()))
-            .collect();
-        let id_packer = self.id_packer.snapshot();
-        let rowing = self.rowing.snapshot();
-        StoreSnapshot {
-            tables,
-            id_packer,
-            rowing,
-        }
-    }
-
-    fn commit(&mut self, snapshot: Self::Snapshot) {
-        let StoreSnapshot {
-            tables,
-            id_packer,
-            rowing,
-        } = snapshot;
-        for (oid, snapshot) in tables {
-            self.tables
-                .get_mut(&oid)
-                .expect("snapshotted table should still exist")
-                .commit(snapshot);
-        }
-        self.id_packer.commit(id_packer);
-        self.rowing.commit(rowing);
-    }
-
-    fn rollback_to(&mut self, snapshot: Self::Snapshot) {
-        let StoreSnapshot {
-            tables,
-            id_packer,
-            rowing,
-        } = snapshot;
-        for (oid, snapshot) in tables {
-            self.tables
-                .get_mut(&oid)
-                .expect("snapshotted table should still exist")
-                .rollback_to(snapshot);
-        }
-        self.id_packer.rollback_to(id_packer);
-        self.rowing.rollback_to(rowing);
-    }
+    catalog: Arc<Catalog>,
+    data: RwLock<StoreData>,
 }
 
 impl Store {
@@ -121,199 +56,9 @@ impl Store {
             theory: String::new(),
             realm: String::new(),
         };
-        let empty_root = RootCommitData::new(ir.clone(), empty_colndef);
-
-        let commits =
-            Self::graph_with_root_commit(empty_root).expect("empty root commit should build");
-        Self {
-            path_to_oid: HashMap::new(),
-            tables: HashMap::new(),
-            id_packer: IdPacker::new(),
-            ir,
-            commits,
-            rowing: rowing::Rowing::new(),
-            pending_commits: Vec::new(),
-        }
+        Self::try_from_ir(&ir, empty_colndef).expect("empty root commit should build")
     }
 
-    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, TableHandle<'_>)> {
-        self.tables
-            .iter()
-            .map(|(oid, table)| (oid, TableHandle::new(table, &self.id_packer, &self.rowing)))
-    }
-
-    pub fn commits(&self) -> &CommitGraph {
-        &self.commits
-    }
-
-    /// Add commit to the commit graph. This is a low level API, typically you
-    /// want to use `apply_commits`
-    pub(crate) fn record_in_commit_graph(&mut self, commit: DataCommit) {
-        self.commits.add_commit(commit);
-    }
-
-    pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
-        self.path_to_oid.get(path).copied()
-    }
-
-    pub fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
-        self.tables
-            .get(&oid)
-            .map(|table| TableHandle::new(table, &self.id_packer, &self.rowing))
-    }
-
-    pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
-        self.resolve_table(path).and_then(|oid| self.table(oid))
-    }
-
-    pub fn table_count(&self) -> usize {
-        self.tables.len()
-    }
-
-    pub fn rule_entries(&self) -> &[ir::RuleEntry] {
-        &self.ir.rules
-    }
-
-    pub fn json_ir(&self) -> String {
-        let root = self.commits.root_commit().root_payload();
-        serde_json::to_string(&root.ir).expect("stored root ir contains valid data")
-    }
-
-    pub fn ir(&self) -> &ir::FlatRealm {
-        &self.ir
-    }
-
-    pub fn coln_def(&self) -> ColnDef {
-        let root = self.commits.root_commit().root_payload();
-        root.coln_def
-    }
-
-    // Used by txn to finalise live ids
-    pub(crate) fn canonical_row_id(&self, row_id: &PublicRowId) -> Option<PublicRowId> {
-        let packed = self.id_packer.packed(row_id)?;
-        let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
-        Some(self.id_packer.unpack_row_id(canonical))
-    }
-
-    /// Read-only access to the id dictionary, for converting between public
-    /// and packed row ids.
-    pub fn id_lookup(&self) -> &impl IdLookup {
-        &self.id_packer
-    }
-}
-
-impl Store {
-    // Helper methods for StoreRead
-
-    pub(crate) fn scan_table_iter(
-        &self,
-        table_path: &ir::Path,
-    ) -> Option<impl Iterator<Item = StoreTuple> + '_> {
-        self.table_at(table_path).map(|table| table.scan())
-    }
-
-    // This function will canonicalise the row_id on read, but will not change it
-    // See `row_by_liveid` which will actually canonicalise the handle.
-    // We need both because the TS FFI does not deal with handles.
-    pub(crate) fn row_by_id_inner(
-        &self,
-        table: &ir::Path,
-        row_id: &PackedRowId,
-    ) -> Option<StoreTuple> {
-        self.table_at(table)?.row_by_id(row_id)
-    }
-
-    // TODO ignoring efficiency. I'll leave that to the query engine to produce
-    // the optimal query plan! Or we can optimise later.
-    pub(crate) fn all_proj_inner(
-        &self,
-        query: &WhereClause,
-        select: &[u32],
-    ) -> Result<Vec<StoreTuple>, StoreError> {
-        let select: HashSet<u32> = select.iter().copied().collect();
-        let t = self
-            .table_at(&query.table_name)
-            .ok_or(ValidationError::UnknownTable {
-                path: query.table_name.clone(),
-            })?;
-        let v = self
-            .all_row_id_inner(query)?
-            .into_iter()
-            .map(|r| t.row_by_id(&r).expect("index_seek return valid rowid"))
-            .map(|vs| {
-                vs.into_iter()
-                    .enumerate()
-                    .filter_map(|(i, v)| select.contains(&(i as u32)).then_some(v))
-                    .collect::<StoreTuple>()
-            })
-            .collect::<Vec<StoreTuple>>();
-        Ok(v)
-    }
-
-    pub(crate) fn all_row_id_inner(
-        &self,
-        query: &WhereClause,
-    ) -> Result<Vec<PackedRowId>, StoreError> {
-        let WhereClause {
-            table_name,
-            values,
-            row_id,
-        } = query;
-        let t = self
-            .table_at(table_name)
-            .ok_or(ValidationError::UnknownTable {
-                path: table_name.clone(),
-            })?;
-        // TODO `WhereClause` should carry packed values and row ids, with the
-        // packing done at a higher layer. Packing here means every lookup pays
-        // for the dictionary lookups, and the store API leaks public types.
-        //
-        // An ID whose commit hash was never interned cannot match any stored
-        // row, so an unpackable key or row id yields no results.
-        let Some(key) = values
-            .iter()
-            .map(|v| self.id_packer.try_pack_value(v))
-            .collect::<Option<StoreTuple>>()
-        else {
-            return Ok(Vec::new());
-        };
-        let row_id = match row_id {
-            Some(id) => match self.id_packer.packed(id) {
-                Some(packed) => Some(packed),
-                None => return Ok(Vec::new()),
-            },
-            None => None,
-        };
-        let row_ids = t
-            .index_seek(&key)?
-            .filter(|r| row_id.as_ref().is_none_or(|id| id == r))
-            .collect();
-        Ok(row_ids)
-    }
-}
-
-// Autocommit method that opens up a txn, does a single operations
-// then immediately closes the txn
-impl StoreRead for Store {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
-        let txn = self.ro_transaction();
-        txn.scan_table(table)
-    }
-
-    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
-        self.ro_transaction().row_by_id(table, row_id)
-    }
-
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<StoreTuple>, StoreError> {
-        self.ro_transaction().all_proj(query, select)
-    }
-
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<PackedRowId>, StoreError> {
-        self.ro_transaction().all_row_id(query)
-    }
-}
-
-impl Store {
     // create stores from theory
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
@@ -326,97 +71,172 @@ impl Store {
         );
 
         let mut path_to_oid = HashMap::new();
-        let mut tables_map = HashMap::new();
+        let mut table_meta = Vec::with_capacity(ir.tables.len());
+        let mut tables = HashMap::new();
 
         for (oid, entry) in ir.tables.iter().enumerate() {
+            let table = Table::new(entry.path.clone(), oid, entry.table.clone());
             path_to_oid.insert(entry.path.clone(), oid);
-            tables_map.insert(
-                oid,
-                Table::new(entry.path.clone(), oid, entry.table.clone()),
-            );
+            table_meta.push(table.meta());
+            tables.insert(oid, table);
         }
 
-        let commits = Self::graph_with_root_commit(RootCommitData::new(ir.clone(), coln_def))?;
+        let root_data = RootCommitData::new(ir.clone(), coln_def);
+        let commits = Self::graph_with_root_commit(&root_data)?;
 
         Ok(Self {
-            path_to_oid,
-            tables: tables_map,
-            id_packer: IdPacker::new(),
-            ir: ir.clone(),
-            commits,
-            rowing: rowing::Rowing::new(),
-            pending_commits: Vec::new(),
+            catalog: Arc::new(Catalog {
+                path_to_oid,
+                root_data,
+                table_meta,
+                ir: ir.clone(),
+            }),
+            data: RwLock::new(StoreData {
+                tables,
+                id_packer: IdPacker::new(),
+                commits,
+                rowing: Rowing::new(),
+                pending_commits: Vec::new(),
+            }),
         })
     }
 
-    fn graph_with_root_commit(root_commit: RootCommitData) -> Result<CommitGraph, CodecError> {
-        Ok(CommitGraph::new(RootCommit::from_root_data(&root_commit)?))
-    }
-}
-
-impl Store {
-    // ? Derived data can be consolidated/reordered, I think, probably does not
-    // ? matter?
-    /// Given a derived StoreDelta from coln-query, figure out how to apply these
-    /// data onto tables.
-    pub fn apply_derived_view(
-        &mut self,
-        derived: StoreDelta<Consolidated, StoreTuple>,
-    ) -> Result<(), StoreError> {
-        for td in derived.into_table_deltas() {
-            let oid = self
-                .resolve_table(td.for_entity())
-                .ok_or(ValidationError::UnknownTable {
-                    path: td.for_entity().clone(),
-                })?;
-            let table = self.tables.get_mut(&oid).expect("resolved correct table");
-
-            table.stage_updates(td.into_parts().1);
-
-            table.apply_staged_ops(&mut self.rowing)?;
-        }
-        Ok(())
-    }
-}
-
-impl Store {
-    // transactions
-
-    pub fn auto(self) -> AutoStore {
-        AutoStore::new(self)
+    fn graph_with_root_commit(root_commit: &RootCommitData) -> Result<CommitGraph, CodecError> {
+        Ok(CommitGraph::new(RootCommit::from_root_data(root_commit)?))
     }
 
-    pub fn ro_transaction(&self) -> Transaction<ReadOnly<'_>> {
-        Transaction::<ReadOnly<'_>>::new(self)
-    }
+    // Creating a store from bytes
 
-    pub fn transaction(&mut self) -> Transaction<ReadWrite<'_>> {
-        Transaction::<ReadWrite<'_>>::new(self)
-    }
-}
-
-impl Store {
-    pub fn promote(
-        &self,
-        pending_ids: impl IntoIterator<Item = TxRowId>,
-        hash: CommitHash,
-    ) -> Vec<PublicRowId> {
-        pending_ids
+    /// Takes some bytes that _contain_ the root commits
+    /// Attempt to create a [`Store`] out of it, and also the other commits left
+    /// to be applied. Callers need to make a [`CommitBatch`] out of it, and apply
+    pub fn try_from_commits_bytes(
+        bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<(Self, Vec<DataCommit>), StoreError> {
+        let chunks = bytes
             .into_iter()
-            .map(|pending| {
-                let wire_id = match pending {
-                    TxRowId::Pending(pending) => pending.resolve(hash),
-                    TxRowId::Existing(row_id) => row_id,
-                };
-                self.canonical_row_id(&wire_id).unwrap_or(wire_id)
-            })
-            .collect()
+            .map(|bytes| Frame::decode(bytes.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::try_from_chunks(chunks)
     }
 
-    pub fn promote_one(&self, pending_id: impl Into<TxRowId>, hash: CommitHash) -> PublicRowId {
-        self.promote(std::iter::once(pending_id.into()), hash)
-            .pop()
-            .expect("one id to promote")
+    /// Create a store from the commit chunks. Return the store and all the data commits, checked.
+    pub(crate) fn try_from_chunks(
+        chunks: Vec<Frame>,
+    ) -> Result<(Self, Vec<DataCommit>), StoreError> {
+        let roots = chunks
+            .iter()
+            .filter(|chunk| chunk.is_root())
+            .collect::<Vec<_>>();
+        if roots.is_empty() {
+            return Err(
+                CodecError::DataFormatError("commit graph has no root commit".into()).into(),
+            );
+        }
+        if roots.len() > 1 {
+            return Err(CodecError::DataFormatError(
+                "commit graph has multiple root commits".into(),
+            )
+            .into());
+        }
+
+        let Chunk::Root(root_commit) = Chunk::from_frame((*roots[0]).clone(), |_| None)? else {
+            unreachable!("root frames were selected above");
+        };
+        let root_payload = root_commit.root_payload();
+        let mut store = Store::try_from_ir(&root_payload.ir, root_payload.coln_def)?;
+
+        let commits = chunks
+            .into_iter()
+            .filter(|chunk| !chunk.is_root())
+            .map(|chunk| {
+                match Chunk::from_frame(chunk, |path| {
+                    store
+                        .catalog
+                        .resolve_table(path)
+                        .and_then(|oid| store.catalog.table_meta(oid))
+                })? {
+                    Chunk::Data(commit) => Ok(commit),
+                    Chunk::Root(_) => unreachable!("root frames were filtered out"),
+                }
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+
+        let data = store.data.get_mut();
+        data.commits = CommitGraph::new(root_commit);
+        data.check_commit_deps(commits.iter())?;
+        Ok((store, commits))
+    }
+}
+
+impl Store {
+    // To apply bytes to store, but without deriving new data
+    // mostly for testing purposes
+
+    /// Restores a store from commit bytes without running the query engine.
+    /// Derived data and rule checks are skipped. Commits with missing dependencies
+    /// remain pending until their parents arrive.
+    pub fn try_from_commit_bytes_plain(
+        bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<Self, StoreError> {
+        let (mut store, commits) = Self::try_from_commits_bytes(bytes)?;
+        store.apply_commits_plain(commits)?;
+        Ok(store)
+    }
+
+    pub(crate) fn try_from_chunks_plain(chunks: Vec<Frame>) -> Result<Self, StoreError> {
+        let (mut store, commits) = Self::try_from_chunks(chunks)?;
+        store.apply_commits_plain(commits)?;
+        Ok(store)
+    }
+
+    /// Decodes and applies commit bytes without running the query engine.
+    /// Schema validation still applies. Commits with missing dependencies remain
+    /// pending and are retried on the next plain apply call.
+    pub fn apply_chunk_bytes_plain(
+        &mut self,
+        bytes: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Result<(), StoreError> {
+        self.prepare_commit_bytes(bytes)?.apply_plain()
+    }
+
+    pub(crate) fn apply_commits_plain(
+        &mut self,
+        commits: impl IntoIterator<Item = DataCommit>,
+    ) -> Result<(), StoreError> {
+        self.prepare_commits(commits, true)?.apply_plain()
+    }
+}
+
+impl Store {
+    // Catalog access, no lock needed
+
+    pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
+        self.catalog.resolve_table(path)
+    }
+
+    pub fn table_count(&self) -> usize {
+        self.catalog.table_count()
+    }
+
+    pub fn rule_entries(&self) -> &[ir::RuleEntry] {
+        self.catalog.rule_entries()
+    }
+
+    pub fn json_ir(&self) -> String {
+        self.catalog.json_ir()
+    }
+
+    pub fn ir(&self) -> &ir::FlatRealm {
+        self.catalog.ir()
+    }
+
+    pub fn coln_def(&self) -> &ColnDef {
+        self.catalog.coln_def()
+    }
+
+    pub fn table_meta(&self, oid: TableOid) -> Option<&TableMeta> {
+        self.catalog.table_meta(oid)
     }
 }
 
@@ -430,47 +250,43 @@ impl Store {
         path: ir::Path,
         schema: ir::Schema,
     ) -> Result<TableOid, StoreError> {
-        let oid = self.tables.len();
-        self.path_to_oid.insert(path.clone(), oid);
-        self.tables.insert(oid, Table::new(path, oid, schema));
+        // `&mut self` rules out live transactions, so no locking is needed.
+        let data = self.data.get_mut();
+        let catalog = Arc::get_mut(&mut self.catalog)
+            .expect("catalog is not shared while the store is mutably borrowed");
 
-        let mut tables: Vec<_> = self
-            .tables
-            .values()
-            .map(|table| {
-                (
-                    table.oid(),
-                    ir::TableEntry {
-                        path: table.path().clone(),
-                        table: table.schema().clone(),
-                    },
-                )
-            })
-            .collect();
-        tables.sort_by_key(|(oid, _)| *oid);
-        let ir = FlatRealm {
-            tables: tables.into_iter().map(|(_, entry)| entry).collect(),
-            definitions: Vec::new(),
-            rules: self.rule_entries().to_vec(),
-        };
-        let root_commit = RootCommitData::new(
-            ir,
-            ColnDef {
-                theory: String::new(),
-                realm: String::new(),
-            },
-        );
-        self.commits = Self::graph_with_root_commit(root_commit)?;
+        // Build the new root commit before mutating, so a codec error leaves
+        // the store unchanged.
+        let oid = data.tables.len();
+        let mut ir = catalog.ir.clone();
+        ir.tables.push(ir::TableEntry {
+            path: path.clone(),
+            table: schema.clone(),
+        });
+        let root_data = RootCommitData::new(ir, catalog.root_data.coln_def.clone());
+        let commits = Self::graph_with_root_commit(&root_data)?;
+
+        let table = Table::new(path.clone(), oid, schema);
+        catalog.path_to_oid.insert(path, oid);
+        catalog.table_meta.push(table.meta());
+        catalog.ir = root_data.ir.clone();
+        catalog.root_data = root_data;
+        data.tables.insert(oid, table);
+        data.commits = commits;
         Ok(oid)
     }
 
     /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
     /// separated by a blank line.
+    ///
+    /// Takes a read lock, so calling this while the same thread holds a
+    /// [`ReadTxn`] may deadlock if a writer is waiting.
     pub fn dump(&self) -> String {
-        let mut oids: Vec<TableOid> = self.tables.keys().copied().collect();
+        let data = self.data.read();
+        let mut oids: Vec<TableOid> = data.tables.keys().copied().collect();
         oids.sort_unstable();
         oids.into_iter()
-            .map(|oid| self.tables[&oid].dump(&self.id_packer))
+            .map(|oid| data.tables[&oid].dump(&data.id_packer))
             .collect::<Vec<_>>()
             .join("\n\n")
     }

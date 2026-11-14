@@ -41,6 +41,7 @@ tracing-subscriber = { workspace = true, features = [
 ], optional = true }
 rstest = "0.26.1"
 hex.workspace = true
+parking_lot = "0.13.0"
 
 [dev-dependencies]
 future_form = "0.3.1"
