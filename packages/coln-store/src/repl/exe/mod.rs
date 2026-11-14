@@ -15,7 +15,7 @@ use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxScalarValue, TxTuple};
 use coln_flir_rs::public::PublicRowId;
 
-use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm};
+use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Schema};
 use crate::repl::{
     Session, ShellMode, Step,
     parse::{
@@ -24,7 +24,6 @@ use crate::repl::{
     },
 };
 use crate::store::Store;
-use crate::table::TableHandle;
 
 fn help_text(mode: ShellMode) -> String {
     let mut lines = vec![
@@ -138,8 +137,8 @@ pub(super) fn execute_meta(session: &mut Session, command: MetaCommand) -> Resul
                 .loaded
                 .as_mut()
                 .ok_or_else(|| anyhow!("no schema loaded"))?;
-            let tbl = loaded
-                .store
+            let read = loaded.store.begin_read();
+            let tbl = read
                 .table_at(&crate::ir::Path::from(table.clone()))
                 .ok_or_else(|| anyhow!("unknown table: {table}"))?;
             Ok(Step::Continue(tbl.dump()))
@@ -256,29 +255,9 @@ fn format_column(column: &ColumnEntry) -> String {
 
 impl SchemaSummary {
     pub(crate) fn from_store(source: PathBuf, store: &Store) -> Self {
-        let mut tables: Vec<TableSummary> = store
-            .tables()
-            .map(|(_, table)| TableSummary {
-                path: table.path().to_string(),
-                entity_variant: table.schema().entity_variant.clone(),
-                column_count: table.schema().columns.len(),
-                primary_key: match &table.schema().primary_key {
-                    None => PrimaryKeySummary::None,
-                    Some(columns) if columns.is_empty() => PrimaryKeySummary::Singleton,
-                    Some(columns) => PrimaryKeySummary::Columns(columns.clone()),
-                },
-                columns: table.schema().columns.iter().map(format_column).collect(),
-            })
-            .collect();
-        tables.sort_by(|a, b| a.path.cmp(&b.path));
-        let law_count = store.rule_entries().len();
-        let table_count = tables.len();
-        Self {
-            source,
-            table_count,
-            law_count,
-            tables,
-        }
+        let mut summary = Self::from_theory(source, store.ir());
+        summary.tables.sort_by(|a, b| a.path.cmp(&b.path));
+        summary
     }
 
     fn from_theory(source: PathBuf, theory: &FlatRealm) -> Self {
@@ -398,23 +377,20 @@ pub fn add_rows(
         .ok_or_else(|| anyhow!("unknown table: {table_name}"))?;
 
     let table = store
-        .table(oid)
+        .table_meta(oid)
         .ok_or_else(|| anyhow!("unknown table: {table_name}"))?;
     let mut rows = Vec::new();
     for raw_values in raw_rows {
-        rows.push(parse_txn_values(table, raw_values)?);
+        rows.push(parse_txn_values(&table.schema, raw_values)?);
     }
 
-    let mut tx = store.transaction();
+    let mut tx = store.begin_write();
     let mut temp_ids = Vec::new();
     for values in rows {
-        temp_ids.push(tx.add_internal(&table_path, values)?);
+        temp_ids.push(tx.add(&table_path, values)?);
     }
-    let commit = tx.commit()?;
-    let row_ids = temp_ids
-        .into_iter()
-        .map(|temp_id| temp_id.resolve(commit))
-        .collect();
+    let commit = tx.commit()?.commit_hash();
+    let row_ids = store.begin_read().promote(temp_ids, commit);
     Ok(row_ids)
 }
 
@@ -429,10 +405,11 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
         }
         let table_path = crate::ir::Path::from(a.table.as_str());
         let table = store
-            .table_at(&table_path)
+            .resolve_table(&table_path)
+            .and_then(|oid| store.table_meta(oid))
             .ok_or_else(|| anyhow!("unknown table: {}", a.table))?;
 
-        let expected = table.schema().columns.len();
+        let expected = table.schema.columns.len();
         if a.row.len() != expected {
             bail!(
                 "column count mismatch: expected {expected}, got {}",
@@ -441,7 +418,7 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
         }
 
         let mut values = Vec::with_capacity(expected);
-        for (idx, column) in table.schema().columns.iter().enumerate() {
+        for (idx, column) in table.schema.columns.iter().enumerate() {
             let v =
                 parse_cell_value_batch(&column.col_type, &a.row[idx], &bindings).map_err(|e| {
                     match e {
@@ -464,11 +441,11 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
         pending.push((a.name.clone(), table_path, values, temp_id));
     }
 
-    let mut tx = store.transaction();
+    let mut tx = store.begin_write();
     for (_, table_path, values, _) in pending.iter() {
-        tx.add_internal(table_path, values.clone())?;
+        tx.add(table_path, values.clone())?;
     }
-    let commit = tx.commit()?;
+    let commit = tx.commit()?.commit_hash();
 
     let parts = pending
         .into_iter()
@@ -478,8 +455,8 @@ pub fn run_transact(store: &mut Store, assignments: &[BatchAssignment]) -> Resul
     Ok(message)
 }
 
-fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<TxTuple> {
-    let expected = table.schema().columns.len();
+fn parse_txn_values(schema: &Schema, raw_values: &[String]) -> Result<TxTuple> {
+    let expected = schema.columns.len();
     if raw_values.len() != expected {
         bail!(
             "column count mismatch: expected {expected}, got {}",
@@ -487,8 +464,7 @@ fn parse_txn_values(table: TableHandle<'_>, raw_values: &[String]) -> Result<TxT
         );
     }
 
-    table
-        .schema()
+    schema
         .columns
         .iter()
         .enumerate()
@@ -516,6 +492,24 @@ mod tests {
 
     fn load_graph_schema() -> LoadedState {
         load_schema(&graph_ir_path(), Path::new(""), GRAPH_REALM).expect("load schema")
+    }
+
+    #[rstest::rstest]
+    fn add_rows_returns_stored_ids_after_deduplication(
+        #[from(crate::test_utils::single_memoized_int_store)] mut store: Store,
+    ) {
+        use crate::IdLookup;
+
+        let ids = add_rows(&mut store, "T", &[vec!["7".into()], vec!["7".into()]])
+            .expect("add duplicate terms");
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], ids[1]);
+
+        let read = store.begin_read();
+        let table = read.table_at(&"T".into()).expect("T");
+        assert_eq!(table.row_count(), 1);
+        let packed = read.id_lookup().packed(&ids[0]).expect("stored id");
+        assert!(table.row_by_id(&packed).is_some());
     }
 
     #[test]
@@ -561,18 +555,18 @@ mod tests {
         assert_eq!(loaded.schema.table_count, 4);
         assert_eq!(loaded.schema.law_count, 2);
         assert_eq!(loaded.schema.tables[0].path, "root.V");
-        let root = loaded.store.commits().root_commit().root_payload();
-        assert!(root.coln_def.theory.is_empty());
-        assert_eq!(root.coln_def.realm, GRAPH_REALM);
+        let coln_def = loaded.store.coln_def();
+        assert!(coln_def.theory.is_empty());
+        assert_eq!(coln_def.realm, GRAPH_REALM);
     }
 
     #[test]
     fn loads_schema_without_coln_metadata() {
         let loaded = load_schema(&graph_ir_path(), Path::new(""), "").expect("load schema");
-        let root = loaded.store.commits().root_commit().root_payload();
+        let coln_def = loaded.store.coln_def();
 
-        assert!(root.coln_def.theory.is_empty());
-        assert!(root.coln_def.realm.is_empty());
+        assert!(coln_def.theory.is_empty());
+        assert!(coln_def.realm.is_empty());
     }
 
     #[test]

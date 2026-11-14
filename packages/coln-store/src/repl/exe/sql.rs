@@ -67,6 +67,7 @@ fn copy_from_csv_chunked(
         .ok_or_else(|| anyhow!("no schema loaded"))?;
     let column_names: Vec<String> = loaded
         .store
+        .begin_read()
         .table_at(&Path::from(table_name))
         .ok_or_else(|| anyhow!("unknown table: {table_name}"))?
         .schema()
@@ -139,7 +140,13 @@ fn create_sql_table(
     if loaded.store.resolve_table(&path).is_some() {
         return Err(SQLModeError::TableExists { table: table_name }.into());
     }
-    if loaded.store.commits().iter_topological().next().is_some() {
+    let has_data_commits = {
+        let read = loaded.store.begin_read();
+        read.heads()
+            .iter()
+            .any(|head| read.commit_by_hash(head).is_some())
+    };
+    if has_data_commits {
         return Err(SQLModeError::SchemaChangeAfterData.into());
     }
 
@@ -246,13 +253,15 @@ mod tests {
         assert_eq!(message, "copied 2 rows into Person");
 
         let loaded = session.loaded.as_ref().expect("loaded session");
-        let table = loaded
-            .store
-            .table_at(&"Person".into())
-            .expect("Person table");
+        let read = loaded.store.begin_read();
+        let table = read.table_at(&"Person".into()).expect("Person table");
         assert_eq!(table.row_count(), 2);
 
-        let data_commits = loaded.store.commits().iter_topological().count();
+        let data_commits = read
+            .chunks_after(&[])
+            .iter()
+            .filter(|chunk| matches!(chunk, crate::commit::chunk::Chunk::Data(_)))
+            .count();
         assert_eq!(data_commits, 2, "one commit per chunk");
     }
 
@@ -266,6 +275,7 @@ mod tests {
         let loaded = session.loaded.as_ref().expect("loaded session");
         let dump = loaded
             .store
+            .begin_read()
             .table_at(&"Person".into())
             .expect("Person table")
             .dump();

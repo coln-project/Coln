@@ -7,15 +7,19 @@
 use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
 
-use coln_flir_rs::engine::delta::{PartialConsolidated, StoreDelta};
+use coln_flir_rs::engine::delta::{Consolidated, PartialConsolidated, StoreDelta};
 use coln_flir_rs::engine::packed::StoreTuple;
 use coln_flir_rs::hash::CommitHash;
+use coln_flir_rs::ir;
+use parking_lot::RwLockWriteGuard;
 
-use super::PrecheckedCommit;
+use crate::IdLookup;
 use crate::commit::DataCommit;
 use crate::rollback::Rollback;
+use crate::store::data::{CheckedOpCommit, DataSnapshot};
 use crate::store::error::StoreError;
-use crate::store::{Store, StoreSnapshot};
+use crate::store::{Catalog, StoreData};
+use crate::table::{TableHandle, ValidationError};
 
 pub trait PrepareState {}
 
@@ -25,6 +29,50 @@ pub struct Prepared;
 impl PrepareState for Unprepared {}
 impl PrepareState for Prepared {}
 
+/// A `CommitBatch` presents a batch of commits that will be applied to the store.
+///
+/// The batch holds the store's write lock for its whole lifetime and moves
+/// between two typestates, one commit at a time:
+///
+/// ```text
+///                          CommitBatch::new
+///                                 │
+///                                 ▼
+///                  ┌──────────────────────────────┐
+///        ┌────────▶│          Unprepared          │◀────────┐
+///        │         └──────────────────────────────┘         │
+///        │                        │                         │
+///        │                        │ prepare_next()          │
+///        │                        │   -> Ok(Some(_))        │
+///        │                        ▼                         │
+///        │         ┌──────────────────────────────┐         │
+///        │         │           Prepared           │         │
+///        │         └──────────────────────────────┘         │
+///        │                │                │                │
+///        └────────────────┘                └────────────────┘
+///         accept_prepared()                reject_prepared()
+/// ```
+///
+/// - `prepare_next` pops the next ready commit, snapshots the store, and
+///   tentatively applies the commit and rebuilds derived data. The snapshot
+///   and the commit's [`StoreDelta`] are held until the commit is accepted or
+///   rejected.
+/// - `accept_prepared` keeps the tentative changes, records the commit in the
+///   commit graph, and marks dependants whose dependencies are now all
+///   applied as ready.
+/// - `reject_prepared` rolls the store back to the snapshot and discards the
+///   commit. Its dependants stay pending and never become ready in this batch.
+///
+/// Exits from the cycle:
+///
+/// - `Unprepared::prepare_next` returning `Ok(None)` means no commit is
+///   ready. Returning `Err` discards the commit that failed to apply. Both
+///   consume the batch.
+/// - `Prepared::prepared_commit` hands the `PreparedCommit` to the caller,
+///   who becomes responsible for committing or rolling back its snapshot.
+/// - Dropping the batch in either state returns all remaining commits to
+///   `StoreData::pending_commits`. In the `Prepared` state the store is first
+///   rolled back and the prepared commit is returned to pending as well.
 pub struct CommitBatch<'a, S: PrepareState> {
     guard: BatchGuard<'a>,
     state: PhantomData<S>,
@@ -38,15 +86,16 @@ impl<'a> CommitBatch<'a, Unprepared> {
     /// Therefore we assume that the new_commits has already been checked
     /// Also we take `new_commits` and will append whatever is pending to it.
     pub(super) fn new(
-        store: &'a mut Store,
+        catalog: &'a Catalog,
+        mut store_data: RwLockWriteGuard<'a, StoreData>,
         new_commits: impl IntoIterator<Item = DataCommit>,
         drain_sync: bool,
     ) -> Self {
         let pending: HashMap<CommitHash, DataCommit> = if drain_sync {
             new_commits
                 .into_iter()
-                .chain(std::mem::take(&mut store.pending_commits))
-                .filter(|c| !store.commits.contains(&c.hash()))
+                .chain(std::mem::take(&mut store_data.pending_commits))
+                .filter(|c| !store_data.commits.contains(&c.hash()))
                 .map(|c| (c.hash(), c))
                 .collect()
         } else {
@@ -60,7 +109,7 @@ impl<'a> CommitBatch<'a, Unprepared> {
         for (hash, commit) in &pending {
             let mut count = 0;
             for dependency in &commit.deps {
-                if store.commits.contains(dependency) {
+                if store_data.commits.contains(dependency) {
                     continue;
                 }
 
@@ -84,7 +133,8 @@ impl<'a> CommitBatch<'a, Unprepared> {
         }
 
         let guard = BatchGuard {
-            store,
+            catalog,
+            store_data,
             queue: BatchQueue {
                 pending,
                 ready,
@@ -118,7 +168,7 @@ impl<'a> CommitBatch<'a, Unprepared> {
         self.guard.queue.pending_len()
     }
 
-    pub(super) fn apply_plain(mut self) -> Result<(), StoreError> {
+    pub(crate) fn apply_plain(mut self) -> Result<(), StoreError> {
         while let Some(prepared) = self.prepare_next()? {
             self = prepared.accept_prepared();
         }
@@ -127,25 +177,29 @@ impl<'a> CommitBatch<'a, Unprepared> {
 }
 
 impl<'a> CommitBatch<'a, Prepared> {
-    pub fn accept_prepared(self) -> CommitBatch<'a, Unprepared> {
-        self.accept_prepared_with(|_| ())
+    pub fn accept_prepared(mut self) -> CommitBatch<'a, Unprepared> {
+        self.guard.accept_prepared();
+        CommitBatch {
+            guard: self.guard,
+            state: PhantomData,
+        }
     }
 
     /// We accept the prepared commit and add it to the store,
     /// but also accept `f` which will modify the store as needed.
     /// This is because a batch will keep hold of a store all the time, so we
     /// will ask it to do the modification for us.
-    pub fn accept_prepared_with(
-        mut self,
-        f: impl FnOnce(&mut Store),
-    ) -> CommitBatch<'a, Unprepared> {
-        self.guard.accept_prepared();
-        f(self.guard.store);
-        CommitBatch {
-            guard: self.guard,
-            state: PhantomData,
-        }
-    }
+    // pub fn accept_prepared_with(
+    //     mut self,
+    //     f: impl FnOnce(RwLockWriteGuard<'_, StoreData>),
+    // ) -> CommitBatch<'a, Unprepared> {
+    //     self.guard.accept_prepared();
+    //     f(self.guard.store_data);
+    //     CommitBatch {
+    //         guard: self.guard,
+    //         state: PhantomData,
+    //     }
+    // }
 
     pub fn reject_prepared(mut self) -> CommitBatch<'a, Unprepared> {
         self.guard.reject_prepared();
@@ -156,10 +210,6 @@ impl<'a> CommitBatch<'a, Prepared> {
         }
     }
 
-    pub(crate) fn prepared_commit(mut self) -> PreparedCommit {
-        self.guard.prepared_commit()
-    }
-
     pub fn prepared_hash(&self) -> CommitHash {
         self.guard.prepared_hash()
     }
@@ -167,10 +217,51 @@ impl<'a> CommitBatch<'a, Prepared> {
     pub fn store_delta(&mut self) -> StoreDelta<PartialConsolidated, StoreTuple> {
         self.guard.store_delta()
     }
+
+    pub fn id_lookup(&self) -> &impl IdLookup {
+        &self.guard.store_data.id_packer
+    }
+
+    pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
+        let oid = self.guard.catalog.resolve_table(path)?;
+        let s = &self.guard.store_data;
+        s.tables
+            .get(&oid)
+            .map(|t| TableHandle::new(t, &s.id_packer, &s.rowing))
+    }
+
+    // ? Derived data can be consolidated/reordered, I think, probably does not
+    // ? matter?
+    /// Given a derived StoreDelta from coln-query, figure out how to apply these
+    /// data onto tables.
+    pub fn apply_derived_view(
+        &mut self,
+        catalog: &Catalog,
+        derived: StoreDelta<Consolidated, StoreTuple>,
+    ) -> Result<(), StoreError> {
+        for td in derived.into_table_deltas() {
+            let oid =
+                catalog
+                    .resolve_table(td.for_entity())
+                    .ok_or(ValidationError::UnknownTable {
+                        path: td.for_entity().clone(),
+                    })?;
+            let data = &mut *self.guard.store_data;
+            let table = data.tables.get_mut(&oid).expect("resolved correct table");
+
+            table.stage_updates(td.into_parts().1);
+
+            table.apply_staged_ops(&mut data.rowing)?;
+        }
+        Ok(())
+    }
 }
 
+// A BatchGuard holds a prepared commit and when dropped, this commit would be
+// put back into store's pending_commits
 struct BatchGuard<'a> {
-    store: &'a mut Store,
+    catalog: &'a Catalog,
+    store_data: RwLockWriteGuard<'a, StoreData>,
     queue: BatchQueue,
     prepared: Option<PreparedCommit>,
 }
@@ -178,7 +269,7 @@ struct BatchGuard<'a> {
 impl Drop for BatchGuard<'_> {
     fn drop(&mut self) {
         if let Some(prepared) = self.prepared.take() {
-            self.store.rollback_to(prepared.snapshot);
+            self.store_data.rollback_to(prepared.snapshot);
 
             // The current commit will be added back to pending commits for next time
             self.queue
@@ -186,7 +277,7 @@ impl Drop for BatchGuard<'_> {
                 .insert(prepared.commit.hash(), prepared.commit);
         }
 
-        self.store
+        self.store_data
             .pending_commits
             .extend(std::mem::take(&mut self.queue.pending).into_values());
     }
@@ -204,26 +295,27 @@ impl BatchGuard<'_> {
             .remove(&hash)
             .expect("a ready commit must also be in pending");
 
-        let PrecheckedCommit { ops, original } = self.store.precheck_commit(commit)?;
+        let CheckedOpCommit { ops, original } =
+            self.store_data.check_commit_ops(commit, self.catalog)?;
         let sd: StoreDelta<PartialConsolidated, StoreTuple> = ops
             .iter()
             .map(|op| {
-                let packed = self.store.id_packer.pack_op(op.clone());
+                let packed = self.store_data.id_packer.pack_op(op.clone());
                 let meta = self
-                    .store
+                    .catalog
                     .table_meta(op.table())
                     .expect("prechecked commit with valid table oid");
                 packed.map_oid(|_| meta.path.clone()).into()
             })
             .collect();
 
-        let snapshot = self.store.snapshot();
+        let snapshot = self.store_data.snapshot();
         if let Err(error) = self
-            .store
+            .store_data
             .apply_commit_ops(ops)
-            .and_then(|()| self.store.rebuild_to_fixpoint())
+            .and_then(|()| self.store_data.rebuild_to_fixpoint())
         {
-            self.store.rollback_to(snapshot);
+            self.store_data.rollback_to(snapshot);
             return Err(error);
         }
 
@@ -245,7 +337,7 @@ impl BatchGuard<'_> {
             .prepared
             .take()
             .expect("have called prepare_next to preapare the commit");
-        let hash = prepared.accept(self.store);
+        let hash = prepared.accept(&mut self.store_data);
         self.queue.mark_applied(&hash);
     }
 
@@ -255,14 +347,8 @@ impl BatchGuard<'_> {
             .take()
             .expect("have called prepare_next to preapare the commit");
         let hash = prepared.commit.hash();
-        prepared.reject(self.store);
+        prepared.reject(&mut self.store_data);
         self.queue.mark_rejected(&hash);
-    }
-
-    fn prepared_commit(&mut self) -> PreparedCommit {
-        self.prepared
-            .take()
-            .expect("have called prepare_next to preapare the commit")
     }
 
     fn prepared_hash(&self) -> CommitHash {
@@ -319,7 +405,7 @@ impl BatchQueue {
 
 pub(crate) struct PreparedCommit {
     commit: DataCommit,
-    snapshot: StoreSnapshot,
+    snapshot: DataSnapshot,
     sd: StoreDelta<PartialConsolidated, StoreTuple>,
 }
 
@@ -328,23 +414,15 @@ impl PreparedCommit {
         self.commit.hash()
     }
 
-    pub(crate) fn accept(self, store: &mut Store) -> CommitHash {
+    pub(super) fn accept(self, store_data: &mut RwLockWriteGuard<'_, StoreData>) -> CommitHash {
         let hash = self.commit.hash();
-        store.commit(self.snapshot);
-        store.record_in_commit_graph(self.commit);
+        store_data.commit(self.snapshot);
+        store_data.record_in_commit_graph(self.commit);
         hash
     }
 
-    pub(crate) fn reject(self, store: &mut Store) {
+    pub(super) fn reject(self, store: &mut RwLockWriteGuard<'_, StoreData>) {
         store.rollback_to(self.snapshot);
-    }
-
-    pub(in crate::store) fn store_delta(&mut self) -> StoreDelta<PartialConsolidated, StoreTuple> {
-        std::mem::take(&mut self.sd)
-    }
-
-    pub(in crate::store) fn snapshot(self) -> StoreSnapshot {
-        self.snapshot
     }
 }
 
@@ -355,11 +433,11 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+    use crate::store::Store;
     use crate::table::ValidationError;
     use crate::test_utils::{
         commit_int, commit_int_store, expect_data_chunk, int_schema, single_int_store,
     };
-    use crate::txn::rw::StoreRead;
 
     #[test]
     fn precheck_failure_discards_failed_commit_and_preserves_remaining_queue() {
@@ -371,19 +449,31 @@ mod tests {
         let child = commit_int(&mut source, 3);
         commit_int(&mut target, 2);
         target
-            .apply_commits_plain([source.commit_by_hash(&first).expect("parent").clone()])
+            .apply_commits_plain([source
+                .begin_read()
+                .commit_by_hash(&first)
+                .expect("parent")
+                .clone()])
             .expect("apply parent");
-        let heads = target.heads();
-        let rows = target.scan_table(&Path::from("T")).expect("table");
+        let heads = target.begin_read().heads();
+        let rows = target
+            .begin_read()
+            .scan_table(&Path::from("T"))
+            .expect("table");
 
         let batch = target
             .prepare_commits(
                 [
                     source
+                        .begin_read()
                         .commit_by_hash(&conflicting)
                         .expect("conflicting commit")
                         .clone(),
-                    source.commit_by_hash(&child).expect("child").clone(),
+                    source
+                        .begin_read()
+                        .commit_by_hash(&child)
+                        .expect("child")
+                        .clone(),
                 ],
                 true,
             )
@@ -393,9 +483,15 @@ mod tests {
             Err(StoreError::Validation(ValidationError::DuplicatePrimaryKey))
         ));
 
-        assert_eq!(target.heads(), heads);
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table"), rows);
-        assert!(target.commit_by_hash(&conflicting).is_none());
+        assert_eq!(target.begin_read().heads(), heads);
+        assert_eq!(
+            target
+                .begin_read()
+                .scan_table(&Path::from("T"))
+                .expect("table"),
+            rows
+        );
+        assert!(target.begin_read().commit_by_hash(&conflicting).is_none());
         target
             .apply_commits_plain([])
             .expect("failed commit must not be retried");
@@ -413,20 +509,28 @@ mod tests {
     ) {
         let (mut source, first) = source;
         let second = commit_int(&mut source, 2);
-        let heads = target.heads();
+        let heads = target.begin_read().heads();
         drop(
             target
                 .prepare_commits(
-                    [source.commit_by_hash(&second).expect("child").clone()],
+                    [source
+                        .begin_read()
+                        .commit_by_hash(&second)
+                        .expect("child")
+                        .clone()],
                     true,
                 )
                 .expect("buffer child"),
         );
-        assert!(target.has_pending());
+        assert!(target.begin_read().data.has_pending());
 
         let batch = target
             .prepare_commits(
-                [source.commit_by_hash(&first).expect("parent").clone()],
+                [source
+                    .begin_read()
+                    .commit_by_hash(&first)
+                    .expect("parent")
+                    .clone()],
                 true,
             )
             .expect("combine parent with buffered child");
@@ -434,9 +538,10 @@ mod tests {
         assert_eq!(batch.size(), 2);
         drop(batch);
 
-        assert_eq!(target.heads(), heads);
+        assert_eq!(target.begin_read().heads(), heads);
         assert!(
             target
+                .begin_read()
                 .scan_table(&Path::from("T"))
                 .expect("table")
                 .is_empty()
@@ -444,9 +549,16 @@ mod tests {
         target
             .apply_commits_plain([])
             .expect("retry restored queue");
-        assert_eq!(target.heads(), vec![second]);
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table").len(), 2);
-        assert!(!target.has_pending());
+        assert_eq!(target.begin_read().heads(), vec![second]);
+        assert_eq!(
+            target
+                .begin_read()
+                .scan_table(&Path::from("T"))
+                .expect("table")
+                .len(),
+            2
+        );
+        assert!(!target.begin_read().data.has_pending());
     }
 
     #[rstest]
@@ -458,10 +570,11 @@ mod tests {
     ) {
         let (mut source, first) = source;
         let second = commit_int(&mut source, 2);
-        let heads = target.heads();
+        let heads = target.begin_read().heads();
         let batch = target
             .prepare_commits(
                 source
+                    .begin_read()
                     .chunks_after(&heads)
                     .into_iter()
                     .map(expect_data_chunk),
@@ -476,21 +589,29 @@ mod tests {
         assert_eq!(prepared.store_delta().size(), 1);
         drop(prepared);
 
-        assert_eq!(target.heads(), heads);
-        assert!(target.commit_by_hash(&first).is_none());
+        assert_eq!(target.begin_read().heads(), heads);
+        assert!(target.begin_read().commit_by_hash(&first).is_none());
         assert!(
             target
+                .begin_read()
                 .scan_table(&Path::from("T"))
                 .expect("table")
                 .is_empty()
         );
-        assert!(target.has_pending());
+        assert!(target.begin_read().data.has_pending());
         target
             .apply_commits_plain([])
             .expect("retry parent and child");
-        assert_eq!(target.heads(), vec![second]);
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table").len(), 2);
-        assert!(!target.has_pending());
+        assert_eq!(target.begin_read().heads(), vec![second]);
+        assert_eq!(
+            target
+                .begin_read()
+                .scan_table(&Path::from("T"))
+                .expect("table")
+                .len(),
+            2
+        );
+        assert!(!target.begin_read().data.has_pending());
     }
 
     #[rstest]
@@ -498,10 +619,14 @@ mod tests {
         #[from(commit_int_store)]
         #[with(42)]
         source: (Store, CommitHash),
-        #[from(single_int_store)] mut target: Store,
+        #[from(single_int_store)] target: Store,
     ) {
         let (source, hash) = source;
-        let commit = source.commit_by_hash(&hash).expect("source commit").clone();
+        let commit = source
+            .begin_read()
+            .commit_by_hash(&hash)
+            .expect("source commit")
+            .clone();
         let batch = target
             .prepare_commits([commit], false)
             .expect("prepare batch");
@@ -512,7 +637,7 @@ mod tests {
             .expect("ready commit");
 
         assert_eq!(prepared.prepared_hash(), hash);
-        let deltas = prepared.store_delta().clone().into_table_deltas();
+        let deltas = prepared.store_delta().into_table_deltas();
         assert_eq!(deltas.len(), 1);
         assert_eq!(deltas[0].for_entity(), &Path::from("T"));
         assert_eq!(deltas[0].delta().len(), 1);
@@ -522,14 +647,27 @@ mod tests {
             row.clone().into_tuple().values(),
             [StoreScalarValue::I32(42)]
         );
-        assert!(!prepared.guard.store.commits.contains(&hash));
+        assert_eq!(
+            prepared
+                .table_at(&Path::from("T"))
+                .expect("table")
+                .row_count(),
+            1
+        );
+        assert!(!prepared.guard.store_data.commits.contains(&hash));
 
         let batch = prepared.reject_prepared();
         assert!(!batch.has_ready());
         assert_eq!(batch.size(), 0);
         assert!(batch.prepare_next().expect("batch exhausted").is_none());
-        assert!(target.pending_commits.is_empty());
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
+        assert!(target.begin_read().data.pending_commits.is_empty());
+        assert_eq!(
+            target
+                .begin_read()
+                .scan_table(&Path::from("T"))
+                .expect("table"),
+            vec![]
+        );
     }
 
     #[rstest]
@@ -537,16 +675,21 @@ mod tests {
         #[from(commit_int_store)]
         #[with(1)]
         source: (Store, CommitHash),
-        #[from(single_int_store)] mut target: Store,
+        #[from(single_int_store)] target: Store,
     ) {
         let (mut source, first) = source;
         let second = crate::test_utils::commit_int(&mut source, 2);
         let commits = vec![
             source
+                .begin_read()
                 .commit_by_hash(&second)
                 .expect("second commit")
                 .clone(),
-            source.commit_by_hash(&first).expect("first commit").clone(),
+            source
+                .begin_read()
+                .commit_by_hash(&first)
+                .expect("first commit")
+                .clone(),
         ];
         let batch = target
             .prepare_commits(commits, false)
@@ -569,9 +712,16 @@ mod tests {
         assert!(!batch.has_ready());
         assert_eq!(batch.size(), 0);
         assert!(batch.prepare_next().expect("batch exhausted").is_none());
-        assert!(target.pending_commits.is_empty());
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table").len(), 2);
-        assert_eq!(target.heads(), vec![second]);
+        assert!(target.begin_read().data.pending_commits.is_empty());
+        assert_eq!(
+            target
+                .begin_read()
+                .scan_table(&Path::from("T"))
+                .expect("table")
+                .len(),
+            2
+        );
+        assert_eq!(target.begin_read().heads(), vec![second]);
     }
 
     #[rstest]
@@ -584,7 +734,8 @@ mod tests {
         let (mut source, first) = source;
         let second = crate::test_utils::commit_int(&mut source, 2);
         let commits = source
-            .chunks_after(&target.heads())
+            .begin_read()
+            .chunks_after(&target.begin_read().heads())
             .into_iter()
             .map(expect_data_chunk);
         let batch = target
@@ -602,12 +753,14 @@ mod tests {
         assert_eq!(batch.size(), 1);
         drop(batch);
         let pending_hashes = target
+            .begin_read()
+            .data
             .pending_commits
             .iter()
             .map(|commit| commit.hash())
             .collect::<Vec<_>>();
         assert_eq!(pending_hashes, vec![second]);
-        let pending = std::mem::take(&mut target.pending_commits);
+        let pending = std::mem::take(&mut target.data.get_mut().pending_commits);
         assert!(
             target
                 .prepare_commits(pending, false)
@@ -616,30 +769,39 @@ mod tests {
                 .expect("dependent remains blocked")
                 .is_none()
         );
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
+        assert_eq!(
+            target
+                .begin_read()
+                .scan_table(&Path::from("T"))
+                .expect("table"),
+            vec![]
+        );
     }
 
     #[rstest]
-    fn extracted_prepared_commit_can_be_explicitly_rolled_back(
+    fn prepared_commit_can_be_explicitly_rolled_back_after_taking_delta(
         #[from(commit_int_store)]
         #[with(7)]
         source: (Store, CommitHash),
-        #[from(single_int_store)] mut target: Store,
+        #[from(single_int_store)] target: Store,
     ) {
         let (source, hash) = source;
-        let commit = source.commit_by_hash(&hash).expect("source commit").clone();
+        let commit = source
+            .begin_read()
+            .commit_by_hash(&hash)
+            .expect("source commit")
+            .clone();
         let batch = target
             .prepare_commits([commit], false)
             .expect("prepare batch");
 
-        let prepared = batch
+        let mut prepared = batch
             .prepare_next()
             .expect("prepare succeeds")
-            .expect("commit is ready")
-            .prepared_commit();
+            .expect("commit is ready");
 
-        assert_eq!(prepared.commit.hash(), hash);
-        let deltas = prepared.sd.into_table_deltas();
+        assert_eq!(prepared.prepared_hash(), hash);
+        let deltas = prepared.store_delta().into_table_deltas();
         assert_eq!(deltas.len(), 1);
         assert_eq!(deltas[0].for_entity(), &Path::from("T"));
         assert_eq!(deltas[0].delta().len(), 1);
@@ -649,12 +811,27 @@ mod tests {
             row.clone().into_tuple().values(),
             [StoreScalarValue::I32(7)]
         );
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table").len(), 1);
-        assert!(target.commit_by_hash(&hash).is_none());
+        assert_eq!(
+            prepared
+                .table_at(&Path::from("T"))
+                .expect("table")
+                .row_count(),
+            1
+        );
+        assert!(!prepared.guard.store_data.commits.contains(&hash));
 
-        target.rollback_to(prepared.snapshot);
+        let batch = prepared.reject_prepared();
+        assert!(!batch.has_ready());
+        assert_eq!(batch.size(), 0);
+        drop(batch);
 
-        assert_eq!(target.scan_table(&Path::from("T")).expect("table"), vec![]);
-        assert!(target.commit_by_hash(&hash).is_none());
+        assert_eq!(
+            target
+                .begin_read()
+                .scan_table(&Path::from("T"))
+                .expect("table"),
+            vec![]
+        );
+        assert!(target.begin_read().commit_by_hash(&hash).is_none());
     }
 }

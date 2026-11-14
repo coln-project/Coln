@@ -12,9 +12,8 @@ use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_flir_rs::public::PublicRowId;
 use coln_store::{
     IdLookup,
-    commit::{DataCommit, chunk::Chunk},
+    commit::DataCommit,
     store::{Store, error::StoreError},
-    txn::rw::StoreWrite,
 };
 use rstest::{fixture, rstest};
 use tracing_subscriber::EnvFilter;
@@ -60,34 +59,39 @@ fn add_basic_data_to_graph(store: &mut Store) -> Result<GraphData, StoreError> {
     let gv = Path::from("root.V");
     let ge = Path::from("root.E");
 
-    let mut tx = store.transaction();
+    let mut tx = store.begin_write();
     let v1 = tx.add(&gv, TxTuple::empty())?;
     let v2 = tx.add(&gv, TxTuple::empty())?;
     tx.add(&ge, vec![v1, v2])?;
-    let h = tx.commit()?;
-    let [v1, v2] = store.promote(vec![v1, v2], h).try_into().unwrap();
+    let h = tx.try_commit()?.commit().commit_hash();
+    let [v1, v2] = store
+        .begin_read()
+        .promote(vec![v1, v2], h)
+        .try_into()
+        .unwrap();
 
     Ok(GraphData { v1, v2 })
 }
 
 fn missing_data_commits(source: &Store, target: &Store) -> Vec<DataCommit> {
-    source
-        .chunks_after(&target.heads())
-        .into_iter()
-        .filter_map(|chunk| match chunk {
-            Chunk::Data(commit) => Some(commit),
-            Chunk::Root(root) => {
-                assert_eq!(root.hash(), target.commits().root_commit().hash());
-                None
-            }
-        })
-        .collect()
+    target.begin_read().commits_added(&source.begin_read())
+}
+
+fn apply_commits_plain(
+    store: &Store,
+    commits: impl IntoIterator<Item = DataCommit>,
+) -> Result<(), StoreError> {
+    let mut batch = store.prepare_commits(commits, true)?;
+    while let Some(prepared) = batch.prepare_next()? {
+        batch = prepared.accept_prepared();
+    }
+    Ok(())
 }
 
 fn add_graph_vertex(store: &mut Store) -> Result<CommitHash, StoreError> {
-    let mut tx = store.transaction();
+    let mut tx = store.begin_write();
     tx.add(&Path::from("root.V"), TxTuple::empty())?;
-    tx.commit()
+    Ok(tx.try_commit()?.commit().commit_hash())
 }
 
 fn add_graph_edge(
@@ -97,8 +101,10 @@ fn add_graph_edge(
 ) -> Result<CommitHash, StoreError> {
     let gv = Path::from("root.V");
     let ge = Path::from("root.E");
-    let tv = store.table_at(&gv).expect("root.V table");
-    let ids = store.id_lookup();
+    let mut txn = store.begin_write();
+    let read = txn.read();
+    let tv = read.table_at(&gv).expect("root.V table");
+    let ids = read.id_lookup();
     let v1 = tv
         .row_by_id(&ids.packed(&v1).expect("v1 is packed"))
         .expect("vertex 1");
@@ -108,9 +114,8 @@ fn add_graph_edge(
     let v1 = ids.unpacked(&v1.row_id()).expect("v1 is unpacked");
     let v2 = ids.unpacked(&v2.row_id()).expect("v2 is unpacked");
 
-    let mut txn = store.transaction();
     txn.add(&ge, vec![v1, v2])?;
-    txn.commit()
+    Ok(txn.try_commit()?.commit().commit_hash())
 }
 
 #[rstest]
@@ -164,9 +169,10 @@ fn test_add_edge_referencing_vertices_from_previous_commit(
     let edge_commit =
         add_graph_edge(&mut store, data.v1, data.v2).expect("add edge in later transaction");
 
-    let edges = store.table_at(&Path::from("root.E")).expect("root.E table");
+    let read = store.begin_read();
+    let edges = read.table_at(&Path::from("root.E")).expect("root.E table");
     assert_eq!(edges.row_count(), 2);
-    let ids = store.id_lookup();
+    let ids = read.id_lookup();
     let second_edge = ids
         .packed(&PublicRowId {
             commit: edge_commit,
@@ -195,6 +201,7 @@ fn test_persist_roundtrip(
     assert!(r.is_ok());
     assert!(
         store
+            .begin_read()
             .table_at(&ir::Path::from("root.V"))
             .expect("table root.V")
             .row_count()
@@ -203,9 +210,8 @@ fn test_persist_roundtrip(
 
     let content = store.dump();
     let data = store.encode().expect("encoding store success");
-    let (mut st, commits) = Store::decode(&data).expect("decode store success");
-    st.apply_commits_plain(commits)
-        .expect("replay decoded commits");
+    let (st, commits) = Store::decode(&data).expect("decode store success");
+    apply_commits_plain(&st, commits).expect("replay decoded commits");
 
     assert_eq!(content, st.dump());
 }
@@ -221,11 +227,8 @@ fn test_divergent_commits_merge_between_stores(
     let mut left = Store::try_from_ir(theory, coln_def.clone()).expect("valid left-hand theory");
     let mut right = Store::try_from_ir(theory, coln_def.clone()).expect("valid right-hand theory");
     let baseline_commits = missing_data_commits(&base, &left);
-    left.apply_commits_plain(baseline_commits.clone())
-        .expect("apply shared baseline to left");
-    right
-        .apply_commits_plain(baseline_commits)
-        .expect("apply shared baseline to right");
+    apply_commits_plain(&left, baseline_commits.clone()).expect("apply shared baseline to left");
+    apply_commits_plain(&right, baseline_commits).expect("apply shared baseline to right");
 
     // Divergent ops: a new vertex on the left, a second edge on the right.
     // Identical vertex inserts would content-address to the same commit.
@@ -233,28 +236,43 @@ fn test_divergent_commits_merge_between_stores(
     let right_commit = add_graph_edge(&mut right, data.v1, data.v2).expect("right branch commit");
     let expected_heads = BTreeSet::from([left_commit, right_commit]);
 
-    left.apply_commits_plain(missing_data_commits(&right, &left))
-        .expect("merge right into left");
+    apply_commits_plain(&left, missing_data_commits(&right, &left)).expect("merge right into left");
     assert_eq!(
-        left.heads().into_iter().collect::<BTreeSet<_>>(),
+        left.begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         expected_heads
     );
 
-    right
-        .apply_commits_plain(missing_data_commits(&left, &right))
+    apply_commits_plain(&right, missing_data_commits(&left, &right))
         .expect("merge left into right");
     assert_eq!(
-        right.heads().into_iter().collect::<BTreeSet<_>>(),
+        right
+            .begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         expected_heads
     );
 
-    let left_vertices = left.table_at(&Path::from("root.V")).expect("left root.V");
-    let right_vertices = right.table_at(&Path::from("root.V")).expect("right root.V");
+    let left_read = left.begin_read();
+    let right_read = right.begin_read();
+    let left_vertices = left_read
+        .table_at(&Path::from("root.V"))
+        .expect("left root.V");
+    let right_vertices = right_read
+        .table_at(&Path::from("root.V"))
+        .expect("right root.V");
     assert_eq!(left_vertices.row_count(), 3);
     assert_eq!(right_vertices.row_count(), 3);
 
-    let left_edges = left.table_at(&Path::from("root.E")).expect("left root.E");
-    let right_edges = right.table_at(&Path::from("root.E")).expect("right root.E");
+    let left_edges = left_read
+        .table_at(&Path::from("root.E"))
+        .expect("left root.E");
+    let right_edges = right_read
+        .table_at(&Path::from("root.E"))
+        .expect("right root.E");
     assert_eq!(left_edges.row_count(), 2);
     assert_eq!(right_edges.row_count(), 2);
 
@@ -262,12 +280,12 @@ fn test_divergent_commits_merge_between_stores(
     // the unpacked ids.
     let left_row_ids = left_vertices
         .scan()
-        .map(|row| left.id_lookup().unpacked(&row.row_id()))
+        .map(|row| left_read.id_lookup().unpacked(&row.row_id()))
         .collect::<Option<BTreeSet<_>>>()
         .expect("left row ids are unpacked");
     let right_row_ids = right_vertices
         .scan()
-        .map(|row| right.id_lookup().unpacked(&row.row_id()))
+        .map(|row| right_read.id_lookup().unpacked(&row.row_id()))
         .collect::<Option<BTreeSet<_>>>()
         .expect("right row ids are unpacked");
     assert_eq!(left_row_ids, right_row_ids);

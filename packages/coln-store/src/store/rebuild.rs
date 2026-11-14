@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::store::Store;
+use crate::store::StoreData;
 use crate::store::error::StoreError;
 use crate::table::TableOid;
 
-impl Store {
+impl StoreData {
     /// Rebuild until a pass displaces no further ids, so a commit that merged
     /// nothing does no rebuild work at all.
     pub(super) fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreError> {

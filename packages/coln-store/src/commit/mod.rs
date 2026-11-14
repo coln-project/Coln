@@ -117,7 +117,7 @@ impl DataCommit {
         table_meta_for: F,
     ) -> Result<Self, CodecError>
     where
-        F: Fn(TableOid) -> Option<TableMeta<'s>>,
+        F: Fn(TableOid) -> Option<&'s TableMeta>,
     {
         let mut hash_mapper = HashMapper::new();
         collect_op_hashes(&data.pending, &mut hash_mapper);
@@ -152,7 +152,7 @@ impl DataCommit {
     /// neither the commit nor `table_meta_for`, hence the 'static.
     pub(crate) fn resolved_ops<'s, F>(&self, table_meta_for: F) -> Result<Vec<PublicOp>, CodecError>
     where
-        F: Fn(&Path) -> Option<TableMeta<'s>>,
+        F: Fn(&Path) -> Option<&'s TableMeta>,
     {
         let hash = self.hash();
         let pending = wire::deserialize(self.payload(), table_meta_for)?.pending;
@@ -209,54 +209,30 @@ mod tests {
     }
 
     struct TestTableMetadata {
-        path_t: Path,
-        path_uv: Path,
-        int_schema: Schema,
-        entity_pair_schema: Schema,
-        mixed_schema: Schema,
+        int_t: TableMeta,
+        mixed_uv: TableMeta,
+        entity_pair_t: TableMeta,
     }
 
     impl TestTableMetadata {
-        fn int_for_oid(&self, oid: TableOid) -> Option<TableMeta<'_>> {
-            (oid == 0).then_some(TableMeta {
-                path: &self.path_t,
-                oid: 0,
-                schema: &self.int_schema,
-            })
+        fn int_for_oid(&self, oid: TableOid) -> Option<&TableMeta> {
+            (oid == 0).then_some(&self.int_t)
         }
 
-        fn payload_for_oid(&self, oid: TableOid) -> Option<TableMeta<'_>> {
-            match oid {
-                0 => self.int_for_oid(oid),
-                1 => Some(TableMeta {
-                    path: &self.path_uv,
-                    oid: 1,
-                    schema: &self.mixed_schema,
-                }),
-                _ => None,
-            }
+        fn payload_for_oid(&self, oid: TableOid) -> Option<&TableMeta> {
+            [&self.int_t, &self.mixed_uv]
+                .into_iter()
+                .find(|meta| meta.oid == oid)
         }
 
-        fn payload_for_path(&self, path: &Path) -> Option<TableMeta<'_>> {
-            if path == &self.path_t {
-                self.int_for_oid(0)
-            } else if path == &self.path_uv {
-                Some(TableMeta {
-                    path: &self.path_uv,
-                    oid: 1,
-                    schema: &self.mixed_schema,
-                })
-            } else {
-                None
-            }
+        fn payload_for_path(&self, path: &Path) -> Option<&TableMeta> {
+            [&self.int_t, &self.mixed_uv]
+                .into_iter()
+                .find(|meta| &meta.path == path)
         }
 
-        fn entity_pair_for_oid(&self, oid: TableOid) -> Option<TableMeta<'_>> {
-            (oid == 0).then_some(TableMeta {
-                path: &self.path_t,
-                oid: 0,
-                schema: &self.entity_pair_schema,
-            })
+        fn entity_pair_for_oid(&self, oid: TableOid) -> Option<&TableMeta> {
+            (oid == 0).then_some(&self.entity_pair_t)
         }
     }
 
@@ -282,11 +258,9 @@ mod tests {
         });
 
         TestTableMetadata {
-            path_t: Path::from("T"),
-            path_uv: Path::from("U.V"),
-            int_schema,
-            entity_pair_schema,
-            mixed_schema,
+            int_t: TableMeta::new("T", 0, int_schema),
+            mixed_uv: TableMeta::new("U.V", 1, mixed_schema),
+            entity_pair_t: TableMeta::new("T", 0, entity_pair_schema),
         }
     }
 

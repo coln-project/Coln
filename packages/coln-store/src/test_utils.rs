@@ -11,7 +11,6 @@ use rstest::fixture;
 use crate::{
     commit::{DataCommit, chunk::Chunk, wire::root::RootCommitData},
     store::Store,
-    txn::rw::StoreWrite,
 };
 
 mod rowid {
@@ -220,8 +219,6 @@ mod store {
     use coln_flir_rs::engine::schema::ColnDef;
     use coln_flir_rs::hash::CommitHash;
 
-    use crate::store::auto::AutoStore;
-
     use super::root::empty_colndef;
     use super::schema::{
         id_col_type, id_schema, idonly_schema, int_col_type, int_schema, memoized_int_schema,
@@ -269,22 +266,17 @@ mod store {
         store
     }
 
-    #[fixture]
-    pub(crate) fn single_int_autostore(single_int_store: Store) -> AutoStore {
-        AutoStore::new(single_int_store)
-    }
-
     // A single_int_store, but with a single commit added
     #[fixture]
     pub(crate) fn commit_int_store(
         #[default(42)] value: i32,
-        mut single_int_store: Store,
+        single_int_store: Store,
     ) -> (Store, CommitHash) {
         let path = Path::from("T");
 
-        let mut tx = single_int_store.transaction();
-        tx.add(&path, vec![value]).expect("add row");
-        let h = tx.commit().expect("commit row");
+        let mut write_txn = single_int_store.begin_write();
+        write_txn.add(&path, vec![value]).expect("add row");
+        let h = write_txn.commit().expect("commit row").commit_hash();
 
         (single_int_store, h)
     }
@@ -383,9 +375,9 @@ mod store {
     pub(crate) fn commit_int(store: &mut Store, value: i32) -> CommitHash {
         let path = Path::from("T");
 
-        let mut tx = store.transaction();
+        let mut tx = store.begin_write();
         tx.add(&path, vec![value]).expect("add row");
-        tx.commit().expect("commit row")
+        tx.commit().expect("commit row").commit_hash()
     }
 }
 

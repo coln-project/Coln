@@ -53,6 +53,7 @@ fn batch_block_matches_apply_batch_for_graph_fixture(theory: FlatRealm, coln_def
     let msg = run_transact(&mut store, &assignments).expect("run batch");
     assert!(msg.contains("v1=#"), "expected binding summary: {msg}");
 
-    let ge = store.table_at(&Path::from("root.E")).expect("root.E");
+    let read = store.begin_read();
+    let ge = read.table_at(&Path::from("root.E")).expect("root.E");
     assert_eq!(ge.row_count(), 1);
 }

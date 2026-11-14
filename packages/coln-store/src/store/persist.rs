@@ -21,12 +21,13 @@ impl Store {
     /// `[MAGIC:4][version][chunk_count]`
     /// `[chunk_count × [chunk_header || payload]]` (see [`crate::commit::header::Header::write`])
     pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
-        let commits = self.commits().iter_topological().collect::<Vec<_>>();
+        let data = self.data.read();
+        let commits = data.commits.iter_topological().collect::<Vec<_>>();
         let mut buf: Vec<u8> = Vec::new();
         buf.write_all(MAGIC)?;
         commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
         commit_leb128::write_len(&mut buf, commits.len() + 1);
-        Frame::from(self.commits().root_commit()).write(&mut buf);
+        Frame::from(data.commits.root_commit()).write(&mut buf);
 
         for commit in commits {
             Frame::from(commit).write(&mut buf);
@@ -49,7 +50,7 @@ impl Store {
     pub(crate) fn decode_plain(data: &[u8]) -> Result<Self, StoreError> {
         let encoded = read_store_envelope(data)?;
         let store = Self::try_from_chunks_plain(encoded)?;
-        if store.has_pending() {
+        if store.data.read().has_pending() {
             return Err(CodecError::DataContentError(
                 "store snapshot contains commits that could not be applied".into(),
             )
@@ -106,7 +107,6 @@ mod tests {
     use crate::ir::Path;
     use crate::pack::id_packer::IdLookup;
     use crate::test_utils::non_empty_root_commit_data;
-    use crate::txn::rw::{StoreRead, StoreWrite};
 
     #[fixture]
     fn int_store(non_empty_root_commit_data: RootCommitData) -> Store {
@@ -183,7 +183,8 @@ mod tests {
         let store = Store::new();
         let bytes = store.encode().unwrap();
         let chunks = read_encoded_chunks(&bytes);
-        let root = store.commits().root_commit();
+        let read = store.begin_read();
+        let root = read.data.commits.root_commit();
 
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].0, u8::from(ChunkType::RootCommit));
@@ -191,22 +192,27 @@ mod tests {
     }
 
     #[rstest]
-    fn encode_store_writes_topological_commit_chunks(#[from(int_store)] mut store: Store) {
+    fn encode_store_writes_topological_commit_chunks(#[from(int_store)] store: Store) {
         let table = Path::from("T");
-        let mut txn = store.transaction();
-        txn.add(&table, vec![99_i32]).expect("add row");
-        txn.commit().expect("commit");
+        let mut hashes = Vec::new();
+        for value in [99_i32, 100_i32] {
+            let mut txn = store.begin_write();
+            txn.add(&table, vec![value]).expect("add row");
+            hashes.push(txn.commit().expect("commit").commit_hash());
+        }
 
-        let mut expected = vec![(
-            u8::from(ChunkType::RootCommit),
-            store.commits().root_commit().payload().to_vec(),
-        )];
-        expected.extend(
-            store
-                .commits()
-                .iter_topological()
-                .map(|commit| (u8::from(ChunkType::DataCommit), commit.payload().to_vec())),
-        );
+        let expected = {
+            let read = store.begin_read();
+            let mut expected = vec![(
+                u8::from(ChunkType::RootCommit),
+                read.data.commits.root_commit().payload().to_vec(),
+            )];
+            expected.extend(hashes.iter().map(|hash| {
+                let commit = read.commit_by_hash(hash).expect("stored commit");
+                (u8::from(ChunkType::DataCommit), commit.payload().to_vec())
+            }));
+            expected
+        };
         let bytes = store.encode().unwrap();
         let chunks = read_encoded_chunks(&bytes);
 
@@ -224,14 +230,16 @@ mod tests {
 
     #[test]
     fn store_decode_rejects_unknown_chunk_type() {
-        let mut chunk = Vec::new();
-        chunk.write_all(MAGIC).unwrap();
-        chunk.extend_from_slice(&[0u8; 4]); // checksum placeholder
-        chunk.push(99); // unknown chunk type
-        commit_leb128::write_len(&mut chunk, 0);
+        let mut chunk = frame_chunk(ChunkType::RootCommit, &[]);
+        // Skip the chunk magic and checksum to replace the type tag.
+        chunk[8] = 99;
         let bytes = store_envelope(&[chunk]);
 
-        assert!(is_data_format_error(Store::decode_plain(&bytes)));
+        assert!(matches!(
+            Store::decode_plain(&bytes),
+            Err(StoreError::Encode(CodecError::DataFormatError(message)))
+                if message == "unknown chunk type 99"
+        ));
     }
 
     #[test]
@@ -326,50 +334,46 @@ mod tests {
     #[test]
     fn store_round_trip_empty() {
         let store = Store::new();
-        let root = store.commits().root_commit().hash();
+        let root = store.begin_read().data.commits.root_commit().hash();
 
         let bytes = store.encode().unwrap();
         let restored = Store::decode_plain(&bytes).unwrap();
 
         assert_eq!(restored.table_count(), 0);
-        assert_eq!(restored.commits().root_commit().hash(), root);
-        assert_eq!(
-            restored.commits().heads().copied().collect::<Vec<_>>(),
-            vec![root]
-        );
+        let read = restored.begin_read();
+        assert_eq!(read.data.commits.root_commit().hash(), root);
+        assert_eq!(read.heads(), vec![root]);
     }
 
     #[rstest]
-    fn store_round_trip_replays_commits_and_preserves_graph(#[from(int_store)] mut store: Store) {
-        let root = store.commits().root_commit().hash();
+    fn store_round_trip_replays_commits_and_preserves_graph(#[from(int_store)] store: Store) {
+        let root = store.begin_read().data.commits.root_commit().hash();
         let table = Path::from("T");
-        let mut txn = store.transaction();
+        let mut txn = store.begin_write();
         let live_id = txn.add(&table, vec![99_i32]).expect("add row");
-        let commit = txn.commit().expect("commit");
-        let row_id = store.promote_one(live_id, commit);
+        let commit = txn.commit().expect("commit").commit_hash();
+        let row_id = store.begin_read().promote_one(live_id, commit);
 
         let bytes = store.encode().unwrap();
         let restored = Store::decode_plain(&bytes).unwrap();
 
-        let packed = restored
+        let read = restored.begin_read();
+        let packed = read
             .id_lookup()
             .packed(&row_id)
             .expect("restored store interned the commit hash");
         assert_eq!(
-            restored.row_by_id(&table, &packed),
+            read.row_by_id(&table, &packed),
             Some(StoreTuple::from(vec![
                 StoreScalarValue::RowId(packed),
                 StoreScalarValue::I32(99),
             ]))
         );
         assert_eq!(
-            restored.commits().parents_of(&commit),
-            Some([root].as_slice())
+            read.commit_by_hash(&commit).expect("restored commit").deps,
+            vec![root]
         );
-        assert_eq!(
-            restored.commits().heads().copied().collect::<Vec<_>>(),
-            vec![commit]
-        );
+        assert_eq!(read.heads(), vec![commit]);
     }
 
     #[test]

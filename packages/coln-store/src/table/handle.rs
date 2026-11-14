@@ -166,7 +166,8 @@ mod test {
             commit_idx: 0,
             counter: 0,
         };
-        let table = store.table_at(&path).expect("table exists");
+        let read_txn = store.begin_read();
+        let table = read_txn.table_at(&path).expect("table exists");
 
         assert_eq!(
             table.row_by_id(&row_id),

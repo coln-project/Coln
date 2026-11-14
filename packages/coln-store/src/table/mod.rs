@@ -30,12 +30,46 @@ use crate::table::undo::UndoOp;
 
 pub type TableOid = usize;
 
-/// Borrowed identity and schema for a registered table.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct TableMeta<'a> {
-    pub path: &'a ir::Path,
+/// Identity and schema for a registered table.
+#[derive(Debug, Clone)]
+pub struct TableMeta {
+    pub path: ir::Path,
     pub oid: TableOid,
-    pub schema: &'a Schema,
+    pub schema: Schema,
+}
+
+impl TableMeta {
+    pub(crate) fn new<P: Into<ir::Path>>(path: P, oid: TableOid, schema: Schema) -> Self {
+        Self {
+            path: path.into(),
+            oid,
+            schema,
+        }
+    }
+
+    /// Checks that a row has the right number of values for this table. This is
+    /// a preliminary check that is done as soon as an operation is added. More
+    /// complex check is in validate_insert and deferred at commit time
+    pub(crate) fn validate_column_count(&self, got: usize) -> Result<(), ValidationError> {
+        let expected = self.schema.columns.len();
+        if got != expected {
+            return Err(ValidationError::ColumnCount { expected, got });
+        }
+        Ok(())
+    }
+
+    pub(crate) fn oid(&self) -> TableOid {
+        self.oid
+    }
+}
+
+/// Number of leading columns that must be unique, derived from the schema's primary key.
+fn unique_prefix_len(schema: &Schema) -> Option<usize> {
+    match &schema.primary_key {
+        None => None,
+        Some(pk) if pk.is_empty() => Some(0),
+        Some(pk) => Some(pk.len()),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
@@ -115,11 +149,7 @@ impl Table {
             .map(|column| Column::new(StoreScalarType::from(&column.col_type)))
             .collect();
 
-        let pk = match &schema.primary_key {
-            None => None,
-            Some(pk) if pk.is_empty() => Some(0),
-            Some(pk) => Some(pk.len()),
-        };
+        let pk = unique_prefix_len(&schema);
 
         let except_rowid: Vec<usize> = (0..schema.columns.len()).collect();
         let index = TableIndex::new(&except_rowid, &schema);
@@ -155,6 +185,10 @@ impl Table {
 
     pub(crate) fn oid(&self) -> TableOid {
         self.oid
+    }
+
+    pub(crate) fn meta(&self) -> TableMeta {
+        TableMeta::new(self.path.clone(), self.oid, self.schema.clone())
     }
 
     pub(crate) fn row_count(&self) -> usize {
@@ -237,17 +271,6 @@ impl Table {
 impl Table {
     // Basic validation against schema
 
-    /// Checks that a row has the right number of values for this table. This is
-    /// a preliminary check that is done as soon as an operation is added. More
-    /// complex check is in validate_insert and deferred at commit time
-    pub(crate) fn validate_column_count(&self, got: usize) -> Result<(), ValidationError> {
-        let expected = self.schema.columns.len();
-        if got != expected {
-            return Err(ValidationError::ColumnCount { expected, got });
-        }
-        Ok(())
-    }
-
     /// Checks schema and primary-key constraints against rows already stored.
     pub(crate) fn validate_insert(
         &self,
@@ -256,7 +279,7 @@ impl Table {
     ) -> Result<(), ValidationError> {
         // duplicated as txn::add(), but this is cheap enough we can afford to
         // do it here just in case.
-        self.validate_column_count(values.len())?;
+        self.meta().validate_column_count(values.len())?;
 
         for (i, (col_entry, value)) in self.schema.columns.iter().zip(values.iter()).enumerate() {
             let expected = StoreScalarType::from(&col_entry.col_type);

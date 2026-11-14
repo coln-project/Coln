@@ -14,7 +14,6 @@ pub mod store;
 pub mod table;
 #[cfg(test)]
 mod test_utils;
-pub mod txn;
 
 pub use pack::id_packer::IdLookup;
 
