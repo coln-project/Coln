@@ -6,7 +6,6 @@ use coln_flir_rs::{engine::schema::ColnDef, ir, public::PublicScalarValue};
 use coln_store::{
     store::{Store, commit::CommitChunk, error::StoreError},
     table::ValidationError,
-    txn::rw::StoreWrite,
 };
 use rstest::{fixture, rstest};
 
@@ -82,32 +81,35 @@ fn only_ones(only_ones_realm: ir::FlatRealm, coln_def: ColnDef) -> Bouncer {
 // Plain store transactions let incoming commits violate query rules while
 // retaining the same realm and root as the receiving bouncer.
 fn plain_commits(realm: &ir::FlatRealm, coln_def: ColnDef, values: &[i32]) -> Vec<CommitChunk> {
-    let mut source = Store::try_from_ir(realm, coln_def).expect("source store");
-    let heads = source.heads();
+    let source = Store::try_from_ir(realm, coln_def).expect("source store");
+    let heads = source.begin_read().heads();
     for value in values {
-        let mut txn = source.transaction();
+        let mut txn = source.begin_write();
         txn.add(&ir::Path::from("t"), vec![*value])
             .expect("add row");
-        txn.commit().expect("commit without query rules");
+        txn.try_commit()
+            .expect("prepare without query rules")
+            .commit();
     }
-    source.commit_chunks_after(&heads)
+    source.begin_read().commit_chunks_after(&heads)
 }
 
 #[rstest]
 fn rejected_commit_rolls_back_store_and_allows_next_transaction(mut only_ones: Bouncer) {
     let table = ir::Path::from("t");
-    only_ones.transaction();
-    only_ones.add(&table, vec![1i32]).expect("add initial row");
-    let initial = only_ones.commit().expect("commit initial row");
-    let before = only_ones.scan_table(&table).expect("table exists");
+    let mut tx = only_ones.begin_write();
+    tx.add(&table, vec![1i32]).expect("add initial row");
+    let initial = tx.commit().expect("commit initial row");
+    let before = only_ones
+        .begin_read()
+        .scan_table(&table)
+        .expect("table exists");
     assert_eq!(before.len(), 1);
 
-    only_ones.transaction();
-    only_ones.add(&table, vec![1i32]).expect("add valid row");
-    only_ones
-        .add(&table, vec![2i32])
-        .expect("add violating row");
-    let violations = match only_ones.commit() {
+    let mut tx = only_ones.begin_write();
+    tx.add(&table, vec![1i32]).expect("add valid row");
+    tx.add(&table, vec![2i32]).expect("add violating row");
+    let violations = match tx.commit() {
         Err(BouncerError::Rule(RuleViolation::HardViolation(violations))) => violations,
         Err(error) => panic!("expected a hard constraint violation, got {error}"),
         Ok(_) => panic!("the enforced rule should reject value 2"),
@@ -121,23 +123,32 @@ fn rejected_commit_rolls_back_store_and_allows_next_transaction(mut only_ones: B
             .for_entity(),
         &ir::Path::from("only_ones"),
     );
-    assert_eq!(only_ones.scan_table(&table).expect("table exists"), before);
-    // This also requires AutoStore to have returned to Idle after rejection.
+    assert_eq!(
+        only_ones
+            .begin_read()
+            .scan_table(&table)
+            .expect("table exists"),
+        before
+    );
     assert!(
         only_ones
+            .begin_read()
             .commit_chunks_after(&[initial.cmt_hash])
             .is_empty()
     );
 
-    only_ones.transaction();
-    only_ones
-        .add(&table, vec![1i32])
-        .expect("add next valid row");
-    let next = only_ones.commit().expect("commit after rejection");
-    let after = only_ones.scan_table(&table).expect("table exists");
+    let mut tx = only_ones.begin_write();
+    tx.add(&table, vec![1i32]).expect("add next valid row");
+    let next = tx.commit().expect("commit after rejection");
+    let after = only_ones
+        .begin_read()
+        .scan_table(&table)
+        .expect("table exists");
     assert_eq!(after.len(), 2);
     assert!(after.contains(&before[0]));
-    let added = only_ones.commit_chunks_after(&[initial.cmt_hash]);
+    let added = only_ones
+        .begin_read()
+        .commit_chunks_after(&[initial.cmt_hash]);
     assert_eq!(added.len(), 1);
     assert_eq!(added[0].hash, next.cmt_hash);
     assert_eq!(added[0].parents, vec![initial.cmt_hash]);
@@ -154,29 +165,38 @@ fn failed_local_validation_does_not_poison_sync(
         .expect("bouncer with a primary key");
     let table = ir::Path::from("t");
 
-    target.transaction();
-    target.add(&table, vec![1i32]).expect("initial row");
-    target.commit().expect("initial commit");
-    let before = target.scan_table(&table).expect("table");
+    let mut tx = target.begin_write();
+    tx.add(&table, vec![1i32]).expect("initial row");
+    tx.commit().expect("initial commit");
+    let before = target.begin_read().scan_table(&table).expect("table");
 
-    target.transaction();
-    target.add(&table, vec![1i32]).expect("duplicate row");
+    let mut tx = target.begin_write();
+    tx.add(&table, vec![1i32]).expect("duplicate row");
     assert!(matches!(
-        target.commit(),
+        tx.commit(),
         Err(BouncerError::StoreError(StoreError::Validation(
             ValidationError::DuplicatePrimaryKey
         )))
     ));
-    target.abort();
-    assert_eq!(target.scan_table(&table).expect("table"), before);
+    assert_eq!(
+        target.begin_read().scan_table(&table).expect("table"),
+        before
+    );
 
     // Even an empty delivery must not retry the aborted local transaction.
-    assert!(target.apply_chunk_bytes([]).expect("empty sync").is_empty());
+    assert!(
+        target
+            .begin_import()
+            .apply_chunk_bytes([])
+            .expect("empty sync")
+            .is_empty()
+    );
     let incoming = plain_commits(&only_ones_realm, coln_def, &[2]);
     target
+        .begin_import()
         .apply_chunk_bytes(incoming.into_iter().map(|chunk| chunk.bytes))
         .expect("valid sync after local failure");
-    let rows = target.scan_table(&table).expect("table");
+    let rows = target.begin_read().scan_table(&table).expect("table");
     assert_eq!(rows.len(), 2);
     assert!(rows.contains(&before[0]));
     assert!(rows.iter().any(|row| row[1] == PublicScalarValue::I32(2)));
@@ -189,37 +209,48 @@ fn sync_hard_rejection_preserves_earlier_commits_and_blocks_descendants(
     mut only_ones: Bouncer,
 ) {
     let chunks = plain_commits(&only_ones_realm, coln_def, &[1, 2, 1]);
-    let root = only_ones.commit_chunks_after(&[])[0].hash;
+    let root = only_ones.begin_read().commit_chunks_after(&[])[0].hash;
     let table = ir::Path::from("t");
 
     assert!(matches!(
-        only_ones.apply_chunk_bytes(chunks.iter().map(|chunk| chunk.bytes.clone())),
+        only_ones.begin_import().apply_chunk_bytes(chunks.iter().map(|chunk| chunk.bytes.clone())),
         Err(BouncerError::Rule(RuleViolation::HardViolation(violations)))
             if !violations.is_empty()
     ));
-    let rows = only_ones.scan_table(&table).expect("table");
+    let rows = only_ones.begin_read().scan_table(&table).expect("table");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][1], PublicScalarValue::I32(1));
-    let applied = only_ones.commit_chunks_after(&[root]);
+    let applied = only_ones.begin_read().commit_chunks_after(&[root]);
     assert_eq!(applied.len(), 1);
     assert_eq!(applied[0].hash, chunks[0].hash);
 
     // The rejected commit is discarded, and its descendant remains blocked.
     assert!(
         only_ones
+            .begin_import()
             .apply_chunk_bytes([])
             .expect("retry pending")
             .is_empty()
     );
-    assert_eq!(only_ones.scan_table(&table).expect("table"), rows);
+    assert_eq!(
+        only_ones.begin_read().scan_table(&table).expect("table"),
+        rows
+    );
 
-    only_ones.transaction();
-    only_ones.add(&table, vec![1i32]).expect("valid local row");
-    let local = only_ones
-        .commit()
-        .expect("both engines recovered after rejection");
-    assert_eq!(only_ones.scan_table(&table).expect("table").len(), 2);
-    let added = only_ones.commit_chunks_after(&[chunks[0].hash]);
+    let mut tx = only_ones.begin_write();
+    tx.add(&table, vec![1i32]).expect("valid local row");
+    let local = tx.commit().expect("both engines recovered after rejection");
+    assert_eq!(
+        only_ones
+            .begin_read()
+            .scan_table(&table)
+            .expect("table")
+            .len(),
+        2
+    );
+    let added = only_ones
+        .begin_read()
+        .commit_chunks_after(&[chunks[0].hash]);
     assert_eq!(added.len(), 1);
     assert_eq!(added[0].hash, local.cmt_hash);
     assert_eq!(added[0].parents, vec![chunks[0].hash]);
@@ -233,9 +264,10 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
     only_ones_realm.rules[0].rule.rule_variant = ir::RuleVariant::Monitored;
     let chunks = plain_commits(&only_ones_realm, coln_def.clone(), &[2, 1]);
     let mut target = Bouncer::try_new(only_ones_realm, coln_def).expect("monitored realm");
-    let root = target.commit_chunks_after(&[])[0].hash;
+    let root = target.begin_read().commit_chunks_after(&[])[0].hash;
 
     let reports = target
+        .begin_import()
         .apply_chunk_bytes(chunks.iter().map(|chunk| chunk.bytes.clone()))
         .expect("soft violation permits both commits");
     assert_eq!(reports.len(), 2);
@@ -246,6 +278,7 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
     assert_eq!(violations[0].delta()[0].zweight(), 1);
     assert!(reports[1].is_empty());
     let mut values = target
+        .begin_read()
         .scan_table(&ir::Path::from("t"))
         .expect("table")
         .into_iter()
@@ -257,6 +290,7 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
     values.sort();
     assert_eq!(values, vec![1, 2]);
     let hashes = target
+        .begin_read()
         .commit_chunks_after(&[root])
         .into_iter()
         .map(|chunk| chunk.hash)
@@ -265,8 +299,52 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
 
     assert!(
         target
+            .begin_import()
             .apply_chunk_bytes(chunks.into_iter().map(|chunk| chunk.bytes))
             .expect("repeated delivery")
             .is_empty()
+    );
+}
+
+#[rstest]
+#[case::abort(true)]
+#[case::drop(false)]
+fn discarded_write_does_not_apply_or_validate_queued_rows(
+    mut only_ones: Bouncer,
+    #[case] abort: bool,
+) {
+    let table = ir::Path::from("t");
+    let heads = only_ones.begin_read().heads();
+    let mut tx = only_ones.begin_write();
+    tx.add(&table, vec![2i32]).expect("queue violating row");
+    assert!(tx.read().scan_table(&table).expect("table").is_empty());
+    if abort {
+        tx.abort();
+    } else {
+        drop(tx);
+    }
+    assert_eq!(only_ones.begin_read().heads(), heads);
+    assert!(
+        only_ones
+            .begin_read()
+            .scan_table(&table)
+            .expect("table")
+            .is_empty()
+    );
+
+    let mut tx = only_ones.begin_write();
+    let id = tx.add(&table, vec![1i32]).expect("valid row");
+    let result = tx.commit().expect("commit after discarded write");
+    let read = only_ones.begin_read();
+    let public = read.promote_one(id, result.cmt_hash);
+    let row = read.row_by_id(&table, &public).expect("public row lookup");
+    assert_eq!(row[1], PublicScalarValue::I32(1));
+    assert_eq!(read.promote([id], result.cmt_hash), vec![public]);
+    assert_eq!(read.canonical_row_id(&public), Some(public));
+    assert_eq!(only_ones.coln_def().realm, "OnlyOnes");
+    assert!(serde_json::from_str::<ir::FlatRealm>(&only_ones.json_ir()).is_ok());
+    assert!(
+        read.row_by_id(&ir::Path::from("missing"), &public)
+            .is_none()
     );
 }

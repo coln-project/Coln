@@ -9,8 +9,8 @@ use coln_flir_rs::{
 };
 use coln_store::IdLookup;
 use coln_store::store::auto::AutoStore;
-use coln_store::txn::rw::StoreRead;
-use coln_store::txn::rw::StoreWrite;
+use coln_store::store::txn::StoreRead;
+use coln_store::store::txn::StoreWrite;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 

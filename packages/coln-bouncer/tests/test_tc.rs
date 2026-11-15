@@ -11,16 +11,10 @@ use coln_flir_rs::engine::{
     tx::{TxRowId, TxTuple},
 };
 use coln_flir_rs::ir::{FlatRealm, Path};
-use coln_flir_rs::{
-    public::{PublicRowId, PublicScalarValue},
-    query::WhereClause,
-};
-use coln_store::{
-    store::{
-        Store,
-        error::{CommitApplyError, StoreError},
-    },
-    txn::rw::StoreWrite,
+use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
+use coln_store::store::{
+    Store,
+    error::{CommitApplyError, StoreError},
 };
 use rstest::{fixture, rstest};
 
@@ -42,75 +36,84 @@ fn coln_def() -> ColnDef {
 #[rstest]
 fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
     let mut bouncer = Bouncer::try_new(ir, coln_def).expect("create bouncer success");
-    bouncer.transaction();
-    let va = bouncer
+    let mut tx = bouncer.begin_write();
+    let va = tx
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
-    let vb = bouncer
+    let vb = tx
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
-    let vc = bouncer
+    let vc = tx
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
 
-    let _e1 = bouncer
+    let _e1 = tx
         .add(&Path::from("root.E"), vec![va, vb])
         .expect("add edge successful");
-    let _e2 = bouncer
+    let _e2 = tx
         .add(&Path::from("root.E"), vec![vb, vc])
         .expect("add edge successful");
 
-    let r = bouncer.commit().expect("commit success");
+    let r = tx.commit().expect("commit success");
     let [va, vb] = bouncer
+        .begin_read()
         .promote(vec![va, vb], r.cmt_hash)
         .try_into()
         .unwrap();
 
-    let connected = bouncer
-        .all_proj(
-            &WhereClause {
-                table_name: Path::from("init.trans-closure.connected"),
-                row_id: None,
-                values: vec![PublicScalarValue::RowId(va), PublicScalarValue::RowId(vb)].into(),
-            },
-            &[1, 2],
-        )
-        .unwrap()
-        .len();
-    assert_eq!(connected, 1);
+    assert!(connected_pairs(&bouncer).contains(&(va, vb)));
 }
 
 #[fixture]
 fn one_edge(ir: FlatRealm, coln_def: ColnDef) -> (Bouncer, [PublicRowId; 2]) {
     let mut source = Bouncer::try_new(ir, coln_def).expect("source bouncer");
-    source.transaction();
-    let a = source
+    let mut tx = source.begin_write();
+    let a = tx
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("vertex a");
-    let b = source
+    let b = tx
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("vertex b");
-    source
-        .add(&Path::from("root.E"), vec![a, b])
+    tx.add(&Path::from("root.E"), vec![a, b])
         .expect("edge a -> b");
-    let committed = source.commit().expect("commit edge");
+    let committed = tx.commit().expect("commit edge");
     let ids = source
+        .begin_read()
         .promote([a, b], committed.cmt_hash)
         .try_into()
         .expect("two vertices");
     (source, ids)
 }
 
+#[rstest]
+fn derived_row_ids_do_not_overlap_base_operations(one_edge: (Bouncer, [PublicRowId; 2])) {
+    let (bouncer, _) = one_edge;
+    let read = bouncer.begin_read();
+    let rows = ["root.V", "root.E", "init.trans-closure.connected"]
+        .into_iter()
+        .flat_map(|path| read.scan_table(&Path::from(path)).expect("table"))
+        .collect::<Vec<_>>();
+    let ids = rows
+        .iter()
+        .map(|row| match row[0] {
+            PublicScalarValue::RowId(id) => id,
+            ref other => panic!("expected row id, got {other:?}"),
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(rows.len(), 6, "three base rows and three derived rows");
+    assert_eq!(ids.len(), rows.len(), "every row has a distinct public id");
+}
+
 fn extend_chain(bouncer: &mut Bouncer, tail: &PublicRowId) -> PublicRowId {
-    bouncer.transaction();
-    let next = bouncer
+    let mut tx = bouncer.begin_write();
+    let next = tx
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("new vertex");
-    bouncer
-        .add(&Path::from("root.E"), vec![TxRowId::from(*tail), next])
+    tx.add(&Path::from("root.E"), vec![TxRowId::from(*tail), next])
         .expect("edge from old tail");
-    let committed = bouncer.commit().expect("extend chain");
+    let committed = tx.commit().expect("extend chain");
     bouncer
+        .begin_read()
         .promote([next], committed.cmt_hash)
         .pop()
         .expect("new vertex id")
@@ -118,6 +121,7 @@ fn extend_chain(bouncer: &mut Bouncer, tail: &PublicRowId) -> PublicRowId {
 
 fn connected_pairs(bouncer: &Bouncer) -> BTreeSet<(PublicRowId, PublicRowId)> {
     let rows = bouncer
+        .begin_read()
         .scan_table(&Path::from("init.trans-closure.connected"))
         .expect("derived view");
     let pairs = rows
@@ -139,44 +143,63 @@ fn repeated_sync_is_a_noop_for_base_and_derived_data(
 ) {
     let (source, [a, b]) = one_edge;
     let mut target = Bouncer::try_new(ir, coln_def).expect("target bouncer");
-    let root = target.commit_chunks_after(&[])[0].hash;
-    let chunks = source.commit_chunks_after(&[root]);
+    let root = target.begin_read().commit_chunks_after(&[])[0].hash;
+    let chunks = source.begin_read().commit_chunks_after(&[root]);
     target
+        .begin_import()
         .apply_chunk_bytes(chunks.iter().map(|chunk| chunk.bytes.clone()))
         .expect("first sync");
     assert_eq!(
         connected_pairs(&target),
         BTreeSet::from([(a, a), (a, b), (b, b)])
     );
-    let vertices = target.scan_table(&Path::from("root.V")).expect("vertices");
-    let edges = target.scan_table(&Path::from("root.E")).expect("edges");
+    let vertices = target
+        .begin_read()
+        .scan_table(&Path::from("root.V"))
+        .expect("vertices");
+    let edges = target
+        .begin_read()
+        .scan_table(&Path::from("root.E"))
+        .expect("edges");
     let derived = target
+        .begin_read()
         .scan_table(&Path::from("init.trans-closure.connected"))
         .expect("derived rows");
-    let encoded = target.encode_store().expect("snapshot");
+    let encoded = target.begin_read().encode_store().expect("snapshot");
 
     assert!(
         target
+            .begin_import()
             .apply_chunk_bytes(chunks.into_iter().map(|chunk| chunk.bytes))
             .expect("repeat sync")
             .is_empty()
     );
     assert_eq!(
-        target.scan_table(&Path::from("root.V")).expect("vertices"),
+        target
+            .begin_read()
+            .scan_table(&Path::from("root.V"))
+            .expect("vertices"),
         vertices
     );
     assert_eq!(
-        target.scan_table(&Path::from("root.E")).expect("edges"),
+        target
+            .begin_read()
+            .scan_table(&Path::from("root.E"))
+            .expect("edges"),
         edges
     );
     assert_eq!(
         target
+            .begin_read()
             .scan_table(&Path::from("init.trans-closure.connected"))
             .expect("derived rows"),
         derived
     );
     assert_eq!(
-        target.encode_store().expect("unchanged commit history"),
+        target
+            .begin_read()
+            .encode_store()
+            .expect("unchanged commit history"),
         encoded
     );
 
@@ -207,16 +230,17 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
     let (mut source, [a, b]) = one_edge;
     let c = extend_chain(&mut source, &b);
     let mut target = Bouncer::try_new(ir.clone(), coln_def.clone()).expect("target bouncer");
-    let root = target.commit_chunks_after(&[])[0].hash;
-    let chunks = source.commit_chunks_after(&[root]);
+    let root = target.begin_read().commit_chunks_after(&[])[0].hash;
+    let chunks = source.begin_read().commit_chunks_after(&[root]);
     assert_eq!(chunks.len(), 2);
     assert!(
         target
+            .begin_import()
             .apply_chunk_bytes([chunks[1].bytes.clone()])
             .expect("buffer child")
             .is_empty()
     );
-    let before = target.encode_store().expect("empty snapshot");
+    let before = target.begin_read().encode_store().expect("empty snapshot");
 
     let invalid_bytes = match failure {
         FailedDelivery::MalformedBytes => vec![0xde, 0xad],
@@ -230,25 +254,29 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
             )
             .expect("foreign store");
             foreign
+                .begin_read()
                 .commit_chunks_after(&[])
                 .pop()
                 .expect("foreign root")
                 .bytes
         }
         FailedDelivery::HardViolation => {
-            let mut invalid = Store::try_from_ir(&ir, coln_def).expect("plain source");
+            let invalid = Store::try_from_ir(&ir, coln_def).expect("plain source");
             let missing_vertex = PublicRowId {
                 commit: root,
                 counter: 0,
             };
-            let mut txn = invalid.transaction();
+            let mut txn = invalid.begin_write();
             let vertex = txn
                 .add(&Path::from("root.V"), TxTuple::empty())
                 .expect("valid vertex");
             txn.add(&Path::from("root.E"), vec![vertex, missing_vertex.into()])
                 .expect("dangling edge");
-            txn.commit().expect("plain store skips foreign-key rule");
+            txn.try_commit()
+                .expect("plain store skips foreign-key rule")
+                .commit();
             invalid
+                .begin_read()
                 .commit_chunks_after(&[root])
                 .pop()
                 .expect("invalid commit")
@@ -256,6 +284,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
         }
     };
     let error = target
+        .begin_import()
         .apply_chunk_bytes([invalid_bytes])
         .expect_err("invalid delivery");
     match failure {
@@ -271,15 +300,23 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
             matches!(error, BouncerError::Rule(RuleViolation::HardViolation(violations)) if !violations.is_empty())
         ),
     }
-    assert_eq!(target.encode_store().expect("snapshot after error"), before);
+    assert_eq!(
+        target
+            .begin_read()
+            .encode_store()
+            .expect("snapshot after error"),
+        before
+    );
     assert!(
         target
+            .begin_read()
             .scan_table(&Path::from("root.V"))
             .expect("vertices")
             .is_empty()
     );
     assert!(
         target
+            .begin_read()
             .scan_table(&Path::from("root.E"))
             .expect("edges")
             .is_empty()
@@ -287,12 +324,14 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
     assert!(connected_pairs(&target).is_empty());
 
     let reports = target
+        .begin_import()
         .apply_chunk_bytes([chunks[0].bytes.clone()])
         .expect("parent unlocks buffered child");
     assert_eq!(reports.len(), 2);
     assert!(reports.iter().all(|report| report.is_empty()));
     assert_eq!(
         target
+            .begin_read()
             .scan_table(&Path::from("root.V"))
             .expect("vertices")
             .len(),
@@ -300,6 +339,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
     );
     assert_eq!(
         target
+            .begin_read()
             .scan_table(&Path::from("root.E"))
             .expect("edges")
             .len(),
@@ -310,8 +350,8 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
         BTreeSet::from([(a, a), (a, b), (a, c), (b, b), (b, c), (c, c)])
     );
     assert_eq!(
-        target.encode_store().expect("target snapshot"),
-        source.encode_store().expect("source snapshot")
+        target.begin_read().encode_store().expect("target snapshot"),
+        source.begin_read().encode_store().expect("source snapshot")
     );
 }
 
@@ -320,21 +360,24 @@ fn snapshot_round_trip_restores_derived_data_and_query_state(
     one_edge: (Bouncer, [PublicRowId; 2]),
 ) {
     let (source, [a, b]) = one_edge;
-    let encoded = source.encode_store().expect("encode bouncer");
+    let encoded = source.begin_read().encode_store().expect("encode bouncer");
     let (mut restored, reports) = Bouncer::decode_store(&encoded).expect("decode bouncer");
     assert_eq!(reports.len(), 1);
     assert!(reports[0].is_empty());
     for table in ["root.V", "root.E"] {
         assert_eq!(
-            restored.scan_table(&Path::from(table)),
-            source.scan_table(&Path::from(table))
+            restored.begin_read().scan_table(&Path::from(table)),
+            source.begin_read().scan_table(&Path::from(table))
         );
     }
     assert_eq!(
         connected_pairs(&restored),
         BTreeSet::from([(a, a), (a, b), (b, b)])
     );
-    assert_eq!(restored.encode_store().expect("re-encode"), encoded);
+    assert_eq!(
+        restored.begin_read().encode_store().expect("re-encode"),
+        encoded
+    );
 
     // Deriving a -> c needs the old a -> b fact inside query, not just store.
     let c = extend_chain(&mut restored, &b);
@@ -344,6 +387,7 @@ fn snapshot_round_trip_restores_derived_data_and_query_state(
     );
     assert_eq!(
         restored
+            .begin_read()
             .scan_table(&Path::from("root.V"))
             .expect("vertices")
             .len(),
@@ -351,6 +395,7 @@ fn snapshot_round_trip_restores_derived_data_and_query_state(
     );
     assert_eq!(
         restored
+            .begin_read()
             .scan_table(&Path::from("root.E"))
             .expect("edges")
             .len(),

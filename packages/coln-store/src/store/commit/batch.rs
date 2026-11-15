@@ -10,16 +10,14 @@ use std::marker::PhantomData;
 use coln_flir_rs::engine::delta::{Consolidated, PartialConsolidated, StoreDelta};
 use coln_flir_rs::engine::packed::StoreTuple;
 use coln_flir_rs::hash::CommitHash;
-use coln_flir_rs::ir;
 use parking_lot::RwLockWriteGuard;
 
-use crate::IdLookup;
 use crate::commit::DataCommit;
 use crate::rollback::Rollback;
 use crate::store::data::{CheckedOpCommit, DataSnapshot};
 use crate::store::error::StoreError;
-use crate::store::{Catalog, StoreData};
-use crate::table::{TableHandle, ValidationError};
+use crate::store::{Catalog, ReadTxn, StoreData};
+use crate::table::ValidationError;
 
 pub trait PrepareState {}
 
@@ -68,14 +66,19 @@ impl PrepareState for Prepared {}
 /// - `Unprepared::prepare_next` returning `Ok(None)` means no commit is
 ///   ready. Returning `Err` discards the commit that failed to apply. Both
 ///   consume the batch.
-/// - `Prepared::prepared_commit` hands the `PreparedCommit` to the caller,
-///   who becomes responsible for committing or rolling back its snapshot.
 /// - Dropping the batch in either state returns all remaining commits to
 ///   `StoreData::pending_commits`. In the `Prepared` state the store is first
 ///   rolled back and the prepared commit is returned to pending as well.
 pub struct CommitBatch<'a, S: PrepareState> {
     guard: BatchGuard<'a>,
     state: PhantomData<S>,
+}
+
+impl<S: PrepareState> CommitBatch<'_, S> {
+    /// Read the current data without acquiring another lock.
+    pub fn read(&self) -> ReadTxn<'_> {
+        ReadTxn::borrowed(self.guard.catalog, &self.guard.store_data)
+    }
 }
 
 impl<'a> CommitBatch<'a, Unprepared> {
@@ -185,22 +188,6 @@ impl<'a> CommitBatch<'a, Prepared> {
         }
     }
 
-    /// We accept the prepared commit and add it to the store,
-    /// but also accept `f` which will modify the store as needed.
-    /// This is because a batch will keep hold of a store all the time, so we
-    /// will ask it to do the modification for us.
-    // pub fn accept_prepared_with(
-    //     mut self,
-    //     f: impl FnOnce(RwLockWriteGuard<'_, StoreData>),
-    // ) -> CommitBatch<'a, Unprepared> {
-    //     self.guard.accept_prepared();
-    //     f(self.guard.store_data);
-    //     CommitBatch {
-    //         guard: self.guard,
-    //         state: PhantomData,
-    //     }
-    // }
-
     pub fn reject_prepared(mut self) -> CommitBatch<'a, Unprepared> {
         self.guard.reject_prepared();
 
@@ -218,34 +205,17 @@ impl<'a> CommitBatch<'a, Prepared> {
         self.guard.store_delta()
     }
 
-    pub fn id_lookup(&self) -> &impl IdLookup {
-        &self.guard.store_data.id_packer
-    }
-
-    pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
-        let oid = self.guard.catalog.resolve_table(path)?;
-        let s = &self.guard.store_data;
-        s.tables
-            .get(&oid)
-            .map(|t| TableHandle::new(t, &s.id_packer, &s.rowing))
-    }
-
-    // ? Derived data can be consolidated/reordered, I think, probably does not
-    // ? matter?
-    /// Given a derived StoreDelta from coln-query, figure out how to apply these
-    /// data onto tables.
+    /// Apply derived data under the prepared commit's write lock and snapshot.
     pub fn apply_derived_view(
         &mut self,
-        catalog: &Catalog,
         derived: StoreDelta<Consolidated, StoreTuple>,
     ) -> Result<(), StoreError> {
         for td in derived.into_table_deltas() {
-            let oid =
-                catalog
-                    .resolve_table(td.for_entity())
-                    .ok_or(ValidationError::UnknownTable {
-                        path: td.for_entity().clone(),
-                    })?;
+            let oid = self.guard.catalog.resolve_table(td.for_entity()).ok_or(
+                ValidationError::UnknownTable {
+                    path: td.for_entity().clone(),
+                },
+            )?;
             let data = &mut *self.guard.store_data;
             let table = data.tables.get_mut(&oid).expect("resolved correct table");
 
@@ -649,6 +619,7 @@ mod tests {
         );
         assert_eq!(
             prepared
+                .read()
                 .table_at(&Path::from("T"))
                 .expect("table")
                 .row_count(),
@@ -813,6 +784,7 @@ mod tests {
         );
         assert_eq!(
             prepared
+                .read()
                 .table_at(&Path::from("T"))
                 .expect("table")
                 .row_count(),

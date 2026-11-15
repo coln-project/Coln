@@ -5,7 +5,7 @@
 //! Write transactions: pending operations that are prepared against the
 //! store and then committed or aborted.
 
-use coln_flir_rs::engine::delta::{PartialConsolidated, StoreDelta};
+use coln_flir_rs::engine::delta::{Consolidated, PartialConsolidated, StoreDelta};
 use coln_flir_rs::engine::packed::StoreTuple;
 use coln_flir_rs::engine::tx::{TxRowId, TxTuple};
 use coln_flir_rs::hash::CommitHash;
@@ -18,11 +18,12 @@ use crate::store::{ReadTxn, Store};
 
 impl Store {
     pub fn begin_write(&self) -> WriteTxn<'_, Prepare<'_>> {
-        let deps = self.begin_read().heads();
+        let read = self.begin_read();
+        let deps = read.heads();
         WriteTxn {
             store: self,
             state: Prepare {
-                read: self.begin_read(),
+                read,
                 data: TxnData::new(deps),
             },
         }
@@ -52,8 +53,8 @@ pub struct WriteTxn<'a, S> {
 }
 
 impl<'a> WriteTxn<'a, Prepare<'a>> {
-    pub fn read(&self) -> &ReadTxn<'a> {
-        &self.state.read
+    pub fn read(&self) -> ReadTxn<'_> {
+        ReadTxn::borrowed(self.state.read.catalog, &self.state.read.data)
     }
 
     pub fn add(
@@ -61,7 +62,7 @@ impl<'a> WriteTxn<'a, Prepare<'a>> {
         table: &ir::Path,
         values: impl Into<TxTuple>,
     ) -> Result<TxRowId, StoreError> {
-        self.state.data.add(&self.store, table, values)
+        self.state.data.add(self.store, table, values)
     }
 
     pub fn try_commit(self) -> Result<WriteTxn<'a, Pending<'a>>, StoreError> {
@@ -93,6 +94,24 @@ impl<'a> WriteTxn<'a, Prepare<'a>> {
 }
 
 impl<'a> WriteTxn<'a, Pending<'a>> {
+    /// Read tentative data through the write lock held by this transaction.
+    pub fn read(&self) -> ReadTxn<'_> {
+        self.state.0.as_ref().unwrap().read()
+    }
+
+    pub fn prepared_hash(&self) -> CommitHash {
+        self.state.0.as_ref().unwrap().prepared_hash()
+    }
+
+    /// Apply derived data before accepting the commit and releasing its lock.
+    /// Aborting or dropping this transaction rolls these changes back too.
+    pub fn apply_derived_view(
+        &mut self,
+        derived: StoreDelta<Consolidated, StoreTuple>,
+    ) -> Result<(), StoreError> {
+        self.state.0.as_mut().unwrap().apply_derived_view(derived)
+    }
+
     /// Takes the store_delta out of the batch
     pub fn store_delta(&mut self) -> StoreDelta<PartialConsolidated, StoreTuple> {
         self.state.0.as_mut().unwrap().store_delta()
@@ -122,5 +141,3 @@ impl WriteTxn<'_, Committed> {
         self.state.0
     }
 }
-
-// TODO read methods on WriteTxn

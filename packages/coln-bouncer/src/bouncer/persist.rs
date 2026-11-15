@@ -11,10 +11,6 @@ use crate::{
 };
 
 impl Bouncer {
-    pub fn encode_store(&self) -> Result<Vec<u8>, BouncerError> {
-        Ok(self.store.inner().encode().map_err(StoreError::from)?)
-    }
-
     /// Given bytes stored on disk, decode them and create a bouncer out of it
     /// Returns a `Vec<ViolationsDelta>` indicating the cumulative monitored
     /// contraint violations during this process
@@ -24,10 +20,10 @@ impl Bouncer {
         let query = ColnQuery::init(store.ir())?;
         let mut bouncer = Bouncer::new_from_store_query(store, query);
 
-        let batch = bouncer.store.inner_mut().prepare_commits(commits, false)?;
-        let violations = Bouncer::apply_batch(&mut bouncer.query, batch)?;
+        let batch = bouncer.store.prepare_commits(commits, false)?;
+        let violations = super::txn::apply_batch(&mut bouncer.query, batch)?;
 
-        if bouncer.store.inner().has_pending() {
+        if bouncer.store.begin_read().has_pending() {
             return Err(StoreError::Encode(
                 coln_store::commit::error::CodecError::DataContentError(
                     "store snapshot contains commits that could not be applied".into(),
