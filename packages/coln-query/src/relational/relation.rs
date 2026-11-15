@@ -6,7 +6,6 @@ use crate::relational::schema::TableSchema;
 use crate::scalarial::{ScalarType, ScalarTypedValue};
 use coln_flir_rs::engine::delta::ZRow;
 pub use coln_flir_rs::engine::delta::ZWeight;
-use dbsp::{never_none, never_roaring_filter};
 use std::{
     any::Any,
     cell::RefCell,
