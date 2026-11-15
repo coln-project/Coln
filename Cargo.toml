@@ -1,14 +1,14 @@
 [workspace]
-members = [
-  "packages/coln-flir-rs",
-  "packages/coln-store",
-  "packages/coln-query",
-  "packages/coln-integrator",
-  "packages/coln-batch",
-  "packages/coln-wasm-runtime",
-  "packages/coln-node-runtime"
-]
 resolver = "3"
+members = [
+  "packages/coln-batch",
+  "packages/coln-bouncer",
+  "packages/coln-flir-rs",
+  "packages/coln-node-runtime",
+  "packages/coln-query",
+  "packages/coln-store",
+  "packages/coln-wasm-runtime",
+]
 
 [workspace.package]
 version = "0.0.1"
@@ -22,10 +22,12 @@ repository = "https://github.com/coln-project/Coln"
 anyhow = "1.0.102"
 criterion = "0.8.2"
 either = "1.18.0"
+hex = { version = "0.4.3", features = ["serde"] }
 indexmap = "2.14.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.149"
 specta = { version = "2.0.0-rc.25", features = ["derive"] }
+subenum = "1.2.0"
 thiserror = "2.0.18"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

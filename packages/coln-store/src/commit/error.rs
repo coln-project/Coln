@@ -5,7 +5,7 @@
 use std::fmt;
 use std::io::{self};
 
-use crate::commit::chunk::ChunkType;
+use crate::commit::header::ChunkType;
 
 #[derive(Debug)]
 pub enum CodecError {

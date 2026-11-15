@@ -45,6 +45,13 @@ impl fmt::Display for Path {
     }
 }
 
+#[cfg(feature = "test-utils")]
+impl PartialEq<str> for Path {
+    fn eq(&self, other: &str) -> bool {
+        self.0.as_str() == other
+    }
+}
+
 /// A column name is given by a [`Path`].
 pub type ColName = Path;
 
