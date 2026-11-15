@@ -42,7 +42,7 @@ use coln_batch::types::{Column, ScalarType, Schema, Value};
 
 use super::values::{batch_schema, engine_value, literal_value};
 use crate::host::QueryIr;
-use crate::host::expr::Expr;
+use crate::host::expr::{Expr, Literal};
 use crate::host::operator::Operator;
 use crate::host::stmt::{Stmt, VarStmt};
 use crate::relational::catalog::SourceSchemas;
@@ -249,6 +249,10 @@ struct Lowerer {
     /// Keyed by content, so two occurrences of one constant share a relation.
     constants: Vec<(ConstantExpr, ConstantTable)>,
     env: HashMap<String, RelInfo>,
+    /// Plan variables bound to a tuple of relations, which only a fixed point
+    /// evaluates to. Kept apart from `env`, so that a tuple is only ever read
+    /// through an index, never as a relation itself.
+    tuples: HashMap<String, Vec<RelInfo>>,
     outputs: HashMap<String, String>,
 }
 
@@ -279,10 +283,34 @@ impl Lowerer {
                 self.env.insert(var.name.clone(), info.clone());
                 return Ok(());
             }
+            // Reading one relation of a tuple, which aliases it just like the
+            // arm above.
+            Expr::GetIndex(get_index) => {
+                let elements = match &get_index.target {
+                    Expr::Var(target) => self
+                        .tuples
+                        .get(&target.name)
+                        .with_context(|| format!("unknown tuple variable {}", target.name))?
+                        .clone(),
+                    // A fixed point indexed right away, its tuple never bound.
+                    Expr::Relational(RelExpr::FixedPointIter(fixed_point)) => {
+                        vec![self.lower_fixed_point(&var.name, fixed_point)?]
+                    }
+                    _ => {
+                        bail!("batch lowering only indexes into a bound variable or a fixed point")
+                    }
+                };
+                let info = tuple_element(&elements, &get_index.index)
+                    .with_context(|| format!("while binding {}", var.name))?;
+                self.env.insert(var.name.clone(), info);
+                return Ok(());
+            }
+            Expr::Relational(RelExpr::FixedPointIter(fixed_point)) => {
+                let info = self.lower_fixed_point(&var.name, fixed_point)?;
+                self.tuples.insert(var.name.clone(), vec![info]);
+                return Ok(());
+            }
             Expr::Relational(rel) => match rel {
-                RelExpr::FixedPointIter(fixed_point) => {
-                    self.lower_fixed_point(&var.name, fixed_point)?
-                }
                 RelExpr::Union(union) => {
                     let mut schema: Option<Schema> = None;
                     for branch in &union.relations {
@@ -336,12 +364,21 @@ impl Lowerer {
     /// one base rule from the initializer, one rule per step statement,
     /// all with the accumulator as their head. Semi-naive evaluation in
     /// coln-batch then iterates them to the fixpoint.
+    ///
+    /// Only a single accumulator is supported, whose relation is returned.
+    /// The fixed point evaluates to a 1-tuple of it.
     fn lower_fixed_point(
         &mut self,
         head: &str,
         fixed_point: &FixedPointIterExpr,
-    ) -> Result<Schema> {
-        let (accumulator, init) = (&fixed_point.accumulator.0, &fixed_point.accumulator.1);
+    ) -> Result<RelInfo> {
+        let [(accumulator, init)] = fixed_point.accumulators.as_slice() else {
+            bail!(
+                "batch lowering does not support mutual recursion yet, the fixed point for \
+                 {head} has {} accumulators",
+                fixed_point.accumulators.len()
+            );
+        };
         let schema = self.push_rule_for(head, init)?;
 
         // Inside the step, the accumulator name refers to the relation
@@ -361,7 +398,16 @@ impl Lowerer {
             let Stmt::Expr(step_expr) = step else {
                 bail!("batch lowering expects the fixed point step to be an expression");
             };
-            let step_schema = self.push_rule_for(head, &step_expr.expr)?;
+            let Expr::Tuple(step_tuple) = &step_expr.expr else {
+                bail!("batch lowering expects the fixed point step to be a tuple");
+            };
+            let [step_expr] = step_tuple.elements.as_slice() else {
+                bail!(
+                    "fixed point step for {head} has {} elements, but there is one accumulator",
+                    step_tuple.elements.len()
+                );
+            };
+            let step_schema = self.push_rule_for(head, step_expr)?;
             if step_schema.types() != schema.types() {
                 bail!(
                     "fixed point step for {head} has schema {}, its base has {}",
@@ -381,7 +427,10 @@ impl Lowerer {
             }
         }
         result?;
-        Ok(schema)
+        Ok(RelInfo {
+            relation: head.to_string(),
+            schema,
+        })
     }
 
     /// An output statement names a derived relation as a sink.
@@ -878,7 +927,6 @@ impl Lowerer {
             .get(name)
             .with_context(|| format!("unknown plan variable {name}"))
     }
-
     fn column_name(expr: &Expr) -> Result<&str> {
         match expr {
             Expr::Var(var) => Ok(&var.name),
@@ -897,6 +945,26 @@ fn describe(schema: &Schema) -> String {
     format!("({})", columns.join(", "))
 }
 
+/// The relation a tuple holds at `index`, which must be a literal.
+fn tuple_element(elements: &[RelInfo], index: &Expr) -> Result<RelInfo> {
+    let Expr::Literal(index) = index else {
+        bail!("batch lowering only supports a literal tuple index");
+    };
+    let Literal::Uint(index) = index.value else {
+        bail!("a tuple index must be an unsigned integer");
+    };
+    usize::try_from(index)
+        .ok()
+        .and_then(|index| elements.get(index))
+        .cloned()
+        .with_context(|| {
+            format!(
+                "index {index} is out of bounds for a {}-tuple",
+                elements.len()
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     //! A guided tour of the translation, from a single source scan to a
@@ -904,7 +972,7 @@ mod tests {
     //! single concept on top of the previous.
 
     use super::*;
-    use crate::host::expr::{BinaryExpr, Literal, LiteralExpr, VarExpr};
+    use crate::host::expr::{BinaryExpr, GetIndexExpr, Literal, LiteralExpr, TupleExpr, VarExpr};
     use crate::host::stmt::{BlockStmt, ExprStmt, VarStmt};
     use crate::relational::expr::{
         AliasExpr, AntiJoinExpr, CartesianProductExpr, DistinctExpr, JoinVariable, OutputExpr,
@@ -1494,29 +1562,39 @@ mod tests {
             let_rel(
                 "closure",
                 FixedPointIterExpr {
-                    accumulator: ("cur".to_string(), var("edges")),
+                    accumulators: vec![("cur".to_string(), var("edges"))],
                     step: BlockStmt {
                         stmts: vec![Stmt::from(ExprStmt {
-                            expr: Expr::from(EquiJoinExpr {
-                                left: Expr::from(AliasExpr {
-                                    relation: var("cur"),
-                                    alias: "walk".to_string(),
-                                }),
-                                right: Expr::from(AliasExpr {
-                                    relation: var("edges"),
-                                    alias: "step".to_string(),
-                                }),
-                                on: vec![(var("to"), var("from"))],
-                                attributes: Some(named_columns(&[
-                                    ("from", "walk.from"),
-                                    ("to", "step.to"),
-                                ])),
+                            expr: Expr::from(TupleExpr {
+                                elements: vec![Expr::from(EquiJoinExpr {
+                                    left: Expr::from(AliasExpr {
+                                        relation: var("cur"),
+                                        alias: "walk".to_string(),
+                                    }),
+                                    right: Expr::from(AliasExpr {
+                                        relation: var("edges"),
+                                        alias: "step".to_string(),
+                                    }),
+                                    on: vec![(var("to"), var("from"))],
+                                    attributes: Some(named_columns(&[
+                                        ("from", "walk.from"),
+                                        ("to", "step.to"),
+                                    ])),
+                                })],
                             }),
                         })],
                     },
                 },
             ),
-            out("closure"),
+            // The fixed point is a 1-tuple, whose relation is read by index.
+            let_rel(
+                "closure_set",
+                GetIndexExpr {
+                    target: var("closure"),
+                    index: lit(0),
+                },
+            ),
+            out("closure_set"),
         ])
         .unwrap();
 

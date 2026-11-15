@@ -62,12 +62,14 @@ pub struct Analysis<'a, P: Identifiable, S = Unchecked> {
 
 impl<'a, P: Predicate> Analysis<'a, P, Unchecked> {
     /// Checks the program: it has to be well-formed (see [`Malformation`]),
-    /// and stratifiable. On failure, the analysis comes back along with the
-    /// error, so that it can still be inspected.
+    /// stratifiable, and each of its components seeded (see [`Unseeded`]). On
+    /// failure, the analysis comes back along with the error, so that it can
+    /// still be inspected.
     ///
     /// Well-formedness is checked first, since a malformed program's graphs
     /// miss what is malformed: a dangling negated atom adds no edge, so it
-    /// cannot break a stratification either.
+    /// cannot break a stratification either. Likewise, an atom that reads no
+    /// predicate cannot tell a base rule from a recursive one.
     pub fn verify(self) -> Result<Analysis<'a, P, Verified>, Rejected<'a, P>> {
         let malformations = self.dependencies.malformations();
         if !malformations.is_empty() {
@@ -81,6 +83,14 @@ impl<'a, P: Predicate> Analysis<'a, P, Unchecked> {
             // TODO: Nice error reporting.
             return Err(Rejected {
                 error: SyntaxError::new("not stratifiable"),
+                analysis: Box::new(self),
+            });
+        }
+        let unseeded = self.quotient.unseeded();
+        if !unseeded.is_empty() {
+            let message = fmt::from_fn(|f| separated(f, &unseeded, "; ")).to_string();
+            return Err(Rejected {
+                error: SyntaxError::new(message),
                 analysis: Box::new(self),
             });
         }
@@ -501,6 +511,17 @@ impl<'a, P: Predicate> QuotientGraph<'a, P> {
         true
     }
 
+    /// The components no rule seeds, see [`Unseeded`]. An EDB component is
+    /// seeded by its declaring (empty) rule, and a non-recursive one by all of
+    /// its rules.
+    fn unseeded(&self) -> Vec<Unseeded<'_, 'a, P>> {
+        self.components
+            .iter()
+            .filter(|component| component.non_rec_rules().next().is_none())
+            .map(Unseeded)
+            .collect()
+    }
+
     /// Whether this program is valid under the restriction of _parity_
     /// stratified negation. Parity stratified negation entails:
     ///
@@ -554,6 +575,41 @@ impl<P: Predicate> fmt::Display for NegativeCycle<'_, P> {
             self.predicate.id(),
             self.identifier,
         )
+    }
+}
+
+/// A component without a base case, as reported by
+/// [`QuotientGraph::unseeded`]: every rule of its members reads a member, so
+/// its iteration starts out empty and never derives a row.
+///
+/// That is valid Datalog, whose least fixed point is merely empty, but no one
+/// writes a relation that is empty by construction on purpose. A forgotten base
+/// rule is far likelier, which is why such a program is rejected. A predicate
+/// that is declared but has no rule at all is reported the same way.
+struct Unseeded<'g, 'a, P>(&'g PredicateComponent<'a, P>);
+
+impl<P: Predicate> fmt::Display for Unseeded<'_, '_, P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.members.as_slice() {
+            [member] => write!(
+                f,
+                "predicate '{}' has no base case: none of its rules derives a row \
+                 without reading it",
+                member.id()
+            ),
+            members => {
+                f.write_str("component {")?;
+                separated(
+                    f,
+                    members.iter().map(|member| format!("'{}'", member.id())),
+                    ", ",
+                )?;
+                f.write_str(
+                    "} has no base case: none of its rules derives a row without reading \
+                     one of its members",
+                )
+            }
+        }
     }
 }
 
@@ -833,17 +889,18 @@ mod tests {
 
     #[test]
     fn a_component_may_have_more_members_than_the_program_has_components() {
-        // One component of three members, and no EDB relation that would add
-        // components of its own.
+        // One component of three members, and only the one EDB relation that
+        // seeds it as a component of its own.
         let program = program(vec![
-            pred("p", &[&["q"]]),
+            pred("e", &[&[]]),
+            pred("p", &[&["q"], &["e"]]),
             pred("q", &[&["r"]]),
             pred("r", &[&["p"]]),
         ]);
         let analysis = analyze(&program)
             .verify()
-            .expect("a positive cycle is stratifiable");
-        assert_eq!(analysis.execution_order().len(), 1);
+            .expect("a seeded positive cycle is valid");
+        assert_eq!(analysis.execution_order().len(), 2);
     }
 
     #[test]
@@ -1000,6 +1057,54 @@ mod tests {
         assert_eq!(
             rejected.error.message(),
             "predicate 'p' is declared more than once"
+        );
+    }
+
+    #[test]
+    fn a_predicate_reading_only_itself_has_no_base_case() {
+        // Valid Datalog, `p` is merely empty, and so almost certainly lacks a
+        // rule that was meant to seed it.
+        let program = program(vec![pred("e", &[&[]]), pred("p", &[&["p", "e"]])]);
+        let rejected = program.verify().expect_err("nothing seeds `p`");
+        assert_eq!(
+            rejected.error.message(),
+            "predicate 'p' has no base case: none of its rules derives a row without reading it"
+        );
+    }
+
+    #[test]
+    fn a_component_has_no_base_case_if_none_of_its_members_has_one() {
+        // `q` has no base rule of its own, which is fine as long as `p` has:
+        // `q` is seeded through `p`. Without `p`'s base rule, neither is.
+        let seeded = program(vec![
+            pred("e", &[&[]]),
+            pred("p", &[&["q"], &["e"]]),
+            pred("q", &[&["p"]]),
+        ]);
+        seeded
+            .verify()
+            .expect("`p`'s base rule seeds the component");
+
+        let unseeded = program(vec![
+            pred("e", &[&[]]),
+            pred("p", &[&["q", "e"]]),
+            pred("q", &[&["p"]]),
+        ]);
+        let rejected = unseeded.verify().expect_err("nothing seeds `p` and `q`");
+        assert_eq!(
+            rejected.error.message(),
+            "component {'p', 'q'} has no base case: none of its rules derives a row without \
+             reading one of its members"
+        );
+    }
+
+    #[test]
+    fn a_predicate_without_any_rule_has_no_base_case() {
+        let program = program(vec![pred("p", &[])]);
+        let rejected = program.verify().expect_err("`p` is never defined");
+        assert_eq!(
+            rejected.error.message(),
+            "predicate 'p' has no base case: none of its rules derives a row without reading it"
         );
     }
 

@@ -19,7 +19,7 @@ use crate::{
         RelExpr, RelExprVisitorMut, SelectionExpr, SourceExpr, UnionExpr,
     },
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub trait Resolvable {
     fn set_resolved(&mut self, resolved: super::variable::VariableSlot);
@@ -458,16 +458,38 @@ impl RelExprVisitorMut<VisitorResult, VisitorCtx<'_, '_>> for Resolver {
         expr: &mut FixedPointIterExpr,
         ctx: VisitorCtx,
     ) -> VisitorResult {
-        // The accumulator's initial value is resolved in the enclosing scope.
-        self.visit_expr(&mut expr.accumulator.1, ctx)?;
-        // Only the accumulator is a step-local binding. Any other relation the
+        if expr.accumulators.is_empty() {
+            return Err(SyntaxError::new(
+                "Fixed point iteration requires at least one accumulator",
+            ));
+        }
+        // A second declaration of a name would take a slot of its own while
+        // shadowing the first, so the step could never read the first one.
+        let mut names = HashSet::with_capacity(expr.accumulators.len());
+        if let Some((duplicate, _)) = expr
+            .accumulators
+            .iter()
+            .find(|(name, _)| !names.insert(name.as_str()))
+        {
+            return Err(SyntaxError::new(format!(
+                "Fixed point iteration declares the accumulator '{duplicate}' more than once"
+            )));
+        }
+        // The accumulators' initial values are resolved in the enclosing scope.
+        expr.accumulators
+            .iter_mut()
+            .try_for_each(|(_, init)| self.visit_expr(init, ctx))?;
+        // Only the accumulators are step-local bindings. Any other relation the
         // step references (an outer variable or a `SourceExpr`) keeps its outer
         // resolution; the backend bridges it into the iteration. This is what
         // lets the step be written as a plain computation without an explicit
         // imports list.
+        // They are declared in order, which fixes their slots: a backend must
+        // bind them in that same order.
         self.visit_block(&mut expr.step.stmts, ctx, |resolver, ctx| {
-            resolver.declare_var(&expr.accumulator.0, ctx)?;
-            Ok(())
+            expr.accumulators
+                .iter()
+                .try_for_each(|(name, _)| resolver.declare_var(name, ctx))
         })
     }
 }

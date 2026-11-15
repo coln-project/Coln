@@ -25,7 +25,8 @@ mod test {
         error::QueryEngineError,
         host::{
             expr::{
-                AssignExpr, BinaryExpr, CallExpr, Expr, FunctionExpr, Literal, LiteralExpr, VarExpr,
+                AssignExpr, BinaryExpr, CallExpr, Expr, FunctionExpr, GetIndexExpr, Literal,
+                LiteralExpr, TupleExpr, VarExpr,
             },
             operator::Operator,
             stmt::{BlockStmt, ExprStmt, Stmt, VarStmt},
@@ -37,7 +38,8 @@ mod test {
             expr::{
                 AliasExpr, AntiJoinExpr, CartesianProductExpr, ConstantExpr, DifferenceExpr,
                 DistinctExpr, EquiJoinExpr, FixedPointIterExpr, Multiplicity, OutputExpr,
-                OutputKind, ProjectionExpr, SelectionExpr, SinkId, SourceExpr, SourceId, UnionExpr,
+                OutputKind, ProjectionExpr, RelExpr, SelectionExpr, SinkId, SourceExpr, SourceId,
+                UnionExpr,
             },
             incremental::dbsp::{ZWeight, zset},
             relation::TupleValue,
@@ -60,6 +62,26 @@ mod test {
                 id: SinkId::from(name),
                 kind: OutputKind::Channel,
             }),
+        })
+    }
+
+    /// A fixed point over the single accumulator `accumulator`, seeded with
+    /// `init`, whose step is the one expression `step`. Evaluates to the
+    /// accumulator's relation, read straight out of the 1-tuple the fixed point
+    /// evaluates to.
+    fn self_recursion(accumulator: &str, init: Expr, step: Expr) -> Expr {
+        Expr::from(GetIndexExpr {
+            target: Expr::from(FixedPointIterExpr {
+                accumulators: vec![(accumulator.to_string(), init)],
+                step: BlockStmt {
+                    stmts: vec![Stmt::from(ExprStmt {
+                        expr: Expr::from(TupleExpr {
+                            elements: vec![step],
+                        }),
+                    })],
+                },
+            }),
+            index: Expr::from(LiteralExpr::from(0_u64)),
         })
     }
 
@@ -1014,58 +1036,53 @@ mod test {
             }),
             Stmt::from(VarStmt {
                 name: "closure".to_string(),
-                initializer: Some(Expr::from(FixedPointIterExpr {
+                initializer: Some(self_recursion(
                     // `edges` is referenced in the step below and is auto-bridged
                     // into the iteration — no explicit imports needed.
-                    accumulator: ("accumulator".to_string(), Expr::from(VarExpr::new("base"))),
-                    step: BlockStmt {
-                        stmts: vec![Stmt::from(ExprStmt {
-                            expr: Expr::from(EquiJoinExpr {
-                                left: Expr::from(AliasExpr {
-                                    relation: Expr::from(VarExpr::new("accumulator")),
-                                    alias: "cur".to_string(),
-                                }),
-                                right: Expr::from(AliasExpr {
-                                    relation: Expr::from(VarExpr::new("edges")),
-                                    alias: "next".to_string(),
-                                }),
-                                on: vec![(
-                                    Expr::from(VarExpr::new("to")),
-                                    Expr::from(VarExpr::new("from")),
-                                )],
-                                attributes: Some(
-                                    [
-                                        ("start", Expr::from(VarExpr::new("cur.from"))),
-                                        ("end", Expr::from(VarExpr::new("next.to"))),
-                                        (
-                                            "cumulated_weight",
-                                            Expr::from(BinaryExpr {
-                                                operator: Operator::Addition,
-                                                left: Expr::from(VarExpr::new(
-                                                    "cur.cumulated_weight",
-                                                )),
-                                                right: Expr::from(VarExpr::new("next.weight")),
-                                            }),
-                                        ),
-                                        (
-                                            "hopcount",
-                                            Expr::from(BinaryExpr {
-                                                operator: Operator::Addition,
-                                                left: Expr::from(VarExpr::new("cur.hopcount")),
-                                                right: Expr::from(LiteralExpr {
-                                                    value: Literal::Uint(1),
-                                                }),
-                                            }),
-                                        ),
-                                    ]
-                                    .into_iter()
-                                    .map(|(name, expr)| (name.to_string(), expr))
-                                    .collect(),
+                    "accumulator",
+                    Expr::from(VarExpr::new("base")),
+                    Expr::from(EquiJoinExpr {
+                        left: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("accumulator")),
+                            alias: "cur".to_string(),
+                        }),
+                        right: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("edges")),
+                            alias: "next".to_string(),
+                        }),
+                        on: vec![(
+                            Expr::from(VarExpr::new("to")),
+                            Expr::from(VarExpr::new("from")),
+                        )],
+                        attributes: Some(
+                            [
+                                ("start", Expr::from(VarExpr::new("cur.from"))),
+                                ("end", Expr::from(VarExpr::new("next.to"))),
+                                (
+                                    "cumulated_weight",
+                                    Expr::from(BinaryExpr {
+                                        operator: Operator::Addition,
+                                        left: Expr::from(VarExpr::new("cur.cumulated_weight")),
+                                        right: Expr::from(VarExpr::new("next.weight")),
+                                    }),
                                 ),
-                            }),
-                        })],
-                    },
-                })),
+                                (
+                                    "hopcount",
+                                    Expr::from(BinaryExpr {
+                                        operator: Operator::Addition,
+                                        left: Expr::from(VarExpr::new("cur.hopcount")),
+                                        right: Expr::from(LiteralExpr {
+                                            value: Literal::Uint(1),
+                                        }),
+                                    }),
+                                ),
+                            ]
+                            .into_iter()
+                            .map(|(name, expr)| (name.to_string(), expr))
+                            .collect(),
+                        ),
+                    }),
+                )),
             }),
             output_stmt("closure"),
         ];
@@ -1119,32 +1136,29 @@ mod test {
             }),
             Stmt::from(VarStmt {
                 name: "reachable".to_string(),
-                initializer: Some(Expr::from(FixedPointIterExpr {
-                    accumulator: ("reachable".to_string(), Expr::from(VarExpr::new("base"))),
-                    step: BlockStmt {
-                        stmts: vec![Stmt::from(ExprStmt {
-                            expr: Expr::from(EquiJoinExpr {
-                                left: Expr::from(AliasExpr {
-                                    relation: Expr::from(VarExpr::new("reachable")),
-                                    alias: "cur".to_string(),
-                                }),
-                                // `edges` used inline in the step — its only use.
-                                right: Expr::from(AliasExpr {
-                                    relation: Expr::from(SourceExpr::new(EdgeRel::id())),
-                                    alias: "edge".to_string(),
-                                }),
-                                on: vec![(
-                                    Expr::from(VarExpr::new("node")),
-                                    Expr::from(VarExpr::new("from")),
-                                )],
-                                attributes: Some(vec![(
-                                    "node".to_string(),
-                                    Expr::from(VarExpr::new("edge.to")),
-                                )]),
-                            }),
-                        })],
-                    },
-                })),
+                initializer: Some(self_recursion(
+                    "reachable",
+                    Expr::from(VarExpr::new("base")),
+                    Expr::from(EquiJoinExpr {
+                        left: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("reachable")),
+                            alias: "cur".to_string(),
+                        }),
+                        // `edges` used inline in the step — its only use.
+                        right: Expr::from(AliasExpr {
+                            relation: Expr::from(SourceExpr::new(EdgeRel::id())),
+                            alias: "edge".to_string(),
+                        }),
+                        on: vec![(
+                            Expr::from(VarExpr::new("node")),
+                            Expr::from(VarExpr::new("from")),
+                        )],
+                        attributes: Some(vec![(
+                            "node".to_string(),
+                            Expr::from(VarExpr::new("edge.to")),
+                        )]),
+                    }),
+                )),
             }),
             output_stmt("reachable"),
         ]
@@ -1183,31 +1197,28 @@ mod test {
             }),
             Stmt::from(VarStmt {
                 name: "reachable".to_string(),
-                initializer: Some(Expr::from(FixedPointIterExpr {
-                    accumulator: ("reachable".to_string(), Expr::from(VarExpr::new("base"))),
-                    step: BlockStmt {
-                        stmts: vec![Stmt::from(ExprStmt {
-                            expr: Expr::from(EquiJoinExpr {
-                                left: Expr::from(AliasExpr {
-                                    relation: Expr::from(VarExpr::new("reachable")),
-                                    alias: "cur".to_string(),
-                                }),
-                                right: Expr::from(AliasExpr {
-                                    relation: Expr::from(edges),
-                                    alias: "edge".to_string(),
-                                }),
-                                on: vec![(
-                                    Expr::from(VarExpr::new("node")),
-                                    Expr::from(VarExpr::new("from")),
-                                )],
-                                attributes: Some(vec![(
-                                    "node".to_string(),
-                                    Expr::from(VarExpr::new("edge.to")),
-                                )]),
-                            }),
-                        })],
-                    },
-                })),
+                initializer: Some(self_recursion(
+                    "reachable",
+                    Expr::from(VarExpr::new("base")),
+                    Expr::from(EquiJoinExpr {
+                        left: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("reachable")),
+                            alias: "cur".to_string(),
+                        }),
+                        right: Expr::from(AliasExpr {
+                            relation: Expr::from(edges),
+                            alias: "edge".to_string(),
+                        }),
+                        on: vec![(
+                            Expr::from(VarExpr::new("node")),
+                            Expr::from(VarExpr::new("from")),
+                        )],
+                        attributes: Some(vec![(
+                            "node".to_string(),
+                            Expr::from(VarExpr::new("edge.to")),
+                        )]),
+                    }),
+                )),
             }),
             output_stmt("reachable"),
         ];
@@ -1273,6 +1284,259 @@ mod test {
         );
 
         Ok(())
+    }
+
+    /// The nodes one edge away from the nodes in the relation `from`, as a
+    /// single `node` column.
+    fn successors(from: &str) -> Expr {
+        Expr::from(EquiJoinExpr {
+            left: Expr::from(AliasExpr {
+                relation: Expr::from(VarExpr::new(from)),
+                alias: "cur".to_string(),
+            }),
+            right: Expr::from(AliasExpr {
+                relation: Expr::from(SourceExpr::new(EdgeRel::id())),
+                alias: "edge".to_string(),
+            }),
+            on: vec![(
+                Expr::from(VarExpr::new("node")),
+                Expr::from(VarExpr::new("from")),
+            )],
+            attributes: Some(vec![(
+                "node".to_string(),
+                Expr::from(VarExpr::new("edge.to")),
+            )]),
+        })
+    }
+
+    /// Two-colouring a graph by mutual recursion, the plan twin of DBSP's
+    /// `recursive_dynamic` example: the seed nodes in `plain` are red, the
+    /// successors of a red node are blue, and those of a blue node are red.
+    /// `red` is seeded with the seed nodes, `blue` with nothing at all, since
+    /// only `red` can derive blue nodes.
+    ///
+    /// `steps` are the step's statements, the last of which is to yield the
+    /// accumulators' next values. Read through a distinct so that a node both
+    /// seeded and derived red is reported once, as the incremental backend
+    /// counts derivations otherwise.
+    fn colouring_plan(steps: Vec<Stmt>) -> Vec<Stmt> {
+        let node = || table_schema("node", [("node", ScalarType::Uint)], []);
+        let colour = |name: &str, index: u64| {
+            Stmt::from(VarStmt {
+                name: name.to_string(),
+                initializer: Some(Expr::from(DistinctExpr {
+                    relation: Expr::from(GetIndexExpr {
+                        target: Expr::from(VarExpr::new("colours")),
+                        index: Expr::from(LiteralExpr::from(index)),
+                    }),
+                })),
+            })
+        };
+        vec![
+            Stmt::from(VarStmt {
+                name: "seed".to_string(),
+                initializer: Some(Expr::from(ProjectionExpr {
+                    relation: Expr::from(SourceExpr::new(PlainRel::id())),
+                    attributes: vec![("node".to_string(), Expr::from(VarExpr::new("a")))],
+                })),
+            }),
+            Stmt::from(VarStmt {
+                name: "colours".to_string(),
+                initializer: Some(Expr::from(FixedPointIterExpr {
+                    accumulators: vec![
+                        ("red".to_string(), Expr::from(VarExpr::new("seed"))),
+                        ("blue".to_string(), Expr::from(ConstantExpr::empty(node()))),
+                    ],
+                    step: BlockStmt { stmts: steps },
+                })),
+            }),
+            colour("red", 0),
+            colour("blue", 1),
+            output_stmt("red"),
+            output_stmt("blue"),
+        ]
+    }
+
+    /// The colouring's actual step: each colour is the successors of the other.
+    fn colouring_steps() -> Vec<Stmt> {
+        vec![
+            Stmt::from(VarStmt {
+                name: "next_red".to_string(),
+                initializer: Some(successors("blue")),
+            }),
+            Stmt::from(VarStmt {
+                name: "next_blue".to_string(),
+                initializer: Some(successors("red")),
+            }),
+            Stmt::from(ExprStmt {
+                expr: Expr::from(TupleExpr {
+                    elements: vec![
+                        Expr::from(VarExpr::new("next_red")),
+                        Expr::from(VarExpr::new("next_blue")),
+                    ],
+                }),
+            }),
+        ]
+    }
+
+    #[test]
+    fn mutually_recursive_relations_reach_their_joint_fixed_point() -> Result<(), anyhow::Error> {
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
+            colouring_plan(colouring_steps()),
+            [PlainRel::schema(), EdgeRel::schema()],
+        ))?;
+        assert!(rt.feed(&PlainRel::id(), rows([(PlainRel::new(0, 0, 0), 1)]))?);
+        // Feeds `edges`, commits, and reads both colours' deltas.
+        let mut commit = |edges: &[(u64, u64)]| -> Result<_, anyhow::Error> {
+            let edges = edges.iter().map(|&(from, to)| EdgeRel::new(from, to, 1));
+            assert!(rt.feed(&EdgeRel::id(), rows_with_weight(edges, 1))?);
+            rt.commit()?;
+            let red = rt.output(&SinkId::from("red"))?.debug_view(false).to_zset();
+            let blue = rt
+                .output(&SinkId::from("blue"))?
+                .debug_view(false)
+                .to_zset();
+            Ok((red, blue))
+        };
+
+        // 0 -> 1 -> 2 -> 3 -> 4, seeded red at 0: the colours alternate.
+        let (red, blue) = commit(&[(0, 1), (1, 2), (2, 3), (3, 4)])?;
+        assert_eq!(
+            red,
+            zset! { tuple!(0_u64) => 1, tuple!(2_u64) => 1, tuple!(4_u64) => 1 }
+        );
+        assert_eq!(blue, zset! { tuple!(1_u64) => 1, tuple!(3_u64) => 1 });
+
+        // 2 -> 5 -> 0 closes an even cycle, which only colours 5.
+        let (red, blue) = commit(&[(2, 5), (5, 0)])?;
+        assert_eq!(red, zset! {});
+        assert_eq!(blue, zset! { tuple!(5_u64) => 1 });
+
+        // 4 -> 0 closes an odd cycle: every node ends up in both colours, which
+        // is only reached by going around both relations repeatedly.
+        let (red, blue) = commit(&[(4, 0)])?;
+        assert_eq!(
+            red,
+            zset! { tuple!(1_u64) => 1, tuple!(3_u64) => 1, tuple!(5_u64) => 1 }
+        );
+        assert_eq!(
+            blue,
+            zset! { tuple!(0_u64) => 1, tuple!(2_u64) => 1, tuple!(4_u64) => 1 }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn a_step_may_index_into_an_outer_tuple() -> Result<(), anyhow::Error> {
+        // `colours` holds the fixed point's tuple; `nested` wraps it once more,
+        // so the step below reaches `blue` two tuples deep. Both are root values
+        // the step reads only by indexing, so each element has to be bridged
+        // into the step's nested circuit before the union may use it.
+        let node = table_schema("node", [("node", ScalarType::Uint)], []);
+        let index = |target: Expr, index: u64| {
+            Expr::from(GetIndexExpr {
+                target,
+                index: Expr::from(LiteralExpr::from(index)),
+            })
+        };
+        let mut plan = colouring_plan(colouring_steps());
+        plan.extend([
+            Stmt::from(VarStmt {
+                name: "nested".to_string(),
+                initializer: Some(Expr::from(TupleExpr {
+                    elements: vec![
+                        Expr::from(VarExpr::new("colours")),
+                        Expr::from(VarExpr::new("seed")),
+                    ],
+                })),
+            }),
+            // The nodes reachable from a blue node, blue ones included.
+            Stmt::from(VarStmt {
+                name: "from_blue".to_string(),
+                initializer: Some(Expr::from(DistinctExpr {
+                    relation: self_recursion(
+                        "reach",
+                        Expr::from(ConstantExpr::empty(node)),
+                        Expr::from(UnionExpr {
+                            relations: vec![
+                                index(index(Expr::from(VarExpr::new("nested")), 0), 1),
+                                successors("reach"),
+                            ],
+                        }),
+                    ),
+                })),
+            }),
+            output_stmt("from_blue"),
+        ]);
+        let mut rt = Pipeline::incremental().runtime(&mut TestProgram::new(
+            plan,
+            [PlainRel::schema(), EdgeRel::schema()],
+        ))?;
+        assert!(rt.feed(&PlainRel::id(), rows([(PlainRel::new(0, 0, 0), 1)]))?);
+        // 0 -> 1 -> 2 -> 3 -> 4, seeded red at 0: 1 and 3 are blue.
+        let edges = [(0, 1), (1, 2), (2, 3), (3, 4)];
+        let edges = edges.iter().map(|&(from, to)| EdgeRel::new(from, to, 1));
+        assert!(rt.feed(&EdgeRel::id(), rows_with_weight(edges, 1))?);
+        rt.commit()?;
+
+        assert_eq!(
+            rt.output(&SinkId::from("from_blue"))?
+                .debug_view(false)
+                .to_zset(),
+            zset! {
+                tuple!(1_u64) => 1,
+                tuple!(2_u64) => 1,
+                tuple!(3_u64) => 1,
+                tuple!(4_u64) => 1,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn a_step_must_yield_one_relation_per_accumulator() {
+        let mut steps = colouring_steps();
+        steps.pop();
+        steps.push(Stmt::from(ExprStmt {
+            expr: Expr::from(TupleExpr {
+                elements: vec![Expr::from(VarExpr::new("next_red"))],
+            }),
+        }));
+        let error = Pipeline::incremental()
+            .runtime(&mut TestProgram::new(
+                colouring_plan(steps),
+                [PlainRel::schema(), EdgeRel::schema()],
+            ))
+            .expect_err("a step yielding a 1-tuple for two accumulators is rejected");
+        assert!(
+            format!("{error:#}").contains("evaluates to a 1-tuple, but there are 2 accumulators"),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn accumulators_must_be_named_apart() {
+        let mut plan = colouring_plan(colouring_steps());
+        let Stmt::Var(colours) = &mut plan[1] else {
+            unreachable!("the second statement binds the fixed point")
+        };
+        let Some(Expr::Relational(RelExpr::FixedPointIter(fixed_point))) = &mut colours.initializer
+        else {
+            unreachable!("`colours` is bound to a fixed point")
+        };
+        fixed_point.accumulators[1].0 = "red".to_string();
+        let error = Pipeline::incremental()
+            .runtime(&mut TestProgram::new(
+                plan,
+                [PlainRel::schema(), EdgeRel::schema()],
+            ))
+            .expect_err("two accumulators named `red` are rejected");
+        assert!(
+            format!("{error:#}").contains("declares the accumulator 'red' more than once"),
+            "{error:#}"
+        );
     }
 
     /// The reachability plan on the batch backend, cross-checked against
@@ -1745,33 +2009,30 @@ mod test {
             }),
             Stmt::from(VarStmt {
                 name: "closure".to_string(),
-                initializer: Some(Expr::from(FixedPointIterExpr {
-                    accumulator: ("cur".to_string(), Expr::from(VarExpr::new("edges"))),
-                    step: BlockStmt {
-                        stmts: vec![Stmt::from(ExprStmt {
-                            expr: Expr::from(DistinctExpr {
-                                relation: Expr::from(EquiJoinExpr {
-                                    left: Expr::from(AliasExpr {
-                                        relation: Expr::from(VarExpr::new("cur")),
-                                        alias: "walk".to_string(),
-                                    }),
-                                    right: Expr::from(AliasExpr {
-                                        relation: Expr::from(VarExpr::new("edges")),
-                                        alias: "step".to_string(),
-                                    }),
-                                    on: vec![(
-                                        Expr::from(VarExpr::new("to")),
-                                        Expr::from(VarExpr::new("from")),
-                                    )],
-                                    attributes: Some(vec![
-                                        ("from".to_string(), Expr::from(VarExpr::new("walk.from"))),
-                                        ("to".to_string(), Expr::from(VarExpr::new("step.to"))),
-                                    ]),
-                                }),
+                initializer: Some(self_recursion(
+                    "cur",
+                    Expr::from(VarExpr::new("edges")),
+                    Expr::from(DistinctExpr {
+                        relation: Expr::from(EquiJoinExpr {
+                            left: Expr::from(AliasExpr {
+                                relation: Expr::from(VarExpr::new("cur")),
+                                alias: "walk".to_string(),
                             }),
-                        })],
-                    },
-                })),
+                            right: Expr::from(AliasExpr {
+                                relation: Expr::from(VarExpr::new("edges")),
+                                alias: "step".to_string(),
+                            }),
+                            on: vec![(
+                                Expr::from(VarExpr::new("to")),
+                                Expr::from(VarExpr::new("from")),
+                            )],
+                            attributes: Some(vec![
+                                ("from".to_string(), Expr::from(VarExpr::new("walk.from"))),
+                                ("to".to_string(), Expr::from(VarExpr::new("step.to"))),
+                            ]),
+                        }),
+                    }),
+                )),
             }),
             Stmt::from(VarStmt {
                 name: "closure_set".to_string(),
@@ -2010,47 +2271,41 @@ mod test {
             }),
             Stmt::from(VarStmt {
                 name: "isCausallyReady".to_string(),
-                initializer: Some(Expr::from(FixedPointIterExpr {
+                initializer: Some(self_recursion(
                     // `pred` is referenced in the step below and is auto-bridged
                     // into the iteration — no explicit imports needed.
-                    accumulator: (
-                        "isCausallyReady".to_string(),
-                        Expr::from(VarExpr::new("isRoot")),
-                    ),
-                    step: BlockStmt {
-                        stmts: vec![Stmt::from(ExprStmt {
-                            expr: Expr::from(EquiJoinExpr {
-                                left: Expr::from(AliasExpr {
-                                    relation: Expr::from(VarExpr::new("isCausallyReady")),
-                                    alias: "cur".to_string(),
-                                }),
-                                right: Expr::from(AliasExpr {
-                                    relation: Expr::from(VarExpr::new("pred")),
-                                    alias: "next".to_string(),
-                                }),
-                                on: vec![
-                                    (
-                                        Expr::from(VarExpr::new("RepId")),
-                                        Expr::from(VarExpr::new("FromRepId")),
-                                    ),
-                                    (
-                                        Expr::from(VarExpr::new("Ctr")),
-                                        Expr::from(VarExpr::new("FromCtr")),
-                                    ),
-                                ],
-                                attributes: Some(
-                                    [
-                                        ("RepId", Expr::from(VarExpr::new("next.ToRepId"))),
-                                        ("Ctr", Expr::from(VarExpr::new("next.ToCtr"))),
-                                    ]
-                                    .into_iter()
-                                    .map(|(name, expr)| (name.to_string(), expr))
-                                    .collect(),
-                                ),
-                            }),
-                        })],
-                    },
-                })),
+                    "isCausallyReady",
+                    Expr::from(VarExpr::new("isRoot")),
+                    Expr::from(EquiJoinExpr {
+                        left: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("isCausallyReady")),
+                            alias: "cur".to_string(),
+                        }),
+                        right: Expr::from(AliasExpr {
+                            relation: Expr::from(VarExpr::new("pred")),
+                            alias: "next".to_string(),
+                        }),
+                        on: vec![
+                            (
+                                Expr::from(VarExpr::new("RepId")),
+                                Expr::from(VarExpr::new("FromRepId")),
+                            ),
+                            (
+                                Expr::from(VarExpr::new("Ctr")),
+                                Expr::from(VarExpr::new("FromCtr")),
+                            ),
+                        ],
+                        attributes: Some(
+                            [
+                                ("RepId", Expr::from(VarExpr::new("next.ToRepId"))),
+                                ("Ctr", Expr::from(VarExpr::new("next.ToCtr"))),
+                            ]
+                            .into_iter()
+                            .map(|(name, expr)| (name.to_string(), expr))
+                            .collect(),
+                        ),
+                    }),
+                )),
             }),
             Stmt::from(VarStmt {
                 name: "mvrStore".to_string(),

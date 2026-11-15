@@ -493,7 +493,8 @@ impl RelExprVisitorOwn<VisitorResult<Expr>, ()> for Rewriter<'_> {
         mut expr: Box<FixedPointIterExpr>,
         _ctx: (),
     ) -> VisitorResult<Expr> {
-        expr.accumulator.1 = self.child(expr.accumulator.1)?;
+        // Named initializers are shaped like projection attributes.
+        expr.accumulators = self.attributes(expr.accumulators)?;
         expr.step.stmts = self.stmts(expr.step.stmts)?;
         self.offer(expr.into(), Direction::BottomUp)
     }

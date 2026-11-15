@@ -21,6 +21,7 @@ use crate::{
     host::{
         expr::{Expr, VarExpr},
         interpreter::{EvalResult, HostInterpreter, InterpreterContext, assert_type, is_truthy},
+        tuple::Tuple,
         walk::{Node, pre_order},
     },
     relational::catalog::SourceSchemas,
@@ -125,8 +126,13 @@ type Sinks = Vec<(SinkId, OutputKind, DbspOutput)>;
 /// references share a single `delta0` import node rather than wiring one each.
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum ImportKey {
-    /// An outer relation reached by variable, keyed by its resolved slot.
-    Var(VariableSlot),
+    /// An outer relation reached by variable, keyed by its resolved slot and
+    /// the element indices leading to it through (nested) tuples the variable
+    /// holds. The path is empty if the variable holds the relation itself.
+    Var {
+        slot: VariableSlot,
+        path: Vec<usize>,
+    },
     /// A [`SourceExpr`] leaf, keyed by source name.
     Source(SourceId),
     /// A [`ConstantExpr`] leaf, keyed by its position among the plan's
@@ -246,6 +252,42 @@ impl<E: RowScalarEngine> DbspInterpreter<E> {
         bridged
     }
 
+    /// Bridge every outer relation `value` holds into the current step, be it
+    /// the value itself or an element of a (nested) tuple, which is rebuilt
+    /// around the bridged relations. `path` locates `value` within the value of
+    /// the variable at `slot`. Everything else is returned verbatim: relations
+    /// defined within the step are already nested streams, and non-relation
+    /// values (scalars, functions) are never bridged.
+    fn bridge_value(&mut self, slot: VariableSlot, path: &[usize], value: Value) -> Value {
+        match value {
+            Value::Relation(relation) => {
+                let borrowed = relation.borrow();
+                let borrowed = borrowed.as_dbsp();
+                let StreamWrapper::Root(_) = borrowed.stream() else {
+                    return Value::Relation(Rc::clone(&relation));
+                };
+                Value::Relation(self.bridge_import(
+                    ImportKey::Var {
+                        slot,
+                        path: path.to_vec(),
+                    },
+                    borrowed.schema().clone(),
+                    borrowed.stream(),
+                ))
+            }
+            Value::Tuple(tuple) => Value::Tuple(
+                tuple
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, element)| {
+                        self.bridge_value(slot, &[path, &[index]].concat(), element)
+                    })
+                    .collect(),
+            ),
+            value => value,
+        }
+    }
+
     /// Take the feed handles collected while walking the plan. Called once by
     /// the backend after [`interpret`](crate::host::interpreter::HostInterpreter::interpret).
     pub fn take_inputs(&mut self) -> DbspInputs {
@@ -272,10 +314,11 @@ impl<E: RowScalarEngine> HostInterpreter for DbspInterpreter<E> {
     /// Read a variable, with one DBSP-specific twist: inside a fixed-point step,
     /// a relation coming from an enclosing scope arrives as a *root* stream and
     /// must be `delta0`'d into the nested circuit before any operator uses it.
-    /// Relations defined within the step are already nested streams, and
-    /// non-relation values (scalars, functions) are never bridged — so the
-    /// root-stream test alone is the precise signal. This is what makes the
-    /// step's outer references work without an explicit imports list.
+    /// That includes relations inside a tuple, such as the one an outer
+    /// [`FixedPointIterExpr`] evaluates to, so a step may index into it. See
+    /// [`bridge_value`](DbspInterpreter::bridge_value). This is what makes
+    /// a FixedPointIter's step's outer references work without an explicit
+    /// imports list.
     fn visit_var_expr(&mut self, expr: &VarExpr, ctx: &mut InterpreterContext) -> EvalResult {
         // Tuple-context (field) references are scalars; hand them back verbatim,
         // exactly as the default host implementation does.
@@ -287,27 +330,11 @@ impl<E: RowScalarEngine> HostInterpreter for DbspInterpreter<E> {
             .as_ref()
             .unwrap_or_else(|| panic!("Unresolved variable '{}'.", expr.name));
         let value = ctx.environment.lookup_var(&resolved).clone();
-        // Only relations, only inside a step, and only those still at root level
-        // (i.e. from an enclosing scope) need bridging; everything else is
-        // returned verbatim.
+        // Bridging is only necessary inside a step.
         if self.step.is_none() {
             return Ok(value);
         }
-        let Value::Relation(relation) = &value else {
-            return Ok(value);
-        };
-        let relation = Rc::clone(relation);
-        let is_root = matches!(relation.borrow().as_dbsp().stream(), StreamWrapper::Root(_));
-        if !is_root {
-            return Ok(value);
-        }
-        let borrowed = relation.borrow();
-        let borrowed = borrowed.as_dbsp();
-        Ok(Value::Relation(self.bridge_import(
-            ImportKey::Var(resolved),
-            borrowed.schema().clone(),
-            borrowed.stream(),
-        )))
+        Ok(self.bridge_value(resolved, &[], value))
     }
 }
 
@@ -687,16 +714,22 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
             ));
         }
 
-        let accumulator = self
-            .visit_expr(&expr.accumulator.1, ctx)
-            .and_then(|value| assert_type!(value, Value::Relation))
-            .map(coalesce_helper)?;
-
-        let (accumulator_init, schema) = {
-            let accumulator = accumulator.borrow();
-            let accumulator = accumulator.as_dbsp();
-            (accumulator.stream().clone(), accumulator.schema().clone())
-        };
+        // Each accumulator's initial value, as the root stream seeding it and
+        // the schema it fixes for the accumulator. The values are coalesced,
+        // since the result is a union of each with what the step accumulates.
+        let seeds = expr
+            .accumulators
+            .iter()
+            .map(|(_, init)| {
+                let init = self
+                    .visit_expr(init, ctx)
+                    .and_then(|value| assert_type!(value, Value::Relation))
+                    .map(coalesce_helper)?;
+                let init = init.borrow();
+                let init = init.as_dbsp();
+                Ok((init.stream().clone(), init.schema().clone()))
+            })
+            .collect::<Result<Vec<(StreamWrapper, StreamSchema)>, BuildError>>()?;
 
         // A source or constant referenced inside the step needs no special
         // handling: Adding a root node once a nested circuit is under
@@ -721,63 +754,107 @@ impl<E: RowScalarEngine> RelExprVisitor<ExprVisitorResult, VisitorCtx<'_, '_>>
         // is closed.
         let mut step_error: Option<BuildError> = None;
         let root_circuit = self.root_circuit.clone();
+        // One recursive stream per accumulator, all of the same type, so their
+        // number need only be known at runtime.
         let accumulated = root_circuit
-            .recursive(|nested_circuit, acc: OrdIndexedNestedStream| {
-                // Enter the step: any outer relation the body reaches (an outer
-                // variable or a `SourceExpr`) is now `delta0`'d into this nested
-                // circuit on first use — see `visit_var_expr`/`visit_source_expr`.
-                self.step = Some(StepContext {
-                    nested_circuit: nested_circuit.clone(),
-                    imports: HashMap::new(),
-                });
-                let acc_for_step = acc.clone();
-                let accumulator_rel = Rc::clone(&accumulator);
-                let nested_for_setup = nested_circuit.clone();
-                let result = self.visit_block(&expr.step.stmts, ctx, move |environment| {
-                    // The accumulator is the sole step-local binding: its initial
-                    // value `delta0`'d in, plus the recursive feedback. delta0
-                    // does not alter the schema.
-                    let accumulator = accumulator_rel.borrow();
-                    let accumulator = accumulator.as_dbsp();
-                    let schema = accumulator.schema().clone();
-                    let accumulator = accumulator
-                        .stream()
-                        .delta0(&nested_for_setup)
-                        .plus(&acc_for_step.into());
-                    environment.define_var(new_relation(schema, accumulator));
-                });
-                // Leave the step before propagating so the state is correct for
-                // any sibling code walked after this fixed point.
-                self.step = None;
-                // Reduce the step's result to the nested stream `recursive`
-                // expects. The output is fed into a union below, which requires
-                // the schema to be coalesced.
-                let stream = result.and_then(|value| {
-                    let value = value.ok_or_else(|| {
-                        BuildError::new("Fixed point iteration body did not return a value.")
-                    })?;
-                    let relation = assert_type!(value, Value::Relation).map(coalesce_helper)?;
-                    Ok(relation.borrow().as_dbsp().stream().expect_nested().clone())
-                });
-                match stream {
-                    Ok(stream) => Ok(stream),
-                    Err(error) => {
-                        // Stash the real cause and hand back the prior
-                        // accumulator as an inert placeholder; we bail out right
-                        // after `recursive` returns.
-                        step_error = Some(error);
-                        Ok(acc)
+            .recursive_dynamic(
+                seeds.len(),
+                |nested_circuit, accs: Vec<OrdIndexedNestedStream>| {
+                    // Enter the step: any outer relation the body reaches (an outer
+                    // variable or a `SourceExpr`) is now `delta0`'d into this nested
+                    // circuit on first use — see `visit_var_expr`/`visit_source_expr`.
+                    self.step = Some(StepContext {
+                        nested_circuit: nested_circuit.clone(),
+                        imports: HashMap::new(),
+                    });
+                    // The accumulators are the sole step-local bindings: each one's
+                    // initial value `delta0`'d in, plus its recursive feedback.
+                    // delta0 does not alter the schema.
+                    let accumulators: Vec<RelationRef> = seeds
+                        .iter()
+                        .zip(&accs)
+                        .map(|((init, schema), acc)| {
+                            let accumulator = init.delta0(nested_circuit).plus(&acc.clone().into());
+                            new_relation(schema.clone(), accumulator)
+                        })
+                        .collect();
+                    let result = self.visit_block(&expr.step.stmts, ctx, move |environment| {
+                        // In declaration order, which is the order the resolver
+                        // assigned their slots in.
+                        accumulators
+                            .into_iter()
+                            .for_each(|accumulator| environment.define_var(accumulator));
+                    });
+                    // Leave the step before propagating so the state is correct for
+                    // any sibling code walked after this fixed point.
+                    self.step = None;
+                    match result.and_then(|value| yield_step_streams(value, &seeds)) {
+                        Ok(streams) => Ok(streams),
+                        Err(error) => {
+                            // Stash the real cause and hand back the prior
+                            // accumulators as inert placeholders; we bail out right
+                            // after `recursive_dynamic` returns.
+                            step_error = Some(error);
+                            Ok(accs)
+                        }
                     }
-                }
-            })
+                },
+            )
             .map_err(|error| BuildError::from(DbspError::from(error)))?;
 
         if let Some(error) = step_error {
             return Err(error);
         }
 
-        let fixed_point = accumulator_init.plus(&accumulated.into());
-
-        Ok(Value::Relation(new_relation(schema, fixed_point)))
+        // Each accumulator's fixed point, in declaration order.
+        let fixed_points: Tuple = seeds
+            .into_iter()
+            .zip(accumulated)
+            .map(|((init, schema), accumulated)| {
+                Value::Relation(new_relation(schema, init.plus(&accumulated.into())))
+            })
+            .collect();
+        Ok(Value::from(fixed_points))
     }
+}
+
+/// Reduces the value a [`FixedPointIterExpr`]'s step evaluated to into the
+/// nested streams `recursive_dynamic` expects, one per accumulator, in order.
+///
+/// The step has to produce exactly one relation per accumulator, each with as
+/// many columns as its accumulator: Its stream is fed back as that accumulator
+/// and unioned with that accumulator's seed. The relations are coalesced, since
+/// a union requires it.
+fn yield_step_streams(
+    value: Option<Value>,
+    seeds: &[(StreamWrapper, StreamSchema)],
+) -> Result<Vec<OrdIndexedNestedStream>, BuildError> {
+    let value = value
+        .ok_or_else(|| BuildError::new("Fixed point iteration body did not return a value."))?;
+    let relations = assert_type!(value, Value::Tuple)?;
+    if relations.len() != seeds.len() {
+        return Err(BuildError::new(format!(
+            "Fixed point iteration body evaluates to a {}-tuple, but there are {} accumulators.",
+            relations.len(),
+            seeds.len()
+        )));
+    }
+    relations
+        .into_iter()
+        .zip(seeds)
+        .enumerate()
+        .map(|(index, (relation, (_, seed_schema)))| {
+            let relation = assert_type!(relation, Value::Relation).map(coalesce_helper)?;
+            let relation = relation.borrow();
+            let relation = relation.as_dbsp();
+            let (columns, seed_columns) = (relation.schema().tuple.len(), seed_schema.tuple.len());
+            if columns != seed_columns {
+                return Err(BuildError::new(format!(
+                    "Fixed point iteration body yields {columns} columns for accumulator \
+                     {index}, but its initial value has {seed_columns}."
+                )));
+            }
+            Ok(relation.stream().expect_nested().clone())
+        })
+        .collect()
 }

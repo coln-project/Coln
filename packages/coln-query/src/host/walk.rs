@@ -175,7 +175,7 @@ impl<'a> Node<'a> {
                 );
             }
             RelExpr::FixedPointIter(expr) => {
-                out.push(Node::from(&expr.accumulator.1));
+                out.extend(expr.accumulators.iter().map(|(_, init)| Node::from(init)));
                 out.extend(expr.step.stmts.iter().map(Node::from));
             }
         }
