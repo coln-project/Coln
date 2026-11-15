@@ -16,6 +16,19 @@ for the full command list (for example `.load`, `.schema`, `.rules`,
 
 ## Transaction
 
+Rust callers use `Store::begin_read()` for a consistent `ReadTxn` and
+`Store::begin_write()` to queue local operations. A preparing write's `read()`
+excludes its queued operations. After `try_commit()`, `read()` returns the same
+read interface over tentatively applied data, borrowing the existing write lock
+without acquiring another lock. The prepared commit is not yet in the commit
+graph; use `prepared_hash()` for its hash.
+
+A pending write can install derived data with `apply_derived_view()` before
+`commit()` accepts its base and derived changes and releases the lock. `abort()`
+or dropping the pending write rolls both back. Borrowed read views prevent
+mutation or completion of the write until they are dropped. Commit batches expose
+the same read interface through `read()`.
+
 A **transaction** is a single multi-line statement: `begin transact;` … `commit;`. Each
 line inside is an `add` that may bind the new row id to a name (`name = add
 TABLE values (...);`). These ids are assigned by the storage layer and can then

@@ -6,6 +6,16 @@
 
 use std::ops::Range;
 
+use crate::ir;
+
+pub trait ReadTxnable {
+    fn begin_read(&self) -> impl StoreRead;
+}
+
+pub trait StoreRead {
+    fn sorted_table_at(&self, table: &ir::Path) -> Option<impl SortedTable>;
+}
+
 pub type RowIdx = usize;
 pub type ColIdx = usize;
 

@@ -1,4 +1,6 @@
+use coln_flir_rs::engine::delta::{StoreDelta, TableDelta, ZRow};
 use coln_flir_rs::engine::packed::{StoreScalarValue, StoreTuple};
+use coln_flir_rs::engine::table::{SortedTable, StoreRead};
 use coln_flir_rs::engine::tx::TxTuple;
 use rstest::rstest;
 
@@ -8,6 +10,16 @@ use crate::store::Store;
 use crate::store::error::StoreError;
 use crate::table::ValidationError;
 use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int_store};
+
+#[rstest]
+fn sorted_table_at_reports_arity(#[from(single_int_store)] store: Store) {
+    let path = Path::from("T");
+    let read = store.begin_read();
+    let table = read.sorted_table_at(&path).expect("T");
+
+    assert_eq!(table.arity(), 2); // Row ID plus the integer column.
+    assert!(read.sorted_table_at(&Path::from("missing")).is_none());
+}
 
 #[rstest]
 fn validates_then_applies(#[from(single_int_store)] store: Store) {
@@ -286,4 +298,83 @@ fn txn_empty_commit_not_added() {
             .collect::<Vec<_>>(),
         commits
     );
+}
+
+#[rstest]
+fn pending_read_reuses_write_lock_and_sees_tentative_rows(#[from(single_int_store)] store: Store) {
+    let path = Path::from("T");
+    let heads = store.begin_read().heads();
+    let mut tx = store.begin_write();
+    let id = tx.add(&path, vec![42i32]).expect("add");
+    assert!(tx.read().scan_table(&path).expect("T").is_empty());
+    let mut pending = tx.try_commit().expect("prepare");
+    let hash = pending.prepared_hash();
+    assert!(
+        store.data.try_read().is_none(),
+        "pending holds the write lock"
+    );
+    {
+        let read = pending.read();
+        let public = read.promote_one(id, hash);
+        let packed = read.id_lookup().packed(&public).expect("packed id");
+        assert_eq!(
+            read.row_by_id(&path, &packed),
+            Some(StoreTuple::from_id_values(packed, vec![42i32.into()]))
+        );
+        assert_eq!(read.heads(), heads);
+        assert!(read.commit_by_hash(&hash).is_none());
+    }
+    assert!(!pending.store_delta().is_empty());
+    assert_eq!(pending.read().scan_table(&path).expect("T").len(), 1);
+    assert_eq!(pending.commit().commit_hash(), hash);
+    assert_eq!(store.begin_read().heads(), vec![hash]);
+}
+
+#[rstest]
+#[case::commit(0)]
+#[case::abort(1)]
+#[case::drop(2)]
+fn derived_rows_follow_pending_transaction_outcome(
+    #[from(single_int_store)] store: Store,
+    #[case] outcome: u8,
+) {
+    let path = Path::from("T");
+    let heads = store.begin_read().heads();
+    let mut tx = store.begin_write();
+    let id = tx.add(&path, vec![1i32]).expect("add base row");
+    let mut pending = tx.try_commit().expect("prepare");
+    let hash = pending.prepared_hash();
+    let derived = {
+        let read = pending.read();
+        let mut id = read.promote_one(id, hash);
+        id.counter += 1;
+        let id = read.id_lookup().packed(&id).expect("derived id");
+        StoreTuple::from_id_values(id, vec![2i32.into()])
+    };
+    pending
+        .apply_derived_view(
+            StoreDelta::new([TableDelta::new(
+                path.clone(),
+                [ZRow::new_unchecked(1, derived)],
+            )])
+            .consolidate(),
+        )
+        .expect("apply derived row");
+    assert_eq!(pending.read().scan_table(&path).expect("T").len(), 2);
+    match outcome {
+        0 => {
+            pending.commit();
+        }
+        1 => {
+            pending.abort();
+        }
+        _ => drop(pending),
+    }
+    let read = store.begin_read();
+    assert_eq!(
+        read.scan_table(&path).expect("T").len(),
+        if outcome == 0 { 2 } else { 0 }
+    );
+    assert_eq!(read.heads(), if outcome == 0 { vec![hash] } else { heads });
+    assert!(!read.has_pending());
 }

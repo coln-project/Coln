@@ -2,12 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Read transactions and the [`StoreRead`] trait.
-//!
-//! [`ReadTxn`] is a consistent view of the store under its read lock.
-//! [`StoreRead`]'s methods default to reading committed state through a
-//! [`StoreView`]. Implementors provide the view via the sealed [`View`] trait
-//! and can override individual methods, e.g. to also see pending writes.
+//! Read transactions over committed or tentatively applied store data.
+
+use std::ops::Deref;
 
 use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
 use coln_flir_rs::engine::table::{ReadTxnable, SortedTable, StoreRead};
@@ -22,16 +19,38 @@ use crate::ir;
 use crate::store::{Catalog, Store, StoreData};
 use crate::table::{TableHandle, TableOid};
 
+/// A consistent read view backed by a held store lock.
+///
+/// Standalone transactions own a read lock. Views borrowed from a write
+/// transaction reuse its lock and cannot outlive that borrow. A preparing
+/// write's view excludes queued operations; a pending write's view includes
+/// tentatively applied data, but its commit is not yet in the commit graph.
 pub struct ReadTxn<'a> {
     pub(in crate::store) catalog: &'a Catalog,
-    pub(in crate::store) data: RwLockReadGuard<'a, StoreData>,
+    pub(in crate::store) data: ReadData<'a>,
+}
+
+pub(in crate::store) enum ReadData<'a> {
+    Locked(RwLockReadGuard<'a, StoreData>),
+    Borrowed(&'a StoreData),
+}
+
+impl Deref for ReadData<'_> {
+    type Target = StoreData;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Locked(guard) => guard,
+            Self::Borrowed(data) => data,
+        }
+    }
 }
 
 impl Store {
     pub fn begin_read(&self) -> ReadTxn<'_> {
         ReadTxn {
             catalog: &self.catalog,
-            data: self.data.read(),
+            data: ReadData::Locked(self.data.read()),
         }
     }
 }
@@ -48,7 +67,18 @@ impl StoreRead for ReadTxn<'_> {
     }
 }
 
-impl ReadTxn<'_> {
+impl<'a> ReadTxn<'a> {
+    pub(in crate::store) fn borrowed(catalog: &'a Catalog, data: &'a StoreData) -> Self {
+        Self {
+            catalog,
+            data: ReadData::Borrowed(data),
+        }
+    }
+
+    pub fn has_pending(&self) -> bool {
+        self.data.has_pending()
+    }
+
     pub fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
         self.data
             .tables

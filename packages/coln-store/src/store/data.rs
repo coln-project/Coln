@@ -94,8 +94,6 @@ impl StoreData {
     pub(crate) fn record_in_commit_graph(&mut self, commit: DataCommit) {
         self.commits.add_commit(commit);
     }
-
-
 }
 
 impl StoreData {
@@ -207,11 +205,9 @@ impl StoreData {
         Ok(CheckedOpCommit { ops, original: cmt })
     }
 
-
     pub fn has_pending(&self) -> bool {
         !self.pending_commits.is_empty()
     }
-
 }
 
 pub(super) struct CheckedOpCommit {

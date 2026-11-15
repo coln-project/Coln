@@ -8,20 +8,26 @@ use crate::commit::DataCommit;
 use crate::commit::error::CodecError;
 use crate::commit::frame::Frame;
 use crate::commit::leb128 as commit_leb128;
-use crate::store::Store;
 use crate::store::error::StoreError;
+use crate::store::{ReadTxn, Store};
 
 /// The store magic bytes
 const MAGIC: &[u8; 4] = b"GMst";
 const FORMAT_VERSION: u32 = 2;
 
 impl Store {
+    pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
+        self.begin_read().encode()
+    }
+}
+
+impl ReadTxn<'_> {
     /// Store file layout, scalar integers use LEB128:
     ///
     /// `[MAGIC:4][version][chunk_count]`
     /// `[chunk_count × [chunk_header || payload]]` (see [`crate::commit::header::Header::write`])
     pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
-        let data = self.data.read();
+        let data = &self.data;
         let commits = data.commits.iter_topological().collect::<Vec<_>>();
         let mut buf: Vec<u8> = Vec::new();
         buf.write_all(MAGIC)?;
@@ -35,7 +41,9 @@ impl Store {
 
         Ok(buf)
     }
+}
 
+impl Store {
     /// Decode bytes produced by [`Self::encode`].
     ///
     /// Returns a store initialized from the root and checked data commits that
