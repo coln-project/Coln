@@ -19,9 +19,9 @@ use coln_query::api::{
     violations::ViolationsDelta,
 };
 use coln_store::store::{
-    IdLookup, Store, WriteTxn as StoreWriteTxn,
+    IdLookup, ReadView, Store, WriteTxn as StoreWriteTxn,
     commit::{CommitBatch, Unprepared},
-    txn::Prepare,
+    txn::{Prepare, ReadTxnable},
 };
 
 use super::ReadTxn;
@@ -31,14 +31,14 @@ use crate::{
 };
 
 /// Staged local operations, committed together after validation.
-pub struct Local<'a>(StoreWriteTxn<'a, Prepare<'a>>);
+pub struct Local(StoreWriteTxn<Prepare>);
 
 /// Imported commits, validated and accepted one at a time.
 pub struct Import<'a>(&'a Store);
 
 /// Exclusive access to bouncer writes. Dropping a local transaction discards it.
 #[must_use = "a write transaction must be committed or explicitly discarded"]
-pub struct WriteTxn<'a, S = Local<'a>> {
+pub struct WriteTxn<'a, S> {
     state: S,
     query: &'a mut ColnQuery,
 }
@@ -49,7 +49,7 @@ pub struct CommitResult {
 }
 
 impl Bouncer {
-    pub fn begin_write(&mut self) -> WriteTxn<'_> {
+    pub fn begin_write(&mut self) -> WriteTxn<'_, Local> {
         WriteTxn {
             state: Local(self.store.begin_write()),
             query: &mut self.query,
@@ -64,9 +64,9 @@ impl Bouncer {
     }
 }
 
-impl WriteTxn<'_> {
+impl WriteTxn<'_, Local> {
     /// Read committed data, excluding this transaction's queued operations.
-    pub fn read(&self) -> ReadTxn<'_> {
+    pub fn read(&self) -> ReadTxn<ReadView<'_>> {
         ReadTxn {
             store: self.state.0.read(),
         }
@@ -112,7 +112,7 @@ impl WriteTxn<'_, Import<'_>> {
 
 pub(in crate::bouncer) fn apply_batch(
     query: &mut ColnQuery,
-    mut batch: CommitBatch<'_, Unprepared>,
+    mut batch: CommitBatch<Unprepared>,
 ) -> Result<Vec<ViolationsDelta>, BouncerError> {
     let mut reports = Vec::new();
     while batch.has_ready() {
@@ -161,7 +161,7 @@ fn validate(
 // Query has committed at this point, so conversion and installation of its
 // derived data must succeed while the store transaction still holds its lock.
 fn finish_query(
-    read: &coln_store::store::ReadTxn<'_>,
+    read: &ReadView<'_>,
     mut committed: Tx<Committed>,
     cmt_hash: CommitHash,
     mut num_ops: u32,

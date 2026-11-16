@@ -9,7 +9,7 @@ use crate::commit::error::CodecError;
 use crate::commit::frame::Frame;
 use crate::commit::leb128 as commit_leb128;
 use crate::store::error::StoreError;
-use crate::store::{ReadTxn, Store};
+use crate::store::{ReadTxn, ReadView, Store};
 
 /// The store magic bytes
 const MAGIC: &[u8; 4] = b"GMst";
@@ -21,13 +21,19 @@ impl Store {
     }
 }
 
-impl ReadTxn<'_> {
+impl ReadTxn {
+    pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
+        self.read().encode()
+    }
+}
+
+impl ReadView<'_> {
     /// Store file layout, scalar integers use LEB128:
     ///
     /// `[MAGIC:4][version][chunk_count]`
     /// `[chunk_count × [chunk_header || payload]]` (see [`crate::commit::header::Header::write`])
     pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
-        let data = &self.data;
+        let data = self.data;
         let commits = data.commits.iter_topological().collect::<Vec<_>>();
         let mut buf: Vec<u8> = Vec::new();
         buf.write_all(MAGIC)?;

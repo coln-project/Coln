@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::public::PublicScalarValue;
 use tracing::info;
 
@@ -21,7 +22,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(super) struct StoreData {
+pub(crate) struct StoreData {
     /// Oids are dense and tables are never dropped, so the next oid is `tables.len()`.
     pub(super) tables: HashMap<TableOid, Table>,
     pub(super) id_packer: IdPacker,
@@ -89,6 +90,14 @@ impl Rollback for StoreData {
 }
 
 impl StoreData {
+    pub(super) fn heads(&self) -> Vec<CommitHash> {
+        self.commits.heads().copied().collect()
+    }
+
+    pub(super) fn commit_by_hash(&self, hash: &CommitHash) -> Option<&DataCommit> {
+        self.commits.get_data(hash)
+    }
+
     /// Add commit to the commit graph. This is a low level API, typically you
     /// want to use `apply_commits`
     pub(crate) fn record_in_commit_graph(&mut self, commit: DataCommit) {

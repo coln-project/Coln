@@ -9,7 +9,7 @@ mod read;
 mod timestamp;
 mod write;
 
-pub use read::ReadTxn;
+pub use read::{ReadTxn, ReadTxnable, ReadView};
 pub use write::{Aborted, Committed, Pending, Prepare, WriteTxn};
 
 #[cfg(test)]

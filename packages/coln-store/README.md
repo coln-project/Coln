@@ -17,7 +17,13 @@ for the full command list (for example `.load`, `.schema`, `.rules`,
 ## Transaction
 
 Rust callers use `Store::begin_read()` for a consistent `ReadTxn` and
-`Store::begin_write()` to queue local operations. A preparing write's `read()`
+`Store::begin_write()` to queue local operations. A `ReadTxn` owns its read lock
+and remains usable after the originating `Store` is dropped. Its `read()` method
+returns a borrowed `ReadView`; table handles and iterators borrow the protected
+data. Dropping the `ReadTxn` releases its lock. Schema changes return
+`StoreError::StoreInUse` while transactions still own the store's resources.
+
+A preparing write's `read()`
 excludes its queued operations. After `try_commit()`, `read()` returns the same
 read interface over tentatively applied data, borrowing the existing write lock
 without acquiring another lock. The prepared commit is not yet in the commit

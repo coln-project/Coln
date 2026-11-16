@@ -19,7 +19,7 @@ use sedimentree_core::{
     loose_commit::{LooseCommit, id::CommitId},
 };
 use subduction_core::{
-    authenticated::Authenticated,
+    authenticated::{Authenticated, Direction},
     connection::test_utils::{ChannelTransport, InstantTimeout, TokioSpawn as ChannelTokioSpawn},
     handshake::audience::Audience,
     peer::id::PeerId,
@@ -124,7 +124,7 @@ async fn publish_new_commits(
             (sedimentree_id, head, parents),
             verified_blob,
         )
-        .await;
+        .await?;
 
         <MemoryStorage as Storage<Sendable>>::save_loose_commit(storage, sedimentree_id, verified)
             .await?;
@@ -259,6 +259,7 @@ async fn subduction_sync_coln_chunks(
         .add_connection(Authenticated::new_for_test(
             MessageTransport::new(left_transport),
             right_sd.peer_id(),
+            Direction::Dialed,
         ))
         .await?;
 
@@ -266,6 +267,7 @@ async fn subduction_sync_coln_chunks(
         .add_connection(Authenticated::new_for_test(
             MessageTransport::new(right_transport),
             left_sd.peer_id(),
+            Direction::Accepted,
         ))
         .await?;
 

@@ -279,7 +279,7 @@ mod rowing {
     }
 
     fn apply_ops_and_rebuild(store: &mut Store, ops: Vec<PublicOp>) -> Result<(), StoreError> {
-        let data = store.data.get_mut();
+        let mut data = store.data.write();
         data.apply_commit_ops(ops)?;
         data.rebuild_to_fixpoint()
     }

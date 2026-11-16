@@ -15,7 +15,7 @@ use crate::{
     commit::{Commit, DataCommit, author::Author, wire::CommitData},
     op::PendingOp,
     store::{
-        Store,
+        catalog::Catalog,
         error::{CommitApplyError, StoreError},
     },
     table::{TableMeta, TableOid, ValidationError},
@@ -46,13 +46,13 @@ impl TxnData {
 
     fn add_cell_values(
         &mut self,
-        store: &Store,
+        catalog: &Catalog,
         table: &ir::Path,
         values: impl Into<TxTuple>,
     ) -> Result<PendingRowId, StoreError> {
-        let meta = store
+        let meta = catalog
             .resolve_table(table)
-            .map(|oid| store.table_meta(oid).unwrap())
+            .map(|oid| catalog.table_meta(oid).unwrap())
             .ok_or(ValidationError::UnknownTable {
                 path: table.clone(),
             })?;
@@ -66,11 +66,11 @@ impl TxnData {
 
     pub(crate) fn add(
         &mut self,
-        store: &Store,
+        catalog: &Catalog,
         table: &ir::Path,
         values: impl Into<TxTuple>,
     ) -> Result<TxRowId, StoreError> {
-        let temp_id = self.add_cell_values(store, table, values)?;
+        let temp_id = self.add_cell_values(catalog, table, values)?;
         let handle = TxRowId::Pending(temp_id);
         Ok(handle)
     }
