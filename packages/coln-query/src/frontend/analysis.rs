@@ -450,6 +450,8 @@ impl<'a, P: Predicate> QuotientGraph<'a, P> {
                 .map(|neighbors| neighbors.iter().map(|neighbor| neighbor.node).collect())
                 .collect::<Vec<Vec<NodeIdx>>>(),
         );
+
+        #[cfg(debug_assertions)]
         basic_component_check(&vertex_degrees);
         QuotientGraph {
             components: predicate_components,
