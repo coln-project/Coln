@@ -47,7 +47,13 @@ impl<'a> SortedTable for SortedCopy<'a> {
     }
 
     fn value(&self, row: RowIdx, col: ColIdx) -> Option<Self::Value> {
-        self.table.inner().cell_by_idx(row, col)
+        if col == 0 {
+            Some(StoreScalarValue::RowId(
+                self.table.inner().row_id_by_idx(row)?,
+            ))
+        } else {
+            self.table.inner().cell_by_idx(row, col - 1)
+        }
     }
 
     // Note assuming that col[depth] is totally sorted, otherwise UB.
