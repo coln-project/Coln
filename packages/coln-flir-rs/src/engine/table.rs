@@ -8,11 +8,13 @@ use std::ops::Range;
 
 use crate::{engine::packed::StoreScalarValue, ir};
 
-pub trait ReadTxnable {
-    fn begin_read(&self) -> impl StoreRead;
+/// Trait for starting a read txn to access the sorted tables in a store
+pub trait StoreST {
+    fn begin_read(&self) -> impl STReadTxn;
 }
 
-pub trait StoreRead {
+/// Trait for accessing sorted tables inside a txn
+pub trait STReadTxn {
     fn sorted_table_at(
         &self,
         table: &ir::Path,
