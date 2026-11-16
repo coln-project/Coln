@@ -155,7 +155,7 @@ impl ColnQuery {
                 let sink_meta = self
                     .flir_program
                     .logical()
-                    .constraint_meta(sink_id)
+                    .law_meta(sink_id)
                     .ok_or_else(|| {
                         RuntimeError::new(format!(
                             "Bug: FLIR program does not know output sink {}",

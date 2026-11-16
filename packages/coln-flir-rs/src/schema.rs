@@ -10,10 +10,10 @@ use either::Either;
 use crate::ir::{self, Path};
 use std::{marker::PhantomData, ops::Range};
 
-/// Typestate marker whether the [`ColnSchema`] represents a base table
+/// Typestate marker whether the [`ColnSchema`] represents a ground table
 /// and, therefore, has (implicit) row ids.
 #[derive(Debug, Clone)]
-pub struct BaseTable(());
+pub struct GroundTable(());
 /// Typestate marker whether the [`ColnSchema`] represents a derived view
 /// and, therefore, does _not_ have (implicit) row ids.
 #[derive(Debug, Clone)]
@@ -21,8 +21,8 @@ pub struct DerivedView(());
 
 #[derive(Debug, Clone)]
 pub struct ColnSchema<Marker> {
-    /// Indicates whether this table schema is for a base table (by using the
-    /// [`BaseTable`] marker) or a derived view (by using the [`DerivedView`]
+    /// Indicates whether this table schema is for a ground table (by using the
+    /// [`GroundTable`] marker) or a derived view (by using the [`DerivedView`]
     /// marker).
     marker: PhantomData<Marker>,
     /// The table's unique identifier/name.
@@ -42,7 +42,7 @@ pub struct ColnSchema<Marker> {
 }
 
 impl<Marker> ColnSchema<Marker> {
-    /// The name of the base table.
+    /// The name of the ground table.
     pub fn name(&self) -> &ir::Path {
         &self.name
     }
@@ -108,7 +108,7 @@ impl<Marker> ColnSchema<Marker> {
     }
 }
 
-impl ColnSchema<BaseTable> {
+impl ColnSchema<GroundTable> {
     pub fn resolve_query_cols(
         &self,
         idx: CompilerColIdx,
@@ -148,7 +148,7 @@ pub trait ResolveCompilerIdxToQueryView {
 }
 
 pub enum ColnSchemaWrapper<'a> {
-    BaseTable(&'a ColnSchema<BaseTable>),
+    GroundTable(&'a ColnSchema<GroundTable>),
     DerivedView(&'a ColnSchema<DerivedView>),
 }
 
@@ -158,7 +158,9 @@ impl ResolveCompilerIdxToQueryView for ColnSchemaWrapper<'_> {
         idx: CompilerColIdx,
     ) -> Option<impl ExactSizeIterator<Item = (QueryEngineColIdx, &QueryEngineCol)>> {
         match self {
-            ColnSchemaWrapper::BaseTable(base) => Some(Either::Left(base.resolve_query_cols(idx))),
+            ColnSchemaWrapper::GroundTable(ground) => {
+                Some(Either::Left(ground.resolve_query_cols(idx)))
+            }
             ColnSchemaWrapper::DerivedView(view) => match idx {
                 CompilerColIdx::RowId => None,
                 CompilerColIdx::Column(idx) => Some(Either::Right(view.resolve_query_cols(idx))),
@@ -167,11 +169,11 @@ impl ResolveCompilerIdxToQueryView for ColnSchemaWrapper<'_> {
     }
 }
 
-impl From<&ir::TableEntry> for Option<ColnSchema<BaseTable>> {
+impl From<&ir::TableEntry> for Option<ColnSchema<GroundTable>> {
     fn from(value: &ir::TableEntry) -> Self {
         let schema = &value.table;
         if !matches!(schema.entity_variant, ir::EntityVariant::Table) {
-            return None; // Only base tables allowed.
+            return None; // Only ground tables allowed.
         }
         Some(ColnSchema::new(
             &value.path,
@@ -405,7 +407,7 @@ impl StoreEngineCols {
     /// The suffix of the counter column of a row id.
     pub const CTR_COL_SUFFIX: &'static str = "RowIdCtr";
 
-    /// From the perspective of coln-store, every base table has two implicitly
+    /// From the perspective of coln-store, every ground table has two implicitly
     /// defined columns: The commit hash from the transaction which created the
     /// row and a counter value, rendering the hash-counter-pair unique among
     /// all insertions of a transaction. Coln-store assigns these counters.

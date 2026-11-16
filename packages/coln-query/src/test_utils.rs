@@ -88,7 +88,7 @@ pub mod dump {
 pub mod flir_builders {
     use coln_flir_rs::ir;
 
-    /// A base table `name` whose columns are given as `(name, type)` pairs, in
+    /// A ground table `name` whose columns are given as `(name, type)` pairs, in
     /// order, and which declares no primary key of its own.
     pub fn table_entry(name: &str, columns: Vec<(&str, ir::ColType)>) -> ir::TableEntry {
         ir::TableEntry {
@@ -210,7 +210,7 @@ pub mod monitored_flir {
     use crate::{relational::TupleValue, scalarial::ScalarTypedValue};
     use coln_flir_rs::ir;
 
-    /// The one base table.
+    /// The one ground table.
     pub const TABLE: &str = "t";
     /// The monitored rule, and so also the sink its violations arrive on.
     pub const RULE: &str = "m";
@@ -275,12 +275,12 @@ pub mod flir {
         }
     }
 
-    /// Builds the base table deltas of the realm `R`, row by row, and hands
+    /// Builds the ground table deltas of the realm `R`, row by row, and hands
     /// them out an epoch at a time.
     pub struct Flir<R> {
         hash: u64,
         ctr: u64,
-        base_tables: HashMap<EntityRef, TableDelta>,
+        ground_tables: HashMap<EntityRef, TableDelta>,
         phantom: PhantomData<R>,
     }
 
@@ -289,7 +289,7 @@ pub mod flir {
             Self {
                 hash: 0,
                 ctr: 0,
-                base_tables: HashMap::new(),
+                ground_tables: HashMap::new(),
                 phantom: PhantomData,
             }
         }
@@ -309,8 +309,8 @@ pub mod flir {
         pub fn next_epoch(&mut self) -> StoreDelta {
             self.hash += 1;
             self.ctr = 0;
-            let store_delta: StoreDelta = self.base_tables.drain().collect();
-            debug_assert!(self.base_tables.is_empty());
+            let store_delta: StoreDelta = self.ground_tables.drain().collect();
+            debug_assert!(self.ground_tables.is_empty());
             store_delta
         }
         pub fn next_ctr(&mut self) -> u64 {
@@ -326,12 +326,12 @@ pub mod flir {
             E: EntityPath<R>,
         {
             let entity_ref = EntityRef::from(&E::ir_path());
-            if !self.base_tables.contains_key(&entity_ref) {
+            if !self.ground_tables.contains_key(&entity_ref) {
                 let entitiy_ref = entity_ref.clone();
-                self.base_tables
+                self.ground_tables
                     .insert(entitiy_ref.clone(), TableDelta::new(entitiy_ref, []));
             }
-            self.base_tables.get_mut(&entity_ref).expect("just added")
+            self.ground_tables.get_mut(&entity_ref).expect("just added")
         }
         fn insert_to_table_delta<E>(&mut self, entry: &E)
         where
@@ -365,7 +365,7 @@ pub mod flir {
         }
     }
 
-    /// The path of a base table in the realm `R`.
+    /// The path of a ground table in the realm `R`.
     pub trait EntityPath<R: JsonFlir> {
         const PATH: &'static str;
         fn ir_path() -> ir::Path {
@@ -409,7 +409,7 @@ pub mod flir {
         }
     }
 
-    /// A row of a base table: its own row id, followed by the row id of each
+    /// A row of a ground table: its own row id, followed by the row id of each
     /// row it references, in column order.
     pub struct Row {
         row_id: RowId,
@@ -434,7 +434,7 @@ pub mod flir {
         }
     }
 
-    /// Defines an [`Entity`] per base table, a [`Row`] that references a row
+    /// Defines an [`Entity`] per ground table, a [`Row`] that references a row
     /// of each column's type (see [`Reference`]), at the path it has in each of
     /// the given FLIRs.
     macro_rules! tables {
