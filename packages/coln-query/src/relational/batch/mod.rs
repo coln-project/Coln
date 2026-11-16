@@ -42,7 +42,10 @@
 // lowering, fixpoint, and output stay as they are.
 
 mod lowering;
+#[cfg(test)]
+mod realm_tests;
 mod values;
+pub mod views;
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
