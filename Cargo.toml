@@ -30,3 +30,4 @@ subenum = "1.2.0"
 thiserror = "2.0.18"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+ena = { git = "https://github.com/incipit0/ena.git"}

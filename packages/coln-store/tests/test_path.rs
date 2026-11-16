@@ -10,6 +10,7 @@ use coln_flir_rs::engine::tx::TxTuple;
 use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{self, FlatRealm, Path};
 use coln_flir_rs::public::PublicRowId;
+use coln_store::store::txn::ReadTxnable;
 use coln_store::{
     IdLookup,
     commit::DataCommit,
@@ -113,8 +114,6 @@ fn add_graph_edge(
         .expect("vertex 2");
     let v1 = ids.unpacked(&v1.row_id()).expect("v1 is unpacked");
     let v2 = ids.unpacked(&v2.row_id()).expect("v2 is unpacked");
-    drop(read);
-
     txn.add(&ge, vec![v1, v2])?;
     Ok(txn.try_commit()?.commit().commit_hash())
 }

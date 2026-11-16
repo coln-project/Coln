@@ -10,7 +10,7 @@
 
 mod uf;
 
-use std::{cell::RefCell, collections::HashMap};
+use std::collections::HashMap;
 
 use coln_flir_rs::engine::packed::PackedRowId;
 use ena::unify::{InPlace, Snapshot};
@@ -25,7 +25,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Rowing {
     // interior mutability because uf.find requires &mut self
-    uf: RefCell<UnionFind>,
+    uf: UnionFind,
     keys: HashMap<PackedRowId, NodeId>,
     // stale rowids
     displaced: Vec<PackedRowId>,
@@ -47,7 +47,7 @@ impl Rollback for Rowing {
     fn snapshot(&mut self) -> Self::Snapshot {
         // TODO all doing cloning. If conflicts are rare, this is probably fine.
         RowingSnapshot {
-            uf_snapshot: self.uf.get_mut().snapshot(),
+            uf_snapshot: self.uf.snapshot(),
             keys: self.keys.clone(),
             displaced_len: self.displaced.len(),
             pending_unions: self.pending_unions.clone(),
@@ -55,11 +55,11 @@ impl Rollback for Rowing {
     }
 
     fn commit(&mut self, snapshot: Self::Snapshot) {
-        self.uf.get_mut().commit(snapshot.uf_snapshot);
+        self.uf.commit(snapshot.uf_snapshot);
     }
 
     fn rollback_to(&mut self, snapshot: Self::Snapshot) {
-        self.uf.get_mut().rollback_to(snapshot.uf_snapshot);
+        self.uf.rollback_to(snapshot.uf_snapshot);
         self.keys = snapshot.keys;
         self.displaced.truncate(snapshot.displaced_len);
         self.pending_unions = snapshot.pending_unions;
@@ -69,7 +69,7 @@ impl Rollback for Rowing {
 impl Rowing {
     pub(crate) fn new() -> Self {
         Self {
-            uf: RefCell::new(UnionFind::new()),
+            uf: UnionFind::new(),
             keys: HashMap::new(),
             displaced: Vec::new(),
             pending_unions: Vec::new(),
@@ -92,7 +92,7 @@ impl Rowing {
     // for tables during rebuild
     pub(crate) fn apply_unions(&mut self, id_packer: &IdPacker) {
         for (_tbl, r1, r2) in self.pending_unions.drain(..) {
-            let mut uf = self.uf.borrow_mut();
+            let uf = &mut self.uf;
             let unpacked1 = id_packer.unpack_row_id(r1);
             let unpacked2 = id_packer.unpack_row_id(r2);
 
@@ -120,7 +120,7 @@ impl Rowing {
             // just return it
             return *row_id;
         };
-        let canonical = self.uf.borrow_mut().probe_value(key);
+        let canonical = self.uf.probe_value_immutable(key);
         id_packer
             .packed(&canonical)
             .expect("canonical row id was packed before union")

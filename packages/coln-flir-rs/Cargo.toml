@@ -13,7 +13,7 @@ exclude = ["/.gitignore"]
 
 [dependencies]
 either.workspace = true
-ena = "0.14.4"
+ena.workspace = true
 hex.workspace = true
 indexmap.workspace = true
 serde.workspace = true

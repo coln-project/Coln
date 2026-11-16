@@ -10,6 +10,8 @@ use crate::table::ValidationError;
 /// Store integrity error
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
+    #[error("store has active transactions")]
+    StoreInUse,
     #[error(transparent)]
     Validation(#[from] ValidationError),
     #[error(transparent)]

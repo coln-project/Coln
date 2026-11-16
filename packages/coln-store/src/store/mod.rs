@@ -31,13 +31,13 @@ use crate::rowing::Rowing;
 use crate::store::catalog::Catalog;
 use crate::store::data::StoreData;
 use crate::store::error::StoreError;
-pub use crate::store::txn::{ReadTxn, WriteTxn};
+pub use crate::store::txn::{ReadTxn, ReadView, WriteTxn};
 use crate::table::{Table, TableMeta, TableOid};
 
 #[derive(Debug)]
 pub struct Store {
     catalog: Arc<Catalog>,
-    data: RwLock<StoreData>,
+    data: Arc<RwLock<StoreData>>,
 }
 
 impl Store {
@@ -84,6 +84,14 @@ impl Store {
         let root_data = RootCommitData::new(ir.clone(), coln_def);
         let commits = Self::graph_with_root_commit(&root_data)?;
 
+        let data = Arc::new(RwLock::new(StoreData {
+            tables,
+            id_packer: IdPacker::new(),
+            commits,
+            rowing: Rowing::new(),
+            pending_commits: Vec::new(),
+        }));
+
         Ok(Self {
             catalog: Arc::new(Catalog {
                 path_to_oid,
@@ -91,13 +99,7 @@ impl Store {
                 table_meta,
                 ir: ir.clone(),
             }),
-            data: RwLock::new(StoreData {
-                tables,
-                id_packer: IdPacker::new(),
-                commits,
-                rowing: Rowing::new(),
-                pending_commits: Vec::new(),
-            }),
+            data,
         })
     }
 
@@ -162,7 +164,9 @@ impl Store {
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
 
-        let data = store.data.get_mut();
+        let data = Arc::get_mut(&mut store.data)
+            .expect("new store data is not shared")
+            .get_mut();
         data.commits = CommitGraph::new(root_commit);
         data.check_commit_deps(commits.iter())?;
         Ok((store, commits))
@@ -250,10 +254,11 @@ impl Store {
         path: ir::Path,
         schema: ir::Schema,
     ) -> Result<TableOid, StoreError> {
-        // `&mut self` rules out live transactions, so no locking is needed.
-        let data = self.data.get_mut();
-        let catalog = Arc::get_mut(&mut self.catalog)
-            .expect("catalog is not shared while the store is mutably borrowed");
+        // Owned transactions can remain alive during a mutable borrow of Store.
+        let catalog = Arc::get_mut(&mut self.catalog).ok_or(StoreError::StoreInUse)?;
+        let data = Arc::get_mut(&mut self.data)
+            .ok_or(StoreError::StoreInUse)?
+            .get_mut();
 
         // Build the new root commit before mutating, so a codec error leaves
         // the store unchanged.

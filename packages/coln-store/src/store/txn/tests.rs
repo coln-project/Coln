@@ -1,6 +1,6 @@
 use coln_flir_rs::engine::delta::{StoreDelta, TableDelta, ZRow};
 use coln_flir_rs::engine::packed::{StoreScalarValue, StoreTuple};
-use coln_flir_rs::engine::table::{ReadTxnable, SortedTable, StoreRead};
+use coln_flir_rs::engine::table::{STReadTxn, SortedTable, StoreST};
 use coln_flir_rs::engine::tx::TxTuple;
 use rstest::rstest;
 
@@ -8,13 +8,14 @@ use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
 use crate::pack::id_packer::IdLookup;
 use crate::store::Store;
 use crate::store::error::StoreError;
+use crate::store::txn::ReadTxnable;
 use crate::table::ValidationError;
 use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int_store};
 
 #[rstest]
 fn sorted_table_at_reports_arity(#[from(single_int_store)] store: Store) {
     let path = Path::from("T");
-    let read = ReadTxnable::begin_read(&store);
+    let read = StoreST::begin_read(&store);
     let table = read.sorted_table_at(&path).expect("T");
 
     assert_eq!(table.arity(), 2); // Row ID plus the integer column.

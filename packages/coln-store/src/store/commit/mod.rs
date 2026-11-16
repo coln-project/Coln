@@ -10,7 +10,8 @@ use crate::commit::chunk::Chunk;
 use crate::commit::frame::Frame;
 use crate::commit::{Commit, DataCommit};
 use crate::store::error::{CommitApplyError, StoreError};
-use crate::store::{ReadTxn, Store};
+use crate::store::txn::ReadTxnable;
+use crate::store::{ReadTxn, ReadView, Store};
 
 mod batch;
 
@@ -33,7 +34,21 @@ impl<T> From<&Commit<'_, T>> for CommitChunk {
     }
 }
 
-impl ReadTxn<'_> {
+impl ReadTxn {
+    pub fn chunks_after(&self, have_heads: &[CommitHash]) -> Vec<Chunk> {
+        self.read().chunks_after(have_heads)
+    }
+
+    pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
+        self.read().commit_chunks_after(have_heads)
+    }
+
+    pub fn commits_added(&self, other: &(impl ReadTxnable + ?Sized)) -> Vec<DataCommit> {
+        self.read().commits_added(other)
+    }
+}
+
+impl ReadView<'_> {
     /// Root and data chunks not covered by the supplied heads, in dependency order.
     pub fn chunks_after(&self, have_heads: &[CommitHash]) -> Vec<Chunk> {
         let seen = self.ancestors_of(have_heads);
@@ -74,7 +89,8 @@ impl ReadTxn<'_> {
     }
 
     /// Get commits in `other` that are not in `self`
-    pub fn commits_added(&self, other: &ReadTxn<'_>) -> Vec<DataCommit> {
+    pub fn commits_added(&self, other: &(impl ReadTxnable + ?Sized)) -> Vec<DataCommit> {
+        let other = other.read();
         // a depth first search from the heads of others backwards until hashes
         // are in self
         let mut stack = other.heads();
@@ -121,7 +137,7 @@ impl Store {
     pub fn prepare_commit_bytes(
         &self,
         chunk_bytes: impl IntoIterator<Item = Vec<u8>>,
-    ) -> Result<CommitBatch<'_, Unprepared>, StoreError> {
+    ) -> Result<CommitBatch<Unprepared>, StoreError> {
         let mut new_commits = Vec::new();
         let mut roots = Vec::new();
         for bytes in chunk_bytes {
@@ -135,19 +151,17 @@ impl Store {
             }
         }
 
-        let data = self.data.write();
+        let data = self.data.write_arc();
         if let Some(root) = roots.into_iter().find(|h| !data.commits.contains(h)) {
             return Err(CommitApplyError::RootCommit(root).into());
         }
         data.check_commit_deps(new_commits.iter())?;
-        Ok(CommitBatch::new(&self.catalog, data, new_commits, true))
-    }
-
-    pub(crate) fn prepare_commit(
-        &self,
-        commit: DataCommit,
-    ) -> Result<CommitBatch<'_, Unprepared>, StoreError> {
-        self.prepare_commits(std::iter::once(commit), false)
+        Ok(CommitBatch::new(
+            self.catalog.clone(),
+            data,
+            new_commits,
+            true,
+        ))
     }
 
     /// Here we assume that the commits have been checked
@@ -155,10 +169,10 @@ impl Store {
         &self,
         new_commits: impl IntoIterator<Item = DataCommit>,
         drain_sync: bool,
-    ) -> Result<CommitBatch<'_, Unprepared>, StoreError> {
+    ) -> Result<CommitBatch<Unprepared>, StoreError> {
         Ok(CommitBatch::new(
-            &self.catalog,
-            self.data.write(),
+            self.catalog.clone(),
+            self.data.write_arc(),
             new_commits,
             drain_sync,
         ))
@@ -227,7 +241,7 @@ mod tests {
 
         store
             .data
-            .get_mut()
+            .write()
             .apply_commit_ops(checked.ops)
             .expect("apply row");
         let read = store.begin_read();

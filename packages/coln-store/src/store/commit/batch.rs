@@ -6,17 +6,19 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use coln_flir_rs::engine::delta::{Consolidated, PartialConsolidated, StoreDelta};
 use coln_flir_rs::engine::packed::StoreTuple;
 use coln_flir_rs::hash::CommitHash;
-use parking_lot::RwLockWriteGuard;
+use parking_lot::{ArcRwLockWriteGuard, RawRwLock};
 
 use crate::commit::DataCommit;
 use crate::rollback::Rollback;
 use crate::store::data::{CheckedOpCommit, DataSnapshot};
 use crate::store::error::StoreError;
-use crate::store::{Catalog, ReadTxn, StoreData};
+use crate::store::txn::ReadTxnable;
+use crate::store::{Catalog, ReadView, StoreData};
 use crate::table::ValidationError;
 
 pub trait PrepareState {}
@@ -69,28 +71,28 @@ impl PrepareState for Prepared {}
 /// - Dropping the batch in either state returns all remaining commits to
 ///   `StoreData::pending_commits`. In the `Prepared` state the store is first
 ///   rolled back and the prepared commit is returned to pending as well.
-pub struct CommitBatch<'a, S: PrepareState> {
-    guard: BatchGuard<'a>,
+pub struct CommitBatch<S: PrepareState> {
+    guard: BatchGuard,
     state: PhantomData<S>,
 }
 
-impl<S: PrepareState> CommitBatch<'_, S> {
+impl<S: PrepareState> ReadTxnable for CommitBatch<S> {
     /// Read the current data without acquiring another lock.
-    pub fn read(&self) -> ReadTxn<'_> {
-        ReadTxn::borrowed(self.guard.catalog, &self.guard.store_data)
+    fn read(&self) -> ReadView<'_> {
+        ReadView::borrowed(&self.guard.catalog, &self.guard.store_data)
     }
 }
 
-impl<'a> CommitBatch<'a, Unprepared> {
+impl CommitBatch<Unprepared> {
     /// Prepares a [`CommitBatch`] for applying those commits.
     /// To make sure that we don't accidentally drop the pending_commits from the store,
     /// this function cannot fail.
     ///
     /// Therefore we assume that the new_commits has already been checked
     /// Also we take `new_commits` and will append whatever is pending to it.
-    pub(super) fn new(
-        catalog: &'a Catalog,
-        mut store_data: RwLockWriteGuard<'a, StoreData>,
+    pub(crate) fn new(
+        catalog: Arc<Catalog>,
+        mut store_data: ArcRwLockWriteGuard<RawRwLock, StoreData>,
         new_commits: impl IntoIterator<Item = DataCommit>,
         drain_sync: bool,
     ) -> Self {
@@ -152,7 +154,7 @@ impl<'a> CommitBatch<'a, Unprepared> {
         }
     }
 
-    pub fn prepare_next(mut self) -> Result<Option<CommitBatch<'a, Prepared>>, StoreError> {
+    pub fn prepare_next(mut self) -> Result<Option<CommitBatch<Prepared>>, StoreError> {
         if !self.guard.prepare_next()? {
             return Ok(None);
         }
@@ -179,8 +181,8 @@ impl<'a> CommitBatch<'a, Unprepared> {
     }
 }
 
-impl<'a> CommitBatch<'a, Prepared> {
-    pub fn accept_prepared(mut self) -> CommitBatch<'a, Unprepared> {
+impl CommitBatch<Prepared> {
+    pub fn accept_prepared(mut self) -> CommitBatch<Unprepared> {
         self.guard.accept_prepared();
         CommitBatch {
             guard: self.guard,
@@ -188,7 +190,7 @@ impl<'a> CommitBatch<'a, Prepared> {
         }
     }
 
-    pub fn reject_prepared(mut self) -> CommitBatch<'a, Unprepared> {
+    pub fn reject_prepared(mut self) -> CommitBatch<Unprepared> {
         self.guard.reject_prepared();
 
         CommitBatch {
@@ -229,14 +231,14 @@ impl<'a> CommitBatch<'a, Prepared> {
 
 // A BatchGuard holds a prepared commit and when dropped, this commit would be
 // put back into store's pending_commits
-struct BatchGuard<'a> {
-    catalog: &'a Catalog,
-    store_data: RwLockWriteGuard<'a, StoreData>,
+struct BatchGuard {
+    catalog: Arc<Catalog>,
+    store_data: ArcRwLockWriteGuard<RawRwLock, StoreData>,
     queue: BatchQueue,
     prepared: Option<PreparedCommit>,
 }
 
-impl Drop for BatchGuard<'_> {
+impl Drop for BatchGuard {
     fn drop(&mut self) {
         if let Some(prepared) = self.prepared.take() {
             self.store_data.rollback_to(prepared.snapshot);
@@ -253,7 +255,7 @@ impl Drop for BatchGuard<'_> {
     }
 }
 
-impl BatchGuard<'_> {
+impl BatchGuard {
     fn prepare_next(&mut self) -> Result<bool, StoreError> {
         let Some(hash) = self.queue.ready.pop_first() else {
             return Ok(false);
@@ -266,7 +268,7 @@ impl BatchGuard<'_> {
             .expect("a ready commit must also be in pending");
 
         let CheckedOpCommit { ops, original } =
-            self.store_data.check_commit_ops(commit, self.catalog)?;
+            self.store_data.check_commit_ops(commit, &self.catalog)?;
         let sd: StoreDelta<PartialConsolidated, StoreTuple> = ops
             .iter()
             .map(|op| {
@@ -384,14 +386,14 @@ impl PreparedCommit {
         self.commit.hash()
     }
 
-    pub(super) fn accept(self, store_data: &mut RwLockWriteGuard<'_, StoreData>) -> CommitHash {
+    pub(super) fn accept(self, store_data: &mut StoreData) -> CommitHash {
         let hash = self.commit.hash();
         store_data.commit(self.snapshot);
         store_data.record_in_commit_graph(self.commit);
         hash
     }
 
-    pub(super) fn reject(self, store: &mut RwLockWriteGuard<'_, StoreData>) {
+    pub(super) fn reject(self, store: &mut StoreData) {
         store.rollback_to(self.snapshot);
     }
 }
@@ -700,7 +702,7 @@ mod tests {
         #[from(commit_int_store)]
         #[with(1)]
         source: (Store, CommitHash),
-        #[from(single_int_store)] mut target: Store,
+        #[from(single_int_store)] target: Store,
     ) {
         let (mut source, first) = source;
         let second = crate::test_utils::commit_int(&mut source, 2);
@@ -731,7 +733,7 @@ mod tests {
             .map(|commit| commit.hash())
             .collect::<Vec<_>>();
         assert_eq!(pending_hashes, vec![second]);
-        let pending = std::mem::take(&mut target.data.get_mut().pending_commits);
+        let pending = std::mem::take(&mut target.data.write().pending_commits);
         assert!(
             target
                 .prepare_commits(pending, false)
