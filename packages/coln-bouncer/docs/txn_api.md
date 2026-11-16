@@ -6,8 +6,10 @@ two main considerations when designing such an API:
 1. For rust users, it needs to provide static guarantees on state transitions,
 e.g. one cannot abort a txn once it has committed, or cannot read data after
 it has been aborted.
-2. For FFI, it needs to accommodate the FFI author. TS does not have a type system
-as fancy as rust, and therefore might require different access patterns.
+2. For FFI, it needs to accommodate the FFI author. TS's type system lacks some
+features as compared to rust which lowers the guarantees provided by the rust
+api. It also complicates what kind of methods can be bound, for example, methods
+that consume self seem to be disliked by them...
 
 ## The state machine
 
