@@ -6,14 +6,17 @@
 
 use std::ops::Range;
 
-use crate::ir;
+use crate::{engine::packed::StoreScalarValue, ir};
 
 pub trait ReadTxnable {
     fn begin_read(&self) -> impl StoreRead;
 }
 
 pub trait StoreRead {
-    fn sorted_table_at(&self, table: &ir::Path) -> Option<impl SortedTable>;
+    fn sorted_table_at(
+        &self,
+        table: &ir::Path,
+    ) -> Option<impl SortedTable<Value = StoreScalarValue>>;
 }
 
 pub type RowIdx = usize;

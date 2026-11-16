@@ -6,7 +6,7 @@
 
 use std::ops::Deref;
 
-use coln_flir_rs::engine::packed::{PackedRowId, StoreTuple};
+use coln_flir_rs::engine::packed::{PackedRowId, StoreScalarValue, StoreTuple};
 use coln_flir_rs::engine::table::{ReadTxnable, SortedTable, StoreRead};
 use coln_flir_rs::engine::tx::TxRowId;
 use coln_flir_rs::hash::CommitHash;
@@ -62,7 +62,10 @@ impl ReadTxnable for Store {
 }
 
 impl StoreRead for ReadTxn<'_> {
-    fn sorted_table_at(&self, table: &ir::Path) -> Option<impl SortedTable> {
+    fn sorted_table_at(
+        &self,
+        table: &ir::Path,
+    ) -> Option<impl SortedTable<Value = StoreScalarValue>> {
         self.table_at(table)?.sorted_copies().pop()
     }
 }
