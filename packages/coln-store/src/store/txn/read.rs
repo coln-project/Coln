@@ -97,20 +97,23 @@ impl StoreST for Store {
 }
 
 impl STReadTxn for ReadTxn {
-    fn sorted_table_at(
+    fn sorted_tables_at(
         &self,
         table: &ir::Path,
-    ) -> Option<impl SortedTable<Value = StoreScalarValue>> {
-        self.read().table_at(table)?.sorted_copies().pop()
+    ) -> Vec<impl SortedTable<Value = StoreScalarValue>> {
+        self.read()
+            .table_at(table)
+            .map_or(Vec::new(), |h| h.sorted_copies())
     }
 }
 
 impl STReadTxn for ReadView<'_> {
-    fn sorted_table_at(
+    fn sorted_tables_at(
         &self,
         table: &ir::Path,
-    ) -> Option<impl SortedTable<Value = StoreScalarValue>> {
-        self.table_at(table)?.sorted_copies().pop()
+    ) -> Vec<impl SortedTable<Value = StoreScalarValue>> {
+        self.table_at(table)
+            .map_or(Vec::new(), |h| h.sorted_copies())
     }
 }
 
@@ -281,7 +284,7 @@ mod tests {
         assert_eq!(view.table_at(&path).expect("T").row_count(), 1);
         assert!(view.commit_by_hash(&hash).is_some());
         assert_eq!(view.encode().expect("encode after store drop"), encoded);
-        let sorted = view.sorted_table_at(&path).expect("sorted T");
+        let sorted = view.sorted_tables_at(&path).expect("sorted T");
         assert_eq!(sorted.len(), 1);
         assert_eq!(sorted.value(0, 1), Some(StoreScalarValue::I32(42)));
     }

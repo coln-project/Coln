@@ -16,10 +16,10 @@ use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int
 fn sorted_table_at_reports_arity(#[from(single_int_store)] store: Store) {
     let path = Path::from("T");
     let read = StoreST::begin_read(&store);
-    let table = read.sorted_table_at(&path).expect("T");
+    let table = read.sorted_tables_at(&path).expect("T");
 
     assert_eq!(table.arity(), 2); // Row ID plus the integer column.
-    assert!(read.sorted_table_at(&Path::from("missing")).is_none());
+    assert!(read.sorted_tables_at(&Path::from("missing")).is_none());
 }
 
 #[rstest]

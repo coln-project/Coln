@@ -15,10 +15,10 @@ pub trait StoreST {
 
 /// Trait for accessing sorted tables inside a txn
 pub trait STReadTxn {
-    fn sorted_table_at(
+    fn sorted_tables_at(
         &self,
         table: &ir::Path,
-    ) -> Option<impl SortedTable<Value = StoreScalarValue>>;
+    ) -> Vec<impl SortedTable<Value = StoreScalarValue>>;
 }
 
 pub type RowIdx = usize;
