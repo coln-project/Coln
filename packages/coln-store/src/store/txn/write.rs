@@ -47,6 +47,41 @@ impl Drop for Pending<'_> {
     }
 }
 
+/// A write transaction that stages operations, applies them tentatively, and
+/// then commits or aborts them.
+///
+/// ```text
+///                         Store::begin_write()
+///                                  │
+///                                  ▼
+///                   ┌──────────────────────────────┐
+///                   │           Prepare            │
+///                   └──────────────────────────────┘
+///                                  │
+///                                  │ try_commit() -> Ok(_)
+///                                  ▼
+///                   ┌──────────────────────────────┐
+///                   │           Pending            │
+///                   └──────────────────────────────┘
+///                          │                │
+///                 commit() │                │ abort()
+///                          ▼                ▼
+///                   ┌─────────────┐  ┌─────────────┐
+///                   │  Committed  │  │   Aborted   │
+///                   └─────────────┘  └─────────────┘
+/// ```
+///
+/// - `Prepare` holds a read lock. `add` queues operations, and `read` sees
+///   committed data without those operations.
+/// - `try_commit` releases the read lock, acquires the write lock, and
+///   tentatively applies the operations. Returning `Err` consumes the
+///   transaction without keeping its changes.
+/// - `Pending` holds the write lock and a rollback snapshot. `read` sees
+///   tentative data, and `apply_derived_view` adds changes to the same
+///   transaction. `commit` accepts these changes and releases the lock;
+///   `abort` rolls them back and releases the lock.
+/// - Dropping `Prepare` discards queued operations. Dropping `Pending` rolls
+///   back tentative changes, including derived data, just like `abort`.
 pub struct WriteTxn<'a, S> {
     store: &'a Store,
     pub(super) state: S,

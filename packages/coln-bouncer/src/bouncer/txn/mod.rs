@@ -9,4 +9,4 @@ mod write;
 
 pub use read::ReadTxn;
 pub(super) use write::apply_batch;
-pub use write::{Import, Local, WriteTxn};
+pub use write::{CommitResult, Import, Local, WriteTxn};
