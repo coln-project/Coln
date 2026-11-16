@@ -23,7 +23,8 @@
 //! joins on columns (chains are flattened into one n-ary rule body),
 //! multi-way equi joins (FLIR's native n-ary node, consumed directly),
 //! cartesian products, projections onto columns and literals, equality
-//! selections against literals, unions, distinct, and fixed points whose
+//! selections against literals, unions, distinct, outputs (also bound to a
+//! variable, as the FLIR frontend writes them), and fixed points whose
 //! step is a single relational expression. Everything that needs the
 //! scalar engine (computed columns, general conditions) and the
 //! remaining operators (anti join, difference) fail with a clear error
@@ -48,7 +49,7 @@ use crate::host::stmt::{Stmt, VarStmt};
 use crate::relational::catalog::SourceSchemas;
 use crate::relational::expr::{
     ConstantExpr, EquiJoinExpr, FixedPointIterExpr, MultiWayEquiJoinExpr, Multiplicity, OutputKind,
-    RelExpr, SourceExpr,
+    RelExpr, SinkId, SourceExpr,
 };
 use crate::relational::relation::Tuple;
 
@@ -275,12 +276,25 @@ impl Lowerer {
             .initializer
             .as_ref()
             .with_context(|| format!("variable {} has no initializer", var.name))?;
+        self.bind(&var.name, initializer)
+    }
 
+    /// Bind the plan variable `name` to what `initializer` evaluates to.
+    fn bind(&mut self, name: &str, initializer: &Expr) -> Result<()> {
+        // An output passes its relation through unchanged, so the variable
+        // binds to the tapped relation, which also becomes a sink. This is how
+        // the FLIR frontend names every result: `var x = Output(..)`.
+        if let Expr::Relational(RelExpr::Output(output)) = initializer {
+            self.bind(name, &output.relation)?;
+            let relation = self.lookup(name)?.relation.clone();
+            self.record_output(&output.id, output.kind, relation);
+            return Ok(());
+        }
         let schema = match initializer {
             // Aliasing one relation variable to another.
             Expr::Var(inner) => {
                 let info = self.lookup(&inner.name)?.clone();
-                self.env.insert(var.name.clone(), info.clone());
+                self.env.insert(name.to_string(), info.clone());
                 return Ok(());
             }
             // Reading one relation of a tuple, which aliases it just like the
@@ -294,35 +308,34 @@ impl Lowerer {
                         .clone(),
                     // A fixed point indexed right away, its tuple never bound.
                     Expr::Relational(RelExpr::FixedPointIter(fixed_point)) => {
-                        vec![self.lower_fixed_point(&var.name, fixed_point)?]
+                        vec![self.lower_fixed_point(name, fixed_point)?]
                     }
                     _ => {
                         bail!("batch lowering only indexes into a bound variable or a fixed point")
                     }
                 };
                 let info = tuple_element(&elements, &get_index.index)
-                    .with_context(|| format!("while binding {}", var.name))?;
-                self.env.insert(var.name.clone(), info);
+                    .with_context(|| format!("while binding {name}"))?;
+                self.env.insert(name.to_string(), info);
                 return Ok(());
             }
             Expr::Relational(RelExpr::FixedPointIter(fixed_point)) => {
-                let info = self.lower_fixed_point(&var.name, fixed_point)?;
-                self.tuples.insert(var.name.clone(), vec![info]);
+                let info = self.lower_fixed_point(name, fixed_point)?;
+                self.tuples.insert(name.to_string(), vec![info]);
                 return Ok(());
             }
             Expr::Relational(rel) => match rel {
                 RelExpr::Union(union) => {
                     let mut schema: Option<Schema> = None;
                     for branch in &union.relations {
-                        let branch_schema = self.push_rule_for(&var.name, branch)?;
+                        let branch_schema = self.push_rule_for(name, branch)?;
                         match &schema {
                             None => schema = Some(branch_schema),
                             Some(first) => {
                                 if first.types() != branch_schema.types() {
                                     bail!(
-                                        "union branches for {} have different schemas, \
+                                        "union branches for {name} have different schemas, \
                                          {} and {}",
-                                        var.name,
                                         describe(first),
                                         describe(&branch_schema)
                                     );
@@ -330,20 +343,19 @@ impl Lowerer {
                             }
                         }
                     }
-                    schema.with_context(|| format!("union for {} is empty", var.name))?
+                    schema.with_context(|| format!("union for {name} is empty"))?
                 }
-                _ => self.push_rule_for(&var.name, initializer)?,
+                _ => self.push_rule_for(name, initializer)?,
             },
             _ => bail!(
-                "batch lowering only supports relational initializers, {} is a host expression",
-                var.name
+                "batch lowering only supports relational initializers, {name} is a host expression"
             ),
         };
 
         self.env.insert(
-            var.name.clone(),
+            name.to_string(),
             RelInfo {
-                relation: var.name.clone(),
+                relation: name.to_string(),
                 schema,
             },
         );
@@ -444,16 +456,20 @@ impl Lowerer {
         let Expr::Var(var) = &output.relation else {
             bail!("batch lowering expects outputs to tap a bound variable");
         };
-        let info = self.lookup(&var.name)?;
-        match output.kind {
+        let relation = self.lookup(&var.name)?.relation.clone();
+        self.record_output(&output.id, output.kind, relation);
+        Ok(())
+    }
+
+    /// Make `relation` readable under the sink id `id`.
+    fn record_output(&mut self, id: &SinkId, kind: OutputKind, relation: String) {
+        match kind {
             OutputKind::Channel => {
-                self.outputs
-                    .insert(output.id.0.clone(), info.relation.clone());
+                self.outputs.insert(id.0.clone(), relation);
             }
             // Print-only taps have no readable result; nothing to record.
             OutputKind::Cli => {}
         }
-        Ok(())
     }
 
     /// Lower a relational expression into atoms of `frame`, returning the
@@ -1917,5 +1933,45 @@ mod tests {
         .unwrap();
         let err = lower_plan(vec![let_rel("nulls", nulls)]).unwrap_err();
         assert!(format!("{err:#}").contains("does not store null values"));
+    }
+
+    /// Step 20: an output bound to a variable, `var x = Output(..)`, as the
+    /// FLIR frontend writes every result. The variable binds to the tapped
+    /// relation, so later statements can read it, and the tap is a sink.
+    #[test]
+    fn s20_an_output_can_initialize_a_variable() {
+        let plan = lower_plan(vec![
+            let_rel(
+                "targets",
+                OutputExpr {
+                    relation: Expr::from(ProjectionExpr {
+                        relation: Expr::from(SourceExpr::new(src("edge"))),
+                        attributes: named_columns(&[("node", "to")]),
+                    }),
+                    id: SinkId::from("targets"),
+                    kind: OutputKind::Channel,
+                },
+            ),
+            let_rel(
+                "loops",
+                OutputExpr {
+                    relation: var("targets"),
+                    id: SinkId::from("loops"),
+                    kind: OutputKind::Channel,
+                },
+            ),
+        ])
+        .unwrap();
+
+        assert_eq!(plan.outputs["targets"], "targets");
+        // Reading the variable reads the tapped relation, not a copy.
+        assert_eq!(plan.outputs["loops"], "targets");
+
+        let result = run(&plan, {
+            let mut edb = Catalog::new();
+            edb.insert(rel("edge", ["from", "to"], &[(0, 1), (1, 2)]));
+            edb
+        });
+        assert_eq!(rows(result.get("targets").unwrap()), vec![vec![1], vec![2]]);
     }
 }
