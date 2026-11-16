@@ -7,7 +7,8 @@
     "strict": true,
     "types": ["node"],
     "rootDir": ".",
-    "outDir": "dist"
+    "outDir": "dist",
+    "declaration": true
   },
   "include": ["src/typescript/*.ts", "test/*.ts"]
 }

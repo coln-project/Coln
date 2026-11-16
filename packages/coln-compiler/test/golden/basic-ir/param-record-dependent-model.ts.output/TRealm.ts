@@ -12,7 +12,7 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        pointed: (new runtime.BaseTableRef(
+        pointed: (new runtime.BaseRef(
           mstore,
           "root.pointed",
           [],
@@ -22,7 +22,7 @@ export function createRealm(runtime: typeof Runtime) {
               return [a.point.rank];
             },
             reconstruct: (result: Runtime.WireTuple) => {
-              return { point: { rank: result[0] } };
+              return { point: { rank: result[0] as number } };
             }
           }
         )),

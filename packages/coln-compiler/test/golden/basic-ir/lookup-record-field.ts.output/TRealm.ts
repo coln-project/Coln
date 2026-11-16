@@ -16,7 +16,7 @@ export function createRealm(runtime: typeof Runtime) {
       this.root = {
         X: (new runtime.BaseSet(mstore, "root.X", [])),
         payload: (a: Runtime.RowId<"root.X">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.payload",
             [a],
@@ -26,7 +26,7 @@ export function createRealm(runtime: typeof Runtime) {
                 return [a.name, a.rank];
               },
               reconstruct: (result: Runtime.WireTuple) => {
-                return { name: result[0], rank: result[1] };
+                return { name: result[0] as string, rank: result[1] as number };
               }
             }
           ));
@@ -35,7 +35,7 @@ export function createRealm(runtime: typeof Runtime) {
           return (new runtime.BaseSet(mstore, "root.E", [a]));
         },
         edge: (x: Runtime.RowId<"root.X">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.edge",
             [x],

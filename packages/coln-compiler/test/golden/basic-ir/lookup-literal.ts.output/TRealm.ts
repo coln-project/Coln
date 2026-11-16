@@ -17,7 +17,7 @@ export function createRealm(runtime: typeof Runtime) {
         StringEdge: (a: string) => {
           return (new runtime.BaseSet(mstore, "root.StringEdge", [a]));
         },
-        intEdge: (new runtime.BaseTableRef(
+        intEdge: (new runtime.BaseRef(
           mstore,
           "root.intEdge",
           [],
@@ -34,7 +34,7 @@ export function createRealm(runtime: typeof Runtime) {
             }
           }
         )),
-        stringEdge: (new runtime.BaseTableRef(
+        stringEdge: (new runtime.BaseRef(
           mstore,
           "root.stringEdge",
           [],

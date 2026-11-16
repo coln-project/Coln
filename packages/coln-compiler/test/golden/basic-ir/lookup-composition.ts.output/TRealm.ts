@@ -21,7 +21,7 @@ export function createRealm(runtime: typeof Runtime) {
           return (new runtime.BaseSet(mstore, "root.E", [a]));
         },
         first: (a: Runtime.RowId<"root.A">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.first",
             [a],
@@ -40,7 +40,7 @@ export function createRealm(runtime: typeof Runtime) {
           ));
         },
         second: (a: Runtime.RowId<"root.B">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.second",
             [a],
@@ -59,7 +59,7 @@ export function createRealm(runtime: typeof Runtime) {
           ));
         },
         edge: (x: Runtime.RowId<"root.A">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.edge",
             [x],

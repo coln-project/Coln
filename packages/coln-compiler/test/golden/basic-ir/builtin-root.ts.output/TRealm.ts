@@ -5,7 +5,7 @@ export function createRealm(runtime: typeof Runtime) {
     root: Runtime.MutableRef<{ count: number, label: string }>;
 
     constructor(mstore: Runtime.ManagedStore) {
-      this.root = (new runtime.BaseTableRef(
+      this.root = (new runtime.BaseRef(
         mstore,
         "root",
         [],
@@ -15,7 +15,7 @@ export function createRealm(runtime: typeof Runtime) {
             return [a.count, a.label];
           },
           reconstruct: (result: Runtime.WireTuple) => {
-            return { count: result[0], label: result[1] };
+            return { count: result[0] as number, label: result[1] as string };
           }
         }
       ));

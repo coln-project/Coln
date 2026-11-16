@@ -22,7 +22,7 @@ export function createRealm(runtime: typeof Runtime) {
         next: (a: null) => {
           return (new runtime.ConstRef(null));
         },
-        edge: (new runtime.BaseTableRef(
+        edge: (new runtime.BaseRef(
           mstore,
           "root.edge",
           [],

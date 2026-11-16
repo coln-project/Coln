@@ -16,7 +16,7 @@ export function createRealm(runtime: typeof Runtime) {
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
         Key: (new runtime.BaseSet(mstore, "root.Key", [])),
-        key: (new runtime.BaseTableRef(
+        key: (new runtime.BaseRef(
           mstore,
           "root.key",
           [],
@@ -37,7 +37,7 @@ export function createRealm(runtime: typeof Runtime) {
           return (new runtime.BaseSet(mstore, "root.E", [a]));
         },
         f: (x: Runtime.RowId<"root.Key">) => {
-          return (new runtime.BaseTableRef(
+          return (new runtime.BaseRef(
             mstore,
             "root.f",
             [x],
@@ -55,7 +55,7 @@ export function createRealm(runtime: typeof Runtime) {
             }
           ));
         },
-        point: (new runtime.BaseTableRef(
+        point: (new runtime.BaseRef(
           mstore,
           "root.point",
           [],
