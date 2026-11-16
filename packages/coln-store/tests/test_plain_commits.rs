@@ -5,6 +5,7 @@
 use coln_flir_rs::engine::{schema::ColnDef, tx::TxTuple};
 use coln_flir_rs::ir::{FlatRealm, Path};
 use coln_store::store::Store;
+use coln_store::store::txn::ReadTxnable;
 
 #[test]
 fn plain_replay_preserves_commits_without_materializing_derived_rows() {

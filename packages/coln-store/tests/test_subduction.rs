@@ -10,6 +10,7 @@ use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
+use coln_store::store::txn::ReadTxnable;
 use coln_store::{IdLookup, store::Store};
 use future_form::Sendable;
 use rstest::{fixture, rstest};

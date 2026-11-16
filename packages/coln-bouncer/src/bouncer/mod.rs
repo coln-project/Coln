@@ -24,7 +24,7 @@ use coln_store::store::Store;
 
 use crate::error::BouncerError;
 
-pub use txn::{CommitResult, ReadTxn, WriteTxn};
+pub use txn::{ImportTxn, ReadTxn, ReadTxnable, WriteTxn};
 
 pub struct Bouncer {
     store: Store,
@@ -69,7 +69,7 @@ impl Bouncer {
         let mut bouncer = Bouncer::new_from_store_query(store, query);
 
         let batch = bouncer.store.prepare_commits(commits, false)?;
-        let violations = txn::apply_batch(&mut bouncer.query, batch)?;
+        let violations = bouncer.begin_import().apply_batch(batch)?;
         Ok((bouncer, violations))
     }
 }

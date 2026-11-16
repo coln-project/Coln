@@ -10,7 +10,7 @@ use crate::ir::{ColumnEntry, EntityVariant, Path, Schema};
 use crate::repl::Session;
 use crate::repl::exe::{LoadedState, SchemaSummary, add_rows};
 use crate::repl::parse::{SqlCol as Col, SqlCommand as Command};
-use crate::store::Store;
+use crate::store::{Store, txn::ReadTxnable};
 
 #[derive(Debug, thiserror::Error)]
 enum SQLModeError {

@@ -98,10 +98,10 @@ pub struct WriteTxn<S: TxnState> {
     pub(super) state: S,
 }
 
+// Reading at the preparation stage would not expose anything operations
 impl ReadTxnable for WriteTxn<Prepare> {
-    // TODO this should read my own writes
     fn read(&self) -> ReadView<'_> {
-        ReadView::borrowed(&self.state.catalog, &self.state.guard)
+        ReadView::new(&self.state.catalog, &self.state.guard)
     }
 }
 
@@ -137,6 +137,15 @@ impl WriteTxn<Prepare> {
     pub(crate) fn commit(self) -> Result<WriteTxn<Committed>, StoreError> {
         let t = self.try_commit()?;
         Ok(t.commit())
+    }
+}
+
+// Reads on a Pending WriteTxn should already include temporarily applied changes
+// to tables, so we can just ask the CommitBatch to read it for us, and not worry
+// about pending changes not applied yet.
+impl ReadTxnable for WriteTxn<Pending> {
+    fn read(&self) -> ReadView<'_> {
+        self.state.0.as_ref().unwrap().read()
     }
 }
 

@@ -14,6 +14,8 @@ pub trait StoreST {
 }
 
 /// Trait for accessing sorted tables inside a txn
+/// As there is no way to access a sorted table in a write txn, we don't need to
+/// worry about reading pending changes for a sorted table.
 pub trait STReadTxn {
     fn sorted_tables_at(
         &self,
@@ -24,9 +26,6 @@ pub trait STReadTxn {
 pub type RowIdx = usize;
 pub type ColIdx = usize;
 
-// @Jan, I think this is best defined in coln-integrator and you can code against
-// this interface which coln-integrator provides for you no matter if the data
-// your queries operate upon comes from coln-store or from coln-query.
 /// A read API for some snapshot of _sorted_, _column-oriented_ data.
 pub trait SortedTable {
     type Value: PartialOrd;

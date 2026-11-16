@@ -4,13 +4,13 @@
 
 use coln_flir_rs::{engine::schema::ColnDef, ir, public::PublicScalarValue};
 use coln_store::{
-    store::{Store, commit::CommitChunk, error::StoreError},
+    store::{Store, commit::CommitChunk, error::StoreError, txn::ReadTxnable},
     table::ValidationError,
 };
 use rstest::{fixture, rstest};
 
 use crate::{
-    bouncer::Bouncer,
+    bouncer::{Bouncer, ReadTxnable as _},
     error::{BouncerError, RuleViolation},
 };
 
@@ -133,7 +133,7 @@ fn rejected_commit_rolls_back_store_and_allows_next_transaction(mut only_ones: B
     assert!(
         only_ones
             .begin_read()
-            .commit_chunks_after(&[initial.cmt_hash])
+            .commit_chunks_after(&[initial.cmt_hash()])
             .is_empty()
     );
 
@@ -148,10 +148,10 @@ fn rejected_commit_rolls_back_store_and_allows_next_transaction(mut only_ones: B
     assert!(after.contains(&before[0]));
     let added = only_ones
         .begin_read()
-        .commit_chunks_after(&[initial.cmt_hash]);
+        .commit_chunks_after(&[initial.cmt_hash()]);
     assert_eq!(added.len(), 1);
-    assert_eq!(added[0].hash, next.cmt_hash);
-    assert_eq!(added[0].parents, vec![initial.cmt_hash]);
+    assert_eq!(added[0].hash, next.cmt_hash());
+    assert_eq!(added[0].parents, vec![initial.cmt_hash()]);
 }
 
 #[rstest]
@@ -252,7 +252,7 @@ fn sync_hard_rejection_preserves_earlier_commits_and_blocks_descendants(
         .begin_read()
         .commit_chunks_after(&[chunks[0].hash]);
     assert_eq!(added.len(), 1);
-    assert_eq!(added[0].hash, local.cmt_hash);
+    assert_eq!(added[0].hash, local.cmt_hash());
     assert_eq!(added[0].parents, vec![chunks[0].hash]);
 }
 
@@ -317,7 +317,7 @@ fn discarded_write_does_not_apply_or_validate_queued_rows(
     let heads = only_ones.begin_read().heads();
     let mut tx = only_ones.begin_write();
     tx.add(&table, vec![2i32]).expect("queue violating row");
-    assert!(tx.read().scan_table(&table).expect("table").is_empty());
+    assert!(tx.scan_table(&table).expect("table").is_empty());
     if abort {
         tx.abort();
     } else {
@@ -336,10 +336,10 @@ fn discarded_write_does_not_apply_or_validate_queued_rows(
     let id = tx.add(&table, vec![1i32]).expect("valid row");
     let result = tx.commit().expect("commit after discarded write");
     let read = only_ones.begin_read();
-    let public = read.promote_one(id, result.cmt_hash);
+    let public = read.promote_one(id, result.cmt_hash());
     let row = read.row_by_id(&table, &public).expect("public row lookup");
     assert_eq!(row[1], PublicScalarValue::I32(1));
-    assert_eq!(read.promote([id], result.cmt_hash), vec![public]);
+    assert_eq!(read.promote([id], result.cmt_hash()), vec![public]);
     assert_eq!(read.canonical_row_id(&public), Some(public));
     assert_eq!(only_ones.coln_def().realm, "OnlyOnes");
     assert!(serde_json::from_str::<ir::FlatRealm>(&only_ones.json_ir()).is_ok());

@@ -9,84 +9,75 @@ use coln_flir_rs::{
     public::{PublicRowId, PublicTuple},
     query::WhereClause,
 };
-use coln_store::store::{IdLookup, commit::CommitChunk, error::StoreError, txn::ReadTxnable};
+use coln_store::store::{
+    IdLookup, ReadView, commit::CommitChunk, error::StoreError, txn::ReadTxnable as _,
+};
 
 use crate::{bouncer::Bouncer, error::BouncerError};
 
+pub(in crate::bouncer) mod sealed {
+    use coln_store::store::ReadView;
+
+    /// Access to the underlying store view, hidden from users of the bouncer so
+    /// that store-level (packed) ids and tuples do not leak through its API.
+    pub trait StoreView {
+        fn store_view(&self) -> ReadView<'_>;
+    }
+}
+
 /// A consistent view of bouncer data, with public row ids and tuples.
-pub struct ReadTxn<R = coln_store::store::ReadTxn> {
-    pub(super) store: R,
-}
-
-impl Bouncer {
-    pub fn begin_read(&self) -> ReadTxn {
-        ReadTxn {
-            store: self.store.begin_read(),
-        }
-    }
-}
-
-impl<R: ReadTxnable> ReadTxn<R> {
-    pub fn heads(&self) -> Vec<CommitHash> {
-        self.store.read().heads()
+///
+/// Implemented by [`ReadTxn`] and by write transactions; what a write
+/// transaction sees depends on its state.
+pub trait ReadTxnable: sealed::StoreView {
+    fn heads(&self) -> Vec<CommitHash> {
+        self.store_view().heads()
     }
 
-    pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
-        self.store.read().commit_chunks_after(have_heads)
+    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
+        self.store_view().commit_chunks_after(have_heads)
     }
 
-    pub fn encode_store(&self) -> Result<Vec<u8>, BouncerError> {
-        Ok(self.store.read().encode().map_err(StoreError::from)?)
+    fn encode_store(&self) -> Result<Vec<u8>, BouncerError> {
+        Ok(self.store_view().encode().map_err(StoreError::from)?)
     }
 
-    fn unpack_tuple(&self, tuple: StoreTuple) -> PublicTuple {
-        PublicTuple::from_store(tuple, |id| {
-            self.store
-                .read()
-                .id_lookup()
-                .unpacked(&id)
-                .expect("stored id can be unpacked")
-        })
-    }
-
-    pub fn scan_table(&self, table: &ir::Path) -> Option<Vec<PublicTuple>> {
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<PublicTuple>> {
+        let view = self.store_view();
         Some(
-            self.store
-                .read()
-                .scan_table(table)?
+            view.scan_table(table)?
                 .into_iter()
-                .map(|tuple| self.unpack_tuple(tuple))
+                .map(|tuple| unpack_tuple(&view, tuple))
                 .collect(),
         )
     }
 
-    pub fn row_by_id(&self, table: &ir::Path, row_id: &PublicRowId) -> Option<PublicTuple> {
-        let packed = self.store.read().id_lookup().packed(row_id)?;
-        self.store
-            .read()
-            .row_by_id(table, &packed)
-            .map(|tuple| self.unpack_tuple(tuple))
+    fn row_by_id(&self, table: &ir::Path, row_id: &PublicRowId) -> Option<PublicTuple> {
+        let view = self.store_view();
+        let packed = view.id_lookup().packed(row_id)?;
+        view.row_by_id(table, &packed)
+            .map(|tuple| unpack_tuple(&view, tuple))
     }
 
-    pub fn canonical_row_id(&self, row_id: &PublicRowId) -> Option<PublicRowId> {
-        self.store.read().canonical_row_id(row_id)
+    fn canonical_row_id(&self, row_id: &PublicRowId) -> Option<PublicRowId> {
+        self.store_view().canonical_row_id(row_id)
     }
 
     /// Promote ids after the transaction that produced them has committed.
-    pub fn promote(
+    fn promote(
         &self,
         pending_ids: impl IntoIterator<Item = TxRowId>,
         hash: CommitHash,
     ) -> Vec<PublicRowId> {
-        self.store.read().promote(pending_ids, hash)
+        self.store_view().promote(pending_ids, hash)
     }
 
-    pub fn promote_one(&self, pending_id: impl Into<TxRowId>, hash: CommitHash) -> PublicRowId {
-        self.store.read().promote_one(pending_id, hash)
+    fn promote_one(&self, pending_id: impl Into<TxRowId>, hash: CommitHash) -> PublicRowId {
+        self.store_view().promote_one(pending_id, hash)
     }
 
     // TODO: delegate filtering and projection to coln-query.
-    pub fn all_proj(
+    fn all_proj(
         &self,
         _query: &WhereClause,
         _select: &[u32],
@@ -94,19 +85,44 @@ impl<R: ReadTxnable> ReadTxn<R> {
         todo!()
     }
 
-    pub fn all_row_id(&self, _query: &WhereClause) -> Result<Vec<PublicRowId>, BouncerError> {
+    fn all_row_id(&self, _query: &WhereClause) -> Result<Vec<PublicRowId>, BouncerError> {
         todo!()
     }
 
-    pub fn one_proj(
-        &self,
-        _query: &WhereClause,
-        _select: &[u32],
-    ) -> Result<PublicTuple, BouncerError> {
+    fn one_proj(&self, _query: &WhereClause, _select: &[u32]) -> Result<PublicTuple, BouncerError> {
         todo!()
     }
 
-    pub fn exists(&self, _query: &WhereClause) -> Result<bool, BouncerError> {
+    fn exists(&self, _query: &WhereClause) -> Result<bool, BouncerError> {
         todo!()
+    }
+}
+
+impl<T: sealed::StoreView + ?Sized> ReadTxnable for T {}
+
+fn unpack_tuple(view: &ReadView<'_>, tuple: StoreTuple) -> PublicTuple {
+    PublicTuple::from_store(tuple, |id| {
+        view.id_lookup()
+            .unpacked(&id)
+            .expect("stored id can be unpacked")
+    })
+}
+
+/// A read-only transaction over committed bouncer data.
+pub struct ReadTxn {
+    store: coln_store::store::ReadTxn,
+}
+
+impl sealed::StoreView for ReadTxn {
+    fn store_view(&self) -> ReadView<'_> {
+        self.store.read()
+    }
+}
+
+impl Bouncer {
+    pub fn begin_read(&self) -> ReadTxn {
+        ReadTxn {
+            store: self.store.begin_read(),
+        }
     }
 }

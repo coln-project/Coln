@@ -9,6 +9,7 @@ use crate::commit::error::CodecError;
 use crate::commit::frame::Frame;
 use crate::commit::leb128 as commit_leb128;
 use crate::store::error::StoreError;
+use crate::store::txn::ReadTxnable;
 use crate::store::{ReadTxn, ReadView, Store};
 
 /// The store magic bytes

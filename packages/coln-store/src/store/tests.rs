@@ -8,12 +8,14 @@ use coln_flir_rs::public::{PublicRowId, PublicScalarValue};
 use rstest::rstest;
 
 use super::*;
+use crate::store::txn::ReadTxnable;
 use crate::test_utils::expect_data_chunk;
 use crate::{
     ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Materialization, Path, Schema},
     op::PublicOp,
     table::ValidationError,
 };
+
 mod tables {
     use super::*;
 

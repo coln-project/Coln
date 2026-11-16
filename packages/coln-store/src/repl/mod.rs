@@ -204,7 +204,7 @@ mod tests {
             exe::{PrimaryKeySummary, SchemaSummary, TableSummary},
             parse::{ColnCommand, Command, SqlCol, SqlCommand},
         },
-        store::Store,
+        store::{Store, txn::ReadTxnable},
     };
 
     fn test_loaded_state() -> LoadedState {

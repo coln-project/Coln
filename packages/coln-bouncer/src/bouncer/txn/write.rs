@@ -2,6 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+//! Write transactions: local operations are staged, validated by coln-query and
+//! tentatively applied to coln-store, then committed or aborted in both.
+
 use coln_flir_rs::{
     engine::{
         delta::{Consolidated, PartialConsolidated, StoreDelta},
@@ -15,130 +18,281 @@ use coln_flir_rs::{
 };
 use coln_query::api::{
     ColnQuery,
-    transaction::{Committed, TryCommitErr, TryCommitOk, Tx},
+    transaction::{self as query_tx, DerivedDataDelta, TryCommitErr, TryCommitOk, Tx},
     violations::ViolationsDelta,
 };
 use coln_store::store::{
     IdLookup, ReadView, Store, WriteTxn as StoreWriteTxn,
     commit::{CommitBatch, Unprepared},
-    txn::{Prepare, ReadTxnable},
+    txn::{self as store_txn, ReadTxnable},
 };
 
-use super::ReadTxn;
+use super::read::sealed::StoreView;
 use crate::{
     bouncer::Bouncer,
     error::{BouncerError, RuleViolation},
 };
 
-/// Staged local operations, committed together after validation.
-pub struct Local(StoreWriteTxn<Prepare>);
+// Txn states
+pub trait TxnState {}
 
-/// Imported commits, validated and accepted one at a time.
-pub struct Import<'a>(&'a Store);
-
-/// Exclusive access to bouncer writes. Dropping a local transaction discards it.
-#[must_use = "a write transaction must be committed or explicitly discarded"]
-pub struct WriteTxn<'a, S> {
-    state: S,
+/// Operations are queued; neither the store nor the query engine has seen them.
+pub struct Prepare<'a> {
+    store: StoreWriteTxn<store_txn::Prepare>,
     query: &'a mut ColnQuery,
 }
 
-pub struct CommitResult {
-    pub monitored_constraints: ViolationsDelta,
-    pub cmt_hash: CommitHash,
+/// Hard constraints are met and both engines hold tentative state that is
+/// rolled back unless committed.
+pub struct Pending<'a> {
+    // Each field rolls back its own engine when dropped, so dropping `Pending`
+    // undoes the transaction without a `Drop` impl here.
+    store: StoreWriteTxn<store_txn::Pending>,
+    query: Tx<query_tx::Pending<'a, ColnQuery>>,
+    /// Number of base operations; derived row ids are numbered after them.
+    num_ops: u32,
+}
+
+/// Accepted by both engines.
+pub struct Committed {
+    cmt_hash: CommitHash,
+    monitored_constraints: ViolationsDelta,
+}
+
+/// Discarded; neither engine retains any of its changes.
+pub struct Aborted;
+
+impl TxnState for Prepare<'_> {}
+impl TxnState for Pending<'_> {}
+impl TxnState for Committed {}
+impl TxnState for Aborted {}
+
+/// coln-bouncer implements the following state machine for (write) transactions
+/// (as are coln-store and coln-query):
+///
+/// ```text
+///                        Bouncer::begin_write()
+///                                  │
+///                                  ▼
+///                   ┌──────────────────────────────┐
+///                   │           Prepare            │
+///                   └──────────────────────────────┘
+///                                  │
+///                                  │ try_commit() -> Ok(_)
+///                                  ▼
+///                   ┌──────────────────────────────┐
+///                   │           Pending            │
+///                   └──────────────────────────────┘
+///                          │                │
+///                 commit() │                │ abort()
+///                          ▼                ▼
+///                   ┌─────────────┐  ┌─────────────┐
+///                   │  Committed  │  │   Aborted   │
+///                   └─────────────┘  └─────────────┘
+/// ```
+///
+/// - `Prepare` queues operations with `add`; `read` sees committed data only.
+///   at this stage no data is applied, they are just buffered, and cannot be read
+///   through the read APIs
+/// - `try_commit` applies the operations tentatively to the store and runs them
+///   through the query engine. A hard constraint violation, or any store
+///   error, returns `Err` and leaves both engines unchanged.
+/// - `Pending` holds the store's write lock and the query engine's rollback.
+///   `read` sees the tentative base data, but not derived data yet.
+/// - `commit` commits the query engine, installs its derived data in the store
+///   and commits the store. `abort` rolls both back.
+/// - Dropping `Prepare` discards queued operations. Dropping `Pending` rolls
+///   both engines back, just like `abort`.
+pub struct WriteTxn<S: TxnState> {
+    state: S,
+}
+
+/// Applies incoming commits, validating and accepting each one independently.
+pub struct ImportTxn<'a> {
+    store: &'a Store,
+    query: &'a mut ColnQuery,
 }
 
 impl Bouncer {
-    pub fn begin_write(&mut self) -> WriteTxn<'_, Local> {
+    #[must_use = "a write transaction must be committed or explicitly discarded"]
+    pub fn begin_write(&mut self) -> WriteTxn<Prepare<'_>> {
         WriteTxn {
-            state: Local(self.store.begin_write()),
-            query: &mut self.query,
+            state: Prepare {
+                store: self.store.begin_write(),
+                query: &mut self.query,
+            },
         }
     }
 
-    pub fn begin_import(&mut self) -> WriteTxn<'_, Import<'_>> {
-        WriteTxn {
-            state: Import(&self.store),
+    pub fn begin_import(&mut self) -> ImportTxn<'_> {
+        ImportTxn {
+            store: &self.store,
             query: &mut self.query,
         }
     }
 }
 
-impl WriteTxn<'_, Local> {
-    /// Read committed data, excluding this transaction's queued operations.
-    pub fn read(&self) -> ReadTxn<ReadView<'_>> {
-        ReadTxn {
-            store: self.state.0.read(),
-        }
+/// Reads see committed data, excluding this transaction's queued operations.
+impl StoreView for WriteTxn<Prepare<'_>> {
+    fn store_view(&self) -> ReadView<'_> {
+        self.state.store.read()
     }
+}
 
+/// Reads see tentative base data, including this transaction's operations.
+/// Derived data is not installed until [`commit`](WriteTxn::commit).
+impl StoreView for WriteTxn<Pending<'_>> {
+    fn store_view(&self) -> ReadView<'_> {
+        self.state.store.read()
+    }
+}
+
+impl<'a> WriteTxn<Prepare<'a>> {
     pub fn add(
         &mut self,
         table: &ir::Path,
         values: impl Into<TxTuple>,
     ) -> Result<TxRowId, BouncerError> {
-        Ok(self.state.0.add(table, values)?)
+        Ok(self.state.store.add(table, values)?)
     }
 
-    pub fn commit(self) -> Result<CommitResult, BouncerError> {
-        let mut pending = self.state.0.try_commit()?;
-        let hash = pending.prepared_hash();
-        let (committed, num_ops) = validate(self.query, pending.store_delta())?;
-        let (derived, result) = finish_query(&pending.read(), committed, hash, num_ops);
-        pending
+    #[must_use = "a pending transaction rolls back unless committed"]
+    pub fn try_commit(self) -> Result<WriteTxn<Pending<'a>>, BouncerError> {
+        let Prepare { store, query } = self.state;
+        let mut store = store.try_commit()?;
+        // On `Err`, `store` drops here and rolls back its tentative changes.
+        let (query, num_ops) = validate(query, store.store_delta())?;
+        // TODO: once coln-query exposes its derived data and soft violations on
+        // `Tx<Pending>`, install the derived data here instead of in `commit`,
+        // so `Pending` reads include it and callers can see the monitored
+        // constraints before deciding to commit.
+        Ok(WriteTxn {
+            state: Pending {
+                store,
+                query,
+                num_ops,
+            },
+        })
+    }
+
+    /// Convenience for `try_commit()?.commit()`.
+    pub fn commit(self) -> Result<WriteTxn<Committed>, BouncerError> {
+        self.try_commit()?.commit()
+    }
+
+    /// Discard this transaction without applying its queued operations.
+    pub fn abort(self) -> WriteTxn<Aborted> {
+        WriteTxn { state: Aborted }
+    }
+}
+
+impl WriteTxn<Pending<'_>> {
+    /// The hash this transaction will be committed under, e.g. for promoting
+    /// its row ids before committing.
+    pub fn prepared_hash(&self) -> CommitHash {
+        self.state.store.prepared_hash()
+    }
+
+    pub fn commit(self) -> Result<WriteTxn<Committed>, BouncerError> {
+        let Pending {
+            mut store,
+            query,
+            num_ops,
+        } = self.state;
+        // coln-query commits first because it is the only fallible step. If it
+        // fails, it rolls itself back and `store` rolls back when dropped.
+        let mut query = query.commit()?;
+        // Derived data must be installed while the store still holds its lock.
+        let hash = store.prepared_hash();
+        let derived = derived_to_store(
+            &store.read(),
+            query.take_derived_data_delta(),
+            hash,
+            num_ops,
+        );
+        store
             .apply_derived_view(derived)
             .expect("applying derived data from coln-query should not fail");
-        pending.commit();
-        Ok(result)
+        let cmt_hash = store.commit().commit_hash();
+        Ok(WriteTxn {
+            state: Committed {
+                cmt_hash,
+                monitored_constraints: query.take_soft_violations(),
+            },
+        })
+    }
+
+    pub fn abort(self) -> WriteTxn<Aborted> {
+        let Pending { store, query, .. } = self.state;
+        if let Err(error) = query.abort() {
+            panic!("coln query encounters unrecoverable error: {error}")
+        }
+        store.abort();
+        WriteTxn { state: Aborted }
     }
 }
 
-impl<S> WriteTxn<'_, S> {
-    /// Discard this transaction without applying its queued operations.
-    pub fn abort(self) {}
+impl WriteTxn<Committed> {
+    pub fn cmt_hash(&self) -> CommitHash {
+        self.state.cmt_hash
+    }
+
+    /// Changes to monitored (soft) constraint violations caused by this commit.
+    pub fn take_monitored_constraints(&mut self) -> ViolationsDelta {
+        std::mem::take(&mut self.state.monitored_constraints)
+    }
 }
 
-impl WriteTxn<'_, Import<'_>> {
+impl ImportTxn<'_> {
     /// Apply each ready commit independently. Earlier accepted commits remain
     /// applied if a later commit is rejected; blocked descendants remain pending.
     pub fn apply_chunk_bytes(
         self,
         bytes: impl IntoIterator<Item = Vec<u8>>,
     ) -> Result<Vec<ViolationsDelta>, BouncerError> {
-        let batch = self.state.0.prepare_commit_bytes(bytes)?;
-        apply_batch(self.query, batch)
+        let batch = self.store.prepare_commit_bytes(bytes)?;
+        self.apply_batch(batch)
+    }
+
+    pub(crate) fn apply_batch(
+        self,
+        mut batch: CommitBatch<Unprepared>,
+    ) -> Result<Vec<ViolationsDelta>, BouncerError> {
+        let mut reports = Vec::new();
+        while batch.has_ready() {
+            let mut prepared = batch.prepare_next()?.expect("ready commit");
+            let hash = prepared.prepared_hash();
+            let validated = validate(&mut *self.query, prepared.store_delta())
+                .and_then(|(pending, num_ops)| Ok((pending.commit()?, num_ops)));
+            let (mut committed, num_ops) = match validated {
+                Ok(validated) => validated,
+                Err(error) => {
+                    prepared.reject_prepared();
+                    return Err(error);
+                }
+            };
+            let derived = derived_to_store(
+                &prepared.read(),
+                committed.take_derived_data_delta(),
+                hash,
+                num_ops,
+            );
+            prepared
+                .apply_derived_view(derived)
+                .expect("applying derived data from coln-query should not fail");
+            batch = prepared.accept_prepared();
+            reports.push(committed.take_soft_violations());
+        }
+        Ok(reports)
     }
 }
 
-pub(in crate::bouncer) fn apply_batch(
-    query: &mut ColnQuery,
-    mut batch: CommitBatch<Unprepared>,
-) -> Result<Vec<ViolationsDelta>, BouncerError> {
-    let mut reports = Vec::new();
-    while batch.has_ready() {
-        let mut prepared = batch.prepare_next()?.expect("ready commit");
-        let hash = prepared.prepared_hash();
-        let (committed, num_ops) = match validate(query, prepared.store_delta()) {
-            Ok(committed) => committed,
-            Err(error) => {
-                prepared.reject_prepared();
-                return Err(error);
-            }
-        };
-        let (derived, result) = finish_query(&prepared.read(), committed, hash, num_ops);
-        prepared
-            .apply_derived_view(derived)
-            .expect("applying derived data from coln-query should not fail");
-        batch = prepared.accept_prepared();
-        reports.push(result.monitored_constraints);
-    }
-    Ok(reports)
-}
-
+/// Run base operations through coln-query, leaving it pending on success.
+/// Also returns the number of base operations, used to number derived rows.
 fn validate(
     query: &mut ColnQuery,
     delta: StoreDelta<PartialConsolidated, StoreTuple>,
-) -> Result<(Tx<Committed>, u32), BouncerError> {
+) -> Result<(Tx<query_tx::Pending<'_, ColnQuery>>, u32), BouncerError> {
     // Derived row ids follow every base operation, including multiple rows in
     // the same table delta.
     let num_ops = delta
@@ -148,7 +302,7 @@ fn validate(
         .sum::<usize>() as u32;
     let tx = Tx::new(delta.map(|td| td.map(QueryTuple::from)));
     match tx.try_commit(query) {
-        Ok(TryCommitOk::Pending(pending)) => Ok((pending.commit()?, num_ops)),
+        Ok(TryCommitOk::Pending(pending)) => Ok((pending, num_ops)),
         Ok(TryCommitOk::Rejected(mut rejected)) => {
             Err(RuleViolation::HardViolation(rejected.take_hard_violations()).into())
         }
@@ -158,14 +312,14 @@ fn validate(
     }
 }
 
-// Query has committed at this point, so conversion and installation of its
-// derived data must succeed while the store transaction still holds its lock.
-fn finish_query(
+/// Convert coln-query's derived data into store tuples, allocating row ids
+/// for new derived rows after the commit's base operations.
+fn derived_to_store(
     read: &ReadView<'_>,
-    mut committed: Tx<Committed>,
+    derived: DerivedDataDelta<Consolidated>,
     cmt_hash: CommitHash,
     mut num_ops: u32,
-) -> (StoreDelta<Consolidated, StoreTuple>, CommitResult) {
+) -> StoreDelta<Consolidated, StoreTuple> {
     let mut id_alloc = || {
         let row_id = PublicRowId {
             commit: cmt_hash,
@@ -176,15 +330,10 @@ fn finish_query(
             .packed(&row_id)
             .expect("hash already packed")
     };
-    let derived = committed.take_derived_data_delta().map(|td| {
+    derived.map(|td| {
         let table = read
             .table_at(td.for_entity())
             .expect("valid schema from coln-query");
         td.map(|qt| qt.into_store(table.schema(), &mut id_alloc))
-    });
-    let result = CommitResult {
-        monitored_constraints: committed.take_soft_violations(),
-        cmt_hash,
-    };
-    (derived, result)
+    })
 }

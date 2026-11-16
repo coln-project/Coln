@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use coln_bouncer::bouncer::Bouncer;
+use coln_bouncer::bouncer::{Bouncer, ReadTxnable as _};
 use coln_bouncer::error::{BouncerError, RuleViolation};
 use coln_flir_rs::engine::{
     schema::ColnDef,
@@ -35,8 +35,11 @@ fn coln_def() -> ColnDef {
 
 #[rstest]
 fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
+    // create a bouncer
     let mut bouncer = Bouncer::try_new(ir, coln_def).expect("create bouncer success");
+    // start a write txn
     let mut tx = bouncer.begin_write();
+    // Add a bunch of stuff
     let va = tx
         .add(&Path::from("root.V"), TxTuple::empty())
         .expect("add successful");
@@ -54,14 +57,24 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
         .add(&Path::from("root.E"), vec![vb, vc])
         .expect("add edge successful");
 
-    let r = tx.commit().expect("commit success");
-    let [va, vb] = bouncer
+
+    // now call try commit, after this call, data will be tentatively applied and
+    // can be read through the read api
+    // TODO we cannot yet read the derived data yet, that needs coln-query to expose
+    // the derived data at pending state
+    let pending_tx = tx.try_commit().expect("try success");
+    let tuples = pending_tx.scan_table(&Path::from("root.V")).expect("table exists");
+    // We can read them
+    assert_eq!(tuples.len(), 3);
+    // Now commit the transaction
+    let r = pending_tx.commit().expect("commit success");
+    let [va, _vb, vc] = bouncer
         .begin_read()
-        .promote(vec![va, vb], r.cmt_hash)
+        .promote(vec![va, vb, vc], r.cmt_hash())
         .try_into()
         .unwrap();
 
-    assert!(connected_pairs(&bouncer).contains(&(va, vb)));
+    assert!(connected_pairs(&bouncer).contains(&(va, vc)));
 }
 
 #[fixture]
@@ -79,7 +92,7 @@ fn one_edge(ir: FlatRealm, coln_def: ColnDef) -> (Bouncer, [PublicRowId; 2]) {
     let committed = tx.commit().expect("commit edge");
     let ids = source
         .begin_read()
-        .promote([a, b], committed.cmt_hash)
+        .promote([a, b], committed.cmt_hash())
         .try_into()
         .expect("two vertices");
     (source, ids)
@@ -114,7 +127,7 @@ fn extend_chain(bouncer: &mut Bouncer, tail: &PublicRowId) -> PublicRowId {
     let committed = tx.commit().expect("extend chain");
     bouncer
         .begin_read()
-        .promote([next], committed.cmt_hash)
+        .promote([next], committed.cmt_hash())
         .pop()
         .expect("new vertex id")
 }
