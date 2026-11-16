@@ -18,52 +18,52 @@ data Materialization
 
 -- Thoughts on what the entity variant should be
 
--- We could have a Hashcons EntityVariant
+-- We could have a Hashcons TableVariant
 
 -- The big question is around types, I think. Namely, what is the tablename
 -- associated with the row id for a syntax tree?
 
 -- Also, we need to explicitly declare the enum of tags, I think
 
-data EntityVariant
-  = Table
-  | Hashcons
+data TableVariant
+  = Ground
+  | Cons
   | View Materialization
 
-data Entity = Entity
-  { entityVariant :: EntityVariant
+data Table = Table
+  { entityVariant :: TableVariant
   , columns :: [(Name, Shape)]
   , primaryKey :: Maybe [Int]
   }
 
 data Union = Union
-  { variants :: Bwd TableName
+  { variants :: Bwd GlobalSymbol
   }
 
-data Definition = Definition
+data Rule = Rule
   { inCtx :: [(Name, Query)]
-  , definand :: TableName
+  , definand :: GlobalSymbol
   , args :: [El Set]
   }
 
-data RuleVariant = Enforced | Monitored
+data LawVariant = Enforced | Monitored
   deriving (Show, Eq, Generic)
 
-data RuleContextSide = Antecedent | Consequent
+data LawContextSide = Antecedent | Consequent
 
-data Rule = Rule
-  { ruleVariant :: RuleVariant
-  , ctxSide :: RuleContextSide
+data Law = Law
+  { ruleVariant :: LawVariant
+  , ctxSide :: LawContextSide
   , inCtx :: [(Name, Query)]
   , antecedent :: Prop
   , consequent :: Prop
   }
 
 data Generators = Generators
-  { entities :: OMap TableName Entity
-  , unions :: OMap TableName Union
-  , definitions :: OMap TableName Definition
-  , rules :: OMap TableName Rule
+  { tables :: OMap GlobalSymbol Table
+  , unions :: OMap GlobalSymbol Union
+  , rules :: OMap GlobalSymbol Rule
+  , laws :: OMap GlobalSymbol Law
   }
 
 data Realm = Realm
@@ -74,5 +74,5 @@ data Realm = Realm
 -- JSON
 --------------------------------------------------------------------------------
 
-instance AE.ToJSON RuleVariant where
+instance AE.ToJSON LawVariant where
   toEncoding = AE.genericToEncoding aeOptions

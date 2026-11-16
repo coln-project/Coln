@@ -2,6 +2,7 @@ module Coln.FLIR.Sexp where
 
 import Coln.Common hiding (Name, Span, Pos)
 
+import Data.String (IsString (..))
 import FlatParse.Basic hiding (string)
 import Data.Char (isLetter)
 import Data.Text.Encoding (decodeUtf8)
@@ -9,14 +10,19 @@ import Prettyprinter qualified as Pp
 
 data Atom = Int Int
           | String Text
-          | VarId Int
+          | VarId Text
+          | Symbol Text
           | Hash Text
-          | Name Text
           | Keyword Text
   deriving (Show)
 
 data Sexp a = Group [Sexp a] a | Atom Atom a
   deriving (Show)
+
+loc :: Sexp a -> a
+loc = \case
+  Group _ l -> l
+  Atom _ l -> l
 
 data SexpError = UnclosedParen Pos | UnclosedString Pos
   deriving (Show)
@@ -36,11 +42,11 @@ string = do
 word :: Parser SexpError Text
 word = fmap decodeUtf8 $ byteStringOf $ skipSome $ skipSatisfy isLetter
 
-varid :: Parser SexpError Int
-varid = $(char '%') >> int
+varid :: Parser SexpError Text
+varid = $(char '%') >> word
 
-name :: Parser SexpError Text
-name = $(char '\'') >> word
+symbol :: Parser SexpError Text
+symbol = $(char '\'') >> word
 
 isBase64 :: Char -> Bool
 isBase64 c =
@@ -58,7 +64,7 @@ atom =
   (String <$> string) <|>
   (VarId <$> varid) <|>
   (Hash <$> hash) <|>
-  (Name <$> name) <|>
+  (Symbol <$> symbol) <|>
   (Keyword <$> word)
 
 group :: Parser SexpError [Sexp Span]
@@ -84,10 +90,13 @@ instance DPretty Atom where
     String s -> "\"" <> pretty s <> "\""
     VarId i -> "%" <> pretty i
     Hash h -> "#" <> pretty h
-    Name x -> "'" <> pretty x
+    Symbol x -> "'" <> pretty x
     Keyword x -> pretty x
 
 instance DPretty (Sexp e) where
   dpretty = \case
     Atom a _ -> dpretty a
     Group exprs _ -> "(" <> Pp.group (Pp.vsep (dpretty <$> exprs)) <> ")"
+
+instance IsString (Sexp ()) where
+  fromString s = Atom (Keyword (fromString s)) ()

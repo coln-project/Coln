@@ -29,13 +29,13 @@ fromV n v = M (readb n v) (V.epure v)
 liftEl :: (V.HasEvaluation c) => El c Set -> El c Theory
 liftEl (M s v) = M (S.LiftEl s) (V.emap (V.LiftEl LSetTheory) v)
 
-lookup :: TableName -> [El N Set] -> Ty N Set -> El N Set
+lookup :: GlobalSymbol -> [El N Set] -> Ty N Set -> El N Set
 lookup tn args a = M (S.Lookup tn ((.stx) <$> args) a.stx) (V.lookup tn ((.val) <$> args) a.val)
 
 code :: SUniverse Set Theory -> Ty N Set -> El N Theory
 code u (M s v) = M (S.Code u s) (V.Code u v)
 
-primCode :: Providence -> SUniverse Set Theory -> TableName -> [El N Set] -> El N Theory
+primCode :: Providence -> SUniverse Set Theory -> GlobalSymbol -> [El N Set] -> El N Theory
 primCode p u tn args = M (S.PrimCode p u tn ((.stx) <$> args)) (V.PrimCode p u tn ((.val) <$> args))
 
 lam :: (V.HasEvaluation c) => V.Locals -> Ty N Set -> S.Abs (S.El c Theory) -> El c Theory

@@ -21,6 +21,9 @@ newtype FId = FId Int
 reverseId :: Int -> FId -> BId
 reverseId n (FId i) = BId (n - i - 1)
 
+fIdsUpTo :: Int -> [FId]
+fIdsUpTo n = FId <$> [0..n-1]
+
 instance ElemAt (Bwd a) BId a where
   elemAt BwdNil _ =
     panic "`elemAt xs i` should only be called if i is a valid index in xs"

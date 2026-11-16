@@ -16,7 +16,9 @@ This document is intended as a reference specification for FLIR (First-order Log
 
 This document covers the grammar of FLIR and its intended semantics. It does not cover the production of FLIR from the Coln language, or the precise details of the implementation for these semantics.
 
-\section{Grammar}
+\section{Definitions}
+
+\subsection{Grammar}
 
 The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref{fig:grammar}. The grammar in Figure~\ref{fig:lexical-structure} expresses the token structure, assuming a primitive notion of \syntax{<escapedstring>} corresponding to a string with escaped characters as according to the JSON specification. The grammar in Figure~\ref{fig:grammar} expresses the tree structure of FLIR.
 
@@ -26,8 +28,6 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
     <digit> ::= `0' | $\cdots$ | `9'
 
     <int> ::= <digit>+
-
-    <varid> ::= `%' <int>
 
     <hash> ::= `#' <base64digit>\{44\}
 
@@ -42,7 +42,9 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
       \alt <GeneralCategory:OtherSymbol>
       \alt `.' | `/'
 
-    <word> ::= <letter> (<letter> | <digit>)*
+    <word> ::= (<letter> | <digit>)+
+
+    <varid> ::= `%' <word>
 
     <name> ::= `\'' <word>
 
@@ -59,12 +61,12 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
     \alt `string'
     \alt <name>
 
-    <args> ::= `(' <coltype>* `)'
+    <args> ::= `(' (`(` <varid> <coltype> `)')* `)'
 
     <primarykey> ::= `(' `primarykey' <int> `)'
 
     <table> ::= `(' `ground' <args> <primarykey> `)'
-      \alt `(' `cons <args> `)'
+      \alt `(' `cons' <args> `)'
       \alt `(' `view' <args> `)'
 
     <union> ::= `(' `union' <name>* `)'
@@ -121,7 +123,7 @@ The grammar of FLIR is expressed in Figures~\ref{fig:lexical-structure} and \ref
   \label{fig:graph-schema}
 \end{figure}
 
-\section{Tables}
+\subsection{Tables}
 
 There are three types of tables in FLIR: ground tables, cons tables, and view tables.
 
@@ -174,7 +176,7 @@ Each table has a list of columns. A column may either be of primitive type (\syn
 
 Mathmatically speaking, a table may be seen as a function from its set of row ids to tuples with entry types given by the column types.
 
-\section{Unions} \label{sec:unions}
+\subsection{Unions} \label{sec:unions}
 
 \begin{definition}
   A \defcase{union} declares a new column type, the allowable values of which are the union of the row ids for tables listed in the \emph{variants} of the union.
@@ -182,7 +184,7 @@ Mathmatically speaking, a table may be seen as a function from its set of row id
 
 Given an element of union type, its corresponding table is unambiguous because each row id belongs to at most one table. However, it may be desirable to make the process of looking up the corresponding table more efficient; this may be achieved in a variety of ways.
 
-\section{Propositions} \label{sec:propositions}
+\subsection{Propositions} \label{sec:propositions}
 
 \begin{definition} \label{def:term}
   A \defcase{term} is either a literal string, literal integer, a literal row id (hash and counter), or a variable, identified by its position in the context (\verb|%0| is the first variable in the context, \verb|%1| the second variable, etc.). Literal row ids may only appear in terms used in queries (\S\ref{sec:query}) and mutations (\S\ref{sec:mutation}).
@@ -200,7 +202,7 @@ A proposition is either an atomic or equality proposition.
 
 In general, we often use a sequence of propositions (\syntax{props}): this should be interpreted as the \emph{conjunction} (\(\wedge\)) of all propositions in the sequence.
 
-\section{Laws} \label{sec:laws}
+\subsection{Laws} \label{sec:laws}
 
 \begin{definition}
   A \defcase{law} consists of
@@ -222,7 +224,7 @@ An enforced law (law with status \verb|enforced|) must hold at all times, includ
 
 A monitored law (law with status \verb|monitored|) may sometimes not hold; a database in violation of monitored laws may be seen as a ``work in progress'' towards a valid database.
 
-\section{Rules} \label{sec:rules}
+\subsection{Rules} \label{sec:rules}
 
 \begin{definition}
   A \defcase{rule} consists of
@@ -235,7 +237,7 @@ A monitored law (law with status \verb|monitored|) may sometimes not hold; a dat
 
 A rule acts as a ``pump'' for filling up its view table. While rules seem similar to laws, the difference is that it is a category error to speak of ``violating'' a rule; there is nothing that a user can do to violate a rule. A rule is merely a directive to the query system that says how to insert rows into view tables. Moreover, rules are the \emph{only} way to produce rows in view tables; the user may not insert into view tables directly.
 
-\section{Queries} \label{sec:query}
+\subsection{Queries} \label{sec:query}
 
 \begin{definition}
   A \defcase{query} consists of a context of bound variables, along with a conjunction of propositions in that context.
@@ -259,7 +261,7 @@ A rule acts as a ``pump'' for filling up its view table. While rules seem simila
 
 The results of a query is the set of all assignments of the bound variables which satisfy the propositions in the body.
 
-\section{Mutations} \label{sec:mutation}
+\subsection{Mutations} \label{sec:mutation}
 
 \begin{definition}
   A \defcase{mutation} consists of a sequence of atoms, \emph{without} id parameters.
@@ -279,5 +281,15 @@ The results of a query is the set of all assignments of the bound variables whic
 \end{example}
 %
 \noindent A mutation is interpreted by inserting a new row in the relevant table for each atom. The row ids from previous insertions are available as variables in later insertions, so \verb|('E '%0 %1)| means insert an edge between the vertex inserted in the first instruction and the vertex inserted in the second instruction.
+
+\section{Semantics}
+
+Some issue in the semantics of FLIR:
+
+\begin{enumerate}
+  \item The interaction between enforced rules and function application. Namely, if well-typedness of a relation involves some function applications, then the enforced rule must rely on invariants that are only handled by monitored rules for its validity.
+  \item Cardinality analysis, queries which have inductive types in their domain can't be cached.
+  \item More generally, how do we handle grounding for inductive types?
+\end{enumerate}
 
 \end{document}

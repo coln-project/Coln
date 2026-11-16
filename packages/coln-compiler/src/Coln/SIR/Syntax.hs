@@ -16,23 +16,22 @@ import GHC.Generics
 data El :: MLevel -> Type where
   LiftEl :: El Set -> El Theory
   Var :: BId -> El Set
-  Lookup :: TableName -> [El Set] -> Shape -> El Set
+  Lookup :: GlobalSymbol -> [El Set] -> Shape -> El Set
   Proj :: El Set -> Name -> El Set
-  SelectRowId :: SUniverse Set Theory -> TableName -> [El Set] -> El Theory
-  SelectLast :: SUniverse Set Theory -> TableName -> [El Set] -> Shape -> El Theory
+  SelectRowId :: SUniverse Set Theory -> GlobalSymbol -> [El Set] -> El Theory
+  SelectLast :: SUniverse Set Theory -> GlobalSymbol -> [El Set] -> Shape -> El Theory
   Lam :: Query -> Abs (El Theory) -> El Theory
   Cons :: Dict (El l) -> El l
   Lit :: Literal -> El Set
   Erased :: El Set
 
 data Prop
-  = Atom TableName (El Set) [El Set]
+  = Atom GlobalSymbol (El Set) [El Set]
   | And (Dict Prop)
   | Eq Shape (El Set) (El Set)
 
 data ScalarType
-  = RowId TableName
-  | Union TableName
+  = RowId GlobalSymbol
   | BuiltinTy BuiltinTy
   deriving (Eq, Show, Generic)
 

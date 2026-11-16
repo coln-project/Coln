@@ -40,7 +40,7 @@ instance ToNotation BId where
     go (xs' :> x) n prev = go xs' (n - 1) (x : prev)
     go BwdNil _ _ = error $ "name " ++ show i ++ " not bound. ?names = " ++ (show $ toList xs)
 
-instance ToNotation TableName where
+instance ToNotation GlobalSymbol where
   toNotation _ x = N.Raw x.name ()
 
 instance ToNotation (El e) where

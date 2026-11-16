@@ -13,7 +13,7 @@ import Coln.MIR.Params
 
 data Head
   = Var FId
-  | Lookup TableName [El N Set] (Ty N Set)
+  | Lookup GlobalSymbol [El N Set] (Ty N Set)
 
 data Neutral = Neutral
   { head :: Head
@@ -35,7 +35,7 @@ data El :: Case -> MLevel -> Type where
   Neu :: Neutral -> El N Set
   Init :: Ty N Theory -> El D Theory
   Code :: SUniverse l0 l1 -> Ty N l0 -> El N l1
-  PrimCode :: Providence -> SUniverse Set Theory -> TableName -> [El N Set] -> El N Theory
+  PrimCode :: Providence -> SUniverse Set Theory -> GlobalSymbol -> [El N Set] -> El N Theory
   Lam :: SMFunctionVariant l0 l1 -> Ty N l0 -> Clo (El N l0) (Evaluation El c l1) -> El c l1
   Cons :: Dict (Evaluation El c l) -> El c l
   Lit :: Literal -> El N Set
@@ -44,7 +44,7 @@ data El :: Case -> MLevel -> Type where
 local :: FId -> El N Set
 local i = Neu $ Neutral (Var i) BwdNil
 
-lookup :: TableName -> [El N Set] -> Ty N Set -> El N Set
+lookup :: GlobalSymbol -> [El N Set] -> Ty N Set -> El N Set
 lookup tn args a = Neu $ Neutral (Lookup tn args a) BwdNil
 
 app :: SMFunctionVariant l0 l1 -> El N l1 -> El N l0 -> El N l1
@@ -100,7 +100,7 @@ data RecordType (l :: MLevel) = RecordType
 data Ty :: Case -> MLevel -> Type where
   LiftTy :: Lift l0 l1 -> Ty c l0 -> Ty c l1
   U :: SUniverse l0 l1 -> Ty N l1
-  EltOf :: SUniverse Set Theory -> TableName -> [El N Set] -> Ty N Set
+  EltOf :: SUniverse Set Theory -> GlobalSymbol -> [El N Set] -> Ty N Set
   Function :: FunctionType l0 l1 -> Ty N l1
   Record :: RecordType l -> Ty N l
   BuiltinTy :: BuiltinTy -> Ty N Set

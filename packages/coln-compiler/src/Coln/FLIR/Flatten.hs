@@ -67,7 +67,7 @@ freshAt p = \case
   S.Scalar t -> do
     aux <- get
     let i = aux.numVars
-    put $ aux{vars = (aux.vars :> (tableName p, t)), numVars = (i + 1)}
+    put $ aux{vars = (aux.vars :> (manglePath p, t)), numVars = (i + 1)}
     pure $ Scalar $ V.LocalVar $ FId i
   S.Tuple fields -> do
     fields' <- forM (toList fields) $ \(x, sh) -> freshAt (p :> x) sh
@@ -145,7 +145,7 @@ instance Flatten S.Prop Props where
 
 flattenColumn :: Path -> S.Shape -> [(V.ColName, V.ColType)]
 flattenColumn p = \case
-  S.Scalar t -> [(tableName p, t)]
+  S.Scalar t -> [(manglePath p, t)]
   S.Tuple d -> concat [flattenColumn (p :> x) t | (x, t) <- toList d]
   S.Unstored -> []
 

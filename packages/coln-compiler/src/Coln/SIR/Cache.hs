@@ -70,7 +70,7 @@ cache x p sc v = do
         let bound = toList (sc.bound :> V.local (FId sc.len))
         let boundStx = separate (sc.len + 1) <$> bound
         let ent = Entity (View Materialized) (second (.shape) <$> cols) (Just [0 .. sc.len])
-        let tn = tableName p
+        let tn = manglePath p
         let def = Definition cols tn boundStx
         let elt = S.SelectLast u tn (separate sc.len <$> toList sc.bound) (shapeOf a)
         (Leaf ent, Node (fromList [("definition", Leaf def)]), elt)

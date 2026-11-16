@@ -43,10 +43,10 @@ refInterface dty ty = case dty of
   Base -> runtimeTy "MutableRef" [ty]
   View -> runtimeTy "Ref" [ty]
 
-tnString :: TableName -> TS.El
+tnString :: GlobalSymbol -> TS.El
 tnString = TS.String . pretty . (.name)
 
-rowId :: TableName -> TS.Ty
+rowId :: GlobalSymbol -> TS.Ty
 rowId x = runtimeTy "RowId" [TS.Singleton $ tnString x]
 
 class GenTy a where
@@ -171,13 +171,13 @@ emptyTSEnv = TSEnv BwdNil Set.empty
 class GenEl a where
   genEl :: TSEnv -> a -> TS.El
 
-createTSArgs :: TSEnv -> TableName -> [SIR.El Set] -> [(TS.El, SIR.Shape)]
+createTSArgs :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> [(TS.El, SIR.Shape)]
 createTSArgs e tn cols = do
   let tsCols = genEl e . (Value,) <$> cols
   let colShapes = snd <$> (elemAt e.realm.entities tn).columns
   zip tsCols colShapes
 
-rowIdSet :: TSEnv -> TableName -> [SIR.El Set] -> DefinitionType -> SUniverse Set Theory -> TS.El
+rowIdSet :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> DefinitionType -> SUniverse Set Theory -> TS.El
 rowIdSet env tn cols dty u = do
   let className = case (dty, u) of
         (Base, SPropU) -> "BaseProp"
@@ -191,7 +191,7 @@ rowIdSet env tn cols dty u = do
     , TS.List $ snd $ flattenParams $ createTSArgs env tn cols
     ]
 
-projSet :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> SUniverse Set Theory -> TS.El
+projSet :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> SIR.Shape -> SUniverse Set Theory -> TS.El
 projSet env tn cols retShape u = case u of
   SPropU ->
     TS.New
@@ -215,7 +215,7 @@ projSet env tn cols retShape u = case u of
           ]
       ]
 
-baseTableRef :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> TS.El
+baseTableRef :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> SIR.Shape -> TS.El
 baseTableRef env tn cols retShape = do
   let (n, tsParams) = flattenParams $ createTSArgs env tn cols
   let adapter = constructAdapter env retShape
@@ -231,7 +231,7 @@ baseTableRef env tn cols retShape = do
         ]
     ]
 
-viewRef :: TSEnv -> TableName -> [SIR.El Set] -> SIR.Shape -> TS.El
+viewRef :: TSEnv -> GlobalSymbol -> [SIR.El Set] -> SIR.Shape -> TS.El
 viewRef env tn cols retShape = do
   let (n, tsParams) = flattenParams $ createTSArgs env tn cols
   let adapter = constructAdapter env retShape

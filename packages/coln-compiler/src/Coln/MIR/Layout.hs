@@ -58,10 +58,10 @@ layout :: Path -> Providence -> Scope -> V.Ty N Theory -> (Trie Generator, M.El 
 layout p pr sc = \case
   V.LiftTy LSetTheory a -> do
     let gt = Leaf (Generator pr sc.names sc.ctx (GenLift a))
-    (gt, M.liftEl $ M.lookup (tableName p) (args sc) (M.fromV sc.len a))
+    (gt, M.liftEl $ M.lookup (manglePath p) (args sc) (M.fromV sc.len a))
   V.U (inferSetCodes -> u) -> do
     let gt = Leaf (Generator pr sc.names sc.ctx (GenU u))
-    (gt, M.primCode pr u (tableName p) (args sc))
+    (gt, M.primCode pr u (manglePath p) (args sc))
   V.Function ft -> case ft.variant.mlevel of
     SSetTheory -> do
       let x = argName sc.usedNames ft.cod

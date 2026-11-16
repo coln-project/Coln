@@ -48,13 +48,13 @@ fromNode Nothing = []
 fromNode (Just Leaf{}) = panic "leaf at top of generator trie"
 fromNode (Just (Node d)) = toList d
 
-trieToOMap :: Trie a -> OMap TableName a
-trieToOMap t = OMap.fromList [(tableName k, v) | (k, v) <- toList t]
+trieToOMap :: Trie a -> OMap GlobalSymbol a
+trieToOMap t = OMap.fromList [(manglePath k, v) | (k, v) <- toList t]
 
 mirToSIR :: MIR.Realm -> SIR.Realm
 mirToSIR r = do
   let (_, _, root) = cache "root" (BwdNil :> "root") emptyScope r.root
-  let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (tableName p)) BwdNil r.generators
+  let (rootE, rootD, rootR) = aggregate3 (\p -> separateGenerator (manglePath p)) BwdNil r.generators
   let (names, cached) = unzip $ map (fst &&& uncurry cacheTop) $ OMap.assocs r.realmDefinitions
   let auxTypes = map (\(_, d) -> theoryShapeOf (CtxShape 0 BwdNil) d.ty d.body.val) $ OMap.assocs r.realmDefinitions
   let (cachedE, cachedD, cachedS) = unzip3 cached
