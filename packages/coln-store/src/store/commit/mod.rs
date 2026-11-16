@@ -90,7 +90,6 @@ impl ReadView<'_> {
 
     /// Get commits in `other` that are not in `self`
     pub fn commits_added(&self, other: &(impl ReadTxnable + ?Sized)) -> Vec<DataCommit> {
-        let other = other.read();
         // a depth first search from the heads of others backwards until hashes
         // are in self
         let mut stack = other.heads();

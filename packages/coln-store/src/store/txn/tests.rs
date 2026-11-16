@@ -16,10 +16,13 @@ use crate::test_utils::{nodes_edges_store, single_int_store, single_memoized_int
 fn sorted_table_at_reports_arity(#[from(single_int_store)] store: Store) {
     let path = Path::from("T");
     let read = StoreST::begin_read(&store);
-    let table = read.sorted_tables_at(&path).expect("T");
+    let tables = read.sorted_tables_at(&path);
 
-    assert_eq!(table.arity(), 2); // Row ID plus the integer column.
-    assert!(read.sorted_tables_at(&Path::from("missing")).is_none());
+    assert_eq!(tables.len(), 2);
+    for table in tables {
+        assert_eq!(table.arity(), 2); // Row ID plus the integer column.
+    }
+    assert!(read.sorted_tables_at(&Path::from("missing")).is_empty());
 }
 
 #[rstest]
@@ -251,18 +254,17 @@ fn transaction_store_read_sees_committed_rows_not_pending(#[from(single_int_stor
 
     let mut tx = store.begin_write();
     let row_id = tx
-        .read()
         .id_lookup()
-        .packed(&tx.read().promote_one(pending_id, h))
+        .packed(&tx.promote_one(pending_id, h))
         .unwrap();
 
     assert_eq!(
-        tx.read().row_by_id(&path, &row_id),
+        tx.row_by_id(&path, &row_id),
         Some(StoreTuple::from_id_values(row_id, vec![1i32.into()]))
     );
 
     tx.add(&path, vec![2i32]).expect("add pending");
-    assert_eq!(tx.read().scan_table(&path).expect("T").len(), 1);
+    assert_eq!(tx.scan_table(&path).expect("T").len(), 1);
     drop(tx);
 }
 
@@ -301,32 +303,33 @@ fn txn_empty_commit_not_added() {
     );
 }
 
+/// Reading from WriteTxn<Pending> would be able to see the pending changes
 #[rstest]
 fn pending_read_reuses_write_lock_and_sees_tentative_rows(#[from(single_int_store)] store: Store) {
     let path = Path::from("T");
     let heads = store.begin_read().heads();
     let mut tx = store.begin_write();
     let id = tx.add(&path, vec![42i32]).expect("add");
-    assert!(tx.read().scan_table(&path).expect("T").is_empty());
+    assert!(tx.scan_table(&path).expect("T").is_empty());
     let mut pending = tx.try_commit().expect("prepare");
     let hash = pending.prepared_hash();
     assert!(
         store.data.try_read().is_none(),
         "pending holds the write lock"
     );
-    {
-        let read = pending.read();
-        let public = read.promote_one(id, hash);
-        let packed = read.id_lookup().packed(&public).expect("packed id");
-        assert_eq!(
-            read.row_by_id(&path, &packed),
-            Some(StoreTuple::from_id_values(packed, vec![42i32.into()]))
-        );
-        assert_eq!(read.heads(), heads);
-        assert!(read.commit_by_hash(&hash).is_none());
-    }
+    let public = pending.promote_one(id, hash);
+    let packed = pending.id_lookup().packed(&public).expect("packed id");
+    let expected = StoreTuple::from_id_values(packed, vec![42i32.into()]);
+    assert_eq!(pending.row_by_id(&path, &packed), Some(expected.clone()));
+    assert_eq!(
+        pending.scan_table(&path).expect("T"),
+        vec![expected.clone()]
+    );
+    assert_eq!(pending.heads(), heads);
+    assert!(pending.commit_by_hash(&hash).is_none());
     assert!(!pending.store_delta().is_empty());
-    assert_eq!(pending.read().scan_table(&path).expect("T").len(), 1);
+    assert!(pending.store_delta().is_empty());
+    assert_eq!(pending.scan_table(&path).expect("T"), vec![expected]);
     assert_eq!(pending.commit().commit_hash(), hash);
     assert_eq!(store.begin_read().heads(), vec![hash]);
 }
@@ -346,10 +349,9 @@ fn derived_rows_follow_pending_transaction_outcome(
     let mut pending = tx.try_commit().expect("prepare");
     let hash = pending.prepared_hash();
     let derived = {
-        let read = pending.read();
-        let mut id = read.promote_one(id, hash);
+        let mut id = pending.promote_one(id, hash);
         id.counter += 1;
-        let id = read.id_lookup().packed(&id).expect("derived id");
+        let id = pending.id_lookup().packed(&id).expect("derived id");
         StoreTuple::from_id_values(id, vec![2i32.into()])
     };
     pending
@@ -361,7 +363,7 @@ fn derived_rows_follow_pending_transaction_outcome(
             .consolidate(),
         )
         .expect("apply derived row");
-    assert_eq!(pending.read().scan_table(&path).expect("T").len(), 2);
+    assert_eq!(pending.scan_table(&path).expect("T").len(), 2);
     match outcome {
         0 => {
             pending.commit();

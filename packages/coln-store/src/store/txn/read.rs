@@ -19,9 +19,13 @@ use crate::ir;
 use crate::store::{Catalog, Store, StoreData};
 use crate::table::{TableHandle, TableOid};
 
-/// Borrow a read view without acquiring another lock.
-pub trait ReadTxnable {
-    fn read(&self) -> ReadView<'_>;
+impl Store {
+    pub fn begin_read(&self) -> ReadTxn {
+        ReadTxn {
+            catalog: Arc::clone(&self.catalog),
+            data: self.data.read_arc(),
+        }
+    }
 }
 
 /// An owned read transaction that keeps store data alive and locked for reading.
@@ -31,6 +35,63 @@ pub trait ReadTxnable {
 pub struct ReadTxn {
     catalog: Arc<Catalog>,
     pub(in crate::store) data: ArcRwLockReadGuard<RawRwLock, StoreData>,
+}
+
+/// Borrow a read view without acquiring another lock.
+pub trait ReadTxnable {
+    fn read(&self) -> ReadView<'_>;
+
+    fn has_pending(&self) -> bool {
+        self.read().has_pending()
+    }
+
+    fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
+        self.read().table(oid)
+    }
+
+    fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
+        self.read().table_at(path)
+    }
+
+    fn tables(&self) -> impl Iterator<Item = (TableOid, TableHandle<'_>)> + '_ {
+        self.read().tables()
+    }
+
+    fn heads(&self) -> Vec<CommitHash> {
+        self.read().heads()
+    }
+
+    fn commit_by_hash(&self, hash: &CommitHash) -> Option<&DataCommit> {
+        self.read().commit_by_hash(hash)
+    }
+
+    fn id_lookup(&self) -> &impl IdLookup {
+        self.read().id_lookup()
+    }
+
+    fn canonical_row_id(&self, row_id: &PublicRowId) -> Option<PublicRowId> {
+        self.read().canonical_row_id(row_id)
+    }
+
+    fn promote(
+        &self,
+        pending_ids: impl IntoIterator<Item = TxRowId>,
+        hash: CommitHash,
+    ) -> Vec<PublicRowId> {
+        self.read().promote(pending_ids, hash)
+    }
+
+    fn promote_one(&self, pending_id: impl Into<TxRowId>, hash: CommitHash) -> PublicRowId {
+        self.read().promote_one(pending_id, hash)
+    }
+
+    fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
+        self.read().scan_table(table)
+    }
+
+    fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
+        self.read().row_by_id(table, row_id)
+    }
 }
 
 /// A read view borrowing data protected by an existing transaction's lock.
@@ -69,114 +130,8 @@ pub struct ReadView<'a> {
     pub(in crate::store) data: &'a StoreData,
 }
 
-impl Store {
-    pub fn begin_read(&self) -> ReadTxn {
-        ReadTxn {
-            catalog: Arc::clone(&self.catalog),
-            data: self.data.read_arc(),
-        }
-    }
-}
-
-impl ReadTxnable for ReadTxn {
-    fn read(&self) -> ReadView<'_> {
-        self.read()
-    }
-}
-
-impl ReadTxnable for ReadView<'_> {
-    fn read(&self) -> ReadView<'_> {
-        ReadView::borrowed(self.catalog, self.data)
-    }
-}
-
-impl StoreST for Store {
-    fn begin_read(&self) -> impl STReadTxn {
-        Store::begin_read(self)
-    }
-}
-
-impl STReadTxn for ReadTxn {
-    fn sorted_tables_at(
-        &self,
-        table: &ir::Path,
-    ) -> Vec<impl SortedTable<Value = StoreScalarValue>> {
-        self.read()
-            .table_at(table)
-            .map_or(Vec::new(), |h| h.sorted_copies())
-    }
-}
-
-impl STReadTxn for ReadView<'_> {
-    fn sorted_tables_at(
-        &self,
-        table: &ir::Path,
-    ) -> Vec<impl SortedTable<Value = StoreScalarValue>> {
-        self.table_at(table)
-            .map_or(Vec::new(), |h| h.sorted_copies())
-    }
-}
-
-impl ReadTxn {
-    pub fn read(&self) -> ReadView<'_> {
-        ReadView::borrowed(&self.catalog, &self.data)
-    }
-
-    pub fn has_pending(&self) -> bool {
-        self.read().has_pending()
-    }
-
-    pub fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
-        self.read().table(oid)
-    }
-
-    pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
-        self.read().table_at(path)
-    }
-
-    pub fn tables(&self) -> impl Iterator<Item = (TableOid, TableHandle<'_>)> + '_ {
-        self.read().tables()
-    }
-
-    pub fn heads(&self) -> Vec<CommitHash> {
-        self.read().heads()
-    }
-
-    pub fn commit_by_hash(&self, hash: &CommitHash) -> Option<&DataCommit> {
-        self.read().commit_by_hash(hash)
-    }
-
-    pub fn id_lookup(&self) -> &impl IdLookup {
-        self.read().id_lookup()
-    }
-
-    pub fn canonical_row_id(&self, row_id: &PublicRowId) -> Option<PublicRowId> {
-        self.read().canonical_row_id(row_id)
-    }
-
-    pub fn promote(
-        &self,
-        pending_ids: impl IntoIterator<Item = TxRowId>,
-        hash: CommitHash,
-    ) -> Vec<PublicRowId> {
-        self.read().promote(pending_ids, hash)
-    }
-
-    pub fn promote_one(&self, pending_id: impl Into<TxRowId>, hash: CommitHash) -> PublicRowId {
-        self.read().promote_one(pending_id, hash)
-    }
-
-    pub fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
-        self.read().scan_table(table)
-    }
-
-    pub fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
-        self.read().row_by_id(table, row_id)
-    }
-}
-
 impl<'a> ReadView<'a> {
-    pub(in crate::store) fn borrowed(catalog: &'a Catalog, data: &'a StoreData) -> Self {
+    pub(in crate::store) fn new(catalog: &'a Catalog, data: &'a StoreData) -> Self {
         Self { catalog, data }
     }
 
@@ -251,15 +206,44 @@ impl<'a> ReadView<'a> {
             .expect("one id to promote")
     }
 
-    // The methods below return owned values for the external world.
-
     pub fn scan_table(&self, table: &ir::Path) -> Option<Vec<StoreTuple>> {
         self.table_at(table).map(|table| table.scan().collect())
     }
 
-    /// Canonicalises `row_id` on read, but does not change it.
     pub fn row_by_id(&self, table: &ir::Path, row_id: &PackedRowId) -> Option<StoreTuple> {
         self.table_at(table)?.row_by_id(row_id)
+    }
+}
+
+impl ReadTxnable for ReadTxn {
+    fn read(&self) -> ReadView<'_> {
+        ReadView::new(&self.catalog, &self.data)
+    }
+}
+
+impl StoreST for Store {
+    fn begin_read(&self) -> impl STReadTxn {
+        Store::begin_read(self)
+    }
+}
+
+impl STReadTxn for ReadTxn {
+    fn sorted_tables_at(
+        &self,
+        table: &ir::Path,
+    ) -> Vec<impl SortedTable<Value = StoreScalarValue>> {
+        self.table_at(table)
+            .map_or(Vec::new(), |h| h.sorted_copies())
+    }
+}
+
+impl STReadTxn for ReadView<'_> {
+    fn sorted_tables_at(
+        &self,
+        table: &ir::Path,
+    ) -> Vec<impl SortedTable<Value = StoreScalarValue>> {
+        self.table_at(table)
+            .map_or(Vec::new(), |h| h.sorted_copies())
     }
 }
 
@@ -284,9 +268,9 @@ mod tests {
         assert_eq!(view.table_at(&path).expect("T").row_count(), 1);
         assert!(view.commit_by_hash(&hash).is_some());
         assert_eq!(view.encode().expect("encode after store drop"), encoded);
-        let sorted = view.sorted_tables_at(&path).expect("sorted T");
-        assert_eq!(sorted.len(), 1);
-        assert_eq!(sorted.value(0, 1), Some(StoreScalarValue::I32(42)));
+        let sorted = view.sorted_tables_at(&path);
+        assert_eq!(sorted.len(), 2);
+        assert_eq!(sorted[0].value(0, 1), Some(StoreScalarValue::I32(42)));
     }
 
     #[test]
@@ -356,7 +340,7 @@ mod tests {
         assert_eq!(store.table_count(), 1);
         assert!(store.resolve_table(&path).is_none());
         assert_eq!(txn.heads(), heads);
-        assert!(txn.read().table_at(&path).is_none());
+        assert!(txn.table_at(&path).is_none());
 
         drop(txn);
         let oid = store

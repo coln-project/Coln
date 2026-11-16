@@ -103,9 +103,8 @@ fn add_graph_edge(
     let gv = Path::from("root.V");
     let ge = Path::from("root.E");
     let mut txn = store.begin_write();
-    let read = txn.read();
-    let tv = read.table_at(&gv).expect("root.V table");
-    let ids = read.id_lookup();
+    let tv = txn.table_at(&gv).expect("root.V table");
+    let ids = txn.id_lookup();
     let v1 = tv
         .row_by_id(&ids.packed(&v1).expect("v1 is packed"))
         .expect("vertex 1");

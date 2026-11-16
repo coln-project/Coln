@@ -79,7 +79,7 @@ pub struct CommitBatch<S: PrepareState> {
 impl<S: PrepareState> ReadTxnable for CommitBatch<S> {
     /// Read the current data without acquiring another lock.
     fn read(&self) -> ReadView<'_> {
-        ReadView::borrowed(&self.guard.catalog, &self.guard.store_data)
+        ReadView::new(&self.guard.catalog, &self.guard.store_data)
     }
 }
 
@@ -621,7 +621,6 @@ mod tests {
         );
         assert_eq!(
             prepared
-                .read()
                 .table_at(&Path::from("T"))
                 .expect("table")
                 .row_count(),
@@ -786,7 +785,6 @@ mod tests {
         );
         assert_eq!(
             prepared
-                .read()
                 .table_at(&Path::from("T"))
                 .expect("table")
                 .row_count(),

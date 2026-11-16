@@ -58,8 +58,6 @@ impl<'a> TableHandle<'a> {
     }
 
     // This function will canonicalise the row_id on read, but will not change it
-    // See `row_by_handle` which will actually canonicalise the handle.
-    // We need both because the TS FFI does not deal with handles.
     pub fn row_by_id(&self, row_id: &PackedRowId) -> Option<StoreTuple> {
         let canonical_id = self.canonicaliser.canonical_id(row_id, self.id_packer);
 
@@ -155,7 +153,8 @@ mod test {
     use rstest::rstest;
 
     use super::*;
-    use crate::{store::Store, test_utils::commit_int_store};
+    use crate::store::txn::ReadTxnable;
+use crate::{store::Store, test_utils::commit_int_store};
 
     #[rstest]
     fn row_by_id_finds_committed_row(commit_int_store: (Store, CommitHash)) {

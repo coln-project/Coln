@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use coln_query::api::{ColnQuery, violations::ViolationsDelta};
-use coln_store::store::{Store, error::StoreError};
+use coln_store::store::{Store, error::StoreError, txn::ReadTxnable};
 
 use crate::{
     bouncer::Bouncer,
@@ -21,7 +21,7 @@ impl Bouncer {
         let mut bouncer = Bouncer::new_from_store_query(store, query);
 
         let batch = bouncer.store.prepare_commits(commits, false)?;
-        let violations = super::txn::apply_batch(&mut bouncer.query, batch)?;
+        let violations = bouncer.begin_import().apply_batch(batch)?;
 
         if bouncer.store.begin_read().has_pending() {
             return Err(StoreError::Encode(

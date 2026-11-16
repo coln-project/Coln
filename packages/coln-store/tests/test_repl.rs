@@ -7,6 +7,7 @@
 
 use coln_flir_rs::engine::schema::ColnDef;
 use coln_flir_rs::ir::{FlatRealm, Path};
+use coln_store::store::txn::ReadTxnable as _;
 use coln_store::{
     repl::{exe::run_transact, parse::coln::BatchAssignment},
     store::Store,
