@@ -26,7 +26,7 @@ use coln_store::store::{
 
 use super::ReadTxn;
 use crate::{
-    bouncer::{Bouncer, CommitResult},
+    bouncer::Bouncer,
     error::{BouncerError, RuleViolation},
 };
 
@@ -41,6 +41,11 @@ pub struct Import<'a>(&'a Store);
 pub struct WriteTxn<'a, S = Local<'a>> {
     state: S,
     query: &'a mut ColnQuery,
+}
+
+pub struct CommitResult {
+    pub monitored_constraints: ViolationsDelta,
+    pub cmt_hash: CommitHash,
 }
 
 impl Bouncer {

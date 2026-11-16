@@ -18,13 +18,13 @@
 mod persist;
 pub mod txn;
 
-use coln_flir_rs::{engine::schema::ColnDef, hash::CommitHash, ir};
+use coln_flir_rs::{engine::schema::ColnDef, ir};
 use coln_query::api::{ColnQuery, violations::ViolationsDelta};
 use coln_store::store::Store;
 
 use crate::error::BouncerError;
 
-pub use txn::{ReadTxn, WriteTxn};
+pub use txn::{CommitResult, ReadTxn, WriteTxn};
 
 pub struct Bouncer {
     store: Store,
@@ -72,9 +72,4 @@ impl Bouncer {
         let violations = txn::apply_batch(&mut bouncer.query, batch)?;
         Ok((bouncer, violations))
     }
-}
-
-pub struct CommitResult {
-    pub monitored_constraints: ViolationsDelta,
-    pub cmt_hash: CommitHash,
 }
