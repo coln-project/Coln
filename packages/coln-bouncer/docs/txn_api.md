@@ -39,7 +39,11 @@ transactions:
 
 - `Prepare` queues operations with `add`; `read` sees committed data only.
   at this stage no data is applied, they are just buffered, and cannot be read
-  through the read APIs
+  through the read APIs.
+  In theory these data could be read as well, but it's very tricky to design such
+  an API because they have different shapes than the data stored in tables. For
+  example, they are not canonicalised, they don't have `PublicRowId`s, etc. I'll
+  leave this for now unless there is a real need to do that.
 - `try_commit` applies the operations tentatively to the store and runs them
   through the query engine. A hard constraint violation, or any store
   error, returns `Err` and leaves both engines unchanged.
@@ -57,7 +61,7 @@ in test_tc.rs.
 
 A second use the write transaction is to decode and apply some data arrived over
 the network. See the `repeated_sync_is_a_noop_for_base_and_derived_data` test
-in test_tc.rs. In this case it is not a state macine but just one step call
+in test_tc.rs. In this case it is not a state machine but just one step call
 of `apply_chunk_bytes`, through `begin_import()`.
 
 For read-only workloads, one needs to invoke `begin_read()` on a bouncer, which
