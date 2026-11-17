@@ -270,12 +270,17 @@ mod test {
         // If you are ready, try committing the transaction and pass in the handle:
         match tx.try_commit(&mut coln_query) {
             Ok(TryCommitOk::Pending(pending)) => {
+                // To peek at the data (without taking it) for presenting it to
+                // the user. Taking the data out is only possible after commit,
+                // see below:
+                let derived_data_delta = pending.derived_data_delta();
+                let soft_violations = pending.soft_violations();
                 // Call either commit or abort on `pending`. If commit() isn't
                 // called the tx is rolled back upon dropping `pending`!
                 let mut committed = pending.commit()?;
                 // This is how you can access the results:
                 let derived_data_delta = committed.take_derived_data_delta();
-                let monitored_constraints = committed.take_soft_violations();
+                let soft_violations = committed.take_soft_violations();
                 // Commit the tx in coln-store, too, and call it a day :)
                 //
                 // If for some reason you don't want to commit the transaction

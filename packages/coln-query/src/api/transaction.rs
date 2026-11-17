@@ -381,6 +381,12 @@ impl DataDelta {
             soft_violations,
         }
     }
+    fn derived_data_delta(&self) -> &DerivedDataDelta<Consolidated> {
+        &self.derived
+    }
+    fn soft_violations(&self) -> &ViolationsDelta {
+        &self.soft_violations
+    }
     pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
         std::mem::take(&mut self.derived)
     }
@@ -513,6 +519,15 @@ impl<Store: TxStore> Tx<Pending<'_, Store>> {
         store.disarm();
         store.store().rollback()?;
         Ok(Tx { state: Aborted {} })
+    }
+}
+
+impl<Store: TxStore> Tx<Pending<'_, Store>> {
+    pub fn derived_data_delta(&self) -> &DerivedDataDelta<Consolidated> {
+        self.state.delta.derived_data_delta()
+    }
+    pub fn soft_violations(&self) -> &ViolationsDelta {
+        self.state.delta.soft_violations()
     }
 }
 
