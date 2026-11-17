@@ -57,17 +57,34 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
         .add(&Path::from("root.E"), vec![vb, vc])
         .expect("add edge successful");
 
-
-    // now call try commit, after this call, data will be tentatively applied and
-    // can be read through the read api
-    // TODO we cannot yet read the derived data yet, that needs coln-query to expose
-    // the derived data at pending state
+    // try_commit makes both base and derived data tentatively readable.
     let pending_tx = tx.try_commit().expect("try success");
-    let tuples = pending_tx.scan_table(&Path::from("root.V")).expect("table exists");
+    let tuples = pending_tx
+        .scan_table(&Path::from("root.V"))
+        .expect("table exists");
     // We can read them
     assert_eq!(tuples.len(), 3);
+    let derived = pending_tx
+        .scan_table(&Path::from("init.trans-closure.connected"))
+        .expect("derived view");
+    let pending_va = pending_tx.promote_one(va, pending_tx.prepared_hash());
+    let pending_vc = pending_tx.promote_one(vc, pending_tx.prepared_hash());
+    assert!(derived.iter().any(|row| {
+        row[1..]
+            == [
+                PublicScalarValue::RowId(pending_va),
+                PublicScalarValue::RowId(pending_vc),
+            ]
+    }));
     // Now commit the transaction
     let r = pending_tx.commit().expect("commit success");
+    assert_eq!(
+        bouncer
+            .begin_read()
+            .scan_table(&Path::from("init.trans-closure.connected"))
+            .expect("derived view"),
+        derived
+    );
     let [va, _vb, vc] = bouncer
         .begin_read()
         .promote(vec![va, vb, vc], r.cmt_hash())
