@@ -96,7 +96,7 @@ instance DPretty Atom where
 instance DPretty (Sexp e) where
   dpretty = \case
     Atom a _ -> dpretty a
-    Group exprs _ -> "(" <> Pp.group (Pp.vsep (dpretty <$> exprs)) <> ")"
+    Group exprs _ -> "(" <> Pp.group (Pp.nest 1 (Pp.vsep (dpretty <$> exprs))) <> ")"
 
 instance IsString (Sexp ()) where
   fromString s = Atom (Keyword (fromString s)) ()

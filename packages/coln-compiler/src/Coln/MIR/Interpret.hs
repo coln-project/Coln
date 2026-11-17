@@ -48,9 +48,9 @@ instance Interp S.El V.El where
     S.App fv t0 t1 -> withFunctionVariant fv.mlevel $ \sfv -> do
       let (d, c) = (sDom sfv, sCod sfv)
       Pair c (V.app sfv (interpAt c g e t0) (interpAt d g e t1))
-    S.Cons l fields -> withLevel l.mlevel $ \sl -> do
+    S.Bundle l fields -> withLevel l.mlevel $ \sl -> do
       let fields' = interpAt sl g e <$> fields
-      Pair sl (V.epure $ V.Cons fields')
+      Pair sl (V.epure $ V.Bundle fields')
     S.Proj l t0 x -> withLevel l.mlevel $ \sl -> do
       let v = interpAt sl g e t0
       Pair sl (V.proj v x)

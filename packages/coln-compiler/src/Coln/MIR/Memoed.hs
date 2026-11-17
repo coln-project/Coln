@@ -43,5 +43,5 @@ lam vs dom abs = do
   let clo = evalAbs vs abs
   M (S.Lam dom.stx abs) (V.epure $ V.Lam SSetTheory dom.val clo)
 
-cons :: (V.HasEvaluation c) => Dict (El c l) -> El c l
-cons fields = M (S.Cons ((.stx) <$> fields)) (V.epure $ V.Cons ((.val) <$> fields))
+bundle :: (V.HasEvaluation c) => Dict (El c l) -> El c l
+bundle fields = M (S.Bundle ((.stx) <$> fields)) (V.epure $ V.Bundle ((.val) <$> fields))

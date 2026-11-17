@@ -21,7 +21,7 @@ data El :: MLevel -> Type where
   SelectRowId :: SUniverse Set Theory -> GlobalSymbol -> [El Set] -> El Theory
   SelectLast :: SUniverse Set Theory -> GlobalSymbol -> [El Set] -> Shape -> El Theory
   Lam :: Query -> Abs (El Theory) -> El Theory
-  Cons :: Dict (El l) -> El l
+  Bundle :: Dict (El l) -> El l
   Lit :: Literal -> El Set
   Erased :: El Set
 

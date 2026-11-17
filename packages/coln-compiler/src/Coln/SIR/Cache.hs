@@ -15,6 +15,8 @@ import Coln.SIR.Separate
 import Coln.SIR.Syntax qualified as S
 
 import Control.Arrow (second)
+import Control.Monad (forM)
+import Control.Monad.Reader.Class (local)
 import Data.Set qualified as Set
 
 data Scope = Scope
@@ -59,7 +61,8 @@ cloArgName :: V.Clo a b -> Maybe Name
 cloArgName (V.Clo x _) = Just x
 cloArgName (V.CloConst _) = Nothing
 
-cache :: Name -> Path -> Scope -> V.El N Theory -> (Trie Entity, Trie Definition, S.El Theory)
+-- TODO: replace this Path with the one in the Reader for GeneratorWriter
+cache :: Name -> Path -> Scope -> V.El N Theory -> GeneratorWriter (S.El Theory)
 cache x p sc v = do
   let code u a = do
         let sa = separate sc.len a
@@ -69,27 +72,23 @@ cache x p sc v = do
         let cols = zip (toList $ sc.names :> x') (toList $ sc.ctx :> sa)
         let bound = toList (sc.bound :> V.local (FId sc.len))
         let boundStx = separate (sc.len + 1) <$> bound
-        let ent = Entity (View Materialized) (second (.shape) <$> cols) (Just [0 .. sc.len])
+        emitTable $ Table (View Materialized) (second (.shape) <$> cols) (Just [0 .. sc.len])
         let tn = manglePath p
-        let def = Definition cols tn boundStx
-        let elt = S.SelectLast u tn (separate sc.len <$> toList sc.bound) (shapeOf a)
-        (Leaf ent, Node (fromList [("definition", Leaf def)]), elt)
+        local (:> "definition") $ emitRule $ Rule cols tn boundStx
+        pure $ S.SelectLast u tn (separate sc.len <$> toList sc.bound) (shapeOf a)
   case v of
-    V.LiftEl LSetTheory v -> (emptyNode, emptyNode, S.LiftEl (separate sc.len v))
+    V.LiftEl LSetTheory v -> pure $ S.LiftEl (separate sc.len v)
     V.Code SSetU a -> code SSetU a
     V.Code SPropU a -> code SPropU a
-    V.PrimCode _ u tn args -> (emptyNode, emptyNode, S.SelectRowId u tn (separate sc.len <$> args))
+    V.PrimCode _ u tn args -> pure $ S.SelectRowId u tn (separate sc.len <$> args)
     V.Lam SSetTheory dom clo -> do
       let (x', arg, sc') = bind sc (cloArgName clo) dom
-      let (ents, defs, body) = cache x p sc' (V.appClo clo arg)
-      (ents, defs, S.Lam (separate sc.len dom) (S.Abs (Just x') body))
-    V.Cons fields -> do
-      let (ents, defs, fields') =
-            unzip3 [cache x' (p :> x') sc field | (x', field) <- toList fields]
-      ( Node (Dict fields.head (fromList ents))
-        , Node (Dict fields.head (fromList defs))
-        , S.Cons (Dict fields.head (fromList fields'))
-        )
+      body <- cache x p sc' (V.appClo clo arg)
+      pure $ S.Lam (separate sc.len dom) (S.Abs (Just x') body)
+    V.Bundle fields -> do
+      fields' <- forM (toList fields) $ \(x', field) -> local (:> x') $ do
+        cache x' (p :> x') sc field
+      pure $ S.Bundle (Dict fields.head (fromList fields'))
 
-cacheTop :: Name -> V.RealmDefinition -> (Trie Entity, Trie Definition, S.El Theory)
+cacheTop :: Name -> V.RealmDefinition -> GeneratorWriter (S.El Theory)
 cacheTop x def = cache x (BwdNil :> "view" :> x) emptyScope def.body.val

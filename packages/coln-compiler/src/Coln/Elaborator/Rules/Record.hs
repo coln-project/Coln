@@ -67,7 +67,7 @@ intro @c sp fieldSettings = Chk \e a -> do
         let msg = "expected" <+> pretty expectedLength <+> "fields, got: " <+> pretty givenLength
         failWith e.diagEnv sp WrongNumberOfRecordFields msg
       fields <- go rt.level rt.capture (toList rt.fieldTypes) fieldSettings
-      pure $ cons rt.level (fromList fields)
+      pure $ bundle rt.level (fromList fields)
     _ -> do
       let msg = "tried to check a record expression at a non-record type"
       failWith e.diagEnv sp CheckRecordAtNonRecordType msg

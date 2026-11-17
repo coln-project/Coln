@@ -27,7 +27,7 @@ instance Eval S.El V.El where
     S.Code u a -> V.Code u (eval vs a)
     S.PrimCode p u tn args -> V.PrimCode p u tn (eval vs <$> args)
     S.Lam dom abs -> V.epure $ V.Lam SSetTheory (eval vs dom) (evalAbs vs abs)
-    S.Cons fields -> V.epure $ V.Cons (eval vs <$> fields)
+    S.Bundle fields -> V.epure $ V.Bundle (eval vs <$> fields)
     S.Proj t x -> V.proj (eval vs t) x
     S.Lit l -> V.Lit l
     S.Erased -> V.Erased

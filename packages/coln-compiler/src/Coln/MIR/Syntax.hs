@@ -17,7 +17,7 @@ data El :: Case -> MLevel -> Type where
   Code :: SUniverse Set Theory -> Ty N Set -> El N Theory
   PrimCode :: Providence -> SUniverse Set Theory -> GlobalSymbol -> [El N Set] -> El N Theory
   Lam :: Ty N Set -> Abs (El c Theory) -> El c Theory
-  Cons :: Dict (El c l) -> El c l
+  Bundle :: Dict (El c l) -> El c l
   Proj :: El N l -> Name -> El N l
   Lit :: Literal -> El N Set
   Is :: El N l -> El D l

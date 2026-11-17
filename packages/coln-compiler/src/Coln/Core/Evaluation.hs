@@ -42,9 +42,9 @@ instance Compile S.El V.El where
       let k_dom = compile dom
       let k_clo = compileAbs abs
       \vs -> V.epure $ V.Lam fv (k_dom vs) (k_clo vs)
-    S.Cons l fields -> do
+    S.Bundle l fields -> do
       let k_fields = compile <$> fields
-      \vs -> V.epure $ V.Cons l $ ($ vs) <$> k_fields
+      \vs -> V.epure $ V.Bundle l $ ($ vs) <$> k_fields
     S.Proj _ t x -> do
       let k = compile t
       \vs -> V.proj (k vs) x

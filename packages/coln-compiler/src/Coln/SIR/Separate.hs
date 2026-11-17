@@ -7,11 +7,10 @@ module Coln.SIR.Separate where
 import Control.Monad (forM_)
 import Control.Arrow (second)
 import Control.Monad.Reader.Class
-import Control.Monad.State.Class
-import Control.Monad.RWS.Strict
+
 import Data.Key (mapAccumWithKeyL)
 
-import Data.Map.Ordered qualified as OMap
+
 
 import Coln.Common
 import Coln.Core.Params
@@ -41,7 +40,7 @@ instance Separate (V.El N Set) (S.El Set) where
       let go t BwdNil = t
           go t (xs :> x) = S.Proj (go t xs) x
       go (separate n ne.head) ne.spine
-    V.Cons fields -> S.Cons $ separate n <$> fields
+    V.Bundle fields -> S.Bundle $ separate n <$> fields
     V.Lit l -> S.Lit l
     V.Erased -> S.Erased
 
@@ -104,52 +103,17 @@ instance Separate (V.Ty N Set) S.Query where
   separate n a =
     S.Query (shapeOf a) (S.Abs Nothing (propAt (n + 1) a (V.local (FId n))))
 
--- We don't need the whole `Maybe Trie` dance!
-
-
--- We should refactor this to essentially be in a monad where we can emit
--- entities, definitions, etc?
-
-newtype GeneratorWriter a = GeneratorWriter
-  { runGeneratorWriter :: RWS Path () Generators a
-  }
-  deriving (Functor, Applicative, Monad, MonadReader Path, MonadState Generators)
-
-emitEntity :: Entity -> GeneratorWriter ()
-emitEntity e = do
-  p <- ask
-  modify (\gs -> gs { entities = gs.entities OMap.>| (manglePath p, e) })
-
-emitDefinition :: Definition -> GeneratorWriter ()
-emitDefinition d = do
-  p <- ask
-  modify (\gs -> gs { definitions = gs.definitions OMap.>| (manglePath p, d) })
-
-emitRule :: Maybe Name -> Rule -> GeneratorWriter ()
-emitRule mx l = do
-  p <- ask
-  let p' = case mx of
-        Just x -> p :> x
-        Nothing -> p
-  modify (\gs -> gs { rules = gs.rules OMap.>| (manglePath p', l) })
-
-emitUnion :: GeneratorWriter ()
-emitUnion = do
-  p <- ask
-  modify (\gs -> gs { unions = gs.unions OMap.>| (manglePath p, Union BwdNil) })
-
-emitCaseFor :: GlobalSymbol -> GeneratorWriter ()
-emitCaseFor tn = do
-  p <- ask
-  modify $ \gs -> do
-   let u = elemAt gs.unions tn
-   gs { unions = gs.unions OMap.|> (tn, Union (u.variants :> manglePath p)) }
-
 defsOf :: [(Name, S.Query)] -> S.Prop -> GeneratorWriter ()
 defsOf cols = \case
-  S.Atom tn _ args -> emitDefinition (Definition cols tn args)
+  S.Atom tn _ args -> emitRule (Rule cols tn args)
   S.And d -> forM_ (toList d) \(x, p) -> local (\p -> p :> x) (defsOf cols p)
   S.Eq _ _ _ -> panic "not supported: path constructor"
+
+addToVariants :: S.Shape -> GeneratorWriter ()
+addToVariants = \case
+  S.Scalar (S.RowId tn) -> emitCaseFor tn
+  S.Tuple d -> panic "not supported: constructor producing a tuple"
+  S.Unstored -> pure()
 
 atomOfArgs :: GlobalSymbol -> Int -> S.Prop
 atomOfArgs tn n = S.Atom tn S.Erased [S.Var (reverseId n i) | i <- fIdsUpTo n]
@@ -165,18 +129,15 @@ separateGenerator tn gen = do
       let primaryKey = case u of
             SSetU -> Nothing
             SPropU -> Just [0 .. argNum - 1]
-      let entityVariant = case gen.providence of
-            Holy -> case u of
-              SPropU -> View Materialized
-              SSetU -> Cons
-            Profane -> Ground
-      emitEntity (Entity entityVariant (second (.shape) <$> cols) primaryKey)
-      case entityVariant of
-        (Cons; Ground) -> do
-          emitRule
+      case gen.providence of
+        Holy -> case u of
+          SPropU -> emitTable (Table (View Materialized) (second (.shape) <$> cols) primaryKey)
+          SSetU -> emitUnion
+        Profane -> do
+          emitTable (Table Ground (second (.shape) <$> cols) primaryKey)
+          emitLaw
             (Just "foreignKey")
-            (Rule Enforced Consequent (zip names septys) (atomOfArgs tn argNum) S.trueProp)
-        _ -> pure ()
+            (Law Enforced Consequent (zip names septys) (atomOfArgs tn argNum) S.trueProp)
     V.GenLift a -> case hlevelOf a of
       HUnit -> pure () 
       HProp -> do
@@ -184,31 +145,28 @@ separateGenerator tn gen = do
         case gen.providence of
           Holy -> defsOf cols codProp
           Profane ->
-            emitRule Nothing (Rule Monitored Antecedent cols S.trueProp codProp)
+            emitLaw Nothing (Law Monitored Antecedent cols S.trueProp codProp)
       HSet -> do
         let resultName = freshNameFor names
         let resultQ = separate argNum a
 
         case gen.providence of
           Holy -> do
-            emitEntity $ Entity Cons (second (.shape) <$> cols) (Just [0 .. argNum - 1])
+            emitTable $ Table Cons (second (.shape) <$> cols) (Just [0 .. argNum - 1])
             let atom = atomOfArgs tn argNum
-            emitRule
+            emitLaw
               (Just "foreignKey")
-              (Rule Enforced Consequent cols S.trueProp atom)
-            let domProp = S.Atom tn S.Erased []
-            let domQ = S.Query S.Unstored (S.Abs Nothing domProp)
-            let codProp = propAt (argNum + 1) a V.Erased
-            defsOf (cols ++ [(resultName, domQ)]) codProp
+              (Law Enforced Consequent cols S.trueProp atom)
+            addToVariants (shapeOf a)
           Profane -> do
             let allCols = cols ++ [(resultName, resultQ)]
-            emitEntity $ Entity Ground (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
+            emitTable $ Table Ground (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
             let foreignKeyAnte = atomOfArgs tn (argNum + 1)
-            emitRule
+            emitLaw
               (Just "foreignKey")
-              (Rule Enforced Consequent allCols foreignKeyAnte S.trueProp)
+              (Law Enforced Consequent allCols foreignKeyAnte S.trueProp)
             let totalCons = atomOfArgs tn argNum
-            emitRule
+            emitLaw
               (Just "total")
-              (Rule Monitored Antecedent cols S.trueProp totalCons)
+              (Law Monitored Antecedent cols S.trueProp totalCons)
       _ -> panic "bad h-level of cod"

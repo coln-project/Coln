@@ -37,7 +37,7 @@ data El :: Case -> MLevel -> Type where
   Code :: SUniverse l0 l1 -> Ty N l0 -> El N l1
   PrimCode :: Providence -> SUniverse Set Theory -> GlobalSymbol -> [El N Set] -> El N Theory
   Lam :: SMFunctionVariant l0 l1 -> Ty N l0 -> Clo (El N l0) (Evaluation El c l1) -> El c l1
-  Cons :: Dict (Evaluation El c l) -> El c l
+  Bundle :: Dict (Evaluation El c l) -> El c l
   Lit :: Literal -> El N Set
   Erased :: El N Set
 
@@ -55,7 +55,7 @@ app _ _ _ = panic "can only apply lambda"
 
 proj :: El N l -> Name -> El N l
 proj (Neu n) x = Neu $ n{spine = n.spine :> x}
-proj (Cons fields) x = elemAt fields x
+proj (Bundle fields) x = elemAt fields x
 proj Erased _ = Erased
 proj _ _ = panic "can only project from neutral or cons"
 

@@ -32,11 +32,7 @@ data Materialization
   | Materialized
   deriving (Show, Eq, Generic)
 
-data TableVariant
-  = Ground
-  | Cons
-  | View Materialization
-  deriving (Show, Eq, Generic)
+type TableVariant = SIR.TableVariant
 
 newtype Context = Context { bindings :: [(LocalName, ValType)] }
   deriving (Show, Eq, Generic)
@@ -90,9 +86,7 @@ data Query = Query
   , props :: [Prop]
   }
 
-data Union = Union
-  { variants :: Bwd GlobalSymbol
-  }
+type Union = SIR.Union
 
 data Realm = Realm
   { tables :: OMap GlobalSymbol Table
@@ -125,7 +119,7 @@ data Realm = Realm
 --   toJSON = panic "aesons behaving badly"
 --   toEncoding = \case
 --     Ground -> SIR.taggedEncoding "ground" $ mempty
---     Cons -> SIR.taggedEncoding "cons" $ mempty
+--     Bundle -> SIR.taggedEncoding "cons" $ mempty
 --     View m -> SIR.taggedEncoding "view" $ AE.pair "materialization" $ AE.toEncoding m
 
 -- instance AE.ToJSON Table where
@@ -193,7 +187,7 @@ data Realm = Realm
 -- tableVariantDeclKeyword :: TableVariant -> Name
 -- tableVariantDeclKeyword e = Name [] $ case e of
 --   Ground -> "ground"
---   Cons -> "cons"
+--   Bundle -> "cons"
 --   View _ -> "view" -- TODO
 
 -- ruleVariantDeclKeyword :: SIR.LawVariant -> Name

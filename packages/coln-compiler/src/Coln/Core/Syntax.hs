@@ -42,7 +42,7 @@ data El :: Case -> Type where
   Code :: Universe -> Ty c -> El c
   Lam :: FunctionVariant -> Ty N -> Abs El c -> El c
   App :: FunctionVariant -> El N -> El N -> El N
-  Cons :: Level -> Dict (El c) -> El c
+  Bundle :: Level -> Dict (El c) -> El c
   Proj :: Level -> El N -> Name -> El N
   Init :: Ty N -> El D
   Lit :: Literal -> El N

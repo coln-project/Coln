@@ -132,7 +132,7 @@ instance DefEq V.InitNeutral where
 
 canon :: V.El N -> V.El N
 canon v@(V.Neu n) = case V.behavior n.ty of
-  V.LikeRecord rt -> V.Cons rt.level (V.unwrap n.expansion)
+  V.LikeRecord rt -> V.Bundle rt.level (V.unwrap n.expansion)
   -- XXX is it okay to use LNil here?
   V.LikeFunction ft -> V.Lam ft.variant ft.dom $ V.Clo "x" V.LNil $ \w -> V.app ft.variant v (elemAt w (BId 0))
   _ -> v
@@ -153,8 +153,8 @@ instance DefEq (V.El N) where
     V.Lam _ a c -> case canon v' of
       V.Lam _ _ c' -> defEqClo cs a c c'
       _ -> throwUnequalEls cs v v' Nothing
-    V.Cons _ d -> case canon v' of
-      V.Cons _ d' -> forM_ (Vec.zip d.values d'.values) (uncurry (defEq cs))
+    V.Bundle _ d -> case canon v' of
+      V.Bundle _ d' -> forM_ (Vec.zip d.values d'.values) (uncurry (defEq cs))
       _ -> throwUnequalEls cs v v' Nothing
     V.Lit l -> case canon v' of
       V.Lit l' -> unless (l == l') $ throwUnequalEls cs v v' $ Just "unequal literals"

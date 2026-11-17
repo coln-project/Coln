@@ -27,7 +27,7 @@ class Core el ty | el -> ty, ty -> el where
   code :: (V.HasEvaluation c) => Universe -> ty c -> el c
   app :: FunctionVariant -> el N -> el N -> el N
   lam :: (V.HasEvaluation c) => FunctionVariant -> V.Locals -> ty N -> S.Abs el c -> el c
-  cons :: (V.HasEvaluation c) => Level -> Dict (el c) -> el c
+  bundle :: (V.HasEvaluation c) => Level -> Dict (el c) -> el c
   proj :: Level -> el N -> Name -> el N
   init :: ty N -> el D
   lit :: Literal -> el N
@@ -53,7 +53,7 @@ instance Core El Ty where
     M
       (S.Lam fv dom.stx (S.Abs Anonymous body.stx))
       (V.epure $ V.Lam fv dom.val (V.CloConst body.val))
-  cons l d = M (S.Cons l $ (.stx) <$> d) (V.epure $ V.Cons l $ (.val) <$> d)
+  bundle l d = M (S.Bundle l $ (.stx) <$> d) (V.epure $ V.Bundle l $ (.val) <$> d)
   proj l x f = M (S.Proj l x.stx f) (V.proj x.val f)
   init a =
     M (S.Init a.stx) (V.BecomeWith $ \n -> V.reflectInit n V.Id a.val)

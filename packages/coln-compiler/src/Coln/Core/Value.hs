@@ -92,7 +92,7 @@ data Head
   | GlobalVar Name ~(El N)
 
 data Expansion
-  = IntoCons (Dict (El N))
+  = IntoBundle (Dict (El N))
   | NotApplicable
 
 data Neutral = Neutral
@@ -104,7 +104,7 @@ data Neutral = Neutral
   }
 
 unwrap :: Expansion -> Dict (El N)
-unwrap (IntoCons d) = d
+unwrap (IntoBundle d) = d
 unwrap NotApplicable = panic "neutral of record type was never expanded"
 
 expandRecord :: RecordType -> Head -> Spine -> Maybe (El D) -> Dict (El N)
@@ -122,7 +122,7 @@ reflect head spine ~ty edesc = do
   let k desc = do
         let ~expansion = case behavior ty of
               LikeRecord recordType ->
-                IntoCons (expandRecord recordType head spine desc)
+                IntoBundle (expandRecord recordType head spine desc)
               _ -> NotApplicable
         Neu $ Neutral head spine ty expansion desc
   case edesc of
@@ -179,7 +179,7 @@ reflectInit :: BareNeutral -> Spine -> Ty N -> El N
 reflectInit bn spine ty = do
   let ~expansion = case behavior ty of
         LikeRecord recordType ->
-          IntoCons (expandInitRecord recordType bn spine)
+          IntoBundle (expandInitRecord recordType bn spine)
         _ -> NotApplicable
   InitNeu $ InitNeutral bn ty spine expansion
 
@@ -191,7 +191,7 @@ data El :: Case -> Type where
   InitNeu :: InitNeutral -> El N
   Code :: Universe -> Ty c -> El c
   Lam :: FunctionVariant -> ~(Ty N) -> Clo El c -> El c
-  Cons :: Level -> Dict (Evaluation El c) -> El c
+  Bundle :: Level -> Dict (Evaluation El c) -> El c
   Lit :: Literal -> El N
 
 app :: FunctionVariant -> El c -> El N -> Evaluation El c
@@ -203,12 +203,12 @@ app fv (InitNeu n) arg =
 app _ _ _ = panic "ill-typed application"
 
 coerceToFields :: El c -> Dict (Evaluation El c)
-coerceToFields (Cons _ fields) = fields
+coerceToFields (Bundle _ fields) = fields
 coerceToFields (Neu n) = case n.expansion of
-  IntoCons fields -> fields
+  IntoBundle fields -> fields
   _ -> panic "unexpanded neutral of record type"
 coerceToFields (InitNeu n) = case n.expansion of
-  IntoCons fields -> fields
+  IntoBundle fields -> fields
   _ -> panic "unexpanded init neutral of record type"
 coerceToFields _ = panic "ill-typed projection"
 

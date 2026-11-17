@@ -76,14 +76,14 @@ layout p pr sc = \case
           (gt : gts, m : ms)
     let (gts, ms) = go rt.capture (toList rt.fieldTypes)
     let gt = Node $ Dict rt.fieldTypes.head (Vector.fromList gts)
-    (gt, M.cons (Dict rt.fieldTypes.head (Vector.fromList ms)))
+    (gt, M.bundle (Dict rt.fieldTypes.head (Vector.fromList ms)))
 
 layoutTop :: V.Ty N Theory -> (Trie Generator, M.El N Theory)
 layoutTop = layout (BwdNil :> "root") Profane emptyScope
 
 asNominative :: V.El D Set -> V.El N Set
 asNominative = \case
-  V.Cons fields -> V.Cons $ flip fmap fields $ \case
+  V.Bundle fields -> V.Bundle $ flip fmap fields $ \case
     V.Become v -> v
     V.Describe v -> asNominative v
 
@@ -103,8 +103,8 @@ declare p sc = \case
     let (v, sc') = bind sc x dom
     let (gt, m) = declareEvaluation p sc' (V.appClo clo v)
     (gt, M.lam sc.locals (M.fromV sc.len dom) (S.Abs x m.stx))
-  V.Cons fields -> do
+  V.Bundle fields -> do
     let (gts, ms) = unzip $ flip map (toList fields) $ \(x, v) ->
           declareEvaluation (p :> x) sc v
-    (Node $ withHead fields gts, M.cons $ withHead fields ms)
+    (Node $ withHead fields gts, M.bundle $ withHead fields ms)
   V.Init a -> layout p Holy sc a

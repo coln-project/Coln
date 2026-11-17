@@ -8,6 +8,7 @@ import Coln.SIR.Syntax qualified as SIR
 import Coln.SIR.Realm qualified as SIR
 
 import Data.Map.Ordered qualified as OMap
+import Prettyprinter (vsep)
 
 class ToSexp a where
   toSexp :: a -> S.Sexp ()
@@ -45,9 +46,9 @@ instance ToSexp BuiltinTy where
 
 instance ToSexp TableVariant where
   toSexp v = case v of
-    Ground -> "ground"
-    Cons -> "cons"
-    View _ -> "view"
+    SIR.Ground -> "ground"
+    SIR.Cons -> "cons"
+    SIR.View _ -> "view"
 
 instance ToSexp a => ToSexp [a] where
   toSexp = group_ . fmap toSexp
@@ -74,7 +75,7 @@ instance ToSexp Table where
     , toSexp t.columns
     ] ++ optional (toSexp <$> t.primaryKey)
 
-instance ToSexp Union where
+instance ToSexp SIR.Union where
   toSexp u = group_ $
     [ "union"
     , toSexp $ toList u.variants
@@ -139,3 +140,6 @@ instance ToSexps Realm where
     toSexps r.unions ++
     toSexps r.rules ++
     toSexps r.laws
+
+instance DPretty Realm where
+  dpretty r = vsep $ dpretty <$> toSexps r
