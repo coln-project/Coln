@@ -40,7 +40,7 @@ use coln_batch::query::{Atom, Term};
 use coln_batch::rule::{Program, Rule};
 use coln_batch::types::{Column, ScalarType, Schema, Value};
 
-use super::values::{batch_schema, engine_value, literal_value};
+use super::values::{batch_schema, engine_value};
 use crate::host::QueryIr;
 use crate::host::expr::{Expr, Literal};
 use crate::host::operator::Operator;
@@ -822,7 +822,7 @@ impl Lowerer {
     fn lower_attribute(&self, attribute: &Expr, scope: &Scope) -> Result<Bind> {
         match attribute {
             Expr::Var(var) => scope.resolve(&var.name),
-            Expr::Literal(literal) => Ok(Bind::Lit(literal_value(&literal.value)?)),
+            Expr::Literal(literal) => Ok(Bind::Lit(engine_value(&literal.value)?)),
             _ => bail!(
                 "computed attributes need the scalar engine and are not supported in this slice"
             ),
@@ -844,8 +844,8 @@ impl Lowerer {
             bail!("selection conditions beyond column = literal need the scalar engine");
         }
         let (column, literal) = match (&binary.left, &binary.right) {
-            (Expr::Var(var), Expr::Literal(lit)) => (&var.name, literal_value(&lit.value)?),
-            (Expr::Literal(lit), Expr::Var(var)) => (&var.name, literal_value(&lit.value)?),
+            (Expr::Var(var), Expr::Literal(lit)) => (&var.name, engine_value(&lit.value)?),
+            (Expr::Literal(lit), Expr::Var(var)) => (&var.name, engine_value(&lit.value)?),
             _ => bail!("selection conditions beyond column = literal need the scalar engine"),
         };
         let bind = scope.resolve(column)?;

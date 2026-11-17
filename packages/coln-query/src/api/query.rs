@@ -8,11 +8,7 @@
 
 use crate::error::{Frame, SyntaxError};
 use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, RulePredicate};
-use crate::host::{
-    QueryIr,
-    expr::{self, Literal},
-    operator::Operator,
-};
+use crate::host::{QueryIr, expr, operator::Operator};
 use crate::program::QueryProgram;
 use crate::relational::{
     catalog::Catalog,
@@ -1048,10 +1044,7 @@ impl From<&ir::Lit> for FlirLit {
 
 impl frontend::Lit for FlirLit {
     fn to_literal(&self) -> expr::Literal {
-        match &self.inner {
-            ir::Lit::Int { value } => expr::Literal::Iint(*value as i64),
-            ir::Lit::String { value } => expr::Literal::String(value.clone()),
-        }
+        expr::Literal::from(&self.inner)
     }
 }
 
@@ -1067,11 +1060,11 @@ impl From<ir::Path> for EntityRef {
     }
 }
 
-impl From<&ir::Lit> for Literal {
+impl From<&ir::Lit> for expr::Literal {
     fn from(value: &ir::Lit) -> Self {
         match value {
-            ir::Lit::Int { value } => Literal::Iint((*value).into()),
-            ir::Lit::String { value } => Literal::String(value.clone()),
+            ir::Lit::Int { value } => expr::Literal::Iint(*value as i64),
+            ir::Lit::String { value } => expr::Literal::String(value.clone()),
         }
     }
 }

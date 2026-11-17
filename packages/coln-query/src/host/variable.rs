@@ -2,36 +2,62 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{
-    host::expr::Literal, host::function::FunctionRef, host::tuple::Tuple, relational::RelationRef,
-    scalarial::ScalarTypedValue,
-};
+use crate::{host::function::FunctionRef, host::tuple::Tuple, relational::RelationRef};
 use std::{
     cell::{Ref, RefCell},
     fmt,
     rc::Rc,
 };
+use subenum::subenum;
 
 /// The value of a variable of the host
 /// [`Interpreter`](crate::host::interpreter::HostInterpreter) at runtime.
 /// Compared to a [`ScalarTypedValue`], this type allows [functions](`FunctionRef`),
 /// [relations](`RelationRef`), and [tuples](`Tuple`), too.
+///
+/// [`ScalarTypedValue`] is generated from this enum as the subset of its
+/// scalar variants, so the two cannot drift apart and the scalars are not
+/// wrapped in a variant for the host's [`Value`].
+/// It is re-exported from [`crate::scalarial`], where its methods live.
+#[subenum(ScalarTypedValue(
+    doc = "Stores a scalar value plus its type. These are the kinds of values that\n\
+           can be assumed in a relation's column (or a tuple's field).",
+    derive(
+        PartialEq,
+        Eq,
+        PartialOrd,
+        Ord,
+        Hash,
+        size_of::SizeOf,
+        rkyv::Archive,
+        rkyv::Serialize,
+        rkyv::Deserialize,
+        feldera_macros::OrdRepr,
+    ),
+    archive_attr(derive(Ord, Eq, PartialEq, PartialOrd))
+))]
 #[derive(Clone, Debug)]
 pub enum Value {
     /// String.
     // TODO: maybe make strings reference counted to avoid cloning costs?
+    #[subenum(ScalarTypedValue)]
     String(String),
     /// Unsigned integer value of 64 bits.
+    #[subenum(ScalarTypedValue)]
     Uint(u64),
     /// Signed integer value of 64 bits.
+    #[subenum(ScalarTypedValue)]
     Iint(i64),
     /// Boolean.
+    #[subenum(ScalarTypedValue)]
     Bool(bool),
     /// A single character as defined by Rust's [`char`].
+    #[subenum(ScalarTypedValue)]
     Char(char),
     /// Null.
     // The `Null` variant carries the unit type to align its field-arity with
     // other variants. That eases the definition of macros operating on the enum.
+    #[subenum(ScalarTypedValue)]
     Null(()),
     /// Function.
     Function(FunctionRef),
@@ -40,6 +66,26 @@ pub enum Value {
     /// Tuple.
     Tuple(Tuple),
 }
+
+/// A pattern matching every [`Value`], with each variant spelled out.
+///
+/// Use it in place of a wildcard for a fallback arm, so that adding a variant
+/// fails to compile wherever the fallback is used, until it is decided how
+/// the new variant is handled there.
+macro_rules! all_values {
+    () => {
+        $crate::host::variable::Value::String(_)
+            | $crate::host::variable::Value::Uint(_)
+            | $crate::host::variable::Value::Iint(_)
+            | $crate::host::variable::Value::Bool(_)
+            | $crate::host::variable::Value::Char(_)
+            | $crate::host::variable::Value::Null(_)
+            | $crate::host::variable::Value::Function(_)
+            | $crate::host::variable::Value::Relation(_)
+            | $crate::host::variable::Value::Tuple(_)
+    };
+}
+pub(crate) use all_values;
 
 impl Eq for Value {}
 
@@ -50,11 +96,14 @@ impl PartialEq for Value {
             (Value::Uint(a), Value::Uint(b)) => a == b,
             (Value::Iint(a), Value::Iint(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Char(a), Value::Char(b)) => a == b,
             (Value::Null(()), Value::Null(())) => true,
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             (Value::Relation(a), Value::Relation(b)) => Rc::ptr_eq(a, b),
             (Value::Tuple(a), Value::Tuple(b)) => a == b,
-            _ => false,
+            // Not a wildcard, so a new variant fails to compile here rather
+            // than silently comparing unequal to itself.
+            (all_values!(), _) => false,
         }
     }
 }
@@ -74,31 +123,6 @@ impl From<RelationRef> for Value {
 impl From<Tuple> for Value {
     fn from(value: Tuple) -> Self {
         Value::Tuple(value)
-    }
-}
-
-impl From<ScalarTypedValue> for Value {
-    fn from(value: ScalarTypedValue) -> Self {
-        match value {
-            ScalarTypedValue::String(value) => Value::String(value),
-            ScalarTypedValue::Uint(value) => Value::Uint(value),
-            ScalarTypedValue::Iint(value) => Value::Iint(value),
-            ScalarTypedValue::Bool(value) => Value::Bool(value),
-            ScalarTypedValue::Char(value) => Value::Char(value),
-            ScalarTypedValue::Null(()) => Value::Null(()),
-        }
-    }
-}
-
-impl From<Literal> for Value {
-    fn from(literal: Literal) -> Self {
-        match literal {
-            Literal::String(value) => Value::String(value),
-            Literal::Uint(value) => Value::Uint(value),
-            Literal::Iint(value) => Value::Iint(value),
-            Literal::Bool(value) => Value::Bool(value),
-            Literal::Null(()) => Value::Null(()),
-        }
     }
 }
 
@@ -226,5 +250,16 @@ impl Environment {
     pub fn lookup_var(&self, at: &VariableSlot) -> Ref<'_, Value> {
         let (scope_idx, slot_idx) = *at;
         self.scopes[scope_idx].lookup_var(slot_idx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_char_equals_itself() {
+        assert_eq!(Value::Char('a'), Value::Char('a'));
+        assert_ne!(Value::Char('a'), Value::Char('b'));
     }
 }

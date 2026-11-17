@@ -419,13 +419,7 @@ impl RelExprVisitor<VisitorResult, VisitorCtx<'_, '_>> for TypeResolver<'_> {
 
 impl From<&Literal> for ExprType {
     fn from(value: &Literal) -> Self {
-        match value {
-            Literal::String(_) => Self::Scalar(ScalarType::String),
-            Literal::Iint(_) => Self::Scalar(ScalarType::Iint),
-            Literal::Uint(_) => Self::Scalar(ScalarType::Uint),
-            Literal::Bool(_) => Self::Scalar(ScalarType::Bool),
-            Literal::Null(_) => Self::Scalar(ScalarType::Null),
-        }
+        Self::Scalar(value.scalar_type())
     }
 }
 

@@ -6,9 +6,9 @@ use super::operator::Operator;
 use super::resolver::{Named, Resolvable};
 use crate::{
     host::stmt::BlockStmt, host::variable::VariableSlot, impl_from_auto_box,
-    relational::expr::RelExpr,
+    relational::expr::RelExpr, scalarial::ScalarTypedValue,
 };
-use std::fmt::{self, Debug, Display};
+use std::fmt::Debug;
 
 /// Host-language expression. Evaluates to a `Value` (scalar / relation /
 /// function / tuple). Backend-agnostic — relations flow through as opaque values.
@@ -159,86 +159,8 @@ pub struct CallExpr {
     pub arguments: Vec<Expr>,
 }
 
-#[derive(Clone, Debug)]
-pub enum Literal {
-    /// String.
-    String(String),
-    /// Unsigned integer value of 64 bits.
-    Uint(u64),
-    /// Signed integer value of 64 bits.
-    Iint(i64),
-    /// Boolean.
-    Bool(bool),
-    /// Null.
-    // The `Null` variant carries the unit type to align its field-arity with
-    // other variants. That eases the definition of macros operating on the enum.
-    Null(()),
-}
-
-impl Eq for Literal {}
-
-impl PartialEq for Literal {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Literal::String(a), Literal::String(b)) => a == b,
-            (Literal::Uint(a), Literal::Uint(b)) => a == b,
-            (Literal::Iint(a), Literal::Iint(b)) => a == b,
-            (Literal::Bool(a), Literal::Bool(b)) => a == b,
-            (Literal::Null(()), Literal::Null(())) => true,
-            _ => false,
-        }
-    }
-}
-
-impl From<String> for Literal {
-    fn from(value: String) -> Self {
-        Literal::String(value)
-    }
-}
-
-impl From<&str> for Literal {
-    fn from(value: &str) -> Self {
-        Literal::String(value.to_string())
-    }
-}
-
-impl From<u64> for Literal {
-    fn from(value: u64) -> Self {
-        Literal::Uint(value)
-    }
-}
-
-impl From<i64> for Literal {
-    fn from(value: i64) -> Self {
-        Literal::Iint(value)
-    }
-}
-
-impl From<bool> for Literal {
-    fn from(value: bool) -> Self {
-        Literal::Bool(value)
-    }
-}
-
-impl From<()> for Literal {
-    fn from(_: ()) -> Self {
-        Literal::Null(())
-    }
-}
-
-impl Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            // Quoted and escaped, as a bare string would be indistinguishable
-            // from a variable of the same name.
-            Literal::String(value) => write!(f, "{value:?}"),
-            Literal::Uint(value) => write!(f, "{value}"),
-            Literal::Iint(value) => write!(f, "{value}"),
-            Literal::Bool(value) => write!(f, "{value}"),
-            Literal::Null(()) => write!(f, "null"),
-        }
-    }
-}
+/// A literal is any scalar value, written down in an expression.
+pub type Literal = ScalarTypedValue;
 
 /// Read-only visitor. See [`ExprVisitorOwn`] for which of the three families a
 /// given pass belongs in.

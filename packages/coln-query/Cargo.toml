@@ -16,6 +16,9 @@ exclude = [
   "/scripts/",
 ]
 
+[features]
+test-utils = ["coln-flir-rs/test-utils"]
+
 [dependencies]
 anyhow.workspace = true
 cli-table = "0.4.9"
@@ -25,8 +28,8 @@ cli-table = "0.4.9"
 coln-batch = { path = "../coln-batch" }
 coln-flir-rs = { path = "../coln-flir-rs" }
 dbsp = "0.381.0"
-feldera-macros = "0.381.0"
 either.workspace = true
+feldera-macros = "0.381.0"
 indexmap.workspace = true
 rkyv = {
   version = "0.7.46",
@@ -50,6 +53,7 @@ size-of = {
     "xxhash-xxh3",
   ]
 }
+subenum.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
@@ -60,6 +64,3 @@ coln-flir-rs = { path = "../coln-flir-rs", features = ["test-utils"] }
 # test-utils be available in this crate's integration tests, too.
 coln-query = { path = ".", features = ["test-utils"] }
 criterion = { workspace = true }
-
-[features]
-test-utils = ["coln-flir-rs/test-utils"]
