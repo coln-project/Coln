@@ -529,12 +529,26 @@ impl<Store: TxStore> Tx<Pending<'_, Store>> {
     pub fn soft_violations(&self) -> &ViolationsDelta {
         self.state.delta.soft_violations()
     }
-}
-
-impl Tx<Committed> {
+    /// Takes the derived data delta caused by this transaction.
+    ///
+    /// Note that the data is then also gone in the [`Committed`] state.
     pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
         self.state.delta.take_derived_data_delta()
     }
+    /// Takes the soft violations caused by this transaction.
+    ///
+    /// Note that the data is then also gone in the [`Committed`] state.
+    pub fn take_soft_violations(&mut self) -> ViolationsDelta {
+        self.state.delta.take_soft_violations()
+    }
+}
+
+impl Tx<Committed> {
+    /// Takes the derived data delta caused by this transaction.
+    pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
+        self.state.delta.take_derived_data_delta()
+    }
+    /// Takes the soft violations caused by this transaction.
     pub fn take_soft_violations(&mut self) -> ViolationsDelta {
         self.state.delta.take_soft_violations()
     }

@@ -271,8 +271,9 @@ mod test {
         match tx.try_commit(&mut coln_query) {
             Ok(TryCommitOk::Pending(pending)) => {
                 // To peek at the data (without taking it) for presenting it to
-                // the user. Taking the data out is only possible after commit,
-                // see below:
+                // the user. You can also take the data out here early using the
+                // `take_*` methods but then the `Committed` state does not have
+                // it anymore.
                 let derived_data_delta = pending.derived_data_delta();
                 let soft_violations = pending.soft_violations();
                 // Call either commit or abort on `pending`. If commit() isn't
