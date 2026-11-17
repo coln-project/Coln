@@ -68,8 +68,72 @@ For read-only workloads, one needs to invoke `begin_read()` on a bouncer, which
 will hand back a `ReadTxn` that can be used to read data. See also the test
 `repeated_sync_is_a_noop_for_base_and_derived_data` for some read before syncing.
 
-## TODO items
 
-- `coln-query` needs to expose methods to take deltas and violations at the pending
-state to allow users to see the derived data
-- Give examples of TS API
+## Node/Js Bindings
+
+For Node/Js bindings, I suggest we take two approaches: 1. use the sexpr based 
+syntax for sending queries to the backend; 2. Javascript functions that build
+up a query, in a style similar to Js/Ts query builders like Kysely or Knex.
+
+My suggestion is support both of these ways of writing queries, as many query
+builders do support SQL. The second one is more higher level than the relational level, a
+bit like the object relational mapping one would find. But the cost of supporting
+the lower level one does not seem to high. It might be that in order to support
+the higher level interface, we would have already built enough infrastructure
+to support the sexpr based syntax.
+
+For the first one, example:
+
+```javascript
+
+const client = new Bouncer(ir);
+
+const res = client.execute(`
+(query
+  ((%v0 'V) (%v1 'V) (%e1 'E))
+  (('V (id %v0))
+   ('V (id %v1))
+   ('E (id %e1) %v0 %v1)))
+`);
+
+const res2 = client.execute(`
+  (mutation
+  (let %v0 (insert 'V))
+  (let %v1 (insert 'V))
+`)
+
+// I reckon we could also support transactions where people can group multiple
+// operations together
+
+const res3 = client.transaction(client => {
+  client`(mutation ...)` // use Js tagged templates here
+  client`(query ...)`
+});
+
+```
+
+A coln-bouncer cli (to be developed) will also support this syntax for
+querying/mutating on it.
+
+And the second one, for example:
+
+```javascript
+
+client = new Bouncer(ir);
+
+client.transaction(root => {
+  const v1 = root.V.add();
+  const v2 = root.V.add();
+  const e1 = root.E(v1)(v2).add();
+});
+
+client.all_proj() // for queries
+
+```
+
+These are the user-facing APIs, which abstracts away the state machine transition 
+logic that is exposed by the rust api. So there will be a layer of abstraction
+between this syntax and the underlying rust api. I expect that layer will be
+messy :), but in a sense that will be the responsibility of coln developers to
+handle that mesiness so that the users do not need to worry about it.
+

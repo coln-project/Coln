@@ -49,8 +49,7 @@ pub struct Pending<'a> {
     // undoes the transaction without a `Drop` impl here.
     store: StoreWriteTxn<store_txn::Pending>,
     query: Tx<query_tx::Pending<'a, ColnQuery>>,
-    /// Number of base operations; derived row ids are numbered after them.
-    num_ops: u32,
+    monitored_constraints: ViolationsDelta,
 }
 
 /// Accepted by both engines.
@@ -98,9 +97,8 @@ impl TxnState for Aborted {}
 ///   through the query engine. A hard constraint violation, or any store
 ///   error, returns `Err` and leaves both engines unchanged.
 /// - `Pending` holds the store's write lock and the query engine's rollback.
-///   `read` sees the tentative base data, but not derived data yet.
-/// - `commit` commits the query engine, installs its derived data in the store
-///   and commits the store. `abort` rolls both back.
+///   `read` sees the tentative base and derived data.
+/// - `commit` commits the query engine and the store. `abort` rolls both back.
 /// - Dropping `Prepare` discards queued operations. Dropping `Pending` rolls
 ///   both engines back, just like `abort`.
 pub struct WriteTxn<S: TxnState> {
@@ -139,8 +137,7 @@ impl StoreView for WriteTxn<Prepare<'_>> {
     }
 }
 
-/// Reads see tentative base data, including this transaction's operations.
-/// Derived data is not installed until [`commit`](WriteTxn::commit).
+/// Reads see tentative base and derived data, including this transaction's operations.
 impl StoreView for WriteTxn<Pending<'_>> {
     fn store_view(&self) -> ReadView<'_> {
         self.state.store.read()
@@ -161,16 +158,18 @@ impl<'a> WriteTxn<Prepare<'a>> {
         let Prepare { store, query } = self.state;
         let mut store = store.try_commit()?;
         // On `Err`, `store` drops here and rolls back its tentative changes.
-        let (query, num_ops) = validate(query, store.store_delta())?;
-        // TODO: once coln-query exposes its derived data and soft violations on
-        // `Tx<Pending>`, install the derived data here instead of in `commit`,
-        // so `Pending` reads include it and callers can see the monitored
-        // constraints before deciding to commit.
+        let (mut query, num_ops) = validate(query, store.store_delta())?;
+        let hash = store.prepared_hash();
+        let derived = derived_to_store(&store, query.take_derived_data_delta(), hash, num_ops);
+        let monitored_constraints = query.take_soft_violations();
+        store
+            .apply_derived_view(derived)
+            .expect("applying derived data from coln-query should not fail");
         Ok(WriteTxn {
             state: Pending {
                 store,
                 query,
-                num_ops,
+                monitored_constraints,
             },
         })
     }
@@ -193,31 +192,24 @@ impl WriteTxn<Pending<'_>> {
         self.state.store.prepared_hash()
     }
 
+    pub fn monitored_constraints(&self) -> &ViolationsDelta {
+        &self.state.monitored_constraints
+    }
+
     pub fn commit(self) -> Result<WriteTxn<Committed>, BouncerError> {
         let Pending {
-            mut store,
+            store,
             query,
-            num_ops,
+            monitored_constraints,
         } = self.state;
         // coln-query commits first because it is the only fallible step. If it
         // fails, it rolls itself back and `store` rolls back when dropped.
-        let mut query = query.commit()?;
-        // Derived data must be installed while the store still holds its lock.
-        let hash = store.prepared_hash();
-        let derived = derived_to_store(
-            &store.read(),
-            query.take_derived_data_delta(),
-            hash,
-            num_ops,
-        );
-        store
-            .apply_derived_view(derived)
-            .expect("applying derived data from coln-query should not fail");
+        query.commit()?;
         let cmt_hash = store.commit().commit_hash();
         Ok(WriteTxn {
             state: Committed {
                 cmt_hash,
-                monitored_constraints: query.take_soft_violations(),
+                monitored_constraints,
             },
         })
     }
@@ -237,9 +229,8 @@ impl WriteTxn<Committed> {
         self.state.cmt_hash
     }
 
-    /// Changes to monitored (soft) constraint violations caused by this commit.
-    pub fn take_monitored_constraints(&mut self) -> ViolationsDelta {
-        std::mem::take(&mut self.state.monitored_constraints)
+    pub fn monitored_constraints(&self) -> &ViolationsDelta {
+        &self.state.monitored_constraints
     }
 }
 
@@ -272,7 +263,7 @@ impl ImportTxn<'_> {
                 }
             };
             let derived = derived_to_store(
-                &prepared.read(),
+                &prepared,
                 committed.take_derived_data_delta(),
                 hash,
                 num_ops,
@@ -315,7 +306,7 @@ fn validate(
 /// Convert coln-query's derived data into store tuples, allocating row ids
 /// for new derived rows after the commit's base operations.
 fn derived_to_store(
-    read: &ReadView<'_>,
+    read: &impl ReadTxnable,
     derived: DerivedDataDelta<Consolidated>,
     cmt_hash: CommitHash,
     mut num_ops: u32,
