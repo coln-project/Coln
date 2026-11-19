@@ -22,21 +22,21 @@ data Materialization
 data TableVariant
   = Ground
   | Cons
+  | Union (Bwd GlobalSymbol)
   | View Materialization
   deriving (Show, Eq, Generic)
+
+newtype PrimaryKey = PrimaryKey Int
 
 data Table = Table
   { tableVariant :: TableVariant
   , columns :: [(Name, Shape)]
-  , primaryKey :: Maybe [Int]
-  }
-
-data Union = Union
-  { variants :: Bwd GlobalSymbol
+  , primaryKey :: Maybe PrimaryKey
   }
 
 data Rule = Rule
-  { inCtx :: [(Name, Query)]
+  { inCtx :: [(Name, Shape)]
+  , antecedent :: [Prop]
   , definand :: GlobalSymbol
   , args :: [El Set]
   }
@@ -48,21 +48,19 @@ data LawContextSide = Antecedent | Consequent
 
 data Law = Law
   { ruleVariant :: LawVariant
-  , ctxSide :: LawContextSide
-  , inCtx :: [(Name, Query)]
-  , antecedent :: Prop
-  , consequent :: Prop
+  , inCtx :: [(Name, Shape)]
+  , antecedent :: [Prop]
+  , consequent :: [Prop]
   }
 
 data Generators = Generators
   { tables :: OMap GlobalSymbol Table
-  , unions :: OMap GlobalSymbol Union
   , rules :: OMap GlobalSymbol Rule
   , laws :: OMap GlobalSymbol Law
   }
 
 emptyGenerators :: Generators
-emptyGenerators = Generators OMap.empty OMap.empty OMap.empty OMap.empty
+emptyGenerators = Generators OMap.empty OMap.empty OMap.empty
 
 data Realm = Realm
   { generators :: Generators
@@ -81,35 +79,33 @@ runGeneratorWriter action = do
   let (result, generators, _) = runRWS action.underlying BwdNil emptyGenerators
   (result, generators)
 
+currentSymbol :: GeneratorWriter GlobalSymbol
+currentSymbol = manglePath <$> ask
+
 emitTable :: Table -> GeneratorWriter ()
-emitTable e = do
-  p <- ask
-  modify (\gs -> gs { tables = gs.tables OMap.>| (manglePath p, e) })
+emitTable t = do
+  x <- currentSymbol
+  modify (\gs -> gs { tables = gs.tables OMap.>| (x, t) })
 
 emitRule :: Rule -> GeneratorWriter ()
-emitRule d = do
-  p <- ask
-  modify (\gs -> gs { rules = gs.rules OMap.>| (manglePath p, d) })
+emitRule r = do
+  x <- currentSymbol
+  modify (\gs -> gs { rules = gs.rules OMap.>| (x, r) })
 
-emitLaw :: Maybe Name -> Law -> GeneratorWriter ()
-emitLaw mx l = do
-  p <- ask
-  let p' = case mx of
-        Just x -> p :> x
-        Nothing -> p
-  modify (\gs -> gs { laws = gs.laws OMap.>| (manglePath p', l) })
+emitLaw :: Law -> GeneratorWriter ()
+emitLaw l = do
+  x <- currentSymbol
+  modify (\gs -> gs { laws = gs.laws OMap.>| (x, l) })
 
-emitUnion :: GeneratorWriter ()
-emitUnion = do
-  p <- ask
-  modify (\gs -> gs { unions = gs.unions OMap.>| (manglePath p, Union BwdNil) })
-
-emitCaseFor :: GlobalSymbol -> GeneratorWriter ()
-emitCaseFor tn = do
-  p <- ask
+emitVariantOf :: GlobalSymbol -> GeneratorWriter ()
+emitVariantOf s = do
+  x <- currentSymbol
   modify $ \gs -> do
-   let u = elemAt gs.unions tn
-   gs { unions = gs.unions OMap.|> (tn, Union (u.variants :> manglePath p)) }
+    let t = elemAt gs.tables s
+    let t' = case t.tableVariant of
+          Union variants -> t { tableVariant = Union (variants :> x) }
+          _ -> panic "attempted to add a case to a non-union table"
+    gs { tables = gs.tables OMap.>| (s, t') }
 
 -- JSON
 --------------------------------------------------------------------------------

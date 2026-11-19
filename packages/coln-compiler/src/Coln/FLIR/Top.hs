@@ -13,7 +13,6 @@ sirToFLIR r = do
   let g = r.generators
   FLIR.Realm
     { tables = fmap flattenTable g.tables
-    , unions = g.unions
     , rules = fmap flattenRule g.rules
     , laws = fmap flattenLaw g.laws
     }

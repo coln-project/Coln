@@ -48,6 +48,7 @@ instance ToSexp TableVariant where
   toSexp v = case v of
     SIR.Ground -> "ground"
     SIR.Cons -> "cons"
+    SIR.Union variants -> group_ ("union" : fmap toSexp (toList variants))
     SIR.View _ -> "view"
 
 instance ToSexp a => ToSexp [a] where
@@ -74,12 +75,6 @@ instance ToSexp Table where
     [ toSexp t.tableVariant
     , toSexp t.columns
     ] ++ optional (toSexp <$> t.primaryKey)
-
-instance ToSexp SIR.Union where
-  toSexp u = group_ $
-    [ "union"
-    , toSexp $ toList u.variants
-    ]
 
 instance ToSexp Literal where
   toSexp = \case
@@ -137,7 +132,6 @@ instance ToSexp a => ToSexps (OMap GlobalSymbol a) where
 instance ToSexps Realm where
   toSexps r =
     toSexps r.tables ++
-    toSexps r.unions ++
     toSexps r.rules ++
     toSexps r.laws
 

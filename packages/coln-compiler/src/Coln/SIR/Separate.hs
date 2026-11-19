@@ -5,12 +5,10 @@
 module Coln.SIR.Separate where
 
 import Control.Monad (forM_)
-import Control.Arrow (second)
+
 import Control.Monad.Reader.Class
 
 import Data.Key (mapAccumWithKeyL)
-
-
 
 import Coln.Common
 import Coln.Core.Params
@@ -20,7 +18,6 @@ import Coln.MIR.Realm qualified as V
 import Coln.MIR.Value qualified as V
 import Coln.SIR.Realm
 import Coln.SIR.Syntax qualified as S
-
 
 type CtxLen = Int
 
@@ -103,70 +100,80 @@ instance Separate (V.Ty N Set) S.Query where
   separate n a =
     S.Query (shapeOf a) (S.Abs Nothing (propAt (n + 1) a (V.local (FId n))))
 
-defsOf :: [(Name, S.Query)] -> S.Prop -> GeneratorWriter ()
-defsOf cols = \case
-  S.Atom tn _ args -> emitRule (Rule cols tn args)
-  S.And d -> forM_ (toList d) \(x, p) -> local (\p -> p :> x) (defsOf cols p)
+defsOf :: [(Name, S.Shape)] -> [S.Prop] -> S.Prop -> GeneratorWriter ()
+defsOf cols ante = \case
+  S.Atom tn _ args -> emitRule (Rule cols ante tn args)
+  S.And d -> forM_ (toList d) \(x, p) -> local (\p -> p :> x) (defsOf cols ante p)
   S.Eq _ _ _ -> panic "not supported: path constructor"
 
 addToVariants :: S.Shape -> GeneratorWriter ()
 addToVariants = \case
-  S.Scalar (S.RowId tn) -> emitCaseFor tn
-  S.Tuple d -> panic "not supported: constructor producing a tuple"
-  S.Unstored -> pure()
+  S.Scalar (S.RowId tn) -> emitVariantOf tn
+  S.Scalar _ -> panic "not supported: constructor for primitive type"
+  S.Tuple _ -> panic "not supported: constructor producing a tuple"
+  S.Unstored -> pure ()
+
+addParameterRules :: [(Name, S.Shape)] -> [S.Prop] -> S.Prop -> GeneratorWriter ()
+addParameterRules ctx ante = \case
+  S.Atom tn _ args ->
+    emitRule $ Rule ctx ante tn args
+  S.And _ -> panic "not supported: constructor producing a tuple"
+  S.Eq _ _ _ -> panic "not supported: constructor producing an equality"
 
 atomOfArgs :: GlobalSymbol -> Int -> S.Prop
 atomOfArgs tn n = S.Atom tn S.Erased [S.Var (reverseId n i) | i <- fIdsUpTo n]
 
-separateGenerator :: GlobalSymbol -> V.Generator -> GeneratorWriter ()
-separateGenerator tn gen = do
+makePrimaryKey :: SUniverse Set Theory -> PrimaryKey -> Maybe PrimaryKey
+makePrimaryKey SPropU k = Just k
+makePrimaryKey SSetU _ = Nothing
+
+separateGenerator :: V.Generator -> GeneratorWriter ()
+separateGenerator gen = do
+  x <- currentSymbol
   let names = toList gen.paramNames
-  let argNum = length names
-  let septys = uncurry separate <$> zip [0 ..] (toList gen.paramTypes)
-  let cols = zip names septys
+  let types = toList gen.paramTypes
+  let shapes = shapeOf <$> types
+  let ctx = zip names shapes
+  let n = length names
+  let props = [propAt n a (V.local i) | (i, a) <- fIdsUpTo n `zip` types]
+  let pkey = PrimaryKey n
   case gen.codom of
     V.GenU u -> do
-      let primaryKey = case u of
-            SSetU -> Nothing
-            SPropU -> Just [0 .. argNum - 1]
       case gen.providence of
         Holy -> case u of
-          SPropU -> emitTable (Table (View Materialized) (second (.shape) <$> cols) primaryKey)
-          SSetU -> emitUnion
+          SPropU -> emitTable (Table (View Materialized) ctx (Just pkey))
+          SSetU -> emitTable (Table (Union BwdNil) ctx Nothing)
         Profane -> do
-          emitTable (Table Ground (second (.shape) <$> cols) primaryKey)
-          emitLaw
-            (Just "foreignKey")
-            (Law Enforced Consequent (zip names septys) (atomOfArgs tn argNum) S.trueProp)
+          emitTable (Table Ground ctx (makePrimaryKey u pkey))
+          local (:> "foreignKey") $ emitLaw
+            (Law Enforced ctx [atomOfArgs x n] props)
     V.GenLift a -> case hlevelOf a of
       HUnit -> pure () 
       HProp -> do
-        let codProp = propAt argNum a V.Erased
+        let codProp = propAt n a V.Erased
         case gen.providence of
-          Holy -> defsOf cols codProp
-          Profane ->
-            emitLaw Nothing (Law Monitored Antecedent cols S.trueProp codProp)
+          Holy -> defsOf ctx props codProp
+          Profane -> emitLaw (Law Monitored ctx props [codProp])
       HSet -> do
-        let resultName = freshNameFor names
-        let resultQ = separate argNum a
-
         case gen.providence of
           Holy -> do
-            emitTable $ Table Cons (second (.shape) <$> cols) (Just [0 .. argNum - 1])
-            let atom = atomOfArgs tn argNum
-            emitLaw
-              (Just "foreignKey")
-              (Law Enforced Consequent cols S.trueProp atom)
+            emitTable $ Table Cons ctx (Just pkey)
+            local (:> "foreignKey") $ emitLaw
+               (Law Enforced ctx [atomOfArgs x n] props)
             addToVariants (shapeOf a)
+            local (:> "params") $
+              addParameterRules ctx [atomOfArgs x n] (propAt n a V.Erased)
           Profane -> do
-            let allCols = cols ++ [(resultName, resultQ)]
-            emitTable $ Table Ground (second (.shape) <$> allCols) (Just [0 .. argNum - 1])
-            let foreignKeyAnte = atomOfArgs tn (argNum + 1)
-            emitLaw
-              (Just "foreignKey")
-              (Law Enforced Consequent allCols foreignKeyAnte S.trueProp)
-            let totalCons = atomOfArgs tn argNum
-            emitLaw
-              (Just "total")
-              (Law Monitored Antecedent cols S.trueProp totalCons)
+            let retName = freshNameFor names
+            let retShape = shapeOf a
+            let ctx' = ctx ++ [(retName, retShape)]
+            let n' = n + 1
+            let types' = types ++ [a]
+            let props' =
+                  [propAt n' a (V.local i) | (i, a) <- fIdsUpTo n' `zip` types']
+            emitTable $ Table Ground ctx' (Just pkey)
+            local (:> "foreignKey") $ emitLaw
+              (Law Enforced ctx' [atomOfArgs x n'] props')
+            local (:> "total") $ emitLaw
+              (Law Monitored ctx props [atomOfArgs x n])
       _ -> panic "bad h-level of cod"

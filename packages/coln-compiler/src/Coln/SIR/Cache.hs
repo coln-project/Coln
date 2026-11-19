@@ -14,7 +14,7 @@ import Coln.SIR.Realm
 import Coln.SIR.Separate
 import Coln.SIR.Syntax qualified as S
 
-import Control.Arrow (second)
+
 import Control.Monad (forM)
 import Control.Monad.Reader.Class (local)
 import Data.Set qualified as Set
@@ -65,16 +65,16 @@ cloArgName (V.CloConst _) = Nothing
 cache :: Name -> Path -> Scope -> V.El N Theory -> GeneratorWriter (S.El Theory)
 cache x p sc v = do
   let code u a = do
-        let sa = separate sc.len a
-        let x' = case Set.member x sc.used of
-              True -> freshNameFor sc.used
-              False -> x
-        let cols = zip (toList $ sc.names :> x') (toList $ sc.ctx :> sa)
-        let bound = toList (sc.bound :> V.local (FId sc.len))
-        let boundStx = separate (sc.len + 1) <$> bound
-        emitTable $ Table (View Materialized) (second (.shape) <$> cols) (Just [0 .. sc.len])
+        -- let sa = separate sc.len a
+        -- let x' = case Set.member x sc.used of
+        --       True -> freshNameFor sc.used
+        --       False -> x
+        -- let cols = zip (toList $ sc.names :> x') (toList $ sc.ctx :> sa)
+        -- let bound = toList (sc.bound :> V.local (FId sc.len))
+        -- let boundStx = separate (sc.len + 1) <$> bound
+        -- emitTable $ Table (View Materialized) (second (.shape) <$> cols) (Just [0 .. sc.len])
         let tn = manglePath p
-        local (:> "definition") $ emitRule $ Rule cols tn boundStx
+        -- local (:> "definition") $ emitRule $ Rule cols tn boundStx
         pure $ S.SelectLast u tn (separate sc.len <$> toList sc.bound) (shapeOf a)
   case v of
     V.LiftEl LSetTheory v -> pure $ S.LiftEl (separate sc.len v)

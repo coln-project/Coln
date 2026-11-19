@@ -13,7 +13,7 @@ import Coln.SIR.Syntax qualified as S
 import Control.Monad (forM)
 import Control.Monad.State
 import Data.Set qualified as Set
-import Data.Vector.Strict qualified as Vec
+
 
 data Els
   = Scalar V.El
@@ -146,6 +146,9 @@ instance Flatten S.Prop Props where
       v1 <- flatten l t1
       pure $ equate sh v0 v1
 
+instance Flatten [S.Prop] Props where
+  flatten l ps = mconcat <$> mapM (flatten l) ps
+
 flattenColumn :: Path -> S.Shape -> [(V.LocalName, V.ValType)]
 flattenColumn p = \case
   S.Scalar t -> [(asVarName p, t)]
@@ -155,28 +158,22 @@ flattenColumn p = \case
 flattenColumns :: [(Name, S.Shape)] -> [(V.LocalName, V.ValType)]
 flattenColumns = concat . fmap (\(x, sh) -> flattenColumn (BwdNil :> x) sh)
 
-flattenPrimaryKey :: [S.Shape] -> [Int] -> [Int]
-flattenPrimaryKey shapes cols = do
-  let go n [] = [n]
-      go n (sh : rest) = do
-        let s = S.shapeSize sh
-        n : go (n + s) rest
-  let offsets = Vec.fromList $ go 0 shapes
-  concat [[(offsets Vec.! i) .. (offsets Vec.! (i + 1)) - 1] | i <- cols]
+flattenPrimaryKey :: [S.Shape] -> S.PrimaryKey -> V.PrimaryKey
+flattenPrimaryKey shapes (S.PrimaryKey n) =
+  V.PrimaryKey $ sum [S.shapeSize sh | sh <- take n shapes]
 
 flattenTable :: S.Table -> V.Table
-flattenTable e =
+flattenTable t =
   V.Table
-    { V.tableVariant = e.tableVariant
-    , V.columns = V.Context $ flattenColumns e.columns
-    , V.primaryKey = fmap (V.PrimaryKey . length . flattenPrimaryKey (snd <$> e.columns)) e.primaryKey
+    { V.tableVariant = t.tableVariant
+    , V.columns = V.Context $ flattenColumns t.columns
+    , V.primaryKey = fmap (flattenPrimaryKey (snd <$> t.columns)) t.primaryKey
     }
 
-bindTele :: Locals -> [(Name, S.Query)] -> FlatM Locals
+bindTele :: Locals -> [(Name, S.Shape)] -> FlatM Locals
 bindTele l [] = pure l
 bindTele l ((x, a) : rest) = do
-  v <- fresh (Just x) a.shape
-  app l a.pred v >>= assert
+  v <- fresh (Just x) a
   bindTele (l :> v) rest
 
 flattenLaw :: S.Law -> V.Law
@@ -186,9 +183,7 @@ flattenLaw r = do
         ante <- flatten vs r.antecedent
         cons <- flatten vs r.consequent
         pure (ante, cons)
-  let (ruleAnte, ruleCons) = case r.ctxSide of
-        S.Antecedent -> (ps <> ante, cons)
-        S.Consequent -> (ante, ps <> cons)
+  let (ruleAnte, ruleCons) = (ps <> ante, cons)
   V.Law
     { V.lawVariant = r.ruleVariant
     , V.context = V.Context vars
@@ -197,13 +192,15 @@ flattenLaw r = do
     }
 
 flattenRule :: S.Rule -> V.Rule
-flattenRule d = do
-  let (args, vars, ps) = runFlatM $ do
-        vs <- bindTele BwdNil d.inCtx
-        concatEls <$> traverse (flatten vs) d.args
+flattenRule r = do
+  let ((ante, args), vars, ps) = runFlatM $ do
+        vs <- bindTele BwdNil r.inCtx
+        ante <- flatten vs r.antecedent
+        args <- concatEls <$> traverse (flatten vs) r.args
+        pure (ante, args)
   V.Rule
     { V.context = V.Context vars
-    , V.antecedents = toList ps
-    , V.definand = d.definand
+    , V.antecedents = toList (ps <> ante)
+    , V.definand = r.definand
     , V.args = args
     }

@@ -27,9 +27,7 @@ mirToSIR :: MIR.Realm -> SIR.Realm
 mirToSIR r = do
   let (auxillaries, generators) = SIR.runGeneratorWriter $ do
         root <- cache "root" (BwdNil :> "root") emptyScope r.root
-        locals r.generators $ \g -> do
-          p <- ask
-          separateGenerator (manglePath p) g
+        locals r.generators separateGenerator
         let rootTy = theoryShapeOf (CtxShape 0 BwdNil) r.rootType r.root
         fmap (OMap.fromList . (("root", (root, rootTy)):)) $ local (:> "view") $ forM (OMap.assocs r.realmDefinitions) $ \(x, d) -> local (:> x) $ do
           el <- cacheTop x d

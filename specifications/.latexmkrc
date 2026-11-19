@@ -1,0 +1,1 @@
+$aux_dir = 'build';

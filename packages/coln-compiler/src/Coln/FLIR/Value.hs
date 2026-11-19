@@ -90,7 +90,6 @@ type Union = SIR.Union
 
 data Realm = Realm
   { tables :: OMap GlobalSymbol Table
-  , unions :: OMap GlobalSymbol Union
   , rules :: OMap GlobalSymbol Rule
   , laws :: OMap GlobalSymbol Law
   }
