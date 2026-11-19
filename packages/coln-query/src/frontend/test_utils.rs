@@ -87,8 +87,8 @@ pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
 /// reads as the rule it stands for. A bare name binds nothing, which is all
 /// the tests that only look at the reference graph need. A body spec that
 /// reads as a [`cond`] is a condition instead.
-pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> TestRule {
-    TestRule {
+pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> Rule<TestLanguage> {
+    Rule {
         id: name.into(),
         head: atom(head),
         body: body
@@ -102,7 +102,7 @@ pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> TestRule {
 /// A condition written as `term operator term`, if `spec` is one: three
 /// whitespace-separated parts, the middle a comparison's symbol. The terms
 /// read as in an [`atom`].
-fn cond(spec: &str) -> Option<TestCond> {
+fn cond(spec: &str) -> Option<Cond<TestLanguage>> {
     let [left, operator, right] = spec.split_whitespace().collect::<Vec<_>>()[..] else {
         return None;
     };
@@ -116,7 +116,7 @@ fn cond(spec: &str) -> Option<TestCond> {
     ]
     .into_iter()
     .find(|candidate| candidate.symbol() == operator)?;
-    Some(TestCond {
+    Some(Cond {
         operator,
         left: term(left),
         right: term(right),
@@ -130,7 +130,7 @@ fn cond(spec: &str) -> Option<TestCond> {
 /// leaves that position unbound (the sparseness [`Atom::bindings`] allows),
 /// and anything else is a variable. A term written `position: term` binds
 /// that position rather than its own, which lets an atom bind one twice.
-pub(super) fn atom(spec: &str) -> TestAtom {
+pub(super) fn atom(spec: &str) -> Atom<TestLanguage> {
     let (spec, positive) = spec
         .strip_prefix('!')
         .map_or((spec, true), |negated| (negated, false));
@@ -151,7 +151,7 @@ pub(super) fn atom(spec: &str) -> TestAtom {
             (position, term(spec))
         })
         .collect();
-    TestAtom {
+    Atom {
         name: name.trim().into(),
         negated: !positive,
         bindings,
@@ -229,8 +229,6 @@ impl Language for TestLanguage {
 }
 
 pub(super) type TestPredicate = Predicate<TestLanguage>;
-pub(super) type TestRule = Rule<TestLanguage>;
-pub(super) type TestAtom = Atom<TestLanguage>;
 
 #[derive(Debug, Clone)]
 pub(super) struct TestTypedVar {
@@ -259,9 +257,6 @@ impl Lit for TestLit {
         self.0.clone()
     }
 }
-
-/// A condition, as [`rule`] reads one off a body spec like `x < 3`.
-pub(super) type TestCond = Cond<TestLanguage>;
 
 /// A predicate declaration, every column of it a `Uint`.
 pub(super) fn declare(name: &str, columns: &[&str]) -> (PredicateName, Vec<Column>) {

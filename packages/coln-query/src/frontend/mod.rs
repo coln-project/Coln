@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn grouping_nothing_yields_no_predicates() {
-        let nothing = Vec::<TestRule>::new();
+        let nothing = Vec::<Rule<TestLanguage>>::new();
         let predicates = Predicate::group(declarations(&[]), nothing).expect("nothing to mismatch");
         assert!(predicates.is_empty());
     }

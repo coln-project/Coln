@@ -220,26 +220,26 @@ impl FlirLogicalProgram {
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
         let mut ctx = FlirContext::default();
 
-        let ground_table_rules: Vec<FlirRule> = flat_realm
+        let ground_table_rules: Vec<frontend::Rule<Flir>> = flat_realm
             .tables
             .iter()
             .flat_map(|declaration| {
                 let ground_table = ctx.feed_table_declaration(declaration)?;
-                Some(FlirRule::from(ground_table))
+                Some(frontend::Rule::from(ground_table))
             })
             .collect();
 
-        let derived_view_rules: Vec<FlirRule> = flat_realm
+        let derived_view_rules: Vec<frontend::Rule<Flir>> = flat_realm
             .definitions
             .iter()
             .map(|definition| {
                 let rule = FlirDerivedViewRule::new(definition, &mut ctx)
                     .map_err(|error| error.within(rule_frame(&definition.path)))?;
-                Ok(FlirRule::from(rule))
+                Ok(frontend::Rule::from(rule))
             })
             .collect::<Result<_, SyntaxError>>()?;
 
-        let law_rules: Vec<FlirRule> = flat_realm
+        let law_rules: Vec<frontend::Rule<Flir>> = flat_realm
             .rules
             .iter()
             .filter(|law| !law.rule.consequents.is_empty())
@@ -473,16 +473,12 @@ impl frontend::Language for Flir {
     type RuleMeta = ();
 }
 
-/// The rule that [`FlirGroundTable`], [`FlirDerivedViewRule`], and [`FlirLaw`]
-/// all lower to.
-pub type FlirRule = frontend::Rule<Flir>;
+/// A proposition of a FLIR rule's body.
+type FlirProposition = Proposition<frontend::Atom<Flir>, frontend::Cond<Flir>>;
 
-/// A proposition of a [`FlirRule`]'s body.
-type FlirProposition = Proposition<FlirAtom, FlirCond>;
-
-impl From<FlirGroundTable<'_>> for FlirRule {
+impl From<FlirGroundTable<'_>> for frontend::Rule<Flir> {
     fn from(ground_table: FlirGroundTable<'_>) -> Self {
-        FlirRule {
+        Self {
             id: ground_table.id().clone(),
             head: ground_table.head,
             body: Vec::new(),
@@ -491,9 +487,9 @@ impl From<FlirGroundTable<'_>> for FlirRule {
     }
 }
 
-impl From<FlirDerivedViewRule<'_>> for FlirRule {
+impl From<FlirDerivedViewRule<'_>> for frontend::Rule<Flir> {
     fn from(rule: FlirDerivedViewRule<'_>) -> Self {
-        FlirRule {
+        Self {
             id: rule.id().clone(),
             head: rule.head,
             body: rule.body,
@@ -505,13 +501,13 @@ impl From<FlirDerivedViewRule<'_>> for FlirRule {
 #[derive(Debug)]
 struct FlirGroundTable<'a> {
     ground_table: &'a ir::TableEntry,
-    head: FlirAtom,
+    head: frontend::Atom<Flir>,
 }
 
 impl<'a> FlirGroundTable<'a> {
     fn new(ground_table: &'a ir::TableEntry, ctx: &mut FlirContext) -> Option<FlirGroundTable<'a>> {
         let schema = Option::<ColnSchema<GroundTable>>::from(ground_table)?;
-        let head = FlirAtom::new_head(
+        let head = frontend::Atom::new_head(
             ground_table.path.clone(),
             schema
                 .query_cols()
@@ -543,7 +539,7 @@ impl Identifiable for FlirGroundTable<'_> {
 #[derive(Debug)]
 struct FlirDerivedViewRule<'a> {
     rule: &'a ir::DefinitionEntry,
-    head: FlirAtom,
+    head: frontend::Atom<Flir>,
     body: Vec<FlirProposition>,
 }
 
@@ -563,7 +559,7 @@ impl<'a> FlirDerivedViewRule<'a> {
             )));
         }
         let rule_scope = ctx.enter_rule_scope(&rule.definition.vars);
-        let head = FlirAtom::new_head(
+        let head = frontend::Atom::new_head(
             definand.clone(),
             rule.definition
                 .arguments
@@ -609,10 +605,10 @@ impl Identifiable for FlirDerivedViewRule<'_> {
 #[derive(Debug)]
 struct FlirLaw<'a> {
     rule: &'a ir::RuleEntry,
-    head: FlirAtom,
+    head: frontend::Atom<Flir>,
     body: Vec<FlirProposition>,
     /// The helper rule deriving the consequent.
-    consequent: FlirRule,
+    consequent: frontend::Rule<Flir>,
 }
 
 impl<'a> FlirLaw<'a> {
@@ -659,7 +655,7 @@ impl<'a> FlirLaw<'a> {
             rule.path.clone(),
             LawMeta::new(rule.rule.rule_variant, output_schema),
         );
-        let head = FlirAtom::new_head(
+        let head = frontend::Atom::new_head(
             rule.path.clone(),
             antecedent_vars
                 .into_iter()
@@ -673,13 +669,13 @@ impl<'a> FlirLaw<'a> {
             columns.iter().cloned().map(Column::from).collect(),
         );
         let fields = || columns.iter().cloned().map(frontend::Bind::Var);
-        let consequent = FlirRule {
+        let consequent = frontend::Rule {
             id: path.clone(),
-            head: FlirAtom::new_head(path.clone(), fields().collect()),
+            head: frontend::Atom::new_head(path.clone(), fields().collect()),
             body: helper_body,
             meta: (),
         };
-        body.push(Proposition::Atom(FlirAtom {
+        body.push(Proposition::Atom(frontend::Atom {
             name: path,
             negated: true,
             bindings: fields().enumerate().collect(),
@@ -693,8 +689,8 @@ impl<'a> FlirLaw<'a> {
     }
 
     /// The law's own rule, plus the helper rule deriving its consequent.
-    fn into_rules(self) -> [FlirRule; 2] {
-        let rule = FlirRule {
+    fn into_rules(self) -> [frontend::Rule<Flir>; 2] {
+        let rule = frontend::Rule {
             id: self.rule.path.clone(),
             head: self.head,
             body: self.body,
@@ -710,7 +706,7 @@ fn stands_alone(body: &[FlirProposition]) -> bool {
     let bound = bound_vars(body);
     body.iter()
         .filter_map(|prop| prop.as_ref().cond())
-        .flat_map(FlirCond::vars)
+        .flat_map(frontend::Cond::vars)
         .all(|var| bound.contains(var.id()))
 }
 
@@ -718,7 +714,7 @@ fn stands_alone(body: &[FlirProposition]) -> bool {
 fn bound_vars(body: &[FlirProposition]) -> HashSet<&ir::Path> {
     body.iter()
         .filter_map(|prop| prop.as_ref().atom())
-        .flat_map(FlirAtom::vars)
+        .flat_map(frontend::Atom::vars)
         .map(Identifiable::id)
         .collect()
 }
@@ -730,17 +726,15 @@ impl Identifiable for FlirLaw<'_> {
     }
 }
 
-pub type FlirAtom = frontend::Atom<Flir>;
-
-impl FlirAtom {
-    fn new_head(name: ir::Path, fields: Vec<frontend::Bind<FlirVar, FlirLit>>) -> FlirAtom {
-        FlirAtom {
+impl frontend::Atom<Flir> {
+    fn new_head(name: ir::Path, fields: Vec<frontend::Bind<FlirVar, FlirLit>>) -> Self {
+        Self {
             name,
             negated: false,
             bindings: fields.into_iter().enumerate().collect(),
         }
     }
-    fn from_atom(atom: &ir::Atom, resolver: &RuleScopeGuard) -> Result<FlirAtom, SyntaxError> {
+    fn from_atom(atom: &ir::Atom, resolver: &RuleScopeGuard) -> Result<Self, SyntaxError> {
         let mut bindings = Vec::with_capacity(
             if atom.row_id.is_some() {
                 StoreEngineCols::ROW_ID_COLS
@@ -778,7 +772,7 @@ impl FlirAtom {
         for binding in &atom.values {
             bind(CompilerColIdx::Column(binding.column), &binding.term)?;
         }
-        Ok(FlirAtom {
+        Ok(Self {
             name: entity.clone(),
             negated: false,
             bindings,
@@ -807,17 +801,17 @@ fn resolve_propositions(
 }
 
 /// One proposition of the FLIR, which an equality on row ids turns into two
-/// conditions. See [`FlirCond::new`].
+/// conditions. See [`frontend::Cond::new`].
 fn resolve_proposition(
     prop: &ir::Prop,
     resolver: &RuleScopeGuard,
 ) -> Result<MaybePair<FlirProposition>, SyntaxError> {
     Ok(match prop {
-        ir::Prop::Atom { atom } => {
-            MaybePair::single(Proposition::Atom(FlirAtom::from_atom(atom, resolver)?))
-        }
+        ir::Prop::Atom { atom } => MaybePair::single(Proposition::Atom(frontend::Atom::from_atom(
+            atom, resolver,
+        )?)),
         ir::Prop::Eq { equality } => {
-            FlirCond::new(Operator::Equal, &equality.left, &equality.right, resolver)
+            frontend::Cond::new(Operator::Equal, &equality.left, &equality.right, resolver)
                 .map(Proposition::Cond)
         }
     })
@@ -865,9 +859,7 @@ fn resolve_element(
     }
 }
 
-pub type FlirCond = frontend::Cond<Flir>;
-
-impl FlirCond {
+impl frontend::Cond<Flir> {
     /// A single condition the FLIR can turn out to be two conditions because
     /// of row ids spreading into two variables.
     fn new(

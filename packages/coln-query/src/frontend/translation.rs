@@ -89,10 +89,6 @@ impl std::ops::Deref for Prepared {
     }
 }
 
-/// The identifier naming a variable, which is a space of its own: a predicate
-/// is named across rules, a variable only within one.
-type VarIdOf<L> = IdOf<<L as Language>::Var>;
-
 pub(super) struct Translator<'a, L: Language> {
     /// The IDB, keyed the way an atom looks a relation up. Consulted before the
     /// EDB, which is what lets a predicate shadow a base relation of the same
@@ -401,7 +397,7 @@ impl<'a, L: Language> Translator<'a, L> {
 
     /// One atom: the relation it names, filtered by what it pins down locally
     /// and projected onto the variables it brings into scope.
-    fn atom<'r>(&self, atom: &'r Atom<L>) -> AtomPlan<'r, VarIdOf<L>> {
+    fn atom<'r>(&self, atom: &'r Atom<L>) -> AtomPlan<'r, IdOf<L::Var>> {
         let name = atom.id();
         // The IDB is consulted first: a predicate shadows a base relation of
         // the same name. A derived relation is bound to a host variable rather
