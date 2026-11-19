@@ -25,8 +25,7 @@ use crate::{
     relational::schema::Column,
     scalarial::ScalarType,
 };
-use indexmap::IndexMap;
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 pub trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash::Hash {}
 
@@ -171,9 +170,9 @@ impl<L: Language> Predicate<L> {
     /// Slots `rules` into the predicates `declarations` declares, each rule
     /// into the one its [`definand`](Rule::definand) names.
     ///
-    /// The definand is read off the rule's head, never off the rule's own
-    /// name. FLIR keeps the two apart, for provenance; plain Datalog does not
-    /// and names the rule after its head. Either way, grouping does not care.
+    /// The definand is read off the rule's head, never off the rule's own name.
+    /// FLIR keeps the two apart, for provenance; plain Datalog does not and
+    /// names the rule after its head. Either way, grouping does not care.
     ///
     /// The declarations define which predicates exist, in which order, and with
     /// which columns; a rule only says which one it contributes to. That name
@@ -181,37 +180,43 @@ impl<L: Language> Predicate<L> {
     ///
     /// The predicates come back in declaration order with their rules in
     /// arrival order, so one input always yields the same program. A declared
-    /// predicate with no rules comes back empty rather than being omitted.
+    /// predicate with no rules comes back empty rather than being omitted and
+    /// turns into an EDB predicate.
     ///
-    /// Fails if any rule's definand matches no declaration.
-    /// All offenders are collected, not just the first.
+    /// A predicate name declared more than once comes back once per declaration
+    /// but all its rules are slotted into the first, rather than the duplicate
+    /// declarations silently merging. [Verification](Analysis::verify) rejects
+    /// such a program later in the pipeline.
+    ///
+    /// Fails if any rule's definand matches no declaration. All offenders are
+    /// collected, not just the first.
     pub fn group(
         declarations: impl IntoIterator<Item = (L::PredId, Vec<Column>)>,
         rules: impl IntoIterator<Item = Rule<L>>,
     ) -> Result<Vec<Self>, UnmatchedRules<L>> {
-        // Keyed by name for slotting rules in, ordered by declaration for
-        // handing the predicates back.
-        let mut predicates: IndexMap<L::PredId, Self> = declarations
+        let mut predicates: Vec<Self> = declarations
             .into_iter()
-            .map(|(name, columns)| {
-                let predicate = Self {
-                    name: name.clone(),
-                    columns,
-                    rules: Vec::new(),
-                };
-                (name, predicate)
+            .map(|(name, columns)| Self {
+                name,
+                columns,
+                rules: Vec::new(),
             })
             .collect();
+        // Keyed by name for slotting rules in. Only a name's first declaration
+        // is a slot, which is also the one verification keeps.
+        let mut slots: HashMap<L::PredId, usize> = HashMap::new();
+        for (idx, predicate) in predicates.iter().enumerate() {
+            slots.entry(predicate.name.clone()).or_insert(idx);
+        }
         let mut unmatched: Vec<Rule<L>> = Vec::new();
         for rule in rules {
-            let definand = rule.definand();
-            match predicates.get_mut(definand) {
-                Some(predicate) => predicate.rules.push(rule),
+            match slots.get(rule.definand()) {
+                Some(&idx) => predicates[idx].rules.push(rule),
                 None => unmatched.push(rule),
             }
         }
         match unmatched.is_empty() {
-            true => Ok(predicates.into_values().collect()),
+            true => Ok(predicates),
             false => Err(UnmatchedRules { rules: unmatched }),
         }
     }
@@ -600,6 +605,31 @@ mod tests {
         assert_eq!(
             grouping_of(&predicates),
             vec![("path", vec!["r1"]), ("reachable", vec!["r0"])]
+        );
+    }
+
+    #[test]
+    fn a_name_declared_twice_comes_back_twice() {
+        // The first declaration takes the rules and the second stays empty,
+        // rather than the two silently merging, so that verification can
+        // reject the program.
+        let predicates = Predicate::group(
+            declarations(&["edge", "path", "path"]),
+            vec![
+                rule("e0", "edge(x)", &[]),
+                rule("r0", "path(x)", &["edge(x)"]),
+            ],
+        )
+        .expect("every definand names a declared predicate");
+        assert_eq!(
+            grouping_of(&predicates),
+            vec![("edge", vec!["e0"]), ("path", vec!["r0"]), ("path", vec![])]
+        );
+        let program = program(predicates);
+        let rejected = program.verify().expect_err("`path` is declared twice");
+        assert_eq!(
+            rejected.error.message(),
+            "predicate 'path' is declared more than once"
         );
     }
 
