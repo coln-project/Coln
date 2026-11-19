@@ -7,7 +7,7 @@
 //! [QueryIr] which can eventually be executed by the query engine(s).
 
 use crate::error::{Frame, SyntaxError};
-use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, RulePredicate};
+use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, Proposition};
 use crate::host::{QueryIr, expr, operator::Operator};
 use crate::program::QueryProgram;
 use crate::relational::{
@@ -59,7 +59,7 @@ pub struct FlirProgram {
 #[derive(Debug)]
 pub struct FlirLogicalProgram {
     /// The logical query program which is essentially Datalog.
-    predicates: Vec<RulePredicate<FlirRule>>,
+    predicates: Vec<frontend::Predicate<Flir>>,
     /// The declared ground tables. Doubles as the [`FlirProgram`]'s [`Catalog`]: every
     /// [`SourceExpr`](crate::relational::expr::SourceExpr) the lowering mints
     /// names one of these.
@@ -257,9 +257,10 @@ impl FlirLogicalProgram {
         rules.extend(derived_view_rules);
         rules.extend(law_rules);
 
-        let predicates = RulePredicate::group(ctx.declarations(), rules).map_err(|unmatched| {
-            SyntaxError::new(format!("Unmatched rules with no definand {unmatched}"))
-        })?;
+        let predicates =
+            frontend::Predicate::group(ctx.declarations(), rules).map_err(|unmatched| {
+                SyntaxError::new(format!("Unmatched rules with no definand {unmatched}"))
+            })?;
 
         fn remap<P, M>(map: impl IntoIterator<Item = (P, M)>) -> IndexMap<EntityRef, M>
         where
@@ -306,16 +307,16 @@ impl Catalog for FlirProgram {
 }
 
 impl LogicalProgram for FlirLogicalProgram {
-    type Predicate = RulePredicate<FlirRule>;
+    type Lang = Flir;
 
-    fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
+    fn predicates(&self) -> impl Iterator<Item = &frontend::Predicate<Flir>> {
         self.predicates.iter()
     }
 
     /// Exactly the derived views and the laws, that is, what
     /// [`interpret_outputs`](super::ColnQuery) knows how to report. A helper
     /// predicate, such as a law's consequent, is neither.
-    fn is_output(&self, predicate: &Self::Predicate) -> bool {
+    fn is_output(&self, predicate: &frontend::Predicate<Flir>) -> bool {
         let entity = EntityRef::from(predicate.id());
         self.derived_views.contains_key(&entity) || self.laws.contains_key(&entity)
     }
@@ -459,15 +460,25 @@ impl Drop for RuleScopeGuard<'_> {
     }
 }
 
-/// The mother type combining [`FlirGroundTable`], [`FlirDerivedViewRule`], and
-/// [`FlirLaw`] to expose them all as a [`frontend::Rule`].
-#[derive(Debug)]
-pub struct FlirRule {
-    id: ir::Path,
-    head: FlirAtom,
-    body: Vec<FlirAtom>,
-    conditions: Vec<FlirCond>,
+/// FLIR's [`frontend::Language`]: a path names a predicate, a rule, or a
+/// variable alike.
+#[derive(Debug, Clone)]
+pub struct Flir;
+
+impl frontend::Language for Flir {
+    type PredId = ir::Path;
+    type RuleId = ir::Path;
+    type Var = FlirVar;
+    type Lit = FlirLit;
+    type RuleMeta = ();
 }
+
+/// The rule that [`FlirGroundTable`], [`FlirDerivedViewRule`], and [`FlirLaw`]
+/// all lower to.
+pub type FlirRule = frontend::Rule<Flir>;
+
+/// A proposition of a [`FlirRule`]'s body.
+type FlirProposition = Proposition<FlirAtom, FlirCond>;
 
 impl From<FlirGroundTable<'_>> for FlirRule {
     fn from(ground_table: FlirGroundTable<'_>) -> Self {
@@ -475,7 +486,7 @@ impl From<FlirGroundTable<'_>> for FlirRule {
             id: ground_table.id().clone(),
             head: ground_table.head,
             body: Vec::new(),
-            conditions: Vec::new(),
+            meta: (),
         }
     }
 }
@@ -486,32 +497,8 @@ impl From<FlirDerivedViewRule<'_>> for FlirRule {
             id: rule.id().clone(),
             head: rule.head,
             body: rule.body,
-            conditions: rule.conditions,
+            meta: (),
         }
-    }
-}
-
-impl Identifiable for FlirRule {
-    type Identifier = ir::Path;
-    fn id(&self) -> &Self::Identifier {
-        &self.id
-    }
-}
-
-impl frontend::Rule for FlirRule {
-    type Atom = FlirAtom;
-    type Cond = FlirCond;
-
-    fn head(&self) -> &Self::Atom {
-        &self.head
-    }
-
-    fn atoms(&self) -> impl Iterator<Item = &Self::Atom> {
-        self.body.iter()
-    }
-
-    fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
-        self.conditions.iter()
     }
 }
 
@@ -557,8 +544,7 @@ impl Identifiable for FlirGroundTable<'_> {
 struct FlirDerivedViewRule<'a> {
     rule: &'a ir::DefinitionEntry,
     head: FlirAtom,
-    body: Vec<FlirAtom>,
-    conditions: Vec<FlirCond>,
+    body: Vec<FlirProposition>,
 }
 
 impl<'a> FlirDerivedViewRule<'a> {
@@ -585,13 +571,8 @@ impl<'a> FlirDerivedViewRule<'a> {
                 .flat_map(|argument| resolve_element(argument, &rule_scope))
                 .collect(),
         );
-        let (body, conditions) = resolve_propositions(&rule.definition.antecedents, &rule_scope)?;
-        Ok(FlirDerivedViewRule {
-            rule,
-            head,
-            body,
-            conditions,
-        })
+        let body = resolve_propositions(&rule.definition.antecedents, &rule_scope)?;
+        Ok(FlirDerivedViewRule { rule, head, body })
     }
 }
 
@@ -629,8 +610,7 @@ impl Identifiable for FlirDerivedViewRule<'_> {
 struct FlirLaw<'a> {
     rule: &'a ir::RuleEntry,
     head: FlirAtom,
-    body: Vec<FlirAtom>,
-    conditions: Vec<FlirCond>,
+    body: Vec<FlirProposition>,
     /// The helper rule deriving the consequent.
     consequent: FlirRule,
 }
@@ -638,9 +618,8 @@ struct FlirLaw<'a> {
 impl<'a> FlirLaw<'a> {
     fn new(rule: &'a ir::RuleEntry, ctx: &mut FlirContext) -> Result<Self, SyntaxError> {
         let mut rule_scope = ctx.enter_rule_scope(&rule.rule.vars);
-        let (mut body, conditions) = resolve_propositions(&rule.rule.antecedents, &rule_scope)?;
-        let (consequent_atoms, consequent_conditions) =
-            resolve_propositions(&rule.rule.consequents, &rule_scope)?;
+        let mut body = resolve_propositions(&rule.rule.antecedents, &rule_scope)?;
+        let consequent = resolve_propositions(&rule.rule.consequents, &rule_scope)?;
 
         // TODO: Potential optimization with a single conjunct by not creating
         // a helper predicate but negating the single conjunct. Watch out though,
@@ -648,25 +627,17 @@ impl<'a> FlirLaw<'a> {
         // because then negation safety is violated, as any existential variable
         // in the consequent does not appear positively in any of the (empty)
         // antecedent's (positive) atoms.
-        let (helper_atoms, helper_conditions) =
-            match stands_alone(&consequent_atoms, &consequent_conditions) {
-                true => (consequent_atoms, consequent_conditions),
-                false => (
-                    body.iter().cloned().chain(consequent_atoms).collect(),
-                    conditions
-                        .iter()
-                        .cloned()
-                        .chain(consequent_conditions)
-                        .collect(),
-                ),
-            };
+        let helper_body = match stands_alone(&consequent) {
+            true => consequent,
+            false => body.iter().cloned().chain(consequent).collect(),
+        };
         // A violation is a binding of the antecedent's variables, so those are
         // the law's columns: a variable only the consequent binds is
         // existential and has no value a violation could carry. Of them, the
         // helper exposes the ones its body binds.
         let (antecedent_vars, columns): (Vec<FlirVar>, Vec<FlirVar>) = {
             let antecedent = bound_vars(&body);
-            let helper = bound_vars(&helper_atoms);
+            let helper = bound_vars(&helper_body);
             let antecedent_vars: Vec<FlirVar> = rule_scope
                 .query_vars()
                 .filter(|var| antecedent.contains(var.id()))
@@ -705,19 +676,18 @@ impl<'a> FlirLaw<'a> {
         let consequent = FlirRule {
             id: path.clone(),
             head: FlirAtom::new_head(path.clone(), fields().collect()),
-            body: helper_atoms,
-            conditions: helper_conditions,
+            body: helper_body,
+            meta: (),
         };
-        body.push(FlirAtom {
+        body.push(Proposition::Atom(FlirAtom {
             name: path,
             negated: true,
             bindings: fields().enumerate().collect(),
-        });
+        }));
         Ok(Self {
             rule,
             head,
             body,
-            conditions,
             consequent,
         })
     }
@@ -728,27 +698,27 @@ impl<'a> FlirLaw<'a> {
             id: self.rule.path.clone(),
             head: self.head,
             body: self.body,
-            conditions: self.conditions,
+            meta: (),
         };
         [rule, self.consequent]
     }
 }
 
-/// If `atoms` and `conditions` stand as a rule body of their own:
-/// All conditions' variables are bound by some atom in `atoms`.
-fn stands_alone(atoms: &[FlirAtom], conditions: &[FlirCond]) -> bool {
-    let bound = bound_vars(atoms);
-    conditions
-        .iter()
+/// If `body` stands as a rule body of its own:
+/// All its conditions' variables are bound by some of its atoms.
+fn stands_alone(body: &[FlirProposition]) -> bool {
+    let bound = bound_vars(body);
+    body.iter()
+        .filter_map(|prop| prop.as_ref().cond())
         .flat_map(FlirCond::vars)
         .all(|var| bound.contains(var.id()))
 }
 
-/// The names of the variables `atoms` bind.
-fn bound_vars(atoms: &[FlirAtom]) -> HashSet<&ir::Path> {
-    atoms
-        .iter()
-        .flat_map(frontend::Atom::vars)
+/// The names of the variables the atoms of `body` bind.
+fn bound_vars(body: &[FlirProposition]) -> HashSet<&ir::Path> {
+    body.iter()
+        .filter_map(|prop| prop.as_ref().atom())
+        .flat_map(FlirAtom::vars)
         .map(Identifiable::id)
         .collect()
 }
@@ -760,13 +730,7 @@ impl Identifiable for FlirLaw<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FlirAtom {
-    name: ir::Path,
-    negated: bool,
-    /// Note: The bindings are sparsely defined.
-    bindings: Vec<(usize, frontend::Bind<FlirVar, FlirLit>)>,
-}
+pub type FlirAtom = frontend::Atom<Flir>;
 
 impl FlirAtom {
     fn new_head(name: ir::Path, fields: Vec<frontend::Bind<FlirVar, FlirLit>>) -> FlirAtom {
@@ -822,28 +786,6 @@ impl FlirAtom {
     }
 }
 
-impl Identifiable for FlirAtom {
-    type Identifier = ir::Path;
-    fn id(&self) -> &Self::Identifier {
-        &self.name
-    }
-}
-
-impl frontend::Atom for FlirAtom {
-    type Var = FlirVar;
-    type Lit = FlirLit;
-
-    fn is_positive(&self) -> bool {
-        !self.negated
-    }
-
-    fn bindings(&self) -> impl Iterator<Item = (usize, frontend::Bind<&Self::Var, &Self::Lit>)> {
-        self.bindings
-            .iter()
-            .map(|(idx, bind)| (*idx, bind.as_ref()))
-    }
-}
-
 /// A rule still being built from the FLIR, and hence named but not yet
 /// printable as Datalog.
 fn rule_frame(path: &ir::Path) -> Frame {
@@ -856,23 +798,29 @@ fn rule_frame(path: &ir::Path) -> Frame {
 fn resolve_propositions(
     propositions: &[ir::Prop],
     resolver: &RuleScopeGuard,
-) -> Result<(Vec<FlirAtom>, Vec<FlirCond>), SyntaxError> {
-    let (body, conditions): (Vec<FlirAtom>, Vec<FlirCond>) = propositions.iter().try_fold(
-        (Vec::new(), Vec::new()),
-        |(mut body, mut conditions), prop| {
-            match prop {
-                ir::Prop::Atom { atom } => body.push(FlirAtom::from_atom(atom, resolver)?),
-                ir::Prop::Eq { equality } => conditions.extend(FlirCond::new(
-                    Operator::Equal,
-                    &equality.left,
-                    &equality.right,
-                    resolver,
-                )),
-            };
-            Ok((body, conditions))
-        },
-    )?;
-    Ok((body, conditions))
+) -> Result<Vec<FlirProposition>, SyntaxError> {
+    let resolved = propositions
+        .iter()
+        .map(|prop| resolve_proposition(prop, resolver))
+        .collect::<Result<Vec<_>, SyntaxError>>()?;
+    Ok(resolved.into_iter().flatten().collect())
+}
+
+/// One proposition of the FLIR, which an equality on row ids turns into two
+/// conditions. See [`FlirCond::new`].
+fn resolve_proposition(
+    prop: &ir::Prop,
+    resolver: &RuleScopeGuard,
+) -> Result<MaybePair<FlirProposition>, SyntaxError> {
+    Ok(match prop {
+        ir::Prop::Atom { atom } => {
+            MaybePair::single(Proposition::Atom(FlirAtom::from_atom(atom, resolver)?))
+        }
+        ir::Prop::Eq { equality } => {
+            FlirCond::new(Operator::Equal, &equality.left, &equality.right, resolver)
+                .map(Proposition::Cond)
+        }
+    })
 }
 
 struct MaybePair<T>(pub T, pub Option<T>);
@@ -886,6 +834,9 @@ impl<T> MaybePair<T> {
     }
     fn into_inner(self) -> (T, Option<T>) {
         (self.0, self.1)
+    }
+    fn map<U>(self, f: impl Fn(T) -> U) -> MaybePair<U> {
+        MaybePair(f(self.0), self.1.map(f))
     }
     fn len(&self) -> usize {
         1 + (self.1.is_some() as usize)
@@ -914,12 +865,7 @@ fn resolve_element(
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FlirCond {
-    operator: Operator,
-    left: frontend::Bind<FlirVar, FlirLit>,
-    right: frontend::Bind<FlirVar, FlirLit>,
-}
+pub type FlirCond = frontend::Cond<Flir>;
 
 impl FlirCond {
     /// A single condition the FLIR can turn out to be two conditions because
@@ -966,31 +912,6 @@ impl FlirCond {
             right,
         };
         MaybePair::maybe((first, second))
-    }
-
-    /// The variables the condition reads, on either side.
-    fn vars(&self) -> impl Iterator<Item = &FlirVar> {
-        [&self.left, &self.right]
-            .into_iter()
-            .filter_map(|bind| match bind {
-                frontend::Bind::Var(var) => Some(var),
-                frontend::Bind::Lit(_) => None,
-            })
-    }
-}
-
-impl frontend::Cond for FlirCond {
-    type Var = FlirVar;
-    type Lit = FlirLit;
-
-    fn operator(&self) -> impl Into<Operator> {
-        self.operator
-    }
-    fn left(&self) -> frontend::Bind<&Self::Var, &Self::Lit> {
-        self.left.as_ref()
-    }
-    fn right(&self) -> frontend::Bind<&Self::Var, &Self::Lit> {
-        self.right.as_ref()
     }
 }
 

@@ -89,14 +89,13 @@ pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
 /// reads as a [`cond`] is a condition instead.
 pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> TestRule {
     TestRule {
-        name: name.into(),
+        id: name.into(),
         head: atom(head),
-        atoms: body
+        body: body
             .iter()
-            .filter(|spec| cond(spec).is_none())
-            .map(|spec| atom(spec))
+            .map(|spec| cond(spec).map_or_else(|| Proposition::Atom(atom(spec)), Proposition::Cond))
             .collect(),
-        conditions: body.iter().filter_map(|spec| cond(spec)).collect(),
+        meta: (),
     }
 }
 
@@ -154,7 +153,7 @@ pub(super) fn atom(spec: &str) -> TestAtom {
         .collect();
     TestAtom {
         name: name.trim().into(),
-        positive,
+        negated: !positive,
         bindings,
     }
 }
@@ -210,81 +209,30 @@ pub(super) struct TestLogicalProgram {
 }
 
 impl LogicalProgram for TestLogicalProgram {
-    type Predicate = TestPredicate;
+    type Lang = TestLanguage;
 
-    fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
+    fn predicates(&self) -> impl Iterator<Item = &TestPredicate> {
         self.predicates.iter()
     }
 }
 
-/// The tests use [`RulePredicate`] itself as their [`Predicate`], so the
-/// scaffolding stops at the rule level.
-pub(super) type TestPredicate = RulePredicate<TestRule>;
+/// The tests' [`Language`], over the three identifier spaces declared above.
+#[derive(Debug, Clone)]
+pub(super) struct TestLanguage;
 
-#[derive(Debug)]
-pub(super) struct TestRule {
-    name: RuleName,
-    head: TestAtom,
-    atoms: Vec<TestAtom>,
-    conditions: Vec<TestCond>,
-}
-
-impl Identifiable for TestRule {
-    type Identifier = RuleName;
-
-    fn id(&self) -> &RuleName {
-        &self.name
-    }
-}
-
-impl Rule for TestRule {
-    type Atom = TestAtom;
-    type Cond = TestCond;
-
-    fn head(&self) -> &Self::Atom {
-        &self.head
-    }
-
-    fn atoms(&self) -> impl Iterator<Item = &Self::Atom> {
-        self.atoms.iter()
-    }
-
-    fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
-        self.conditions.iter()
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct TestAtom {
-    name: PredicateName,
-    positive: bool,
-    bindings: Vec<(usize, Bind<TestTypedVar, TestLit>)>,
-}
-
-impl Identifiable for TestAtom {
-    type Identifier = PredicateName;
-
-    fn id(&self) -> &PredicateName {
-        &self.name
-    }
-}
-
-impl Atom for TestAtom {
+impl Language for TestLanguage {
+    type PredId = PredicateName;
+    type RuleId = RuleName;
     type Var = TestTypedVar;
     type Lit = TestLit;
-
-    fn is_positive(&self) -> bool {
-        self.positive
-    }
-
-    fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)> {
-        self.bindings
-            .iter()
-            .map(|(position, bind)| (*position, borrow(bind)))
-    }
+    type RuleMeta = ();
 }
 
-#[derive(Debug)]
+pub(super) type TestPredicate = Predicate<TestLanguage>;
+pub(super) type TestRule = Rule<TestLanguage>;
+pub(super) type TestAtom = Atom<TestLanguage>;
+
+#[derive(Debug, Clone)]
 pub(super) struct TestTypedVar {
     name: VarName,
 }
@@ -303,7 +251,7 @@ impl TypedVar for TestTypedVar {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct TestLit(Literal);
 
 impl Lit for TestLit {
@@ -313,36 +261,7 @@ impl Lit for TestLit {
 }
 
 /// A condition, as [`rule`] reads one off a body spec like `x < 3`.
-#[derive(Debug)]
-pub(super) struct TestCond {
-    operator: Operator,
-    left: Bind<TestTypedVar, TestLit>,
-    right: Bind<TestTypedVar, TestLit>,
-}
-
-impl Cond for TestCond {
-    type Var = TestTypedVar;
-    type Lit = TestLit;
-
-    fn operator(&self) -> impl Into<Operator> {
-        self.operator
-    }
-
-    fn left(&self) -> Bind<&Self::Var, &Self::Lit> {
-        borrow(&self.left)
-    }
-
-    fn right(&self) -> Bind<&Self::Var, &Self::Lit> {
-        borrow(&self.right)
-    }
-}
-
-pub(super) fn borrow<Var, Lit>(bind: &Bind<Var, Lit>) -> Bind<&Var, &Lit> {
-    match bind {
-        Bind::Var(var) => Bind::Var(var),
-        Bind::Lit(lit) => Bind::Lit(lit),
-    }
-}
+pub(super) type TestCond = Cond<TestLanguage>;
 
 /// A predicate declaration, every column of it a `Uint`.
 pub(super) fn declare(name: &str, columns: &[&str]) -> (PredicateName, Vec<Column>) {

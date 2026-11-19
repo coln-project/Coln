@@ -42,8 +42,7 @@
 //! `fixpoint(red, blue)`, before each predicate is bound to its element of it.
 
 use super::{
-    AggregateRules, Atom, Bind, Component, Cond, IdOf, Identifiable, Identifier, Lit, Predicate,
-    Rule, TypedVar,
+    Atom, Bind, Cond, IdOf, Identifiable, Identifier, Language, Lit, Predicate, Rule, TypedVar,
 };
 use crate::{
     frontend::{ExecutionOrder, analysis::PredicateComponent},
@@ -90,28 +89,23 @@ impl std::ops::Deref for Prepared {
     }
 }
 
-/// The rule type of a program's predicates, and the pieces hanging off it. Named
-/// because the paths through the associated types are otherwise unreadable.
-type RuleOf<P> = <P as AggregateRules>::Rule;
-type AtomOf<P> = <RuleOf<P> as Rule>::Atom;
-type CondOf<P> = <RuleOf<P> as Rule>::Cond;
 /// The identifier naming a variable, which is a space of its own: a predicate
 /// is named across rules, a variable only within one.
-type VarIdOf<P> = IdOf<<AtomOf<P> as Atom>::Var>;
+type VarIdOf<L> = IdOf<<L as Language>::Var>;
 
-pub(super) struct Translator<'a, P: Predicate> {
+pub(super) struct Translator<'a, L: Language> {
     /// The IDB, keyed the way an atom looks a relation up. Consulted before the
     /// EDB, which is what lets a predicate shadow a base relation of the same
     /// name.
-    predicates: IndexMap<&'a P::Identifier, &'a P>,
+    predicates: IndexMap<&'a L::PredId, &'a Predicate<L>>,
     /// The predicates whose relation is bound to an output sink. Any other is
     /// bound to a plain host variable only.
-    outputs: HashSet<&'a P::Identifier>,
+    outputs: HashSet<&'a L::PredId>,
     ir: QueryIr,
 }
 
-impl<'a, P: Predicate> Translator<'a, P> {
-    pub(super) fn new(outputs: HashSet<&'a P::Identifier>) -> Self {
+impl<'a, L: Language> Translator<'a, L> {
+    pub(super) fn new(outputs: HashSet<&'a L::PredId>) -> Self {
         Self {
             predicates: IndexMap::new(),
             outputs,
@@ -125,7 +119,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// [verified](super::Analysis::verify) analysis, which rejects every
     /// program this could not translate. What this relies on is asserted
     /// where it is relied on.
-    pub(super) fn run(mut self, program: &'a ExecutionOrder<'a, P>) -> Prepared {
+    pub(super) fn run(mut self, program: &'a ExecutionOrder<'a, L>) -> Prepared {
         program
             .iter()
             .for_each(|component| self.component(component));
@@ -139,7 +133,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// then the statement binding the predicate to the union of them. A
     /// recursive one iterates all of its members to their joint fixed point
     /// instead, see [`Self::fixed_point`].
-    fn component(&mut self, component: &'a PredicateComponent<'a, P>) {
+    fn component(&mut self, component: &'a PredicateComponent<'a, L>) {
         // A component's members are in scope for its own rules: inside the
         // fixed point, each name reads the accumulator bound under it.
         self.predicates
@@ -160,7 +154,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
         component.members().for_each(|member| {
             names.mint(member.id());
         });
-        let members: Vec<MemberRules<'a, P>> = component
+        let members: Vec<MemberRules<'a, L>> = component
             .members()
             .map(|predicate| {
                 let (base, rec) = predicate
@@ -205,7 +199,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// tuple of each member's union of them. The fixed point evaluates to a
     /// tuple of each member's final relation in turn, which is bound to a
     /// variable of its own, so that each member can be bound under its name.
-    fn fixed_point(&mut self, members: &[MemberRules<'a, P>], names: &mut Names) {
+    fn fixed_point(&mut self, members: &[MemberRules<'a, L>], names: &mut Names) {
         let accumulators = members
             .iter()
             .map(|member| {
@@ -265,7 +259,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// Binds `predicate` to `relation` under its own name, which is how the
     /// rules of later components read it, tapping it as an output if the
     /// program exposes it.
-    fn bind(&mut self, predicate: &P, relation: Expr) {
+    fn bind(&mut self, predicate: &Predicate<L>, relation: Expr) {
         let initializer = match self.outputs.contains(predicate.id()) {
             true => Expr::from(OutputExpr {
                 id: SinkId::from(predicate.id().to_string()),
@@ -284,7 +278,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     ///
     /// The union is what the predicate evaluates to; the statements have to be
     /// emitted ahead of it, since it references them by name.
-    fn rules(&self, predicate: &P, rules: &[(String, &P::Rule)]) -> (Expr, Vec<Stmt>) {
+    fn rules(&self, predicate: &Predicate<L>, rules: &[(String, &Rule<L>)]) -> (Expr, Vec<Stmt>) {
         let mut relations: Vec<Expr> = Vec::with_capacity(rules.len());
         let mut stmts: Vec<Stmt> = Vec::with_capacity(rules.len());
         for (name, rule) in rules {
@@ -304,7 +298,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
 
     /// One rule: its body as a conjunctive query, projected onto the columns
     /// its predicate declares.
-    fn rule(&self, predicate: &P, rule: &P::Rule) -> Expr {
+    fn rule(&self, predicate: &Predicate<L>, rule: &Rule<L>) -> Expr {
         let relation = self.conjunctive_query(rule);
 
         // Verification ensured that the head is dense over its predicate's
@@ -339,7 +333,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// One antijoin per negated atom is what makes `!r(x), !s(x)` mean
     /// `¬r ∧ ¬s`, as in Datalog. Joining the negated atoms and antijoining once
     /// would compute `¬(r ∧ s)` instead.
-    fn conjunctive_query(&self, rule: &P::Rule) -> Expr {
+    fn conjunctive_query(&self, rule: &Rule<L>) -> Expr {
         let conjunctive = self.conjunctive_fragment(rule.positive_atoms());
         let conjunctive = rule.negated_atoms().fold(conjunctive, |acc, negated_atom| {
             let negated_atom = self.atom(negated_atom);
@@ -380,9 +374,9 @@ impl<'a, P: Predicate> Translator<'a, P> {
     /// [Static program verification](mod@super::analysis) guarantees that such
     /// a rule does not contain a variable, as otherwise the range restriction
     /// or negation safety would not hold.
-    fn conjunctive_fragment<'r>(&self, atoms: impl IntoIterator<Item = &'r AtomOf<P>>) -> Expr
+    fn conjunctive_fragment<'r>(&self, atoms: impl IntoIterator<Item = &'r Atom<L>>) -> Expr
     where
-        AtomOf<P>: 'r,
+        Atom<L>: 'r,
     {
         let plans: Vec<_> = atoms.into_iter().map(|atom| self.atom(atom)).collect();
 
@@ -407,7 +401,7 @@ impl<'a, P: Predicate> Translator<'a, P> {
 
     /// One atom: the relation it names, filtered by what it pins down locally
     /// and projected onto the variables it brings into scope.
-    fn atom<'r>(&self, atom: &'r AtomOf<P>) -> AtomPlan<'r, VarIdOf<P>> {
+    fn atom<'r>(&self, atom: &'r Atom<L>) -> AtomPlan<'r, VarIdOf<L>> {
         let name = atom.id();
         // The IDB is consulted first: a predicate shadows a base relation of
         // the same name. A derived relation is bound to a host variable rather
@@ -566,9 +560,9 @@ fn antijoin_variables<I: Identifier>(negated: &[&I]) -> Vec<(Expr, Expr)> {
         .collect()
 }
 
-fn condition<C: Cond>(condition: &C) -> Expr {
+fn condition<L: Language>(condition: &Cond<L>) -> Expr {
     Expr::from(BinaryExpr {
-        operator: condition.operator().into(),
+        operator: condition.operator(),
         left: bound_expr(condition.left()),
         right: bound_expr(condition.right()),
     })
@@ -594,16 +588,16 @@ fn equals(left: Expr, right: Expr) -> Expr {
 /// One member of a component, with its rules split as
 /// [`Translator::component`] splits them, each under the IR variable name
 /// minted for it.
-struct MemberRules<'a, P: Predicate> {
-    predicate: &'a P,
+struct MemberRules<'a, L: Language> {
+    predicate: &'a Predicate<L>,
     /// The rules reading no member of the component.
-    base: Vec<(String, &'a P::Rule)>,
+    base: Vec<(String, &'a Rule<L>)>,
     /// The rules reading some member of the component.
-    rec: Vec<(String, &'a P::Rule)>,
+    rec: Vec<(String, &'a Rule<L>)>,
 }
 
 /// The schema of `predicate`'s relation, with no key, as its rules derive it.
-fn table_schema<P: Predicate>(predicate: &P) -> TableSchema {
+fn table_schema<L: Language>(predicate: &Predicate<L>) -> TableSchema {
     TableSchema::new(
         EntityRef::from(predicate.id().to_string()),
         predicate.columns().cloned().collect(),
@@ -646,7 +640,7 @@ impl Names {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{LogicalProgram, RulePredicate, test_utils::*};
+    use super::super::{LogicalProgram, Predicate, test_utils::*};
     use crate::{
         host::{
             QueryIr,
@@ -662,7 +656,7 @@ mod tests {
         // `open` holds exactly while `blocked` is empty: with no positive atom
         // to join, the body is the unit relation, which the negation antijoins
         // on nothing.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("blocked", &[]), declare("open", &[])],
             [
                 rule("b0", "blocked()", &[]),
@@ -692,7 +686,7 @@ mod tests {
     fn a_self_recursive_rule_reads_its_own_predicate() {
         // `r1` references `path` while `path` itself is being translated, so
         // the atom has to find the predicate before its translation finishes.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
             [
                 rule("e0", "edge(x, y)", &[]),
@@ -713,7 +707,7 @@ mod tests {
         // the bare name first. Were a recursive rule bound under `path` inside
         // the step, every recursive rule after it would read that rule's
         // result rather than the accumulator.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
             [
                 rule("e0", "edge(x, y)", &[]),
@@ -785,7 +779,7 @@ mod tests {
         if blue_has_base_case {
             rules.push(rule("blue_base", "blue(x)", &["seed(x)"]));
         }
-        RulePredicate::group(
+        Predicate::group(
             [
                 declare("edge", &["x", "y"]),
                 declare("seed", &["x"]),
@@ -879,7 +873,7 @@ mod tests {
     fn each_negated_atom_is_antijoined_on_its_own() {
         // `!r(x), !s(x)` is `¬r ∧ ¬s`, so two antijoins. Joining the negated
         // atoms first and antijoining once would compute `¬(r ∧ s)` instead.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             ["q", "r", "s", "p"].map(|name| declare(name, &["x"])),
             [
                 rule("q0", "q(x)", &[]),
@@ -903,7 +897,7 @@ mod tests {
     fn a_negated_atom_may_share_no_variable_with_the_body() {
         // `h` has no columns, so `!h()` antijoins on nothing: `p` holds
         // wherever `q` does, as long as `h` holds nowhere.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [
                 declare("q", &["x"]),
                 declare("r", &["x"]),
