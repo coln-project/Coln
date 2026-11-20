@@ -8,91 +8,154 @@
 //! the FLIR frontend into a plan, which the batch backend restricts to the
 //! derived views ([`ViewProgram`]) and the incremental backend runs as a
 //! whole. Both get the same base rows, and every view must hold the same
-//! rows on both.
+//! rows on both. [`Twin`] does that commit by commit; the fuzz tests
+//! (`realm_fuzz.rs`) drive it with random commits.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail, ensure};
 use coln_flir_rs::ir::EntityVariant;
 use dbsp::typed_batch::IndexedZSetReader;
 
+use super::BatchRuntime;
 use super::views::ViewProgram;
 use crate::api::deltas::StoreDelta;
 use crate::api::query::FlirProgram;
 use crate::pipeline::Pipeline;
 use crate::relational::Runtime;
 use crate::relational::expr::{SinkId, SourceId};
+use crate::relational::incremental::DbspRuntime;
 use crate::relational::relation::TupleValue;
 use crate::test_utils::flir::{
     BipartiteGraphRealm, Blue, BlueRed, Edge, Flir, GraphRealm, JsonFlir, Red, RedBlue,
     TransitiveClosureRealm, TriangleRealm, Vertex,
 };
 
-/// Run the views of realm `R` over `rows` on the batch backend and compare
-/// each with the incremental backend. Returns the number of rows per view.
-fn views_match_incremental<R: JsonFlir>(rows: StoreDelta) -> Result<Vec<(String, usize)>> {
-    let realm = R::load();
-    let mut batch =
-        Pipeline::batch().runtime(&mut ViewProgram::new(FlirProgram::from_flat_realm(&realm)?))?;
-    let mut incremental =
-        Pipeline::incremental().runtime(&mut FlirProgram::from_flat_realm(&realm)?)?;
+/// Both backends over one realm, fed the same commits: batch runs the realm's
+/// derived views, incremental the whole realm. After every commit, each view
+/// must hold the same rows on both.
+pub(super) struct Twin {
+    name: &'static str,
+    batch: BatchRuntime,
+    incremental: DbspRuntime,
+    views: Vec<SinkId>,
+    /// Every view's state on the incremental backend, summed up from the
+    /// changes it reports per commit.
+    incremental_views: HashMap<SinkId, BTreeMap<TupleValue, i64>>,
+}
 
-    for table in rows.into_table_deltas() {
-        let source = SourceId::from(table.for_entity());
-        let delta = table.into_delta();
-        assert!(batch.feed(&source, delta.clone())?, "batch knows {source}");
-        assert!(
-            incremental.feed(&source, delta)?,
-            "incremental knows {source}"
-        );
-    }
-    batch.commit()?;
-    incremental.commit()?;
+impl Twin {
+    pub(super) fn new<R: JsonFlir>() -> Result<Self> {
+        let realm = R::load();
+        let batch = Pipeline::batch()
+            .runtime(&mut ViewProgram::new(FlirProgram::from_flat_realm(&realm)?))?;
+        let incremental =
+            Pipeline::incremental().runtime(&mut FlirProgram::from_flat_realm(&realm)?)?;
 
-    // Batch offers exactly the views: no rule made it into its program.
-    let views: HashSet<&SinkId> = batch.list_outputs().collect();
-    let expected: HashSet<SinkId> = realm
-        .tables
-        .iter()
-        .filter(|entry| matches!(entry.table.entity_variant, EntityVariant::View { .. }))
-        .map(|entry| SinkId::from(entry.path.to_string()))
-        .collect();
-    assert_eq!(
-        views,
-        expected.iter().collect::<HashSet<_>>(),
-        "the views of {}",
-        R::NAME
-    );
-
-    let mut sizes = Vec::new();
-    for view in views {
-        // The batch backend reports a view as a set. The incremental one
-        // counts how often a row of a recursive view is derived, e.g. twice
-        // for a vertex on a cycle, which reaches itself directly and around
-        // the cycle. So compare which rows each holds, not their counts.
-        // One commit from empty, so the incremental delta is the full state.
-        let on_incremental: BTreeSet<TupleValue> = incremental
-            .output(view)?
-            .debug_view(false)
-            .to_zset()
+        // Batch offers exactly the views: no rule made it into its program.
+        let mut views: Vec<SinkId> = batch.list_outputs().cloned().collect();
+        views.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        let mut expected: Vec<SinkId> = realm
+            .tables
             .iter()
-            .map(|(row, (), weight)| {
-                assert!(weight > 0, "view {view} holds {row:?} {weight} times");
-                row
-            })
+            .filter(|entry| matches!(entry.table.entity_variant, EntityVariant::View { .. }))
+            .map(|entry| SinkId::from(entry.path.to_string()))
             .collect();
-        let on_batch = batch.output(view)?;
-        let batch_rows: BTreeSet<TupleValue> = on_batch.rows().iter().cloned().collect();
-        assert_eq!(
-            batch_rows.len(),
-            on_batch.len(),
-            "view {view} repeats a row"
-        );
-        assert_eq!(batch_rows, on_incremental, "view {view} of {}", R::NAME);
-        sizes.push((view.as_str().to_string(), on_batch.len()));
+        expected.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        ensure!(views == expected, "the views of {}", R::NAME);
+
+        Ok(Self {
+            name: R::NAME,
+            batch,
+            incremental,
+            incremental_views: views
+                .iter()
+                .map(|view| (view.clone(), BTreeMap::new()))
+                .collect(),
+            views,
+        })
     }
-    sizes.sort();
-    Ok(sizes)
+
+    /// Commit `rows` on both backends and compare every view. Returns the
+    /// number of rows per view.
+    pub(super) fn commit(&mut self, rows: StoreDelta) -> Result<Vec<(String, usize)>> {
+        for table in rows.into_table_deltas() {
+            let source = SourceId::from(table.for_entity());
+            let delta = table.into_delta();
+            ensure!(
+                self.batch.feed(&source, delta.clone())?,
+                "batch knows {source}"
+            );
+            ensure!(
+                self.incremental.feed(&source, delta)?,
+                "incremental knows {source}"
+            );
+        }
+        self.batch.commit()?;
+        self.incremental.commit()?;
+
+        let mut sizes = Vec::new();
+        for view in &self.views {
+            // Reading an incremental output drains what changed since the
+            // last read, so the sum over all commits is the view's state.
+            let state = self.incremental_views.get_mut(view).expect("one per view");
+            for (row, (), weight) in self
+                .incremental
+                .output(view)?
+                .debug_view(false)
+                .to_zset()
+                .iter()
+            {
+                let entry = state.entry(row.clone()).or_insert(0);
+                *entry += weight;
+                if *entry == 0 {
+                    state.remove(&row);
+                }
+            }
+            // The batch backend reports a view as a set. The incremental one
+            // counts how often a row of a recursive view is derived, e.g.
+            // twice for a vertex on a cycle, which reaches itself directly and
+            // around the cycle. So compare which rows each holds.
+            if let Some((row, weight)) = state.iter().find(|(_, weight)| **weight < 0) {
+                bail!(
+                    "view {view} of {} holds {row:?} {weight} times on incremental",
+                    self.name
+                );
+            }
+            let on_incremental: BTreeSet<&TupleValue> = state.keys().collect();
+
+            let on_batch = self.batch.output(view)?;
+            let batch_rows: BTreeSet<&TupleValue> = on_batch.rows().iter().collect();
+            ensure!(
+                batch_rows.len() == on_batch.len(),
+                "view {view} repeats a row on batch"
+            );
+            if batch_rows != on_incremental {
+                let only = |a: &BTreeSet<&TupleValue>, b: &BTreeSet<&TupleValue>| {
+                    a.difference(b)
+                        .take(5)
+                        .map(|row| format!("{row:?}"))
+                        .collect::<Vec<_>>()
+                };
+                bail!(
+                    "view {view} of {} differs, only on batch: {:?}, only on incremental: {:?}",
+                    self.name,
+                    only(&batch_rows, &on_incremental),
+                    only(&on_incremental, &batch_rows),
+                );
+            }
+            sizes.push((view.as_str().to_string(), on_batch.len()));
+        }
+        Ok(sizes)
+    }
+}
+
+/// Run the views of realm `R` over `rows`, one commit from empty, on both
+/// backends. Returns the number of rows per view.
+fn views_match_incremental<R: JsonFlir>(rows: StoreDelta) -> Result<Vec<(String, usize)>> {
+    Twin::new::<R>()?
+        .commit(rows)
+        .with_context(|| format!("realm {}", R::NAME))
 }
 
 #[test]
