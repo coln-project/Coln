@@ -24,9 +24,9 @@
 //! multi-way equi joins (FLIR's native n-ary node, consumed directly),
 //! cartesian products, projections onto columns and literals, equality
 //! selections against literals, unions, distinct, outputs (also bound to a
-//! variable, as the FLIR frontend writes them), and fixed points with one
-//! accumulator, whose step may name intermediate relations before its
-//! result. Everything that needs the scalar engine (computed columns,
+//! variable, as the FLIR frontend writes them), and fixed points, also
+//! with several accumulators for mutual recursion, whose step may name
+//! intermediate relations before its result. Everything that needs the scalar engine (computed columns,
 //! general conditions) and the remaining operators (anti join, difference)
 //! fail with a clear error instead of a wrong answer.
 //!
@@ -308,7 +308,7 @@ impl Lowerer {
                         .clone(),
                     // A fixed point indexed right away, its tuple never bound.
                     Expr::Relational(RelExpr::FixedPointIter(fixed_point)) => {
-                        vec![self.lower_fixed_point(name, fixed_point)?]
+                        self.lower_fixed_point(name, fixed_point)?
                     }
                     _ => {
                         bail!("batch lowering only indexes into a bound variable or a fixed point")
@@ -320,33 +320,11 @@ impl Lowerer {
                 return Ok(());
             }
             Expr::Relational(RelExpr::FixedPointIter(fixed_point)) => {
-                let info = self.lower_fixed_point(name, fixed_point)?;
-                self.tuples.insert(name.to_string(), vec![info]);
+                let infos = self.lower_fixed_point(name, fixed_point)?;
+                self.tuples.insert(name.to_string(), infos);
                 return Ok(());
             }
-            Expr::Relational(rel) => match rel {
-                RelExpr::Union(union) => {
-                    let mut schema: Option<Schema> = None;
-                    for branch in &union.relations {
-                        let branch_schema = self.push_rule_for(name, branch)?;
-                        match &schema {
-                            None => schema = Some(branch_schema),
-                            Some(first) => {
-                                if first.types() != branch_schema.types() {
-                                    bail!(
-                                        "union branches for {name} have different schemas, \
-                                         {} and {}",
-                                        describe(first),
-                                        describe(&branch_schema)
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    schema.with_context(|| format!("union for {name} is empty"))?
-                }
-                _ => self.push_rule_for(name, initializer)?,
-            },
+            Expr::Relational(_) => self.push_rules_for(name, initializer)?,
             _ => bail!(
                 "batch lowering only supports relational initializers, {name} is a host expression"
             ),
@@ -362,6 +340,32 @@ impl Lowerer {
         Ok(())
     }
 
+    /// Lower one relational expression into rules with the given head
+    /// relation, one per branch of a union and one otherwise; returns the
+    /// head's schema.
+    fn push_rules_for(&mut self, head: &str, expr: &Expr) -> Result<Schema> {
+        let Expr::Relational(RelExpr::Union(union)) = expr else {
+            return self.push_rule_for(head, expr);
+        };
+        let mut schema: Option<Schema> = None;
+        for branch in &union.relations {
+            let branch_schema = self.push_rule_for(head, branch)?;
+            match &schema {
+                None => schema = Some(branch_schema),
+                Some(first) => {
+                    if first.types() != branch_schema.types() {
+                        bail!(
+                            "union branches for {head} have different schemas, {} and {}",
+                            describe(first),
+                            describe(&branch_schema)
+                        );
+                    }
+                }
+            }
+        }
+        schema.with_context(|| format!("union for {head} is empty"))
+    }
+
     /// Lower one relational expression into a single rule with the given
     /// head relation; returns the head's schema.
     fn push_rule_for(&mut self, head: &str, expr: &Expr) -> Result<Schema> {
@@ -372,43 +376,46 @@ impl Lowerer {
         Ok(schema)
     }
 
-    /// A fixed point defines its accumulator as a recursive relation:
-    /// one base rule from the initializer and one rule from the step's
-    /// result, both with the accumulator as their head. Relations the step
-    /// names on the way become derived relations in the same recursion.
-    /// Semi-naive evaluation in coln-batch then iterates them to the
-    /// fixpoint.
+    /// A fixed point defines each accumulator as a recursive relation:
+    /// base rules from its initializer and rules from its element of the
+    /// step's result, all with the accumulator's relation as their head.
+    /// Relations the step names on the way become derived relations in the
+    /// same recursion. Several accumulators recurse together, each reading
+    /// the others, which is how mutually recursive views come out of the
+    /// FLIR frontend. Semi-naive evaluation in coln-batch then iterates all
+    /// of them to the fixpoint.
     ///
-    /// Only a single accumulator is supported, whose relation is returned.
-    /// The fixed point evaluates to a 1-tuple of it.
+    /// Returns the accumulators' relations in order, the tuple the fixed
+    /// point evaluates to. A single accumulator's relation is named after
+    /// the fixed point itself, several get their index appended.
     fn lower_fixed_point(
         &mut self,
         head: &str,
         fixed_point: &FixedPointIterExpr,
-    ) -> Result<RelInfo> {
-        let [(accumulator, init)] = fixed_point.accumulators.as_slice() else {
-            bail!(
-                "batch lowering does not support mutual recursion yet, the fixed point for \
-                 {head} has {} accumulators",
-                fixed_point.accumulators.len()
-            );
+    ) -> Result<Vec<RelInfo>> {
+        let relation = |index: usize| match fixed_point.accumulators.len() {
+            1 => head.to_string(),
+            _ => format!("{head}[{index}]"),
         };
-        let schema = self.push_rule_for(head, init)?;
+        let mut infos = Vec::with_capacity(fixed_point.accumulators.len());
+        for (index, (_, init)) in fixed_point.accumulators.iter().enumerate() {
+            let relation = relation(index);
+            let schema = self.push_rules_for(&relation, init)?;
+            infos.push(RelInfo { relation, schema });
+        }
 
-        // Inside the step, the accumulator name refers to the relation
-        // being defined; that reference is what makes the rule recursive.
-        let previous = self.env.insert(
-            accumulator.clone(),
-            RelInfo {
-                relation: head.to_string(),
-                schema: schema.clone(),
-            },
-        );
+        // Inside the step, each accumulator name refers to the relation being
+        // defined; those references are what make the rules recursive.
+        let mut shadowed = Vec::new();
+        for ((accumulator, _), info) in fixed_point.accumulators.iter().zip(&infos) {
+            let previous = self.env.insert(accumulator.clone(), info.clone());
+            shadowed.push((accumulator.clone(), previous));
+        }
 
         // The step may name intermediate relations before its result, as the
         // FLIR frontend does with one per recursive rule. Each becomes a
         // derived relation of its own, read by the step rule and reading the
-        // accumulator, so it joins the recursion. Its name is only visible
+        // accumulators, so it joins the recursion. Its name is only visible
         // inside the step.
         let mut locals = Vec::new();
         let result = (|| {
@@ -437,19 +444,23 @@ impl Lowerer {
             let Expr::Tuple(step_tuple) = &step_expr.expr else {
                 bail!("batch lowering expects the fixed point step to be a tuple");
             };
-            let [step_expr] = step_tuple.elements.as_slice() else {
+            if step_tuple.elements.len() != infos.len() {
                 bail!(
-                    "fixed point step for {head} has {} elements, but there is one accumulator",
-                    step_tuple.elements.len()
+                    "fixed point step for {head} has {} elements, but there are {} accumulators",
+                    step_tuple.elements.len(),
+                    infos.len()
                 );
-            };
-            let step_schema = self.push_rule_for(head, step_expr)?;
-            if step_schema.types() != schema.types() {
-                bail!(
-                    "fixed point step for {head} has schema {}, its base has {}",
-                    describe(&step_schema),
-                    describe(&schema)
-                );
+            }
+            for (step_expr, info) in step_tuple.elements.iter().zip(&infos) {
+                let step_schema = self.push_rules_for(&info.relation, step_expr)?;
+                if step_schema.types() != info.schema.types() {
+                    bail!(
+                        "fixed point step for {} has schema {}, its base has {}",
+                        info.relation,
+                        describe(&step_schema),
+                        describe(&info.schema)
+                    );
+                }
             }
             Ok(())
         })();
@@ -458,19 +469,18 @@ impl Lowerer {
             self.env.remove(local);
             self.tuples.remove(local);
         }
-        match previous {
-            Some(info) => {
-                self.env.insert(accumulator.clone(), info);
-            }
-            None => {
-                self.env.remove(accumulator);
+        for (accumulator, previous) in shadowed.into_iter().rev() {
+            match previous {
+                Some(info) => {
+                    self.env.insert(accumulator, info);
+                }
+                None => {
+                    self.env.remove(&accumulator);
+                }
             }
         }
         result?;
-        Ok(RelInfo {
-            relation: head.to_string(),
-            schema,
-        })
+        Ok(infos)
     }
 
     /// An output statement names a derived relation as a sink.
@@ -2077,5 +2087,82 @@ mod tests {
 
         let err = closure(vec![out("walked")]).unwrap_err();
         assert!(format!("{err:#}").contains("walked"), "{err:#}");
+    }
+
+    /// Step 22: mutual recursion. A fixed point with two accumulators defines
+    /// two relations that read each other: walks of odd length extend walks
+    /// of even length by an edge and the other way round. The even walks
+    /// start out empty, as the FLIR frontend seeds a member without a base
+    /// rule. The fixed point is a 2-tuple, read by index.
+    #[test]
+    fn s22_two_accumulators_recurse_together() {
+        let step = |walk: &str| {
+            Expr::from(EquiJoinExpr {
+                left: Expr::from(AliasExpr {
+                    relation: var(walk),
+                    alias: "walk".to_string(),
+                }),
+                right: Expr::from(AliasExpr {
+                    relation: var("edges"),
+                    alias: "step".to_string(),
+                }),
+                on: vec![(var("to"), var("from"))],
+                attributes: Some(named_columns(&[("from", "walk.from"), ("to", "step.to")])),
+            })
+        };
+        let edge_schema = test_sources()[&src("edge")].clone();
+        let plan = lower_plan(vec![
+            let_rel("edges", SourceExpr::new(src("edge"))),
+            let_rel(
+                "walks",
+                FixedPointIterExpr {
+                    accumulators: vec![
+                        ("odd".to_string(), var("edges")),
+                        (
+                            "even".to_string(),
+                            Expr::from(ConstantExpr::empty(edge_schema)),
+                        ),
+                    ],
+                    step: BlockStmt {
+                        stmts: vec![Stmt::from(ExprStmt {
+                            expr: Expr::from(TupleExpr {
+                                elements: vec![step("even"), step("odd")],
+                            }),
+                        })],
+                    },
+                },
+            ),
+            let_rel(
+                "odd_walks",
+                GetIndexExpr {
+                    target: var("walks"),
+                    index: lit(0),
+                },
+            ),
+            let_rel(
+                "even_walks",
+                GetIndexExpr {
+                    target: var("walks"),
+                    index: lit(1),
+                },
+            ),
+            out("odd_walks"),
+            out("even_walks"),
+        ])
+        .unwrap();
+
+        // The empty seed is a constant, which the runtime materializes
+        // alongside the sources (see s17).
+        let result = run(&plan, {
+            let mut edb = constant_catalog(&plan);
+            edb.insert(rel("edge", ["from", "to"], &[(0, 1), (1, 2), (2, 3)]));
+            edb
+        });
+        let walks = |output: &str| rows(result.get(&plan.outputs[output]).unwrap());
+        assert_eq!(
+            walks("odd_walks"),
+            vec![vec![0, 1], vec![0, 3], vec![1, 2], vec![2, 3]]
+        );
+        assert_eq!(walks("even_walks"), vec![vec![0, 2], vec![1, 3]]);
     }
 }
