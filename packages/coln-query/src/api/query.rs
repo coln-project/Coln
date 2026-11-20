@@ -7,7 +7,7 @@
 //! [QueryIr] which can eventually be executed by the query engine(s).
 
 use crate::error::{Frame, SyntaxError};
-use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, Proposition};
+use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, Prop};
 use crate::host::{QueryIr, expr, operator::Operator};
 use crate::program::QueryProgram;
 use crate::relational::{
@@ -26,7 +26,6 @@ use coln_flir_rs::{
 };
 use indexmap::IndexMap;
 use std::borrow::Cow;
-use std::collections::HashSet;
 
 type GroundTableName = EntityRef;
 type DerivedViewName = EntityRef;
@@ -473,15 +472,12 @@ impl frontend::Language for Flir {
     type RuleMeta = ();
 }
 
-/// A proposition of a FLIR rule's body.
-type FlirProposition = Proposition<frontend::Atom<Flir>, frontend::Cond<Flir>>;
-
 impl From<FlirGroundTable<'_>> for frontend::Rule<Flir> {
     fn from(ground_table: FlirGroundTable<'_>) -> Self {
         Self {
             id: ground_table.id().clone(),
             head: ground_table.head,
-            body: Vec::new(),
+            body: frontend::Conjunction::default(),
             meta: (),
         }
     }
@@ -540,7 +536,7 @@ impl Identifiable for FlirGroundTable<'_> {
 struct FlirDerivedViewRule<'a> {
     rule: &'a ir::DefinitionEntry,
     head: frontend::Atom<Flir>,
-    body: Vec<FlirProposition>,
+    body: frontend::Conjunction<Flir>,
 }
 
 impl<'a> FlirDerivedViewRule<'a> {
@@ -597,7 +593,7 @@ impl Identifiable for FlirDerivedViewRule<'_> {
 /// is projected away, which makes it existential.
 ///
 /// The helper's body is the given consequent alone if it stands as a rule on
-/// its own, that is, its atoms bind every variable its conditions use.
+/// its own, that is, it is [safe](frontend::Conjunction::is_safe).
 /// Otherwise, as for `∀x. t(x) ⇒ x == 1`, the antecedent joins the consquent
 /// rule's body. That changes nothing, as the law's rule requires the
 /// antecedent anyway, but costs computing it twice, which is why it is not
@@ -606,7 +602,7 @@ impl Identifiable for FlirDerivedViewRule<'_> {
 struct FlirLaw<'a> {
     rule: &'a ir::RuleEntry,
     head: frontend::Atom<Flir>,
-    body: Vec<FlirProposition>,
+    body: frontend::Conjunction<Flir>,
     /// The helper rule deriving the consequent.
     consequent: frontend::Rule<Flir>,
 }
@@ -623,24 +619,24 @@ impl<'a> FlirLaw<'a> {
         // because then negation safety is violated, as any existential variable
         // in the consequent does not appear positively in any of the (empty)
         // antecedent's (positive) atoms.
-        let helper_body = match stands_alone(&consequent) {
+        let helper_body = match consequent.is_safe() {
             true => consequent,
-            false => body.iter().cloned().chain(consequent).collect(),
+            false => body.clone().into_iter().chain(consequent).collect(),
         };
         // A violation is a binding of the antecedent's variables, so those are
         // the law's columns: a variable only the consequent binds is
         // existential and has no value a violation could carry. Of them, the
         // helper exposes the ones its body binds.
         let (antecedent_vars, columns): (Vec<FlirVar>, Vec<FlirVar>) = {
-            let antecedent = bound_vars(&body);
-            let helper = bound_vars(&helper_body);
+            let antecedent = body.bound_vars();
+            let helper = helper_body.bound_vars();
             let antecedent_vars: Vec<FlirVar> = rule_scope
                 .query_vars()
-                .filter(|var| antecedent.contains(var.id()))
+                .filter(|var| antecedent.contains_key(var.id()))
                 .collect();
             let columns = antecedent_vars
                 .iter()
-                .filter(|var| helper.contains(var.id()))
+                .filter(|var| helper.contains_key(var.id()))
                 .cloned()
                 .collect();
             (antecedent_vars, columns)
@@ -675,7 +671,7 @@ impl<'a> FlirLaw<'a> {
             body: helper_body,
             meta: (),
         };
-        body.push(Proposition::Atom(frontend::Atom {
+        body.push(Prop::Atom(frontend::Atom {
             name: path,
             negated: true,
             bindings: fields().enumerate().collect(),
@@ -698,25 +694,6 @@ impl<'a> FlirLaw<'a> {
         };
         [rule, self.consequent]
     }
-}
-
-/// If `body` stands as a rule body of its own:
-/// All its conditions' variables are bound by some of its atoms.
-fn stands_alone(body: &[FlirProposition]) -> bool {
-    let bound = bound_vars(body);
-    body.iter()
-        .filter_map(|prop| prop.as_ref().cond())
-        .flat_map(frontend::Cond::vars)
-        .all(|var| bound.contains(var.id()))
-}
-
-/// The names of the variables the atoms of `body` bind.
-fn bound_vars(body: &[FlirProposition]) -> HashSet<&ir::Path> {
-    body.iter()
-        .filter_map(|prop| prop.as_ref().atom())
-        .flat_map(frontend::Atom::vars)
-        .map(Identifiable::id)
-        .collect()
 }
 
 impl Identifiable for FlirLaw<'_> {
@@ -792,7 +769,7 @@ fn rule_frame(path: &ir::Path) -> Frame {
 fn resolve_propositions(
     propositions: &[ir::Prop],
     resolver: &RuleScopeGuard,
-) -> Result<Vec<FlirProposition>, SyntaxError> {
+) -> Result<frontend::Conjunction<Flir>, SyntaxError> {
     let resolved = propositions
         .iter()
         .map(|prop| resolve_proposition(prop, resolver))
@@ -800,19 +777,21 @@ fn resolve_propositions(
     Ok(resolved.into_iter().flatten().collect())
 }
 
+type FlirProp = Prop<frontend::Atom<Flir>, frontend::Cond<Flir>>;
+
 /// One proposition of the FLIR, which an equality on row ids turns into two
 /// conditions. See [`frontend::Cond::new`].
 fn resolve_proposition(
     prop: &ir::Prop,
     resolver: &RuleScopeGuard,
-) -> Result<MaybePair<FlirProposition>, SyntaxError> {
+) -> Result<MaybePair<FlirProp>, SyntaxError> {
     Ok(match prop {
-        ir::Prop::Atom { atom } => MaybePair::single(Proposition::Atom(frontend::Atom::from_atom(
-            atom, resolver,
-        )?)),
+        ir::Prop::Atom { atom } => {
+            MaybePair::single(Prop::Atom(frontend::Atom::from_atom(atom, resolver)?))
+        }
         ir::Prop::Eq { equality } => {
             frontend::Cond::new(Operator::Equal, &equality.left, &equality.right, resolver)
-                .map(Proposition::Cond)
+                .map(Prop::Cond)
         }
     })
 }

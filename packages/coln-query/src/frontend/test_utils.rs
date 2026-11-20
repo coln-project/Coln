@@ -93,7 +93,7 @@ pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> Rule<TestLanguage> 
         head: atom(head),
         body: body
             .iter()
-            .map(|spec| cond(spec).map_or_else(|| Proposition::Atom(atom(spec)), Proposition::Cond))
+            .map(|spec| cond(spec).map_or_else(|| Prop::Atom(atom(spec)), Prop::Cond))
             .collect(),
         meta: (),
     }

@@ -40,8 +40,7 @@
 //! lost. A [`head`](Rule::head) is dense and hence unaffected.
 
 use super::{
-    Atom, Bind, Cond, Identifiable, Language, Lit, LogicalProgram, Predicate, Proposition, Rule,
-    TypedVar,
+    Atom, Bind, Cond, Identifiable, Language, Lit, LogicalProgram, Predicate, Prop, Rule, TypedVar,
 };
 use std::fmt::{self, Display};
 
@@ -76,11 +75,11 @@ impl<L: Language> Display for Cond<L> {
     }
 }
 
-impl<A: Display, C: Display> Display for Proposition<A, C> {
+impl<A: Display, C: Display> Display for Prop<A, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Proposition::Atom(atom) => atom.fmt(f),
-            Proposition::Cond(cond) => cond.fmt(f),
+            Prop::Atom(atom) => atom.fmt(f),
+            Prop::Cond(cond) => cond.fmt(f),
         }
     }
 }
@@ -92,7 +91,7 @@ impl<L: Language> Display for Rule<L> {
             writeln!(f, "// {}", self.id())?;
         }
         self.head().fmt(f)?;
-        let mut body = self.body().peekable();
+        let mut body = self.body().iter().peekable();
         if body.peek().is_some() {
             let (neck, separator) = match f.alternate() {
                 true => (" :-\n    ", ",\n    "),

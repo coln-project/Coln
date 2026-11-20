@@ -261,7 +261,7 @@ impl<L: Language> Predicate<L> {
     /// deriving it, so its head binds nothing.
     pub fn is_edb_predicate(&self) -> bool {
         let mut iter = self.rules();
-        let first_is_edb = iter.next().is_some_and(|rule| rule.body().next().is_none());
+        let first_is_edb = iter.next().is_some_and(|rule| rule.body().is_empty());
         let is_only = iter.next().is_none();
         is_only && first_is_edb
     }
@@ -312,16 +312,16 @@ impl<L: Language> Identifiable for Predicate<L> {
 }
 
 /// A proposition is either an atom or a condition, the two things a
-/// [`Rule`]'s body is a conjunction of.
+/// [`Conjunction`] is made of.
 #[derive(Debug, Clone, Copy)]
-pub enum Proposition<A, C> {
+pub enum Prop<A, C> {
     Atom(A),
     Cond(C),
 }
 
-impl<A, C> Proposition<A, C> {
-    pub fn as_ref(&self) -> Proposition<&A, &C> {
-        use Proposition::*;
+impl<A, C> Prop<A, C> {
+    pub fn as_ref(&self) -> Prop<&A, &C> {
+        use Prop::*;
         match self {
             Atom(atom) => Atom(atom),
             Cond(cond) => Cond(cond),
@@ -331,36 +331,131 @@ impl<A, C> Proposition<A, C> {
     /// The atom, if this proposition is one.
     pub fn atom(self) -> Option<A> {
         match self {
-            Proposition::Atom(atom) => Some(atom),
-            Proposition::Cond(_) => None,
+            Prop::Atom(atom) => Some(atom),
+            Prop::Cond(_) => None,
         }
     }
 
     /// The condition, if this proposition is one.
     pub fn cond(self) -> Option<C> {
         match self {
-            Proposition::Atom(_) => None,
-            Proposition::Cond(cond) => Some(cond),
+            Prop::Atom(_) => None,
+            Prop::Cond(cond) => Some(cond),
         }
     }
 }
 
-/// A rule consists of a _body_ and a _head_. The body is a conjunction of
-/// [propositions](Proposition), that is, [atoms](Self::atoms) and
-/// [conditions](Self::conditions), in the order the frontend gave them.
-/// The [head](Self::head) is a lone atom.
+/// A conjunction of [propositions](Prop), that is, [atoms](Self::atoms)
+/// and [conditions](Self::conditions), in the order the frontend gave them.
+/// A [`Rule`]'s body is one, and so are a law's antecedent and consequent.
+///
+/// An empty conjunction is `true`.
+#[derive(Debug, Clone)]
+pub struct Conjunction<L: Language>(pub(crate) Vec<Prop<Atom<L>, Cond<L>>>);
+
+impl<L: Language> Conjunction<L> {
+    /// The propositions, atoms and conditions alike, in their given order.
+    pub fn iter(&self) -> impl Iterator<Item = Prop<&Atom<L>, &Cond<L>>> {
+        self.0.iter().map(Prop::as_ref)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn push(&mut self, proposition: Prop<Atom<L>, Cond<L>>) {
+        self.0.push(proposition);
+    }
+
+    pub fn atoms(&self) -> impl Iterator<Item = &Atom<L>> {
+        self.iter().filter_map(Prop::atom)
+    }
+
+    /// The atoms which are _not_ negated.
+    pub fn positive_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
+        self.atoms().filter(|atom| atom.is_positive())
+    }
+
+    /// The atoms which are negated.
+    pub fn negated_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
+        self.atoms().filter(|atom| atom.is_negated())
+    }
+
+    /// The conditions. Conditions constrain a variable's domain.
+    pub fn conditions(&self) -> impl Iterator<Item = &Cond<L>> {
+        self.iter().filter_map(Prop::cond)
+    }
+
+    /// If an atom references the predicate `identifier` names.
+    pub fn references(&self, identifier: &L::PredId) -> bool {
+        self.atoms().find(|atom| atom.id() == identifier).is_some()
+    }
+
+    /// The variables the positive atoms bind, keyed by their identifier. A
+    /// negated atom or a condition binds none: it only uses variables, which a
+    /// positive atom has to bind.
+    ///
+    /// A variable is identified by its name alone, as in an atom's bindings
+    /// and in the joins translation derives from them. Its type is a property
+    /// of it, so occurrences disagreeing on it are a type error rather than
+    /// different variables. Of those, an arbitrary one is kept.
+    pub fn bound_vars(&self) -> HashMap<&IdOf<L::Var>, &L::Var> {
+        self.positive_atoms()
+            .flat_map(Atom::vars)
+            .map(|var| (var.id(), var))
+            .collect()
+    }
+
+    /// If every variable a negated atom or a condition uses is
+    /// [bound](Self::bound_vars) by a positive atom, which is what lets the
+    /// conjunction of a law stand as a rule's body of its own. Otherwise,
+    /// the antecedent of the law must be injected into the helper.
+    pub fn is_safe(&self) -> bool {
+        let bound = self.bound_vars();
+        self.negated_atoms()
+            .flat_map(Atom::vars)
+            .chain(self.conditions().flat_map(Cond::vars))
+            .all(|var| bound.contains_key(var.id()))
+    }
+}
+
+impl<L: Language> Default for Conjunction<L> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<L: Language> FromIterator<Prop<Atom<L>, Cond<L>>> for Conjunction<L> {
+    fn from_iter<I: IntoIterator<Item = Prop<Atom<L>, Cond<L>>>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<L: Language> IntoIterator for Conjunction<L> {
+    type Item = Prop<Atom<L>, Cond<L>>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+/// A rule consists of a _body_ and a _head_. The body is a
+/// [conjunction](Conjunction) of atoms and conditions. The [head](Self::head)
+/// is a lone atom.
 ///
 /// [`Identifiable::id`] names the _rule_, in a space of its own: the predicates
-/// a rule references are named by its [`atoms`](Self::atoms), which is
-/// [`Language::PredId`] and deliberately unrelated to [`Language::RuleId`].
-/// Nothing but diagnostics and [IR variable names] reads a rule's own name.
+/// a rule references are named by its body's [atoms](Conjunction::atoms),
+/// which is [`Language::PredId`] and deliberately unrelated to
+/// [`Language::RuleId`]. Nothing but diagnostics and [IR variable names] reads
+/// a rule's own name.
 ///
 /// [IR variable names]: super::frontend::translation
 #[derive(Debug, Clone)]
 pub struct Rule<L: Language> {
     pub(crate) id: L::RuleId,
     pub(crate) head: Atom<L>,
-    pub(crate) body: Vec<Proposition<Atom<L>, Cond<L>>>,
+    pub(crate) body: Conjunction<L>,
     pub(crate) meta: L::RuleMeta,
 }
 
@@ -378,39 +473,17 @@ impl<L: Language> Rule<L> {
         self.head().id()
     }
 
-    /// The propositions of the rule's _body_, atoms and conditions alike, in
-    /// their given order.
-    pub fn body(&self) -> impl Iterator<Item = Proposition<&Atom<L>, &Cond<L>>> {
-        self.body.iter().map(Proposition::as_ref)
+    /// The rule's _body_. The head is _not_ part of it, as otherwise, every
+    /// rule would be falsely classified as self-recursive.
+    pub fn body(&self) -> &Conjunction<L> {
+        &self.body
     }
 
-    /// The atoms of the rule's _body_. The head is _not_ among them, as
-    /// otherwise, every rule would be falsely classified as self-recursive.
-    pub fn atoms(&self) -> impl Iterator<Item = &Atom<L>> {
-        self.body().filter_map(Proposition::atom)
-    }
-
-    /// The atoms of the rule's _body_ which are _not_ negated.
-    pub fn positive_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
-        self.atoms().filter(|atom| atom.is_positive())
-    }
-
-    /// The atoms of the rule's _body_ which are negated.
-    pub fn negated_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
-        self.atoms().filter(|atom| atom.is_negated())
-    }
-
-    /// The conditions of the rule's body. Conditions constrain a variable's
-    /// domain.
-    pub fn conditions(&self) -> impl Iterator<Item = &Cond<L>> {
-        self.body().filter_map(Proposition::cond)
-    }
-
-    /// If the rule references the predicate `identifier` names. Takes a
+    /// If the rule's body references the predicate `identifier` names. Takes a
     /// predicate name, not a rule name, which is why it is
     /// [`Language::PredId`] rather than [`Language::RuleId`].
     pub fn references(&self, identifier: &L::PredId) -> bool {
-        self.atoms().find(|atom| atom.id() == identifier).is_some()
+        self.body.references(identifier)
     }
 
     /// What the frontend attached to this rule.

@@ -42,7 +42,8 @@
 //! `fixpoint(red, blue)`, before each predicate is bound to its element of it.
 
 use super::{
-    Atom, Bind, Cond, IdOf, Identifiable, Identifier, Language, Lit, Predicate, Rule, TypedVar,
+    Atom, Bind, Cond, Conjunction, IdOf, Identifiable, Identifier, Language, Lit, Predicate, Rule,
+    TypedVar,
 };
 use crate::{
     frontend::{ExecutionOrder, analysis::PredicateComponent},
@@ -295,7 +296,7 @@ impl<'a, L: Language> Translator<'a, L> {
     /// One rule: its body as a conjunctive query, projected onto the columns
     /// its predicate declares.
     fn rule(&self, predicate: &Predicate<L>, rule: &Rule<L>) -> Expr {
-        let relation = self.conjunctive_query(rule);
+        let relation = self.conjunctive_query(rule.body());
 
         // Verification ensured that the head is dense over its predicate's
         // columns: every column filled, and none of them twice (but not
@@ -323,15 +324,15 @@ impl<'a, L: Language> Translator<'a, L> {
     /// the body's positive atoms on the variables they share. Then, each
     /// negated atom removes what it matches by an [`AntiJoinExpr`] of its own,
     /// on all of its variables, which the positive atoms bind. Finally, the
-    /// rule's [Rule::conditions()] are applied on top of the expression as a
-    /// [SelectionExpr].
+    /// body's [conditions](Conjunction::conditions) are applied on top of the
+    /// expression as a [SelectionExpr].
     ///
     /// One antijoin per negated atom is what makes `!r(x), !s(x)` mean
     /// `¬r ∧ ¬s`, as in Datalog. Joining the negated atoms and antijoining once
     /// would compute `¬(r ∧ s)` instead.
-    fn conjunctive_query(&self, rule: &Rule<L>) -> Expr {
-        let conjunctive = self.conjunctive_fragment(rule.positive_atoms());
-        let conjunctive = rule.negated_atoms().fold(conjunctive, |acc, negated_atom| {
+    fn conjunctive_query(&self, body: &Conjunction<L>) -> Expr {
+        let conjunctive = self.conjunctive_fragment(body.positive_atoms());
+        let conjunctive = body.negated_atoms().fold(conjunctive, |acc, negated_atom| {
             let negated_atom = self.atom(negated_atom);
             Expr::from(AntiJoinExpr {
                 on: antijoin_variables(&negated_atom.variables),
@@ -342,7 +343,7 @@ impl<'a, L: Language> Translator<'a, L> {
 
         // All conditions become one condition by ANDing them, and a rule with
         // none keeps `conjunctive` unwrapped rather than gaining a vacuous selection.
-        rule.conditions()
+        body.conditions()
             .map(condition)
             .reduce(|left, right| {
                 Expr::from(BinaryExpr {

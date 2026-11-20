@@ -6,7 +6,7 @@
 
 use super::display::separated;
 use super::graph_utils::gabow;
-use super::{Cond, IdOf, Identifiable, Language, LogicalProgram, Predicate, Rule, TypedVar};
+use super::{Cond, Identifiable, Language, LogicalProgram, Predicate, Rule, TypedVar};
 use crate::error::SyntaxError;
 use crate::frontend::Atom;
 #[cfg(debug_assertions)]
@@ -338,7 +338,7 @@ impl<'a, L: Language> PredicateDependencyGraph<'a, L> {
             .map(|predicate| {
                 predicate
                     .rules()
-                    .flat_map(|rule| rule.atoms())
+                    .flat_map(|rule| rule.body().atoms())
                     .filter_map(|atom| {
                         predicates.get_index_of(atom.id()).map(|node_idx| {
                             let label = if atom.is_positive() {
@@ -389,7 +389,7 @@ impl<'a, L: Language> PredicateDependencyGraph<'a, L> {
     /// What is wrong with the body atoms of `site`'s rule: each has to
     /// reference a predicate, and fit that predicate's arity.
     fn body_malformations(&self, site: Site<'a, L>) -> impl Iterator<Item = Malformation<'a, L>> {
-        site.rule.atoms().flat_map(move |atom| {
+        site.rule.body().atoms().flat_map(move |atom| {
             let referenced = self.predicates.get(atom.id()).copied();
             let dangling = referenced
                 .is_none()
@@ -719,26 +719,23 @@ impl<'a, L: Language> Site<'a, L> {
             return Vec::new();
         }
         let rule = self.rule;
-        let bound: HashSet<&IdOf<L::Var>> = rule
-            .positive_atoms()
-            .flat_map(Atom::vars)
-            .map(Identifiable::id)
-            .collect();
-        let bound = &bound;
+        let body = rule.body();
         let occurrences = iter::once((Occurrence::Head, rule.head().vars().collect::<Vec<_>>()))
             .chain(
-                rule.negated_atoms()
+                body.negated_atoms()
                     .map(|atom| (Occurrence::Negated(atom), atom.vars().collect())),
             )
             .chain(
-                rule.conditions()
+                body.conditions()
                     .map(|cond| (Occurrence::Condition(cond), cond.vars().collect())),
             );
         occurrences
             .flat_map(|(occurrence, vars)| {
                 let mut reported = HashSet::new();
                 vars.into_iter()
-                    .filter(move |var| !bound.contains(var.id()) && reported.insert(var.id()))
+                    .filter(move |var| {
+                        !body.bound_vars().contains_key(var.id()) && reported.insert(var.id())
+                    })
                     .map(move |var| Malformation::Unbound {
                         site: self,
                         var,
