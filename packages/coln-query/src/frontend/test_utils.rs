@@ -91,12 +91,22 @@ pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> Rule<TestLanguage> 
     Rule {
         id: name.into(),
         head: atom(head),
-        body: body
-            .iter()
-            .map(|spec| cond(spec).map_or_else(|| Prop::Atom(atom(spec)), Prop::Cond))
-            .collect(),
+        body: conjunction(body),
         meta: (),
     }
+}
+
+/// A conjunction of `specs`, each an [`atom`] spec, or a [`cond`] spec.
+pub(super) fn conjunction(specs: &[&str]) -> Conjunction<TestLanguage> {
+    specs
+        .iter()
+        .map(|spec| cond(spec).map_or_else(|| Prop::Atom(atom(spec)), Prop::Cond))
+        .collect()
+}
+
+/// The variable `name`, as an [`atom`] spec spells it.
+pub(super) fn var(name: &str) -> TestTypedVar {
+    TestTypedVar { name: name.into() }
 }
 
 /// A condition written as `term operator term`, if `spec` is one: three
@@ -226,6 +236,14 @@ impl Language for TestLanguage {
     type Var = TestTypedVar;
     type Lit = TestLit;
     type RuleMeta = ();
+
+    fn derive_pred_id(base: &PredicateName, tag: &'static str) -> PredicateName {
+        format!("{base}#{tag}").as_str().into()
+    }
+
+    fn derive_rule_id(base: &RuleName, tag: &'static str) -> RuleName {
+        format!("{base}#{tag}").as_str().into()
+    }
 }
 
 pub(super) type TestPredicate = Predicate<TestLanguage>;

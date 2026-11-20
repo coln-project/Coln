@@ -5,11 +5,13 @@
 mod analysis;
 mod display;
 mod graph_utils;
+mod laws;
 #[cfg(test)]
 mod test_utils;
 mod translation;
 mod visualize;
 
+pub use laws::Law;
 pub use translation::Prepared;
 // Unused until a caller outside this module renders an analysis.
 #[allow(unused_imports)]
@@ -62,6 +64,23 @@ pub trait Language: Clone + fmt::Debug {
     /// What a frontend attaches to each of its rules, such as where in its
     /// source a rule stems from. `()` for nothing.
     type RuleMeta: fmt::Debug + Clone;
+
+    /// Derives a fresh predicate identifier derived from `base` and `tag`.
+    /// Ideal for creating related helper predicates for predicate `base`.
+    /// For example, a [`Law`]'s consequent may become a helper predicate which
+    /// the [law's](Law) main predicate then references. It has to be:
+    ///
+    /// - distinct from every identifier the frontend's source can spell,
+    /// - injective in `(base, tag)`, so that no two derivations coincide, not
+    ///   even ones from derived identifiers,
+    /// - and deterministic, so that one program always gets the same names.
+    fn derive_pred_id(base: &Self::PredId, tag: &'static str) -> Self::PredId;
+
+    /// Derives a fresh rule identifier derived from `base` and `tag` like
+    /// [`derive_pred_id`](Self::derive_pred_id) for a predicate. A rule's own
+    /// name only has to read well, as translation makes the names of a
+    /// component's rules unique anyway.
+    fn derive_rule_id(base: &Self::RuleId, tag: &'static str) -> Self::RuleId;
 }
 
 pub trait LogicalProgram {
@@ -536,14 +555,48 @@ impl<L: Language> Cond<L> {
 /// An atom `name(term, …)` referencing the predicate `name`, possibly negated.
 #[derive(Debug, Clone)]
 pub struct Atom<L: Language> {
-    pub(crate) name: L::PredId,
-    pub(crate) negated: bool,
+    name: L::PredId,
+    negated: bool,
     /// See [`bindings`](Self::bindings).
     #[allow(clippy::type_complexity)]
-    pub(crate) bindings: Vec<(usize, Bind<L::Var, L::Lit>)>,
+    bindings: Vec<(usize, Bind<L::Var, L::Lit>)>,
 }
 
 impl<L: Language> Atom<L> {
+    /// A positive atom over `name` binding `fields` positionally, that is,
+    /// densely, as a rule's [head](Rule::head) has to.
+    pub fn new_head(name: L::PredId, fields: Vec<Bind<L::Var, L::Lit>>) -> Self {
+        Self::new(name, false, fields.into_iter().enumerate())
+    }
+
+    /// A positive atom over `name` binding `fields` positionally and sparsely.
+    pub fn new_positive(
+        name: L::PredId,
+        fields: impl IntoIterator<Item = (usize, Bind<L::Var, L::Lit>)>,
+    ) -> Self {
+        Self::new(name, false, fields)
+    }
+
+    /// A negated atom over `name` binding `fields` positionally and sparsely.
+    pub fn new_negated(
+        name: L::PredId,
+        fields: impl IntoIterator<Item = (usize, Bind<L::Var, L::Lit>)>,
+    ) -> Self {
+        Self::new(name, true, fields)
+    }
+
+    fn new(
+        name: L::PredId,
+        negated: bool,
+        fields: impl IntoIterator<Item = (usize, Bind<L::Var, L::Lit>)>,
+    ) -> Self {
+        Self {
+            name,
+            negated,
+            bindings: fields.into_iter().collect(),
+        }
+    }
+
     pub fn is_positive(&self) -> bool {
         !self.negated
     }
@@ -612,6 +665,12 @@ pub trait TypedVar: Identifiable + fmt::Debug {
     }
 
     fn ty(&self) -> ScalarType;
+
+    /// The column carrying this variable's values: named after it, and of its
+    /// type.
+    fn column(&self) -> Column {
+        Column::new(self.name().to_string(), self.ty())
+    }
 }
 
 pub trait Lit: fmt::Debug {
