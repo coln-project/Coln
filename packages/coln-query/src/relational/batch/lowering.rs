@@ -24,11 +24,11 @@
 //! multi-way equi joins (FLIR's native n-ary node, consumed directly),
 //! cartesian products, projections onto columns and literals, equality
 //! selections against literals, unions, distinct, outputs (also bound to a
-//! variable, as the FLIR frontend writes them), and fixed points whose
-//! step is a single relational expression. Everything that needs the
-//! scalar engine (computed columns, general conditions) and the
-//! remaining operators (anti join, difference) fail with a clear error
-//! instead of a wrong answer.
+//! variable, as the FLIR frontend writes them), and fixed points with one
+//! accumulator, whose step may name intermediate relations before its
+//! result. Everything that needs the scalar engine (computed columns,
+//! general conditions) and the remaining operators (anti join, difference)
+//! fail with a clear error instead of a wrong answer.
 //!
 //! The tests at the bottom build up in difficulty and double as a guided
 //! tour of the translation.
@@ -373,9 +373,11 @@ impl Lowerer {
     }
 
     /// A fixed point defines its accumulator as a recursive relation:
-    /// one base rule from the initializer, one rule per step statement,
-    /// all with the accumulator as their head. Semi-naive evaluation in
-    /// coln-batch then iterates them to the fixpoint.
+    /// one base rule from the initializer and one rule from the step's
+    /// result, both with the accumulator as their head. Relations the step
+    /// names on the way become derived relations in the same recursion.
+    /// Semi-naive evaluation in coln-batch then iterates them to the
+    /// fixpoint.
     ///
     /// Only a single accumulator is supported, whose relation is returned.
     /// The fixed point evaluates to a 1-tuple of it.
@@ -403,12 +405,34 @@ impl Lowerer {
             },
         );
 
+        // The step may name intermediate relations before its result, as the
+        // FLIR frontend does with one per recursive rule. Each becomes a
+        // derived relation of its own, read by the step rule and reading the
+        // accumulator, so it joins the recursion. Its name is only visible
+        // inside the step.
+        let mut locals = Vec::new();
         let result = (|| {
-            let [step] = fixed_point.step.stmts.as_slice() else {
-                bail!("batch lowering expects exactly one statement in a fixed point step");
+            let Some((step, intermediates)) = fixed_point.step.stmts.split_last() else {
+                bail!("the fixed point step for {head} is empty");
             };
+            for intermediate in intermediates {
+                let Stmt::Var(var) = intermediate else {
+                    bail!(
+                        "batch lowering expects the fixed point step for {head} to bind \
+                         variables before its result"
+                    );
+                };
+                if self.env.contains_key(&var.name) || self.tuples.contains_key(&var.name) {
+                    bail!(
+                        "the fixed point step for {head} rebinds {}, which is already bound",
+                        var.name
+                    );
+                }
+                locals.push(var.name.clone());
+                self.lower_var_stmt(var)?;
+            }
             let Stmt::Expr(step_expr) = step else {
-                bail!("batch lowering expects the fixed point step to be an expression");
+                bail!("batch lowering expects the fixed point step to end in an expression");
             };
             let Expr::Tuple(step_tuple) = &step_expr.expr else {
                 bail!("batch lowering expects the fixed point step to be a tuple");
@@ -430,6 +454,10 @@ impl Lowerer {
             Ok(())
         })();
 
+        for local in &locals {
+            self.env.remove(local);
+            self.tuples.remove(local);
+        }
         match previous {
             Some(info) => {
                 self.env.insert(accumulator.clone(), info);
@@ -1973,5 +2001,81 @@ mod tests {
             edb
         });
         assert_eq!(rows(result.get("targets").unwrap()), vec![vec![1], vec![2]]);
+    }
+
+    /// Step 21: a fixed point step that names a relation before its result,
+    /// as the FLIR frontend writes one per recursive rule. The named relation
+    /// is derived from the accumulator and feeds it back, so both recurse
+    /// together; outside the step its name is unknown.
+    #[test]
+    fn s21_a_fixed_point_step_can_name_intermediate_relations() {
+        let closure = |after: Vec<Stmt>| {
+            let mut stmts = vec![
+                let_rel("edges", SourceExpr::new(src("edge"))),
+                let_rel(
+                    "closure",
+                    FixedPointIterExpr {
+                        accumulators: vec![("cur".to_string(), var("edges"))],
+                        step: BlockStmt {
+                            stmts: vec![
+                                let_rel(
+                                    "walked",
+                                    EquiJoinExpr {
+                                        left: Expr::from(AliasExpr {
+                                            relation: var("cur"),
+                                            alias: "walk".to_string(),
+                                        }),
+                                        right: Expr::from(AliasExpr {
+                                            relation: var("edges"),
+                                            alias: "step".to_string(),
+                                        }),
+                                        on: vec![(var("to"), var("from"))],
+                                        attributes: Some(named_columns(&[
+                                            ("from", "walk.from"),
+                                            ("to", "step.to"),
+                                        ])),
+                                    },
+                                ),
+                                Stmt::from(ExprStmt {
+                                    expr: Expr::from(TupleExpr {
+                                        elements: vec![var("walked")],
+                                    }),
+                                }),
+                            ],
+                        },
+                    },
+                ),
+                let_rel(
+                    "closure_set",
+                    GetIndexExpr {
+                        target: var("closure"),
+                        index: lit(0),
+                    },
+                ),
+            ];
+            stmts.extend(after);
+            lower_plan(stmts)
+        };
+
+        let plan = closure(vec![out("closure_set")]).unwrap();
+        let result = run(&plan, {
+            let mut edb = Catalog::new();
+            edb.insert(rel("edge", ["from", "to"], &[(0, 1), (1, 2), (2, 3)]));
+            edb
+        });
+        assert_eq!(
+            rows(result.get("closure").unwrap()),
+            vec![
+                vec![0, 1],
+                vec![0, 2],
+                vec![0, 3],
+                vec![1, 2],
+                vec![1, 3],
+                vec![2, 3],
+            ]
+        );
+
+        let err = closure(vec![out("walked")]).unwrap_err();
+        assert!(format!("{err:#}").contains("walked"), "{err:#}");
     }
 }
