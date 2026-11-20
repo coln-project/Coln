@@ -10,10 +10,11 @@
 //! whole. Both get the same base rows, and every view must hold the same
 //! rows on both.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use anyhow::Result;
 use coln_flir_rs::ir::EntityVariant;
+use dbsp::typed_batch::IndexedZSetReader;
 
 use super::views::ViewProgram;
 use crate::api::deltas::StoreDelta;
@@ -21,7 +22,10 @@ use crate::api::query::FlirProgram;
 use crate::pipeline::Pipeline;
 use crate::relational::Runtime;
 use crate::relational::expr::{SinkId, SourceId};
-use crate::test_utils::flir::{Edge, Flir, GraphRealm, JsonFlir, TriangleRealm, Vertex};
+use crate::relational::relation::TupleValue;
+use crate::test_utils::flir::{
+    Edge, Flir, GraphRealm, JsonFlir, TransitiveClosureRealm, TriangleRealm, Vertex,
+};
 
 /// Run the views of realm `R` over `rows` on the batch backend and compare
 /// each with the incremental backend. Returns the number of rows per view.
@@ -61,15 +65,29 @@ fn views_match_incremental<R: JsonFlir>(rows: StoreDelta) -> Result<Vec<(String,
 
     let mut sizes = Vec::new();
     for view in views {
+        // The batch backend reports a view as a set. The incremental one
+        // counts how often a row of a recursive view is derived, e.g. twice
+        // for a vertex on a cycle, which reaches itself directly and around
+        // the cycle. So compare which rows each holds, not their counts.
         // One commit from empty, so the incremental delta is the full state.
-        let on_incremental = incremental.output(view)?.debug_view(false).to_zset();
+        let on_incremental: BTreeSet<TupleValue> = incremental
+            .output(view)?
+            .debug_view(false)
+            .to_zset()
+            .iter()
+            .map(|(row, (), weight)| {
+                assert!(weight > 0, "view {view} holds {row:?} {weight} times");
+                row
+            })
+            .collect();
         let on_batch = batch.output(view)?;
+        let batch_rows: BTreeSet<TupleValue> = on_batch.rows().iter().cloned().collect();
         assert_eq!(
-            on_batch.to_debug_zset(),
-            on_incremental,
-            "view {view} of {}",
-            R::NAME
+            batch_rows.len(),
+            on_batch.len(),
+            "view {view} repeats a row"
         );
+        assert_eq!(batch_rows, on_incremental, "view {view} of {}", R::NAME);
         sizes.push((view.as_str().to_string(), on_batch.len()));
     }
     sizes.sort();
@@ -111,6 +129,24 @@ fn triangle_views_match_incremental() -> Result<()> {
     assert_eq!(
         views_match_incremental::<TriangleRealm>(driver.next_epoch())?,
         [("view.triangle".to_string(), 2)]
+    );
+    Ok(())
+}
+
+#[test]
+fn transitive_closure_views_match_incremental() -> Result<()> {
+    let mut driver = Flir::<TransitiveClosureRealm>::new();
+    let [a, b, c, _lonely] = [(); 4].map(|()| driver.insert(Vertex::new));
+    // A path a → b → c, with a cycle between b and c.
+    for (from, to) in [(&a, &b), (&b, &c), (&c, &b)] {
+        driver.insert(|row_id| Edge::new(row_id, from, to));
+    }
+
+    // Every vertex reaches itself (4), and a reaches b and c, b reaches c,
+    // c reaches b (4 more). The cycle adds nothing new after one round.
+    assert_eq!(
+        views_match_incremental::<TransitiveClosureRealm>(driver.next_epoch())?,
+        [("init.trans-closure.connected".to_string(), 8)]
     );
     Ok(())
 }
