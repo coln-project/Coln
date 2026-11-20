@@ -43,6 +43,8 @@
 
 mod lowering;
 #[cfg(test)]
+mod realm_fuzz;
+#[cfg(test)]
 mod realm_tests;
 mod values;
 pub mod views;
