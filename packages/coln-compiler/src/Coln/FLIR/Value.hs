@@ -56,7 +56,7 @@ data El
   deriving (Show, Eq, Generic)
 
 data Atom = Atom
-  { entity :: GlobalSymbol
+  { table :: GlobalSymbol
   , rowId :: Maybe El
   , values :: [El]
   }
@@ -77,8 +77,7 @@ data Law = Law
 data Rule = Rule
   { context :: Context
   , antecedents :: [Prop]
-  , definand :: GlobalSymbol
-  , args :: [El]
+  , consequent :: Atom
   }
 
 data Query = Query

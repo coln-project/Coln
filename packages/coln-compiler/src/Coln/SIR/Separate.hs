@@ -85,16 +85,16 @@ theoryShapeOf cs a v = case a of
 propAt :: CtxLen -> V.Ty N Set -> V.El N Set -> S.Prop
 propAt n = \case
   V.EltOf _ x args -> \v ->
-    S.Atom x (separate n v) (separate n <$> args)
+    S.PAtom $ S.Atom x (separate n v) (separate n <$> args)
   V.Record rt -> \v -> do
     let go [] _ = []
         go ((x, k) : rest) vs = do
           let v' = V.proj v x
           (x, propAt n (k vs) v') : go rest (vs :> Pair SSet v')
-    S.And $ fromList $ go (toList rt.fieldTypes) rt.capture
+    S.PAnd $ fromList $ go (toList rt.fieldTypes) rt.capture
   V.BuiltinTy _ -> \_ -> S.trueProp
   V.Eq at lhs rhs -> \_ ->
-    S.Eq (shapeOf at) (separate n lhs) (separate n rhs)
+    S.PEq (shapeOf at) (separate n lhs) (separate n rhs)
 
 instance Separate (V.Ty N Set) S.Query where
   separate n a =
@@ -102,9 +102,9 @@ instance Separate (V.Ty N Set) S.Query where
 
 defsOf :: [(Name, S.Shape)] -> [S.Prop] -> S.Prop -> GeneratorWriter ()
 defsOf cols ante = \case
-  S.Atom tn _ args -> emitRule (Rule cols ante tn args)
-  S.And d -> forM_ (toList d) \(x, p) -> local (\p -> p :> x) (defsOf cols ante p)
-  S.Eq _ _ _ -> panic "not supported: path constructor"
+  S.PAtom a -> emitRule (Rule cols ante a)
+  S.PAnd d -> forM_ (toList d) \(x, p) -> local (\p -> p :> x) (defsOf cols ante p)
+  S.PEq _ _ _ -> panic "not supported: path constructor"
 
 addToVariants :: S.Shape -> GeneratorWriter ()
 addToVariants = \case
@@ -115,13 +115,16 @@ addToVariants = \case
 
 addParameterRules :: [(Name, S.Shape)] -> [S.Prop] -> S.Prop -> GeneratorWriter ()
 addParameterRules ctx ante = \case
-  S.Atom tn _ args ->
-    emitRule $ Rule ctx ante tn args
-  S.And _ -> panic "not supported: constructor producing a tuple"
-  S.Eq _ _ _ -> panic "not supported: constructor producing an equality"
+  S.PAtom a ->
+    emitRule $ Rule ctx ante a
+  S.PAnd _ -> panic "not supported: constructor producing a tuple"
+  S.PEq _ _ _ -> panic "not supported: constructor producing an equality"
 
 atomOfArgs :: GlobalSymbol -> Int -> S.Prop
-atomOfArgs tn n = S.Atom tn S.Erased [S.Var (reverseId n i) | i <- fIdsUpTo n]
+atomOfArgs tn n = atomOfArgs' tn n n V.Erased
+
+atomOfArgs' :: GlobalSymbol -> Int -> Int -> V.El N Set -> S.Prop
+atomOfArgs' tn n k v = S.PAtom $ S.Atom tn (separate n v) [S.Var (reverseId n i) | i <- fIdsUpTo k]
 
 makePrimaryKey :: SUniverse Set Theory -> PrimaryKey -> Maybe PrimaryKey
 makePrimaryKey SPropU k = Just k
@@ -155,19 +158,20 @@ separateGenerator gen = do
           Holy -> defsOf ctx props codProp
           Profane -> emitLaw (Law Monitored ctx props [codProp])
       HSet -> do
+        let retName = freshNameFor names
+        let retShape = shapeOf a
+        let ctx' = ctx ++ [(retName, retShape)]
+        let n' = n + 1
         case gen.providence of
           Holy -> do
             emitTable $ Table Cons ctx (Just pkey)
             local (:> "foreignKey") $ emitLaw
                (Law Enforced ctx [atomOfArgs x n] props)
             addToVariants (shapeOf a)
+            let last = V.local (FId n)
             local (:> "params") $
-              addParameterRules ctx [atomOfArgs x n] (propAt n a V.Erased)
+              addParameterRules ctx' [atomOfArgs' x n' n last] (propAt n' a last)
           Profane -> do
-            let retName = freshNameFor names
-            let retShape = shapeOf a
-            let ctx' = ctx ++ [(retName, retShape)]
-            let n' = n + 1
             let types' = types ++ [a]
             let props' =
                   [propAt n' a (V.local i) | (i, a) <- fIdsUpTo n' `zip` types']

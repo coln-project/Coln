@@ -37,8 +37,7 @@ data Table = Table
 data Rule = Rule
   { inCtx :: [(Name, Shape)]
   , antecedent :: [Prop]
-  , definand :: GlobalSymbol
-  , args :: [El Set]
+  , consequent :: Atom
   }
 
 data LawVariant = Enforced | Monitored

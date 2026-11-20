@@ -88,7 +88,7 @@ instance ToSexpInContext El where
     
 instance ToSexpInContext Atom where
   toSexp' c a = group_ $
-    [toSexp a.entity] ++
+    [toSexp a.table] ++
     optional (fmap (\t -> group_ ["id", toSexp' c t]) a.rowId) ++
     (toSexp' c <$> a.values)
 
@@ -116,7 +116,7 @@ instance ToSexp Rule where
     [ "rule"
     , toSexp r.context
     , toSexp' r.context r.antecedents
-    , group_ $ [toSexp r.definand] ++ fmap (toSexp' r.context) r.args
+    , toSexp' r.context r.consequent
     ]
 
 instance ToSexp Query where

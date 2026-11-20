@@ -134,14 +134,17 @@ equate (S.Tuple fs) v0 v1 =
   mconcat [equate t (proj v0 x) (proj v1 x) | (x, t) <- toList fs]
 equate S.Unstored _ _ = mempty
 
+instance Flatten S.Atom V.Atom where
+  flatten l (S.Atom tn t args) = do
+    mv <- asAtomHead <$> flatten l t
+    argvs <- traverse (flatten l) args
+    pure (V.Atom tn mv (concatEls argvs))
+
 instance Flatten S.Prop Props where
   flatten l = \case
-    S.Atom tn t args -> do
-      mv <- asAtomHead <$> flatten l t
-      argvs <- traverse (flatten l) args
-      pure $ single $ V.PAtom (V.Atom tn mv (concatEls argvs))
-    S.And ps -> mconcat <$> traverse (flatten l) (toList ps.values)
-    S.Eq sh t0 t1 -> do
+    S.PAtom a -> single . V.PAtom <$> flatten l a
+    S.PAnd ps -> mconcat <$> traverse (flatten l) (toList ps.values)
+    S.PEq sh t0 t1 -> do
       v0 <- flatten l t0
       v1 <- flatten l t1
       pure $ equate sh v0 v1
@@ -193,14 +196,13 @@ flattenLaw r = do
 
 flattenRule :: S.Rule -> V.Rule
 flattenRule r = do
-  let ((ante, args), vars, ps) = runFlatM $ do
+  let ((ante, cons), vars, ps) = runFlatM $ do
         vs <- bindTele BwdNil r.inCtx
         ante <- flatten vs r.antecedent
-        args <- concatEls <$> traverse (flatten vs) r.args
-        pure (ante, args)
+        cons <- flatten vs r.consequent
+        pure (ante, cons)
   V.Rule
     { V.context = V.Context vars
     , V.antecedents = toList (ps <> ante)
-    , V.definand = r.definand
-    , V.args = args
+    , V.consequent = cons
     }

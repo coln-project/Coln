@@ -25,10 +25,16 @@ data El :: MLevel -> Type where
   Lit :: Literal -> El Set
   Erased :: El Set
 
+data Atom = Atom
+  { table :: GlobalSymbol
+  , rowId :: El Set
+  , args :: [El Set]
+  }
+
 data Prop
-  = Atom GlobalSymbol (El Set) [El Set]
-  | And (Dict Prop)
-  | Eq Shape (El Set) (El Set)
+  = PAtom Atom
+  | PAnd (Dict Prop)
+  | PEq Shape (El Set) (El Set)
 
 data ScalarType
   = RowId GlobalSymbol
@@ -47,7 +53,7 @@ shapeSize = \case
   Unstored -> 0
 
 trueProp :: Prop
-trueProp = And (fromList [])
+trueProp = PAnd (fromList [])
 
 data Abs a
   = Abs (Maybe Name) a
