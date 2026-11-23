@@ -5,6 +5,7 @@
 pub mod auto;
 pub mod error;
 pub mod frag;
+pub mod wire;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
