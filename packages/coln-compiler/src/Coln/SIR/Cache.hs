@@ -77,7 +77,7 @@ cache x sc v = do
         let boundStx = separate (sc.len + 1) <$> toList sc'.bound
         let ctx = zip (DList.toList sc'.names) (DList.toList sc'.shapes)
         let n' = sc'.len
-        emitTable $ Table (View Materialized) ctx (Just (PrimaryKey n'))
+        emitTable $ Table (View Materialized) ctx
         local (:> "definition") $ emitRule $
           Rule ctx (DList.toList $ sc'.preds n') (S.Atom tn S.Erased boundStx)
         pure $ S.SelectLast u tn (separate sc.len <$> toList sc.bound) (shapeOf a)

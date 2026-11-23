@@ -12,10 +12,10 @@ end
 realm named TRealm
 
 ```flir
-('root.X (ground ()))
-('root.rank (ground ((%a 'root.X) (%b int)) (primarykey 1)))
-('root.E (ground ((%a int))))
-('root.edge (ground ((%x 'root.X) (%a 'root.E)) (primarykey 1)))
+('root.X (table (ground) ()))
+('root.rank (table (ground (primarykey 1)) ((%a 'root.X) (%b int))))
+('root.E (table (ground) ((%a int))))
+('root.edge (table (ground (primarykey 1)) ((%x 'root.X) (%a 'root.E))))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ('root.rank.foreignKey
  (law

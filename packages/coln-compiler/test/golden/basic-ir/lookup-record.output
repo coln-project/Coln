@@ -23,8 +23,8 @@ end
 realm named TRealm
 
 ```flir
-('root.E (ground ((%a.name string) (%a.rank int))))
-('root.selected (ground ((%a 'root.E)) (primarykey 0)))
+('root.E (table (ground) ((%a.name string) (%a.rank int))))
+('root.selected (table (ground (primarykey 0)) ((%a 'root.E))))
 ('root.E.foreignKey
  (law enforced ((%a.name string) (%a.rank int)) (('root.E %a.name %a.rank)) ()))
 ('root.selected.foreignKey

@@ -19,19 +19,20 @@ end
 realm named TransitiveClosureSetRealm
 
 ```flir
-('root.V (ground ()))
-('root.E (ground ((%a 'root.V) (%b 'root.V))))
-('init.trans-closure.refl (cons ((%v 'root.V)) (primarykey 1)))
+('root.V (table (ground) ()))
+('root.E (table (ground) ((%a 'root.V) (%b 'root.V))))
+('init.trans-closure.refl (table cons ((%v 'root.V))))
 ('init.trans-closure.snoc
- (cons
+ (table
+  cons
   ((%v0 'root.V)
    (%v1 'root.V)
    (%v2 'root.V)
    (%a 'init.trans-closure.connected)
-   (%b 'root.E))
-  (primarykey 5)))
+   (%b 'root.E))))
 ('init.trans-closure.connected
- ((union 'init.trans-closure.refl 'init.trans-closure.snoc)
+ (table
+  (union 'init.trans-closure.refl 'init.trans-closure.snoc)
   ((%a 'root.V) (%b 'root.V))))
 ('init.trans-closure.refl.params
  (rule

@@ -10,20 +10,20 @@ end
 realm named GraphRealm
 
 ```flir
-('root.V (ground ()))
-('root.E (ground ((%a 'root.V) (%b 'root.V))))
+('root.V (table (ground) ()))
+('root.E (table (ground) ((%a 'root.V) (%b 'root.V))))
 ('view.outgoing-edges
- (view
+ (table
+  view
   ((%v 'root.V)
    (%outgoing-edges.into 'root.V)
-   (%outgoing-edges.has-edge 'root.E))
-  (primarykey 3)))
+   (%outgoing-edges.has-edge 'root.E))))
 ('view.incoming-edges
- (view
+ (table
+  view
   ((%v 'root.V)
    (%incoming-edges.outof 'root.V)
-   (%incoming-edges.has-edge 'root.E))
-  (primarykey 3)))
+   (%incoming-edges.has-edge 'root.E))))
 ('view.outgoing-edges.definition
  (rule
   ((%v 'root.V)

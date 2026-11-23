@@ -23,7 +23,7 @@ end
 realm named TRealm
 
 ```flir
-('root.boxed (ground ((%a.value.name string))))
+('root.boxed (table (ground) ((%a.value.name string))))
 ('root.boxed.foreignKey
  (law enforced ((%a.value.name string)) (('root.boxed %a.value.name)) ()))
 ```

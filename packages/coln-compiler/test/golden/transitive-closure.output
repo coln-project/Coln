@@ -19,10 +19,9 @@ end
 realm named TransitiveClosureRealm
 
 ```flir
-('root.V (ground ()))
-('root.E (ground ((%a 'root.V) (%b 'root.V))))
-('init.trans-closure.connected
- (view ((%a 'root.V) (%b 'root.V)) (primarykey 2)))
+('root.V (table (ground) ()))
+('root.E (table (ground) ((%a 'root.V) (%b 'root.V))))
+('init.trans-closure.connected (table view ((%a 'root.V) (%b 'root.V))))
 ('init.trans-closure.refl
  (rule
   ((%v 'root.V))

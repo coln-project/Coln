@@ -12,10 +12,10 @@ end
 realm named TRealm
 
 ```flir
-('root.IntEdge (ground ((%a int))))
-('root.StringEdge (ground ((%a string))))
-('root.intEdge (ground ((%a 'root.IntEdge)) (primarykey 0)))
-('root.stringEdge (ground ((%a 'root.StringEdge)) (primarykey 0)))
+('root.IntEdge (table (ground) ((%a int))))
+('root.StringEdge (table (ground) ((%a string))))
+('root.intEdge (table (ground (primarykey 0)) ((%a 'root.IntEdge))))
+('root.stringEdge (table (ground (primarykey 0)) ((%a 'root.StringEdge))))
 ('root.IntEdge.foreignKey (law enforced ((%a int)) (('root.IntEdge %a)) ()))
 ('root.StringEdge.foreignKey
  (law enforced ((%a string)) (('root.StringEdge %a)) ()))

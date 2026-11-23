@@ -24,8 +24,8 @@ end
 realm named TRealm
 
 ```flir
-('root.X (ground ()))
-('root.nested (ground ((%a.inner.value 'root.X))))
+('root.X (table (ground) ()))
+('root.nested (table (ground) ((%a.inner.value 'root.X))))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ('root.nested.foreignKey
  (law

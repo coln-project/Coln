@@ -44,9 +44,9 @@ instance ToSexp BuiltinTy where
     BuiltinInt -> "int"
     BuiltinString -> "string"
 
-instance ToSexp TableVariant where
+instance ToSexp (TableVariant PhysicalPrimaryKey) where
   toSexp v = case v of
-    SIR.Ground -> "ground"
+    SIR.Ground pk -> group_ ("ground" : optional (fmap toSexp pk))
     SIR.Cons -> "cons"
     SIR.Union variants -> group_ ("union" : fmap toSexp (toList variants))
     SIR.View _ -> "view"
@@ -63,7 +63,7 @@ instance (ToSexp a, ToSexp b) => ToSexp (a, b) where
 instance ToSexp Context where
   toSexp c = toSexp c.bindings
 
-instance ToSexp PrimaryKey where
+instance ToSexp PhysicalPrimaryKey where
   toSexp pk = group_ ["primarykey", toSexp pk.columns]
 
 optional :: Maybe a -> [a]
@@ -72,9 +72,10 @@ optional Nothing = []
 
 instance ToSexp Table where
   toSexp t = group_ $
-    [ toSexp t.tableVariant
+    [ "table"
+    , toSexp t.tableVariant
     , toSexp t.columns
-    ] ++ optional (toSexp <$> t.primaryKey)
+    ]
 
 instance ToSexp Literal where
   toSexp = \case

@@ -14,7 +14,7 @@ value: Base
 realm named TRealm
 
 ```flir
-('root.X (ground ()))
+('root.X (table (ground) ()))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ```
 

@@ -57,47 +57,46 @@ end
 realm named GraphOfGraphsRealm
 
 ```flir
-('root.base.V (ground ()))
-('root.base.E (ground ((%a 'root.base.V) (%b 'root.base.V))))
-('root.fiber.V (ground ((%a 'root.base.V))))
+('root.base.V (table (ground) ()))
+('root.base.E (table (ground) ((%a 'root.base.V) (%b 'root.base.V))))
+('root.fiber.V (table (ground) ((%a 'root.base.V))))
 ('root.fiber.E
- (ground ((%a 'root.base.V) (%b 'root.fiber.V) (%c 'root.fiber.V))))
+ (table (ground) ((%a 'root.base.V) (%b 'root.fiber.V) (%c 'root.fiber.V))))
 ('root.action.V
- (ground
+ (table
+  (ground (primarykey 4))
   ((%v0 'root.base.V)
    (%v1 'root.base.V)
    (%a 'root.base.E)
    (%b 'root.fiber.V)
-   (%c 'root.fiber.V))
-  (primarykey 4)))
+   (%c 'root.fiber.V))))
 ('root.action.E
- (ground
+ (table
+  (ground (primarykey 6))
   ((%v0 'root.base.V)
    (%v1 'root.base.V)
    (%a 'root.base.E)
    (%v0/a 'root.fiber.V)
    (%v1/a 'root.fiber.V)
    (%b 'root.fiber.E)
-   (%c 'root.fiber.E))
-  (primarykey 6)))
+   (%c 'root.fiber.E))))
 ('init.connection.t
- (view
+ (table
+  view
   ((%a.base 'root.base.V)
    (%a.fiber 'root.fiber.V)
    (%b.base 'root.base.V)
-   (%b.fiber 'root.fiber.V))
-  (primarykey 4)))
-('view.total.V
- (view ((%V.base 'root.base.V) (%V.fiber 'root.fiber.V)) (primarykey 2)))
+   (%b.fiber 'root.fiber.V))))
+('view.total.V (table view ((%V.base 'root.base.V) (%V.fiber 'root.fiber.V))))
 ('view.total.E
- (view
+ (table
+  view
   ((%v0.base 'root.base.V)
    (%v0.fiber 'root.fiber.V)
    (%v1.base 'root.base.V)
    (%v1.fiber 'root.fiber.V)
    (%E.base 'root.base.E)
-   (%E.fiber 'root.fiber.E))
-  (primarykey 6)))
+   (%E.fiber 'root.fiber.E))))
 ('init.connection.refl
  (rule
   ((%v.base 'root.base.V) (%v.fiber 'root.fiber.V))

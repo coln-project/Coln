@@ -24,14 +24,12 @@ end
 realm named BipartiteGraphRealm
 
 ```flir
-('root.red (ground ()))
-('root.blue (ground ()))
-('root.red-blue (ground ((%a 'root.red) (%b 'root.blue))))
-('root.blue-red (ground ((%a 'root.blue) (%b 'root.red))))
-('init.connection-info.red-red
- (view ((%a 'root.red) (%b 'root.red)) (primarykey 2)))
-('init.connection-info.blue-blue
- (view ((%a 'root.blue) (%b 'root.blue)) (primarykey 2)))
+('root.red (table (ground) ()))
+('root.blue (table (ground) ()))
+('root.red-blue (table (ground) ((%a 'root.red) (%b 'root.blue))))
+('root.blue-red (table (ground) ((%a 'root.blue) (%b 'root.red))))
+('init.connection-info.red-red (table view ((%a 'root.red) (%b 'root.red))))
+('init.connection-info.blue-blue (table view ((%a 'root.blue) (%b 'root.blue))))
 ('init.connection-info.red/refl
  (rule
   ((%v 'root.red))

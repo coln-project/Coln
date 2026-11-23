@@ -19,7 +19,7 @@ end
 realm named TRealm
 
 ```flir
-('root.P (ground () (primarykey 0)))
+('root.P (table (ground (primarykey 0)) ()))
 ('root.P.foreignKey (law enforced () (('root.P)) ()))
 ('root.witness (law monitored () () (('root.P) ('root.P))))
 ```

@@ -27,11 +27,11 @@ end
 realm named TRealm
 
 ```flir
-('root.Key (ground ()))
-('root.key (ground ((%a 'root.Key)) (primarykey 0)))
-('root.E (ground ((%a 'root.Key))))
-('root.f (ground ((%x 'root.Key) (%a 'root.E)) (primarykey 1)))
-('root.boxed (ground ((%a.image 'root.E))))
+('root.Key (table (ground) ()))
+('root.key (table (ground (primarykey 0)) ((%a 'root.Key))))
+('root.E (table (ground) ((%a 'root.Key))))
+('root.f (table (ground (primarykey 1)) ((%x 'root.Key) (%a 'root.E))))
+('root.boxed (table (ground) ((%a.image 'root.E))))
 ('root.Key.foreignKey (law enforced () (('root.Key)) ()))
 ('root.key.foreignKey
  (law enforced ((%a 'root.Key)) (('root.key %a)) (('root.Key (id %a)))))

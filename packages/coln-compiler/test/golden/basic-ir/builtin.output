@@ -11,9 +11,9 @@ end
 realm named TRealm
 
 ```flir
-('root.V (ground ()))
-('root.count (ground ((%a 'root.V) (%b int)) (primarykey 1)))
-('root.label (ground ((%a 'root.V) (%b string)) (primarykey 1)))
+('root.V (table (ground) ()))
+('root.count (table (ground (primarykey 1)) ((%a 'root.V) (%b int))))
+('root.label (table (ground (primarykey 1)) ((%a 'root.V) (%b string))))
 ('root.V.foreignKey (law enforced () (('root.V)) ()))
 ('root.count.foreignKey
  (law

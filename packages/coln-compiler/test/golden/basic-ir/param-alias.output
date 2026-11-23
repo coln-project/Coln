@@ -31,9 +31,11 @@ end
 realm named TRealm
 
 ```flir
-('root.model.X (ground ()))
+('root.model.X (table (ground) ()))
 ('root.boxed
- (ground ((%a.key int) (%a.modelValue 'root.model.X) (%a.value string))))
+ (table
+  (ground)
+  ((%a.key int) (%a.modelValue 'root.model.X) (%a.value string))))
 ('root.model.X.foreignKey (law enforced () (('root.model.X)) ()))
 ('root.boxed.foreignKey
  (law

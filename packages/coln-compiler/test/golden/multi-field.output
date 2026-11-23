@@ -84,8 +84,8 @@ end
 realm named MultiFieldRealm
 
 ```flir
-('root.T (ground ()))
-('view.pair (view ((%pair.a 'root.T) (%pair.b 'root.T)) (primarykey 2)))
+('root.T (table (ground) ()))
+('view.pair (table view ((%pair.a 'root.T) (%pair.b 'root.T))))
 ('view.pair.definition
  (rule
   ((%pair.a 'root.T) (%pair.b 'root.T))

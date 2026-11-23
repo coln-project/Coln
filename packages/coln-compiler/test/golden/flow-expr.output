@@ -20,19 +20,16 @@ end
 realm named GraphRealm
 
 ```flir
-('root.vertex (ground ()))
-('root.edge (ground ((%a 'root.vertex) (%b 'root.vertex))))
-('init.FlowExpr.const (cons ((%v 'root.vertex) (%a int)) (primarykey 2)))
+('root.vertex (table (ground) ()))
+('root.edge (table (ground) ((%a 'root.vertex) (%b 'root.vertex))))
+('init.FlowExpr.const (table cons ((%v 'root.vertex) (%a int))))
 ('init.FlowExpr.plus
- (cons
-  ((%v 'root.vertex) (%a 'init.FlowExpr.t) (%b 'init.FlowExpr.t))
-  (primarykey 3)))
+ (table cons ((%v 'root.vertex) (%a 'init.FlowExpr.t) (%b 'init.FlowExpr.t))))
 ('init.FlowExpr.flow
- (cons
-  ((%from 'root.vertex) (%into 'root.vertex) (%a 'root.edge))
-  (primarykey 3)))
+ (table cons ((%from 'root.vertex) (%into 'root.vertex) (%a 'root.edge))))
 ('init.FlowExpr.t
- ((union 'init.FlowExpr.const 'init.FlowExpr.plus 'init.FlowExpr.flow)
+ (table
+  (union 'init.FlowExpr.const 'init.FlowExpr.plus 'init.FlowExpr.flow)
   ((%a 'root.vertex))))
 ('init.FlowExpr.const.params
  (rule

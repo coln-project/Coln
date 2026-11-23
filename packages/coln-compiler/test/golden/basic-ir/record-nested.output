@@ -25,7 +25,9 @@ realm named TRealm
 
 ```flir
 ('root
- (ground ((%a.payload.name string) (%a.payload.inner.rank int)) (primarykey 0)))
+ (table
+  (ground (primarykey 0))
+  ((%a.payload.name string) (%a.payload.inner.rank int))))
 ('root.foreignKey
  (law
   enforced

@@ -32,8 +32,8 @@ end
 realm named TRealm
 
 ```flir
-('root.pointed (ground ((%a.point.rank int)) (primarykey 0)))
-('root.boxed (ground ((%a.key.rank int) (%a.value string))))
+('root.pointed (table (ground (primarykey 0)) ((%a.point.rank int))))
+('root.boxed (table (ground) ((%a.key.rank int) (%a.value string))))
 ('root.pointed.foreignKey
  (law enforced ((%a.point.rank int)) (('root.pointed %a.point.rank)) ()))
 ('root.pointed.total (law monitored () () (('root.pointed))))

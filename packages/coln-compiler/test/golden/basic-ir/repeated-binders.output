@@ -10,8 +10,8 @@ end
 realm named TRealm
 
 ```flir
-('root.X (ground ()))
-('root.Pair (ground ((%x 'root.X) (%x/a 'root.X))))
+('root.X (table (ground) ()))
+('root.Pair (table (ground) ((%x 'root.X) (%x/a 'root.X))))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ('root.Pair.foreignKey
  (law

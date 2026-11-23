@@ -24,8 +24,8 @@ end
 realm named TRealm
 
 ```flir
-('root.model.X (ground ()))
-('root.pointed (ground ((%a.point 'root.model.X)) (primarykey 0)))
+('root.model.X (table (ground) ()))
+('root.pointed (table (ground (primarykey 0)) ((%a.point 'root.model.X))))
 ('root.model.X.foreignKey (law enforced () (('root.model.X)) ()))
 ('root.pointed.foreignKey
  (law

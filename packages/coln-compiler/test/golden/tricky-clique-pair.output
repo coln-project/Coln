@@ -36,30 +36,33 @@ end
 realm named BipartiteGraphOverRealm
 
 ```flir
-('root.red (ground ()))
-('root.blue (ground ()))
-('root.red-blue (ground ((%a 'root.red) (%b 'root.blue))))
-('root.blue-red (ground ((%a 'root.blue) (%b 'root.red))))
-('root.red-over (ground ((%a 'root.red))))
-('root.blue-over (ground ((%a 'root.blue))))
+('root.red (table (ground) ()))
+('root.blue (table (ground) ()))
+('root.red-blue (table (ground) ((%a 'root.red) (%b 'root.blue))))
+('root.blue-red (table (ground) ((%a 'root.blue) (%b 'root.red))))
+('root.red-over (table (ground) ((%a 'root.red))))
+('root.blue-over (table (ground) ((%a 'root.blue))))
 ('root.red-blue-over
- (ground
+ (table
+  (ground)
   ((%v 'root.red) (%a 'root.red-over) (%w 'root.blue) (%b 'root.blue-over))))
 ('root.blue-red-over
- (ground
+ (table
+  (ground)
   ((%w 'root.blue) (%a 'root.blue-over) (%v 'root.red) (%b 'root.red-over))))
-('init.connection-info.red-red
- (view ((%a 'root.red) (%b 'root.red)) (primarykey 2)))
-('init.connection-info.blue-blue
- (view ((%a 'root.blue) (%b 'root.blue)) (primarykey 2)))
+('init.connection-info.red-red (table view ((%a 'root.red) (%b 'root.red))))
+('init.connection-info.blue-blue (table view ((%a 'root.blue) (%b 'root.blue))))
 ('init.connection-info.red-red-over
- (view
-  ((%v0 'root.red) (%a 'root.red-over) (%v1 'root.red) (%b 'root.red-over))
-  (primarykey 4)))
+ (table
+  view
+  ((%v0 'root.red) (%a 'root.red-over) (%v1 'root.red) (%b 'root.red-over))))
 ('init.connection-info.blue-blue-over
- (view
-  ((%w0 'root.blue) (%a 'root.blue-over) (%w1 'root.blue) (%b 'root.blue-over))
-  (primarykey 4)))
+ (table
+  view
+  ((%w0 'root.blue)
+   (%a 'root.blue-over)
+   (%w1 'root.blue)
+   (%b 'root.blue-over))))
 ('init.connection-info.red/refl
  (rule
   ((%v 'root.red))

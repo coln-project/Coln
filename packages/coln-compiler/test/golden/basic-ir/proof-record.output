@@ -17,7 +17,7 @@ end
 realm named TRealm
 
 ```flir
-('root.X (ground ()))
+('root.X (table (ground) ()))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ('root.witness
  (law monitored ((%x 'root.X)) (('root.X (id %x))) ((= 'root.X %x %x))))

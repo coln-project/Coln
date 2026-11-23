@@ -10,17 +10,17 @@ end
 realm named TriangleRealm
 
 ```flir
-('root.V (ground ()))
-('root.E (ground ((%a 'root.V) (%b 'root.V))))
+('root.V (table (ground) ()))
+('root.E (table (ground) ((%a 'root.V) (%b 'root.V))))
 ('view.triangle
- (view
+ (table
+  view
   ((%triangle.a 'root.V)
    (%triangle.b 'root.V)
    (%triangle.c 'root.V)
    (%triangle.f 'root.E)
    (%triangle.g 'root.E)
-   (%triangle.h 'root.E))
-  (primarykey 6)))
+   (%triangle.h 'root.E))))
 ('view.triangle.definition
  (rule
   ((%triangle.a 'root.V)

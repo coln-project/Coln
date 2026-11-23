@@ -18,9 +18,11 @@ end
 realm named TRealm
 
 ```flir
-('root.point (ground ()))
+('root.point (table (ground) ()))
 ('root.payload
- (ground ((%a 'root.point) (%b.name string) (%b.rank int)) (primarykey 1)))
+ (table
+  (ground (primarykey 1))
+  ((%a 'root.point) (%b.name string) (%b.rank int))))
 ('root.point.foreignKey (law enforced () (('root.point)) ()))
 ('root.payload.foreignKey
  (law

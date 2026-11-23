@@ -10,7 +10,7 @@ end
 realm named TRealm
 
 ```flir
-('root (ground ((%a.count int) (%a.label string)) (primarykey 0)))
+('root (table (ground (primarykey 0)) ((%a.count int) (%a.label string))))
 ('root.foreignKey
  (law
   enforced

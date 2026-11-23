@@ -25,8 +25,8 @@ end
 realm named TRealm
 
 ```flir
-('root.P (ground ((%a int)) (primarykey 1)))
-('root.package (ground ((%a.value int)) (primarykey 0)))
+('root.P (table (ground (primarykey 1)) ((%a int))))
+('root.package (table (ground (primarykey 0)) ((%a.value int))))
 ('root.P.foreignKey (law enforced ((%a int)) (('root.P %a)) ()))
 ('root.package.foreignKey
  (law

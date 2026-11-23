@@ -25,18 +25,17 @@ end
 realm named AnalysisRealm
 
 ```flir
-('root.Addr (ground ()))
-('root.Ref (ground ()))
-('root.Field (ground ()))
-('root.assign (ground ((%x 'root.Ref) (%y 'root.Ref))))
+('root.Addr (table (ground) ()))
+('root.Ref (table (ground) ()))
+('root.Field (table (ground) ()))
+('root.assign (table (ground) ((%x 'root.Ref) (%y 'root.Ref))))
 ('root.assign-to-field
- (ground ((%x 'root.Ref) (%f 'root.Field) (%y 'root.Ref))))
+ (table (ground) ((%x 'root.Ref) (%f 'root.Field) (%y 'root.Ref))))
 ('root.assign-from-field
- (ground ((%x 'root.Ref) (%y 'root.Ref) (%f 'root.Field))))
-('init.analysis.points-to
- (view ((%a 'root.Ref) (%b 'root.Addr)) (primarykey 2)))
+ (table (ground) ((%x 'root.Ref) (%y 'root.Ref) (%f 'root.Field))))
+('init.analysis.points-to (table view ((%a 'root.Ref) (%b 'root.Addr))))
 ('init.analysis.points-to-field
- (view ((%a 'root.Ref) (%b 'root.Field) (%c 'root.Addr)) (primarykey 3)))
+ (table view ((%a 'root.Ref) (%b 'root.Field) (%c 'root.Addr))))
 ('init.analysis.points-to/assign
  (rule
   ((%x 'root.Ref) (%y 'root.Ref) (%a 'root.Addr) (%b 'root.assign))

@@ -11,8 +11,8 @@ end
 realm named TRealm
 
 ```flir
-('root.X (ground () (primarykey 0)))
-('root.Y (ground () (primarykey 0)))
+('root.X (table (ground (primarykey 0)) ()))
+('root.Y (table (ground (primarykey 0)) ()))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ('root.Y.foreignKey (law enforced () (('root.Y)) ()))
 ('root.next (law monitored () (('root.X)) (('root.Y))))

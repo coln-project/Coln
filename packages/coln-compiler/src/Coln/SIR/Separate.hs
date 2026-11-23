@@ -126,7 +126,7 @@ atomOfArgs tn n = atomOfArgs' tn n n V.Erased
 atomOfArgs' :: GlobalSymbol -> Int -> Int -> V.El N Set -> S.Prop
 atomOfArgs' tn n k v = S.PAtom $ S.Atom tn (separate n v) [S.Var (reverseId n i) | i <- fIdsUpTo k]
 
-makePrimaryKey :: SUniverse Set Theory -> PrimaryKey -> Maybe PrimaryKey
+makePrimaryKey :: SUniverse Set Theory -> LogicalPrimaryKey -> Maybe LogicalPrimaryKey
 makePrimaryKey SPropU k = Just k
 makePrimaryKey SSetU _ = Nothing
 
@@ -139,15 +139,15 @@ separateGenerator gen = do
   let ctx = zip names shapes
   let n = length names
   let props = [propAt n a (V.local i) | (i, a) <- fIdsUpTo n `zip` types]
-  let pkey = PrimaryKey n
+  let pkey = LogicalPrimaryKey n
   case gen.codom of
     V.GenU u -> do
       case gen.providence of
         Holy -> case u of
-          SPropU -> emitTable (Table (View Materialized) ctx (Just pkey))
-          SSetU -> emitTable (Table (Union BwdNil) ctx Nothing)
+          SPropU -> emitTable (Table (View Materialized) ctx)
+          SSetU -> emitTable (Table (Union BwdNil) ctx)
         Profane -> do
-          emitTable (Table Ground ctx (makePrimaryKey u pkey))
+          emitTable (Table (Ground (makePrimaryKey u pkey)) ctx)
           local (:> "foreignKey") $ emitLaw
             (Law Enforced ctx [atomOfArgs x n] props)
     V.GenLift a -> case hlevelOf a of
@@ -164,7 +164,7 @@ separateGenerator gen = do
         let n' = n + 1
         case gen.providence of
           Holy -> do
-            emitTable $ Table Cons ctx (Just pkey)
+            emitTable $ Table Cons ctx
             local (:> "foreignKey") $ emitLaw
                (Law Enforced ctx [atomOfArgs x n] props)
             addToVariants (shapeOf a)
@@ -175,7 +175,7 @@ separateGenerator gen = do
             let types' = types ++ [a]
             let props' =
                   [propAt n' a (V.local i) | (i, a) <- fIdsUpTo n' `zip` types']
-            emitTable $ Table Ground ctx' (Just pkey)
+            emitTable $ Table (Ground (Just pkey)) ctx' 
             local (:> "foreignKey") $ emitLaw
               (Law Enforced ctx' [atomOfArgs x n'] props')
             local (:> "total") $ emitLaw

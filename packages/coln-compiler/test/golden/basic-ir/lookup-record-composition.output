@@ -29,14 +29,16 @@ end
 realm named TRealm
 
 ```flir
-('root.X (ground ()))
-('root.key (ground ((%a 'root.X) (%b.rank int)) (primarykey 1)))
-('root.PayloadAt (ground ((%a int))))
-('root.slot (ground ((%x 'root.X) (%a 'root.PayloadAt)) (primarykey 1)))
+('root.X (table (ground) ()))
+('root.key (table (ground (primarykey 1)) ((%a 'root.X) (%b.rank int))))
+('root.PayloadAt (table (ground) ((%a int))))
+('root.slot (table (ground (primarykey 1)) ((%x 'root.X) (%a 'root.PayloadAt))))
 ('root.payload
- (ground ((%rank int) (%a 'root.PayloadAt) (%b.name string)) (primarykey 2)))
-('root.E (ground ((%a string))))
-('root.edge (ground ((%x 'root.X) (%a 'root.E)) (primarykey 1)))
+ (table
+  (ground (primarykey 2))
+  ((%rank int) (%a 'root.PayloadAt) (%b.name string))))
+('root.E (table (ground) ((%a string))))
+('root.edge (table (ground (primarykey 1)) ((%x 'root.X) (%a 'root.E))))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ('root.key.foreignKey
  (law

@@ -40,13 +40,12 @@ newtype Context = Context { bindings :: [(LocalName, ValType)] }
 nameAt :: Context -> FId -> LocalName
 nameAt c (FId i) = fst $ c.bindings !! i
 
-newtype PrimaryKey = PrimaryKey { columns :: Int }
+newtype PhysicalPrimaryKey = PhysicalPrimaryKey { columns :: Int }
   deriving (Show, Eq, Generic)
 
 data Table = Table
-  { tableVariant :: TableVariant
+  { tableVariant :: TableVariant PhysicalPrimaryKey
   , columns :: Context
-  , primaryKey :: Maybe PrimaryKey
   }
   deriving (Show, Eq, Generic)
 

@@ -161,16 +161,16 @@ flattenColumn p = \case
 flattenColumns :: [(Name, S.Shape)] -> [(V.LocalName, V.ValType)]
 flattenColumns = concat . fmap (\(x, sh) -> flattenColumn (BwdNil :> x) sh)
 
-flattenPrimaryKey :: [S.Shape] -> S.PrimaryKey -> V.PrimaryKey
-flattenPrimaryKey shapes (S.PrimaryKey n) =
-  V.PrimaryKey $ sum [S.shapeSize sh | sh <- take n shapes]
+flattenPrimaryKey :: [S.Shape] -> S.LogicalPrimaryKey -> V.PhysicalPrimaryKey
+flattenPrimaryKey shapes (S.LogicalPrimaryKey n) =
+  V.PhysicalPrimaryKey $ sum [S.shapeSize sh | sh <- take n shapes]
 
 flattenTable :: S.Table -> V.Table
 flattenTable t =
   V.Table
-    { V.tableVariant = t.tableVariant
+    { V.tableVariant =
+      fmap (flattenPrimaryKey (snd <$> t.columns)) t.tableVariant
     , V.columns = V.Context $ flattenColumns t.columns
-    , V.primaryKey = fmap (flattenPrimaryKey (snd <$> t.columns)) t.primaryKey
     }
 
 bindTele :: Locals -> [(Name, S.Shape)] -> FlatM Locals

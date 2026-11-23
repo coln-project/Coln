@@ -20,9 +20,11 @@ end
 realm named TRealm
 
 ```flir
-('root.X (ground ()))
-('root.first (ground ((%a.left 'root.X) (%a.right 'root.X)) (primarykey 0)))
-('root.second (ground ((%a.left 'root.X) (%a.right 'root.X)) (primarykey 0)))
+('root.X (table (ground) ()))
+('root.first
+ (table (ground (primarykey 0)) ((%a.left 'root.X) (%a.right 'root.X))))
+('root.second
+ (table (ground (primarykey 0)) ((%a.left 'root.X) (%a.right 'root.X))))
 ('root.X.foreignKey (law enforced () (('root.X)) ()))
 ('root.first.foreignKey
  (law

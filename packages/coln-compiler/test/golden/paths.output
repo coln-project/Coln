@@ -19,9 +19,9 @@ end
 realm named PathsRealm
 
 ```flir
-('root.V (ground ()))
-('root.E (ground ((%a 'root.V) (%b 'root.V)) (primarykey 2)))
-('init.reachability.t (view ((%a 'root.V) (%b 'root.V)) (primarykey 2)))
+('root.V (table (ground) ()))
+('root.E (table (ground (primarykey 2)) ((%a 'root.V) (%b 'root.V))))
+('init.reachability.t (table view ((%a 'root.V) (%b 'root.V))))
 ('init.reachability.empty
  (rule ((%x 'root.V)) (('root.V (id %x))) ('init.reachability.t %x %x)))
 ('init.reachability.cons

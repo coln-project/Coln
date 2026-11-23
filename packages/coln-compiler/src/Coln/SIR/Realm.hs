@@ -19,19 +19,19 @@ data Materialization
   | Materialized
   deriving (Show, Eq, Generic)
 
-data TableVariant
-  = Ground
+newtype LogicalPrimaryKey = LogicalPrimaryKey Int
+  deriving (Show, Eq, Generic)
+
+data TableVariant pkey
+  = Ground (Maybe pkey)
   | Cons
   | Union (Bwd GlobalSymbol)
   | View Materialization
-  deriving (Show, Eq, Generic)
-
-newtype PrimaryKey = PrimaryKey Int
+  deriving (Show, Eq, Generic, Functor)
 
 data Table = Table
-  { tableVariant :: TableVariant
+  { tableVariant :: TableVariant LogicalPrimaryKey
   , columns :: [(Name, Shape)]
-  , primaryKey :: Maybe PrimaryKey
   }
 
 data Rule = Rule

@@ -12,8 +12,8 @@ end
 realm named TRealm
 
 ```flir
-('root.IntFact (ground ((%a int)) (primarykey 1)))
-('root.StringFact (ground ((%a string)) (primarykey 1)))
+('root.IntFact (table (ground (primarykey 1)) ((%a int))))
+('root.StringFact (table (ground (primarykey 1)) ((%a string))))
 ('root.IntFact.foreignKey (law enforced ((%a int)) (('root.IntFact %a)) ()))
 ('root.StringFact.foreignKey
  (law enforced ((%a string)) (('root.StringFact %a)) ()))
