@@ -8,8 +8,9 @@
 //! the FLIR frontend into a plan, which the batch backend restricts to the
 //! derived views ([`ViewProgram`]) and the incremental backend runs as a
 //! whole. Both get the same base rows, and every view must hold the same
-//! rows on both. [`Twin`] does that commit by commit; the fuzz tests
-//! (`realm_fuzz.rs`) drive it with random commits.
+//! rows on both. Where Soufflé is installed, it runs the frontend's Datalog on
+//! the same rows as a third opinion (`souffle.rs`). [`Twin`] does that commit
+//! by commit; the fuzz tests (`realm_fuzz.rs`) drive it with random commits.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -18,6 +19,7 @@ use coln_flir_rs::ir::EntityVariant;
 use dbsp::typed_batch::IndexedZSetReader;
 
 use super::BatchRuntime;
+use super::souffle::Souffle;
 use super::views::ViewProgram;
 use crate::api::deltas::StoreDelta;
 use crate::api::query::FlirProgram;
@@ -33,7 +35,7 @@ use crate::test_utils::flir::{
 
 /// Both backends over one realm, fed the same commits: batch runs the realm's
 /// derived views, incremental the whole realm. After every commit, each view
-/// must hold the same rows on both.
+/// must hold the same rows on both, and on Soufflé if it is installed.
 pub(super) struct Twin {
     name: &'static str,
     batch: BatchRuntime,
@@ -42,6 +44,7 @@ pub(super) struct Twin {
     /// Every view's state on the incremental backend, summed up from the
     /// changes it reports per commit.
     incremental_views: HashMap<SinkId, BTreeMap<TupleValue, i64>>,
+    souffle: Option<Souffle>,
 }
 
 impl Twin {
@@ -63,6 +66,7 @@ impl Twin {
             .collect();
         expected.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         ensure!(views == expected, "the views of {}", R::NAME);
+        let souffle = Souffle::new(&FlirProgram::from_flat_realm(&realm)?)?;
 
         Ok(Self {
             name: R::NAME,
@@ -73,6 +77,7 @@ impl Twin {
                 .map(|view| (view.clone(), BTreeMap::new()))
                 .collect(),
             views,
+            souffle,
         })
     }
 
@@ -82,6 +87,9 @@ impl Twin {
         for table in rows.into_table_deltas() {
             let source = SourceId::from(table.for_entity());
             let delta = table.into_delta();
+            if let Some(souffle) = &mut self.souffle {
+                souffle.feed(source.as_str(), &delta)?;
+            }
             ensure!(
                 self.batch.feed(&source, delta.clone())?,
                 "batch knows {source}"
@@ -93,6 +101,14 @@ impl Twin {
         }
         self.batch.commit()?;
         self.incremental.commit()?;
+
+        let on_souffle = match &self.souffle {
+            Some(souffle) => {
+                let views: Vec<&str> = self.views.iter().map(SinkId::as_str).collect();
+                Some(souffle.evaluate(&views)?)
+            }
+            None => None,
+        };
 
         let mut sizes = Vec::new();
         for view in &self.views {
@@ -130,24 +146,39 @@ impl Twin {
                 batch_rows.len() == on_batch.len(),
                 "view {view} repeats a row on batch"
             );
-            if batch_rows != on_incremental {
-                let only = |a: &BTreeSet<&TupleValue>, b: &BTreeSet<&TupleValue>| {
-                    a.difference(b)
-                        .take(5)
-                        .map(|row| format!("{row:?}"))
-                        .collect::<Vec<_>>()
-                };
-                bail!(
-                    "view {view} of {} differs, only on batch: {:?}, only on incremental: {:?}",
-                    self.name,
-                    only(&batch_rows, &on_incremental),
-                    only(&on_incremental, &batch_rows),
-                );
+            same(self.name, view, &batch_rows, "incremental", &on_incremental)?;
+            if let Some(on_souffle) = &on_souffle {
+                let rows = on_souffle[view.as_str()].iter().collect();
+                same(self.name, view, &batch_rows, "Soufflé", &rows)?;
             }
             sizes.push((view.as_str().to_string(), on_batch.len()));
         }
         Ok(sizes)
     }
+}
+
+/// Fail unless `view` holds the same rows on batch and on `other`.
+fn same(
+    realm: &str,
+    view: &SinkId,
+    on_batch: &BTreeSet<&TupleValue>,
+    other: &str,
+    on_other: &BTreeSet<&TupleValue>,
+) -> Result<()> {
+    if on_batch == on_other {
+        return Ok(());
+    }
+    let only = |a: &BTreeSet<&TupleValue>, b: &BTreeSet<&TupleValue>| {
+        a.difference(b)
+            .take(5)
+            .map(|row| format!("{row:?}"))
+            .collect::<Vec<_>>()
+    };
+    bail!(
+        "view {view} of {realm} differs, only on batch: {:?}, only on {other}: {:?}",
+        only(on_batch, on_other),
+        only(on_other, on_batch),
+    )
 }
 
 /// Run the views of realm `R` over `rows`, one commit from empty, on both
