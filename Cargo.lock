@@ -4706,7 +4706,7 @@ dependencies = [
 [[package]]
 name = "sedimentree_core"
 version = "0.17.0"
-source = "git+https://github.com/inkandswitch/subduction#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
+source = "git+https://github.com/inkandswitch/subduction?rev=2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
 dependencies = [
  "arbitrary",
  "async-lock",
@@ -5081,7 +5081,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 [[package]]
 name = "subduction_core"
 version = "0.21.0"
-source = "git+https://github.com/inkandswitch/subduction#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
+source = "git+https://github.com/inkandswitch/subduction?rev=2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
 dependencies = [
  "async-channel",
  "async-lock",
@@ -5105,7 +5105,7 @@ dependencies = [
 [[package]]
 name = "subduction_crypto"
 version = "0.12.0"
-source = "git+https://github.com/inkandswitch/subduction#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
+source = "git+https://github.com/inkandswitch/subduction?rev=2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
 dependencies = [
  "ed25519-dalek",
  "future_form",
@@ -5119,7 +5119,7 @@ dependencies = [
 [[package]]
 name = "subduction_websocket"
 version = "0.15.0"
-source = "git+https://github.com/inkandswitch/subduction#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
+source = "git+https://github.com/inkandswitch/subduction?rev=2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c#2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c"
 dependencies = [
  "async-channel",
  "async-lock",

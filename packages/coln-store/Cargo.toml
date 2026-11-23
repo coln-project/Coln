@@ -45,17 +45,17 @@ parking_lot = { version = "0.13.0", features = ["arc_lock"] }
 
 [dev-dependencies]
 future_form = "0.3.1"
-sedimentree_core = { git = "https://github.com/inkandswitch/subduction", features = [
+sedimentree_core = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "std",
 ] }
-subduction_core = { git = "https://github.com/inkandswitch/subduction", features = [
+subduction_core = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "std",
     "test_utils",
 ] }
-subduction_crypto = { git = "https://github.com/inkandswitch/subduction", features = [
+subduction_crypto = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "std",
 ] }
-subduction_websocket = { git = "https://github.com/inkandswitch/subduction", features = [
+subduction_websocket = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "tokio_client",
     "tokio_server",
 ] }
