@@ -148,13 +148,12 @@ impl<'a> TableMut<'a> {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+    use crate::store::txn::ReadTxnable;
+    use crate::{store::Store, test_utils::commit_int_store};
     use coln_flir_rs::engine::packed::StoreScalarValue;
     use coln_flir_rs::{hash::CommitHash, ir::Path};
     use rstest::rstest;
-
-    use super::*;
-    use crate::store::txn::ReadTxnable;
-use crate::{store::Store, test_utils::commit_int_store};
 
     #[rstest]
     fn row_by_id_finds_committed_row(commit_int_store: (Store, CommitHash)) {

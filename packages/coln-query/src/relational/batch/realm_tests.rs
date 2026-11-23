@@ -17,8 +17,8 @@ use coln_flir_rs::ir::EntityVariant;
 use dbsp::typed_batch::IndexedZSetReader;
 
 use super::views::ViewProgram;
-use crate::api::transaction::StoreDelta;
 use crate::api::query::FlirProgram;
+use crate::api::transaction::StoreDelta;
 use crate::pipeline::Pipeline;
 use crate::relational::Runtime;
 use crate::relational::expr::{SinkId, SourceId};

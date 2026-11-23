@@ -232,7 +232,7 @@ impl WriteTxn<Committed> {
     pub fn monitored_constraints(&self) -> &ViolationsDelta {
         &self.state.monitored_constraints
     }
-    
+
     // TODO all monitored constraints, maybe?
 }
 

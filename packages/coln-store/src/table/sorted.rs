@@ -95,7 +95,7 @@ mod tests {
     use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
     use crate::store::Store;
     use crate::store::txn::ReadTxnable;
-use crate::table::sorted::SortedTable;
+    use crate::table::sorted::SortedTable;
 
     // TODO: once we can distinguish tables that need rebuild from those that
     // do not, assert that only rebuild tables expose the structural index

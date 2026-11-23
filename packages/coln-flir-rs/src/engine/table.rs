@@ -17,10 +17,8 @@ pub trait StoreST {
 /// As there is no way to access a sorted table in a write txn, we don't need to
 /// worry about reading pending changes for a sorted table.
 pub trait STReadTxn {
-    fn sorted_tables_at(
-        &self,
-        table: &ir::Path,
-    ) -> Vec<impl SortedTable<Value = StoreScalarValue>>;
+    fn sorted_tables_at(&self, table: &ir::Path)
+    -> Vec<impl SortedTable<Value = StoreScalarValue>>;
 }
 
 pub type RowIdx = usize;
