@@ -173,8 +173,8 @@ fn repeated_sync_is_a_noop_for_base_and_derived_data(
 ) {
     let (source, [a, b]) = one_edge;
     let mut target = Bouncer::try_new(ir, coln_def).expect("target bouncer");
-    let root = target.begin_read().commit_chunks_after(&[])[0].hash;
-    let chunks = source.begin_read().commit_chunks_after(&[root]);
+    let root = target.begin_read().fragments_after(&[])[0].hash;
+    let chunks = source.begin_read().fragments_after(&[root]);
     target
         .begin_import()
         .apply_chunk_bytes(chunks.iter().map(|chunk| chunk.bytes.clone()))
@@ -260,8 +260,8 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
     let (mut source, [a, b]) = one_edge;
     let c = extend_chain(&mut source, &b);
     let mut target = Bouncer::try_new(ir.clone(), coln_def.clone()).expect("target bouncer");
-    let root = target.begin_read().commit_chunks_after(&[])[0].hash;
-    let chunks = source.begin_read().commit_chunks_after(&[root]);
+    let root = target.begin_read().fragments_after(&[])[0].hash;
+    let chunks = source.begin_read().fragments_after(&[root]);
     assert_eq!(chunks.len(), 2);
     assert!(
         target

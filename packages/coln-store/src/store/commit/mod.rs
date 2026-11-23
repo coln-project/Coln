@@ -18,13 +18,13 @@ mod batch;
 pub use batch::{CommitBatch, PrepareState, Prepared, Unprepared};
 
 /// For consumption by subduction
-pub struct CommitChunk {
+pub struct Fragment {
     pub hash: CommitHash,
     pub parents: Vec<CommitHash>,
     pub bytes: Vec<u8>,
 }
 
-impl<T> From<&Commit<'_, T>> for CommitChunk {
+impl<T> From<&Commit<'_, T>> for Fragment {
     fn from(commit: &Commit<'_, T>) -> Self {
         Self {
             hash: commit.hash(),
@@ -39,8 +39,8 @@ impl ReadTxn {
         self.read().chunks_after(have_heads)
     }
 
-    pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
-        self.read().commit_chunks_after(have_heads)
+    pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<Fragment> {
+        self.read().fragments_after(have_heads)
     }
 
     pub fn commits_added(&self, other: &(impl ReadTxnable + ?Sized)) -> Vec<DataCommit> {
@@ -71,19 +71,19 @@ impl ReadView<'_> {
     }
 
     /// Framed root and data commits missing from the supplied heads' ancestry.
-    pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
+    pub fn fragments_after(&self, have_heads: &[CommitHash]) -> Vec<Fragment> {
         let seen = self.ancestors_of(have_heads);
         let root = self.data.commits.root_commit();
         let mut chunks = Vec::new();
         if !seen.contains(&root.hash()) {
-            chunks.push(CommitChunk::from(root));
+            chunks.push(Fragment::from(root));
         }
         chunks.extend(
             self.data
                 .commits
                 .iter_topological()
                 .filter(|commit| !seen.contains(&commit.hash()))
-                .map(CommitChunk::from),
+                .map(Fragment::from),
         );
         chunks
     }

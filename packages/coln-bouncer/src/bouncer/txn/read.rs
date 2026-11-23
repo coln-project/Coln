@@ -10,7 +10,7 @@ use coln_flir_rs::{
     query::WhereClause,
 };
 use coln_store::store::{
-    IdLookup, ReadView, commit::CommitChunk, error::StoreError, txn::ReadTxnable as _,
+    IdLookup, ReadView, commit::Fragment, error::StoreError, txn::ReadTxnable as _,
 };
 
 use crate::{bouncer::Bouncer, error::BouncerError};
@@ -34,8 +34,12 @@ pub trait ReadTxnable: sealed::StoreView {
         self.store_view().heads()
     }
 
-    fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<CommitChunk> {
-        self.store_view().commit_chunks_after(have_heads)
+    fn has_heads(&self) -> bool {
+        todo!()
+    }
+
+    fn fragments_after(&self, have_heads: &[CommitHash]) -> Vec<Fragment> {
+        self.store_view().fragments_after(have_heads)
     }
 
     fn encode_store(&self) -> Result<Vec<u8>, BouncerError> {

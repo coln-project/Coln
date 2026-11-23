@@ -4,7 +4,7 @@
 
 use coln_flir_rs::{engine::schema::ColnDef, ir, public::PublicScalarValue};
 use coln_store::{
-    store::{Store, commit::CommitChunk, error::StoreError, txn::ReadTxnable},
+    store::{Store, commit::Fragment, error::StoreError, txn::ReadTxnable},
     table::ValidationError,
 };
 use rstest::{fixture, rstest};
@@ -80,7 +80,7 @@ fn only_ones(only_ones_realm: ir::FlatRealm, coln_def: ColnDef) -> Bouncer {
 
 // Plain store transactions let incoming commits violate query rules while
 // retaining the same realm and root as the receiving bouncer.
-fn plain_commits(realm: &ir::FlatRealm, coln_def: ColnDef, values: &[i32]) -> Vec<CommitChunk> {
+fn plain_commits(realm: &ir::FlatRealm, coln_def: ColnDef, values: &[i32]) -> Vec<Fragment> {
     let source = Store::try_from_ir(realm, coln_def).expect("source store");
     let heads = source.begin_read().heads();
     for value in values {
@@ -133,7 +133,7 @@ fn rejected_commit_rolls_back_store_and_allows_next_transaction(mut only_ones: B
     assert!(
         only_ones
             .begin_read()
-            .commit_chunks_after(&[initial.cmt_hash()])
+            .fragments_after(&[initial.cmt_hash()])
             .is_empty()
     );
 
@@ -148,7 +148,7 @@ fn rejected_commit_rolls_back_store_and_allows_next_transaction(mut only_ones: B
     assert!(after.contains(&before[0]));
     let added = only_ones
         .begin_read()
-        .commit_chunks_after(&[initial.cmt_hash()]);
+        .fragments_after(&[initial.cmt_hash()]);
     assert_eq!(added.len(), 1);
     assert_eq!(added[0].hash, next.cmt_hash());
     assert_eq!(added[0].parents, vec![initial.cmt_hash()]);
@@ -209,7 +209,7 @@ fn sync_hard_rejection_preserves_earlier_commits_and_blocks_descendants(
     mut only_ones: Bouncer,
 ) {
     let chunks = plain_commits(&only_ones_realm, coln_def, &[1, 2, 1]);
-    let root = only_ones.begin_read().commit_chunks_after(&[])[0].hash;
+    let root = only_ones.begin_read().fragments_after(&[])[0].hash;
     let table = ir::Path::from("t");
 
     assert!(matches!(
@@ -220,7 +220,7 @@ fn sync_hard_rejection_preserves_earlier_commits_and_blocks_descendants(
     let rows = only_ones.begin_read().scan_table(&table).expect("table");
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0][1], PublicScalarValue::I32(1));
-    let applied = only_ones.begin_read().commit_chunks_after(&[root]);
+    let applied = only_ones.begin_read().fragments_after(&[root]);
     assert_eq!(applied.len(), 1);
     assert_eq!(applied[0].hash, chunks[0].hash);
 
@@ -248,9 +248,7 @@ fn sync_hard_rejection_preserves_earlier_commits_and_blocks_descendants(
             .len(),
         2
     );
-    let added = only_ones
-        .begin_read()
-        .commit_chunks_after(&[chunks[0].hash]);
+    let added = only_ones.begin_read().fragments_after(&[chunks[0].hash]);
     assert_eq!(added.len(), 1);
     assert_eq!(added[0].hash, local.cmt_hash());
     assert_eq!(added[0].parents, vec![chunks[0].hash]);
@@ -264,7 +262,7 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
     only_ones_realm.rules[0].rule.rule_variant = ir::RuleVariant::Monitored;
     let chunks = plain_commits(&only_ones_realm, coln_def.clone(), &[2, 1]);
     let mut target = Bouncer::try_new(only_ones_realm, coln_def).expect("monitored realm");
-    let root = target.begin_read().commit_chunks_after(&[])[0].hash;
+    let root = target.begin_read().fragments_after(&[])[0].hash;
 
     let reports = target
         .begin_import()
@@ -291,7 +289,7 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
     assert_eq!(values, vec![1, 2]);
     let hashes = target
         .begin_read()
-        .commit_chunks_after(&[root])
+        .fragments_after(&[root])
         .into_iter()
         .map(|chunk| chunk.hash)
         .collect::<Vec<_>>();
