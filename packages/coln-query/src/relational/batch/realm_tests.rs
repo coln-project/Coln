@@ -24,7 +24,8 @@ use crate::relational::Runtime;
 use crate::relational::expr::{SinkId, SourceId};
 use crate::relational::relation::TupleValue;
 use crate::test_utils::flir::{
-    Edge, Flir, GraphRealm, JsonFlir, TransitiveClosureRealm, TriangleRealm, Vertex,
+    BipartiteGraphRealm, Blue, BlueRed, Edge, Flir, GraphRealm, JsonFlir, Red, RedBlue,
+    TransitiveClosureRealm, TriangleRealm, Vertex,
 };
 
 /// Run the views of realm `R` over `rows` on the batch backend and compare
@@ -147,6 +148,30 @@ fn transitive_closure_views_match_incremental() -> Result<()> {
     assert_eq!(
         views_match_incremental::<TransitiveClosureRealm>(driver.next_epoch())?,
         [("init.trans-closure.connected".to_string(), 8)]
+    );
+    Ok(())
+}
+
+#[test]
+fn bipartite_views_match_incremental() -> Result<()> {
+    let mut driver = Flir::<BipartiteGraphRealm>::new();
+    let [r0, r1, r2] = [(); 3].map(|()| driver.insert(Red::new));
+    let [b0, b1] = [(); 2].map(|()| driver.insert(Blue::new));
+    // Red to blue and back: r0 → b0 → r1 → b1 → r2.
+    driver.insert(|row_id| RedBlue::new(row_id, &r0, &b0));
+    driver.insert(|row_id| RedBlue::new(row_id, &r1, &b1));
+    driver.insert(|row_id| BlueRed::new(row_id, &b0, &r1));
+    driver.insert(|row_id| BlueRed::new(row_id, &b1, &r2));
+
+    // Each colour connects to itself, and through the other colour along the
+    // path: r0 to r1 and r2, r1 to r2, and b0 to b1, which needs r1 to reach
+    // itself first. So both views recurse through each other.
+    assert_eq!(
+        views_match_incremental::<BipartiteGraphRealm>(driver.next_epoch())?,
+        [
+            ("init.connection-info.blue-blue".to_string(), 3),
+            ("init.connection-info.red-red".to_string(), 6)
+        ]
     );
     Ok(())
 }
