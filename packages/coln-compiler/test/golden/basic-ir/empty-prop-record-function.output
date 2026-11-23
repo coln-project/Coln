@@ -4,6 +4,7 @@ in mode: Conjunctive
 type: Prop
 value: sig
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -11,16 +12,12 @@ value: sig
   X : Set
   trivial : (x : X) -> Truth
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+```
 
 -- messages

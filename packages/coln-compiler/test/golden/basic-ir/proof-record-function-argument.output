@@ -8,6 +8,7 @@ value: X => sig
   proof : first = second
   trailing : X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -15,26 +16,25 @@ value: sig
   X : Set
   Accepted : EqualTriple X -> Prop
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.Accepted := [
-      a.first : root.X,
-      a.second : root.X,
-      a.trailing : root.X
-    ] primarykey [a.first, a.second, a.trailing]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.Accepted.foreignKey a.first a.second a.trailing := root.Accepted [
-      a.first ↦ a.first,
-      a.second ↦ a.second,
-      a.trailing ↦ a.trailing
-    ] ⊢ a.first ∈ root.X [] ∧ a.second ∈ root.X [] ∧ a.first = a.second ∧ a.trailing ∈ root.X []
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.Accepted
+ (ground
+  ((%a.first 'root.X) (%a.second 'root.X) (%a.trailing 'root.X))
+  (primarykey 3)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.Accepted.foreignKey
+ (law
+  enforced
+  ((%a.first 'root.X) (%a.second 'root.X) (%a.trailing 'root.X))
+  (('root.Accepted %a.first %a.second %a.trailing))
+  (('root.X (id %a.first))
+   ('root.X (id %a.second))
+   (= 'root.X %a.first %a.second)
+   ('root.X (id %a.trailing)))))
+```
 
 -- messages

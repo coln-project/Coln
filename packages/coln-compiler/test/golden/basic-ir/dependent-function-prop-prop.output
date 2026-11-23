@@ -7,19 +7,15 @@ value: sig
   B : A -> Prop
   f : (a : A) -> B a
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := [] primarykey []
-    table root.B := [] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey := root.B [] ⊢ root.A []
-    monitored root.f := root.A [] ⊢ root.B []
-  end
-end
+
+```flir
+('root.A (ground () (primarykey 0)))
+('root.B (ground () (primarykey 0)))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey (law enforced () (('root.B)) (('root.A))))
+('root.f (law monitored () (('root.A)) (('root.B))))
+```
 
 -- messages

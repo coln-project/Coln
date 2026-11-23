@@ -6,19 +6,19 @@ export function createRealm(runtime: typeof Runtime) {
       A: Runtime.MutableProp,
       B: (a: null) => Runtime.MutableProp,
       E: (x: null) => (a: null) => Runtime.MutableProp,
-      next: (x: null) => Runtime.MutableRef<null>,
-      nextedge: (x: null) => Runtime.MutableRef<null>
+      next: (x: null) => Runtime.Ref<null>,
+      nextedge: (x: null) => Runtime.Ref<null>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        A: (new runtime.BaseProp(mstore, "root.A", [])),
+        A: (new runtime.ViewProp(mstore, "root.A", [])),
         B: (a: null) => {
-          return (new runtime.BaseProp(mstore, "root.B", []));
+          return (new runtime.ViewProp(mstore, "root.B", []));
         },
         E: (x: null) => {
           return (a: null) => {
-            return (new runtime.BaseProp(mstore, "root.E", []));
+            return (new runtime.ViewProp(mstore, "root.E", []));
           };
         },
         next: (x: null) => {

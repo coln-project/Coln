@@ -5,6 +5,7 @@ type: (X : Set) -> (actual : X) -> (expected : X) -> Set
 value: X => actual => expected => sig
   proof : actual = expected
 end
+
 global entry named Result
 in mode: Conjunctive
 type: (X : Set) -> (expected : X) -> Set
@@ -12,6 +13,7 @@ value: X => expected => sig
   actual : X
   evidence : Evidence X actual expected
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -19,26 +21,27 @@ value: sig
   X : Set
   result : (expected : X) -> Result X expected
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.result := [expected : root.X, a.actual : root.X] primarykey [
-      expected
-    ]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.result.foreignKey expected a.actual := root.result [
-      expected ↦ expected,
-      a.actual ↦ a.actual
-    ] ⊢ expected ∈ root.X [] ∧ a.actual ∈ root.X [] ∧ a.actual = expected
-    monitored root.result.total expected := expected ∈ root.X [] ⊢ root.result [
-      expected ↦ expected
-    ]
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.result (ground ((%expected 'root.X) (%a.actual 'root.X)) (primarykey 1)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.result.foreignKey
+ (law
+  enforced
+  ((%expected 'root.X) (%a.actual 'root.X))
+  (('root.result %expected %a.actual))
+  (('root.X (id %expected))
+   ('root.X (id %a.actual))
+   (= 'root.X %a.actual %expected))))
+('root.result.total
+ (law
+  monitored
+  ((%expected 'root.X))
+  (('root.X (id %expected)))
+  (('root.result %expected))))
+```
 
 -- messages

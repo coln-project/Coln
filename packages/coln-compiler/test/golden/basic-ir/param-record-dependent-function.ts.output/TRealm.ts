@@ -4,10 +4,10 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: {
       Key: Runtime.MutableSet<Runtime.RowId<"root.Key">>,
-      key: Runtime.MutableRef<Runtime.RowId<"root.Key">>,
+      key: Runtime.Ref<Runtime.RowId<"root.Key">>,
       E: (a: Runtime.RowId<"root.Key">) => Runtime.MutableSet<Runtime.RowId<"root.E">>,
-      f: (x: Runtime.RowId<"root.Key">) => Runtime.MutableRef<Runtime.RowId<"root.E">>,
-      point: Runtime.MutableRef<{}>,
+      f: (x: Runtime.RowId<"root.Key">) => Runtime.Ref<Runtime.RowId<"root.E">>,
+      point: Runtime.Ref<{}>,
       boxed: (a: {
         image: Runtime.RowId<"root.E">
       }) => Runtime.MutableSet<Runtime.RowId<"root.boxed">>
@@ -15,7 +15,7 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        Key: (new runtime.BaseSet(mstore, "root.Key", [])),
+        Key: (new runtime.InductiveViewSet(mstore, "root.Key", [])),
         key: (new runtime.BaseTableRef(
           mstore,
           "root.key",
@@ -34,7 +34,7 @@ export function createRealm(runtime: typeof Runtime) {
           }
         )),
         E: (a: Runtime.RowId<"root.Key">) => {
-          return (new runtime.BaseSet(mstore, "root.E", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.E", [a]));
         },
         f: (x: Runtime.RowId<"root.Key">) => {
           return (new runtime.BaseTableRef(
@@ -70,7 +70,11 @@ export function createRealm(runtime: typeof Runtime) {
           }
         )),
         boxed: (a: { image: Runtime.RowId<"root.E"> }) => {
-          return (new runtime.BaseSet(mstore, "root.boxed", [a.image]));
+          return (new runtime.InductiveViewSet(
+            mstore,
+            "root.boxed",
+            [a.image]
+          ));
         }
       };
     }

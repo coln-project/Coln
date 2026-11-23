@@ -4,23 +4,20 @@ in mode: Conjunctive
 type: Set
 value: sig
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
 value: sig
   unit : Unit
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root := [] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.foreignKey := root [] ⊢ ⊤
-    monitored root.total := ⊤ ⊢ root []
-  end
-end
+
+```flir
+('root (ground () (primarykey 0)))
+('root.foreignKey (law enforced () (('root)) ()))
+('root.total (law monitored () () (('root))))
+```
 
 -- messages

@@ -10,34 +10,38 @@ value: sig
   next : A -> B
   edge : E (next x)
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := []
-    table root.B := []
-    table root.E := [a : root.B]
-    table root.x := [a : root.A] primarykey []
-    table root.next := [a : root.A, b : root.B] primarykey [a]
-    table root.edge := [a : root.E] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey := root.B [] ⊢ ⊤
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ a ∈ root.B []
-    enforced root.x.foreignKey a := root.x [a ↦ a] ⊢ a ∈ root.A []
-    monitored root.x.total := ⊤ ⊢ root.x []
-    enforced root.next.foreignKey a b := root.next [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.A [] ∧ b ∈ root.B []
-    monitored root.next.total a := a ∈ root.A [] ⊢ root.next [a ↦ a]
-    enforced root.edge.foreignKey a b c := root.edge [a ↦ a] ⊢ root.x [
-      a ↦ c
-    ] ∧ root.next [a ↦ c, b ↦ b] ∧ a ∈ root.E [a ↦ b]
-    monitored root.edge.total := ⊤ ⊢ root.edge []
-  end
-end
+
+```flir
+('root.A (ground ()))
+('root.B (ground ()))
+('root.E (ground ((%a 'root.B))))
+('root.x (ground ((%a 'root.A)) (primarykey 0)))
+('root.next (ground ((%a 'root.A) (%b 'root.B)) (primarykey 1)))
+('root.edge (ground ((%a 'root.E)) (primarykey 0)))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey (law enforced () (('root.B)) ()))
+('root.E.foreignKey
+ (law enforced ((%a 'root.B)) (('root.E %a)) (('root.B (id %a)))))
+('root.x.foreignKey
+ (law enforced ((%a 'root.A)) (('root.x %a)) (('root.A (id %a)))))
+('root.x.total (law monitored () () (('root.x))))
+('root.next.foreignKey
+ (law
+  enforced
+  ((%a 'root.A) (%b 'root.B))
+  (('root.next %a %b))
+  (('root.A (id %a)) ('root.B (id %b)))))
+('root.next.total
+ (law monitored ((%a 'root.A)) (('root.A (id %a))) (('root.next %a))))
+('root.edge.foreignKey
+ (law
+  enforced
+  ((%a 'root.E) (%b 'root.B) (%c 'root.A))
+  (('root.x %c) ('root.next %c %b) ('root.edge %a))
+  (('root.E (id %a) %b))))
+('root.edge.total (law monitored () () (('root.edge))))
+```
 
 -- messages

@@ -6,6 +6,7 @@ value: sig
   V : Set
   E : V -> V -> Prop
 end
+
 global entry named Reachability/motive
 in mode: Conjunctive
 type: (G : Graph) -> Theory
@@ -14,30 +15,31 @@ value: G => sig
   empty : (x : G.V) -> t x x
   cons : (x y z : G.V) -> (e : G.E x y) -> t y z -> t x z
 end
+
 realm named PathsRealm
-lowered: flatrealm
-  entities
-    table root.V := []
-    table root.E := [a : root.V, b : root.V] primarykey [a, b]
-    view init.reachability.t := [a : root.V, b : root.V] primarykey [a, b]
-  end
-  definitions
-    chased init.reachability.empty x := x ∈ root.V [] ⊢ init.reachability.t [
-      a ↦ x,
-      b ↦ x
-    ]
-    chased init.reachability.cons x y z := x ∈ root.V [] ∧ y ∈ root.V [] ∧ z ∈ root.V [] ∧ root.E [
-      a ↦ x,
-      b ↦ y
-    ] ∧ init.reachability.t [a ↦ y, b ↦ z] ⊢ init.reachability.t [a ↦ x, b ↦ z]
-  end
-  rules
-    enforced root.V.foreignKey := root.V [] ⊢ ⊤
-    enforced root.E.foreignKey a b := root.E [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.V [] ∧ b ∈ root.V []
-  end
-end
+
+```flir
+('root.V (ground ()))
+('root.E (ground ((%a 'root.V) (%b 'root.V)) (primarykey 2)))
+('init.reachability.t (view ((%a 'root.V) (%b 'root.V)) (primarykey 2)))
+('init.reachability.empty
+ (rule ((%x 'root.V)) (('root.V (id %x))) ('init.reachability.t %x %x)))
+('init.reachability.cons
+ (rule
+  ((%x 'root.V) (%y 'root.V) (%z 'root.V))
+  (('root.V (id %x))
+   ('root.V (id %y))
+   ('root.V (id %z))
+   ('root.E %x %y)
+   ('init.reachability.t %y %z))
+  ('init.reachability.t %x %z)))
+('root.V.foreignKey (law enforced () (('root.V)) ()))
+('root.E.foreignKey
+ (law
+  enforced
+  ((%a 'root.V) (%b 'root.V))
+  (('root.E %a %b))
+  (('root.V (id %a)) ('root.V (id %b)))))
+```
 
 -- messages

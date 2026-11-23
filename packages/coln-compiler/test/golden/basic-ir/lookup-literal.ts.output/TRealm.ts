@@ -5,17 +5,17 @@ export function createRealm(runtime: typeof Runtime) {
     root: {
       IntEdge: (a: number) => Runtime.MutableSet<Runtime.RowId<"root.IntEdge">>,
       StringEdge: (a: string) => Runtime.MutableSet<Runtime.RowId<"root.StringEdge">>,
-      intEdge: Runtime.MutableRef<Runtime.RowId<"root.IntEdge">>,
-      stringEdge: Runtime.MutableRef<Runtime.RowId<"root.StringEdge">>
+      intEdge: Runtime.Ref<Runtime.RowId<"root.IntEdge">>,
+      stringEdge: Runtime.Ref<Runtime.RowId<"root.StringEdge">>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
         IntEdge: (a: number) => {
-          return (new runtime.BaseSet(mstore, "root.IntEdge", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.IntEdge", [a]));
         },
         StringEdge: (a: string) => {
-          return (new runtime.BaseSet(mstore, "root.StringEdge", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.StringEdge", [a]));
         },
         intEdge: (new runtime.BaseTableRef(
           mstore,

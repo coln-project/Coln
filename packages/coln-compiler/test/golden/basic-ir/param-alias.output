@@ -5,10 +5,12 @@ type: Theory
 value: sig
   X : Set
 end
+
 global entry named Alias
 in mode: Conjunctive
 type: Theory
 value: Model
+
 global entry named Box
 in mode: Conjunctive
 type: (X : Set) -> (M : Model) -> (Y : Set) -> Set
@@ -17,6 +19,7 @@ value: X => M => Y => sig
   modelValue : M.X
   value : Y
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -24,26 +27,20 @@ value: sig
   model : Alias
   boxed : Box Int model String -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.model.X := []
-    table root.boxed := [
-      a.key : Int,
-      a.modelValue : root.model.X,
-      a.value : String
-    ]
-  end
-  definitions
-  end
-  rules
-    enforced root.model.X.foreignKey := root.model.X [] ⊢ ⊤
-    enforced root.boxed.foreignKey a.key a.modelValue a.value := root.boxed [
-      a.key ↦ a.key,
-      a.modelValue ↦ a.modelValue,
-      a.value ↦ a.value
-    ] ⊢ a.modelValue ∈ root.model.X []
-  end
-end
+
+```flir
+('root.model.X (ground ()))
+('root.boxed
+ (ground ((%a.key int) (%a.modelValue 'root.model.X) (%a.value string))))
+('root.model.X.foreignKey (law enforced () (('root.model.X)) ()))
+('root.boxed.foreignKey
+ (law
+  enforced
+  ((%a.key int) (%a.modelValue 'root.model.X) (%a.value string))
+  (('root.boxed %a.key %a.modelValue %a.value))
+  (('root.model.X (id %a.modelValue)))))
+```
 
 -- messages

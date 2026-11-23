@@ -6,6 +6,7 @@ value: sig
   v : Set
   e : v -> v -> Prop
 end
+
 global entry named TransitiveExt
 in mode: Conjunctive
 type: (G : Graph) -> Theory
@@ -14,6 +15,7 @@ value: G => sig
   incl : (v0 v1 : G.v) -> G.e v0 v1 -> p v0 v1
   snoc : (v0 v1 v2 : G.v) -> p v0 v1 -> G.e v1 v2 -> p v0 v2
 end
+
 global entry named transitive-closure
 in mode: Inductive
 type: (G : Graph) -> TransitiveExt G

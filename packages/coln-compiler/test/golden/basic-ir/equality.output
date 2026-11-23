@@ -8,23 +8,26 @@ value: sig
   y : V
   eq : x = y
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.V := []
-    table root.x := [a : root.V] primarykey []
-    table root.y := [a : root.V] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.V.foreignKey := root.V [] ⊢ ⊤
-    enforced root.x.foreignKey a := root.x [a ↦ a] ⊢ a ∈ root.V []
-    monitored root.x.total := ⊤ ⊢ root.x []
-    enforced root.y.foreignKey a := root.y [a ↦ a] ⊢ a ∈ root.V []
-    monitored root.y.total := ⊤ ⊢ root.y []
-    monitored root.eq a b := root.x [a ↦ a] ∧ root.y [a ↦ b] ⊢ a = b
-  end
-end
+
+```flir
+('root.V (ground ()))
+('root.x (ground ((%a 'root.V)) (primarykey 0)))
+('root.y (ground ((%a 'root.V)) (primarykey 0)))
+('root.V.foreignKey (law enforced () (('root.V)) ()))
+('root.x.foreignKey
+ (law enforced ((%a 'root.V)) (('root.x %a)) (('root.V (id %a)))))
+('root.x.total (law monitored () () (('root.x))))
+('root.y.foreignKey
+ (law enforced ((%a 'root.V)) (('root.y %a)) (('root.V (id %a)))))
+('root.y.total (law monitored () () (('root.y))))
+('root.eq
+ (law
+  monitored
+  ((%a 'root.V) (%b 'root.V))
+  (('root.x %a) ('root.y %b))
+  ((= 'root.V %a %b))))
+```
 
 -- messages

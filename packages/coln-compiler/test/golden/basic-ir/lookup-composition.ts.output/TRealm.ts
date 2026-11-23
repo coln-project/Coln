@@ -7,18 +7,18 @@ export function createRealm(runtime: typeof Runtime) {
       B: Runtime.MutableSet<Runtime.RowId<"root.B">>,
       C: Runtime.MutableSet<Runtime.RowId<"root.C">>,
       E: (a: Runtime.RowId<"root.C">) => Runtime.MutableSet<Runtime.RowId<"root.E">>,
-      first: (a: Runtime.RowId<"root.A">) => Runtime.MutableRef<Runtime.RowId<"root.B">>,
-      second: (a: Runtime.RowId<"root.B">) => Runtime.MutableRef<Runtime.RowId<"root.C">>,
-      edge: (x: Runtime.RowId<"root.A">) => Runtime.MutableRef<Runtime.RowId<"root.E">>
+      first: (a: Runtime.RowId<"root.A">) => Runtime.Ref<Runtime.RowId<"root.B">>,
+      second: (a: Runtime.RowId<"root.B">) => Runtime.Ref<Runtime.RowId<"root.C">>,
+      edge: (x: Runtime.RowId<"root.A">) => Runtime.Ref<Runtime.RowId<"root.E">>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        A: (new runtime.BaseSet(mstore, "root.A", [])),
-        B: (new runtime.BaseSet(mstore, "root.B", [])),
-        C: (new runtime.BaseSet(mstore, "root.C", [])),
+        A: (new runtime.InductiveViewSet(mstore, "root.A", [])),
+        B: (new runtime.InductiveViewSet(mstore, "root.B", [])),
+        C: (new runtime.InductiveViewSet(mstore, "root.C", [])),
         E: (a: Runtime.RowId<"root.C">) => {
-          return (new runtime.BaseSet(mstore, "root.E", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.E", [a]));
         },
         first: (a: Runtime.RowId<"root.A">) => {
           return (new runtime.BaseTableRef(

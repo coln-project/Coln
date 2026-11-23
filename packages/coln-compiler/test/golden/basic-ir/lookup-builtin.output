@@ -8,30 +8,32 @@ value: sig
   E : Int -> Set
   edge : (x : X) -> E (rank x)
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.rank := [a : root.X, b : Int] primarykey [a]
-    table root.E := [a : Int]
-    table root.edge := [x : root.X, a : root.E] primarykey [x]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.rank.foreignKey a b := root.rank [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.X []
-    monitored root.rank.total a := a ∈ root.X [] ⊢ root.rank [a ↦ a]
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ ⊤
-    enforced root.edge.foreignKey x a b := root.edge [
-      x ↦ x,
-      a ↦ a
-    ] ⊢ x ∈ root.X [] ∧ root.rank [a ↦ x, b ↦ b] ∧ a ∈ root.E [a ↦ b]
-    monitored root.edge.total x := x ∈ root.X [] ⊢ root.edge [x ↦ x]
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.rank (ground ((%a 'root.X) (%b int)) (primarykey 1)))
+('root.E (ground ((%a int))))
+('root.edge (ground ((%x 'root.X) (%a 'root.E)) (primarykey 1)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.rank.foreignKey
+ (law
+  enforced
+  ((%a 'root.X) (%b int))
+  (('root.rank %a %b))
+  (('root.X (id %a)))))
+('root.rank.total
+ (law monitored ((%a 'root.X)) (('root.X (id %a))) (('root.rank %a))))
+('root.E.foreignKey (law enforced ((%a int)) (('root.E %a)) ()))
+('root.edge.foreignKey
+ (law
+  enforced
+  ((%x 'root.X) (%a 'root.E) (%b int))
+  (('root.rank %x %b) ('root.edge %x %a))
+  (('root.X (id %x)) ('root.E (id %a) %b))))
+('root.edge.total
+ (law monitored ((%x 'root.X)) (('root.X (id %x))) (('root.edge %x))))
+```
 
 -- messages

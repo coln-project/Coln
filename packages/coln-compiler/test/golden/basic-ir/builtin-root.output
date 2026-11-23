@@ -6,20 +6,18 @@ value: sig
   count : Int
   label : String
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root := [a.count : Int, a.label : String] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.foreignKey a.count a.label := root [
-      a.count ↦ a.count,
-      a.label ↦ a.label
-    ] ⊢ ⊤
-    monitored root.total := ⊤ ⊢ root []
-  end
-end
+
+```flir
+('root (ground ((%a.count int) (%a.label string)) (primarykey 0)))
+('root.foreignKey
+ (law
+  enforced
+  ((%a.count int) (%a.label string))
+  (('root %a.count %a.label))
+  ()))
+('root.total (law monitored () () (('root))))
+```
 
 -- messages

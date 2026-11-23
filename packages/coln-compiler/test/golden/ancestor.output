@@ -6,6 +6,7 @@ value: sig
   person : Set
   is-parent : person -> person -> Prop
 end
+
 global entry named AncestorRelation
 in mode: Conjunctive
 type: (F : Family) -> Theory
@@ -14,6 +15,7 @@ value: F => sig
   parent-is-ancestor : (x : F.person) -> (y : F.person) -> F.is-parent x y -> is-ancestor x y
   parent-of-ancestor-is-ancestor : (x : F.person) -> (y : F.person) -> (z : F.person) -> F.is-parent x y -> is-ancestor y z -> is-ancestor x z
 end
+
 global entry named AncestryFor
 in mode: Inductive
 type: (F : Family) -> AncestorRelation F

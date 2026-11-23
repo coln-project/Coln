@@ -4,13 +4,13 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: {
       P: (a: number) => Runtime.MutableProp,
-      package: Runtime.MutableRef<{ value: number, evidence: { proof: null } }>
+      package: Runtime.Ref<{ value: number, evidence: { proof: null } }>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
         P: (a: number) => {
-          return (new runtime.BaseProp(mstore, "root.P", [a]));
+          return (new runtime.ViewProp(mstore, "root.P", [a]));
         },
         package: (new runtime.BaseTableRef(
           mstore,

@@ -7,13 +7,17 @@ export function createRealm(runtime: typeof Runtime) {
         name: string,
         rank: number
       }) => Runtime.MutableSet<Runtime.RowId<"root.E">>,
-      selected: Runtime.MutableRef<Runtime.RowId<"root.E">>
+      selected: Runtime.Ref<Runtime.RowId<"root.E">>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
         E: (a: { name: string, rank: number }) => {
-          return (new runtime.BaseSet(mstore, "root.E", [a.name, a.rank]));
+          return (new runtime.InductiveViewSet(
+            mstore,
+            "root.E",
+            [a.name, a.rank]
+          ));
         },
         selected: (new runtime.BaseTableRef(
           mstore,

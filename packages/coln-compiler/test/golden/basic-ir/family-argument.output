@@ -7,23 +7,22 @@ value: sig
   B : A -> Set
   R : (a : A) -> B a -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := []
-    table root.B := [a : root.A]
-    table root.R := [a : root.A, b : root.B]
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey a := root.B [a ↦ a] ⊢ a ∈ root.A []
-    enforced root.R.foreignKey a b := root.R [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.A [] ∧ b ∈ root.B [a ↦ a]
-  end
-end
+
+```flir
+('root.A (ground ()))
+('root.B (ground ((%a 'root.A))))
+('root.R (ground ((%a 'root.A) (%b 'root.B))))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey
+ (law enforced ((%a 'root.A)) (('root.B %a)) (('root.A (id %a)))))
+('root.R.foreignKey
+ (law
+  enforced
+  ((%a 'root.A) (%b 'root.B))
+  (('root.R %a %b))
+  (('root.A (id %a)) ('root.B (id %b) %a))))
+```
 
 -- messages

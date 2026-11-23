@@ -9,22 +9,18 @@ value: sig
   next : (x : A) -> B x
   nextedge : (x : A) -> E x (next x)
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := [] primarykey []
-    table root.B := [] primarykey []
-    table root.E := [] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey := root.B [] ⊢ root.A []
-    enforced root.E.foreignKey := root.E [] ⊢ root.A [] ∧ root.B []
-    monitored root.next := root.A [] ⊢ root.B []
-    monitored root.nextedge := root.A [] ⊢ root.E []
-  end
-end
+
+```flir
+('root.A (ground () (primarykey 0)))
+('root.B (ground () (primarykey 0)))
+('root.E (ground () (primarykey 0)))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey (law enforced () (('root.B)) (('root.A))))
+('root.E.foreignKey (law enforced () (('root.E)) (('root.A) ('root.B))))
+('root.next (law monitored () (('root.A)) (('root.B))))
+('root.nextedge (law monitored () (('root.A)) (('root.E))))
+```
 
 -- messages

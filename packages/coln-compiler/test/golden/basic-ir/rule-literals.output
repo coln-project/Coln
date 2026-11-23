@@ -9,36 +9,42 @@ value: sig
   countIs19 : (x : X) -> count x = 19
   labelIsZombocom : (x : X) -> label x = "zombocom"
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.count := [a : root.X, b : Int] primarykey [a]
-    table root.label := [a : root.X, b : String] primarykey [a]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.count.foreignKey a b := root.count [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.X []
-    monitored root.count.total a := a ∈ root.X [] ⊢ root.count [a ↦ a]
-    enforced root.label.foreignKey a b := root.label [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.X []
-    monitored root.label.total a := a ∈ root.X [] ⊢ root.label [a ↦ a]
-    monitored root.countIs19 x a := x ∈ root.X [] ∧ root.count [
-      a ↦ x,
-      b ↦ a
-    ] ⊢ a = 19
-    monitored root.labelIsZombocom x a := x ∈ root.X [] ∧ root.label [
-      a ↦ x,
-      b ↦ a
-    ] ⊢ a = "zombocom"
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.count (ground ((%a 'root.X) (%b int)) (primarykey 1)))
+('root.label (ground ((%a 'root.X) (%b string)) (primarykey 1)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.count.foreignKey
+ (law
+  enforced
+  ((%a 'root.X) (%b int))
+  (('root.count %a %b))
+  (('root.X (id %a)))))
+('root.count.total
+ (law monitored ((%a 'root.X)) (('root.X (id %a))) (('root.count %a))))
+('root.label.foreignKey
+ (law
+  enforced
+  ((%a 'root.X) (%b string))
+  (('root.label %a %b))
+  (('root.X (id %a)))))
+('root.label.total
+ (law monitored ((%a 'root.X)) (('root.X (id %a))) (('root.label %a))))
+('root.countIs19
+ (law
+  monitored
+  ((%x 'root.X) (%a int))
+  (('root.count %x %a) ('root.X (id %x)))
+  ((= int %a 19))))
+('root.labelIsZombocom
+ (law
+  monitored
+  ((%x 'root.X) (%a string))
+  (('root.label %x %a) ('root.X (id %x)))
+  ((= string %a "zombocom"))))
+```
 
 -- messages

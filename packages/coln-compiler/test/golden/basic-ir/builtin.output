@@ -7,28 +7,30 @@ value: sig
   count : V -> Int
   label : V -> String
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.V := []
-    table root.count := [a : root.V, b : Int] primarykey [a]
-    table root.label := [a : root.V, b : String] primarykey [a]
-  end
-  definitions
-  end
-  rules
-    enforced root.V.foreignKey := root.V [] ⊢ ⊤
-    enforced root.count.foreignKey a b := root.count [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.V []
-    monitored root.count.total a := a ∈ root.V [] ⊢ root.count [a ↦ a]
-    enforced root.label.foreignKey a b := root.label [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.V []
-    monitored root.label.total a := a ∈ root.V [] ⊢ root.label [a ↦ a]
-  end
-end
+
+```flir
+('root.V (ground ()))
+('root.count (ground ((%a 'root.V) (%b int)) (primarykey 1)))
+('root.label (ground ((%a 'root.V) (%b string)) (primarykey 1)))
+('root.V.foreignKey (law enforced () (('root.V)) ()))
+('root.count.foreignKey
+ (law
+  enforced
+  ((%a 'root.V) (%b int))
+  (('root.count %a %b))
+  (('root.V (id %a)))))
+('root.count.total
+ (law monitored ((%a 'root.V)) (('root.V (id %a))) (('root.count %a))))
+('root.label.foreignKey
+ (law
+  enforced
+  ((%a 'root.V) (%b string))
+  (('root.label %a %b))
+  (('root.V (id %a)))))
+('root.label.total
+ (law monitored ((%a 'root.V)) (('root.V (id %a))) (('root.label %a))))
+```
 
 -- messages

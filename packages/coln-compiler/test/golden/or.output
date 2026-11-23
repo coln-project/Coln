@@ -7,10 +7,12 @@ value: a => b => sig
   inl : a -> apex
   inr : b -> apex
 end
+
 global entry named Either/cocone
 in mode: Inductive
 type: (a : Set) -> (b : Set) -> Cocone a b
 value: a => b => init (Cocone a b)
+
 global entry named Either
 in mode: Inductive
 type: (a : Set) -> (b : Set) -> Set

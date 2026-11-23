@@ -6,6 +6,7 @@ value: X => sig
   left : X
   right : X
 end
+
 global entry named Comparison
 in mode: Conjunctive
 type: (X : Set) -> Set
@@ -14,6 +15,7 @@ value: X => sig
   second : Pair X
   same : first = second
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -21,29 +23,38 @@ value: sig
   X : Set
   comparison : Comparison X
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.comparison := [
-      a.first.left : root.X,
-      a.first.right : root.X,
-      a.second.left : root.X,
-      a.second.right : root.X
-    ] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.comparison.foreignKey a.first.left a.first.right a.second.left a.second.right := root.comparison [
-      a.first.left ↦ a.first.left,
-      a.first.right ↦ a.first.right,
-      a.second.left ↦ a.second.left,
-      a.second.right ↦ a.second.right
-    ] ⊢ a.first.left ∈ root.X [] ∧ a.first.right ∈ root.X [] ∧ a.second.left ∈ root.X [] ∧ a.second.right ∈ root.X [] ∧ a.first.left = a.second.left ∧ a.first.right = a.second.right
-    monitored root.comparison.total := ⊤ ⊢ root.comparison []
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.comparison
+ (ground
+  ((%a.first.left 'root.X)
+   (%a.first.right 'root.X)
+   (%a.second.left 'root.X)
+   (%a.second.right 'root.X))
+  (primarykey 0)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.comparison.foreignKey
+ (law
+  enforced
+  ((%a.first.left 'root.X)
+   (%a.first.right 'root.X)
+   (%a.second.left 'root.X)
+   (%a.second.right 'root.X))
+  (('root.comparison
+    %a.first.left
+    %a.first.right
+    %a.second.left
+    %a.second.right))
+  (('root.X (id %a.first.left))
+   ('root.X (id %a.first.right))
+   ('root.X (id %a.second.left))
+   ('root.X (id %a.second.right))
+   (= 'root.X %a.first.left %a.second.left)
+   (= 'root.X %a.first.right %a.second.right))))
+('root.comparison.total (law monitored () () (('root.comparison))))
+```
 
 -- messages

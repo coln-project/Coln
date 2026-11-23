@@ -6,6 +6,7 @@ value: sig
   V : Set
   E : V -> V -> Int -> Set
 end
+
 global entry named Q
 in mode: Conjunctive
 type: (G : WeightedGraph) -> Theory

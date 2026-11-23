@@ -4,21 +4,18 @@ in mode: Conjunctive
 type: Prop
 value: sig
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
 value: sig
   truth : Truth
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-  end
-  definitions
-  end
-  rules
-    monitored root := ⊤ ⊢ ⊤
-  end
-end
+
+```flir
+('root (law monitored () () ()))
+```
 
 -- messages

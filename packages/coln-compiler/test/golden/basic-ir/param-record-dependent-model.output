@@ -5,12 +5,14 @@ type: (X : Set) -> Theory
 value: X => sig
   point : X
 end
+
 global entry named Key
 in mode: Conjunctive
 type: Set
 value: sig
   rank : Int
 end
+
 global entry named Box
 in mode: Conjunctive
 type: (X : Set) -> (p : PointOf X) -> (Y : Set) -> Set
@@ -18,6 +20,7 @@ value: X => p => Y => sig
   key : X
   value : Y
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -25,24 +28,21 @@ value: sig
   pointed : PointOf Key
   boxed : Box Key pointed String -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.pointed := [a.point.rank : Int] primarykey []
-    table root.boxed := [a.key.rank : Int, a.value : String]
-  end
-  definitions
-  end
-  rules
-    enforced root.pointed.foreignKey a.point.rank := root.pointed [
-      a.point.rank ↦ a.point.rank
-    ] ⊢ ⊤
-    monitored root.pointed.total := ⊤ ⊢ root.pointed []
-    enforced root.boxed.foreignKey a.key.rank a.value := root.boxed [
-      a.key.rank ↦ a.key.rank,
-      a.value ↦ a.value
-    ] ⊢ ⊤
-  end
-end
+
+```flir
+('root.pointed (ground ((%a.point.rank int)) (primarykey 0)))
+('root.boxed (ground ((%a.key.rank int) (%a.value string))))
+('root.pointed.foreignKey
+ (law enforced ((%a.point.rank int)) (('root.pointed %a.point.rank)) ()))
+('root.pointed.total (law monitored () () (('root.pointed))))
+('root.boxed.foreignKey
+ (law
+  enforced
+  ((%a.key.rank int) (%a.value string))
+  (('root.boxed %a.key.rank %a.value))
+  ()))
+```
 
 -- messages

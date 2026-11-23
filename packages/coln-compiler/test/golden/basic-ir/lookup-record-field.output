@@ -6,6 +6,7 @@ value: sig
   name : String
   rank : Int
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -15,39 +16,33 @@ value: sig
   E : Int -> Set
   edge : (x : X) -> E (payload x .rank)
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.payload := [
-      a : root.X,
-      b.name : String,
-      b.rank : Int
-    ] primarykey [a]
-    table root.E := [a : Int]
-    table root.edge := [x : root.X, a : root.E] primarykey [x]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.payload.foreignKey a b.name b.rank := root.payload [
-      a ↦ a,
-      b.name ↦ b.name,
-      b.rank ↦ b.rank
-    ] ⊢ a ∈ root.X []
-    monitored root.payload.total a := a ∈ root.X [] ⊢ root.payload [a ↦ a]
-    enforced root.E.foreignKey a := root.E [a ↦ a] ⊢ ⊤
-    enforced root.edge.foreignKey x a b.name b.rank := root.edge [
-      x ↦ x,
-      a ↦ a
-    ] ⊢ x ∈ root.X [] ∧ root.payload [
-      a ↦ x,
-      b.name ↦ b.name,
-      b.rank ↦ b.rank
-    ] ∧ a ∈ root.E [a ↦ b.rank]
-    monitored root.edge.total x := x ∈ root.X [] ⊢ root.edge [x ↦ x]
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.payload
+ (ground ((%a 'root.X) (%b.name string) (%b.rank int)) (primarykey 1)))
+('root.E (ground ((%a int))))
+('root.edge (ground ((%x 'root.X) (%a 'root.E)) (primarykey 1)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.payload.foreignKey
+ (law
+  enforced
+  ((%a 'root.X) (%b.name string) (%b.rank int))
+  (('root.payload %a %b.name %b.rank))
+  (('root.X (id %a)))))
+('root.payload.total
+ (law monitored ((%a 'root.X)) (('root.X (id %a))) (('root.payload %a))))
+('root.E.foreignKey (law enforced ((%a int)) (('root.E %a)) ()))
+('root.edge.foreignKey
+ (law
+  enforced
+  ((%x 'root.X) (%a 'root.E) (%b.name string) (%b.rank int))
+  (('root.payload %x %b.name %b.rank) ('root.edge %x %a))
+  (('root.X (id %x)) ('root.E (id %a) %b.rank))))
+('root.edge.total
+ (law monitored ((%x 'root.X)) (('root.X (id %x))) (('root.edge %x))))
+```
 
 -- messages

@@ -15,7 +15,7 @@ import Control.Monad (forM_)
 import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Functor.Contravariant (contramap)
-import Data.List (partition, sort)
+import Data.List (partition, sort, intersperse)
 import Data.Map.Ordered qualified as OMap
 import Data.Text.IO.Utf8 qualified as T
 import Data.Text.Lazy qualified as TL
@@ -71,12 +71,15 @@ prettyRealm ge (x, r) = do
   let ir = generateIr (lowerRealm ge r)
   vsep
     [ "realm named" <+> dpretty x
-    , "lowered:" <+> dpretty ir
+    , ""
+    , "```flir"
+    , dpretty ir
+    , "```"
     ]
 
 prettyDecls :: Globals -> DDoc
 prettyDecls ge =
-  vsep $
+  vsep $ intersperse "" $
     (prettyEntry <$> OMap.assocs ge.definitions)
       ++ (prettyRealm ge <$> OMap.assocs ge.realms)
 

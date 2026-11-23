@@ -5,12 +5,14 @@ type: (X : Set) -> Theory
 value: X => sig
   point : X
 end
+
 global entry named Pointed
 in mode: Conjunctive
 type: (X : Set) -> Theory
 value: X => sig
   inner : PointOf X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -18,21 +20,20 @@ value: sig
   X : Set
   outer : Pointed X
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.outer.inner := [a.point : root.X] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.outer.inner.foreignKey a.point := root.outer.inner [
-      a.point ↦ a.point
-    ] ⊢ a.point ∈ root.X []
-    monitored root.outer.inner.total := ⊤ ⊢ root.outer.inner []
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.outer.inner (ground ((%a.point 'root.X)) (primarykey 0)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.outer.inner.foreignKey
+ (law
+  enforced
+  ((%a.point 'root.X))
+  (('root.outer.inner %a.point))
+  (('root.X (id %a.point)))))
+('root.outer.inner.total (law monitored () () (('root.outer.inner))))
+```
 
 -- messages

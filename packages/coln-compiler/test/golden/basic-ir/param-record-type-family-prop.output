@@ -5,6 +5,7 @@ type: (X : Set) -> (P : X -> Prop) -> (x : X) -> Set
 value: X => P => x => sig
   proof : P x
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -13,22 +14,22 @@ value: sig
   P : X -> Prop
   evidence : (x : X) -> Evidence X P x -> Set
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.P := [a : root.X] primarykey [a]
-    table root.evidence := [x : root.X]
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.P.foreignKey a := root.P [a ↦ a] ⊢ a ∈ root.X []
-    enforced root.evidence.foreignKey x := root.evidence [
-      x ↦ x
-    ] ⊢ x ∈ root.X [] ∧ root.P [a ↦ x]
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.P (ground ((%a 'root.X)) (primarykey 1)))
+('root.evidence (ground ((%x 'root.X))))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.P.foreignKey
+ (law enforced ((%a 'root.X)) (('root.P %a)) (('root.X (id %a)))))
+('root.evidence.foreignKey
+ (law
+  enforced
+  ((%x 'root.X))
+  (('root.evidence %x))
+  (('root.X (id %x)) ('root.P %x))))
+```
 
 -- messages

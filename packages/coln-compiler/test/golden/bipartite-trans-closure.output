@@ -8,6 +8,7 @@ value: sig
   red-blue : red -> blue -> Set
   blue-red : blue -> red -> Set
 end
+
 global entry named BipartiteConnection
 in mode: Conjunctive
 type: (G : BipartiteGraph) -> Theory
@@ -19,58 +20,74 @@ value: G => sig
   red/trans : (v0 : G.red) -> (v1 : G.red) -> (w0 : G.blue) -> (w1 : G.blue) -> G.red-blue v0 w0 -> blue-blue w0 w1 -> G.blue-red w1 v1 -> red-red v0 v1
   blue/trans : (v0 : G.blue) -> (v1 : G.blue) -> (w0 : G.red) -> (w1 : G.red) -> G.blue-red v0 w0 -> red-red w0 w1 -> G.red-blue w1 v1 -> blue-blue v0 v1
 end
+
 realm named BipartiteGraphRealm
-lowered: flatrealm
-  entities
-    table root.red := []
-    table root.blue := []
-    table root.red-blue := [a : root.red, b : root.blue]
-    table root.blue-red := [a : root.blue, b : root.red]
-    view init.connection-info.red-red := [
-      a : root.red,
-      b : root.red
-    ] primarykey [a, b]
-    view init.connection-info.blue-blue := [
-      a : root.blue,
-      b : root.blue
-    ] primarykey [a, b]
-  end
-  definitions
-    chased init.connection-info.red/refl v := v ∈ root.red [] ⊢ init.connection-info.red-red [
-      a ↦ v,
-      b ↦ v
-    ]
-    chased init.connection-info.blue/refl v := v ∈ root.blue [] ⊢ init.connection-info.blue-blue [
-      a ↦ v,
-      b ↦ v
-    ]
-    chased init.connection-info.red/trans v0 v1 w0 w1 a c := v0 ∈ root.red [] ∧ v1 ∈ root.red [] ∧ w0 ∈ root.blue [] ∧ w1 ∈ root.blue [] ∧ a ∈ root.red-blue [
-      a ↦ v0,
-      b ↦ w0
-    ] ∧ init.connection-info.blue-blue [a ↦ w0, b ↦ w1] ∧ c ∈ root.blue-red [
-      a ↦ w1,
-      b ↦ v1
-    ] ⊢ init.connection-info.red-red [a ↦ v0, b ↦ v1]
-    chased init.connection-info.blue/trans v0 v1 w0 w1 a c := v0 ∈ root.blue [] ∧ v1 ∈ root.blue [] ∧ w0 ∈ root.red [] ∧ w1 ∈ root.red [] ∧ a ∈ root.blue-red [
-      a ↦ v0,
-      b ↦ w0
-    ] ∧ init.connection-info.red-red [a ↦ w0, b ↦ w1] ∧ c ∈ root.red-blue [
-      a ↦ w1,
-      b ↦ v1
-    ] ⊢ init.connection-info.blue-blue [a ↦ v0, b ↦ v1]
-  end
-  rules
-    enforced root.red.foreignKey := root.red [] ⊢ ⊤
-    enforced root.blue.foreignKey := root.blue [] ⊢ ⊤
-    enforced root.red-blue.foreignKey a b := root.red-blue [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.red [] ∧ b ∈ root.blue []
-    enforced root.blue-red.foreignKey a b := root.blue-red [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.blue [] ∧ b ∈ root.red []
-  end
-end
+
+```flir
+('root.red (ground ()))
+('root.blue (ground ()))
+('root.red-blue (ground ((%a 'root.red) (%b 'root.blue))))
+('root.blue-red (ground ((%a 'root.blue) (%b 'root.red))))
+('init.connection-info.red-red
+ (view ((%a 'root.red) (%b 'root.red)) (primarykey 2)))
+('init.connection-info.blue-blue
+ (view ((%a 'root.blue) (%b 'root.blue)) (primarykey 2)))
+('init.connection-info.red/refl
+ (rule
+  ((%v 'root.red))
+  (('root.red (id %v)))
+  ('init.connection-info.red-red %v %v)))
+('init.connection-info.blue/refl
+ (rule
+  ((%v 'root.blue))
+  (('root.blue (id %v)))
+  ('init.connection-info.blue-blue %v %v)))
+('init.connection-info.red/trans
+ (rule
+  ((%v0 'root.red)
+   (%v1 'root.red)
+   (%w0 'root.blue)
+   (%w1 'root.blue)
+   (%a 'root.red-blue)
+   (%c 'root.blue-red))
+  (('root.red (id %v0))
+   ('root.red (id %v1))
+   ('root.blue (id %w0))
+   ('root.blue (id %w1))
+   ('root.red-blue (id %a) %v0 %w0)
+   ('init.connection-info.blue-blue %w0 %w1)
+   ('root.blue-red (id %c) %w1 %v1))
+  ('init.connection-info.red-red %v0 %v1)))
+('init.connection-info.blue/trans
+ (rule
+  ((%v0 'root.blue)
+   (%v1 'root.blue)
+   (%w0 'root.red)
+   (%w1 'root.red)
+   (%a 'root.blue-red)
+   (%c 'root.red-blue))
+  (('root.blue (id %v0))
+   ('root.blue (id %v1))
+   ('root.red (id %w0))
+   ('root.red (id %w1))
+   ('root.blue-red (id %a) %v0 %w0)
+   ('init.connection-info.red-red %w0 %w1)
+   ('root.red-blue (id %c) %w1 %v1))
+  ('init.connection-info.blue-blue %v0 %v1)))
+('root.red.foreignKey (law enforced () (('root.red)) ()))
+('root.blue.foreignKey (law enforced () (('root.blue)) ()))
+('root.red-blue.foreignKey
+ (law
+  enforced
+  ((%a 'root.red) (%b 'root.blue))
+  (('root.red-blue %a %b))
+  (('root.red (id %a)) ('root.blue (id %b)))))
+('root.blue-red.foreignKey
+ (law
+  enforced
+  ((%a 'root.blue) (%b 'root.red))
+  (('root.blue-red %a %b))
+  (('root.blue (id %a)) ('root.red (id %b)))))
+```
 
 -- messages

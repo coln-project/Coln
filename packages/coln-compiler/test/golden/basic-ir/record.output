@@ -6,6 +6,7 @@ value: sig
   name : String
   rank : Int
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -13,27 +14,26 @@ value: sig
   point : Set
   payload : point -> Payload
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.point := []
-    table root.payload := [
-      a : root.point,
-      b.name : String,
-      b.rank : Int
-    ] primarykey [a]
-  end
-  definitions
-  end
-  rules
-    enforced root.point.foreignKey := root.point [] ⊢ ⊤
-    enforced root.payload.foreignKey a b.name b.rank := root.payload [
-      a ↦ a,
-      b.name ↦ b.name,
-      b.rank ↦ b.rank
-    ] ⊢ a ∈ root.point []
-    monitored root.payload.total a := a ∈ root.point [] ⊢ root.payload [a ↦ a]
-  end
-end
+
+```flir
+('root.point (ground ()))
+('root.payload
+ (ground ((%a 'root.point) (%b.name string) (%b.rank int)) (primarykey 1)))
+('root.point.foreignKey (law enforced () (('root.point)) ()))
+('root.payload.foreignKey
+ (law
+  enforced
+  ((%a 'root.point) (%b.name string) (%b.rank int))
+  (('root.payload %a %b.name %b.rank))
+  (('root.point (id %a)))))
+('root.payload.total
+ (law
+  monitored
+  ((%a 'root.point))
+  (('root.point (id %a)))
+  (('root.payload %a))))
+```
 
 -- messages

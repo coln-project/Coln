@@ -4,6 +4,7 @@ in mode: Conjunctive
 type: Set
 value: sig
 end
+
 global entry named Inner
 in mode: Conjunctive
 type: (X : Set) -> (P : Prop) -> Set
@@ -11,6 +12,7 @@ value: X => P => sig
   value : X
   evidence : P
 end
+
 global entry named Outer
 in mode: Conjunctive
 type: (X : Set) -> (P : Prop) -> Set
@@ -19,6 +21,7 @@ value: X => P => sig
   inner : Inner X P
   trailing : X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -29,43 +32,43 @@ value: sig
   second : Outer X P
   same : first = second
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.P := [] primarykey []
-    table root.first := [
-      a.inner.value : root.X,
-      a.trailing : root.X
-    ] primarykey []
-    table root.second := [
-      a.inner.value : root.X,
-      a.trailing : root.X
-    ] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.P.foreignKey := root.P [] ⊢ ⊤
-    enforced root.first.foreignKey a.inner.value a.trailing := root.first [
-      a.inner.value ↦ a.inner.value,
-      a.trailing ↦ a.trailing
-    ] ⊢ a.inner.value ∈ root.X [] ∧ root.P [] ∧ a.trailing ∈ root.X []
-    monitored root.first.total := ⊤ ⊢ root.first []
-    enforced root.second.foreignKey a.inner.value a.trailing := root.second [
-      a.inner.value ↦ a.inner.value,
-      a.trailing ↦ a.trailing
-    ] ⊢ a.inner.value ∈ root.X [] ∧ root.P [] ∧ a.trailing ∈ root.X []
-    monitored root.second.total := ⊤ ⊢ root.second []
-    monitored root.same a.inner.value a.trailing b.inner.value b.trailing := root.first [
-      a.inner.value ↦ a.inner.value,
-      a.trailing ↦ a.trailing
-    ] ∧ root.second [
-      a.inner.value ↦ b.inner.value,
-      a.trailing ↦ b.trailing
-    ] ⊢ a.inner.value = b.inner.value ∧ a.trailing = b.trailing
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.P (ground () (primarykey 0)))
+('root.first
+ (ground ((%a.inner.value 'root.X) (%a.trailing 'root.X)) (primarykey 0)))
+('root.second
+ (ground ((%a.inner.value 'root.X) (%a.trailing 'root.X)) (primarykey 0)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.P.foreignKey (law enforced () (('root.P)) ()))
+('root.first.foreignKey
+ (law
+  enforced
+  ((%a.inner.value 'root.X) (%a.trailing 'root.X))
+  (('root.first %a.inner.value %a.trailing))
+  (('root.X (id %a.inner.value)) ('root.P) ('root.X (id %a.trailing)))))
+('root.first.total (law monitored () () (('root.first))))
+('root.second.foreignKey
+ (law
+  enforced
+  ((%a.inner.value 'root.X) (%a.trailing 'root.X))
+  (('root.second %a.inner.value %a.trailing))
+  (('root.X (id %a.inner.value)) ('root.P) ('root.X (id %a.trailing)))))
+('root.second.total (law monitored () () (('root.second))))
+('root.same
+ (law
+  monitored
+  ((%a.inner.value 'root.X)
+   (%a.trailing 'root.X)
+   (%b.inner.value 'root.X)
+   (%b.trailing 'root.X))
+  (('root.first %a.inner.value %a.trailing)
+   ('root.second %b.inner.value %b.trailing))
+  ((= 'root.X %a.inner.value %b.inner.value)
+   (= 'root.X %a.trailing %b.trailing))))
+```
 
 -- messages

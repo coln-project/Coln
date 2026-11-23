@@ -6,6 +6,7 @@ value: sig
   V : Set
   E : V -> V -> Set
 end
+
 global entry named Graph/hom
 in mode: Conjunctive
 type: (G0 : Graph) -> (G1 : Graph) -> Theory
@@ -13,6 +14,7 @@ value: G0 => G1 => sig
   V : G0.V -> G1.V
   E : (v0 : G0.V) -> (v1 : G0.V) -> G0.E v0 v1 -> G1.E (V v0) (V v1)
 end
+
 global entry named GraphOfGraphs
 in mode: Conjunctive
 type: Theory
@@ -21,6 +23,7 @@ value: sig
   fiber : base.V -> Graph
   action : (v0 : base.V) -> (v1 : base.V) -> base.E v0 v1 -> Graph/hom (fiber v0) (fiber v1)
 end
+
 global entry named TotalV
 in mode: Conjunctive
 type: (G : GraphOfGraphs) -> Set
@@ -28,6 +31,7 @@ value: G => sig
   base : G.base.V
   fiber : G.fiber base .V
 end
+
 global entry named TotalE
 in mode: Conjunctive
 type: (G : GraphOfGraphs) -> (v0 : TotalV G) -> (v1 : TotalV G) -> Set
@@ -35,10 +39,12 @@ value: G => v0 => v1 => sig
   base : G.base.E v0.base v1.base
   fiber : G.fiber v1.base .E (G.action v0.base v1.base base .V v0.fiber) v1.fiber
 end
+
 global entry named TotalGraph
 in mode: Conjunctive
 type: (G : GraphOfGraphs) -> Graph
 value: G => [V := TotalV G, E := TotalE G]
+
 global entry named TransitiveExtension
 in mode: Conjunctive
 type: (G : Graph) -> Theory
@@ -47,189 +53,182 @@ value: G => sig
   refl : (v : G.V) -> t v v
   snoc : (v0 : G.V) -> (v1 : G.V) -> (v2 : G.V) -> t v0 v1 -> G.E v1 v2 -> t v0 v2
 end
+
 realm named GraphOfGraphsRealm
-lowered: flatrealm
-  entities
-    table root.base.V := []
-    table root.base.E := [a : root.base.V, b : root.base.V]
-    table root.fiber.V := [a : root.base.V]
-    table root.fiber.E := [a : root.base.V, b : root.fiber.V, c : root.fiber.V]
-    table root.action.V := [
-      v0 : root.base.V,
-      v1 : root.base.V,
-      a : root.base.E,
-      b : root.fiber.V,
-      c : root.fiber.V
-    ] primarykey [v0, v1, a, b]
-    table root.action.E := [
-      v0 : root.base.V,
-      v1 : root.base.V,
-      a : root.base.E,
-      v0/a : root.fiber.V,
-      v1/a : root.fiber.V,
-      b : root.fiber.E,
-      c : root.fiber.E
-    ] primarykey [v0, v1, a, v0/a, v1/a, b]
-    view init.connection.t := [
-      a.base : root.base.V,
-      a.fiber : root.fiber.V,
-      b.base : root.base.V,
-      b.fiber : root.fiber.V
-    ] primarykey [a.base, a.fiber, b.base, b.fiber]
-    view view.total.V := [
-      V.base : root.base.V,
-      V.fiber : root.fiber.V
-    ] primarykey [V.base, V.fiber]
-    view view.total.E := [
-      v0.base : root.base.V,
-      v0.fiber : root.fiber.V,
-      v1.base : root.base.V,
-      v1.fiber : root.fiber.V,
-      E.base : root.base.E,
-      E.fiber : root.fiber.E
-    ] primarykey [v0.base, v0.fiber, v1.base, v1.fiber, E.base, E.fiber]
-  end
-  definitions
-    chased init.connection.refl v.base v.fiber := v.base ∈ root.base.V [] ∧ v.fiber ∈ root.fiber.V [
-      a ↦ v.base
-    ] ⊢ init.connection.t [
-      a.base ↦ v.base,
-      a.fiber ↦ v.fiber,
-      b.base ↦ v.base,
-      b.fiber ↦ v.fiber
-    ]
-    chased init.connection.snoc v0.base v0.fiber v1.base v1.fiber v2.base v2.fiber b.base b.fiber c := v0.base ∈ root.base.V [] ∧ v0.fiber ∈ root.fiber.V [
-      a ↦ v0.base
-    ] ∧ v1.base ∈ root.base.V [] ∧ v1.fiber ∈ root.fiber.V [
-      a ↦ v1.base
-    ] ∧ v2.base ∈ root.base.V [] ∧ v2.fiber ∈ root.fiber.V [
-      a ↦ v2.base
-    ] ∧ init.connection.t [
-      a.base ↦ v0.base,
-      a.fiber ↦ v0.fiber,
-      b.base ↦ v1.base,
-      b.fiber ↦ v1.fiber
-    ] ∧ root.action.V [
-      v0 ↦ v1.base,
-      v1 ↦ v2.base,
-      a ↦ b.base,
-      b ↦ v1.fiber,
-      c ↦ c
-    ] ∧ b.base ∈ root.base.E [
-      a ↦ v1.base,
-      b ↦ v2.base
-    ] ∧ b.fiber ∈ root.fiber.E [
-      a ↦ v2.base,
-      b ↦ c,
-      c ↦ v2.fiber
-    ] ⊢ init.connection.t [
-      a.base ↦ v0.base,
-      a.fiber ↦ v0.fiber,
-      b.base ↦ v2.base,
-      b.fiber ↦ v2.fiber
-    ]
-    chased view.total.V.definition V.base V.fiber := V.base ∈ root.base.V [] ∧ V.fiber ∈ root.fiber.V [
-      a ↦ V.base
-    ] ⊢ view.total.V [V.base ↦ V.base, V.fiber ↦ V.fiber]
-    chased view.total.E.definition v0.base v0.fiber v1.base v1.fiber E.base E.fiber a := v0.base ∈ root.base.V [] ∧ v0.fiber ∈ root.fiber.V [
-      a ↦ v0.base
-    ] ∧ v1.base ∈ root.base.V [] ∧ v1.fiber ∈ root.fiber.V [
-      a ↦ v1.base
-    ] ∧ root.action.V [
-      v0 ↦ v0.base,
-      v1 ↦ v1.base,
-      a ↦ E.base,
-      b ↦ v0.fiber,
-      c ↦ a
-    ] ∧ E.base ∈ root.base.E [
-      a ↦ v0.base,
-      b ↦ v1.base
-    ] ∧ E.fiber ∈ root.fiber.E [
-      a ↦ v1.base,
-      b ↦ a,
-      c ↦ v1.fiber
-    ] ⊢ view.total.E [
-      v0.base ↦ v0.base,
-      v0.fiber ↦ v0.fiber,
-      v1.base ↦ v1.base,
-      v1.fiber ↦ v1.fiber,
-      E.base ↦ E.base,
-      E.fiber ↦ E.fiber
-    ]
-  end
-  rules
-    enforced root.base.V.foreignKey := root.base.V [] ⊢ ⊤
-    enforced root.base.E.foreignKey a b := root.base.E [
-      a ↦ a,
-      b ↦ b
-    ] ⊢ a ∈ root.base.V [] ∧ b ∈ root.base.V []
-    enforced root.fiber.V.foreignKey a := root.fiber.V [
-      a ↦ a
-    ] ⊢ a ∈ root.base.V []
-    enforced root.fiber.E.foreignKey a b c := root.fiber.E [
-      a ↦ a,
-      b ↦ b,
-      c ↦ c
-    ] ⊢ a ∈ root.base.V [] ∧ b ∈ root.fiber.V [a ↦ a] ∧ c ∈ root.fiber.V [a ↦ a]
-    enforced root.action.V.foreignKey v0 v1 a b c := root.action.V [
-      v0 ↦ v0,
-      v1 ↦ v1,
-      a ↦ a,
-      b ↦ b,
-      c ↦ c
-    ] ⊢ v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
-      a ↦ v0,
-      b ↦ v1
-    ] ∧ b ∈ root.fiber.V [a ↦ v0] ∧ c ∈ root.fiber.V [a ↦ v1]
-    monitored root.action.V.total v0 v1 a b := v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
-      a ↦ v0,
-      b ↦ v1
-    ] ∧ b ∈ root.fiber.V [a ↦ v0] ⊢ root.action.V [
-      v0 ↦ v0,
-      v1 ↦ v1,
-      a ↦ a,
-      b ↦ b
-    ]
-    enforced root.action.E.foreignKey v0 v1 a v0/a v1/a b c d e := root.action.E [
-      v0 ↦ v0,
-      v1 ↦ v1,
-      a ↦ a,
-      v0/a ↦ v0/a,
-      v1/a ↦ v1/a,
-      b ↦ b,
-      c ↦ c
-    ] ⊢ v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
-      a ↦ v0,
-      b ↦ v1
-    ] ∧ v0/a ∈ root.fiber.V [a ↦ v0] ∧ v1/a ∈ root.fiber.V [
-      a ↦ v0
-    ] ∧ b ∈ root.fiber.E [a ↦ v0, b ↦ v0/a, c ↦ v1/a] ∧ root.action.V [
-      v0 ↦ v0,
-      v1 ↦ v1,
-      a ↦ a,
-      b ↦ v0/a,
-      c ↦ d
-    ] ∧ root.action.V [
-      v0 ↦ v0,
-      v1 ↦ v1,
-      a ↦ a,
-      b ↦ v1/a,
-      c ↦ e
-    ] ∧ c ∈ root.fiber.E [a ↦ v1, b ↦ d, c ↦ e]
-    monitored root.action.E.total v0 v1 a v0/a v1/a b := v0 ∈ root.base.V [] ∧ v1 ∈ root.base.V [] ∧ a ∈ root.base.E [
-      a ↦ v0,
-      b ↦ v1
-    ] ∧ v0/a ∈ root.fiber.V [a ↦ v0] ∧ v1/a ∈ root.fiber.V [
-      a ↦ v0
-    ] ∧ b ∈ root.fiber.E [a ↦ v0, b ↦ v0/a, c ↦ v1/a] ⊢ root.action.E [
-      v0 ↦ v0,
-      v1 ↦ v1,
-      a ↦ a,
-      v0/a ↦ v0/a,
-      v1/a ↦ v1/a,
-      b ↦ b
-    ]
-  end
-end
+
+```flir
+('root.base.V (ground ()))
+('root.base.E (ground ((%a 'root.base.V) (%b 'root.base.V))))
+('root.fiber.V (ground ((%a 'root.base.V))))
+('root.fiber.E
+ (ground ((%a 'root.base.V) (%b 'root.fiber.V) (%c 'root.fiber.V))))
+('root.action.V
+ (ground
+  ((%v0 'root.base.V)
+   (%v1 'root.base.V)
+   (%a 'root.base.E)
+   (%b 'root.fiber.V)
+   (%c 'root.fiber.V))
+  (primarykey 4)))
+('root.action.E
+ (ground
+  ((%v0 'root.base.V)
+   (%v1 'root.base.V)
+   (%a 'root.base.E)
+   (%v0/a 'root.fiber.V)
+   (%v1/a 'root.fiber.V)
+   (%b 'root.fiber.E)
+   (%c 'root.fiber.E))
+  (primarykey 6)))
+('init.connection.t
+ (view
+  ((%a.base 'root.base.V)
+   (%a.fiber 'root.fiber.V)
+   (%b.base 'root.base.V)
+   (%b.fiber 'root.fiber.V))
+  (primarykey 4)))
+('view.total.V
+ (view ((%V.base 'root.base.V) (%V.fiber 'root.fiber.V)) (primarykey 2)))
+('view.total.E
+ (view
+  ((%v0.base 'root.base.V)
+   (%v0.fiber 'root.fiber.V)
+   (%v1.base 'root.base.V)
+   (%v1.fiber 'root.fiber.V)
+   (%E.base 'root.base.E)
+   (%E.fiber 'root.fiber.E))
+  (primarykey 6)))
+('init.connection.refl
+ (rule
+  ((%v.base 'root.base.V) (%v.fiber 'root.fiber.V))
+  (('root.base.V (id %v.base)) ('root.fiber.V (id %v.fiber) %v.base))
+  ('init.connection.t %v.base %v.fiber %v.base %v.fiber)))
+('init.connection.snoc
+ (rule
+  ((%v0.base 'root.base.V)
+   (%v0.fiber 'root.fiber.V)
+   (%v1.base 'root.base.V)
+   (%v1.fiber 'root.fiber.V)
+   (%v2.base 'root.base.V)
+   (%v2.fiber 'root.fiber.V)
+   (%b.base 'root.base.E)
+   (%b.fiber 'root.fiber.E)
+   (%c 'root.fiber.V))
+  (('root.action.V %v1.base %v2.base %b.base %v1.fiber %c)
+   ('root.base.V (id %v0.base))
+   ('root.fiber.V (id %v0.fiber) %v0.base)
+   ('root.base.V (id %v1.base))
+   ('root.fiber.V (id %v1.fiber) %v1.base)
+   ('root.base.V (id %v2.base))
+   ('root.fiber.V (id %v2.fiber) %v2.base)
+   ('init.connection.t %v0.base %v0.fiber %v1.base %v1.fiber)
+   ('root.base.E (id %b.base) %v1.base %v2.base)
+   ('root.fiber.E (id %b.fiber) %v2.base %c %v2.fiber))
+  ('init.connection.t %v0.base %v0.fiber %v2.base %v2.fiber)))
+('view.total.V.definition
+ (rule
+  ((%V.base 'root.base.V) (%V.fiber 'root.fiber.V))
+  (('root.base.V (id %V.base)) ('root.fiber.V (id %V.fiber) %V.base))
+  ('view.total.V %V.base %V.fiber)))
+('view.total.E.definition
+ (rule
+  ((%v0.base 'root.base.V)
+   (%v0.fiber 'root.fiber.V)
+   (%v1.base 'root.base.V)
+   (%v1.fiber 'root.fiber.V)
+   (%E.base 'root.base.E)
+   (%E.fiber 'root.fiber.E)
+   (%a 'root.fiber.V))
+  (('root.action.V %v0.base %v1.base %E.base %v0.fiber %a)
+   ('root.base.V (id %v0.base))
+   ('root.fiber.V (id %v0.fiber) %v0.base)
+   ('root.base.V (id %v1.base))
+   ('root.fiber.V (id %v1.fiber) %v1.base)
+   ('root.base.E (id %E.base) %v0.base %v1.base)
+   ('root.fiber.E (id %E.fiber) %v1.base %a %v1.fiber))
+  ('view.total.E %v0.base %v0.fiber %v1.base %v1.fiber %E.base %E.fiber)))
+('root.base.V.foreignKey (law enforced () (('root.base.V)) ()))
+('root.base.E.foreignKey
+ (law
+  enforced
+  ((%a 'root.base.V) (%b 'root.base.V))
+  (('root.base.E %a %b))
+  (('root.base.V (id %a)) ('root.base.V (id %b)))))
+('root.fiber.V.foreignKey
+ (law
+  enforced
+  ((%a 'root.base.V))
+  (('root.fiber.V %a))
+  (('root.base.V (id %a)))))
+('root.fiber.E.foreignKey
+ (law
+  enforced
+  ((%a 'root.base.V) (%b 'root.fiber.V) (%c 'root.fiber.V))
+  (('root.fiber.E %a %b %c))
+  (('root.base.V (id %a))
+   ('root.fiber.V (id %b) %a)
+   ('root.fiber.V (id %c) %a))))
+('root.action.V.foreignKey
+ (law
+  enforced
+  ((%v0 'root.base.V)
+   (%v1 'root.base.V)
+   (%a 'root.base.E)
+   (%b 'root.fiber.V)
+   (%c 'root.fiber.V))
+  (('root.action.V %v0 %v1 %a %b %c))
+  (('root.base.V (id %v0))
+   ('root.base.V (id %v1))
+   ('root.base.E (id %a) %v0 %v1)
+   ('root.fiber.V (id %b) %v0)
+   ('root.fiber.V (id %c) %v1))))
+('root.action.V.total
+ (law
+  monitored
+  ((%v0 'root.base.V) (%v1 'root.base.V) (%a 'root.base.E) (%b 'root.fiber.V))
+  (('root.base.V (id %v0))
+   ('root.base.V (id %v1))
+   ('root.base.E (id %a) %v0 %v1)
+   ('root.fiber.V (id %b) %v0))
+  (('root.action.V %v0 %v1 %a %b))))
+('root.action.E.foreignKey
+ (law
+  enforced
+  ((%v0 'root.base.V)
+   (%v1 'root.base.V)
+   (%a 'root.base.E)
+   (%v0/a 'root.fiber.V)
+   (%v1/a 'root.fiber.V)
+   (%b 'root.fiber.E)
+   (%c 'root.fiber.E)
+   (%d 'root.fiber.V)
+   (%e 'root.fiber.V))
+  (('root.action.V %v0 %v1 %a %v0/a %d)
+   ('root.action.V %v0 %v1 %a %v1/a %e)
+   ('root.action.E %v0 %v1 %a %v0/a %v1/a %b %c))
+  (('root.base.V (id %v0))
+   ('root.base.V (id %v1))
+   ('root.base.E (id %a) %v0 %v1)
+   ('root.fiber.V (id %v0/a) %v0)
+   ('root.fiber.V (id %v1/a) %v0)
+   ('root.fiber.E (id %b) %v0 %v0/a %v1/a)
+   ('root.fiber.E (id %c) %v1 %d %e))))
+('root.action.E.total
+ (law
+  monitored
+  ((%v0 'root.base.V)
+   (%v1 'root.base.V)
+   (%a 'root.base.E)
+   (%v0/a 'root.fiber.V)
+   (%v1/a 'root.fiber.V)
+   (%b 'root.fiber.E))
+  (('root.base.V (id %v0))
+   ('root.base.V (id %v1))
+   ('root.base.E (id %a) %v0 %v1)
+   ('root.fiber.V (id %v0/a) %v0)
+   ('root.fiber.V (id %v1/a) %v0)
+   ('root.fiber.E (id %b) %v0 %v0/a %v1/a))
+  (('root.action.E %v0 %v1 %a %v0/a %v1/a %b))))
+```
 
 -- messages

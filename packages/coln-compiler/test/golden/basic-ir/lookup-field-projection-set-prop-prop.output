@@ -10,25 +10,22 @@ value: sig
   next : A -> B
   edge : E (next x)
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := []
-    table root.B := [] primarykey []
-    table root.E := [] primarykey []
-    table root.x := [a : root.A] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey := root.B [] ⊢ ⊤
-    enforced root.E.foreignKey := root.E [] ⊢ root.B []
-    enforced root.x.foreignKey a := root.x [a ↦ a] ⊢ a ∈ root.A []
-    monitored root.x.total := ⊤ ⊢ root.x []
-    monitored root.next a := a ∈ root.A [] ⊢ root.B []
-    monitored root.edge := ⊤ ⊢ root.E []
-  end
-end
+
+```flir
+('root.A (ground ()))
+('root.B (ground () (primarykey 0)))
+('root.E (ground () (primarykey 0)))
+('root.x (ground ((%a 'root.A)) (primarykey 0)))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey (law enforced () (('root.B)) ()))
+('root.E.foreignKey (law enforced () (('root.E)) (('root.B))))
+('root.x.foreignKey
+ (law enforced ((%a 'root.A)) (('root.x %a)) (('root.A (id %a)))))
+('root.x.total (law monitored () () (('root.x))))
+('root.next (law monitored ((%a 'root.A)) (('root.A (id %a))) (('root.B))))
+('root.edge (law monitored () () (('root.E))))
+```
 
 -- messages

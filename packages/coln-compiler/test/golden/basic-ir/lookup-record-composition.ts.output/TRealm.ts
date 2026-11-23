@@ -4,19 +4,19 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: {
       X: Runtime.MutableSet<Runtime.RowId<"root.X">>,
-      key: (a: Runtime.RowId<"root.X">) => Runtime.MutableRef<{ rank: number }>,
+      key: (a: Runtime.RowId<"root.X">) => Runtime.Ref<{ rank: number }>,
       PayloadAt: (a: number) => Runtime.MutableSet<Runtime.RowId<"root.PayloadAt">>,
-      slot: (x: Runtime.RowId<"root.X">) => Runtime.MutableRef<Runtime.RowId<"root.PayloadAt">>,
-      payload: (rank: number) => (a: Runtime.RowId<"root.PayloadAt">) => Runtime.MutableRef<{
+      slot: (x: Runtime.RowId<"root.X">) => Runtime.Ref<Runtime.RowId<"root.PayloadAt">>,
+      payload: (rank: number) => (a: Runtime.RowId<"root.PayloadAt">) => Runtime.Ref<{
         name: string
       }>,
       E: (a: string) => Runtime.MutableSet<Runtime.RowId<"root.E">>,
-      edge: (x: Runtime.RowId<"root.X">) => Runtime.MutableRef<Runtime.RowId<"root.E">>
+      edge: (x: Runtime.RowId<"root.X">) => Runtime.Ref<Runtime.RowId<"root.E">>
     };
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
+        X: (new runtime.InductiveViewSet(mstore, "root.X", [])),
         key: (a: Runtime.RowId<"root.X">) => {
           return (new runtime.BaseTableRef(
             mstore,
@@ -34,7 +34,7 @@ export function createRealm(runtime: typeof Runtime) {
           ));
         },
         PayloadAt: (a: number) => {
-          return (new runtime.BaseSet(mstore, "root.PayloadAt", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.PayloadAt", [a]));
         },
         slot: (x: Runtime.RowId<"root.X">) => {
           return (new runtime.BaseTableRef(
@@ -74,7 +74,7 @@ export function createRealm(runtime: typeof Runtime) {
           };
         },
         E: (a: string) => {
-          return (new runtime.BaseSet(mstore, "root.E", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.E", [a]));
         },
         edge: (x: Runtime.RowId<"root.X">) => {
           return (new runtime.BaseTableRef(

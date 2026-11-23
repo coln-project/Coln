@@ -9,9 +9,9 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        V: (new runtime.BaseSet(mstore, "root.V", [])),
+        V: (new runtime.InductiveViewSet(mstore, "root.V", [])),
         E: (a: Runtime.RowId<"root.V">) => {
-          return (new runtime.BaseSet(mstore, "root.E", [a]));
+          return (new runtime.InductiveViewSet(mstore, "root.E", [a]));
         }
       };
     }

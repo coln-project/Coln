@@ -5,6 +5,7 @@ type: (X : Set) -> (x : X) -> Set
 value: X => x => sig
   proof : x = x
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -12,17 +13,14 @@ value: sig
   X : Set
   witness : (x : X) -> Witness X x
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    monitored root.witness x := x ∈ root.X [] ⊢ x = x
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.witness
+ (law monitored ((%x 'root.X)) (('root.X (id %x))) ((= 'root.X %x %x))))
+```
 
 -- messages

@@ -11,25 +11,21 @@ value: sig
   second : B -> C
   edge : (x : A) -> E (second (first x))
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.A := [] primarykey []
-    table root.B := [] primarykey []
-    table root.C := [] primarykey []
-    table root.E := [] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.A.foreignKey := root.A [] ⊢ ⊤
-    enforced root.B.foreignKey := root.B [] ⊢ ⊤
-    enforced root.C.foreignKey := root.C [] ⊢ ⊤
-    enforced root.E.foreignKey := root.E [] ⊢ root.C []
-    monitored root.first := root.A [] ⊢ root.B []
-    monitored root.second := root.B [] ⊢ root.C []
-    monitored root.edge := root.A [] ⊢ root.E []
-  end
-end
+
+```flir
+('root.A (ground () (primarykey 0)))
+('root.B (ground () (primarykey 0)))
+('root.C (ground () (primarykey 0)))
+('root.E (ground () (primarykey 0)))
+('root.A.foreignKey (law enforced () (('root.A)) ()))
+('root.B.foreignKey (law enforced () (('root.B)) ()))
+('root.C.foreignKey (law enforced () (('root.C)) ()))
+('root.E.foreignKey (law enforced () (('root.E)) (('root.C))))
+('root.first (law monitored () (('root.A)) (('root.B))))
+('root.second (law monitored () (('root.B)) (('root.C))))
+('root.edge (law monitored () (('root.A)) (('root.E))))
+```
 
 -- messages

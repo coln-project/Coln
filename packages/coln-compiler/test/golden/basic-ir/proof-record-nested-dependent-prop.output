@@ -5,6 +5,7 @@ type: (P : Prop) -> Set
 value: P => sig
   proof : P
 end
+
 global entry named Package
 in mode: Conjunctive
 type: (P : Int -> Prop) -> Set
@@ -12,6 +13,7 @@ value: P => sig
   value : Int
   evidence : Evidence (P value)
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -19,21 +21,20 @@ value: sig
   P : Int -> Prop
   package : Package P
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.P := [a : Int] primarykey [a]
-    table root.package := [a.value : Int] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.P.foreignKey a := root.P [a ↦ a] ⊢ ⊤
-    enforced root.package.foreignKey a.value := root.package [
-      a.value ↦ a.value
-    ] ⊢ root.P [a ↦ a.value]
-    monitored root.package.total := ⊤ ⊢ root.package []
-  end
-end
+
+```flir
+('root.P (ground ((%a int)) (primarykey 1)))
+('root.package (ground ((%a.value int)) (primarykey 0)))
+('root.P.foreignKey (law enforced ((%a int)) (('root.P %a)) ()))
+('root.package.foreignKey
+ (law
+  enforced
+  ((%a.value int))
+  (('root.package %a.value))
+  (('root.P %a.value))))
+('root.package.total (law monitored () () (('root.package))))
+```
 
 -- messages

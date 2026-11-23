@@ -14,14 +14,14 @@ export function createRealm(runtime: typeof Runtime) {
 
     constructor(mstore: Runtime.ManagedStore) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
+        X: (new runtime.InductiveViewSet(mstore, "root.X", [])),
         Accepted: (a: {
           first: Runtime.RowId<"root.X">,
           second: Runtime.RowId<"root.X">,
           proof: null,
           trailing: Runtime.RowId<"root.X">
         }) => {
-          return (new runtime.BaseProp(
+          return (new runtime.ViewProp(
             mstore,
             "root.Accepted",
             [a.first, a.second, a.trailing]

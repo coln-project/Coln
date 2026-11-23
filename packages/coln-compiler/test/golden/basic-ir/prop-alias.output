@@ -3,22 +3,19 @@ global entry named PropAlias
 in mode: Conjunctive
 type: Theory
 value: Prop
+
 global entry named T
 in mode: Conjunctive
 type: Theory
 value: sig
   V : PropAlias
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.V := [] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.V.foreignKey := root.V [] ⊢ ⊤
-  end
-end
+
+```flir
+('root.V (ground () (primarykey 0)))
+('root.V.foreignKey (law enforced () (('root.V)) ()))
+```
 
 -- messages

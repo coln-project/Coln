@@ -8,6 +8,7 @@ value: X => sig
   proof : first = second
   trailing : X
 end
+
 global entry named T
 in mode: Conjunctive
 type: Theory
@@ -15,27 +16,26 @@ value: sig
   X : Set
   value : EqualTriple X
 end
+
 realm named TRealm
-lowered: flatrealm
-  entities
-    table root.X := []
-    table root.value := [
-      a.first : root.X,
-      a.second : root.X,
-      a.trailing : root.X
-    ] primarykey []
-  end
-  definitions
-  end
-  rules
-    enforced root.X.foreignKey := root.X [] ⊢ ⊤
-    enforced root.value.foreignKey a.first a.second a.trailing := root.value [
-      a.first ↦ a.first,
-      a.second ↦ a.second,
-      a.trailing ↦ a.trailing
-    ] ⊢ a.first ∈ root.X [] ∧ a.second ∈ root.X [] ∧ a.first = a.second ∧ a.trailing ∈ root.X []
-    monitored root.value.total := ⊤ ⊢ root.value []
-  end
-end
+
+```flir
+('root.X (ground ()))
+('root.value
+ (ground
+  ((%a.first 'root.X) (%a.second 'root.X) (%a.trailing 'root.X))
+  (primarykey 0)))
+('root.X.foreignKey (law enforced () (('root.X)) ()))
+('root.value.foreignKey
+ (law
+  enforced
+  ((%a.first 'root.X) (%a.second 'root.X) (%a.trailing 'root.X))
+  (('root.value %a.first %a.second %a.trailing))
+  (('root.X (id %a.first))
+   ('root.X (id %a.second))
+   (= 'root.X %a.first %a.second)
+   ('root.X (id %a.trailing)))))
+('root.value.total (law monitored () () (('root.value))))
+```
 
 -- messages
