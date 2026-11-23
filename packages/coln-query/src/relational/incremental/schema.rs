@@ -442,7 +442,7 @@ impl Eq for StreamSchema {}
 ///
 /// A [`TableSchema`] may declare several candidate keys, or none; an
 /// `OrdIndexedZSet` has exactly one. We take the first declared key. For a
-/// FLIR base table that is the row id, the only key guaranteed to be unique,
+/// FLIR ground table that is the row id, the only key guaranteed to be unique,
 /// and fall back to the empty key, which indexes every row under the same
 /// (empty) key, for a relation that declares none.
 impl From<&TableSchema> for StreamSchema {

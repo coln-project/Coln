@@ -10,7 +10,6 @@
 use anyhow::{Result, bail};
 use coln_batch::types::{Column as BatchColumn, ScalarType as BatchType, Schema, Value};
 
-use crate::host::expr::Literal;
 use crate::relational::schema::TableSchema;
 use crate::scalarial::{ScalarType, ScalarTypedValue};
 
@@ -51,18 +50,7 @@ pub(crate) fn batch_schema(schema: &TableSchema) -> Result<Schema> {
         .collect()
 }
 
-/// A plan literal as an engine value.
-pub(crate) fn literal_value(literal: &Literal) -> Result<Value> {
-    Ok(match literal {
-        Literal::String(s) => Value::String(s.clone()),
-        Literal::Uint(u) => Value::Uint(*u),
-        Literal::Iint(i) => Value::Iint(*i),
-        Literal::Bool(b) => Value::Bool(*b),
-        Literal::Null(()) => bail!("the batch backend does not support null literals"),
-    })
-}
-
-/// A fed cell as an engine value.
+/// A fed cell or a plan literal as an engine value.
 pub(crate) fn engine_value(value: &ScalarTypedValue) -> Result<Value> {
     Ok(match value {
         ScalarTypedValue::String(s) => Value::String(s.clone()),
@@ -116,7 +104,5 @@ mod tests {
             assert_eq!(pipeline_value(engine_value(&value).unwrap()), value);
         }
         assert!(engine_value(&ScalarTypedValue::Null(())).is_err());
-        assert!(literal_value(&Literal::Null(())).is_err());
-        assert_eq!(literal_value(&Literal::Iint(-1)).unwrap(), Value::Iint(-1));
     }
 }

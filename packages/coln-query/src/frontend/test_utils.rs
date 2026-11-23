@@ -87,23 +87,32 @@ pub(super) fn pred(name: &str, rules: &[&[&str]]) -> TestPredicate {
 /// reads as the rule it stands for. A bare name binds nothing, which is all
 /// the tests that only look at the reference graph need. A body spec that
 /// reads as a [`cond`] is a condition instead.
-pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> TestRule {
-    TestRule {
-        name: name.into(),
+pub(super) fn rule(name: &str, head: &str, body: &[&str]) -> Rule<TestLanguage> {
+    Rule {
+        id: name.into(),
         head: atom(head),
-        atoms: body
-            .iter()
-            .filter(|spec| cond(spec).is_none())
-            .map(|spec| atom(spec))
-            .collect(),
-        conditions: body.iter().filter_map(|spec| cond(spec)).collect(),
+        body: conjunction(body),
+        meta: (),
     }
+}
+
+/// A conjunction of `specs`, each an [`atom`] spec, or a [`cond`] spec.
+pub(super) fn conjunction(specs: &[&str]) -> Conjunction<TestLanguage> {
+    specs
+        .iter()
+        .map(|spec| cond(spec).map_or_else(|| Prop::Atom(atom(spec)), Prop::Cond))
+        .collect()
+}
+
+/// The variable `name`, as an [`atom`] spec spells it.
+pub(super) fn var(name: &str) -> TestTypedVar {
+    TestTypedVar { name: name.into() }
 }
 
 /// A condition written as `term operator term`, if `spec` is one: three
 /// whitespace-separated parts, the middle a comparison's symbol. The terms
 /// read as in an [`atom`].
-fn cond(spec: &str) -> Option<TestCond> {
+fn cond(spec: &str) -> Option<Cond<TestLanguage>> {
     let [left, operator, right] = spec.split_whitespace().collect::<Vec<_>>()[..] else {
         return None;
     };
@@ -117,7 +126,7 @@ fn cond(spec: &str) -> Option<TestCond> {
     ]
     .into_iter()
     .find(|candidate| candidate.symbol() == operator)?;
-    Some(TestCond {
+    Some(Cond {
         operator,
         left: term(left),
         right: term(right),
@@ -131,7 +140,7 @@ fn cond(spec: &str) -> Option<TestCond> {
 /// leaves that position unbound (the sparseness [`Atom::bindings`] allows),
 /// and anything else is a variable. A term written `position: term` binds
 /// that position rather than its own, which lets an atom bind one twice.
-pub(super) fn atom(spec: &str) -> TestAtom {
+pub(super) fn atom(spec: &str) -> Atom<TestLanguage> {
     let (spec, positive) = spec
         .strip_prefix('!')
         .map_or((spec, true), |negated| (negated, false));
@@ -152,9 +161,9 @@ pub(super) fn atom(spec: &str) -> TestAtom {
             (position, term(spec))
         })
         .collect();
-    TestAtom {
+    Atom {
         name: name.trim().into(),
-        positive,
+        negated: !positive,
         bindings,
     }
 }
@@ -210,81 +219,36 @@ pub(super) struct TestLogicalProgram {
 }
 
 impl LogicalProgram for TestLogicalProgram {
-    type Predicate = TestPredicate;
+    type Lang = TestLanguage;
 
-    fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
+    fn predicates(&self) -> impl Iterator<Item = &TestPredicate> {
         self.predicates.iter()
     }
 }
 
-/// The tests use [`RulePredicate`] itself as their [`Predicate`], so the
-/// scaffolding stops at the rule level.
-pub(super) type TestPredicate = RulePredicate<TestRule>;
+/// The tests' [`Language`], over the three identifier spaces declared above.
+#[derive(Debug, Clone)]
+pub(super) struct TestLanguage;
 
-#[derive(Debug)]
-pub(super) struct TestRule {
-    name: RuleName,
-    head: TestAtom,
-    atoms: Vec<TestAtom>,
-    conditions: Vec<TestCond>,
-}
-
-impl Identifiable for TestRule {
-    type Identifier = RuleName;
-
-    fn id(&self) -> &RuleName {
-        &self.name
-    }
-}
-
-impl Rule for TestRule {
-    type Atom = TestAtom;
-    type Cond = TestCond;
-
-    fn head(&self) -> &Self::Atom {
-        &self.head
-    }
-
-    fn atoms(&self) -> impl Iterator<Item = &Self::Atom> {
-        self.atoms.iter()
-    }
-
-    fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
-        self.conditions.iter()
-    }
-}
-
-#[derive(Debug)]
-pub(super) struct TestAtom {
-    name: PredicateName,
-    positive: bool,
-    bindings: Vec<(usize, Bind<TestTypedVar, TestLit>)>,
-}
-
-impl Identifiable for TestAtom {
-    type Identifier = PredicateName;
-
-    fn id(&self) -> &PredicateName {
-        &self.name
-    }
-}
-
-impl Atom for TestAtom {
+impl Language for TestLanguage {
+    type PredId = PredicateName;
+    type RuleId = RuleName;
     type Var = TestTypedVar;
     type Lit = TestLit;
+    type RuleMeta = ();
 
-    fn is_positive(&self) -> bool {
-        self.positive
+    fn derive_pred_id(base: &PredicateName, tag: &'static str) -> PredicateName {
+        format!("{base}#{tag}").as_str().into()
     }
 
-    fn bindings(&self) -> impl Iterator<Item = (usize, Bind<&Self::Var, &Self::Lit>)> {
-        self.bindings
-            .iter()
-            .map(|(position, bind)| (*position, borrow(bind)))
+    fn derive_rule_id(base: &RuleName, tag: &'static str) -> RuleName {
+        format!("{base}#{tag}").as_str().into()
     }
 }
 
-#[derive(Debug)]
+pub(super) type TestPredicate = Predicate<TestLanguage>;
+
+#[derive(Debug, Clone)]
 pub(super) struct TestTypedVar {
     name: VarName,
 }
@@ -303,44 +267,12 @@ impl TypedVar for TestTypedVar {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct TestLit(Literal);
 
 impl Lit for TestLit {
     fn to_literal(&self) -> Literal {
         self.0.clone()
-    }
-}
-
-/// A condition, as [`rule`] reads one off a body spec like `x < 3`.
-#[derive(Debug)]
-pub(super) struct TestCond {
-    operator: Operator,
-    left: Bind<TestTypedVar, TestLit>,
-    right: Bind<TestTypedVar, TestLit>,
-}
-
-impl Cond for TestCond {
-    type Var = TestTypedVar;
-    type Lit = TestLit;
-
-    fn operator(&self) -> impl Into<Operator> {
-        self.operator
-    }
-
-    fn left(&self) -> Bind<&Self::Var, &Self::Lit> {
-        borrow(&self.left)
-    }
-
-    fn right(&self) -> Bind<&Self::Var, &Self::Lit> {
-        borrow(&self.right)
-    }
-}
-
-pub(super) fn borrow<Var, Lit>(bind: &Bind<Var, Lit>) -> Bind<&Var, &Lit> {
-    match bind {
-        Bind::Var(var) => Bind::Var(var),
-        Bind::Lit(lit) => Bind::Lit(lit),
     }
 }
 

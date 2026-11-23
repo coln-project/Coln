@@ -2,12 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Datalog notation for anything implementing this layer's traits.
+//! Datalog notation for this layer's programs, predicates, rules, atoms, and
+//! conditions.
 //!
-//! Each trait gets an adapter borrowing the implementor, handed out by the
-//! trait's `display` method. A blanket `impl Display` is not an option: the
-//! traits are generic over foreign types, and one adapter generic over all of
-//! them would have overlapping impls.
+//! Each implements [`Display`] directly, except for a [`LogicalProgram`]: a
+//! blanket `impl Display` for every implementor of the trait is not an option,
+//! as they may be foreign types, so its `display` method hands out an adapter
+//! borrowing it instead.
 //!
 //! The notation, with `{}` and `{:#}` respectively:
 //!
@@ -22,7 +23,12 @@
 //! // r0
 //! path(x, y) :-
 //!     edge(x, y).
-//! …
+//! // r1
+//! path(x, z) :-
+//!     path(x, y),
+//!     edge(y, z),
+//!     !blocked(z),
+//!     z != 3.
 //! ```
 //!
 //! The alternate form puts each body proposition on its own line and names
@@ -33,68 +39,59 @@
 //! atom does not know its relation's arity, so trailing unbound positions are
 //! lost. A [`head`](Rule::head) is dense and hence unaffected.
 
-use super::{Atom, Bind, Cond, Identifiable, Lit, LogicalProgram, Predicate, Rule, TypedVar};
-use crate::host::operator::Operator;
+use super::{
+    Atom, Bind, Cond, Identifiable, Language, Lit, LogicalProgram, Predicate, Prop, Rule, TypedVar,
+};
 use std::fmt::{self, Display};
-
-/// An [`Atom`] as `name(term, …)`, prefixed with `!` if negated.
-pub struct AtomDisplay<'a, A>(pub(super) &'a A);
-
-/// A [`Cond`] as `left operator right`.
-pub struct CondDisplay<'a, C>(pub(super) &'a C);
-
-/// A [`Rule`] as `head :- proposition, ….`, or as `head.` with an empty body.
-pub struct RuleDisplay<'a, R>(pub(super) &'a R);
-
-/// A [`Predicate`] as its `.decl`, followed by its rules one per line.
-///
-/// An EDB predicate prints as its `.decl` alone: its single rule only marks
-/// it as given externally and says nothing a reader would recognize as Datalog.
-pub struct PredicateDisplay<'a, P>(pub(super) &'a P);
 
 /// A [`LogicalProgram`] as its predicates, separated by blank lines. Each
 /// predicate the program [outputs](LogicalProgram::is_output) carries an
 /// `.output` directive below its `.decl`, which only the program can tell:
-/// a [`PredicateDisplay`] on its own prints none.
-pub struct ProgramDisplay<'a, L>(pub(super) &'a L);
+/// a [`Predicate`] on its own prints none.
+pub struct ProgramDisplay<'a, LP>(pub(super) &'a LP);
 
-impl<A: Atom> Display for AtomDisplay<'_, A> {
+/// An [`Atom`] as `name(term, ...)`, prefixed with `!` if negated.
+impl<L: Language> Display for Atom<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let atom = self.0;
-        if atom.is_negated() {
+        if self.is_negated() {
             f.write_str("!")?;
         }
-        write!(f, "{}(", atom.id())?;
-        separated(f, dense(atom.bindings()), ", ")?;
+        write!(f, "{}(", self.id())?;
+        separated(f, dense(self.bindings()), ", ")?;
         f.write_str(")")
     }
 }
 
-impl<C: Cond> Display for CondDisplay<'_, C> {
+/// A [`Cond`] as `left operator right`.
+impl<L: Language> Display for Cond<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let cond = self.0;
-        let operator: Operator = cond.operator().into();
+        let operator = self.operator();
         write!(
             f,
             "{} {operator} {}",
-            Term(Some(cond.left())),
-            Term(Some(cond.right()))
+            Term(Some(self.left())),
+            Term(Some(self.right()))
         )
     }
 }
 
-impl<R: Rule> Display for RuleDisplay<'_, R> {
+impl<A: Display, C: Display> Display for Prop<A, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rule = self.0;
-        if f.alternate() {
-            writeln!(f, "// {}", rule.id())?;
+        match self {
+            Prop::Atom(atom) => atom.fmt(f),
+            Prop::Cond(cond) => cond.fmt(f),
         }
-        AtomDisplay(rule.head()).fmt(f)?;
-        let mut body = rule
-            .atoms()
-            .map(Proposition::Atom)
-            .chain(rule.conditions().map(Proposition::Cond))
-            .peekable();
+    }
+}
+
+/// A [`Rule`] as `head :- proposition, ..., .`, or as `head.` with an empty body.
+impl<L: Language> Display for Rule<L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if f.alternate() {
+            writeln!(f, "// {}", self.id())?;
+        }
+        self.head().fmt(f)?;
+        let mut body = self.body().iter().peekable();
         if body.peek().is_some() {
             let (neck, separator) = match f.alternate() {
                 true => (" :-\n    ", ",\n    "),
@@ -107,14 +104,18 @@ impl<R: Rule> Display for RuleDisplay<'_, R> {
     }
 }
 
-impl<P: Predicate> Display for PredicateDisplay<'_, P> {
+/// A [`Predicate`] as its `.decl`, followed by its rules one per line.
+///
+/// An EDB predicate prints as its `.decl` alone: its single rule only marks
+/// it as given externally and says nothing a reader would recognize as Datalog.
+impl<L: Language> Display for Predicate<L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        declaration(f, self.0)?;
-        rules(f, self.0)
+        declaration(f, self)?;
+        rules(f, self)
     }
 }
 
-impl<L: LogicalProgram> Display for ProgramDisplay<'_, L> {
+impl<LP: LogicalProgram> Display for ProgramDisplay<'_, LP> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let program = self.0;
         let predicates = program.predicates().map(|predicate| {
@@ -131,37 +132,22 @@ impl<L: LogicalProgram> Display for ProgramDisplay<'_, L> {
 }
 
 /// A predicate's `.decl` line.
-fn declaration<P: Predicate>(f: &mut fmt::Formatter<'_>, predicate: &P) -> fmt::Result {
+fn declaration<L: Language>(f: &mut fmt::Formatter<'_>, predicate: &Predicate<L>) -> fmt::Result {
     write!(f, ".decl {}(", predicate.id())?;
     separated(f, predicate.columns(), ", ")?;
     f.write_str(")")
 }
 
 /// A predicate's rules, each on a line of its own. An EDB predicate has none
-/// worth printing, see [`PredicateDisplay`].
-fn rules<P: Predicate>(f: &mut fmt::Formatter<'_>, predicate: &P) -> fmt::Result {
+/// worth printing, see [`Predicate`]'s [`Display`].
+fn rules<L: Language>(f: &mut fmt::Formatter<'_>, predicate: &Predicate<L>) -> fmt::Result {
     if predicate.is_edb_predicate() {
         return Ok(());
     }
     predicate.rules().try_for_each(|rule| {
         f.write_str("\n")?;
-        RuleDisplay(rule).fmt(f)
+        rule.fmt(f)
     })
-}
-
-/// A rule's body is made of propositions: atoms and conditions alike.
-enum Proposition<'a, A, C> {
-    Atom(&'a A),
-    Cond(&'a C),
-}
-
-impl<A: Atom, C: Cond> Display for Proposition<'_, A, C> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Proposition::Atom(atom) => AtomDisplay(*atom).fmt(f),
-            Proposition::Cond(cond) => CondDisplay(*cond).fmt(f),
-        }
-    }
 }
 
 /// What fills one position of an atom, or `None` for a position it skips.
@@ -212,27 +198,27 @@ pub(super) fn separated<T: Display>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{RulePredicate, test_utils::*};
+    use super::super::{Predicate, test_utils::*};
     use super::*;
 
     #[test]
     fn an_atom_prints_its_terms_by_position() {
-        assert_eq!(atom("edge(x, 3)").display().to_string(), "edge(x, 3)");
-        assert_eq!(atom("!edge(x, y)").display().to_string(), "!edge(x, y)");
-        assert_eq!(atom("unit").display().to_string(), "unit()");
+        assert_eq!(atom("edge(x, 3)").to_string(), "edge(x, 3)");
+        assert_eq!(atom("!edge(x, y)").to_string(), "!edge(x, y)");
+        assert_eq!(atom("unit").to_string(), "unit()");
     }
 
     #[test]
     fn an_atom_prints_a_skipped_position_as_a_wildcard() {
         // The trailing `_` is lost: an atom does not know its arity.
-        assert_eq!(atom("edge(_, y, _)").display().to_string(), "edge(_, y)");
+        assert_eq!(atom("edge(_, y, _)").to_string(), "edge(_, y)");
     }
 
     #[test]
     fn a_string_literal_prints_quoted() {
         // Bare, the literal would read as the variable `ann`.
         assert_eq!(
-            atom(r#"person(ann, "ann")"#).display().to_string(),
+            atom(r#"person(ann, "ann")"#).to_string(),
             r#"person(ann, "ann")"#
         );
     }
@@ -245,7 +231,7 @@ mod tests {
             &["path(x, y)", "edge(y, z)", "!blocked(z)", "z != 3"],
         );
         assert_eq!(
-            rule.display().to_string(),
+            rule.to_string(),
             "path(x, z) :- path(x, y), edge(y, z), !blocked(z), z != 3."
         );
     }
@@ -254,19 +240,19 @@ mod tests {
     fn a_rule_prints_its_body_one_proposition_per_line_when_alternate() {
         let rule = rule("r0", "path(x, z)", &["path(x, y)", "edge(y, z)"]);
         assert_eq!(
-            format!("{:#}", rule.display()),
+            format!("{rule:#}"),
             "// r0\npath(x, z) :-\n    path(x, y),\n    edge(y, z)."
         );
     }
 
     #[test]
     fn a_rule_without_a_body_prints_as_a_fact() {
-        assert_eq!(rule("r0", "zero(0)", &[]).display().to_string(), "zero(0).");
+        assert_eq!(rule("r0", "zero(0)", &[]).to_string(), "zero(0).");
     }
 
     #[test]
     fn a_predicate_prints_its_declaration_and_rules() {
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("path", &["x", "y"])],
             [
                 rule("r0", "path(x, y)", &["edge(x, y)"]),
@@ -275,7 +261,7 @@ mod tests {
         )
         .expect("every definand names a declared predicate");
         assert_eq!(
-            predicates[0].display().to_string(),
+            predicates[0].to_string(),
             ".decl path(x: uint, y: uint)\n\
              path(x, y) :- edge(x, y).\n\
              path(x, z) :- path(x, y), edge(y, z)."
@@ -284,13 +270,13 @@ mod tests {
 
     #[test]
     fn an_edb_predicate_prints_its_declaration_alone() {
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["from", "to"])],
             [rule("r0", "edge(from, to)", &[])],
         )
         .expect("every definand names a declared predicate");
         assert_eq!(
-            predicates[0].display().to_string(),
+            predicates[0].to_string(),
             ".decl edge(from: uint, to: uint)"
         );
     }

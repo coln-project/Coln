@@ -6,9 +6,7 @@
 
 use super::display::separated;
 use super::graph_utils::gabow;
-use super::{
-    AggregateRules, Component, Cond, IdOf, Identifiable, LogicalProgram, Predicate, Rule, TypedVar,
-};
+use super::{Cond, Identifiable, Language, LogicalProgram, Predicate, Rule, TypedVar};
 use crate::error::SyntaxError;
 use crate::frontend::Atom;
 #[cfg(debug_assertions)]
@@ -19,7 +17,7 @@ use indexmap::{IndexMap, IndexSet, map::Entry};
 use std::{collections::HashSet, fmt, iter, marker::PhantomData};
 
 /// Builds the program's graphs, checking nothing. See [`Analysis::verify`].
-pub(super) fn analyze<LP: LogicalProgram>(program: &LP) -> Analysis<'_, LP::Predicate> {
+pub(super) fn analyze<LP: LogicalProgram>(program: &LP) -> Analysis<'_, LP::Lang> {
     let dependencies = PredicateDependencyGraph::from_logical_program(program);
     let quotient = QuotientGraph::from_predicate_dep_graph(&dependencies);
     Analysis {
@@ -31,7 +29,7 @@ pub(super) fn analyze<LP: LogicalProgram>(program: &LP) -> Analysis<'_, LP::Pred
 
 /// The program's components in the order to evaluate them in, each after
 /// every component it depends on.
-pub(super) type ExecutionOrder<'a, P> = [PredicateComponent<'a, P>];
+pub(super) type ExecutionOrder<'a, L> = [PredicateComponent<'a, L>];
 
 /// An [`Analysis`] state: the graphs are built, but the program may be invalid.
 pub struct Unchecked;
@@ -54,13 +52,13 @@ pub struct Verified;
 /// in predicates rather than in the graphs' node indices, and drawn with
 /// [`dot`](Self::dot). That includes the graphs of an invalid program, which
 /// [`Rejected`] hands back.
-pub struct Analysis<'a, P: Identifiable, S = Unchecked> {
-    dependencies: PredicateDependencyGraph<'a, P>,
-    quotient: QuotientGraph<'a, P>,
+pub struct Analysis<'a, L: Language, S = Unchecked> {
+    dependencies: PredicateDependencyGraph<'a, L>,
+    quotient: QuotientGraph<'a, L>,
     state: PhantomData<S>,
 }
 
-impl<'a, P: Predicate> Analysis<'a, P, Unchecked> {
+impl<'a, L: Language> Analysis<'a, L, Unchecked> {
     /// Checks the program: it has to be well-formed (see [`Malformation`]),
     /// stratifiable, and each of its components seeded (see [`Unseeded`]). On
     /// failure, the analysis comes back along with the error, so that it can
@@ -70,7 +68,7 @@ impl<'a, P: Predicate> Analysis<'a, P, Unchecked> {
     /// miss what is malformed: a dangling negated atom adds no edge, so it
     /// cannot break a stratification either. Likewise, an atom that reads no
     /// predicate cannot tell a base rule from a recursive one.
-    pub fn verify(self) -> Result<Analysis<'a, P, Verified>, Rejected<'a, P>> {
+    pub fn verify(self) -> Result<Analysis<'a, L, Verified>, Rejected<'a, L>> {
         let malformations = self.dependencies.malformations();
         if !malformations.is_empty() {
             let message = fmt::from_fn(|f| separated(f, &malformations, "; ")).to_string();
@@ -102,8 +100,8 @@ impl<'a, P: Predicate> Analysis<'a, P, Unchecked> {
     }
 }
 
-impl<'a, P: Predicate> Analysis<'a, P, Verified> {
-    pub(super) fn execution_order(&self) -> &ExecutionOrder<'a, P> {
+impl<'a, L: Language> Analysis<'a, L, Verified> {
+    pub(super) fn execution_order(&self) -> &ExecutionOrder<'a, L> {
         &self.quotient.components
     }
 }
@@ -114,14 +112,14 @@ impl<'a, P: Predicate> Analysis<'a, P, Verified> {
 /// Deliberately not convertible into a [`SyntaxError`] by `?`: an impl of
 /// `From` for it makes `?` ambiguous wherever the error type is inferred.
 /// Take [`error`](Self::error) instead.
-pub struct Rejected<'a, P: Identifiable> {
+pub struct Rejected<'a, L: Language> {
     pub error: SyntaxError,
     /// Boxed to keep the error path of a verification small.
-    pub analysis: Box<Analysis<'a, P>>,
+    pub analysis: Box<Analysis<'a, L>>,
 }
 
 /// Shows the error only, so that a rejection can be `unwrap`ped.
-impl<P: Identifiable> fmt::Debug for Rejected<'_, P> {
+impl<L: Language> fmt::Debug for Rejected<'_, L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Rejected")
             .field("error", &self.error)
@@ -131,16 +129,16 @@ impl<P: Identifiable> fmt::Debug for Rejected<'_, P> {
 
 /// Shows nothing of the graphs, which [`dot`](Analysis::dot) draws instead,
 /// so that a verification can be `unwrap`ped either way.
-impl<P: Identifiable, S> fmt::Debug for Analysis<'_, P, S> {
+impl<L: Language, S> fmt::Debug for Analysis<'_, L, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Analysis").finish_non_exhaustive()
     }
 }
 
-impl<'a, P: Predicate, S> Analysis<'a, P, S> {
+impl<'a, L: Language, S> Analysis<'a, L, S> {
     /// The components, each after every component it depends on, which is the
     /// order a [`Verified`] analysis executes them in.
-    pub(super) fn components(&self) -> impl Iterator<Item = ComponentView<'_, 'a, P>> {
+    pub(super) fn components(&self) -> impl Iterator<Item = ComponentView<'_, 'a, L>> {
         let quotient = &self.quotient;
         quotient
             .components
@@ -157,7 +155,7 @@ impl<'a, P: Predicate, S> Analysis<'a, P, S> {
     /// Every dependency between two predicates, once per polarity: a
     /// predicate reading another in several atoms of the same polarity
     /// depends on it once.
-    pub(super) fn edges(&self) -> impl Iterator<Item = DependencyEdge<'a, P>> {
+    pub(super) fn edges(&self) -> impl Iterator<Item = DependencyEdge<'a, L>> {
         let dependencies = &self.dependencies;
         let component_of = &self.quotient.component_of;
         let distinct: IndexSet<(NodeIdx, NodeIdx, EdgeLabel)> = dependencies
@@ -182,10 +180,10 @@ impl<'a, P: Predicate, S> Analysis<'a, P, S> {
 }
 
 /// A component of an [`Analysis`], as its graphs place it.
-pub(super) struct ComponentView<'g, 'a, P> {
+pub(super) struct ComponentView<'g, 'a, L: Language> {
     /// Its position in the order of [`components`](Analysis::components).
     pub(super) position: usize,
-    pub(super) component: &'g PredicateComponent<'a, P>,
+    pub(super) component: &'g PredicateComponent<'a, L>,
     /// Depends on no other component, that is, an input of the dataflow.
     pub(super) is_source: bool,
     /// No other component depends on it, that is, an output of the dataflow.
@@ -194,9 +192,9 @@ pub(super) struct ComponentView<'g, 'a, P> {
 
 /// A dependency of predicate `from` on predicate `to`, which `from` mentions
 /// in one of its body's atoms.
-pub(super) struct DependencyEdge<'a, P> {
-    pub(super) from: &'a P,
-    pub(super) to: &'a P,
+pub(super) struct DependencyEdge<'a, L: Language> {
+    pub(super) from: &'a Predicate<L>,
+    pub(super) to: &'a Predicate<L>,
     /// Mentioned in a negated atom.
     pub(super) negative: bool,
     /// Both ends belong to the same component.
@@ -223,58 +221,110 @@ enum EdgeLabel {
 
 /// A strongly connected component (SCC) and contains predicates referencing
 /// each other through some cycle.
+///
+/// A component contains one or multiple [`Predicate`]s. In the latter case,
+/// the predicates reference each other (mutual recursion) and therefore form
+/// a component.
 #[derive(Debug, Clone)]
-pub struct PredicateComponent<'a, P> {
+pub struct PredicateComponent<'a, L: Language> {
     /// All predicates within the SCC.
-    members: Vec<&'a P>,
+    members: Vec<&'a Predicate<L>>,
     /// Edges within a component.
     intra_adjacency: Adjacency<EdgeLabel>,
 }
 
-impl<P: Predicate> AggregateRules for PredicateComponent<'_, P> {
-    type Rule = P::Rule;
+impl<L: Language> PredicateComponent<'_, L> {
+    pub(super) fn members(&self) -> impl Iterator<Item = &Predicate<L>> {
+        self.members.iter().copied()
+    }
 
-    fn rules(&self) -> impl Iterator<Item = &Self::Rule> {
+    /// All rules that contribute to the definition of any of the members.
+    pub(super) fn rules(&self) -> impl Iterator<Item = &Rule<L>> {
         self.members
             .iter()
             .copied()
             .flat_map(|member| member.rules())
     }
-}
 
-impl<P: Predicate> Component for PredicateComponent<'_, P> {
-    type Predicate = P;
+    /// Returns `Some(Predicate)` if the component contains an EDB predicate.
+    /// Otherwise, `None` is returned. A component representing an EDB predicate
+    /// must only contain a single [predicate](Self::members) for which
+    /// [Predicate::is_edb_predicate()] is `true`. If these conditions are met,
+    /// this function returns exactly that predicate.
+    pub(super) fn is_edb_component(&self) -> Option<&Predicate<L>> {
+        let mut iter = self.members();
+        if let Some(predicate) = iter.next()
+            && predicate.is_edb_predicate()
+            && iter.next().is_none()
+        {
+            Some(predicate)
+        } else {
+            None
+        }
+    }
 
-    fn members(&self) -> impl Iterator<Item = &Self::Predicate> {
-        self.members.iter().copied()
+    /// The rules referencing a member of this component. Those are what make
+    /// the component recursive, whether a rule references the very predicate it
+    /// defines (self recursion) or another member (mutual recursion).
+    ///
+    /// [Self::rec_rules] and [Self::non_rec_rules] partition all of
+    /// the component's rules into two partitions.
+    pub(super) fn rec_rules(&self) -> impl Iterator<Item = &Rule<L>> {
+        self.rules().filter(|rule| self.references_member(rule))
+    }
+
+    /// The rules referencing no member of this component. They only read
+    /// predicates of earlier components and base tables from the EDB, all of
+    /// which are fully computed by the time this component runs.
+    ///
+    /// [Self::non_rec_rules] and [Self::rec_rules] partition all of
+    /// the component's rules into two partitions.
+    pub(super) fn non_rec_rules(&self) -> impl Iterator<Item = &Rule<L>> {
+        self.rules().filter(|rule| !self.references_member(rule))
+    }
+
+    /// If the component has to be evaluated recursively at all. True for every
+    /// component of more than one member, and for a single member that is
+    /// self-recursive.
+    pub(super) fn is_recursive(&self) -> bool {
+        self.rec_rules().next().is_some()
+    }
+
+    pub(super) fn contains_self_recursion(&self) -> bool {
+        self.members()
+            .any(|predicate| predicate.is_self_recursive())
+    }
+
+    pub(super) fn references_member(&self, rule: &Rule<L>) -> bool {
+        self.members().any(|member| rule.references(member.id()))
     }
 }
 
-/// A graph in which every vertex is a [LogicalProgram::Predicate] and each
+/// A graph in which every vertex is a [Predicate] and each
 /// edge `p1 -> p2`, whenever `p1` depends on `p2`, that is, `p1` mentions `p2`
 /// in one of its body's [atoms](Atom).
-struct PredicateDependencyGraph<'a, P: Identifiable> {
-    predicates: IndexMap<&'a IdOf<P>, &'a P>,
+struct PredicateDependencyGraph<'a, L: Language> {
+    predicates: IndexMap<&'a L::PredId, &'a Predicate<L>>,
     /// Predicates declared under a name an earlier predicate already took.
     /// They are no vertices, so that every name resolves to one predicate.
-    duplicates: Vec<&'a P>,
+    duplicates: Vec<&'a Predicate<L>>,
     adjacency: Adjacency<EdgeLabel>,
 }
 
-impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
+impl<'a, L: Language> PredicateDependencyGraph<'a, L> {
     /// Builds the graph, leaving out what [`malformations`] reports: a
     /// duplicate declaration is no vertex, and an atom referencing no
     /// predicate is no edge.
     ///
     /// [`malformations`]: Self::malformations
-    fn from_logical_program<LP: LogicalProgram<Predicate = P>>(program: &'a LP) -> Self {
+    fn from_logical_program<LP: LogicalProgram<Lang = L>>(program: &'a LP) -> Self {
         // A predicate's position in `predicates` is its node id in the graphs
         // computed later, and the map's keys are what atoms are tested against
         // to compute the dependencies.
         // The first declaration of a name wins, the ones after it are kept
         // aside for verification to report.
-        let mut predicates: IndexMap<&'a IdOf<P>, &'a P> = IndexMap::new();
-        let mut duplicates: Vec<&'a P> = Vec::new();
+        let mut predicates: IndexMap<&'a L::PredId, &'a Predicate<L>> = IndexMap::new();
+        let mut duplicates: Vec<&'a Predicate<L>> = Vec::new();
         for predicate in program.predicates() {
             match predicates.entry(predicate.id()) {
                 Entry::Vacant(slot) => {
@@ -288,7 +338,7 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
             .map(|predicate| {
                 predicate
                     .rules()
-                    .flat_map(|rule| rule.atoms())
+                    .flat_map(|rule| rule.body().atoms())
                     .filter_map(|atom| {
                         predicates.get_index_of(atom.id()).map(|node_idx| {
                             let label = if atom.is_positive() {
@@ -319,7 +369,7 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
     /// [`Malformation`].
     ///
     /// A head is checked against the predicate whose rule it heads.
-    fn malformations(&self) -> Vec<Malformation<'a, P>> {
+    fn malformations(&self) -> Vec<Malformation<'a, L>> {
         let duplicates = self
             .duplicates
             .iter()
@@ -338,8 +388,8 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
 
     /// What is wrong with the body atoms of `site`'s rule: each has to
     /// reference a predicate, and fit that predicate's arity.
-    fn body_malformations(&self, site: Site<'a, P>) -> impl Iterator<Item = Malformation<'a, P>> {
-        site.rule.atoms().flat_map(move |atom| {
+    fn body_malformations(&self, site: Site<'a, L>) -> impl Iterator<Item = Malformation<'a, L>> {
+        site.rule.body().atoms().flat_map(move |atom| {
             let referenced = self.predicates.get(atom.id()).copied();
             let dangling = referenced
                 .is_none()
@@ -352,7 +402,7 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
     }
 
     /// The predicate at node `idx`.
-    fn predicate(&self, idx: NodeIdx) -> &'a P {
+    fn predicate(&self, idx: NodeIdx) -> &'a Predicate<L> {
         self.predicates
             .get_index(idx)
             .map(|(_, predicate)| *predicate)
@@ -364,10 +414,10 @@ impl<'a, P: Predicate> PredicateDependencyGraph<'a, P> {
 /// Each vertex is a [PredicateComponent] and each edge `c1 -> c2`, whenever
 /// `c1` depends on `c2`, that is, one of the predicates within `c1` depend on
 /// a predicate within `c2`.
-struct QuotientGraph<'a, P> {
+struct QuotientGraph<'a, L: Language> {
     /// The nodes of the quotient graph are the components and stored in
     /// reverse topological order.
-    components: Vec<PredicateComponent<'a, P>>,
+    components: Vec<PredicateComponent<'a, L>>,
     /// Look up to which [component](`Self::components`) a node belongs to.
     component_of: Vec<NodeIdx>,
     /// Edges which connect components (cross edges).
@@ -382,8 +432,8 @@ struct QuotientGraph<'a, P> {
     sinks: Vec<NodeIdx>,
 }
 
-impl<'a, P: Predicate> QuotientGraph<'a, P> {
-    fn from_predicate_dep_graph(graph: &PredicateDependencyGraph<'a, P>) -> Self {
+impl<'a, L: Language> QuotientGraph<'a, L> {
+    fn from_predicate_dep_graph(graph: &PredicateDependencyGraph<'a, L>) -> Self {
         let gabow::Sccs {
             components,
             component_of,
@@ -396,7 +446,7 @@ impl<'a, P: Predicate> QuotientGraph<'a, P> {
         );
         let (mut inter_adjacency, mut predicate_components): (
             Adjacency<EdgeLabel>,
-            Vec<PredicateComponent<P>>,
+            Vec<PredicateComponent<L>>,
         ) = components
             .iter()
             .map(|component| {
@@ -406,7 +456,7 @@ impl<'a, P: Predicate> QuotientGraph<'a, P> {
                 let members = component
                     .iter()
                     .map(|member| graph.predicate(*member))
-                    .collect::<Vec<&P>>();
+                    .collect::<Vec<&Predicate<L>>>();
                 let predicate_component = PredicateComponent {
                     members,
                     intra_adjacency: intra_edges_adjacency,
@@ -516,7 +566,7 @@ impl<'a, P: Predicate> QuotientGraph<'a, P> {
     /// The components no rule seeds, see [`Unseeded`]. An EDB component is
     /// seeded by its declaring (empty) rule, and a non-recursive one by all of
     /// its rules.
-    fn unseeded(&self) -> Vec<Unseeded<'_, 'a, P>> {
+    fn unseeded(&self) -> Vec<Unseeded<'_, 'a, L>> {
         self.components
             .iter()
             .filter(|component| component.non_rec_rules().next().is_none())
@@ -557,16 +607,16 @@ impl<'a, P: Predicate> QuotientGraph<'a, P> {
 /// growing. `p :- !p` is the smallest case; mutual recursion through a negation
 /// spreads the same contradiction over several predicates.
 #[derive(Debug)]
-struct NegativeCycle<'a, P: Predicate> {
+struct NegativeCycle<'a, L: Language> {
     /// The predicate whose definition contains the offending atom.
-    predicate: &'a P,
+    predicate: &'a Predicate<L>,
     /// The rule the negated atom sits in.
-    rule: &'a P::Rule,
+    rule: &'a Rule<L>,
     /// The negated name, a member of `predicate`'s own component.
-    identifier: &'a P::Identifier,
+    identifier: &'a L::PredId,
 }
 
-impl<P: Predicate> fmt::Display for NegativeCycle<'_, P> {
+impl<L: Language> fmt::Display for NegativeCycle<'_, L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -588,9 +638,9 @@ impl<P: Predicate> fmt::Display for NegativeCycle<'_, P> {
 /// writes a relation that is empty by construction on purpose. A forgotten base
 /// rule is far likelier, which is why such a program is rejected. A predicate
 /// that is declared but has no rule at all is reported the same way.
-struct Unseeded<'g, 'a, P>(&'g PredicateComponent<'a, P>);
+struct Unseeded<'g, 'a, L: Language>(&'g PredicateComponent<'a, L>);
 
-impl<P: Predicate> fmt::Display for Unseeded<'_, '_, P> {
+impl<L: Language> fmt::Display for Unseeded<'_, '_, L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.0.members.as_slice() {
             [member] => write!(
@@ -616,24 +666,24 @@ impl<P: Predicate> fmt::Display for Unseeded<'_, '_, P> {
 }
 
 /// A rule, along with the predicate it belongs to, for a diagnostic to point at.
-struct Site<'a, P: Predicate> {
-    predicate: &'a P,
-    rule: &'a P::Rule,
+struct Site<'a, L: Language> {
+    predicate: &'a Predicate<L>,
+    rule: &'a Rule<L>,
 }
 
-// Derived, they would demand `P: Clone` and `P: Copy`.
-impl<P: Predicate> Clone for Site<'_, P> {
+// Derived, they would demand `L: Clone` and `L: Copy`.
+impl<L: Language> Clone for Site<'_, L> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<P: Predicate> Copy for Site<'_, P> {}
+impl<L: Language> Copy for Site<'_, L> {}
 
-impl<'a, P: Predicate> Site<'a, P> {
+impl<'a, L: Language> Site<'a, L> {
     /// What is wrong with the rule's head: it has to fit the arity of the
     /// predicate it belongs to, and fill each of its columns.
-    fn head_malformations(self) -> impl Iterator<Item = Malformation<'a, P>> {
+    fn head_malformations(self) -> impl Iterator<Item = Malformation<'a, L>> {
         let head = self.rule.head();
         let filled: HashSet<usize> = head.bindings().map(|(position, _)| position).collect();
         let unfilled = self
@@ -664,31 +714,28 @@ impl<'a, P: Predicate> Site<'a, P> {
     ///
     /// An EDB predicate's rule is exempt, as it declares the relation rather
     /// than deriving it, and its head binds nothing.
-    fn unbound_variables(self) -> Vec<Malformation<'a, P>> {
+    fn unbound_variables(self) -> Vec<Malformation<'a, L>> {
         if self.predicate.is_edb_predicate() {
             return Vec::new();
         }
         let rule = self.rule;
-        let bound: HashSet<&IdOf<VarOf<P>>> = rule
-            .positive_atoms()
-            .flat_map(Atom::vars)
-            .map(Identifiable::id)
-            .collect();
-        let bound = &bound;
+        let body = rule.body();
         let occurrences = iter::once((Occurrence::Head, rule.head().vars().collect::<Vec<_>>()))
             .chain(
-                rule.negated_atoms()
+                body.negated_atoms()
                     .map(|atom| (Occurrence::Negated(atom), atom.vars().collect())),
             )
             .chain(
-                rule.conditions()
+                body.conditions()
                     .map(|cond| (Occurrence::Condition(cond), cond.vars().collect())),
             );
         occurrences
             .flat_map(|(occurrence, vars)| {
                 let mut reported = HashSet::new();
                 vars.into_iter()
-                    .filter(move |var| !bound.contains(var.id()) && reported.insert(var.id()))
+                    .filter(move |var| {
+                        !body.grounded_vars().contains_key(var.id()) && reported.insert(var.id())
+                    })
                     .map(move |var| Malformation::Unbound {
                         site: self,
                         var,
@@ -700,29 +747,29 @@ impl<'a, P: Predicate> Site<'a, P> {
 }
 
 /// Where a rule uses a variable that only a positive body atom can bind.
-enum Occurrence<'a, P: Predicate> {
+enum Occurrence<'a, L: Language> {
     Head,
-    Negated(&'a AtomOf<P>),
-    Condition(&'a CondOf<P>),
+    Negated(&'a Atom<L>),
+    Condition(&'a Cond<L>),
 }
 
-// Derived, they would demand `P: Clone` and `P: Copy`.
-impl<P: Predicate> Clone for Occurrence<'_, P> {
+// Derived, they would demand `L: Clone` and `L: Copy`.
+impl<L: Language> Clone for Occurrence<'_, L> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<P: Predicate> Copy for Occurrence<'_, P> {}
+impl<L: Language> Copy for Occurrence<'_, L> {}
 
 /// The bindings of `atom`, which `site`'s rule contains, that do not fit
 /// `referenced`, the predicate it references: positions beyond its arity, and
 /// positions bound before.
-fn misplaced_bindings<'a, P: Predicate>(
-    site: Site<'a, P>,
-    atom: &'a AtomOf<P>,
-    referenced: &'a P,
-) -> impl Iterator<Item = Malformation<'a, P>> {
+fn misplaced_bindings<'a, L: Language>(
+    site: Site<'a, L>,
+    atom: &'a Atom<L>,
+    referenced: &'a Predicate<L>,
+) -> impl Iterator<Item = Malformation<'a, L>> {
     let arity = referenced.arity();
     let mut bound: HashSet<usize> = HashSet::new();
     atom.bindings().filter_map(move |(position, _)| {
@@ -745,10 +792,6 @@ fn misplaced_bindings<'a, P: Predicate>(
     })
 }
 
-type AtomOf<P> = <<P as AggregateRules>::Rule as Rule>::Atom;
-type CondOf<P> = <<P as AggregateRules>::Rule as Rule>::Cond;
-type VarOf<P> = <AtomOf<P> as Atom>::Var;
-
 /// What makes a program ill-formed, as reported by
 /// [`PredicateDependencyGraph::malformations`]. Borrows the offending site
 /// from the program so that a diagnostic can point at it.
@@ -756,46 +799,46 @@ type VarOf<P> = <AtomOf<P> as Atom>::Var;
 /// Unlike a [`NegativeCycle`], a malformation is visible without the graphs,
 /// but it leaves them incomplete: a duplicate declaration is no vertex, and a
 /// dangling atom no edge.
-enum Malformation<'a, P: Predicate> {
+enum Malformation<'a, L: Language> {
     /// A predicate declared under a name an earlier predicate already took.
-    DuplicateDeclaration { predicate: &'a P },
+    DuplicateDeclaration { predicate: &'a Predicate<L> },
     /// A body atom referencing a name no predicate is declared under.
     Dangling {
-        site: Site<'a, P>,
-        atom: &'a AtomOf<P>,
+        site: Site<'a, L>,
+        atom: &'a Atom<L>,
     },
     /// An atom binding a position its predicate has no column at.
     PositionOutOfRange {
-        site: Site<'a, P>,
-        atom: &'a AtomOf<P>,
+        site: Site<'a, L>,
+        atom: &'a Atom<L>,
         position: usize,
         arity: usize,
     },
     /// An atom binding a position more than once.
     PositionRepeated {
-        site: Site<'a, P>,
-        atom: &'a AtomOf<P>,
+        site: Site<'a, L>,
+        atom: &'a Atom<L>,
         position: usize,
     },
     /// A head leaving a column of its predicate unfilled, with nothing to
     /// project into it.
     ColumnUnfilled {
-        site: Site<'a, P>,
+        site: Site<'a, L>,
         position: usize,
         column: &'a Column,
     },
     /// A variable no positive body atom binds, used where it has to be bound.
     /// See [`Site::unbound_variables`].
     Unbound {
-        site: Site<'a, P>,
-        var: &'a VarOf<P>,
-        occurrence: Occurrence<'a, P>,
+        site: Site<'a, L>,
+        var: &'a L::Var,
+        occurrence: Occurrence<'a, L>,
     },
 }
 
-impl<P: Predicate> fmt::Display for Malformation<'_, P> {
+impl<L: Language> fmt::Display for Malformation<'_, L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let in_rule = |f: &mut fmt::Formatter<'_>, site: &Site<'_, P>| {
+        let in_rule = |f: &mut fmt::Formatter<'_>, site: &Site<'_, L>| {
             write!(
                 f,
                 "rule '{}' of predicate '{}' ",
@@ -862,7 +905,7 @@ impl<P: Predicate> fmt::Display for Malformation<'_, P> {
                 match occurrence {
                     Occurrence::Head => f.write_str("in its head")?,
                     Occurrence::Negated(atom) => write!(f, "in negated '{}'", atom.id())?,
-                    Occurrence::Condition(cond) => write!(f, "in '{}'", cond.display())?,
+                    Occurrence::Condition(cond) => write!(f, "in '{cond}'")?,
                 }
                 f.write_str(", which no positive atom binds")
             }
@@ -886,7 +929,7 @@ fn basic_component_check(vertex_degrees: &[VertexDegree]) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{LogicalProgram, RulePredicate, test_utils::*};
+    use super::super::{LogicalProgram, test_utils::*};
     use super::*;
 
     #[test]
@@ -907,7 +950,7 @@ mod tests {
 
     #[test]
     fn a_head_has_to_fill_exactly_its_predicate_s_columns() {
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
             [
                 rule("e0", "edge(x, y)", &[]),
@@ -934,7 +977,7 @@ mod tests {
     fn a_body_atom_has_to_fit_the_predicate_it_references() {
         // `r2`'s dangling atom is negated, which the graphs alone would miss:
         // it adds no edge, so it breaks no stratification either.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
             [
                 rule("e0", "edge(x, y)", &[]),
@@ -960,7 +1003,7 @@ mod tests {
     fn a_head_variable_has_to_be_bound_by_a_positive_atom() {
         // `r1` uses `y` twice in its head, which is reported once. `r2` binds
         // `y` in a negated atom only, which does not count.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
             [
                 rule("e0", "edge(x, y)", &[]),
@@ -987,7 +1030,7 @@ mod tests {
     fn a_negated_variable_has_to_be_bound_by_a_positive_atom() {
         // `z` is not read as existential, as the strict reading of safety
         // demands. `_` is what leaves a position open.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
             [
                 rule("e0", "edge(x, y)", &[]),
@@ -1010,7 +1053,7 @@ mod tests {
     fn a_condition_s_variable_has_to_be_bound_by_a_positive_atom() {
         // A condition binds nothing, not even an equality: `r1`'s `y` stays
         // unbound in its head, too.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("path", &["x", "y"])],
             [
                 rule("e0", "edge(x, y)", &[]),
@@ -1035,7 +1078,7 @@ mod tests {
     fn only_a_rule_with_an_empty_body_declares_an_edb_predicate() {
         // `edge`'s head binds nothing, which is fine for a declaration. `small`
         // has a condition, so it is derived, and its head has to be bound.
-        let predicates = RulePredicate::group(
+        let predicates = Predicate::group(
             [declare("edge", &["x", "y"]), declare("small", &["x"])],
             [
                 rule("e0", "edge(x, y)", &[]),

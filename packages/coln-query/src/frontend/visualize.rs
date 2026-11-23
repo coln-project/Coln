@@ -18,14 +18,14 @@
 //!   styled as a source, as a cluster has but one border.
 
 use super::{
-    Component, Identifiable, Predicate,
+    Identifiable, Language, Predicate,
     analysis::{Analysis, ComponentView},
 };
 use std::{collections::HashMap, fmt};
 
 /// See the [module docs](self).
-pub struct Dot<'g, 'a, P: Identifiable, S> {
-    analysis: &'g Analysis<'a, P, S>,
+pub struct Dot<'g, 'a, L: Language, S> {
+    analysis: &'g Analysis<'a, L, S>,
     columns: Columns,
 }
 
@@ -36,10 +36,10 @@ pub enum Columns {
     Hidden,
 }
 
-impl<'a, P: Predicate, S> Analysis<'a, P, S> {
+impl<'a, L: Language, S> Analysis<'a, L, S> {
     /// The analysis in GraphViz's DOT language, as for `dot -Tsvg`. In either
     /// state, so that an invalid program's graphs can be drawn, too.
-    pub fn dot(&self, columns: Columns) -> Dot<'_, 'a, P, S> {
+    pub fn dot(&self, columns: Columns) -> Dot<'_, 'a, L, S> {
         Dot {
             analysis: self,
             columns,
@@ -157,12 +157,12 @@ impl fmt::Display for Edge {
     }
 }
 
-impl<P: Predicate, S> fmt::Display for Dot<'_, '_, P, S> {
+impl<L: Language, S> fmt::Display for Dot<'_, '_, L, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let analysis = self.analysis;
         // Node ids are minted rather than taken from the predicates' names,
         // which may contain anything. The names go into labels instead.
-        let nodes: HashMap<&P::Identifier, usize> = analysis
+        let nodes: HashMap<&L::PredId, usize> = analysis
             .components()
             .flat_map(|view| view.component.members())
             .enumerate()
@@ -201,10 +201,10 @@ impl<P: Predicate, S> fmt::Display for Dot<'_, '_, P, S> {
 }
 
 /// The component's cluster, around its members.
-fn cluster<P: Predicate>(
+fn cluster<L: Language>(
     f: &mut fmt::Formatter<'_>,
-    view: &ComponentView<'_, '_, P>,
-    nodes: &HashMap<&P::Identifier, usize>,
+    view: &ComponentView<'_, '_, L>,
+    nodes: &HashMap<&L::PredId, usize>,
     columns: Columns,
 ) -> fmt::Result {
     let position = view.position;
@@ -244,9 +244,9 @@ fn cluster<P: Predicate>(
 ///
 /// An HTML-like label, as only those draw a line. The node's own border stays
 /// the box around it, styled by [`Node`].
-struct PredicateLabel<'p, P>(&'p P, Columns);
+struct PredicateLabel<'p, L: Language>(&'p Predicate<L>, Columns);
 
-impl<P: Predicate> fmt::Display for PredicateLabel<'_, P> {
+impl<L: Language> fmt::Display for PredicateLabel<'_, L> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let PredicateLabel(predicate, shown) = self;
         write!(

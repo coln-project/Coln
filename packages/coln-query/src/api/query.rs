@@ -7,12 +7,8 @@
 //! [QueryIr] which can eventually be executed by the query engine(s).
 
 use crate::error::{Frame, SyntaxError};
-use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, RulePredicate};
-use crate::host::{
-    QueryIr,
-    expr::{self, Literal},
-    operator::Operator,
-};
+use crate::frontend::{self, Identifiable, LogicalProgram, Prepared, Prop};
+use crate::host::{QueryIr, expr, operator::Operator};
 use crate::program::QueryProgram;
 use crate::relational::{
     catalog::Catalog,
@@ -23,18 +19,17 @@ use crate::scalarial::ScalarType;
 use coln_flir_rs::{
     ir::{self, El, FlatRealm},
     schema::{
-        BaseTable, ColnSchema, ColnSchemaWrapper, CompilerColIdx, DerivedView, NativeScalarType,
+        ColnSchema, ColnSchemaWrapper, CompilerColIdx, DerivedView, GroundTable, NativeScalarType,
         QueryEngineCol, QueryEngineScalarType, ResolveCompilerIdxToQueryView, RuleVars,
         StoreEngineCols,
     },
 };
 use indexmap::IndexMap;
 use std::borrow::Cow;
-use std::collections::HashSet;
 
-type BaseTableName = EntityRef;
+type GroundTableName = EntityRef;
 type DerivedViewName = EntityRef;
-type ConstraintName = EntityRef;
+type LawName = EntityRef;
 
 /// Coln's FLIR frontend's [`QueryProgram`]: what a [`FlatRealm`] lowers to,
 /// ready to run.
@@ -44,8 +39,8 @@ type ConstraintName = EntityRef;
 /// program that may be invalid, stop at its [`FlirLogicalProgram`].
 ///
 /// The [`Catalog`] half is served straight out of the logical program's
-/// [`base_tables`](FlirLogicalProgram::base_tables), which stores FLIR's own
-/// richer [`ColnSchema<BaseTable>`](ColnSchema) which includes the schema
+/// [`ground_tables`](FlirLogicalProgram::ground_tables), which stores FLIR's own
+/// richer [`ColnSchema<GroundTable>`](ColnSchema) which includes the schema
 /// view according to coln-compiler and coln-store next coln-query's.
 #[derive(Debug)]
 pub struct FlirProgram {
@@ -63,11 +58,11 @@ pub struct FlirProgram {
 #[derive(Debug)]
 pub struct FlirLogicalProgram {
     /// The logical query program which is essentially Datalog.
-    predicates: Vec<RulePredicate<FlirRule>>,
-    /// The declared base tables. Doubles as the [`FlirProgram`]'s [`Catalog`]: every
+    predicates: Vec<frontend::Predicate<Flir>>,
+    /// The declared ground tables. Doubles as the [`FlirProgram`]'s [`Catalog`]: every
     /// [`SourceExpr`](crate::relational::expr::SourceExpr) the lowering mints
     /// names one of these.
-    base_tables: IndexMap<BaseTableName, PredicateMeta<BaseTable>>,
+    ground_tables: IndexMap<GroundTableName, PredicateMeta<GroundTable>>,
     /// Any materialized, maintained, derived view. Doubles as this program's
     /// [`Catalog`] but for adhoc-queries, which are allowed to read from the
     /// materialized views, too, as opposed to the incrementally-maintained
@@ -77,9 +72,9 @@ pub struct FlirLogicalProgram {
     /// reference, and as what [`derived_view_meta`](Self::derived_view_meta)
     /// tells a derived view's sink apart by.
     derived_views: IndexMap<DerivedViewName, PredicateMeta<DerivedView>>,
-    /// The constraints the program itself defines, that is, one per declared
-    /// constraint, which is an enforced or monitored rule.
-    constraints: IndexMap<ConstraintName, ConstraintMeta>,
+    /// The laws the program defines, one per declared law, each of which is
+    /// either enforced or monitored.
+    laws: IndexMap<LawName, LawMeta>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,14 +84,14 @@ pub struct PredicateMeta<Marker> {
 }
 
 #[derive(Debug)]
-pub struct ConstraintMeta {
+pub struct LawMeta {
     kind: ir::RuleVariant,
     output_schema: TableSchema,
 }
 
-impl ConstraintMeta {
+impl LawMeta {
     fn new(kind: ir::RuleVariant, output_schema: TableSchema) -> Self {
-        ConstraintMeta {
+        LawMeta {
             kind,
             output_schema,
         }
@@ -112,11 +107,11 @@ impl ConstraintMeta {
 /// Projects FLIR's schema down to the one thing the layers below share:
 /// the query engine's columns, and the table's key(s) restated over them.
 ///
-/// The implicit row id leads the list of keys: it is the only key a base table
+/// The implicit row id leads the list of keys: it is the only key a ground table
 /// is guaranteed to have and to be unique on, so a backend that can index by
 /// just one key (DBSP) picks it by taking the first.
-impl From<&ColnSchema<BaseTable>> for TableSchema {
-    fn from(value: &ColnSchema<BaseTable>) -> Self {
+impl From<&ColnSchema<GroundTable>> for TableSchema {
+    fn from(value: &ColnSchema<GroundTable>) -> Self {
         let columns = value
             .query_cols()
             .inner()
@@ -224,46 +219,49 @@ impl FlirLogicalProgram {
     pub fn from_flat_realm(flat_realm: &FlatRealm) -> Result<Self, SyntaxError> {
         let mut ctx = FlirContext::default();
 
-        let edb_rules: Vec<FlirRule> = flat_realm
+        let ground_table_rules: Vec<frontend::Rule<Flir>> = flat_realm
             .tables
             .iter()
-            .flat_map(|table| {
-                let edb_predicate = ctx.feed_table_declaration(table)?;
-                Some(FlirRule::from(edb_predicate))
+            .flat_map(|declaration| {
+                let ground_table = ctx.feed_table_declaration(declaration)?;
+                Some(frontend::Rule::from(ground_table))
             })
             .collect();
 
-        let derived_view_rules: Vec<FlirRule> = flat_realm
+        let derived_view_rules: Vec<frontend::Rule<Flir>> = flat_realm
             .definitions
             .iter()
             .map(|definition| {
-                let rule = FlirChasedRule::new(definition, &mut ctx)
+                let rule = FlirDerivedViewRule::new(definition, &mut ctx)
                     .map_err(|error| error.within(rule_frame(&definition.path)))?;
-                Ok(FlirRule::from(rule))
+                Ok(frontend::Rule::from(rule))
             })
             .collect::<Result<_, SyntaxError>>()?;
 
-        let constraint_rules: Vec<FlirRule> = flat_realm
+        let law_and_helper_predicates = flat_realm
             .rules
             .iter()
-            .filter(|rule| !rule.rule.consequents.is_empty())
-            .map(|rule| {
-                FlirConstraint::new(rule, &mut ctx)
-                    .map(FlirConstraint::into_rules)
-                    .map_err(|error| error.within(rule_frame(&rule.path)))
+            .filter(|law| !law.rule.consequents.is_empty())
+            .map(|law| {
+                ctx.feed_law(law)
+                    .map_err(|error| error.within(rule_frame(&law.path)))
             })
             .collect::<Result<Vec<_>, SyntaxError>>()?
             .into_iter()
-            .flatten()
-            .collect();
+            .flat_map(|(law_predicate, helper_predicate)| {
+                std::iter::once(law_predicate).chain(helper_predicate)
+            });
 
-        let mut rules = edb_rules;
+        let mut rules = ground_table_rules;
         rules.extend(derived_view_rules);
-        rules.extend(constraint_rules);
 
-        let predicates = RulePredicate::group(ctx.declarations(), rules).map_err(|unmatched| {
-            SyntaxError::new(format!("Unmatched rules with no definand {unmatched}"))
-        })?;
+        let mut predicates =
+            frontend::Predicate::group(ctx.declarations(), rules).map_err(|unmatched| {
+                SyntaxError::new(format!("Unmatched rules with no definand {unmatched}"))
+            })?;
+        // A law's predicates come defined by their single rule each, so they
+        // need no grouping.
+        predicates.extend(law_and_helper_predicates);
 
         fn remap<P, M>(map: impl IntoIterator<Item = (P, M)>) -> IndexMap<EntityRef, M>
         where
@@ -276,14 +274,14 @@ impl FlirLogicalProgram {
 
         Ok(FlirLogicalProgram {
             predicates,
-            base_tables: remap(ctx.base_tables),
+            ground_tables: remap(ctx.ground_tables),
             derived_views: remap(ctx.derived_views),
-            constraints: remap(ctx.constraints),
+            laws: remap(ctx.laws),
         })
     }
 
-    pub fn constraint_meta(&self, sink: &SinkId) -> Option<&ConstraintMeta> {
-        self.constraints.get(&ConstraintName::from(sink))
+    pub fn law_meta(&self, sink: &SinkId) -> Option<&LawMeta> {
+        self.laws.get(&LawName::from(sink))
     }
 
     pub fn derived_view_meta(&self, sink: &SinkId) -> Option<&PredicateMeta<DerivedView>> {
@@ -292,36 +290,36 @@ impl FlirLogicalProgram {
 }
 
 impl Catalog for FlirProgram {
-    /// Projects FLIR's [`ColnSchema<BaseTable>`](ColnSchema) down to the
+    /// Projects FLIR's [`ColnSchema<GroundTable>`](ColnSchema) down to the
     /// [`TableSchema`] a plan needs, on demand. [`Cow::Owned`] rather than a
     /// borrow precisely so that the richer schema stays the only stored copy.
     ///
-    /// Only base tables answer here: a rule's output is bound to a host variable
-    /// and referenced by [`VarExpr`](expr::VarExpr), never by a
+    /// Only ground tables answer here: a rule's output is bound to a host
+    /// variable and referenced by [`VarExpr`](expr::VarExpr), never by a
     /// [`SourceExpr`](crate::relational::expr::SourceExpr), so
     /// [`derived_views`](FlirLogicalProgram::derived_views) is no part of the
     /// catalog.
     fn source_schema(&self, id: &SourceId) -> Option<Cow<'_, TableSchema>> {
         self.logical
-            .base_tables
-            .get(&BaseTableName::from(id))
+            .ground_tables
+            .get(&GroundTableName::from(id))
             .map(|meta| Cow::Borrowed(&meta.output_schema))
     }
 }
 
 impl LogicalProgram for FlirLogicalProgram {
-    type Predicate = RulePredicate<FlirRule>;
+    type Lang = Flir;
 
-    fn predicates(&self) -> impl Iterator<Item = &Self::Predicate> {
+    fn predicates(&self) -> impl Iterator<Item = &frontend::Predicate<Flir>> {
         self.predicates.iter()
     }
 
-    /// Exactly the derived views and the constraints, that is, what
+    /// Exactly the derived views and the laws, that is, what
     /// [`interpret_outputs`](super::ColnQuery) knows how to report. A helper
-    /// predicate, such as a constraint's consequent, is neither.
-    fn is_output(&self, predicate: &Self::Predicate) -> bool {
+    /// predicate, such as a law's consequent, is neither.
+    fn is_output(&self, predicate: &frontend::Predicate<Flir>) -> bool {
         let entity = EntityRef::from(predicate.id());
-        self.derived_views.contains_key(&entity) || self.constraints.contains_key(&entity)
+        self.derived_views.contains_key(&entity) || self.laws.contains_key(&entity)
     }
 }
 
@@ -340,12 +338,9 @@ impl frontend::Identifier for &ir::Path {}
 
 #[derive(Default)]
 struct FlirContext {
-    base_tables: IndexMap<ir::Path, PredicateMeta<BaseTable>>,
+    ground_tables: IndexMap<ir::Path, PredicateMeta<GroundTable>>,
     derived_views: IndexMap<ir::Path, PredicateMeta<DerivedView>>,
-    constraints: IndexMap<ir::Path, ConstraintMeta>,
-    /// The helper predicates deriving the constraints' consequents, with their
-    /// columns. See [`FlirConstraint`].
-    consequents: IndexMap<ir::Path, Vec<Column>>,
+    laws: IndexMap<ir::Path, LawMeta>,
     rule_vars: Option<RuleVars>,
 }
 
@@ -358,9 +353,9 @@ impl FlirContext {
         RuleScopeGuard { inner: self }
     }
     fn schema(&self, entity: &ir::Path) -> Option<impl ResolveCompilerIdxToQueryView> {
-        self.base_tables
+        self.ground_tables
             .get(entity)
-            .map(|meta| ColnSchemaWrapper::BaseTable(&meta.coln_schema))
+            .map(|meta| ColnSchemaWrapper::GroundTable(&meta.coln_schema))
             .or_else(|| {
                 Some(ColnSchemaWrapper::DerivedView(
                     self.derived_views
@@ -372,10 +367,10 @@ impl FlirContext {
     fn feed_table_declaration<'a>(
         &mut self,
         declaration: &'a ir::TableEntry,
-    ) -> Option<FlirEdbPredicate<'a>> {
+    ) -> Option<FlirGroundTable<'a>> {
         let entity = &declaration.path;
-        if let Some(edb_predicate) = FlirEdbPredicate::new(declaration, self) {
-            return Some(edb_predicate);
+        if let Some(ground_table) = FlirGroundTable::new(declaration, self) {
+            return Some(ground_table);
         }
         if let Some(derived_view_schema) = Option::<ColnSchema<DerivedView>>::from(declaration) {
             self.derived_views.insert(
@@ -388,30 +383,51 @@ impl FlirContext {
             return None;
         }
         panic!(
-            "Table declaration for '{entity}' neither valid as a base table nor as a derived view"
+            "Table declaration for '{entity}' neither valid as a ground table nor as a derived view"
         )
     }
+    /// Lowers `law` into the predicate deriving its violations and, unless
+    /// inlined, the helper predicate deriving its consequent, see
+    /// [`frontend::Law`], and registers its [`LawMeta`].
+    fn feed_law(
+        &mut self,
+        law: &ir::RuleEntry,
+    ) -> Result<(frontend::Predicate<Flir>, Option<frontend::Predicate<Flir>>), SyntaxError> {
+        let mut rule_scope = self.enter_rule_scope(&law.rule.vars);
+        let (violations, consequent) = frontend::Law::new(
+            law.path.clone(),
+            law.path.clone(),
+            rule_scope.query_vars().collect(),
+            resolve_propositions(&law.rule.antecedents, &rule_scope)?,
+            resolve_propositions(&law.rule.consequents, &rule_scope)?,
+            (),
+        )
+        .lower();
+        let output_schema = TableSchema::new(
+            EntityRef::from(&law.path),
+            violations.columns().cloned().collect(),
+            vec![],
+        );
+        rule_scope.laws.insert(
+            law.path.clone(),
+            LawMeta::new(law.rule.rule_variant, output_schema),
+        );
+        Ok((violations, consequent))
+    }
+    /// The declarations of the ground tables and the derived views. A law's
+    /// predicates come defined already, see [`Self::feed_law`].
     fn declarations(&self) -> impl Iterator<Item = (ir::Path, Vec<Column>)> {
-        let base_table_declarations = self
-            .base_tables
+        let ground_table_declarations = self
+            .ground_tables
             .iter()
             .map(|(path, meta)| (path, &meta.output_schema));
         let derived_view_declarations = self
             .derived_views
             .iter()
             .map(|(path, meta)| (path, &meta.output_schema));
-        let constraint_declarations = self
-            .constraints
-            .iter()
-            .map(|(path, meta)| (path, &meta.output_schema));
-        let consequent_declarations = self
-            .consequents
-            .iter()
-            .map(|(path, columns)| (path.clone(), columns.clone()));
-        base_table_declarations
-            .chain(derived_view_declarations.chain(constraint_declarations))
+        ground_table_declarations
+            .chain(derived_view_declarations)
             .map(|(path, schema)| (path.clone(), schema.columns().to_vec()))
-            .chain(consequent_declarations)
     }
 }
 
@@ -463,73 +479,65 @@ impl Drop for RuleScopeGuard<'_> {
     }
 }
 
-/// The mother type combining [`FlirEdbPredicate`], [`FlirChasedRule`], and
-/// [`FlirConstraint`] to expose them all as a [`frontend::Rule`].
-#[derive(Debug)]
-pub struct FlirRule {
-    id: ir::Path,
-    head: FlirAtom,
-    body: Vec<FlirAtom>,
-    conditions: Vec<FlirCond>,
+/// FLIR's [`frontend::Language`]: a path names a predicate, a rule, or a
+/// variable alike.
+#[derive(Debug, Clone)]
+pub struct Flir;
+
+impl frontend::Language for Flir {
+    type PredId = ir::Path;
+    type RuleId = ir::Path;
+    type Var = FlirVar;
+    type Lit = FlirLit;
+    type RuleMeta = ();
+
+    /// `<base>#<tag>`. For now we assume coln-compiler never puts a `#` into a
+    /// path, so no path of the source is derived, and a derivation can be told
+    /// apart from its base.
+    fn derive_pred_id(base: &ir::Path, tag: &'static str) -> ir::Path {
+        ir::Path::from(format!("{base}#{tag}"))
+    }
+
+    /// `<base>#<tag>`, as for
+    /// [`derive_pred_id`](frontend::Language::derive_pred_id).
+    fn derive_rule_id(base: &ir::Path, tag: &'static str) -> ir::Path {
+        ir::Path::from(format!("{base}#{tag}"))
+    }
 }
 
-impl From<FlirEdbPredicate<'_>> for FlirRule {
-    fn from(predicate: FlirEdbPredicate<'_>) -> Self {
-        FlirRule {
-            id: predicate.id().clone(),
-            head: predicate.head,
-            body: Vec::new(),
-            conditions: Vec::new(),
+impl From<FlirGroundTable<'_>> for frontend::Rule<Flir> {
+    fn from(ground_table: FlirGroundTable<'_>) -> Self {
+        Self {
+            id: ground_table.id().clone(),
+            head: ground_table.head,
+            body: frontend::Conjunction::default(),
+            meta: (),
         }
     }
 }
 
-impl From<FlirChasedRule<'_>> for FlirRule {
-    fn from(rule: FlirChasedRule<'_>) -> Self {
-        FlirRule {
+impl From<FlirDerivedViewRule<'_>> for frontend::Rule<Flir> {
+    fn from(rule: FlirDerivedViewRule<'_>) -> Self {
+        Self {
             id: rule.id().clone(),
             head: rule.head,
             body: rule.body,
-            conditions: rule.conditions,
+            meta: (),
         }
     }
 }
 
-impl Identifiable for FlirRule {
-    type Identifier = ir::Path;
-    fn id(&self) -> &Self::Identifier {
-        &self.id
-    }
-}
-
-impl frontend::Rule for FlirRule {
-    type Atom = FlirAtom;
-    type Cond = FlirCond;
-
-    fn head(&self) -> &Self::Atom {
-        &self.head
-    }
-
-    fn atoms(&self) -> impl Iterator<Item = &Self::Atom> {
-        self.body.iter()
-    }
-
-    fn conditions(&self) -> impl Iterator<Item = &Self::Cond> {
-        self.conditions.iter()
-    }
-}
-
 #[derive(Debug)]
-struct FlirEdbPredicate<'a> {
-    base_table: &'a ir::TableEntry,
-    head: FlirAtom,
+struct FlirGroundTable<'a> {
+    ground_table: &'a ir::TableEntry,
+    head: frontend::Atom<Flir>,
 }
 
-impl<'a> FlirEdbPredicate<'a> {
-    fn new(base_table: &'a ir::TableEntry, ctx: &mut FlirContext) -> Option<FlirEdbPredicate<'a>> {
-        let schema = Option::<ColnSchema<BaseTable>>::from(base_table)?;
-        let head = FlirAtom::new_head(
-            base_table.path.clone(),
+impl<'a> FlirGroundTable<'a> {
+    fn new(ground_table: &'a ir::TableEntry, ctx: &mut FlirContext) -> Option<FlirGroundTable<'a>> {
+        let schema = Option::<ColnSchema<GroundTable>>::from(ground_table)?;
+        let head = frontend::Atom::new_head(
+            ground_table.path.clone(),
             schema
                 .query_cols()
                 .inner()
@@ -537,33 +545,34 @@ impl<'a> FlirEdbPredicate<'a> {
                 .map(|col| frontend::Bind::Var(FlirVar::from(col)))
                 .collect(),
         );
-        ctx.base_tables.insert(
-            base_table.path.clone(),
+        ctx.ground_tables.insert(
+            ground_table.path.clone(),
             PredicateMeta {
                 output_schema: TableSchema::from(&schema),
                 coln_schema: schema,
             },
         );
-        Some(Self { base_table, head })
+        Some(Self { ground_table, head })
     }
 }
 
-impl Identifiable for FlirEdbPredicate<'_> {
+impl Identifiable for FlirGroundTable<'_> {
     type Identifier = ir::Path;
     fn id(&self) -> &Self::Identifier {
-        &self.base_table.path
+        &self.ground_table.path
     }
 }
 
+/// One rule defining a derived view. A derived view may be defined by several
+/// such rules, all sharing the view as their head's predicate.
 #[derive(Debug)]
-struct FlirChasedRule<'a> {
+struct FlirDerivedViewRule<'a> {
     rule: &'a ir::DefinitionEntry,
-    head: FlirAtom,
-    body: Vec<FlirAtom>,
-    conditions: Vec<FlirCond>,
+    head: frontend::Atom<Flir>,
+    body: frontend::Conjunction<Flir>,
 }
 
-impl<'a> FlirChasedRule<'a> {
+impl<'a> FlirDerivedViewRule<'a> {
     /// Returns `Err` if the [rule's definand](ir::Definition::definand) has
     /// not been declared in the `ctx`.
     fn new(rule: &'a ir::DefinitionEntry, ctx: &mut FlirContext) -> Result<Self, SyntaxError> {
@@ -579,7 +588,7 @@ impl<'a> FlirChasedRule<'a> {
             )));
         }
         let rule_scope = ctx.enter_rule_scope(&rule.definition.vars);
-        let head = FlirAtom::new_head(
+        let head = frontend::Atom::new_head(
             definand.clone(),
             rule.definition
                 .arguments
@@ -587,199 +596,20 @@ impl<'a> FlirChasedRule<'a> {
                 .flat_map(|argument| resolve_element(argument, &rule_scope))
                 .collect(),
         );
-        let (body, conditions) = resolve_propositions(&rule.definition.antecedents, &rule_scope)?;
-        Ok(FlirChasedRule {
-            rule,
-            head,
-            body,
-            conditions,
-        })
+        let body = resolve_propositions(&rule.definition.antecedents, &rule_scope)?;
+        Ok(FlirDerivedViewRule { rule, head, body })
     }
 }
 
-impl Identifiable for FlirChasedRule<'_> {
+impl Identifiable for FlirDerivedViewRule<'_> {
     type Identifier = ir::Path;
     fn id(&self) -> &Self::Identifier {
         &self.rule.path
     }
 }
 
-/// A constraint `antecedent ⇒ consequent`, as the rules deriving its
-/// violations: the bindings of the antecedent for which the consequent does
-/// not hold.
-///
-/// The consequent is negated as a whole, `¬(c₁ ∧ … ∧ cₙ)`, which no single rule
-/// body can express: negating each proposition on its own is `¬c₁ ∧ … ∧ ¬cₙ`.
-/// So the consequent becomes a helper predicate of its own, named
-/// `<rule>#consequent`, and the constraint's rule negates that one atom:
-///
-/// ```text
-/// m#consequent(x) :- t(_, _, x), x == 1.
-/// m(x)            :- t(_, _, x), !m#consequent(x).
-/// ```
-///
-/// The helper's columns are the antecedent's variables its body binds, which
-/// are what the negated atom matches on. A variable only the consequent binds
-/// is projected away, which makes it existential.
-///
-/// The helper's body is the given consequent alone if it stands as a rule on
-/// its own, that is, its atoms bind every variable its conditions use.
-/// Otherwise, as for `∀x. t(x) ⇒ x == 1`, the antecedent joins the consquent
-/// rule's body. That changes nothing, as the constraint's rule requires the
-/// antecedent anyway, but costs computing it twice, which is why it is not
-/// done if not required.
-#[derive(Debug)]
-struct FlirConstraint<'a> {
-    rule: &'a ir::RuleEntry,
-    head: FlirAtom,
-    body: Vec<FlirAtom>,
-    conditions: Vec<FlirCond>,
-    /// The helper rule deriving the consequent.
-    consequent: FlirRule,
-}
-
-impl<'a> FlirConstraint<'a> {
-    fn new(rule: &'a ir::RuleEntry, ctx: &mut FlirContext) -> Result<Self, SyntaxError> {
-        let mut rule_scope = ctx.enter_rule_scope(&rule.rule.vars);
-        let (mut body, conditions) = resolve_propositions(&rule.rule.antecedents, &rule_scope)?;
-        let (consequent_atoms, consequent_conditions) =
-            resolve_propositions(&rule.rule.consequents, &rule_scope)?;
-
-        // TODO: Potential optimization with a single conjunct by not creating
-        // a helper predicate but negating the single conjunct. Watch out though,
-        // as this optimization is incompatible with empty antecedent rules
-        // because then negation safety is violated, as any existential variable
-        // in the consequent does not appear positively in any of the (empty)
-        // antecedent's (positive) atoms.
-        let (helper_atoms, helper_conditions) =
-            match stands_alone(&consequent_atoms, &consequent_conditions) {
-                true => (consequent_atoms, consequent_conditions),
-                false => (
-                    body.iter().cloned().chain(consequent_atoms).collect(),
-                    conditions
-                        .iter()
-                        .cloned()
-                        .chain(consequent_conditions)
-                        .collect(),
-                ),
-            };
-        // A violation is a binding of the antecedent's variables, so those are
-        // the constraint's columns: a variable only the consequent binds is
-        // existential and has no value a violation could carry. Of them, the
-        // helper exposes the ones its body binds.
-        let (antecedent_vars, columns): (Vec<FlirVar>, Vec<FlirVar>) = {
-            let antecedent = bound_vars(&body);
-            let helper = bound_vars(&helper_atoms);
-            let antecedent_vars: Vec<FlirVar> = rule_scope
-                .query_vars()
-                .filter(|var| antecedent.contains(var.id()))
-                .collect();
-            let columns = antecedent_vars
-                .iter()
-                .filter(|var| helper.contains(var.id()))
-                .cloned()
-                .collect();
-            (antecedent_vars, columns)
-        };
-
-        let output_schema = TableSchema::new(
-            EntityRef::from(&rule.path),
-            antecedent_vars.iter().cloned().map(Column::from).collect(),
-            vec![],
-        );
-        rule_scope.constraints.insert(
-            rule.path.clone(),
-            ConstraintMeta::new(rule.rule.rule_variant, output_schema),
-        );
-        let head = FlirAtom::new_head(
-            rule.path.clone(),
-            antecedent_vars
-                .into_iter()
-                .map(frontend::Bind::Var)
-                .collect(),
-        );
-
-        let path = ir::Path::from(format!("{}#consequent", rule.path));
-        rule_scope.consequents.insert(
-            path.clone(),
-            columns.iter().cloned().map(Column::from).collect(),
-        );
-        let fields = || columns.iter().cloned().map(frontend::Bind::Var);
-        let consequent = FlirRule {
-            id: path.clone(),
-            head: FlirAtom::new_head(path.clone(), fields().collect()),
-            body: helper_atoms,
-            conditions: helper_conditions,
-        };
-        body.push(FlirAtom {
-            name: path,
-            negated: true,
-            bindings: fields().enumerate().collect(),
-        });
-        Ok(Self {
-            rule,
-            head,
-            body,
-            conditions,
-            consequent,
-        })
-    }
-
-    /// The constraint's own rule, plus the helper rule deriving its consequent.
-    fn into_rules(self) -> [FlirRule; 2] {
-        let rule = FlirRule {
-            id: self.rule.path.clone(),
-            head: self.head,
-            body: self.body,
-            conditions: self.conditions,
-        };
-        [rule, self.consequent]
-    }
-}
-
-/// If `atoms` and `conditions` stand as a rule body of their own:
-/// All conditions' variables are bound by some atom in `atoms`.
-fn stands_alone(atoms: &[FlirAtom], conditions: &[FlirCond]) -> bool {
-    let bound = bound_vars(atoms);
-    conditions
-        .iter()
-        .flat_map(FlirCond::vars)
-        .all(|var| bound.contains(var.id()))
-}
-
-/// The names of the variables `atoms` bind.
-fn bound_vars(atoms: &[FlirAtom]) -> HashSet<&ir::Path> {
-    atoms
-        .iter()
-        .flat_map(frontend::Atom::vars)
-        .map(Identifiable::id)
-        .collect()
-}
-
-impl Identifiable for FlirConstraint<'_> {
-    type Identifier = ir::Path;
-    fn id(&self) -> &Self::Identifier {
-        &self.rule.path
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FlirAtom {
-    name: ir::Path,
-    negated: bool,
-    /// Note: The bindings are sparsely defined.
-    bindings: Vec<(usize, frontend::Bind<FlirVar, FlirLit>)>,
-}
-
-impl FlirAtom {
-    fn new_head(name: ir::Path, fields: Vec<frontend::Bind<FlirVar, FlirLit>>) -> FlirAtom {
-        FlirAtom {
-            name,
-            negated: false,
-            bindings: fields.into_iter().enumerate().collect(),
-        }
-    }
-    fn from_atom(atom: &ir::Atom, resolver: &RuleScopeGuard) -> Result<FlirAtom, SyntaxError> {
+impl frontend::Atom<Flir> {
+    fn from_atom(atom: &ir::Atom, resolver: &RuleScopeGuard) -> Result<Self, SyntaxError> {
         let mut bindings = Vec::with_capacity(
             if atom.row_id.is_some() {
                 StoreEngineCols::ROW_ID_COLS
@@ -817,33 +647,7 @@ impl FlirAtom {
         for binding in &atom.values {
             bind(CompilerColIdx::Column(binding.column), &binding.term)?;
         }
-        Ok(FlirAtom {
-            name: entity.clone(),
-            negated: false,
-            bindings,
-        })
-    }
-}
-
-impl Identifiable for FlirAtom {
-    type Identifier = ir::Path;
-    fn id(&self) -> &Self::Identifier {
-        &self.name
-    }
-}
-
-impl frontend::Atom for FlirAtom {
-    type Var = FlirVar;
-    type Lit = FlirLit;
-
-    fn is_positive(&self) -> bool {
-        !self.negated
-    }
-
-    fn bindings(&self) -> impl Iterator<Item = (usize, frontend::Bind<&Self::Var, &Self::Lit>)> {
-        self.bindings
-            .iter()
-            .map(|(idx, bind)| (*idx, bind.as_ref()))
+        Ok(Self::new_positive(entity.clone(), bindings))
     }
 }
 
@@ -859,23 +663,31 @@ fn rule_frame(path: &ir::Path) -> Frame {
 fn resolve_propositions(
     propositions: &[ir::Prop],
     resolver: &RuleScopeGuard,
-) -> Result<(Vec<FlirAtom>, Vec<FlirCond>), SyntaxError> {
-    let (body, conditions): (Vec<FlirAtom>, Vec<FlirCond>) = propositions.iter().try_fold(
-        (Vec::new(), Vec::new()),
-        |(mut body, mut conditions), prop| {
-            match prop {
-                ir::Prop::Atom { atom } => body.push(FlirAtom::from_atom(atom, resolver)?),
-                ir::Prop::Eq { equality } => conditions.extend(FlirCond::new(
-                    Operator::Equal,
-                    &equality.left,
-                    &equality.right,
-                    resolver,
-                )),
-            };
-            Ok((body, conditions))
-        },
-    )?;
-    Ok((body, conditions))
+) -> Result<frontend::Conjunction<Flir>, SyntaxError> {
+    let resolved = propositions
+        .iter()
+        .map(|prop| resolve_proposition(prop, resolver))
+        .collect::<Result<Vec<_>, SyntaxError>>()?;
+    Ok(resolved.into_iter().flatten().collect())
+}
+
+type FlirProp = Prop<frontend::Atom<Flir>, frontend::Cond<Flir>>;
+
+/// One proposition of the FLIR, which an equality on row ids turns into two
+/// conditions. See [`frontend::Cond::new`].
+fn resolve_proposition(
+    prop: &ir::Prop,
+    resolver: &RuleScopeGuard,
+) -> Result<MaybePair<FlirProp>, SyntaxError> {
+    Ok(match prop {
+        ir::Prop::Atom { atom } => {
+            MaybePair::single(Prop::Atom(frontend::Atom::from_atom(atom, resolver)?))
+        }
+        ir::Prop::Eq { equality } => {
+            frontend::Cond::new(Operator::Equal, &equality.left, &equality.right, resolver)
+                .map(Prop::Cond)
+        }
+    })
 }
 
 struct MaybePair<T>(pub T, pub Option<T>);
@@ -889,6 +701,9 @@ impl<T> MaybePair<T> {
     }
     fn into_inner(self) -> (T, Option<T>) {
         (self.0, self.1)
+    }
+    fn map<U>(self, f: impl Fn(T) -> U) -> MaybePair<U> {
+        MaybePair(f(self.0), self.1.map(f))
     }
     fn len(&self) -> usize {
         1 + (self.1.is_some() as usize)
@@ -917,14 +732,7 @@ fn resolve_element(
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FlirCond {
-    operator: Operator,
-    left: frontend::Bind<FlirVar, FlirLit>,
-    right: frontend::Bind<FlirVar, FlirLit>,
-}
-
-impl FlirCond {
+impl frontend::Cond<Flir> {
     /// A single condition the FLIR can turn out to be two conditions because
     /// of row ids spreading into two variables.
     fn new(
@@ -970,31 +778,6 @@ impl FlirCond {
         };
         MaybePair::maybe((first, second))
     }
-
-    /// The variables the condition reads, on either side.
-    fn vars(&self) -> impl Iterator<Item = &FlirVar> {
-        [&self.left, &self.right]
-            .into_iter()
-            .filter_map(|bind| match bind {
-                frontend::Bind::Var(var) => Some(var),
-                frontend::Bind::Lit(_) => None,
-            })
-    }
-}
-
-impl frontend::Cond for FlirCond {
-    type Var = FlirVar;
-    type Lit = FlirLit;
-
-    fn operator(&self) -> impl Into<Operator> {
-        self.operator
-    }
-    fn left(&self) -> frontend::Bind<&Self::Var, &Self::Lit> {
-        self.left.as_ref()
-    }
-    fn right(&self) -> frontend::Bind<&Self::Var, &Self::Lit> {
-        self.right.as_ref()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -1009,12 +792,6 @@ impl From<&QueryEngineCol> for FlirVar {
             name: value.name().clone(),
             ty: (*value.ty()).into(),
         }
-    }
-}
-
-impl From<FlirVar> for Column {
-    fn from(value: FlirVar) -> Self {
-        Column::new(value.name, value.ty)
     }
 }
 
@@ -1047,10 +824,7 @@ impl From<&ir::Lit> for FlirLit {
 
 impl frontend::Lit for FlirLit {
     fn to_literal(&self) -> expr::Literal {
-        match &self.inner {
-            ir::Lit::Int { value } => expr::Literal::Iint(*value as i64),
-            ir::Lit::String { value } => expr::Literal::String(value.clone()),
-        }
+        expr::Literal::from(&self.inner)
     }
 }
 
@@ -1066,11 +840,11 @@ impl From<ir::Path> for EntityRef {
     }
 }
 
-impl From<&ir::Lit> for Literal {
+impl From<&ir::Lit> for expr::Literal {
     fn from(value: &ir::Lit) -> Self {
         match value {
-            ir::Lit::Int { value } => Literal::Iint((*value).into()),
-            ir::Lit::String { value } => Literal::String(value.clone()),
+            ir::Lit::Int { value } => expr::Literal::Iint(*value as i64),
+            ir::Lit::String { value } => expr::Literal::String(value.clone()),
         }
     }
 }

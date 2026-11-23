@@ -33,38 +33,69 @@ use super::{
     operator::Operator,
     stmt::{BlockStmt, ExprStmt, Stmt, VarStmt},
     tuple::Tuple,
-    variable::{Environment, Value},
+    variable::{Environment, Value, all_values},
 };
 use crate::{error::BuildError, relational::expr::RelExpr, scalarial::ScalarTypedValue};
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 pub type EvalResult = Result<Value, BuildError>;
 pub type StmtResult = Result<Option<Value>, BuildError>;
 
-macro_rules! comparison_helper {
-    ($left:expr, $right:expr, $op:tt, $($variant:path),*) => {{
-        match (&$left, &$right) {
-            $(
-                ($variant(left), $variant(right)) => Ok(Value::Bool(left $op right)),
-            )*
-            _ => Err(BuildError::new(
-                format!("expected comparable type, got: {:?} and {:?}", $left, $right),
-            )),
+/// Orders two values of the same scalar type, or `None` for two nulls, which
+/// are equal to each other but unordered. Any other pair is incomparable.
+fn compare(left: &Value, right: &Value) -> Result<Option<Ordering>, BuildError> {
+    Ok(Some(match (left, right) {
+        (Value::String(a), Value::String(b)) => a.cmp(b),
+        (Value::Uint(a), Value::Uint(b)) => a.cmp(b),
+        (Value::Iint(a), Value::Iint(b)) => a.cmp(b),
+        (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
+        (Value::Char(a), Value::Char(b)) => a.cmp(b),
+        (Value::Null(()), Value::Null(())) => return Ok(None),
+        // Not a wildcard, so a new variant fails to compile here until it is
+        // decided whether it is comparable.
+        (all_values!(), _) => {
+            return Err(BuildError::new(format!(
+                "expected comparable type, got: {left:?} and {right:?}"
+            )));
         }
-    }}
+    }))
 }
 
-macro_rules! arithmetic_helper {
-    ($left:expr, $right:expr, $op:tt, $($variant:path),*) => {{
-        match (&$left, &$right) {
-            $(
-                ($variant(left), $variant(right)) => Ok($variant(left $op right)),
-            )*
-            _ => Err(BuildError::new(
-                format!("expected number type, got: {:?} and {:?}", $left, $right),
-            )),
-        }
-    }}
+/// Like [`compare`], but for the operators that require an order, which
+/// nulls lack.
+fn order(left: &Value, right: &Value) -> Result<Ordering, BuildError> {
+    compare(left, right)?.ok_or_else(|| {
+        BuildError::new(format!(
+            "expected ordered type, got: {left:?} and {right:?}"
+        ))
+    })
+}
+
+/// Applies the checked integer method `$op` (`checked_add`, `checked_div`, …)
+/// to two numbers of the same type. Evaluates to an [`EvalResult`], which is
+/// an error for operands that are no numbers of the same type, and for an
+/// overflow or a division by zero, where `$op` yields `None`.
+macro_rules! arithmetic {
+    ($left:expr, $right:expr, $op:ident) => {{
+        let (left, right): (&Value, &Value) = ($left, $right);
+        let result: Result<Option<Value>, BuildError> = match (left, right) {
+            (Value::Iint(a), Value::Iint(b)) => Ok(a.$op(*b).map(Value::Iint)),
+            (Value::Uint(a), Value::Uint(b)) => Ok(a.$op(*b).map(Value::Uint)),
+            // Not a wildcard, so a new variant fails to compile here until
+            // it is decided whether it is a number.
+            (all_values!(), _) => Err(BuildError::new(format!(
+                "expected number type, got: {left:?} and {right:?}"
+            ))),
+        };
+        result.and_then(|value| {
+            value.ok_or_else(|| {
+                BuildError::new(format!(
+                    "arithmetic overflow or division by zero in {}: {left:?} and {right:?}",
+                    stringify!($op)
+                ))
+            })
+        })
+    }};
 }
 
 macro_rules! assert_type {
@@ -88,7 +119,15 @@ pub(crate) fn is_truthy(value: &Value) -> bool {
     match value {
         Value::Null(()) => false,
         Value::Bool(value) => *value,
-        _ => true,
+        // Spelled out rather than `all_values!()`, whose `Null` and `Bool`
+        // would be unreachable here, causing rustc warnings.
+        Value::String(_)
+        | Value::Uint(_)
+        | Value::Iint(_)
+        | Value::Char(_)
+        | Value::Function(_)
+        | Value::Relation(_)
+        | Value::Tuple(_) => true,
     }
 }
 
@@ -207,39 +246,25 @@ pub trait HostInterpreter {
             let left = self.visit_expr(&expr.left, ctx)?;
             let right = self.visit_expr(&expr.right, ctx)?;
             match expr.operator {
-                Operator::Equal => {
-                    comparison_helper!(left, right, ==, Value::Iint, Value::Uint, Value::Bool, Value::String, Value::Null)
-                }
-                Operator::NotEqual => {
-                    comparison_helper!(left, right, !=, Value::Iint, Value::Uint, Value::Bool, Value::String, Value::Null)
-                }
-                Operator::Less => {
-                    comparison_helper!(left, right, <, Value::Iint, Value::Uint, Value::Bool, Value::String)
-                }
-                Operator::LessEqual => {
-                    comparison_helper!(left, right, <=, Value::Iint, Value::Uint, Value::Bool, Value::String)
-                }
-                Operator::Greater => {
-                    comparison_helper!(left, right, >, Value::Iint, Value::Uint, Value::Bool, Value::String)
-                }
-                Operator::GreaterEqual => {
-                    comparison_helper!(left, right, >=, Value::Iint, Value::Uint, Value::Bool, Value::String)
-                }
+                Operator::Equal => Ok(Value::Bool(
+                    compare(&left, &right)?.is_none_or(Ordering::is_eq),
+                )),
+                Operator::NotEqual => Ok(Value::Bool(
+                    !compare(&left, &right)?.is_none_or(Ordering::is_eq),
+                )),
+                Operator::Less => Ok(Value::Bool(order(&left, &right)?.is_lt())),
+                Operator::LessEqual => Ok(Value::Bool(order(&left, &right)?.is_le())),
+                Operator::Greater => Ok(Value::Bool(order(&left, &right)?.is_gt())),
+                Operator::GreaterEqual => Ok(Value::Bool(order(&left, &right)?.is_ge())),
                 Operator::Addition => {
                     if let (Value::String(left), Value::String(right)) = (&left, &right) {
                         return Ok(Value::String(format!("{left}{right}")));
                     }
-                    arithmetic_helper!(left, right, +, Value::Iint, Value::Uint)
+                    arithmetic!(&left, &right, checked_add)
                 }
-                Operator::Subtraction => {
-                    arithmetic_helper!(left, right, -, Value::Iint, Value::Uint)
-                }
-                Operator::Multiplication => {
-                    arithmetic_helper!(left, right, *, Value::Iint, Value::Uint)
-                }
-                Operator::Division => {
-                    arithmetic_helper!(left, right, /, Value::Iint, Value::Uint)
-                }
+                Operator::Subtraction => arithmetic!(&left, &right, checked_sub),
+                Operator::Multiplication => arithmetic!(&left, &right, checked_mul),
+                Operator::Division => arithmetic!(&left, &right, checked_div),
                 _ => Err(BuildError::new(format!(
                     "unsupported (eager) binary operator: {:?}",
                     expr.operator
@@ -527,5 +552,35 @@ mod tests {
             bind("y", Expr::from(VarExpr::new("x"))),
         ]);
         assert_eq!(value, Value::Uint(2));
+    }
+
+    #[test]
+    fn chars_compare_by_value() {
+        let (a, b) = (Value::Char('a'), Value::Char('b'));
+        assert_eq!(compare(&a, &a).unwrap(), Some(Ordering::Equal));
+        assert_eq!(order(&a, &b).unwrap(), Ordering::Less);
+    }
+
+    #[test]
+    fn nulls_are_equal_but_unordered() {
+        let null = Value::Null(());
+        assert_eq!(compare(&null, &null).unwrap(), None);
+        assert!(order(&null, &null).is_err());
+    }
+
+    #[test]
+    fn values_of_different_types_are_incomparable() {
+        assert!(compare(&Value::Uint(1), &Value::Iint(1)).is_err());
+        assert!(arithmetic!(&Value::Uint(1), &Value::Iint(1), checked_add).is_err());
+    }
+
+    #[test]
+    fn arithmetic_reports_overflow_and_division_by_zero() {
+        assert!(arithmetic!(&Value::Uint(u64::MAX), &Value::Uint(1), checked_add).is_err());
+        assert!(arithmetic!(&Value::Iint(1), &Value::Iint(0), checked_div).is_err());
+        assert_eq!(
+            arithmetic!(&Value::Iint(-6), &Value::Iint(3), checked_div).unwrap(),
+            Value::Iint(-2)
+        );
     }
 }
