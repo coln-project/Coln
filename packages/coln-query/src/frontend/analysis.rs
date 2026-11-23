@@ -734,7 +734,7 @@ impl<'a, L: Language> Site<'a, L> {
                 let mut reported = HashSet::new();
                 vars.into_iter()
                     .filter(move |var| {
-                        !body.bound_vars().contains_key(var.id()) && reported.insert(var.id())
+                        !body.grounded_vars().contains_key(var.id()) && reported.insert(var.id())
                     })
                     .map(move |var| Malformation::Unbound {
                         site: self,

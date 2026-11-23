@@ -27,7 +27,7 @@ use crate::{
     relational::schema::Column,
     scalarial::ScalarType,
 };
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, ops::Not};
 
 pub trait Identifier: Clone + fmt::Debug + fmt::Display + PartialEq + Eq + std::hash::Hash {}
 
@@ -330,135 +330,6 @@ impl<L: Language> Identifiable for Predicate<L> {
     }
 }
 
-/// A proposition is either an atom or a condition, the two things a
-/// [`Conjunction`] is made of.
-#[derive(Debug, Clone, Copy)]
-pub enum Prop<A, C> {
-    Atom(A),
-    Cond(C),
-}
-
-impl<A, C> Prop<A, C> {
-    pub fn as_ref(&self) -> Prop<&A, &C> {
-        use Prop::*;
-        match self {
-            Atom(atom) => Atom(atom),
-            Cond(cond) => Cond(cond),
-        }
-    }
-
-    /// The atom, if this proposition is one.
-    pub fn atom(self) -> Option<A> {
-        match self {
-            Prop::Atom(atom) => Some(atom),
-            Prop::Cond(_) => None,
-        }
-    }
-
-    /// The condition, if this proposition is one.
-    pub fn cond(self) -> Option<C> {
-        match self {
-            Prop::Atom(_) => None,
-            Prop::Cond(cond) => Some(cond),
-        }
-    }
-}
-
-/// A conjunction of [propositions](Prop), that is, [atoms](Self::atoms)
-/// and [conditions](Self::conditions), in the order the frontend gave them.
-/// A [`Rule`]'s body is one, and so are a law's antecedent and consequent.
-///
-/// An empty conjunction is `true`.
-#[derive(Debug, Clone)]
-pub struct Conjunction<L: Language>(pub(crate) Vec<Prop<Atom<L>, Cond<L>>>);
-
-impl<L: Language> Conjunction<L> {
-    /// The propositions, atoms and conditions alike, in their given order.
-    pub fn iter(&self) -> impl Iterator<Item = Prop<&Atom<L>, &Cond<L>>> {
-        self.0.iter().map(Prop::as_ref)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn push(&mut self, proposition: Prop<Atom<L>, Cond<L>>) {
-        self.0.push(proposition);
-    }
-
-    pub fn atoms(&self) -> impl Iterator<Item = &Atom<L>> {
-        self.iter().filter_map(Prop::atom)
-    }
-
-    /// The atoms which are _not_ negated.
-    pub fn positive_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
-        self.atoms().filter(|atom| atom.is_positive())
-    }
-
-    /// The atoms which are negated.
-    pub fn negated_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
-        self.atoms().filter(|atom| atom.is_negated())
-    }
-
-    /// The conditions. Conditions constrain a variable's domain.
-    pub fn conditions(&self) -> impl Iterator<Item = &Cond<L>> {
-        self.iter().filter_map(Prop::cond)
-    }
-
-    /// If an atom references the predicate `identifier` names.
-    pub fn references(&self, identifier: &L::PredId) -> bool {
-        self.atoms().find(|atom| atom.id() == identifier).is_some()
-    }
-
-    /// The variables the positive atoms bind, keyed by their identifier. A
-    /// negated atom or a condition binds none: it only uses variables, which a
-    /// positive atom has to bind.
-    ///
-    /// A variable is identified by its name alone, as in an atom's bindings
-    /// and in the joins translation derives from them. Its type is a property
-    /// of it, so occurrences disagreeing on it are a type error rather than
-    /// different variables. Of those, an arbitrary one is kept.
-    pub fn bound_vars(&self) -> HashMap<&IdOf<L::Var>, &L::Var> {
-        self.positive_atoms()
-            .flat_map(Atom::vars)
-            .map(|var| (var.id(), var))
-            .collect()
-    }
-
-    /// If every variable a negated atom or a condition uses is
-    /// [bound](Self::bound_vars) by a positive atom, which is what lets the
-    /// conjunction of a law stand as a rule's body of its own. Otherwise,
-    /// the antecedent of the law must be injected into the helper.
-    pub fn is_safe(&self) -> bool {
-        let bound = self.bound_vars();
-        self.negated_atoms()
-            .flat_map(Atom::vars)
-            .chain(self.conditions().flat_map(Cond::vars))
-            .all(|var| bound.contains_key(var.id()))
-    }
-}
-
-impl<L: Language> Default for Conjunction<L> {
-    fn default() -> Self {
-        Self(Vec::new())
-    }
-}
-
-impl<L: Language> FromIterator<Prop<Atom<L>, Cond<L>>> for Conjunction<L> {
-    fn from_iter<I: IntoIterator<Item = Prop<Atom<L>, Cond<L>>>>(iter: I) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-impl<L: Language> IntoIterator for Conjunction<L> {
-    type Item = Prop<Atom<L>, Cond<L>>;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 /// A rule consists of a _body_ and a _head_. The body is a
 /// [conjunction](Conjunction) of atoms and conditions. The [head](Self::head)
 /// is a lone atom.
@@ -519,40 +390,167 @@ impl<L: Language> Identifiable for Rule<L> {
     }
 }
 
-/// A condition `left operator right` in a [`Rule`]'s body.
+/// A conjunction of [propositions](Prop), that is, [atoms](Self::atoms)
+/// and [conditions](Self::conditions), in the order the frontend gave them.
+/// A [`Rule`]'s body is one, and so are a law's antecedent and consequent.
+///
+/// An empty conjunction is `true`.
 #[derive(Debug, Clone)]
-pub struct Cond<L: Language> {
-    pub(crate) operator: Operator,
-    pub(crate) left: Bind<L::Var, L::Lit>,
-    pub(crate) right: Bind<L::Var, L::Lit>,
+pub struct Conjunction<L: Language>(pub(crate) Vec<Prop<Atom<L>, Cond<L>>>);
+
+impl<L: Language> Conjunction<L> {
+    /// The propositions, atoms and conditions alike, in their given order.
+    pub fn iter(&self) -> impl Iterator<Item = Prop<&Atom<L>, &Cond<L>>> {
+        self.0.iter().map(Prop::as_ref)
+    }
+
+    /// An alias of [Self::iter].
+    pub fn props(&self) -> impl Iterator<Item = Prop<&Atom<L>, &Cond<L>>> {
+        self.iter()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn push(&mut self, proposition: Prop<Atom<L>, Cond<L>>) {
+        self.0.push(proposition);
+    }
+
+    pub fn atoms(&self) -> impl Iterator<Item = &Atom<L>> {
+        self.iter().filter_map(Prop::atom)
+    }
+
+    /// The atoms which are _not_ negated.
+    pub fn positive_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
+        self.atoms().filter(|atom| atom.is_positive())
+    }
+
+    /// The atoms which are negated.
+    pub fn negated_atoms(&self) -> impl Iterator<Item = &Atom<L>> {
+        self.atoms().filter(|atom| atom.is_negated())
+    }
+
+    /// The conditions. Conditions constrain a variable's domain.
+    pub fn conditions(&self) -> impl Iterator<Item = &Cond<L>> {
+        self.iter().filter_map(Prop::cond)
+    }
+
+    /// If an atom references the predicate `identifier` names.
+    pub fn references(&self, identifier: &L::PredId) -> bool {
+        self.atoms().find(|atom| atom.id() == identifier).is_some()
+    }
+
+    /// The variables the positive atoms grounds, keyed by their identifier. A
+    /// negated atom or a condition grounds none: it only uses variables, which
+    /// a positive atom has to ground.
+    ///
+    /// A variable is identified by its name alone, as in an atom's bindings
+    /// and in the joins translation derives from them. Its type is a property
+    /// of it, so occurrences disagreeing on it are a type error rather than
+    /// different variables. Of those, an arbitrary one is kept.
+    pub fn grounded_vars(&self) -> HashMap<&IdOf<L::Var>, &L::Var> {
+        self.props()
+            .flat_map(|prop| prop.grounded_vars().map(|var| (var.id(), var)))
+            .collect()
+    }
+
+    /// If every variable a negated atom or a condition uses is
+    /// [grounded](Self::grounded_vars) by a positive atom, which is what lets
+    /// the conjunction of a law stand as a rule's body of its own. Otherwise,
+    /// the antecedent of the law must be injected into the helper.
+    pub fn is_safe(&self) -> bool {
+        let grounded = self.grounded_vars();
+        self.negated_atoms()
+            .flat_map(Atom::vars)
+            .chain(self.conditions().flat_map(Cond::vars))
+            .all(|var| grounded.contains_key(var.id()))
+    }
 }
 
-impl<L: Language> Cond<L> {
-    pub fn operator(&self) -> Operator {
-        self.operator
-    }
-
-    pub fn left(&self) -> Bind<&L::Var, &L::Lit> {
-        self.left.as_ref()
-    }
-
-    pub fn right(&self) -> Bind<&L::Var, &L::Lit> {
-        self.right.as_ref()
-    }
-
-    /// The variables this condition constrains. Unlike an [`Atom`]'s, they are
-    /// not brought into scope but have to be bound by a positive atom.
-    pub fn vars(&self) -> impl Iterator<Item = &L::Var> {
-        [self.left(), self.right()]
-            .into_iter()
-            .filter_map(|bind| match bind {
-                Bind::Var(var) => Some(var),
-                Bind::Lit(_) => None,
-            })
+impl<L: Language> Default for Conjunction<L> {
+    fn default() -> Self {
+        Self(Vec::new())
     }
 }
 
-/// An atom `name(term, …)` referencing the predicate `name`, possibly negated.
+impl<L: Language> FromIterator<Prop<Atom<L>, Cond<L>>> for Conjunction<L> {
+    fn from_iter<I: IntoIterator<Item = Prop<Atom<L>, Cond<L>>>>(iter: I) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl<L: Language> IntoIterator for Conjunction<L> {
+    type Item = Prop<Atom<L>, Cond<L>>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+/// A proposition is either an atom or a condition, the two things a
+/// [`Conjunction`] is made of.
+#[derive(Debug, Clone, Copy)]
+pub enum Prop<A, C> {
+    Atom(A),
+    Cond(C),
+}
+
+impl<A, C> Prop<A, C> {
+    pub fn as_ref(&self) -> Prop<&A, &C> {
+        use Prop::*;
+        match self {
+            Atom(atom) => Atom(atom),
+            Cond(cond) => Cond(cond),
+        }
+    }
+
+    /// The atom, if this proposition is one.
+    pub fn atom(self) -> Option<A> {
+        match self {
+            Prop::Atom(atom) => Some(atom),
+            Prop::Cond(_) => None,
+        }
+    }
+
+    /// The condition, if this proposition is one.
+    pub fn cond(self) -> Option<C> {
+        match self {
+            Prop::Atom(_) => None,
+            Prop::Cond(cond) => Some(cond),
+        }
+    }
+}
+
+impl<A: Not<Output = A>, C: Not<Output = C>> Not for Prop<A, C> {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        match self {
+            Prop::Atom(atom) => Prop::Atom(!atom),
+            Prop::Cond(cond) => Prop::Cond(!cond),
+        }
+    }
+}
+
+impl<'a, L: Language> Prop<&'a Atom<L>, &'a Cond<L>> {
+    /// The variables the proposition uses, whether it grounds them or not.
+    pub fn vars(self) -> impl Iterator<Item = &'a L::Var> {
+        let atom_vars = self.atom().into_iter().flat_map(Atom::vars);
+        let cond_vars = self.cond().into_iter().flat_map(Cond::vars);
+        atom_vars.chain(cond_vars)
+    }
+    /// Only the variables this proposition grounds, therefore a subset of
+    /// [Self::vars]. Ungrounded variables are variables appearing in negated
+    /// [`Atom`]s, or the ones part of a [`Condition`](Cond).
+    /// See [Atom::grounded_vars].
+    pub fn grounded_vars(self) -> impl Iterator<Item = &'a L::Var> {
+        self.atom().into_iter().flat_map(Atom::grounded_vars)
+    }
+}
+
+/// An atom `name(term, ...)` referencing the predicate `name`, possibly negated.
 #[derive(Debug, Clone)]
 pub struct Atom<L: Language> {
     name: L::PredId,
@@ -626,12 +624,23 @@ impl<L: Language> Atom<L> {
             .map(|(position, bind)| (*position, bind.as_ref()))
     }
 
-    /// All variables brought into scope by this [`Atom`].
+    /// All variables appearing in this [`Atom`], regardless if the atom grounds
+    /// them. For this subset, see [Self::grounded_vars].
     pub fn vars(&self) -> impl Iterator<Item = &L::Var> {
         self.bindings().filter_map(|(_, bind)| match bind {
             Bind::Var(var) => Some(var),
             Bind::Lit(_) => None,
         })
+    }
+
+    /// All variables grounded by this [`Atom`]. Variables appearing in
+    /// [negated](Self::is_negated) atoms are not grounded, only variables of
+    /// positive atoms are.
+    pub fn grounded_vars(&self) -> impl Iterator<Item = &L::Var> {
+        self.is_positive()
+            .then(|| self.vars())
+            .into_iter()
+            .flatten()
     }
 }
 
@@ -640,6 +649,71 @@ impl<L: Language> Identifiable for Atom<L> {
 
     fn id(&self) -> &Self::Identifier {
         &self.name
+    }
+}
+
+impl<L: Language> Not for Atom<L> {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        Self {
+            negated: !self.negated,
+            ..self
+        }
+    }
+}
+
+/// A condition `left operator right` in a [`Rule`]'s body.
+#[derive(Debug, Clone)]
+pub struct Cond<L: Language> {
+    pub(crate) operator: Operator,
+    pub(crate) left: Bind<L::Var, L::Lit>,
+    pub(crate) right: Bind<L::Var, L::Lit>,
+}
+
+impl<L: Language> Cond<L> {
+    pub fn operator(&self) -> Operator {
+        self.operator
+    }
+
+    pub fn left(&self) -> Bind<&L::Var, &L::Lit> {
+        self.left.as_ref()
+    }
+
+    pub fn right(&self) -> Bind<&L::Var, &L::Lit> {
+        self.right.as_ref()
+    }
+
+    /// The variables this condition constrains. Unlike a (positive) [`Atom`]'s,
+    /// they are not grounded by this use but have to be grounded by a positive
+    /// atom, too.
+    pub fn vars(&self) -> impl Iterator<Item = &L::Var> {
+        [self.left(), self.right()]
+            .into_iter()
+            .filter_map(|bind| match bind {
+                Bind::Var(var) => Some(var),
+                Bind::Lit(_) => None,
+            })
+    }
+}
+
+impl<L: Language> Not for Cond<L> {
+    type Output = Self;
+
+    fn not(self) -> Self {
+        use Operator::*;
+        let operator = match self.operator {
+            Equal => NotEqual,
+            NotEqual => Equal,
+            Less => GreaterEqual,
+            LessEqual => Greater,
+            Greater => LessEqual,
+            GreaterEqual => Less,
+            _ => todo!(
+                "Distinguish between Eq, Order, Arithmetic, Logical operators once more data types land"
+            ),
+        };
+        Self { operator, ..self }
     }
 }
 

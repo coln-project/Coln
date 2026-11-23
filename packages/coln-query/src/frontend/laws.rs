@@ -12,7 +12,7 @@ use super::{Atom, Bind, Conjunction, Identifiable, Language, Predicate, Prop, Ru
 /// conditions.
 ///
 /// The expectation of a law is that the implication holds. Where it does
-/// _not_, its violations are reported: the bindings of the antecedent's
+/// _not_, its violations are reported: the assignments of the antecedent's
 /// variables for which the consequent does not hold, that is,
 /// `!(antecedent => consequent)`. [`lower`](Self::lower) derives them by
 /// ordinary [rules](Rule). Due to the negation, this extension requires
@@ -29,8 +29,8 @@ use super::{Atom, Bind, Conjunction, Identifiable, Language, Predicate, Prop, Ru
 /// m(x)            :- t(_, _, x), !m#consequent(x).
 /// ```
 ///
-/// The helper's columns are the antecedent's variables its body binds, which
-/// are what the negated atom matches on. A variable only the consequent binds
+/// The helper's columns are the antecedent's variables its body grounds, which
+/// are what the negated atom matches on. A variable only the consequent grounds
 /// is projected away, which makes it existential.
 ///
 /// The helper's body is the given consequent alone if it stands as a rule on
@@ -39,6 +39,24 @@ use super::{Atom, Bind, Conjunction, Identifiable, Language, Predicate, Prop, Ru
 /// body. That changes nothing, as the law's rule requires the antecedent
 /// anyway, but costs computing it twice, which is why it is not done if not
 /// required.
+///
+/// No helper is needed, and the consequent is _inlined_ negated into the law's
+/// rule instead, if:
+///
+/// 1. It is a single proposition, which can be negated on its own: negating
+///    several of them takes parentheses no Datalog rule body has.
+/// 2. The antecedent grounds every variable the consequent uses. A variable only
+///    the consequent uses is existential, which a single negated atom or
+///    condition cannot express: `!u(x, y)` leaves `y` ungrounded, and a negated
+///    `!u(x, y)` turns into `u(x, y)`, which asks for _some_ `y` rather than
+///    _every_ `y`. An empty antecedent grounds nothing and hence only admits a
+///    proposition using no variable.
+///
+/// For the example above, the inlined version is:
+///
+/// ```text
+/// m(x) :- t(_, _, x), x != 1.
+/// ```
 #[derive(Debug, Clone)]
 pub struct Law<L: Language> {
     /// The law's predicate, which its violations are reported under.
@@ -46,8 +64,8 @@ pub struct Law<L: Language> {
     /// The rule deriving the law's violations.
     rule_id: L::RuleId,
     /// The variables a violation lists, in this order. Only the ones the
-    /// antecedent binds make it into a violation: a variable only the
-    /// consequent binds is existential and has no value a violation could
+    /// antecedent grounds make it into a violation: a variable only the
+    /// consequent grounds is existential and has no value a violation could
     /// carry.
     vars: Vec<L::Var>,
     /// Can be empty, as it then demands the consequent to be true at all times.
@@ -79,10 +97,10 @@ impl<L: Language> Law<L> {
             meta,
         }
     }
-    /// The law's predicate, deriving its violations, and the helper predicate
-    /// deriving its consequent, in this order. Each is defined by a single
-    /// rule.
-    pub fn lower(self) -> [Predicate<L>; 2] {
+    /// The law's predicate, deriving its violations, and, unless the
+    /// consequent is inlined, the helper predicate deriving its consequent, in
+    /// this order. Each is defined by a single rule.
+    pub fn lower(self) -> (Predicate<L>, Option<Predicate<L>>) {
         let Law {
             name,
             rule_id,
@@ -96,48 +114,57 @@ impl<L: Language> Law<L> {
             "law '{name}' has an empty consequent, which holds trivially"
         );
 
-        // TODO: Potential optimization with a single conjunct by not creating
-        // a helper predicate but negating the single conjunct. Watch out though,
-        // as this optimization is incompatible with empty antecedent rules
-        // because then negation safety is violated, as any existential variable
-        // in the consequent does not appear positively in any of the (empty)
-        // antecedent's (positive) atoms.
-        let helper_body = match consequent.is_safe() {
-            true => consequent,
-            false => antecedent.clone().into_iter().chain(consequent).collect(),
-        };
-        // Of the law's columns, the helper exposes the ones its body binds.
-        let (law_vars, helper_vars): (Vec<L::Var>, Vec<L::Var>) = {
-            let antecedent = antecedent.bound_vars();
-            let helper = helper_body.bound_vars();
-            let law_vars: Vec<L::Var> = vars
-                .into_iter()
-                .filter(|var| antecedent.contains_key(var.id()))
-                .collect();
-            let helper_vars = law_vars
-                .iter()
-                .filter(|var| helper.contains_key(var.id()))
-                .cloned()
-                .collect();
-            (law_vars, helper_vars)
+        let grounded = antecedent.grounded_vars();
+        let law_vars: Vec<L::Var> = vars
+            .into_iter()
+            .filter(|var| grounded.contains_key(var.id()))
+            .collect();
+        let consequent = match <[_; 1]>::try_from(consequent.0) {
+            Ok([lone])
+                if lone
+                    .as_ref()
+                    .vars()
+                    .all(|var| grounded.contains_key(var.id())) =>
+            {
+                antecedent.push(!lone);
+                None
+            }
+            Ok(lone) => Some(lone.into_iter().collect()),
+            Err(props) => Some(Conjunction(props)),
         };
 
-        let helper_name = L::derive_pred_id(&name, "consequent");
-        let helper_fields = || helper_vars.iter().cloned().map(Bind::Var);
-        let helper = Predicate {
-            name: helper_name.clone(),
-            columns: helper_vars.iter().map(TypedVar::column).collect(),
-            rules: vec![Rule {
-                id: L::derive_rule_id(&rule_id, "consequent"),
-                head: Atom::new_head(helper_name.clone(), helper_fields().collect()),
-                body: helper_body,
-                meta: meta.clone(),
-            }],
-        };
-        antecedent.push(Prop::Atom(Atom::new_negated(
-            helper_name,
-            helper_fields().enumerate(),
-        )));
+        let helper = consequent.map(|consequent| {
+            let helper_body = match consequent.is_safe() {
+                true => consequent,
+                false => antecedent.clone().into_iter().chain(consequent).collect(),
+            };
+            // Of the law's columns, the helper exposes the ones its body grounds.
+            let helper_vars: Vec<L::Var> = {
+                let helper = helper_body.grounded_vars();
+                law_vars
+                    .iter()
+                    .filter(|var| helper.contains_key(var.id()))
+                    .cloned()
+                    .collect()
+            };
+
+            let helper_name = L::derive_pred_id(&name, "consequent");
+            let helper_fields = || helper_vars.iter().cloned().map(Bind::Var);
+            antecedent.push(Prop::Atom(Atom::new_negated(
+                helper_name.clone(),
+                helper_fields().enumerate(),
+            )));
+            Predicate {
+                name: helper_name.clone(),
+                columns: helper_vars.iter().map(TypedVar::column).collect(),
+                rules: vec![Rule {
+                    id: L::derive_rule_id(&rule_id, "consequent"),
+                    head: Atom::new_head(helper_name, helper_fields().collect()),
+                    body: helper_body,
+                    meta: meta.clone(),
+                }],
+            }
+        });
         let law = Predicate {
             name: name.clone(),
             columns: law_vars.iter().map(TypedVar::column).collect(),
@@ -148,7 +175,7 @@ impl<L: Language> Law<L> {
                 meta,
             }],
         };
-        [law, helper]
+        (law, helper)
     }
 }
 
@@ -170,44 +197,46 @@ mod tests {
         }
     }
 
-    /// The law's predicate and its helper predicate, printed in that order.
-    fn lowered(law: Law<TestLanguage>) -> [String; 2] {
-        law.lower().map(|predicate| predicate.to_string())
+    /// The law's predicate and its helper predicate, if any, printed in that
+    /// order.
+    fn lowered(law: Law<TestLanguage>) -> (String, Option<String>) {
+        let (law, helper) = law.lower();
+        (law.to_string(), helper.map(|helper| helper.to_string()))
     }
 
     #[test]
     fn a_safe_consequent_is_the_helper_s_body_alone() {
         assert_eq!(
-            lowered(law(&["x"], &["t(x)"], &["u(x)"])),
-            [
-                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent(x).",
-                ".decl m#consequent(x: uint)\nm#consequent(x) :- u(x).",
-            ]
+            lowered(law(&["x"], &["t(x)"], &["u(x)", "x == 1"])),
+            (
+                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent(x).".into(),
+                Some(".decl m#consequent(x: uint)\nm#consequent(x) :- u(x), x == 1.".into()),
+            )
         );
     }
 
     #[test]
     fn an_unsafe_consequent_joins_the_antecedent_in_the_helper_s_body() {
-        // `x == 1` alone would leave `x` unbound.
+        // `x > 1, x < 5` alone would leave `x` ungrounded.
         assert_eq!(
-            lowered(law(&["x"], &["t(x)"], &["x == 1"])),
-            [
-                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent(x).",
-                ".decl m#consequent(x: uint)\nm#consequent(x) :- t(x), x == 1.",
-            ]
+            lowered(law(&["x"], &["t(x)"], &["x > 1", "x < 5"])),
+            (
+                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent(x).".into(),
+                Some(".decl m#consequent(x: uint)\nm#consequent(x) :- t(x), x > 1, x < 5.".into()),
+            )
         );
     }
 
     #[test]
-    fn a_variable_only_the_consequent_binds_is_existential() {
+    fn a_variable_only_the_consequent_grounds_is_existential() {
         // `y` has no value a violation could carry, so neither predicate has
         // a column for it.
         assert_eq!(
             lowered(law(&["x", "y"], &["t(x)"], &["u(x, y)"])),
-            [
-                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent(x).",
-                ".decl m#consequent(x: uint)\nm#consequent(x) :- u(x, y).",
-            ]
+            (
+                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent(x).".into(),
+                Some(".decl m#consequent(x: uint)\nm#consequent(x) :- u(x, y).".into()),
+            )
         );
     }
 
@@ -216,31 +245,71 @@ mod tests {
         // The helper has no column, so its negation matches on nothing.
         assert_eq!(
             lowered(law(&["x", "y"], &["t(x)"], &["u(y)"])),
-            [
-                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent().",
-                ".decl m#consequent()\nm#consequent() :- u(y).",
-            ]
+            (
+                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent().".into(),
+                Some(".decl m#consequent()\nm#consequent() :- u(y).".into()),
+            )
         );
     }
 
     #[test]
     fn the_columns_follow_the_given_variables_not_their_occurrence() {
         assert_eq!(
-            lowered(law(&["y", "x"], &["t(x, y)"], &["u(x, y)"])),
-            [
-                ".decl m(y: uint, x: uint)\nm(y, x) :- t(x, y), !m#consequent(y, x).",
-                ".decl m#consequent(y: uint, x: uint)\nm#consequent(y, x) :- u(x, y).",
-            ]
+            lowered(law(&["y", "x"], &["t(x, y)"], &["u(x, y, z)"])),
+            (
+                ".decl m(y: uint, x: uint)\nm(y, x) :- t(x, y), !m#consequent(y, x).".into(),
+                Some(
+                    ".decl m#consequent(y: uint, x: uint)\nm#consequent(y, x) :- u(x, y, z)."
+                        .into()
+                ),
+            )
+        );
+    }
+
+    #[test]
+    fn a_lone_proposition_the_antecedent_grounds_is_inlined_negated() {
+        for (consequent, negated) in [("u(x)", "!u(x)"), ("!u(x)", "u(x)"), ("x == 1", "x != 1")] {
+            assert_eq!(
+                lowered(law(&["x"], &["t(x)"], &[consequent])),
+                (format!(".decl m(x: uint)\nm(x) :- t(x), {negated}."), None)
+            );
+        }
+        assert_eq!(
+            lowered(law(&[], &[], &["u"])),
+            (".decl m()\nm() :- !u().".into(), None)
+        );
+    }
+
+    #[test]
+    fn a_lone_proposition_with_an_existential_variable_is_not_inlined() {
+        // Inlined, `!u(x, y)` would turn into `u(x, y)`, asking for some `y`
+        // rather than every `y`.
+        assert_eq!(
+            lowered(law(&["x"], &["t(x)"], &["!u(x, y)"])),
+            (
+                ".decl m(x: uint)\nm(x) :- t(x), !m#consequent(x).".into(),
+                Some(".decl m#consequent(x: uint)\nm#consequent(x) :- t(x), !u(x, y).".into()),
+            )
+        );
+        // An empty antecedent grounds nothing.
+        assert_eq!(
+            lowered(law(&["x"], &[], &["u(x)"])),
+            (
+                ".decl m()\nm() :- !m#consequent().".into(),
+                Some(".decl m#consequent()\nm#consequent() :- u(x).".into()),
+            )
         );
     }
 
     #[test]
     fn a_lowered_law_is_a_valid_program() {
-        // Both shapes of the helper: the consequent alone, and joined with the
-        // antecedent.
-        for consequent in [&["u(x)"][..], &["x == 1"]] {
-            let [law, helper] = law(&["x"], &["t(x)"], consequent).lower();
-            let program = program(vec![pred("t", &[&[]]), pred("u", &[&[]]), law, helper]);
+        // Both shapes of the helper, the consequent alone and joined with the
+        // antecedent, and no helper at all.
+        for consequent in [&["u(x)", "x == 1"][..], &["x > 1", "x < 5"], &["u(x)"]] {
+            let (law, helper) = law(&["x"], &["t(x)"], consequent).lower();
+            let mut predicates = vec![pred("t", &[&[]]), pred("u", &[&[]]), law];
+            predicates.extend(helper);
+            let program = program(predicates);
             program
                 .verify()
                 .unwrap_or_else(|rejected| panic!("{consequent:?}: {}", rejected.error));

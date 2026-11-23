@@ -238,18 +238,19 @@ impl FlirLogicalProgram {
             })
             .collect::<Result<_, SyntaxError>>()?;
 
-        let (law_predicates, consequent_predicates): (Vec<_>, Vec<_>) = flat_realm
+        let law_and_helper_predicates = flat_realm
             .rules
             .iter()
             .filter(|law| !law.rule.consequents.is_empty())
             .map(|law| {
                 ctx.feed_law(law)
-                    .map(|[law, consequent]| (law, consequent))
                     .map_err(|error| error.within(rule_frame(&law.path)))
             })
             .collect::<Result<Vec<_>, SyntaxError>>()?
             .into_iter()
-            .unzip();
+            .flat_map(|(law_predicate, helper_predicate)| {
+                std::iter::once(law_predicate).chain(helper_predicate)
+            });
 
         let mut rules = ground_table_rules;
         rules.extend(derived_view_rules);
@@ -260,8 +261,7 @@ impl FlirLogicalProgram {
             })?;
         // A law's predicates come defined by their single rule each, so they
         // need no grouping.
-        predicates.extend(law_predicates);
-        predicates.extend(consequent_predicates);
+        predicates.extend(law_and_helper_predicates);
 
         fn remap<P, M>(map: impl IntoIterator<Item = (P, M)>) -> IndexMap<EntityRef, M>
         where
@@ -386,15 +386,15 @@ impl FlirContext {
             "Table declaration for '{entity}' neither valid as a ground table nor as a derived view"
         )
     }
-    /// Lowers `law` into the predicate deriving its violations and the helper
-    /// predicate deriving its consequent, see [`frontend::Law`], and registers
-    /// its [`LawMeta`].
+    /// Lowers `law` into the predicate deriving its violations and, unless
+    /// inlined, the helper predicate deriving its consequent, see
+    /// [`frontend::Law`], and registers its [`LawMeta`].
     fn feed_law(
         &mut self,
         law: &ir::RuleEntry,
-    ) -> Result<[frontend::Predicate<Flir>; 2], SyntaxError> {
+    ) -> Result<(frontend::Predicate<Flir>, Option<frontend::Predicate<Flir>>), SyntaxError> {
         let mut rule_scope = self.enter_rule_scope(&law.rule.vars);
-        let [violations, consequent] = frontend::Law::new(
+        let (violations, consequent) = frontend::Law::new(
             law.path.clone(),
             law.path.clone(),
             rule_scope.query_vars().collect(),
@@ -412,7 +412,7 @@ impl FlirContext {
             law.path.clone(),
             LawMeta::new(law.rule.rule_variant, output_schema),
         );
-        Ok([violations, consequent])
+        Ok((violations, consequent))
     }
     /// The declarations of the ground tables and the derived views. A law's
     /// predicates come defined already, see [`Self::feed_law`].
