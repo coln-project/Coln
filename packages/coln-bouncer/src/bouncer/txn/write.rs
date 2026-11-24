@@ -277,7 +277,7 @@ impl WriteTxn<Committed> {
         &self.state.monitored_violations
     }
 
-    // TODO all monitored constraints, maybe?
+    // TODO return all monitored constraints, maybe?
 }
 
 impl ImportTxn<'_> {

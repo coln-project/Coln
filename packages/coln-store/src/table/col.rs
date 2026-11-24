@@ -151,7 +151,7 @@ impl Column {
     /// Cell at `row` with its row id resolved through `packer`.
     pub(super) fn get(&self, row: usize, packer: &IdPacker) -> Option<PublicScalarValue> {
         self.get_packed(row)
-            .map(|value| value.map(|id| packer.unpack_row_id(id)))
+            .map(|value| value.map(|id| packer.unpack_row_id(id)).expect_public())
     }
 
     /// Cell at `row` as stored, with packed row ids.
