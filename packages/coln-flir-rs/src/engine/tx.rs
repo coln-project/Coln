@@ -13,7 +13,7 @@ use crate::{
     engine::packed::WithRowId,
     hash::CommitHash,
     public::PublicRowId,
-    tuple::{NativeScalar, NativeScalarType, ScalarKind, Tuple},
+    tuple::{NativeScalarType, PublicScalar, ScalarKind, Tuple},
 };
 
 /// A temporary row ID that is valid only within a transaction.
@@ -72,17 +72,17 @@ impl fmt::Display for TxRowId {
     }
 }
 
-pub type TxScalarValue = NativeScalar<TxRowId>;
+pub type TxScalarValue = PublicScalar<TxRowId>;
 
 impl From<TxRowId> for TxScalarValue {
     fn from(value: TxRowId) -> Self {
-        NativeScalar::RowId(value)
+        PublicScalar::RowId(value)
     }
 }
 
 impl From<PublicRowId> for TxScalarValue {
     fn from(value: PublicRowId) -> Self {
-        NativeScalar::RowId(TxRowId::from(value))
+        PublicScalar::RowId(TxRowId::from(value))
     }
 }
 
@@ -108,7 +108,7 @@ impl fmt::Display for TxRowIdType {
 /// world mid of transaction.
 pub type TxScalarType = NativeScalarType<TxRowIdType>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(transparent)]
 pub struct TxTuple(pub(crate) Tuple<TxScalarValue>);
 

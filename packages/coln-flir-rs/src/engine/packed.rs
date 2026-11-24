@@ -122,7 +122,7 @@ impl StoreTuple {
             .0
             .inner
             .into_iter()
-            .map(|scalar| scalar.map(&pack))
+            .map(|scalar| scalar.map(&pack).into())
             .collect();
         Self(Tuple { inner })
     }

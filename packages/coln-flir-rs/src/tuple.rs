@@ -19,6 +19,7 @@ use subenum::subenum;
 // to a different layout (smallvec, for instance), these types benefit
 // immediately.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(transparent)]
 pub struct Tuple<ScalarValue> {
     pub(crate) inner: Vec<ScalarValue>,
 }
@@ -98,8 +99,25 @@ pub trait ScalarKind: fmt::Display {
     fn ty(instance: &Self) -> Self::Ty;
 }
 
-#[subenum(QueryScalar)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Type)]
+// Serde is derived per enum rather than on the parent: subenum emits a child's
+// own attributes before the parent's derives, so `serde(untagged)` on
+// `PublicScalar` would otherwise precede the derive that introduces it.
+#[subenum(
+    NativeScalar(
+        doc = "The scalars of every layer; [`QueryScalar`] and [`PublicScalar`] are subsets.",
+        derive(Serialize, Deserialize)
+    ),
+    QueryScalar(
+        doc = "The scalars coln-query computes with. Row ids are flattened into their parts.",
+        derive(Serialize, Deserialize)
+    ),
+    PublicScalar(
+        doc = "The scalars crossing the public (FFI) boundary: exactly the column types a Coln program can declare.\n\nThere are no 64-bit integers, so every value round-trips through a JS `number` without precision loss. That also makes the untagged encoding unambiguous: a row id is an object, an `I32` a number and a `String` a string. Adding another integer type would require deserializing against the column types instead.",
+        derive(Serialize, Deserialize),
+        serde(untagged)
+    )
+)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Type)]
 pub enum NativeScalar<
     RowId,
     U64 = u64,
@@ -108,6 +126,7 @@ pub enum NativeScalar<
     I32 = i32,
     String = std::string::String,
 > {
+    #[subenum(PublicScalar)]
     RowId(RowId),
     #[subenum(QueryScalar)]
     U64(U64),
@@ -115,23 +134,16 @@ pub enum NativeScalar<
     U32(U32),
     #[subenum(QueryScalar)]
     I64(I64),
-    #[subenum(QueryScalar)]
+    #[subenum(QueryScalar, PublicScalar)]
     I32(I32),
-    #[subenum(QueryScalar)]
+    #[subenum(QueryScalar, PublicScalar)]
     String(String),
 }
 
 impl<R1> NativeScalar<R1> {
     pub fn map<R2, F: FnOnce(R1) -> R2>(self, f: F) -> NativeScalar<R2> {
-        use NativeScalar::*;
-        match self {
-            RowId(r1) => RowId(f(r1)),
-            U64(x) => U64(x),
-            U32(x) => U32(x),
-            I64(x) => I64(x),
-            I32(x) => I32(x),
-            String(s) => String(s),
-        }
+        self.try_map(|r1| Some(f(r1)))
+            .expect("closure is infallible")
     }
 
     /// Maps the row id, returning `None` when `f` fails. Non-id scalars are
@@ -146,6 +158,79 @@ impl<R1> NativeScalar<R1> {
             I32(x) => I32(x),
             String(s) => String(s),
         })
+    }
+}
+
+impl<R1> PublicScalar<R1> {
+    pub fn map<R2, F: FnOnce(R1) -> R2>(self, f: F) -> PublicScalar<R2> {
+        self.try_map(|r1| Some(f(r1)))
+            .expect("closure is infallible")
+    }
+
+    /// Maps the row id, returning `None` when `f` fails. Non-id scalars are
+    /// always passed through.
+    pub fn try_map<R2, F: FnOnce(R1) -> Option<R2>>(self, f: F) -> Option<PublicScalar<R2>> {
+        // `NativeScalar::try_map` preserves the variant, so narrowing back
+        // to a public scalar cannot fail.
+        Some(NativeScalar::from(self).try_map(f)?.expect_public())
+    }
+}
+
+impl<RowId: ScalarKind> PublicScalar<RowId> {
+    pub fn ty(&self) -> NativeScalarType<RowId::Ty> {
+        match self {
+            Self::RowId(row_id) => NativeScalar::RowId(ScalarKind::ty(row_id)),
+            Self::I32(_) => NativeScalar::I32(()),
+            Self::String(_) => NativeScalar::String(()),
+        }
+    }
+}
+
+impl<RowId> NativeScalar<RowId> {
+    /// Narrows a stored value to a [`PublicScalar`].
+    ///
+    /// # Panics
+    ///
+    /// On the query-only variants. Store columns are typed by
+    /// [`ir::ColType`], which only has public scalar types, so values read
+    /// from the store never panic here.
+    pub fn expect_public(self) -> PublicScalar<RowId> {
+        match self {
+            Self::RowId(id) => PublicScalar::RowId(id),
+            Self::I32(x) => PublicScalar::I32(x),
+            Self::String(s) => PublicScalar::String(s),
+            other @ (Self::U64(_) | Self::U32(_) | Self::I64(_)) => {
+                panic!("{:?} is not a public scalar", other.map(|_| ()))
+            }
+        }
+    }
+}
+
+impl<RowId> From<i32> for PublicScalar<RowId> {
+    fn from(value: i32) -> Self {
+        Self::I32(value)
+    }
+}
+
+impl<RowId> From<std::string::String> for PublicScalar<RowId> {
+    fn from(value: std::string::String) -> Self {
+        Self::String(value)
+    }
+}
+
+impl<RowId> From<&str> for PublicScalar<RowId> {
+    fn from(value: &str) -> Self {
+        Self::String(value.to_owned())
+    }
+}
+
+impl<RowId: fmt::Display> fmt::Display for PublicScalar<RowId> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RowId(id) => id.fmt(f),
+            Self::I32(x) => write!(f, "{x}"),
+            Self::String(s) => write!(f, "{s:?}"),
+        }
     }
 }
 
