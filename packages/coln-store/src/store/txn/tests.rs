@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
 use coln_flir_rs::engine::delta::{StoreDelta, TableDelta, ZRow};
 use coln_flir_rs::engine::packed::{StoreScalarValue, StoreTuple};
 use coln_flir_rs::engine::table::{STReadTxn, SortedTable, StoreST};
