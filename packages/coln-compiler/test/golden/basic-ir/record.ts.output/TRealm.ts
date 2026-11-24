@@ -10,12 +10,12 @@ export function createRealm(runtime: typeof Runtime) {
       }>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        point: (new runtime.BaseSet(mstore, "root.point", [])),
+        point: (new runtime.BaseSet(mbouncer, "root.point", [])),
         payload: (a: Runtime.RowId<"root.point">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.payload",
             [a],
             [1, 2, 3],
@@ -23,7 +23,7 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: { name: string, rank: number }) => {
                 return [a.name, a.rank];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return { name: result[0], rank: result[1] };
               }
             }

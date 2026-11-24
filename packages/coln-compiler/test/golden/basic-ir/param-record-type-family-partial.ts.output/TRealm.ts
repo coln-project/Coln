@@ -11,20 +11,20 @@ export function createRealm(runtime: typeof Runtime) {
       }) => Runtime.MutableSet<Runtime.RowId<"root.slices">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
-        Y: (new runtime.BaseSet(mstore, "root.Y", [])),
+        X: (new runtime.BaseSet(mbouncer, "root.X", [])),
+        Y: (new runtime.BaseSet(mbouncer, "root.Y", [])),
         R: (a: Runtime.RowId<"root.X">) => {
           return (b: Runtime.RowId<"root.Y">) => {
-            return (new runtime.BaseSet(mstore, "root.R", [a, b]));
+            return (new runtime.BaseSet(mbouncer, "root.R", [a, b]));
           };
         },
         slices: (x: Runtime.RowId<"root.X">) => {
           return (y: Runtime.RowId<"root.Y">) => {
             return (a: { entry: Runtime.RowId<"root.R"> }) => {
               return (new runtime.BaseSet(
-                mstore,
+                mbouncer,
                 "root.slices",
                 [x, y, a.entry]
               ));

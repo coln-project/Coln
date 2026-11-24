@@ -107,7 +107,7 @@ instance Reconstructable TS.Id TS.El where
           (runtime "RowId")
           [ TS.Object
               [ ("type", TS.String "Existing")
-              , ("value", TS.Coerce t (runtimeTy "WireRowId" []))
+              , ("value", TS.Coerce t (runtimeTy "PublicRowId" []))
               ]
           , tnString tn
           ]
@@ -154,7 +154,7 @@ constructAdapter e sh = do
           (TS.Block [] (Just (TS.List $ toList params.paramVals)))
   let reconstruct =
         TS.Lam
-          (TS.Binding resultVar (runtimeTy "WireTuple" []))
+          (TS.Binding resultVar (runtimeTy "PublicTuple" []))
           (TS.Block [] (Just reconstructed))
   Adapter flatten reconstruct params.numParams
 
@@ -285,8 +285,8 @@ instance GenEl (AccessType, SIR.El Set) where
 
 genRealmConstructor :: SIR.Realm -> TS.Constructor
 genRealmConstructor r = do
-  let args = [TS.Binding "mstore" (runtimeTy "ManagedStore" [])]
-  let env = emptyTSEnv r (TS.Var "mstore")
+  let args = [TS.Binding "mbouncer" (runtimeTy "ManagedBouncer" [])]
+  let env = emptyTSEnv r (TS.Var "mbouncer")
   let auxillaryAssignments = [TS.Assign (TS.QId ["this"] (mangle x)) (genEl env (View, v)) | (x, (v, _)) <- OMap.assocs $ r.auxillaries]
   let body =
         TS.Block

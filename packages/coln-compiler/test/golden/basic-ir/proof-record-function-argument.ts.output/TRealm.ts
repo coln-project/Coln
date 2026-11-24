@@ -12,9 +12,9 @@ export function createRealm(runtime: typeof Runtime) {
       }) => Runtime.MutableProp
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
+        X: (new runtime.BaseSet(mbouncer, "root.X", [])),
         Accepted: (a: {
           first: Runtime.RowId<"root.X">,
           second: Runtime.RowId<"root.X">,
@@ -22,7 +22,7 @@ export function createRealm(runtime: typeof Runtime) {
           trailing: Runtime.RowId<"root.X">
         }) => {
           return (new runtime.BaseProp(
-            mstore,
+            mbouncer,
             "root.Accepted",
             [a.first, a.second, a.trailing]
           ));

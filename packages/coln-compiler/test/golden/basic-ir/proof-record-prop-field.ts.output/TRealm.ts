@@ -7,11 +7,11 @@ export function createRealm(runtime: typeof Runtime) {
       evidence: Runtime.MutableRef<{ proof: null }>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        P: (new runtime.BaseProp(mstore, "root.P", [])),
+        P: (new runtime.BaseProp(mbouncer, "root.P", [])),
         evidence: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.evidence",
           [],
           [0],
@@ -19,7 +19,7 @@ export function createRealm(runtime: typeof Runtime) {
             flatten: (a: { proof: null }) => {
               return [];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return { proof: null };
             }
           }

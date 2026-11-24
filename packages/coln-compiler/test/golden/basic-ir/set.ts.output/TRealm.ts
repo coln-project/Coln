@@ -4,8 +4,8 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: { V: Runtime.MutableSet<Runtime.RowId<"root.V">> };
 
-    constructor(mstore: Runtime.ManagedStore) {
-      this.root = { V: (new runtime.BaseSet(mstore, "root.V", [])) };
+    constructor(mbouncer: Runtime.ManagedBouncer) {
+      this.root = { V: (new runtime.BaseSet(mbouncer, "root.V", [])) };
     }
   };
 }

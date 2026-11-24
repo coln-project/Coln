@@ -9,16 +9,16 @@ export function createRealm(runtime: typeof Runtime) {
       stringEdge: Runtime.MutableRef<Runtime.RowId<"root.StringEdge">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
         IntEdge: (a: number) => {
-          return (new runtime.BaseSet(mstore, "root.IntEdge", [a]));
+          return (new runtime.BaseSet(mbouncer, "root.IntEdge", [a]));
         },
         StringEdge: (a: string) => {
-          return (new runtime.BaseSet(mstore, "root.StringEdge", [a]));
+          return (new runtime.BaseSet(mbouncer, "root.StringEdge", [a]));
         },
         intEdge: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.intEdge",
           [],
           [0, 1],
@@ -26,16 +26,16 @@ export function createRealm(runtime: typeof Runtime) {
             flatten: (a: Runtime.RowId<"root.IntEdge">) => {
               return [a];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return (new runtime.RowId(
-                { type: "Existing", value: result[0] as Runtime.WireRowId },
+                { type: "Existing", value: result[0] as Runtime.PublicRowId },
                 "root.IntEdge"
               ));
             }
           }
         )),
         stringEdge: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.stringEdge",
           [],
           [0, 1],
@@ -43,9 +43,9 @@ export function createRealm(runtime: typeof Runtime) {
             flatten: (a: Runtime.RowId<"root.StringEdge">) => {
               return [a];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return (new runtime.RowId(
-                { type: "Existing", value: result[0] as Runtime.WireRowId },
+                { type: "Existing", value: result[0] as Runtime.PublicRowId },
                 "root.StringEdge"
               ));
             }

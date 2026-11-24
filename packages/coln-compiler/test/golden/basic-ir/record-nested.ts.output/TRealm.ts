@@ -6,9 +6,9 @@ export function createRealm(runtime: typeof Runtime) {
       payload: { name: string, inner: { rank: number } }
     }>;
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = (new runtime.BaseTableRef(
-        mstore,
+        mbouncer,
         "root",
         [],
         [0, 1, 2],
@@ -18,7 +18,7 @@ export function createRealm(runtime: typeof Runtime) {
           }) => {
             return [a.payload.name, a.payload.inner.rank];
           },
-          reconstruct: (result: Runtime.WireTuple) => {
+          reconstruct: (result: Runtime.PublicTuple) => {
             return { payload: { name: result[0], inner: { rank: result[1] } } };
           }
         }

@@ -10,10 +10,10 @@ export function createRealm(runtime: typeof Runtime) {
       }) => Runtime.MutableSet<Runtime.RowId<"root.boxed">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
         pointed: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.pointed",
           [],
           [0, 1],
@@ -21,14 +21,14 @@ export function createRealm(runtime: typeof Runtime) {
             flatten: (a: { point: { rank: number } }) => {
               return [a.point.rank];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return { point: { rank: result[0] } };
             }
           }
         )),
         boxed: (a: { key: { rank: number }, value: string }) => {
           return (new runtime.BaseSet(
-            mstore,
+            mbouncer,
             "root.boxed",
             [a.key.rank, a.value]
           ));

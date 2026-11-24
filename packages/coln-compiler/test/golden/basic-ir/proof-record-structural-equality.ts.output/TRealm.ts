@@ -17,11 +17,11 @@ export function createRealm(runtime: typeof Runtime) {
       }>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
+        X: (new runtime.BaseSet(mbouncer, "root.X", [])),
         comparison: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.comparison",
           [],
           [0, 1, 2, 3, 4],
@@ -42,25 +42,37 @@ export function createRealm(runtime: typeof Runtime) {
               , a.second.left
               , a.second.right ];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return {
                 first: {
                   left: (new runtime.RowId(
-                    { type: "Existing", value: result[0] as Runtime.WireRowId },
+                    {
+                      type: "Existing",
+                      value: result[0] as Runtime.PublicRowId
+                    },
                     "root.X"
                   )),
                   right: (new runtime.RowId(
-                    { type: "Existing", value: result[1] as Runtime.WireRowId },
+                    {
+                      type: "Existing",
+                      value: result[1] as Runtime.PublicRowId
+                    },
                     "root.X"
                   ))
                 },
                 second: {
                   left: (new runtime.RowId(
-                    { type: "Existing", value: result[2] as Runtime.WireRowId },
+                    {
+                      type: "Existing",
+                      value: result[2] as Runtime.PublicRowId
+                    },
                     "root.X"
                   )),
                   right: (new runtime.RowId(
-                    { type: "Existing", value: result[3] as Runtime.WireRowId },
+                    {
+                      type: "Existing",
+                      value: result[3] as Runtime.PublicRowId
+                    },
                     "root.X"
                   ))
                 },

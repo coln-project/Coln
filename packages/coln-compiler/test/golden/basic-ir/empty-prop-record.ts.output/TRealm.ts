@@ -4,9 +4,9 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: Runtime.MutableRef<{ truth: {} }>;
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = (new runtime.BaseTableRef(
-        mstore,
+        mbouncer,
         "root",
         [],
         [0],
@@ -14,7 +14,7 @@ export function createRealm(runtime: typeof Runtime) {
           flatten: (a: { truth: {} }) => {
             return [];
           },
-          reconstruct: (result: Runtime.WireTuple) => {
+          reconstruct: (result: Runtime.PublicTuple) => {
             return { truth: {} };
           }
         }
