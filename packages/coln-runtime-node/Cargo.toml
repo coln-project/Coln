@@ -12,7 +12,7 @@ path = "src/rust/lib.rs"
 
 [dependencies]
 coln-flir-rs = { path = "../coln-flir-rs", version = "0.1.0" }
-coln-store = { path = "../coln-store", version = "0.1.0" }
+coln-bouncer = { path = "../coln-bouncer" }
 napi = "3"
 napi-derive = "3"
 serde.workspace = true

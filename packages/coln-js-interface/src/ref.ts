@@ -3,9 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { Adaptor } from "./flatten.js"
-import { ManagedStore } from "./store.js"
+import { ManagedBouncer } from "./bouncer.js"
 import { Path } from "./types.js"
-import { LiveTuple, toWire, toTxn, toTxnWire } from "./value.js"
+import { LiveTuple, toPublic, publicToTx, toTx } from "./value.js"
 
 export interface Ref<T> {
   value(): T
@@ -16,18 +16,18 @@ export interface MutableRef<T> extends Ref<T> {
 }
 
 export class BaseRef<T> implements MutableRef<T> {
-  constructor(private store: ManagedStore, private table_name: Path, private bound: LiveTuple, private select: [number], private adaptor: Adaptor<T>) {}
+  constructor(private bouncer: ManagedBouncer, private table_name: Path, private bound: LiveTuple, private select: [number], private adaptor: Adaptor<T>) {}
   
   value(): T {
-    return this.adaptor.reconstruct(this.store.one_proj({
+    return this.adaptor.reconstruct(this.bouncer.one_proj({
       table_name: this.table_name,
       row_id: null,
-      values: this.bound.map(toWire)
+      values: this.bound.map(toPublic)
     }, this.select))
   }
   
   set(val: T): void {
-    this.store.add(this.table_name, [...this.bound.map(toTxnWire), ...this.adaptor.flatten(val).map(toTxnWire)])
+    this.bouncer.add(this.table_name, [...this.bound.map(toTx), ...this.adaptor.flatten(val).map(toTx)])
   }
 }
 

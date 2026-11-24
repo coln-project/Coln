@@ -2,11 +2,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { ManagedStore } from "./store.js";
-import { Path, WireRowId } from "./types.js"
+import { ManagedBouncer } from "./bouncer.js";
+import { Path, PublicRowId } from "./types.js"
 import { Adaptor } from "./flatten.js"
 import { RowId } from "./row_id.js";
-import { LiveTuple, toWire, toTxnWire } from "./value.js"
+import { LiveTuple, toPublic, toTx } from "./value.js"
 
 export interface Set<T> {
   values(): T[]
@@ -26,67 +26,67 @@ export interface MutableProp extends Prop {
 }
 
 export class BaseSet<P extends string> implements MutableSet<RowId<P>> {
-  constructor(private store: ManagedStore, private table_name: P, private bound: LiveTuple) {}
+  constructor(private bouncer: ManagedBouncer, private table_name: P, private bound: LiveTuple) {}
   
   values(): RowId<P>[] {
-    return this.store.all_row_id({
+    return this.bouncer.all_row_id({
       table_name: this.table_name,
       row_id: null,
-      values: this.bound.map(toWire)
-    }).map((i: WireRowId) => {
+      values: this.bound.map(toPublic)
+    }).map((i: PublicRowId) => {
       return new RowId({ type: "Existing", value: i }, this.table_name)
     })
   }
   
   contains(v: RowId<P>): boolean {
-    return this.store.exists({
+    return this.bouncer.exists({
       table_name: this.table_name,
-      row_id: v.asWire(),
-      values: this.bound.map(toWire)
+      row_id: v.asPublic(),
+      values: this.bound.map(toPublic)
     })
   }
   
   add(): RowId<P> {
-    return this.store.add(this.table_name, this.bound.map(toTxnWire))
+    return this.bouncer.add(this.table_name, this.bound.map(toTx))
   }
 }
 
 export class BaseProp implements MutableProp {
-  constructor(private store: ManagedStore, private table_name: string, private bound: LiveTuple) {}
+  constructor(private bouncer: ManagedBouncer, private table_name: string, private bound: LiveTuple) {}
   
   isTrue(): boolean {
-    return this.store.exists({table_name: this.table_name, row_id: null, values: this.bound.map(toWire)})
+    return this.bouncer.exists({table_name: this.table_name, row_id: null, values: this.bound.map(toPublic)})
   }
   
   makeTrue(): void {
-    this.store.add(this.table_name, this.bound.map(toTxnWire))
+    this.bouncer.add(this.table_name, this.bound.map(toTx))
   }
 }
 
 export class ConjunctiveViewSet<T> implements Set<T> {
-  constructor(private store: ManagedStore, private table_name: Path, private bound: LiveTuple, private select: number[], private adaptor: Adaptor<T>) {}
+  constructor(private bouncer: ManagedBouncer, private table_name: Path, private bound: LiveTuple, private select: number[], private adaptor: Adaptor<T>) {}
 
   values(): T[] {
-    return this.store.all_proj({
+    return this.bouncer.all_proj({
       table_name: this.table_name,
       row_id: null,
-      values: this.bound.map(toWire)
+      values: this.bound.map(toPublic)
     }, this.select).map(this.adaptor.reconstruct)
   }
   
   contains(v: T): boolean {
-    return this.store.exists({
+    return this.bouncer.exists({
       table_name: this.table_name,
       row_id: null,
-      values: [...this.bound.map(toWire), ...this.adaptor.flatten(v).map(toWire)]
+      values: [...this.bound.map(toPublic), ...this.adaptor.flatten(v).map(toPublic)]
     })
   }
 }
 
 export class ViewProp implements Prop {
-  constructor(private store: ManagedStore, private table_name: string, private bound: LiveTuple) {}
+  constructor(private bouncer: ManagedBouncer, private table_name: string, private bound: LiveTuple) {}
 
   isTrue(): boolean {
-    return this.store.exists({table_name: this.table_name, row_id: null, values: this.bound.map(toWire)})
+    return this.bouncer.exists({table_name: this.table_name, row_id: null, values: this.bound.map(toPublic)})
   }
 }

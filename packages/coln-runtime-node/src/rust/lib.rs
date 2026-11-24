@@ -2,256 +2,289 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-// NOTE: This is commented for now because coln-bouncer is not yet compatible
-// with the Typescript API and the introduction of s-exprs is a precondition,
-// too.
+//! Node bindings for coln-bouncer.
+//!
+//! The bouncer's write transaction is a typestate machine that borrows the
+//! bouncer, which JS cannot express. Instead, writes are scoped to a callback:
+//! [`Bouncer::begin_write`] opens a transaction, hands JS a [`WriteTxn`] handle
+//! for the duration of the callback, and commits when the callback returns. To
+//! roll back, the callback throws. Reads outside a write open an implicit read
+//! transaction per call.
+//!
+//! Values cross the boundary as JSON strings, decoded by the TypeScript wrapper.
 
-// #[napi]
-// pub struct StoreWrapper {
-//     store: WireStore,
-// }
+use std::{
+    cell::{RefCell, RefMut},
+    rc::Rc,
+};
 
-// fn as_napi_error(s: String) -> Error<Status> {
-//     Error::new(Status::GenericFailure, s)
-// }
+use coln_bouncer::bouncer::{
+    self, ReadTxnable,
+    txn::{Prepare, WriteTxn as BouncerWriteTxn},
+};
+use coln_bouncer::error::BouncerError;
+use coln_flir_rs::{
+    engine::{schema::ColnDef, tx::TxRowId},
+    ir,
+    public::PublicRowId,
+    query::WhereClause,
+};
+use napi::bindgen_prelude::*;
+use napi_derive::napi;
+use serde::{Serialize, de::DeserializeOwned};
 
-// impl AutoStoreWrapper {
-//     fn unpack_tuple(&self, tuple: StoreTuple) -> PublicTuple {
-//         tuple
-//             .into_iter()
-//             .map(|value| {
-//                 value.map(|id| {
-//                     self.store
-//                         .id_lookup()
-//                         .unpacked(&id)
-//                         .expect("row ids from store can be unpacked")
-//                 })
-//             })
-//             .collect()
-//     }
-// }
+fn napi_error(msg: impl std::fmt::Display) -> Error {
+    Error::new(Status::GenericFailure, msg.to_string())
+}
 
-// #[napi]
-// pub fn store_from_ir(
-//     ir_json: String,
-//     coln_source: String,
-//     realm_name: String,
-// ) -> Result<AutoStoreWrapper> {
-//     let ir = serde_json::from_str(&ir_json).expect("parse flir");
-//     let coln_def = ColnDef::new(coln_source, realm_name);
-//     Ok(AutoStoreWrapper {
-//         store: AutoStore::try_from_ir(&ir, coln_def).expect("create store successful"),
-//     })
-// }
+fn bouncer_error(e: BouncerError) -> Error {
+    napi_error(e)
+}
 
-// #[napi]
-// impl StoreWrapper {
-//     #[napi]
-//     pub fn start_transaction(&mut self) {
-//         self.store.start_transaction();
-//     }
+fn from_json<T: DeserializeOwned>(what: &str, json: &str) -> Result<T> {
+    serde_json::from_str(json).map_err(|e| napi_error(format!("invalid {what}: {e}")))
+}
 
-//     #[napi]
-//     pub fn end_transaction(&mut self) -> String {
-//         self.store.try_commit().unwrap();
-//         serde_json::to_string(&self.store.commit().unwrap()).unwrap()
-//     }
+fn to_json<T: Serialize>(value: &T) -> Result<String> {
+    serde_json::to_string(value).map_err(napi_error)
+}
 
-//     #[napi]
-//     pub fn abort_transaction(&mut self) {
-//         self.store.abort_transaction();
-//     }
+/// The JSON-in/JSON-out read API shared by implicit reads and write transactions.
+fn read_all_proj(r: &impl ReadTxnable, query: &str, select: &str) -> Result<String> {
+    let query: WhereClause = from_json("where clause", query)?;
+    let select: Vec<u32> = from_json("select", select)?;
+    to_json(&r.all_proj(&query, &select).map_err(bouncer_error)?)
+}
 
-//     #[napi]
-//     pub fn all_proj(&self, query: String, select: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .all_proj(
-//                 &(serde_json::from_str(&query).unwrap()),
-//                 &(serde_json::from_str::<Vec<_>>(&select).unwrap()),
-//             )
-//             .unwrap();
-//         let res: Vec<_> = res
-//             .into_iter()
-//             .map(|tuple| self.unpack_tuple(tuple))
-//             .collect();
-//         Ok(serde_json::to_string(&res).unwrap())
-//     }
+fn read_all_row_id(r: &impl ReadTxnable, query: &str) -> Result<String> {
+    let query: WhereClause = from_json("where clause", query)?;
+    to_json(&r.all_row_id(&query).map_err(bouncer_error)?)
+}
 
-//     #[napi]
-//     pub fn all_row_id(&self, query: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .all_row_id(&(serde_json::from_str(&query).unwrap()))
-//             .unwrap();
-//         let res: Vec<_> = res
-//             .into_iter()
-//             .map(|id| {
-//                 self.store
-//                     .id_lookup()
-//                     .unpacked(&id)
-//                     .expect("row ids from store can be unpacked")
-//             })
-//             .collect();
-//         Ok(serde_json::to_string(&res).unwrap())
-//     }
+fn read_one_proj(r: &impl ReadTxnable, query: &str, select: &str) -> Result<String> {
+    let query: WhereClause = from_json("where clause", query)?;
+    let select: Vec<u32> = from_json("select", select)?;
+    to_json(&r.one_proj(&query, &select).map_err(bouncer_error)?)
+}
 
-//     #[napi]
-//     pub fn one_proj(&self, query: String, select: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .one_proj(
-//                 &(serde_json::from_str(&query).unwrap()),
-//                 &(serde_json::from_str::<Vec<_>>(&select).unwrap()),
-//             )
-//             .unwrap();
-//         Ok(serde_json::to_string(&self.unpack_tuple(res)).unwrap())
-//     }
+fn read_exists(r: &impl ReadTxnable, query: &str) -> Result<bool> {
+    let query: WhereClause = from_json("where clause", query)?;
+    r.exists(&query).map_err(bouncer_error)
+}
 
-//     #[napi]
-//     pub fn exists(&self, query: String) -> Result<bool> {
-//         self.store.exists(query).map_err(as_napi_error)
-//     }
+fn read_scan_table(r: &impl ReadTxnable, table: String) -> Result<Option<String>> {
+    r.scan_table(&ir::Path(table))
+        .map(|rows| to_json(&rows))
+        .transpose()
+}
 
-//     #[napi]
-//     pub fn add(&mut self, table_name: String, values: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .add(
-//                 &ir::Path(table_name),
-//                 serde_json::from_str::<TxTuple>(&values).unwrap(),
-//             )
-//             .unwrap();
-//         Ok(serde_json::to_string(&res).unwrap())
-//     }
-// }
-// use coln_flir_rs::{
-//     engine::{packed::StoreTuple, schema::ColnDef, tx::TxTuple},
-//     ir,
-//     public::PublicTuple,
-// };
-// use coln_store::IdLookup;
-// use coln_store::store::auto::AutoStore;
-// use coln_store::store::txn::StoreRead;
-// use coln_store::store::txn::StoreWrite;
-// use napi::bindgen_prelude::*;
-// use napi_derive::napi;
-//
-// #[napi]
-// pub struct AutoStoreWrapper {
-//     store: AutoStore,
-// }
-//
-// impl AutoStoreWrapper {
-//     fn unpack_tuple(&self, tuple: StoreTuple) -> PublicTuple {
-//         tuple
-//             .into_iter()
-//             .map(|value| {
-//                 value.map(|id| {
-//                     self.store
-//                         .id_lookup()
-//                         .unpacked(&id)
-//                         .expect("row ids from store can be unpacked")
-//                 })
-//             })
-//             .collect()
-//     }
-// }
-//
-// #[napi]
-// pub fn store_from_ir(
-//     ir_json: String,
-//     coln_source: String,
-//     realm_name: String,
-// ) -> Result<AutoStoreWrapper> {
-//     let ir = serde_json::from_str(&ir_json).expect("parse flir");
-//     let coln_def = ColnDef::new(coln_source, realm_name);
-//     Ok(AutoStoreWrapper {
-//         store: AutoStore::try_from_ir(&ir, coln_def).expect("create store successful"),
-//     })
-// }
-//
-// #[napi]
-// impl AutoStoreWrapper {
-//     #[napi]
-//     pub fn start_transaction(&mut self) {
-//         self.store.transaction();
-//     }
-//
-//     #[napi]
-//     pub fn end_transaction(&mut self) -> String {
-//         self.store.try_commit().unwrap();
-//         serde_json::to_string(&self.store.commit().unwrap()).unwrap()
-//     }
-//
-//     #[napi]
-//     pub fn abort_transaction(&mut self) {
-//         self.store.abort();
-//     }
-//
-//     #[napi]
-//     pub fn all_proj(&self, query: String, select: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .all_proj(
-//                 &(serde_json::from_str(&query).unwrap()),
-//                 &(serde_json::from_str::<Vec<_>>(&select).unwrap()),
-//             )
-//             .unwrap();
-//         let res: Vec<_> = res
-//             .into_iter()
-//             .map(|tuple| self.unpack_tuple(tuple))
-//             .collect();
-//         Ok(serde_json::to_string(&res).unwrap())
-//     }
-//
-//     #[napi]
-//     pub fn all_row_id(&self, query: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .all_row_id(&(serde_json::from_str(&query).unwrap()))
-//             .unwrap();
-//         let res: Vec<_> = res
-//             .into_iter()
-//             .map(|id| {
-//                 self.store
-//                     .id_lookup()
-//                     .unpacked(&id)
-//                     .expect("row ids from store can be unpacked")
-//             })
-//             .collect();
-//         Ok(serde_json::to_string(&res).unwrap())
-//     }
-//
-//     #[napi]
-//     pub fn one_proj(&self, query: String, select: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .one_proj(
-//                 &(serde_json::from_str(&query).unwrap()),
-//                 &(serde_json::from_str::<Vec<_>>(&select).unwrap()),
-//             )
-//             .unwrap();
-//         Ok(serde_json::to_string(&self.unpack_tuple(res)).unwrap())
-//     }
-//
-//     #[napi]
-//     pub fn exists(&self, query: String) -> Result<bool> {
-//         Ok(self
-//             .store
-//             .exists(&(serde_json::from_str(&query).unwrap()))
-//             .unwrap())
-//     }
-//
-//     #[napi]
-//     pub fn add(&mut self, table_name: String, values: String) -> Result<String> {
-//         let res = self
-//             .store
-//             .add(
-//                 &ir::Path(table_name),
-//                 serde_json::from_str::<TxTuple>(&values).unwrap(),
-//             )
-//             .unwrap();
-//         Ok(serde_json::to_string(&res).unwrap())
-//     }
-// }
+#[napi]
+pub struct Bouncer {
+    // Rust borrow checker ensures that no two references can be borrowed if one
+    // of them is a mut ref. But JS side has no knowledge of that. So we turn this
+    // into a runtime check. Someone has to panic somewhere, probably should be here
+    // than panicing in the core rust code.
+    inner: RefCell<bouncer::Bouncer>,
+}
+
+#[napi]
+pub fn bouncer_from_ir(
+    ir_json: String,
+    coln_source: String,
+    realm_name: String,
+) -> Result<Bouncer> {
+    let ir = from_json("flir", &ir_json)?;
+    let coln_def = ColnDef::new(coln_source, realm_name);
+    let bouncer = bouncer::Bouncer::try_new(ir, coln_def).map_err(bouncer_error)?;
+    Ok(Bouncer {
+        inner: RefCell::new(bouncer),
+    })
+}
+
+/// Returned by [`Bouncer::begin_write`] as JSON.
+#[derive(Serialize)]
+struct CommitResult {
+    hash: coln_flir_rs::hash::CommitHash,
+    /// The canonical public id of every row added in this transaction, in the
+    /// order `add` was called.
+    row_ids: Vec<PublicRowId>,
+}
+
+impl Bouncer {
+    fn read(&self) -> Result<bouncer::ReadTxn> {
+        let bouncer = self.inner.try_borrow().map_err(|_| {
+            napi_error("cannot read from the bouncer inside a write transaction; read through the transaction instead")
+        })?;
+        Ok(bouncer.begin_read())
+    }
+}
+
+#[napi]
+impl Bouncer {
+    /// Run `callback` against a fresh write transaction, then commit it.
+    ///
+    /// Returns the commit result as JSON. If the callback throws, the
+    /// transaction is discarded and the error is rethrown. If committing fails
+    /// (e.g. a hard rule violation), nothing is applied and an error is thrown.
+    #[napi(ts_args_type = "callback: (txn: WriteTxn) => void")]
+    pub fn begin_write(
+        &self,
+        env: Env,
+        callback: Function<ClassInstance<WriteTxn>, Unknown>,
+    ) -> Result<String> {
+        let mut bouncer: RefMut<'_, bouncer::Bouncer> = self
+            .inner
+            .try_borrow_mut()
+            .map_err(|_| napi_error("a write transaction is already in progress"))?;
+        let txn = bouncer.begin_write();
+        // SAFETY: `txn` borrows `bouncer`. We erase that lifetime so the
+        // transaction can live in a JS-visible class, but it never outlives the
+        // borrow: `_close` is declared after `bouncer` and so is dropped first
+        // (also on unwind), taking the transaction back out of the shared slot.
+        // Any copy of the JS handle that escapes the callback then only sees
+        // `Slot::Closed`.
+        let txn: BouncerWriteTxn<Prepare<'static>> = unsafe { std::mem::transmute(txn) };
+        let slot = Rc::new(RefCell::new(Slot::Open {
+            txn,
+            added: Vec::new(),
+        }));
+        let _close = CloseOnDrop(Rc::clone(&slot));
+
+        let handle = WriteTxn {
+            slot: Rc::clone(&slot),
+        }
+        .into_instance(&env)?;
+        let outcome = callback.call(handle);
+        let state = slot.replace(Slot::Closed);
+
+        let (txn, added) = match (outcome, state) {
+            // Dropping a `Prepare` txn discards its queued operations.
+            (Err(e), _) => return Err(e),
+            (Ok(_), Slot::Closed) => unreachable!("only begin_write closes the slot"),
+            (Ok(_), Slot::Open { txn, added }) => (txn, added),
+        };
+        let committed = txn.commit().map_err(bouncer_error)?;
+        let hash = committed.cmt_hash();
+        let row_ids = bouncer.begin_read().promote(added, hash);
+        to_json(&CommitResult { hash, row_ids })
+    }
+
+    // Read methods each open an implicit read transaction. Lock guards must
+    // not outlive a call: the store's locks are blocking, and JS is single
+    // threaded, so a read guard held across calls would deadlock the next
+    // commit.
+
+    #[napi(catch_unwind)]
+    pub fn all_proj(&self, query: String, select: String) -> Result<String> {
+        read_all_proj(&self.read()?, &query, &select)
+    }
+
+    #[napi(catch_unwind)]
+    pub fn all_row_id(&self, query: String) -> Result<String> {
+        read_all_row_id(&self.read()?, &query)
+    }
+
+    #[napi(catch_unwind)]
+    pub fn one_proj(&self, query: String, select: String) -> Result<String> {
+        read_one_proj(&self.read()?, &query, &select)
+    }
+
+    #[napi(catch_unwind)]
+    pub fn exists(&self, query: String) -> Result<bool> {
+        read_exists(&self.read()?, &query)
+    }
+
+    /// All rows of `table` as JSON, or `null` if there is no such table.
+    #[napi]
+    pub fn scan_table(&self, table: String) -> Result<Option<String>> {
+        read_scan_table(&self.read()?, table)
+    }
+
+    #[napi]
+    pub fn heads(&self) -> Result<String> {
+        to_json(&self.read()?.heads())
+    }
+}
+
+enum Slot {
+    Open {
+        txn: BouncerWriteTxn<Prepare<'static>>,
+        added: Vec<TxRowId>,
+    },
+    Closed,
+}
+
+struct CloseOnDrop(Rc<RefCell<Slot>>);
+
+impl Drop for CloseOnDrop {
+    fn drop(&mut self) {
+        // Only fails if a `WriteTxn` method is mid-call, which cannot happen
+        // while `begin_write` is unwinding on the same thread.
+        if let Ok(mut slot) = self.0.try_borrow_mut() {
+            *slot = Slot::Closed;
+        }
+    }
+}
+
+/// A write transaction, valid only inside the `Bouncer.beginWrite` callback.
+///
+/// Reads see committed data only, not rows added in this transaction.
+#[napi]
+pub struct WriteTxn {
+    slot: Rc<RefCell<Slot>>,
+}
+
+impl WriteTxn {
+    fn with_open<T>(
+        &self,
+        f: impl FnOnce(&mut BouncerWriteTxn<Prepare<'static>>, &mut Vec<TxRowId>) -> Result<T>,
+    ) -> Result<T> {
+        match &mut *self.slot.borrow_mut() {
+            Slot::Open { txn, added } => f(txn, added),
+            Slot::Closed => Err(napi_error(
+                "this transaction has ended; it can only be used inside its beginWrite callback",
+            )),
+        }
+    }
+}
+
+#[napi]
+impl WriteTxn {
+    /// Queue a row; returns its pending row id as JSON.
+    #[napi]
+    pub fn add(&self, table_name: String, values: String) -> Result<String> {
+        let values: coln_flir_rs::engine::tx::TxTuple = from_json("tuple", &values)?;
+        self.with_open(|txn, added| {
+            let id = txn
+                .add(&ir::Path(table_name), values)
+                .map_err(bouncer_error)?;
+            added.push(id);
+            to_json(&id)
+        })
+    }
+
+    #[napi(catch_unwind)]
+    pub fn all_proj(&self, query: String, select: String) -> Result<String> {
+        self.with_open(|txn, _| read_all_proj(txn, &query, &select))
+    }
+
+    #[napi(catch_unwind)]
+    pub fn all_row_id(&self, query: String) -> Result<String> {
+        self.with_open(|txn, _| read_all_row_id(txn, &query))
+    }
+
+    #[napi(catch_unwind)]
+    pub fn one_proj(&self, query: String, select: String) -> Result<String> {
+        self.with_open(|txn, _| read_one_proj(txn, &query, &select))
+    }
+
+    #[napi(catch_unwind)]
+    pub fn exists(&self, query: String) -> Result<bool> {
+        self.with_open(|txn, _| read_exists(txn, &query))
+    }
+
+    #[napi]
+    pub fn scan_table(&self, table: String) -> Result<Option<String>> {
+        self.with_open(|txn, _| read_scan_table(txn, table))
+    }
+}

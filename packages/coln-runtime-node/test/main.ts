@@ -2,10 +2,10 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { NodeStore } from "../src/typescript/index.js"
+import { NodeBouncer } from "../src/typescript/index.js"
 import { readFile } from "node:fs/promises"
 import { createRealm } from "./bindings/TransitiveClosureRealm.js"
-import { ManagedStore } from "@coln-project/interface"
+import { Coln } from "@coln-project/interface"
 import * as runtime from "@coln-project/interface"
 
 const ir: string = await readFile(
@@ -19,26 +19,16 @@ const realmDef = {
   realm_name: "TransitiveClosureRealm"
 }
 
-const store = new ManagedStore(new NodeStore(realmDef))
+const db = new Coln(createRealm(runtime), new NodeBouncer(realmDef))
 
-const TransitiveClosureRealm = createRealm(runtime)
+const [v0, v1, v2] = db.write(({ root: g }) => {
+  const vs = [g.V.add(), g.V.add(), g.V.add()]
+  g.E(vs[0])(vs[1]).add()
+  g.E(vs[1])(vs[2]).add()
+  return vs
+})
 
-const gr = new TransitiveClosureRealm(store)
+// TODO enable when read queries are implemented by coln-batch
+// console.log(db.realm.trans_closure.connected(v0)(v2).isTrue())
 
-const g = gr.root
-
-store.startTransaction()
-
-const [v0, v1, v2] = [g.V.add(), g.V.add(), g.V.add()]
-g.E(v0)(v1).add()
-g.E(v1)(v2).add()
-
-store.endTransaction()
-
-store.startTransaction()
-
-console.log(gr.trans_closure.connected(v0)(v2).isTrue())
-
-console.log(gr.down_set(v1).values().map((d) => d.connected))
-
-store.abortTransaction()
+// console.log(db.realm.down_set(v1).values().map((d) => d.connected))
