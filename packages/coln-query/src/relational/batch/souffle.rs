@@ -24,7 +24,7 @@ use anyhow::{Context, Result, bail, ensure};
 
 use crate::api::deltas::ZRow;
 use crate::api::query::FlirProgram;
-use crate::frontend::{Identifiable, LogicalProgram, Predicate};
+use crate::frontend::{Identifiable, LogicalProgram};
 use crate::relational::relation::TupleValue;
 use crate::scalarial::{ScalarType, ScalarTypedValue};
 
@@ -60,9 +60,9 @@ impl Souffle {
         std::fs::create_dir_all(dir.join("facts"))?;
 
         let logical = program.logical();
-        let mut source = dialect(&logical.display().to_string())?;
         let mut tables = HashMap::new();
         let mut predicates = HashMap::new();
+        let mut inputs = String::new();
         for predicate in logical.predicates() {
             let path = predicate.id().to_string();
             let name = escape(&path);
@@ -71,7 +71,7 @@ impl Souffle {
                 .map(|column| column.scalar_type())
                 .collect();
             if predicate.is_edb_predicate() {
-                writeln!(source, ".input {name}")?;
+                write!(inputs, "\n.input {name}")?;
                 let table = Table {
                     name: name.clone(),
                     types: types.clone(),
@@ -81,6 +81,11 @@ impl Souffle {
             }
             predicates.insert(path, (name, types));
         }
+        let arities = predicates
+            .iter()
+            .map(|(path, (_, types))| (path.as_str(), types.len()))
+            .collect();
+        let source = dialect(&logical.display().to_string(), &arities)? + &inputs + "\n";
         std::fs::write(dir.join("program.dl"), source)?;
         Ok(Some(Self {
             dir,
@@ -130,12 +135,18 @@ impl Souffle {
             .arg(self.dir.join("program.dl"))
             .output()
             .context("run souffle")?;
-        ensure!(
-            run.status.success(),
-            "souffle fails on {}: {}",
-            self.dir.join("program.dl").display(),
-            String::from_utf8_lossy(&run.stderr)
-        );
+        if !run.status.success() {
+            let stderr = String::from_utf8_lossy(&run.stderr);
+            let errors: Vec<&str> = stderr
+                .lines()
+                .filter(|line| line.starts_with("Error"))
+                .collect();
+            bail!(
+                "Soufflé fails on {}: {}",
+                self.dir.join("program.dl").display(),
+                errors.join(" ")
+            );
+        }
 
         let mut results = HashMap::new();
         for &view in views {
@@ -192,12 +203,33 @@ fn escape(name: &str) -> String {
 /// column type spelled as Soufflé spells it. Directives (`.decl`, `.output`),
 /// literals, `_` and the punctuation stay as they are.
 ///
-/// Leo's printer leaves out the unbound positions at the end of an atom.
-/// Soufflé then rejects the atom for its width, so that fails loudly.
-fn dialect(program: &str) -> Result<String> {
+/// The printer leaves out the unbound positions at the end of an atom, as an
+/// atom does not know its predicate's width. Soufflé needs them, so every atom
+/// of a predicate in `arities` gets `_` up to that width.
+fn dialect(program: &str, arities: &HashMap<&str, usize>) -> Result<String> {
     let mut out = String::with_capacity(program.len());
     let mut chars = program.chars().peekable();
+    // The open atom: its predicate's width and the positions it has so far.
+    let mut atom: Option<(usize, usize)> = None;
+    let mut line_is_decl = false;
     while let Some(c) = chars.next() {
+        if let Some((arity, positions)) = &mut atom {
+            match c {
+                '(' => {}
+                ',' => *positions += 1,
+                ')' => {
+                    for position in *positions..*arity {
+                        out.push_str(if position == 0 { "_" } else { ", _" });
+                    }
+                    atom = None;
+                }
+                c if !c.is_whitespace() && *positions == 0 => *positions = 1,
+                _ => {}
+            }
+        }
+        if c == '\n' {
+            line_is_decl = false;
+        }
         if c == '"' {
             // A string literal, copied up to its closing quote.
             out.push(c);
@@ -212,9 +244,12 @@ fn dialect(program: &str) -> Result<String> {
         } else if c == '.' && chars.peek().is_some_and(char::is_ascii_alphabetic) {
             // A directive: `.decl` or `.output`.
             out.push(c);
+            let mut directive = String::new();
             while let Some(c) = chars.next_if(char::is_ascii_alphabetic) {
-                out.push(c);
+                directive.push(c);
             }
+            line_is_decl = directive == "decl";
+            out.push_str(&directive);
         } else if c.is_ascii_alphabetic() {
             let mut name = String::from(c);
             while let Some(c) = chars.next_if(|c| c.is_ascii_alphanumeric() || "_.-#/".contains(*c))
@@ -230,6 +265,9 @@ fn dialect(program: &str) -> Result<String> {
                 out.push_str(souffle_type(&name)?);
             } else {
                 out.push_str(&escape(&name));
+            }
+            if !line_is_decl && chars.peek() == Some(&'(') {
+                atom = arities.get(name.as_str()).map(|&arity| (arity, 0));
             }
             if ends_rule {
                 out.push('.');
@@ -286,15 +324,28 @@ mod tests {
     }
 
     #[test]
-    fn the_dialect_renames_names_and_types_only() -> Result<()> {
+    fn the_dialect_renames_names_and_types() -> Result<()> {
         let leo = ".decl root.E(a.RowIdHash: uint, b: string)\n\
                    .output root.E\n\
                    path-to(x.y, z) :- root.E(_, x.y), !no#t(z), z != 3, x.y = \"a.b\".";
         assert_eq!(
-            dialect(leo)?,
+            dialect(leo, &HashMap::new())?,
             ".decl root_dE(a_dRowIdHash: unsigned, b: symbol)\n\
              .output root_dE\n\
              path_hto(x_dy, z) :- root_dE(_, x_dy), !no_st(z), z != 3, x_dy = \"a.b\"."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn the_dialect_fills_atoms_up_to_their_width() -> Result<()> {
+        let leo = ".decl e(a: uint, b: uint, c: uint)\n\
+                   p(x) :- e(x), !e(_, \"a,b\"), e(), q(x).";
+        let arities = HashMap::from([("e", 3), ("p", 1)]);
+        assert_eq!(
+            dialect(leo, &arities)?,
+            ".decl e(a: unsigned, b: unsigned, c: unsigned)\n\
+             p(x) :- e(x, _, _), !e(_, \"a,b\", _), e(_, _, _), q(x)."
         );
         Ok(())
     }

@@ -23,7 +23,9 @@
 use anyhow::{Context, Result};
 use coln_batch::rng::SplitMix64;
 
-use super::realm_tests::Twin;
+use super::random_rows::max_inserts;
+use super::realm_tests::twin;
+use super::twin::Twin;
 use crate::test_utils::flir::{
     BipartiteGraphOverRealm, BipartiteGraphRealm, Blue, BlueOver, BlueRed, BlueRedOver, Edge,
     Entity, EntityPath, Flir, GraphRealm, JsonFlir, Red, RedBlue, RedBlueOver, RedOver, RowId,
@@ -48,12 +50,6 @@ fn seeds() -> Vec<u64> {
         .expect("COLN_FUZZ_CASES is a number")
         .unwrap_or(DEFAULT_CASES);
     (0..cases).collect()
-}
-
-/// The most rows a commit of case `seed` may insert per kind of row: tiny
-/// at first, larger for later seeds, at most `limit`.
-fn max_inserts(seed: u64, limit: u64) -> u64 {
-    [1, 2, 3, 5, 8, 13][(seed / 5).min(5) as usize].min(limit)
 }
 
 /// A row id, comparable.
@@ -161,7 +157,7 @@ fn pick(rng: &mut SplitMix64, rows: &[RowId]) -> RowId {
 fn fuzz<R: JsonFlir>(case: impl Fn(u64, &mut Twin, &mut Vec<String>) -> Result<()>) {
     for seed in seeds() {
         let mut log = Vec::new();
-        let outcome = Twin::new::<R>().and_then(|mut twin| case(seed, &mut twin, &mut log));
+        let outcome = twin::<R>().and_then(|mut twin| case(seed, &mut twin, &mut log));
         if let Err(err) = outcome {
             panic!(
                 "{} fails for seed {seed} (rerun with COLN_FUZZ_SEED={seed}): {err:#}\n\

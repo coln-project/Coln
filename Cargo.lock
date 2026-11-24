@@ -1148,6 +1148,7 @@ dependencies = [
  "feldera-size-of",
  "indexmap",
  "rkyv",
+ "serde_json",
  "subenum",
  "thiserror 2.0.20",
 ]

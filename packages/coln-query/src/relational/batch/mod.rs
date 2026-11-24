@@ -42,12 +42,13 @@
 // lowering, fixpoint, and output stay as they are.
 
 mod lowering;
+pub(crate) mod random_rows;
 #[cfg(test)]
 mod realm_fuzz;
 #[cfg(test)]
 mod realm_tests;
-#[cfg(test)]
 mod souffle;
+pub(crate) mod twin;
 mod values;
 pub mod views;
 
