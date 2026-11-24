@@ -7,9 +7,6 @@ on:
 name: Check
 
 jobs:
-  env:
-    CFLAGS: -std=gnu17
-    CXXFLAGS: -std=gnu17
   license-check:
     runs-on: ubuntu-latest
     steps:
