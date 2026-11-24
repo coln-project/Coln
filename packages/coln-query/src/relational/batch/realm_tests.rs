@@ -2,97 +2,30 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! Whole realms from the compiler's golden tests, run on both backends.
-//!
-//! A realm goes the full way: its FLIR (`coln-flir-rs/tests/data`) through
-//! the FLIR frontend into a plan, which the batch backend restricts to the
-//! derived views ([`ViewProgram`]) and the incremental backend runs as a
-//! whole. Both get the same base rows, and every view must hold the same
-//! rows on both.
+//! Whole realms from the compiler's golden tests (`coln-flir-rs/tests/data`)
+//! with hand-made rows, on batch, incremental and Soufflé ([`Twin`]). The
+//! fuzz tests (`realm_fuzz.rs`) drive the same with random commits.
 
-use std::collections::{BTreeSet, HashSet};
+use anyhow::{Context, Result};
 
-use anyhow::Result;
-use coln_flir_rs::ir::EntityVariant;
-use dbsp::typed_batch::IndexedZSetReader;
-
-use super::views::ViewProgram;
+use super::twin::Twin;
 use crate::api::deltas::StoreDelta;
-use crate::api::query::FlirProgram;
-use crate::pipeline::Pipeline;
-use crate::relational::Runtime;
-use crate::relational::expr::{SinkId, SourceId};
-use crate::relational::relation::TupleValue;
 use crate::test_utils::flir::{
     BipartiteGraphRealm, Blue, BlueRed, Edge, Flir, GraphRealm, JsonFlir, Red, RedBlue,
     TransitiveClosureRealm, TriangleRealm, Vertex,
 };
 
-/// Run the views of realm `R` over `rows` on the batch backend and compare
-/// each with the incremental backend. Returns the number of rows per view.
+/// Batch, incremental and Soufflé over realm `R`, see [`Twin`].
+pub(super) fn twin<R: JsonFlir>() -> Result<Twin> {
+    Twin::new(&R::load(), R::NAME, true)
+}
+
+/// Run the views of realm `R` over `rows`, one commit from empty, on both
+/// backends. Returns the number of rows per view.
 fn views_match_incremental<R: JsonFlir>(rows: StoreDelta) -> Result<Vec<(String, usize)>> {
-    let realm = R::load();
-    let mut batch =
-        Pipeline::batch().runtime(&mut ViewProgram::new(FlirProgram::from_flat_realm(&realm)?))?;
-    let mut incremental =
-        Pipeline::incremental().runtime(&mut FlirProgram::from_flat_realm(&realm)?)?;
-
-    for table in rows.into_table_deltas() {
-        let source = SourceId::from(table.for_entity());
-        let delta = table.into_delta();
-        assert!(batch.feed(&source, delta.clone())?, "batch knows {source}");
-        assert!(
-            incremental.feed(&source, delta)?,
-            "incremental knows {source}"
-        );
-    }
-    batch.commit()?;
-    incremental.commit()?;
-
-    // Batch offers exactly the views: no rule made it into its program.
-    let views: HashSet<&SinkId> = batch.list_outputs().collect();
-    let expected: HashSet<SinkId> = realm
-        .tables
-        .iter()
-        .filter(|entry| matches!(entry.table.entity_variant, EntityVariant::View { .. }))
-        .map(|entry| SinkId::from(entry.path.to_string()))
-        .collect();
-    assert_eq!(
-        views,
-        expected.iter().collect::<HashSet<_>>(),
-        "the views of {}",
-        R::NAME
-    );
-
-    let mut sizes = Vec::new();
-    for view in views {
-        // The batch backend reports a view as a set. The incremental one
-        // counts how often a row of a recursive view is derived, e.g. twice
-        // for a vertex on a cycle, which reaches itself directly and around
-        // the cycle. So compare which rows each holds, not their counts.
-        // One commit from empty, so the incremental delta is the full state.
-        let on_incremental: BTreeSet<TupleValue> = incremental
-            .output(view)?
-            .debug_view(false)
-            .to_zset()
-            .iter()
-            .map(|(row, (), weight)| {
-                assert!(weight > 0, "view {view} holds {row:?} {weight} times");
-                row
-            })
-            .collect();
-        let on_batch = batch.output(view)?;
-        let batch_rows: BTreeSet<TupleValue> = on_batch.rows().iter().cloned().collect();
-        assert_eq!(
-            batch_rows.len(),
-            on_batch.len(),
-            "view {view} repeats a row"
-        );
-        assert_eq!(batch_rows, on_incremental, "view {view} of {}", R::NAME);
-        sizes.push((view.as_str().to_string(), on_batch.len()));
-    }
-    sizes.sort();
-    Ok(sizes)
+    twin::<R>()?
+        .commit(rows)
+        .with_context(|| format!("realm {}", R::NAME))
 }
 
 #[test]

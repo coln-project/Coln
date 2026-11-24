@@ -53,6 +53,7 @@ size-of = {
     "xxhash-xxh3",
   ]
 }
+serde_json.workspace = true
 subenum.workspace = true
 thiserror.workspace = true
 
