@@ -1156,6 +1156,7 @@ dependencies = [
  "feldera-macros",
  "feldera-size-of",
  "indexmap",
+ "parking_lot 0.13.0",
  "rkyv",
  "subenum",
  "thiserror 2.0.20",

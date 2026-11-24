@@ -14,6 +14,11 @@ pub enum ColnQueryError {
     Engine(#[from] QueryEngineError),
     #[error(transparent)]
     UnsafeApply(#[from] UnsafeApplyError),
+    /// Another transaction holds the engine, i.e., a
+    /// [`Pending`](super::transaction::Pending) transaction has neither been
+    /// committed nor aborted yet. Not a bug of the engine, but of the caller.
+    #[error("a transaction is already open on this query engine")]
+    TxAlreadyOpen,
 }
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]

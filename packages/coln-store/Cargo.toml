@@ -41,7 +41,7 @@ tracing-subscriber = { workspace = true, features = [
 ], optional = true }
 rstest = "0.26.1"
 hex.workspace = true
-parking_lot = { version = "0.13.0", features = ["arc_lock"] }
+parking_lot.workspace = true
 
 [dev-dependencies]
 future_form = "0.3.1"

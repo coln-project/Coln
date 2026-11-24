@@ -18,7 +18,7 @@ impl Bouncer {
         let (store, commits) = Store::decode(data)?;
 
         let query = ColnQuery::init(store.ir())?;
-        let mut bouncer = Bouncer::new_from_store_query(store, query);
+        let bouncer = Bouncer::new_from_store_query(store, query);
 
         let batch = bouncer.store.prepare_commits(commits, false)?;
         let violations = bouncer.begin_import().apply_batch(batch)?;

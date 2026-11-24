@@ -36,7 +36,7 @@ fn coln_def() -> ColnDef {
 #[rstest]
 fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
     // create a bouncer
-    let mut bouncer = Bouncer::try_new(ir, coln_def).expect("create bouncer success");
+    let bouncer = Bouncer::try_new(ir, coln_def).expect("create bouncer success");
     // start a write txn
     let mut tx = bouncer.begin_write();
     // Add a bunch of stuff
@@ -96,7 +96,7 @@ fn test_tc_computation(ir: FlatRealm, coln_def: ColnDef) {
 
 #[fixture]
 fn one_edge(ir: FlatRealm, coln_def: ColnDef) -> (Bouncer, [PublicRowId; 2]) {
-    let mut source = Bouncer::try_new(ir, coln_def).expect("source bouncer");
+    let source = Bouncer::try_new(ir, coln_def).expect("source bouncer");
     let mut tx = source.begin_write();
     let a = tx
         .add(&Path::from("root.V"), TxTuple::empty())
@@ -259,7 +259,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
 ) {
     let (mut source, [a, b]) = one_edge;
     let c = extend_chain(&mut source, &b);
-    let mut target = Bouncer::try_new(ir.clone(), coln_def.clone()).expect("target bouncer");
+    let target = Bouncer::try_new(ir.clone(), coln_def.clone()).expect("target bouncer");
     let root = target.begin_read().fragments_after(&[])[0].hash;
     let chunks = source.begin_read().fragments_after(&[root]);
     assert_eq!(chunks.len(), 2);

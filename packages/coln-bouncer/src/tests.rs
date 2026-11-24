@@ -95,7 +95,7 @@ fn plain_commits(realm: &ir::FlatRealm, coln_def: ColnDef, values: &[i32]) -> Ve
 }
 
 #[rstest]
-fn rejected_commit_rolls_back_store_and_allows_next_transaction(mut only_ones: Bouncer) {
+fn rejected_commit_rolls_back_store_and_allows_next_transaction(only_ones: Bouncer) {
     let table = ir::Path::from("t");
     let mut tx = only_ones.begin_write();
     tx.add(&table, vec![1i32]).expect("add initial row");
@@ -161,7 +161,7 @@ fn failed_local_validation_does_not_poison_sync(
 ) {
     only_ones_realm.tables[0].table.primary_key = Some(vec![0]);
     only_ones_realm.rules.clear();
-    let mut target = Bouncer::try_new(only_ones_realm.clone(), coln_def.clone())
+    let target = Bouncer::try_new(only_ones_realm.clone(), coln_def.clone())
         .expect("bouncer with a primary key");
     let table = ir::Path::from("t");
 
@@ -206,7 +206,7 @@ fn failed_local_validation_does_not_poison_sync(
 fn sync_hard_rejection_preserves_earlier_commits_and_blocks_descendants(
     only_ones_realm: ir::FlatRealm,
     coln_def: ColnDef,
-    mut only_ones: Bouncer,
+    only_ones: Bouncer,
 ) {
     let chunks = plain_commits(&only_ones_realm, coln_def, &[1, 2, 1]);
     let root = only_ones.begin_read().fragments_after(&[])[0].hash;
@@ -261,7 +261,7 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
 ) {
     only_ones_realm.rules[0].rule.rule_variant = ir::RuleVariant::Monitored;
     let chunks = plain_commits(&only_ones_realm, coln_def.clone(), &[2, 1]);
-    let mut target = Bouncer::try_new(only_ones_realm, coln_def).expect("monitored realm");
+    let target = Bouncer::try_new(only_ones_realm, coln_def).expect("monitored realm");
     let root = target.begin_read().fragments_after(&[])[0].hash;
 
     let reports = target
@@ -307,10 +307,7 @@ fn sync_soft_violation_reports_the_violation_and_applies_later_commits(
 #[rstest]
 #[case::abort(true)]
 #[case::drop(false)]
-fn discarded_write_does_not_apply_or_validate_queued_rows(
-    mut only_ones: Bouncer,
-    #[case] abort: bool,
-) {
+fn discarded_write_does_not_apply_or_validate_queued_rows(only_ones: Bouncer, #[case] abort: bool) {
     let table = ir::Path::from("t");
     let heads = only_ones.begin_read().heads();
     let mut tx = only_ones.begin_write();
