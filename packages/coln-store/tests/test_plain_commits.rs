@@ -26,7 +26,7 @@ fn plain_replay_preserves_commits_without_materializing_derived_rows() {
     txn.add(&vertex, TxTuple::empty()).expect("add vertex");
     txn.try_commit().expect("commit vertex").commit();
 
-    let chunks = source.begin_read().commit_chunks_after(&[]);
+    let chunks = source.begin_read().fragments_after(&[]);
     let restored = Store::try_from_commit_bytes_plain(chunks.iter().map(|chunk| &chunk.bytes))
         .expect("restore commit bytes");
     let target_heads = target.begin_read().heads();
@@ -34,7 +34,7 @@ fn plain_replay_preserves_commits_without_materializing_derived_rows() {
         .apply_chunk_bytes_plain(
             source
                 .begin_read()
-                .commit_chunks_after(&target_heads)
+                .fragments_after(&target_heads)
                 .into_iter()
                 .map(|chunk| chunk.bytes),
         )

@@ -69,7 +69,7 @@ fn empty_coln_def() -> ColnDef {
 }
 
 fn root_hash(store: &Store) -> CommitHash {
-    store.begin_read().commit_chunks_after(&[])[0].hash
+    store.begin_read().fragments_after(&[])[0].hash
 }
 
 fn commit_id(hash: CommitHash) -> CommitId {
@@ -114,7 +114,7 @@ async fn publish_new_commits(
     <MemoryStorage as Storage<Sendable>>::save_sedimentree_id(storage, sedimentree_id).await?;
 
     let have_heads = [root_hash(store)];
-    let chunks = store.begin_read().commit_chunks_after(&have_heads);
+    let chunks = store.begin_read().fragments_after(&have_heads);
     for chunk in chunks {
         let blob = Blob::new(chunk.bytes);
         let verified_blob = VerifiedBlobMeta::new(blob);
@@ -274,7 +274,7 @@ async fn subduction_sync_coln_chunks(
 
     let left_chunks = left_store
         .begin_read()
-        .commit_chunks_after(&[root_hash(&left_store)]);
+        .fragments_after(&[root_hash(&left_store)]);
     left_sd
         .add_commits_batch(
             sedimentree_id,
@@ -294,7 +294,7 @@ async fn subduction_sync_coln_chunks(
 
     let right_chunks = right_store
         .begin_read()
-        .commit_chunks_after(&[root_hash(&right_store)]);
+        .fragments_after(&[root_hash(&right_store)]);
     right_sd
         .add_commits_batch(
             sedimentree_id,
@@ -460,7 +460,7 @@ async fn subduction_websocket_sync_coln_chunks(
 
     let left_chunks = left_store
         .begin_read()
-        .commit_chunks_after(&[root_hash(&left_store)]);
+        .fragments_after(&[root_hash(&left_store)]);
     left_sd
         .add_commits_batch(
             sedimentree_id,
@@ -480,7 +480,7 @@ async fn subduction_websocket_sync_coln_chunks(
 
     let right_chunks = right_store
         .begin_read()
-        .commit_chunks_after(&[root_hash(&right_store)]);
+        .fragments_after(&[root_hash(&right_store)]);
     right_sd
         .add_commits_batch(
             sedimentree_id,

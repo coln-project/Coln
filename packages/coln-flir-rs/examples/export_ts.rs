@@ -10,6 +10,7 @@
 
 use coln_flir_rs::{
     engine::tx::{TxRowId, TxTuple},
+    fragment::Fragment,
     public::PublicTuple,
     query::WhereClause,
 };
@@ -36,6 +37,7 @@ fn main() {
     types.register_mut::<PublicTuple>();
     types.register_mut::<TxTuple>();
     types.register_mut::<TxRowId>();
+    types.register_mut::<Fragment>();
     Typescript::default()
         .header(HEADER)
         .export_to(&out, &types, specta_serde::Format)

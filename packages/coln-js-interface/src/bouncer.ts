@@ -3,13 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 import { RowId } from "./row_id.js"
-import { WhereClause, TxRowId, PublicRowId, PublicTuple, TxTuple, Path, CommitHash } from "./types.js"
-
-// export type CommitChunk = {
-//   hash: CommitHash
-//   parents: CommitHash[]
-//   bytes: Uint8Array
-// }
+import { WhereClause, TxRowId, PublicRowId, PublicTuple, TxTuple, Path, CommitHash, Fragment } from "./types.js"
 
 /** Read access to a consistent view of the bouncer's data. */
 export interface BouncerRead {
@@ -39,9 +33,18 @@ export type CommitResult = {
  * implicit read transaction.
  */
 export interface Bouncer extends BouncerRead {
-  // heads(): CommitHash[]
-  // commitChunksAfter(haveHeads: CommitHash[]): CommitChunk[]
-  // applyChunkBytes(chunks: Uint8Array[]): void
+  heads(): CommitHash[]
+
+  /** Every commit not reachable from `haveHeads`, in dependency order. */
+  fragmentsAfter(haveHeads: CommitHash[]): Fragment[]
+
+  /**
+   * Apply commits received from another replica. Each is validated and
+   * applied on its own: if one is rejected, those applied before it stay
+   * applied and an error is thrown. Commits whose parents are missing are
+   * kept until those parents arrive.
+   */
+  applyChunkBytes(chunks: Uint8Array[]): void
 
   /**
    * Run `f` in a write transaction and commit it when `f` returns. If `f`
@@ -136,6 +139,21 @@ export class Coln<R> {
 
   constructor(private Realm: RealmClass<R>, private bouncer: Bouncer) {
     this.realm = new Realm(new ManagedBouncer(bouncer, null))
+  }
+
+  /** The current heads. See `Bouncer.heads`. */
+  heads(): CommitHash[] {
+    return this.bouncer.heads()
+  }
+
+  /** Every commit not reachable from `haveHeads`. See `Bouncer.fragmentsAfter`. */
+  fragmentsAfter(haveHeads: CommitHash[]): Fragment[] {
+    return this.bouncer.fragmentsAfter(haveHeads)
+  }
+
+  /** Apply commits from another replica. See `Bouncer.applyChunkBytes`. */
+  applyChunkBytes(chunks: Uint8Array[]): void {
+    this.bouncer.applyChunkBytes(chunks)
   }
 
   /**

@@ -4,8 +4,9 @@
 
 //! Node bindings for coln-bouncer.
 //!
-//! The bouncer's write transaction is a typestate machine that borrows the
-//! bouncer, which JS cannot express. Instead, writes are scoped to a callback:
+//! The bouncer's write transaction is a typestate machine that consumes itself
+//! on each transition, which JS cannot express. Instead, writes are scoped to a
+//! callback:
 //! [`Bouncer::begin_write`] opens a transaction, hands JS a [`WriteTxn`] handle
 //! for the duration of the callback, and commits when the callback returns. To
 //! roll back, the callback throws. Reads outside a write open an implicit read
@@ -13,10 +14,7 @@
 //!
 //! Values cross the boundary as JSON strings, decoded by the TypeScript wrapper.
 
-use std::{
-    cell::{RefCell, RefMut},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 use coln_bouncer::bouncer::{
     self, ReadTxnable,
@@ -25,6 +23,7 @@ use coln_bouncer::bouncer::{
 use coln_bouncer::error::BouncerError;
 use coln_flir_rs::{
     engine::{schema::ColnDef, tx::TxRowId},
+    hash::CommitHash,
     ir,
     public::PublicRowId,
     query::WhereClause,
@@ -104,7 +103,7 @@ pub fn bouncer_from_ir(
 /// Returned by [`Bouncer::begin_write`] as JSON.
 #[derive(Serialize)]
 struct CommitResult {
-    hash: coln_flir_rs::hash::CommitHash,
+    hash: CommitHash,
     /// The canonical public id of every row added in this transaction, in the
     /// order `add` was called.
     row_ids: Vec<PublicRowId>,
@@ -132,18 +131,18 @@ impl Bouncer {
         env: Env,
         callback: Function<ClassInstance<WriteTxn>, Unknown>,
     ) -> Result<String> {
-        let mut bouncer: RefMut<'_, bouncer::Bouncer> = self
+        // Held for the whole call as a reentrancy guard: a nested write or
+        // import would otherwise block on the store lock this transaction holds.
+        let bouncer = self
             .inner
             .try_borrow_mut()
             .map_err(|_| napi_error("a write transaction is already in progress"))?;
+        // The transaction holds the store's upgradable read lock until it is
+        // committed or dropped. `_close` takes it back out of the shared slot
+        // when this call returns (also on unwind), so a copy of the JS handle
+        // that escapes the callback only sees `Slot::Closed` and cannot keep the
+        // lock alive and deadlock later writes.
         let txn = bouncer.begin_write();
-        // SAFETY: `txn` borrows `bouncer`. We erase that lifetime so the
-        // transaction can live in a JS-visible class, but it never outlives the
-        // borrow: `_close` is declared after `bouncer` and so is dropped first
-        // (also on unwind), taking the transaction back out of the shared slot.
-        // Any copy of the JS handle that escapes the callback then only sees
-        // `Slot::Closed`.
-        let txn: BouncerWriteTxn<Prepare<'static>> = unsafe { std::mem::transmute(txn) };
         let slot = Rc::new(RefCell::new(Slot::Open {
             txn,
             added: Vec::new(),
@@ -200,15 +199,48 @@ impl Bouncer {
         read_scan_table(&self.read()?, table)
     }
 
+    /// The current heads, as a JSON array of hex commit hashes.
     #[napi]
     pub fn heads(&self) -> Result<String> {
         to_json(&self.read()?.heads())
+    }
+
+    /// Every commit not reachable from `have_heads` (a JSON array of hex
+    /// commit hashes), in dependency order, as an array of `Fragment`s.
+    #[napi(ts_return_type = "import('@coln-project/interface').Fragment[]")]
+    pub fn fragments_after<'env>(
+        &self,
+        env: &'env Env,
+        have_heads: String,
+    ) -> Result<Unknown<'env>> {
+        let have_heads: Vec<CommitHash> = from_json("heads", &have_heads)?;
+        env.to_js_value(&self.read()?.fragments_after(&have_heads))
+    }
+
+    /// Decode and apply commits received from another replica.
+    ///
+    /// Each ready commit is validated and applied on its own: if one is
+    /// rejected, the commits applied before it stay applied and an error is
+    /// thrown. Commits whose parents are missing are kept pending.
+    #[napi]
+    pub fn apply_chunk_bytes(&self, chunks: Vec<Uint8Array>) -> Result<()> {
+        let bouncer = self
+            .inner
+            .try_borrow_mut()
+            .map_err(|_| napi_error("cannot apply commits inside a write transaction"))?;
+        // TODO surface the soft violations of each applied commit once
+        // `ViolationsDelta` is serializable.
+        bouncer
+            .begin_import()
+            .apply_chunk_bytes(chunks.iter().map(|c| c.to_vec()))
+            .map_err(bouncer_error)?;
+        Ok(())
     }
 }
 
 enum Slot {
     Open {
-        txn: BouncerWriteTxn<Prepare<'static>>,
+        txn: BouncerWriteTxn<Prepare>,
         added: Vec<TxRowId>,
     },
     Closed,
@@ -237,7 +269,7 @@ pub struct WriteTxn {
 impl WriteTxn {
     fn with_open<T>(
         &self,
-        f: impl FnOnce(&mut BouncerWriteTxn<Prepare<'static>>, &mut Vec<TxRowId>) -> Result<T>,
+        f: impl FnOnce(&mut BouncerWriteTxn<Prepare>, &mut Vec<TxRowId>) -> Result<T>,
     ) -> Result<T> {
         match &mut *self.slot.borrow_mut() {
             Slot::Open { txn, added } => f(txn, added),

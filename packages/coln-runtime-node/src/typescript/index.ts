@@ -59,6 +59,18 @@ export class NodeBouncer extends NodeRead implements types.Bouncer {
     this.bouncer = bouncer
   }
 
+  heads(): types.CommitHash[] {
+    return JSON.parse(this.bouncer.heads())
+  }
+
+  fragmentsAfter(haveHeads: types.CommitHash[]): types.Fragment[] {
+    return this.bouncer.fragmentsAfter(JSON.stringify(haveHeads))
+  }
+
+  applyChunkBytes(chunks: Uint8Array[]): void {
+    this.bouncer.applyChunkBytes(chunks)
+  }
+
   write(f: (txn: types.BouncerWriteTxn) => void): types.CommitResult {
     // napi-rs does not round-trip arbitrary thrown values through native
     // code (e.g. a thrown string), so rethrow the callback's own value.

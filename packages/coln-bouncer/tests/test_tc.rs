@@ -285,7 +285,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
             .expect("foreign store");
             foreign
                 .begin_read()
-                .commit_chunks_after(&[])
+                .fragments_after(&[])
                 .pop()
                 .expect("foreign root")
                 .bytes
@@ -307,7 +307,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
                 .commit();
             invalid
                 .begin_read()
-                .commit_chunks_after(&[root])
+                .fragments_after(&[root])
                 .pop()
                 .expect("invalid commit")
                 .bytes

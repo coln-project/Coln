@@ -17,8 +17,10 @@ ena.workspace = true
 hex.workspace = true
 indexmap.workspace = true
 serde.workspace = true
+serde_bytes = "0.11"
 serde_json.workspace = true
 specta.workspace = true
+specta-typescript = "0.0.12"
 subenum.workspace = true
 
 [dev-dependencies]

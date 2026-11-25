@@ -4,14 +4,13 @@
 
 use coln_flir_rs::{
     engine::{packed::StoreTuple, tx::TxRowId},
+    fragment::Fragment,
     hash::CommitHash,
     ir,
     public::{PublicRowId, PublicTuple},
     query::WhereClause,
 };
-use coln_store::store::{
-    IdLookup, ReadView, commit::Fragment, error::StoreError, txn::ReadTxnable as _,
-};
+use coln_store::store::{IdLookup, ReadView, error::StoreError, txn::ReadTxnable as _};
 
 use crate::{bouncer::Bouncer, error::BouncerError};
 

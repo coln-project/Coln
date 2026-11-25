@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::{engine::schema::ColnDef, ir, public::PublicScalarValue};
+use coln_flir_rs::{engine::schema::ColnDef, fragment::Fragment, ir, public::PublicScalarValue};
 use coln_store::{
-    store::{Store, commit::Fragment, error::StoreError, txn::ReadTxnable},
+    store::{Store, error::StoreError, txn::ReadTxnable},
     table::ValidationError,
 };
 use rstest::{fixture, rstest};
@@ -91,7 +91,7 @@ fn plain_commits(realm: &ir::FlatRealm, coln_def: ColnDef, values: &[i32]) -> Ve
             .expect("prepare without query rules")
             .commit();
     }
-    source.begin_read().commit_chunks_after(&heads)
+    source.begin_read().fragments_after(&heads)
 }
 
 #[rstest]

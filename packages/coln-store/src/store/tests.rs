@@ -794,12 +794,12 @@ mod commits {
         let first = commit_int(&mut store, 1);
         let second = commit_int(&mut store, 2);
 
-        let all = store.begin_read().commit_chunks_after(&[]);
+        let all = store.begin_read().fragments_after(&[]);
         assert_eq!(
             all.iter().map(|chunk| chunk.hash).collect::<Vec<_>>(),
             vec![root, first, second]
         );
-        let after_root = store.begin_read().commit_chunks_after(&[root]);
+        let after_root = store.begin_read().fragments_after(&[root]);
         assert_eq!(
             after_root
                 .iter()
@@ -807,7 +807,7 @@ mod commits {
                 .collect::<Vec<_>>(),
             vec![first, second]
         );
-        let after_first = store.begin_read().commit_chunks_after(&[first]);
+        let after_first = store.begin_read().fragments_after(&[first]);
         assert_eq!(
             after_first
                 .iter()
@@ -815,7 +815,7 @@ mod commits {
                 .collect::<Vec<_>>(),
             vec![second]
         );
-        assert!(store.begin_read().commit_chunks_after(&[second]).is_empty());
+        assert!(store.begin_read().fragments_after(&[second]).is_empty());
     }
 
     #[rstest]
@@ -866,7 +866,7 @@ mod commits {
         let source = Store::new();
         let chunks = source
             .begin_read()
-            .commit_chunks_after(&[])
+            .fragments_after(&[])
             .into_iter()
             .map(|chunk| chunk.bytes)
             .collect::<Vec<_>>();
@@ -887,7 +887,7 @@ mod commits {
         let (source, commit) = source;
         let mut chunks = source
             .begin_read()
-            .commit_chunks_after(&[])
+            .fragments_after(&[])
             .into_iter()
             .map(|chunk| chunk.bytes)
             .collect::<Vec<_>>();
@@ -911,7 +911,7 @@ mod commits {
     ) {
         let (mut source, first) = source;
         let second = commit_int(&mut source, 2);
-        let chunks = source.begin_read().commit_chunks_after(&[]);
+        let chunks = source.begin_read().fragments_after(&[]);
         let mut restored = Store::try_from_commit_bytes_plain(
             chunks
                 .iter()
@@ -1117,7 +1117,7 @@ mod commits {
 
         let chunks: Vec<Vec<u8>> = source
             .begin_read()
-            .commit_chunks_after(&target.begin_read().heads())
+            .fragments_after(&target.begin_read().heads())
             .into_iter()
             .map(|chunk| chunk.bytes)
             .collect();
