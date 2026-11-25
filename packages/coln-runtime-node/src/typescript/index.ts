@@ -51,12 +51,24 @@ class NodeWriteTxn extends NodeRead implements types.BouncerWriteTxn {
 
 /** The native coln-bouncer. Reads outside `write` are implicit read transactions. */
 export class NodeBouncer extends NodeRead implements types.Bouncer {
-  private bouncer: native.Bouncer
-
-  constructor(def: RealmDef) {
-    const bouncer = native.bouncerFromIr(def.ir, def.coln_source, def.realm_name)
+  private constructor(private bouncer: native.Bouncer) {
     super(bouncer)
-    this.bouncer = bouncer
+  }
+
+  /** A fresh bouncer for the realm described by `def`. */
+  static fromIr(def: RealmDef): NodeBouncer {
+    return new NodeBouncer(native.bouncerFromIr(def.ir, def.coln_source, def.realm_name))
+  }
+
+  /**
+   * Build a bouncer from scratch out of commits received from another
+   * replica. `chunks` must contain exactly one root commit, which carries the
+   * realm's IR; the other commits are validated and applied on top of it.
+   * Unlike `applyChunkBytes`, if any commit is rejected no bouncer is returned
+   * and an error is thrown.
+   */
+  static fromCommitBytes(chunks: Uint8Array[]): NodeBouncer {
+    return new NodeBouncer(native.bouncerFromCommitBytes(chunks))
   }
 
   heads(): types.CommitHash[] {

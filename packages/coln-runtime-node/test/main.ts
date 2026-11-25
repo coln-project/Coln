@@ -19,7 +19,7 @@ const realmDef = {
   realm_name: "TransitiveClosureRealm"
 }
 
-const db = new Coln(createRealm(runtime), new NodeBouncer(realmDef))
+const db = new Coln(createRealm(runtime), NodeBouncer.fromIr(realmDef))
 
 const [v0, v1, v2] = db.write(({ root: g }) => {
   const vs = [g.V.add(), g.V.add(), g.V.add()]

@@ -100,6 +100,20 @@ pub fn bouncer_from_ir(
     })
 }
 
+/// Build a bouncer from commit chunks received from another replica. The
+/// chunks must contain exactly one root commit, which carries the IR. If any
+/// commit is rejected, no bouncer is returned.
+#[napi]
+pub fn bouncer_from_commit_bytes(chunks: Vec<Uint8Array>) -> Result<Bouncer> {
+    // TODO surface the soft violations of each applied commit once
+    // `ViolationsDelta` is serializable.
+    let (bouncer, _violations) = bouncer::Bouncer::try_from_commit_bytes(&chunks)
+        .map_err(bouncer_error)?;
+    Ok(Bouncer {
+        inner: RefCell::new(bouncer),
+    })
+}
+
 /// Returned by [`Bouncer::begin_write`] as JSON.
 #[derive(Serialize)]
 struct CommitResult {
