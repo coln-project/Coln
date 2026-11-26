@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// A temporary row ID that is valid only within a transaction.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, Type)]
 #[serde(transparent)]
 pub struct PendingRowId(pub u32);
 
@@ -41,7 +41,7 @@ impl From<u32> for PendingRowId {
 }
 
 /// Its difference with a pure WireRowId is that it can be a pending id
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, Type)]
 #[serde(tag = "type", content = "value")]
 pub enum TxRowId {
     Existing(PublicRowId),

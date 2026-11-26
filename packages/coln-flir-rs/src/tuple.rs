@@ -117,7 +117,7 @@ pub trait ScalarKind: fmt::Display {
         serde(untagged)
     )
 )]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Type)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Type)]
 pub enum NativeScalar<
     RowId,
     U64 = u64,

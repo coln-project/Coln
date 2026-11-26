@@ -224,6 +224,7 @@ impl CommitBatch<Prepared> {
             table.stage_updates(td.into_parts().1);
 
             table.apply_staged_ops(&mut data.rowing)?;
+            // no need to rebuild here as derived data only goes to view table, which is read only for the user
         }
         Ok(())
     }
