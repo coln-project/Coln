@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use coln_bouncer::bouncer::{Bouncer, ReadTxnable as _};
-use coln_bouncer::error::{BouncerError, RuleViolation};
+use coln_bouncer::error::{BouncerError, LawViolation};
 use coln_flir_rs::engine::{
     schema::ColnDef,
     tx::{TxRowId, TxTuple},
@@ -327,7 +327,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
             BouncerError::StoreError(StoreError::Commit(CommitApplyError::RootCommit(_)))
         )),
         FailedDelivery::HardViolation => assert!(
-            matches!(error, BouncerError::Rule(RuleViolation::HardViolation(violations)) if !violations.is_empty())
+            matches!(error, BouncerError::Law(LawViolation::Hard(violations)) if !violations.is_empty())
         ),
     }
     assert_eq!(

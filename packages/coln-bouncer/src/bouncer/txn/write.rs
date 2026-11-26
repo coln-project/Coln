@@ -31,7 +31,7 @@ use coln_store::store::{
 use super::read::sealed::StoreView;
 use crate::{
     bouncer::Bouncer,
-    error::{BouncerError, RuleViolation},
+    error::{BouncerError, LawViolation},
 };
 
 // Txn states
@@ -283,8 +283,9 @@ impl ImportTxn<'_> {
     }
 }
 
-/// Run base operations through coln-query, leaving it pending on success.
-/// Also returns the number of base operations, used to number derived rows.
+/// Run the given `delta` through coln-query, returning its [`Tx`] kind in
+/// [pending state](query_tx::Pending) on success next to the number of applied
+/// base operations. The latter is used to number derived rows.
 fn validate(
     query: &ColnQuery,
     delta: StoreDelta<PartialConsolidated, StoreTuple>,
@@ -300,7 +301,7 @@ fn validate(
     match tx.try_commit(query) {
         Ok(TryCommitOk::Pending(pending)) => Ok((pending, num_ops)),
         Ok(TryCommitOk::Rejected(mut rejected)) => {
-            Err(RuleViolation::HardViolation(rejected.take_hard_violations()).into())
+            Err(LawViolation::Hard(rejected.take_hard_violations()).into())
         }
         // Not a bug of the engine: another transaction still holds it.
         Err(TryCommitErr::TxApplyError(error @ ColnQueryError::TxAlreadyOpen)) => Err(error.into()),

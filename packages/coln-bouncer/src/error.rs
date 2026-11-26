@@ -13,13 +13,16 @@ pub enum BouncerError {
     #[error(transparent)]
     UserError(#[from] UserError),
     #[error(transparent)]
-    Rule(#[from] RuleViolation),
+    Law(#[from] LawViolation),
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum RuleViolation {
-    #[error("Rule violation, hard violation {0}")]
-    HardViolation(ViolationsSet),
+pub enum LawViolation {
+    #[error("Violation of enforced law {0}")]
+    Hard(ViolationsSet),
+    // @Vincent why an enum? Soft violations (violations of monitored laws)
+    // won't be communicated via errors, right? We could inline the
+    // `ViolationsSet` into the `BouncerError::Law` variant.
 }
 
 #[derive(Debug, thiserror::Error)]
