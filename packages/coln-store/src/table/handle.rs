@@ -12,7 +12,7 @@ use crate::pack::IdPacker;
 use crate::rowing::Rowing;
 
 use crate::table::index::IndexMeta;
-use crate::table::{Table, TableOid, ValidationError};
+use crate::table::{Table, TableMeta, TableOid, ValidationError};
 
 /// A [`Table`] together with the store-wide hash dictionary and canonicaliser,
 /// for read-only access. This is what [`Store`](crate::store::Store) accessors hand out, so
@@ -67,6 +67,10 @@ impl<'a> TableHandle<'a> {
 
     pub fn scan(self) -> impl Iterator<Item = StoreTuple> + 'a {
         self.inner.scan()
+    }
+
+    pub(crate) fn meta(self) -> TableMeta {
+        self.inner.meta()
     }
 
     pub fn index_meta(self) -> IndexMeta<'a> {

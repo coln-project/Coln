@@ -133,8 +133,8 @@ pub struct Table {
     pending_updates: Vec<ZRow<StoreTuple>>,
     undo_log: Option<Vec<UndoOp>>,
 
-    // structural identification
-    structural: bool,
+    // A constructor table
+    cons: bool,
     // Map each rowid to the rows that refer to them.
     rebuild_index: HashMap<PackedRowId, Vec<PackedRowId>>,
 }
@@ -153,7 +153,7 @@ impl Table {
 
         let except_rowid: Vec<usize> = (0..schema.columns.len()).collect();
         let index = TableIndex::new(&except_rowid, &schema);
-        let structural = matches!(
+        let cons = matches!(
             schema.entity_variant,
             EntityVariant::View {
                 materialization: Materialization::Memoized
@@ -164,7 +164,7 @@ impl Table {
             oid,
             path: path.into(),
             schema,
-            structural,
+            cons,
             row_ids: IdColumn::new(),
             cols,
             index,
@@ -185,6 +185,10 @@ impl Table {
 
     pub(crate) fn oid(&self) -> TableOid {
         self.oid
+    }
+
+    pub(crate) fn cons(&self) -> bool {
+        self.cons
     }
 
     pub(crate) fn meta(&self) -> TableMeta {
@@ -596,7 +600,7 @@ impl Table {
 
         // A structurally identical row is stored anyway: rowing unions the two
         // ids and a later rebuild pass collapses them.
-        if self.structural
+        if self.cons
             && let Some(old) = self
                 .index_seek(values.as_slice())
                 .expect("valid structural index and key structure")

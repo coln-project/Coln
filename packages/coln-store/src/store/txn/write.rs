@@ -111,7 +111,8 @@ impl WriteTxn<Prepare> {
         table: &ir::Path,
         values: impl Into<TxTuple>,
     ) -> Result<TxRowId, StoreError> {
-        self.state.data.add(&self.state.catalog, table, values)
+        let view = ReadView::new(&self.state.catalog, &self.state.guard);
+        self.state.data.add(view, table, values)
     }
 
     pub fn try_commit(self) -> Result<WriteTxn<Pending>, StoreError> {

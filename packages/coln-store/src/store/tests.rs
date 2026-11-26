@@ -497,9 +497,9 @@ mod rowing {
         );
     }
 
-    /// Store can deduplicate identical commits correctly, up to three levels up.
+    /// Existing constructor rows are reused through three levels of references.
     #[test]
-    fn add_duplicate_commits_on_structural_tables() {
+    fn adding_existing_structural_rows_reuses_ids_through_three_levels() {
         let store = structural_store();
         let term_path: Path = Path::from("Term");
         let plus_path = Path::from("Plus");
@@ -509,22 +509,33 @@ mod rowing {
         let t7 = txn.add(&term_path, vec![7i32]).unwrap();
         let t8 = txn.add(&term_path, vec![8i32]).unwrap();
         let tp = txn.add(&plus_path, vec![t7, t8]).unwrap();
-        txn.add(&mult_path, vec![tp, tp]).unwrap();
-        txn.commit().unwrap();
+        let tm = txn.add(&mult_path, vec![tp, tp]).unwrap();
+        let hash = txn.commit().unwrap().commit_hash();
+        let existing = store.begin_read().promote([t7, t8, tp, tm], hash);
 
         let mut txn2 = store.begin_write();
         let t7 = txn2.add(&term_path, vec![7i32]).unwrap();
         let t8 = txn2.add(&term_path, vec![8i32]).unwrap();
         let tp = txn2.add(&plus_path, vec![t7, t8]).unwrap();
-        txn2.add(&mult_path, vec![tp, tp]).unwrap();
-        txn2.commit().unwrap();
+        let tm = txn2.add(&mult_path, vec![tp, tp]).unwrap();
+        assert_eq!(
+            [t7, t8, tp, tm].to_vec(),
+            existing
+                .into_iter()
+                .map(coln_flir_rs::engine::tx::TxRowId::Existing)
+                .collect::<Vec<_>>()
+        );
+        assert!(matches!(
+            txn2.commit().err().expect("no new rows were staged"),
+            StoreError::Commit(crate::store::error::CommitApplyError::EmptyCommit)
+        ));
+        assert_eq!(store.begin_read().heads(), vec![hash]);
 
         let terms = store.begin_read().scan_table(&term_path).unwrap();
         let plus = store.begin_read().scan_table(&plus_path).unwrap();
         let mult = store.begin_read().scan_table(&mult_path).unwrap();
 
-        // The second commit adds no rows: every row it names is structurally
-        // identical to one the first commit already stored.
+        // The second transaction reuses every row from the first commit.
         assert_eq!(terms.len(), 2);
         assert_eq!(plus.len(), 1);
         assert_eq!(mult.len(), 1);
@@ -540,8 +551,7 @@ mod rowing {
         let t7 = term_id(7);
         let t8 = term_id(8);
 
-        // Each surviving row references the canonical id of its children, not the
-        // duplicate the second commit allocated for them.
+        // Each row still references the canonical IDs of its children.
         assert_eq!(
             plus[0].values(),
             [StoreScalarValue::RowId(t7), StoreScalarValue::RowId(t8)]
