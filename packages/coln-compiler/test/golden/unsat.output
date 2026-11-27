@@ -32,8 +32,8 @@ type: (X : Set) -> (neq : X -> X -> Prop) -> (D : Clauses X) -> (c0 : D.clause) 
 value: X => neq => D => c0 => c1 => v => sig
   c : D.clause
   pos0 : (w : X) -> neq w v -> D.appears-pos c0 w -> D.appears-pos c w
-  pos1 : (w : X) -> neq w v -> D.appears-pos c1 w -> D.appears-pos c w
-  neg0 : (w : X) -> neq w v -> D.appears-neg c0 w -> D.appears-neg c w
+  pos1 : (w : X) -> D.appears-pos c1 w -> D.appears-pos c w
+  neg0 : (w : X) -> D.appears-neg c0 w -> D.appears-neg c w
   neg1 : (w : X) -> neq w v -> D.appears-neg c1 w -> D.appears-neg c w
 end
 
@@ -120,34 +120,32 @@ realm named SATRealm
    (%c1 'init.derived.D.clause)
    (%v 'root.var)
    (%w 'root.var)
-   (%e 'init.derived.D.clause))
-  (('init.derived.resolve.c %c0 %c1 %v %e)
+   (%d 'init.derived.D.clause))
+  (('init.derived.resolve.c %c0 %c1 %v %d)
    ('init.derived.D.clause (id %c0))
    ('init.derived.D.clause (id %c1))
    ('root.var (id %v))
    ('init.derived.D.appears-pos %c0 %v)
    ('init.derived.D.appears-neg %c1 %v)
    ('root.var (id %w))
-   ('root.neq %w %v)
    ('init.derived.D.appears-pos %c1 %w))
-  ('init.derived.D.appears-pos %e %w)))
+  ('init.derived.D.appears-pos %d %w)))
 ('init.derived.resolve.neg0
  (rule
   ((%c0 'init.derived.D.clause)
    (%c1 'init.derived.D.clause)
    (%v 'root.var)
    (%w 'root.var)
-   (%e 'init.derived.D.clause))
-  (('init.derived.resolve.c %c0 %c1 %v %e)
+   (%d 'init.derived.D.clause))
+  (('init.derived.resolve.c %c0 %c1 %v %d)
    ('init.derived.D.clause (id %c0))
    ('init.derived.D.clause (id %c1))
    ('root.var (id %v))
    ('init.derived.D.appears-pos %c0 %v)
    ('init.derived.D.appears-neg %c1 %v)
    ('root.var (id %w))
-   ('root.neq %w %v)
    ('init.derived.D.appears-neg %c0 %w))
-  ('init.derived.D.appears-neg %e %w)))
+  ('init.derived.D.appears-neg %d %w)))
 ('init.derived.resolve.neg1
  (rule
   ((%c0 'init.derived.D.clause)

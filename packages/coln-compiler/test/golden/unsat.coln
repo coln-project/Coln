@@ -19,9 +19,12 @@ end
 
 theory ResolvedClause (^i X : Set) (^i neq : X -> X -> Prop) (D : Clauses X) (^i c0 : D.clause) (^i c1 : D.clause) (^i v : X) := sig
   c : D.clause
+  # c is the resolvent of c0 (which contains v) and c1 (which contains ¬v):
+  # c0 without v, together with c1 without ¬v. Only the literal resolved upon
+  # is dropped from each parent, so pos1 and neg0 must not require neq w v.
   pos0 : (w : X) -> neq w v -> D.appears-pos c0 w -> D.appears-pos c w
-  pos1 : (w : X) -> neq w v -> D.appears-pos c1 w -> D.appears-pos c w
-  neg0 : (w : X) -> neq w v -> D.appears-neg c0 w -> D.appears-neg c w
+  pos1 : (w : X) -> D.appears-pos c1 w -> D.appears-pos c w
+  neg0 : (w : X) -> D.appears-neg c0 w -> D.appears-neg c w
   neg1 : (w : X) -> neq w v -> D.appears-neg c1 w -> D.appears-neg c w
 end
 
