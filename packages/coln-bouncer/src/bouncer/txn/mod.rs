@@ -8,7 +8,4 @@ mod read;
 mod write;
 
 pub use read::{ReadTxn, ReadTxnable};
-pub use write::{
-    Aborted, Committed, ImportTxn, Pending, Prepare, PublicDerivedDataDelta, PublicViolations,
-    TxnState, WriteTxn,
-};
+pub use write::{Aborted, Committed, ImportTxn, Pending, Prepare, TxnState, WriteTxn};

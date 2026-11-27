@@ -11,7 +11,7 @@
 use coln_flir_rs::{
     engine::tx::{TxRowId, TxTuple},
     fragment::Fragment,
-    public::PublicTuple,
+    public::{PublicDerivedDataDelta, PublicTuple, PublicViolations},
     query::WhereClause,
 };
 use specta::Types;
@@ -38,6 +38,8 @@ fn main() {
     types.register_mut::<TxTuple>();
     types.register_mut::<TxRowId>();
     types.register_mut::<Fragment>();
+    types.register_mut::<PublicDerivedDataDelta>();
+    types.register_mut::<PublicViolations>();
     Typescript::default()
         .header(HEADER)
         .export_to(&out, &types, specta_serde::Format)
