@@ -237,7 +237,7 @@
             packages.wasm-bodge
             pkg-config
             pnpm
-            prettier
+            oxfmt
             reuse
             rustToolchain
             simple-http-server

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/oxfmt/configuration_schema.json",
+  "ignorePatterns": [],
+  "printWidth": 80,
+  "proseWrap": "always",
+  "trailingComma": "all",
+}

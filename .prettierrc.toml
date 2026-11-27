@@ -1,3 +1,0 @@
-# Prettier is also good at formatting markdown prose.
-proseWrap = "always"
-printWidth = 80

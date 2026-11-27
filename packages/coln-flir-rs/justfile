@@ -49,7 +49,7 @@ generate-fixtures:
     shopt -s nullglob # makes the glob expand to nothing if there are no matches
     for json_flir in {{ coln_flir_rs_flir_dir }}/*.json; do
         echo "Pretty-printing '$json_flir'"
-        prettier --write "$json_flir"
+        oxfmt --write "$json_flir"
     done
 
 # Export the TypeScript types crossing the JS boundary (default: ../coln-js-interface/src/types.ts).
