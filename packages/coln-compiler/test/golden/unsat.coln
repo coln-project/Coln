@@ -1,0 +1,37 @@
+
+theory Clauses (^i X : Set) := sig
+  clause : Set
+  appears-pos : clause -> X -> Prop
+  appears-neg : clause -> X -> Prop
+end
+
+theory Clauses/hom (^i X : Set) (^i C0 : Clauses X) (C1 : Clauses X) := sig
+  clause : C0.clause -> C1.clause
+  appears-pos : (c : C0.clause) -> (v : X) -> C0.appears-pos c v -> C1.appears-pos (clause c) v
+  appears-neg : (c : C0.clause) -> (v : X) -> C0.appears-neg c v -> C1.appears-neg (clause c) v
+end
+
+theory SATProblem := sig
+  var : Set
+  neq : var -> var -> Prop
+  c : Clauses var
+end
+
+theory ResolvedClause (^i X : Set) (^i neq : X -> X -> Prop) (D : Clauses X) (^i c0 : D.clause) (^i c1 : D.clause) (^i v : X) := sig
+  c : D.clause
+  pos0 : (w : X) -> neq w v -> D.appears-pos c0 w -> D.appears-pos c w
+  pos1 : (w : X) -> neq w v -> D.appears-pos c1 w -> D.appears-pos c w
+  neg0 : (w : X) -> neq w v -> D.appears-neg c0 w -> D.appears-neg c w
+  neg1 : (w : X) -> neq w v -> D.appears-neg c1 w -> D.appears-neg c w
+end
+
+theory DerivedClause/motive (^i I : SATProblem) := sig
+  D : Clauses I.var
+  incl : Clauses/hom I.var I.c D
+  resolve : (c0 : D.clause) -> (c1 : D.clause) -> (v : I.var) -> D.appears-pos c0 v -> D.appears-neg c1 v -> ResolvedClause I.var I.neq D c0 c1 v
+end
+
+realm SATRealm @ SATProblem
+  ind def False : Prop := init Prop
+  ind def derived : DerivedClause/motive root := init (DerivedClause/motive root)
+end

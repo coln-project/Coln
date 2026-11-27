@@ -1,0 +1,26 @@
+\ProvidesPackage{ttmacros}
+
+\RequirePackage{amsmath}
+\RequirePackage{fontawesome5}
+
+\NewDocumentCommand\const{m}{\mathsf{#1}}
+
+\ExplSyntaxOn
+\NewDocumentCommand \declareconstants { m }
+{
+  \clist_map_inline:nn {#1}
+  {
+    \exp_args:Nc \NewDocumentCommand {##1} { } { \const{##1} }
+  }
+}
+\ExplSyntaxOff
+
+\declareconstants{Jdg,JdgProp,FJdg,FJdgProp}
+
+\declareconstants{Con,Mode,Conj,Ind,Tp,Tm,init,fun}
+
+\NewDocumentCommand{\lock}{}{\text{\tiny\faLock}}
+\NewDocumentCommand{\key}{}{\text{\tiny\faKey}}
+
+\NewDocumentCommand{\To}{}{\Rightarrow}
+\NewDocumentCommand{\tri}{}{\triangleright}

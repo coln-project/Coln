@@ -1,0 +1,33 @@
+\documentclass[fleqn]{scrartcl}
+
+\usepackage{prelude}
+\usepackage{ttmacros}
+
+\title{Coln Language: Specification}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\section{Type theory}
+
+\begin{gather*}
+  \Con : \Jdg \\
+  \Tp : \Con \to \FJdg \\
+  \Tm : (\Gamma : \Con) \to \Tp\,\Gamma \to \FJdg^+ \\
+  (-)^{\lock} : \Con \to \Con \\
+  (-)^{\key} : \Con \to \Con \\
+  \_ : \Gamma \To \Gamma^{\lock} \\
+  \_ : (\Gamma^{\lock})^{\lock} \cong \Gamma^{\lock} \\
+  \_ : \Gamma^{\key} \To \Gamma \\
+  \_ : \Gamma^{\key} \cong (\Gamma^{\key})^{\key} \\
+  \_ : (\Gamma^{\lock})^{\key} \cong \Gamma^{\key} \\
+  \Ind : \Con \to \FJdgProp \\
+  \_ : (\Gamma : \Con) \to \Ind\,(\Gamma^{\key}) \\
+  \init : (\Gamma : \Con) \to \Ind\,\Gamma \to \Tp\,\Gamma^{\lock} \to \Tm\,\Gamma\,A \\
+  \fun : (\Gamma : \Con) \to (A : \Tp\,\Gamma^{\key}) \to \Tp\,(\Gamma \tri^{\key} A) \to \Tp\,\Gamma
+\end{gather*}
+
+\end{document}

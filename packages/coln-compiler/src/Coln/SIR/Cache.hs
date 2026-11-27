@@ -65,7 +65,6 @@ cloArgName :: V.Clo a b -> Maybe Name
 cloArgName (V.Clo x _) = Just x
 cloArgName (V.CloConst _) = Nothing
 
--- TODO: replace this Path with the one in the Reader for GeneratorWriter
 cache :: Name -> Scope -> V.El N Theory -> GeneratorWriter (S.El Theory)
 cache x sc v = do
   tn <- currentSymbol
