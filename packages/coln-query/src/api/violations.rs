@@ -15,8 +15,11 @@
 //! does when one occurs. See [`TxOutcome`](super::transaction::TxOutcome),
 //! whose two violation arms are where this distinction comes from.
 
-use super::transaction::TableDelta;
-use crate::utils::cli_table::{CliReport, ToCliReport};
+use crate::{
+    api::transaction::{DerivedDataDelta, TableDelta},
+    utils::cli_table::{CliReport, ToCliReport},
+};
+use coln_flir_rs::engine::delta::Consolidated;
 use std::{io, marker::PhantomData};
 
 /// Violations that exist: the whole set of them, as of now.
@@ -121,5 +124,21 @@ impl<I: Interpretation> ToCliReport for Violations<I> {
 impl<I: Interpretation> std::fmt::Display for Violations<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.to_cli_report().expect("cli report"))
+    }
+}
+
+impl<I: Interpretation> From<Violations<I>> for DerivedDataDelta<Consolidated> {
+    fn from(value: Violations<I>) -> Self {
+        let Violations {
+            inner,
+            interpretation: _,
+        } = value;
+        let mut delta = DerivedDataDelta::empty();
+        // This is safe because for each law there is exactly one sink and the
+        // derived data delta is empty, causing the inner Vec<TableDelta> to be
+        // consolidated.
+        delta.unsafe_extend(inner);
+        debug_assert!(delta.is_fully_consolidated());
+        delta
     }
 }

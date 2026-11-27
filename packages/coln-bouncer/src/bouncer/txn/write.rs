@@ -14,12 +14,12 @@ use coln_flir_rs::{
     },
     hash::CommitHash,
     ir,
-    public::PublicRowId,
+    public::{PublicRowId, PublicTuple},
 };
 use coln_query::api::{
     ColnQuery,
     error::ColnQueryError,
-    transaction::{self as query_tx, DerivedDataDelta, TryCommitErr, TryCommitOk, Tx},
+    transaction::{self as query_tx, TryCommitErr, TryCommitOk, Tx},
     violations::ViolationsDelta,
 };
 use coln_store::store::{
@@ -28,11 +28,34 @@ use coln_store::store::{
     txn::{self as store_txn, ReadTxnable},
 };
 
-use super::read::sealed::StoreView;
+use super::read::{sealed::StoreView, unpack_tuple};
 use crate::{
     bouncer::Bouncer,
     error::{BouncerError, LawViolation},
 };
+
+/// How a delta of derived data (views) in response to a transaction is reported
+/// via the FFI boundary. Row ids are unpacked, i.e., carry their commit hash.
+pub type PublicDerivedDataDelta = StoreDelta<Consolidated, PublicTuple>;
+
+/// How laws' violations are reported via the FFI boundary (no matter if they
+/// stem from monitored laws (soft violations) or enforced laws (hard
+/// violations).
+///
+/// One type serves both because an enforced law's violations are reported
+/// against an empty set: its rows are all assertions, so the violation set
+/// coln-query reports for hard violations is a valid delta, too. For monitored
+/// laws, a negative zweight is a violation that was resolved.
+///
+/// # Note
+///
+/// Ideally, this should be a `StoreDelta<Consolidated, PublicTuple>` but this
+/// requires knowledge of a law's violations' schema on coln-store's end which
+/// we have not yet available. Until then, it remains a `QueryTuple`. Note
+/// that a `QueryTuple` flattens each row id into two plain `U32` columns, the
+/// _packed_ commit index and the counter, which are meaningless outside of the
+/// store that packed them.
+pub type PublicViolations = StoreDelta<Consolidated, QueryTuple>;
 
 // Txn states
 pub trait TxnState {}
@@ -52,13 +75,15 @@ pub struct Pending {
     // undoes the transaction without a `Drop` impl here.
     store: StoreWriteTxn<store_txn::Pending>,
     query: Tx<query_tx::Pending>,
-    monitored_constraints: ViolationsDelta,
+    derived_data_delta: PublicDerivedDataDelta,
+    monitored_violations: PublicViolations,
 }
 
 /// Accepted by both engines.
 pub struct Committed {
     cmt_hash: CommitHash,
-    monitored_constraints: ViolationsDelta,
+    derived_data_delta: PublicDerivedDataDelta,
+    monitored_violations: PublicViolations,
 }
 
 /// Discarded; neither engine retains any of its changes.
@@ -161,18 +186,24 @@ impl WriteTxn<Prepare> {
         let Prepare { store, query } = self.state;
         let mut store = store.try_commit()?;
         // On `Err`, `store` drops here and rolls back its tentative changes.
-        let (mut query, num_ops) = validate(&query, store.store_delta())?;
+        let (mut pending_query_tx, num_ops) = validate_and_derive(&query, store.store_delta())?;
         let hash = store.prepared_hash();
-        let derived = derived_to_store(&store, query.take_derived_data_delta(), hash, num_ops);
-        let monitored_constraints = query.take_soft_violations();
+        let monitored_violations = PublicViolations::from(pending_query_tx.take_soft_violations());
+        let derived_data_delta = pending_query_tx.take_derived_data_delta();
+        let derived_data_delta = query_to_store(&store, derived_data_delta, hash, num_ops);
+        // We must clone here because coln-store consumes the packed tuples
+        // while the user gets their public form. Unpacking works before
+        // applying because `query_to_store` already packed this commit's hash.
+        let public_derived_data_delta = store_to_public(&store.read(), derived_data_delta.clone());
         store
-            .apply_derived_view(derived)
+            .apply_derived_view(derived_data_delta)
             .expect("applying derived data from coln-query should not fail");
         Ok(WriteTxn {
             state: Pending {
                 store,
-                query,
-                monitored_constraints,
+                query: pending_query_tx,
+                derived_data_delta: public_derived_data_delta,
+                monitored_violations,
             },
         })
     }
@@ -195,24 +226,30 @@ impl WriteTxn<Pending> {
         self.state.store.prepared_hash()
     }
 
-    pub fn monitored_constraints(&self) -> &ViolationsDelta {
-        &self.state.monitored_constraints
+    pub fn derived_data_delta(&self) -> &PublicDerivedDataDelta {
+        &self.state.derived_data_delta
+    }
+
+    pub fn monitored_violations(&self) -> &PublicViolations {
+        &self.state.monitored_violations
     }
 
     pub fn commit(self) -> Result<WriteTxn<Committed>, BouncerError> {
         let Pending {
             store,
             query,
-            monitored_constraints,
+            derived_data_delta,
+            monitored_violations,
         } = self.state;
         // coln-query commits first because it is the only fallible step. If it
         // fails, it rolls itself back and `store` rolls back when dropped.
-        query.commit()?;
+        let _ = query.commit()?;
         let cmt_hash = store.commit().commit_hash();
         Ok(WriteTxn {
             state: Committed {
                 cmt_hash,
-                monitored_constraints,
+                derived_data_delta,
+                monitored_violations,
             },
         })
     }
@@ -232,8 +269,12 @@ impl WriteTxn<Committed> {
         self.state.cmt_hash
     }
 
-    pub fn monitored_constraints(&self) -> &ViolationsDelta {
-        &self.state.monitored_constraints
+    pub fn derived_data_delta(&self) -> &PublicDerivedDataDelta {
+        &self.state.derived_data_delta
+    }
+
+    pub fn monitored_violations(&self) -> &PublicViolations {
+        &self.state.monitored_violations
     }
 
     // TODO all monitored constraints, maybe?
@@ -258,7 +299,7 @@ impl ImportTxn<'_> {
         while batch.has_ready() {
             let mut prepared = batch.prepare_next()?.expect("ready commit");
             let hash = prepared.prepared_hash();
-            let validated = validate(self.query, prepared.store_delta())
+            let validated = validate_and_derive(self.query, prepared.store_delta())
                 .and_then(|(pending, num_ops)| Ok((pending.commit()?, num_ops)));
             let (mut committed, num_ops) = match validated {
                 Ok(validated) => validated,
@@ -267,7 +308,7 @@ impl ImportTxn<'_> {
                     return Err(error);
                 }
             };
-            let derived = derived_to_store(
+            let derived = query_to_store(
                 &prepared,
                 committed.take_derived_data_delta(),
                 hash,
@@ -286,7 +327,7 @@ impl ImportTxn<'_> {
 /// Run the given `delta` through coln-query, returning its [`Tx`] kind in
 /// [pending state](query_tx::Pending) on success next to the number of applied
 /// base operations. The latter is used to number derived rows.
-fn validate(
+fn validate_and_derive(
     query: &ColnQuery,
     delta: StoreDelta<PartialConsolidated, StoreTuple>,
 ) -> Result<(Tx<query_tx::Pending>, u32), BouncerError> {
@@ -301,7 +342,7 @@ fn validate(
     match tx.try_commit(query) {
         Ok(TryCommitOk::Pending(pending)) => Ok((pending, num_ops)),
         Ok(TryCommitOk::Rejected(mut rejected)) => {
-            Err(LawViolation::Hard(rejected.take_hard_violations()).into())
+            Err(LawViolation::Hard(PublicViolations::from(rejected.take_hard_violations())).into())
         }
         // Not a bug of the engine: another transaction still holds it.
         Err(TryCommitErr::TxApplyError(error @ ColnQueryError::TxAlreadyOpen)) => Err(error.into()),
@@ -311,11 +352,20 @@ fn validate(
     }
 }
 
-/// Convert coln-query's derived data into store tuples, allocating row ids
-/// for new derived rows after the commit's base operations.
-fn derived_to_store(
+/// Convert a store delta of [`StoreTuple`]s into its public form by unpacking
+/// row ids through `view`.
+fn store_to_public(
+    view: &ReadView<'_>,
+    store_delta: StoreDelta<Consolidated, StoreTuple>,
+) -> PublicDerivedDataDelta {
+    store_delta.map(|td| td.map(|tuple| unpack_tuple(view, tuple)))
+}
+
+/// Convert a store delta of [`QueryTuple`]s into a store delta of
+/// [`StoreTuple`]s. Row ids are allocated starting from `num_ops`.
+fn query_to_store(
     read: &impl ReadTxnable,
-    derived: DerivedDataDelta<Consolidated>,
+    query_store_delta: StoreDelta<Consolidated, QueryTuple>,
     cmt_hash: CommitHash,
     mut num_ops: u32,
 ) -> StoreDelta<Consolidated, StoreTuple> {
@@ -329,7 +379,7 @@ fn derived_to_store(
             .packed(&row_id)
             .expect("hash already packed")
     };
-    derived.map(|td| {
+    query_store_delta.map(|td| {
         let table = read
             .table_at(td.for_entity())
             .expect("valid schema from coln-query");

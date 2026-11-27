@@ -104,7 +104,7 @@ pub trait ReadTxnable: sealed::StoreView {
 
 impl<T: sealed::StoreView + ?Sized> ReadTxnable for T {}
 
-fn unpack_tuple(view: &ReadView<'_>, tuple: StoreTuple) -> PublicTuple {
+pub(super) fn unpack_tuple(view: &ReadView<'_>, tuple: StoreTuple) -> PublicTuple {
     PublicTuple::from_store(tuple, |id| {
         view.id_lookup()
             .unpacked(&id)

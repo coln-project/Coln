@@ -72,6 +72,20 @@ impl<V> From<Vec<V>> for Tuple<V> {
     }
 }
 
+impl<V: fmt::Display> fmt::Display for Tuple<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("(")?;
+        let mut iter = self.inner.iter();
+        if let Some(first) = iter.next() {
+            write!(f, "{first}")?;
+            for scalar in iter {
+                write!(f, ", {scalar}")?;
+            }
+        }
+        f.write_str(")")
+    }
+}
+
 /// Every supported row id must implement this to also specify a representation
 /// of its type next the representation of its values and the demanded subtraits.
 ///

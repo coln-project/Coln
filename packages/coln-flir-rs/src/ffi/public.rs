@@ -152,14 +152,6 @@ impl IntoIterator for PublicTuple {
 
 impl fmt::Display for PublicTuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("(")?;
-        for (i, scalar) in self.0.iter().enumerate() {
-            if i > 0 {
-                f.write_str(", ")?;
-            }
-            // Reuse the generic impl on NativeScalar.
-            write!(f, "{scalar}")?;
-        }
-        f.write_str(")")
+        fmt::Display::fmt(&self.0, f)
     }
 }

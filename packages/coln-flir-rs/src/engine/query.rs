@@ -14,7 +14,8 @@ use crate::{
     public::PublicTuple,
     tuple::{QueryScalar, Tuple},
 };
-use std::iter;
+use specta::Type;
+use std::{fmt, iter};
 
 /// The _value_ of a scalar in coln-query.
 pub type QueryScalarValue = QueryScalar;
@@ -22,8 +23,14 @@ pub type QueryScalarValue = QueryScalar;
 /// The _type_ representing the supported scalar values by coln-query.
 pub type QueryScalarType = QueryScalar<(), (), (), (), ()>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Type)]
 pub struct QueryTuple(Tuple<QueryScalarValue>);
+
+impl fmt::Display for QueryTuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
 
 impl From<StoreTuple> for QueryTuple {
     fn from(value: StoreTuple) -> Self {

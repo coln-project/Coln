@@ -69,6 +69,12 @@ impl From<&ir::ColType> for StoreScalarType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreTuple(pub(crate) Tuple<StoreScalarValue>);
 
+impl fmt::Display for StoreTuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
 pub trait WithRowId:
     Deref<Target = [Self::Scalar]>
     + IntoIterator<Item = Self::Scalar, IntoIter = std::vec::IntoIter<Self::Scalar>>

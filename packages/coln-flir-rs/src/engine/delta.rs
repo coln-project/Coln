@@ -7,13 +7,14 @@
 
 use crate::ir;
 use indexmap::{IndexMap, IndexSet};
+use specta::Type;
 use std::{fmt, marker::PhantomData};
 
 pub type ZWeight = i64;
 
 /// An update of a row of some table. It either represents an insertion or a
 /// deletion of a row from a table, see [`zweight`](Self::zweight()) documentation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Type)]
 pub struct ZRow<Tuple> {
     /// See [Self::zweight] documentation.
     zweight: ZWeight,
@@ -104,7 +105,7 @@ impl<Tuple: fmt::Display> fmt::Display for ZRow<Tuple> {
 }
 
 /// An update to some [entity](Self::for_entity()).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Type)]
 pub struct TableDelta<Tuple> {
     /// A unique identifier of an entity.
     entity: ir::Path,
@@ -201,6 +202,16 @@ impl<'a, Tuple> IntoIterator for &'a TableDelta<Tuple> {
     }
 }
 
+impl<Tuple: fmt::Display> fmt::Display for TableDelta<Tuple> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}:", self.entity)?;
+        for row in self.iter() {
+            writeln!(f, "  {row}")?;
+        }
+        Ok(())
+    }
+}
+
 /// A marker indicating that the [`TableDelta`]s stored in [`StoreDelta`]
 /// may be not [fully consolidated](StoreDelta::is_fully_consolidated()) but
 /// still partially consolidated. This means that subsequent insertions for the
@@ -219,17 +230,17 @@ impl<'a, Tuple> IntoIterator for &'a TableDelta<Tuple> {
 /// T2 w
 /// T1 x      // T2 prevents this one from being collapsed into the earlier T1.
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
 pub struct PartialConsolidated;
 /// A marker indicating that the [`TableDelta`]s stored in [`StoreDelta`]
 /// are guaranteed to be [fully consolidated](StoreDelta::is_fully_consolidated()).
 /// See [StoreDelta::consolidate()] for its meaning.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Type)]
 pub struct Consolidated;
 
 /// An update of the EDB or IDB, that is, insertions or deletions of either
 /// base or derived facts. The context determines of which exactly.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Type)]
 pub struct StoreDelta<Marker, Tuple> {
     inner: Vec<TableDelta<Tuple>>,
     marker: PhantomData<Marker>,
@@ -247,6 +258,9 @@ impl<Marker, Tuple> StoreDelta<Marker, Tuple> {
     }
     pub fn deltas(&self) -> &[TableDelta<Tuple>] {
         &self.inner
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &TableDelta<Tuple>> {
+        self.into_iter()
     }
     pub fn into_table_deltas(self) -> Vec<TableDelta<Tuple>> {
         self.inner
@@ -396,6 +410,25 @@ impl<Tuple> StoreDelta<PartialConsolidated, Tuple> {
 impl<Tuple> FromIterator<TableDelta<Tuple>> for StoreDelta<PartialConsolidated, Tuple> {
     fn from_iter<T: IntoIterator<Item = TableDelta<Tuple>>>(iter: T) -> Self {
         Self::new(iter)
+    }
+}
+
+impl<'a, Marker, Tuple> IntoIterator for &'a StoreDelta<Marker, Tuple> {
+    type Item = &'a TableDelta<Tuple>;
+    type IntoIter = std::slice::Iter<'a, TableDelta<Tuple>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.iter()
+    }
+}
+
+impl<Marker, Tuple: fmt::Display> fmt::Display for StoreDelta<Marker, Tuple> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Each `TableDelta` already ends its rows with a newline.
+        for table_delta in &self.inner {
+            write!(f, "{table_delta}")?;
+        }
+        Ok(())
     }
 }
 
