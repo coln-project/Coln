@@ -107,8 +107,8 @@ pub fn bouncer_from_ir(
 pub fn bouncer_from_commit_bytes(chunks: Vec<Uint8Array>) -> Result<Bouncer> {
     // TODO surface the soft violations of each applied commit once
     // `ViolationsDelta` is serializable.
-    let (bouncer, _violations) = bouncer::Bouncer::try_from_commit_bytes(&chunks)
-        .map_err(bouncer_error)?;
+    let (bouncer, _violations) =
+        bouncer::Bouncer::try_from_commit_bytes(&chunks).map_err(bouncer_error)?;
     Ok(Bouncer {
         inner: RefCell::new(bouncer),
     })
@@ -252,6 +252,8 @@ impl Bouncer {
     }
 }
 
+// Lives once behind an `Rc`, so the variant size difference costs nothing.
+#[allow(clippy::large_enum_variant)]
 enum Slot {
     Open {
         txn: BouncerWriteTxn<Prepare>,

@@ -14,7 +14,7 @@ use coln_flir_rs::{
     },
     hash::CommitHash,
     ir,
-    public::{PublicDerivedDataDelta, PublicRowId, PublicTuple, PublicViolations},
+    public::{PublicDerivedDataDelta, PublicRowId, PublicViolations},
 };
 use coln_query::api::{
     ColnQuery,
