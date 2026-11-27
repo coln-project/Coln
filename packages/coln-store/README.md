@@ -16,6 +16,25 @@ for the full command list (for example `.load`, `.schema`, `.rules`,
 
 ## Transaction
 
+Rust callers use `Store::begin_read()` for a consistent `ReadTxn` and
+`Store::begin_write()` to queue local operations. A `ReadTxn` owns its read lock
+and remains usable after the originating `Store` is dropped. Its `read()` method
+returns a borrowed `ReadView`; table handles and iterators borrow the protected
+data. Dropping the `ReadTxn` releases its lock. Schema changes return
+`StoreError::StoreInUse` while transactions still own the store's resources.
+
+A preparing write's `read()`
+excludes its queued operations. After `try_commit()`, `read()` returns the same
+read interface over tentatively applied data, borrowing the existing write lock
+without acquiring another lock. The prepared commit is not yet in the commit
+graph; use `prepared_hash()` for its hash.
+
+A pending write can install derived data with `apply_derived_view()` before
+`commit()` accepts its base and derived changes and releases the lock. `abort()`
+or dropping the pending write rolls both back. Borrowed read views prevent
+mutation or completion of the write until they are dropped. Commit batches expose
+the same read interface through `read()`.
+
 A **transaction** is a single multi-line statement: `begin transact;` … `commit;`. Each
 line inside is an `add` that may bind the new row id to a name (`name = add
 TABLE values (...);`). These ids are assigned by the storage layer and can then
@@ -93,6 +112,14 @@ analogous to git commits. Each transaction (as above) will be mapped to a commit
 which is internally stored as a node in the commit graph, which is a DAG. A commit
 consists of metadata such as the time it was created and any commit messages associated
 with it, along with its main body, which is the operations as defined in the transaction.
+
+`CommitGraph` requires one `RootCommit` at construction and stores data commits
+separately. `root_commit()` returns the root directly, `get_data()` looks up data
+commits, and `iter_topological()` visits data commits only. Membership checks include
+the root, and serialization writes the root before the ordered data commits.
+`Store::chunks_after()` returns parsed root and data chunks missing from the
+supplied heads' ancestry. With no supplied heads, it returns the root first,
+followed by all data commits in dependency order.
 
 Commits are currently mainly used in the (de)serialisation of the store. Here is
 a breakdown of what happens when the user asks to serialize the store to bytes

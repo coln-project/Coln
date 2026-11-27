@@ -4,8 +4,8 @@ export function createRealm(runtime: typeof Runtime) {
   return class TRealm {
     root: { V: Runtime.MutableProp };
 
-    constructor(mstore: Runtime.ManagedStore) {
-      this.root = { V: (new runtime.BaseProp(mstore, "root.V", [])) };
+    constructor(mbouncer: Runtime.ManagedBouncer) {
+      this.root = { V: (new runtime.BaseProp(mbouncer, "root.V", [])) };
     }
   };
 }

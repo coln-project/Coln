@@ -1,0 +1,18 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+use crate::{
+    ir::Path,
+    public::{PublicRowId, PublicTuple},
+};
+
+#[derive(Debug, Type, Serialize, Deserialize)]
+pub struct WhereClause {
+    pub table_name: Path,
+    pub row_id: Option<PublicRowId>,
+    pub values: PublicTuple, // A prefix of column values
+}

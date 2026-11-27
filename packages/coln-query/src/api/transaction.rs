@@ -2,18 +2,182 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! An interface for a [Transaction](Tx). A transaction can be in exactly one
-//! state of [Prepare], [Pending], [Committed], [Aborted], [Rejected].
+//! Data structures used to define an interface for a database [Transaction](Tx).
+//! A transaction can be in exactly one state of [Prepare], [Pending],
+//! [Committed], [Aborted], [Rejected].
+//!
+//! Key data structures for passing deltas of row-oriented data are [ZRowExt],
+//! [TableDelta], [StoreDelta], and [DerivedDataDelta]. A [transaction](Tx) is
+//! processed by a [`ColnQuery`].
 
 use super::{
-    deltas::{DerivedDataDelta, StoreDelta, TableDelta},
-    error::UnsafeApplyError,
-    store::TxStore,
+    ColnQuery, Engine, EngineGuard,
+    error::{ColnQueryError, UnsafeApplyError},
     violations::{ViolationsDelta, ViolationsSet},
 };
-use crate::api::deltas::Consolidated;
-pub use crate::utils::cli_table::{CliReport, ToCliReport};
+use crate::relational::TupleValue;
+use crate::scalarial::ScalarTypedValue;
+use crate::utils::cli_table::CliTableHeader;
+use crate::utils::cli_table::{
+    Cell, CellStruct, CliReport, CliTableRow, Justify, PositionalHeader, ToCliReport,
+    ZWeightedHeader,
+};
+use coln_flir_rs::engine::delta::Consolidated;
+pub use coln_flir_rs::engine::{
+    delta::{
+        PartialConsolidated, StoreDelta as StoreDeltaLib, TableDelta as TableDeltaLib, ZRow,
+        ZWeight,
+    },
+    query::{QueryScalarValue, QueryTuple},
+};
 use std::io;
+use std::iter;
+
+impl From<QueryScalarValue> for ScalarTypedValue {
+    fn from(value: QueryScalarValue) -> Self {
+        match value {
+            QueryScalarValue::U64(value) => ScalarTypedValue::Uint(value),
+            QueryScalarValue::U32(value) => ScalarTypedValue::Uint(value as u64), // TODO: More scalar types in query engine.
+            QueryScalarValue::I64(value) => ScalarTypedValue::Iint(value),
+            QueryScalarValue::I32(value) => ScalarTypedValue::Iint(value as i64), // TODO: More scalar types in query engine.
+            QueryScalarValue::String(value) => ScalarTypedValue::String(value),
+        }
+    }
+}
+
+impl From<ScalarTypedValue> for QueryScalarValue {
+    fn from(value: ScalarTypedValue) -> Self {
+        match value {
+            ScalarTypedValue::String(value) => QueryScalarValue::String(value),
+            ScalarTypedValue::Uint(value) => QueryScalarValue::U64(value),
+            ScalarTypedValue::Iint(value) => QueryScalarValue::I64(value),
+            ScalarTypedValue::Bool(_) | ScalarTypedValue::Char(_) | ScalarTypedValue::Null(_) => {
+                panic!("Query produced data type which is unsupported by coln")
+            }
+        }
+    }
+}
+
+impl From<QueryTuple> for TupleValue {
+    fn from(value: QueryTuple) -> Self {
+        value.into_iter().map(ScalarTypedValue::from).collect()
+    }
+}
+
+impl From<TupleValue> for QueryTuple {
+    fn from(value: TupleValue) -> Self {
+        value.data.into_iter().map(QueryScalarValue::from).collect()
+    }
+}
+
+/// This is the `ZRow` type coln-query receives and outputs externally, based
+/// on the [shared `ZRow` type](ZRow). Its tuple type is [`QueryTuple`].
+/// Internally, coln-query uses [`crate::relational::relation::ZRowInt`].
+pub type ZRowExt = ZRow<QueryTuple>;
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! zrow {
+    ( $zweight:literal [$($key:expr),* $(,)?]) => {{
+        let tuple = [$( QueryScalarValue::from($key) ),*].into_iter().collect::<QueryTuple>();
+        ZRowExt::new($zweight, tuple).expect("non-zero zweight")
+    }};
+}
+
+impl CliTableRow for TupleValue {
+    fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<> {
+        self.data
+            .iter()
+            .map(|field| {
+                let justification = match field {
+                    ScalarTypedValue::String(_) => Justify::Left,
+                    _ => Justify::Right,
+                };
+                field.to_string().cell().justify(justification)
+            })
+            // Collected so that the iterator owns its cells instead of
+            // borrowing the row it was built from.
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
+impl CliTableRow for QueryTuple {
+    fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<> {
+        self.inner()
+            .iter()
+            .map(|field| {
+                let justification = match field {
+                    QueryScalarValue::String(_) => Justify::Left,
+                    _ => Justify::Right,
+                };
+                field.to_string().cell().justify(justification)
+            })
+            // Collected so that the iterator owns its cells instead of
+            // borrowing the row it was built from.
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
+impl<Tuple: CliTableRow> CliTableRow for ZRow<Tuple> {
+    /// The `zweight` is prepended to the `row`.
+    fn as_cli_table_row(&self) -> impl Iterator<Item = CellStruct> + use<Tuple> {
+        iter::once(self.zweight().to_string().cell().justify(Justify::Right))
+            .chain(self.tuple().as_cli_table_row())
+    }
+}
+
+pub type TableDelta = TableDeltaLib<QueryTuple>;
+
+trait TableDeltaExt {
+    fn cli_table_header(&self) -> impl CliTableHeader;
+}
+
+impl TableDeltaExt for TableDelta {
+    /// A base table delta carries no schema, so its columns are numbered by
+    /// position, with the arity taken from the first row.
+    fn cli_table_header(&self) -> impl CliTableHeader {
+        let columns = self
+            .delta()
+            .first()
+            .map_or(0, |row| row.tuple().inner().arity());
+        ZWeightedHeader(PositionalHeader::new(columns))
+    }
+}
+
+impl ToCliReport for TableDelta {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::untitled();
+        report.section(
+            self.for_entity().to_string(),
+            self.cli_table_header(),
+            self.delta(),
+        )?;
+        Ok(report)
+    }
+}
+
+/// An update of the EDB, that is, insertions or deletions of base facts.
+///
+/// Ideally, there is at most one entry per table.
+pub type StoreDelta = StoreDeltaLib<PartialConsolidated, QueryTuple>;
+
+/// An update of the IDB, that is, insertions or deletions of derived facts.
+pub type DerivedDataDelta<Marker> = StoreDeltaLib<Marker, QueryTuple>;
+
+impl<Marker> ToCliReport for DerivedDataDelta<Marker> {
+    fn to_cli_report(&self) -> std::io::Result<CliReport> {
+        let mut report = CliReport::new("StoreDelta");
+        report.extend(
+            self.deltas()
+                .iter()
+                .map(|delta| delta.to_cli_report())
+                .collect::<std::io::Result<Vec<_>>>()?,
+        );
+        Ok(report)
+    }
+}
 
 /// The query engine's primary API is a transaction represented as a state
 /// machine with the following five states:
@@ -79,13 +243,17 @@ pub struct Prepare {
 /// Yet, the transaction awaits either an approval or an end user abort. Without
 /// an explicit approval, any state change caused by the transaction will be
 /// undone.
+///
+/// It holds [`ColnQuery`]'s engine exclusively until it is committed,
+/// aborted, or dropped, so another transaction meanwhile fails with
+/// [`ColnQueryError::TxAlreadyOpen`].
 #[derive(Debug)]
-pub struct Pending<'a, Store: TxStore> {
-    store: RollbackGuard<'a, Store>,
+pub struct Pending {
+    guard: RollbackGuard,
     delta: DataDelta,
 }
 
-/// Rolls the store back when dropped, unless it has been
+/// Rolls the engine back when dropped, unless it has been
 /// [`disarm`](Self::disarm)ed first. This is what makes the API foolproof: a
 /// caller who neither commits nor aborts gets the conservative outcome.
 ///
@@ -97,20 +265,35 @@ pub struct Pending<'a, Store: TxStore> {
 /// field. Confining `Drop` to the one field that actually needs it leaves
 /// `Pending` an ordinary struct that can be taken apart safely, and adding a
 /// field to it costs nothing.
-#[derive(Debug)]
-struct RollbackGuard<'a, Store: TxStore> {
-    store: &'a mut Store,
+///
+/// The engine's lock is released only after the rollback, as the guard's
+/// fields drop after its `drop` ran.
+struct RollbackGuard {
+    engine: EngineGuard,
     armed: bool,
 }
 
-impl<'a, Store: TxStore> RollbackGuard<'a, Store> {
-    fn armed(store: &'a mut Store) -> Self {
-        Self { store, armed: true }
+/// Implemented by hand, as the lock guard does not implement `Debug`.
+impl std::fmt::Debug for RollbackGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RollbackGuard")
+            .field("engine", &*self.engine)
+            .field("armed", &self.armed)
+            .finish()
     }
-    /// The store, with the guard left armed, so an operation that fails still
+}
+
+impl RollbackGuard {
+    fn armed(engine: EngineGuard) -> Self {
+        Self {
+            engine,
+            armed: true,
+        }
+    }
+    /// The engine, with the guard left armed, so an operation that fails still
     /// rolls back on the way out.
-    fn store(&mut self) -> &mut Store {
-        self.store
+    fn engine(&mut self) -> &mut Engine {
+        &mut self.engine
     }
     /// Stop the implicit rollback: from here on dropping the guard does nothing.
     fn disarm(&mut self) {
@@ -118,12 +301,12 @@ impl<'a, Store: TxStore> RollbackGuard<'a, Store> {
     }
 }
 
-impl<Store: TxStore> Drop for RollbackGuard<'_, Store> {
+impl Drop for RollbackGuard {
     fn drop(&mut self) {
         if self.armed {
             // Happens in best-effort manner to avoid panicking in Drop impls.
             // Possibly log the event, though.
-            let _ = self.store.rollback();
+            let _ = self.engine.rollback();
         }
     }
 }
@@ -174,8 +357,8 @@ pub struct Rejected {
 ///
 /// A monitored (soft) violation is tolerated and committed, so *that* set
 /// accumulates across transactions, and the engine reports it relative to what
-/// was already there: a positive [`ZWeight`](super::deltas::ZWeight) is a
-/// violation that appeared, a negative one a violation this transaction resolved.
+/// was already there: a positive [`ZWeight`] is a violation that appeared,
+/// a negative one a violation this transaction resolved.
 /// Which is the right shape, because the engine does not keep the set
 /// (the caller does, and a caller can only maintain one if needed).
 /// To know whether any monitored violation is currently outstanding,
@@ -202,6 +385,12 @@ impl DataDelta {
             soft_violations,
         }
     }
+    fn derived_data_delta(&self) -> &DerivedDataDelta<Consolidated> {
+        &self.derived
+    }
+    fn soft_violations(&self) -> &ViolationsDelta {
+        &self.soft_violations
+    }
     pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
         std::mem::take(&mut self.derived)
     }
@@ -221,13 +410,13 @@ impl TryFrom<TxOutcome> for DataDelta {
     }
 }
 
-pub enum TryCommitOk<'a, Store: TxStore> {
-    Pending(Tx<Pending<'a, Store>>),
+pub enum TryCommitOk {
+    Pending(Tx<Pending>),
     Rejected(Tx<Rejected>),
 }
 
 #[cfg(test)]
-impl<'a, Store: TxStore + std::fmt::Debug> TryCommitOk<'a, Store> {
+impl TryCommitOk {
     pub fn expect_pending_and_commit(self) -> Tx<Committed> {
         match self {
             TryCommitOk::Pending(pending) => pending.commit().expect("valid tx"),
@@ -250,13 +439,17 @@ impl<'a, Store: TxStore + std::fmt::Debug> TryCommitOk<'a, Store> {
 }
 
 #[derive(Debug, Clone)]
-pub enum TryCommitErr<Error> {
-    TxApplyError(Error),
-    RollbackError(Error),
+pub enum TryCommitErr {
+    /// Applying the transaction failed. Either another transaction is still
+    /// open ([`ColnQueryError::TxAlreadyOpen`]), which is the caller's to fix,
+    /// or the engine failed, which indicates a bug.
+    TxApplyError(ColnQueryError),
+    /// Rolling back a rejected transaction failed, which indicates a bug.
+    RollbackError(ColnQueryError),
 }
 
-impl<Error: std::error::Error + Send + Sync + 'static> From<TryCommitErr<Error>> for anyhow::Error {
-    fn from(value: TryCommitErr<Error>) -> Self {
+impl From<TryCommitErr> for anyhow::Error {
+    fn from(value: TryCommitErr) -> Self {
         match value {
             TryCommitErr::TxApplyError(err) | TryCommitErr::RollbackError(err) => {
                 anyhow::Error::new(err)
@@ -273,31 +466,37 @@ impl Tx<Prepare> {
             },
         }
     }
-    pub fn new(store_delta: StoreDelta) -> Self {
+    pub fn new(store_delta: impl Into<StoreDelta>) -> Self {
         Tx {
-            state: Prepare { delta: store_delta },
+            state: Prepare {
+                delta: store_delta.into(),
+            },
         }
     }
     /// Convenience method to add data beyond initialization.
     pub fn insert(&mut self, deltas: impl IntoIterator<Item = TableDelta>) {
         self.state.delta.extend(deltas);
     }
-    pub fn try_commit<'a, Store: TxStore>(
-        self,
-        store: &'a mut Store,
-    ) -> Result<TryCommitOk<'a, Store>, TryCommitErr<Store::Error>> {
-        match store
-            .apply(self.state.delta)
-            .map_err(TryCommitErr::TxApplyError)?
+    /// Runs the transaction on `query`'s engine and checks the hard
+    /// constraints. On success, the returned [`Pending`] transaction holds the
+    /// engine until it is committed or aborted; a [`Rejected`] one holds
+    /// nothing, as it is rolled back already.
+    pub fn try_commit(self, query: &ColnQuery) -> Result<TryCommitOk, TryCommitErr> {
+        let mut engine = query.lock().map_err(TryCommitErr::TxApplyError)?;
+        match engine
+            .apply(&query.flir_program, self.state.delta)
+            .map_err(|error| TryCommitErr::TxApplyError(error.into()))?
         {
             TxOutcome::DerivedDataDelta(delta) => Ok(TryCommitOk::Pending(Tx {
                 state: Pending {
-                    store: RollbackGuard::armed(store),
+                    guard: RollbackGuard::armed(engine),
                     delta,
                 },
             })),
             TxOutcome::HardViolationsSet(violations) => {
-                store.rollback().map_err(TryCommitErr::RollbackError)?;
+                engine
+                    .rollback()
+                    .map_err(|error| TryCommitErr::RollbackError(error.into()))?;
                 Ok(TryCommitOk::Rejected(Tx {
                     state: Rejected { violations },
                 }))
@@ -306,39 +505,62 @@ impl Tx<Prepare> {
     }
 }
 
-impl<Store: TxStore> Tx<Pending<'_, Store>> {
-    pub fn commit(self) -> Result<Tx<Committed>, Store::Error> {
+impl Tx<Pending> {
+    pub fn commit(self) -> Result<Tx<Committed>, ColnQueryError> {
         // Plain destructuring: `Pending` has no `Drop` of its own, only its
         // guard field has.
-        let Pending { mut store, delta } = self.state;
+        let Pending { mut guard, delta } = self.state;
         // The guard stays armed across the commit, so a commit that fails is
         // undone when the guard drops on the way out — a half-committed
         // transaction is never left behind. Only a commit that succeeded has
         // nothing left to undo.
-        store.store().commit()?;
-        store.disarm();
+        guard.engine().commit()?;
+        guard.disarm();
         Ok(Tx {
             state: Committed { delta },
         })
     }
-    pub fn abort(self) -> Result<Tx<Aborted>, Store::Error> {
+    pub fn abort(self) -> Result<Tx<Aborted>, ColnQueryError> {
         // The two deltas are simply dropped here, as an aborted transaction has
         // no results to report.
-        let Pending { mut store, .. } = self.state;
+        let Pending { mut guard, .. } = self.state;
         // Disarmed *before* the rollback, unlike [`commit`](Self::commit) above:
         // the guard's own job is to roll back, so leaving it armed here would
         // only retry — inside a destructor, and with the error already reported —
         // an operation that just failed.
-        store.disarm();
-        store.store().rollback()?;
+        guard.disarm();
+        guard.engine().rollback()?;
         Ok(Tx { state: Aborted {} })
     }
 }
 
-impl Tx<Committed> {
+impl Tx<Pending> {
+    pub fn derived_data_delta(&self) -> &DerivedDataDelta<Consolidated> {
+        self.state.delta.derived_data_delta()
+    }
+    pub fn soft_violations(&self) -> &ViolationsDelta {
+        self.state.delta.soft_violations()
+    }
+    /// Takes the derived data delta caused by this transaction.
+    ///
+    /// Note that the data is then also gone in the [`Committed`] state.
     pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
         self.state.delta.take_derived_data_delta()
     }
+    /// Takes the soft violations caused by this transaction.
+    ///
+    /// Note that the data is then also gone in the [`Committed`] state.
+    pub fn take_soft_violations(&mut self) -> ViolationsDelta {
+        self.state.delta.take_soft_violations()
+    }
+}
+
+impl Tx<Committed> {
+    /// Takes the derived data delta caused by this transaction.
+    pub fn take_derived_data_delta(&mut self) -> DerivedDataDelta<Consolidated> {
+        self.state.delta.take_derived_data_delta()
+    }
+    /// Takes the soft violations caused by this transaction.
     pub fn take_soft_violations(&mut self) -> ViolationsDelta {
         self.state.delta.take_soft_violations()
     }
@@ -368,7 +590,7 @@ impl ToCliReport for Prepare {
     }
 }
 
-impl<'a, Store: TxStore> ToCliReport for Pending<'a, Store> {
+impl ToCliReport for Pending {
     fn to_cli_report(&self) -> io::Result<CliReport> {
         let mut report = CliReport::new("Pending");
         report.nest(self.delta.to_cli_report()?);

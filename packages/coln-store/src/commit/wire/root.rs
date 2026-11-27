@@ -2,11 +2,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::{commit::error::CodecError, store::ColnDef};
-use coln_flir_rs::ir::FlatRealm;
+use coln_flir_rs::{engine::schema::ColnDef, ir::FlatRealm};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+use crate::commit::error::CodecError;
+
+#[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct RootCommitData {
     pub(crate) ir: FlatRealm,
     pub(crate) coln_def: ColnDef,

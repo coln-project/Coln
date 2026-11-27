@@ -8,10 +8,10 @@ export function createRealm(runtime: typeof Runtime) {
       next: (a: Runtime.RowId<"root.X">) => Runtime.MutableRef<null>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
-        Y: (new runtime.BaseProp(mstore, "root.Y", [])),
+        X: (new runtime.BaseSet(mbouncer, "root.X", [])),
+        Y: (new runtime.BaseProp(mbouncer, "root.Y", [])),
         next: (a: Runtime.RowId<"root.X">) => {
           return (new runtime.ConstRef(null));
         }

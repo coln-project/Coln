@@ -4,15 +4,14 @@
 
 use std::{collections::BTreeSet, error::Error, net::SocketAddr, sync::Arc, time::Duration};
 
+use coln_flir_rs::engine::packed::{StoreScalarValue, WithRowId};
+use coln_flir_rs::engine::schema::ColnDef;
+use coln_flir_rs::hash::CommitHash;
 use coln_flir_rs::ir::{
     BuiltinTy, ColType, ColumnEntry, EntityVariant, FlatRealm, Path, Schema, TableEntry,
 };
-use coln_store::{
-    commit::hash::CommitHash,
-    store::{ColnDef, Store, frag::FragmentSync},
-    table::WireValue,
-    txn::rw::StoreWrite,
-};
+use coln_store::store::txn::ReadTxnable;
+use coln_store::{IdLookup, store::Store};
 use future_form::Sendable;
 use rstest::{fixture, rstest};
 use sedimentree_core::{
@@ -21,7 +20,7 @@ use sedimentree_core::{
     loose_commit::{LooseCommit, id::CommitId},
 };
 use subduction_core::{
-    authenticated::Authenticated,
+    authenticated::{Authenticated, Direction},
     connection::test_utils::{ChannelTransport, InstantTimeout, TokioSpawn as ChannelTokioSpawn},
     handshake::audience::Audience,
     peer::id::PeerId,
@@ -70,7 +69,7 @@ fn empty_coln_def() -> ColnDef {
 }
 
 fn root_hash(store: &Store) -> CommitHash {
-    store.commits().root_commit().expect("root commit").hash()
+    store.begin_read().fragments_after(&[])[0].hash
 }
 
 fn commit_id(hash: CommitHash) -> CommitId {
@@ -82,14 +81,18 @@ fn sedimentree_id(store: &Store) -> SedimentreeId {
 }
 
 fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i32)> {
-    let table = store.table_at(&Path::from("T")).expect("T table");
+    let read = store.begin_read();
+    let table = read.table_at(&Path::from("T")).expect("T table");
+    let lookup = read.id_lookup();
     table
         .scan()
         .map(|row| {
-            let id = row.row_id;
-            let value = match &row.values[0] {
-                WireValue::Int(value) => *value,
-                other => panic!("expected int cell, got {other:?}"),
+            let id = lookup
+                .unpacked(&row.row_id())
+                .expect("row id commit is interned");
+            let value = match row.values() {
+                [StoreScalarValue::I32(value)] => *value,
+                other => panic!("expected a single int cell, got {other:?}"),
             };
             (id.commit, id.counter, value)
         })
@@ -97,9 +100,9 @@ fn row_values(store: &Store) -> BTreeSet<(CommitHash, u32, i32)> {
 }
 
 fn add_row(store: &mut Store, value: i32) -> Result<CommitHash, Box<dyn Error>> {
-    let mut tx = store.transaction();
+    let mut tx = store.begin_write();
     tx.add(&Path::from("T"), vec![value])?;
-    tx.commit().map_err(Into::into)
+    Ok(tx.try_commit()?.commit().commit_hash())
 }
 
 async fn publish_new_commits(
@@ -111,7 +114,8 @@ async fn publish_new_commits(
     <MemoryStorage as Storage<Sendable>>::save_sedimentree_id(storage, sedimentree_id).await?;
 
     let have_heads = [root_hash(store)];
-    for chunk in store.commit_chunks_after(&have_heads) {
+    let chunks = store.begin_read().fragments_after(&have_heads);
+    for chunk in chunks {
         let blob = Blob::new(chunk.bytes);
         let verified_blob = VerifiedBlobMeta::new(blob);
         let head = commit_id(chunk.hash);
@@ -121,7 +125,7 @@ async fn publish_new_commits(
             (sedimentree_id, head, parents),
             verified_blob,
         )
-        .await;
+        .await?;
 
         <MemoryStorage as Storage<Sendable>>::save_loose_commit(storage, sedimentree_id, verified)
             .await?;
@@ -165,8 +169,8 @@ async fn subduction_storage_can_exchange_coln_commit_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left);
 
     let left_commit = add_row(&mut left, 1)?;
@@ -186,8 +190,8 @@ async fn subduction_storage_can_exchange_coln_commit_chunks(
     let left_received = load_coln_chunk_bytes(&left_storage, sedimentree_id).await?;
     let right_received = load_coln_chunk_bytes(&right_storage, sedimentree_id).await?;
 
-    left.apply_chunk_bytes(left_received)?;
-    right.apply_chunk_bytes(right_received)?;
+    left.apply_chunk_bytes_plain(left_received)?;
+    right.apply_chunk_bytes_plain(right_received)?;
 
     assert_eq!(row_values(&left), row_values(&right));
     assert_eq!(
@@ -195,11 +199,18 @@ async fn subduction_storage_can_exchange_coln_commit_chunks(
         BTreeSet::from([(left_commit, 0, 1), (right_commit, 0, 2)])
     );
     assert_eq!(
-        left.heads().into_iter().collect::<BTreeSet<_>>(),
+        left.begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         BTreeSet::from([left_commit, right_commit])
     );
     assert_eq!(
-        right.heads().into_iter().collect::<BTreeSet<_>>(),
+        right
+            .begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         BTreeSet::from([left_commit, right_commit])
     );
 
@@ -213,8 +224,8 @@ async fn subduction_sync_coln_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left_store = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
 
     let left_commit = add_row(&mut left_store, 1)?;
@@ -249,6 +260,7 @@ async fn subduction_sync_coln_chunks(
         .add_connection(Authenticated::new_for_test(
             MessageTransport::new(left_transport),
             right_sd.peer_id(),
+            Direction::Dialed,
         ))
         .await?;
 
@@ -256,14 +268,17 @@ async fn subduction_sync_coln_chunks(
         .add_connection(Authenticated::new_for_test(
             MessageTransport::new(right_transport),
             left_sd.peer_id(),
+            Direction::Accepted,
         ))
         .await?;
 
+    let left_chunks = left_store
+        .begin_read()
+        .fragments_after(&[root_hash(&left_store)]);
     left_sd
         .add_commits_batch(
             sedimentree_id,
-            left_store
-                .commit_chunks_after(&[root_hash(&left_store)])
+            left_chunks
                 .into_iter()
                 .map(|chunk| {
                     (
@@ -277,11 +292,13 @@ async fn subduction_sync_coln_chunks(
         )
         .await?;
 
+    let right_chunks = right_store
+        .begin_read()
+        .fragments_after(&[root_hash(&right_store)]);
     right_sd
         .add_commits_batch(
             sedimentree_id,
-            right_store
-                .commit_chunks_after(&[root_hash(&right_store)])
+            right_chunks
                 .into_iter()
                 .map(|chunk| {
                     (
@@ -321,8 +338,8 @@ async fn subduction_sync_coln_chunks(
         .await?
         .unwrap();
 
-    left_store.apply_chunk_bytes(left_blobs.into_iter().map(|b| b.into_contents()))?;
-    right_store.apply_chunk_bytes(right_blobs.into_iter().map(|b| b.into_contents()))?;
+    left_store.apply_chunk_bytes_plain(left_blobs.into_iter().map(|b| b.into_contents()))?;
+    right_store.apply_chunk_bytes_plain(right_blobs.into_iter().map(|b| b.into_contents()))?;
 
     assert_eq!(row_values(&left_store), row_values(&right_store));
     assert_eq!(
@@ -330,11 +347,19 @@ async fn subduction_sync_coln_chunks(
         BTreeSet::from([(left_commit, 0, 1), (right_commit, 0, 2)])
     );
     assert_eq!(
-        left_store.heads().into_iter().collect::<BTreeSet<_>>(),
+        left_store
+            .begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         BTreeSet::from([left_commit, right_commit])
     );
     assert_eq!(
-        right_store.heads().into_iter().collect::<BTreeSet<_>>(),
+        right_store
+            .begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         BTreeSet::from([left_commit, right_commit])
     );
     tokio::task::spawn_blocking(move || drop((left_store, right_store))).await?;
@@ -349,8 +374,8 @@ async fn subduction_websocket_sync_coln_chunks(
     int_theory: FlatRealm,
     empty_coln_def: ColnDef,
 ) -> Result<(), Box<dyn Error>> {
-    let mut left_store = Store::try_from_ir(int_theory.clone(), empty_coln_def.clone())?;
-    let mut right_store = Store::try_from_ir(int_theory, empty_coln_def)?;
+    let mut left_store = Store::try_from_ir(&int_theory, empty_coln_def.clone())?;
+    let mut right_store = Store::try_from_ir(&int_theory, empty_coln_def)?;
     let sedimentree_id = sedimentree_id(&left_store);
     assert_eq!(root_hash(&left_store).0, root_hash(&right_store).0);
 
@@ -433,11 +458,13 @@ async fn subduction_websocket_sync_coln_chunks(
     });
     right_sd.add_connection(right_connection).await?;
 
+    let left_chunks = left_store
+        .begin_read()
+        .fragments_after(&[root_hash(&left_store)]);
     left_sd
         .add_commits_batch(
             sedimentree_id,
-            left_store
-                .commit_chunks_after(&[root_hash(&left_store)])
+            left_chunks
                 .into_iter()
                 .map(|chunk| {
                     (
@@ -451,11 +478,13 @@ async fn subduction_websocket_sync_coln_chunks(
         )
         .await?;
 
+    let right_chunks = right_store
+        .begin_read()
+        .fragments_after(&[root_hash(&right_store)]);
     right_sd
         .add_commits_batch(
             sedimentree_id,
-            right_store
-                .commit_chunks_after(&[root_hash(&right_store)])
+            right_chunks
                 .into_iter()
                 .map(|chunk| {
                     (
@@ -514,8 +543,8 @@ async fn subduction_websocket_sync_coln_chunks(
         .await?
         .unwrap();
 
-    left_store.apply_chunk_bytes(left_blobs.into_iter().map(|b| b.into_contents()))?;
-    right_store.apply_chunk_bytes(right_blobs.into_iter().map(|b| b.into_contents()))?;
+    left_store.apply_chunk_bytes_plain(left_blobs.into_iter().map(|b| b.into_contents()))?;
+    right_store.apply_chunk_bytes_plain(right_blobs.into_iter().map(|b| b.into_contents()))?;
 
     assert_eq!(row_values(&left_store), row_values(&right_store));
     assert_eq!(
@@ -523,11 +552,19 @@ async fn subduction_websocket_sync_coln_chunks(
         BTreeSet::from([(left_commit, 0, 1), (right_commit, 0, 2)])
     );
     assert_eq!(
-        left_store.heads().into_iter().collect::<BTreeSet<_>>(),
+        left_store
+            .begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         BTreeSet::from([left_commit, right_commit])
     );
     assert_eq!(
-        right_store.heads().into_iter().collect::<BTreeSet<_>>(),
+        right_store
+            .begin_read()
+            .heads()
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
         BTreeSet::from([left_commit, right_commit])
     );
 

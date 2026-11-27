@@ -12,17 +12,17 @@ export function createRealm(runtime: typeof Runtime) {
       edge: (x: Runtime.RowId<"root.A">) => Runtime.MutableRef<Runtime.RowId<"root.E">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        A: (new runtime.BaseSet(mstore, "root.A", [])),
-        B: (new runtime.BaseSet(mstore, "root.B", [])),
-        C: (new runtime.BaseSet(mstore, "root.C", [])),
+        A: (new runtime.BaseSet(mbouncer, "root.A", [])),
+        B: (new runtime.BaseSet(mbouncer, "root.B", [])),
+        C: (new runtime.BaseSet(mbouncer, "root.C", [])),
         E: (a: Runtime.RowId<"root.C">) => {
-          return (new runtime.BaseSet(mstore, "root.E", [a]));
+          return (new runtime.BaseSet(mbouncer, "root.E", [a]));
         },
         first: (a: Runtime.RowId<"root.A">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.first",
             [a],
             [1, 2],
@@ -30,9 +30,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.B">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.B"
                 ));
               }
@@ -41,7 +41,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         second: (a: Runtime.RowId<"root.B">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.second",
             [a],
             [1, 2],
@@ -49,9 +49,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.C">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.C"
                 ));
               }
@@ -60,7 +60,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         edge: (x: Runtime.RowId<"root.A">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.edge",
             [x],
             [1, 2],
@@ -68,9 +68,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.E">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.E"
                 ));
               }

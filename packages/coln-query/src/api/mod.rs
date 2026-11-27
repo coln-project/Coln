@@ -7,42 +7,45 @@
 
 use crate::{
     api::{
-        deltas::{DerivedDataDelta, StoreDelta, TableDelta, ZRowIterExt},
         error::ColnQueryError,
-        store::TxStore,
-        transaction::{DataDelta, TxOutcome},
+        transaction::{DataDelta, DerivedDataDelta, StoreDelta, TableDelta, TxOutcome},
         violations::{ViolationsDelta, ViolationsSet},
     },
     error::{QueryEngineError, RuntimeError},
     pipeline::Pipeline,
-    relational::{Runtime, expr::SourceId, incremental::DbspRuntime},
+    relational::{Runtime, TupleValue, expr::SourceId, incremental::DbspRuntime},
 };
-use coln_flir_rs::ir::{self, FlatRealm};
+use coln_flir_rs::{
+    engine::query::QueryTuple,
+    ir::{self, FlatRealm},
+};
+use parking_lot::{ArcMutexGuard, Mutex, RawMutex};
 use query::FlirProgram;
+use std::sync::Arc;
 
-pub mod deltas;
 pub mod error;
 pub mod query;
-mod store;
 pub mod transaction;
 pub mod violations;
 
-/// The main entrypoint for coln-store.
+/// The main entrypoint for coln-store as a handle to operate upon.
 ///
-/// Keeps the program next to the runnable artifact built from it, because
-/// [`take_code`](crate::program::QueryProgram::take_code) empties a program's
-/// *statements* while leaving its per-rule metadata behind which is what says
-/// whether a violated rule aborts a transaction or merely warns,
-/// and what schema to rebuild a [`TableDelta`] by.
+/// The mutable [`Engine`] is behind a lock to enforce at most one
+/// [transaction](transaction::Tx) at a time:
+/// A [`Pending`](transaction::Pending) transaction holds the
+/// lock until it is committed or aborted, and another transaction meanwhile
+/// fails with [`ColnQueryError::TxAlreadyOpen`] rather than blocking.
+///
+/// The immutable [program](FlirProgram) is kept for its metadata which (among
+/// other things) says whether a violated law aborts a transaction or merely
+/// warns, and what schema to rebuild a [`TableDelta`] by.
 /// It doubles as the [`Catalog`](crate::relational::catalog::Catalog)
-/// an ad-hoc query is compiled against.
-#[derive(Debug)]
+/// an ad-hoc query is compiled against, which is why it is not behind the
+/// engine's lock, as an ad-hoc query does not touch the (incremental) engine.
+#[derive(Debug, Clone)]
 pub struct ColnQuery {
-    flir_program: FlirProgram,
-    /// The standing incremental computation over every rule declared at init.
-    incremental_runtime: DbspRuntime,
-    /// If a transaction is currently being applied, this is `Some(StoreDelta)`.
-    ongoing_tx: Option<StoreDelta>,
+    flir_program: Arc<FlirProgram>,
+    engine: Arc<Mutex<Engine>>,
 }
 
 impl ColnQuery {
@@ -54,10 +57,19 @@ impl ColnQuery {
     fn with_flir_program(mut flir_program: FlirProgram) -> Result<Self, QueryEngineError> {
         let incremental_runtime = Pipeline::incremental().runtime(&mut flir_program)?;
         Ok(Self {
-            flir_program,
-            incremental_runtime,
-            ongoing_tx: None,
+            flir_program: Arc::new(flir_program),
+            engine: Arc::new(Mutex::new(Engine {
+                incremental_runtime,
+                ongoing_tx: None,
+            })),
         })
+    }
+    /// Take the engine for one transaction, failing instead of blocking if
+    /// another one holds it.
+    fn lock(&self) -> Result<EngineGuard, ColnQueryError> {
+        self.engine
+            .try_lock_arc()
+            .ok_or(ColnQueryError::TxAlreadyOpen)
     }
     /// Compile one ad-hoc query and evaluate it on the batch backend.
     ///
@@ -66,7 +78,7 @@ impl ColnQuery {
     /// What comes back is a [`Snapshot`](crate::relational::batch::Snapshot)
     /// and not a [`Delta`](crate::relational::incremental::dbsp::DbspOutputDelta):
     /// there is no previous state of an ad-hoc query for a delta to be relative to.
-    fn adhoc_query(&mut self, query: Vec<ir::Prop>) -> Result<(), QueryEngineError> {
+    fn adhoc_query(&self, query: Vec<ir::Prop>) -> Result<(), QueryEngineError> {
         // ```ignore
         // pub fn adhoc_query(
         //     &mut self,
@@ -110,15 +122,67 @@ impl ColnQuery {
     /// violated without notice. If this returns an `Err`, the engine is in
     /// an unrecoverable state and it indicates a genuine bug. [`ColnQuery`]
     /// has to be recreated to recover from this.
-    pub fn unsafe_apply(&mut self, delta: StoreDelta) -> Result<DataDelta, ColnQueryError> {
+    pub fn unsafe_apply(&self, delta: StoreDelta) -> Result<DataDelta, ColnQueryError> {
+        let mut engine = self.lock()?;
+        engine.internal_apply(delta)?;
+        Ok(DataDelta::try_from(
+            engine.interpret_outputs(&self.flir_program)?,
+        )?)
+    }
+}
+
+/// Exclusive access to the [`Engine`] which does not borrow the [`ColnQuery`]
+/// handle it came from.
+type EngineGuard = ArcMutexGuard<RawMutex, Engine>;
+
+/// The state a [transaction](transaction::Tx) mutates.
+#[derive(Debug)]
+struct Engine {
+    /// The standing incremental computation over every rule declared at init.
+    incremental_runtime: DbspRuntime,
+    /// If a transaction is currently being applied, this is `Some(StoreDelta)`.
+    ongoing_tx: Option<StoreDelta>,
+}
+
+impl Engine {
+    /// Executes and applies the transaction given by the updates in `delta`,
+    /// remembering it to [`rollback`](Self::rollback) if need be.
+    fn apply(
+        &mut self,
+        flir_program: &FlirProgram,
+        delta: StoreDelta,
+    ) -> Result<TxOutcome, QueryEngineError> {
+        self.ongoing_tx = Some(delta.clone());
         self.internal_apply(delta)?;
-        Ok(DataDelta::try_from(self.interpret_outputs()?)?)
+        self.interpret_outputs(flir_program)
+    }
+    /// Undoes the last transaction by rolling back every state change caused
+    /// by that transaction. Should only fail in exceptional circumstances.
+    fn rollback(&mut self) -> Result<(), QueryEngineError> {
+        let retracted_delta = if let Some(tx) = self.ongoing_tx.take() {
+            tx.retract()
+        } else {
+            return Ok(());
+        };
+        self.internal_apply(retracted_delta)?;
+        self.discard_outputs();
+        Ok(())
+    }
+    /// Commits the last transaction. Currently, it only forgets what a
+    /// rollback would need, but committing may do more in the future, e.g.,
+    /// persisting state, which is why it is fallible.
+    fn commit(&mut self) -> Result<(), QueryEngineError> {
+        self.ongoing_tx = None;
+        Ok(())
     }
     fn internal_apply(&mut self, delta: StoreDelta) -> Result<(), QueryEngineError> {
         for delta in delta.into_table_deltas() {
-            let source_id = SourceId::from(delta.for_entity());
-            let delta = delta.into_delta().into_iter();
-            let effective = self.incremental_runtime.feed(&source_id, delta)?;
+            let (entity, delta) = delta.into_parts();
+            let source_id = SourceId::from(entity.0);
+            let effective = self.incremental_runtime.feed(
+                &source_id,
+                delta.into_iter().map(|zrow| zrow.map(TupleValue::from)),
+            )?;
             if !effective {
                 // TODO: Find a solution for logging.
                 println!("Delta references unknown source '{}'", source_id);
@@ -132,7 +196,10 @@ impl ColnQuery {
     fn discard_outputs(&self) {
         for (_sink_id, _delta) in self.incremental_runtime.all_outputs() {}
     }
-    fn interpret_outputs(&mut self) -> Result<TxOutcome, QueryEngineError> {
+    fn interpret_outputs(
+        &mut self,
+        flir_program: &FlirProgram,
+    ) -> Result<TxOutcome, QueryEngineError> {
         let mut hard_violations = ViolationsSet::empty();
         let mut soft_violations = ViolationsDelta::empty();
         let mut derived_data_delta = DerivedDataDelta::empty();
@@ -141,27 +208,28 @@ impl ColnQuery {
         // ongoing commit and they don't leak into the next commit.
         let drained: Vec<_> = self.incremental_runtime.all_outputs().collect();
         for (sink_id, delta) in drained {
-            let delta = TableDelta::new(sink_id, delta.view().to_zrows());
+            let delta = TableDelta::new(
+                ir::Path::from(&sink_id.0),
+                delta
+                    .view()
+                    .to_zrows()
+                    .map(|zrow| zrow.map(QueryTuple::from)),
+            );
             if delta.is_empty() {
                 // The sink has not reported anything in this iteration.
                 continue;
             }
-            if let Some(derived_view_meta) = self.flir_program.logical().derived_view_meta(sink_id)
-            {
+            if let Some(derived_view_meta) = flir_program.logical().derived_view_meta(sink_id) {
                 // Safety: Due to every sink being unique, we have at most one
                 // TableDelta per output entity.
                 derived_data_delta.unsafe_extend(Some(delta));
             } else {
-                let sink_meta = self
-                    .flir_program
-                    .logical()
-                    .law_meta(sink_id)
-                    .ok_or_else(|| {
-                        RuntimeError::new(format!(
-                            "Bug: FLIR program does not know output sink {}",
-                            sink_id
-                        ))
-                    })?;
+                let sink_meta = flir_program.logical().law_meta(sink_id).ok_or_else(|| {
+                    RuntimeError::new(format!(
+                        "Bug: FLIR program does not know output sink {}",
+                        sink_id
+                    ))
+                })?;
                 match sink_meta.kind() {
                     // How to deal with the schema mismatch between coln-query,
                     // coln-store, and coln-compiler? Reporting may require the
@@ -176,7 +244,7 @@ impl ColnQuery {
                         // circuit without checking: `unsafe_apply` returning an
                         // `UnsafeApplyError` is the one that can.
                         debug_assert!(
-                            delta.iter().retractions().next().is_none(),
+                            delta.iter().find(|zrow| zrow.is_retraction()).is_none(),
                             "enforced rule {} retracts a violation it never reported",
                             delta.for_entity()
                         );
@@ -198,7 +266,7 @@ impl ColnQuery {
             return Ok(TxOutcome::HardViolationsSet(hard_violations));
         }
         // At least be warned if output deltas are not consolidated.
-        debug_assert!(derived_data_delta.is_consolidated());
+        debug_assert!(derived_data_delta.is_fully_consolidated());
         Ok(TxOutcome::DerivedDataDelta(DataDelta::new(
             derived_data_delta,
             soft_violations,
@@ -206,73 +274,47 @@ impl ColnQuery {
     }
 }
 
-impl TxStore for ColnQuery {
-    type Error = ColnQueryError;
-
-    fn apply(&mut self, delta: StoreDelta) -> Result<TxOutcome, Self::Error> {
-        // Prepare to potentially undo the transaction.
-        self.ongoing_tx = Some(delta.clone());
-        self.internal_apply(delta)?;
-        self.interpret_outputs().map_err(ColnQueryError::from)
-    }
-
-    fn rollback(&mut self) -> Result<(), Self::Error> {
-        let retracted_delta = if let Some(tx) = self.ongoing_tx.take() {
-            tx.retract()
-        } else {
-            return Ok(());
-        };
-        self.internal_apply(retracted_delta)?;
-        self.discard_outputs();
-        Ok(())
-    }
-
-    fn commit(&mut self) -> Result<(), Self::Error> {
-        self.ongoing_tx = None;
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{
-        api::{
-            deltas::{TableDelta, ZRow},
-            transaction::{ToCliReport, TryCommitErr, TryCommitOk, Tx},
-        },
-        relational::TupleValue,
-        scalarial::ScalarTypedValue,
+        api::transaction::{QueryScalarValue, TableDelta, TryCommitErr, TryCommitOk, Tx, ZRowExt},
         test_utils::{
             self,
             flir::{self, Flir, JsonFlir},
         },
+        utils::cli_table::ToCliReport,
         zrow,
     };
     use anyhow::{Error, Result};
 
-    /// @Vincent, does this API work for you?
     fn main_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
             definitions: vec![],
             rules: vec![],
         };
-        let mut coln_query = ColnQuery::init(&flat_realm)?;
+        let coln_query = ColnQuery::init(&flat_realm)?;
 
-        let mut tx = Tx::new(StoreDelta::empty());
+        let mut tx = Tx::empty();
         // You can add deltas for tables until you call try_commit() on the tx.
         tx.insert(std::iter::once(TableDelta::new("SomeTable", [])));
 
         // If you are ready, try committing the transaction and pass in the handle:
-        match tx.try_commit(&mut coln_query) {
+        match tx.try_commit(&coln_query) {
             Ok(TryCommitOk::Pending(pending)) => {
+                // To peek at the data (without taking it) for presenting it to
+                // the user. You can also take the data out here early using the
+                // `take_*` methods but then the `Committed` state does not have
+                // it anymore.
+                let derived_data_delta = pending.derived_data_delta();
+                let soft_violations = pending.soft_violations();
                 // Call either commit or abort on `pending`. If commit() isn't
                 // called the tx is rolled back upon dropping `pending`!
                 let mut committed = pending.commit()?;
                 // This is how you can access the results:
                 let derived_data_delta = committed.take_derived_data_delta();
-                let monitored_constraints = committed.take_soft_violations();
+                let soft_violations = committed.take_soft_violations();
                 // Commit the tx in coln-store, too, and call it a day :)
                 //
                 // If for some reason you don't want to commit the transaction
@@ -290,6 +332,10 @@ mod test {
                 // sync and report back the violations:
                 let violations = rejected.take_hard_violations();
             }
+            Err(TryCommitErr::TxApplyError(ColnQueryError::TxAlreadyOpen)) => {
+                // Another `Tx<Pending>` of this `ColnQuery` (or one of its
+                // clones) has neither been committed nor aborted yet.
+            }
             // The next two can also be combined, as they share the same error
             // type and should be considered a bug, I guess.
             // Err(TryCommitErr::TxApplyError(err)) | Err(TryCommitErr::RollbackError(err)) => {}
@@ -304,14 +350,13 @@ mod test {
         Ok(())
     }
 
-    /// @Vincent, does this API work for you?
     fn restart_usage() -> Result<(), Error> {
         let flat_realm = FlatRealm {
             tables: vec![],
             definitions: vec![],
             rules: vec![],
         };
-        let mut coln_query = ColnQuery::init(&flat_realm)?;
+        let coln_query = ColnQuery::init(&flat_realm)?;
 
         // In a previous session all data we feed in here must have gone through
         // the transaction dance shown above. Make sure to feed in the whole DB
@@ -342,13 +387,13 @@ mod test {
         let mut driver = Flir::<GraphRealm>::new();
         let flat_realm = driver.load();
         let flir_program = FlirProgram::from_flat_realm(&flat_realm)?;
-        let mut coln_query = ColnQuery::with_flir_program(flir_program)?;
+        let coln_query = ColnQuery::with_flir_program(flir_program)?;
 
         let mut tx0 = Tx::empty();
         let [v0, v1, v2] = [(); 3].map(|()| driver.insert(Vertex::new));
         tx0.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx0\n{}", tx0.to_cli_report()?);
-        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx0 = tx0.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         assert!(tx0.take_derived_data_delta().is_empty());
         assert!(tx0.take_soft_violations().is_empty());
@@ -358,7 +403,7 @@ mod test {
         driver.insert(|row_id| Edge::new(row_id, &v1, &v2));
         tx1.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx1\n{}", tx1.to_cli_report()?);
-        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx1 = tx1.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         let derived_data_delta = tx1.take_derived_data_delta();
         assert_eq!(derived_data_delta.size(), 2);
@@ -390,26 +435,26 @@ mod test {
         driver.insert(|row_id| Edge::new(row_id, dangling_row_id_1, dangling_row_id_2));
         tx2.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx2\n{}", tx2.to_cli_report()?);
-        let mut tx2 = tx2.try_commit(&mut coln_query)?.expect_rejected();
+        let mut tx2 = tx2.try_commit(&coln_query)?.expect_rejected();
         println!("> Tx2\n{}", tx2.to_cli_report()?);
         let violations = tx2.take_hard_violations();
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "root.E.foreignKey");
+        assert_eq!(violation.for_entity(), "root.E.foreignKey");
         assert_eq!(violation.delta().len(), 3);
 
         let mut tx3 = Tx::empty();
         driver.insert(|row_id| Edge::new(row_id, &v0, &v_rollback));
         tx3.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx3\n{}", tx3.to_cli_report()?);
-        let mut tx3 = tx3.try_commit(&mut coln_query)?.expect_rejected();
+        let mut tx3 = tx3.try_commit(&coln_query)?.expect_rejected();
         println!("> Tx3\n{}", tx3.to_cli_report()?);
         let violations = tx3.take_hard_violations();
         let violations = violations.into_inner();
         assert_eq!(violations.len(), 1);
         let violation = &violations[0];
-        assert_eq!(violation.for_entity().id(), "root.E.foreignKey");
+        assert_eq!(violation.for_entity(), "root.E.foreignKey");
         assert_eq!(violation.delta().len(), 1);
 
         Ok(())
@@ -420,7 +465,7 @@ mod test {
         use flir::{Edge, TriangleRealm, Vertex};
 
         let mut driver = Flir::<TriangleRealm>::new();
-        let mut coln_query = ColnQuery::init(&driver.load())?;
+        let coln_query = ColnQuery::init(&driver.load())?;
 
         let mut tx0 = Tx::empty();
         let [v0, v1, v2, v3] = [(); 4].map(|()| driver.insert(Vertex::new));
@@ -429,7 +474,7 @@ mod test {
         driver.insert(|row_id| Edge::new(row_id, &v2, &v3));
         tx0.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx0\n{}", tx0.to_cli_report()?);
-        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx0 = tx0.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         assert!(tx0.take_soft_violations().is_empty());
         assert!(tx0.take_derived_data_delta().is_empty());
@@ -440,7 +485,7 @@ mod test {
         driver.insert(|row_id| Edge::new(row_id, &v3, &v1));
         tx1.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx1\n{}", tx1.to_cli_report()?);
-        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx1 = tx1.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         assert!(tx1.take_soft_violations().is_empty());
         let derived_data_delta = tx1.take_derived_data_delta();
@@ -461,7 +506,7 @@ mod test {
         use flir::{Edge, TransitiveClosureRealm, Vertex};
 
         let mut driver = Flir::<TransitiveClosureRealm>::new();
-        let mut coln_query = ColnQuery::init(&driver.load())?;
+        let coln_query = ColnQuery::init(&driver.load())?;
 
         let mut tx0 = Tx::empty();
         let [v0, v1, v2, v3] = [(); 4].map(|()| driver.insert(Vertex::new));
@@ -470,17 +515,17 @@ mod test {
         driver.insert(|row_id| Edge::new(row_id, &v2, &v3));
         tx0.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx0\n{}", tx0.to_cli_report()?);
-        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx0 = tx0.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         assert!(tx0.take_soft_violations().is_empty());
         let mut derived_data_table_deltas = tx0.take_derived_data_delta().into_table_deltas();
         assert_eq!(derived_data_table_deltas.len(), 1);
         let trans_closure_delta = derived_data_table_deltas.pop().expect("checked");
         assert_eq!(
-            trans_closure_delta.for_entity().id(),
+            trans_closure_delta.for_entity(),
             "init.trans-closure.connected"
         );
-        let trans_closure_delta = trans_closure_delta.into_delta();
+        let (entity, trans_closure_delta) = trans_closure_delta.into_parts();
         assert_eq!(trans_closure_delta.len(), 10);
 
         let mut tx1 = Tx::empty();
@@ -488,7 +533,7 @@ mod test {
         driver.remove(&e2);
         tx1.insert(driver.next_epoch().into_table_deltas());
         println!("> Tx1\n{}", tx1.to_cli_report()?);
-        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx1 = tx1.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         assert!(tx1.take_soft_violations().is_empty());
         assert_eq!(
@@ -496,7 +541,8 @@ mod test {
                 .into_table_deltas()
                 .pop()
                 .expect("one delta only")
-                .into_delta()
+                .into_parts()
+                .1
                 .len(),
             5
         );
@@ -506,18 +552,18 @@ mod test {
 
     /// A derived row of `weight` over the `rows` it references, in column
     /// order: a view row has no row id of its own.
-    fn derived_row(weight: i64, rows: &[&dyn flir::Entity]) -> ZRow {
-        let tuple: TupleValue = rows
+    fn derived_row(weight: i64, rows: &[&dyn flir::Entity]) -> ZRowExt {
+        let tuple: QueryTuple = rows
             .iter()
             .flat_map(|row| {
                 let row_id = row.row_id();
                 [
-                    ScalarTypedValue::from(row_id.hash()),
-                    ScalarTypedValue::from(row_id.ctr()),
+                    QueryScalarValue::from(row_id.hash()),
+                    QueryScalarValue::from(row_id.ctr()),
                 ]
             })
             .collect();
-        ZRow::new(weight, tuple).expect("non-zero zweight")
+        ZRowExt::new(weight, tuple).expect("non-zero zweight")
     }
 
     #[test]
@@ -525,7 +571,7 @@ mod test {
         use flir::{BipartiteGraphRealm, Blue, BlueRed, Red, RedBlue};
 
         let mut driver = Flir::<BipartiteGraphRealm>::new();
-        let mut coln_query = ColnQuery::init(&driver.load())?;
+        let coln_query = ColnQuery::init(&driver.load())?;
 
         // An alternating chain r0 → b0 → r1 → b1 → r2 → b2. `red-red` connects
         // two red nodes through a `blue-blue` connection, and vice versa, so
@@ -540,7 +586,7 @@ mod test {
         driver.insert(|row_id| BlueRed::new(row_id, &b1, &r2));
         driver.insert(|row_id| RedBlue::new(row_id, &r2, &b2));
         tx0.insert(driver.next_epoch().into_table_deltas());
-        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx0 = tx0.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         assert!(tx0.take_soft_violations().is_empty());
         let derived = tx0.take_derived_data_delta();
@@ -572,7 +618,7 @@ mod test {
         let mut tx1 = Tx::empty();
         driver.remove(&b0_r1);
         tx1.insert(driver.next_epoch().into_table_deltas());
-        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx1 = tx1.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         assert!(tx1.take_soft_violations().is_empty());
         let derived = tx1.take_derived_data_delta();
@@ -595,7 +641,7 @@ mod test {
         };
 
         let mut driver = Flir::<BipartiteGraphOverRealm>::new();
-        let mut coln_query = ColnQuery::init(&driver.load())?;
+        let coln_query = ColnQuery::init(&driver.load())?;
 
         // r0 → b0 → r1 over annotated nodes. The mutually recursive pair is
         // seeded only by lifting the reflexive `red-red` and `blue-blue` and
@@ -609,7 +655,7 @@ mod test {
         driver.insert(|row_id| RedBlueOver::new(row_id, &r0, &x0, &b0, &y0));
         let b0_r1 = driver.insert(|row_id| BlueRedOver::new(row_id, &b0, &y0, &r1, &x1));
         tx0.insert(driver.next_epoch().into_table_deltas());
-        let mut tx0 = tx0.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx0 = tx0.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx0\n{}", tx0.to_cli_report()?);
         assert!(tx0.take_soft_violations().is_empty());
         let derived = tx0.take_derived_data_delta();
@@ -631,7 +677,7 @@ mod test {
         let mut tx1 = Tx::empty();
         driver.remove(&b0_r1);
         tx1.insert(driver.next_epoch().into_table_deltas());
-        let mut tx1 = tx1.try_commit(&mut coln_query)?.expect_pending_and_commit();
+        let mut tx1 = tx1.try_commit(&coln_query)?.expect_pending_and_commit();
         println!("> Tx1\n{}", tx1.to_cli_report()?);
         let derived = tx1.take_derived_data_delta();
         assert_eq!(derived.size(), 1);
@@ -667,7 +713,7 @@ mod test {
     fn a_transaction_repairing_a_monitored_violation_reports_it_as_resolved() -> Result<()> {
         use test_utils::monitored_flir::{self as monitored, PERMITTED, RULE, TABLE};
 
-        let mut coln_query = ColnQuery::init(&monitored::realm())?;
+        let coln_query = ColnQuery::init(&monitored::realm())?;
         // `PERMITTED` is the only value of `a` the rule tolerates, so this row
         // violates it and no other.
         let offending = monitored::row(0, 0, PERMITTED + 1);
@@ -675,7 +721,7 @@ mod test {
             let mut tx = Tx::empty();
             tx.insert(Some(TableDelta::new(
                 TABLE,
-                [ZRow::new(zweight, offending.clone()).expect("non-zero zweight")],
+                [ZRowExt::new(zweight, offending.clone()).expect("non-zero zweight")],
             )));
             tx
         };
@@ -683,13 +729,13 @@ mod test {
         // Inserting it makes the violation appear. Monitored, so the transaction
         // still commits.
         let mut committed = tx_with(1)
-            .try_commit(&mut coln_query)?
+            .try_commit(&coln_query)?
             .expect_pending_and_commit();
         let appeared = committed.take_soft_violations();
         assert_eq!(
             appeared
                 .iter()
-                .map(|delta| delta.for_entity().id())
+                .map(|delta| delta.for_entity())
                 .collect::<Vec<_>>(),
             vec![RULE],
             "the monitored rule must report on its own sink"
@@ -697,19 +743,19 @@ mod test {
         assert!(
             appeared
                 .iter()
-                .all(|table| table.iter().all(ZRow::is_assertion)),
+                .all(|table| table.iter().all(ZRowExt::is_assertion)),
             "a violation that appeared is asserted, not retracted: {appeared}"
         );
 
         // Retracting the same row repairs it.
         let mut committed = tx_with(-1)
-            .try_commit(&mut coln_query)?
+            .try_commit(&coln_query)?
             .expect_pending_and_commit();
         let resolved = committed.take_soft_violations();
         assert_eq!(
             resolved
                 .iter()
-                .map(|delta| delta.for_entity().id())
+                .map(|delta| delta.for_entity())
                 .collect::<Vec<_>>(),
             vec![RULE],
             "the monitored rule must report on its own sink and a retraction of \
@@ -718,7 +764,7 @@ mod test {
         assert!(
             resolved
                 .iter()
-                .all(|table| table.iter().all(ZRow::is_retraction)),
+                .all(|table| table.iter().all(ZRowExt::is_retraction)),
             "repairing a violation must not read as introducing one: {resolved}"
         );
 
@@ -747,18 +793,18 @@ mod test {
                 flir::atom_props(vec![flir::atom("u", None, vec![(0, flir::var_term(1))])]),
             )],
         };
-        let mut coln_query = ColnQuery::init(&realm)?;
+        let coln_query = ColnQuery::init(&realm)?;
         let insert = |table, row| {
             let mut tx = Tx::empty();
             tx.insert(Some(TableDelta::new(
                 table,
-                [ZRow::new(1, row).expect("non-zero zweight")],
+                [ZRowExt::new(1, row).expect("non-zero zweight")],
             )));
             tx
         };
 
         let mut committed = insert("t", row(0, 0, 7))
-            .try_commit(&mut coln_query)?
+            .try_commit(&coln_query)?
             .expect_pending_and_commit();
         assert_eq!(
             committed.take_soft_violations().into_inner(),
@@ -767,7 +813,7 @@ mod test {
         );
 
         let mut committed = insert("u", row(0, 1, 8))
-            .try_commit(&mut coln_query)?
+            .try_commit(&coln_query)?
             .expect_pending_and_commit();
         assert_eq!(
             committed.take_soft_violations().into_inner(),

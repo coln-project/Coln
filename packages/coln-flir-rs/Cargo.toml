@@ -13,14 +13,22 @@ exclude = ["/.gitignore"]
 
 [dependencies]
 either.workspace = true
+ena.workspace = true
+hex.workspace = true
+indexmap.workspace = true
 serde.workspace = true
+serde_bytes = "0.11"
 serde_json.workspace = true
 specta.workspace = true
+specta-typescript = "0.0.12"
+subenum.workspace = true
 
 [dev-dependencies]
 # This is a self-referential dev-dependency to have the feature-gated
 # test-utils be available in this crate's integration tests, too.
 coln-flir-rs = { path = ".", features = ["test-utils"] }
+specta-serde = "0.0.12"
+specta-typescript = { version = "0.0.12", features = ["serde"] }
 
 [features]
 test-utils = []

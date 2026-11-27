@@ -2,9 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! This module is concerned with violations and how to report them. Many things
-//! are still TBD.
-//!
+//! This module is concerned with violations and how to report them.
 //! Violations come in two [interpretations](Interpretation), and they are two
 //! types rather than one: a [`ViolationsSet`] says which violations *are*, a
 //! [`ViolationsDelta`] says how they *changed*. The rows are identical either
@@ -14,13 +12,14 @@
 //! a broken one.
 //!
 //! Which interpretation a rule's violations carry follows from what the engine
-//! does when one occurs. See
-//! [`TxOutcome`](super::transaction::TxOutcome), whose two violation arms are
-//! where this distinction comes from.
+//! does when one occurs. See [`TxOutcome`](super::transaction::TxOutcome),
+//! whose two violation arms are where this distinction comes from.
 
-use crate::utils::cli_table::{CliReport, ToCliReport};
-
-use super::deltas::TableDelta;
+use crate::{
+    api::transaction::{DerivedDataDelta, TableDelta},
+    utils::cli_table::{CliReport, ToCliReport},
+};
+use coln_flir_rs::engine::delta::Consolidated;
 use std::{io, marker::PhantomData};
 
 /// Violations that exist: the whole set of them, as of now.
@@ -28,8 +27,8 @@ use std::{io, marker::PhantomData};
 pub struct Set;
 
 /// A change in the violations, relative to whatever previous transactions left
-/// behind. A positive [`ZWeight`](super::deltas::ZWeight) is a violation that
-/// appeared, a negative one a violation that was resolved.
+/// behind. A positive [`ZWeight`](super::transaction::ZWeight) is a violation
+/// that appeared, a negative one a violation that was resolved.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Delta;
 
@@ -125,5 +124,21 @@ impl<I: Interpretation> ToCliReport for Violations<I> {
 impl<I: Interpretation> std::fmt::Display for Violations<I> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.to_cli_report().expect("cli report"))
+    }
+}
+
+impl<I: Interpretation> From<Violations<I>> for DerivedDataDelta<Consolidated> {
+    fn from(value: Violations<I>) -> Self {
+        let Violations {
+            inner,
+            interpretation: _,
+        } = value;
+        let mut delta = DerivedDataDelta::empty();
+        // This is safe because for each law there is exactly one sink and the
+        // derived data delta is empty, causing the inner Vec<TableDelta> to be
+        // consolidated.
+        delta.unsafe_extend(inner);
+        debug_assert!(delta.is_fully_consolidated());
+        delta
     }
 }

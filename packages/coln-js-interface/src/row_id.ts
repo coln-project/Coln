@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-import { CommitHash, TxnWireRowId, WireRowId } from "./types.js";
-import { WireValue } from "./value.js"
+import { TxRowId, PublicRowId } from "./types.js";
+import { PublicScalarValue } from "./value.js"
 
-type RowIdInner = TxnWireRowId | { type: "Canceled", counter: number }
+type RowIdInner = TxRowId | { type: "Canceled", counter: number }
 
 export class RowId<S extends string> {
   constructor(private rowId: RowIdInner, readonly brand: S) {}
   
-  asWire(): WireRowId {
+  asPublic(): PublicRowId {
     if (this.rowId.type == "Existing") {
       return this.rowId.value
     } else if (this.rowId.type == "Pending") {
@@ -22,7 +22,7 @@ export class RowId<S extends string> {
     }
   }
   
-  asTxnWire(): TxnWireRowId {
+  asTx(): TxRowId {
     if (this.rowId.type != "Canceled") {
       return this.rowId
     } else {
@@ -30,13 +30,10 @@ export class RowId<S extends string> {
     }
   }
   
-  finish(commit: CommitHash) {
+  /** Resolve a pending id to its canonical id, once its transaction has committed. */
+  finish(id: PublicRowId) {
     if (this.rowId.type == "Pending") {
-      const counter = this.rowId.value
-      this.rowId = {
-        type: "Existing",
-        value: {commit, counter}
-      }
+      this.rowId = { type: "Existing", value: id }
     }
   }
   
@@ -47,7 +44,7 @@ export class RowId<S extends string> {
   }
 }
 
-export function rowIdFromWire<P extends string>(v: WireValue, brand: P): RowId<P> {
+export function rowIdFromPublic<P extends string>(v: PublicScalarValue, brand: P): RowId<P> {
   if (typeof(v) == "number") {
     throw "expected row id"
   } else if (typeof(v) == "string") {

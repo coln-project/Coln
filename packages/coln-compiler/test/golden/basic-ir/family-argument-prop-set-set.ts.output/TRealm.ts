@@ -8,15 +8,15 @@ export function createRealm(runtime: typeof Runtime) {
       R: (a: null) => (b: Runtime.RowId<"root.B">) => Runtime.MutableSet<Runtime.RowId<"root.R">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        A: (new runtime.BaseProp(mstore, "root.A", [])),
+        A: (new runtime.BaseProp(mbouncer, "root.A", [])),
         B: (a: null) => {
-          return (new runtime.BaseSet(mstore, "root.B", []));
+          return (new runtime.BaseSet(mbouncer, "root.B", []));
         },
         R: (a: null) => {
           return (b: Runtime.RowId<"root.B">) => {
-            return (new runtime.BaseSet(mstore, "root.R", [b]));
+            return (new runtime.BaseSet(mbouncer, "root.R", [b]));
           };
         }
       };

@@ -9,33 +9,33 @@ use coln_flir_rs::ir::{
 use rstest::fixture;
 
 use crate::{
-    commit::{hash::CommitHash, wire::root::RootCommitData},
-    store::{ColnDef, Store},
-    table::WireRowId,
-    txn::rw::StoreWrite,
+    commit::{DataCommit, chunk::Chunk, wire::root::RootCommitData},
+    store::Store,
 };
 
 mod rowid {
+    use coln_flir_rs::{hash::CommitHash, public::PublicRowId};
+
     use super::*;
 
     #[fixture]
     pub(crate) fn row_id_from(
         #[default(0)] commit_byte: u8,
         #[default(0)] counter: u32,
-    ) -> WireRowId {
-        WireRowId {
+    ) -> PublicRowId {
+        PublicRowId {
             commit: CommitHash([commit_byte; 32]),
             counter,
         }
     }
 
     #[fixture]
-    pub(crate) fn zerocounter_row_id(#[default(0)] byte: u8) -> WireRowId {
+    pub(crate) fn zerocounter_row_id(#[default(0)] byte: u8) -> PublicRowId {
         row_id_from(byte, 0)
     }
 
     #[fixture]
-    pub(crate) fn zerohash_row_id(#[default(0)] counter: u32) -> WireRowId {
+    pub(crate) fn zerohash_row_id(#[default(0)] counter: u32) -> PublicRowId {
         row_id_from(0, counter)
     }
 }
@@ -124,6 +124,8 @@ mod schema {
 }
 
 mod root {
+    use coln_flir_rs::engine::schema::ColnDef;
+
     use super::*;
 
     #[fixture]
@@ -214,7 +216,8 @@ mod root {
 }
 
 mod store {
-    use crate::store::auto::AutoStore;
+    use coln_flir_rs::engine::schema::ColnDef;
+    use coln_flir_rs::hash::CommitHash;
 
     use super::root::empty_colndef;
     use super::schema::{
@@ -263,22 +266,17 @@ mod store {
         store
     }
 
-    #[fixture]
-    pub(crate) fn single_int_autostore(single_int_store: Store) -> AutoStore {
-        AutoStore::new(single_int_store)
-    }
-
     // A single_int_store, but with a single commit added
     #[fixture]
     pub(crate) fn commit_int_store(
         #[default(42)] value: i32,
-        mut single_int_store: Store,
+        single_int_store: Store,
     ) -> (Store, CommitHash) {
         let path = Path::from("T");
 
-        let mut tx = single_int_store.transaction();
-        tx.add(&path, vec![value]).expect("add row");
-        let h = tx.commit().expect("commit row");
+        let mut write_txn = single_int_store.begin_write();
+        write_txn.add(&path, vec![value]).expect("add row");
+        let h = write_txn.commit().expect("commit row").commit_hash();
 
         (single_int_store, h)
     }
@@ -377,9 +375,9 @@ mod store {
     pub(crate) fn commit_int(store: &mut Store, value: i32) -> CommitHash {
         let path = Path::from("T");
 
-        let mut tx = store.transaction();
+        let mut tx = store.begin_write();
         tx.add(&path, vec![value]).expect("add row");
-        tx.commit().expect("commit row")
+        tx.commit().expect("commit row").commit_hash()
     }
 }
 
@@ -387,3 +385,10 @@ pub(crate) use root::*;
 pub(crate) use rowid::*;
 pub(crate) use schema::*;
 pub(crate) use store::*;
+
+pub(crate) fn expect_data_chunk(chunk: Chunk) -> DataCommit {
+    match chunk {
+        Chunk::Data(commit) => commit,
+        Chunk::Root(_) => panic!("expected a data chunk"),
+    }
+}

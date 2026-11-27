@@ -1,10 +1,17 @@
 [workspace]
 resolver = "3"
-members = ["packages/coln-batch", "packages/coln-flir-rs", "packages/coln-integrator", "packages/coln-node-runtime", "packages/coln-query", "packages/coln-store", "packages/coln-wasm-runtime"]
+members = [
+  "packages/coln-batch",
+  "packages/coln-bouncer",
+  "packages/coln-flir-rs",
+  "packages/coln-query",
+  "packages/coln-store",
+  "packages/coln-runtime-node",
+  "packages/coln-runtime-wasm",
+]
 
 [workspace.package]
 version = "0.0.1"
-authors = ["The Coln Authors"]
 description = "A proof assistant with database characteristics"
 homepage = "https://github.com/coln-project/Coln"
 repository = "https://github.com/coln-project/Coln"
@@ -14,7 +21,10 @@ repository = "https://github.com/coln-project/Coln"
 anyhow = "1.0.102"
 criterion = "0.8.2"
 either = "1.18.0"
+ena = { git = "https://github.com/incipit0/ena.git" }
+hex = { version = "0.4.3", features = ["serde"] }
 indexmap = "2.14.1"
+parking_lot = { version = "0.13.0", features = ["arc_lock"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.149"
 specta = { version = "2.0.0-rc.25", features = ["derive"] }

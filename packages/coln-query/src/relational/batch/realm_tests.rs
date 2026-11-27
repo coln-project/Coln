@@ -17,8 +17,8 @@ use coln_flir_rs::ir::EntityVariant;
 use dbsp::typed_batch::IndexedZSetReader;
 
 use super::views::ViewProgram;
-use crate::api::deltas::StoreDelta;
 use crate::api::query::FlirProgram;
+use crate::api::transaction::StoreDelta;
 use crate::pipeline::Pipeline;
 use crate::relational::Runtime;
 use crate::relational::expr::{SinkId, SourceId};
@@ -38,8 +38,12 @@ fn views_match_incremental<R: JsonFlir>(rows: StoreDelta) -> Result<Vec<(String,
         Pipeline::incremental().runtime(&mut FlirProgram::from_flat_realm(&realm)?)?;
 
     for table in rows.into_table_deltas() {
-        let source = SourceId::from(table.for_entity());
-        let delta = table.into_delta();
+        let (entity, delta) = table.into_parts();
+        let source = SourceId::from(entity.0);
+        let delta: Vec<_> = delta
+            .into_iter()
+            .map(|zrow| zrow.map(TupleValue::from))
+            .collect();
         assert!(batch.feed(&source, delta.clone())?, "batch knows {source}");
         assert!(
             incremental.feed(&source, delta)?,

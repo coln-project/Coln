@@ -1,0 +1,22 @@
+[package]
+name = "coln-node-runtime"
+version.workspace = true
+edition = "2024"
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/rust/lib.rs"
+
+[dependencies]
+coln-flir-rs = { path = "../coln-flir-rs", version = "0.1.0" }
+coln-bouncer = { path = "../coln-bouncer" }
+napi = { version = "3", features = ["serde-json"] }
+napi-derive = "3"
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+napi-build = "1"

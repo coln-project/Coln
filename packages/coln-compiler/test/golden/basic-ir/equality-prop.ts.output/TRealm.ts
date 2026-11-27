@@ -9,9 +9,9 @@ export function createRealm(runtime: typeof Runtime) {
       eq: Runtime.MutableRef<null>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        P: (new runtime.BaseProp(mstore, "root.P", [])),
+        P: (new runtime.BaseProp(mbouncer, "root.P", [])),
         x: (new runtime.ConstRef(null)),
         y: (new runtime.ConstRef(null)),
         eq: (new runtime.ConstRef(null))

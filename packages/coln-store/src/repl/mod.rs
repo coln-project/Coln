@@ -204,7 +204,7 @@ mod tests {
             exe::{PrimaryKeySummary, SchemaSummary, TableSummary},
             parse::{ColnCommand, Command, SqlCol, SqlCommand},
         },
-        store::Store,
+        store::{Store, txn::ReadTxnable},
     };
 
     fn test_loaded_state() -> LoadedState {
@@ -279,7 +279,15 @@ mod tests {
         assert!(message.contains(":0, #"));
         assert!(message.ends_with(":1]"));
         let loaded = session.loaded.as_ref().expect("loaded session");
-        assert_eq!(loaded.store.table_at(&"T".into()).unwrap().row_count(), 2);
+        assert_eq!(
+            loaded
+                .store
+                .begin_read()
+                .table_at(&"T".into())
+                .unwrap()
+                .row_count(),
+            2
+        );
     }
 
     #[test]
@@ -332,7 +340,7 @@ mod tests {
 
         assert_eq!(message, "created table Person");
         let loaded = session.loaded.as_ref().expect("sql store loaded");
-        assert!(loaded.store.table_at(&"Person".into()).is_some());
+        assert!(loaded.store.resolve_table(&"Person".into()).is_some());
         assert_eq!(loaded.schema.table_count, 1);
         assert_eq!(loaded.schema.tables[0].path, "Person");
         assert_eq!(
@@ -402,10 +410,8 @@ mod tests {
 
         assert_eq!(message, "copied 2 rows into Person");
         let loaded = session.loaded.as_ref().expect("loaded session");
-        let table = loaded
-            .store
-            .table_at(&"Person".into())
-            .expect("Person table");
+        let read = loaded.store.begin_read();
+        let table = read.table_at(&"Person".into()).expect("Person table");
         assert_eq!(table.row_count(), 2);
         // The fixture header order (age, name) differs from the schema order.
         let dump = table.dump();
@@ -452,10 +458,8 @@ mod tests {
         .expect("run commands");
 
         let loaded = session.loaded.as_ref().expect("loaded session");
-        let table = loaded
-            .store
-            .table_at(&"Person".into())
-            .expect("Person table");
+        let read = loaded.store.begin_read();
+        let table = read.table_at(&"Person".into()).expect("Person table");
         assert_eq!(table.row_count(), 2);
     }
 
@@ -489,7 +493,15 @@ mod tests {
         .expect("spanned batch");
 
         let loaded = session.loaded.as_ref().expect("loaded session");
-        assert_eq!(loaded.store.table_at(&"T".into()).unwrap().row_count(), 1);
+        assert_eq!(
+            loaded
+                .store
+                .begin_read()
+                .table_at(&"T".into())
+                .unwrap()
+                .row_count(),
+            1
+        );
     }
 
     #[test]
@@ -527,7 +539,7 @@ mod tests {
             .as_ref()
             .expect("first create should have succeeded");
         assert_eq!(loaded.schema.table_count, 1);
-        assert!(loaded.store.table_at(&"Other".into()).is_none());
+        assert!(loaded.store.resolve_table(&"Other".into()).is_none());
     }
 
     #[test]
@@ -545,6 +557,6 @@ mod tests {
 
         let loaded = session.loaded.as_ref().expect("loaded");
         assert_eq!(loaded.schema.table_count, 1);
-        assert!(loaded.store.table_at(&"Other".into()).is_none());
+        assert!(loaded.store.resolve_table(&"Other".into()).is_none());
     }
 }

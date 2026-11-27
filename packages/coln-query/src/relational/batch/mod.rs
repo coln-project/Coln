@@ -47,22 +47,11 @@ mod realm_tests;
 mod values;
 pub mod views;
 
-use std::collections::HashMap;
-use std::num::NonZeroUsize;
-
-use coln_batch::fixpoint::{self, Exec};
-use coln_batch::generic_join;
-use coln_batch::query::Catalog as BatchCatalog;
-use coln_batch::relation::Relation;
-use coln_batch::rule::Program;
-use coln_batch::types::{Dictionary, Key, Schema};
-use dbsp::{OrdZSet, utils::Tup2};
-
 use self::lowering::{LoweredPlan, lower};
 use self::values::{engine_value, pipeline_value};
 use super::{Backend, Runtime};
+use crate::relational::relation::{ZRowInt, ZWeight};
 use crate::{
-    api::deltas::{ZRow, ZWeight},
     error::{BuildError, RuntimeError},
     host::resolver::ResolvedCode,
     relational::{
@@ -72,6 +61,17 @@ use crate::{
     },
     scalarial::{ColumnScalarEngine, column::VectorizedScalarEngine},
 };
+use coln_batch::{
+    fixpoint::{self, Exec},
+    generic_join,
+    query::Catalog as BatchCatalog,
+    relation::Relation,
+    rule::Program,
+    types::{Dictionary, Key, Schema},
+};
+use dbsp::{OrdZSet, utils::Tup2};
+use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
 /// The non-incremental backend: lowers the plan to a coln-batch Datalog
 /// program at build time and recomputes it eagerly on every commit.
@@ -316,7 +316,7 @@ impl Runtime for BatchRuntime {
     fn feed(
         &mut self,
         source: &SourceId,
-        rows: impl IntoIterator<Item = ZRow>,
+        rows: impl IntoIterator<Item = ZRowInt>,
     ) -> Result<bool, Self::Error> {
         // Mirrors the incremental backend: a source the plan does not use
         // is `Ok(false)`, not an error. The caller decides what that means.
@@ -325,7 +325,7 @@ impl Runtime for BatchRuntime {
         }
         for zrow in rows {
             let weight = zrow.zweight();
-            let keys = self.encode_row(source, &zrow.into_row())?;
+            let keys = self.encode_row(source, &zrow.into_tuple())?;
             let staged = self.inputs.get_mut(source.as_str()).expect("checked above");
             *staged.entry(keys).or_insert(0) += weight;
         }

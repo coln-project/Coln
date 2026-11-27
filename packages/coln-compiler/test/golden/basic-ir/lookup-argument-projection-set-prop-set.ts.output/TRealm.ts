@@ -10,15 +10,15 @@ export function createRealm(runtime: typeof Runtime) {
       nextedge: (x: Runtime.RowId<"root.A">) => Runtime.MutableRef<Runtime.RowId<"root.E">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        A: (new runtime.BaseSet(mstore, "root.A", [])),
+        A: (new runtime.BaseSet(mbouncer, "root.A", [])),
         B: (a: Runtime.RowId<"root.A">) => {
-          return (new runtime.BaseProp(mstore, "root.B", [a]));
+          return (new runtime.BaseProp(mbouncer, "root.B", [a]));
         },
         E: (x: Runtime.RowId<"root.A">) => {
           return (a: null) => {
-            return (new runtime.BaseSet(mstore, "root.E", [x]));
+            return (new runtime.BaseSet(mbouncer, "root.E", [x]));
           };
         },
         next: (x: Runtime.RowId<"root.A">) => {
@@ -26,7 +26,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         nextedge: (x: Runtime.RowId<"root.A">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.nextedge",
             [x],
             [1, 2],
@@ -34,9 +34,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.E">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.E"
                 ));
               }

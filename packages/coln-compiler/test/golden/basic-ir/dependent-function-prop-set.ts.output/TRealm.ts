@@ -8,15 +8,15 @@ export function createRealm(runtime: typeof Runtime) {
       f: (a: null) => Runtime.MutableRef<Runtime.RowId<"root.B">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        A: (new runtime.BaseProp(mstore, "root.A", [])),
+        A: (new runtime.BaseProp(mbouncer, "root.A", [])),
         B: (a: null) => {
-          return (new runtime.BaseSet(mstore, "root.B", []));
+          return (new runtime.BaseSet(mbouncer, "root.B", []));
         },
         f: (a: null) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.f",
             [],
             [0, 1],
@@ -24,9 +24,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.B">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.B"
                 ));
               }

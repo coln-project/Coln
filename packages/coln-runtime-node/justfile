@@ -1,0 +1,38 @@
+[working-directory: '../coln-js-interface/']
+setup-interface:
+    pnpm install
+
+setup-runtime:
+    pnpm install
+
+setup: setup-interface setup-runtime
+
+[arg("release", long, value="--release")]
+build-runtime release="":
+    npx napi build --platform --esm {{ release }} -o native
+    mkdir -p dist
+    rm -rf dist/native
+    cp -r native dist/native
+
+[working-directory: '../coln-flir-rs']
+gen-types:
+    just export-ts
+
+[working-directory: '../coln-js-interface/']
+build-interface:
+    mkdir -p dist
+    pnpm exec tsc
+
+generate-bindings:
+    mkdir -p test/bindings
+    nix run ../..#coln-cli -- generate-ts test/definitions.coln -o test/bindings/
+
+test:
+    mkdir -p dist
+    pnpm exec tsc
+    nix run ../..#coln-cli -- generate-ir test/definitions.coln -o dist/test
+    node dist/test/main.js
+
+build-and-test: gen-types build-interface build-runtime generate-bindings test
+
+ci: setup build-and-test

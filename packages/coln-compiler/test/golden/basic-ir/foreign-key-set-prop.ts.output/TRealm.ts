@@ -7,11 +7,11 @@ export function createRealm(runtime: typeof Runtime) {
       E: (a: Runtime.RowId<"root.V">) => Runtime.MutableProp
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        V: (new runtime.BaseSet(mstore, "root.V", [])),
+        V: (new runtime.BaseSet(mbouncer, "root.V", [])),
         E: (a: Runtime.RowId<"root.V">) => {
-          return (new runtime.BaseProp(mstore, "root.E", [a]));
+          return (new runtime.BaseProp(mbouncer, "root.E", [a]));
         }
       };
     }

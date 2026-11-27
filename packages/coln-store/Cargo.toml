@@ -23,12 +23,10 @@ blake3 = "1.8.5"
 clap = { version = "4.6.1", features = ["derive"], optional = true }
 coln-flir-rs = { path = "../coln-flir-rs" }
 csv = "1.4.0"
-ena = "0.14.4"
-hex = { version = "0.4.3", features = ["serde"] }
+ena.workspace = true
 hexane = "1.0.0-alpha.5"
 leb128 = "0.2.6"
 petgraph = "0.8.3"
-postcard = { version = "1.1.3", features = ["alloc"] }
 rustyline = { version = "18.0.0", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -40,22 +38,23 @@ tracing-subscriber = { workspace = true, features = [
     "env-filter",
     "fmt",
 ], optional = true }
-specta.workspace = true
 rstest = "0.26.1"
+hex.workspace = true
+parking_lot.workspace = true
 
 [dev-dependencies]
 future_form = "0.3.1"
-sedimentree_core = { git = "https://github.com/inkandswitch/subduction", features = [
+sedimentree_core = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "std",
 ] }
-subduction_core = { git = "https://github.com/inkandswitch/subduction", features = [
+subduction_core = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "std",
     "test_utils",
 ] }
-subduction_crypto = { git = "https://github.com/inkandswitch/subduction", features = [
+subduction_crypto = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "std",
 ] }
-subduction_websocket = { git = "https://github.com/inkandswitch/subduction", features = [
+subduction_websocket = { git = "https://github.com/inkandswitch/subduction", rev = "2cbbafee2df628e0a0c569d8fe3447c1a0bf5c8c", features = [
     "tokio_client",
     "tokio_server",
 ] }
@@ -69,16 +68,8 @@ tokio = { version = "1.52.3", features = [
 
 [features]
 default = ["native"]
-native = [
-    "dep:rustyline",
-    "dep:tracing-subscriber",
-    "dep:clap",
-    "dep:coln-query",
-]
+native = ["dep:rustyline", "dep:tracing-subscriber", "dep:clap"]
 wasm = []
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-coln-query = { path = "../coln-query", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = { version = "0.3.83" }

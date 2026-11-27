@@ -2,112 +2,41 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-pub mod auto;
+mod catalog;
+pub mod commit;
+mod data;
 pub mod error;
-pub mod frag;
-pub mod wire;
+mod persist;
+mod rebuild;
+pub mod txn;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::HashMap;
+use std::sync::Arc;
 
-#[cfg(not(target_arch = "wasm32"))]
-use coln_query::api::{
-    ColnQuery,
-    deltas::{Consolidated, DerivedDataDelta, StoreDelta},
-    transaction::{Prepare, TryCommitErr, TryCommitOk, Tx as QueryTx},
-};
-use serde::{Deserialize, Serialize};
+use coln_flir_rs::engine::schema::ColnDef;
+use parking_lot::RwLock;
 use tracing::info;
 
+use crate::commit::chunk::Chunk;
+use crate::commit::error::CodecError;
+use crate::commit::frame::Frame;
 use crate::commit::graph::CommitGraph;
-use crate::commit::hash::CommitHash;
 use crate::commit::wire::RootCommitData;
+use crate::commit::{DataCommit, RootCommit};
 use crate::ir::{self, FlatRealm};
-use crate::op::Op;
-use crate::pack::{IdPacker, IdPackerSnapshot};
-use crate::rollback::Rollback;
-use crate::rowing::{self, RowingSnapshot};
-use crate::store::auto::AutoStore;
-use crate::store::error::{CommitApplyError, StoreError};
-use crate::table::handle::WireRowView;
-use crate::table::{
-    Table, TableHandle, TableMeta, TableOid, TableSnapshot, ValidationError, WireRowId, WireValue,
-};
-use crate::txn::rw::{StoreRead, WhereClause};
-use crate::txn::{OwnedTransaction, ReadOnly, ReadWrite, Transaction, TxnWireRowId};
-use crate::{commit::Commit, table::cell::WireTuple};
-use crate::{commit::error::CodecError, txn::id::Promote};
+use crate::pack::IdPacker;
+pub use crate::pack::id_packer::IdLookup;
+use crate::rowing::Rowing;
+use crate::store::catalog::Catalog;
+use crate::store::data::StoreData;
+use crate::store::error::StoreError;
+pub use crate::store::txn::{ReadTxn, ReadView, WriteTxn};
+use crate::table::{Table, TableMeta, TableOid};
 
 #[derive(Debug)]
 pub struct Store {
-    path_to_oid: HashMap<ir::Path, TableOid>,
-    /// Oids are dense and tables are never dropped, so the next oid is `tables.len()`.
-    tables: HashMap<TableOid, Table>,
-    id_packer: IdPacker,
-    /// Source rule entries retained for persistence. Compiled form lives in `rules`.
-    ir: FlatRealm,
-    commits: CommitGraph,
-    rowing: rowing::Rowing,
-    pending_commits: Vec<Commit<'static>>,
-
-    #[cfg(not(target_arch = "wasm32"))]
-    cq: ColnQuery,
-}
-
-pub(crate) struct StoreSnapshot {
-    tables: Vec<(TableOid, TableSnapshot)>,
-    id_packer: IdPackerSnapshot,
-    rowing: RowingSnapshot,
-}
-
-impl Rollback for Store {
-    type Snapshot = StoreSnapshot;
-
-    fn snapshot(&mut self) -> Self::Snapshot {
-        let tables = self
-            .tables
-            .iter_mut()
-            .map(|(&oid, table)| (oid, table.snapshot()))
-            .collect();
-        let id_packer = self.id_packer.snapshot();
-        let rowing = self.rowing.snapshot();
-        StoreSnapshot {
-            tables,
-            id_packer,
-            rowing,
-        }
-    }
-
-    fn commit(&mut self, snapshot: Self::Snapshot) {
-        let StoreSnapshot {
-            tables,
-            id_packer,
-            rowing,
-        } = snapshot;
-        for (oid, snapshot) in tables {
-            self.tables
-                .get_mut(&oid)
-                .expect("snapshotted table should still exist")
-                .commit(snapshot);
-        }
-        self.id_packer.commit(id_packer);
-        self.rowing.commit(rowing);
-    }
-
-    fn rollback_to(&mut self, snapshot: Self::Snapshot) {
-        let StoreSnapshot {
-            tables,
-            id_packer,
-            rowing,
-        } = snapshot;
-        for (oid, snapshot) in tables {
-            self.tables
-                .get_mut(&oid)
-                .expect("snapshotted table should still exist")
-                .rollback_to(snapshot);
-        }
-        self.id_packer.rollback_to(id_packer);
-        self.rowing.rollback_to(rowing);
-    }
+    catalog: Arc<Catalog>,
+    data: Arc<RwLock<StoreData>>,
 }
 
 impl Store {
@@ -126,203 +55,14 @@ impl Store {
             theory: String::new(),
             realm: String::new(),
         };
-        let empty_root = RootCommitData::new(ir.clone(), empty_colndef);
-
-        let commits =
-            Self::graph_with_root_commit(empty_root).expect("empty root commit should build");
-        #[cfg(not(target_arch = "wasm32"))]
-        let cq = ColnQuery::init(&ir).expect("start coln-query");
-        Self {
-            path_to_oid: HashMap::new(),
-            tables: HashMap::new(),
-            id_packer: IdPacker::new(),
-            ir,
-            commits,
-            rowing: rowing::Rowing::new(),
-            pending_commits: Vec::new(),
-            #[cfg(not(target_arch = "wasm32"))]
-            cq,
-        }
+        Self::try_from_ir(&ir, empty_colndef).expect("empty root commit should build")
     }
 
-    pub fn tables(&self) -> impl Iterator<Item = (&TableOid, TableHandle<'_>)> {
-        self.tables
-            .iter()
-            .map(|(oid, table)| (oid, TableHandle::new(table, &self.id_packer, &self.rowing)))
-    }
-
-    pub fn commits(&self) -> &CommitGraph {
-        &self.commits
-    }
-
-    /// Add commit to the commit graph. This is a low level API, typically you
-    /// want to use `apply_commits`
-    pub(crate) fn record_in_commit_graph(&mut self, commit: Commit<'static>) {
-        self.commits.add_commit(commit);
-    }
-
-    pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
-        self.path_to_oid.get(path).copied()
-    }
-
-    pub fn table(&self, oid: TableOid) -> Option<TableHandle<'_>> {
-        self.tables
-            .get(&oid)
-            .map(|table| TableHandle::new(table, &self.id_packer, &self.rowing))
-    }
-
-    pub fn table_at(&self, path: &ir::Path) -> Option<TableHandle<'_>> {
-        self.resolve_table(path).and_then(|oid| self.table(oid))
-    }
-
-    pub fn table_count(&self) -> usize {
-        self.tables.len()
-    }
-
-    pub fn rule_entries(&self) -> &[ir::RuleEntry] {
-        &self.ir.rules
-    }
-
-    pub fn json_ir(&self) -> Result<String, StoreError> {
-        let root = self.commits.root_commit()?.root_payload()?;
-        Ok(serde_json::to_string(&root.ir).map_err(CodecError::from)?)
-    }
-
-    pub fn coln_def(&self) -> Result<ColnDef, StoreError> {
-        let root = self.commits.root_commit()?.root_payload()?;
-        Ok(root.coln_def)
-    }
-
-    // Used by txn to finalise live ids
-    pub(crate) fn canonical_row_id(&self, row_id: &WireRowId) -> Option<WireRowId> {
-        let packed = self.id_packer.lookup_row_id(row_id)?;
-        let canonical = self.rowing.canonical_id(&packed, &self.id_packer);
-        Some(self.id_packer.unpack_row_id(canonical))
-    }
-}
-impl Store {
-    // Helper methods for StoreRead
-
-    pub(crate) fn scan_table_iter(
-        &self,
-        table_path: &ir::Path,
-    ) -> Option<impl Iterator<Item = WireRowView> + '_> {
-        self.table_at(table_path).map(|table| table.scan())
-    }
-
-    // This function will canonicalise the row_id on read, but will not change it
-    // See `row_by_liveid` which will actually canonicalise the handle.
-    // We need both because the TS FFI does not deal with handles.
-    pub(crate) fn row_by_id_inner(
-        &self,
-        table: &ir::Path,
-        row_id: &WireRowId,
-    ) -> Option<WireRowView> {
-        self.table_at(table)?.row_by_id(row_id)
-    }
-
-    // TODO ignoring efficiency. I'll leave that to the query engine to produce
-    // the optimal query plan! Or we can optimise later.
-    pub(crate) fn all_proj_inner(
-        &self,
-        query: &WhereClause,
-        select: &[u32],
-    ) -> Result<Vec<WireTuple>, StoreError> {
-        let select: HashSet<u32> = select.iter().copied().collect();
-        let t = self
-            .table_at(&query.table_name)
-            .ok_or(ValidationError::UnknownTable {
-                path: query.table_name.clone(),
-            })?;
-        let v = self
-            .all_row_id_inner(query)?
-            .into_iter()
-            .map(|r| {
-                t.row_by_id(&r)
-                    .expect("index_seek return valid rowid")
-                    .values
-            })
-            .map(|vs| {
-                vs.into_iter()
-                    .enumerate()
-                    .filter_map(|(i, v)| select.contains(&(i as u32)).then_some(v))
-                    .collect::<WireTuple>()
-            })
-            .collect::<Vec<WireTuple>>();
-        Ok(v)
-    }
-
-    pub(crate) fn all_row_id_inner(
-        &self,
-        query: &WhereClause,
-    ) -> Result<Vec<WireRowId>, StoreError> {
-        let WhereClause {
-            table_name,
-            values,
-            row_id,
-        } = query;
-        let t = self
-            .table_at(table_name)
-            .ok_or(ValidationError::UnknownTable {
-                path: table_name.clone(),
-            })?;
-        let row_ids = t
-            .index_seek(values)?
-            .filter(|r| row_id.as_ref().is_none_or(|id| id == r))
-            .collect();
-        Ok(row_ids)
-    }
-}
-
-/// A Coln theory source file contains theory definitions and (multiple) realm definitions
-/// Each realm corresponds will be compiled to one IR file, this struct stores
-/// which realm the IR is referring to
-/// It is stored as literal string and uninterpreted in the root commit of the store.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ColnDef {
-    pub theory: String,
-    pub realm: String,
-}
-
-impl ColnDef {
-    pub fn new(theory: String, realm: String) -> Self {
-        Self { theory, realm }
-    }
-}
-
-// Autocommit method that opens up a txn, does a single operations
-// then immediately closes the txn
-impl StoreRead for Store {
-    fn scan_table(&self, table: &ir::Path) -> Option<Vec<WireRowView>> {
-        let txn = self.ro_transaction();
-        txn.scan_table(table)
-    }
-
-    fn row_by_id(&self, table: &ir::Path, row_id: &WireRowId) -> Option<WireRowView> {
-        self.ro_transaction().row_by_id(table, row_id)
-    }
-
-    fn all_proj(&self, query: &WhereClause, select: &[u32]) -> Result<Vec<WireTuple>, StoreError> {
-        self.ro_transaction().all_proj(query, select)
-    }
-
-    fn all_row_id(&self, query: &WhereClause) -> Result<Vec<WireRowId>, StoreError> {
-        self.ro_transaction().all_row_id(query)
-    }
-}
-
-impl Store {
-    // create stores from theory and transactions on stores
-
-    fn graph_with_root_commit(root_commit: RootCommitData) -> Result<CommitGraph, CodecError> {
-        let mut graph = CommitGraph::new();
-        graph.add_commit(Commit::from_root_data(&root_commit)?);
-        Ok(graph)
-    }
+    // create stores from theory
 
     /// Builds an empty column store per `theory.tables` and keeps only `theory.rules`
     /// (schemas are stored on each [`Table`]).
-    pub fn try_from_ir(ir: FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
+    pub fn try_from_ir(ir: &FlatRealm, coln_def: ColnDef) -> Result<Self, StoreError> {
         info!(
             table_count = ir.tables.len(),
             rule_count = ir.rules.len(),
@@ -330,542 +70,177 @@ impl Store {
         );
 
         let mut path_to_oid = HashMap::new();
-        let mut tables_map = HashMap::new();
+        let mut table_meta = Vec::with_capacity(ir.tables.len());
+        let mut tables = HashMap::new();
 
         for (oid, entry) in ir.tables.iter().enumerate() {
+            let table = Table::new(entry.path.clone(), oid, entry.table.clone());
             path_to_oid.insert(entry.path.clone(), oid);
-            tables_map.insert(
-                oid,
-                Table::new(entry.path.clone(), oid, entry.table.clone()),
-            );
+            table_meta.push(table.meta());
+            tables.insert(oid, table);
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        let cq = ColnQuery::init(&ir)?;
-        let commits = Self::graph_with_root_commit(RootCommitData::new(ir.clone(), coln_def))?;
+        let root_data = RootCommitData::new(ir.clone(), coln_def);
+        let commits = Self::graph_with_root_commit(&root_data)?;
+
+        let data = Arc::new(RwLock::new(StoreData {
+            tables,
+            id_packer: IdPacker::new(),
+            commits,
+            rowing: Rowing::new(),
+            pending_commits: Vec::new(),
+        }));
 
         Ok(Self {
-            path_to_oid,
-            tables: tables_map,
-            id_packer: IdPacker::new(),
-            ir,
-            commits,
-            rowing: rowing::Rowing::new(),
-            pending_commits: Vec::new(),
-
-            #[cfg(not(target_arch = "wasm32"))]
-            cq,
+            catalog: Arc::new(Catalog {
+                path_to_oid,
+                root_data,
+                table_meta,
+                ir: ir.clone(),
+            }),
+            data,
         })
     }
-}
 
-impl Store {
-    // transactions
-
-    pub fn auto(self) -> AutoStore {
-        AutoStore::new(self)
+    fn graph_with_root_commit(root_commit: &RootCommitData) -> Result<CommitGraph, CodecError> {
+        Ok(CommitGraph::new(RootCommit::from_root_data(root_commit)?))
     }
 
-    pub fn ro_transaction(&self) -> Transaction<ReadOnly<'_>> {
-        Transaction::<ReadOnly<'_>>::new(self)
-    }
+    // Creating a store from bytes
 
-    pub fn transaction(&mut self) -> Transaction<ReadWrite<'_>> {
-        Transaction::<ReadWrite<'_>>::new(self)
-    }
-
-    pub fn into_transaction(self) -> OwnedTransaction {
-        OwnedTransaction::new(self)
-    }
-}
-
-impl Promote for Store {
-    fn promote(
-        &self,
-        pending_ids: impl IntoIterator<Item = TxnWireRowId>,
-        hash: CommitHash,
-    ) -> Vec<WireRowId> {
-        pending_ids
+    /// Takes some bytes that _contain_ the root commits
+    /// Attempt to create a [`Store`] out of it, and also the other commits left
+    /// to be applied. Callers need to make a [`CommitBatch`] out of it, and apply
+    pub fn try_from_commits_bytes(
+        bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<(Self, Vec<DataCommit>), StoreError> {
+        let chunks = bytes
             .into_iter()
-            .map(|pending| {
-                let wire_id = match pending {
-                    TxnWireRowId::Pending(pending) => pending.resolve(hash),
-                    TxnWireRowId::Existing(row_id) => row_id,
-                };
-                self.canonical_row_id(&wire_id).unwrap_or(wire_id)
+            .map(|bytes| Frame::decode(bytes.as_ref()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Self::try_from_chunks(chunks)
+    }
+
+    /// Create a store from the commit chunks. Return the store and all the data commits, checked.
+    pub(crate) fn try_from_chunks(
+        chunks: Vec<Frame>,
+    ) -> Result<(Self, Vec<DataCommit>), StoreError> {
+        let roots = chunks
+            .iter()
+            .filter(|chunk| chunk.is_root())
+            .collect::<Vec<_>>();
+        if roots.is_empty() {
+            return Err(
+                CodecError::DataFormatError("commit graph has no root commit".into()).into(),
+            );
+        }
+        if roots.len() > 1 {
+            return Err(CodecError::DataFormatError(
+                "commit graph has multiple root commits".into(),
+            )
+            .into());
+        }
+
+        let Chunk::Root(root_commit) = Chunk::from_frame((*roots[0]).clone(), |_| None)? else {
+            unreachable!("root frames were selected above");
+        };
+        let root_payload = root_commit.root_payload();
+        let mut store = Store::try_from_ir(&root_payload.ir, root_payload.coln_def)?;
+
+        let commits = chunks
+            .into_iter()
+            .filter(|chunk| !chunk.is_root())
+            .map(|chunk| {
+                match Chunk::from_frame(chunk, |path| {
+                    store
+                        .catalog
+                        .resolve_table(path)
+                        .and_then(|oid| store.catalog.table_meta(oid))
+                })? {
+                    Chunk::Data(commit) => Ok(commit),
+                    Chunk::Root(_) => unreachable!("root frames were filtered out"),
+                }
             })
-            .collect()
+            .collect::<Result<Vec<_>, StoreError>>()?;
+
+        let data = Arc::get_mut(&mut store.data)
+            .expect("new store data is not shared")
+            .get_mut();
+        data.commits = CommitGraph::new(root_commit);
+        data.check_commit_deps(commits.iter())?;
+        Ok((store, commits))
     }
 }
 
 impl Store {
-    // Dealing with rules (by asking coln-query to do it)
+    // To apply bytes to store, but without deriving new data
+    // mostly for testing purposes
 
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn check_rules(
+    /// Restores a store from commit bytes without running the query engine.
+    /// Derived data and rule checks are skipped. Commits with missing dependencies
+    /// remain pending until their parents arrive.
+    pub fn try_from_commit_bytes_plain(
+        bytes: impl IntoIterator<Item = impl AsRef<[u8]>>,
+    ) -> Result<Self, StoreError> {
+        let (mut store, commits) = Self::try_from_commits_bytes(bytes)?;
+        store.apply_commits_plain(commits)?;
+        Ok(store)
+    }
+
+    pub(crate) fn try_from_chunks_plain(chunks: Vec<Frame>) -> Result<Self, StoreError> {
+        let (mut store, commits) = Self::try_from_chunks(chunks)?;
+        store.apply_commits_plain(commits)?;
+        Ok(store)
+    }
+
+    /// Decodes and applies commit bytes without running the query engine.
+    /// Schema validation still applies. Commits with missing dependencies remain
+    /// pending and are retried on the next plain apply call.
+    pub fn apply_chunk_bytes_plain(
         &mut self,
-        query_tx: QueryTx<Prepare>,
-    ) -> Result<DerivedDataDelta<Consolidated>, StoreError> {
-        match query_tx.try_commit(&mut self.cq) {
-            Ok(TryCommitOk::Pending(pending)) => {
-                let mut committed = pending.commit()?;
-                let derived = committed.take_derived_data_delta();
-                let monitored_constraints = committed.take_soft_violations();
-                if !monitored_constraints.is_empty() {
-                    tracing::warn!("monitored constraint violation {}", monitored_constraints);
-                }
-                Ok(derived)
-            }
-            Ok(TryCommitOk::Rejected(mut rejected)) => {
-                let violations = rejected.take_hard_violations();
-                Err(error::RuleViolation::HardViolation(violations).into())
-            }
-            Err(TryCommitErr::TxApplyError(err)) | Err(TryCommitErr::RollbackError(err)) => {
-                Err(err.into())
-            }
-        }
+        bytes: impl IntoIterator<Item = Vec<u8>>,
+    ) -> Result<(), StoreError> {
+        self.prepare_commit_bytes(bytes)?.apply_plain()
+    }
+
+    pub(crate) fn apply_commits_plain(
+        &mut self,
+        commits: impl IntoIterator<Item = DataCommit>,
+    ) -> Result<(), StoreError> {
+        self.prepare_commits(commits, true)?.apply_plain()
     }
 }
 
 impl Store {
-    // Read and write commits
+    // Catalog access, no lock needed
 
-    pub fn heads(&self) -> Vec<CommitHash> {
-        self.commits.heads().cloned().collect()
+    pub fn resolve_table(&self, path: &ir::Path) -> Option<TableOid> {
+        self.catalog.resolve_table(path)
     }
 
-    pub fn commit_by_hash(&self, hash: &CommitHash) -> Option<&Commit<'static>> {
-        self.commits.get(hash)
+    pub fn table_count(&self) -> usize {
+        self.catalog.table_count()
     }
 
-    /// Path, oid, and schema for a registered table.
-    pub(crate) fn table_meta(&self, oid: TableOid) -> Option<TableMeta<'_>> {
-        self.table(oid).map(|table| TableMeta {
-            path: table.path(),
-            oid,
-            schema: table.schema(),
-        })
+    pub fn rule_entries(&self) -> &[ir::RuleEntry] {
+        self.catalog.rule_entries()
     }
 
-    /// return commits that are not ancestors of the heads
-    pub fn commits_after(&self, have_heads: &[CommitHash]) -> Vec<Commit<'static>> {
-        let mut seen = HashSet::new();
-        let mut stack = have_heads.to_vec();
-
-        while let Some(ch) = stack.pop() {
-            if !seen.insert(ch) {
-                continue;
-            }
-
-            if let Some(cm) = self.commit_by_hash(&ch) {
-                stack.extend(cm.deps.iter());
-            }
-        }
-
-        self.commits
-            .iter_topological()
-            .filter(|cm| !seen.contains(&cm.hash()))
-            .cloned()
-            .collect::<Vec<Commit>>()
+    pub fn json_ir(&self) -> String {
+        self.catalog.json_ir()
     }
 
-    /// Get commits in `other` that are not in `self`
-    pub fn commits_added(&self, other: &Self) -> Vec<Commit<'static>> {
-        // a depth first search from the heads of others backwards until hashes
-        // are in self
-        let mut stack = other.heads();
-        let mut seen = HashSet::new();
-        let mut added = Vec::new();
-
-        while let Some(hash) = stack.pop() {
-            if !seen.insert(hash) || self.commits.contains(&hash) {
-                continue;
-            }
-
-            added.push(hash);
-            if let Some(commit) = other.commit_by_hash(&hash) {
-                stack.extend(commit.deps.iter());
-            }
-        }
-
-        added.reverse();
-        added
-            .into_iter()
-            .filter_map(|hash| other.commit_by_hash(&hash).cloned())
-            .collect()
+    pub fn ir(&self) -> &ir::FlatRealm {
+        self.catalog.ir()
     }
 
-    /// This will try to merge the `other` store as much as possible into this store
-    // TODO need to rethink `merge` more carefully
-    pub fn merge(&mut self, other: &Self) -> Result<Vec<CommitHash>, StoreError> {
-        let commits = self.commits_added(other);
-        self.apply_commits(commits)?;
-        Ok(self.heads())
+    pub fn coln_def(&self) -> &ColnDef {
+        self.catalog.coln_def()
     }
 
-    /// Apply a single commit, respect its dependency.
-    /// Return the commit if it cannot be applied due to missing deps
-    pub fn apply_commit(
-        &mut self,
-        commit: Commit<'static>,
-    ) -> Result<Option<Commit<'static>>, StoreError> {
-        // This needs to call apply_commits because it needs to do dependency check
-        self.apply_commits([commit]).map(|mut h| h.pop())
+    pub fn table_meta(&self, oid: TableOid) -> Option<&TableMeta> {
+        self.catalog.table_meta(oid)
     }
-
-    /// Apply as many commits as possible respecting their dependencies. Return the
-    /// commit hashes that are NOT applied, so the caller knows which ones they
-    /// need to retry.
-    pub fn apply_commits(
-        &mut self,
-        commits: impl IntoIterator<Item = Commit<'static>>,
-    ) -> Result<Vec<Commit<'static>>, StoreError> {
-        let mut pending = HashMap::new();
-
-        for commit in commits {
-            let hash = commit.hash();
-            if self.commits.contains(&hash) {
-                continue;
-            }
-
-            // We assume that the root commit has been used to construct the store
-            // and therefore must have been applied
-            if commit.is_root() {
-                return Err(CommitApplyError::RootCommit(commit.hash()).into());
-            }
-
-            // We assume that all commits will have deps
-            if commit.deps.is_empty() {
-                return Err(CommitApplyError::DanglingCommit(commit.hash()).into());
-            }
-
-            if let Some(existing) = pending.get(&hash) {
-                let existing: &Commit<'static> = existing;
-                if *existing != commit {
-                    return Err(CommitApplyError::ConflictPayload(commit.hash()).into());
-                }
-                continue;
-            }
-
-            pending.insert(hash, commit);
-        }
-
-        let mut unsatisfied: HashMap<CommitHash, i32> = HashMap::new();
-        let mut waiting_on: HashMap<CommitHash, Vec<CommitHash>> = HashMap::new();
-
-        // commits that can be applied
-        // use BTreeSet to ensure concurrent commit ordering is deterministic
-        let mut ready: BTreeSet<CommitHash> = BTreeSet::new();
-
-        for (hash, commit) in &pending {
-            let mut count = 0;
-
-            for dep in &commit.deps {
-                if self.commits.contains(dep) {
-                    continue;
-                }
-
-                if pending.contains_key(dep) {
-                    count += 1;
-                    waiting_on.entry(*dep).or_default().push(*hash);
-                } else {
-                    tracing::info!(
-                        commit_hash = %commit.hash(),
-                        missing_dep = %dep,
-                        "skipping commit with dependency that is neither applied nor pending"
-                    );
-                    count += 1;
-                }
-            }
-
-            if count == 0 {
-                ready.insert(*hash);
-            } else {
-                unsatisfied.insert(*hash, count);
-            }
-        }
-
-        while let Some(hash) = ready.pop_first() {
-            let commit = pending
-                .remove(&hash)
-                .expect("hash in ready should also exist in pending");
-
-            self.apply_commit_atomic(commit)?;
-            if let Some(waitings) = waiting_on.remove(&hash) {
-                for wh in waitings {
-                    let count = unsatisfied
-                        .get_mut(&wh)
-                        .expect("A commit that is waiting must be in unsatisfied");
-                    *count -= 1;
-                    if *count == 0 {
-                        unsatisfied.remove(&wh).unwrap();
-                        ready.insert(wh);
-                    }
-                }
-            }
-        }
-
-        Ok(pending.into_values().collect())
-    }
-
-    fn apply_commit_atomic(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
-        let snapshot = self.snapshot();
-        match self.apply_atomic_inner(commit) {
-            Ok(()) => {
-                self.commit(snapshot);
-                Ok(())
-            }
-            Err(e) => {
-                self.rollback_to(snapshot);
-                Err(e)
-            }
-        }
-    }
-
-    // Apply a commit + and fixpoint rebuilding + rule checking
-    // This function is doing the actual work, after a dozen levels of indirection.
-    #[cfg(not(target_arch = "wasm32"))]
-    fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
-        let mut query_tx = QueryTx::new(StoreDelta::empty());
-        let commit = self.apply_commit_ready(commit, &mut query_tx)?;
-        self.rebuild_to_fixpoint(&mut query_tx)?;
-        let derived = self.check_rules(query_tx)?;
-        self.apply_derived_view(derived, &commit)?;
-        self.record_in_commit_graph(commit);
-        Ok(())
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn apply_atomic_inner(&mut self, commit: Commit<'static>) -> Result<(), StoreError> {
-        let commit = self.apply_commit_ready(commit)?;
-        self.rebuild_to_fixpoint()?;
-        self.record_in_commit_graph(commit);
-        Ok(())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn apply_derived_view(
-        &mut self,
-        derived: DerivedDataDelta<Consolidated>,
-        commit: &Commit<'_>,
-    ) -> Result<(), StoreError> {
-        let mut cnt = commit.num_ops as u32;
-        let mut delta = derived.into_table_deltas();
-        delta.sort_by(|a, b| a.for_entity().id().cmp(b.for_entity().id()));
-        for td in delta {
-            let oid = self.resolve_table(&td.for_entity().id().into()).ok_or(
-                ValidationError::UnknownTable {
-                    path: td.for_entity().id().into(),
-                },
-            )?;
-            let table = self.tables.get_mut(&oid).expect("resolved correct table");
-
-            let id_allocate = || {
-                let row_id = WireRowId {
-                    commit: commit.hash(),
-                    counter: cnt,
-                };
-                cnt += 1;
-                self.id_packer
-                    .lookup_row_id(&row_id)
-                    .expect("hash already packed")
-            };
-
-            let ops = table.ops_from_table_delta(td, id_allocate);
-
-            ops.into_iter().for_each(|op| table.stage_update(op));
-            table.apply_staged_ops(&mut self.rowing)?;
-        }
-        Ok(())
-    }
-
-    /// Rebuild until a pass displaces no further ids, so a commit that merged
-    /// nothing does no rebuild work at all.
-    #[cfg(not(target_arch = "wasm32"))]
-    fn rebuild_to_fixpoint(&mut self, query_tx: &mut QueryTx<Prepare>) -> Result<(), StoreError> {
-        while self.rowing.has_displaced() {
-            self.rebuild_one(query_tx)?;
-            tracing::debug!("finished one iteration of rebuilding");
-        }
-        Ok(())
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn rebuild_to_fixpoint(&mut self) -> Result<(), StoreError> {
-        while self.rowing.has_displaced() {
-            self.rebuild_one()?;
-            tracing::debug!("finished one iteration of rebuilding");
-        }
-        Ok(())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn rebuild_one(&mut self, query_tx: &mut QueryTx<Prepare>) -> Result<(), StoreError> {
-        let affected = self.rebuild_tables();
-        self.apply_staged_ops(&affected, query_tx)
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn rebuild_one(&mut self) -> Result<(), StoreError> {
-        let affected = self.rebuild_tables();
-        self.apply_staged_ops(&affected)
-    }
-
-    fn rebuild_tables(&mut self) -> Vec<TableOid> {
-        for tbl in self.tables.values_mut() {
-            tbl.rebuild(&self.rowing, &self.id_packer);
-        }
-
-        // clear up the displaced table because the changes have all been staged.
-        self.rowing.clear_displaced();
-        self.tables.keys().copied().collect()
-    }
-
-    // Apply a commit with its deps checked to be satisfied
-    // The commit data itself might still violate rules, primary key constraints, etc
-    #[cfg(not(target_arch = "wasm32"))]
-    fn apply_commit_ready(
-        &mut self,
-        cmt: Commit<'static>,
-        query_tx: &mut QueryTx<Prepare>,
-    ) -> Result<Commit<'static>, StoreError> {
-        // TODO resolved_ops need to decode data, there is code path which decodes
-        // to get ops immediately after a commit has been encoded. Consider optimise this.
-
-        // Here we check the commit and then apply it without worrying about the
-        // store changing after checking and before applying.
-        // This is ok because the model we have is that the store should only
-        // materialise up to one particular commit, if violations are caused by
-        // concurrent commits, then this would be resolved at merge time, not when
-        // applying one of the concurrent commits.
-
-        let PrecheckedCommit { ops, original } = self.precheck_commit(cmt)?;
-        self.apply_commit_ops(ops, query_tx)?;
-        Ok(original)
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn apply_commit_ready(&mut self, cmt: Commit<'static>) -> Result<Commit<'static>, StoreError> {
-        let PrecheckedCommit { ops, original } = self.precheck_commit(cmt)?;
-        self.apply_commit_ops(ops)?;
-        Ok(original)
-    }
-
-    /// Applying the data, assuming that it has passed the format checker, i.e.
-    /// the data conforms the the schema type definitions.
-    /// But it might not follow all the rule definitions, it might also violate
-    /// primary key constraints after hashconsing
-    #[cfg(not(target_arch = "wasm32"))]
-    fn apply_commit_ops(
-        &mut self,
-        ops: Vec<Op>,
-        query_tx: &mut QueryTx<Prepare>,
-    ) -> Result<(), StoreError> {
-        let op_count = ops.len();
-        let affected = self.stage_commit_ops(ops);
-        self.apply_staged_ops(&affected, query_tx)?;
-
-        info!(op_count, "applied batch");
-        Ok(())
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn apply_commit_ops(&mut self, ops: Vec<Op>) -> Result<(), StoreError> {
-        let op_count = ops.len();
-        let affected = self.stage_commit_ops(ops);
-        self.apply_staged_ops(&affected)?;
-
-        info!(op_count, "applied batch");
-        Ok(())
-    }
-
-    // Stage all the commit ops into the table's pending state.
-    fn stage_commit_ops(&mut self, ops: Vec<Op>) -> Vec<TableOid> {
-        let mut affected = HashSet::new();
-        for op in ops {
-            let oid = op.table();
-            let op = self.id_packer.pack_op(op);
-            self.tables
-                .get_mut(&oid)
-                .expect("validated batch")
-                .stage_update(op);
-            affected.insert(oid);
-        }
-        affected.into_iter().collect()
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn apply_staged_ops(
-        &mut self,
-        tables: &[TableOid],
-        query_tx: &mut QueryTx<Prepare>,
-    ) -> Result<(), StoreError> {
-        for oid in tables {
-            let query_delta = self
-                .tables
-                .get_mut(oid)
-                .expect("staged table exists")
-                .apply_staged_ops(&mut self.rowing)?;
-            query_tx.insert(std::iter::once(query_delta));
-        }
-        self.rowing.apply_unions(&self.id_packer);
-        Ok(())
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn apply_staged_ops(&mut self, tables: &[TableOid]) -> Result<(), StoreError> {
-        for oid in tables {
-            self.tables
-                .get_mut(oid)
-                .expect("staged table exists")
-                .apply_staged_ops(&mut self.rowing)?;
-        }
-        self.rowing.apply_unions(&self.id_packer);
-        Ok(())
-    }
-
-    // We do as much check as possible without making changes to the tables
-    // including checks like:
-    //  - data following schema format
-    //  - no duplication of primary keys before hashconsing
-    fn precheck_commit(&self, cmt: Commit<'static>) -> Result<PrecheckedCommit, StoreError> {
-        // TODO perhaps use late resolution, i.e. not resolving any ids, and when
-        // we resolve, immediately make them packed.
-        let ops = cmt.resolved_ops(|path| {
-            self.resolve_table(path)
-                .and_then(|oid| self.table_meta(oid))
-        })?;
-        self.validate_commit_ops(&ops)?;
-        Ok(PrecheckedCommit { ops, original: cmt })
-    }
-
-    // TODO also need to validate that ids in op is referring to an existing id
-    fn validate_commit_ops(&self, ops: &[Op]) -> Result<(), StoreError> {
-        let mut pending_pk: HashMap<TableOid, Vec<Vec<WireValue>>> = HashMap::new();
-
-        for op in ops {
-            let Op::Add { table, values, .. } = op;
-            let t = self
-                .table(*table)
-                .ok_or(ValidationError::UnknownTableOid { oid: *table })?;
-            t.inner().validate_insert(values, &self.id_packer)?;
-
-            // Check primary key conflicts within ops batch
-            if let Some(key) = t.inner().primary_key_values(values) {
-                let keys = pending_pk.entry(*table).or_default();
-                if keys.iter().any(|k| k == &key) {
-                    return Err(ValidationError::DuplicatePrimaryKey.into());
-                }
-                keys.push(key);
-            }
-        }
-        Ok(())
-    }
-}
-
-struct PrecheckedCommit {
-    ops: Vec<Op>,
-    original: Commit<'static>,
 }
 
 impl Store {
@@ -878,47 +253,44 @@ impl Store {
         path: ir::Path,
         schema: ir::Schema,
     ) -> Result<TableOid, StoreError> {
-        let oid = self.tables.len();
-        self.path_to_oid.insert(path.clone(), oid);
-        self.tables.insert(oid, Table::new(path, oid, schema));
+        // Owned transactions can remain alive during a mutable borrow of Store.
+        let catalog = Arc::get_mut(&mut self.catalog).ok_or(StoreError::StoreInUse)?;
+        let data = Arc::get_mut(&mut self.data)
+            .ok_or(StoreError::StoreInUse)?
+            .get_mut();
 
-        let mut tables: Vec<_> = self
-            .tables
-            .values()
-            .map(|table| {
-                (
-                    table.oid(),
-                    ir::TableEntry {
-                        path: table.path().clone(),
-                        table: table.schema().clone(),
-                    },
-                )
-            })
-            .collect();
-        tables.sort_by_key(|(oid, _)| *oid);
-        let ir = FlatRealm {
-            tables: tables.into_iter().map(|(_, entry)| entry).collect(),
-            definitions: Vec::new(),
-            rules: self.rule_entries().to_vec(),
-        };
-        let root_commit = RootCommitData::new(
-            ir,
-            ColnDef {
-                theory: String::new(),
-                realm: String::new(),
-            },
-        );
-        self.commits = Self::graph_with_root_commit(root_commit)?;
+        // Build the new root commit before mutating, so a codec error leaves
+        // the store unchanged.
+        let oid = data.tables.len();
+        let mut ir = catalog.ir.clone();
+        ir.tables.push(ir::TableEntry {
+            path: path.clone(),
+            table: schema.clone(),
+        });
+        let root_data = RootCommitData::new(ir, catalog.root_data.coln_def.clone());
+        let commits = Self::graph_with_root_commit(&root_data)?;
+
+        let table = Table::new(path.clone(), oid, schema);
+        catalog.path_to_oid.insert(path, oid);
+        catalog.table_meta.push(table.meta());
+        catalog.ir = root_data.ir.clone();
+        catalog.root_data = root_data;
+        data.tables.insert(oid, table);
+        data.commits = commits;
         Ok(oid)
     }
 
     /// Dump every table in the store for debugging, in ascending [`TableOid`] order,
     /// separated by a blank line.
+    ///
+    /// Takes a read lock, so calling this while the same thread holds a
+    /// [`ReadTxn`] may deadlock if a writer is waiting.
     pub fn dump(&self) -> String {
-        let mut oids: Vec<TableOid> = self.tables.keys().copied().collect();
+        let data = self.data.read();
+        let mut oids: Vec<TableOid> = data.tables.keys().copied().collect();
         oids.sort_unstable();
         oids.into_iter()
-            .map(|oid| self.tables[&oid].dump(&self.id_packer))
+            .map(|oid| data.tables[&oid].dump(&data.id_packer))
             .collect::<Vec<_>>()
             .join("\n\n")
     }

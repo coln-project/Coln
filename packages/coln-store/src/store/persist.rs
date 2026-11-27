@@ -1,0 +1,414 @@
+// SPDX-FileCopyrightText: 2026 Coln contributors
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+use std::io::Write;
+
+use crate::commit::DataCommit;
+use crate::commit::error::CodecError;
+use crate::commit::frame::Frame;
+use crate::commit::leb128 as commit_leb128;
+use crate::store::error::StoreError;
+use crate::store::txn::ReadTxnable;
+use crate::store::{ReadTxn, ReadView, Store};
+
+/// The store magic bytes
+const MAGIC: &[u8; 4] = b"GMst";
+const FORMAT_VERSION: u32 = 2;
+
+impl Store {
+    pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
+        self.begin_read().encode()
+    }
+}
+
+impl ReadTxn {
+    pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
+        self.read().encode()
+    }
+}
+
+impl ReadView<'_> {
+    /// Store file layout, scalar integers use LEB128:
+    ///
+    /// `[MAGIC:4][version][chunk_count]`
+    /// `[chunk_count × [chunk_header || payload]]` (see [`crate::commit::header::Header::write`])
+    pub fn encode(&self) -> Result<Vec<u8>, CodecError> {
+        let data = self.data;
+        let commits = data.commits.iter_topological().collect::<Vec<_>>();
+        let mut buf: Vec<u8> = Vec::new();
+        buf.write_all(MAGIC)?;
+        commit_leb128::write_u32(&mut buf, FORMAT_VERSION);
+        commit_leb128::write_len(&mut buf, commits.len() + 1);
+        Frame::from(data.commits.root_commit()).write(&mut buf);
+
+        for commit in commits {
+            Frame::from(commit).write(&mut buf);
+        }
+
+        Ok(buf)
+    }
+}
+
+impl Store {
+    /// Decode bytes produced by [`Self::encode`].
+    ///
+    /// Returns a store initialized from the root and checked data commits that
+    /// still need to be applied. No data commits are replayed by this method.
+    pub fn decode(data: &[u8]) -> Result<(Self, Vec<DataCommit>), StoreError> {
+        let chunks = read_store_envelope(data)?;
+        Self::try_from_chunks(chunks)
+    }
+
+    /// Restore a store without deriving data or checking rules.
+    /// Rejects snapshots whose commits cannot all be applied.
+    pub(crate) fn decode_plain(data: &[u8]) -> Result<Self, StoreError> {
+        let encoded = read_store_envelope(data)?;
+        let store = Self::try_from_chunks_plain(encoded)?;
+        if store.data.read().has_pending() {
+            return Err(CodecError::DataContentError(
+                "store snapshot contains commits that could not be applied".into(),
+            )
+            .into());
+        }
+        Ok(store)
+    }
+}
+
+fn read_store_envelope(data: &[u8]) -> Result<Vec<Frame>, CodecError> {
+    if data.len() < MAGIC.len() {
+        return Err(CodecError::DataFormatError(
+            "truncated: missing magic".into(),
+        ));
+    }
+    if data[..MAGIC.len()] != *MAGIC {
+        return Err(CodecError::DataFormatError("bad magic".into()));
+    }
+
+    let mut pos = MAGIC.len();
+
+    let version = commit_leb128::read_u32(data, &mut pos, "format version")?;
+    if version != FORMAT_VERSION {
+        return Err(CodecError::DataFormatError(format!(
+            "unsupported format version: {version}"
+        )));
+    }
+
+    let chunk_count = commit_leb128::read_len(data, &mut pos, "chunk count")?;
+    let mut chunks = Vec::with_capacity(chunk_count);
+    for _ in 0..chunk_count {
+        chunks.push(Frame::read_at(data, &mut pos)?);
+    }
+    if pos != data.len() {
+        return Err(CodecError::DataFormatError(format!(
+            "trailing bytes after store chunks: {} bytes",
+            data.len() - pos
+        )));
+    }
+
+    Ok(chunks)
+}
+
+#[cfg(test)]
+mod tests {
+    use coln_flir_rs::engine::packed::{StoreScalarValue, StoreTuple};
+    use coln_flir_rs::hash::{CommitHash, HASH_SIZE};
+    use rstest::{fixture, rstest};
+
+    use super::*;
+    use crate::commit::author::Author;
+    use crate::commit::header::{ChunkType, Header};
+    use crate::commit::wire::{CommitData, RootCommitData};
+    use crate::ir::Path;
+    use crate::pack::id_packer::IdLookup;
+    use crate::test_utils::non_empty_root_commit_data;
+
+    #[fixture]
+    fn int_store(non_empty_root_commit_data: RootCommitData) -> Store {
+        let RootCommitData { ir, coln_def } = non_empty_root_commit_data;
+        Store::try_from_ir(&ir, coln_def).expect("store")
+    }
+
+    fn store_envelope(framed_chunks: &[Vec<u8>]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.write_all(MAGIC).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
+        commit_leb128::write_len(&mut bytes, framed_chunks.len());
+        for chunk in framed_chunks {
+            bytes.write_all(chunk).unwrap();
+        }
+        bytes
+    }
+
+    fn frame_chunk(chunk_type: ChunkType, payload: &[u8]) -> Vec<u8> {
+        let header = Header::new(chunk_type, payload);
+        let mut buf = Vec::new();
+        header.write(&mut buf);
+        buf.write_all(payload).unwrap();
+        buf
+    }
+
+    fn read_encoded_chunks(data: &[u8]) -> Vec<(u8, Vec<u8>)> {
+        let chunks = read_store_envelope(data).expect("encoded store");
+        chunks
+            .into_iter()
+            .map(|chunk| {
+                let chunk_type = chunk.chunk_type();
+                let (_, payload) = chunk.into_parts();
+                (u8::from(chunk_type), payload)
+            })
+            .collect()
+    }
+
+    fn is_data_format_error(result: Result<Store, StoreError>) -> bool {
+        matches!(
+            result,
+            Err(err)
+                if matches!(
+                    &err,
+                    StoreError::Encode(CodecError::DataFormatError(_))
+                )
+        )
+    }
+
+    /// Offset of the first chunk header (the start of its magic) inside an
+    /// encoded store.
+    fn first_chunk_offset(bytes: &[u8]) -> usize {
+        let framed = frame_chunk(ChunkType::RootCommit, &[]);
+        let chunk_magic = &framed[..MAGIC.len()];
+        bytes
+            .windows(chunk_magic.len())
+            .position(|window| window == chunk_magic)
+            .expect("encoded store contains a chunk magic")
+    }
+
+    fn is_data_content_error(result: Result<Store, StoreError>) -> bool {
+        matches!(
+            result,
+            Err(err)
+                if matches!(
+                    &err,
+                    StoreError::Encode(CodecError::DataContentError(_))
+                )
+        )
+    }
+
+    #[test]
+    fn encode_store_writes_root_commit_chunk() {
+        let store = Store::new();
+        let bytes = store.encode().unwrap();
+        let chunks = read_encoded_chunks(&bytes);
+        let read = store.begin_read();
+        let root = read.data.commits.root_commit();
+
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].0, u8::from(ChunkType::RootCommit));
+        assert_eq!(chunks[0].1, root.payload());
+    }
+
+    #[rstest]
+    fn encode_store_writes_topological_commit_chunks(#[from(int_store)] store: Store) {
+        let table = Path::from("T");
+        let mut hashes = Vec::new();
+        for value in [99_i32, 100_i32] {
+            let mut txn = store.begin_write();
+            txn.add(&table, vec![value]).expect("add row");
+            hashes.push(txn.commit().expect("commit").commit_hash());
+        }
+
+        let expected = {
+            let read = store.begin_read();
+            let mut expected = vec![(
+                u8::from(ChunkType::RootCommit),
+                read.data.commits.root_commit().payload().to_vec(),
+            )];
+            expected.extend(hashes.iter().map(|hash| {
+                let commit = read.commit_by_hash(hash).expect("stored commit");
+                (u8::from(ChunkType::DataCommit), commit.payload().to_vec())
+            }));
+            expected
+        };
+        let bytes = store.encode().unwrap();
+        let chunks = read_encoded_chunks(&bytes);
+
+        assert_eq!(chunks, expected);
+    }
+
+    #[test]
+    fn store_decode_rejects_unsupported_version() {
+        let mut bytes = Vec::new();
+        bytes.write_all(MAGIC).unwrap();
+        commit_leb128::write_u32(&mut bytes, 999);
+
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
+    }
+
+    #[test]
+    fn store_decode_rejects_unknown_chunk_type() {
+        let mut chunk = frame_chunk(ChunkType::RootCommit, &[]);
+        // Skip the chunk magic and checksum to replace the type tag.
+        chunk[8] = 99;
+        let bytes = store_envelope(&[chunk]);
+
+        assert!(matches!(
+            Store::decode_plain(&bytes),
+            Err(StoreError::Encode(CodecError::DataFormatError(message)))
+                if message == "unknown chunk type 99"
+        ));
+    }
+
+    #[test]
+    fn store_decode_rejects_truncated_chunk_record() {
+        let mut bytes = Vec::new();
+        bytes.write_all(MAGIC).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
+        commit_leb128::write_len(&mut bytes, 1);
+        bytes.write_all(&[0x47]).unwrap(); // partial chunk: not even a full magic
+
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
+    }
+
+    #[test]
+    fn store_decode_rejects_trailing_bytes_after_chunks() {
+        let mut bytes = Store::new().encode().unwrap();
+        bytes.push(0);
+
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
+    }
+
+    #[test]
+    fn store_decode_rejects_flipped_checksum_byte() {
+        let bytes = Store::new().encode().expect("encode store");
+        assert!(
+            Store::decode_plain(&bytes).is_ok(),
+            "baseline store should decode"
+        );
+
+        let mut corrupted = bytes.clone();
+        // Skip the 4-byte chunk magic to land on the stored checksum.
+        let checksum_byte = first_chunk_offset(&corrupted) + MAGIC.len();
+        corrupted[checksum_byte] ^= 0xFF;
+
+        let err = Store::decode_plain(&corrupted).expect_err("checksum mismatch");
+        assert!(matches!(
+            err,
+            StoreError::Encode(CodecError::ChecksumMismatch)
+        ));
+    }
+
+    #[test]
+    fn store_decode_rejects_flipped_chunk_magic_byte() {
+        let bytes = Store::new().encode().expect("encode store");
+        assert!(
+            Store::decode_plain(&bytes).is_ok(),
+            "baseline store should decode"
+        );
+
+        let mut corrupted = bytes.clone();
+        let magic_byte = first_chunk_offset(&corrupted);
+        corrupted[magic_byte] ^= 0xFF;
+
+        assert!(is_data_format_error(Store::decode_plain(&corrupted)));
+    }
+
+    #[test]
+    fn store_decode_rejects_multiple_roots() {
+        let bytes = Store::new().encode().unwrap();
+        let root_payload = read_encoded_chunks(&bytes)
+            .into_iter()
+            .next()
+            .expect("root chunk")
+            .1;
+        let framed = frame_chunk(ChunkType::RootCommit, &root_payload);
+        let bytes = store_envelope(&[framed.clone(), framed]);
+
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
+    }
+
+    #[test]
+    fn store_decode_rejects_missing_dependency() {
+        let root_bytes = Store::new().encode().unwrap();
+        let root_chunk = read_encoded_chunks(&root_bytes)
+            .into_iter()
+            .next()
+            .expect("root chunk");
+        let missing = CommitHash([0xff; HASH_SIZE]);
+        let commit = DataCommit::from_commit_data(
+            CommitData::new(vec![missing], Author::foo(), 42, None, vec![]),
+            |_| None,
+        )
+        .expect("commit with missing dependency");
+        let bytes = store_envelope(&[
+            frame_chunk(ChunkType::RootCommit, &root_chunk.1),
+            frame_chunk(ChunkType::DataCommit, commit.payload()),
+        ]);
+
+        assert!(is_data_content_error(Store::decode_plain(&bytes)));
+    }
+
+    #[test]
+    fn store_round_trip_empty() {
+        let store = Store::new();
+        let root = store.begin_read().data.commits.root_commit().hash();
+
+        let bytes = store.encode().unwrap();
+        let restored = Store::decode_plain(&bytes).unwrap();
+
+        assert_eq!(restored.table_count(), 0);
+        let read = restored.begin_read();
+        assert_eq!(read.data.commits.root_commit().hash(), root);
+        assert_eq!(read.heads(), vec![root]);
+    }
+
+    #[rstest]
+    fn store_round_trip_replays_commits_and_preserves_graph(#[from(int_store)] store: Store) {
+        let root = store.begin_read().data.commits.root_commit().hash();
+        let table = Path::from("T");
+        let mut txn = store.begin_write();
+        let live_id = txn.add(&table, vec![99_i32]).expect("add row");
+        let commit = txn.commit().expect("commit").commit_hash();
+        let row_id = store.begin_read().promote_one(live_id, commit);
+
+        let bytes = store.encode().unwrap();
+        let restored = Store::decode_plain(&bytes).unwrap();
+
+        let read = restored.begin_read();
+        let packed = read
+            .id_lookup()
+            .packed(&row_id)
+            .expect("restored store interned the commit hash");
+        assert_eq!(
+            read.row_by_id(&table, &packed),
+            Some(StoreTuple::from(vec![
+                StoreScalarValue::RowId(packed),
+                StoreScalarValue::I32(99),
+            ]))
+        );
+        assert_eq!(
+            read.commit_by_hash(&commit).expect("restored commit").deps,
+            vec![root]
+        );
+        assert_eq!(read.heads(), vec![commit]);
+    }
+
+    #[test]
+    fn store_decode_rejects_missing_root() {
+        let mut bytes = Vec::new();
+        bytes.write_all(MAGIC).unwrap();
+        commit_leb128::write_u32(&mut bytes, FORMAT_VERSION);
+        commit_leb128::write_len(&mut bytes, 0);
+
+        assert!(is_data_format_error(Store::decode_plain(&bytes)));
+    }
+
+    #[test]
+    fn store_decode_rejects_bad_magic() {
+        assert!(is_data_format_error(Store::decode_plain(b"XXXX________")));
+    }
+
+    #[test]
+    fn store_decode_rejects_truncated_input() {
+        assert!(Store::decode_plain(b"GM").is_err());
+        assert!(Store::decode_plain(b"GMst").is_err());
+    }
+}
