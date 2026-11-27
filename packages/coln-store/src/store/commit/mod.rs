@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use coln_flir_rs::hash::CommitHash;
+use coln_flir_rs::{fragment::Fragment, hash::CommitHash};
 
 use crate::commit::chunk::Chunk;
 use crate::commit::frame::Frame;
@@ -16,13 +16,6 @@ use crate::store::{ReadTxn, ReadView, Store};
 mod batch;
 
 pub use batch::{CommitBatch, PrepareState, Prepared, Unprepared};
-
-/// For consumption by subduction
-pub struct Fragment {
-    pub hash: CommitHash,
-    pub parents: Vec<CommitHash>,
-    pub bytes: Vec<u8>,
-}
 
 impl<T> From<&Commit<'_, T>> for Fragment {
     fn from(commit: &Commit<'_, T>) -> Self {
@@ -39,7 +32,7 @@ impl ReadTxn {
         self.read().chunks_after(have_heads)
     }
 
-    pub fn commit_chunks_after(&self, have_heads: &[CommitHash]) -> Vec<Fragment> {
+    pub fn fragments_after(&self, have_heads: &[CommitHash]) -> Vec<Fragment> {
         self.read().fragments_after(have_heads)
     }
 

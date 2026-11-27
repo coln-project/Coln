@@ -2,16 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use coln_flir_rs::{engine::schema::ColnDef, ir, public::PublicScalarValue};
+use coln_flir_rs::{engine::schema::ColnDef, fragment::Fragment, ir, public::PublicScalarValue};
 use coln_store::{
-    store::{Store, commit::Fragment, error::StoreError, txn::ReadTxnable},
+    store::{Store, error::StoreError, txn::ReadTxnable},
     table::ValidationError,
 };
 use rstest::{fixture, rstest};
 
 use crate::{
     bouncer::{Bouncer, ReadTxnable as _},
-    error::{BouncerError, LawViolation},
+    error::BouncerError,
 };
 
 #[fixture]
@@ -91,7 +91,7 @@ fn plain_commits(realm: &ir::FlatRealm, coln_def: ColnDef, values: &[i32]) -> Ve
             .expect("prepare without query rules")
             .commit();
     }
-    source.begin_read().commit_chunks_after(&heads)
+    source.begin_read().fragments_after(&heads)
 }
 
 #[rstest]
@@ -110,7 +110,7 @@ fn rejected_commit_rolls_back_store_and_allows_next_transaction(only_ones: Bounc
     tx.add(&table, vec![1i32]).expect("add valid row");
     tx.add(&table, vec![2i32]).expect("add violating row");
     let violations = match tx.commit() {
-        Err(BouncerError::Law(LawViolation::Hard(violations))) => violations,
+        Err(BouncerError::Law(violations)) => violations,
         Err(error) => panic!("expected a hard constraint violation, got {error}"),
         Ok(_) => panic!("the enforced rule should reject value 2"),
     };
@@ -214,7 +214,7 @@ fn sync_hard_rejection_preserves_earlier_commits_and_blocks_descendants(
 
     assert!(matches!(
         only_ones.begin_import().apply_chunk_bytes(chunks.iter().map(|chunk| chunk.bytes.clone())),
-        Err(BouncerError::Law(LawViolation::Hard(violations)))
+        Err(BouncerError::Law(violations))
             if !violations.is_empty()
     ));
     let rows = only_ones.begin_read().scan_table(&table).expect("table");

@@ -8,10 +8,10 @@ export function createRealm(runtime: typeof Runtime) {
       }) => Runtime.MutableSet<Runtime.RowId<"root.boxed">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
         boxed: (a: { value: { name: string } }) => {
-          return (new runtime.BaseSet(mstore, "root.boxed", [a.value.name]));
+          return (new runtime.BaseSet(mbouncer, "root.boxed", [a.value.name]));
         }
       };
     }

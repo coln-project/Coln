@@ -8,12 +8,12 @@ export function createRealm(runtime: typeof Runtime) {
       label: (a: Runtime.RowId<"root.V">) => Runtime.MutableRef<string>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        V: (new runtime.BaseSet(mstore, "root.V", [])),
+        V: (new runtime.BaseSet(mbouncer, "root.V", [])),
         count: (a: Runtime.RowId<"root.V">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.count",
             [a],
             [1, 2],
@@ -21,7 +21,7 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: number) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return result[0];
               }
             }
@@ -29,7 +29,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         label: (a: Runtime.RowId<"root.V">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.label",
             [a],
             [1, 2],
@@ -37,7 +37,7 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: string) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return result[0];
               }
             }

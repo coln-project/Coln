@@ -10,20 +10,20 @@ export function createRealm(runtime: typeof Runtime) {
       nextedge: (x: null) => Runtime.MutableRef<Runtime.RowId<"root.E">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        A: (new runtime.BaseProp(mstore, "root.A", [])),
+        A: (new runtime.BaseProp(mbouncer, "root.A", [])),
         B: (a: null) => {
-          return (new runtime.BaseSet(mstore, "root.B", []));
+          return (new runtime.BaseSet(mbouncer, "root.B", []));
         },
         E: (x: null) => {
           return (a: Runtime.RowId<"root.B">) => {
-            return (new runtime.BaseSet(mstore, "root.E", [a]));
+            return (new runtime.BaseSet(mbouncer, "root.E", [a]));
           };
         },
         next: (x: null) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.next",
             [],
             [0, 1],
@@ -31,9 +31,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.B">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.B"
                 ));
               }
@@ -42,7 +42,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         nextedge: (x: null) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.nextedge",
             [],
             [0, 1],
@@ -50,9 +50,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.E">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.E"
                 ));
               }

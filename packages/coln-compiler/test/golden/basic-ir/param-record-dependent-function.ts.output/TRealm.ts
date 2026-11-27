@@ -13,11 +13,11 @@ export function createRealm(runtime: typeof Runtime) {
       }) => Runtime.MutableSet<Runtime.RowId<"root.boxed">>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        Key: (new runtime.BaseSet(mstore, "root.Key", [])),
+        Key: (new runtime.BaseSet(mbouncer, "root.Key", [])),
         key: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.key",
           [],
           [0, 1],
@@ -25,20 +25,20 @@ export function createRealm(runtime: typeof Runtime) {
             flatten: (a: Runtime.RowId<"root.Key">) => {
               return [a];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return (new runtime.RowId(
-                { type: "Existing", value: result[0] as Runtime.WireRowId },
+                { type: "Existing", value: result[0] as Runtime.PublicRowId },
                 "root.Key"
               ));
             }
           }
         )),
         E: (a: Runtime.RowId<"root.Key">) => {
-          return (new runtime.BaseSet(mstore, "root.E", [a]));
+          return (new runtime.BaseSet(mbouncer, "root.E", [a]));
         },
         f: (x: Runtime.RowId<"root.Key">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.f",
             [x],
             [1, 2],
@@ -46,9 +46,9 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: Runtime.RowId<"root.E">) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.E"
                 ));
               }
@@ -56,7 +56,7 @@ export function createRealm(runtime: typeof Runtime) {
           ));
         },
         point: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.point",
           [],
           [0],
@@ -64,13 +64,13 @@ export function createRealm(runtime: typeof Runtime) {
             flatten: (a: {}) => {
               return [];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return {};
             }
           }
         )),
         boxed: (a: { image: Runtime.RowId<"root.E"> }) => {
-          return (new runtime.BaseSet(mstore, "root.boxed", [a.image]));
+          return (new runtime.BaseSet(mbouncer, "root.boxed", [a.image]));
         }
       };
     }

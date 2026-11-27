@@ -69,19 +69,19 @@ impl IdPacker {
     }
 
     pub(crate) fn pack_value(&mut self, value: PublicScalarValue) -> StoreScalarValue {
-        value.map(|id| self.pack_row_id(id))
+        value.map(|id| self.pack_row_id(id)).into()
     }
 
     /// Packs a cell without modifying the dictionary.
     ///
     /// Returns `None` when an ID cell's commit hash has not been interned.
     pub(crate) fn try_pack_value(&self, value: &PublicScalarValue) -> Option<StoreScalarValue> {
-        value.clone().try_map(|id| self.packed(&id))
+        value.clone().try_map(|id| self.packed(&id)).map(Into::into)
     }
 
     #[cfg(test)]
     fn unpack_value(&self, value: StoreScalarValue) -> PublicScalarValue {
-        value.map(|id| self.unpack_row_id(id))
+        value.map(|id| self.unpack_row_id(id)).expect_public()
     }
 
     pub(crate) fn pack_row(&mut self, op: PublicOp) -> ZRow<StoreTuple> {
@@ -165,7 +165,7 @@ mod tests {
         let existing = packer.pack_row_id(row_id_from(1, 0));
         let values = vec![
             PublicScalarValue::RowId(row_id_from(2, 7)),
-            PublicScalarValue::U64(42),
+            PublicScalarValue::I32(42),
             PublicScalarValue::RowId(row_id_from(1, 9)),
             PublicScalarValue::RowId(row_id_from(2, 8)),
         ];

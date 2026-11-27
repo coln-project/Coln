@@ -7,11 +7,11 @@ export function createRealm(runtime: typeof Runtime) {
       pointed: Runtime.MutableRef<{ point: Runtime.RowId<"root.model.X"> }>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        model: { X: (new runtime.BaseSet(mstore, "root.model.X", [])) },
+        model: { X: (new runtime.BaseSet(mbouncer, "root.model.X", [])) },
         pointed: (new runtime.BaseTableRef(
-          mstore,
+          mbouncer,
           "root.pointed",
           [],
           [0, 1],
@@ -19,10 +19,10 @@ export function createRealm(runtime: typeof Runtime) {
             flatten: (a: { point: Runtime.RowId<"root.model.X"> }) => {
               return [a.point];
             },
-            reconstruct: (result: Runtime.WireTuple) => {
+            reconstruct: (result: Runtime.PublicTuple) => {
               return {
                 point: (new runtime.RowId(
-                  { type: "Existing", value: result[0] as Runtime.WireRowId },
+                  { type: "Existing", value: result[0] as Runtime.PublicRowId },
                   "root.model.X"
                 ))
               };

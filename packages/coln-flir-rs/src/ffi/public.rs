@@ -11,11 +11,13 @@ use specta::Type;
 
 use crate::{
     engine::{
+        delta::{Consolidated, StoreDelta},
         packed::{PackedRowId, StoreTuple, WithRowId},
+        query::QueryTuple,
         tx::{TxRowId, TxTuple},
     },
     ffi::hash::CommitHash,
-    tuple::{NativeScalar, NativeScalarType, ScalarKind, Tuple},
+    tuple::{NativeScalarType, PublicScalar, ScalarKind, Tuple},
 };
 
 /// The unique id that identifies each row in a table.
@@ -47,7 +49,7 @@ impl UnifyValue for PublicRowId {
     }
 }
 
-pub type PublicScalarValue = NativeScalar<PublicRowId>;
+pub type PublicScalarValue = PublicScalar<PublicRowId>;
 
 impl ScalarKind for PublicRowId {
     type Ty = PublicRowIdType;
@@ -115,7 +117,7 @@ impl PublicTuple {
             .0
             .inner
             .into_iter()
-            .map(|scalar| scalar.map(&unpack))
+            .map(|scalar| scalar.map(&unpack).expect_public())
             .collect();
         Self(Tuple { inner })
     }
@@ -153,5 +155,90 @@ impl IntoIterator for PublicTuple {
 impl fmt::Display for PublicTuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
+    }
+}
+
+/// How a delta of derived data (views) in response to a transaction is reported
+/// via the FFI boundary. Row ids are unpacked, i.e., carry their commit hash.
+pub type PublicDerivedDataDelta = StoreDelta<Consolidated, PublicTuple>;
+
+/// How laws' violations are reported via the FFI boundary (no matter if they
+/// stem from monitored laws (soft violations) or enforced laws (hard
+/// violations).
+///
+/// One type serves both because an enforced law's violations are reported
+/// against an empty set: its rows are all assertions, so the violation set
+/// coln-query reports for hard violations is a valid delta, too. For monitored
+/// laws, a negative zweight is a violation that was resolved.
+///
+/// # Note
+///
+/// Ideally, this should be a `StoreDelta<Consolidated, PublicTuple>` but this
+/// requires knowledge of a law's violations' schema on coln-store's end which
+/// we have not yet available. Until then, it remains a `QueryTuple`. Note
+/// that a `QueryTuple` flattens each row id into two plain `U32` columns, the
+/// _packed_ commit index and the counter, which are meaningless outside of the
+/// store that packed them.
+pub type PublicViolations = StoreDelta<Consolidated, QueryTuple>;
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::engine::tx::{PendingRowId, TxScalarValue};
+    use crate::ffi::hash::ALL_ZERO_HASH;
+
+    // The JS side relies on scalars being untagged: a row id is an object, an
+    // int a number and a string a string.
+    #[test]
+    fn public_tuple_json_is_untagged() {
+        let id = PublicRowId {
+            commit: ALL_ZERO_HASH,
+            counter: 3,
+        };
+        let tuple = PublicTuple::from(vec![
+            PublicScalarValue::RowId(id),
+            PublicScalarValue::I32(-7),
+            PublicScalarValue::String("a".into()),
+        ]);
+        let expected = json!([{ "commit": "00".repeat(32), "counter": 3 }, -7, "a"]);
+        assert_eq!(serde_json::to_value(&tuple).unwrap(), expected);
+        assert_eq!(
+            serde_json::from_value::<PublicTuple>(expected).unwrap(),
+            tuple
+        );
+    }
+
+    #[test]
+    fn tx_tuple_json_is_untagged() {
+        let id = PublicRowId {
+            commit: ALL_ZERO_HASH,
+            counter: 3,
+        };
+        let json = json!([
+            { "type": "Pending", "value": 0 },
+            { "type": "Existing", "value": { "commit": "00".repeat(32), "counter": 3 } },
+            5,
+            "x",
+        ]);
+        let tuple: TxTuple = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(
+            tuple.as_slice(),
+            [
+                TxScalarValue::RowId(TxRowId::Pending(PendingRowId(0))),
+                TxScalarValue::RowId(TxRowId::Existing(id)),
+                TxScalarValue::I32(5),
+                TxScalarValue::String("x".into()),
+            ]
+        );
+        assert_eq!(serde_json::to_value(&tuple).unwrap(), json);
+    }
+
+    #[test]
+    fn rejects_non_i32_numbers() {
+        for bad in [json!([1.5]), json!([2147483648i64]), json!([true])] {
+            assert!(serde_json::from_value::<PublicTuple>(bad).is_err());
+        }
     }
 }

@@ -5,7 +5,7 @@
 use coln_flir_rs::engine::delta::{StoreDelta, TableDelta, ZRow};
 use coln_flir_rs::engine::packed::{StoreScalarValue, StoreTuple};
 use coln_flir_rs::engine::table::{STReadTxn, SortedTable, StoreST};
-use coln_flir_rs::engine::tx::TxTuple;
+use coln_flir_rs::engine::tx::{PendingRowId, TxRowId, TxTuple};
 use rstest::rstest;
 
 use crate::ir::{BuiltinTy, ColType, ColumnEntry, EntityVariant, Path, Schema};
@@ -178,36 +178,248 @@ fn committed_row_handle_can_be_used_in_later_transaction(#[from(nodes_edges_stor
     );
 }
 
-/// A pending id whose row deduplicates into an existing structural class
-/// promotes to the id the store actually kept, not to its raw
-/// `(commit, counter)` id, which names no stored row. The first id
-/// may still go stale when the second commit wins the merge; promoting
-/// the existing id again resolves it to the canonical id.
 #[rstest]
-fn deduplicated_row_handle_finalizes_to_canonical_id(
+fn constructor_add_reuses_committed_id_without_staging_a_row(
     #[from(single_memoized_int_store)] store: Store,
 ) {
+    let path = Path::from("T");
+    let mut tx = store.begin_write();
+    let first = tx.add(&path, vec![7i32]).expect("add first row");
+    let hash = tx.commit().expect("commit first row").commit_hash();
+    let existing = store.begin_read().promote_one(first, hash);
+
+    let mut tx = store.begin_write();
+    assert_eq!(
+        tx.add(&path, vec![7i32]).expect("reuse existing row"),
+        TxRowId::Existing(existing)
+    );
+    assert_eq!(
+        tx.add(&path, vec![8i32]).expect("add different row"),
+        TxRowId::Pending(PendingRowId(0)),
+        "reusing a row must not consume a pending ID"
+    );
+    tx.commit().expect("commit different row");
+
+    let read = store.begin_read();
+    assert_eq!(read.scan_table(&path).expect("T").len(), 2);
+    let packed = read.id_lookup().packed(&existing).expect("existing ID");
+    assert_eq!(
+        read.row_by_id(&path, &packed),
+        Some(StoreTuple::from_id_values(packed, vec![7i32.into()]))
+    );
+}
+
+#[rstest]
+fn constructor_add_with_only_existing_data_leaves_transaction_empty(
+    #[from(single_memoized_int_store)] store: Store,
+) {
+    let path = Path::from("T");
+    let mut tx = store.begin_write();
+    let first = tx.add(&path, vec![7i32]).expect("add first row");
+    let hash = tx.commit().expect("commit first row").commit_hash();
+    let existing = store.begin_read().promote_one(first, hash);
+
+    let mut tx = store.begin_write();
+    assert_eq!(
+        tx.add(&path, vec![7i32]).expect("reuse existing row"),
+        TxRowId::Existing(existing)
+    );
+    assert!(matches!(
+        tx.commit().err().expect("no operations were staged"),
+        StoreError::Commit(crate::store::error::CommitApplyError::EmptyCommit)
+    ));
+    let read = store.begin_read();
+    assert_eq!(read.heads(), vec![hash]);
+    assert_eq!(read.scan_table(&path).expect("T").len(), 1);
+}
+
+#[rstest]
+fn ordinary_table_add_stages_a_new_row_for_existing_data(#[from(single_int_store)] store: Store) {
+    let path = Path::from("T");
+    let mut tx = store.begin_write();
+    tx.add(&path, vec![7i32]).expect("add first row");
+    assert_eq!(
+        tx.add(&path, vec![7i32]).expect("add equal pending row"),
+        TxRowId::Pending(PendingRowId(1))
+    );
+    tx.commit().expect("commit first row");
+
+    let mut tx = store.begin_write();
+    assert_eq!(
+        tx.add(&path, vec![7i32]).expect("add equal row"),
+        TxRowId::Pending(PendingRowId(0))
+    );
+    tx.commit().expect("commit equal row");
+    assert_eq!(store.begin_read().scan_table(&path).expect("T").len(), 3);
+}
+
+#[rstest]
+fn constructor_add_reuses_id_when_a_reference_is_a_noncanonical_alias(
+    #[from(single_memoized_int_store)] mut store: Store,
+) {
     let term = Path::from("T");
+    let refs = Path::from("Refs");
+    let mut schema =
+        crate::test_utils::id_schema(vec!["term"], None, ColType::RowId { path: term.clone() });
+    schema.entity_variant = EntityVariant::View {
+        materialization: crate::ir::Materialization::Memoized,
+    };
+    store
+        .create_table(refs.clone(), schema)
+        .expect("create Refs");
+
+    let mut tx = store.begin_write();
+    let first = tx.add(&term, vec![7i32]).expect("add first term");
+    let reference = tx.add(&refs, vec![first]).expect("add reference");
+    assert_eq!(
+        tx.add(&refs, vec![first]).expect("reuse pending reference"),
+        reference
+    );
+    drop(tx);
+
+    // Incoming commits can contain duplicate rows even though local adds reuse IDs.
+    let commit = {
+        use crate::commit::{Commit, author::Author, wire::CommitData};
+        use crate::op::PendingOp;
+
+        let read = store.begin_read();
+        let term_oid = read.table_at(&term).expect("T").oid();
+        let refs_oid = read.table_at(&refs).expect("Refs").oid();
+        Commit::from_commit_data(
+            CommitData::new(
+                read.heads(),
+                Author::default(),
+                0,
+                None,
+                vec![
+                    PendingOp::add(PendingRowId(0), term_oid, vec![7i32].into()),
+                    PendingOp::add(PendingRowId(1), refs_oid, vec![first].into()),
+                    PendingOp::add(PendingRowId(2), term_oid, vec![7i32].into()),
+                ],
+            ),
+            |oid| read.read().catalog.table_meta(oid),
+        )
+        .expect("build incoming commit")
+    };
+    let hash = commit.hash();
+    store
+        .apply_commits_plain([commit])
+        .expect("apply incoming commit");
+    let alias = PendingRowId(2).resolve(hash);
+    let existing = store.begin_read().promote_one(reference, hash);
+    assert_ne!(store.begin_read().promote_one(first, hash), alias);
+
+    let mut tx = store.begin_write();
+    assert_eq!(
+        tx.add(&refs, vec![alias]).expect("reuse reference"),
+        TxRowId::Existing(existing)
+    );
+}
+
+#[rstest]
+fn constructor_add_reuses_pending_id_when_references_are_aliases(
+    #[from(single_memoized_int_store)] mut store: Store,
+) {
+    let term = Path::from("T");
+    let refs = Path::from("Refs");
+    let mut schema =
+        crate::test_utils::id_schema(vec!["term"], None, ColType::RowId { path: term.clone() });
+    schema.entity_variant = EntityVariant::View {
+        materialization: crate::ir::Materialization::Memoized,
+    };
+    store
+        .create_table(refs.clone(), schema)
+        .expect("create Refs");
+
+    // An incoming commit adds T(7) twice, so the two ids are unioned into one
+    // class. No Refs row exists yet, so only the pending lookup can match.
+    let commit = {
+        use crate::commit::{Commit, author::Author, wire::CommitData};
+        use crate::op::PendingOp;
+
+        let read = store.begin_read();
+        let term_oid = read.table_at(&term).expect("T").oid();
+        Commit::from_commit_data(
+            CommitData::new(
+                read.heads(),
+                Author::default(),
+                0,
+                None,
+                vec![
+                    PendingOp::add(PendingRowId(0), term_oid, vec![7i32].into()),
+                    PendingOp::add(PendingRowId(1), term_oid, vec![7i32].into()),
+                ],
+            ),
+            |oid| read.read().catalog.table_meta(oid),
+        )
+        .expect("build incoming commit")
+    };
+    let hash = commit.hash();
+    store
+        .apply_commits_plain([commit])
+        .expect("apply incoming commit");
+    let first = PendingRowId(0).resolve(hash);
+    let second = PendingRowId(1).resolve(hash);
+    assert_ne!(first, second);
+
+    let mut tx = store.begin_write();
+    let reference = tx.add(&refs, vec![first]).expect("add reference");
+    assert_eq!(reference, TxRowId::Pending(PendingRowId(0)));
+    assert_eq!(
+        tx.add(&refs, vec![second]).expect("add aliased reference"),
+        reference,
+        "an alias of a staged reference must reuse its pending ID"
+    );
+    tx.commit().expect("commit reference");
+
+    let read = store.begin_read();
+    assert_eq!(read.scan_table(&refs).expect("Refs").len(), 1);
+    assert_eq!(read.scan_table(&term).expect("T").len(), 1);
+}
+
+#[rstest]
+fn constructor_add_reuses_pending_id_for_the_same_table_and_values(
+    #[from(single_memoized_int_store)] mut store: Store,
+) {
+    let term = Path::from("T");
+    let other = Path::from("Other");
+    let schema = store
+        .begin_read()
+        .table_at(&term)
+        .expect("T")
+        .schema()
+        .clone();
+    store
+        .create_table(other.clone(), schema)
+        .expect("create Other");
 
     let mut tx = store.begin_write();
     let first = tx.add(&term, vec![7_i32]).expect("add first term");
-    let h1 = tx.commit().expect("commit first term").commit_hash();
-    let first = store.begin_read().promote_one(first, h1);
-
-    // Structurally equal row: deduplicates into the first row's class.
-    // Which id wins the merge depends on the commit hash ordering.
-    let mut tx = store.begin_write();
     let second = tx.add(&term, vec![7_i32]).expect("add equal term");
-    let h2 = tx.commit().expect("commit equal term").commit_hash();
+    assert_eq!(first, TxRowId::Pending(PendingRowId(0)));
+    assert_eq!(second, first);
+    assert_eq!(
+        tx.add(&other, vec![7i32])
+            .expect("same values in another table"),
+        TxRowId::Pending(PendingRowId(1))
+    );
+    assert_eq!(
+        tx.add(&term, vec![8i32]).expect("different values"),
+        TxRowId::Pending(PendingRowId(2)),
+        "reusing a pending row must not consume another ID"
+    );
+    let hash = tx.commit().expect("commit terms").commit_hash();
 
     let read = store.begin_read();
-    let stored = read.promote_one(second, h2);
-    assert_eq!(read.scan_table(&term).expect("T").len(), 1);
+    let stored = read.promote_one(second, hash);
+    assert_eq!(read.scan_table(&term).expect("T").len(), 2);
+    assert_eq!(read.scan_table(&other).expect("Other").len(), 1);
 
-    // Reads return the canonical id. Promoting an already-existing id
-    // also canonicalises, so a stale first id catches up.
     let view = read
-        .row_by_id(&term, &read.id_lookup().packed(&first).unwrap())
+        .row_by_id(
+            &term,
+            &read.id_lookup().packed(&first.resolve(hash)).unwrap(),
+        )
         .expect("class row is stored");
     assert_eq!(
         view.first(),
@@ -215,7 +427,7 @@ fn deduplicated_row_handle_finalizes_to_canonical_id(
             read.id_lookup().packed(&stored).unwrap()
         ))
     );
-    let first = read.promote_one(first, h1);
+    let first = read.promote_one(first, hash);
     assert_eq!(first, stored);
 }
 

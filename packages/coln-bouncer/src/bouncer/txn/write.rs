@@ -14,7 +14,7 @@ use coln_flir_rs::{
     },
     hash::CommitHash,
     ir,
-    public::{PublicRowId, PublicTuple},
+    public::{PublicDerivedDataDelta, PublicRowId, PublicViolations},
 };
 use coln_query::api::{
     ColnQuery,
@@ -29,33 +29,7 @@ use coln_store::store::{
 };
 
 use super::read::{sealed::StoreView, unpack_tuple};
-use crate::{
-    bouncer::Bouncer,
-    error::{BouncerError, LawViolation},
-};
-
-/// How a delta of derived data (views) in response to a transaction is reported
-/// via the FFI boundary. Row ids are unpacked, i.e., carry their commit hash.
-pub type PublicDerivedDataDelta = StoreDelta<Consolidated, PublicTuple>;
-
-/// How laws' violations are reported via the FFI boundary (no matter if they
-/// stem from monitored laws (soft violations) or enforced laws (hard
-/// violations).
-///
-/// One type serves both because an enforced law's violations are reported
-/// against an empty set: its rows are all assertions, so the violation set
-/// coln-query reports for hard violations is a valid delta, too. For monitored
-/// laws, a negative zweight is a violation that was resolved.
-///
-/// # Note
-///
-/// Ideally, this should be a `StoreDelta<Consolidated, PublicTuple>` but this
-/// requires knowledge of a law's violations' schema on coln-store's end which
-/// we have not yet available. Until then, it remains a `QueryTuple`. Note
-/// that a `QueryTuple` flattens each row id into two plain `U32` columns, the
-/// _packed_ commit index and the counter, which are meaningless outside of the
-/// store that packed them.
-pub type PublicViolations = StoreDelta<Consolidated, QueryTuple>;
+use crate::{bouncer::Bouncer, error::BouncerError};
 
 // Txn states
 pub trait TxnState {}
@@ -277,7 +251,7 @@ impl WriteTxn<Committed> {
         &self.state.monitored_violations
     }
 
-    // TODO all monitored constraints, maybe?
+    // TODO return all monitored constraints, maybe?
 }
 
 impl ImportTxn<'_> {
@@ -341,9 +315,9 @@ fn validate_and_derive(
     let tx = Tx::new(delta.map(|td| td.map(QueryTuple::from)));
     match tx.try_commit(query) {
         Ok(TryCommitOk::Pending(pending)) => Ok((pending, num_ops)),
-        Ok(TryCommitOk::Rejected(mut rejected)) => {
-            Err(LawViolation::Hard(PublicViolations::from(rejected.take_hard_violations())).into())
-        }
+        Ok(TryCommitOk::Rejected(mut rejected)) => Err(BouncerError::Law(PublicViolations::from(
+            rejected.take_hard_violations(),
+        ))),
         // Not a bug of the engine: another transaction still holds it.
         Err(TryCommitErr::TxApplyError(error @ ColnQueryError::TxAlreadyOpen)) => Err(error.into()),
         Err(TryCommitErr::TxApplyError(error) | TryCommitErr::RollbackError(error)) => {

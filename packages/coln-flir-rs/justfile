@@ -52,6 +52,10 @@ generate-fixtures:
         prettier --write "$json_flir"
     done
 
+# Export the TypeScript types crossing the JS boundary (default: ../coln-js-interface/src/types.ts).
+export-ts *OUT:
+    cargo run -p {{ crate }} --example export_ts -- {{ OUT }}
+
 # Run tests with stdout and stderr suppressed.
 test *TESTS:
     cargo nextest run -p {{ crate }} --all-targets --no-fail-fast {{ TESTS }}

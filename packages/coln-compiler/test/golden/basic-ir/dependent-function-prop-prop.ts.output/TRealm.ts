@@ -8,11 +8,11 @@ export function createRealm(runtime: typeof Runtime) {
       f: (a: null) => Runtime.MutableRef<null>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        A: (new runtime.BaseProp(mstore, "root.A", [])),
+        A: (new runtime.BaseProp(mbouncer, "root.A", [])),
         B: (a: null) => {
-          return (new runtime.BaseProp(mstore, "root.B", []));
+          return (new runtime.BaseProp(mbouncer, "root.B", []));
         },
         f: (a: null) => {
           return (new runtime.ConstRef(null));

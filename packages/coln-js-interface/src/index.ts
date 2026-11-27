@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-export { RowId, rowIdFromWire } from "./row_id.js"
-export { Store, ManagedStore } from "./store.js"
+export { RowId, rowIdFromPublic } from "./row_id.js"
+export { Bouncer, BouncerRead, BouncerWriteTxn, CommitResult, ManagedBouncer, RealmClass, Coln } from "./bouncer.js"
 export { Ref, MutableRef, BaseRef, ConstRef } from "./ref.js"
 export { Set, MutableSet, Prop, MutableProp, BaseSet, BaseProp, ConjunctiveViewSet, ViewProp } from "./set.js"
-export { WireTuple, TxnWireTuple } from "./value.js"
-export { WireRowId, TxnWireRowId, WhereClause, Path, CommitHash } from "./types.js"
+export { PublicRowId, TxRowId, PublicScalar, PublicTuple, TxTuple, WhereClause, Path, CommitHash, Fragment } from "./types.js"

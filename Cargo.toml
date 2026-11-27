@@ -4,10 +4,10 @@ members = [
   "packages/coln-batch",
   "packages/coln-bouncer",
   "packages/coln-flir-rs",
-  "packages/coln-node-runtime",
   "packages/coln-query",
   "packages/coln-store",
-  "packages/coln-wasm-runtime",
+  "packages/coln-runtime-node",
+  "packages/coln-runtime-wasm",
 ]
 
 [workspace.package]

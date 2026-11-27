@@ -9,13 +9,13 @@ export function createRealm(runtime: typeof Runtime) {
       stringFact: Runtime.MutableRef<null>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
         IntFact: (a: number) => {
-          return (new runtime.BaseProp(mstore, "root.IntFact", [a]));
+          return (new runtime.BaseProp(mbouncer, "root.IntFact", [a]));
         },
         StringFact: (a: string) => {
-          return (new runtime.BaseProp(mstore, "root.StringFact", [a]));
+          return (new runtime.BaseProp(mbouncer, "root.StringFact", [a]));
         },
         intFact: (new runtime.ConstRef(null)),
         stringFact: (new runtime.ConstRef(null))

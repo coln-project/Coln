@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use crate::bouncer::txn::PublicViolations;
+use coln_flir_rs::public::PublicViolations;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BouncerError {
@@ -12,17 +12,8 @@ pub enum BouncerError {
     QueryError(#[from] coln_query::api::error::ColnQueryError),
     #[error(transparent)]
     UserError(#[from] UserError),
-    #[error(transparent)]
-    Law(#[from] LawViolation),
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum LawViolation {
-    #[error("Violation of some enforced laws:\n{0}")]
-    Hard(PublicViolations),
-    // @Vincent why an enum? Soft violations (violations of monitored laws)
-    // won't be communicated via errors, right? We could therefore inline the
-    // `ViolationsSet` into the `BouncerError::Law` variant.
+    #[error("Violation of enforced laws:\n{0}")]
+    Law(PublicViolations),
 }
 
 #[derive(Debug, thiserror::Error)]

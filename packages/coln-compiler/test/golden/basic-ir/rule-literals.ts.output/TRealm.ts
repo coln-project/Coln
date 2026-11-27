@@ -10,12 +10,12 @@ export function createRealm(runtime: typeof Runtime) {
       labelIsZombocom: (x: Runtime.RowId<"root.X">) => Runtime.MutableRef<null>
     };
 
-    constructor(mstore: Runtime.ManagedStore) {
+    constructor(mbouncer: Runtime.ManagedBouncer) {
       this.root = {
-        X: (new runtime.BaseSet(mstore, "root.X", [])),
+        X: (new runtime.BaseSet(mbouncer, "root.X", [])),
         count: (a: Runtime.RowId<"root.X">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.count",
             [a],
             [1, 2],
@@ -23,7 +23,7 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: number) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return result[0];
               }
             }
@@ -31,7 +31,7 @@ export function createRealm(runtime: typeof Runtime) {
         },
         label: (a: Runtime.RowId<"root.X">) => {
           return (new runtime.BaseTableRef(
-            mstore,
+            mbouncer,
             "root.label",
             [a],
             [1, 2],
@@ -39,7 +39,7 @@ export function createRealm(runtime: typeof Runtime) {
               flatten: (a: string) => {
                 return [a];
               },
-              reconstruct: (result: Runtime.WireTuple) => {
+              reconstruct: (result: Runtime.PublicTuple) => {
                 return result[0];
               }
             }

@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 
 use coln_bouncer::bouncer::{Bouncer, ReadTxnable as _};
-use coln_bouncer::error::{BouncerError, LawViolation};
+use coln_bouncer::error::BouncerError;
 use coln_flir_rs::engine::{
     schema::ColnDef,
     tx::{TxRowId, TxTuple},
@@ -285,7 +285,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
             .expect("foreign store");
             foreign
                 .begin_read()
-                .commit_chunks_after(&[])
+                .fragments_after(&[])
                 .pop()
                 .expect("foreign root")
                 .bytes
@@ -307,7 +307,7 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
                 .commit();
             invalid
                 .begin_read()
-                .commit_chunks_after(&[root])
+                .fragments_after(&[root])
                 .pop()
                 .expect("invalid commit")
                 .bytes
@@ -326,9 +326,9 @@ fn buffered_child_survives_failed_delivery_and_derives_after_parent_arrives(
             error,
             BouncerError::StoreError(StoreError::Commit(CommitApplyError::RootCommit(_)))
         )),
-        FailedDelivery::HardViolation => assert!(
-            matches!(error, BouncerError::Law(LawViolation::Hard(violations)) if !violations.is_empty())
-        ),
+        FailedDelivery::HardViolation => {
+            assert!(matches!(error, BouncerError::Law(violations) if !violations.is_empty()))
+        }
     }
     assert_eq!(
         target
