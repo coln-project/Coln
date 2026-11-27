@@ -103,6 +103,7 @@ mod tests {
 
     #[test]
     fn lower_does_not_report_parse_errors_twice() {
+        // The trailing unclosed list would be an "empty form" otherwise.
         let lowered = lower("(\"\\q\" x) 99999999999999999999 (", None);
         let messages: Vec<_> = lowered
             .diagnostics
@@ -114,9 +115,21 @@ mod tests {
             vec![
                 "unknown escape sequence `\\q`",
                 "integer literal out of range",
-                "empty form",
                 "unclosed `(`",
             ]
         );
+    }
+
+    #[test]
+    fn lower_skips_unclosed_lists() {
+        // Without skipping, `frob` would be an unknown form and `1` not a
+        // symbol.
+        let lowered = lower("(frob (1 a)", None);
+        let messages: Vec<_> = lowered
+            .diagnostics
+            .iter()
+            .map(|d| d.message.as_str())
+            .collect();
+        assert_eq!(messages, vec!["unclosed `(`"]);
     }
 }

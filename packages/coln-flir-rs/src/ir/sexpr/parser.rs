@@ -19,6 +19,10 @@ pub struct SExpr {
 pub enum SExprKind {
     Atom(Atom),
     List(Vec<SExpr>),
+    /// A list the parser closed itself at the end of input. Its children are
+    /// kept (e.g., for tooling), but a diagnostic has already been emitted, so
+    /// later stages should skip it silently like an [`Error`](Self::Error).
+    UnclosedList(Vec<SExpr>),
     /// A malformed expression. A diagnostic has already been emitted for it,
     /// so later stages should skip it silently.
     Error,
@@ -89,19 +93,23 @@ impl<'src> Parser<'src> {
         }
         self.depth += 1;
         let mut children = Vec::new();
-        let close = loop {
+        let (close, closed) = loop {
             match self.next_token() {
                 Some(Token {
                     kind: TokenKind::RParen,
                     span,
-                }) => break span,
+                }) => break (span, true),
                 Some(token) => children.push(self.parse_expr(token)),
-                None => break self.report_unclosed(open),
+                None => break (self.report_unclosed(open), false),
             }
         };
         self.depth -= 1;
         SExpr {
-            kind: SExprKind::List(children),
+            kind: if closed {
+                SExprKind::List(children)
+            } else {
+                SExprKind::UnclosedList(children)
+            },
             span: open.to(close),
         }
     }
@@ -179,15 +187,18 @@ mod tests {
             SExprKind::Atom(Atom::Literal(Literal::Int(i))) => i.to_string(),
             SExprKind::Atom(Atom::Literal(Literal::Str(s))) => format!("{s:?}"),
             SExprKind::Error => "<error>".to_owned(),
-            SExprKind::List(items) => {
-                let items: Vec<_> = items.iter().map(show).collect();
-                format!("({})", items.join(" "))
-            }
+            SExprKind::List(items) => format!("({})", show_items(items)),
+            // Rendered without the `)` the source lacks.
+            SExprKind::UnclosedList(items) => format!("({}", show_items(items)),
         }
     }
 
+    fn show_items(items: &[SExpr]) -> String {
+        items.iter().map(show).collect::<Vec<_>>().join(" ")
+    }
+
     fn show_all(exprs: &[SExpr]) -> String {
-        exprs.iter().map(show).collect::<Vec<_>>().join(" ")
+        show_items(exprs)
     }
 
     #[test]
@@ -211,7 +222,7 @@ mod tests {
     #[test]
     fn unclosed_list() {
         let parsed = parse("(a (b c)", None);
-        assert_eq!(show_all(&parsed.exprs), "(a (b c))");
+        assert_eq!(show_all(&parsed.exprs), "(a (b c)");
         assert_eq!(parsed.exprs[0].span, Span::new(0, 8));
         assert_eq!(parsed.diagnostics.len(), 1);
         let d = &parsed.diagnostics[0];
@@ -223,6 +234,8 @@ mod tests {
     #[test]
     fn only_innermost_unclosed_list_is_reported() {
         let parsed = parse("(a (b (c", None);
+        // All three lists are unclosed, but only the innermost is reported.
+        assert_eq!(show_all(&parsed.exprs), "(a (b (c");
         assert_eq!(parsed.diagnostics.len(), 1);
         assert_eq!(parsed.diagnostics[0].secondary[0].span, Span::new(6, 7));
     }
@@ -238,7 +251,7 @@ mod tests {
     #[test]
     fn collects_several_errors() {
         let parsed = parse("(a \"\\q\") ) (99999999999999999999 \"open", None);
-        assert_eq!(show_all(&parsed.exprs), "(a <error>) (<error> <error>)");
+        assert_eq!(show_all(&parsed.exprs), "(a <error>) (<error> <error>");
         let messages: Vec<_> = parsed
             .diagnostics
             .iter()

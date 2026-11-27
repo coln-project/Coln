@@ -10,8 +10,9 @@
 //! malformed input.
 //!
 //! All helpers return `None` after reporting a diagnostic. They also return
-//! `None`, but silently, on [`SExprKind::Error`] nodes, as those were reported
-//! during parsing already.
+//! `None`, but silently, on [`SExprKind::Error`] and
+//! [`SExprKind::UnclosedList`] nodes, as those were reported during parsing
+//! already.
 
 use super::diagnostic::Diagnostic;
 use super::lexer::{Atom, Literal};
@@ -59,7 +60,7 @@ impl Lowerer {
     pub fn lower_literal(&mut self, expr: &SExpr) -> Option<Lit> {
         let literal = match &expr.kind {
             SExprKind::Atom(Atom::Literal(literal)) => literal,
-            SExprKind::Error => return None,
+            SExprKind::Error | SExprKind::UnclosedList(_) => return None,
             SExprKind::Atom(Atom::Symbol(_)) | SExprKind::List(_) => {
                 return self.error(Diagnostic::error("expected a literal", expr.span));
             }
@@ -100,16 +101,18 @@ impl Lowerer {
     pub fn expect_list<'a>(&mut self, expr: &'a SExpr) -> Option<&'a [SExpr]> {
         match &expr.kind {
             SExprKind::List(items) => Some(items),
-            SExprKind::Error => None,
-            _ => self.error(Diagnostic::error("expected a list", expr.span)),
+            SExprKind::Error | SExprKind::UnclosedList(_) => None,
+            SExprKind::Atom(_) => self.error(Diagnostic::error("expected a list", expr.span)),
         }
     }
 
     pub fn expect_symbol<'a>(&mut self, expr: &'a SExpr) -> Option<&'a str> {
         match &expr.kind {
             SExprKind::Atom(Atom::Symbol(name)) => Some(name),
-            SExprKind::Error => None,
-            _ => self.error(Diagnostic::error("expected a symbol", expr.span)),
+            SExprKind::Error | SExprKind::UnclosedList(_) => None,
+            SExprKind::Atom(Atom::Literal(_)) | SExprKind::List(_) => {
+                self.error(Diagnostic::error("expected a symbol", expr.span))
+            }
         }
     }
 
